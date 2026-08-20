@@ -56,7 +56,7 @@ export const SeparationSubjectSchema = z.strictObject({
   /** The name the UCPath search ran on — the document's, verbatim. */
   searchedName: z.string().min(1),
   /**
-   * How many people that search resolved. Doc 09 §14.4 calls "whether more than
+   * How many people that search resolved. Ref write-safety §14.4 calls "whether more than
    * one candidate matched" *decisive for `T002173685`*, so it is a stored fact
    * rather than something the packet re-counts.
    */

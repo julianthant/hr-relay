@@ -1,5 +1,5 @@
 /**
- * Item 1e's real-scale type-inference proof (doc 07, Phase-1 §"Item 1e begins
+ * Item 1e's real-scale type-inference proof (doc 01 §"Item 1e begins
  * with a new real-scale type-inference proof").
  *
  * This file compiles a representative 21-node graph exercising every builder

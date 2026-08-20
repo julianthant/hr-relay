@@ -1,5 +1,5 @@
 /**
- * The roster service store (doc 01 §3.4, doc 06 §4): spreadsheet matching
+ * The roster service store (ref task-contract §3.4, ref data-intake-and-edit-data §4): spreadsheet matching
  * over the operator-defined column mapping onto canonical fields. Pure local
  * computation — `sessions: []`, no providers, no network reach.
  */

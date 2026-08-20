@@ -1,8 +1,9 @@
 # Store Catalog — Reuse Reference
 
 > **This is a derived convenience view, not a source of truth.** The plan SSOT is
-> `docs/rebuild/07-master-plan.md` (migration order, exit criteria) and the owning docs 00–13; the
-> decision changelog is `docs/rebuild/04-reconciliation.md`. **Code is the source of truth for every
+> the phase docs `docs/rebuild/00`–`05` (migration order, exit criteria) and the owning
+> reference specs under `docs/rebuild/reference/`; the
+> decision changelog is `docs/rebuild/reference/decisions.md`. **Code is the source of truth for every
 > fact in this file** — if this file ever disagrees with `src/stores/**`, `src/services/**`, or
 > `src/infra/providers/**`, the code wins. Regenerate at every slice boundary, and whenever a store
 > gains, loses, or rewires a task.
@@ -81,7 +82,7 @@ factory-defined stores, and that no listed store goes unused (`auditWorkflowModu
    entry, live selector verification, and only then tasks. Check §4 for which migration order owns it
    before starting.
 
-**The extraction-width rule (D194, 2026-08-12 — normative text in doc 01 §2.8).** Once you know
+**The extraction-width rule (D194, 2026-08-12 — normative text in ref task-contract §2.8).** Once you know
 which store you are in, this decides how wide the new read task is:
 
 - **A read task's identity is a PAGE VISIT, not a caller's field list.** One task navigates to one
@@ -96,7 +97,7 @@ which store you are in, this decides how wide the new read task is:
 - **Two obligations come with the width**, both one-time and both already proven in this tree: an
   explicit `{state:"absent", reason}` arm for every field that can legitimately be blank (provenance
   is validated to cover *every* canonical output leaf on every run, so a rich field with no absent arm
-  can fail a workflow that never needed it), and a declared redaction classification per leaf (doc 12
+  can fail a workflow that never needed it), and a declared redaction classification per leaf (ref operator-trust
   §D140 — an undeclared leaf fails loud).
 - **Scope:** all **new** tasks from 2026-08-12, and every task a migration authors from order 8
   (separations) onward. **Existing tasks are not rewritten on the strength of this decision** — a
@@ -128,8 +129,8 @@ be opened.
 
 | `readJobSummaryTask` | task | `ucpath/read-job-summary` (read) | D194's rich read of the SAME page family: opens the Person Org **detail** page for a person the run already names, proves the displayed EID equals the requested one, and returns the WHOLE *Employment Instances* grid — every row's empl record, verbatim HR status, business unit, effective dates, department, job code, title, FTE, empl class — plus the page-displayed name, the row count, and the render context (`auto-detail` vs `drilled-from-grid`; grid already-complete vs expanded). | `sessions: [{system:"ucpath", access:"read"}]`, retries `{attempts:2, backoffMs:2000}`. **Classifies nothing** — "all terminated", "already separated", "two concurrent jobs" are a pure fold in `src/domain/separations/job-summary-classification.ts` (D201). Subject-bound `before-subject-read` on `ucpath.person-org.displayed-eid`, unlike `search-person-org` whose subject is `none` because the search IS the resolution. Live-verified 2026-08-12. |
 
-| `matchExistingTerminationTask` | task | `ucpath/match-existing-termination` (read) | Doc 09 §5's idempotency probe and chunk 4's **S44** read: EID-filtered SS Smart HR search plus one detail visit per candidate row, folded to a four-state `ProbeVerdict` on EID + effective date. | Freshness 0 (`forbidden`). Subject binds the **name**, not the EID — the EID is the run's own filter echoed back. An unreadable scan is `unknown`, NEVER `absent` (D5/D6). Live-verified 2026-08-14. |
-| `matchPendingTerminationsTask` | task | `ucpath/match-pending-terminations` (read) | Doc 09 §5's **second** probe kind, over the SAME rich read: does this person have ANY in-progress termination? `present` means there is nothing to sweep. | Shares `scanTerminationTransactions` with the probe above — one page read, two folds (D194/D201/D206). |
+| `matchExistingTerminationTask` | task | `ucpath/match-existing-termination` (read) | Ref write-safety §5's idempotency probe and chunk 4's **S44** read: EID-filtered SS Smart HR search plus one detail visit per candidate row, folded to a four-state `ProbeVerdict` on EID + effective date. | Freshness 0 (`forbidden`). Subject binds the **name**, not the EID — the EID is the run's own filter echoed back. An unreadable scan is `unknown`, NEVER `absent` (D5/D6). Live-verified 2026-08-14. |
+| `matchPendingTerminationsTask` | task | `ucpath/match-pending-terminations` (read) | Ref write-safety §5's **second** probe kind, over the SAME rich read: does this person have ANY in-progress termination? `present` means there is nothing to sweep. | Shares `scanTerminationTransactions` with the probe above — one page read, two folds (D194/D201/D206). |
 | `stageTerminationTask` | task | `ucpath/stage-termination` (prepare) | Stages the WHOLE three-page Smart HR wizard: template + transaction date, Empl ID + record + effective date + reason, Job Data + LDW override + both comment fields — and reads every one back. | Persists nothing: the wizard has ZERO durable footprint before an explicit Save (live 2026-08-13, re-confirmed 2026-08-14). Refuses `emplid-not-recognized` (S48) and `last-date-worked-not-verified` (S49) pre-fence. |
 | `createTerminationTask` | task | `ucpath/create-termination` (**commit**) | Clicks `Save and Submit` — ALONE — then re-reads its own receipt PAIR. | Permanent key EID + effective date. `recoveryAbsence: operator-only` (no measured propagation window). An unreadable post-submit read THROWS, so S51/S52 park. |
 | `verifyTerminationTask` | task | `ucpath/verify-termination` (read) | Beat ⑥'s independent re-read — the only thing that may settle the run `done`. | Anything other than `present` parks. `present` requires the `T…` AND its approval status: a Denied transaction carries a well-formed number. |
@@ -373,7 +374,7 @@ the composed `separations` graph makes between its reads and its writes lives he
 | Item | Kind | Contract id | What it does | Reuse notes |
 |---|---|---|---|---|
 | `matchTerminationTypeTask` | task | `workflow:separations/match-termination-type` (read) | §4a's refusal, executed: exact-match the Kuali termination type against the live-captured map, returning `{classification, template, reasonCode}` or failing with one of four distinct codes. | `replay:"checkpoint"`. It checks the OPTION LIST first — a republished control makes every answer suspect, including the ones that still match. There is no substring tier and no default arm; the map lives in `src/domain/separations/termination-type.ts`. |
-| `matchIdentityTask` | task | `workflow:separations/match-identity` (read) | Chunk 3's pure comparison: folds the Kuali document, the Job Summary grid and the name search into doc 09 §14.2's decision packet plus its evidence digest, and computes the `approvalShape` SERVER-side. | `replay:"checkpoint"`. It classifies the name tier but decides nothing — the gate does. Used by every separation-class write chunk rather than reimplemented. |
+| `matchIdentityTask` | task | `workflow:separations/match-identity` (read) | Chunk 3's pure comparison: folds the Kuali document, the Job Summary grid and the name search into ref write-safety §14.2's decision packet plus its evidence digest, and computes the `approvalShape` SERVER-side. | `replay:"checkpoint"`. It classifies the name tier but decides nothing — the gate does. Used by every separation-class write chunk rather than reimplemented. |
 | `verifyIdentityApprovalTask` | task | `workflow:separations/verify-identity-approval` (read) | The post-gate check: re-derives the packet, proves the digest the operator approved is still the digest this run holds, and returns the approved subject. | `replay:"always-rerun"` — an approval is checked against THIS run's evidence, never replayed from a checkpoint. Four distinct refusal codes, including `identity-approval-eid-not-shown`. |
 | `matchDepartmentOptionTask` | task | `workflow:separations/match-department-option` (read) | **S55's upstream half** (chunk 5): resolves a UCPath dept id to the EXACT visible text of the Kuali `Department*` option that carries it, verbatim from the observed list. | `replay:"checkpoint"`. Code match ONLY — legacy's two substring tiers do not port, and neither does a normalized-exact description tier, which would be a quieter fuzzy match. Four distinct refusal codes; the fold lives in `src/domain/separations/department-option.ts`. |
 | `readSeparationPlanTask` | task | `workflow:separations/read-separation-plan` (read) | Chunk 6: everything the composed graph needs from the separation document ALONE — the employee name the UCPath search runs on, the two Kuali dates, and the ±1-month New Kronos window they imply. | `replay:"checkpoint"`. It runs before every other read because its four refusals (blank name, blank LDW, blank separation date, and **S7**'s future date) cost nothing there and cost two browser sessions one node later. S7's reference is the DOCUMENT READ's own instant in `America/Los_Angeles`, never a clock read. |
@@ -424,7 +425,7 @@ Module binds exactly `[ucpathStore, crmStore, personLookupStore]`.
 
 ### `kuali-timekeeper-annotation` (`src/workflows/kuali-timekeeper-annotation/`)
 
-Module binds exactly `[kualiStore]`. ONE transaction node, `annotate-timekeeper`, whose beats (doc 09
+Module binds exactly `[kualiStore]`. ONE transaction node, `annotate-timekeeper`, whose beats (ref write-safety
 §13) each call a `kualiStore` task:
 
 | Beat | Contract | Store task | Role |
@@ -476,7 +477,7 @@ them is a decision only a graph holding ALL of the reads can make.
 
 Five of the nine browser stores are declaration-only (`unwired` driver, stub session provider, 0
 tasks, no `system-bindings.ts` entry). Building one is genuinely BUILD work, not CUSTOMIZE — see §1
-step 3. Migration order is doc 07 §3.3's table:
+step 3. Migration order is doc 03c §Recommended migration order's table:
 
 | Store | Migration order that mints it | Workflow(s) | Notes |
 |---|---|---|---|
@@ -491,7 +492,7 @@ Two more gaps are **inside** currently-real stores, not new stores — flagged h
 easy to miss:
 
 - **The ucpath TERMINATION write family LANDED 2026-08-14** (chunk 4, D206): two transactions — the
-  date-agnostic pending sweep and the filing — with doc 09 §5's two probe kinds and a verifier each.
+  date-agnostic pending sweep and the filing — with ref write-safety §5's two probe kinds and a verifier each.
   What is still missing from this store is the **UCPath hire** family (order 9, onboarding), and the
   chunk-4 anchors are not yet published as registry ELEMENTS: they need
   `config/ports/legacy-selector-port-map.json` rows plus a fixture/live evidence-manifest pair, and
@@ -501,7 +502,7 @@ easy to miss:
   still missing is the **finalization WRITE family** (`Send Back`, `Mark Complete` — the controls that
   actually advance or finalize a real separation), which stays explicitly **not addressable** through
   `kualiStore`; only the benign `Timekeeper Name` annotation can be written today. Minted at
-  **order 8** (separations), under doc 09 §14's ALWAYS-GATE identity-approval — the operator ratified manual
+  **order 8** (separations), under ref write-safety §14's ALWAYS-GATE identity-approval — the operator ratified manual
   approval on every separation with no auto-approve-on-match.
 
 Not a gap, for the record: `ai.advisory` (`createGeminiAdvisoryAdapter`) is wired in the DASHBOARD

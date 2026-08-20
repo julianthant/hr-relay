@@ -1,5 +1,5 @@
 /**
- * Doc 05 §§1,4: a driver is exclusive task-length access backed by the
+ * Ref execution-and-sessions §§1,4: a driver is exclusive task-length access backed by the
  * worker's browser session — it exists ONLY inside the callback lease
  * `WorkerSessionManager.withDriver` hands out. Nothing else in `src/` may
  * acquire a session resource, hold a driver across a lease, or construct a
@@ -8,9 +8,9 @@
  * Enforced structurally over the whole tree:
  *
  * - `withDriver(` is called only by the manager itself, the one graph
- *   interpreter (`src/core/run-executor.ts`), and the doc-09 write sequencer
+ *   interpreter (`src/core/run-executor.ts`), and the ref write-safety write sequencer
  *   (`src/core/write-sequencer.ts`), whose probe read lease and transaction
- *   lease are exactly the callback leases doc 09 §3 assigns it;
+ *   lease are exactly the callback leases ref write-safety §3 assigns it;
  * - the browser-session factory's `.open(` — the raw resource mint — is
  *   invoked only inside `src/core/worker-sessions.ts`;
  * - `new WorkerSessionManager(` is constructed only by the worker loop, so a

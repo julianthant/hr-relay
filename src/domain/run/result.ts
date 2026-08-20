@@ -1,6 +1,6 @@
 /**
  * Durable terminal workflow results and the exact checkpoint identities from
- * which they were derived (doc 02 §5.7, D114).
+ * which they were derived (ref workflow-model §5.7, D114).
  */
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
@@ -93,7 +93,7 @@ export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
  */
 export const RunDryRunPreviewResultSchema = z.strictObject({
   kind: z.literal("dry-run-preview"),
-  /** The transaction node the run stopped at — its first (doc 01 §10.1). */
+  /** The transaction node the run stopped at — its first (ref task-contract §10.1). */
   stoppedAtNodeId: NodeIdSchema,
   externalCommit: z.literal("none"),
   preview: TransactionDryRunPreviewSchema,

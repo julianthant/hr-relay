@@ -1,5 +1,5 @@
 /**
- * D113 command-kernel semantics (doc 03 §Phase-1f authority, §2.4).
+ * D113 command-kernel semantics (ref dashboard-surfaces §Phase-1f authority, §2.4).
  *
  * The suite drives the REAL authority database through the kernel: the D109
  * consume step commits plan consumption, active-run policy, run creation, and

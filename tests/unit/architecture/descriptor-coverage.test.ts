@@ -1,5 +1,5 @@
 /**
- * Doc 02 §1.4 — THE coverage guard: one table-driven sweep over `DESCRIPTORS`.
+ * Ref workflow-model §1.4 — THE coverage guard: one table-driven sweep over `DESCRIPTORS`.
  *
  * Its job is the half a descriptor cannot check about itself: cross-descriptor
  * uniqueness, the module tuple agreeing with the derived registry, the bundle
@@ -140,7 +140,7 @@ describe("descriptor coverage", () => {
   });
 
   /**
-   * §1.4 item 2's second half (doc 02 §1.2.1, D219).
+   * §1.4 item 2's second half (ref workflow-model §1.2.1, D219).
    *
    * Every module DECLARES a role — the schema makes an absent one a type error
    * and `defineWorkflowRole` makes a mis-shaped one a parse error, so what is
@@ -194,7 +194,7 @@ describe("descriptor coverage", () => {
   });
 
   /**
-   * The SHORT CODE, and the one cross-descriptor fact about it (doc 02 §1.1,
+   * The SHORT CODE, and the one cross-descriptor fact about it (ref workflow-model §1.1,
    * D242). Well-formedness is the factory's — it refuses a bad code where the
    * code is authored — so what is left here is uniqueness, which no descriptor
    * can check about itself, plus the composed fact that makes uniqueness

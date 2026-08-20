@@ -1,11 +1,11 @@
 /**
- * Doc 09 §4 crash-window recovery (D118) and the §4.1 typed operator
+ * Ref write-safety §4 crash-window recovery (D118) and the §4.1 typed operator
  * resolutions behind the command kernel's `WriteResolutionExecutor` seam.
  *
  * Recovery has scheduling priority over claim expiry: the D118 sweep routes a
  * dead claim whose run owns an unfinished `attempting` intent here BEFORE any
  * ordinary requeue. This service re-runs the idempotency probe FIRST and
- * settles exactly one of doc 09 §4's arms:
+ * settles exactly one of ref write-safety §4's arms:
  *
  *   present + valid proof   → beat-⑦ backfill (same parsers as beat ⑥) + resume
  *   present + invalid proof → park `present-proof-invalid` (never done)
@@ -119,7 +119,7 @@ export interface WriteRecoveryDependencies {
   readonly stores: TaskStoreRegistry;
   readonly authority: WriteSequencerAuthority;
   /**
-   * D116 (doc 11 §4): the recovery probe leases a driver OUTSIDE any worker
+   * D116 (ref clock-config-secrets §4): the recovery probe leases a driver OUTSIDE any worker
    * loop's claimed-run binding window, so the host must also expose the
    * bind/release surface — `recover` binds the TARGET run's retained immutable
    * `configFingerprint` around its probe lease and releases it afterwards.
@@ -237,19 +237,19 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
     }
 
     /*
-     * D116 (doc 11 §4): the probe lease runs OUTSIDE any worker loop, so
+     * D116 (ref clock-config-secrets §4): the probe lease runs OUTSIDE any worker loop, so
      * recovery binds the TARGET run's retained immutable `configFingerprint`
      * itself — read from the authority run row the intent names, never
      * recomputed from current config and never taken from caller claims. The
      * bind sits OUTSIDE the probe's catch on purpose: a missing/malformed
      * fingerprint on the run row, or a host already bound to another run, is a
      * PRECONDITION failure that throws out of `recover` loudly — it must never
-     * collapse into a park that reads as a probe verdict (doc 09 §4).
+     * collapse into a park that reads as a probe verdict (ref write-safety §4).
      */
     const runConfigFingerprint = FingerprintSchema.parse(run.envelope.configFingerprint);
     deps.sessions.bindRunConfigFingerprint(runConfigFingerprint);
 
-    /* the probe runs FIRST — before any startAt/resume logic (doc 09 §4) */
+    /* the probe runs FIRST — before any startAt/resume logic (ref write-safety §4) */
     let verdict: RuntimeProbeVerdict;
     try {
       verdict = await executeIdempotencyProbe(probeDeps, {
@@ -404,7 +404,7 @@ export function createWriteRecoveryService(deps: WriteRecoveryDependencies): Wri
   return Object.freeze({ recover });
 }
 
-/* ── the kernel's typed operator resolutions (doc 09 §4.1) ───────────────── */
+/* ── the kernel's typed operator resolutions (ref write-safety §4.1) ───────────────── */
 
 export interface WriteResolutionDependencies {
   readonly descriptors: WorkflowDescriptorResolver;

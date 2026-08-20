@@ -1,6 +1,6 @@
 /**
- * The Phase-1f fenced write sequencer — doc 09 §3's seven-beat kernel write
- * sequence (D111), the D117 transaction-node semantics of doc 02 §3.1, and the
+ * The Phase-1f fenced write sequencer — ref write-safety §3's seven-beat kernel write
+ * sequence (D111), the D117 transaction-node semantics of ref workflow-model §3.1, and the
  * inline half of D118 recovery.
  *
  * One `executeTransaction` call owns the whole spine for one transaction node:
@@ -177,13 +177,13 @@ export interface WriteSequencerAuthority {
 /**
  * The session surface the sequencer needs; `WorkerSessionManager` satisfies it.
  *
- * D116 (doc 11 §4): every `withDriver` lease requires the claimed run's
+ * D116 (ref clock-config-secrets §4): every `withDriver` lease requires the claimed run's
  * immutable `configFingerprint` to ALREADY be bound on this host — the host
  * refuses loudly otherwise. The sequencer itself never binds or releases:
  * `executeTransaction`/`executeDryRun` run inside the interpreter for a
  * claimed run, under the worker loop's `withBoundRunConfigFingerprint` window,
  * so this host must be the SAME `WorkerSessionManager` that loop binds.
- * Probe leases taken OUTSIDE a claimed run's worker-loop context (doc 09 §4
+ * Probe leases taken OUTSIDE a claimed run's worker-loop context (ref write-safety §4
  * recovery) bind the target run's retained fingerprint themselves — see
  * `createWriteRecoveryService`.
  */
@@ -209,9 +209,9 @@ export interface WriteSequencerDependencies {
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly scheduler: MonotonicDeadlineScheduler;
-  /** Immutable per-invocation task bound (doc 05 §5.5); no default, no opt-out. */
+  /** Immutable per-invocation task bound (ref execution-and-sessions §5.5); no default, no opt-out. */
   readonly taskDeadlineMs: number;
-  /** The acting operator identity from the config domain (doc 11); never fabricated. */
+  /** The acting operator identity from the config domain (ref clock-config-secrets); never fabricated. */
   readonly operator: unknown;
   readonly log: TaskLogger;
   /**
@@ -227,7 +227,7 @@ export interface ProductionWriteSequencer extends WriteSequencer {
   executeDryRun(context: WriteSequencerContext): Promise<TransactionDryRunPreview>;
 }
 
-/* ── dry-run preview (doc 02 §3.1: prepare + observe, zero intent/fence) ─── */
+/* ── dry-run preview (ref workflow-model §3.1: prepare + observe, zero intent/fence) ─── */
 
 /**
  * The schema itself lives in `src/domain/write-safety-primitives.ts` (D210):
@@ -278,7 +278,7 @@ function readInputPath(value: unknown, path: string, owner: string): string {
 }
 
 /**
- * Normalization per doc 01's match vocabulary. `eid` strips whitespace and
+ * Normalization per ref task-contract's match vocabulary. `eid` strips whitespace and
  * requires digits; `name` lowercases and collapses whitespace. The combined
  * `eid-and-name` match has no contract yet and refuses rather than guessing a
  * combined-value format.
@@ -357,7 +357,7 @@ export interface BoundedTaskDeps {
   readonly log: TaskLogger;
 }
 
-/** Every task invocation races a mandatory injected monotonic deadline (doc 05 §5.5). */
+/** Every task invocation races a mandatory injected monotonic deadline (ref execution-and-sessions §5.5). */
 export async function invokeBoundedTask(
   deps: BoundedTaskDeps,
   taskId: TaskId,
@@ -427,7 +427,7 @@ export interface ProbeReadDeps extends BoundedTaskDeps {
 export type RuntimeProbeVerdict = z.output<ReturnType<typeof probeVerdictSchema>>;
 
 /**
- * The doc-09 idempotency probe read (beat ① and §4 recovery): resolved from the
+ * The ref write-safety idempotency probe read (beat ① and §4 recovery): resolved from the
  * commit contract, run on its OWN read lease, and parsed through the exact
  * `ProbeVerdict(proofSchema)` — a probe that cannot state
  * present/absent/ambiguous/unknown has no fail-closed reading.
@@ -491,7 +491,7 @@ function requireApplied(outcome: { state: string; [key: string]: unknown }, what
   }
 }
 
-/* ── the beat-⑦ outer bundle executor (doc 03 Phase-1f; D111) ────────────── */
+/* ── the beat-⑦ outer bundle executor (ref dashboard-surfaces Phase-1f; D111) ────────────── */
 
 export type SequencedRunTransition =
   | Readonly<{ kind: "advance-running"; claim: RunClaimToken }>
@@ -1251,7 +1251,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
   }
 
-  /** Inline recovery for THIS run's own attempting intent (doc 09 §4, D118). */
+  /** Inline recovery for THIS run's own attempting intent (ref write-safety §4, D118). */
   async function recoverOwnAttemptingIntent(
     context: WriteSequencerContext,
     commitContract: AnyCommitTaskContract,
@@ -1328,7 +1328,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       intentVersion: intent.version,
       parkCode,
       message: `recovery probe for ${commitContract.id} reports ${verdict.state} for key `
-        + `${intent.idempotencyKey}; retry authority requires the doc-09 §4 settlement machine or the operator`,
+        + `${intent.idempotencyKey}; retry authority requires the ref write-safety §4 settlement machine or the operator`,
     });
     await parkAfterFence(context, failure);
     throw new WriteParkedError({
@@ -1389,7 +1389,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       return replayCheckpoint(context, commitContract, storedCheckpoint);
     }
 
-    /* stable commit input + key BEFORE any probe or browser (doc 02 §3.1) */
+    /* stable commit input + key BEFORE any probe or browser (ref workflow-model §3.1) */
     const commitInput: unknown = commitContract.input.parse(node.commit.bind(context.scope));
     const system = systemOf(commitContract.id);
     const keyRaw: unknown = Reflect.apply(commitContract.writeSafety.idempotency.key, undefined, [commitInput]);

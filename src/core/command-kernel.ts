@@ -1,5 +1,5 @@
 /**
- * The ONE command kernel — D113 (doc 03 §Phase-1f authority, §2.4; doc 10 §3.9).
+ * The ONE command kernel — D113 (ref dashboard-surfaces §Phase-1f authority, §2.4; ref guards-and-tests §3.9).
  *
  * Every control surface — dashboard, CLI, gate resolvers, recovery — mutates
  * authority through exactly this dispatcher. It is exhaustive over D95's nine
@@ -12,7 +12,7 @@
  * **Atomicity model.** An active command runs in ONE outer authority
  * transaction: journal insert, arm effects, and the audit record commit
  * together or not at all. A typed refusal (`rejected`/`conflict`) is raised as
- * a `CommandRefusal`, which unwinds the whole transaction — doc 03's Phase-1f
+ * a `CommandRefusal`, which unwinds the whole transaction — ref dashboard-surfaces's Phase-1f
  * ratification is explicit that drift, expiry, a spent plan, target lookup
  * failure, or a run-insert failure "rolls back plan consumption, command
  * application, supersession, and every proposed run" — and the typed result is
@@ -88,7 +88,7 @@ import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "../services/start/plan.js";
 
-/* ── the Phase-1f arm partition (doc 03 §Phase-1f authority) ─────────────── */
+/* ── the Phase-1f arm partition (ref dashboard-surfaces §Phase-1f authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
   start: ["start-run"],
@@ -186,7 +186,7 @@ export interface WorkflowDescriptorResolver {
 }
 
 /**
- * The doc 09 §4.1 seam. The kernel owns everything up to it — command schema,
+ * The ref write-safety §4.1 seam. The kernel owns everything up to it — command schema,
  * idempotency, run CAS, the parked-write state, and the intent-generation lock
  * — and the write sequencer owns the intent/attempt/outbox/run mutations
  * behind it (beat ⑦ for confirmed-present; retryable + evidence for
@@ -245,7 +245,7 @@ export interface WorkerRuntimeExecutor {
 }
 
 /**
- * Doc 06 §2.2's re-derivation seam (D170).
+ * Ref data-intake-and-edit-data §2.2's re-derivation seam (D170).
  *
  * Rows and detected columns are a pure function of the immutable artifact plus
  * the sheet/header selection, so the kernel re-derives them instead of reading
@@ -260,7 +260,7 @@ export interface IntakeParser {
 }
 
 /**
- * Doc 06 §1's spreadsheet-capable declaration, resolved per workflow. A
+ * Ref data-intake-and-edit-data §1's spreadsheet-capable declaration, resolved per workflow. A
  * workflow with no projection has no bindable target fields, and every arm
  * that would need one refuses by name rather than mapping against an invented
  * target set.
@@ -622,7 +622,7 @@ function executeRetry(
       dryRun: current.envelope.dryRun,
       retryOf: current.envelope.runId,
       /*
-       * D221 — a retry is the item's NEXT attempt, which is what doc 02 §5.6 #1
+       * D221 — a retry is the item's NEXT attempt, which is what ref workflow-model §5.6 #1
        * has always said a retry is ("failure at node k ⇒ retry = new attempt").
        * Minting it at 1 made the new run re-execute its `always-rerun` nodes
        * under the retried run's own checkpoint keys, and the immutable insert
@@ -673,7 +673,7 @@ interface CancelTarget {
 /**
  * D246 — CANCEL IS REFUSED WHILE A FENCED WRITE IS STILL UNRESOLVED.
  *
- * Doc 09 §4.1 has always said cancel "cannot alter the intent", and that
+ * Ref write-safety §4.1 has always said cancel "cannot alter the intent", and that
  * sentence is right. What it did not say is what happens NEXT: a cancelled run
  * is terminal, `executeWriteResolution` refuses anything that is not
  * `parked-write`, and `buildParkedWritePayload` throws for any other lifecycle
@@ -695,7 +695,7 @@ interface CancelTarget {
  *
  * The scan covers EVERY target in the cascade, not just the run the operator
  * named: a cancelled parent whose child holds a fenced write orphans that
- * write exactly the same way, and doc 03 §2.4's tree rule is already that an
+ * write exactly the same way, and ref dashboard-surfaces §2.4's tree rule is already that an
  * unusable tree cancels NOTHING.
  */
 function refuseCancelOverUnresolvedWrite(
@@ -716,7 +716,7 @@ function refuseCancelOverUnresolvedWrite(
         `${scope} holds ${intent.system} write intent ${intent.writeIntentId} at generation `
         + `${String(intent.generation)}, which is ${intent.status}: a real HR transaction was fenced and `
         + "nobody has said whether it landed. Cancelling would settle the run terminal and take both of "
-        + "doc 09 §4.1's typed resolutions off the surface with it, so nothing was cancelled. Record the "
+        + "ref write-safety §4.1's typed resolutions off the surface with it, so nothing was cancelled. Record the "
         + "write present or absent first, then cancel.",
       );
     }
@@ -743,7 +743,7 @@ function executeCancel(
 
   // The tree comes from authority alone. A child whose delegation edge cannot
   // be resolved makes the tree inconsistent, and an inconsistent tree cancels
-  // NOTHING — the whole transaction unwinds (doc 03 §2.4 Cancel).
+  // NOTHING — the whole transaction unwinds (ref dashboard-surfaces §2.4 Cancel).
   const targets: CancelTarget[] = [{ run: current }];
   const dependencyIds: string[] = [];
   const visited = new Set<string>([current.envelope.runId]);
@@ -848,7 +848,7 @@ function executeBump(
 }
 
 /**
- * Doc 06 §6 (D166): the Edit-Data save. Fail-closed by construction — an
+ * Ref data-intake-and-edit-data §6 (D166): the Edit-Data save. Fail-closed by construction — an
  * unknown or raced state rejects; the resume claim is the fence and the
  * resume WINS; every patch path must be descriptor-allowlisted; and the
  * whole post-patch output must re-parse through the producing contract's
@@ -989,7 +989,7 @@ function intakeTarget(intakeSessionId: string): TargetReference {
  * 2i-B: the inbox lifecycle over D134/D138's durable rows. Read-state and
  * snooze are INDEPENDENT axes — marking read preserves the snooze, snoozing
  * preserves the read state — and a snoozed row still folds durably; snooze
- * only suppresses delivery (doc 03 §2.6, D138).
+ * only suppresses delivery (ref dashboard-surfaces §2.6, D138).
  */
 function executeNotification(
   repositories: AuthorityRepositories,
@@ -1040,7 +1040,7 @@ function executeNotification(
 }
 
 /**
- * Doc 06 §5.1 (D167): the durable capture arms. Every mutation validates the
+ * Ref data-intake-and-edit-data §5.1 (D167): the durable capture arms. Every mutation validates the
  * requested refs and state against CURRENT authority — version drift alone
  * is never a CAS conflict, and an inapplicable command rejects by name.
  * Exact phone retries converge through the journal's commandId dedupe;
@@ -1204,7 +1204,7 @@ function executeCapture(
 }
 
 /**
- * Doc 06 §2.2 (D170): the five non-enqueue intake arms over the durable
+ * Ref data-intake-and-edit-data §2.2 (D170): the five non-enqueue intake arms over the durable
  * session. The ROUTE creates a session — there is deliberately no open arm —
  * and every arm here only MUTATES one, under the repository's version CAS.
  *
@@ -1226,7 +1226,7 @@ function executeCapture(
  *    occupies row 17.
  *
  * D171 adds the sixth arm, `enqueue-intake-manifest`, which is the irreversible
- * one: it re-derives the plan, gates on doc 06 §5's `enqueueReadiness`, mints
+ * one: it re-derives the plan, gates on ref data-intake-and-edit-data §5's `enqueueReadiness`, mints
  * the immutable manifest and fans out one run per valid row — all inside the
  * one authority transaction with the session's CAS to `enqueued`, so a refusal
  * on the last row leaves no manifest, no run and no state change.
@@ -1374,7 +1374,7 @@ function executeIntake(
       }
       const held = current.bindings.find((entry) => entry.targetFieldId === request.payload.targetFieldId);
       if (held !== undefined && held.sourceColumnId === request.payload.sourceColumnId) return noOp();
-      // THE one mint (doc 06 §2.5). It re-proves both checks above against the
+      // THE one mint (ref data-intake-and-edit-data §2.5). It re-proves both checks above against the
       // projection and the detected columns; a suggestion cannot reach it.
       const binding = confirmBinding({
         projection,
@@ -1510,7 +1510,7 @@ function executeIntake(
           request,
           "invalid-state",
           `intake session ${sessionId} is ${current.state}; the pre-run rejection review is mandatory `
-          + "(doc 06 §5) — validate this mapping, review what it rejects, then run",
+          + "(ref data-intake-and-edit-data §5) — validate this mapping, review what it rejects, then run",
         );
       }
       // The ONLY intake arm that CASes. The five mapping arms validate current
@@ -1610,13 +1610,13 @@ function executeIntake(
           resolvedInstance: resolveInstances(descriptor, undefined),
           configFingerprint,
           configSnapshotId,
-          // Doc 06 §5's coordinator/member fan-out has no runtime yet (nothing
+          // Ref data-intake-and-edit-data §5's coordinator/member fan-out has no runtime yet (nothing
           // mints an `operation` run), so each row is an independent `single`
           // run and the MANIFEST is what joins them — which is the artefact the
           // section makes "42 rows ran" checkable with anyway.
           shape: "single",
           // A spreadsheet fan-out is the definition of bulk, and this is a
-          // server stamp rather than a caller claim (doc 03 §1.1).
+          // server stamp rather than a caller claim (ref dashboard-surfaces §1.1).
           priority: "bulk",
           dryRun: request.payload.dryRun,
           ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),
@@ -2229,7 +2229,7 @@ function executeArchivedRunRelaunch(
   if (archived === undefined) {
     reject(request, "target-not-found", `archived run ${request.target.archivedRunId} is not in the archive`);
   }
-  // doc 13 §5's "integrity": a relaunch cites the exact bytes it read. A
+  // ref frontend-backend-integration §5's "integrity": a relaunch cites the exact bytes it read. A
   // mismatch means the operator is looking at a different record than the one
   // their command names.
   if (archived.contentDigest !== request.target.archiveFingerprint) {

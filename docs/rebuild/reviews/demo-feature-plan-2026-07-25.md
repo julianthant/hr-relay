@@ -1,7 +1,7 @@
 # Rebuild demo — production feature & data plan (2026-07-25)
 
 **Status (2026-07-30): completed historical build plan; do not execute its tiers.** The target
-surfaces were built and audited. `docs/rebuild/13-frontend-backend-integration.md` now owns the
+surfaces were built and audited. `docs/rebuild/reference/frontend-backend-integration.md` now owns the
 production wiring/completeness contract, while doc 07 remains the only build sequence. This file is
 retained as the feature-by-feature rationale and should not be treated as a competing plan.
 
@@ -12,7 +12,7 @@ the rebuilt backend serves, instead of a polished subset.
 **Companions:** `legacy-keep-ditch-2026-07-25.md` (row/log-panel verdicts) ·
 `delegation-layouts-2026-07-25.md` (S0–S7 shapes, the 12 open questions) ·
 `shell-build-spec-2026-07-25.md` (pixel spec for the four shell surfaces) ·
-`docs/rebuild/03-tracker-dashboard.md` (wire contract) · `second-look-2026-07-22.md` §6.5–6.6
+`docs/rebuild/reference/dashboard-surfaces.md` (wire contract) · `second-look-2026-07-22.md` §6.5–6.6
 (ratified decisions).
 
 ---

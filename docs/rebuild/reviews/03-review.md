@@ -1,4 +1,4 @@
-# Adversarial review — 03-tracker-dashboard.md (2026-07-17)
+# Adversarial review — reference/dashboard-surfaces.md (2026-07-17)
 
 Verdict: **structurally flawed until reconciliation** — direction sound (spans, server-resolved
 projections, first-class outcomes), but no shared event/descriptor/completion contract across docs,

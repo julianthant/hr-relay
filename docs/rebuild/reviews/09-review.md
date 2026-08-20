@@ -1,4 +1,4 @@
-# Adversarial review — 09-write-safety.md (+ 10/11 seams) — 2026-07-18
+# Adversarial review — reference/write-safety.md (+ 10/11 seams) — 2026-07-18
 
 Verdict: exactly-once is **sound only with amendments** — holds for single-run crash seams, breaks
 on same-key concurrent runs and a schema-unchecked recovery backfill. **Not sign-off-ready** until

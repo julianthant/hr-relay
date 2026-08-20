@@ -12,7 +12,7 @@ const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
  *
  * A lowercase UUID satisfies `SLUG_PATTERN` character for character, so without
  * the first refusal a run id could be spelled as a worker id, an actor, or a
- * node — exactly the substitution doc 03 §1.1 rules out when it says workers
+ * node — exactly the substitution ref dashboard-surfaces §1.1 rules out when it says workers
  * "never receive a synthetic run id".
  *
  * An all-digit slug likewise parses, and an id that is only digits is a
@@ -88,14 +88,14 @@ export const ProviderAdmissionIdSchema = brandedText<"ProviderAdmissionId">(
 export const RowRejectIdSchema = brandedText<"RowRejectId">(UUID_PATTERN, "row reject id must be a UUID");
 
 /**
- * A detected source column's identity — doc 06 §2.1's
+ * A detected source column's identity — ref data-intake-and-edit-data §2.1's
  * `base64url(canonicalJson({ normalizedHeader, occurrence }))`.
  *
  * It is deliberately NOT the header text and NOT the column position. A raw
  * header cannot distinguish two `Name` columns; a position silently rebinds to
  * whatever column slid into that slot when the operator inserted one. Encoding
  * the pair keeps duplicates distinct and keeps the id stable across a
- * reordered export, which is the whole point of doc 06 §2.3's reuse scheme.
+ * reordered export, which is the whole point of ref data-intake-and-edit-data §2.3's reuse scheme.
  *
  * `src/domain/intake/mapping.ts` owns the derivation; this schema owns the
  * shape so a hand-written string cannot be passed where a derived id belongs.
@@ -120,7 +120,7 @@ export const IntakeTargetFieldIdSchema = brandedText<"IntakeTargetFieldId">(
 
 /**
  * A record's identity inside an extracted document — derived at admission from
- * the source-artifact digest plus stable page/form identity (doc 03 §4.1). The
+ * the source-artifact digest plus stable page/form identity (ref dashboard-surfaces §4.1). The
  * shape is deliberately structural so an array index or a run id cannot be
  * spelled as one.
  */
@@ -143,7 +143,7 @@ export const SourceSurfaceIdSchema = slugText<"SourceSurfaceId">("source surface
 export const WorkerIdSchema = slugText<"WorkerId">("worker id must be kebab-case");
 export const GateIdSchema = slugText<"GateId">("gate id must be kebab-case");
 export const DelegationEdgeIdSchema = slugText<"DelegationEdgeId">("delegation edge id must be kebab-case");
-/** The identity that holds a ledger partition's projection lease (doc 09 §6). */
+/** The identity that holds a ledger partition's projection lease (ref write-safety §6). */
 export const LedgerProjectorIdSchema = slugText<"LedgerProjectorId">("ledger projector id must be kebab-case");
 
 /**
@@ -213,7 +213,7 @@ export const ProviderCapabilityIdSchema = z.enum([
 /**
  * The model families `src/domain/secrets.ts` registers a key family for, named
  * here so an advisory's provenance is a closed vocabulary rather than free
- * text (doc 12 §4.4). Only `gemini` composes today; the rest are registered
+ * text (ref operator-trust §4.4). Only `gemini` composes today; the rest are registered
  * because their keys already are, and a provenance value nothing can produce
  * is refused by the composition root, not by this enum.
  */
@@ -224,7 +224,7 @@ export const AiModelIdSchema = brandedText<"AiModelId">(
   "ai model id must be lowercase alphanumeric with . _ -",
 );
 /**
- * The closed set of questions an advisory may be asked (doc 12 §4.4). It lives
+ * The closed set of questions an advisory may be asked (ref operator-trust §4.4). It lives
  * beside the capability ids rather than in `trust/advisory.ts` because the
  * provider-admission identity names it too, and the two modules must not
  * import each other.

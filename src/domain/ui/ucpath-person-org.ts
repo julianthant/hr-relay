@@ -77,7 +77,7 @@ export type UcpathPersonOrgDriver = SystemDriver<
   /**
    * The semantic Person Org operation used by the task store. Its implementation owns every
    * navigation, result-grid, drill-in, and selection detail; tasks never receive a Page or a
-   * selector recipe (docs 01 §3 and 02 §3.1).
+   * selector recipe (ref task-contract §3 and ref workflow-model §3.1).
    */
   searchPersonOrg(
     input: z.output<typeof SearchPersonOrgInputSchema>,

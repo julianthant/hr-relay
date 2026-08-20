@@ -1,5 +1,5 @@
 /**
- * D136 — what a parked write's resolvability actually binds to (doc 09 §4.1).
+ * D136 — what a parked write's resolvability actually binds to (ref write-safety §4.1).
  *
  * A parked write is the one state in this system deliberately designed to
  * survive ACROSS time and code change: it waits for a human to go look in the
@@ -8,7 +8,7 @@
  * closure — made it expire on any unrelated edit anywhere in that closure. The
  * person-lookup/Kuali closures span ~31 files, and one edit to
  * `src/domain/ids.ts` stranded a real parked Kuali intent permanently
- * (doc 09, "The parked intent from the failed attempt, and a drift finding").
+ * (ref write-safety, "The parked intent from the failed attempt, and a drift finding").
  *
  * The fingerprint binding is not wrong, it is just the wrong GRAIN. Byte
  * identity of the closure is a *sufficient* proof that nothing semantic moved;
@@ -59,7 +59,7 @@ export type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transacti
 export type WriteBindingRepositories = Pick<AuthorityRepositories, "runCheckpoints" | "gateResults">;
 
 /**
- * Which doc 09 arm is asking. The arm never relaxes a check — it only labels
+ * Which ref write-safety arm is asking. The arm never relaxes a check — it only labels
  * the refusal, so an operator reading a rejected `resolve-write-absent` knows
  * which action was refused.
  */
@@ -72,7 +72,7 @@ export type WriteResolutionArm = z.infer<typeof WriteResolutionArmSchema>;
 
 /**
  * The named semantic checks, in evaluation order. Adding one is a contract
- * change (doc 09 §4.1 owns the list); removing one weakens a real write guard.
+ * change (ref write-safety §4.1 owns the list); removing one weakens a real write guard.
  */
 export const WriteBindingCheckSchema = z.enum([
   "workflow-identity",

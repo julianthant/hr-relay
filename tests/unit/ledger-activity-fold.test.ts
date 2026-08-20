@@ -2,7 +2,7 @@
  * D236 — the Activity report's write-ledger block, folded through the ONE
  * ledger read-through.
  *
- * The block is the report's second authority (doc 03 §10.1's carve-out), so
+ * The block is the report's second authority (ref dashboard-surfaces §10.1's carve-out), so
  * everything asserted here is about the ledger being read as an AUDIT corpus
  * rather than as a projection of runs:
  *

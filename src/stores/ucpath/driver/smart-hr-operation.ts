@@ -17,7 +17,7 @@
  * eight of them inline; the claim is now the table, so it can be read and
  * checked. The `inline-selectors` ratchet does not reach a store's `driver`
  * directory — see its scope note in `tests/unit/architecture/helpers/ratchet-arms.ts` and
- * doc 10 §3 for why widening it would fire on the registry interpreters
+ * ref guards-and-tests §3 for why widening it would fire on the registry interpreters
  * themselves.
  *
  * ## The one deliberate asymmetry: the grid is read for IDS ONLY
@@ -226,7 +226,7 @@ async function readTransactionDetail(
   await receipt.waitFor({ state: "visible", timeout: SCAN_BOUND_MS });
   const displayedId = await textOf(receipt);
   if (displayedId !== transactionId) {
-    // Doc 09 §13 OQ2's dangerous case: an unknown id silently re-renders the
+    // Ref write-safety §13 OQ2's dangerous case: an unknown id silently re-renders the
     // ordinary search form with no marker of any kind, so the id must be proved
     // rather than assumed from the URL.
     throw new Error(

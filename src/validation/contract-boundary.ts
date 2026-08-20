@@ -373,7 +373,7 @@ function relativeLeaves(
 /**
  * Every field a contract boundary schema owns, as dotted paths, sorted.
  *
- * This is the field census the explorer's contract table renders (doc 12 §5.9).
+ * This is the field census the explorer's contract table renders (ref operator-trust §5.9).
  * It is derived from the SAME schema object `deriveSchemaHash` fingerprints, so
  * the census and the hash on the row above it describe one shape — a
  * hand-maintained field list beside a schema hash is two descriptions that

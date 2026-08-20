@@ -1,5 +1,5 @@
 /**
- * The real `WorkerBrowserSessionFactory` (doc 05 §§1,4 · doc 11 §4).
+ * The real `WorkerBrowserSessionFactory` (ref execution-and-sessions §§1,4 · ref clock-config-secrets §4).
  *
  * One worker browser session = one persistent Chromium context, one page, one
  * system, one resolved instance, one config fingerprint. The factory owns
@@ -187,7 +187,7 @@ export function assertDuoAutopilotReady(config: Config): void {
     throw new Error(`Duo Autopilot extension is not loadable: ${manifest} is not a regular file`);
   }
   // `requireSecretFile` is the ONLY credential-file reader; it also enforces
-  // the 0600-or-stricter permission and size limits doc 11 §6 requires.
+  // the 0600-or-stricter permission and size limits ref clock-config-secrets §6 requires.
   requireSecretFile("duoWebauthnCredential", config);
 }
 
@@ -324,7 +324,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
   };
 
   /**
-   * doc 05 §4: a clean release returns to the system's verified neutral state
+   * ref execution-and-sessions §4: a clean release returns to the system's verified neutral state
    * before reuse. Re-navigating to the entry route and re-running the system's
    * FULL authentication proof is what makes "reusable" an observation instead
    * of an assumption — a session that silently dropped to SSO fails here, and

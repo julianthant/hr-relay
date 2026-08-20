@@ -1,5 +1,5 @@
 /**
- * The fixture BFF (doc 13 §7.2, test-only adapter #1): serves the parity
+ * The fixture BFF (ref frontend-backend-integration §7.2, test-only adapter #1): serves the parity
  * fixture corpus on the EXACT v1 route surface the real BFF exposes, plus the
  * built React bundle as static files, so the same production app renders from
  * deterministic fixtures over real HTTP/SSE. Every payload — including every
@@ -347,7 +347,7 @@ export interface FixtureServer {
 export async function startFixtureServer(
   input: Readonly<{ distDir: string; bundle: ParityBundleProof }>,
 ): Promise<FixtureServer> {
-  // Doc 13 §7: a served bundle must provably be a build of the working tree.
+  // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
   // Asserted BEFORE a port is bound, so a stale `dist/dashboard` can never be
   // reached over HTTP — and never leaks a listening socket on refusal.
   assertServedBundle(input.distDir, input.bundle);

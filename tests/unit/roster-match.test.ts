@@ -1,5 +1,5 @@
 /**
- * Doc 06 §4's matching stack, pinned in three layers:
+ * Ref data-intake-and-edit-data §4's matching stack, pinned in three layers:
  *
  * 1. The VERBATIM ports carry legacy's live-verified numbers — the five-tier
  *    name scorer and the confidence→tier bucketing. These cases mirror the

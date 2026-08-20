@@ -1,6 +1,6 @@
 /**
- * The read-only Workflow Explorer wire (doc 12 §5.2 Phase A, D176) and the
- * generated UI catalog wire (doc 12 §1.3, D177).
+ * The read-only Workflow Explorer wire (ref operator-trust §5.2 Phase A, D176) and the
+ * generated UI catalog wire (ref operator-trust §1.3, D177).
  *
  * Both are PROJECTIONS of registration state, never a second authority. The
  * explorer is derived at the server from the ONE composition root
@@ -11,7 +11,7 @@
  * `workflow-editor-compile-integrity` proves that in both directions.
  *
  * This module is browser-reachable, so it imports zod and pure domain modules
- * only — no Node built-in may enter its closure (doc 13 §8.13).
+ * only — no Node built-in may enter its closure (ref frontend-backend-integration §8.13).
  *
  * ## Why so many facts are a closed union rather than a string
  *
@@ -81,7 +81,7 @@ export type SourceLinkWire = z.infer<typeof SourceLinkWireSchema>;
 
 /**
  * A UI id a browser task uses, reversed out of the generated catalog's own
- * `taskUses` index (doc 12 §1.3). The explorer never re-derives this
+ * `taskUses` index (ref operator-trust §1.3). The explorer never re-derives this
  * relationship — the catalog entry already declares it, and inventing a second
  * derivation is how the two would disagree.
  */
@@ -91,7 +91,7 @@ export const ExplorerUiLinkWireSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   label: z.string().min(1),
   verifiedAt: z.string().min(1),
-  /** The driver registry that owns this id — doc 12 §5.2's "driver" source link. */
+  /** The driver registry that owns this id — ref operator-trust §5.2's "driver" source link. */
   driverSource: z.string().min(1),
 });
 export type ExplorerUiLinkWire = z.infer<typeof ExplorerUiLinkWireSchema>;
@@ -119,7 +119,7 @@ export const ExplorerTaskBindingWireSchema = z.discriminatedUnion("state", [
 ]);
 export type ExplorerTaskBindingWire = z.infer<typeof ExplorerTaskBindingWireSchema>;
 
-/** The contract's declared subject binding (doc 01), projected without its schemas. */
+/** The contract's declared subject binding (ref task-contract), projected without its schemas. */
 export const ExplorerSubjectWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("none"),
@@ -138,7 +138,7 @@ export const ExplorerSubjectWireSchema = z.discriminatedUnion("kind", [
 export type ExplorerSubjectWire = z.infer<typeof ExplorerSubjectWireSchema>;
 
 /**
- * The write-safety declaration of a `commit` contract (doc 09), reduced to the
+ * The write-safety declaration of a `commit` contract (ref write-safety), reduced to the
  * facts that are DATA.
  *
  * `idempotency.key`, `proofFromOutput` and their siblings are authored
@@ -162,7 +162,7 @@ export const ExplorerWriteSafetyWireSchema = z.strictObject({
     }),
     z.strictObject({ kind: z.literal("operator-only"), reason: z.string().min(1) }),
   ]),
-  /** doc 09's reviewed always-park exception, when the contract carries one. */
+  /** ref write-safety's reviewed always-park exception, when the contract carries one. */
   unverifiableByPage: z.strictObject({
     policy: z.literal("always-park"),
     reason: z.string().min(1),
@@ -205,7 +205,7 @@ export type ExplorerProvenanceWire = z.infer<typeof ExplorerProvenanceWireSchema
 
 /**
  * How ONE field of a contract gets recorded — the "Recorded" column of the
- * explorer's field table (doc 12 §5.9).
+ * explorer's field table (ref operator-trust §5.9).
  *
  * The demo's third column carries the value a RUN recorded. No run is laid over
  * this graph (§5.7's first exclusion), so what is honestly servable is the fact
@@ -374,19 +374,19 @@ export const ExplorerNodeWireSchema = z.strictObject({
   dependsOn: z.array(NodeIdSchema),
   shape: ExplorerNodeShapeWireSchema,
   tasks: z.array(ExplorerTaskWireSchema),
-  /** Detail projections (doc 03) this node is the source of. */
+  /** Detail projections (ref dashboard-surfaces) this node is the source of. */
   details: z.array(z.strictObject({
     key: z.string().min(1),
     label: z.string().min(1),
     fieldPath: ContractFieldPathSchema,
     display: z.enum(["text", "eid", "date", "count", "badge"]),
   })),
-  /** Descriptor-allowlisted Edit Data fields sourced from this node (doc 06 §6.2). */
+  /** Descriptor-allowlisted Edit Data fields sourced from this node (ref data-intake-and-edit-data §6.2). */
   editableFields: z.array(z.strictObject({
     fieldPath: ContractFieldPathSchema,
     label: z.string().min(1),
   })),
-  /** Graph coverage points this node contributes (doc 12 §3.2). */
+  /** Graph coverage points this node contributes (ref operator-trust §3.2). */
   coveragePoints: z.array(z.strictObject({
     id: z.string().min(1),
     kind: z.enum(["branch-case", "gate", "delegation", "transaction"]),
@@ -435,7 +435,7 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   icon: z.string().min(1),
   category: z.string().min(1),
   /**
-   * The module's declared taxonomy (doc 02 §1.2.1, D219), served RAW beside the
+   * The module's declared taxonomy (ref workflow-model §1.2.1, D219), served RAW beside the
    * category exactly as the bootstrap wire serves it.
    *
    * The explorer is one of the three workflow-listing surfaces D219 names, so
@@ -479,7 +479,7 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
     review: z.boolean(),
     editData: z.enum(["none", "all", "declared-fields"]),
   }),
-  /** Which operator-facing surfaces this workflow DECLARES (doc 06/doc 03). */
+  /** Which operator-facing surfaces this workflow DECLARES (doc 06/ref dashboard-surfaces). */
   surfaces: z.strictObject({
     inputRun: z.discriminatedUnion("state", [
       z.strictObject({

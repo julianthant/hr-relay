@@ -1,6 +1,6 @@
 /**
  * The adapter between the interpreter's `RunDiagnosticCapture` port and the
- * capture service — i.e. doc 12 §2.2's task-failure trigger, wired.
+ * capture service — i.e. ref operator-trust §2.2's task-failure trigger, wired.
  *
  * Every field it contributes is CLASSIFIED explicitly, so
  * `redactDiagnosticFields` transforms or drops it by policy rather than by this
@@ -29,7 +29,7 @@ import type {
 } from "./diagnostic-capture.js";
 
 /**
- * Doc 12 §2.2 distinguishes a task failure from a subject mismatch, and both
+ * Ref operator-trust §2.2 distinguishes a task failure from a subject mismatch, and both
  * from an unexpected page state. The `FailureRecord` already knows which it is:
  * a mismatch names an expected/observed subject pair, and an unexpected state
  * carries the code the driver raises for it.
@@ -114,7 +114,7 @@ export function createRunDiagnosticCapture(options: RunDiagnosticCaptureOptions)
 }
 
 /**
- * Doc 12 §2.2's fifth trigger: an operator asking for a snapshot of a run that
+ * Ref operator-trust §2.2's fifth trigger: an operator asking for a snapshot of a run that
  * has not failed. It names the requesting actor and no failure — the local
  * operator seam (D75) supplies the constant id today.
  */

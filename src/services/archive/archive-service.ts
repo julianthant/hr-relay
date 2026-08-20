@@ -1,5 +1,5 @@
 /**
- * The archive derivation (D179, charter §25 / doc 03 §10.2).
+ * The archive derivation (D179, charter §25 / ref dashboard-surfaces §10.2).
  *
  * Two pure-ish functions over authority, both called INSIDE the caller's
  * transaction so a refusal leaves nothing behind:

@@ -1,5 +1,5 @@
 /**
- * The identity-approval gate run-detail section (doc 09 §14.4; separations §3's
+ * The identity-approval gate run-detail section (ref write-safety §14.4; separations §3's
  * chunk-3 directive, "a command arm plus wire state ONLY").
  *
  * The approval UI is a later slice, so what this suite pins is the whole SERVER
@@ -167,7 +167,7 @@ function gateSection(w: DashboardWorld, deps = depsOf(w)) {
   return response.payload;
 }
 
-describe("the identity-gate run-detail section (doc 09 §14.4)", () => {
+describe("the identity-gate run-detail section (ref write-safety §14.4)", () => {
   it("advertises the section for a parked-gate run and for no other lifecycle", () => {
     const w = world();
     seed(w);

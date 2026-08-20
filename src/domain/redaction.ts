@@ -22,7 +22,7 @@ const ALLOWED_TRANSFORMS = {
 
 /**
  * Whether a classification permits a transform. Exported because a
- * DECLARATION of (classification, transform) — doc 12 §2.3's receipt field
+ * DECLARATION of (classification, transform) — ref operator-trust §2.3's receipt field
  * classifications — must be refused at declaration time, not only when a value
  * is finally pushed through `redactDiagnosticFields`. One table, two callers.
  */
@@ -64,7 +64,7 @@ const RedactedAllowedArm = z.strictObject({
 
 /**
  * A redacted value with no key of its own — the form a durable record uses
- * when the surrounding row already names what the value is (doc 06 §5's
+ * when the surrounding row already names what the value is (ref data-intake-and-edit-data §5's
  * `RowReject.raw` names its source column and target field).
  *
  * It shares `RedactedFieldSchema`'s exact arms and `redactValue`'s exact
@@ -100,7 +100,7 @@ export function redactionDigest(value: z.infer<typeof JsonValueSchema>) {
  * dropped — `node:path`'s `basename` in a form the dashboard bundle can
  * reach.
  *
- * This module is value-reachable from the browser entry (doc 12 §2.3's
+ * This module is value-reachable from the browser entry (ref operator-trust §2.3's
  * receipt rides the run-detail wire), and Vite replaces an externalized
  * built-in with a proxy that throws on the first property read, so the
  * `node:path` import alone would kill the app at module evaluation. Splitting

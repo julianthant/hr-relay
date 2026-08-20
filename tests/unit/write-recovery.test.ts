@@ -1,5 +1,5 @@
 /**
- * Doc 09 §4 recovery matrix (D118) and the §4.1 typed operator resolutions
+ * Ref write-safety §4 recovery matrix (D118) and the §4.1 typed operator resolutions
  * over the REAL authority database — probe-first routing, D64/D69-qualified
  * negative settlement, present-proof validation before backfill, and every
  * indeterminate arm parking.
@@ -229,7 +229,7 @@ function intentByKey(database: AuthorityDatabase) {
   return database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY);
 }
 
-describe("doc 09 §4 recovery matrix", () => {
+describe("ref write-safety §4 recovery matrix", () => {
   it("re-probes FIRST and backfills a validated present proof through the atomic beat ⑦", async () => {
     const h = harness();
     const { run: parkedRun, writeIntentId } = parkedAttemptingWrite(h);
@@ -426,7 +426,7 @@ describe("doc 09 §4 recovery matrix", () => {
     // A foreign claimed-run binding occupies the host (one worker, one active
     // run). Recovery's own bind must throw OUT of recover() — the D116 refusal
     // is a precondition failure, never converted into a park that reads as a
-    // probe verdict (doc 09 §4 fail-loud).
+    // probe verdict (ref write-safety §4 fail-loud).
     h.manager.bindRunConfigFingerprint(FingerprintSchema.parse("f".repeat(64)));
     try {
       await assert.rejects(
@@ -476,7 +476,7 @@ describe("doc 09 §4 recovery matrix", () => {
   });
 });
 
-describe("doc 09 §4.1 typed operator resolutions (the kernel seam)", () => {
+describe("ref write-safety §4.1 typed operator resolutions (the kernel seam)", () => {
   function resolutionHarness() {
     const h = harness();
     const executor = createWriteResolutionExecutor({

@@ -1,5 +1,5 @@
 /**
- * The JSONL span/note writers (doc 03 §2.1): O_APPEND lines under the state
+ * The JSONL span/note writers (ref dashboard-surfaces §2.1): O_APPEND lines under the state
  * root, append-at-now partitioning, write-once identity enforcement at emit,
  * schema-owned note redaction with visible drops, the D218 cursor-based tail
  * reader, and the D86 30-day prune.

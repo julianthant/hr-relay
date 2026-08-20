@@ -5,15 +5,15 @@ Records about how workflows, compositions and chunk harnesses are modeled and pr
 
 ## Chunk workflows render as sibling workflows of the Separation composition
 
-**Recorded:** 2026-08-14 · **Status:** RESOLVED 2026-08-14 — ratified as **D219** (doc 02 §1.2.1
-owns the module `role`; doc 03 §Shell owns the presentation) and implemented the same day
+**Recorded:** 2026-08-14 · **Status:** RESOLVED 2026-08-14 — ratified as **D219** (ref workflow-model §1.2.1
+owns the module `role`; ref dashboard-surfaces §Shell owns the presentation) and implemented the same day
 (`c7486f6` module roles + registry validation + guard arm, `a631231` bootstrap/explorer wires,
 `b42f46f`/`0d64441` rail/picker/explorer nesting). The parity re-freeze this forces is sequenced
 into `docs/handoffs/2026-08-14-parity-refreeze.md`, which recorded D219's isolated expected
 diffs (three fixtures: `explorer-graph`, `explorer-transaction`, `start-run`). _(That re-freeze
 landed as `bd1d4b6`; the handoff briefs were removed 2026-08-18 and live in git history.)_
 
-**The design's answers to the open questions below:** no doc-07 conflict (no §3.2 criterion names
+**The design's answers to the open questions below:** no phase-doc conflict (no doc 03c §Exit criteria criterion names
 rail presence; chunks stay registered and start through the start-plan lane), and the composition's
 badge counts composition runs ONLY — historical harness runs stay under the harness's own nested
 entry, because a badge that disagrees with its own panel is D81's divergence class.
@@ -57,7 +57,7 @@ harness and declares `plan: not-composed`" — but that fact is not projected to
 
 ## Open questions for the design
 
-- Does hiding chunks from the rail conflict with any doc-07 exit criterion that requires a
+- Does hiding chunks from the rail conflict with any phase doc's exit criterion that requires a
   chunk to be operator-startable from the product surface?
 - Should the composition's badge count include historical chunk-harness runs from the
   proving days, or only composition runs?
@@ -65,7 +65,7 @@ harness and declares `plan: not-composed`" — but that fact is not projected to
 ## `kuali-timekeeper-annotation` sits in the rail as a main workflow, but is a proving workflow
 
 **Recorded:** 2026-08-14 · **Status:** RESOLVED 2026-08-19 — closed in two halves, both
-ratified and implemented · **Owning docs:** doc 02 §1.2.1, doc 03 §Shell
+ratified and implemented · **Owning docs:** ref workflow-model §1.2.1, ref dashboard-surfaces §Shell
 
 The disposition this record asked for was *"a third role arm served on the wire and dropped by
 the rail"*, and that is what landed — twice, because the first pass answered only the rail.
@@ -92,7 +92,7 @@ standing proof.
 ## Workflow short code
 
 **Recorded:** 2026-08-14 · **Status:** RESOLVED 2026-08-19 — ratified as **D242** and
-implemented the same day · **Owning docs:** doc 02 §1.1.1 (the code), doc 03 §10.2 (the frozen
+implemented the same day · **Owning docs:** ref workflow-model §1.1.1 (the code), ref dashboard-surfaces §10.2 (the frozen
 archive field and the surfaces)
 
 **This record's central claim was wrong, and finding that out is what shaped the fix.** It said
@@ -106,7 +106,7 @@ including `pl-000619-4ebf` in the project CLAUDE.md.
 So D242 is a UNIFICATION, not a new field. Minting a display code beside the trace code would
 have given one workflow two short names, and an operator reading `sd-141203-9a1c` in a log and
 `sep v1` in the archive would have had nothing telling them the two name the same thing —
-`explain run <traceId>` (doc 12 §2.5) is a real lookup path. What landed:
+`explain run <traceId>` (ref operator-trust §2.5) is a real lookup path. What landed:
 
 - `WorkflowCodeSchema` is the ONE definition, bound by the descriptor factory, the bootstrap
   wire and the explorer wire; widened from exactly-two alphanumerics to 2–4 lowercase LETTERS.
@@ -117,4 +117,4 @@ have given one workflow two short names, and an operator reading `sd-141203-9a1c
   registry, the Activity per-workflow table and the Activity CSV (its own column).
 
 Every existing code was KEPT (`pl`, `sp`, `sd`, `si`, `st`, `sf`, `sk`, `kt`) — see D242's row
-in doc 04 for why renaming would cost more than it buys.
+in ref decisions for why renaming would cost more than it buys.

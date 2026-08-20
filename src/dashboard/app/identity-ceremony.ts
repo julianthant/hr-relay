@@ -1,7 +1,7 @@
 /**
- * THE THREE IDENTITY-APPROVAL CEREMONIES (doc 09 §14.4/§14.6, D226).
+ * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.4/§14.6, D226).
  *
- * The identity gate asks one question — *is this the right person* — and doc 09
+ * The identity gate asks one question — *is this the right person* — and ref write-safety
  * §14.6 risk 1 says the CONTROL that answers it may not be the same control
  * every time. ALWAYS-GATE fires on every separation, so a gate that is one
  * click on every run carries no signal at all and trains the operator to
@@ -98,7 +98,7 @@ function unsupportedShape(shape: never): IdentityCeremony {
     kind: "unsupported",
     reason: `the server set this decision's ceremony to "${String(shape)}", and this build has no `
       + "control for it. It is NOT approvable from here — approving under a ceremony nobody "
-      + "implemented is exactly the one-click downgrade doc 09 §14.6 risk 1 forbids. Resolve this "
+      + "implemented is exactly the one-click downgrade ref write-safety §14.6 risk 1 forbids. Resolve this "
       + "gate from the CLI, or update this dashboard.",
   };
 }

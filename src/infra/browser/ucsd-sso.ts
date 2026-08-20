@@ -18,7 +18,7 @@
  * Copied, never linked: the two repositories share no module graph (D93/D94).
  *
  * What deliberately did NOT come across: legacy's `page.waitForTimeout` settles
- * and its multi-attempt Duo poll loop. Doc 05 §5 requires waits on real
+ * and its multi-attempt Duo poll loop. Ref execution-and-sessions §5 requires waits on real
  * readiness predicates under bounded deadlines, and Duo Autopilot answers the
  * WebAuthn ceremony in-page, so the honest wait is "the authenticated landing
  * appears within the Duo window, or this login fails loud".

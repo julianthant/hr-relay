@@ -175,7 +175,7 @@ this family is `page` and legacy's `getContentFrame` funnel does not apply.
   the scope is `page`; (5) EID **discovery** is not a proof path — the grid caps at 100 rendered
   rows out of a server maximum of 300 (a count of exactly 300 means *truncated*), orders by the
   search key rather than recency, exposes no submitted-at column, and auto-drills to the detail when
-  exactly one row matches. Carry the `T…` you fenced; search only in recovery. Doc 09 §13.6 owns the
+  exactly one row matches. Carry the `T…` you fenced; search only in recovery. Ref write-safety §13.6 owns the
   contract; the probe never created a transaction.
 
 - **2026-08-02: Person Org reads require positive page evidence and observed-subject binding.** The

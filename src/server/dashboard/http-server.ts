@@ -4,7 +4,7 @@
  * SSE stream) is piped chunk-by-chunk so an EventSource sees envelopes as
  * they are enqueued.
  *
- * Loopback only (doc 11): the listener binds 127.0.0.1 and refuses any other
+ * Loopback only (ref clock-config-secrets): the listener binds 127.0.0.1 and refuses any other
  * hostname — a "temporary" LAN bind would turn a local operator tool into an
  * unaudited remote-control surface.
  */

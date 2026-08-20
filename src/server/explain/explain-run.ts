@@ -1,5 +1,5 @@
 /**
- * `explain run <traceId|runId> [--json] [--bundle <dir>]` — doc 12 §2.5's
+ * `explain run <traceId|runId> [--json] [--bundle <dir>]` — ref operator-trust §2.5's
  * canonical debug entry point (D143).
  *
  * The section list is the doc's, in the doc's order: current/terminal state,
@@ -130,13 +130,13 @@ function nextSafeAction(run: RunRecord, failure: readonly Remediation[]): string
             ? "The failure record names no remediation; investigate at the source before re-running."
             : failure.map((entry) => `[${entry.kind}] ${entry.message}`).join("\n              ");
         case "interrupted":
-          return "Nothing by hand. Doc-09 recovery will requeue or settle this run; a manual "
+          return "Nothing by hand. Ref write-safety recovery will requeue or settle this run; a manual "
             + "transition here would race it.";
         default:
           return `This run ended ${lifecycle.outcome}. Start a new run if the work still needs doing.`;
       }
     case "parked-write":
-      return `Resolve the parked write through the typed operator commands only (doc 09 §4.1): `
+      return `Resolve the parked write through the typed operator commands only (ref write-safety §4.1): `
         + `intent ${lifecycle.writeIntentId} generation ${String(lifecycle.intentGeneration)}, `
         + `park code "${lifecycle.code}" — ${lifecycle.message}. Never edit the row.`;
     case "parked-gate":
@@ -250,7 +250,7 @@ export function buildExplainRunView(evidence: ExplainRunEvidence): ExplainRunVie
       ? {
         state: "absent",
         reason: "authority indexes commands by id, not by run; the by-run command projection is "
-          + "doc 03's queue projection and is not wired into this command",
+          + "ref dashboard-surfaces's queue projection and is not wired into this command",
       }
       : { state: "present", entries: evidence.commandHistory },
     notifications: {

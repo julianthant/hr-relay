@@ -11,12 +11,12 @@ export const REPO_ROOT = process.cwd();
  * obligations toward legacy: D90 change accounting, D58 capability
  * disposition, the legacy-test disposition inventory, and the environment /
  * runtime-dependency inventories all describe LEGACY reality and must read it.
- * Doc 07 §4 requires that accounting to survive cross-repo "keyed by the legacy
+ * Doc 05 §Phase summary requires that accounting to survive cross-repo "keyed by the legacy
  * repo's commit hashes" — which is only possible if this repo can find that
  * repo.
  *
  * Resolution is explicit and FAILS LOUD. There is no "legacy not found, skip
- * the check" path: doc 10 §3.13 makes this accounting "the program's only drift
+ * the check" path: ref guards-and-tests §3.13 makes this accounting "the program's only drift
  * detector" now that the same-tree scan is retired, so a silently-skipped
  * legacy audit is precisely the failure mode that would let legacy drift go
  * unnoticed.

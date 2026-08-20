@@ -1,5 +1,5 @@
 /**
- * Transaction pairing (doc 02 §1.4 #7, §3.1; doc 09's write sequence).
+ * Transaction pairing (ref workflow-model §1.4 #7, §3.1; ref write-safety's write sequence).
  *
  * A transaction node is ONE resumable boundary containing a prepare arm and a
  * commit arm under a single page/context lease. The rules exist because of one

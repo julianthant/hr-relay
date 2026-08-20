@@ -3,7 +3,7 @@
  *
  * ## Why this is data
  *
- * Doc 12 §5.7 ruled that an authored closure is reported as its PRESENCE, never
+ * Ref operator-trust §5.7 ruled that an authored closure is reported as its PRESENCE, never
  * as a decompiled rendering, and the explorer therefore printed the honest but
  * near-useless line *"runs when the descriptor's own when() predicate holds"*.
  * The recorded fix was an authored `whenLabel` beside the predicate, and that
@@ -120,7 +120,7 @@ function describeValue(value: NodeConditionValue): string {
  *
  * The switch is exhaustive over a closed union, so a condition shape this
  * function cannot render is one a descriptor cannot spell. That is the refusal
- * doc 12 §5.7 asked for, moved from runtime to the type system.
+ * ref operator-trust §5.7 asked for, moved from runtime to the type system.
  */
 export function describeNodeCondition(condition: NodeCondition): string {
   const subject = describeOperand(condition.of);

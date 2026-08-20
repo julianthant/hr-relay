@@ -15,7 +15,7 @@
  */
 
 /**
- * THE DETAIL REGION'S TWO BREAKPOINTS, IN COLUMN PIXELS (doc 03 §Shell).
+ * THE DETAIL REGION'S TWO BREAKPOINTS, IN COLUMN PIXELS (ref dashboard-surfaces §Shell).
  *
  * > "A consequence worth pinning: inside the detail region, a layout switch
  * > keys on the COLUMN, not the window."

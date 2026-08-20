@@ -20,7 +20,7 @@ export type PanelTab = "review" | "people" | "logs" | "receipt";
 
 /**
  * The tabs are SERVED, never fixed at four and never decided from a workflow.
- * `availableSections` is the descriptor's own answer, and the ORDER is doc 13
+ * `availableSections` is the descriptor's own answer, and the ORDER is ref frontend-backend-integration
  * §3.3's fixed composition: `Review · Logs · Receipt` / `People · Logs ·
  * Receipt` / `Logs · Receipt`. A section the wire does not advertise draws no
  * tab — a dead tab that opens an empty panel is worse than an absent one.

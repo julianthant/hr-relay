@@ -1,5 +1,5 @@
 /**
- * 2i-C: `editPolicyFor` — doc 03 D19's unlock rule with the reason always
+ * 2i-C: `editPolicyFor` — ref dashboard-surfaces D19's unlock rule with the reason always
  * shown. A row is editable only when its own field policy, the run-level
  * policy served with the section, and the LIVE queue status all agree, and
  * whichever one disagrees supplies the exact sentence on the lock.

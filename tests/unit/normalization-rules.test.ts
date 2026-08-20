@@ -1,5 +1,5 @@
 /**
- * Doc 06 §4.2's deterministic rules and the ported street/confidence
+ * Ref data-intake-and-edit-data §4.2's deterministic rules and the ported street/confidence
  * primitives, pinned against the legacy suites' own cases (match.test.ts,
  * normalize-contact.test.ts, street.test.ts, resolve.test.ts) so a drift
  * from the ported behaviour fails by name. The street-safety arms pin the

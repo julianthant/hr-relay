@@ -4,7 +4,7 @@
  * They are built from the REAL composition root on purpose. Both surfaces are
  * projections of registration state with no authority read in them, so a
  * harness serving a fabricated registry would prove a graph the product does
- * not have — and the whole point of doc 12 §5.2 is that the explorer shows the
+ * not have — and the whole point of ref operator-trust §5.2 is that the explorer shows the
  * exact descriptor. One helper, so a harness cannot drift into its own answer.
  */
 import {

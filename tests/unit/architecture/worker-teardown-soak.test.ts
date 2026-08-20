@@ -1,8 +1,8 @@
 /**
- * D182 — doc 05 §7.1 rows C5–C8: the TEARDOWN and SOAK half of the 2j
+ * D182 — ref execution-and-sessions §7.1 rows C5–C8: the TEARDOWN and SOAK half of the 2j
  * concurrency matrix.
  *
- * Doc 05 §7's first mechanical-guard row asks for "a worker-soak test [that]
+ * Ref execution-and-sessions §7's first mechanical-guard row asks for "a worker-soak test [that]
  * asserts max active claims per worker is exactly 1". Until D182 that row named
  * a test that did not exist. What exists here is the whole shape it implies:
  * a bounded, deterministic drain by several real `runWorkerLoop` instances over
@@ -16,7 +16,7 @@
  * a second attempt); an uncertain close leaves the resource POISONED and
  * refused rather than silently dropped; and a run whose worker vanished mid-
  * flight is never permanently orphaned — it stays under its now-stale claim
- * until doc 05 §3's recovery sweep requeues it for the next worker.
+ * until ref execution-and-sessions §3's recovery sweep requeues it for the next worker.
  *
  * The sweep is the only release path on purpose. A loop that "cleaned up" its
  * own claim on the way out would be guessing whether the browser it just lost
@@ -61,7 +61,7 @@ const ACTIVE_STATES = new Set(["claimed", "validating", "running"]);
 const HEARTBEAT_INTERVAL_MS = 500;
 const CLAIM_STALE_AFTER_MS = 60_000;
 
-/** The measured soak shape, restated in doc 05 §7.1's as-built paragraph. */
+/** The measured soak shape, restated in ref execution-and-sessions §7.1's as-built paragraph. */
 const SOAK_WORKERS = 3;
 const SOAK_RUNS = 30;
 
@@ -434,7 +434,7 @@ describe("D182 C8 — a bounded multi-worker soak over one authority database", 
       assert.ok(report.outcomes.length > 0, `${report.workerId} never claimed anything`);
     }
 
-    // Doc 05 §7's first two rows, measured rather than asserted in the abstract:
+    // Ref execution-and-sessions §7's first two rows, measured rather than asserted in the abstract:
     // never two rows per worker, and never fewer than the whole fleet at work.
     assert.ok(samples > 100, `only ${String(samples)} claim samples were taken`);
     assert.equal(maxWorkersHoldingWork, SOAK_WORKERS);
@@ -480,7 +480,7 @@ describe("D182 C8 — a bounded multi-worker soak over one authority database", 
     assert.deepEqual([...projected], []);
     for (const report of projected) assert.equal(report.state, "projected");
 
-    // Recorded in doc 05 §7.1's as-built paragraph; printed so a regression in
+    // Recorded in ref execution-and-sessions §7.1's as-built paragraph; printed so a regression in
     // the soak's cost is visible in the run rather than only in the wall clock.
     assert.ok(
       elapsedMs > 0 && Number.isFinite(elapsedMs),

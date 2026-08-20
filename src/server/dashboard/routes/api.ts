@@ -1,5 +1,5 @@
 /**
- * The dashboard BFF routes (doc 13 §0/§3.6) — thin parse/dispatch boundaries
+ * The dashboard BFF routes (ref frontend-backend-integration §0/§3.6) — thin parse/dispatch boundaries
  * over the queries, the command service, and the stream hub. A handler here
  * parses input, calls one service, parses output, and returns it; no
  * projection logic, no workflow switches, no second count path.
@@ -38,7 +38,7 @@ export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
-  /** Doc 03 §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
+  /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
   readonly archive: ArchiveQueryDeps;
   readonly commands: DashboardCommandService;
   readonly startPlans: StartPlanService;
@@ -46,12 +46,12 @@ export interface DashboardAppDeps {
   readonly capture: CaptureService;
   readonly hub: DashboardStreamHub;
   readonly storage: StorageQueryDeps;
-  /** Doc 12 §5.2's read-only explorer projection (2i-G, D176). */
+  /** Ref operator-trust §5.2's read-only explorer projection (2i-G, D176). */
   readonly explorer: ExplorerQueryDeps;
   /** The committed semantic UI catalog, served read-only (2i-G, D177). */
   readonly uiCatalog: UiCatalogQueryDeps;
   /**
-   * Doc 12 §4.4's advisory seam (2i-G, D178). Absent when no `ai.advisory`
+   * Ref operator-trust §4.4's advisory seam (2i-G, D178). Absent when no `ai.advisory`
    * adapter is composed — the route then refuses by NAME rather than the
    * composition root wiring a producer that answers nothing.
    */
@@ -59,7 +59,7 @@ export interface DashboardAppDeps {
   /**
    * The Host a capture ingress forwards under, when one is configured. A
    * request arriving on it is a PHONE request and may reach nothing outside
-   * doc 06 §5.1's closed union — doc 12 §7's single exception to loopback-only,
+   * ref data-intake-and-edit-data §5.1's closed union — ref operator-trust §7's single exception to loopback-only,
    * enforced here rather than trusted to the tunnel (D174).
    */
   readonly capturePhoneHost?: string;
@@ -132,9 +132,9 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   /**
-   * Doc 12 §7's scope, enforced before any handler runs. A request that
+   * Ref operator-trust §7's scope, enforced before any handler runs. A request that
    * arrived over the capture ingress may reach the phone page, that page's own
-   * assets, and doc 06 §5.1's closed route union — nothing else, including
+   * assets, and ref data-intake-and-edit-data §5.1's closed route union — nothing else, including
    * every catch-all. The refusal is byte-identical to an unrouted path so the
    * ingress cannot be used to enumerate what the operator's dashboard serves.
    */
@@ -157,18 +157,18 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap(deps.bootstrap)));
 
-  // Doc 03 §2.5's read-only doctor, on demand from the Settings surface.
+  // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));
 
   /**
-   * Doc 12 §5.2's read-only explorer (2i-G, D176) and the committed UI catalog
+   * Ref operator-trust §5.2's read-only explorer (2i-G, D176) and the committed UI catalog
    * (D177). Both are GET-only by construction: Phase A has no draft, no apply
    * and no compile, so there is no writing counterpart to guard — the surface
    * cannot offer a mutation because the wire has nowhere to send one.
    */
   app.get("/api/v1/explorer", (c) => c.json(buildWorkflowExplorer(deps.explorer)));
 
-  /* ── archive + activity (D179/D180, doc 13 §3.6) ───────────────────────── */
+  /* ── archive + activity (D179/D180, ref frontend-backend-integration §3.6) ───────────────────────── */
   app.get("/api/v1/archive", (c) => c.json(buildArchiveIndex(deps.archive)));
   app.get("/api/v1/archive/:runId", (c) =>
     c.json(buildArchivedRunDetail(deps.archive, c.req.param("runId"))));
@@ -225,7 +225,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   /**
-   * Doc 12 §4.4's on-demand failure advisory (D178). It is a POST because it
+   * Ref operator-trust §4.4's on-demand failure advisory (D178). It is a POST because it
    * SPENDS a provider budget — a GET the surface could prefetch would make a
    * model call every time an operator opened a failed run — and it is
    * deliberately NOT part of the command family: it journals nothing, changes
@@ -244,7 +244,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   /**
-   * Doc 06 §2.2's upload (D170). The ROUTE creates the session because
+   * Ref data-intake-and-edit-data §2.2's upload (D170). The ROUTE creates the session because
    * creation carries bytes, and bytes do not belong in a journaled command
    * envelope. A re-upload of the same digest JOINS its open session — the same
    * `200` either way, with the operator's existing mapping still on it.
@@ -271,7 +271,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   app.get("/api/v1/intake/:sessionId", async (c) => c.json(await deps.intake.read(c.req.param("sessionId"))));
 
-  /* ── capture: the operator's two loopback routes (doc 06 §5.1, D174) ────── */
+  /* ── capture: the operator's two loopback routes (ref data-intake-and-edit-data §5.1, D174) ────── */
 
   const CaptureStartBodySchema = z.strictObject({
     workflow: z.string().min(1),
@@ -290,7 +290,7 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   app.get("/api/v1/capture/sessions/:sessionId", (c) =>
     c.json(deps.capture.readSession(c.req.param("sessionId"))));
 
-  /* ── capture: the closed phone union (doc 12 §7) ────────────────────────── */
+  /* ── capture: the closed phone union (ref operator-trust §7) ────────────────────────── */
 
   /** The token is a credential, so it rides a header — never a path or query. */
   const captureToken = (c: { req: { header: (name: string) => string | undefined } }): string =>

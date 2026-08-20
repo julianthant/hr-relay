@@ -1,5 +1,5 @@
 /**
- * Doc 13 §8.2/§8.3 — the two frontend boundary guards that land with the 1i
+ * Ref frontend-backend-integration §8.2/§8.3 — the two frontend boundary guards that land with the 1i
  * dashboard surfaces.
  *
  * (2) No duplicate wire types: dashboard code renders schema-inferred types.
@@ -46,7 +46,7 @@
  *     same shared domain contracts is the most likely place for the next
  *     breach — which would have been completely unguarded.
  *
- * (14) Phone-bundle scope (doc 12 §7, D175): the `capture.html` entry's import
+ * (14) Phone-bundle scope (ref operator-trust §7, D175): the `capture.html` entry's import
  *     closure may not reach `src/dashboard/surfaces/**`, `src/dashboard/client/**`
  *     or `src/dashboard/app/**`. The capture ingress is the ONE exception to the
  *     loopback rule and it serves the phone page's own asset closure, so "the
@@ -218,7 +218,7 @@ function visit(node: ts.Node, callback: (node: ts.Node) => void): void {
   ts.forEachChild(node, (child) => visit(child, callback));
 }
 
-describe("dashboard wire boundary (doc 13 §8)", () => {
+describe("dashboard wire boundary (ref frontend-backend-integration §8)", () => {
   const files = walkFiles(DASHBOARD_ROOT);
 
   it("scans a non-vacuous dashboard tree", () => {
@@ -270,7 +270,7 @@ describe("dashboard wire boundary (doc 13 §8)", () => {
   /**
    * (14) The phone bundle's SCOPE, as a fact about its import closure.
    *
-   * Doc 12 §7 grants the capture ingress exactly one exception to the
+   * Ref operator-trust §7 grants the capture ingress exactly one exception to the
    * loopback-only rule, and the ingress serves `capture.html` plus that page's
    * own asset closure. So "the phone cannot reach the queue" is only true if
    * the phone's closure does not CONTAIN the queue: a single import from

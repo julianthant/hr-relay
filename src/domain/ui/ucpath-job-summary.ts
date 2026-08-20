@@ -1,6 +1,6 @@
 /**
  * The UCPath **job summary** surface — the Person Organizational Summary
- * detail page's *Employment Instances* grid, read WHOLE (D194 / doc 01 §2.8).
+ * detail page's *Employment Instances* grid, read WHOLE (D194 / ref task-contract §2.8).
  *
  * ## Why this page and not legacy's `WF_JOB_SUMMARY.GBL`
  *

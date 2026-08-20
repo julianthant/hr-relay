@@ -28,7 +28,7 @@ pure modules that serve several surfaces stay as plain `.ts` beside them (`forma
 **Why:** `@vitejs/plugin-react` treats a module as a Fast Refresh boundary only when every export is
 a component or is reference-equal across re-evaluation. One exported helper, hook or object constant
 makes the module refuse the update, and the invalidation climbs to `dashboard-app.tsx` — the whole
-app remounts and loses its state on every save. `dashboard-refresh-boundary.test.ts` (doc 13 §8.14)
+app remounts and loses its state on every save. `dashboard-refresh-boundary.test.ts` (ref frontend-backend-integration §8.14)
 enforces the rule; `ds/ui.tsx` is out of its scope on purpose (one barrel for the whole system is
 worth the occasional full remount when a primitive changes).
 
@@ -42,7 +42,7 @@ npm run dashboard   # BOTH in one terminal: the BFF (3938, /api/v1/* + the SSE d
 npm run cli -- dashboard   # the BFF alone
 npm run web         # the vite dev server alone (proxies /api to 3938 — ECONNREFUSED there just means no BFF is up)
 npm run web:build   # production bundle into dist/dashboard (the parity lane builds this itself)
-npm run test:parity # doc 13 §7 visual/a11y parity lane
+npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity lane
 ```
 
 ## Lessons learned
@@ -93,7 +93,7 @@ npm run test:parity # doc 13 §7 visual/a11y parity lane
   unstartable workflow is not offered. All three were already reachable: `surfaces/run-start.tsx`
   composes its catalogue from `WORKFLOW_DESCRIPTORS`, and `summary`, `enqueue` and `surfaces.inputRun`
   are plain data on `AnyWorkflowDescriptor`. Serving them a second time over the bootstrap would give
-  one surface two sources for one value, which doc 13 §8.2 already forbids. The unstartable reason was
+  one surface two sources for one value, which ref frontend-backend-integration §8.2 already forbids. The unstartable reason was
   worse than unserved: `dashboard-app.tsx` had been composing it since the picker landed and the
   surface dropped it, under a comment claiming the tree served none — **a false deferral comment is
   the same defect as a missing feed, and it is the harder one to find, because it tells the next

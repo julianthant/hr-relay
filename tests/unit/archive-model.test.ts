@@ -404,7 +404,7 @@ function apply(world: World, reviewed: ReturnType<typeof plan>): CommandResult {
 }
 
 /**
- * The archive read deps with an EMPTY descriptor list — doc 13 §8 guard #11
+ * The archive read deps with an EMPTY descriptor list — ref frontend-backend-integration §8 guard #11
  * the only way it proves anything. Nothing on the read path can resolve the
  * version this run executed, or any version at all. The ledger read-through is
  * over the SAME state root the world writes to, so a pointer this test

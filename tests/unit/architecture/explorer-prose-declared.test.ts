@@ -1,6 +1,6 @@
 /**
  * `explorer-prose-declared` — every REGISTERED workflow and node carries the
- * descriptor's own words (doc 12 §5.9, D229).
+ * descriptor's own words (ref operator-trust §5.9, D229).
  *
  * The explorer's ⓘ opens with the descriptor's sentence about the workflow and
  * about the selected node. That sentence is DATA the descriptor authors, and

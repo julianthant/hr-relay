@@ -1,6 +1,6 @@
 /**
  * A registered workflow's TAXONOMY, as its server module declares it
- * (doc 02 §1.2.1, D219).
+ * (ref workflow-model §1.2.1, D219).
  *
  * Three things a registered workflow can be to the program, and the MODULE —
  * never the descriptor — states which. The argument is D170's, verbatim:
@@ -54,7 +54,7 @@ export const WorkflowModuleRoleSchema = z.discriminatedUnion("kind", [
   /**
    * A workflow registered to prove PROGRAM MACHINERY — a kernel capability, a
    * driver, a write path — rather than to run daily HR work, and belonging to
-   * no composition (doc 02 §1.2.1, D220). `kuali-timekeeper-annotation` is the
+   * no composition (ref workflow-model §1.2.1, D220). `kuali-timekeeper-annotation` is the
    * type specimen: it exists to carry the D135 controlled-transaction proof,
    * and it stays registered and startable because a kernel change may need the
    * proof re-run. Unlike `chunk-harness` it carries no `of` — there is nothing

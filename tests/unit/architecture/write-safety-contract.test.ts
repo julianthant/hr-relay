@@ -1,5 +1,5 @@
 /**
- * Doc 10 §3.3 — the write-safety contract guard (HOSTS doc 09's guard).
+ * Ref guards-and-tests §3.3 — the write-safety contract guard (HOSTS ref write-safety's guard).
  *
  * Every `effect:"commit"` contract MUST declare complete write safety — no
  * allowlisted escape hatch: a nontrivial `proofSchema`, normal-output and
@@ -7,7 +7,7 @@
  * zero-age read probe. The completion union is walked as a UNION (D22):
  * `save-verify`/`upload-verify` pass with a typed `ProbeVerdict` read-back and
  * NO confirmation number — demanding a `receipt` of them is itself a guard bug
- * and is pinned as one. The crash-recovery fixture drives the REAL doc 09 §4
+ * and is pinned as one. The crash-recovery fixture drives the REAL ref write-safety §4
  * service: the probe re-runs FIRST; a `present` proof is schema-validated
  * before backfill; a single early absence has zero retry authority; only
  * D64/D69 stabilized negative evidence marks retryable; malformed/operator-only
@@ -165,7 +165,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
   it("walks present→validated-backfill, early-absent→wait, stabilized→retryable, throw→park", async () => {
     // These arms are pinned in depth by tests/unit/write-recovery.test.ts and
     // tests/unit/write-sequencer.test.ts over the same production services;
-    // this guard drives the ROUTING TABLE end to end so the doc-09 §4 shape
+    // this guard drives the ROUTING TABLE end to end so the ref write-safety §4 shape
     // cannot silently regress without an architecture failure.
     const { parkedAttemptingWriteFixture } = await import("./helpers/write-guard-fixtures.js");
 

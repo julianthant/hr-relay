@@ -1,7 +1,7 @@
 # Activity-report findings (non-normative)
 
 Wire and plan gaps found porting the operator's rebuild-demo Activity report onto the served
-`GET /api/v1/reports/activity` payload (doc 13 §3.6, §6.7, D180). Demo source:
+`GET /api/v1/reports/activity` payload (ref frontend-backend-integration §3.6, §6.7, D180). Demo source:
 legacy `hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e`,
 `src/dashboard/components/dev/rebuild-demo/DemoActivityReport.tsx` + `demo-report-wire.ts`.
 
@@ -19,10 +19,10 @@ sentence like *"the ported header carries the ⓘ only"* describes what was true
 ---
 
 **Settled 2026-08-19 — three of the five records close on operator rulings.** The **write-ledger
-block is SERVED** with an explicit D81 carve-out (**D236**, normative text in doc 03 §10.1); the
-**hours-saved tile is DROPPED** rather than deferred (**D239**, doc 13 §6.7), so no operator-entered
+block is SERVED** with an explicit D81 carve-out (**D236**, normative text in ref dashboard-surfaces §10.1); the
+**hours-saved tile is DROPPED** rather than deferred (**D239**, ref frontend-backend-integration §6.7), so no operator-entered
 minutes store is built and the trigger that would re-open it is named; and the **export is BUILT**
-(**D240**, doc 13 §6.7) at `GET /api/v1/reports/activity.csv`, carrying its caveats inside the
+(**D240**, ref frontend-backend-integration §6.7) at `GET /api/v1/reports/activity.csv`, carrying its caveats inside the
 artifact. Each record below keeps its diagnosis and closes with the decision — a record deleted on
 settlement takes its argument with it, and the argument is what the next person needs. The two that
 stay open are **distinct people** (still blocked on a person axis existing at all) and the **span
@@ -31,7 +31,7 @@ chips** (won't-fix, and why).
 **Landed 2026-08-15 — the two open wire gaps are deleted per the ledger rule.** The
 per-workflow cross-tab (eight columns, one summation pass, D81 reconciliation refusals, the
 three-arm warnings-unknown honesty) and the Who sample (bounded run-id samples on non-terminal
-status totals, names resolved client-side only) are served and drawn; doc 13 §6.7's D180
+status totals, names resolved client-side only) are served and drawn; ref frontend-backend-integration §6.7's D180
 as-built owns the contract. `Est. min saved` stays under the hours-saved decide-first record;
 the two-letter `code` stays with the taxonomy question.
 
@@ -70,7 +70,7 @@ way the demo states it in its caveat.
 
 ## Hours saved has no operator-entered minutes source
 
-**Date:** 2026-08-14 · **Status:** **CLOSED 2026-08-19 — the tile is DROPPED (D239, doc 13 §6.7).**
+**Date:** 2026-08-14 · **Status:** **CLOSED 2026-08-19 — the tile is DROPPED (D239, ref frontend-backend-integration §6.7).**
 Operator ruling: no operator-entered minutes store is built and the report keeps its measured tiles.
 None of the three decisions below get answered, because the answer is that the figure does not
 exist. There was never any code to remove — the tile was never rendered — so this closes as a
@@ -106,8 +106,8 @@ rendering the provenance beside the number rather than asserting a total on its 
 ## The write ledger is not reachable from this wire
 
 **Date:** 2026-08-14 · **Status:** **CLOSED 2026-08-19 — SERVED under an explicit D81 carve-out
-(D236).** The ratification landed where D81 lives, doc 03 §10.1 ("D236 — the write-ledger carve-out"),
-with doc 13 §6.7 taking the wire shape; `one-projection-counts` and its registered invariant grew the
+(D236).** The ratification landed where D81 lives, ref dashboard-surfaces §10.1 ("D236 — the write-ledger carve-out"),
+with ref frontend-backend-integration §6.7 taking the wire shape; `one-projection-counts` and its registered invariant grew the
 bound in the same commit, from both sides. The recorded argument was the right one and is what the
 carve-out says: the ledger is a different authority reported BESIDE the projection's totals, never
 reconciled against them, with the seam stated on the surface and in the export. The block renders per
@@ -140,7 +140,7 @@ the seam, not for hiding it.
 
 ## Export is a button with no command behind it
 
-**Date:** 2026-08-14 · **Status:** **CLOSED 2026-08-19 — BUILT (D240, doc 13 §6.7; §5's Activity row
+**Date:** 2026-08-14 · **Status:** **CLOSED 2026-08-19 — BUILT (D240, ref frontend-backend-integration §6.7; §5's Activity row
 updated).** `GET /api/v1/reports/activity.csv?from=&to=` serves the same payload as a file and the
 panel header carries the Export button. The caveat decision went the way this record argued: the
 rules are a BLOCK of the artifact ahead of every total they qualify, not a footnote — and they are
@@ -152,7 +152,7 @@ The export refuses without both bounds exactly as the report route does.
 **Symptom.** The demo's panel header carries a secondary `Export` button with a download icon,
 beside the ⓘ. The ported header carries the ⓘ only.
 
-**Evidence.** Doc 13 §5's surface table already says so, in the Activity row's own words:
+**Evidence.** Ref frontend-backend-integration §5's surface table already says so, in the Activity row's own words:
 `export if later served`. No export route exists under `/api/v1/reports/`.
 
 **Mechanism.** Not a gap so much as an unbuilt feature the demo drew. A button that renders and does

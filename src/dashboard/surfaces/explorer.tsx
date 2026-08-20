@@ -1,5 +1,5 @@
 /**
- * The read-only Workflow Explorer (doc 12 §5.2 Phase A, §5.7 D176; doc 03 §13).
+ * The read-only Workflow Explorer (ref operator-trust §5.2 Phase A, §5.7 D176; ref dashboard-surfaces §13).
  *
  * ## PROVENANCE
  *
@@ -26,7 +26,7 @@
  * ## What the demo shows that this wire cannot serve — stated, never faked
  *
  * The demo lays a RUN over the graph (a run picker, per-node timings, attempts,
- * recorded values, provenance marks). That overlay is doc 12 §5.7's first named
+ * recorded values, provenance marks). That overlay is ref operator-trust §5.7's first named
  * exclusion — the run-detail timeline already serves those facts per run — so
  * it is absent here rather than approximated, and the toolbar band it occupied
  * carries the workflow's identity instead. The demo's node panel is a
@@ -1336,7 +1336,7 @@ function GraphInfo({
               "border-[color:var(--ds-border-loud)] text-[color:var(--ds-fg-secondary)]",
             )}
           >
-            Nothing here is editable. Read-only was ratified first (doc 12 §5.1), and the editing
+            Nothing here is editable. Read-only was ratified first (ref operator-trust §5.1), and the editing
             half is deferred out of Phase 2 by D186 — an authoring surface would have to bump a
             version to mean anything.
           </p>

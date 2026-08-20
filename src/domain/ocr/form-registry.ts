@@ -24,7 +24,7 @@
  *
  * ## A form field binds to a canonical field where one exists
  *
- * The canonical registry (doc 06 §1) already owns coercion, schema and
+ * The canonical registry (ref data-intake-and-edit-data §1) already owns coercion, schema and
  * redaction for `eid`, `fullName`, `cellPhone` and the rest. An OCR field names
  * the canonical field it produces, so an extracted EID is validated by exactly
  * the schema an intake column would be — one definition, two sources.
@@ -96,7 +96,7 @@ export const OcrFieldSpecSchema = z.strictObject({
   /**
    * Whether a HUMAN must resolve an unanswered field before the record may be
    * used. A mandatory field that came back `illegible` blocks approval; an
-   * advisory one is surfaced and may be accepted (doc 12's evidence rule).
+   * advisory one is surfaced and may be accepted (ref operator-trust's evidence rule).
    * Blocking applies only on the page kinds that carry the field.
    */
   mandatory: z.boolean(),

@@ -1,5 +1,5 @@
 /**
- * Guard (doc 05 §4 · doc 09 fail-loud): a browser session's authentication is
+ * Guard (ref execution-and-sessions §4 · ref write-safety fail-loud): a browser session's authentication is
  * never CONCLUDED from a URL, and its verification is never skippable.
  *
  * ## Why this guard exists

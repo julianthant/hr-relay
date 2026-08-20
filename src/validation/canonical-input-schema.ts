@@ -1,5 +1,5 @@
 /**
- * Transform-free audit for a workflow's canonical-input schema (doc 02 §2, D62).
+ * Transform-free audit for a workflow's canonical-input schema (ref workflow-model §2, D62).
  *
  * Lives beside `contract-boundary.ts` because both walk zod's internal
  * definitions, which `src/domain/**` may not do — the strict-boundary guard bars

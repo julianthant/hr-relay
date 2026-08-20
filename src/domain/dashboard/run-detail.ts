@@ -56,7 +56,7 @@ export const RunIdentityWireSchema = z.strictObject({
 });
 
 /**
- * The closed `not-run` reasons a conditional node can record (doc 02 §5.5,
+ * The closed `not-run` reasons a conditional node can record (ref workflow-model §5.5,
  * mirrored by `RunResultRecord`'s `not-run` arm). This is the SAME vocabulary
  * the durable result uses; the timeline never invents a third value.
  */
@@ -66,7 +66,7 @@ export const TimelineNotRunReasonSchema = z.enum(["condition-false", "branch-not
  * How long ONE step took, or why that is not a number.
  *
  * It is the executor's own span measurement — `span.ended` minus `span.started`
- * for the SAME `(attempt, spanPath)` identity (doc 03 §1.1) — and never the
+ * for the SAME `(attempt, spanPath)` identity (ref dashboard-surfaces §1.1) — and never the
  * gap between two consecutive timeline events, which measures the space
  * between steps and would attribute a worker's idle time to whichever node
  * happened to follow it.
@@ -108,7 +108,7 @@ export const TimelineEventWireSchema = z.strictObject({
   at: IsoInstantSchema,
   label: z.string().min(1),
   /**
-   * `skipped` is its own arm and is NOT a flavour of `cancelled` (doc 03 §9
+   * `skipped` is its own arm and is NOT a flavour of `cancelled` (ref dashboard-surfaces §9
    * D-status vocabulary: `Cancelled` means *"You stopped it"*). A node whose
    * `when` was false, or that a branch did not select, was never started by
    * anyone — presenting it as an act the operator took is exactly the kind of
@@ -143,7 +143,7 @@ export const TimelineEventWireSchema = z.strictObject({
 /**
  * `replayed` is its own arm, and it is NOT a flavour of `pending` (D259).
  *
- * A node whose checkpoint this run replayed emits NO spans, by design (doc 02
+ * A node whose checkpoint this run replayed emits NO spans, by design (ref workflow-model
  * §5.3), and the timeline folds spans — so a step that replayed had nothing to
  * render and came out `pending` on a run that had already finished. `pending`
  * means *this has not happened yet*, which is false twice over on a terminal
@@ -410,7 +410,7 @@ const ContextSectionSchema = z.strictObject({
 const EditableScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
 
 /**
- * Doc 06 §6 / doc 03 D19 (2i-C): the Data section carries, per entry, exactly
+ * Ref data-intake-and-edit-data §6 / ref dashboard-surfaces D19 (2i-C): the Data section carries, per entry, exactly
  * what a checkpoint correction needs — the patch target identity and the raw
  * recorded scalar — or the reason it is not editable, so `editPolicyFor` shows
  * a reason instead of a dead control. `pendingCorrection` is the staged-write
@@ -462,7 +462,7 @@ const ContextDataOriginSchema = z.strictObject({
 });
 
 /**
- * D252 — the REUSE bound this value is recorded under (doc 02 §5.5).
+ * D252 — the REUSE bound this value is recorded under (ref workflow-model §5.5).
  *
  * `maxAge` and `override` are the producing read contract's own
  * `FreshnessPolicy`, resolved at this entry's exact field path by the same
@@ -505,7 +505,7 @@ export const ContextDataSectionSchema = z.strictObject({
     edit: ContextDataEntryEditSchema,
     /**
      * WHEN this value was established and by WHAT, off the producing
-     * checkpoint's own `FactProvenance` row (doc 02 §5.6).
+     * checkpoint's own `FactProvenance` row (ref workflow-model §5.6).
      *
      * The rail's header comment has listed an observation clock among four
      * axes the 1i wire dropped since the surface was ported, and of those four
@@ -556,7 +556,7 @@ export type ContextDataSectionWire = z.infer<typeof ContextDataSectionSchema>;
 
 /**
  * The receipt section serves the WHOLE `RunEvidenceReceipt` (D140), not a
- * pointer to it. Doc 12 §2.2 puts redaction at capture time — "Redaction is
+ * pointer to it. Ref operator-trust §2.2 puts redaction at capture time — "Redaction is
  * not deferred to the UI" — and the receipt's every value is already a
  * `RedactedField` carrying its own classification and transform, so there is
  * nothing left for a wire projection to strip and nothing a second projection
@@ -572,10 +572,10 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
  * page as `urlRedacted`/`titleRedacted`, the input as a fingerprint. The
  * projection copies exactly those and NOTHING else off the `FailureRecord` —
  * an unclassified field is dropped by omission from this strict schema rather
- * than passed through, which is the doc-11 rule applied structurally instead
+ * than passed through, which is the ref clock-config-secrets rule applied structurally instead
  * of by a filter someone has to remember to update.
  *
- * `sameFingerprintSeen` is doc 12 §2.1's "same failure seen before" as a
+ * `sameFingerprintSeen` is ref operator-trust §2.1's "same failure seen before" as a
  * COUNT rather than a list: the count is what the operator acts on, and it is
  * answerable without projecting other runs' subjects onto this one's panel.
  * `diagnosticBundle` is an explicit absence union — the capture trigger is a
@@ -594,7 +594,7 @@ export const FailureDetailWireSchema = z.strictObject({
   summary: z.string().min(1),
   transient: z.boolean(),
   /**
-   * Doc 03 D18's write-state sentence renders UNCONDITIONALLY in the stream —
+   * Ref dashboard-surfaces D18's write-state sentence renders UNCONDITIONALLY in the stream —
    * "what this run left behind" is the difference between a safe retry and a
    * duplicate termination, so it can never sit behind a disclosure.
    */
@@ -642,13 +642,13 @@ const CaptureListSchema = z.strictObject({ runId: RunIdSchema, artifacts: z.arra
 /* ── the parked-write vocabulary, mirrored across the browser boundary ────── */
 
 /**
- * Doc 09's park codes and subject-binding evidence, RE-DECLARED here rather
+ * Ref write-safety's park codes and subject-binding evidence, RE-DECLARED here rather
  * than imported, and pinned to the durable originals by `wire-connectivity`.
  *
  * The import would be the obvious move and it is not available: both live in
  * `write-safety.ts`, which imports `node:crypto`, and this module is in the
  * dashboard bundle's reach — a `node:*` binding several modules deep is the
- * exact defect doc 13 §8.13 exists for. Hoisting them into the browser-safe
+ * exact defect ref frontend-backend-integration §8.13 exists for. Hoisting them into the browser-safe
  * `write-safety-primitives.ts` is the structurally right fix and is
  * deliberately NOT taken here: that file is inside every workflow descriptor's
  * source closure, so editing it moves `contractFingerprint`, which the
@@ -701,7 +701,7 @@ export const ParkedWriteSubjectEvidenceSchema = z.discriminatedUnion("kind", [
  * and would drop the digest that makes the value checkable against the
  * failure panel's copy.
  *
- * The `unscoped` arm is doc 09's reviewed no-subject commit. It has no subject
+ * The `unscoped` arm is ref write-safety's reviewed no-subject commit. It has no subject
  * to redact and must not pretend to one: it names the reviewed reason id from
  * the closed registry, which is repository-authored text by construction.
  */
@@ -721,7 +721,7 @@ export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
-/* ── the completion proof contract (doc 09 §4.1, D245) ───────────────────── */
+/* ── the completion proof contract (ref write-safety §4.1, D245) ───────────────────── */
 
 /**
  * One leaf of the proof a confirmed-present resolution carries, addressed by
@@ -805,7 +805,7 @@ export const ProofContractWireSchema = z.discriminatedUnion("state", [
 export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
 
 /**
- * The parked-write section (doc 09 §4.1, doc 13 §3.3/§8.5).
+ * The parked-write section (ref write-safety §4.1, ref frontend-backend-integration §3.3/§8.5).
  *
  * A run in `parked-write` is the one lifecycle whose ordinary controls are
  * REFUSED BY NAME: the kernel rejects generic retry for it, because a fenced
@@ -820,7 +820,7 @@ export type ProofContractWire = z.infer<typeof ProofContractWireSchema>;
  * exactly the value nobody may act on. `expectedVersion` on the served actions
  * is the RUN's version, which is what both resolutions CAS against.
  *
- * **There is no negative-settlement/`wait` block here, deliberately.** Doc 09
+ * **There is no negative-settlement/`wait` block here, deliberately.** Ref write-safety
  * §4's `wait` decision is a scheduler answer that *changes no durable state* —
  * `createWriteRecovery` returns it and writes nothing, by design, so the run
  * stays unclaimable under its park. Nothing durable records that a probe ran,
@@ -846,7 +846,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
   parkedCode: ParkedWriteCodeSchema,
   /**
    * The park message as the kernel composed it. It is `external-text`, not
-   * repository-authored: doc 09 §4's `park()` interpolates a thrown driver
+   * repository-authored: ref write-safety §4's `park()` interpolates a thrown driver
    * error and a probe's own `reason` into it, and neither is authored here.
    */
   parkedMessage: z.string().min(1),
@@ -860,7 +860,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
    */
   proofContract: ProofContractWireSchema,
   /**
-   * Doc 13 §8.5: an interactive control exists only because the SERVER
+   * Ref frontend-backend-integration §8.5: an interactive control exists only because the SERVER
    * described it. Both typed resolutions are always served for a parked run —
    * which one is right is a question only the operator's look at the target
    * system can answer, so hiding either would be this wire pre-deciding it.
@@ -888,7 +888,7 @@ export const ParkedWriteDetailWireSchema = z.strictObject({
 });
 
 /**
- * The identity-approval gate section (doc 09 §14.4, separations §3's chunk-3
+ * The identity-approval gate section (ref write-safety §14.4, separations §3's chunk-3
  * directive: "a command arm plus wire state ONLY").
  *
  * This is the whole server side of the approval UI a later slice will build.
@@ -933,7 +933,7 @@ export const IdentityGateDetailWireSchema = z.strictObject({
   expectedVersion: z.number().int().positive(),
   /** The descriptor's exact gate-result schema hash the kernel will require. */
   resultSchemaHash: FingerprintSchema,
-  /** The digest an approval or rejection must carry (doc 09 §14.5). */
+  /** The digest an approval or rejection must carry (ref write-safety §14.5). */
   evidenceDigest: FingerprintSchema,
   packet: IdentityEvidencePacketSchema,
   options: z.array(IdentityGateOptionWireSchema).min(1),
@@ -942,7 +942,7 @@ export const IdentityGateDetailWireSchema = z.strictObject({
    * surface cannot quietly turn a risky approval into one click.
    */
   approvalShape: z.enum(["one-click", "choose-a-candidate", "type-the-eid"]),
-  /** Doc 13 §8.5: an interactive control exists only because the server said so. */
+  /** Ref frontend-backend-integration §8.5: an interactive control exists only because the server said so. */
   actions: z.array(ActionDescriptorWireSchema).min(1),
 }).superRefine((gate, context) => {
   const eids = gate.options.map(({ eid }) => eid);

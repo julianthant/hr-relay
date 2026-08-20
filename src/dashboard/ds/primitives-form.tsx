@@ -639,7 +639,7 @@ export function LockedValue({
  * ====================================================================== */
 
 /**
- * The one place an operator hands this system a FILE (doc 06 §2.2 step 1).
+ * The one place an operator hands this system a FILE (ref data-intake-and-edit-data §2.2 step 1).
  *
  * It is a `<label>` wrapping a real `<input type="file">`, not a div with a
  * click handler. That is what makes the keyboard, the screen reader and the

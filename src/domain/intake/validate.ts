@@ -1,5 +1,5 @@
 /**
- * The intake validation pipeline — doc 06 §5's "mapped dataset → N inputs".
+ * The intake validation pipeline — ref data-intake-and-edit-data §5's "mapped dataset → N inputs".
  *
  * Format-agnostic on purpose: it takes an already-parsed cell matrix, the
  * detected columns, the operator's confirmed mapping and the workflow's intake
@@ -62,7 +62,7 @@ export interface IntakeValidationInput {
   /** Data rows, header-relative, in file order. Row N is `rows[N - 1]`. */
   readonly rows: readonly (readonly string[])[];
   /**
-   * Values the operator typed once for the whole run (doc 06 §8 step 2's
+   * Values the operator typed once for the whole run (ref data-intake-and-edit-data §8 step 2's
    * `effectiveDate`). A required target satisfied here needs no column.
    *
    * A list rather than a keyed object, because the key is a declared target
@@ -80,7 +80,7 @@ export interface IntakeValidationInput {
    * two-digit years exactly as the original did.
    */
   readonly readAt: string;
-  /** The workflow's own identity function over a parsed input (doc 02 §5.7). */
+  /** The workflow's own identity function over a parsed input (ref workflow-model §5.7). */
   readonly deriveItemId: (parsedInput: JsonValue) => ItemId;
 }
 
@@ -290,7 +290,7 @@ export function validateIntakeRows(input: IntakeValidationInput): IntakeValidati
     const wholeInput = input.projection.inputSchema.safeParse(assembled);
     if (!wholeInput.success) {
       const issues = boundaryIssues(wholeInput.error);
-      // A root-level issue is a refinement OVER the combination — doc 06 §5's
+      // A root-level issue is a refinement OVER the combination — ref data-intake-and-edit-data §5's
       // `cross-field`. Naming every bound target is truthful ("one of these
       // together is wrong"); inventing a specific pair zod never reported
       // would be a guess dressed as a diagnosis.

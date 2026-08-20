@@ -1,5 +1,5 @@
 /**
- * The ONE transport implementation (doc 13 §2): nothing outside
+ * The ONE transport implementation (ref frontend-backend-integration §2): nothing outside
  * `src/dashboard/client/**` may call `fetch` or open an event stream. The
  * stream side speaks SSE over `fetch` + `ReadableStream` — no `EventSource`
  * dependency, so the same code runs in the browser and in Node tests — and

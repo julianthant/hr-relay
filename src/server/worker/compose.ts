@@ -1,6 +1,6 @@
 /**
  * The Phase-1f worker composition value: one workflow-scoped browser worker
- * (doc 05 §3) assembled from the landed seams and run to a report.
+ * (ref execution-and-sessions §3) assembled from the landed seams and run to a report.
  *
  * It lives in `src/server/` — beside the dashboard composition — because the
  * layer matrix places `server` with `control` ABOVE `core`: this file imports
@@ -16,7 +16,7 @@
  * - the real `PlaywrightWorkerSessionFactory` under the worker-loop-owned
  *   `WorkerSessionManager` (test seam: `sessionFactory`);
  * - the JSONL span writer as the loop's required `SpanEmitter`;
- * - the doc-09 write sequencer through the loop's `writeSequencerFor` seam, so
+ * - the ref write-safety write sequencer through the loop's `writeSequencerFor` seam, so
  *   its driver leases come from the exact manager the loop's D116 window binds;
  * - one real monotonic deadline scheduler shared by task deadlines, browser
  *   close proofs, idle waits, heartbeats, and the D118 sweep cadence;
@@ -24,7 +24,7 @@
  *   on the same worker id refuses), heartbeated with the TRUE busy/idle state
  *   read from run authority, directive-polled between items, and settled
  *   `stopped` with the honest reason;
- * - the D162 capability wiring (doc 06 §4.11): the content-addressed artifact
+ * - the D162 capability wiring (ref data-intake-and-edit-data §4.11): the content-addressed artifact
  *   writer under the isolation-pinned artifact root, and the admitted-provider
  *   wiring — adapter registry, `providerAdmissions` authority repository, the
  *   `configSnapshots` repository the executor reads each run's RETAINED
@@ -36,7 +36,7 @@
  *   child-run node terminalizes `capability-unavailable` in the interpreter;
  * - the artifact sink projector (D164): no production descriptor declares a
  *   projection yet, and the workbook path is the consuming migration's fact;
- * - automated doc-09 recovery PROBES: the D118 sweep below routes an expired
+ * - automated ref write-safety recovery PROBES: the D118 sweep below routes an expired
  *   claim with an unfinished `attempting` intent to the parked/unclaimable
  *   state and reports it; the typed §4.1 operator resolutions (command kernel)
  *   remain the only release paths in this process.
@@ -89,7 +89,7 @@ import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-lo
 import { taskStoreRegistry } from "../../stores/index.js";
 
 /**
- * Cadence defaults. Docs 05/09 pin the PROTOCOL (heartbeat renewal, bounded
+ * Cadence defaults. Refs execution-and-sessions/write-safety pin the PROTOCOL (heartbeat renewal, bounded
  * re-poll, recovery-before-requeue) but no numbers, so these are named,
  * overridable composition choices rather than contract values:
  * - heartbeat every 5s renews the run claim and the worker lease;
@@ -108,7 +108,7 @@ export const WORKER_CLAIM_STALE_AFTER_MS = 60_000;
 export const WORKER_SWEEP_INTERVAL_MS = 30_000;
 
 /**
- * Doc 06 §4.11 (D161): neither repo's `.env` names an OCR model chain, so the
+ * Ref data-intake-and-edit-data §4.11 (D161): neither repo's `.env` names an OCR model chain, so the
  * composition root names the model EXPLICITLY with provenance — legacy
  * `provider-limits.ts` priority-1 tier-1 — rather than minting a default
  * inside the secrets reader. An operator `OCR_GEMINI_MODELS` chain, when
@@ -119,7 +119,7 @@ export const OCR_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 /**
  * The one real timer behind the kernel's scheduler port. It MOVED to
  * `src/infra/scheduling/` at D178 — the dashboard process needs it too, for
- * doc 12 §4.4's admitted advisory — and is re-exported here so every existing
+ * ref operator-trust §4.4's admitted advisory — and is re-exported here so every existing
  * caller keeps its import.
  */
 export { createTimeoutDeadlineScheduler };
@@ -239,13 +239,13 @@ function startWorkerMaintenance(input: Readonly<{
 
   const sweep = (now: string): void => {
     const staleBefore = new Date(clock.nowMs() - input.claimStaleAfterMs).toISOString();
-    // Recovery is not workflow-scoped by nature (doc 05 §3): sweep every
+    // Recovery is not workflow-scoped by nature (ref execution-and-sessions §3): sweep every
     // workflow's expired claims, not just this worker's.
     const outcomes = database.authority.runs.sweepExpiredClaims({ staleBefore, now });
     for (const outcome of outcomes) {
       if (outcome.state === "recovery-required") {
         log.warn(
-          "D118: expired claim owns an unfinished attempting write intent; routed to doc-09 recovery, "
+          "D118: expired claim owns an unfinished attempting write intent; routed to ref write-safety recovery, "
           + "unclaimable until a typed resolution",
           {
             runId: outcome.run.envelope.runId,
@@ -310,7 +310,7 @@ function startWorkerMaintenance(input: Readonly<{
     handle = input.scheduler.schedule(clock.monotonicMs() + input.heartbeatIntervalMs, tick);
   };
   // The first beat runs SYNCHRONOUSLY: recovery has scheduling priority over
-  // claim expiry (doc 09 §4), so the boot sweep must precede the first claim.
+  // claim expiry (ref write-safety §4), so the boot sweep must precede the first claim.
   tick();
 
   return Object.freeze({
@@ -370,7 +370,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   });
   const emitter = createSpanJsonlWriter({ stateRoot, clock });
 
-  // D162 (doc 06 §4.11): ctx.artifacts' writer, shared with the OCR adapter's
+  // D162 (ref data-intake-and-edit-data §4.11): ctx.artifacts' writer, shared with the OCR adapter's
   // page reads. The artifact root is the isolation-pinned literal.
   const artifacts = createContentAddressedArtifactWriter({
     workspaceRoot: repoRoot,
@@ -472,7 +472,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
      * D200 — the startup SELF-sweep, before the first claim.
      *
      * `claimNext` refuses while this worker id still owns a non-terminal run
-     * (doc 05 §0.3, "one worker, one active item"), and the D118 sweep that
+     * (ref execution-and-sessions §0.3, "one worker, one active item"), and the D118 sweep that
      * would release it lives inside the maintenance ticker of a RUNNING worker.
      * That ticker's first beat already runs before the loop starts, but it is
      * staleness-gated: a worker that dies and restarts inside
@@ -502,7 +502,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         });
         continue;
       }
-      log.warn("orphaned claim routed to doc 09 recovery before the first poll", {
+      log.warn("orphaned claim routed to ref write-safety recovery before the first poll", {
         workerId,
         runId: outcome.run.envelope.runId,
         writeIntentId: outcome.writeIntentId,
@@ -514,7 +514,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     }
     /*
      * A `claimed`/`validating` row holding an attempting intent has no legal
-     * parked-write edge, so no sweep may release it — only doc 09 §4.1's typed
+     * parked-write edge, so no sweep may release it — only ref write-safety §4.1's typed
      * operator resolutions can. Say so HERE, naming the run, instead of letting
      * the first poll throw `already holds active run` with no reason attached.
      */
@@ -528,13 +528,13 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         `worker ${workerId} cannot start: the startup sweep could not release run `
         + `${wedged.envelope.runId} (${wedged.envelope.workflow}), which is still ${wedged.lifecycle.state} `
         + "under this worker id. A run holding an unfinished `attempting` write intent has no legal "
-        + "release edge from that state — doc 09 §4.1's typed operator resolutions "
+        + "release edge from that state — ref write-safety §4.1's typed operator resolutions "
         + "(resolve-write-present / resolve-write-absent) are the only paths out, and they need a human "
         + "to look in the target system first",
       );
     }
 
-    // Recovery has scheduling priority over claim expiry (doc 09 §4): one
+    // Recovery has scheduling priority over claim expiry (ref write-safety §4): one
     // D118-aware sweep runs BEFORE the first claim, then rides the cadence.
     const maintenance = startWorkerMaintenance({
       database,

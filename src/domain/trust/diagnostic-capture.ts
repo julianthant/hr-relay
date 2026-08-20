@@ -1,12 +1,12 @@
 /**
- * Doc 12 §2.2 — the pure half of automatic diagnostic capture.
+ * Ref operator-trust §2.2 — the pure half of automatic diagnostic capture.
  *
  * Three facts live here because they must be identical for the capture path,
  * the retention sweep, and every test that pins either:
  *
  *  1. the CLOSED trigger set and its one-to-one mapping onto the stored
  *     `DiagnosticBundle.origin` arm — a bundle can only exist because one of
- *     doc 12 §2.2's five triggers fired, and the trigger is what decides
+ *     ref operator-trust §2.2's five triggers fired, and the trigger is what decides
  *     whether a failure id or a requesting actor is mandatory;
  *  2. the retention plan — an ordinary bundle follows the D86 notes floor
  *     (30 days) computed from its own capture instant, and a pin is an
@@ -38,7 +38,7 @@ import { sha256Hex } from "../sha256.js";
 import { DiagnosticAttachmentSchema, DiagnosticBundleSchema } from "./diagnostic.js";
 
 /**
- * D86 (doc 03 §10.4): notes retain 30 days, and doc 12 §2.2 says an ordinary
+ * D86 (ref dashboard-surfaces §10.4): notes retain 30 days, and ref operator-trust §2.2 says an ordinary
  * bundle "follows notes retention unless pinned". One constant, one meaning.
  */
 export const DIAGNOSTIC_ORDINARY_RETENTION_DAYS = 30;
@@ -46,7 +46,7 @@ export const DIAGNOSTIC_ORDINARY_RETENTION_DAYS = 30;
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * Doc 12 §2.2's exact trigger sentence: "On an unexpected state, task failure,
+ * Ref operator-trust §2.2's exact trigger sentence: "On an unexpected state, task failure,
  * subject mismatch, recovery park, or operator-requested snapshot". Nothing
  * else may mint a bundle, and the union is what makes that checkable.
  */
@@ -61,7 +61,7 @@ export type DiagnosticCaptureTrigger = z.infer<typeof DiagnosticCaptureTriggerSc
 
 /**
  * The trigger decides the stored origin arm. `task-failure` is the only name
- * that changes shape on the way in — doc 12 §2.1 calls the stored arm
+ * that changes shape on the way in — ref operator-trust §2.1 calls the stored arm
  * `failure` — so the mapping is written once rather than at each call site.
  */
 const ORIGIN_KIND_OF_TRIGGER = Object.freeze({
@@ -187,7 +187,7 @@ const FORBIDDEN_EXPORT_KEYS: ReadonlySet<string> = new Set<string>([
 
 /**
  * Redaction is schema-owned and drops what it cannot classify, so this is the
- * belt-and-braces arm doc 10 §3.10 asks for: a field that survived redaction
+ * belt-and-braces arm ref guards-and-tests §3.10 asks for: a field that survived redaction
  * as an ALLOWED value may not be one of the names that must never leave the
  * machine. It fails the capture loudly rather than exporting the bundle.
  */

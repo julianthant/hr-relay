@@ -1,6 +1,6 @@
 /**
- * Declared evidence classification — doc 11 §6's "redaction is schema-owned"
- * applied to doc 12 §2.3's receipt facts (D140).
+ * Declared evidence classification — ref clock-config-secrets §6's "redaction is schema-owned"
+ * applied to ref operator-trust §2.3's receipt facts (D140).
  *
  * A receipt is the surface an operator uses to finish a double-check WITHOUT
  * opening the source system, so it carries real values. Which values, and in
@@ -34,7 +34,7 @@
  *
  * ## Why business values are `safe-diagnostic` and person identifiers are not
  *
- * Doc 11's closed enum has no "operator-visible HR value" arm, so the mapping
+ * Ref clock-config-secrets's closed enum has no "operator-visible HR value" arm, so the mapping
  * is stated rather than assumed. A UCPath employee status, a CRM process
  * stage, a Kuali document number, an onboarding date, a page-state id, a proof
  * source: these describe the TRANSACTION, not the person, and the operator
@@ -121,7 +121,7 @@ function open(scope: EvidenceValueScope, ...paths: readonly string[]): unknown[]
   return paths.map((path) => ({ scope, path, classification: "safe-diagnostic", transform: "allow" }));
 }
 
-/** `direct-identifier` + `last4` — the widest transform doc 11 permits for one. */
+/** `direct-identifier` + `last4` — the widest transform ref clock-config-secrets permits for one. */
 function person(scope: EvidenceValueScope, ...paths: readonly string[]): unknown[] {
   return paths.map((path) => ({ scope, path, classification: "direct-identifier", transform: "last4" }));
 }
@@ -559,7 +559,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   /* workflow:separations/verify-identity-approval — the run's whole product,
      carried forward past the gate so the terminal result has no pre-gate
-     ancestry (doc 09 §14.6 #2). */
+     ancestry (ref write-safety §14.6 #2). */
   ...open(VERIFY_IDENTITY_APPROVAL, "documentNumber"),
   ...approvedSubjectLeaves(VERIFY_IDENTITY_APPROVAL, "approved"),
   ...jobClassificationLeaves(VERIFY_IDENTITY_APPROVAL, "jobs"),
@@ -690,7 +690,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   /* workflow:separations/match-separation-subject — S18/S19's fork. The EID and
      the searched name are the person; WHERE the EID came from and how many
-     candidates the search resolved describe the decision, and doc 09 §14.4
+     candidates the search resolved describe the decision, and ref write-safety §14.4
      calls the count decisive. */
   ...person(SEPARATION_SUBJECT, "emplId", "searchedName"),
   ...open(SEPARATION_SUBJECT, "emplIdSource", "candidateCount"),

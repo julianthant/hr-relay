@@ -1,5 +1,5 @@
 /**
- * THE dashboard's live "now" (D256, doc 03 §"Wave-2 connection-proof
+ * THE dashboard's live "now" (D256, ref dashboard-surfaces §"Wave-2 connection-proof
  * presentation deltas").
  *
  * ## What was wrong
@@ -21,7 +21,7 @@
  * would then report a duration nobody can act on. What the browser contributes
  * is the one thing it is genuinely authoritative about: **how much time has
  * passed since that instant arrived**, read from the monotonic clock
- * (`systemClock.monotonicMs()`, doc 11's single source), which cannot be moved
+ * (`systemClock.monotonicMs()`, ref clock-config-secrets's single source), which cannot be moved
  * by an NTP step or a user changing the system clock mid-run.
  *
  * So the page holds ONE calibration — `(servedInstant, monotonicMs at
@@ -42,7 +42,7 @@
  * built here: it is a wire change with a server emitter and two fixture
  * emitters behind it, bought for a skew this deployment cannot have. **What
  * would buy it** is the BFF serving a browser it does not share a machine with
- * — doc 13 §6.9's deferred exposed path (D189). Add the field in the commit
+ * — ref frontend-backend-integration §6.9's deferred exposed path (D189). Add the field in the commit
  * that adds that, never before it.
  *
  * ## Determinism

@@ -1,7 +1,7 @@
 /**
- * `extraction/extract-spreadsheet` — doc 06 §3's parse contract.
+ * `extraction/extract-spreadsheet` — ref data-intake-and-edit-data §3's parse contract.
  *
- * Doc 06 names it `extraction/parse-csv` and describes it as "Parse CSV/XLSX
+ * Ref data-intake-and-edit-data names it `extraction/parse-csv` and describes it as "Parse CSV/XLSX
  * into rows + detected columns". One task handles both formats, so the id says
  * so: a caller must not have to know which of two ids to reach for based on a
  * file extension it should not be inspecting.
@@ -54,7 +54,7 @@ export const ExtractSpreadsheetOutputSchema = z.strictObject({
   /**
    * Null when discovery found no confident, unambiguous candidate. The operator
    * then picks from `headerCandidates`; nothing downstream may proceed on a
-   * guess (doc 06 §3).
+   * guess (ref data-intake-and-edit-data §3).
    */
   headerRowIndex: z.number().int().nonnegative().nullable(),
   headerCandidates: z.array(ServedHeaderCandidateSchema),

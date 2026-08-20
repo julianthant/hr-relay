@@ -17,7 +17,7 @@ import { LEGACY_REPO_ROOT, gitVisibleFiles, gitVisibleFilesIn } from "./helpers/
  * construction, so paths stay unprefixed (see `helpers/guard-files.ts` for the
  * `legacy:` scheme used by the inventories that mix both repos).
  *
- * D184 adds the cutover-readiness half doc 10 §3.11 has described since round
+ * D184 adds the cutover-readiness half ref guards-and-tests §3.11 has described since round
  * 8 and nothing implemented: a disposition must resolve, agree with its own
  * status, cite evidence that exists, and — the arm this guard exists for — an
  * entry may not stay `open` while the milestone that owns it has already been
@@ -58,12 +58,12 @@ function discoveredCapabilityPaths(): string[] {
 }
 
 /**
- * Doc 07's ordered work items, in delivery order (§2's phase table, §Phase-1's
+ * The phase docs' ordered work items, in delivery order (roadmap §Phases at a glance, doc 01's
  * spine table, and §Phase-2's deferred-base-tails table). The ORDER is what
  * makes "this milestone already shipped" derivable instead of hand-typed: the
  * completed set is everything at or before whatever the runtime itself reports
  * as `completedThrough`, so closing a tail is what arms the next sweep. Adding
- * a work item to doc 07 means adding it here, in position.
+ * a work item to a phase doc means adding it here, in position.
  */
 const MilestoneSchema = z.enum([
   "1a",
@@ -149,7 +149,7 @@ type CapabilityInventory = z.infer<typeof CapabilityInventorySchema>;
 type CapabilityEntry = z.infer<typeof CapabilityEntrySchema>;
 
 /**
- * `completedThrough` must be a doc-07 work item, because the whole sweep is
+ * `completedThrough` must be a phase-doc work item, because the whole sweep is
  * its position in that order. `active` deliberately is NOT: once the program
  * leaves Phase 2 the active item is a MIGRATION identifier from §3.3's order,
  * not a base work item, and a guard that parsed it strictly would refuse to
@@ -359,7 +359,7 @@ describe("D58 legacy capability disposition", () => {
   });
 
   it("never blocks the phase marker's next advance (D184)", () => {
-    // `cutoverRequiresZeroOpen` gates CUTOVER — doc 07 §6's whole-program flip
+    // `cutoverRequiresZeroOpen` gates CUTOVER — doc 05 §Exit criteria's whole-program flip
     // — not a Phase-2 tail. An entry left sitting on a tail is therefore a
     // record-keeping defect that must never become a gate on the program's own
     // progress, so the sweep is run AHEAD against every base work item through

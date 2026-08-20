@@ -1,10 +1,10 @@
 /**
- * The deterministic parity fixture corpus (doc 13 §7.2, test-only adapter #1).
+ * The deterministic parity fixture corpus (ref frontend-backend-integration §7.2, test-only adapter #1).
  *
  * Every exported value is CONSTRUCTED by parsing through the owning strict
  * wire schema at module init — a fixture that drifts from a contract fails
  * loudly at import time, never silently at render time. The corpus covers the
- * doc 13 §7.1 reference matrix for the 1i Person Lookup slice: all eight
+ * ref frontend-backend-integration §7.1 reference matrix for the 1i Person Lookup slice: all eight
  * queue statuses across the three row types, operation groups at member
  * counts 1/3/4/12/13, run/member/group panel kinds, open-gate / failed /
  * running / terminal / empty detail states, start-plan planned+refused, and
@@ -627,7 +627,7 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
     ],
   }),
   /*
-    THE GATED RUN (doc 09 §14.4, D226). The corpus has photographed this run's
+    THE GATED RUN (ref write-safety §14.4, D226). The corpus has photographed this run's
     open-gate CARD since it was written and never served the section behind it,
     so the decision card drew no way to answer it and the three ceremonies
     §14.6 risk 1 exists to enforce were unphotographed. It advertises
@@ -661,7 +661,7 @@ export const FIXTURE_RUN_DETAILS: Readonly<Record<string, RunDetailWire>> = Obje
     sections: ["logs", "receipt", "context-data", "context-attempts", "identity-gate"],
   }),
   /*
-    THE PARKED WRITE (doc 09 §4.1, W2). The one lifecycle whose ordinary
+    THE PARKED WRITE (ref write-safety §4.1, W2). The one lifecycle whose ordinary
     controls are refused by name, and — until this reference existed — the one
     the corpus had never opened at all: the queue photographed its `blocked`
     row from the day the corpus was written, and nothing had ever asked what
@@ -795,7 +795,7 @@ const LOCKED_NOT_DECLARED = {
 } as const;
 
 /**
- * The parked write, in the durable facts the real query projects (doc 09 §4.1).
+ * The parked write, in the durable facts the real query projects (ref write-safety §4.1).
  *
  * Adapter #1 AUTHORS this payload, and `sectionsOf` parses every section it
  * returns through `RunDetailSectionResponseSchema` — so the bytes the corpus
@@ -828,7 +828,7 @@ export const FIXTURE_PARKED_WRITE = {
   fencedAt: at(44),
   parkedAt: at(45),
   parkedCode: "unknown",
-  // The KERNEL's own sentence — doc 09 §4's `park()` interpolates the driver's
+  // The KERNEL's own sentence — ref write-safety §4's `park()` interpolates the driver's
   // thrown error into it. The surface prints it verbatim and writes none of
   // its own, which is what this reference is here to photograph.
   parkedMessage:
@@ -992,7 +992,7 @@ function sectionsOf(
 }
 
 /**
- * THE TWO GATED PACKETS (doc 09 §14.4/§14.6, D226).
+ * THE TWO GATED PACKETS (ref write-safety §14.4/§14.6, D226).
  *
  * Their ceremonies are DERIVED — `buildFixtureIdentityGate` feeds real inputs
  * to the production fold and `deriveApprovalShape` decides. The only thing that
@@ -1134,7 +1134,7 @@ export const FIXTURE_SECTIONS: Readonly<Record<string, Readonly<Record<string, R
     { label: "Selection", valueRedacted: "exact-match", observedAt: at(44), source: "live" },
     { label: "Termination reason", valueRedacted: "Resign - No Reason Given", observedAt: at(44), source: "derived" },
   ], undefined, {
-    // Doc 03 D19: a parked run is not executing, but it is not resumable by a
+    // Ref dashboard-surfaces D19: a parked run is not executing, but it is not resumable by a
     // correction either — the kernel's own arm says so, so the fixture does.
     state: "locked",
     reason: "run is parked-write; corrections apply only to a non-executing resumable run",

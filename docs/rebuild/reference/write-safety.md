@@ -33,26 +33,26 @@ from duplicate unattended attempts and reported **done only when we are sure it 
 | Typed, intent-generation-locked operator resolution for parked writes (confirmed present/absent; no generic Done/Retry) |
 | **Double-submit prevention** — idempotency key derivation + the per-workflow probe-policy knob (§b) |
 | The **immutable receipt/transaction ledger** — schema, location, ordered actor-attributed projection, never-pruned guarantee, what one entry records; hash-chain/tail-anchor is deferred by D79 |
-| The **identity-approval gate** (§14) — the operator-confirmed subject selection that guards the wrong-**person** class, its resolver payload, staleness rule, and composition with the subject proof. *(Gate NODE mechanics — park/resume, subscriptions, command arm — are doc 02/03's; this doc owns what this particular gate asks and what its answer authorizes.)* |
+| The **identity-approval gate** (§14) — the operator-confirmed subject selection that guards the wrong-**person** class, its resolver payload, staleness rule, and composition with the subject proof. *(Gate NODE mechanics — park/resume, subscriptions, command arm — are refs workflow-model/dashboard-surfaces's; this doc owns what this particular gate asks and what its answer authorizes.)* |
 
 | This doc **references** (owner) |
 |---|
-| `PrepareTaskContract`/`CommitTaskContract`, transaction-scoped dry-run composition, `MutationCapability`, error taxonomy, freshness, stores → **doc 01** |
-| Transaction nodes, gates + `PARKED(needs-operator)`, checkpoint provenance/fingerprints, declared dependency DAG, `RunEnvelope` → **doc 02** |
-| Span/note wire schema, isolated `.tracker-rebuild/` layout, SQLite system-of-record vs projection split (D14), completion fan-out union → **doc 03** |
-| The injectable Clock (all timestamps), per-run test/prod instance selection, the config/secrets domain → **doc 11 (clock/config/secrets)** |
-| The fill↔submit pairing guard + dry-run composition guard → **doc 10 (guard-architecture)** |
-| Subject declarations, semantic `ObservationId`, driver evidence/bundles → **docs 01 and 12** |
+| `PrepareTaskContract`/`CommitTaskContract`, transaction-scoped dry-run composition, `MutationCapability`, error taxonomy, freshness, stores → **ref task-contract** |
+| Transaction nodes, gates + `PARKED(needs-operator)`, checkpoint provenance/fingerprints, declared dependency DAG, `RunEnvelope` → **ref workflow-model** |
+| Span/note wire schema, isolated `.tracker-rebuild/` layout, SQLite system-of-record vs projection split (D14), completion fan-out union → **ref dashboard-surfaces** |
+| The injectable Clock (all timestamps), per-run test/prod instance selection, the config/secrets domain → **ref clock-config-secrets (clock/config/secrets)** |
+| The fill↔submit pairing guard + dry-run composition guard → **ref guards-and-tests (guard-architecture)** |
+| Subject declarations, semantic `ObservationId`, driver evidence/bundles → **ref task-contract and 12** |
 
 Amendments at sibling seams (each is a one-owner-per-concept addition, not a redefinition):
-- **Doc 01 §2.2** — `CommitTaskContract` requires `writeSafety`; its shape is owned here.
-- **Doc 01 §6.2** — the mutation primitive requires both `CommitTaskCtx.mutation` and an open fence.
-- **Doc 02 §5.6 #2 / §OQ2 (per D17 — doc 02 OWNS and adds these).** "Crash-mid-write always parks"
+- **Ref task-contract §2.2** — `CommitTaskContract` requires `writeSafety`; its shape is owned here.
+- **Ref task-contract §6.2** — the mutation primitive requires both `CommitTaskCtx.mutation` and an open fence.
+- **Ref workflow-model §5.6 #2 / §OQ2 (per D17 — ref workflow-model OWNS and adds these).** "Crash-mid-write always parks"
   becomes **probe-then-park**, and the transaction node gains required `probePolicy` and
   `probeToFenceMaxMs` fields.
-  Doc 02 owns those fields; this doc owns only the recovery-probe *mechanism* they invoke.
-- **Doc 03 §2.1 / §2.3 (per D21 — doc 03 OWNS and adds these).** The `ledger/` dir (never-pruned
-  retention floor) and the `write_intents` **system-of-record** table live in doc 03's storage
+  Ref workflow-model owns those fields; this doc owns only the recovery-probe *mechanism* they invoke.
+- **Ref dashboard-surfaces §2.1 / §2.3 (per D21 — ref dashboard-surfaces OWNS and adds these).** The `ledger/` dir (never-pruned
+  retention floor) and the `write_intents` **system-of-record** table live in ref dashboard-surfaces's storage
   layout; this doc owns their *shape/semantics*, not their placement in the rebuild state tree.
 
 ---
@@ -203,8 +203,8 @@ settlement with measured numbers, and context cleanup after a real submit all
 belong to the controlled commit. So does the interpreter's dry-run PREVIEW
 outcome arm: `executeDryRun` exists and is proved, but `run-executor` still
 refuses a dry run at a transaction node rather than terminating the run at it,
-because "a dry run ends the run at the node" (doc 01 §6.2) has no durable
-run-lifecycle arm yet — inventing one would touch doc 03's operator status
+because "a dry run ends the run at the node" (ref task-contract §6.2) has no durable
+run-lifecycle arm yet — inventing one would touch ref dashboard-surfaces's operator status
 vocabulary, which is 2i's to change. Recorded as an open item rather than
 guessed.
 
@@ -366,7 +366,7 @@ generation 1 required restoring the tree to the exact state the run was created
 under. A second park, created later the same day, could NOT be resolved for
 exactly this reason — concurrent unrelated work had already touched
 `src/domain/ids.ts` — so the successful commit was run under a fresh permanent
-key (a different timekeeper value is a different transaction by doc 09 §5), and
+key (a different timekeeper value is a different transaction by ref write-safety §5), and
 that older intent stayed parked. The guard's message was misleading too: it
 printed ids and versions, which matched, and not the fingerprints, which did not.
 
@@ -383,7 +383,7 @@ command that released generation 1, with the same evidence-note requirement.
 
 ### Exit-criteria status
 
-| Doc 07 Phase-2 write criterion | Status |
+| Doc 02 Phase-2 write criterion | Status |
 |---|---|
 | dry run: staged preview + subject observation, zero intent/fence/commit/click | **MET live** on doc 4489 (6.6 s; `prepare` returned `previousTimekeeperName:""`; subject `match` on EID suffix `5513`; zero durable rows) |
 | forced mismatch: no intent, no click | **MET live** — refused at beat ② with `subject-mismatch`, *"refusing to leave a staged value on another person's document"*, zero durable rows |
@@ -410,7 +410,7 @@ command that released generation 1, with the same evidence-note requirement.
    rows, and those parse strictly at database OPEN. Every rebuild runtime command
    on a pre-D125 `state.db` now fails to start. The Phase-1 exit database was
    preserved unmodified at `.tracker-rebuild/phase1-exit-state.db*` and this lane
-   ran on a fresh one. **Open, doc 11's to own:** back-filling the default would
+   ran on a fresh one. **Open, ref clock-config-secrets's to own:** back-filling the default would
    fabricate a bound the old runs never had (the D109 precedent invalidates such
    rows rather than inventing values), and failing at OPEN denies access to every
    unrelated row including the ledger. Neither half is decided here.
@@ -455,7 +455,7 @@ Every row below is live-verified leaf knowledge the charter forbids re-deriving.
   override date-matched a *different* career employee and filed a real termination against him —
   still needing manual reversal. **Honest scope:** that was a *wrong-data* error, not a duplicate.
   Idempotency prevents **double-filing**. Two distinct wrong-person paths now have distinct guards:
-  upstream source/selection ambiguity is blocked by doc 02 freshness + the identity-approval gate;
+  upstream source/selection ambiguity is blocked by ref workflow-model freshness + the identity-approval gate;
   stale browser state showing a different person after correct selection is blocked here by a fresh
   subject observation on the exact staged page before fencing. The immutable ledger then makes any
   residual wrong-data filing attributable and reversible instead of burying it in row snapshots.
@@ -491,7 +491,7 @@ That is enforceable. “Exactly once against every remote UI regardless of consi
 
 ## 2. The write-safety contract
 
-### 2.1 The `WriteSafety` field (owned here; attached to doc 01's `CommitTaskContract`)
+### 2.1 The `WriteSafety` field (owned here; attached to ref task-contract's `CommitTaskContract`)
 
 ```ts
 // src/domain/contracts/write-safety.ts — bundle-safe: imports zod + TaskId ONLY (D3 guard)
@@ -546,7 +546,7 @@ export interface SaveVerifyCheck<Out extends z.ZodType, Proof extends z.ZodType>
 export interface UploadVerifyCheck<Out extends z.ZodType, Proof extends z.ZodType>
   extends ProofCheck<Out, Proof> {
   kind: "upload-verify"; verify: TaskId;
-  /** Escape hatch (allowlisted + argued in doc 10): the page genuinely cannot prove landing. Then the
+  /** Escape hatch (allowlisted + argued in ref guards-and-tests): the page genuinely cannot prove landing. Then the
    *  submit ALWAYS parks needs-operator for manual confirmation — it never auto-reports done. */
   unverifiableByPage?: {
     reason: string;
@@ -593,14 +593,14 @@ export interface WriteSafety<
 no optional escape hatch: even a naturally idempotent external write must declare its key, proof,
 and probe. All three completion arms carry a nontrivial `proofSchema`; recovery and normal commit
 use the same parser, and `outputFromProof` must reconstruct a value accepted by the commit output
-schema for preflight-present/recovery paths. The kernel then wraps it in doc 02's discriminated
+schema for preflight-present/recovery paths. The kernel then wraps it in ref workflow-model's discriminated
 `TransactionOutcome`, so downstream code sees whether this run committed or found prior work.
 Probe/verify tasks are separate reads in the same store. An
 `unverifiableByPage` proof schema is a discriminated union with an `operator-attestation` arm
 containing operator, confirmedAt, exact artifact/business identity, and a non-empty evidence note;
 its example is guard-parsed. It may never be a bare boolean or generic “mark done.”
 
-Every prepare/commit pair must also carry compatible doc 01 `SubjectBindingSpec`s. The kernel
+Every prepare/commit pair must also carry compatible ref task-contract `SubjectBindingSpec`s. The kernel
 materializes the following strict proof; raw sensitive identifiers are not duplicated into event
 or ledger files—the normalized comparison happens in memory and evidence keeps a digest plus the
 minimum display-safe suffix/name needed to diagnose a mismatch.
@@ -850,7 +850,7 @@ than checking either alone. A commit contract whose output or proof schema moves
 fails loud, at the terminal boundary, naming the contract and both hashes.
 
 **A transaction node's terminal scope value is `TypedTransactionOutcome<C>`, not the bare commit
-output.** Doc 02 §1.1 already says the node output IS the outcome wrapper, and every descriptor is
+output.** Ref workflow-model §1.1 already says the node output IS the outcome wrapper, and every descriptor is
 authored that way (`outputs[node].disposition`, `outputs[node].output.<field>`). The terminal factory
 therefore *projects* the durable envelope onto that shape through
 `projectTransactionOutcome` (`src/domain/workflow/graph.ts`) before the authored `derive` runs, so
@@ -897,7 +897,7 @@ selects exactly one of three outcomes and never retries from a single unproven U
    a legible message naming the key, the system, and the match count — the operator verifies in the
    target system and uses one of the typed resolutions below. Never a guess.
 
-**Recovery replay (resolves doc 02 §OQ2 — replaces "always park"):** on resume, the kernel first
+**Recovery replay (resolves ref workflow-model §OQ2 — replaces "always park"):** on resume, the kernel first
 scans `write_intents` for the resuming `(workflow,item_id,step_id)`. If it finds a row with
 `status:"attempting"` and no `committed`, it **re-runs `idempotency.probe(key)` FIRST** (before any
 `startAt` node logic) and routes on the evidence-qualified protocol above. Only after the probe resolves does
@@ -911,7 +911,7 @@ failure keeps it unclaimable.
 
 **Recovery lease identity (D116, as-built 2026-08-03).** The recovery probe's driver lease runs
 outside any worker loop's claimed-run binding, so the recovery service binds the TARGET run's
-retained immutable `configFingerprint` (doc 11 §4) around the lease itself — sourced from the
+retained immutable `configFingerprint` (ref clock-config-secrets §4) around the lease itself — sourced from the
 authority run row the intent names, never recomputed from current config — and releases it after
 the probe. The park/refusal split is deliberate: only a genuine probe failure (throw, `unknown`,
 `ambiguous`, malformed evidence) may park as a probe verdict; a *precondition* failure — no
@@ -1001,13 +1001,13 @@ moment the write is answered: resolve present or absent, then cancel.
   `parked-write` at all, so no parked-write section is served for it and a cancel there would strand
   an intent nothing on screen even mentions.
 - **The scan covers the whole cascade, not the named run.** A cancelled parent whose delegated child
-  holds a fenced write orphans that write identically, and doc 03 §2.4 already rules that a tree the
+  holds a fenced write orphans that write identically, and ref dashboard-surfaces §2.4 already rules that a tree the
   kernel cannot cancel coherently cancels nothing.
 - **The rejected alternative, and why.** The other exit — keep both resolutions reachable for a
   cancelled-but-parked run — is not a wire change but a contradiction: `resolvePresent` settles
   through beat ⑦ with a `resume-queued` transition and `resolveAbsent` calls `runs.resume`, and both
   are illegal on a terminal run. Making them legal would mean resuming a cancelled run, against doc
-  03 §2.4's own "a cancelled run is never resumed, only run again" and against the confirm copy the
+  ref dashboard-surfaces §2.4's own "a cancelled run is never resumed, only run again" and against the confirm copy the
   operator agreed to; splitting intent settlement from the run transition instead would let a
   *committed* real HR write land on a run recorded as cancelled, which is a worse record than the one
   this defect produces. Ordering the two acts costs the operator one extra step and keeps every
@@ -1064,7 +1064,7 @@ moves, the honest repair is to restore the semantics or re-plan the run — not 
 real HR write against a target this build cannot prove is the same one.
 
 **What D136 deliberately does NOT change.** A resolution releases the WRITE; it never re-plans the
-run. The run keeps the `contractFingerprint` it was enqueued under, so doc 02 §5.3's replay binding
+run. The run keeps the `contractFingerprint` it was enqueued under, so ref workflow-model §5.3's replay binding
 and the interpreter's own descriptor↔run check (`executeClaimedRun`) stay exactly as strict as
 before: a resumed run whose closure moved still refuses to execute. That is a separate binding with
 a separate owner, and closing it (re-planning a queued run onto a newer closure) is left open rather
@@ -1100,7 +1100,7 @@ the same `submitDocumentV2` on the same RRSS form, proved by the same reload of 
 and settling a negative re-fences and re-saves the identical ten staged values.
 
 **The obligation this creates, stated as an obligation and not as a note.** A transferred window is
-**provisional until that write's OWN controlled-commit proof confirms it** (doc 07 §3.1 step 5). The
+**provisional until that write's OWN controlled-commit proof confirms it** (doc 03c §Phase summary step 5). The
 finalization's proof is chunk 5c: its authorized real commit must record the same three
 observations D135 recorded — the save's answer latency, the first agreeing server-side read, and
 the first agreeing browser reload — and either confirm the 30 s bound or move it. **The composed
@@ -1132,7 +1132,7 @@ double-file.
   termination (it has its own durable key and typed proof: deleting nothing is a validated no-op;
   deleted row identities are its proof).
 
-> **A DRY RUN runs these probes too (D215, 2026-08-14; normative text in doc 02 §2.1).** `executeDryRun`
+> **A DRY RUN runs these probes too (D215, 2026-08-14; normative text in ref workflow-model §2.1).** `executeDryRun`
 > used to evaluate `prepare` with no probe, so it rehearsed a path the real run never takes: the
 > date-agnostic pending sweep above settles `already-present` for a subject with nothing pending —
 > which is the ordinary separations subject — and the preview instead staged a grid with no row to
@@ -1147,7 +1147,7 @@ double-file.
 regardless.
 
 ```ts
-// on the transaction node (doc 02 owns the field; semantics owned here)
+// on the transaction node (ref workflow-model owns the field; semantics owned here)
 probePolicy: "always" | "retries-and-recovery-only";   // REQUIRED — no default
 probeToFenceMaxMs: number;                              // REQUIRED, >0 — migration-justified
 ```
@@ -1169,7 +1169,7 @@ prepared page and restarts at preflight, never clicks on an over-age result.
 ## 6. The immutable receipt / transaction ledger
 
 **Purpose (operator §13):** an immutable record of what real transactions were actually filed, **never
-pruned** — it outlives doc 03's decided base retention (spans 30d / notes 30d, D86) and the
+pruned** — it outlives ref dashboard-surfaces's decided base retention (spans 30d / notes 30d, D86) and the
 `clean-tracker` sweep.
 
 ```ts
@@ -1189,8 +1189,8 @@ export interface LedgerEntry {
   bindingProofDigest: Sha256;       // exact subject-match or unscoped proof stored on the intent
   subject?: SubjectEvidenceWire;    // present only for subject/artifact-scoped commits
   runId: RunId; traceId: TraceId; attempt: PositiveInt;
-  operator: OperatorId;           // from the config domain (doc 11), never fabricated
-  instance: "prod" | "test";      // resolved run snapshot (doc 11)
+  operator: OperatorId;           // from the config domain (ref clock-config-secrets), never fabricated
+  instance: "prod" | "test";      // resolved run snapshot (ref clock-config-secrets)
   configFingerprint: Fingerprint;
   dryRun: false;                  // real writes only; a dry run composes no submit, so writes NO ledger entry
   fencedAt: IsoInstant;           // durable instant before the click
@@ -1203,7 +1203,7 @@ export interface LedgerEntry {
 `proofSchemaHash` during projection/read. The interface is shown only for readability; persisted
 code uses its inferred type. There is no unchecked cast from the generic canonical proof envelope.
 
-- **Location:** `.tracker-rebuild/ledger/<system>-<YYYY-MM-DD>.jsonl` (doc 03 §2.1). JSONL so the
+- **Location:** `.tracker-rebuild/ledger/<system>-<YYYY-MM-DD>.jsonl` (ref dashboard-surfaces §2.1). JSONL so the
   operator greps it; per-system+day partition so `grep 10001573 .tracker-rebuild/ledger/ucpath-*.jsonl`
   answers "what did we file for this person?" across time.
 - **Never pruned (retention floor):** rebuild cleanup (which prunes `spans/` and `notes/` at
@@ -1246,7 +1246,7 @@ appends nothing and only marks; `markAppended` is separately idempotent for exac
 **The partition is derived from the entry, not from now.** `<system>-<date>` uses the UTC date of the
 entry's own `confirmedAt`, so a restart hours or days later reconciles into the same file and the
 partition of a stored entry never depends on the machine's time zone (the same reason D112 fixes
-provider budget windows to UTC). Doc 03 §2.1's spans/notes streams keep their local append-at-now
+provider budget windows to UTC). Ref dashboard-surfaces §2.1's spans/notes streams keep their local append-at-now
 partitioning; only the ledger is entry-derived, because only the ledger is replayed.
 
 **Sequences are dense from zero inside a partition**, so `ledger_partitions.next_seq` equals both the
@@ -1348,7 +1348,7 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
   `attempt`, `index`, `runId`, or array position (the doc1/doc2 ban); keys must read input fields.
 - **Transaction pairing** — every prepare and commit contract is paired in a transaction node;
   neither is legal standalone, the lease scope is transaction-wide, and a dry-run executable plan
-  contains the prepare arm but zero commit arms or mutation capabilities (doc 10).
+  contains the prepare arm but zero commit arms or mutation capabilities (ref guards-and-tests).
 
 ---
 
@@ -1357,10 +1357,10 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
 - **Charter §1a (fill/submit split).** Fill is `effect:"prepare"`, submit/save/upload is
   `effect:"commit"`, and one transaction node retains the page lease across both. A dry-run plan
   includes prepare and excludes commit, so no fence/probe/ledger work begins.
-- **Doc 01 §6.2 (mutation primitive).** `stores/common/mutation.ts` accepts only the commit ctx's
+- **Ref task-contract §6.2 (mutation primitive).** `stores/common/mutation.ts` accepts only the commit ctx's
   capability bound to the open intent generation + `WriteBindingProof` digest; no boolean dry-run
   branch exists.
-- **Doc 02 §5.6/§5.7 (checkpoints/resume).** Transaction nodes checkpoint their full typed
+- **Ref workflow-model §5.6/§5.7 (checkpoints/resume).** Transaction nodes checkpoint their full typed
   `TransactionOutcome`
   and retain the validated proof on the permanent intent; a transaction
   whose committed/satisfied key exists reuses its validated proof+output. Beat ⑦'s transaction-output checkpoint and
@@ -1368,19 +1368,19 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
   terminal evidence in its own right — see §3.1 (D144). §5.6 #2 is upgraded per
   §4. The freshness walk (D8) is orthogonal and upstream: it keeps *stale read data* out of the fill;
   write-safety keeps duplicate writes out of commit — two different holes, two different guards.
-- **Doc 02 gates (D5).** `PARKED(needs-operator)` is doc 02's park state; write-safety is one of the
+- **Ref workflow-model gates (D5).** `PARKED(needs-operator)` is ref workflow-model's park state; write-safety is one of the
   producers of it. Parking closes browser contexts before releasing exclusive leases; resume reacquires and
   re-enters at the recovery probe.
-- **Doc 03 (spans/storage/ledger dir).** `write.attempting` and `write.committed` are two new span
+- **Ref dashboard-surfaces (spans/storage/ledger dir).** `write.attempting` and `write.committed` are two new span
   events (the fence + the commit); subject observation is `subject.observed`, and proof/evidence
   refs ride strict run-detail updates. Per **D21**,
-  doc 03 OWNS and adds the `ledger/` dir (never-pruned retention floor) and the `write_intents`
+  ref dashboard-surfaces OWNS and adds the `ledger/` dir (never-pruned retention floor) and the `write_intents`
   SQLite **system-of-record** table (added to the D14 set) in its storage layout — this doc
   references them, it does not place them in the `.tracker/` tree.
-- **Clock/instance (doc 11).** Every timestamp (`fenced_at`, `committed_at`, ledger `fencedAt` /
+- **Clock/instance (ref clock-config-secrets).** Every timestamp (`fenced_at`, `committed_at`, ledger `fencedAt` /
   `confirmedAt` / optional `externalOccurredAt`) comes from the
   injectable Clock; `operator` and `instance` (prod/test) come from the config/secrets domain and
-  RunEnvelope — all owned by **doc 11** — so the ledger never fabricates a time or lets a test read
+  RunEnvelope — all owned by **ref clock-config-secrets** — so the ledger never fabricates a time or lets a test read
   look like a prod filing.
 
 ---
@@ -1448,13 +1448,13 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
 - **Wrong-DATA is only partly covered here.** Fresh subject binding structurally blocks one critical
   subtype: the staged browser page belongs to someone/something other than the expected commit
   subject. It does **not** prove that upstream rules selected the correct real-world person, action,
-  effective date, pay data, or document content. Those remain doc 02 freshness, typed validation,
+  effective date, pay data, or document content. Those remain ref workflow-model freshness, typed validation,
   scenario coverage, and identity/operator gates. The ledger makes residual wrong filings
   attributable. Exactly-once plus subject-match is still not correctness of every field.
 - **Fence bypass.** A future submit task could fire a raw click outside the mutation primitive.
-  *Guard:* tasks have no raw Page/Locator/selector access (docs 01/12); submit-capable driver methods
+  *Guard:* tasks have no raw Page/Locator/selector access (refs task-contract/operator-trust); submit-capable driver methods
   require the mutation capability, and that primitive validates the fence + subject digest. Per
-  **D22** doc 10's
+  **D22** ref guards-and-tests's
   `commit-routes-through-mutation` ratchet is an import/capability check that every `effect:"commit"`
   impl routes its submit click through `stores/common/mutation.ts` — so "fence-before-click is
   unbypassable" is now structural, not grep-hopeful. **Residual:** a leaf that reaches a submit via a
@@ -1572,7 +1572,7 @@ proves every business choice.
    document exists today**, so the probe is gated on the next real document upload (operator,
    2026-07-24). Consequence to be explicit about before order 7: if OnBase lands on always-park,
    its automation degrades to "the operator manually confirms every upload," which changes the
-   daily workload rather than the safety story. Owner: this doc; gate: doc 07 §3.8.
+   daily workload rather than the safety story. Owner: this doc; gate: doc 03c §Live probe status.
 3. ~~Ledger tamper-evidence altitude~~ — **amended by D79:** hash chain + independent tail anchor
    are deferred until multi-user or a separately ratified compliance need. The initial ledger is
    never-pruned, ordered, actor-attributed, strict, backed up, and reconciled from atomic outboxes.
@@ -1643,7 +1643,7 @@ proves every business choice.
    submit and searchability. Legacy answers both from its own live mapping — "**Cannot read it from
    the dialog itself**" (`workflows/separations/CLAUDE.md:147`, mapped 2026-04-01) and a 15s
    readback poll (`transaction.ts:947-965`) — and those are ported as legacy knowledge, not as
-   rebuild-verified facts. Owner: this doc; gate: doc 07 §3.8.
+   rebuild-verified facts. Owner: this doc; gate: doc 03c §Live probe status.
 
 ---
 
@@ -1667,7 +1667,7 @@ the wrong person. The probe would have found no prior termination for that perso
 authorized the click.
 
 Until this pass the program's design effort was inverted: ~60KB specified the fence that admittedly
-cannot prevent the incident, while the control that *can* was one line in doc 07 saying it "has no
+cannot prevent the incident, while the control that *can* was one line in the master plan saying it "has no
 design yet," deferred to migration order 8 — the very last workflow. The operator's ALWAYS-GATE
 ratification made the policy cheap to design, so it is designed here, in Phase 0.
 
@@ -1698,7 +1698,7 @@ and introduces a new failure mode (§14.6).
 Three legacy mechanics do **not** port, because the rebuild has real gate nodes:
 
 - the row ending `done` with `data.eidApproval="pending"` (a browser-release artifact that made a
-  paused run look completed — doc 03 already lifts this shape as a gate, not a completion);
+  paused run look completed — ref dashboard-surfaces already lifts this shape as a gate, not a completion);
 - `data`-bag string state (`Record<string,string>`) — replaced by a typed gate result (D46/D67);
 - the re-queue-as-a-new-run resume — replaced by a real park/resume on one run, so the approval and
   the write live in one trace with one identity.
@@ -1718,7 +1718,7 @@ transaction lease, releases its browser sessions (D5), and on resume reacquires 
 
 ### 14.4 The resolver — what the operator is actually asked
 
-The gate's result schema is strict and typed (doc 02 owns gate-result plumbing; this is the payload
+The gate's result schema is strict and typed (ref workflow-model owns gate-result plumbing; this is the payload
 this gate declares):
 
 ```ts
@@ -1769,7 +1769,7 @@ provenance, not a special case). On resume the kernel re-reads the candidate and
 | # | How it fails | Guard |
 |---|---|---|
 | 1 | **Rubber-stamping — the dominant risk of ALWAYS-GATE.** A gate that fires on every run, and is almost always obviously correct, trains the operator to click approve without reading. The legacy mismatch-only gate was *rare*, so it carried signal; an always-gate carries none by default and could end up strictly worse than the old behaviour | The packet leads with **disconfirming evidence** (differing fields first), and the approve control is **not uniform**: a single unambiguous high-similarity candidate is a one-click approve, while **any** ambiguity — 2+ candidates, a `different` similarity tier, an EID conflict, a manual EID — requires an explicit distinct action (choose-a-candidate, or type the EID). The shape of the decision changes with its risk, so a risky one cannot be dispatched by muscle memory |
-| 2 | **The gate is bypassed by a resume/retry path** | Gate resolution is a typed run-state transition owned by doc 02, not a `data` flag. A resumed run whose gate result is missing/expired/digest-mismatched re-opens the gate; a commit whose `expected` subject has no backing approved gate result **cannot fence** — the binding proof has nothing to bind to. Guard: `identity-gate-before-separation-commit` asserts every separation descriptor's commit is graph-reachable only through the gate node |
+| 2 | **The gate is bypassed by a resume/retry path** | Gate resolution is a typed run-state transition owned by ref workflow-model, not a `data` flag. A resumed run whose gate result is missing/expired/digest-mismatched re-opens the gate; a commit whose `expected` subject has no backing approved gate result **cannot fence** — the binding proof has nothing to bind to. Guard: `identity-gate-before-separation-commit` asserts every separation descriptor's commit is graph-reachable only through the gate node |
 | 3 | **Approval drifts from the thing approved** | `evidenceDigest` + `approvedAt` + the re-read on resume (§14.5) |
 | 4 | **The approved person and the staged page diverge** | not this gate's job — §binding proof re-observes at the fence. The two-layer split is the guard |
 | 5 | **Gate result becomes free-form control state** | D67: the span event carries a validated resolution key + payload hash; the payload itself lives in SQLite/checkpoint under this schema |
@@ -1804,7 +1804,7 @@ is the kernel's own `now`, in the SAME transaction that stores the result and re
 authority — schema-valid, unverifiable, and free to disagree with it — which D110/D114 already
 settled ("a schema-valid caller-built result is not authority"). What the payload carries is what only
 the approver knows: the EID, where it came from, and the evidence digest. **§14.6 risk 6's honest
-status:** CLOSED on both halves as of **D204** (doc 12). The durable row answers "who approved", and
+status:** CLOSED on both halves as of **D204** (ref operator-trust). The durable row answers "who approved", and
 the receipt now shows it — a resolved gate emits its payload's leaves as `gate-result`-sourced facts
 carrying authority's own `resolvedBy`/`resolvedAt`, one `kind: "gate"` decision naming the approver,
 the instant, the resolving command and the bound evidence digest, and a `verified` obligation in

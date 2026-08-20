@@ -18,7 +18,7 @@
  *   as the URL contains `kualibuild`.
  *
  * NOT ported: legacy's SAML-recovery re-`goto` with a 1.5s settle, its
- * `waitForTimeout` sleeps, and its Duo poll loop — doc 05 §5 owns waiting and
+ * `waitForTimeout` sleeps, and its Duo poll loop — ref execution-and-sessions §5 owns waiting and
  * `defineVerifiedLoginRecipe` owns the landing wait.
  *
  * Live-verified read-only 2026-08-04 from a cold profile: entry → TritON SSO →

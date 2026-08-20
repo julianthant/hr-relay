@@ -1,6 +1,6 @@
 /**
- * `ucpath/search-person-org` — doc 01 §9.1's contract, consumed verbatim by
- * doc 02 §8's person-lookup graph.
+ * `ucpath/search-person-org` — ref task-contract §9.1's contract, consumed verbatim by
+ * ref workflow-model §8's person-lookup graph.
  *
  * The selection is a discriminated union, not "a candidate or null with a
  * status beside it". Resolved, ambiguous, and not-found are three different

@@ -30,10 +30,10 @@ served as a required wire `role`, no count roll-up, labels and startability unch
 | | Concept | Where |
 |---|---|---|
 | **This doc OWNS** | Span/event wire schema (§1, amended per D10), notes, storage layout, SQLite authority and recovery, enqueue/action/queue command semantics, durable notifications, local artifact outboxes/projectors, SSE wire shapes, the completion union, the cross-repo runtime boundary and one-time historical-import rules (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + archive-on-bump (D80)**, **run display names (D83)** | §§1–5, §9–10 |
-| **Imports from doc 01** | Task contract + `defineTask`, task id grammar (`<system>/<verb-object>` slash ids, per D2), the closed `SystemId` union — real `src/systems/` dir names (`new-kronos`, `old-kronos`) plus the D4 service systems (`extraction`, `normalization`, `ocr`, `roster` — charter §11), error taxonomy | referenced, never redefined |
-| **Imports from doc 02** | Workflow descriptor shape + builder, RunEnvelope (`dryRun` home per D6), run-state machine incl. gates/parks (D5), checkpoint store schema, the readable span-path id grammar (`pl-104233-9f3e/searching#2`) | referenced, never redefined |
-| **Exports doc 02 adopts** | Verdict/detail semantics, completion program semantics, and wire projections; doc 02's descriptor now carries every consumed field | §3–4 |
-| **Imports from doc 12** | `FailureRecord`, evidence receipts/bundles, semantic action targets, scenario ids, knowledge/fix references | referenced, never redefined |
+| **Imports from ref task-contract** | Task contract + `defineTask`, task id grammar (`<system>/<verb-object>` slash ids, per D2), the closed `SystemId` union — real `src/systems/` dir names (`new-kronos`, `old-kronos`) plus the D4 service systems (`extraction`, `normalization`, `ocr`, `roster` — charter §11), error taxonomy | referenced, never redefined |
+| **Imports from ref workflow-model** | Workflow descriptor shape + builder, RunEnvelope (`dryRun` home per D6), run-state machine incl. gates/parks (D5), checkpoint store schema, the readable span-path id grammar (`pl-104233-9f3e/searching#2`) | referenced, never redefined |
+| **Exports ref workflow-model adopts** | Verdict/detail semantics, completion program semantics, and wire projections; ref workflow-model's descriptor now carries every consumed field | §3–4 |
+| **Imports from ref operator-trust** | `FailureRecord`, evidence receipts/bundles, semantic action targets, scenario ids, knowledge/fix references | referenced, never redefined |
 
 ---
 
@@ -170,18 +170,18 @@ open:
   revision once, while an exact same-command replay presents and validates the original revision.
   Migration v6 deletes pre-D109 start plans because their transformed canonical input cannot
   truthfully be reconstructed as raw ingress; they are short-lived proposals and must be re-planned.
-- `failures` is a non-rebuildable authority family in 1f. Every failed task/run writes doc 12's
+- `failures` is a non-rebuildable authority family in 1f. Every failed task/run writes ref operator-trust's
   strict `FailureRecord` and stores its `failureId` with the failure transition; a display-safe span
   summary is not a substitute. This is the minimum durable record/lookup path. Automatic diagnostic
   bundles, receipts, search/explain, and rich dashboard projections remain 2g and do not get
   fabricated placeholder refs in 1f. The composite mutation receives the exact factory-built
   workflow descriptor separately from the strict request, resolves a node's allowed task ids from
   that authenticated runtime node, and rejects caller-invented node/task pairings.
-- `run_results` is a non-rebuildable authority family. One successful run writes the doc 02
+- `run_results` is a non-rebuildable authority family. One successful run writes the ref workflow-model
   `RunResultRecord` keyed by `runId`; the record's schema/result/dependency digests and the terminal
   run transition/outbox commit together. A second identical write is idempotent; a different result
   for the same run is corruption. Child joins read this authority rather than reconstructing output
-  from spans or checkpoints. Initial success additionally requires doc 02's factory seal and exact
+  from spans or checkpoints. Initial success additionally requires ref workflow-model's factory seal and exact
   rereads of the stored checkpoints. Both failed and successful composites first persist one strict
   `run_terminal_authorizations` row keyed by `runId`, binding the original expected version, worker/
   claim generation, descriptor identity, timestamp, and exact failure or result/outbox identity.
@@ -313,7 +313,7 @@ As-built contract:
   string: the `StatusFilters` pill (`"Done with warnings — 2"` vs `"Done — 2"`), the queue row and
   member line (`"<title> — done with warnings"` vs `"<title> — done"`), and `StatusDot`, whose
   `role="img"` name is all an assistive technology gets because a dot draws no word at all.
-- **The pixels are unchanged, and that is verified rather than asserted.** Re-freezing the doc 13
+- **The pixels are unchanged, and that is verified rather than asserted.** Re-freezing the ref frontend-backend-integration
   §7.1 parity corpus after the change rewrote 56 `.a11y.yml` references and **zero** `.png` files;
   the only diffs are accessible names, with every visible text node (`Done 2`, `text: Done …`)
   byte-identical.
@@ -344,7 +344,7 @@ said what the row should say.
   operator instead of behind an outage. `liveMessage.value` is therefore re-dispositioned in the
   D183 redaction audit from `repository-authored` to **`external-text`**: it now inherits
   `durable/failure-record` `summary`'s class, because a failure summary may quote a thrown message.
-- **`dryRun` (D6).** Read from the run envelope — the flag's one home, and the same bit doc 09's
+- **`dryRun` (D6).** Read from the run envelope — the flag's one home, and the same bit ref write-safety's
   `executeDryRun`/`executeTransaction` split turns on — never from the `run.queued` span's copy.
   There is no absent arm and there must never be one: every envelope carries it, so "we do not know
   whether this run writes" is not a state this system can be in.
@@ -381,7 +381,7 @@ one that has a REAL source; the ones whose source does not exist are NOT served 
 absent arm** — a wire field nothing can populate is the orphan `wire-connectivity.test.ts` exists to
 catch, and they are restated in `docs/findings/queue-rows.md` with the producer each one waits on.
 Only `runNumber` and the containment vocabulary are new decisions (**D230**, **D231**); the rest is
-doc 13 §3.2's approved queue contract finally being filled in.
+ref frontend-backend-integration §3.2's approved queue contract finally being filled in.
 
 - **`runNumber` (D230).** Read from `RunRecord.runNumber`, never derived. A number computed from a
   row's position in THIS day's sorted array would be a different number tomorrow for the same run,
@@ -393,9 +393,9 @@ doc 13 §3.2's approved queue contract finally being filled in.
   span's frozen copy. `bumpPriority` rewrites the envelope and emits no span of its own, so a row
   reading the span would keep saying `bulk` after the operator's bump had already changed the claim
   order. No absent arm, for `dryRun`'s reason: every envelope carries one. It is a deliberate enum
-  MIRROR of `RunPrioritySchema` (doc 13 §8.13 keeps `src/domain/run/envelope.ts` out of the bundle's
+  MIRROR of `RunPrioritySchema` (ref frontend-backend-integration §8.13 keeps `src/domain/run/envelope.ts` out of the bundle's
   reach), pinned member-for-member by `wire-connectivity.test.ts`'s mirror joint.
-- **`containment` + `linkedRuns[]` (D231).** See doc 04's D231 row for the whole contract. Two
+- **`containment` + `linkedRuns[]` (D231).** See ref decisions's D231 row for the whole contract. Two
   things are worth restating here because they are queue-panel behaviour: the schema refuses a
   payload where containment, lineage and `surfaceKind` disagree, and the member/linked partitions
   are disjoint BY CONSTRUCTION rather than by intention — the rollup counts only `operation-member`
@@ -510,8 +510,8 @@ The fifth row fact with a consumer and no producer, and the only one where BOTH 
 missing: `QueueBaseFields` carried no `actions` field and no projector built one, so
 `FooterActions`, `RowContextMenu` and the confirm-first dialog were handed an empty list and every
 queue row drew no command controls in any state. Nothing here is a new decision either — §2.4 owns
-the command protocol and doc 13 §3.2 already lists *server-authored action descriptors with
-placement and version/audit tokens* in the approved queue contract; doc 13 §8.5 is the rule the gap
+the command protocol and ref frontend-backend-integration §3.2 already lists *server-authored action descriptors with
+placement and version/audit tokens* in the approved queue contract; ref frontend-backend-integration §8.5 is the rule the gap
 violated (*interactive run controls require an `ActionDescriptorWire`; status-key-to-command
 branches fail*).
 
@@ -696,7 +696,7 @@ its one deliberate re-freeze, not with a second re-freeze here.
 
 #### D259 — a REPLAYED step is its own arm, and it is never `pending` (2026-08-20)
 
-**The defect.** A replayed node emits no spans, by design (doc 02 §5.3 — "replayed nodes emit no
+**The defect.** A replayed node emits no spans, by design (ref workflow-model §5.3 — "replayed nodes emit no
 spans" is the executor's structural replay policy), and this timeline folds spans. So a step whose
 checkpoint the run replayed had nothing to render and came out **`pending`**. Track C's connection
 proof watched a finished run report `Kuali extraction — pending`, `Job summary — pending` and
@@ -721,7 +721,7 @@ no task span AND:
    also mean "the run stopped before reaching it". A failed or cancelled run keeps `pending`, because
    nodes after the stop genuinely never ran while a prior run's checkpoints sit under them;
 2. **a checkpoint exists at `(workflow, itemId, nodeId)`** — the SAME item-scoped read the executor's
-   own planner makes (doc 02 §5.7);
+   own planner makes (ref workflow-model §5.7);
 3. **a DIFFERENT run wrote it** — a row this run wrote is evidence the node executed HERE.
 
 A category is `replayed` only when EVERY member replayed; one member that executed makes it `done`,
@@ -883,7 +883,7 @@ sentence is an exported pure function (`terminalOutcomeText`) so it is pinned by
 only by the parity corpus. D22's status vocabulary is untouched: `partial` still renders with the
 Done-with-warnings treatment, and the REAL `verified-done` path is unchanged in every particular.
 
-**Beside it, D237's decision record** (doc 12 owns the derivation): a settled gate now draws a
+**Beside it, D237's decision record** (ref operator-trust owns the derivation): a settled gate now draws a
 DECISION RECORD in the run's own stream at its `resolvedAt`, in the same geometry as the open gate's
 decision card — verdict, approver, instant, all off one durable `gate_results` row. The card's tint
 carries the verdict and the chip goes loud only for a REFUSAL, because a rejected identity is the
@@ -919,7 +919,7 @@ As-built contract:
   Substituting the browser's wall clock is what D124 forbids, and a machine whose clock is minutes
   off would then print a duration nobody can act on. What the browser IS authoritative about is how
   much time has passed since that instant arrived, which it reads from the monotonic clock
-  (`systemClock.monotonicMs()`, doc 11's single source) — a value an NTP step or a user editing the
+  (`systemClock.monotonicMs()`, ref clock-config-secrets's single source) — a value an NTP step or a user editing the
   system clock cannot move.
 - **One calibration, one value, every consumer.** `src/dashboard/state/served-clock.ts` holds
   `(servedInstant, monotonicMs at receipt)` and derives
@@ -944,7 +944,7 @@ As-built contract:
   clock: there is no skew to re-converge on, only the monotonic clock's own drift, which is
   immaterial at the seconds granularity `fmtElapsed` renders. A server instant on the SSE `health`
   heartbeat is a wire change with a server emitter and two fixture emitters behind it, bought for a
-  skew this deployment cannot have. What buys it is doc 13 §6.9's deferred exposed path (D189) —
+  skew this deployment cannot have. What buys it is ref frontend-backend-integration §6.9's deferred exposed path (D189) —
   the day the BFF serves a browser it does not share a machine with. Add the field in that commit.
 - **The parity corpus is held by pinning the OTHER half of the clock.** A ticking elapsed dated by
   real browser time would make `45m 0s` and `45m 1s` a coin flip between the run that froze a
@@ -1068,7 +1068,7 @@ the span stream small enough to be the queue/timeline truth while preserving per
 ```
 worker ──┬─ browser / auth / idle …        (daemon process lifetime; replaces sessions/*)
          │
-run ─────┬─ task                           (one descriptor step — doc 02's task chain)
+run ─────┬─ task                           (one descriptor step — ref workflow-model's task chain)
          ├─ task …
          └─ gate events                    (parked-on-operator/system states, D5)
                 └─ actions → notes stream  (click/fill/goto/ocr-page/… — addressed by spanPath)
@@ -1088,7 +1088,7 @@ export type RunOutcome =
 /**
  * Run/task identity = (runId, attempt, spanPath); process-lifetime worker/browser identity =
  * (workerId, spanPath). Workers persist across runs, so they never receive a synthetic run id.
- * spanPath uses doc 02's readable path grammar (imported, not redefined):
+ * spanPath uses ref workflow-model's readable path grammar (imported, not redefined):
  *   run span:   pl-104233-9f3e
  *   task span:  pl-104233-9f3e/searching#2        (#N = in-run kernel retry attempt)
  *   worker span: worker/oath-signature/W-88112
@@ -1184,7 +1184,7 @@ export interface SubjectObserved extends Base, RunSpanRef {
   result: "match" | "mismatch" | "unknown";
 }
 
-/** A run parked on an operator/system decision (D5: gates are run-state, owned by doc 02;
+/** A run parked on an operator/system decision (D5: gates are run-state, owned by ref workflow-model;
  *  these events are their wire form). Replaces `running/awaiting-approval` + sentinel steps. */
 export interface GateOpened extends Base, RunSpanRef { t: "gate.opened"; gate: string; }   // gate ids declared in descriptor
 export interface GateResolved extends Base, RunSpanRef {
@@ -1199,7 +1199,7 @@ export interface GateResolved extends Base, RunSpanRef {
 export type SpanEnded = Base & SpanRef & {
   t: "span.ended";
   outcome: RunOutcome;             // task spans use "done" | "failed" | "cancelled" | "skipped"
-  failureId?: FailureId;           // full structured failure lives in doc 12's failure store
+  failureId?: FailureId;           // full structured failure lives in ref operator-trust's failure store
   errorSummary?: string;           // display-safe, legible summary; never the only failure evidence
   verdict?: VerdictKey;            // validated against the descriptor's closed tuple (§3.2)
   evidenceReceiptId?: EvidenceReceiptId;
@@ -1312,7 +1312,7 @@ per selected run. Timeline *folds* read spans only; per-action drill-down reads 
 The four row shapes (`single | preview | operation | operation-member`) and the three axes are
 **kept** — they are the proven queue vocabulary. What changes:
 
-- **Declared on the descriptor** (doc 02's `archetype`, literal or input-resolver), materialized
+- **Declared on the descriptor** (ref workflow-model's `archetype`, literal or input-resolver), materialized
   **once** on `run.queued.shape`. Member shape is set by the fan-out dispatcher on the child's
   `run.queued` (today's `rowShape` option).
 - **Never re-stamped.** Span identity attrs are written once and immutable; patches can't clobber
@@ -1401,9 +1401,9 @@ neither runtime reads or writes the other's root.
 .tracker-rebuild/
 ├── spans/   <workflow>-<date>.jsonl   span events (low volume — the queue/timeline truth)
 ├── notes/   <workflow>-<date>.jsonl   notes (high volume — logs, actions, screenshots, data points)
-├── evidence/<runId>/                  run receipts + redacted diagnostic bundle manifests (doc 12)
+├── evidence/<runId>/                  run receipts + redacted diagnostic bundle manifests (ref operator-trust)
 ├── artifacts/<hash>.artifact          content-addressed task outputs; atomic, immutable bytes
-├── ledger/  <system>-<date>.jsonl     immutable write receipts (D21; shape owned by doc 09 §6) —
+├── ledger/  <system>-<date>.jsonl     immutable write receipts (D21; shape owned by ref write-safety §6) —
 │                                      ordered, actor-attributed, append-only, per-SYSTEM+day,
 │                                      NEVER pruned (the audit floor; hash chain deferred by D79)
 ├── backups/state/                     checksummed online backups + restore manifests (§2.5)
@@ -1421,24 +1421,24 @@ Rationale against alternatives:
   alone no longer contains log-line text the way `rows/`+`logs/` greps did.
 - **Why split spans/notes?** Queue projection reads spans only (§1.1 volume note); notes load
   lazily per selected run. Mirrors today's proven rows/logs split.
-- **Why a separate `ledger/` (D21 — owner = this doc)?** Doc 09's write-safety layer files one
+- **Why a separate `ledger/` (D21 — owner = this doc)?** Ref write-safety's write-safety layer files one
   immutable receipt per real HR mutation. It is partitioned per-**system**+day so
   `grep 10001573 .tracker-rebuild/ledger/ucpath-*.jsonl` answers "what did we file for this person,
-  across time." It is ordered, actor-attributed, and **never pruned**. Doc 09 owns
+  across time." It is ordered, actor-attributed, and **never pruned**. Ref write-safety owns
   the entry *shape* (`LedgerEntry`, §6 there); this doc owns that the dir lives in the layout and is
   exempt from `clean-tracker`.
 - **Base retention — DECIDED (D86):** `notes/` and `spans/` both prune at **30 days**.
   `ledger/` is exempt from both — its never-pruned floor now sits **above a settled number, not a
-  guess** (this is what doc 09 §6 references). Legacy `.tracker/` retention is unchanged and owned
+  guess** (this is what ref write-safety §6 references). Legacy `.tracker/` retention is unchanged and owned
   only by production `src`.
 - **Why per-workflow files?** Small greppable files; partition key matches the SSE topic scope.
   Worker spans write to their workflow's file (a daemon serves one workflow).
 - **Span/note write discipline (ported):** append-at-now partitioning; cross-midnight solved at the
   read layer with the OPEN-span forward-merge (same algorithm as `cross-midnight.ts`); synchronous
   SIGINT terminal writes; `O_APPEND` single-line writes. **Ledger is different:** executors write
-  durable outbox rows and one serialized projector assigns ordered sequence and appends (doc 09).
+  durable outbox rows and one serialized projector assigns ordered sequence and appends (ref write-safety).
 - **Local artifacts are not hidden task writes (D45).** A read task may create only immutable,
-  content-addressed bytes under `artifacts/` through doc 01's writer; the returned `{id,sha256,bytes,
+  content-addressed bytes under `artifacts/` through ref task-contract's writer; the returned `{id,sha256,bytes,
   mediaType}` is canonical JSON and checkpoints reference it without exposing a filesystem path.
   Per D97, `id` remains the existing UUID-backed `ArtifactId`; `sha256` is the distinct content
   identity and private `artifacts/<hash>.artifact` key. Byte-identical puts are idempotent and
@@ -1453,19 +1453,19 @@ Rationale against alternatives:
 - **Evidence is indexed, not scattered.** `evidence/<runId>/receipt.json` points to immutable
   screenshots/artifacts/failures by content hash and records missing capture explicitly. Diagnostic
   bundles redact by schema before writing; they never copy `.env`, cookies, browser storage, raw
-  SSNs, or unrestricted input blobs (doc 12 §3).
+  SSNs, or unrestricted input blobs (ref operator-trust §3).
 
 ### 2.2 Projections are computed server-side — the wire carries surfaces, not rows
 
 Today the client re-implements queue-surface classification, status keying, and pipeline math. In
 the rebuild repo the SSE stream carries **finished projections**; the client renders and never re-derives.
-Descriptor metadata is served as doc 02's validated client projection; the SPA never imports
+Descriptor metadata is served as ref workflow-model's validated client projection; the SPA never imports
 workflow modules. The SSE hello carries its fingerprint so a stale bundle fails loud.
 
 ```ts
 // src/server/topics.ts — SSE topic payloads (all change-gated snapshots, as today)
 interface EventsHubPayload {
-  descriptorHash: string;                  // doc 02's skew tripwire — NOT the descriptors themselves
+  descriptorHash: string;                  // ref workflow-model's skew tripwire — NOT the descriptors themselves
   queue: { workflow: string; date: string; surfaces: QueueSurfaceWire[] };  // per subscribed panel
   queuePatch?: { workflow: string; date: string; surface: QueueSurfaceWire }[];
   //  ^ after the initial snapshot, a changed surface re-sends ONLY that complete strict surface — a
@@ -1504,7 +1504,7 @@ interface QueueSurfaceWire {
 ```
 
 For a run parked on an unfinished write intent, the server replaces ordinary retry/done actions
-with the closed kernel actions `resolve-write-present` and `resolve-write-absent` (doc 09 §4.1),
+with the closed kernel actions `resolve-write-present` and `resolve-write-absent` (ref write-safety §4.1),
 including intent generation+version tokens and the proof/evidence form spec. The descriptor cannot
 re-enable generic Done/Retry for that state. These actions derive from durable intent state, not a
 workflow-id registry; stale tokens fail with a conflict and trigger a fresh projection.
@@ -1520,9 +1520,9 @@ owning merge/dedup heuristics (`mergeDisplayItems` collapse survives as a server
 - **System-of-record (NOT rebuildable and never deleted by projection/runtime row maintenance):**
   the task/claim store (tasks, leases,
   dependencies, delegation manifests, commands, start plans, terminal authorizations/results, failures,
-  notifications, capture sessions/photo order/finalization outboxes — doc 02 §5.7's checkpoint payloads,
+  notifications, capture sessions/photo order/finalization outboxes — ref workflow-model §5.7's checkpoint payloads,
   §4.4's `ocr_approvals` manifests, and
-  doc 09's permanent-key `write_intents`, `write_attempts`, and durable outbox, plus
+  ref write-safety's permanent-key `write_intents`, `write_attempts`, and durable outbox, plus
   stable-keyed local `artifact_outbox`/sink-head rows). The system-of-record set is
   "planned/accepted run authority + claims + checkpoint/result/failure payloads + write
   authority/outboxes + local artifact projection authority + in-progress capture/handoff
@@ -1627,7 +1627,7 @@ both DEFERRED here with their trigger rather than fixed blind:
   called `prepare`.
 
 **The trigger that ends the deferral:** the first transaction node that can execute twice within one
-run attempt (an `always-rerun` transaction node downstream of a gate, or a doc-09 §4 recovery that
+run attempt (an `always-rerun` transaction node downstream of a gate, or a ref write-safety §4 recovery that
 re-enters the sequencer under the same attempt), or the first requirement that a beat span attribute
 to its node on the timeline. The fix then is D214's, applied at the producer: compose the beat path
 UNDER the node's own span path (`<nodeSpanPath>/<beat>`), which needs the executor to hand the
@@ -1733,7 +1733,7 @@ export type CommandRequest =
   | StartCommandRequest | IntakeCommandRequest | WorkerBrowserCommandRequest
   | SettingsCommandRequest | VersionArchiveCommandRequest | RunCommandRequest
   | GateCommandRequest | NotificationCommandRequest | CaptureCommandRequest;
-// CaptureCommandRequest is owned by doc 06 and uses this envelope's idempotency, version-stamp,
+// CaptureCommandRequest is owned by ref data-intake-and-edit-data and uses this envelope's idempotency, version-stamp,
 // and transactional current-state validation; it is not a blanket CAS arm.
 
 /** Multi-select never means "loop and hope". Targets and versions are frozen at confirmation. */
@@ -1777,12 +1777,12 @@ Command semantics are binding:
 |---|---|
 | Enqueue | Validate raw input once, derive stable item id, then apply descriptor policy in one transaction. `reject-active` returns the existing active run; `supersede-active` terminalizes the exact active generation and creates the new run atomically; `allow-parallel` still requires a distinct stable item/variant key. An authority read error aborts—never “continue and enqueue anyway.” |
 | Retry | Creates a new run linked by `retryOf`, reuses immutable parsed input/config, validates checkpoints/freshness, and preserves the logical item. A parked unknown write uses resolution actions, never generic retry. |
-| Cancel | Resolves the full dependency tree from authoritative SQLite, applies every edge's doc 02 cancel policy, and commits state transitions together. If the tree is unavailable/inconsistent, no target is cancelled. Visible queue roots are never an authority fallback. |
+| Cancel | Resolves the full dependency tree from authoritative SQLite, applies every edge's ref workflow-model cancel policy, and commits state transitions together. If the tree is unavailable/inconsistent, no target is cancelled. Visible queue roots are never an authority fallback. |
 | Bump | **Run-family only:** changes priority/claim order through an idempotent transactional command; it does not fabricate a requeue, mutate business input, change a descriptor version, or archive anything. Running work returns a typed rejection unless the scheduler explicitly supports cooperative yield. Version drift alone does not conflict. |
 | Rename | Replaces only the operator-visible run display name with a strict `RunDisplayName` payload: NFC-normalized, already trimmed, 1–120 Unicode code points, and no control characters. Empty, whitespace-padded, overlong, non-normalized, or unknown-key payloads fail boundary parsing. Identity and trace id never change. |
 | ~~Hide / Unhide~~ | **RETIRED (D234.)** The queue's model is runs and archived runs; there is no third hidden class. See *"D234 — the queue's model is runs and archived runs"* below. |
 | Purge | Not a row action. `cli purge-run <exact-run-id> --backup <path>` is an offline maintenance command requiring a fresh verified backup and refusing any active/dependency/write-authority reference. It writes a purge receipt. |
-| Edit checkpoint | Uses doc 06's field-level patch/provenance model, creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
+| Edit checkpoint | Uses ref data-intake-and-edit-data's field-level patch/provenance model, creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
 
 Every command is inserted durably before application and records the target's monotonic `version`.
 Re-delivery returns `already-applied`. **CAS is enforced on every run verb** (D233, and D234 for
@@ -1824,7 +1824,7 @@ or handler exists:
 | `run` | retry/cancel/**priority `bump`**/rename/edit-checkpoint/write resolution; exact run id + observed version |
 | `gate` | resolve one exact `(runId, gateId)` with schema-hash-bound result + observed version |
 | `notification` | read/unread/snooze one exact actor-owned notification + observed version |
-| `capture` | the closed doc 06 session/photo/finalize/discard arms; exact capture session/photo ids + observed version |
+| `capture` | the closed ref data-intake-and-edit-data session/photo/finalize/discard arms; exact capture session/photo ids + observed version |
 
 The string **`bump` is permanently reserved for run priority/claim order**. Descriptor/app version
 work uses only `plan-version-bump` then `apply-version-bump`; the plan is reviewable and immutable,
@@ -1871,7 +1871,7 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    it restores into a temp path, repeats all checks, and atomically swaps only while those locks remain stopped.
 6. Restore reconciliation replays JSONL into **projection tables only**. It never invents lost
    authority from spans. Runs/events newer than the restored authority generation are surfaced as
-   `authority-unknown`; any possible external write is parked for doc 09's live probe/operator
+   `authority-unknown`; any possible external write is parked for ref write-safety's live probe/operator
    resolution before execution continues.
 
 An automated restore drill copies a real-shaped DB, corrupts the copy, detects it, restores the
@@ -1971,7 +1971,7 @@ objects, burying the sentence. `storageHealthCauseFromError` now collapses runs 
 every word survives, nothing is truncated, and the line is a line.
 
 **Still not built, and named:** the retention sweep (14/8/5) stays a remainder, and no config leaf
-names the suspect directory — it is `<stateRoot>/suspects` by construction. Doc 03 §2.5's
+names the suspect directory — it is `<stateRoot>/suspects` by construction. Ref dashboard-surfaces §2.5's
 "a configurable path may point at another local volume" remains unimplemented.
 
 **Storage stance — operator 2026-08-12 (D193): the built surface is enough, and the remainders are
@@ -1984,10 +1984,10 @@ completed HR transaction lives in the external system — the UCPath transaction
 and can be checked there in more than one way, while these rows carry *how* a thing was completed
 and *whether* it completed, and mean little going forward once it is completed and approved. That is
 what makes backup non-critical at this scope. It says nothing about durability *during* a write —
-the fence, its binding proof, and a parked intent are load-bearing for the run in flight (doc 09),
+the fence, its binding proof, and a parked intent are load-bearing for the run in flight (ref write-safety),
 and that is untouched. Everything above
 **stays exactly as built — nothing is removed or weakened.** What changes is the forward plan: the
-**14/8/5 retention sweep scheduling** and the **content-store refcount reclamation** (doc 12 §D137)
+**14/8/5 retention sweep scheduling** and the **content-store refcount reclamation** (ref operator-trust §D137)
 move off "deferred on an owning milestone" and onto nobody's milestone; no gate, cutover criterion,
 or later slice is blocked on either. They land only if the operator asks. Note this decision is
 about *further investment*, not about correctness: the doctor's refusals, the byte verification, and
@@ -2027,7 +2027,7 @@ export interface NotificationWire {
 **Durable representation (D134).** "Repeated identical triggers update count/lastSeen" is stored as
 **one row per `(actorId, dedupeFingerprint)`, updated in place** — schema v10 adds that unique index
 plus triggers freezing identity and creation and requiring a strictly advancing `version`. The
-durable `NotificationRecord` therefore carries `count` and `lastSeenAt` beside `version`. Doc 12
+durable `NotificationRecord` therefore carries `count` and `lastSeenAt` beside `version`. Ref operator-trust
 §6.1 owns the justification and the boundary against the ledger's true immutability.
 
 **Publish ordering (D138).** "A failed toast never loses the unread inbox item" is an ORDER, not an
@@ -2065,7 +2065,7 @@ before the durable row existed and does not describe `NotificationWireSchema`
 **Trigger arguments are closed (D138).** "Notification text uses redacted arguments" is enforced by
 having no free-text argument: every trigger-event arm is ids, closed codes, and counts, and the
 title/message are composed from those. A caller cannot hand the inbox prose, so captured form
-contents have nowhere to enter. The doc-03 trigger list routes onto D79b's six keys as: run failure
+contents have nowhere to enter. The ref dashboard-surfaces trigger list routes onto D79b's six keys as: run failure
 and subject mismatch → `failed`; open operator gate → `gate-waiting`; unknown write outcome →
 `write-parked`; repeat threshold → `repeating`; storage degradation, stalled lease/outbox, and
 failed backup → `storage`; verified-done receipt → `verified-done`.
@@ -2097,7 +2097,7 @@ published one. So the ONE state in this product that cannot move without a perso
 at all, which is D222's finding a second time: machinery with zero producers.
 
 **The seam is a transition-watcher over authority, not the park's own transaction.** The park is
-written by the WORKER (doc 02 §4's gate arm, `src/core/run-executor.ts`), a separate OS process with
+written by the WORKER (ref workflow-model §4's gate arm, `src/core/run-executor.ts`), a separate OS process with
 no operator attached and no desktop channel, and D82's rule stands — authority must never depend on
 a projection to settle a run, so a run must park even when the inbox cannot be written. What makes
 the watcher sound rather than merely convenient is that **a park is a STANDING authority fact**:
@@ -2146,16 +2146,16 @@ the server says which run, never what to call the trip.
 
 ---
 
-## 3. Descriptor fields this layer consumes (shape owned by doc 02)
+## 3. Descriptor fields this layer consumes (shape owned by ref workflow-model)
 
-**Doc 02 owns the `WorkflowDescriptor` shape and builder** (D1). This section does not define a
+**Ref workflow-model owns the `WorkflowDescriptor` shape and builder** (D1). This section does not define a
 descriptor interface; it names the fields this layer *reads*, and the fields it *contributes* for
-doc 02 to adopt. The tracker enforces its half at the emit boundary: **emitting a task span whose
+ref workflow-model to adopt. The tracker enforces its half at the emit boundary: **emitting a task span whose
 `name` is not a descriptor step key, a gate not in the descriptor's gate list, or a verdict not in its
 verdict map, throws at emit time.** (The fourth clause — a patch key not in the detail-field list —
 retired with `span.patched` itself; D254.)
 
-### 3.1 Read from doc 02's descriptor
+### 3.1 Read from ref workflow-model's descriptor
 `id`, `code` (2-char trace prefix), `label`, `icon`, `category`, `surface.shape` /
 `surface.resolveShape`,
 `inputSubject`, graph-node keys/labels, `surfaces`, `details` (as a DECLARATION — D254), `actions`, `presets`, `identity`,
@@ -2163,8 +2163,8 @@ retired with `span.patched` itself; D254.)
 version/fingerprint, and
 override layering. There is no second `archetype` declaration.
 
-### 3.2 Contributed by this doc, adopted into doc 02's descriptor
-These are plain-data fields; doc 02's descriptor carries them, this doc defines their semantics:
+### 3.2 Contributed by this doc, adopted into ref workflow-model's descriptor
+These are plain-data fields; ref workflow-model's descriptor carries them, this doc defines their semantics:
 
 ```ts
 steps display rules: readonly StepDisplayRule[]               // computeOcrPipelineView's fold/hide
@@ -2209,7 +2209,7 @@ infrastructure—deliberately a sink-kind registry, never keyed by workflow.
 
 Every hand-maintained parallel list in today's dashboard (icons, INSTANCE_LABELS, step-label
 switches, stub map) becomes a projection of the descriptor set with a coverage guard — that
-mechanism and its guard are doc 02's (§1.3/§1.4 there).
+mechanism and its guard are ref workflow-model's (§1.3/§1.4 there).
 
 ---
 
@@ -2237,7 +2237,7 @@ mechanism and its guard are doc 02's (§1.3/§1.4 there).
   an un-awaited fan-out (`join:"none"`) unwritable, even though the latter's manifest reference IS
   the node's output;
 - `children` required `min(1)`, so a zero-child fan-out — a legitimate empty upstream list that
-  doc 02 §3.2 requires to stay an explicit satisfied join — had no writable record.
+  ref workflow-model §3.2 requires to stay an explicit satisfied join — had no writable record.
 
 All three are corrected in `src/domain/dependencies.ts`, with `join`/`cardinality` agreement
 enforced. Like D102 this is a zod-validated JSON payload, so no authority migration version is
@@ -2260,7 +2260,7 @@ display-only failed rows.
 // src/descriptor/completion.ts
 import { z } from "zod/v4";
 import type { AnyWorkflowRef } from "./ref.js";
-// WorkflowRef<InputSchema,ResultSchema> carries both concrete schemas (docs 01/02).
+// WorkflowRef<InputSchema,ResultSchema> carries both concrete schemas (refs task-contract/workflow-model).
 
 export type CompletionProgram =
   | StagedFanOut<readonly [PerRecordStage<AnyWorkflowRef>, ...AnyFanOutStage[]]>
@@ -2416,13 +2416,13 @@ oath/ec/onbase-ec/verify/i9 — oath-upload is a fan-out *target*, not a form). 
   `gates: [{ id:"await-approval", subscribes: { workflow:"ocr", key:"sessionId" } }, { id:"await-signatures", … }]`.
 - The zero-signer refusal is an output-dependent branch to a typed failure node; discard is a gate
   resolution mapped to cancelled; signature waiting is a typed children-terminal gate; ticket fill
-  and submit form a transaction node. The submit idempotency window is doc 09's write intent. None
+  and submit form a transaction node. The submit idempotency window is ref write-safety's write intent. None
   of these hides in a handler side channel.
 
 ### 4.6 verify — in-run enrichment, not completion
 
 verify has **no completion contract**: no approve targets, no `completeDelegatedRun`. Its
-fan-outs (`verify.ts:523-660`) happen during the run: doc 02 models two typed child-run branches in
+fan-outs (`verify.ts:523-660`) happen during the run: ref workflow-model models two typed child-run branches in
 a first-class parallel `all-settled` node, followed by a typed join/enrichment step. Child inputs,
 results, cancellation, and joins are descriptor-visible and checkpointed. This doc still does not
 model them as completion. i9 is §4.1's post-completion enqueue; verify is mid-run enrichment.
@@ -2664,7 +2664,7 @@ its own milestones with no parity deadline coupling.
 ## 7. Worked example — operation coordinator flow, end to end in spans
 
 Operator uploads `Oath_Packet.pdf` targeting oath-signature (dry-run off, 2 signers on the paper).
-Span ids shown in doc 02's path grammar; `attempt` omitted where 1.
+Span ids shown in ref workflow-model's path grammar; `attempt` omitted where 1.
 
 ```jsonc
 // Abridged for readability. Checked fixtures are generated through RunQueuedSchema and include
@@ -2738,7 +2738,7 @@ returns its log/action detail (§2.1 — two greps, by design).
 
 1. **Notes retention & volume — RESOLVED (D86), no longer open.** Base retention is **decided**
    (§2.1): `notes/` and `spans/` both prune at **30 days**. The
-   `ledger/` dir is **never pruned** and sits above both floors (doc 09 §6 depends on this settled
+   `ledger/` dir is **never pruned** and sits above both floors (ref write-safety §6 depends on this settled
    number). Only the *volume* question—whether 30-day notes strain disk in practice—remains a
    monitor-and-revisit, not an open design decision.
 2. ~~Worker-span ownership~~ — **resolved 2026-07-21; amended by D87 on 2026-07-30:** one worker
@@ -2767,9 +2767,9 @@ with review-as-status and eight statuses; D2: a PDF upload is always a Group; D3
 are typed Rejected Member Rows, delete-only; D4: a delegated OCR run keeps its own Run Row in the
 OCR panel plus a link from the parent; D5: groups default collapsed, auto-expand on a member
 `Waiting on you` or `Failed`). **This series is not the reconciliation memo's D-numbers**
-(`04-reconciliation.md` D1–D144) — cite these as *row-model D6…D24*, prefix mandatory. The
+(`reference/decisions.md` D1–D144) — cite these as *row-model D6…D24*, prefix mandatory. The
 collision is real: this section's **row-model D22** shortens the status vocabulary, while the memo's
-bare **D22** is an unrelated contract-shape/guards ownership split. `04-reconciliation.md` carries
+bare **D22** is an unrelated contract-shape/guards ownership split. `reference/decisions.md` carries
 the matching warning at its top; keep both in step.
 
 D6–D17 close the twelve delegation questions in `reviews/delegation-layouts-2026-07-25.md` §7;
@@ -2951,7 +2951,7 @@ the occasional re-run.
 
 **Supersedes the "with a confirm naming the casualties" half of `reviews/delegation-layouts-2026-07-25.md`
 §7 Q11**; the tree-scope half is ratified as recommended. Mechanically this is §2.4's `Cancel`
-semantics unchanged — full dependency tree resolved from SQLite authority, every edge's doc 02
+semantics unchanged — full dependency tree resolved from SQLite authority, every edge's ref workflow-model
 cancel policy applied, all-or-none, visible queue roots never an authority fallback. What D16
 decides is scope and the absence of ceremony, not a new command.
 
@@ -3031,7 +3031,7 @@ is simply not sent a Save.
 **As-built (2i-C, 2026-08-08, D168) — the rail's Data section is wired end-to-end for reads.**
 `editPolicyFor` exists in `src/dashboard/surfaces/context-rail.tsx` and composes three policies,
 each carrying its own sentence onto the lock: the entry's field policy and the run-level policy
-arrive ON the `context-data` wire (doc 06 §6.4.1 owns that shape), and the live staleness signal
+arrive ON the `context-data` wire (ref data-intake-and-edit-data §6.4.1 owns that shape), and the live staleness signal
 is `liveLockReasonOf` over the day stream's queue-row status — there is still no per-run SSE
 client, and the queue row flipping out of `queued`/`awaiting-approval` is the same "this run was
 claimed while you were editing" fact, with the kernel's CAS as the authority either way. Editing
@@ -3075,7 +3075,7 @@ not a tab and not a dialog, with its write fields still rendering read-only.
 
 `Write parked` is only for a write whose outcome is genuinely **UNKNOWN**, and it has exactly two
 typed resolutions: **confirmed-present** and **confirmed-absent** (§2.2's `resolve-write-present` /
-`resolve-write-absent` over doc 09's durable intent state). **A pre-submit hold is NOT parked — it
+`resolve-write-absent` over ref write-safety's durable intent state). **A pre-submit hold is NOT parked — it
 is a gate, and its status is `Waiting on you`.**
 
 Consequence: the rebuild demo's `sep-rosa` fixture, which labels a pre-submit hold as `Write parked`
@@ -3179,12 +3179,12 @@ this doc's *Phase 1g/1i-spine as-built presentation deltas*, and it is what make
 honest where the original relied on the word. **Never satisfy this by lengthening the drawn label.**
 
 **The guarantee is structural, not textual, and the shortening must not be read as a weakening:**
-the verdict is still reachable **only via read-back** (doc 12's completion contract), and the
+the verdict is still reachable **only via read-back** (ref operator-trust's completion contract), and the
 receipt still shows its read-back checks — only the *label* shortens. The wire/status key stays
 `verified-done`, and `done-with-warnings` stays its own key.
 
 **Reconciliation debt, recorded rather than silently fixed:**
-`docs/rebuild/12-operator-trust-and-authoring.md:284` and this doc's D9 (…"`Verified done`
+`docs/rebuild/reference/operator-trust.md:284` and this doc's D9 (…"`Verified done`
 requires zero unacknowledged rejections") still use the long label. They describe the same verdict
 under its pre-D22 name and need reconciling when next touched — the semantics they state are
 unchanged.
@@ -3268,7 +3268,7 @@ panel **469px → 542px** tall; the tab body **123–215px → 213–335px**.
 independently at wider viewports, so the centre stays the largest column at every size. 376 is 28px
 wider than the former 348px rail and narrower than either former queue width — which is exactly what
 buys the centre back the room the 400/470 analysis was fighting over. The visual oracle moved first
-(doc 13 §1; the demo's own panel region, legacy
+(ref frontend-backend-integration §1; the demo's own panel region, legacy
 `hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc` `RebuildDemo.tsx:747-748`) and this table
 had not followed.
 
@@ -3334,7 +3334,7 @@ here rather than re-litigated per surface:
 - **The wire serves the raw fact, display stays the frontend's** (the standing R2 D17/D18 split):
   the bootstrap workflow primitive gains a REQUIRED closed `role`
   (`standalone` / `composition` / `chunk-harness` + `of`), the schema refuses an `of` that does not
-  name a served composition, and the module-side fact it projects is doc 02 §1.2.1's.
+  name a served composition, and the module-side fact it projects is ref workflow-model §1.2.1's.
 - **Counts do not roll up.** §10.1 already decides this: a badge beside an entry counts exactly the
   rows that entry's panel shows, and folding harness runs into the composition's badge would make
   the badge disagree with its own queue panel — D81's divergence class manufactured deliberately.
@@ -3344,7 +3344,7 @@ here rather than re-litigated per surface:
   nested rail entry still names the harness, so a row titled by it stays legible — and archived
   rows' frozen labels are untouched (D179).
 - **Startability does not move.** Chunks stay registered and independently runnable through the
-  start-plan lane (each still owes/holds its own §3.2 controlled-commit proof); no doc 07 exit
+  start-plan lane (each still owes/holds its own §3.2 controlled-commit proof); no phase doc's exit
   criterion names rail presence. Today all six separations entries declare `surfaces: {}`, so the
   picker lists them only under "not startable" — the nesting applies to whatever list a surface
   renders, not to what is in it.
@@ -3352,7 +3352,7 @@ here rather than re-litigated per surface:
 **Amended same day (D220, 2026-08-14): the RAIL lists main workflows only.** On seeing the nested
 presentation live, the operator ruled the harnesses "not needed at all — only the main workflows
 should be there," and asked the same of `kuali-timekeeper-annotation`, which D219's model could
-only call `standalone` (it proves the kernel, not a composition — doc 02 §1.2.1's new `proving`
+only call `standalone` (it proves the kernel, not a composition — ref workflow-model §1.2.1's new `proving`
 arm is the fact that names this). So the Workflow Panel rail drops every entry whose role is
 `chunk-harness` or `proving` — nested or top-level, the cross-category `separations-kronos-timecard`
 included — and a category whose entries all dropped goes with them rather than rendering an empty
@@ -3449,7 +3449,7 @@ Consequences that follow and must not be re-litigated per surface: **collapse ru
 archived runs (§10.2), and delegated-member containment are applied once, inside the projection.**
 **The Activity report (D180) is a range rendering of this same payload**, built inside the
 projection for the same reason: a report that summed rows a second way could disagree with the day
-it summarises. Its contract lives in doc 13 §6.7. One block on it — the write ledger — is the single
+it summarises. Its contract lives in ref frontend-backend-integration §6.7. One block on it — the write ledger — is the single
 ratified exception, and it is spelled out immediately below (D236).
 A member counted in a group is not also counted at top level because there is no second place that
 could count it.
@@ -3495,7 +3495,7 @@ a second question.
    before it was — which is why the ported surface omitted the block entirely rather than rendering
    its empty state over an unserved axis.
 
-**Guard (doc 10).** `one-projection-counts` — any count/aggregate in a surface path that does not
+**Guard (ref guards-and-tests).** `one-projection-counts` — any count/aggregate in a surface path that does not
 originate from the projection payload fails. Backed by a fixture asserting Workflow Panel total,
 Status Bar sum, and rendered Queue Row count are equal by construction for a seeded world that
 includes archived, delegated, and rejected rows. *(The `?view=rebuild-demo` replica already
@@ -3595,7 +3595,7 @@ workflow was unregistered says so itself. A row whose code is absent falls back 
 is a real name the record holds, and puts the reason in the title — never a derived code. The
 version registry and the Activity per-workflow table print the CURRENT registry's code beside the
 label; the Activity CSV gives it its own column rather than gluing it onto the label, because a
-spreadsheet sorts and filters columns. The code itself is doc 02 §1.1.1's.
+spreadsheet sorts and filters columns. The code itself is ref workflow-model §1.1.1's.
 
 **The three arms, and where each refusal is computed:**
 
@@ -3751,7 +3751,7 @@ list EMPTY — which `archive-model.test.ts` now executes tab by tab, alongside 
 generation-1 record read forward and a run that FILED a real ledger line,
 archived and resolved back with the registry empty. Importing the three commit
 contracts into the ledger read-through is inside that bar two ways: their
-closure reaches no Node built-in (doc 13 §8.13 — the module lands on the
+closure reaches no Node built-in (ref frontend-backend-integration §8.13 — the module lands on the
 dashboard bundle) and no descriptor module. A task contract is neither; it is
 the schema of one write, and the ledger is never archived, so interpreting its
 lines with current code is exactly right.
@@ -3788,7 +3788,7 @@ never be the only alert.
 
 ## 11. The intake workspace — the surface contract (2i-E3, D173)
 
-Doc 06 §2.2 owns the FLOW (upload → map → validate → run) and doc 06 §2.5 owns the invariant that
+Ref data-intake-and-edit-data §2.2 owns the FLOW (upload → map → validate → run) and ref data-intake-and-edit-data §2.5 owns the invariant that
 makes it safe. This section owns how that flow is presented, because three of its decisions are
 surface decisions with consequences and one of them is the reason the surface exists at all.
 
@@ -3811,7 +3811,7 @@ had to be learned; a position does not.
 
 ### 11.2 The grid's rows are the WORKFLOW's fields, never the file's columns
 
-One row per declared intake target (doc 06 §2.2 step 2 in as many words). The workflow's
+One row per declared intake target (ref data-intake-and-edit-data §2.2 step 2 in as many words). The workflow's
 requirements are the fixed axis and the spreadsheet is the variable — turn it around and the grid's
 shape depends on the export, and an operator can finish it without ever seeing a field the workflow
 wanted. Unmapped required targets are therefore visible by construction rather than by a check.
@@ -3834,7 +3834,7 @@ off-screen is how a person concludes the product is broken.
 
 The band names the blockers it can see on the served wire — no header row settled, nothing bound,
 an unvalidated mapping. That is a courtesy, never the authority: `enqueueReadiness` judges the
-manifest the arm would actually write (doc 06 §5.2), and its refusal renders verbatim. A surface
+manifest the arm would actually write (ref data-intake-and-edit-data §5.2), and its refusal renders verbatim. A surface
 that decided readiness itself would eventually disagree with the server about what is about to
 happen, which on this product means disagreeing about whether real HR runs were filed.
 
@@ -3878,13 +3878,13 @@ in-flight command's KEY and that control alone carries the spinner. Everything e
   a binding, so the grid renders `constants` read-only (today always empty) and its column control
   offers no "unbind". Offering either would be a control that silently does nothing. person-lookup
   does not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the
-  first workflow with a required non-column field (doc 06 §8's `effectiveDate`) will need the arm.
+  first workflow with a required non-column field (ref data-intake-and-edit-data §8's `effectiveDate`) will need the arm.
 
 ---
 
 ## 12. The capture phone surface — the surface contract (2i-F, D175)
 
-Doc 06 §5.1 owns what capture DURABLY records and which routes exist; this section owns what the
+Ref data-intake-and-edit-data §5.1 owns what capture DURABLY records and which routes exist; this section owns what the
 person holding the phone sees. It is the only surface in this program rendered on a device the
 operator does not sit at, and every decision below comes from that.
 
@@ -3981,14 +3981,14 @@ end an operator cannot act on.
 
 ## 13. The two reference takeovers — the surface contract (2i-G, D176/D177)
 
-Doc 12 §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
+Ref operator-trust §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
 sit and what they refuse to look like.
 
 ### 13.1 A read-only explorer must not look like an editor
 
 The shape this category always ships is the workflow-builder canvas: draggable rounded nodes, bezier
 edges, a palette down one side. On this surface that shape is a **lie** — it draws a mutation
-affordance over a graph nobody may mutate, and doc 12 §5.1 rejected the free-form visual programmer
+affordance over a graph nobody may mutate, and ref operator-trust §5.1 rejected the free-form visual programmer
 outright. It is refused.
 
 What a reader actually arrives holding is an id or a failure location (`separations/ucpath-transaction
@@ -4065,6 +4065,6 @@ anything.
   and the live catalog filter are **deliberately unanimated**: one is list navigation and the other
   fires on every keystroke, and both are exactly where motion only adds latency.
 - **The parity fixtures are the REAL projections.** A hand-written fixture graph would prove only
-  that the surface can render a shape somebody typed, and doc 07's exit criterion is about the
+  that the surface can render a shape somebody typed, and doc 02 §Exit criteria is about the
   as-built graph. A change to the graph now moves these references, which is the drift signal the
   corpus exists to give.

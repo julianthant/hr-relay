@@ -1,5 +1,5 @@
 /**
- * THE GATED RUN, for adapter #1 (doc 09 §14.4/§14.6, D226).
+ * THE GATED RUN, for adapter #1 (ref write-safety §14.4/§14.6, D226).
  *
  * The corpus has photographed an open gate since it was written and had never
  * once served the `identity-gate` SECTION behind it — so every `run-open-gate`

@@ -1,5 +1,5 @@
 /**
- * The identity-approval **decision packet** — doc 09 §14.4's "everything needed
+ * The identity-approval **decision packet** — ref write-safety §14.4's "everything needed
  * to decide without leaving the dashboard", as a pure fold over facts the run
  * already read.
  *
@@ -9,10 +9,10 @@
  * read, the name search, the run input). That is the D82 shape, and for the same
  * reason: an approval must bind to evidence that can be RE-DERIVED and compared,
  * so `deriveIdentityEvidenceDigest` over the same stored outputs yields the same
- * bytes, and doc 09 §14.5's "an approval never survives the disappearance of
+ * bytes, and ref write-safety §14.5's "an approval never survives the disappearance of
  * what it approved" becomes a byte comparison instead of a judgement call.
  *
- * ## Disconfirming evidence FIRST (doc 09 §14.6 risk 1)
+ * ## Disconfirming evidence FIRST (ref write-safety §14.6 risk 1)
  *
  * `comparisons` is ordered disagreements-first, always. ALWAYS-GATE's dominant
  * failure mode is rubber-stamping: a control that fires on every run and is
@@ -98,7 +98,7 @@ export type IdentityFieldComparison = z.infer<typeof IdentityFieldComparisonSche
  * Legacy only ever performs this search when the name tier came back
  * `different` — which is why the `T002173685` incident's alternative candidate
  * was invisible until the tier fired. Running it unconditionally is what makes
- * doc 09 §14.2's two-candidate side-by-side presentation exist on every run
+ * ref write-safety §14.2's two-candidate side-by-side presentation exist on every run
  * rather than only on the runs a threshold happened to select.
  */
 export const IdentityNameSearchSchema = z.discriminatedUnion("status", [
@@ -157,7 +157,7 @@ export const IdentityEvidencePacketSchema = z.strictObject({
 export type IdentityEvidencePacket = z.infer<typeof IdentityEvidencePacketSchema>;
 
 /**
- * The digest doc 09 §14.5 binds an approval to.
+ * The digest ref write-safety §14.5 binds an approval to.
  *
  * It hashes the PARSED packet through canonical JSON, so an approval granted on
  * one packet cannot be replayed against a different one: re-derive the packet

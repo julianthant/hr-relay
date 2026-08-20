@@ -1,4 +1,4 @@
-# Adversarial review — 02-workflow-model.md (2026-07-17)
+# Adversarial review — reference/workflow-model.md (2026-07-17)
 
 Verdict: **buildable with amendments** — direction sound, but docs 01/02 describe two different
 systems at the seam, plus two correctness holes. Resolutions: `../04-reconciliation.md`

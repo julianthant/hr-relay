@@ -41,7 +41,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "The rebuild CLI covers help/phase/dashboard/worker/explain/ocr/storage (src/core/runtime-composition.ts) and the operator surface is the dashboard BFF, not the CLI. Legacy's per-workflow subcommands and system probes close one at a time as each workflow migrates, and doc 07 s3.6 requires behavioural CLI fixtures plus help output for the whole family before cutover."
+        "reason": "The rebuild CLI covers help/phase/dashboard/worker/explain/ocr/storage (src/core/runtime-composition.ts) and the operator surface is the dashboard BFF, not the CLI. Legacy's per-workflow subcommands and system probes close one at a time as each workflow migrates, and doc 03c §Non-workflow capability closure inventory requires behavioural CLI fixtures plus help output for the whole family before cutover."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -204,7 +204,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No oath-upload UI exists in the rebuild. Doc 07 s3.6 absorbs oath-upload's special routes and surfaces into the descriptor's start surface and the standard commands at that workflow's own migration, which is order 7 (see legacy-workflow-oath-upload)."
+        "reason": "No oath-upload UI exists in the rebuild. Doc 03c §Non-workflow capability closure inventory absorbs oath-upload's special routes and surfaces into the descriptor's start surface and the standard commands at that workflow's own migration, which is order 7 (see legacy-workflow-oath-upload)."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -224,7 +224,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No OCR review/approve UI exists. 2h landed the one extraction gate and its CLI (`cli ocr forms|instruction|admit|stack`), but the run-detail Review and People tabs render an explicit `not served yet` placeholder (src/dashboard/surfaces/log-panel.tsx). Doc 07 s3.3 states outright that the OCR review UI lands WITH the OCR workflow at orders 3-4, as an expanded-page-to-extracted-text pair."
+        "reason": "No OCR review/approve UI exists. 2h landed the one extraction gate and its CLI (`cli ocr forms|instruction|admit|stack`), but the run-detail Review and People tabs render an explicit `not served yet` placeholder (src/dashboard/surfaces/log-panel.tsx). Doc 03c §Recommended migration order states outright that the OCR review UI lands WITH the OCR workflow at orders 3-4, as an expanded-page-to-extracted-text pair."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -298,7 +298,7 @@
         "kind": "replaced",
         "milestone": "1i-spine",
         "replacement": "src/dashboard/surfaces/log-panel.tsx",
-        "differencesAccepted": "Run detail is an INLINE panel in the main column rather than a modal (doc 13 s3.3), with run identity in src/dashboard/surfaces/run-identity.tsx; the modal shape is reserved for run START (run-start.tsx, run-start-kit.tsx). SharePointDownloadButton and the OnBase form-type picker are workflow affordances rather than shell, so they land with legacy-workflow-sharepoint-download and legacy-workflow-onbase."
+        "differencesAccepted": "Run detail is an INLINE panel in the main column rather than a modal (ref frontend-backend-integration s3.3), with run identity in src/dashboard/surfaces/run-identity.tsx; the modal shape is reserved for run START (run-start.tsx, run-start-kit.tsx). SharePointDownloadButton and the OnBase form-type picker are workflow affordances rather than shell, so they land with legacy-workflow-sharepoint-download and legacy-workflow-onbase."
       },
       "ownerMilestone": "1i-spine",
       "verificationEvidence": [
@@ -322,7 +322,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "2i-D (D169) landed the read-only Storage section — the bootstrap health summary plus the full byte-re-verified doctor — and the SERVER owns the section list, so a served section this build cannot render says so by name. D169 records editable settings as a DEFERRED COMMAND FAMILY: `settings`/`apply-settings` is in the command union but src/dashboard/surfaces/settings.tsx states outright that nothing there pretends to save. The editable fields, the AI-assist section and the credentials reference panel therefore close with doc 07 s2 row 3's explicit non-workflow capability closure; the operator loses legacy's settings dialog at cutover, so this is a cutover-parity item rather than a workflow-coupled one."
+        "reason": "2i-D (D169) landed the read-only Storage section — the bootstrap health summary plus the full byte-re-verified doctor — and the SERVER owns the section list, so a served section this build cannot render says so by name. D169 records editable settings as a DEFERRED COMMAND FAMILY: `settings`/`apply-settings` is in the command union but src/dashboard/surfaces/settings.tsx states outright that nothing there pretends to save. The editable fields, the AI-assist section and the credentials reference panel therefore close with roadmap §Phases at a glance row 3's explicit non-workflow capability closure; the operator loses legacy's settings dialog at cutover, so this is a cutover-parity item rather than a workflow-coupled one."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -417,7 +417,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "2i-G (D176/D177) landed the READ-ONLY Workflow Explorer and the UI-catalog surface, both read-only STRUCTURALLY — no command endpoint, no command client, no non-GET request. Doc 12 s5.3's Phase B is DEFERRED OUT OF PHASE 2 by D186 on D79a's own argument: an editor exists to avoid a code change per tweak across MANY workflows, and this tree has one production workflow plus a one-node transaction proof, so building it now would fix its closed policy union against a sample of one. D186 names the trigger — the SECOND production workflow whose presentation, notification preference or allowlisted policy value an operator wants to change without a code change — and reassigns the criterion to the migration that first needs it, which is this milestone."
+        "reason": "2i-G (D176/D177) landed the READ-ONLY Workflow Explorer and the UI-catalog surface, both read-only STRUCTURALLY — no command endpoint, no command client, no non-GET request. Ref operator-trust s5.3's Phase B is DEFERRED OUT OF PHASE 2 by D186 on D79a's own argument: an editor exists to avoid a code change per tweak across MANY workflows, and this tree has one production workflow plus a one-node transaction proof, so building it now would fix its closed policy union against a sample of one. D186 names the trigger — the SECOND production workflow whose presentation, notification preference or allowlisted policy value an operator wants to change without a code change — and reassigns the criterion to the migration that first needs it, which is this milestone."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -439,7 +439,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No operator xlsx export exists. src/infra/artifacts/xlsx-retention-sink.ts is a stable-keyed DURABILITY sink whose four-column layout is deliberately not a display layout, and D164 leaves it NOT composed in production because no descriptor declares a projection yet. Doc 07 s3.6 requires behavioural CLI fixtures and help output for the export family before cutover."
+        "reason": "No operator xlsx export exists. src/infra/artifacts/xlsx-retention-sink.ts is a stable-keyed DURABILITY sink whose four-column layout is deliberately not a display layout, and D164 leaves it NOT composed in production because no descriptor declares a projection yet. Doc 03c §Non-workflow capability closure inventory requires behavioural CLI fixtures and help output for the export family before cutover."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -481,7 +481,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No generic spreadsheet exporter exists. read-excel-file is used for INGEST only (src/stores/common/spreadsheet-grid.ts, src/stores/extraction/tasks/extract-spreadsheet.ts) and write-excel-file only inside the uncomposed retention sink. Doc 07 s3.6 requires behavioural CLI fixtures and help output for the export family before cutover."
+        "reason": "No generic spreadsheet exporter exists. read-excel-file is used for INGEST only (src/stores/common/spreadsheet-grid.ts, src/stores/extraction/tasks/extract-spreadsheet.ts) and write-excel-file only inside the uncomposed retention sink. Doc 03c §Non-workflow capability closure inventory requires behavioural CLI fixtures and help output for the export family before cutover."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -502,7 +502,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "POST /api/v1/runs/:runId/advisory serves failure triage (D178) and the bootstrap reports ai-advisory availability for THIS process. `sanity`, `selector` and `summarize` have no producer: D178 records all three as remaining without a producer and without a surface arm, and AdvisorySurfaceIdSchema is a closed two-value enum, so each is a declared schema change plus a redaction declaration rather than wiring. Doc 07 s3.6 calls these adapters OPTIONAL with the deterministic paths primary, so closure here is a build-or-retire decision at the plan's explicit non-workflow capability closure."
+        "reason": "POST /api/v1/runs/:runId/advisory serves failure triage (D178) and the bootstrap reports ai-advisory availability for THIS process. `sanity`, `selector` and `summarize` have no producer: D178 records all three as remaining without a producer and without a surface arm, and AdvisorySurfaceIdSchema is a closed two-value enum, so each is a declared schema change plus a redaction declaration rather than wiring. Doc 03c §Non-workflow capability closure inventory calls these adapters OPTIONAL with the deterministic paths primary, so closure here is a build-or-retire decision at the plan's explicit non-workflow capability closure."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -709,7 +709,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No oath-upload endpoints exist. Doc 07 s3.6 absorbs oath-upload's special routes into the descriptor start surface and the standard commands at that workflow's migration, which is order 7 (see legacy-workflow-oath-upload)."
+        "reason": "No oath-upload endpoints exist. Doc 03c §Non-workflow capability closure inventory absorbs oath-upload's special routes into the descriptor start surface and the standard commands at that workflow's migration, which is order 7 (see legacy-workflow-oath-upload)."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -729,7 +729,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "src/server/ocr/compose.ts serves the ONE extraction gate through `cli ocr` (D151/D158) but is not routed: there are no /api/v1/ocr/* endpoints. Doc 07 s3.6 puts the OCR review/approve/retry/research/discard routes at orders 3-4, native to the OCR workflow rather than ported as routes."
+        "reason": "src/server/ocr/compose.ts serves the ONE extraction gate through `cli ocr` (D151/D158) but is not routed: there are no /api/v1/ocr/* endpoints. Doc 03c §Non-workflow capability closure inventory puts the OCR review/approve/retry/research/discard routes at orders 3-4, native to the OCR workflow rather than ported as routes."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -840,7 +840,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "GET /api/v1/bootstrap serves `settingsSections` (storage only) and GET /api/v1/storage/doctor serves the read-only doctor. The write path exists in the command union as `settings`/`apply-settings` but no surface issues it, and there is no delete or recover equivalent — D169's deferred-command-family record, from the server side. Closes with legacy-dashboard-settings under doc 07 s2 row 3's non-workflow capability closure."
+        "reason": "GET /api/v1/bootstrap serves `settingsSections` (storage only) and GET /api/v1/storage/doctor serves the read-only doctor. The write path exists in the command union as `settings`/`apply-settings` but no surface issues it, and there is no delete or recover equivalent — D169's deferred-command-family record, from the server side. Closes with legacy-dashboard-settings under roadmap §Phases at a glance row 3's non-workflow capability closure."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -862,7 +862,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No sharepoint endpoints exist. Doc 07 s3.6 absorbs the workflow-special routes into the descriptor start surface and the standard commands at that workflow's migration, which is order 2 (see legacy-workflow-sharepoint-download)."
+        "reason": "No sharepoint endpoints exist. Doc 03c §Non-workflow capability closure inventory absorbs the workflow-special routes into the descriptor start surface and the standard commands at that workflow's migration, which is order 2 (see legacy-workflow-sharepoint-download)."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -882,7 +882,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "The production BFF serves NO frontend bytes: src/server/dashboard/http-server.ts has no static handler, api.ts 404s everything unrouted through app.notFound, and the only dist/dashboard static servers in the tree are test-only (tests/parity/helpers/). This is more than a convenience gap — api.ts allow-lists /capture.html for the phone host gate, but nothing in production serves it, so the phone capture page has NO delivery path from the BFF. Serving the built bundle is base-integration work, which was 2j's own scope; 2j closed (D181-D186) without it, so it moves to doc 07 s2 row 3's explicit non-workflow capability closure. It is a HARD cutover blocker, not a nicety: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own frontend has no operator surface at all."
+        "reason": "The production BFF serves NO frontend bytes: src/server/dashboard/http-server.ts has no static handler, api.ts 404s everything unrouted through app.notFound, and the only dist/dashboard static servers in the tree are test-only (tests/parity/helpers/). This is more than a convenience gap — api.ts allow-lists /capture.html for the phone host gate, but nothing in production serves it, so the phone capture page has NO delivery path from the BFF. Serving the built bundle is base-integration work, which was 2j's own scope; 2j closed (D181-D186) without it, so it moves to roadmap §Phases at a glance row 3's explicit non-workflow capability closure. It is a HARD cutover blocker, not a nicety: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own frontend has no operator surface at all."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -929,7 +929,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "GET /api/v1/explorer serves the read-only projection (D176) and api.ts records that Phase A has no draft, no apply and no compile. The POST/DELETE design half is doc 12 s5.3/s5.4's Phase B, DEFERRED OUT OF PHASE 2 by D186 and reassigned to the migration that first needs it. Legacy's /api/data-bank half belongs to legacy-tool-workflow-design-build-data-bank."
+        "reason": "GET /api/v1/explorer serves the read-only projection (D176) and api.ts records that Phase A has no draft, no apply and no compile. The POST/DELETE design half is ref operator-trust s5.3/s5.4's Phase B, DEFERRED OUT OF PHASE 2 by D186 and reassigned to the migration that first needs it. Legacy's /api/data-bank half belongs to legacy-tool-workflow-design-build-data-bank."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -950,7 +950,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Presentation facts are baked into GET /api/v1/bootstrap (workflowCategories) and GET /api/v1/explorer, but the presentation OVERRIDE family — read, preview, write and delete against a strict versioned atomic file — is doc 12 s5.4's apply protocol, DEFERRED OUT OF PHASE 2 by D186 and reassigned to the migration that first needs it. D186 leaves the protocol itself unchanged: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief for everything else."
+        "reason": "Presentation facts are baked into GET /api/v1/bootstrap (workflowCategories) and GET /api/v1/explorer, but the presentation OVERRIDE family — read, preview, write and delete against a strict versioned atomic file — is ref operator-trust s5.4's apply protocol, DEFERRED OUT OF PHASE 2 by D186 and reassigned to the migration that first needs it. D186 leaves the protocol itself unchanged: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief for everything else."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1027,7 +1027,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "2i-G (D178) landed the zero-authority advisory edge — per-leaf declared redaction, the answer schema travelling with the question, typed exhaustion, and a durable footprint that is only the D112 admission row — with exactly TWO declared surfaces: failure-triage and contact-normalization. Legacy's run summary, record sanity check and selector suggestion have no producer and no surface arm (D178), and AdvisorySurfaceIdSchema is closed. Doc 07 s3.6 calls these adapters OPTIONAL with deterministic explain/rules/catalog primary, so this closes as a build-or-retire decision at non-workflow capability closure."
+        "reason": "2i-G (D178) landed the zero-authority advisory edge — per-leaf declared redaction, the answer schema travelling with the question, typed exhaustion, and a durable footprint that is only the D112 admission row — with exactly TWO declared surfaces: failure-triage and contact-normalization. Legacy's run summary, record sanity check and selector suggestion have no producer and no surface arm (D178), and AdvisorySurfaceIdSchema is closed. Doc 03c §Non-workflow capability closure inventory calls these adapters OPTIONAL with deterministic explain/rules/catalog primary, so this closes as a build-or-retire decision at non-workflow capability closure."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1051,7 +1051,7 @@
         "kind": "replaced",
         "milestone": "2h",
         "replacement": "src/domain/matching/roster-match.ts",
-        "differencesAccepted": "Legacy's matching service carried hardcoded header matchers beside its identity comparison. The rebuild's identity matching is pure Clock-free domain logic (levenshtein, name-match, match-confidence, roster-match) over the canonical field registry, header discovery is owned by intake (src/domain/intake/header-discovery.ts) with generic duplicate-safe column mapping, and the roster read sits behind a store contract (src/stores/roster/tasks/match-spreadsheet.ts). Doc 07 s3.6's 'no hardcoded header matcher survives' therefore holds structurally; each real consumer closes during orders 3-9."
+        "differencesAccepted": "Legacy's matching service carried hardcoded header matchers beside its identity comparison. The rebuild's identity matching is pure Clock-free domain logic (levenshtein, name-match, match-confidence, roster-match) over the canonical field registry, header discovery is owned by intake (src/domain/intake/header-discovery.ts) with generic duplicate-safe column mapping, and the roster read sits behind a store contract (src/stores/roster/tasks/match-spreadsheet.ts). Doc 03c §Non-workflow capability closure inventory's 'no hardcoded header matcher survives' therefore holds structurally; each real consumer closes during orders 3-9."
       },
       "ownerMilestone": "2h",
       "verificationEvidence": [
@@ -1133,7 +1133,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "1b did not build a schema-export codegen and nothing in the rebuild emits schemas to disk: the only JSON-Schema projection is in-process (z.toJSONSchema, consumed by the advisory instruction) and is never written. Doc 07 s3.6 requires the codegen family to carry behavioural CLI fixtures and help output before cutover, so this moves to the plan's explicit non-workflow capability closure rather than sitting on a closed Phase-1 milestone."
+        "reason": "1b did not build a schema-export codegen and nothing in the rebuild emits schemas to disk: the only JSON-Schema projection is in-process (z.toJSONSchema, consumed by the advisory instruction) and is never written. Doc 03c §Non-workflow capability closure inventory requires the codegen family to carry behavioural CLI fixtures and help output before cutover, so this moves to the plan's explicit non-workflow capability closure rather than sitting on a closed Phase-1 milestone."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1154,7 +1154,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "A NAMED supported diagnostic in legacy — src/scripts/CLAUDE.md documents map/test/explore as the selector-discovery and isolation path — so doc 07 s3.6's 'port only if a named supported diagnostic remains' applies rather than retirement. The rebuild covers selector discovery with `npm run selector:search` plus the pre-authorized playwright-cli loop, and login with scripts/live-browser-login-smoke.ts, but the Kronos timecard isolation run has no counterpart. Old Kronos closes at order 2 and New Kronos at order 8."
+        "reason": "A NAMED supported diagnostic in legacy — src/scripts/CLAUDE.md documents map/test/explore as the selector-discovery and isolation path — so doc 03c §Non-workflow capability closure inventory's 'port only if a named supported diagnostic remains' applies rather than retirement. The rebuild covers selector discovery with `npm run selector:search` plus the pre-authorized playwright-cli loop, and login with scripts/live-browser-login-smoke.ts, but the Kronos timecard isolation run has no counterpart. Old Kronos closes at order 2 and New Kronos at order 8."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1200,7 +1200,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "There is no `storage clean`. The retention machinery exists — createDiagnosticRetentionSweep in src/services/trust/diagnostic-retention.ts, plus the bundle purge in the authority database, which deliberately leaves content-addressed bytes alone and reports unreferenced artifact ids instead of deleting them — but NO command invokes it and it is referenced only from tests. Doc 07 s3.6 requires behavioural CLI fixtures and help output for the maintenance family before cutover."
+        "reason": "There is no `storage clean`. The retention machinery exists — createDiagnosticRetentionSweep in src/services/trust/diagnostic-retention.ts, plus the bundle purge in the authority database, which deliberately leaves content-addressed bytes alone and reports unreferenced artifact ids instead of deleting them — but NO command invokes it and it is referenced only from tests. Doc 03c §Non-workflow capability closure inventory requires behavioural CLI fixtures and help output for the maintenance family before cutover."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1221,7 +1221,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No VACUUM or compaction path exists anywhere in src/infra/sqlite/; `storage doctor` reports pending durable work and backup health but never compacts. Doc 07 s3.6 requires behavioural CLI fixtures and help output for the maintenance family before cutover."
+        "reason": "No VACUUM or compaction path exists anywhere in src/infra/sqlite/; `storage doctor` reports pending durable work and backup health but never compacts. Doc 03c §Non-workflow capability closure inventory requires behavioural CLI fixtures and help output for the maintenance family before cutover."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1271,7 +1271,7 @@
           "src/domain/separations/identity-approval.ts",
           "src/domain/trust/advisory.ts"
         ],
-        "reason": "Operator ruling 2026-08-18 (doc 12 §4.4): no AI feature — D192's deferral condition ('renders beside the order-8 ALWAYS-GATE identity approval') was met DETERMINISTICALLY by the doc 09 §14.2 gate packet's server-computed comparisons array, which puts the disconfirming Kuali-beside-UCPath evidence in exactly the slot the AI prose was reserved for. The deterministic comparison IS the sanity check. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is ever added. Reopening requires a fresh decision, not a build."
+        "reason": "Operator ruling 2026-08-18 (ref operator-trust §4.4): no AI feature — D192's deferral condition ('renders beside the order-8 ALWAYS-GATE identity approval') was met DETERMINISTICALLY by the ref write-safety §14.2 gate packet's server-computed comparisons array, which puts the disconfirming Kuali-beside-UCPath evidence in exactly the slot the AI prose was reserved for. The deterministic comparison IS the sanity check. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is ever added. Reopening requires a fresh decision, not a build."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1319,7 +1319,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No first-run setup script and no `npm run setup` exists; a fresh checkout is configured by copying .env.example and letting src/domain/config/resolve.ts apply env > settings.json > default. Doc 07 s3.6 groups setup with the CLI/maintenance family that needs behavioural fixtures and help output before cutover."
+        "reason": "No first-run setup script and no `npm run setup` exists; a fresh checkout is configured by copying .env.example and letting src/domain/config/resolve.ts apply env > settings.json > default. Doc 03c §Non-workflow capability closure inventory groups setup with the CLI/maintenance family that needs behavioural fixtures and help output before cutover."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1395,7 +1395,7 @@
         "kind": "replaced",
         "milestone": "1d",
         "replacement": "scripts/generate-ui-catalog.ts",
-        "differencesAccepted": "The legacy tool scraped TypeScript property paths out of src/systems/<sys>/selectors.ts by AST and emitted SELECTORS.md. The rebuild generates generated/ui-catalog.json plus per-system UI-CATALOG.md from the server-only semantic registry, so catalog identity is a stable semantic id rather than a source property path (doc 12 s1.1/s1.3) and private locator/state/read recipes are omitted."
+        "differencesAccepted": "The legacy tool scraped TypeScript property paths out of src/systems/<sys>/selectors.ts by AST and emitted SELECTORS.md. The rebuild generates generated/ui-catalog.json plus per-system UI-CATALOG.md from the server-only semantic registry, so catalog identity is a stable semantic id rather than a source property path (ref operator-trust s1.1/s1.3) and private locator/state/read recipes are omitted."
       },
       "ownerMilestone": "1d",
       "verificationEvidence": [
@@ -1464,7 +1464,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "No workflow-design data-bank codegen exists; the two codegen scripts in the tree are scripts/generate-build-manifest.ts and scripts/generate-ui-catalog.ts. The data bank fed legacy's workflow EDITOR, so it cannot close ahead of doc 12 s5.3's Phase B, which D186 deferred out of Phase 2 and reassigned to the migration that first needs it."
+        "reason": "No workflow-design data-bank codegen exists; the two codegen scripts in the tree are scripts/generate-build-manifest.ts and scripts/generate-ui-catalog.ts. The data bank fed legacy's workflow EDITOR, so it cannot close ahead of ref operator-trust s5.3's Phase B, which D186 deferred out of Phase 2 and reassigned to the migration that first needs it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1485,7 +1485,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 2 (crm-doc-download): single-system read/download that stands up the crm store. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 2 (crm-doc-download): single-system read/download that stands up the crm store. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1505,7 +1505,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 4 (emergency-contact): OCR fan-out plus a bounded UCPath enter/fill. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 4 (emergency-contact): OCR fan-out plus a bounded UCPath enter/fill. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1525,7 +1525,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 5 (i9-check): UCPath read plus the stable-keyed outbox and serialized workbook projector. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 5 (i9-check): UCPath read plus the stable-keyed outbox and serialized workbook projector. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1545,7 +1545,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 1 (i9-lookup): the signer lookup, a pure UCPath read. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 1 (i9-lookup): the signer lookup, a pure UCPath read. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1565,7 +1565,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 6 (kronos-pay-rule): first workflow-specific production commit. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 6 (kronos-pay-rule): first workflow-specific production commit. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1585,7 +1585,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 4 (oath-signature): OCR fan-out plus a bounded UCPath enter/fill. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 4 (oath-signature): OCR fan-out plus a bounded UCPath enter/fill. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1605,7 +1605,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 7 (oath-upload): write-heavy ServiceNow receipt plus the born-at-upload fence. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 7 (oath-upload): write-heavy ServiceNow receipt plus the born-at-upload fence. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1625,7 +1625,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 3 (ocr pipeline): migrates the pipeline workflow on top of the 2h service stores. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 3 (ocr pipeline): migrates the pipeline workflow on top of the 2h service stores. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1645,7 +1645,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 2 (old-kronos-reports): single-system read that stands up the old-kronos store. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 2 (old-kronos-reports): single-system read that stands up the old-kronos store. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1665,7 +1665,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 7 (onbase): write-heavy OnBase upload, gated on resolving OQ2. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 7 (onbase): write-heavy OnBase upload, gated on resolving OQ2. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1685,7 +1685,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 9 (onboarding): last and highest-stakes, the hire probe plus roster ingest. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 9 (onboarding): last and highest-stakes, the hire probe plus roster ingest. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1705,7 +1705,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Doc 07 s3.3 order 0 — the Phase-1 spine proof — is AS-BUILT and ran LIVE (D74): src/workflows/person-lookup/ terminalized `done` at attempt 2 against real UCPath and CRM, run 4ebf7275-0158-49af-a78f-1f37948efb27, trace pl-000619-4ebf. Order 1 is NOT built: the Search and Match modes that prove one descriptor can carry two distinct system surfaces have no counterpart for legacy's crm-search.ts, match.ts and outcome.ts, so the legacy directory is not closed."
+        "reason": "Doc 03c §Recommended migration order order 0 — the Phase-1 spine proof — is AS-BUILT and ran LIVE (D74): src/workflows/person-lookup/ terminalized `done` at attempt 2 against real UCPath and CRM, run 4ebf7275-0158-49af-a78f-1f37948efb27, trace pl-000619-4ebf. Order 1 is NOT built: the Search and Match modes that prove one descriptor can carry two distinct system surfaces have no counterpart for legacy's crm-search.ts, match.ts and outcome.ts, so the legacy directory is not closed."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1728,7 +1728,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 8 (separations): the deepest write-safety proof, with the identity-approval gate. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 8 (separations): the deepest write-safety proof, with the identity-approval gate. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1748,7 +1748,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 2 (sharepoint-download): single-system download that stands up the sharepoint store. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 2 (sharepoint-download): single-system download that stands up the sharepoint store. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [
@@ -1768,7 +1768,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "Not migrated. Doc 07 s3.3 places it at order 6 (work-study): first workflow-specific production commit. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
+        "reason": "Not migrated. Doc 03c §Recommended migration order places it at order 6 (work-study): first workflow-specific production commit. The legacy workflow stays production-authoritative until the single all-at-once cutover (D89/D93), and nothing in this inventory authorizes deleting it."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [

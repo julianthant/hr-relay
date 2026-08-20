@@ -7,7 +7,7 @@
  * Status Bar pill, the rail and every other consumer cannot disagree about
  * what a status is.
  *
- * NEW here relative to the demo: the fixed wire→ds mapping (doc 13 §0.4). The
+ * NEW here relative to the demo: the fixed wire→ds mapping (ref frontend-backend-integration §0.4). The
  * wire's closed `QueueStatus` enum is the server's vocabulary; `DsStatus` is
  * the approved visual vocabulary; `dsStatusOf` / `outcomeDsStatusOf` are the
  * ONE place the two meet. `partial` renders with the Done-with-warnings

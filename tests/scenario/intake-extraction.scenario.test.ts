@@ -1,5 +1,5 @@
 /**
- * Executable scenarios for `extraction/extract-spreadsheet` (doc 06 §3).
+ * Executable scenarios for `extraction/extract-spreadsheet` (ref data-intake-and-edit-data §3).
  *
  * These run the REAL task implementation against real bytes — a real `.xlsx`
  * built by the same library that reads it, and real CSV text — through a
@@ -11,7 +11,7 @@
  * - `duplicate-headers` — two identically spelled columns stay distinct.
  * - `unreadable` — bytes that are not a spreadsheet fail loud.
  *
- * The `no-header` case is the one doc 06 §7 vector #9 is about: a file with
+ * The `no-header` case is the one ref data-intake-and-edit-data §7 vector #9 is about: a file with
  * zero recognizable headings must still reach header selection and mapping.
  */
 import { Readable } from "node:stream";

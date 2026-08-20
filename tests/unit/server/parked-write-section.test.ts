@@ -1,5 +1,5 @@
 /**
- * The parked-write run-detail section (doc 09 §4.1, doc 13 §3.3/§8.5).
+ * The parked-write run-detail section (ref write-safety §4.1, ref frontend-backend-integration §3.3/§8.5).
  *
  * A `parked-write` run is the one lifecycle the kernel refuses generic retry
  * for BY NAME, so until this section existed the operator's only rendering of
@@ -158,7 +158,7 @@ function parkedSection(w: DashboardWorld, writeContracts?: RunDetailWriteContrac
   return response.payload;
 }
 
-describe("the parked-write run-detail section (doc 09 §4.1)", () => {
+describe("the parked-write run-detail section (ref write-safety §4.1)", () => {
   it("advertises and serves the section with the durable intent's exact facts", () => {
     const w = world();
     seed(w);

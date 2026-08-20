@@ -1,8 +1,8 @@
 /**
- * `ucpath/match-pending-terminations` — doc 09 §5's **second probe kind**: the
+ * `ucpath/match-pending-terminations` — ref write-safety §5's **second probe kind**: the
  * DATE-AGNOSTIC one.
  *
- * Doc 09 §5 requires both, and they are genuinely different questions asked of
+ * Ref write-safety §5 requires both, and they are genuinely different questions asked of
  * the same page:
  *
  * | Probe | Question | Keyed by |

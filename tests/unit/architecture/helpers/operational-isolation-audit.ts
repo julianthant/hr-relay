@@ -4,7 +4,7 @@ import ts from "typescript";
 
 /**
  * Operational isolation — the half of D88 that a repository boundary does NOT
- * hold for you (D93, doc 10 §3.13).
+ * hold for you (D93, ref guards-and-tests §3.13).
  *
  * The original `runtime-isolation` guard was two things bolted together: a
  * whole-tree AST scan proving neither side could reach the other through a

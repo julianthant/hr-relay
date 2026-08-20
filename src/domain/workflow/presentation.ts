@@ -1,12 +1,12 @@
 /**
  * The plain-data presentation/policy vocabularies a descriptor carries.
  *
- * Doc 03 §3.2 contributes the semantics; doc 02 §1.1 owns the descriptor field
+ * Ref dashboard-surfaces §3.2 contributes the semantics; ref workflow-model §1.1 owns the descriptor field
  * that holds them. Every one of these is a CLOSED union, never a free string:
  * that is what turns each of today's hand-maintained parallel registries
  * (`WORKFLOW_ICONS`, `INSTANCE_LABELS`, `queue-row-status-index.ts`, the step
  * label switches) into a projection of the descriptor set with a coverage guard
- * instead of a list that fails at runtime (doc 02 §1.3).
+ * instead of a list that fails at runtime (ref workflow-model §1.3).
  */
 import { z } from "zod";
 import { ContractFieldPathSchema } from "../contracts/base.js";
@@ -31,7 +31,7 @@ export type WorkflowCategory = z.infer<typeof WorkflowCategorySchema>;
 
 /**
  * The workflow's SHORT CODE — the operator-facing handle that fits in a column
- * (doc 02 §1.1, D242).
+ * (ref workflow-model §1.1, D242).
  *
  * It has exactly ONE declaration site (the descriptor) and two consumers, and
  * that is the whole point of this schema existing in `presentation.ts` rather
@@ -73,7 +73,7 @@ export type WorkflowCode = z.infer<typeof WorkflowCodeSchema>;
 export const InputSubjectSchema = z.enum(["eid", "name", "email", "document", "none"]);
 export type InputSubject = z.infer<typeof InputSubjectSchema>;
 
-/** Doc 03's queue row model. `by-input` defers the shape to a per-run resolution. */
+/** Ref dashboard-surfaces's queue row model. `by-input` defers the shape to a per-run resolution. */
 export const RowShapeSchema = z.enum(["single", "preview", "operation", "operation-member"]);
 export type RowShape = z.infer<typeof RowShapeSchema>;
 
@@ -86,7 +86,7 @@ export type SurfaceShape = z.infer<typeof SurfaceShapeSchema>;
 /**
  * Verdict mappings replace the legacy `statusExtensions` function registry:
  * person-lookup's `notFound` becomes plain data over `span.ended.verdict`, and
- * `SpanEnded` may emit only this descriptor-derived union (doc 03 §3.2).
+ * `SpanEnded` may emit only this descriptor-derived union (ref dashboard-surfaces §3.2).
  */
 /**
  * Deliberately unbranded: a verdict key is authored as a literal in the
@@ -109,7 +109,7 @@ export const VerdictDefinitionSchema = z.strictObject({
 });
 export type VerdictDefinition = z.infer<typeof VerdictDefinitionSchema>;
 
-/* ── command / action policy (doc 03 §2.4) ───────────────────────────────── */
+/* ── command / action policy (ref dashboard-surfaces §2.4) ───────────────────────────────── */
 
 export const EnqueuePolicySchema = z.enum(["reject-active", "supersede-active", "allow-parallel"]);
 export type EnqueuePolicy = z.infer<typeof EnqueuePolicySchema>;
@@ -150,7 +150,7 @@ export const STANDARD_WORKFLOW_ACTIONS: WorkflowActionPolicy = Object.freeze(
 );
 
 /**
- * Doc 06 §6.2 (D166): the descriptor names EXACTLY which node+field paths an
+ * Ref data-intake-and-edit-data §6.2 (D166): the descriptor names EXACTLY which node+field paths an
  * operator may correct. The default is read-only — `true` keeps the Data
  * section visible with ZERO editable fields, never "all checkpoint JSON".
  *
@@ -171,7 +171,7 @@ export const EditDataPolicySchema = z.union([
 export const WorkflowCapabilitiesSchema = z.strictObject({
   /** A Review panel exists for this workflow's rows. */
   review: z.boolean(),
-  /** Checkpoint fields may be corrected from the Context rail (doc 06 §6). */
+  /** Checkpoint fields may be corrected from the Context rail (ref data-intake-and-edit-data §6). */
   editData: EditDataPolicySchema,
   /** How this workflow's children render when it delegates. */
   delegationDisplay: z.enum(["inline", "linked", "hidden-unless-failed"]).optional(),
@@ -181,7 +181,7 @@ export type WorkflowCapabilities = z.infer<typeof WorkflowCapabilitiesSchema>;
 /* ── projections over node outputs ───────────────────────────────────────── */
 
 /**
- * The declared patch set: doc 03 validates every `SpanPatched` key against this
+ * The declared patch set: ref dashboard-surfaces validates every `SpanPatched` key against this
  * list, and the coverage guard proves every `fieldPath` exists in the producing
  * node's exact output schema.
  */
@@ -197,7 +197,7 @@ export const DetailProjectionSpecRuntimeSchema = z.strictObject({
 export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRuntimeSchema>;
 
 /**
- * WHERE this workflow's own run resolves the SUBJECT'S DISPLAY NAME (doc 03
+ * WHERE this workflow's own run resolves the SUBJECT'S DISPLAY NAME (ref dashboard-surfaces
  * §1.2 — the queue row title).
  *
  * `inputSubject` above says what KIND of thing a run is about (an eid, a name,
@@ -229,7 +229,7 @@ export const SubjectProjectionSpecRuntimeSchema = z.strictObject({
 });
 export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecRuntimeSchema>;
 
-/* ── timeline categories (doc 03, D225) ──────────────────────────────────── */
+/* ── timeline categories (ref dashboard-surfaces, D225) ──────────────────────────────────── */
 
 /**
  * D225 (operator ruling, 2026-08-18): the run-detail timeline is CATEGORICAL.
@@ -265,7 +265,7 @@ export type TimelineCategoryProjection = z.infer<typeof TimelineCategoryProjecti
  *
  * The explorer's ⓘ opens with the descriptor's sentence about the workflow and
  * about each node. That sentence is DATA the descriptor authors, not code the
- * surface decompiles (doc 12 §5.9) — which is why it lives here beside the
+ * surface decompiles (ref operator-trust §5.9) — which is why it lives here beside the
  * timeline rather than being inferred from a label, a contract title, or a node
  * id. A one-sentence purpose says why the step exists; the label says what it
  * is called, and the two are not the same fact.
@@ -294,11 +294,11 @@ export const DurableArtifactProjectionSpecRuntimeSchema = z.strictObject({
 export type DurableArtifactProjectionSpecRuntime =
   z.infer<typeof DurableArtifactProjectionSpecRuntimeSchema>;
 
-/* ── derived projections doc 03 consumes ─────────────────────────────────── */
+/* ── derived projections ref dashboard-surfaces consumes ─────────────────────────────────── */
 
 export const StepProjectionSchema = z.strictObject({
   /**
-   * The span key doc 03 validates `SpanEnded.name` against. A transaction owns
+   * The span key ref dashboard-surfaces validates `SpanEnded.name` against. A transaction owns
    * two child entries (`<node>/prepare`, `<node>/commit`) under one node id, so
    * the key — not the node id — is what is unique.
    */

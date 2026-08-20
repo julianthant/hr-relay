@@ -1,5 +1,5 @@
 /**
- * Doc 06 §2 — the intake projection, the column-mapping identity scheme, the
+ * Ref data-intake-and-edit-data §2 — the intake projection, the column-mapping identity scheme, the
  * fail-closed reuse resolver, and the suggestion scorer.
  *
  * The cases that matter are the ones where a permissive implementation would
@@ -57,7 +57,7 @@ function mappingFor(detected: readonly DetectedColumn[], bindings: readonly [str
   });
 }
 
-describe("doc 06 §1 intake projection", () => {
+describe("ref data-intake-and-edit-data §1 intake projection", () => {
   it("binds targets that reuse the canonical schema object, including optional ones", () => {
     assert.deepEqual(
       workStudyIntake.targets.map((target) => [target.targetFieldId, target.canonicalFieldId, target.required]),
@@ -69,7 +69,7 @@ describe("doc 06 §1 intake projection", () => {
   it("refuses a structurally identical schema COPY", () => {
     // The dangerous case: this regex is byte-identical to the canonical one
     // today. Accepting it means the two can drift apart in one commit with
-    // nothing to notice — doc 06 §7 vector #6.
+    // nothing to notice — ref data-intake-and-edit-data §7 vector #6.
     const CopiedInput = z.strictObject({ emplId: z.string().regex(/^10\d{6}$/) });
     assert.throws(
       () => defineIntakeProjection(CopiedInput, { emplId: CANONICAL_FIELDS.eid }),
@@ -201,7 +201,7 @@ describe("doc 06 §1 intake projection", () => {
   });
 });
 
-describe("doc 06 §2.1/§2.3 column identity and layout fingerprint", () => {
+describe("ref data-intake-and-edit-data §2.1/§2.3 column identity and layout fingerprint", () => {
   it("gives two identically-spelled columns distinct ids", () => {
     const detected = detectColumns(["Name", "Name", "EID"]);
     assert.notEqual(detected[0].sourceColumnId, detected[1].sourceColumnId);
@@ -233,7 +233,7 @@ describe("doc 06 §2.1/§2.3 column identity and layout fingerprint", () => {
   });
 });
 
-describe("doc 06 §2.3 saved-mapping reuse is fail-closed", () => {
+describe("ref data-intake-and-edit-data §2.3 saved-mapping reuse is fail-closed", () => {
   const detected = detectColumns(
     ["Employee ID#", "Effective Date", "Dept"],
     [["10456712"], ["07/01/2026"], ["Housing Dining Hospitality"]],
@@ -354,7 +354,7 @@ describe("doc 06 §2.3 saved-mapping reuse is fail-closed", () => {
   });
 });
 
-describe("doc 06 §2.5 confirmBinding is the only mint", () => {
+describe("ref data-intake-and-edit-data §2.5 confirmBinding is the only mint", () => {
   const detected = detectColumns(["Employee ID#"], [["10456712"]]);
 
   it("stamps the operator's confirmation instant", () => {
@@ -388,7 +388,7 @@ describe("doc 06 §2.5 confirmBinding is the only mint", () => {
   });
 });
 
-describe("doc 06 §2.5 suggestions propose and cannot bind", () => {
+describe("ref data-intake-and-edit-data §2.5 suggestions propose and cannot bind", () => {
   it("ranks an exact alias top and corroborates it with sample values", () => {
     const detected = detectColumns(
       ["Employee ID#", "Effective Date", "Dept"],

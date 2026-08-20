@@ -10,7 +10,7 @@ contracts it built live in `reference/`.
 <!-- roadmap-status: deferred -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3.5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 - **Service stores** (`extraction`/`normalization`/`ocr`/`roster` contract+impl) — **Phase 2h** (they need 01+11+12)
   so they exist before consumers; the **ocr pipeline workflow** migrates at **order 3** (before its
@@ -20,7 +20,7 @@ _Moved from 07-master-plan §3.5 on 2026-08-20 (3b); this is the as-written reco
   Operator triage/sanity/selector/summary adapters land in 2i against redacted
   structured evidence but stay disabled for authority and cut over after Phase 2 proves the receipt/
   failure surfaces. Provider absence is an explicit advisory-unavailable result.
-- **Column mapping + intake manifest + Edit-Data UI** (doc 06) — land in **Phase 2h/2i** as base
+- **Column mapping + intake manifest + Edit-Data UI** (ref data-intake-and-edit-data) — land in **Phase 2h/2i** as base
   capabilities over synthetic fixtures, even though their first production workflow consumer is
   work-study (order 6). This avoids inventing data/rerun/edit contracts during a high-risk write
   migration. Note **i9-check (order 5) does not exercise operator mapping**—it matches against a
@@ -30,13 +30,13 @@ _Moved from 07-master-plan §3.5 on 2026-08-20 (3b); this is the as-written reco
   in **2i** over synthetic handoffs. Legacy capture remains production-authoritative; rebuild
   capture uses isolated state and hands off only within the rebuild repo. Both switch together at final cutover.
 
-_Moved from 07-master-plan §3 (Phase 0's deferred decisions — logged with the point each resolves at) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 0's deferred decisions — logged with the point each resolves at) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Deferred decisions (logged, resolved at the named point).** OnBase
-`upload-verify` vs `unverifiableByPage` (doc 09 OQ2—before order 7); per-workflow prewrite
+`upload-verify` vs `unverifiableByPage` (ref write-safety OQ2—before order 7); per-workflow prewrite
 probe policy/elapsed budget and pending-termination sweep modeling (09 OQ4/OQ5—each §b questionnaire).
 Canonical EID is now settled as `/^10\d{6}$/` with a legacy-fixture audit; roster-match freshness is
-settled at a 24h base maximum over immutable artifact observation time (doc 06 §1/§4). Checkpoint
+settled at a 24h base maximum over immutable artifact observation time (ref data-intake-and-edit-data §1/§4). Checkpoint
 retention is settled by D14—logical-item deletion only, never JSONL age. Ledger altitude, config
 snapshots, one active item per worker, explicit fresh-session boundaries, and context-exclusive transactions are also settled defaults, not open
 Phase-1 dependencies.

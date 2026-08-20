@@ -1,5 +1,5 @@
 /**
- * The doc 13 §7.1 reference set.
+ * The ref frontend-backend-integration §7.1 reference set.
  *
  * Every ported state, in both themes, at the reference viewports, captured as a
  * screenshot AND its a11y snapshot. The corpus is the deterministic fixture
@@ -50,7 +50,7 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "run-done", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.doneRun } },
   { id: "run-queued", route: { day: FIXTURE_DAY, run: FIXTURE_IDS.queuedRun } },
   /*
-    The parked write (W2, doc 09 §4.1). The corpus has photographed this run's
+    The parked write (W2, ref write-safety §4.1). The corpus has photographed this run's
     `blocked` QUEUE ROW since it was written and had never once opened it — so
     the panel behind the one lifecycle the kernel refuses generic retry for was
     unphotographed while its two typed resolutions sat implemented, tested and
@@ -301,7 +301,7 @@ test.describe("panel dismissed", () => {
 });
 
 /**
- * THE TWO TYPED RESOLUTIONS, OPEN (W2, doc 09 §4.1).
+ * THE TWO TYPED RESOLUTIONS, OPEN (W2, ref write-safety §4.1).
  *
  * The `run-parked-write` reference above photographs the record; the copy that
  * decides a real HR write lives one click further in, in the confirm block the
@@ -373,7 +373,7 @@ test.describe("park resolutions", () => {
 });
 
 /**
- * THE IDENTITY-APPROVAL CEREMONIES, OPEN (doc 09 §14.4/§14.6, D226).
+ * THE IDENTITY-APPROVAL CEREMONIES, OPEN (ref write-safety §14.4/§14.6, D226).
  *
  * `run-open-gate` above photographs the decision CARD. The control that
  * actually authorises a real termination against a named human lives one click
@@ -486,7 +486,7 @@ test.describe("identity gate ceremonies", () => {
     await expect(page.getByRole("dialog").getByRole("alert")).toBeVisible();
     await page.waitForTimeout(300);
     /*
-      A 409 is a VALUE here, not a page error (doc 13 §3.4): the client reports
+      A 409 is a VALUE here, not a page error (ref frontend-backend-integration §3.4): the client reports
       it, the dialog keeps the answer, and Chromium logs the non-2xx response to
       the console because every non-2xx response is logged there.
 
@@ -514,7 +514,7 @@ test.describe("identity gate ceremonies", () => {
 });
 
 /**
- * The two access variants doc 13 §7.1 names. Both are captured at one viewport
+ * The two access variants ref frontend-backend-integration §7.1 names. Both are captured at one viewport
  * and one theme: they are about behavior (where focus goes, whether motion
  * runs), and photographing them six more times would only add pixels to review.
  */

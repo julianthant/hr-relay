@@ -17,11 +17,11 @@ session.
 
 | This doc **references** (owner) |
 |---|
-| Task contract, `SessionNeed`, exclusive driver use, retry policy → **doc 01** |
-| Run state machine, gates/parks, checkpoints, RunEnvelope → **doc 02** |
-| Worker/run/task span wire schema, Session Panel projections, notes → **doc 03** |
-| Command/claim authority, degraded storage mode, notifications → **doc 03** |
-| Semantic UI ids, typed drivers, action evidence, scenarios → **doc 12** |
+| Task contract, `SessionNeed`, exclusive driver use, retry policy → **ref task-contract** |
+| Run state machine, gates/parks, checkpoints, RunEnvelope → **ref workflow-model** |
+| Worker/run/task span wire schema, Session Panel projections, notes → **ref dashboard-surfaces** |
+| Command/claim authority, degraded storage mode, notifications → **ref dashboard-surfaces** |
+| Semantic UI ids, typed drivers, action evidence, scenarios → **ref operator-trust** |
 | OnBase cross-process identity lease → **D15** |
 
 Grounding: today's daemon already has one `state.activeRun` per process. The rebuild keeps that
@@ -29,7 +29,7 @@ understandable ownership model and removes the proposed scheduler inside each pr
 
 ## Phase 1d session seam ratification (2026-08-01)
 
-**D96 replaces the partial shapes in earlier drafts with one imported doc-01 `SessionNeed`:**
+**D96 replaces the partial shapes in earlier drafts with one imported ref task-contract `SessionNeed`:**
 `{system, access:"read"|"transaction", session:"reuse-worker"|"fresh", exclusive?:true,
 acceptDownloads?:true}`. This doc owns worker/session behavior but does not redefine that type.
 Read tasks require read access; prepare/commit tasks require transaction access; mismatches fail at
@@ -115,9 +115,9 @@ would otherwise outlive its own envelope — and the refusal message says exactl
 acquisition signal and runs `#openAndLogin`'s own proven cleanup. A non-cooperative one may still
 land a live session afterwards; that session is poison-closed rather than inherited by the next
 lease as a warm reuse, and a close that cannot be proven leaves the system poisoned so the next
-acquisition refuses by name (§4, doc 05 poison rule).
+acquisition refuses by name (§4, ref execution-and-sessions poison rule).
 
-The `fresh-session-boundary` guard is now ACTIVE against these pieces (doc 10 §5): the boundary
+The `fresh-session-boundary` guard is now ACTIVE against these pieces (ref guards-and-tests §5): the boundary
 close reason exists only in the session-ownership modules, every authored `session:` need is a
 string literal rather than a computed value, repeated `reuse-worker` needs mint no boundary, and
 both an authored `fresh` need and a D116 identity mismatch close with an accepted proof before the
@@ -223,7 +223,7 @@ export async function runWorker(config: WorkerConfig): Promise<void> {
   and browser-session sets.
 - An expired claim is not ordinary requeue authority. Before the claim sweeper can transition an
   interrupted run back to `queued`, it checks the authoritative write-intent set for the run's
-  workflow/item/node. Any unfinished `attempting` intent routes to doc 09 recovery first and keeps
+  workflow/item/node. Any unfinished `attempting` intent routes to ref write-safety recovery first and keeps
   the run unclaimable for normal execution. Only a schema-valid positive recovery completion or a
   schema-valid safe-to-retry/confirmed-absent resolution may release it to the corresponding
   terminal/new-generation path. An unavailable or inconsistent intent lookup parks/refuses; it
@@ -258,7 +258,7 @@ the loop. Three properties make it safe and keep it from becoming a second recov
    write straight back to the executor.
 3. **What no sweep may release is reported, not endured.** A `claimed`/`validating` row holding an
    attempting intent has no legal parked-write edge, so it stays owned and the worker id stays
-   wedged. Startup refuses with that run named and doc 09 §4.1's typed operator resolutions named as
+   wedged. Startup refuses with that run named and ref write-safety §4.1's typed operator resolutions named as
    the way out, instead of letting the first poll throw `already holds active run` with no reason
    attached.
 
@@ -334,7 +334,7 @@ look like one that did.
 
 This ratifies a 2026-08-03 live finding: a UCPath login smoke reported success in ~3s having never
 authenticated, because the recipe matched a host substring on the PUBLIC UCPath portal and the
-neutral reset accepted a signon page. `authentication-proof-not-url` (doc 10) pins the shape.
+neutral reset accepted a signon page. `authentication-proof-not-url` (ref guards-and-tests) pins the shape.
 
 An individual workflow may declare internally proven parallel work, such as OCR provider page
 concurrency. That is workflow-owned behavior with its own tests, not a generic executor capacity
@@ -451,7 +451,7 @@ authenticated context.
 | One system session wedges | That worker's system session | health ladder → close/re-auth or structured failure |
 | Worker crashes | Its one active run | claim-generation recovery; transaction recovery before replay |
 | Retry storm | No head-of-line block | `not_before`; idle workers claim other eligible rows |
-| Authority DB degraded | All mutation stops | doc 03 storage-health gate; dashboard remains diagnostic |
+| Authority DB degraded | All mutation stops | ref dashboard-surfaces storage-health gate; dashboard remains diagnostic |
 
 ---
 

@@ -24,7 +24,7 @@ operator's standing framing is that the mock has to look genuinely polished, bec
 the rebuild plan is written against.
 
 **Binding design rules live in `src/dashboard/components/dev/rebuild-demo/DESIGN.md`** (updated
-through wave 16) and in `docs/rebuild/03-tracker-dashboard.md` §9 (decisions D6–D24). Two that come
+through wave 16) and in `docs/rebuild/reference/dashboard-surfaces.md` §9 (decisions D6–D24). Two that come
 up repeatedly below:
 
 - **D24** — no explanatory prose in the UI; an ⓘ affordance or nothing.

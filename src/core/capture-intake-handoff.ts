@@ -1,5 +1,5 @@
 /**
- * The capture finalize HANDOFF (doc 06 §5.1, D174) — the seam D167 left open.
+ * The capture finalize HANDOFF (ref data-intake-and-edit-data §5.1, D174) — the seam D167 left open.
  *
  * D167 built the durability protocol around this call and deliberately left
  * the destination unwired: "bundle → register → enqueue either succeeds

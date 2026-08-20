@@ -1,5 +1,5 @@
 /**
- * Delegation fan-out planning, replay verification, and joining (doc 02 §3.2).
+ * Delegation fan-out planning, replay verification, and joining (ref workflow-model §3.2).
  *
  * Three invariants this module exists to hold:
  *

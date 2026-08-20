@@ -1,6 +1,6 @@
 # Queue-row findings
 
-Records where a queue-row element the demo draws — or doc 03 §9 ratifies — cannot be powered
+Records where a queue-row element the demo draws — or ref dashboard-surfaces §9 ratifies — cannot be powered
 by what the BFF serves today. Verified 2026-08-14 by running the rebuild dashboard
 (`localhost:5174`, real `separations` runs on day `2026-08-14`) beside the demo
 (`localhost:5173/?view=rebuild-demo`, legacy `hr-automation@1bffbd6`) at 1440×900 and reading
@@ -18,7 +18,7 @@ Shared evidence for every record: `GET /api/v1/dashboard?day=2026-08-14` and
 `QueueBaseFields` in `src/domain/dashboard/projection.ts`.
 
 **Landed 2026-08-14 — four records worked, two deleted.** `liveMessage` on a failed row (D13) and
-the `warnings` count (D22/D126) are SERVED and DRAWN; their records are deleted, and doc 03's
+the `warnings` count (D22/D126) are SERVED and DRAWN; their records are deleted, and ref dashboard-surfaces's
 *Queue-row projection as-built delta* is where the contract now lives. `gateOpenedAt` (D12) and
 `dryRun` (D6) are SERVED and still not drawn — each for a reason that is a design decision rather
 than a wire gap — so both records stay below, rewritten to state exactly what is left and who owns
@@ -28,7 +28,7 @@ neither gap closes by serving another field. *(`dryRun` is now DRAWN — see the
 
 **Landed 2026-08-19, third pass — the ordinal, the class, the links and the outcome.** `runNumber`
 (D230, durable on `RunRecord` behind schema v15), `priority`, `containment`, `linkedRuns[]`,
-`facts[]`, `pipeline[].durationSec`/`executions` and `memberPreview` are SERVED; doc 03's
+`facts[]`, `pipeline[].durationSec`/`executions` and `memberPreview` are SERVED; ref dashboard-surfaces's
 *"The second batch"* as-built delta owns their contracts. The records below are rewritten to state
 only what is LEFT, and four of them are now about a missing PRODUCER rather than a missing field —
 the field was deliberately not added, because a wire arm nothing can populate is the orphan
@@ -37,12 +37,12 @@ the field was deliberately not added, because a wire arm nothing can populate is
 **Landed 2026-08-14, second pass — per-row actions.** The "No per-row action controls" record is
 deleted: `actions[]` is served per row (descriptor policy ∩ kernel preconditions, CAS-bound to
 `rowRevision`, `queue-row-actions.ts`) and `FooterActions`/`RowContextMenu`/confirm-first all draw
-it; doc 03's as-built delta owns the contract. The one remainder is NOT a regression of that
+it; ref dashboard-surfaces's as-built delta owns the contract. The one remainder is NOT a regression of that
 record: no `outcome`-placement descriptor is served because those are navigation-shaped and need
 the linked-run wire fields — that half rides the "No linked-run chip" record below.
 
 **Landed 2026-08-19, fourth pass — the ROW DRAWS IT, and three records are deleted.** The third
-pass above served seven fields and drew none of them; this pass is the consumption half, and doc 03's
+pass above served seven fields and drew none of them; this pass is the consumption half, and ref dashboard-surfaces's
 *"Drawing the second batch"* as-built delta owns where each one renders. Deleted:
 
 - **"Rename has a kernel command and no operator control"** — closed by **D233**. It is not the
@@ -74,7 +74,7 @@ stay open, each against a commit somebody will write.
 
 **Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** OPEN — `linkedRuns[]` is SERVED
 **and DRAWN**; only `reviewRunId` is left and it has NO PRODUCER, blocked on the trigger named below
-(re-verified 2026-08-20: `grep -r reviewRunId src` → 0 hits) · **Owning doc:** doc 03 §9 D6, D10, D13
+(re-verified 2026-08-20: `grep -r reviewRunId src` → 0 hits) · **Owning doc:** ref dashboard-surfaces §9 D6, D10, D13
 
 **Symptom.** Nearly every demo row carries a full-width chip under the title routing to a
 related run — `Oath Upload · running ↗`, `OCR Review · done ↗` — which is how a linked child
@@ -114,7 +114,7 @@ unrelated rows.
 **Recorded:** 2026-08-14 · **Updated:** 2026-08-19 · **Status:** OPEN — `facts[]` is SERVED **and
 DRAWN** in the demo's `FactChipView` shape; only `extractedCount` is left and it has NO PRODUCER,
 blocked on the trigger named below (re-verified 2026-08-20: no `peopleCount`/`extractedCount`
-anywhere in `src/`) · **Owning doc:** doc 03 §9 D7
+anywhere in `src/`) · **Owning doc:** ref dashboard-surfaces §9 D7
 
 **Symptom.** A demo row's chip band carries the run's own so-what — `signed 2:24 PM` on a
 finished oath, `6 people` on a packet still at OCR review (which is D7, ratified: *"a packet
@@ -146,7 +146,7 @@ result leaf.
 
 **Recorded:** 2026-08-14 · **Status:** DISPOSITIONED 2026-08-20 (B8 sweep) — **won't-fix as
 stated; the identifier half is tracked by the member-identity record below** · **Owning doc:**
-doc 03 §1.2
+ref dashboard-surfaces §1.2
 
 **The disposition, and why it needs no new decision.** The record asks for `subtitle` to hold a
 short external identifier, the way the demo's third footer segment does. That is refused on a rule
@@ -227,7 +227,7 @@ wire — and until the first descriptor declares a preset there is nothing for t
 
 **Recorded:** 2026-08-19 · **Status:** OPEN — three deliberate non-servings, each blocked on a
 named producer-trigger below (re-verified 2026-08-20: `memberEid`/`groupNoun`/`rejectedCount` appear
-nowhere in `src/` but in one comment explaining the absence) · **Owning doc:** doc 03 §9, doc 13 §3.2
+nowhere in `src/` but in one comment explaining the absence) · **Owning doc:** ref dashboard-surfaces §9, ref frontend-backend-integration §3.2
 
 Three fields from the wire-hookup ledger's `QueueBaseFields` batch were assessed while serving the
 rest (D230/D231) and deliberately NOT added, because each would be a wire arm nothing in this tree

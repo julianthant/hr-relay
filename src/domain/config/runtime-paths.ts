@@ -1,5 +1,5 @@
 /**
- * The filesystem defaults behind `ConfigSchema.paths` — SERVER ONLY (doc 11 §4,
+ * The filesystem defaults behind `ConfigSchema.paths` — SERVER ONLY (ref clock-config-secrets §4,
  * D115/D116).
  *
  * This module exists because the config CONTRACT is browser-reachable and its

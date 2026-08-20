@@ -1,10 +1,10 @@
 /**
- * The one place a Kuali finalization read-back becomes a doc-09 `ProbeVerdict`.
+ * The one place a Kuali finalization read-back becomes a ref write-safety `ProbeVerdict`.
  *
  * Both the idempotency probe (beat ①) and the completion verifier (beat ⑥) run
  * the SAME reload read-back and the SAME translation, because they are asking
  * the same question at different times — "does this document carry this exact
- * finalization?" Sharing the translation is what makes doc 09 §4's promise
+ * finalization?" Sharing the translation is what makes ref write-safety §4's promise
  * real: a `present` found by recovery parses through the identical schema the
  * normal path used.
  *

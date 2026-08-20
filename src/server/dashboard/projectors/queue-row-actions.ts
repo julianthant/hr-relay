@@ -1,7 +1,7 @@
 /**
- * The per-row action projection (doc 03 §2.4, doc 13 §3.2/§8.5).
+ * The per-row action projection (ref dashboard-surfaces §2.4, ref frontend-backend-integration §3.2/§8.5).
  *
- * Doc 13 §8.5: *interactive run controls require an `ActionDescriptorWire`;
+ * Ref frontend-backend-integration §8.5: *interactive run controls require an `ActionDescriptorWire`;
  * status-key-to-command branches fail.* This module is the run ROW's half of
  * that rule — `run-detail.ts` already projects the two SECTION-level decision
  * sets (`parked-write`, `identity-gate`) and this is the generic arm that was
@@ -64,11 +64,11 @@ export interface QueueRowActionFacts {
   readonly status: QueueStatus;
   /** the CAS target every served command binds to */
   readonly rowRevision: number;
-  /** doc 02 §2's envelope flag — decides whether a re-run can touch a real system */
+  /** ref workflow-model §2's envelope flag — decides whether a re-run can touch a real system */
   readonly dryRun: boolean;
   /** a delegated child; the kernel refuses generic retry for one */
   readonly isChild: boolean;
-  /** the run is parked on a fenced write whose outcome is unknown (doc 09 §4.1) */
+  /** the run is parked on a fenced write whose outcome is unknown (ref write-safety §4.1) */
   readonly parkedWrite: boolean;
   /** delegated members under an operation row; `0` for every other surface */
   readonly memberCount: number;
@@ -88,7 +88,7 @@ export interface QueueRowActionFacts {
   readonly named: boolean;
   /** the workflow's own label, for confirm copy that names what is about to run */
   readonly workflowLabel: string;
-  /** doc 03 §2.4's `has-review-panel` condition input */
+  /** ref dashboard-surfaces §2.4's `has-review-panel` condition input */
   readonly hasReviewPanel: boolean;
 }
 
@@ -106,7 +106,7 @@ type ServedCommand = "retry" | "cancel" | "bump" | "rename";
 const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts) => boolean>> = {
   /*
    * `executeRetry`: rejects a non-terminal run ("only a terminal run can be
-   * retried"), rejects a `parked-write` run by name (doc 09 §4.1's resolutions
+   * retried"), rejects a `parked-write` run by name (ref write-safety §4.1's resolutions
    * are the only exits), and refuses a delegated child ("child retries route
    * through their delegation edge policy").
    *
@@ -141,7 +141,7 @@ const KERNEL_ADMITS: Readonly<Record<ServedCommand, (facts: QueueRowActionFacts)
   rename: (facts) => !facts.isMember,
 };
 
-/** Doc 03 §2.4's closed condition rules, evaluated over projected row state. */
+/** Ref dashboard-surfaces §2.4's closed condition rules, evaluated over projected row state. */
 function conditionHolds(rule: ActionConditionRule, facts: QueueRowActionFacts): boolean {
   switch (rule.requires) {
     case "gate-open": return facts.status === "awaiting-approval";
@@ -170,7 +170,7 @@ function policyEnables(
 }
 
 /**
- * The demo's own footer set, restated as a placement decision (doc 13 §1 — the
+ * The demo's own footer set, restated as a placement decision (ref frontend-backend-integration §1 — the
  * demo is the visual oracle). A queued row's frequent commands are `≫` and `×`;
  * a finished row's is `↺`. Everything served is ALSO at `menu`, which is what
  * makes the right-click the row's full set and the footer a subset of the same

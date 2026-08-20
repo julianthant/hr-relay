@@ -1,8 +1,8 @@
 /**
- * The ONE client, handed to the tree once (doc 13 §2).
+ * The ONE client, handed to the tree once (ref frontend-backend-integration §2).
  *
  * Surfaces never construct a client, a transport, a `fetch`, or a stream —
- * they read this context. Tests (and the dual-adapter parity harness, doc 13
+ * they read this context. Tests (and the dual-adapter parity harness, ref frontend-backend-integration
  * §7.2) swap the whole adapter here by providing a client built against a
  * different base URL, which is why the provider takes a client rather than a
  * URL: the fixture adapter and the real HTTP/SSE adapter differ at exactly one

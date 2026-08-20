@@ -1,12 +1,12 @@
 /**
- * Descriptor assembly — doc 02 §1.1's `WorkflowDescriptor` and the factory that
+ * Descriptor assembly — ref workflow-model §1.1's `WorkflowDescriptor` and the factory that
  * validates one.
  *
  * A descriptor is ONE client-safe declaration per workflow. Every parallel
  * registry the legacy dashboard hand-maintained (icons, instance labels, input
  * and upload panels, step-label switches, the status index, the `:stop`
  * scripts) becomes a projection of this object, so adding a workflow is one
- * module rather than ten synchronized lists (doc 02 §1.3).
+ * module rather than ten synchronized lists (ref workflow-model §1.3).
  *
  * The factory is where "derived, not declared" becomes real. `steps`, `gates`,
  * `systems`, and `requires` are computed from the node tuple — a hand-written
@@ -125,7 +125,7 @@ export interface DetailProjectionSpec<S> {
 
 /**
  * The one leaf at which THIS graph resolves its subject's display name — the
- * declared seam behind doc 03 §1.2's queue-row title. `nodeId` is typed over
+ * declared seam behind ref dashboard-surfaces §1.2's queue-row title. `nodeId` is typed over
  * `keyof S` exactly as a detail's is, so a renamed node is a compile error
  * here; the factory additionally proves the path is OFFERED by that node's
  * output schema (see `SubjectProjectionSpecRuntimeSchema` for why `offers` and
@@ -171,12 +171,12 @@ export interface InputPreset<Input> {
  * rerun-with-different-input produces a different one and therefore a fresh
  * item with zero checkpoints by construction.
  *
- * Deviation from doc 02 §1.1, which pairs `matchKey` with a `deriveItemId`
+ * Deviation from ref workflow-model §1.1, which pairs `matchKey` with a `deriveItemId`
  * returning an `ItemId`. A descriptor is bundle-safe and cannot hash, so it
  * cannot mint a UUID; and two independent derivations of one identity are a
  * drift surface by construction. The descriptor therefore declares the match key
  * only, and the kernel mints `ItemId` from `(workflowId, matchKey)` at enqueue —
- * one derivation, one place. Fan-out `deriveItemId` (doc 03 §4.1) is unaffected:
+ * one derivation, one place. Fan-out `deriveItemId` (ref dashboard-surfaces §4.1) is unaffected:
  * completion derives are server-side.
  */
 export interface WorkflowIdentitySpec<Input> {
@@ -186,7 +186,7 @@ export interface WorkflowIdentitySpec<Input> {
 /**
  * Read a fact a bind depends on, or fail loud naming the node and path.
  *
- * This is the `require()` of doc 02 §8. Substituting a plausible default for a
+ * This is the `require()` of ref workflow-model §8. Substituting a plausible default for a
  * person nobody selected is the charter's single most dangerous pattern, so the
  * only alternative to a value here is a thrown error.
  */
@@ -219,7 +219,7 @@ export interface WorkflowDescriptor<
   readonly id: WorkflowId;
   /** Bumped for semantic graph/bind/presentation contract changes. */
   readonly version: number;
-  /** Build-manifest derived (doc 02 §1.1); stamped on every run, checkpoint, and span. */
+  /** Build-manifest derived (ref workflow-model §1.1); stamped on every run, checkpoint, and span. */
   readonly contractFingerprint: Fingerprint;
   readonly code: string;
   readonly label: string;
@@ -239,7 +239,7 @@ export interface WorkflowDescriptor<
     : undefined;
   readonly capabilities?: WorkflowCapabilitiesSpec;
   readonly details: readonly DetailProjectionSpec<S>[];
-  /** Doc 03 §1.2: where the RUN resolves the subject's name, if it ever does. */
+  /** Ref dashboard-surfaces §1.2: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: SubjectProjectionSpec<S>;
   /**
    * D225 — the run-detail timeline's categorical shape, DERIVED by the factory:
@@ -365,7 +365,7 @@ export interface WorkflowDescriptorSpec<
   readonly flow: BuiltFlow<InputSchema, ResultSchema, Nodes, S, D>;
 }
 
-/* ── derived projections (doc 03 reads these; nobody hand-writes them) ───── */
+/* ── derived projections (ref dashboard-surfaces reads these; nobody hand-writes them) ───── */
 
 export interface WorkflowProjections {
   readonly steps: readonly StepProjection[];
@@ -401,7 +401,7 @@ export interface WorkflowProjections {
 export type WorkflowDryRunSupport =
   | Readonly<{
     state: "supported";
-    /** The first transaction node; a preview stops there (doc 01 §10.1). */
+    /** The first transaction node; a preview stops there (ref task-contract §10.1). */
     stopsAt: string;
   }>
   | Readonly<{ state: "unsupported"; reason: "no-transaction-node" }>
@@ -603,7 +603,7 @@ export function deriveWorkflowTerminalResult<
 
 /**
  * The one place the exact node tuple is widened to the runtime switch union.
- * Doc 02 §1.1 allows exactly this direction: the composition root switches
+ * Ref workflow-model §1.1 allows exactly this direction: the composition root switches
  * exhaustively at runtime, and the widened view is never fed back into
  * descriptor inference. `kind` is re-parsed first, so a hand-rolled node object
  * that skipped the builder is rejected instead of falling through a switch.
@@ -648,7 +648,7 @@ function outputSchemaOf(node: RuntimeFlowNode): z.ZodType | undefined {
  * For a task or gate the two coincide: the row stores the contract's own parsed
  * output under that schema's hash, and the scope value is that output verbatim.
  *
- * For a transaction node they do not, and the row is right: doc 09 beat ⑦ stores
+ * For a transaction node they do not, and the row is right: ref write-safety beat ⑦ stores
  * the full durable `TransactionOutcome`, so the row's `output.schemaHash` is that
  * envelope's hash — the only hash that truthfully describes the bytes stored.
  * Demanding the commit contract's bare output hash here would have required a
@@ -683,7 +683,7 @@ function terminalEvidenceOf(node: RuntimeFlowNode): TerminalEvidenceBinding | un
 }
 
 /**
- * The node's display label, following doc 02 §1.5's precedence: an authored
+ * The node's display label, following ref workflow-model §1.5's precedence: an authored
  * `label`, else the contract's own `title`, else the node id.
  *
  * Exported so every surface that names a step names it identically — the
@@ -962,7 +962,7 @@ export function defineWorkflowDescriptor<
   // The ONE code declaration site (D242). Uniqueness across the registry is
   // the composition root's — a descriptor cannot see its siblings.
   if (!WorkflowCodeSchema.safeParse(spec.code).success) {
-    throw new Error(`${id}: code must be two to four lowercase letters (doc 02 §1.1, D242)`);
+    throw new Error(`${id}: code must be two to four lowercase letters (ref workflow-model §1.1, D242)`);
   }
   if (spec.label.trim().length === 0) throw new Error(`${id}: label is required`);
   if (!Number.isInteger(spec.version) || spec.version < 1) {
@@ -1046,7 +1046,7 @@ export function defineWorkflowDescriptor<
   assertUnique(id, "detail keys", spec.details.map((detail) => detail.key));
 
   /**
-   * Doc 03 §1.2's subject seam. `offers` on purpose: a resolved subject name
+   * Ref dashboard-surfaces §1.2's subject seam. `offers` on purpose: a resolved subject name
    * lives on one arm of a present/absent union far more often than not, and
    * that absent arm IS the "the run has not resolved a subject" state the queue
    * projection reads as *keep the title the start input composed*.
@@ -1065,7 +1065,7 @@ export function defineWorkflowDescriptor<
 
   const editData = spec.capabilities?.editData;
   if (typeof editData === "object") {
-    // Doc 06 §6.2/§6.3 (D166): every declared editable path must resolve
+    // Ref data-intake-and-edit-data §6.2/§6.3 (D166): every declared editable path must resolve
     // through the producing node's own output schema — a path the schema does
     // not own could never re-parse — and only a READ task node's output is
     // correctable: a transaction node's output is a write proof, and proof

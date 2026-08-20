@@ -1,5 +1,5 @@
 /**
- * Doc 05 §4: login is bounded and single-flight within one worker/system
+ * Ref execution-and-sessions §4: login is bounded and single-flight within one worker/system
  * session creation — there is no cross-worker login promise, no shared
  * context, and no second code path that authenticates a session.
  *

@@ -1,5 +1,5 @@
 /**
- * Doc 12 §4.4 — optional AI assistance READS the evidence; it never becomes
+ * Ref operator-trust §4.4 — optional AI assistance READS the evidence; it never becomes
  * the evidence (D178).
  *
  * Four rules carry that sentence, and every one of them is a schema here

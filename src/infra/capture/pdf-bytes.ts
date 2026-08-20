@@ -1,5 +1,5 @@
 /**
- * Image-format parsing for the capture PDF bundler (doc 06 §5.1, D167).
+ * Image-format parsing for the capture PDF bundler (ref data-intake-and-edit-data §5.1, D167).
  *
  * The bundler NEVER re-encodes a photo: a JPEG rides into the page as a
  * `/DCTDecode` XObject and a PNG's own zlib stream rides in as `/FlateDecode`

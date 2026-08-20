@@ -1,5 +1,5 @@
 /**
- * Header-row discovery — doc 06 §3.
+ * Header-row discovery — ref data-intake-and-edit-data §3.
  *
  * Pure, and deliberately **alias-independent**. Legacy found the header row by
  * looking for a recognized column name, so a spreadsheet whose every heading
@@ -25,7 +25,7 @@
  * and made the operator hand-pick a header the ranking had already found.
  *
  * The count deliberately excludes the candidate row itself. A sheet may
- * legitimately carry two columns both headed `Name` (doc 06 §2.1 exists to keep
+ * legitimately carry two columns both headed `Name` (ref data-intake-and-edit-data §2.1 exists to keep
  * them distinct); counting the duplicate against the row would penalize exactly
  * the layout the design supports, and it is not what the principle says.
  *

@@ -26,7 +26,7 @@ export function schemaBoundValueSchema<ValueSchema extends z.ZodType>(
  * invalidate every stored payload, while a changed field, default, or
  * constraint does. `io` matters: a workflow's ingress schema and its
  * transform-free canonical schema describe the same data at different points
- * (defaults applied or not) and must not hash alike, or doc 02 §2's separate
+ * (defaults applied or not) and must not hash alike, or ref workflow-model §2's separate
  * ingress and canonical hashes would be one hash written twice.
  */
 export function deriveSchemaHash(schema: z.ZodType, io: "input" | "output"): Fingerprint {

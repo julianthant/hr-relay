@@ -8,25 +8,25 @@ The abandoned Step-0 spike and skeleton were deleted. The expanded graph, typed 
 seams, and three-effect task API require a new real-scale type proof before code lands in the
 rebuild repo's `src/`. Round-8 amendments: §4 records the two graph-legality rules the
 identity-approval gate
-(doc 09 §14, D77) imposes, and the descriptor's per-run stamp now includes the **app version**
-alongside the workflow version + fingerprint (D80 archive-on-bump, owned by doc 03 §10.2).
+(ref write-safety §14, D77) imposes, and the descriptor's per-run stamp now includes the **app version**
+alongside the workflow version + fingerprint (D80 archive-on-bump, owned by ref dashboard-surfaces §10.2).
 **Amended 2026-08-14 (Round 61):** §1.2.1 — every workflow MODULE declares a required closed
 `role` (`standalone` / `composition` / `chunk-harness of <id>` / `proving`, the last per D220),
 validated at the composition root;
-presentation of the role is doc 03's (D219).
+presentation of the role is ref dashboard-surfaces's (D219).
 
 ## Ownership (D1)
 
 | This doc OWNS | Imported from siblings (referenced, never redefined) |
 |---|---|
-| The ONE workflow builder API — read steps, page-scoped transactions, output-dependent branches, parallel fork/join, typed child runs/delegation policy, gates, decoration/instrumentation, auth | Doc 01: task contracts, three effects, stores, sessions, freshness metadata, subject declarations, decoration |
-| Descriptor shape (incl. verdict mappings, gate declarations, derived session union) | Doc 03: native span/event **wire** schema incl. `gate.opened`/`gate.resolved`, notes stream, isolated rebuild storage, SQLite projection, SSE wire shapes, completion (fan-out/approval) union |
+| The ONE workflow builder API — read steps, page-scoped transactions, output-dependent branches, parallel fork/join, typed child runs/delegation policy, gates, decoration/instrumentation, auth | Ref task-contract: task contracts, three effects, stores, sessions, freshness metadata, subject declarations, decoration |
+| Descriptor shape (incl. verdict mappings, gate declarations, derived session union) | Ref dashboard-surfaces: native span/event **wire** schema incl. `gate.opened`/`gate.resolved`, notes stream, isolated rebuild storage, SQLite projection, SSE wire shapes, completion (fan-out/approval) union |
 | `RunEnvelope` (incl. `dryRun` — D6) | |
 | Run-state machine incl. gate nodes and parks (D5) | |
 | Checkpoint/resume model: store, freshness (D8), scope (D9), task-authoring rule | |
 | Span-id path grammar + attempt semantics (what the engine brackets) | |
-| Workflow terminal result schema and child-run result typing | Doc 03: command/action/enqueue policy semantics and durable dependency/command storage |
-| | Doc 12: semantic UI registry, scenarios, evidence receipt, explorer/editor projections |
+| Workflow terminal result schema and child-run result typing | Ref dashboard-surfaces: command/action/enqueue policy semantics and durable dependency/command storage |
+| | Ref operator-trust: semantic UI registry, scenarios, evidence receipt, explorer/editor projections |
 
 ---
 
@@ -62,7 +62,7 @@ Two deviations from §3's sketch, both as-built:
   before its contract resolved. The canonical-JSON guarantee is enforced where it is checkable —
   each task contract's `output` is a `CanonicalJsonSchema` audited recursively — and every other node
   output is kernel-built from those outputs plus branded ids. `JsonValue` remains the runtime view.
-- **The graph type is `TypedTransactionOutcome<C>`, not `TransactionOutcome<C>`.** Doc 09 already
+- **The graph type is `TypedTransactionOutcome<C>`, not `TransactionOutcome<C>`.** Ref write-safety already
   owns a durable `TransactionOutcome` that stores `output`/`proof` as schema-bound canonical values
   with a settlement timestamp. Same event, two altitudes; the distinct name stops a second durable
   schema being minted for it.
@@ -131,7 +131,7 @@ already landed and guarded:
   bundle-safe and cannot hash, so it cannot mint a UUID, and two independent derivations of one
   identity are a drift surface by construction. The kernel mints `ItemId` from
   `(workflowId, matchKey)` at enqueue — one derivation, one place. Fan-out `deriveItemId`
-  (doc 03 §4.1) is unaffected: completion derives are server-side.
+  (ref dashboard-surfaces §4.1) is unaffected: completion derives are server-side.
 - **Meta rides the descriptor spec, not a `.meta()` link in the builder chain.** It contributes
   nothing to the `S`/`Nodes` accumulators, and threading it through would re-open the exact
   transform surface 1e's real-scale type proof pins. `details` stays typed over `S`, so a renamed
@@ -145,7 +145,7 @@ already landed and guarded:
   `defineWorkflowDescriptor` live in `base`, so §1.4 #6's literal root set is one module deeper;
   `descriptor-coverage` walks the whole closure in both halves.
 
-**Completion (doc 03 §4)** is `src/domain/workflow/completion.ts`. `defineCompletionProgram` returns
+**Completion (ref dashboard-surfaces §4)** is `src/domain/workflow/completion.ts`. `defineCompletionProgram` returns
 a SEALED handle whose type exposes `mode` and `gate` and nothing else, so
 `otherDescriptor.completion.stages[0].eligible` is a compile error rather than a convention;
 `revealCompletionProgram` is the one named seam back, and `descriptor-coverage` checks that no
@@ -206,7 +206,7 @@ all fail.
   operator submission/artifact refs and the once-parsed canonical input snapshot. It binds the
   ingress-schema hash, canonical-input-schema hash, canonical input digest, descriptor version and
   contract fingerprint, config snapshot/fingerprint, resolved instances, derived match key/item id,
-  and proposed run set. Confirmation never reparses a client-resubmitted approximation. Doc 03's
+  and proposed run set. Confirmation never reparses a client-resubmitted approximation. Ref dashboard-surfaces's
   start command consumes that exact plan and creates every accepted run in one authority
   transaction; expiry, schema/config/descriptor drift, a spent token, or any enqueue-policy failure
   rolls back consumption and all runs.
@@ -261,7 +261,7 @@ sections below is the **rebuild repo's** `src/`.
 
 The new model replaces all of this with the **descriptor** (one client-safe declaration per
 workflow), the **run-state machine** (gates as first-class parks), and the **checkpointed run
-context** (typed data flow between tasks). Time lives in doc 03's span stream.
+context** (typed data flow between tasks). Time lives in ref dashboard-surfaces's span stream.
 
 ---
 
@@ -285,7 +285,7 @@ import type {
   AnyReadContract,
   AnyTaskContract,
   JsonValue,
-} from "../contracts/types.js";   // doc 01 / D3
+} from "../contracts/types.js";   // ref task-contract / D3
 
 export interface WorkflowRef<
   InputSchema extends z.ZodType,
@@ -347,9 +347,9 @@ export interface TaskStepNode<TCtx, C extends AnyReadContract> {
   id: string;
   /** Display label. Defaults to the contract's `title` (D16 — see §1.5 precedence). */
   label?: string;
-  uses: C;                             // the CONTRACT object (doc 01 / D3), imported by value
+  uses: C;                             // the CONTRACT object (ref task-contract / D3), imported by value
   /** Bind the task's input from workflow input + upstream outputs. Returns z.input<C["input"]>;
-   *  the impl's run receives z.output<C["input"]> (doc 01 / D15). Must be PURE. */
+   *  the impl's run receives z.output<C["input"]> (ref task-contract / D15). Must be PURE. */
   bind: (ctx: TCtx) => z.input<C["input"]>;
   /** Declared graph dependencies; freshness and scheduling use these static edges. */
   dependsOn: readonly string[];
@@ -446,10 +446,10 @@ export type ChildRunNode<TCtx, Target extends AnyWorkflowRef> =
 
 export interface OperatorGateNode<ResultSchema extends z.ZodType> {
   kind: "gate";
-  id: string;                          // e.g. "approval" — doc 03's gate.opened/resolved key
+  id: string;                          // e.g. "approval" — ref dashboard-surfaces's gate.opened/resolved key
   dependsOn: readonly string[];
   label: string;
-  statusKey?: string;                  // e.g. "needsReview" — doc 03's status projection
+  statusKey?: string;                  // e.g. "needsReview" — ref dashboard-surfaces's status projection
   resolvedBy: "operator";
   result: ResultSchema;
   subscribes?: never;
@@ -515,14 +515,14 @@ export interface WorkflowDescriptor<
    * narrows `derive` to those terminal outputs; do not annotate away the builder-inferred S/D. */
   result: WorkflowResultSpec<ResultSchema, InputSchema, S, D>;
   inputSubject: InputSubject | ((input: z.output<InputSchema>) => InputSubject); // wire: "by-input"
-  surface: { shape: RowShape } | { resolveShape: "by-input" };     // doc 03's field name
+  surface: { shape: RowShape } | { resolveShape: "by-input" };     // ref dashboard-surfaces's field name
   nodes: Nodes;                        // exact tuple — built via the typed DAG builder (§3)
   /** PROJECTIONS (derived at build(), never hand-written):
-   *  steps:   task nodes → one entry; transactions → prepare+commit child entries (doc 03 consumes)
-   *  gates:   nodes.filter(kind==="gate") → { id, label, statusKey? }[]          (doc 03 consumes)
+   *  steps:   task nodes → one entry; transactions → prepare+commit child entries (ref dashboard-surfaces consumes)
+   *  gates:   nodes.filter(kind==="gate") → { id, label, statusKey? }[]          (ref dashboard-surfaces consumes)
    *  systems: union of task contracts' browser-system prefixes only (D2/D15—the hand `systems:`
    *           list is DELETED; service and `workflow:<id>` headless stores contribute none)
-   *  requires: union of task contracts' declared SecretName requirements (doc 11) */
+   *  requires: union of task contracts' declared SecretName requirements (ref clock-config-secrets) */
   surfaces: {
     /** Typed-text start (InputRunPanel). Absent ⇒ no input-run affordance. */
     inputRun?: { placeholder: string; parser: InputParserSpec;
@@ -535,11 +535,11 @@ export interface WorkflowDescriptor<
   /** Verdict mappings — a closed tuple, not a free string map. Keys are unique/guarded and
    * SpanEnded may emit only this descriptor-derived union. */
   verdicts?: readonly VerdictDefinition[];
-  /** Completion (fan-out/approval) contract — SHAPE OWNED BY DOC 03 §4; referenced here only. */
+  /** Completion (fan-out/approval) contract — SHAPE OWNED BY DOC ref dashboard-surfaces §4; referenced here only. */
   completion?: Completion; // exact factory-inferred program; never annotate as the broad union
-  capabilities?: WorkflowCapabilities;  // doc 03 §3 (review/editData/delegation display rules)
+  capabilities?: WorkflowCapabilities;  // ref dashboard-surfaces §3 (review/editData/delegation display rules)
   details: readonly DetailProjectionSpec<Nodes>[];
-  /** Semantics/types owned by doc 03: one closed enqueue/action command protocol for every workflow. */
+  /** Semantics/types owned by ref dashboard-surfaces: one closed enqueue/action command protocol for every workflow. */
   enqueue: EnqueuePolicy;
   actions: WorkflowActionPolicy;
   presets?: readonly InputPreset<z.input<InputSchema>>[];
@@ -553,7 +553,7 @@ export interface WorkflowDescriptor<
   /** Registered behavioral coverage; task scenarios are unioned automatically, while graph-level
    * branch/delegation/gate/control cases are declared here. */
   scenarios: readonly [ScenarioId, ...ScenarioId[]];
-  /** Typed node-output → durable local-sink projections (docs 03/06). The builder validates each
+  /** Typed node-output → durable local-sink projections (refs dashboard-surfaces/data-intake-and-edit-data). The builder validates each
    * source path and stable key against the exact node output; no task performs a mutable append. */
   artifactProjections?: readonly DurableArtifactProjectionSpec[];
 }
@@ -707,7 +707,7 @@ work it is; neither failure throws anything, so neither is discoverable after th
 1. **Identity** — `deriveTraceId` composes `<code>-<HHMMSS>-<runId4>` (§5.8), so the code is already
    stamped on every run, span, note line and ledger entry this program has ever written.
 2. **Presentation** — the archive index row, the Activity per-workflow table and the version
-   registry print it beside the label (doc 03 §10.2, doc 03 §10.3). At 800 rows
+   registry print it beside the label (ref dashboard-surfaces §10.2, ref dashboard-surfaces §10.3). At 800 rows
    `Separation Documents v1` costs the name column real width and `sd v1` does not.
 
 These were built five months apart, and the second nearly minted a separate "display code" — which
@@ -720,7 +720,7 @@ writer's current rule refuses history the moment that rule moves; two-character 
 were legal before D242. The writer stays strict at its own declaration site, which is where a new
 code is chosen and a wrong one can still be refused (D133's read-forward discipline).
 
-**A code is frozen into an archived record beside the label** — see doc 03 §10.2 and
+**A code is frozen into an archived record beside the label** — see ref dashboard-surfaces §10.2 and
 `ArchivedRunContent.workflowCode`. Resolving it from the live registry when the Archive renders
 would be a descriptor read on the archived path, which is exactly what charter §25 forbids.
 
@@ -732,7 +732,7 @@ src/workflows/person-lookup/       # rebuild repo (hr-automation-rebuild) — D9
 └── module.ts         # server composition value: descriptor + lazy store loaders
 ```
 
-There is no per-workflow `handler.ts`: step impls live in the **stores** (doc 01 §3; D3 —
+There is no per-workflow `handler.ts`: step impls live in the **stores** (ref task-contract §3; D3 —
 `defineTask(contract, impl)` in `src/stores/<system>/tasks/` is the only impl registry). The
 descriptor references contract *objects*, so descriptor↔contract renames fail to compile at the
 import site. Descriptor↔impl pairing is runtime: the engine resolves each step's contract id in
@@ -775,7 +775,7 @@ kernel capability, a driver, a write path — rather than to run daily HR work, 
 composition. `kuali-timekeeper-annotation` is the type specimen: it exists to carry D135's
 controlled-transaction proof and stays registered and startable because a kernel change may need
 that proof re-run. It deliberately carries no `of` — there is nothing for it to be a step of, and
-`chunk-harness` would force it to name a composition it does not prove. Presentation is doc 03's
+`chunk-harness` would force it to name a composition it does not prove. Presentation is ref dashboard-surfaces's
 (§Shell, D220 and D241 amendments): the rail drops it alongside harnesses, and the surfaces that
 still list it — the picker and the Explorer — group it by this ROLE under `Test equipment` rather
 than under the HR `category` its descriptor declares. That override is stated here because it is
@@ -802,9 +802,9 @@ tuple audit gains the same check at CI.
 
 **What the role does NOT change:** registration, startability, run identity, or §3.2 obligations.
 A chunk harness stays independently runnable through the start-plan lane — each of the five
-separations harnesses still owes/holds its own controlled-commit proof — and doc 07 §3.2 names no
+separations harnesses still owes/holds its own controlled-commit proof — and doc 03c §Exit criteria names no
 criterion about rail presence. How the role PRESENTS (rail nesting, picker, counts, run-row labels)
-is doc 03's (§Shell, D219); the bootstrap wire serves the raw fact and the frontend owns display,
+is ref dashboard-surfaces's (§Shell, D219); the bootstrap wire serves the raw fact and the frontend owns display,
 per the standing R2 D17/D18 split.
 
 ### 1.3 Every parallel registry becomes a projection
@@ -818,9 +818,9 @@ per the standing R2 D17/D18 split.
 | `RUN_MODAL_REGISTRY` | `d.surfaces.uploadRun` | same |
 | `WORKFLOW_ICONS` | `Record<IconName, LucideIcon>` (exhaustive) | compile-time; static imports keep tree-shaking |
 | `INSTANCE_LABELS` | `d.sessionLabel ?? d.label` | `LEGACY_INSTANCE_LABELS` kept for on-disk history only |
-| e2e stub map | derive the minimal happy path from task examples; load every non-happy path from the registered `ScenarioManifest` corpus (doc 12) | examples are seed data, not behavioral coverage; failure/cancel/parallel/delegation/mismatch cases are named fixtures whose descriptor references are coverage-checked |
+| e2e stub map | derive the minimal happy path from task examples; load every non-happy path from the registered `ScenarioManifest` corpus (ref operator-trust) | examples are seed data, not behavioral coverage; failure/cancel/parallel/delegation/mismatch cases are named fixtures whose descriptor references are coverage-checked |
 | step-label switches (`formatStepName`, `types.ts:405`) | `getDescriptor(wf)` step label (§1.5) | `formatStepName` demoted to legacy-row fallback that `console.warn`s in dev |
-| `queue-row-status-index.ts` | `verdicts` + gate status from the client projection | the index file and the `statusExtensions` function registry are deleted; verdict mappings are plain data (doc 03 §1.3/§3) |
+| `queue-row-status-index.ts` | `verdicts` + gate status from the client projection | the index file and the `statusExtensions` function registry are deleted; verdict mappings are plain data (ref dashboard-surfaces §1.3/§3) |
 | `:stop` npm scripts | one `cli stop <workflow>` reading `DESCRIPTORS` | scripts deleted |
 
 ### 1.4 The ONE coverage guard
@@ -856,7 +856,7 @@ The rebuild repo's `tests/unit/architecture/descriptor-coverage.test.ts` — a s
    snapshots parse without reapplying defaults/transforms. Result/detail/verdict/action/enqueue
    projections parse through strict runtime schemas;
    detail paths exist in exact node outputs, verdict keys are unique, and the workflow plus every
-   used task meets doc 12's scenario obligations.
+   used task meets ref operator-trust's scenario obligations.
 10. The derived UI dependency projection lists every `ElementId`/`PageStateId`/`ObservationId` used
     by its browser tasks. Each resolves in the same-system driver registry; invalid `supersedes`
     references and raw task-level Page/Locator access fail the build. Search terms never create a
@@ -864,7 +864,7 @@ The rebuild repo's `tests/unit/architecture/descriptor-coverage.test.ts` — a s
 
 The old “object with ≥3 workflow ids” heuristic is retained only as a cheap smell detector. It is
 not the exhaustiveness proof: the authoritative proof compares every named current projection and
-runtime surface in doc 10's explicit coverage matrix against descriptor-derived outputs, including
+runtime surface in ref guards-and-tests's explicit coverage matrix against descriptor-derived outputs, including
 one- and two-workflow exceptions.
 
 ### 1.5 Labels — exactly two layers (D16, precedence stated once, HERE)
@@ -876,7 +876,7 @@ A step's display label resolves, highest precedence first:
 2. **Descriptor `step.label`, defaulting to the contract's `title`** — one authored source with
    one default; omitting `label` is the normal case.
 
-There is no third source. Doc 01's contract `title` is the default, never a competing layer; doc
+There is no third source. Ref task-contract's contract `title` is the default, never a competing layer; doc
 03's projections carry the resolved label on the wire and never re-derive it client-side.
 
 ---
@@ -912,7 +912,7 @@ the descriptor factory over the node tuple and served on `workflowProjections(..
 
 | graph | answer | what a dry-run start does |
 |---|---|---|
-| every transaction node declares `dryRun: "stop-after-prepare"` | `{state:"supported", stopsAt}` | starts; `stopsAt` is the first transaction node, where the preview ends (doc 01 §10.1) |
+| every transaction node declares `dryRun: "stop-after-prepare"` | `{state:"supported", stopsAt}` | starts; `stopsAt` is the first transaction node, where the preview ends (ref task-contract §10.1) |
 | some transaction node declares `dryRun: "unsupported"` | `{state:"unsupported", reason:"node-declares-unsupported", nodeId}` | refuses `dry-run-unsupported`, naming that node |
 | no transaction node at all | `{state:"unsupported", reason:"no-transaction-node"}` | refuses `dry-run-unsupported`, naming the absence |
 
@@ -943,7 +943,7 @@ comes to say one thing and mean another.
 
 ### 2.1 How a previewed run ENDS (D210)
 
-Doc 01 §6.2 says what a dry run does at a transaction node — *"records an honest
+Ref task-contract §6.2 says what a dry run does at a transaction node — *"records an honest
 `transaction.previewed` span, and ends the run at the node"* — and §10.1 says it stops there
 **successfully**. This is the terminal half of that sentence.
 
@@ -993,7 +993,7 @@ durable terminal row.
 > own `dependsOn`, the receipt reports `unknown` plus a load-bearing `DRY_RUN_PREVIEW` warning, and
 > `executeTransaction` still refuses a dry run by name. **Every one of those sentences still holds.**
 > What was wrong was what the preview OBSERVED before it stopped: `executeDryRun` evaluated `prepare`
-> with no probe at all, and doc 09 §5's two probe kinds are part of the transaction's safety story,
+> with no probe at all, and ref write-safety §5's two probe kinds are part of the transaction's safety story,
 > not an optimization. Separations' `clear-pending` sweep made the consequence unmissable — for the
 > ORDINARY subject, one with no pending transaction, the real run's beat-① probe settles the node
 > `already-present` before a page is ever staged, while the preview staged a *Transactions in
@@ -1039,7 +1039,7 @@ export interface RunEnvelope {
   requestedInstance?: Partial<Record<BrowserSystemId, "prod" | "test">>; // request only; resolved at enqueue
   /** Exact browser systems reached by this descriptor, each resolved at enqueue. */
   resolvedInstance: Partial<Record<BrowserSystemId, "prod" | "test">>;
-  configFingerprint: Fingerprint;    // doc 11's immutable per-run non-secret config snapshot
+  configFingerprint: Fingerprint;    // ref clock-config-secrets's immutable per-run non-secret config snapshot
   configSnapshotId: ConfigSnapshotId;
   parent?: { runId: RunId; tracePrefix: TraceId; edgeId: DelegationEdgeId };
   shape: "single" | "preview" | "operation" | "operation-member";
@@ -1081,16 +1081,16 @@ export const PersonLookupInput = z.union([
 
 ---
 
-## 3. The ONE builder API (absorbs doc 01 §5)
+## 3. The ONE builder API (absorbs ref task-contract §5)
 
-Doc 01 §5's `FlowBuilder` sketch and this doc's earlier `.task({...})` shape are unified here —
-this is the single API; doc 01 defers to it. The builder accumulates a **`Steps` generic map**
+Ref task-contract §5's `FlowBuilder` sketch and this doc's earlier `.task({...})` shape are unified here —
+this is the single API; ref task-contract defers to it. The builder accumulates a **`Steps` generic map**
 (step id → contract) so outputs, decoration, and instrumentation are all typeable:
 
 ```ts
 // src/base/flow.ts
 // Every graph kind contributes one typed output entry; the accumulator is not task-only.
-// Task output schemas are canonical-JSON schemas (doc 01), so checkpoints and branch results
+// Task output schemas are canonical-JSON schemas (ref task-contract), so checkpoints and branch results
 // cannot hide Page/Date/class instances that SQLite cannot round-trip.
 interface NodeEntry<
   Out extends JsonValue,
@@ -1195,7 +1195,7 @@ interface FlowBuilder<
   /** Instrumentation on EVERY step of this workflow. */
   instrument(hooks: TaskHooks<AnyTaskContract>, label: string): this;
 
-  /** Per-system auth override (doc 01 §6.1's mechanism, attached HERE): default is the eager
+  /** Per-system auth override (ref task-contract §6.1's mechanism, attached HERE): default is the eager
    *  parallel-staggered Duo chain over the DERIVED session union; "on-first-use" logs in lazily
    *  at the first step whose contract touches that system. Replaces deferAuth + the 15-line
    *  hand-rolled auth step in 5 workflows. Keys are constrained to the derived union. */
@@ -1266,14 +1266,14 @@ executor; the broad runtime switch union is never fed back into descriptor/bind 
   backstop for casts/generated migrations, not the source of the DAG. Freshness and resume use the
   declared edges; they never discover safety dependencies by executing bind functions on proxies.
 - **Runtime:** the kernel re-parses the bound value through the contract's input schema before
-  `run`, and the output through the output schema after (doc 01's walls; also exactly the resume
+  `run`, and the output through the output schema after (ref task-contract's walls; also exactly the resume
   entry validation of §5).
 - **Decoration semantics** (hook types, same-task invariant, error attribution `decoratedBy`,
-  middleware ordering) are doc 01 §4's, unchanged — this doc only owns *where they attach*:
+  middleware ordering) are ref task-contract §4's, unchanged — this doc only owns *where they attach*:
   `.decorate` for one step, `.instrument` for every step of one workflow, kernel span hooks for
-  every task everywhere (doc 03). Hooks are values in the descriptor module but may only
+  every task everywhere (ref dashboard-surfaces). Hooks are values in the descriptor module but may only
   type-import — the §1.4 import guard keeps the module client-safe.
-- Task ids follow doc 01's slash grammar throughout: `ucpath/search-person-org`, never
+- Task ids follow ref task-contract's slash grammar throughout: `ucpath/search-person-org`, never
   `ucpath.searchPersonOrg`. `SystemId` names are the REAL `src/systems/` dirs (D2):
   `new-kronos`/`old-kronos`, not `kronos`. Pure workflow mini-store tasks use the separate
   `workflow:<descriptor-id>/<verb-object>` namespace and never contribute a browser session.
@@ -1304,7 +1304,7 @@ fresh browser for every read. A page-state-coupled write is represented differen
   never clicks.
 - There is no checkpoint, gate, retry boundary, cleanup, or neutral-URL reset between prepare and
   commit. Prepare failure may retry the whole transaction before the fence. Once the fence is attempting,
-  any crash/error enters doc 09 recovery and never blindly re-fills or re-submits.
+  any crash/error enters ref write-safety recovery and never blindly re-fills or re-submits.
 - Dry-run executes prepare and stops before creating an intent/fence. Cleanup occurs only after
   the preview is captured and the transaction node terminates.
 - Resume grain is graph-node boundaries. A transaction is one resumable node with two named child
@@ -1345,7 +1345,7 @@ degrades to the caller-provided visible rows. Retrying a child creates a new chi
 to the same stable child item and dependency; parent resumption follows `afterChildRetry`. Workflows
 may choose the closed policies but may not supply their own cancel/delete/row-update handlers.
 
-The durable tables/command protocol are doc 03's storage/control ownership; this section owns the
+The durable tables/command protocol are ref dashboard-surfaces's storage/control ownership; this section owns the
 graph semantics and typed outputs. Scenario coverage is mandatory for zero/one/many fan-out,
 partial failure, cancellation, retry/resume, duplicate replay, and multiple independent edges.
 
@@ -1354,7 +1354,7 @@ partial failure, cancellation, retry/resume, duplicate replay, and multiple inde
 ### 3.3 A node's `when` is a DECLARED condition, not a closure (2026-08-19, D228)
 
 `when` was `(scope) => boolean`. That is the right type for a rule nothing but the executor ever
-reads, and the wrong one the moment a surface has to say *what* the rule is: doc 12 §5.7 correctly
+reads, and the wrong one the moment a surface has to say *what* the rule is: ref operator-trust §5.7 correctly
 refused to decompile a closure, so the explorer printed "runs when the descriptor's own `when()`
 predicate holds" — true, and useless to the operator looking at a node that did not run. The
 recorded fix was an authored `whenLabel` beside the predicate, and that fix carries the defect this
@@ -1391,7 +1391,7 @@ expression language, and shaping one against the ONE conditional node this tree 
 how an authoring surface acquires the wrong shape (D186's own argument, one level down). A condition
 the vocabulary cannot express is a **compile error in the descriptor**, not a plausible sentence on
 the surface, and widening the union is a reviewed code change precisely as D104's branch-case names
-are. That is the loud refusal doc 12 §5.7 asked for, moved from runtime into the type system.
+are. That is the loud refusal ref operator-trust §5.7 asked for, moved from runtime into the type system.
 
 The authored face (`NodeConditionSpec`) takes plain strings and the builder parses it through
 `NodeConditionSchema`, the same shape `WorkflowCapabilitiesSpec` takes for the same reason: a
@@ -1414,14 +1414,14 @@ unchanged — conditionality is still a key-presence fact at the type level.
 > refused: a durable record must not claim a shape it does not have.
 
 
-Tasks stay run-to-completion with bounded duration (doc 01's retry/timeout policy). Long waits —
+Tasks stay run-to-completion with bounded duration (ref task-contract's retry/timeout policy). Long waits —
 OCR approval, oath-upload's child-signature watching, external signals — are **gate nodes** in the
-descriptor sequence, owned by this state machine. Doc 03's `gate.opened`/`gate.resolved` events
-are their wire form; this doc defines the semantics, doc 03 the encoding.
+descriptor sequence, owned by this state machine. Ref dashboard-surfaces's `gate.opened`/`gate.resolved` events
+are their wire form; this doc defines the semantics, ref dashboard-surfaces the encoding.
 
-> **The identity-approval gate is designed in doc 09 §14 (D77, 2026-07-26).** It is a gate node in
+> **The identity-approval gate is designed in ref write-safety §14 (D77, 2026-07-26).** It is a gate node in
 > every respect this section defines — park, session release, typed result, resume — so nothing
-> here is special-cased for it. What doc 09 owns is *what that particular gate asks and what its
+> here is special-cased for it. What ref write-safety owns is *what that particular gate asks and what its
 > answer authorizes*: the decision packet, the ALWAYS-GATE policy, the staleness rule that re-opens
 > a gate when the approved candidate has changed, and the binding of its result to the commit's
 > expected subject. Two placement rules from that design constrain this graph and are restated
@@ -1429,11 +1429,11 @@ are their wire form; this doc defines the semantics, doc 03 the encoding.
 > `transaction` node — D26 forbids any park between `prepare` and `commit`, and a staged wizard
 > page cannot survive an operator wait; **(2)** for a descriptor whose commit consumes an
 > operator-approved subject, the commit must be graph-reachable **only** through that gate, which
-> doc 10's `identity-gate-before-separation-commit` guard asserts statically.
+> ref guards-and-tests's `identity-gate-before-separation-commit` guard asserts statically.
 
 ```
 queued → claimed → validating → running(node i) ──────────────→ terminal
-  ▲                    │            │        outcomes (doc 03 union): done | failed |
+  ▲                    │            │        outcomes (ref dashboard-surfaces union): done | failed |
   │                    │            │          cancelled | discarded | interrupted
   │  gate resolved     │            ├─ gate node reached → PARKED(gate)
   ├────────────────────┼────────────┘
@@ -1485,7 +1485,7 @@ stateDiagram-v2
 **Park semantics.** Reaching a gate node, the engine:
 
 1. commits a checkpoint barrier (all completed step outputs durable — §5.7 ordering invariant);
-2. emits `gate.opened` (doc 03 wire) — projections render the gate's `statusKey`
+2. emits `gate.opened` (ref dashboard-surfaces wire) — projections render the gate's `statusKey`
    (e.g. `approval` → `needsReview`), replacing today's `running/awaiting-approval` sentinels;
 3. **RELEASES every browser session the run holds** (kernel policy, D5). A parked run owns no
    page, no context, no worker — the daemon is free or may exit. Parking for days is free.
@@ -1580,7 +1580,7 @@ next-day retry at `kronos-search` replays it and would proceed automatically int
   sources and the oldest contributing `observedAt`; a pure transform can never refresh its inputs.
 - Every **read** contract declares freshness metadata (`defaultMaxAgeMs`, override policy, plus
   optional field-path overrides)—a
-  **mandatory field on ALL read contracts** (doc 01's contract shape, D3/D8). `Infinity` must be
+  **mandatory field on ALL read contracts** (ref task-contract's contract shape, D3/D8). `Infinity` must be
   written explicitly with a justification comment; the §1.4 guard snapshots those.
 - **The declared dependency DAG.** Every node names its upstream dependencies. The builder rejects
   missing/forward/cyclic edges, and development instrumentation fails if a bind or condition reads
@@ -1606,7 +1606,7 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
   rides `RunEnvelope.freshnessOverride` (§2), is scoped to that single resume attempt (never
   persisted onto the item), and is recorded in the span stream as an audited note — provenance,
   not a default. Crash-mid-write runs the recovery idempotency probe first (§5.6 #2 / D17, mechanism
-  in doc 09) regardless of overrides — it parks `needs-operator` only when that probe is
+  in ref write-safety) regardless of overrides — it parks `needs-operator` only when that probe is
   indeterminate (`ambiguous`/`unknown`/throw), never blindly.
 
 ### 5.6 The four scenarios
@@ -1622,11 +1622,11 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
 2. **Resume after crash (probe-then-park, D17 — NOT always-park).** Recovery (lease-expiry path)
    finds the last checkpointed node; `startAt` = the first node without a checkpoint. If that node
    is a transaction with an unfinished intent, the kernel does **not** run prepare or commit; it
-   runs the commit contract's **recovery idempotency probe FIRST** (doc 09's mechanism, referenced
+   runs the commit contract's **recovery idempotency probe FIRST** (ref write-safety's mechanism, referenced
    not redefined) and routes on the verdict: `present` → backfill schema-valid proof + reconstructed
    commit output inside `TransactionOutcome{disposition:"committed",proofSource:"recovery-probe"}`
-   (doc 09 D19) + complete `done`, **no second submit**; `absent` → validate its typed negative
-   evidence through doc 09's recovery-absence policy (every counted observation occurs after the
+   (ref write-safety D19) + complete `done`, **no second submit**; `absent` → validate its typed negative
+   evidence through ref write-safety's recovery-absence policy (every counted observation occurs after the
    propagation window + the required consistent authoritative observations). Only a validated
    `safe-to-retry` decision marks the same permanent
    intent row `retryable` and permits a later CAS generation. A bare/early absence, an
@@ -1639,7 +1639,7 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    prevented a double-file, it only deferred everything to manual — evidence-qualified
    probe-then-park auto-resolves only the cases the target can prove, while every unproven absence
    still parks. Read nodes auto-resume. Commit intent, checkpoint, ledger outbox, and
-   terminal-span outbox are one SQLite transaction (doc 09); JSONL emission may lag but is repaired.
+   terminal-span outbox are one SQLite transaction (ref write-safety); JSONL emission may lag but is repaired.
 3. **Operator-forced start-at-N with declared corrections.** Pick a resumable graph node and supply
    patches only for descriptor-allowlisted upstream fields. Missing/noneditable ancestors must rerun;
    no arbitrary substitute-output surface exists. `injected` rides the RunEnvelope
@@ -1654,7 +1654,7 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    shows the run's current checkpoint state **live** — every accumulated task output, keyed by step,
    as it exists in SQLite right now. Only descriptor-allowlisted node+field paths are editable;
    stable identity, original input, idempotency, proof/receipt, and provenance remain read-only
-   (doc 06). An edit is the `injected` mechanism above (parsed against the producing contract's
+   (ref data-intake-and-edit-data). An edit is the `injected` mechanism above (parsed against the producing contract's
    schema—a bad edit is rejected loudly at save time; a good edit becomes a typed patch with
    field-level operator provenance). Editing checkpoint data in this Context section is the supported way
    to correct a run's data mid-way; hand-editing SQLite or JSONL is not.
@@ -1743,7 +1743,7 @@ CREATE TABLE run_checkpoints (
 > not. §5.6 #1 has always said what a retry is — *"failure at node k ⇒ retry = **new attempt**"* — the
 > SQL above already annotates `run_id` as *"which run attempt wrote it (audit)"*, and the write
 > sequencer already reads `envelope.attempt > 1` as **"this item has been attempted before, so probe
-> before you fence"** (doc 09 §5), which is only a true reading of an item-scoped counter. So the
+> before you fence"** (ref write-safety §5), which is only a true reading of an item-scoped counter. So the
 > attempt an enqueue takes is **the item's next unspent one**, read from authority
 > (`runs.nextItemAttempt`) inside the same transaction that inserts the run, and a requeue advances
 > that same counter rather than its own `+ 1` (a sibling run of the item may already hold it).
@@ -1779,7 +1779,7 @@ CREATE TABLE run_checkpoints (
   the transformed payload. Output-schema equality alone is insufficient: changed selection/bind
   semantics invalidate an otherwise identical schema.
 - **A transaction node's checkpoint is bound to the durable `TransactionOutcome`, not to the commit
-  contract's bare output (D144; doc 09 §3.1 owns the normative text).** The row stores the whole
+  contract's bare output (D144; ref write-safety §3.1 owns the normative text).** The row stores the whole
   envelope, so its `output.schemaHash` is the envelope's; the commit contract's output and proof
   hashes are checked one level down before the value is parsed. Terminal `build` accepts that hash
   and projects the envelope onto `TypedTransactionOutcome<C>` — the shape §1.1 already says a
@@ -1810,7 +1810,7 @@ task only**: `single` rows and real `operation-member` rows. Explicitly excluded
   resume; delete is their only action, as today.
 - **OCR per-page pipeline internals** — the OCR run is ONE task from the workflow model's view;
   its page pool keeps its own internal checkpointing (tiers, per-page retries), surfaced as
-  notes (doc 03), never as workflow-level steps or checkpoints.
+  notes (ref dashboard-surfaces), never as workflow-level steps or checkpoints.
 
 Resume grain within covered rows is **graph-node boundaries** (§3.1). A transaction is one
 resumable boundary with separate child spans but no mid-transaction `startAt`; branch selections,
@@ -1818,10 +1818,10 @@ parallel joins, child-run manifests, and gate results are durable run-state.
 
 ---
 
-## 6. Trace + spans — what this doc owns (D10: schema lives in doc 03)
+## 6. Trace + spans — what this doc owns (D10: schema lives in ref dashboard-surfaces)
 
-**Doc 03's discriminated-union event stream is THE wire contract** — event shapes, notes stream,
-storage, SSE. This section keeps only the engine-side semantics that doc 02 owns:
+**Ref dashboard-surfaces's discriminated-union event stream is THE wire contract** — event shapes, notes stream,
+storage, SSE. This section keeps only the engine-side semantics that ref workflow-model owns:
 
 - **Span identity + path grammar.** The proven trace id is kept byte-for-byte
   (`<code>-<HHMMSS>-<runId4>`, frozen once, root-prefix propagation, retry inherits it). Span
@@ -1838,14 +1838,14 @@ storage, SSE. This section keeps only the engine-side semantics that doc 02 owns
   and resolve points. Engine-owned phases (per-system auth, entry validation) are ordinary task
   spans with reserved keys (`auth:ucpath`) — the pre-first-step gap today's duration code infers
   becomes recorded time. Per-action attribution rides the **notes stream** with span-path
-  addressing (D10 — action spans are not span events; doc 03 owns the encoding), so the timeline
+  addressing (D10 — action spans are not span events; ref dashboard-surfaces owns the encoding), so the timeline
   folds task/gate/run spans only.
-- **Attempt semantics.** In-run kernel retries (doc 01's `RetryPolicy`) = attempt-suffixed task
+- **Attempt semantics.** In-run kernel retries (ref task-contract's `RetryPolicy`) = attempt-suffixed task
   spans within the SAME run (`…/searching#2`). Cross-run retries (operator Retry, recovery) = a
   **new run** carrying `retryOf` on its envelope/`run.queued`, inheriting the trace id. The
   legacy `-N` display suffix is display-only formatting — never parsed, never identity.
 - Everything else the old §4 specified (event fields, status folds, label resolution, storage,
-  derivations like queue-wait and cancelled-reached-step) is doc 03's, by reference.
+  derivations like queue-wait and cancelled-reached-step) is ref dashboard-surfaces's, by reference.
 
 ---
 
@@ -1861,13 +1861,13 @@ storage, SSE. This section keeps only the engine-side semantics that doc 02 owns
 | Stored parsed input is trusted blindly—or resume reapplies an ingress transform | raw input parses once; every stored canonical snapshot parses on read through the separate validation-only `canonicalInput` schema; round-trip/type tests reject non-canonical ingress output and changed semantics require a migration |
 | Descriptor/impl drift (contract with no store impl, or vice versa) | contract objects imported by value (rename = compile error); boot-time impl resolution throws; §1.4 #3 pins it at CI |
 | Write gating re-declared per step | commit contracts are accepted only by `transaction.commit`; the builder and descriptor validator reject them everywhere else |
-| A gate becomes a fake polling task again (browser held for days) | gates are the only descriptor vocabulary for waits; emit-time validation (doc 03) rejects undeclared gate ids; a task exceeding its bounded duration fails loud instead of parking |
+| A gate becomes a fake polling task again (browser held for days) | gates are the only descriptor vocabulary for waits; emit-time validation (ref dashboard-surfaces) rejects undeclared gate ids; a task exceeding its bounded duration fails loud instead of parking |
 | `replay` mis-set to make resume "convenient" | REQUIRED field (compile error if omitted); `always-rerun` vs `checkpoint` choices are visible in the descriptor diff, not buried in handlers |
 | Crash-mid-write auto-resumes straight into a duplicate submit | transaction recovery runs the commit contract's probe first; there is no independently schedulable commit node and the durable intent key covers committed and attempting states |
 | Actions bypass the wrapped helpers (attribution goes dark) | inline-selector + raw-page-API ban re-implemented in the rebuild repo over its own `src/`; `Page`/`Locator` imports and `page.` members are allowlisted only inside system driver/session internals, never task implementations |
 | Span step-id typos | engine accepts only the descriptor-derived step-id union (compile-time); emit-time assert for dynamic paths |
-| Stub lane quietly narrows to happy-path only | derived examples cover the minimum happy path; all other behavior comes from doc 12's checked-in `ScenarioManifest` corpus, and deleting a descriptor-referenced scenario fails the coverage guard |
-| A workflow claims the right transaction after acting on the wrong open person/page | every write task declares a doc 01 subject binding; the kernel records a fresh driver observation after prepare and refuses before the fence on mismatch or unknown identity |
+| Stub lane quietly narrows to happy-path only | derived examples cover the minimum happy path; all other behavior comes from ref operator-trust's checked-in `ScenarioManifest` corpus, and deleting a descriptor-referenced scenario fails the coverage guard |
+| A workflow claims the right transaction after acting on the wrong open person/page | every write task declares a ref task-contract subject binding; the kernel records a fresh driver observation after prepare and refuses before the fence on mismatch or unknown identity |
 | Delegated fan-out changes across replay or one failed child disappears from the join | atomic immutable delegation manifests, stable edge/item ids, typed child results, and registered zero/one/many/partial/cancel/retry/replay scenarios |
 | Runtime isolation or cutover interlock drifts | The cross-runtime **import** guard is **retired by D93** — the two repos share no module graph, build, or process, so cross-runtime import/invocation/proxying is structurally impossible. Still gated because both worlds run on ONE machine: distinct commands/entrypoints, state/artifact roots, ports, process locks, and browser profiles/sessions; the rebuild repo accepts only its own native runs; the single global cutover (D89) stops legacy enqueues, reconciles all active/uncertain work, verifies backups, and atomically points the normal production launcher at the rebuild repo so exactly one production authority can start — with the legacy repo preserved wholesale as the rollback asset |
 
@@ -1875,12 +1875,12 @@ storage, SSE. This section keeps only the engine-side semantics that doc 02 owns
 
 ## 8. Worked example — person-lookup (the Phase-1 exit vertical slice)
 
-The first step **imports doc 01 §9.1's `ucpath/search-person-org` contract verbatim** (D16 — one
+The first step **imports ref task-contract §9.1's `ucpath/search-person-org` contract verbatim** (D16 — one
 definition, this doc consumes it): input is the `by-name`/`by-eid` discriminated union, output is
 `{ results: Candidate[], selection: { status, selected, candidateEids, searchName? } }`.
 
 ```ts
-import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js"; // doc 01 §9.1
+import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js"; // ref task-contract §9.1
 import { CrmFindOnboardingRecord, CrmReadOnboardingDates } from "../../domain/contracts/crm/…";
 import { DeriveActiveCheckOutcome } from "../../domain/contracts/extraction/…";   // service store (D4)
 
@@ -1899,7 +1899,7 @@ export const personLookupDescriptor = workflow("person-lookup", PersonLookupInpu
           surfaces: { inputRun: {
             placeholder: "Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)",
             parser: PERSON_LOOKUP_INPUT_PARSER } } })
-  .step("searching", SearchPersonOrg, {                 // ucpath/search-person-org (doc 01 §9.1)
+  .step("searching", SearchPersonOrg, {                 // ucpath/search-person-org (ref task-contract §9.1)
     dependsOn: [],
     replay: "checkpoint",
     bind: ({ input }) => ("emplId" in input
@@ -1955,7 +1955,7 @@ Operator clicks **Retry**:
    there is no freshness sink and the walk passes trivially. (In separations the same walk is
    what refuses the stale `ucpath-job-summary` → `ucpath-transaction` path — §5.5's error.)
 3. New attempt: spans `…/auth:crm#2`, `…/cross-verify#2` (per-action attribution in the notes
-   stream, doc 03). Output checkpoints carry attempt-2 live-source provenance.
+   stream, ref dashboard-surfaces). Output checkpoints carry attempt-2 live-source provenance.
 4. `active-status` is `always-rerun`: executes fresh over `{ outputs.searching (replayed),
    outputs["cross-verify"] (new) }` — pure, no browser. `crm-dates` skipped (`when` false ⇒
    span end `skipped`).
@@ -1971,7 +1971,7 @@ Nothing launched, no Duo spent, no partial run row.
 
 ### 8.1 AS-BUILT — the worked example is the shipped workflow (2j, 2026-08-09)
 
-**Doc 07's Phase-2 exit criterion "doc 02 §8 marked as-built" is MET here.** The exercise above
+**Doc 02 §Exit criteria's "ref workflow-model §8 marked as-built" is MET here.** The exercise above
 was written as a design sketch before any of it ran. It has since run **live**, twice over, and
 this section records where the sketch and the shipped system differ. Everything not listed below
 shipped as written.
@@ -2010,7 +2010,7 @@ coverage points for it — the correct answer, not a pass by absence (`scenario-
 proves the derivation against `fixtureDescriptor`, whose fifteen points span every path-bearing
 node kind). §5.5's freshness walk passes trivially here for the same reason §8 says it does: there
 is no transaction commit to be a freshness sink. The write half of the model is proved instead by
-`kuali-timekeeper-annotation` (doc 09 §Phase-2 controlled-commit as-built).
+`kuali-timekeeper-annotation` (ref write-safety §Phase-2 controlled-commit as-built).
 
 ---
 
@@ -2024,14 +2024,14 @@ is no transaction commit to be a freshness sink. The write half of the model is 
    than dangerous, so nothing forces an earlier prune. (Logged to the master-plan deferred-OQ list
    for the operator's confirmation.)
 2. **Write-task crash disambiguation — RESOLVED.** Every commit contract ships
-   a paired idempotency `probe` (doc 09's `writeSafety.idempotency.probe`), and crash recovery runs
+   a paired idempotency `probe` (ref write-safety's `writeSafety.idempotency.probe`), and crash recovery runs
    it FIRST (§5.6 #2): `present`→validate proof + reconstruct typed output + backfill `done`;
    `absent` is only a typed observation and becomes retry-safe after repeated consistent
    authoritative observations whose every timestamp is after the contract-specific propagation
    window; `ambiguous`/`unknown`/
    throw or unsettled negative evidence→park. The earlier "always park `needs-operator`" default is
    retired, but a single negative read never authorizes another click. The remaining §b migration decision is the
-   per-workflow *pre-write* `probePolicy` knob (doc 09 §5, on the transaction node), not this
+   per-workflow *pre-write* `probePolicy` knob (ref write-safety §5, on the transaction node), not this
    question.
 3. ~~Injected-data surface scope~~ — **resolved 2026-07-21:** engine + explicitly allowlisted
    Edit-Data fields land in Phase 2h; arbitrary checkpoint JSON and internal transaction arms are

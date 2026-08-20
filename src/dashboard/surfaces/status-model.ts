@@ -82,7 +82,7 @@ export function dsStatusOf(status: QueueStatus): DsStatus {
   return WIRE_DS_STATUS[status];
 }
 
-/** The fixed terminal-outcome→ds mapping (doc 03 D22: verified-done renders as Done). */
+/** The fixed terminal-outcome→ds mapping (ref dashboard-surfaces D22: verified-done renders as Done). */
 const OUTCOME_DS_STATUS: Record<TerminalOutcomeResult, DsStatus> = {
   "verified-done": "verifiedDone",
   "done-with-warnings": "doneWarnings",

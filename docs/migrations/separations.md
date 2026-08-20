@@ -14,16 +14,16 @@
 > from BLOCKED to READY TO BUILD, and chunk 1 started the same day.)*
 
 **What this doc is.** The first Phase-3 migration doc, and therefore the convention every later one
-follows (doc 07 §0.1: migration docs are **children** of the master plan — they answer §3.4 and
+follows (roadmap §Governance: migration docs are **children** of the master plan — they answer §3.4 and
 record what a workflow reuses/adds; they never re-order the program). Chosen as the Phase-3 entry by
 the operator on 2026-08-12 (**D193**) because a big multi-system workflow forces the store task
-libraries into existence — see doc 07 §3.1's entry block for the reasoning.
+libraries into existence — see doc 03c §Phase summary's entry block for the reasoning.
 
 **Sources.** Legacy is read **read-only** as a frozen reference (D93/D94). Every legacy fact below is
 cited to `legacy:<path>:<line>` at commit **`1bffbd65`** (2026-08-06), and anything ported into code
 later must carry that provenance in the code itself. Rebuild contracts come from the owning docs:
-doc 09 (write safety, §14 identity gate), doc 02 (graph/gates/delegation), doc 01 (task contracts),
-doc 11 (freshness/instance), doc 12 (evidence/trust), doc 06 (intake). The scenario-by-scenario
+ref write-safety (write safety, §14 identity gate), ref workflow-model (graph/gates/delegation), ref task-contract (task contracts),
+ref clock-config-secrets (freshness/instance), ref operator-trust (evidence/trust), ref data-intake-and-edit-data (intake). The scenario-by-scenario
 account of what legacy actually does — **S1–S63** and the dangerous-pattern list — lives in the
 sibling doc `separations-legacy-behavior.md`; this doc cites its S-numbers rather than restating it.
 
@@ -35,8 +35,8 @@ sibling doc `separations-legacy-behavior.md`; this doc cites its S-numbers rathe
 | **2** | Stores — what exists today, what this migration mints, and the proposed rich-extraction convention |
 | **3** | Build strategy — the bottom-up "lego" decomposition and what composition can actually use |
 | **4** | **Open decisions** — one entry per genuinely open item, each as options + pros/cons + a recommendation, each now carrying the operator's 2026-08-12 answer |
-| **5** | The §b questionnaire (doc 07 §3.4) — twelve items, each with a **verdict line**, its draft, and the recorded answer |
-| **6** | Exit criteria (doc 07 §3.2) |
+| **5** | The §b questionnaire (doc 03c §The §b migration questionnaire) — twelve items, each with a **verdict line**, its draft, and the recorded answer |
+| **6** | Exit criteria (doc 03c §Exit criteria) |
 | **7** | Open items that are NOT for this questionnaire |
 | **8** | Cross-references |
 
@@ -72,7 +72,7 @@ One Kuali RRSS separation document → one terminated employee, across three sys
 
 ### 1.2 The motivating incident, and the gate that answers it
 
-Doc 07 §3.3 puts separations at order 8 because of the **wrong-person termination `T002173685`**. A
+Doc 03c §Recommended migration order puts separations at order 8 because of the **wrong-person termination `T002173685`**. A
 graduating student's Kuali doc carried EID `10833507` ("Hernandez, Jose Santos"); UCPath rendered the
 name as "Santos Hernandez", the similarity classifier returned `different`, a name search on the
 common name resolved a **career** maintenance worker (`10401814`, employed since 2016), and the
@@ -80,18 +80,18 @@ override filed a real termination against him (`legacy:src/workflows/separations
 scenario **S17**). A permanent-key fence would have fenced that write perfectly and filed it anyway —
 the key was derived from the wrong person.
 
-**Doc 09 §14 ALWAYS-GATE applies to this migration in full.** Manual identity approval on **every**
+**Ref write-safety §14 ALWAYS-GATE applies to this migration in full.** Manual identity approval on **every**
 separation, both separation types, **no auto-approve-on-match** (operator ratification 2026-07-24,
 D77). This is a deliberate **widening** of legacy, which gates only on the `different` tier and lets
 `same`/`similar` proceed silently (**S14/S15/S16/S17**). Two values are explicitly left to this
-questionnaire by doc 09 §14.7: the **approval freshness limit** (item 5, residual **5A** —
-**answered 2026-08-12: kept at the drafted 4 hours, because D8/doc 09 §14.7 make `Infinity` illegal
+questionnaire by ref write-safety §14.7: the **approval freshness limit** (item 5, residual **5A** —
+**answered 2026-08-12: kept at the drafted 4 hours, because D8/ref write-safety §14.7 make `Infinity` illegal
 for identity facts — see §5 residual 5A**) and whether **I-9 separations** show a different candidate
 packet than Kuali separations
 (**answered 2026-08-12: separations does not involve the I-9 packet at all, so the question resolves
 out of scope for this workflow** — §4f1). §4d then settles the other half in this workflow's favour:
 the gate holds in **every** run mode, with no preset, prefill or resume path able to disable it. Also note doc
-09 §14.6 risk #1: an always-gate's dominant failure is rubber-stamping, which is why the packet leads
+ref write-safety §14.6 risk #1: an always-gate's dominant failure is rubber-stamping, which is why the packet leads
 with **disconfirming** evidence and why an ambiguous decision must not be dispatchable by the same
 click as an unambiguous one. The behavior review's **S25/S26** show the other half of the risk —
 legacy's gate is switchable off by a run mode, which is §4d.
@@ -114,9 +114,9 @@ write family, and the kuali separation read/finalization family).
 |---|---|---|---|
 | `ucpath/search-person-org` | read | **reuse** | Exists (person-lookup). Candidate resolution for the gate packet may reuse it as-is |
 | `ucpath/read-job-summary` | read | **new** | Workforce Job Summary: dept, dept id, payroll title code, payroll title, legal name. Must pick the effective-dated row at or before the separation date, on both tabs |
-| `ucpath/find-existing-termination` | read | **new** | The doc 09 §12 probe by name. Match on Person ID **exactly** + effective date + `/Terminat/i`; legacy deliberately removed name matching after a real duplicate-name collision |
+| `ucpath/find-existing-termination` | read | **new** | The ref write-safety §12 probe by name. Match on Person ID **exactly** + effective date + `/Terminat/i`; legacy deliberately removed name matching after a real duplicate-name collision |
 | `ucpath/read-termination-status` | read | **new** | The approved-reuse check on SS Smart HR, with the 14-day window and "unreadable effdt ⇒ never reuse" (**S27/S28/S29**) |
-| `ucpath/clear-pending-terminations` | prepare + **commit** | **new** | The date-agnostic sweep. Deletes rows, so it is a fenced mutation (item 1B / doc 09 §13 item 5; **S30/S31**) |
+| `ucpath/clear-pending-terminations` | prepare + **commit** | **new** | The date-agnostic sweep. Deletes rows, so it is a fenced mutation (item 1B / ref write-safety §13 item 5; **S30/S31**) |
 | `ucpath/fill-termination` | prepare | **new** | Template → effective date → create → Empl ID → reason code → continue → comments → **Override Last Date Worked** + Last Date Worked, each positively read back (**S49**) |
 | `ucpath/submit-termination` | **commit** | **new** | Save and Submit. Timeout with neither banner nor confirmation refuses to report success (**S51**) |
 | `ucpath/verify-termination-receipt` | read | **new** | The keyed deep link `?Action=U&UC_TRANSACT_ID=T…`, the record-field anchors, and the **pair** `(transactionNumber, approvalStatus)` |
@@ -159,9 +159,9 @@ provider-free fold over prior node outputs.
 ### 2.6 The rich-extraction store convention — RATIFIED as D194
 
 > **Status: ANSWERED 2026-08-12 — Option A adopted, ratified as D194.** The normative text lives in
-> **doc 01 §2.8** (task contracts owns "how wide a read task's output is", the same way §2.7 owns
+> **ref task-contract §2.8** (task contracts owns "how wide a read task's output is", the same way §2.7 owns
 > "how much a task owes"); the derived view is `STORES.md` §1 "How stores work"; the pointer row is
-> doc 04 round 48. Doc 06 is **not** an owner — it owns intake (column mapping, roster, capture), and
+> ref decisions round 48. Ref data-intake-and-edit-data is **not** an owner — it owns intake (column mapping, roster, capture), and
 > this is a task-authoring rule, so putting it there would have split one contract across two docs.
 > The options below are kept as the record of what was chosen from.
 
@@ -215,7 +215,7 @@ run.
   already a proven shape in this tree: `{state:"absent", reason}` per date in
   `ReadOnboardingDatesOutputSchema` (`interpreter.ts:474-476, 540-558`), which reports absence as
   data *after* the page state and subject are proven, and still throws on a malformed non-blank
-  value. Second cost: redaction classification is per leaf and an undeclared leaf fails loud (doc 12
+  value. Second cost: redaction classification is per leaf and an undeclared leaf fails loud (ref operator-trust
   §D140), so a rich task owes a wider classification table up front.
 - *Net:* the cons are one-time authoring obligations on the task; the pros compound across every
   later migration.
@@ -261,8 +261,8 @@ The consumer names the fields it wants; the task reads and returns exactly those
 - Each such schema declares an explicit absent arm for any field that can legitimately be blank, so a
   broken field is `absent` **with a reason** rather than a hard failure of an unrelated workflow —
   and never a silent blank.
-- Each such task declares its per-leaf redaction classification at authoring time (doc 12 §D140).
-- The convention is then ratified as **D194** in doc 01 §2.8 + `STORES.md` §1, and later migrations
+- Each such task declares its per-leaf redaction classification at authoring time (ref operator-trust §D140).
+- The convention is then ratified as **D194** in ref task-contract §2.8 + `STORES.md` §1, and later migrations
   inherit it.
 
 **Recommendation: Option A.** It delivers the operator's stated goal exactly (consumers never write
@@ -286,7 +286,7 @@ moves a hash existing run records already bind. The `crm` record/dates pair is t
 target — one shared page visit, one duplicated `First Day of Service` read — and the CRM **history**
 page stays its own task either way, because it is a genuinely second visit.
 
-Where it landed: **doc 01 §2.8** (normative), `STORES.md` §1 (derived), doc 04 round 48 (pointer).
+Where it landed: **ref task-contract §2.8** (normative), `STORES.md` §1 (derived), ref decisions round 48 (pointer).
 
 ---
 
@@ -299,7 +299,7 @@ proved before anything is composed.
 **The order is store tasks → per-system sub-workflows → composition.**
 
 1. **Store tasks first.** Every task in §2's inventory is authored against its strict contract with
-   its scenarios and pure-logic unit tests, in the store that owns it (doc 01). A task is finished
+   its scenarios and pure-logic unit tests, in the store that owns it (ref task-contract). A task is finished
    when its contract parses, its guards are green, and its driver operations resolve against the
    **live** system (selector re-verification is mandatory at migration — D150 replaced legacy change
    accounting with exactly this).
@@ -320,11 +320,11 @@ proved before anything is composed.
    - **`separations-kuali-finalization`** — the finalization write, same single-transaction-node
      shape, its own permanent key and its own read-back proof.
    Each write sub-workflow owes its own **controlled-commit proof on an operator-approved target**
-   (doc 07 §3.1 step 5) — and that is a real gate, not a formality: it is what lets the composed
+   (doc 03c §Phase summary step 5) — and that is a real gate, not a formality: it is what lets the composed
    workflow inherit two proven writes instead of proving both at once, at the end, on the largest
    graph in the program.
 3. **Then compose.** The full `separations` descriptor is assembled from the proven pieces with the
-   ALWAYS-GATE identity node sitting **before** the transaction nodes (doc 09 §14.3 — a gate is a long
+   ALWAYS-GATE identity node sitting **before** the transaction nodes (ref write-safety §14.3 — a gate is a long
    wait and D26 forbids any park between `prepare` and `commit`).
 
 **What composition can actually use today — the honest note.** Two mechanisms exist and they are not
@@ -332,8 +332,8 @@ equivalent:
 
 | Mechanism | Status in this tree | What it costs at composition |
 |---|---|---|
-| **One descriptor, many nodes** (reads → gate → transaction → transaction) | **Built and proven.** Both shipped workflows use it; doc 09 §12's worked example is literally two transaction nodes in one separations graph | Nothing. The sub-workflows' *tasks* compose directly; the sub-workflow descriptors stay as proving harnesses |
-| **Real child runs** (`child-run` node / delegation, doc 02 §3.2) | **A typed seam that is NOT wired.** `ChildRunExecutor` is an optional dependency of the run executor, `composeWorkerRuntime` never supplies it, and a `child-run` node therefore fails loud with `capability-unavailable` — "refusing to skip a delegation" (`src/core/run-executor.ts:1350-1356`, `src/server/worker/compose.ts:502-537`) | Wiring the executor seam **plus** the enqueue/join transaction, the fan-out manifest, and a worker able to claim the child workflow — a slice of its own, not a step of this one |
+| **One descriptor, many nodes** (reads → gate → transaction → transaction) | **Built and proven.** Both shipped workflows use it; ref write-safety §12's worked example is literally two transaction nodes in one separations graph | Nothing. The sub-workflows' *tasks* compose directly; the sub-workflow descriptors stay as proving harnesses |
+| **Real child runs** (`child-run` node / delegation, ref workflow-model §3.2) | **A typed seam that is NOT wired.** `ChildRunExecutor` is an optional dependency of the run executor, `composeWorkerRuntime` never supplies it, and a `child-run` node therefore fails loud with `capability-unavailable` — "refusing to skip a delegation" (`src/core/run-executor.ts:1350-1356`, `src/server/worker/compose.ts:502-537`) | Wiring the executor seam **plus** the enqueue/join transaction, the fan-out manifest, and a worker able to claim the child workflow — a slice of its own, not a step of this one |
 
 So the default composition is **one descriptor over reused tasks**, and the sub-workflow descriptors
 are the scaffolding that made each piece provable. Choosing real child runs instead is a **decision,
@@ -357,7 +357,7 @@ behind a strict schema — and stop there.**
 
 Concretely, for the chunks where this is easiest to get wrong:
 
-- **Chunk 3 (the UCPath termination write)** — doc 09 §14's ALWAYS-GATE identity approval becomes a
+- **Chunk 3 (the UCPath termination write)** — ref write-safety §14's ALWAYS-GATE identity approval becomes a
   **command arm plus wire state ONLY**. The approval UI comes later; the gate's packet, its
   freshness bound and its resolution command are all server-side facts served on the wire.
 - **Chunk 6 (composition)** — exposes start / approve / resume endpoints. No surfaces.
@@ -376,7 +376,7 @@ skips a system entirely), the answer is a **different composition over the same 
 an `if` inside `separations`.
 
 **Why this is a design rule and not a preference.** A branch inside a live write workflow multiplies
-what every guard, scenario and controlled-commit proof has to cover, and doc 02 §5.5's freshness walk
+what every guard, scenario and controlled-commit proof has to cover, and ref workflow-model §5.5's freshness walk
 must conservatively union **every reachable branch** until its discriminator is a validated value —
 so each added branch widens the safety envelope of runs that never take it. Recomposition keeps each
 composition's graph small enough to prove, and keeps the chunks themselves single-purpose.
@@ -648,7 +648,7 @@ adopted), and it does not proceed on the Kuali dates (B is not adopted).
   receipt pair `(transactionNumber, approvalStatus)` on the run record as durable authority rather
   than a remembered fact. Resume re-enters only the Kuali finalization transaction node, under its own
   permanent key — and resume **cannot** re-file the termination, because the UCPath node's permanent
-  key already fenced and settled (doc 09's same-key mutex refuses a second fence).
+  key already fenced and settled (ref write-safety's same-key mutex refuses a second fence).
 - *Cons:* the resume path must **not** inherit legacy's skip-everything semantics. **S26/D7** is the
   proof of why: a prefilled field silently disabling the identity gate is exactly how the wrong-person
   control gets switched off. A resume must re-prove the document identity and keep the gate (§4d).
@@ -683,7 +683,7 @@ transaction number carried DURABLY.**
   the operator does not reconstruct it from a log line or their memory.
 - **Resume re-enters only the Kuali finalization node**, under its own permanent key. Resume
   **cannot** re-file the termination: the UCPath node's permanent key already fenced and settled, and
-  doc 09's same-key mutex refuses a second fence.
+  ref write-safety's same-key mutex refuses a second fence.
 - **Resume does NOT inherit legacy's skip-everything semantics.** It re-proves the document identity
   and it keeps the identity gate (**§4d**) — a prefilled field silently disabling the wrong-person
   control is **S26/D7** verbatim and does not port.
@@ -724,9 +724,9 @@ it was granted on.
 
 **Options.**
 
-**Option A — ALWAYS-GATE in every mode; no preset, prefill, or resume path can disable it. ★ recommended (and this is what doc 09 §14 / D77 already ratified)**
+**Option A — ALWAYS-GATE in every mode; no preset, prefill, or resume path can disable it. ★ recommended (and this is what ref write-safety §14 / D77 already ratified)**
 - *Pros:* it is the ratified contract, not a new position. It deletes pattern D7 structurally rather
-  than by discipline: the guard `identity-gate-before-separation-commit` (doc 09 §14.6 guard #2,
+  than by discipline: the guard `identity-gate-before-separation-commit` (ref write-safety §14.6 guard #2,
   already in §6's exit criteria) proves every commit is graph-reachable only through the gate node, so
   a future edit cannot reintroduce the skip. It also makes **S25** well-formed, because the approval
   binds to an evidence digest and is re-checked on resume — item 5's draft: an identical digest inside
@@ -736,7 +736,7 @@ it was granted on.
 
 **Option B — the gate is skippable with a per-run explicit operator override recorded in authority.**
 - *Pros:* a genuinely repetitive resume (§4c's finalization-only path) would not re-ask.
-- *Cons:* an override that exists gets used routinely, and doc 09 §14.6 risk #1 is rubber-stamping — a
+- *Cons:* an override that exists gets used routinely, and ref write-safety §14.6 risk #1 is rubber-stamping — a
   one-click "skip the gate" is the most rubber-stampable control that could be built. The honest
   version of what B wants is not a skip but "the same gate, pre-filled with the prior approval's
   digest, proceeding when the digest is unchanged and inside the freshness limit" — which is exactly
@@ -755,7 +755,7 @@ also the behavior review's own recommendation at S26.
 no resume path, and no run mode of any kind can disable identity approval.**
 
 - Every separation, both separation types, every mode, every resume: manual identity approval, no
-  auto-approve-on-match. This ratifies doc 09 §14 / D77 for this migration with no exception carved
+  auto-approve-on-match. This ratifies ref write-safety §14 / D77 for this migration with no exception carved
   anywhere.
 - Legacy's derivation chain — `txnNumberPrefilled || lastDayWorkedPrefilled || presetSkippedKronos`
   ⇒ no Job Summary, no name comparison, no gate — does **not** port in any form. Pattern **D7** dies
@@ -882,7 +882,7 @@ staged variables. What changes is the size of "every field": **ten → twelve**.
 **Where the two values come from.** The `dates` node's RECONCILED output and nowhere else —
 `lastDayWorked` (the New Kronos last punch) and `separationDate` (`max(lastDayWorked, last sick, last
 holiday)`). Never re-read off the Kuali document at fill time, never recomputed. Both already ride
-inside doc 09 §14.2's packet as `dates.lastDayWorked` / `dates.separationDate` (D211), so the digest
+inside ref write-safety §14.2's packet as `dates.lastDayWorked` / `dates.separationDate` (D211), so the digest
 the operator's approval binds to already covers them; they are not repeated into the packet's
 `document` block, because the packet is a PRESENTATION of decisions and one value rendered twice is a
 value that can disagree with itself.
@@ -928,7 +928,7 @@ None of the three touches the landing proof, which was never the wire check: the
 compares **twelve** fields with the same exact equality and no tolerance arm, so a document that kept
 its stale date is an `absent` naming `separationDate` and the write parks.
 
-_(Built 2026-08-14 — §9.15. Ratified as **D217** in doc 04.)_
+_(Built 2026-08-14 — §9.15. Ratified as **D217** in ref decisions.)_
 
 ---
 
@@ -937,9 +937,9 @@ _(Built 2026-08-14 — §9.15. Ratified as **D217** in doc 04.)_
 These four have no derivable draft. Each is presented with the shapes its answer could take, so the
 operator picks a shape rather than composing from scratch.
 
-#### 4f1. The I-9 separation candidate packet (item 6; doc 09 §14.7)
+#### 4f1. The I-9 separation candidate packet (item 6; ref write-safety §14.7)
 
-**Context.** The operator distinguishes **Kuali separations** and **I-9 separations**, and doc 09
+**Context.** The operator distinguishes **Kuali separations** and **I-9 separations**, and ref write-safety
 §14.7 asks whether the I-9 type shows a **different** candidate packet at the gate. There is no
 legacy basis: I-9 Check was split into its own workflow on 2026-07-17 and no I-9-separation branch
 exists anywhere in the legacy separations code to derive one from.
@@ -951,18 +951,18 @@ exists anywhere in the legacy separations code to derive one from.
 **Recommendation:** (i) as the default, escalating to (ii) **only** if the operator can name at least
 one field that must differ. No named field ⇒ no variant.
 
-#### 4f2. Test versus production instance (item 6; doc 11 §4)
+#### 4f2. Test versus production instance (item 6; ref clock-config-secrets §4)
 
-**Context.** Doc 11 §4 wants a per-run test/prod instance decision; whether a UCPath or Kuali *test*
+**Context.** Ref clock-config-secrets §4 wants a per-run test/prod instance decision; whether a UCPath or Kuali *test*
 instance exists for this workflow is operator knowledge that neither repo records.
 
-- **Option (i) — a real UCPath/Kuali test instance, if one exists.** *Pros:* the full write path including `Save and Submit` gets exercised with no real termination filed. *Cons:* only useful if its selectors and workflow steps match production, which is itself a live-verification job; and a green test-instance run is explicitly **not** the controlled-commit evidence doc 07 §3.1 step 5 requires.
+- **Option (i) — a real UCPath/Kuali test instance, if one exists.** *Pros:* the full write path including `Save and Submit` gets exercised with no real termination filed. *Cons:* only useful if its selectors and workflow steps match production, which is itself a live-verification job; and a green test-instance run is explicitly **not** the controlled-commit evidence doc 03c §Phase summary step 5 requires.
 - **Option (ii) — an operator-approved production canary: one named separation the operator accepts will be filed for real, with the approval recorded. ★ recommended for the commit proof.** *Pros:* it **is** the required evidence; it is exactly how D128 and D135 were done. *Cons:* irreversible, and it needs a real pending separation with the operator present.
 - **Option (iii) — blocked until the operator names a target.** *Pros:* honest if neither exists. *Cons:* blocks §6's controlled-commit criterion.
 
 **Recommendation:** (ii) for the commit proof — it is the only option that satisfies the exit
 criterion — with (i) used for fill/prepare rehearsal *if* a test instance exists. Either way, naming
-the target is doc 07 §3.1 step-5 operator work, which §7 already records.
+the target is doc 03c §Phase summary step-5 operator work, which §7 already records.
 
 #### 4f3. `probeToFenceMaxMs` for the UCPath termination (item 3)
 
@@ -999,7 +999,7 @@ prerequisite either way — the map cannot be made exhaustive without it.
 
 **4f1 — separations does NOT involve the I-9 packet. "i9 and kuali separations is very different."**
 There is **no I-9 branch** in this workflow: an I-9 separation is a different thing, not a variant of
-this one. Doc 09 §14.7's deferred question resolves as **out of scope for this migration**. In
+this one. Ref write-safety §14.7's deferred question resolves as **out of scope for this migration**. In
 practice the gate therefore shows **one** packet composition — option (i)'s outcome — but for a
 stronger reason than (i) offered: it is not that both types share a packet, it is that this workflow
 has only one type. Nothing here is a claim about what an I-9 separation needs; if one is ever
@@ -1007,7 +1007,7 @@ automated it is its own migration with its own questionnaire (and, per §3.1, it
 
 **4f2 — option (ii): an operator-approved PRODUCTION canary.** No test instance is used for the
 commit proof. One named separation the operator accepts will be filed for real, with the approval
-recorded — exactly how D128 and D135 were done, and the only thing that satisfies doc 07 §3.1 step 5.
+recorded — exactly how D128 and D135 were done, and the only thing that satisfies doc 03c §Phase summary step 5.
 **The specific canary target is named by the operator when the controlled-commit step is reached, and
 is never invented here** (§7's first bullet stands unchanged).
 
@@ -1064,7 +1064,7 @@ decided rather than inherited.
 **Option C — make it an operator input on the gate packet.**
 - *Pros:* a human decides per run, on the same screen where they already approve identity.
 - *Cons:* adds a decisive field to a gate whose entire design leads with disconfirming identity
-  evidence; doc 09 §14.6 risk #1 (rubber-stamping) argues against bolting unrelated decisions onto it.
+  evidence; ref write-safety §14.6 risk #1 (rubber-stamping) argues against bolting unrelated decisions onto it.
 
 **Recommendation: A if the operator can state the rule; otherwise B with the ratification recorded in
 the code and in item 6's answer.** What is not acceptable is carrying the constant forward silently —
@@ -1091,12 +1091,12 @@ What B requires and what this answer accepts:
 
 ---
 
-## 5. The §b questionnaire (doc 07 §3.4 — twelve items)
+## 5. The §b questionnaire (doc 03c §The §b migration questionnaire — twelve items)
 
 **Read this first — the operator asked for exactly one thing from this section.** *"Rephrase those
 questions like §4 and ask me in the same format if I still have to answer them — I'm not sure if they
 are the same questions you asked in §4."* They largely **are** the same questions: §4 is where the
-genuinely open decisions were pulled out and given options, and §5's items are the doc 07 §3.4
+genuinely open decisions were pulled out and given options, and §5's items are the doc 03c §The §b migration questionnaire
 template those decisions came from. So every item below now opens with a **one-line verdict** in one
 of three classes, and only the last class is work for the operator:
 
@@ -1115,19 +1115,19 @@ its `DRAFT — operator to confirm/correct` line as the record of what was deriv
 
 > **VERDICT: ANSWERED via §4e (C+D collapse into one Kuali node), §4g (D's final-pay value) and §4c
 > (A's post-commit failure policy) — no further operator input.** The five-mutation list itself is
-> DRAFT STANDS: A/B/E are derived from legacy plus doc 09 §13, and E's refusal follows from §4d.
+> DRAFT STANDS: A/B/E are derived from legacy plus ref write-safety §13, and E's refusal follows from §4d.
 
 *What the answer determines:* every mutating action needs a prepare contract, a commit contract, one
 transaction lease scope, a stable idempotency key, an expected subject, a post-prepare semantic
-observation, a normalizer/matcher, and mismatch/unknown evidence (doc 09 §2). This is the list the
+observation, a normalizer/matcher, and mismatch/unknown evidence (ref write-safety §2). This is the list the
 whole write-safety kernel is instantiated from.
 
 **DRAFT — operator to confirm/correct.** Legacy performs **five** distinct external mutations:
 
 | # | Mutation | System | Draft treatment |
 |---|---|---|---|
-| A | **Save and Submit the termination transaction** | UCPath Smart HR | A real `commit`. Permanent key `<eid>\|termination\|<terminationEffDate>` (doc 09 §12's worked example uses exactly this shape). Expected subject = the operator-approved EID from the gate; the staged page's Empl ID field is the post-prepare observation |
-| B | **Delete pending termination rows** for the EID | UCPath Smart HR | It deletes rows, so it is a mutation and doc 09 §13 item 5 explicitly asks whether it is modeled as a first-class fenced write. **Draft: yes — its own commit contract**, keyed `<eid>\|pending-sweep\|<runId>` and run as a separate transaction node before the create (**S30/S31**) |
+| A | **Save and Submit the termination transaction** | UCPath Smart HR | A real `commit`. Permanent key `<eid>\|termination\|<terminationEffDate>` (ref write-safety §12's worked example uses exactly this shape). Expected subject = the operator-approved EID from the gate; the staged page's Empl ID field is the post-prepare observation |
+| B | **Delete pending termination rows** for the EID | UCPath Smart HR | It deletes rows, so it is a mutation and ref write-safety §13 item 5 explicitly asks whether it is modeled as a first-class fenced write. **Draft: yes — its own commit contract**, keyed `<eid>\|pending-sweep\|<runId>` and run as a separate transaction node before the create (**S30/S31**) |
 | C | **Save the Kuali finalization** (term-eff date, template checkbox, transaction number, final-pay radio, comments) | Kuali | A real `commit` with a `save-verify` completion arm — Kuali's save is UI-silent (D78), so a reload read-back is mandatory (**§4e**). Key `<documentNumber>\|finalization\|<transactionNumber>`. The final-pay radio's *value* is **§4g** |
 | D | **Write org data into the Kuali doc** (department, payroll title code, payroll title) and the **timekeeper name** | Kuali | Draft: a **second Kuali transaction node**, not a free-floating write. It is benign and restorable, but it is still a save on a real document and the rebuild has no "small write" category. How many Kuali nodes there are is the same choice as **§4e** |
 | E | **Rewrite the employee NAME on the Kuali doc** on the `similar` tier | Kuali | **Draft: do NOT port.** Legacy does this even in dry-run (`legacy:.../workflow.ts:634-649`), and `KRONOS-SELECTORS.md:83-84` documents that field as read-only. Rewriting an identity field on the source document to make a match succeed is the wrong direction for a wrong-person control (**S15**, pattern D8) |
@@ -1139,7 +1139,7 @@ comments — is staged in one pass from stored variables at the end of the run, 
 by one reload read-back (§4e's caveat about step-owned sections is the one thing that could split it,
 and it is a live-dry-run finding, not a design choice). Legacy's early org-data write does not port as
 a separate save. **A** and **B** stand as drafted (B keyed `<eid>|pending-sweep|<runId>`, its own
-fenced node before the create, per doc 09 §13 item 5). **E** stands refused — the `similar`-tier name
+fenced node before the create, per ref write-safety §13 item 5). **E** stands refused — the `similar`-tier name
 rewrite does not port, which §4d independently requires: an identity field on the source document is
 not something a wrong-person control may edit to make itself pass. **D**'s final-pay value is §4g
 (hardcoded, operator-ratified).
@@ -1150,22 +1150,22 @@ not something a wrong-person control may edit to make itself pass. **D**'s final
 
 > **VERDICT: ANSWERED via §4e (how many read-backs, and against what) and §4c (partial completion) —
 > no further operator input.** The per-mutation arms (`receipt` / typed sweep outcome / `save-verify`)
-> are DRAFT STANDS: they are doc 09 §2's own vocabulary applied to the D130 finding.
+> are DRAFT STANDS: they are ref write-safety §2's own vocabulary applied to the D130 finding.
 
-*What the answer determines:* which of doc 09 §2's three completion arms each commit declares —
+*What the answer determines:* which of ref write-safety §2's three completion arms each commit declares —
 `receipt`, `save-verify`, or `upload-verify`/argued `unverifiableByPage`. Getting this wrong is how a
 "looked submitted" becomes a `done`.
 
 **DRAFT — operator to confirm/correct.**
 
-- **A (UCPath termination) → `receipt`, and the receipt is the PAIR `(transactionNumber, approvalStatus)`, never the number alone.** The 2026-08-04 live probe (D130, doc 09 §13 item 6) proved a **Denied** transaction carries a perfectly well-formed `T…`, and recorded that legacy's own `interpretPostSubmitTxnReadback` tests only `/^T\d{6,}$/` — a real latent defect. The number lives on **SS Smart HR Transactions** (`UC_EXTENSIONS.UC_SS_TBH.GBL`) detail, anchored on the PeopleSoft record-field ids `#UC_SS_TRANSACT_UC_TRANSACT_ID` / `#UC_SS_TRANSACT_APPR_STATUS` (there is no role+label anchor), reached by the keyed deep link `?Action=U&UC_TRANSACT_ID=T…`. An unknown id renders the ordinary search form **silently**, so the reader must assert the field resolved *and* that its text equals the requested id.
+- **A (UCPath termination) → `receipt`, and the receipt is the PAIR `(transactionNumber, approvalStatus)`, never the number alone.** The 2026-08-04 live probe (D130, ref write-safety §13 item 6) proved a **Denied** transaction carries a perfectly well-formed `T…`, and recorded that legacy's own `interpretPostSubmitTxnReadback` tests only `/^T\d{6,}$/` — a real latent defect. The number lives on **SS Smart HR Transactions** (`UC_EXTENSIONS.UC_SS_TBH.GBL`) detail, anchored on the PeopleSoft record-field ids `#UC_SS_TRANSACT_UC_TRANSACT_ID` / `#UC_SS_TRANSACT_APPR_STATUS` (there is no role+label anchor), reached by the keyed deep link `?Action=U&UC_TRANSACT_ID=T…`. An unknown id renders the ordinary search form **silently**, so the reader must assert the field resolved *and* that its text equals the requested id.
 - **B (pending sweep) → its own typed outcome, not a receipt.** Draft: proof is a re-read showing zero pending `TER` rows for that EID. Legacy returns a count and refuses to collapse a thrown sweep into `0` (**S31**) — that refusal ports.
 - **C and D (Kuali) → `save-verify`.** Kuali's save is UI-silent (no toast, no banner), so a **reload read-back** is mandatory and "clicked without error" is never proof — the same arm already built and controlled-commit-proven as `kuali/verify-timekeeper-annotation` (D135). **How many read-backs, and why one-per-node: §4e.**
 - **Partial completion** — UCPath receipt obtained, Kuali finalization fails — is **§4c**.
 
 **Open, and legacy cannot answer it:** whether the post-submit confirmation dialog renders the `T…`
 inline. Legacy says it **cannot** be read from the dialog and re-navigates
-(`legacy:src/workflows/separations/CLAUDE.md:147`), and doc 09 §13 item 6 records that as ported
+(`legacy:src/workflows/separations/CLAUDE.md:147`), and ref write-safety §13 item 6 records that as ported
 legacy knowledge, **not** rebuild-verified. Settling it needs one real submit (§7).
 
 **RECORDED ANSWER (2026-08-12).** The draft stands. **A** → `receipt`, and the receipt is the **pair**
@@ -1187,7 +1187,7 @@ questionnaire answer and never was.
 > stands on D78's measurement.
 
 *What the answer determines:* `"always"` or `"retries-and-recovery-only"` per transaction — required,
-no default (doc 09 §5 / D17) — plus a justified `probeToFenceMaxMs` bounding preparation after the
+no default (ref write-safety §5 / D17) — plus a justified `probeToFenceMaxMs` bounding preparation after the
 live probe.
 
 **DRAFT — operator to confirm/correct.** `"always"` for **every** transaction here. The rationale is
@@ -1243,7 +1243,7 @@ logged. The two legacy dry-run writes (timekeeper name, `similar`-tier name rewr
 > **VERDICT: ANSWERED — both residuals recorded 2026-08-12.** **5A** the four `maxAge` values: the
 > Kuali document, UCPath Job Summary, and New Kronos timecard reads all take the argued-unbounded arm
 > — no automatic freshness refresh in separations (see the residual below for the rationale); the
-> identity-approval gate result keeps its drafted 4-hour bound because D8/doc 09 §14.7 forbid
+> identity-approval gate result keeps its drafted 4-hour bound because D8/ref write-safety §14.7 forbid
 > `Infinity` there. **5B** the override column: every non-forbidden payload field (dates, department,
 > titles) is `audited`, never `forbidden` — Option A, not the recommended Option B. §4d answered
 > *that* the gate result has a freshness limit and that it is never overridable; **5A now answers
@@ -1265,15 +1265,15 @@ staleness risk:
 | Kuali document fields (name, EID, dates, type) | **10 min** | `forbidden` for EID/name (identity); `audited` for the dates | The doc is operator-editable between runs; legacy deliberately never caches it |
 | UCPath Job Summary (dept, titles, legal name) | **10 min** | `audited` for dept/titles; identity `forbidden` | Feeds both a Kuali write and the gate packet |
 | New Kronos timecard | **30 min** | `audited` | Punches settle; the derived dates are the write's payload, so this is the riskiest non-identity read |
-| Existing-termination probe | **`probeToFenceMaxMs`, not a maxAge** | — | Doc 09 §5 already bounds probe→fence; a second window here would be two answers to one question |
-| **Identity-approval gate result** (doc 09 §14.5/§14.7) | **DRAFT: 4 hours** — "hours, not days", and `Infinity` is illegal here | never overridable | §14.7 explicitly leaves this value to this questionnaire. On resume the candidate is re-read: identical digest within limit proceeds, a changed candidate re-opens the gate regardless — which is also what makes **§4d** work on a resumed run |
+| Existing-termination probe | **`probeToFenceMaxMs`, not a maxAge** | — | Ref write-safety §5 already bounds probe→fence; a second window here would be two answers to one question |
+| **Identity-approval gate result** (ref write-safety §14.5/§14.7) | **DRAFT: 4 hours** — "hours, not days", and `Infinity` is illegal here | never overridable | §14.7 explicitly leaves this value to this questionnaire. On resume the candidate is re-read: identical digest within limit proceeds, a changed candidate re-opens the gate regardless — which is also what makes **§4d** work on a resumed run |
 
 ---
 
 #### RESIDUAL 5A — the four `maxAge` values
 
 **Context.** Legacy has **no** freshness model at all, so there is nothing to port and nothing to
-confirm against: these are rebuild-new numbers. What makes them real rather than decorative is doc 02
+confirm against: these are rebuild-new numbers. What makes them real rather than decorative is ref workflow-model
 §5.5: when a replayed read can reach a commit node in this run and
 `now − observedAt > limit`, the kernel **refuses loudly** and names the re-run as the fix. So a
 `maxAge` is not a warning threshold — it is the line at which the run re-reads instead of writing.
@@ -1293,7 +1293,7 @@ Two facts from the answers above set the shape of the choice:
 - *Pros:* each value is short relative to how fast that data can actually change — the separation
   document is operator-editable between runs, so a 10-minute bound means the run essentially always
   writes what it just read. A re-read is cheap and always safe (~6 s for a cold Kuali document open,
-  one Job Summary read); a stale write is neither. The 4-hour gate is exactly doc 09 §14.7's "hours,
+  one Job Summary read); a stale write is neither. The 4-hour gate is exactly ref write-safety §14.7's "hours,
   not days": long enough that an approval given before lunch survives it, short enough that yesterday's
   approval can never be reused. And the re-read after a long gate is a **feature** — the dates the
   termination is filed on were read after the operator approved the person.
@@ -1314,7 +1314,7 @@ Two facts from the answers above set the shape of the choice:
 - *Pros:* the strongest possible guarantee on the data.
 - *Cons:* buys very little over A (A already re-reads after most gates) and costs a lot at the gate: a
   1-hour approval window means a lunch break invalidates an approval and re-asks the same question.
-  Re-asking a question the operator already answered is what produces **rubber-stamping**, which doc 09
+  Re-asking a question the operator already answered is what produces **rubber-stamping**, which ref write-safety
   §14.6 names as risk #1 — the dominant failure mode of an always-gate.
 
 **Recommendation: A** — the drafted values, unchanged. They are the only set where the two things that
@@ -1323,9 +1323,9 @@ decision.
 
 `ANSWER (operator), 2026-08-12 — 5A:` **None of the three drafted options. NO automatic freshness
 refresh in separations — the Kuali document, UCPath Job Summary, and New Kronos timecard reads all
-take the argued-unbounded arm (`maxAgeMs: Infinity`, justified per doc 01/02/07's "`Infinity` must be
+take the argued-unbounded arm (`maxAgeMs: Infinity`, justified per ref task-contract / ref workflow-model's "`Infinity` must be
 argued in a comment" provision); the identity-approval gate result keeps a real bound because D8/
-doc 09 §14.5/§14.7 forbid `Infinity` for identity facts categorically.**
+ref write-safety §14.5/§14.7 forbid `Infinity` for identity facts categorically.**
 
 - **The rationale, in the operator's words.** The Kuali separation document is a SAVED, stable
   artifact — once the department saved it, the data does not churn, so an age-triggered re-read buys
@@ -1339,7 +1339,7 @@ doc 09 §14.5/§14.7 forbid `Infinity` for identity facts categorically.**
   drafted 10 min / 10 min / 30 min values outright; none of Option A, B, or C above is adopted as
   written.
 - **The identity-approval gate result is excluded from this answer, structurally, not by oversight.**
-  doc 09 §14.5/§14.7 and D8 already make `Infinity` illegal for the gate result — it bounds a human
+  ref write-safety §14.5/§14.7 and D8 already make `Infinity` illegal for the gate result — it bounds a human
   judgement's shelf life, not a document's staleness, and none of 5A's own three options ever proposed
   `Infinity` for it either. It keeps the drafted **4 hours** ("hours, not days," per §14.7) — the one
   number this re-scoping does not touch.
@@ -1351,7 +1351,7 @@ doc 09 §14.5/§14.7 forbid `Infinity` for identity facts categorically.**
 
 #### RESIDUAL 5B — the override column on the DATE fields
 
-**Context.** Doc 02 §5.5 lets a field be marked `override:"audited"`, which means a stale value can be
+**Context.** Ref workflow-model §5.5 lets a field be marked `override:"audited"`, which means a stale value can be
 **confirmed** by the operator instead of re-read. It is not a silent bypass: the dashboard shows the
 checkpoint, its age, the limit and the consuming write node, the confirmation is explicit, it is
 scoped to that single resume attempt, it is never persisted onto the item, and it lands in the span
@@ -1396,7 +1396,7 @@ the run could not freshly establish is a run that stops.
 payload field is `audited`: the dates (last day worked / separation date) AND department/titles.**
 
 - **The override, precisely.** `audited` means an override exists ONLY via explicit operator
-  confirmation in the freshness dialog (doc 02 §5.5), and it is always durably recorded — the value
+  confirmation in the freshness dialog (ref workflow-model §5.5), and it is always durably recorded — the value
   seen, its age, the limit, the consuming write node, and who confirmed. It is never automatic, never
   a fallback, and never persisted onto the item beyond the single resume attempt it confirms.
 - **Why this does not reopen §4b.** §4b's hard-fail is about a FAILED or unreachable Kronos read — no
@@ -1429,10 +1429,10 @@ machinery is involved.
 
 **DRAFT — operator to confirm/correct.**
 
-- **Identity-approval gate: YES, ALWAYS** (doc 09 §14, D77). Every separation, no auto-approve. **Whether any run mode may skip it: §4d (recommendation: never).**
-- **Two separation types.** The operator distinguishes **Kuali separations** and **I-9 separations**; doc 09 §14.7 asks whether the I-9 type shows a **different candidate packet**. **No draft — legacy has no I-9-separation branch to derive one from** (I-9 Check was split into its own workflow on 2026-07-17). **Options: §4f1.**
-- **Intake:** none. Input is one Kuali document number, typed. No column mapping, no roster, no mobile capture, no manifest (doc 06 is not involved).
-- **Instance:** doc 11 §4 per-run test/prod. **No draft** — whether a UCPath or Kuali *test* instance exists for this workflow is operator knowledge. **Options: §4f2.**
+- **Identity-approval gate: YES, ALWAYS** (ref write-safety §14, D77). Every separation, no auto-approve. **Whether any run mode may skip it: §4d (recommendation: never).**
+- **Two separation types.** The operator distinguishes **Kuali separations** and **I-9 separations**; ref write-safety §14.7 asks whether the I-9 type shows a **different candidate packet**. **No draft — legacy has no I-9-separation branch to derive one from** (I-9 Check was split into its own workflow on 2026-07-17). **Options: §4f1.**
+- **Intake:** none. Input is one Kuali document number, typed. No column mapping, no roster, no mobile capture, no manifest (ref data-intake-and-edit-data is not involved).
+- **Instance:** ref clock-config-secrets §4 per-run test/prod. **No draft** — whether a UCPath or Kuali *test* instance exists for this workflow is operator knowledge. **Options: §4f2.**
 - **Department gate (HDH).** Legacy skips the Kronos read for non-HDH departments and does so **fail-safe** — it skips only on a *positive* non-HDH determination, and an unknown department still runs Kronos (**S32/S33**, `legacy:.../workflow.ts:757-788`). Draft: port it, keeping the fail-safe direction, as a branch case rather than a gate. **It is also the one closed proceed-without-timecard arm in §4b.**
 - **Future-date preflight.** Legacy refuses a future-dated LDW or separation date ("not yet eligible for separation") (**S7**). Draft: port as a validation refusal.
 - **Reason-code default — the one drafted REFUSAL.** Legacy's `mapReasonCode` falls back to **`"Resign - No Reason Given"`** for an unmapped or blank termination type (`legacy:src/workflows/separations/schema.ts:200-223`), and a documented type (`Death`) has no map entry and would land on it. That is a plausible-but-wrong value on a live HR transaction — the exact pattern this tree bans. **Draft: fail loud naming the unmapped type**, and require the map to be extended. **Options, and the dropdown capture that makes the map exhaustive: §4a.**
@@ -1444,10 +1444,10 @@ machinery is involved.
   can disable it (**§4d**).
 - **Two separation types:** does not apply here. **Separations as built does not involve the I-9
   packet** — "i9 and kuali separations is very different" — so there is no I-9 branch and no packet
-  variant; doc 09 §14.7's question resolves **out of scope for this migration** (**§4f1**).
-- **Intake:** none, as drafted. One typed Kuali document number; doc 06 is not involved.
+  variant; ref write-safety §14.7's question resolves **out of scope for this migration** (**§4f1**).
+- **Intake:** none, as drafted. One typed Kuali document number; ref data-intake-and-edit-data is not involved.
 - **Instance:** an **operator-approved production canary** for the commit proof, target named by the
-  operator at doc 07 §3.1 step 5 (**§4f2**).
+  operator at doc 03c §Phase summary step 5 (**§4f2**).
 - **Department gate (HDH) — CORRECTED by §4b.** It does **not** port as a proceed-without-timecard
   arm. §4b's answer is hard-fail on any unavailable or unreadable Kronos, and the recorded nuance
   covers exactly this case ("special cases where the Kuali-carried date alone would suffice… those
@@ -1531,7 +1531,7 @@ capture fails the node.
 > directive as the substitute; the timecard-failure policy is §4b, which also CORRECTS two rows below.
 > No further operator input now** — the corpus grows from captured material as each chunk lands.
 
-*What the answer determines:* the executable scenario corpus (doc 12 §3), which `scenario-coverage`
+*What the answer determines:* the executable scenario corpus (ref operator-trust §3), which `scenario-coverage`
 audits against the graph. Truly impossible variants must be named as impossible, with the reason.
 The full traced source is `separations-legacy-behavior.md` §2 (S1–S63).
 
@@ -1568,7 +1568,7 @@ future-dated LDW or separation date (**S7**) · multiple jobs / transfer (pick t
 at or before the separation date, **S23**) · blank job code (fail loud, **S24**) · department option
 that matches no Kuali dropdown entry (fail loud rather than save a blank required field, **S55**) ·
 existing timekeeper comments unreadable (refuse rather than blank them, **S56**) · crash between fence
-and confirmation (doc 09 §4 recovery) · UCPath filed but Kuali not finalized (**S57/S60** — **§4c**).
+and confirmation (ref write-safety §4 recovery) · UCPath filed but Kuali not finalized (**S57/S60** — **§4c**).
 
 **Named as not-in-legacy, needing an operator answer rather than a draft:** rehire (no branch exists —
 rehire lives in onboarding), deceased/retiree/LOA as distinct paths (only reason-code entries), and
@@ -1606,11 +1606,11 @@ Multi-person-per-run stays out: one document, one person, one run (item 10).
 
 *What the answer determines:* enqueue policy, standard actions, and for every child edge the stable
 item id, typed result, cardinality/join, child-failure policy, cancel, child retry/parent resume, and
-visibility (doc 02 §3.2). **It also decides the §3 composition question.**
+visibility (ref workflow-model §3.2). **It also decides the §3 composition question.**
 
 **DRAFT — operator to confirm/correct.**
 
-- **Enqueue:** `reject-active` per document number — two concurrent runs on one separation document is never intended, and doc 09's same-key mutex already refuses the second fence anyway. Note **S5**: legacy's enqueue-supersede only cancels *non-terminal* prior runs, so a completed doc can be re-run with nothing but two live page probes standing between it and a second termination — the permanent key is what makes that durable here.
+- **Enqueue:** `reject-active` per document number — two concurrent runs on one separation document is never intended, and ref write-safety's same-key mutex already refuses the second fence anyway. Note **S5**: legacy's enqueue-supersede only cancels *non-terminal* prior runs, so a completed doc can be re-run with nothing but two live page probes standing between it and a second termination — the permanent key is what makes that durable here.
 - **Surface shape:** `single`. One document, one person, one row. Multi-document submissions are separate runs (legacy's sequential batch was a daemon convenience, not a graph property — and **S43** shows what its shared page state cost).
 - **Delegation to person-lookup:** legacy delegates conditionally on the `different`/short-EID arms (**S17/S18**). **Draft: do NOT delegate — resolve candidates inline and hand them to the ALWAYS-GATE packet.** Under ALWAYS-GATE the operator sees the candidates on *every* run, so the child run buys presentation the gate already owes, at the price of wiring an unwired seam (§3).
 - **If the operator wants real sub-workflow composition instead** (§3's "lego" as actual child runs), this item is where that is decided, and this migration then also owns wiring `ChildRunExecutor` through `composeWorkerRuntime` plus the enqueue/join transaction and the fan-out manifest. That is a real slice; it is not free.
@@ -1636,14 +1636,14 @@ its own permanent key) and **§4d** (no resume path may skip the identity gate).
 
 *What the answer determines:* what makes each terminal outcome `verified|partial|unknown`, which
 artifacts/proofs are required, what is redacted, which failures/notifications fire, and how
-`explain run` answers "what happened?" (doc 12 §2).
+`explain run` answers "what happened?" (ref operator-trust §2).
 
 **DRAFT — operator to confirm/correct.**
 
-- **`verified`** requires: the gate's `IdentityApprovalResult` with `approvedBy`/`approvedAt`/`evidenceDigest` (doc 09 §14.4, carried onto the receipt per D82) **and** the UCPath receipt pair `(transactionNumber, approvalStatus)` read back from the keyed deep link **and** the Kuali finalization's reload read-back proof.
+- **`verified`** requires: the gate's `IdentityApprovalResult` with `approvedBy`/`approvedAt`/`evidenceDigest` (ref write-safety §14.4, carried onto the receipt per D82) **and** the UCPath receipt pair `(transactionNumber, approvalStatus)` read back from the keyed deep link **and** the Kuali finalization's reload read-back proof.
 - **`partial`** is the honest outcome when the termination committed with a receipt but the Kuali finalization did not — the external record is correct, the document is not (**S60**; the resume policy is **§4c**).
-- **`unknown` parks.** Post-fence absence, an unreadable receipt, or a disagreeing read-back parks the intent and the run (`parked-write`); only proof-of-presence or an operator-confirmed absence releases it (doc 09 §4.1). A generic retry may not.
-- **Redaction:** every evidence leaf needs a declared classification (doc 12 §D140) — an undeclared leaf fails loud. Names and EIDs are the sensitive surface here; screenshots stay `restricted`. **If §2.6 Option A is adopted, the classification tables are wider per task and are authored with the task.**
+- **`unknown` parks.** Post-fence absence, an unreadable receipt, or a disagreeing read-back parks the intent and the run (`parked-write`); only proof-of-presence or an operator-confirmed absence releases it (ref write-safety §4.1). A generic retry may not.
+- **Redaction:** every evidence leaf needs a declared classification (ref operator-trust §D140) — an undeclared leaf fails loud. Names and EIDs are the sensitive surface here; screenshots stay `restricted`. **If §2.6 Option A is adopted, the classification tables are wider per task and are authored with the task.**
 - **Notifications:** the gate opening is the one that matters daily (an open operator gate is already a base trigger), plus run failure, subject mismatch, and unknown write outcome. Triggers carry ids/codes/counts only — never free text — so no captured form contents can leak (D138).
 - **`explain run`** must answer, without archaeology: which person was approved and by whom, which candidates were shown, which punch date the write used and which grid it was read from, the exact staged values, the receipt pair, and what the Kuali read-back saw. Contrast **the legacy signal table** (`separations-legacy-behavior.md` §3, "What the operator actually sees"): three failure classes there terminate **`done`**, two of them having produced wrong or unverified real-world effects.
 
@@ -1683,7 +1683,7 @@ bindings, proof, and graph structure are **always** code work (D79a — DSL/code
 notification/severity presentation. Everything that decides *who* gets terminated or *whether* a
 write happened stays code — the reason-code map, the date-reconciliation rules, the `+1 day`
 effective-date derivation, every selector, the gate's decision packet composition, freshness limits,
-probe policy, and the graph itself. Doc 12 §4.4's **record-sanity-check advisory** (deferred here by
+probe policy, and the graph itself. Ref operator-trust §4.4's **record-sanity-check advisory** (deferred here by
 D192) renders as prose beside the gate and is explicitly **never** an authority: it cannot resolve a
 gate (charter §23 / D60) and its suggestions are separately labelled from deterministic findings.
 
@@ -1697,7 +1697,7 @@ every selector, the packet composition, the freshness limits and the graph itsel
 
 ---
 
-## 6. Exit criteria for this migration (doc 07 §3.2)
+## 6. Exit criteria for this migration (doc 03c §Exit criteria)
 
 Repeated here so the checklist is in one place; the master plan owns the normative text.
 
@@ -1706,17 +1706,17 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [x] Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id, and subject observation resolves; no raw Page/Locator/selector outside the system driver
 - [x] **Live dry-run green** against Kuali, UCPath, and New Kronos (submit-free, zero durable write rows asserted) — **MET 2026-08-14 (§9.17)**: run `7565a88d` / `sp-105939-7565` on doc 4502 ran the whole read chain live, parked at the ALWAYS-GATE, took a real approval through the real command endpoint, resumed, and reached its **preview terminal** — `transaction.previewed` (`subject: not-observed`, `externalCommit: none`), a terminal `run_results` row bound to the PREVIEW schema hash `86cd007a…` carrying D215's `already-present` settlement off a live probe, and a receipt at `partial`/`unknown` with the load-bearing `DRY_RUN_PREVIEW` warning naming that probe. **Zero durable write rows proved from authority** across both parts of the pass. §4f3's per-beat interval does **not** ride on this run and never could — a preview has no fence — so it moves to the controlled commits (§9.17 item 4). _Historical (§9.14): the two platform blockers, both FIXED as D214/D215; §9.16 §5's stale-BFF blocker, cleared by the restart._ Prior text: the composed graph ran the whole read chain live on two real subjects, parked at the ALWAYS-GATE, took a real approval through the real command endpoint and resumed, with **zero durable write rows proved from authority**. The preview terminal was blocked by two PLATFORM items, neither a write-safety failure — `executeDryRun` previewing `clear-pending`'s prepare without its probe, and an `always-rerun` node colliding with its own checkpoint across a gate resume — and **both are FIXED (D215, D214; platform slice 2, 2026-08-14)**. **What remains is one re-run and nothing else** — §9.16 §5 found the re-run blocked operationally, on a stale singleton dashboard BFF serving a pre-D217 `separations` fingerprint that no current worker can claim a run under; restarting it is the whole remedy, and doc **4502** is the subject (active job, past LDW, no pending row — D215's `already-present` arm). §4f3's per-beat interval rides on that same run
 - [ ] **Controlled-commit evidence** for every commit/probe/verify on an **operator-approved target** — unavailable safe evidence **blocks** rebuild-ready status; a dry-run success is never converted into a write-safety claim — **OPEN on all three commits**; the §4f2 canary is **NAMED — doc 4537 (operator, 2026-08-19)**, and §9.19 carries its live mapping pass with the per-commit verdicts: ② the UCPath filing unblocks on Pacific calendar day **2026-08-28** (S7 passes on equality), ③ the Kuali finalization runs only AFTER ② (its `transactionNumber` ingress does not exist until ② files), and ① the pending sweep has no live pending row until ② creates one (re-run ① immediately after ② files). The live document inventory lives in §9.19 with a date on it, not in this sentence. _Historical: doc 4524's recommendation WITHDRAWN (§9.16 §3 — action completed 2026-08-14); doc 4510, once the best-mapped standalone Kuali candidate (composed-graph refusal live-proved 2026-08-14, §9.17 item 2: run `ee9824f7`, `NO_ACTIVE_EMPLOYMENT`, EID 10001799), is also GONE (§9.19 §7: action completed, `document: null`)._
-- [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (doc 09 §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
+- [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (ref write-safety §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [x] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved — **MET 2026-08-14 (§9.17 item 6)**: three entries touched (`legacy-workflow-separations`, `legacy-tool-debug-kronos`, `legacy-tool-ops-sanity-check-record`), all correctly `open` at the runtime's own milestone, nothing stale under D188's arm, no legacy path deleted. One finding for the operator: **D192's deferral condition on `legacy-tool-ops-sanity-check-record` is now materially satisfied** — the §14.2 packet's `comparisons` array is exactly the prose-observations-beside-the-gate shape D192 asked for — and it is flagged rather than re-dispositioned, because closing an inventory entry is an operator decision
 - [x] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key — and it is now **LIVE-PROVED on the composed graph (§9.20, 2026-08-19)**: six retries through the real command endpoint across two logical items (attempts 2→3 on doc 4510, 2→3→4→5→6 on doc 4502), every one minting the item's next unspent attempt, none refused, no collision, `timecard-search` — §9.18 item 8's own node — re-executed at three separate attempts, one retried run replaying eight checkpoints written by two earlier runs at two different attempts, and the last of them reaching a terminal **`done`** at D215's `already-present` preview terminal with zero durable write rows. **The last one is now CLOSED**: the browser-profile wedge (§9.17 item 5, §9.20 item 6) was root-caused, fixed and live-proved in **§9.21** as **D243/D244** — it was never about the profile. Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE, so a cold profile's import stamp jumped the shared counter to `now` while every warm profile crept by `+ 1` and could never catch up; one behind-counter assertion is then refused as a cloned key AND burns that profile's Duo device binding permanently, which is both the 60 s wedge and the reason deleting the directory was the only remediation anyone found. Bisected one variable in both directions on the same profile (stored counter 1 063 behind → **60.01 s** refused, no `PS_TOKEN`; the same state with the wall-clock floor → presented 1787193576 and **`logged-in` in 17.83 s**), and the runtime now refuses on Duo's own rendered refusal in **9.52 s** naming the real cause instead of burning the bound and blaming Duo hand-approval. Pinned by `tests/unit/duo-sign-count.test.ts` (the load-bearing case is a two-profile simulation) and two arms in `tests/unit/system-login-recipes.test.ts`, both verified RED pre-fix. §9.20 item 7's unrelated cold-profile New Kronos observation stays open and is a different finding
-- [x] **§2.6 confirmed and ratified: D194 recorded in doc 01 §2.8, pointer in doc 04 round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
+- [x] **§2.6 confirmed and ratified: D194 recorded in ref task-contract §2.8, pointer in ref decisions round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
 
 ## 7. Open items that are NOT for this questionnaire
 
-- **The controlled-commit target.** A UCPath termination and a Kuali finalization the operator approves. None is invented here; naming one is operator work at doc 07 §3.1 step 5 (the *shape* of that choice is §4f2). **Two facts narrow the choice as of 2026-08-14 (§9.16):** doc 4524 is out (its action completed and its form no longer renders), and `clear-pending`'s COMMITTED arm has no live subject at all — deleting `T002209631` removed the only mapped subject holding a pending row.
-- **Two UCPath facts that need one real submit** (doc 09 §13 item 6): whether the confirmation dialog renders the `T…` inline, and the propagation window between submit and searchability. Both are currently **ported legacy knowledge**, not rebuild-verified.
+- **The controlled-commit target.** A UCPath termination and a Kuali finalization the operator approves. None is invented here; naming one is operator work at doc 03c §Phase summary step 5 (the *shape* of that choice is §4f2). **Two facts narrow the choice as of 2026-08-14 (§9.16):** doc 4524 is out (its action completed and its form no longer renders), and `clear-pending`'s COMMITTED arm has no live subject at all — deleting `T002209631` removed the only mapped subject holding a pending row.
+- **Two UCPath facts that need one real submit** (ref write-safety §13 item 6): whether the confirmation dialog renders the `T…` inline, and the propagation window between submit and searchability. Both are currently **ported legacy knowledge**, not rebuild-verified.
 - **`recoveryAbsence` for the UCPath termination.** Until a propagation window is measured, a post-fence absence is `operator-only`; inventing a `minSinceFenceMs` is the banned unverified constant (D128's standing rule).
 - **The re-run wall's item 2 — a way for an operator to say "read it again" — is BUILT** (2026-08-14,
   §9.13 / D211): `separations`' ingress carries an explicit `reRead: {ordinal, reason}`, so a re-read
@@ -1732,9 +1732,9 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 |---|---|
 | `docs/migrations/separations-legacy-behavior.md` | The traced legacy account: the happy path end to end, the **S1–S63 scenario table** (§2), per-scenario detail with source quotations (§3), the eleven dangerous patterns (§4), and the `unknown — needs live observation` list (§5). Every S-number cited above resolves there. |
 | `STORES.md` | The derived catalog of what every store has today — §1 "How stores work" (the REUSE/CUSTOMIZE/BUILD rule that §2.6's convention would amend), §2 per-store tables, §3 the two shipped workflows' consumption, §4 the gaps this migration closes. Code wins over that file wherever they disagree. |
-| `docs/rebuild/07-master-plan.md` | §3.1 the Phase-3 entry block, §3.2 exit criteria (§6 above), §3.3 the migration order, **§3.4 the questionnaire template §5 above instantiates**. |
-| `docs/rebuild/09-write-safety.md` | §2 completion arms, §4/§4.1 recovery and operator resolutions, §5 probe policy, §12 the worked two-transaction separations example, §13 the beat structure, **§14 the ALWAYS-GATE** (and §14.7's two values left to this questionnaire). |
-| `docs/rebuild/04-reconciliation.md` | The decision index — **D193** (separations as the Phase-3 entry) and, if §2.6 is confirmed, **D194**. A pointer index only; never implement from it. |
+| `docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md` | §3.1 the Phase-3 entry block, §3.2 exit criteria (§6 above), §3.3 the migration order, **§3.4 the questionnaire template §5 above instantiates**. |
+| `docs/rebuild/reference/write-safety.md` | §2 completion arms, §4/§4.1 recovery and operator resolutions, §5 probe policy, §12 the worked two-transaction separations example, §13 the beat structure, **§14 the ALWAYS-GATE** (and §14.7's two values left to this questionnaire). |
+| `docs/rebuild/reference/decisions.md` | The decision index — **D193** (separations as the Phase-3 entry) and, if §2.6 is confirmed, **D194**. A pointer index only; never implement from it. |
 
 ---
 
@@ -1852,7 +1852,7 @@ visibility into every day the rule declined to count.
 
 ### 9.2 Chunk 1 — the live proof: **MET at attempt 17** (2026-08-12/13)
 
-**Status: CLOSED.** Doc 07 §3.1 step 4 for chunk 1 is **MET**. Run **`sk-171645-4adf`**
+**Status: CLOSED.** Doc 03c §Phase summary step 4 for chunk 1 is **MET**. Run **`sk-171645-4adf`**
 (`4adf2efb-c433-422e-8e89-d7836da59a1f`), EID `10776990` / *Kou, Nathan* over `06/10/2026 –
 08/12/2026` (64 days), reached terminal **`done`** against real WFD with a complete, correctly-bound
 grid read. The full attempt record — including the two runs that closed it and the tenth defect the
@@ -1876,7 +1876,7 @@ proves the cell binding, not just the day coverage.
 
 ### 9.2a Chunk 1 — the attempt record (14 failures, then two runs that closed it)
 
-**Honest status *as of attempt 14*.** Doc 07 §3.1 step 4 (the live dry-run for this chunk) was
+**Honest status *as of attempt 14*.** Doc 03c §Phase summary step 4 (the live dry-run for this chunk) was
 **NOT MET**. The
 `separations-kronos-timecard` workflow was started against the real system thirteen times through
 the real start-plan → command → worker path. **The search half is proved live** — `search` reached
@@ -1888,7 +1888,7 @@ receipt over real data** and the exit criterion stays open.
 **What the lane was worth anyway.** Every attempt failed for a DIFFERENT, real reason, and each one
 was green on `typecheck`, `lint`, `test:coverage`, `test:architecture` and every scenario. Seven
 defects were found and fixed that no fixture could reach; they are recorded in commit
-`fix(kronos): six defects the live lane found, and the rules they settle` and, as rules, in doc 01
+`fix(kronos): six defects the live lane found, and the rules they settle` and, as rules, in ref task-contract
 §2.9 and `src/stores/new-kronos/CLAUDE.md`. In order observed:
 
 | Run | Failure | Root cause |
@@ -1948,7 +1948,7 @@ above and from the pay-period overhang that attempt 13 fixed:
 The refusal is CORRECT and is the whole point of that check — a last punch derived from 14 of 35 days
 would be a plausible-but-wrong separation date. What it says about the chunk is that the virtualized
 grid's scroll-to-end is not yet reliable over a five-week window; the durable failure fingerprint
-`53336e1c` records `seen 6×`, so this is a recurring class rather than a one-off. Doc 07 §3.1 step 4
+`53336e1c` records `seen 6×`, so this is a recurring class rather than a one-off. Doc 03c §Phase summary step 4
 for chunk 1 stayed **OPEN** after this attempt, and the next one owed the scroll loop rather than
 another window.
 
@@ -2187,7 +2187,7 @@ read reports the parsed date and S7's refusal stays a precondition of *filing a 
 
 ### 9.4 Chunk 2 — the live proof: **PASSED**, five runs, 2026-08-12
 
-Doc 07 §3.1 step 4 (the live dry-run for this chunk) is **MET**. Five runs were started through the
+Doc 03c §Phase summary step 4 (the live dry-run for this chunk) is **MET**. Five runs were started through the
 real start-plan → command → worker path against the real Kuali production space; **all five reached
 terminal `done` on attempt 1**, and the last three held `verified` evidence receipts over real data
 at settlement. Two later attempts to re-prove the same three documents against the final tree
@@ -2259,7 +2259,7 @@ Two platform items fall out, neither owned by this chunk:
    human, so expiring it on an edit to `src/domain/ids.ts` is not a recovery path". A receipt is the
    same shape of promise and has not been given the same treatment.
 
-   **CLOSED 2026-08-12 by D199** (doc 12 §D199). `descriptorFingerprint` is now the run's own
+   **CLOSED 2026-08-12 by D199** (ref operator-trust §D199). `descriptorFingerprint` is now the run's own
    retained `envelope.contractFingerprint`, and resolvability is a named check table. Verified
    against this repository's live authority database: `sd-140917-2b9e`, `sd-140921-3385` and
    `sd-140921-c0af` re-derive **byte-identically** and `explain run` serves all three. The other
@@ -2336,7 +2336,7 @@ outside it is `unknown` and makes the whole grid `indeterminate-status` rather t
 
 ### 9.6 Chunk 3 — the live proof: **PASSED**, and the two defects it caught
 
-Doc 07 §3.1 step 4 for chunk 3 is **MET**. Two runs went through the real start-plan → command →
+Doc 03c §Phase summary step 4 for chunk 3 is **MET**. Two runs went through the real start-plan → command →
 worker → **operator gate command** → worker path against real UCPath. The second reached terminal
 `done` with a `verified-done` evidence receipt; the first found a platform defect no fixture could
 reach and is left failed as the record of it.
@@ -2360,7 +2360,7 @@ reach and is left failed as the record of it.
 
 So the identity check costs about **29 s of live reading** on a cold session and two milliseconds of
 judgment. The second UCPath search — the one legacy only performs when its name tier says `different`
-— costs 6.2 s on an already-authenticated session, which is the honest price of doc 09 §14.2's
+— costs 6.2 s on an already-authenticated session, which is the honest price of ref write-safety §14.2's
 two-candidate presentation existing on every run.
 
 **What the live lane proved that no fixture could — S22, on a real person.** Doc 4510's employee
@@ -2396,7 +2396,7 @@ forward instead, so the workflow's whole product is a post-approval fact.
   token-for-token and both name searches resolved the same person the document's EID did, so the
   `type-the-eid` shape and the second candidate are test-pinned.
 - **No live absent cell (S24).** Both grids were complete.
-- **~~The receipt cannot yet attribute the approver.~~ CLOSED 2026-08-12 by D204 (doc 12).** The
+- **~~The receipt cannot yet attribute the approver.~~ CLOSED 2026-08-12 by D204 (ref operator-trust).** The
   settled receipt used to list `node.identity-approval` as **`unknown`**, because a receipt derived
   from checkpoints and a gate has none. `buildRunEvidenceReceipt` now reads `gate_results` beside
   the checkpoints: run `si-161551-774c` re-derives with `node.identity-approval` **`verified`** and a
@@ -2406,7 +2406,7 @@ forward instead, so the workflow's whole product is a post-approval fact.
   with the approved EID redacted to its `last4`. All five of D199's semantic checks hold on that
   re-derivation. **The two receipts this session minted were dropped from the standing authority
   database and re-derived**, because a receipt stored before D204 cannot re-derive under it and D199
-  has no waiver arm — an explicit operator repair on a pre-production database, recorded in doc 12's
+  has no waiver arm — an explicit operator repair on a pre-production database, recorded in ref operator-trust's
   D204 note.
 - **The run-detail wire's top-level `gate` field still read "this run declares no operator gate"**
   while the run was parked, because that field folds the `gate.opened` SPAN and the dashboard
@@ -2443,7 +2443,7 @@ save buttons (`Save for Later` / `Save and Submit`), and `Transaction ID` reads 
 
 **What that settles, and it is the whole shape of the chunk:** `prepare` may stage the **entire**
 three-page wizard, and the **commit is the `Save and Submit` click ALONE**. That is what makes the
-doc 09 beat-⑤ fence meaningful here — everything before it is provably reversible by navigating away,
+ref write-safety beat-⑤ fence meaningful here — everything before it is provably reversible by navigating away,
 and everything after it is not.
 
 #### Live-verified anchors (Smart HR wizard — 0 iframes on every page)
@@ -2555,13 +2555,13 @@ renamed before they landed and the old names exist nowhere in `src/`.
 | Contract | Kind | What it is |
 |---|---|---|
 | `ucpath/match-existing-termination` | read | S44 — the `UC_EXTENSIONS.UC_SS_TBH.GBL` read: EID-filtered search plus per-row detail, returning every transaction the page showed. Folded date-agnostically by its sibling `ucpath/match-pending-terminations` for the sweep |
-| `ucpath/stage-pending-termination-sweep` + `ucpath/delete-pending-terminations` | **its own transaction** | doc 09 §5's **second** probe kind — the date-agnostic pending sweep (legacy `deletePendingTransaction` deletes ALL in-progress `Terminat*` rows for the EID). It is a mutation, so it is a transaction node of its own, composed BEFORE the termination |
+| `ucpath/stage-pending-termination-sweep` + `ucpath/delete-pending-terminations` | **its own transaction** | ref write-safety §5's **second** probe kind — the date-agnostic pending sweep (legacy `deletePendingTransaction` deletes ALL in-progress `Terminat*` rows for the EID). It is a mutation, so it is a transaction node of its own, composed BEFORE the termination |
 | `ucpath/stage-termination` | prepare arm | stages all three wizard pages; zero durable footprint by the crux above |
 | `ucpath/create-termination` | commit arm | the `Save and Submit` click **alone** |
 | `ucpath/verify-termination` | read-back | re-probes for the `T#`; **unreadable or unknown PARKS** (S46/S51/S52), never success |
 
-Doc 09 §12's worked example names these `fill-termination` / `submit-termination`; same shape, and the
-repo's own naming rules win — as they did over the salvage's `probe-`/`prepare-` names above. Doc 09 §5 requires **both** probe kinds ported — the idempotency probe
+Ref write-safety §12's worked example names these `fill-termination` / `submit-termination`; same shape, and the
+repo's own naming rules win — as they did over the salvage's `probe-`/`prepare-` names above. Ref write-safety §5 requires **both** probe kinds ported — the idempotency probe
 (EID + exact effdt + `"Terminatn"`) and the date-agnostic sweep — and they are genuinely different
 questions, which is why they are two contracts and not one with a flag.
 
@@ -2752,7 +2752,7 @@ a refusal, and **the durable footprint was `absent` on every one** — no
 either node. That is the structural commit-freedom claim, asserted against the
 authority database rather than against logs, five times over.
 
-#### The honest status of doc 07 §3.1 step 4 for chunk 4: **PARTLY MET**
+#### The honest status of doc 03c §Phase summary step 4 for chunk 4: **PARTLY MET**
 
 | Asked for | Status |
 |---|---|
@@ -2768,7 +2768,7 @@ authority database rather than against logs, five times over.
 > that motivated the two decisions, and a gap rewritten after the fact stops
 > being evidence. What changed:
 >
-> - **Gap (1) → D209** (doc 02 §2, normative; doc 01 §6.2). Dry-runnability is
+> - **Gap (1) → D209** (ref workflow-model §2, normative; ref task-contract §6.2). Dry-runnability is
 >   derived from the GRAPH — every transaction node declaring
 >   `dryRun: "stop-after-prepare"` — by one factory-computed projection the start
 >   plan, the command kernel and the explorer wire all share. All three
@@ -2779,7 +2779,7 @@ authority database rather than against logs, five times over.
 >   BY NAME rather than trivially succeeding, since previewing it is byte-for-byte
 >   an ordinary run. `surfaces.inputRun.supportsDryRun` survives as a derived,
 >   un-authorable field for the client-composed run-start surface.
-> - **Gap (2) → D210** (doc 02 §2.1, normative; doc 01 §6.2). The interpreter's
+> - **Gap (2) → D210** (ref workflow-model §2.1, normative; ref task-contract §6.2). The interpreter's
 >   preview arm: a run whose envelope says `dryRun` reaches its transaction node,
 >   runs the sequencer's REAL `executeDryRun` (zero intent, zero fence, zero
 >   commit), emits `transaction.previewed`, and ENDS THE RUN THERE. The paragraph
@@ -2823,7 +2823,7 @@ decision, not chunk 4's to take.
 executor calls `executeTransaction` with `dryRun` from the envelope, and the
 sequencer refuses by name: *"the Phase-1f interpreter has no preview outcome arm
 yet, and the sequencer refuses to substitute a real write — use `executeDryRun`"*.
-Doc 01 §6.2 says what the missing behaviour is — *"records an honest
+Ref task-contract §6.2 says what the missing behaviour is — *"records an honest
 `transaction.previewed` span, and ends the run at the node"* — and no producer
 emits that span today. A dry run of a graph with a transaction node also cannot
 reach `build()`, because a preview has no `disposition` and no commit output,
@@ -2981,9 +2981,9 @@ disagrees.**
 1. **The `formKey` design stands.** The commit's wire proof covers only observed keys; the ten-field
    reload read-back is the landing proof and always was. 5c fills
    `kualiFinalizationFormKeysMissing()`'s list.
-2. **`recoveryAbsence: "stabilized"` is ACCEPTED and is now ratified as D207** (doc 09 §4.2), with
+2. **`recoveryAbsence: "stabilized"` is ACCEPTED and is now ratified as D207** (ref write-safety §4.2), with
    5a's argument plus one obligation it did not carry: the transferred window is **provisional until
-   this write's own controlled-commit proof confirms it** (doc 07 §3.1 step 5), and the composed
+   this write's own controlled-commit proof confirms it** (doc 03c §Phase summary step 5), and the composed
    workflow may not rely on the stabilized arm in production before that.
 3. **The step-13 date write-backs stay unstaged.** §4e's normative list is built as written; the open
    question is queued for the operator rather than answered by the driver.
@@ -3007,7 +3007,7 @@ same as its siblings.
 | `name-search` | step `ucpath/search-person-org` | — | chunk 3's read, reused |
 | `department-option` | step `workflow:separations/match-department-option` | — | **new**: S55's upstream fold |
 | `comparison` | step `workflow:separations/match-identity` | `job-summary`, `name-search` | chunk 3's fold, reused |
-| `identity-approval` | **gate**, `resolvedBy: operator` | `comparison`, `department-option` | doc 09 §14's ALWAYS-GATE |
+| `identity-approval` | **gate**, `resolvedBy: operator` | `comparison`, `department-option` | ref write-safety §14's ALWAYS-GATE |
 | `approval` | step `workflow:separations/verify-identity-approval` | `comparison`, `identity-approval` | chunk 3's post-gate check, reused |
 | `finalize-kuali` | **transaction** | `approval`, `department-option` | prepare `kuali/stage-separation-finalization`, commit `kuali/save-separation-finalization` |
 | *(terminal result)* | — | `approval`, `department-option`, `finalize-kuali` | |
@@ -3024,7 +3024,7 @@ that the operator never saw". A department resolved off the graph root and read 
 transaction would be exactly that side read. Declaring it as a gate dependency also lands S55's
 refusal **before a human is asked at all**, which is chunk 4's argument for `termination-type`
 verbatim. **Open for chunk 6:** the resolved option is a gate DEPENDENCY and is not yet rendered
-INTO doc 09 §14.2's packet — the composition should carry it there. _(CLOSED 2026-08-14 by chunk 6a's
+INTO ref write-safety §14.2's packet — the composition should carry it there. _(CLOSED 2026-08-14 by chunk 6a's
 write-plan block, §9.13 / D211.)_
 
 **The department fold** (`src/domain/separations/department-option.ts`). The CODE is the key: Kuali
@@ -3098,7 +3098,7 @@ aborts that mutation by name. The durable footprint of the whole pass is **zero*
 row for the permanent key, no transaction checkpoint. The controlled real commit stays OPEN on the
 operator's unnamed §4f2 canary.
 
-#### The honest status of doc 07 §3.1 step 4 for chunk 5: **MET for the dry-run half**
+#### The honest status of doc 03c §Phase summary step 4 for chunk 5: **MET for the dry-run half**
 
 | Asked for | Status |
 |---|---|
@@ -3347,7 +3347,7 @@ separately, exactly as chunk 4 recorded, not a decomposition off the run's own s
 - The `already-present` arm's live proof, reachable only after the first real finalization.
 - D207's provisional `stabilized` window, confirmed by the same commit.
 - §9.11's two carried items — **BOTH CLOSED 2026-08-14 by chunk 6a (§9.13, D211)**: the resolved
-  department option is now rendered INTO doc 09 §14.2's packet through the write-plan block, and the
+  department option is now rendered INTO ref write-safety §14.2's packet through the write-plan block, and the
   `(transactionNumber, approvalStatus)` receipt pair is bound by the composition's own
   `verify-termination-receipt` node between the two writes.
 
@@ -3381,7 +3381,7 @@ five pure folds, and each is a decision only a graph holding ALL of the reads ca
 | `timecard` | step `new-kronos/read-separation-timecard` | `subject`, `plan`, `timecard-search` | chunk 1's read, reused |
 | `dates` | step `workflow:separations/read-separation-dates` | `plan`, `timecard` | **new**: the write's payload and the two comment texts |
 | `comparison` | step `workflow:separations/match-identity` | `document`, `plan`, `subject`, `job-summary`, `name-search`, `termination-type`, `department-option`, `employment`, `dates` | chunk 3's packet fold — now carrying the WRITE PLAN |
-| `identity-approval` | **gate**, `resolvedBy: operator` | `comparison` | doc 09 §14's ALWAYS-GATE |
+| `identity-approval` | **gate**, `resolvedBy: operator` | `comparison` | ref write-safety §14's ALWAYS-GATE |
 | `approval` | step `workflow:separations/verify-identity-approval` (`always-rerun`) | `comparison`, `identity-approval` | chunk 3's post-gate check, reused |
 | `clear-pending` | **transaction** | `approval` | chunk 4's sweep: `stage-pending-termination-sweep` → `delete-pending-terminations` |
 | `file-termination` | **transaction** | `approval`, `termination-type`, `employment`, `dates`, `clear-pending` | chunk 4's filing: `stage-termination` → `create-termination` |
@@ -3499,7 +3499,7 @@ pinned by a test:
   `observedAt`-differs-by-construction collision chunks 2 and 3 both hit cannot arise;
 - the same ordinal is the same item, so a re-read is a **decision** rather than a nonce;
 - it changes **no permanent key**. Those derive from the EID, the effective date and the document, so
-  a re-read can never file a second termination — doc 09's same-key mutex refuses the second fence.
+  a re-read can never file a second termination — ref write-safety's same-key mutex refuses the second fence.
 
 The `reason` rides in the canonical input, so `explain run` answers *why was this document read
 again* without archaeology. **What it does NOT do:** `reject-active` is per ITEM, so a re-read may be
@@ -3586,7 +3586,7 @@ since 2026-08-05, and ZERO checkpoints for `clear-pending`, `file-termination` o
 across every run this database has ever held.** The only two `write_intents` rows in the file are
 2026-08-04's Phase-2 controlled commit, untouched.
 
-#### The honest status of doc 07 §3.1 step 4 for chunk 6: **PARTLY MET**
+#### The honest status of doc 03c §Phase summary step 4 for chunk 6: **PARTLY MET**
 
 | Asked for | Status |
 |---|---|
@@ -3612,7 +3612,7 @@ called that state "unreachable on the real path", and that is TRUE — the probe
 reports a failure the real run would never produce.** A rehearsal that fails where the performance
 succeeds is a false rehearsal, and the ordinary separation subject has no pending transaction, so
 this is the COMMON case, not the corner. It is recorded rather than fixed because running the probe
-inside `executeDryRun` changes what D210's `stop-after-prepare` means and belongs to doc 09's owner,
+inside `executeDryRun` changes what D210's `stop-after-prepare` means and belongs to ref write-safety's owner,
 not to a live-proof slice.
 
 **RESOLVED (D215).** The owner's answer is that it does NOT change what `stop-after-prepare` means —
@@ -3650,7 +3650,7 @@ identical collision waits.
 The same absence has a second face worth naming: both executions emitted the span `…/timecard-search#1`,
 so the two are indistinguishable in the timeline as well as in authority. **A gate resume advances no
 execution counter, so a re-executed node is identical to its first execution in every identity this
-platform has.** That is a doc 02 replay-contract question with at least three candidate answers (an
+platform has.** That is a ref workflow-model replay-contract question with at least three candidate answers (an
 always-rerun node writes no checkpoint at all; the key carries an execution ordinal; the resume
 advances the attempt), each with consequences for evidence and for D110/D114 terminal dependencies.
 It is named here and left to its owner; inventing replay semantics inside a live-proof slice is not
@@ -3845,7 +3845,7 @@ name search returns more than one row.
 
 **BUILD ONLY. Nothing here has touched the live system.** This is the as-built for §4e's
 `AMENDMENT (operator), 2026-08-14` — the operator's answer to the question chunk 5a queued and
-5a's own judgement 3 deliberately left unanswered. Ratified as **D217** (doc 04).
+5a's own judgement 3 deliberately left unanswered. Ratified as **D217** (ref decisions).
 
 **The answer, verbatim:** *"so what we are doing here is to collect all data first and then fill in
 the forms at the end."* Legacy's step-13 Kuali date write-backs belong in the rebuild, as staged
@@ -3963,7 +3963,7 @@ never clicked either. Every Kuali finding below came from the same PASSIVE `Acti
 listener §9.12's instrument established — Kuali issues that query itself on every document route
 open; this pass read the answer and sent nothing extra.
 
-#### The honest status of doc 07 §3.1 step 4 for chunk 6, updated
+#### The honest status of doc 03c §Phase summary step 4 for chunk 6, updated
 
 | Asked for | Status |
 |---|---|
@@ -4184,7 +4184,7 @@ Submit` and Kuali `Save` were never clicked; `submitDocumentV2` was never issued
 wizard's `Continue` was never clicked. **No gate this session was approved on a not-dry run** — part
 B never reached its gate, and part A's approval authorized a preview.
 
-#### The honest status of doc 07 §3.1 step 4 for chunk 6, updated again
+#### The honest status of doc 03c §Phase summary step 4 for chunk 6, updated again
 
 | Asked for | Status |
 |---|---|
@@ -4341,7 +4341,7 @@ non-terminal. On the next worker boot **D200's lease-as-evidence self-sweep rele
 claim generation 3 and finished. A defect in a span emitter cost a re-execution of one `always-rerun`
 node and nothing else.
 
-Fixed in `e1ba81b` (one enum value, one test case). No decision moved: doc 02 §2.1 had already
+Fixed in `e1ba81b` (one enum value, one test case). No decision moved: ref workflow-model §2.1 had already
 ratified `not-observed`; this was an implementation that lagged its own ratification.
 
 #### 4. `probeToFenceMaxMs` — the expectation was wrong, and the correction matters
@@ -4400,7 +4400,7 @@ three are correctly dispositioned at the milestone the runtime is actually in
   counterpart; selector discovery and login smoke do. Unchanged by this chunk.
 - **`legacy-tool-ops-sanity-check-record`** — `open`, deferred by **D192** to this migration with a
   named condition: *"its value arrives with separations/onboarding … where it renders as prose
-  observations beside the doc 09 §14 ALWAYS-GATE identity approval, never a pass/fail verdict chip
+  observations beside the ref write-safety §14 ALWAYS-GATE identity approval, never a pass/fail verdict chip
   that could be mistaken for authority."* **That condition is now materially satisfied by something
   that shipped**: the §14.2 packet's `comparisons` array is exactly that — four prose observations
   (`note` per field) beside the approval, with no verdict chip — and this pass served it live twice.
@@ -4413,10 +4413,10 @@ three are correctly dispositioned at the milestone the runtime is actually in
 > observed and when. **(a)** is **D237** — the settled gate's verdict, approver and instant now come
 > off the durable `gate_results` row through D204's own declared arm table, never off the span
 > stream's `resolutionKey`, and the panel draws a DECISION RECORD in the run's own stream at
-> `resolvedAt`. Doc 12 §"D237" owns the derivation; doc 03 §"D238" owns the presentation. **(b)** is
+> `resolvedAt`. Ref operator-trust §"D237" owns the derivation; ref dashboard-surfaces §"D238" owns the presentation. **(b)** is
 > **D238** — a terminal `done` run whose envelope asked for a dry run takes `partial` with
 > `rehearsal: true`, which is the verdict its own receipt derives, and a wire refinement makes
-> `verified-done` beside `rehearsal` unrepresentable. Doc 03 §"D238" owns it. Both are pinned by
+> `verified-done` beside `rehearsal` unrepresentable. Ref dashboard-surfaces §"D238" owns it. Both are pinned by
 > `tests/unit/server/run-detail-gate-outcome.test.ts`. Neither needed a new vocabulary: (a) reuses
 > D204's declared arm table and (b) reuses the receipt's own `result` enum.
 
@@ -4427,8 +4427,8 @@ naming the deferral (*"Until gate descriptors declare display keys (2h Review), 
 the fact of resolution itself"*). So the approve/reject arm is **structurally unreachable** and every
 settled separations run's panel reports `gate: { state: "absent", reason: "gate identity-approval
 resolved with key resolved, which is not an approve/reject verdict" }` — a sentence that reads like a
-data problem and is a vocabulary deferral. The receipt carries the truth (D204). Owner: doc 12 / doc
-13, with doc 02's gate display keys.
+data problem and is a vocabulary deferral. The receipt carries the truth (D204). Owner: ref operator-trust / doc
+13, with ref workflow-model's gate display keys.
 
 **(b) A preview run's outcome chip reads `verified-done`.** `run-detail` maps lifecycle `done` →
 `verified-done` mechanically, while the receipt for the same run says `partial` / `unknown` with a
@@ -4439,11 +4439,11 @@ about.
 
 #### 8. The platform defect this pass found and did NOT fix: a RETRY re-collides on the same node
 
-> **FIXED as D221 (2026-08-14), by doc 02 §5.7's owner.** The answer is none of the three candidates
+> **FIXED as D221 (2026-08-14), by ref workflow-model §5.7's owner.** The answer is none of the three candidates
 > below and needed no new component: **the checkpoint key is ITEM-scoped, so the `attempt` in it is
 > the ITEM's attempt, not the run's** — which is what §5.6 #1 has always said a retry is (*"failure
 > at node k ⇒ retry = new attempt"*), what the DDL's own `run_id … (audit)` annotation implies, and
-> what doc 09 §5's write sequencer already assumes when it reads `envelope.attempt > 1` as "this item
+> what ref write-safety §5's write sequencer already assumes when it reads `envelope.attempt > 1` as "this item
 > has been attempted before, so probe before you fence". Every enqueue now takes the item's next
 > unspent attempt from authority inside its own transaction, a requeue advances the same counter, and
 > `runs.enqueue` refuses an attempt the item already spent. Nothing stored moved — the key shape is
@@ -4467,7 +4467,7 @@ cannot be retried at all** — every retry dies on the first `always-rerun` node
 forward is the re-read affordance, which mints a new logical item and re-reads everything. That is
 what this pass used (`#re-read-2`, `#re-read-3`, `#re-read-4`).
 
-It is named and handed to doc 02 §5.7's owner rather than fixed here, on §9.14's own reasoning:
+It is named and handed to ref workflow-model §5.7's owner rather than fixed here, on §9.14's own reasoning:
 inventing replay semantics inside a live-proof slice is not this slice's job, and the candidate
 answers (a per-ITEM execution ordinal; a generation that does not reset across `retryOf`; an
 always-rerun node that writes no row) each have consequences for D110/D114 terminal dependencies and
@@ -4523,10 +4523,10 @@ anything else cites it, and **4495 becomes a fresh full-chain subject when its d
 **Four rulings landed the same day, recorded where they own:** the run-detail timeline is
 CATEGORICAL — the operator approved the six-category grouping (Kuali extraction · Identity check ·
 Job summary · Kronos timecard · UCPath transaction · Kuali finalization) over the 18 raw nodes,
-legacy's step vocabulary kept (D225, doc 03) · the gate-age pill carries no age; the age lives in
-the row meta and the log panel, per the demo (D12 amended, doc 03) · no AI sanity check — the
+legacy's step vocabulary kept (D225, ref dashboard-surfaces) · the gate-age pill carries no age; the age lives in
+the row meta and the log panel, per the demo (D12 amended, ref dashboard-surfaces) · no AI sanity check — the
 §14.2 packet's deterministic comparisons ARE the check (`legacy-tool-ops-sanity-check-record`
-retired, doc 12 §4.4) · the archived detail follows the demo — five tabs, Export (D223, doc 03
+retired, ref operator-trust §4.4) · the archived detail follows the demo — five tabs, Export (D223, ref dashboard-surfaces
 §10.2). The operator also ratified the separations-completion plan's ordering
 (`docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §7 Decision 5:
 Track B now, Track A on the canary).
@@ -5180,7 +5180,7 @@ hangs"* — a sentence written about a stale imported file, never connected to t
 
 A WebAuthn server treats a counter that does not ADVANCE as a cloned-key signal. Duo's counter is per
 **credential** and one credential covers every UCSD system (`duo-autopilot/README.md`). Duo
-Autopilot's copy is per **browser profile** (`chrome.storage.local`), and doc 05 §1 partitions
+Autopilot's copy is per **browser profile** (`chrome.storage.local`), and ref execution-and-sessions §1 partitions
 profiles per `(worker, system, instance, configFingerprint)`. So N writers share one server-side
 counter and none of them can see another's copy.
 
@@ -5235,7 +5235,7 @@ not SAY any of this. The landing bound is `duoApprovalSeconds` (180 s) and the a
 `describeStalledLanding`, the function whose entire job is explaining a stalled Duo login, is
 **unreachable at the shipped defaults**, and the operator gets D125's message naming Duo hand-approval
 and `timeouts.duoApprovalSeconds`. §9.17 flagged that message as a mis-attribution and it stayed. Doc
-05 §4.1's rule answers it: authentication is decided by CONTENT, and so is its refusal — Duo says so
+ref execution-and-sessions §4.1's rule answers it: authentication is decided by CONTENT, and so is its refusal — Duo says so
 in words about a second after the assertion. The wait now races the landing against that observation.
 Live, on the burned profile:
 
@@ -5355,7 +5355,7 @@ run 1 re-read everything live; runs 2 and 3 replayed what their predecessors had
 > attempt N`, derived from the checkpoint it replayed — never `pending`, never a fabricated
 > duration); (2) the frozen elapsed is D256 (the page's now is DERIVED: one served-clock
 > calibration plus the browser's monotonic delta, signed elapsed, every consumer on one clock);
-> (3) the always-on shape hazard is fixed as a doc 03 as-built correction (a run compares against
+> (3) the always-on shape hazard is fixed as a ref dashboard-surfaces as-built correction (a run compares against
 > its OWN workflow's served fingerprint, three verdicts incl. `unserved`); (4) the stale panel is
 > D257 (the open panel follows its run's served `rowRevision` off the day stream). The records
 > below stay as found.
@@ -5422,7 +5422,7 @@ not receive). `person-lookup` is therefore the ONLY workflow with a UI start doo
 separations run in this pass was started either through the raw start-plan/command pair or through a
 finished row's `Run again`. **This is recorded as a gap in the operator story, not as a defect**: the
 flagship workflow of Phase 3 cannot be started from the dashboard at all, and `Run again` only works
-once some other path has produced a first run. The owner is doc 13 / the run-start surface, and the
+once some other path has produced a first run. The owner is ref frontend-backend-integration / the run-start surface, and the
 question it owes an answer to is what a three-field structured ingress looks like in this dialog.
 
 #### 5. Two operational findings — both burned profiles, both cleared by deletion
@@ -5603,7 +5603,7 @@ after which the gate ceremonies D226 built are photographed for the first time.
 **MET as declared**, because the descriptor's `surfaces: {}` says exactly that with its reason. The
 operator then ruled: **build it.** This pass is that build attempted, and the finding is that it
 cannot be built where it was asked for. **Nothing was written, nothing was run live, and no code
-changed** — the ruling is **D260** (doc 02 §1.1), and this section is its evidence.
+changed** — the ruling is **D260** (ref workflow-model §1.1), and this section is its evidence.
 
 #### 1. What a separations run actually ingests
 
@@ -5649,7 +5649,7 @@ Named so the operator can rule rather than re-derive:
 
 1. **A third `surfaces` arm: a typed FORM.** The multi-field vocabulary already exists and is already
    interpreted server-side — `UploadFieldSpec` (`text`/`boolean`/`select`) with `resolveUploadFields`
-   — and the arm is `uploadRun` minus its mandatory `accepts[]`. Doc 02 §1.1 already permits exactly
+   — and the arm is `uploadRun` minus its mandatory `accepts[]`. Ref workflow-model §1.1 already permits exactly
    this ("a genuinely new run-surface behavior extends that union and both exhaustive interpreters").
    **The honest cost: no client renderer for `UploadFieldSpec` exists.** `uploadRun` is declared by no
    registered workflow and `src/dashboard/surfaces/run-start.tsx` renders it nowhere, so this surface
@@ -5703,7 +5703,7 @@ worktree live pass:
 §9.23 recorded the door as unbuildable where it was asked for and named two shapes with their costs.
 The operator ruled, verbatim: **"document number should work. no need action id."** That is §9.23's
 shape 2 — *make `actionId` a graph output* — and this section is that build, live-proved the same day.
-The decision is **D261** (doc 02 §1.1). §9.23 and D260 are NOT withdrawn: their rule is unchanged and
+The decision is **D261** (ref workflow-model §1.1). §9.23 and D260 are NOT withdrawn: their rule is unchanged and
 this is the choice they handed the operator, exercised.
 
 #### 1. The selectors, ported and live-verified

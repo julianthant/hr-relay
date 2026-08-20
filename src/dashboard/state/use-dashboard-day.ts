@@ -1,12 +1,12 @@
 /**
  * The selected day's server state, and nothing else.
  *
- * One subscription per day (doc 13 §7.4: one global stream, not a connection
+ * One subscription per day (ref frontend-backend-integration §7.4: one global stream, not a connection
  * per component). The hook OWNS no authority: it hands the client's snapshots
  * and patches to React verbatim. It never merges rows, recomputes a count,
  * removes a row after a command, or turns a status. When the stream stops with
  * an error that error becomes visible state — a dashboard that silently keeps
- * painting a stale day is the exact failure doc 13 §3.5 forbids.
+ * painting a stale day is the exact failure ref frontend-backend-integration §3.5 forbids.
  */
 import { useEffect, useState } from "react";
 import type { DashboardDayWire } from "../../domain/dashboard/projection.js";

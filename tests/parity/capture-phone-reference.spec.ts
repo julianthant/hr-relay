@@ -1,5 +1,5 @@
 /**
- * The phone capture surface's reference set (doc 13 §7.1, 2i-F).
+ * The phone capture surface's reference set (ref frontend-backend-integration §7.1, 2i-F).
  *
  * It is its OWN describe block at its own viewport rather than a fourth entry
  * in `PARITY_VIEWPORTS`, and that is a deliberate scoping decision: the phone
@@ -239,7 +239,7 @@ test.describe("capture phone behaviour", () => {
     expect(errors).toEqual([]);
   });
 
-  /** The credential never leaves the fragment and the header (doc 11, D174). */
+  /** The credential never leaves the fragment and the header (ref clock-config-secrets, D174). */
   test("sends the token only in its header, never in a url", async ({ page }) => {
     const requests: { url: string; token: string | undefined }[] = [];
     page.on("request", (request) => {

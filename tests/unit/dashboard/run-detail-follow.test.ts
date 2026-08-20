@@ -1,5 +1,5 @@
 /**
- * The open run-detail panel follows its run (D257, doc 03 §"Wave-2
+ * The open run-detail panel follows its run (D257, ref dashboard-surfaces §"Wave-2
  * connection-proof presentation deltas").
  *
  * The defect these pin, from the Track C connection proof (separations §9.22

@@ -344,7 +344,7 @@ function reserveProvider(database: AuthorityDatabase) {
 const LEDGER_PARTITION = { system: "ucpath" as const, date: "2026-07-31" };
 const LEDGER_PROJECTOR_ID = "generation-fixture";
 
-/** Doc 12's trust records hang off a real terminal run and its durable failure. */
+/** Ref operator-trust's trust records hang off a real terminal run and its durable failure. */
 function terminalizeForTrust(database: AuthorityDatabase): void {
   const run = prepareRunning(database);
   database.terminalizeFailure(personLookupDescriptor, terminalFailureRequest(run));

@@ -1,5 +1,5 @@
 /**
- * The subject-derived row title (doc 03 §1.2, and doc 03's *Queue-row
+ * The subject-derived row title (ref dashboard-surfaces §1.2, and ref dashboard-surfaces's *Queue-row
  * projection as-built delta*).
  *
  * A queue row starts life titled with whatever the start input could compose —
@@ -100,7 +100,7 @@ function seedRun(w: DashboardWorld, seed: number, input: { displayName?: string 
   }));
 }
 
-describe("the subject-derived queue-row title (doc 03 §1.2)", () => {
+describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", () => {
   it("replaces the start-input title once the declared subject leaf has a checkpoint", () => {
     const w = world();
     seedRun(w, 1);
@@ -230,7 +230,7 @@ describe("the subject-derived queue-row title (doc 03 §1.2)", () => {
       descriptors: { resolve: () => personLookupDescriptor },
     }, uuidOf(10));
     // A row and the panel it opens are the pair an operator sees side by side;
-    // two surfaces naming one run two ways is the divergence doc 03's "one
+    // two surfaces naming one run two ways is the divergence ref dashboard-surfaces's "one
     // projection" rule exists to prevent.
     assert.equal(detail.header.title, "Battistessa, Johnnie");
     assert.equal(detail.header.title, rowOf(w, 10).title);

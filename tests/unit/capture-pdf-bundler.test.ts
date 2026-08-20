@@ -1,5 +1,5 @@
 /**
- * The deterministic capture PDF bundler (doc 06 §5.1, D167, 2i-F).
+ * The deterministic capture PDF bundler (ref data-intake-and-edit-data §5.1, D167, 2i-F).
  *
  * D167's crash-window argument is the whole reason this file exists: the
  * finalize projector may die after bundling and before its settlement

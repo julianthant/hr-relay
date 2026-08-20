@@ -70,7 +70,7 @@ export const RedactedProviderEvidenceSchema = z.strictObject({
  * from parsing — the D133 defect exactly. A plain union of two strict objects
  * with disjoint required keys resolves without one.
  *
- * The second arm is doc 12 §4.4's on-demand operator advisory. It is bound to
+ * The second arm is ref operator-trust §4.4's on-demand operator advisory. It is bound to
  * a real run because budget accounting has a subject and the row's `run_id`
  * references one, but it is NOT executing a node: an advisory is read from
  * finished authority, on the presentation lane, so claiming a `nodeId` the

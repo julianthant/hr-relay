@@ -1,5 +1,5 @@
 /**
- * Doc 10 §3.15 / D183 — the redaction surface scan.
+ * Ref guards-and-tests §3.15 / D183 — the redaction surface scan.
  *
  * The 2j checklist asks for "a sweep proving no classified leaf reaches any
  * wire/log/notification/ledger/advisory surface unredacted". Until D183 that
@@ -20,7 +20,7 @@
  *
  * **(b) The canary sweep** plants impossible-by-construction sentinels — a
  * password, a cookie, a storage-state blob, a private key, a credential file
- * path, an unissued SSN, an impossible DOB (doc 11 §6's exact list) — into the
+ * path, an unissued SSN, an impossible DOB (ref clock-config-secrets §6's exact list) — into the
  * real producers and scans the produced bytes. It catches what the declarations
  * missed, and it cannot tell you anything about a field nobody has written to
  * yet.
@@ -118,7 +118,7 @@ function pathCoveredBy(candidate: string, owned: readonly string[]): boolean {
 
 /* ── (a) the declaration audit ───────────────────────────────────────────── */
 
-describe("redaction surface scan — the declaration audit (doc 10 §3.15, D183)", () => {
+describe("redaction surface scan — the declaration audit (ref guards-and-tests §3.15, D183)", () => {
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
@@ -428,7 +428,7 @@ function openDatabase(): AuthorityDatabase {
   return database;
 }
 
-describe("redaction surface scan — the canary sweep (doc 11 §6)", () => {
+describe("redaction surface scan — the canary sweep (ref clock-config-secrets §6)", () => {
   it("plants a sentinel in every free-text leaf the failure record has", () => {
     // The plant is asserted before anything is derived from it. A sweep whose
     // sentinels never made it into the source proves nothing about the
@@ -498,7 +498,7 @@ describe("redaction surface scan — the canary sweep (doc 11 §6)", () => {
       "a filed-transaction record is a transaction fact, never a credential",
     );
 
-    // The ledger file is never pruned (doc 09 §6), so a value that reached it
+    // The ledger file is never pruned (ref write-safety §6), so a value that reached it
     // is permanent. `ledgerLineText` re-parses through the strict schema, which
     // is what makes an extra key on the row unable to ride along.
     const smuggled = {

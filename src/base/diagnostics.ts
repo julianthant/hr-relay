@@ -1,5 +1,5 @@
 /**
- * Doc 12 §2.2's capture port, narrowed to what the interpreter can honestly
+ * Ref operator-trust §2.2's capture port, narrowed to what the interpreter can honestly
  * supply at the moment a run's failure becomes durable.
  *
  * It lives in `base/` beside the other injected-capability contracts because

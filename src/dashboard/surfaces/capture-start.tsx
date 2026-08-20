@@ -1,5 +1,5 @@
 /**
- * Start a phone capture — the operator's half of doc 06 §5.1 (2i-F, D175).
+ * Start a phone capture — the operator's half of ref data-intake-and-edit-data §5.1 (2i-F, D175).
  *
  * It sits beside the spreadsheet dropzone because it answers the same question
  * from the other side: the operator is holding either a file or a stack of

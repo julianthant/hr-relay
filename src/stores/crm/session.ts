@@ -22,7 +22,7 @@
  * this system specifically.
  *
  * Not ported: legacy's debug screenshots, `waitForTimeout` settles, and Duo
- * poll loop (doc 05 §5).
+ * poll loop (ref execution-and-sessions §5).
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
 import type { LoginResult } from "../../domain/session.js";

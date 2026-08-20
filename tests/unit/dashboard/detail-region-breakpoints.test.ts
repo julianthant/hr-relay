@@ -1,6 +1,6 @@
 /**
  * The detail region's two breakpoints exist TWICE, and the two copies must
- * agree (doc 03 §Shell).
+ * agree (ref dashboard-surfaces §Shell).
  *
  * Tailwind cannot see through an identifier, so the CSS half of the split is
  * the literal `@min-[868px]/detail:` / `@min-[1068px]/detail:` written into
@@ -55,7 +55,7 @@ describe("the detail region's breakpoints", () => {
 
   it("keys on the COLUMN, never on the window", () => {
     // `min-[1180px]:` is allowed once and only on the container DECLARATION:
-    // that is the SHELL's own breakpoint (doc 03 §Shell's first row), the one
+    // that is the SHELL's own breakpoint (ref dashboard-surfaces §Shell's first row), the one
     // question in this file the window is the right instrument for.
     const viewportQueries = [...code().matchAll(/(?<!@)\bmin-\[(\d+)px\]:(\S*)/gu)]
       .map((match) => `min-[${String(match[1])}px]:${String(match[2])}`);

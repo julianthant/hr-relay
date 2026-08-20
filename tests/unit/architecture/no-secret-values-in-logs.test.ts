@@ -11,15 +11,15 @@ import {
 } from "./helpers/guard-files.js";
 
 /**
- * Guard (doc 11 §5): a secret VALUE never reaches a diagnostic string.
+ * Guard (ref clock-config-secrets §5): a secret VALUE never reaches a diagnostic string.
  *
- * Doc 11 pairs `secrets-single-source` (who may read a credential) with this
+ * Ref clock-config-secrets pairs `secrets-single-source` (who may read a credential) with this
  * one (what may be said about it): a ratchet "flagging `log.*`/template-literal
  * interpolation of identifiers named `password`/`privateKey`/`credential`/
  * `secret` (case-insensitive) ... catching an accidental
  * ``log.info(`login as ${password}`)``".
  *
- * Why an interpolation and not a type check: doc 11's redaction contract only
+ * Why an interpolation and not a type check: ref clock-config-secrets's redaction contract only
  * protects values that travel as CLASSIFIED fields into
  * `redactDiagnosticFields`. The moment a credential is spliced into a string it
  * has become an opaque message body, the classification is gone, and every

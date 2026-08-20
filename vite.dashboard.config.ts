@@ -1,5 +1,5 @@
 /**
- * Vite wiring for the rebuild dashboard (1i-spine, doc 13 §2).
+ * Vite wiring for the rebuild dashboard (1i-spine, ref frontend-backend-integration §2).
  *
  * Mirrors the legacy repo's `vite.dashboard.config.ts` shape (legacy commit
  * 793abe1f8265f3213ffe8a80d6cfd9860a32a1dc) with the rebuild's own isolation
@@ -31,7 +31,7 @@ export default defineConfig({
      * TWO ENTRIES, ONE BUILD (2i-F, D175).
      *
      * `index.html` is the operator dashboard; `capture.html` is the phone
-     * surface doc 12 §7's ingress serves. They are separate entries rather than
+     * surface ref operator-trust §7's ingress serves. They are separate entries rather than
      * two routes in one bundle because the ingress must serve exactly the
      * phone page's OWN asset closure — an entry is the only thing a bundler can
      * state a closure for, and a phone route inside the dashboard bundle would

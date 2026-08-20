@@ -9,7 +9,7 @@
  * says so ("across every day the tracker holds"). This repository has no
  * cross-run search route and is not getting one here: D184 deferred the
  * cross-day corpus because two runs is not a corpus, and inventing a second
- * server-side count/scan path is exactly what doc 03 §10.1 forbids.
+ * server-side count/scan path is exactly what ref dashboard-surfaces §10.1 forbids.
  *
  * So this control is a FIND over the day the operator is already looking at —
  * the same `queueSurfaces` array the queue panel renders, in the browser, with

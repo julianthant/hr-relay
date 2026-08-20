@@ -1,5 +1,5 @@
 /**
- * The generated UI catalog surface's query (doc 12 §1.3, D177).
+ * The generated UI catalog surface's query (ref operator-trust §1.3, D177).
  *
  * It serves the **committed** `generated/ui-catalog.json` — the same bytes the
  * `semantic-ui-registry` guard pins, the same file `npm run selector:search`

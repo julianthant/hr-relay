@@ -1,8 +1,8 @@
 /**
  * Resolve a dotted target path inside a strict object schema.
  *
- * Doc 06 §2.1 binds a column to a **stable target-field id** — a path into the
- * workflow's own input schema — and doc 06 §7 vector #6 requires that the
+ * Ref data-intake-and-edit-data §2.1 binds a column to a **stable target-field id** — a path into the
+ * workflow's own input schema — and ref data-intake-and-edit-data §7 vector #6 requires that the
  * schema found at that path is the SAME OBJECT as the canonical field's. That
  * check is only meaningful if the path resolution refuses to be creative, so:
  *
@@ -28,7 +28,7 @@
  *
  * - it must resolve to the SAME schema object everywhere it resolves — two arms
  *   spelling `z.string().min(1)` twice are two objects, and that is exactly the
- *   drift doc 06 §7 #6 bans, so it is refused by name rather than by luck;
+ *   drift ref data-intake-and-edit-data §7 #6 bans, so it is refused by name rather than by luck;
  * - a member that does not have the path at all makes the path **omissible**,
  *   because an input satisfying that member carries no such key. `required`
  *   therefore means "every valid input must supply this", which is the only

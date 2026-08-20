@@ -17,7 +17,7 @@ const RAW_BROWSER_MEMBERS = new Set([
  *   knowledge — its semantic driver and its login recipe.
  * - `src/infra/browser/**` owns browser CREATION itself: the persistent
  *   context, the Duo Autopilot extension, and the provable teardown behind
- *   `WorkerBrowserSessionFactory` (doc 05 §4 — "concrete browser creation
+ *   `WorkerBrowserSessionFactory` (ref execution-and-sessions §4 — "concrete browser creation
  *   remains a factory injected at the runtime composition boundary"). It has
  *   nowhere else it could live: it is neither one system's driver nor kernel
  *   policy, and `core` sits above `infra` in the layer matrix.
@@ -96,7 +96,7 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile): readonly stri
         issues.push(`${path}: computed raw browser member ${member} crosses the driver/session boundary`);
       }
     }
-    // Doc 09 beat ⑤ / D111: `src/base/mutation-capability.ts` owns the ONE
+    // Ref write-safety beat ⑤ / D111: `src/base/mutation-capability.ts` owns the ONE
     // sanctioned minting point (its WeakSet makes the token runtime-
     // unforgeable); every other file asserting the brand is still a forgery.
     if (path !== MUTATION_CAPABILITY_REGISTRY

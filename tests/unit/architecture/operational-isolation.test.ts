@@ -18,7 +18,7 @@ import {
  * filesystem/state reads, HTTP calls, and route proxies. Two repositories share
  * no module graph, so those are no longer violations to catch — they are
  * expressions that cannot resolve. That retirement is recorded in the guard
- * inventory as an explicit replacement (doc 10 §3.13), and THIS file is the
+ * inventory as an explicit replacement (ref guards-and-tests §3.13), and THIS file is the
  * replacement.
  *
  * What a repo boundary does NOT give you: both runtimes still execute on one

@@ -155,7 +155,7 @@ export const StartCommandRequestSchema = z.strictObject({
   }),
 });
 
-// D170: the five non-enqueue intake payloads carry what doc 06 §2.2's flow
+// D170: the five non-enqueue intake payloads carry what ref data-intake-and-edit-data §2.2's flow
 // actually sends. The old shapes named an artifact and two fingerprints the
 // session itself now holds, and a `rowId` for something that has no item
 // identity until it validates — they were deferred-arm placeholders no producer
@@ -218,7 +218,7 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("plan-version-bump"),
     target: z.strictObject({ scope: VersionScopeSchema }),
     /**
-     * Charter §25 / doc 03 §10.2: a bump's scope is declared by whoever makes
+     * Charter §25 / ref dashboard-surfaces §10.2: a bump's scope is declared by whoever makes
      * the change AND recorded in that update's change record. `changeRecord`
      * is required here — the plan is where the author is, and asking the
      * question later would mean asking somebody who did not make the change.
@@ -247,7 +247,7 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "cancel", "bump"]), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
-  // D166: doc 06 §6.3's field-level patch model. The earlier whole-checkpoint
+  // D166: ref data-intake-and-edit-data §6.3's field-level patch model. The earlier whole-checkpoint
   // blob payload was a deferred-arm placeholder no producer ever sent.
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("edit-checkpoint"), target: RunVersionTargetSchema, payload: z.strictObject({ patches: z.array(CheckpointPatchSchema).min(1) }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-present"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema }), payload: z.strictObject({ proof: SchemaBoundCanonicalValueSchema, evidenceNote: OperatorReasonSchema }) }),

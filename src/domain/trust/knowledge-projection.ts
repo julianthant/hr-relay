@@ -1,7 +1,7 @@
 /**
- * Doc 12 §4 — the pure admission audit and the generated active view.
+ * Ref operator-trust §4 — the pure admission audit and the generated active view.
  *
- * The store is insert-only (doc 12's D134 as-built note: `KnowledgeRecord`
+ * The store is insert-only (ref operator-trust's D134 as-built note: `KnowledgeRecord`
  * carries no `version`, so a CAS-based status flip is a schema decision the
  * maintenance slice must ratify, not something this slice may guess). Two
  * consequences follow, and both are deliberate:
@@ -10,10 +10,10 @@
  *    view subtracts every superseded id. Nothing rewrites the older row, so the
  *    generated guide stops showing stale advice without any record mutating.
  *  - **A duplicate is refused at admission**, before it exists, because it
- *    could not be retracted afterwards. Doc 12 §4.3 requires exactly this:
+ *    could not be retracted afterwards. Ref operator-trust §4.3 requires exactly this:
  *    "suspected duplicates require an explicit supersedes/related link".
  *
- * A raw appended lesson is NOT authority (doc 10 §3.10). `triageLesson` is the
+ * A raw appended lesson is NOT authority (ref guards-and-tests §3.10). `triageLesson` is the
  * only path from prose to a record, and it can never produce an `active` one:
  * it returns the obligations the author still owes.
  */
@@ -53,7 +53,7 @@ function normalizedTitle(record: KnowledgeRecord): string {
 /**
  * Two records claim the same scoped rule when their scope is byte-identical AND
  * they either carry the same normalized title or share a regression scenario.
- * Scenario overlap matters because doc 12 §4.3 names the scenario as one of the
+ * Scenario overlap matters because ref operator-trust §4.3 names the scenario as one of the
  * duplicate signals: two records that a single regression proves are one rule.
  */
 export function knowledgeRecordsCollide(left: KnowledgeRecord, right: KnowledgeRecord): boolean {
@@ -168,7 +168,7 @@ function renderRecord(record: KnowledgeRecord): string {
 }
 
 /**
- * One `KNOWLEDGE.md` per system (doc 12 §4.1), generated from the active view
+ * One `KNOWLEDGE.md` per system (ref operator-trust §4.1), generated from the active view
  * only. The header says so explicitly, because a generated view that looks
  * hand-authored is exactly how a second authority starts.
  */
@@ -222,7 +222,7 @@ export type FixAdmission = z.infer<typeof FixAdmissionSchema>;
 
 /**
  * `status:"verified"` already requires a commit plus non-empty evidence in the
- * schema (doc 12 §4.2). What the schema cannot check is whether the knowledge
+ * schema (ref operator-trust §4.2). What the schema cannot check is whether the knowledge
  * a fix claims to have produced actually exists and is itself authority — an
  * unverified knowledge record cannot carry a verified fix's conclusion.
  */
@@ -288,7 +288,7 @@ export const LessonTriageSchema = z.strictObject({
 });
 
 /**
- * Doc 12 §4.1: LESSONS are migration input, not the new authority. There is
+ * Ref operator-trust §4.1: LESSONS are migration input, not the new authority. There is
  * deliberately no arm that returns a record — a chronological append can never
  * become active guidance by being reformatted, and this function's only
  * possible answer is the list of obligations that triage still owes.

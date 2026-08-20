@@ -186,7 +186,7 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
   HR_SOAK_ITERATIONS: ["legacy:tests/delegation/concurrency-soak.test.ts"],
   HR_TEARDOWN_SOAK_ITERATIONS: ["legacy:tests/delegation/daemon-teardown-soak.test.ts"],
   HR_TEST_HEADED: ["legacy:tests/live/auth.test.ts", "legacy:tests/live/onbase-import.test.ts", "legacy:tests/live/separations-collect.test.ts", "legacy:tests/live/separations-dryrun.test.ts", "legacy:tests/live/session-launch-multi.test.ts"],
-  // D132: the ONE switch that turns the doc 13 §7 parity lane from asserting
+  // D132: the ONE switch that turns the ref frontend-backend-integration §7 parity lane from asserting
   // its stored references into deliberately re-freezing them. Read in exactly
   // one place, which the config and both capture halves share.
   PARITY_UPDATE: ["tests/parity/helpers/reference-store.ts"],
@@ -358,7 +358,7 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointRosterDownloadHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "inspectSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
-  // Doc 11: the config resolver takes the environment as a VALUE and reads
+  // Ref clock-config-secrets: the config resolver takes the environment as a VALUE and reads
   // only its statically-declared CONFIG_ENV_BINDINGS keys; this accessor is
   // where a composition root obtains that value, so no module outside the
   // secrets owner ever touches process.env.

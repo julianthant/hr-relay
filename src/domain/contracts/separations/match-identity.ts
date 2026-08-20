@@ -29,7 +29,7 @@ import { defineTaskContract } from "../base.js";
 
 export const MatchIdentityOutputSchema = z.strictObject({
   packet: IdentityEvidencePacketSchema,
-  /** The digest an approval binds to (doc 09 §14.5). */
+  /** The digest an approval binds to (ref write-safety §14.5). */
   evidenceDigest: FingerprintSchema,
 });
 export type MatchIdentityOutput = z.infer<typeof MatchIdentityOutputSchema>;
@@ -69,7 +69,7 @@ export const SeparationsMatchIdentity = defineTaskContract({
     kind: "none",
     reason: "a pure fold over the UCPath reads this run already performed",
   },
-  /** A pure transform can never be fresher than its inputs (doc 02 §5.5 ages them). */
+  /** A pure transform can never be fresher than its inputs (ref workflow-model §5.5 ages them). */
   freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },
   provenance: { default: "derived" },
   scenarios: [

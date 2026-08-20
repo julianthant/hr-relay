@@ -18,10 +18,10 @@
  *   authority transaction and `commitWriteAttempt` nests on that connection).
  *
  * Deliberately typed-but-unwired in this process (each fails loud by name):
- * - the worker process supervisor's `spawn-worker`: doc 03's Phase-1f
+ * - the worker process supervisor's `spawn-worker`: ref dashboard-surfaces's Phase-1f
  *   ratification activates the command ARM (validation, journal, refusal
  *   semantics), but the dashboard process launching browser-worker OS
- *   processes is doc 05's live worker lane (doc 07 assigns the operator
+ *   processes is ref execution-and-sessions's live worker lane (doc 02 §Phase summary assigns the operator
  *   worker-control surface to 2i / the 1i live slice). The refusal names the
  *   real Phase-1 path: `npm run cli worker <workflow-id>`;
  * - `refresh-browser` / `reopen-browser`: reaching a live worker's session set
@@ -139,7 +139,7 @@ function gateNodeViewsOf(descriptor: AnyWorkflowDescriptor): readonly Readonly<{
 
 /**
  * The transaction nodes of a descriptor, in the shape the parked-write
- * section's proof form reads (D245, doc 09 §4.1).
+ * section's proof form reads (D245, ref write-safety §4.1).
  *
  * `proofSchemaHash` is `deriveSchemaHash(completion.proofSchema, "output")` —
  * byte for byte the value `resolvePresent` compares an incoming
@@ -168,7 +168,7 @@ function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDe
  * WRITES, the system it runs against, and the reuse bound its own contract
  * declares per field.
  *
- * Nothing here is inferred. `dir` is the node's task `effect` (doc 01's own
+ * Nothing here is inferred. `dir` is the node's task `effect` (ref task-contract's own
  * word for what a contract does to the world) — the rail's header comment used
  * to record direction as unservable because "nothing durable says whether a
  * recorded field was read or written", which is true of the CHECKPOINT ROW and
@@ -264,7 +264,7 @@ export interface DashboardComposeInput {
 
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
-/** Doc 03 §2.5: a dirty store gets a coalesced verified backup at least every 15 minutes. */
+/** Ref dashboard-surfaces §2.5: a dirty store gets a coalesced verified backup at least every 15 minutes. */
 export const AUTHORITY_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
 /**
  * Three intervals — one slow or missed cycle must not flap the Settings
@@ -309,10 +309,10 @@ export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint 
 }
 
 /**
- * The dashboard process's `WorkerProcessSupervisor`: doc 03 §Phase-1f
+ * The dashboard process's `WorkerProcessSupervisor`: ref dashboard-surfaces §Phase-1f
  * activates the worker-browser command ARMS (schema, authority validation,
  * journal, typed refusals), while the process effects behind spawn and
- * refresh/reopen belong to doc 05's live worker lane (doc 07: the operator
+ * refresh/reopen belong to ref execution-and-sessions's live worker lane (doc 02 §Phase summary: the operator
  * worker-control surface is 2i / the 1i live slice). Until that lane lands,
  * each effect refuses BY NAME — a thrown supervisor error unwinds the whole
  * command, so no acknowledgement can claim an effect that did not happen.
@@ -323,7 +323,7 @@ export function createDashboardWorkerSupervisor(): WorkerProcessSupervisor {
   return Object.freeze({
     spawnWorker: (input: Readonly<{ workflowId: string; workerId: string }>): never => {
       throw new Error(
-        `the dashboard process does not launch browser workers (doc 05 live lane); start `
+        `the dashboard process does not launch browser workers (ref execution-and-sessions live lane); start `
         + `worker ${input.workerId} with: npm run cli worker ${input.workflowId}`,
       );
     },
@@ -371,7 +371,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   }));
 
   /**
-   * Doc 03 §2.5 (2i-D): this process owns the authority backup cadence — one
+   * Ref dashboard-surfaces §2.5 (2i-D): this process owns the authority backup cadence — one
    * verified backup at start, a coalesced verified backup whenever the store
    * is DIRTY on the interval tick, and a graceful-drain backup at stop.
    * Retention sweeping (14 daily + 8 coalesced + 5 pre-migration) is a
@@ -412,7 +412,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     }
   };
   /**
-   * The ONE cheap backup reading (doc 03 §2.5) — shared verbatim by the
+   * The ONE cheap backup reading (ref dashboard-surfaces §2.5) — shared verbatim by the
    * bootstrap summary and the notification watch below, so the bell can never
    * announce a state the Settings indicator would not show.
    */
@@ -435,7 +435,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   };
 
   /**
-   * D222: a stale/missing backup is doc 03 §2.6's `storage` notification, not
+   * D222: a stale/missing backup is ref dashboard-surfaces §2.6's `storage` notification, not
    * an every-view banner — the durable inbox row is the alert, produced here
    * because this process owns the backup cadence and therefore the reading.
    * Transition-only publishing (and the restart fold) live in the notifier.
@@ -487,7 +487,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   backupTimer.unref();
 
   /**
-   * D262: the second wired producer — doc 03 §2.6's open operator gate. A run
+   * D262: the second wired producer — ref dashboard-surfaces §2.6's open operator gate. A run
    * parked at a gate is the one state in this product that cannot move without a
    * person, and until now nothing told anybody. The park itself is written by
    * the worker (a separate process, no operator attached, and a run must park
@@ -559,7 +559,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
-      // Doc 03 §1.2: the one stored node output a queue row reads — the
+      // Ref dashboard-surfaces §1.2: the one stored node output a queue row reads — the
       // subject's name, at the leaf the descriptor declares.
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
@@ -601,14 +601,14 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const workerRuntime: WorkerRuntimeExecutor = createPhase1WorkerRuntimeExecutor(
     createDashboardWorkerSupervisor(),
   );
-  // Doc 09 §4.1's typed operator resolutions, over the SAME AuthorityDatabase
+  // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
   const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({
     descriptors,
     authority: database,
     ids,
   });
-  // Doc 06 §2.2 (D170): the upload route publishes source files through the
+  // Ref data-intake-and-edit-data §2.2 (D170): the upload route publishes source files through the
   // one content-addressed writer, and the parser re-derives rows and columns
   // from those immutable bytes for every intake read.
   const artifacts = createContentAddressedArtifactWriter({
@@ -632,7 +632,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       getRun: (runId) => database.authority.runs.get(runId),
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),
-      // Doc 09 §4.1: read straight off write-safety authority, per request.
+      // Ref write-safety §4.1: read straight off write-safety authority, per request.
       getWriteIntent: (writeIntentId) => database.authority.writeIntents.get(writeIntentId),
       // D237: the SAME `listByRun` read D204 gave the receipt, so the panel and
       // the receipt name one approver for one gate.
@@ -758,13 +758,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ids,
   });
 
-  // Restart recovery (doc 06 §5.1): whatever the last process left `pending`
+  // Restart recovery (ref data-intake-and-edit-data §5.1): whatever the last process left `pending`
   // is settled before the first request is served, so a bundle never waits on
   // a phone that may never come back.
   await capture.drainFinalizations();
 
   /**
-   * Doc 12 §4.4's advisory (2i-G, D178). The pool composes from the SAME
+   * Ref operator-trust §4.4's advisory (2i-G, D178). The pool composes from the SAME
    * `geminiApiKeys` family and model chain the OCR pool uses, because they
    * are the same keys — but the capability, and therefore the budget, is its
    * own. No key composes NO adapter and no seam: the route then refuses by
@@ -889,7 +889,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       clearInterval(spanTailTimer);
       clearInterval(backupTimer);
       clearInterval(gateParkTimer);
-      // Doc 03 §2.5's graceful-drain trigger: one final verified backup while
+      // Ref dashboard-surfaces §2.5's graceful-drain trigger: one final verified backup while
       // the database is still open. A failure surfaces AFTER cleanup — loud
       // to the stopper, never a half-closed process.
       await requestBackup("graceful-drain");

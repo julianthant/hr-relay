@@ -1,9 +1,9 @@
 /**
- * D182 — doc 05 §7.1 rows C9–C10: the CAPTURE half of the 2j concurrency
+ * D182 — ref execution-and-sessions §7.1 rows C9–C10: the CAPTURE half of the 2j concurrency
  * matrix, at the command-kernel and finalize-projector seams.
  *
  * These are behavioural races, not structural invariants, so they live in the
- * unit lane rather than `tests/unit/architecture/` (doc 10 §3): the guard suite
+ * unit lane rather than `tests/unit/architecture/` (ref guards-and-tests §3): the guard suite
  * proves a shape cannot be spelled, and these prove a SEQUENCE cannot happen.
  *
  * Two callers are the real Phase-2 shape here — the phone uploading while the

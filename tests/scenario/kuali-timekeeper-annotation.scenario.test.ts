@@ -3,7 +3,7 @@
  * coverage point on the `annotate-timekeeper` node.
  *
  * These four are driven by the REAL write sequencer over the REAL authority
- * database, not by a pure walk. That matters: doc 07's Phase-2 exit asks for
+ * database, not by a pure walk. That matters: doc 02 §Exit criteria asks for
  * "staged preview plus subject observation with zero intent/commit", and "zero"
  * is a statement about durable rows. A pure walk could only report that a
  * function returned; these report that `write_intents`, `run_checkpoints`, and
@@ -117,7 +117,7 @@ describe("kuali-timekeeper-annotation scenarios", () => {
   });
 
   it("kuali-timekeeper-annotation/subject-mismatch — a different displayed person yields zero fence and zero click", async () => {
-    // The hardest arm, and the one doc 09 beat ③ exists for: the probe AND the
+    // The hardest arm, and the one ref write-safety beat ③ exists for: the probe AND the
     // prepare both saw the right person, then the pooled page moved to a
     // different one before the fence. Only the kernel's own fresh observation
     // on the staged page can still stop this write.
@@ -175,7 +175,7 @@ describe("kuali-timekeeper-annotation scenarios", () => {
         source: "reload-read-back",
       },
     });
-    // The ordering doc 09 §3 requires: probe → prepare → subject → click →
+    // The ordering ref write-safety §3 requires: probe → prepare → subject → click →
     // reload read-back. The click sits between the subject read and the proof.
     const order = h.world.events;
     const clickIndex = order.findIndex((event) => event.startsWith("commit:"));

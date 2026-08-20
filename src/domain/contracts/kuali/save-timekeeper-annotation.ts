@@ -4,7 +4,7 @@
  *
  * ## Why this is the target
  *
- * Doc 07's Phase-2 rule is "the smallest controlled test-instance or
+ * Doc 02 §Phase summary's rule is "the smallest controlled test-instance or
  * sacrificial test record whose prepare and commit paths are real and whose
  * outcome is independently queryable". The Kuali timekeeper field is exactly
  * that, and it is the one the operator already authorized for a live write
@@ -16,10 +16,10 @@
  *
  * ## Why the completion arm is `save-verify` and can never be a receipt
  *
- * Kuali issues no confirmation number and the save is UI-silent (doc 09 §13
+ * Kuali issues no confirmation number and the save is UI-silent (ref write-safety §13
  * OQ1 (a)). The ONLY landing proof is a reload read-back, so `verify` points at
  * `kuali/verify-timekeeper-annotation`, and any verdict other than `present`
- * parks (doc 09 §7 row 6). `output` carries the exact staged state the commit
+ * parks (ref write-safety §7 row 6). `output` carries the exact staged state the commit
  * clicked Save on — a CLAIM, not proof; nothing in the kernel promotes it.
  * `proofFromOutput` exists to satisfy the static round-trip the contract
  * factory checks, and to reconstruct node output from a probe-derived proof on
@@ -77,7 +77,7 @@ export const KualiSaveTimekeeperOutputSchema = z.strictObject({
 export type KualiSaveTimekeeperOutput = z.infer<typeof KualiSaveTimekeeperOutputSchema>;
 
 /**
- * The natural business key (doc 09 §5): document identity + the field + the
+ * The natural business key (ref write-safety §5): document identity + the field + the
  * exact value. It never incorporates run position, attempt, or index. Two runs
  * asking for the same annotation on the same document derive the same key, so
  * the second sees the first's committed intent and refuses to double-file; a

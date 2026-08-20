@@ -1,5 +1,5 @@
 /**
- * Doc 09 §6 — the ordered, actor-attributed ledger projector.
+ * Ref write-safety §6 — the ordered, actor-attributed ledger projector.
  *
  * Executors never append `ledger/`. Beat ⑦ leaves an unsequenced
  * `ledger-entry` outbox row inside the atomic write-commit transaction; this
@@ -56,7 +56,7 @@ export const LedgerProjectorOptionsSchema = z.strictObject({
 });
 
 /**
- * `.tracker-rebuild/ledger/` (doc 03 §2.1). Deliberately NOT reachable from
+ * `.tracker-rebuild/ledger/` (ref dashboard-surfaces §2.1). Deliberately NOT reachable from
  * `pruneEventStreams`, which can only see `spans/` and `notes/`: the ledger's
  * retention floor is "forever" (D86), and a prune path that could name this
  * directory would be a way to delete proof of a real HR transaction.

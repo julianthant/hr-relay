@@ -30,7 +30,7 @@ import { defineTaskContract } from "../base.js";
  * The run's PRODUCT, and it is deliberately the whole thing rather than just the
  * subject.
  *
- * `identity-gate-before-separation-commit` (doc 09 §14.6 #2) requires the
+ * `identity-gate-before-separation-commit` (ref write-safety §14.6 #2) requires the
  * terminal result to be graph-reachable only through the gate — and it caught a
  * real defect here: a terminal result that read the document number and the
  * employment picture straight off the PRE-gate comparison node had two ancestry

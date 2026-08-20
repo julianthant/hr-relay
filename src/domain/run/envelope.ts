@@ -1,6 +1,6 @@
 /**
  * The `RunEnvelope` — kernel-owned state that rides BESIDE the workflow-constant
- * input (doc 02 §2).
+ * input (ref workflow-model §2).
  *
  * Three rules make this shape what it is.
  *
@@ -14,7 +14,7 @@
  *    a resolver that quietly ignored the request is a parse failure here rather
  *    than a surprise against a production host.
  * 3. **Resume affordances are attempt-scoped.** A freshness override authorizes
- *    exactly one attempt (doc 02 §5.5) and an override naming a different
+ *    exactly one attempt (ref workflow-model §5.5) and an override naming a different
  *    attempt is a bug, not a silently-ignored no-op — so it is rejected.
  */
 import { z } from "zod";
@@ -36,7 +36,7 @@ import { CheckpointPatchSchema, FreshnessOverrideSchema } from "../workflow/chec
 export const SystemInstanceSchema = z.enum(["prod", "test"]);
 export type SystemInstance = z.infer<typeof SystemInstanceSchema>;
 
-/** The SHAPE axis (doc 03 §1.1) — stamped once at enqueue, never recomputed. */
+/** The SHAPE axis (ref dashboard-surfaces §1.1) — stamped once at enqueue, never recomputed. */
 export const RunShapeSchema = z.enum(["single", "preview", "operation", "operation-member"]);
 export type RunShape = z.infer<typeof RunShapeSchema>;
 
@@ -62,7 +62,7 @@ export type RunParent = z.infer<typeof RunParentSchema>;
 export const RunEnvelopeSchema = z.strictObject({
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
-  /** The logical-item key half: `(workflow, itemId)` — doc 02 §5.7. */
+  /** The logical-item key half: `(workflow, itemId)` — ref workflow-model §5.7. */
   itemId: ItemIdSchema,
   /** Frozen at enqueue; the join key for spans, notes, and the ledger. */
   traceId: TraceIdSchema,
@@ -77,7 +77,7 @@ export const RunEnvelopeSchema = z.strictObject({
   priority: RunPrioritySchema,
   /** D6 — the ONLY home of this flag. */
   dryRun: z.boolean(),
-  /** A resumable graph-node id, never an internal transaction arm (doc 02 §5.7). */
+  /** A resumable graph-node id, never an internal transaction arm (ref workflow-model §5.7). */
   startAt: NodeIdSchema.optional(),
   injected: z.array(CheckpointPatchSchema).min(1).optional(),
   freshnessOverride: z.array(FreshnessOverrideSchema).min(1).optional(),
@@ -86,7 +86,7 @@ export const RunEnvelopeSchema = z.strictObject({
    * D221 — the attempt at the ITEM, not at this run.
    *
    * `(workflow, itemId)` is the logical item and the checkpoint key is scoped to
-   * it (doc 02 §5.7), so every component of that key must be item-scoped too. A
+   * it (ref workflow-model §5.7), so every component of that key must be item-scoped too. A
    * new run for an item — an operator retry, or any fresh enqueue of an item
    * that has run before — therefore takes the item's NEXT attempt, and a requeue
    * inside a run advances the same counter. Two runs of one item may never hold

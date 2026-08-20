@@ -1,5 +1,5 @@
 /**
- * The run/claim store (doc 05 §3, doc 02 §4).
+ * The run/claim store (ref execution-and-sessions §3, ref workflow-model §4).
  *
  * Two things are being pinned here, and they are different in kind. The schema
  * tests prove that an illegal *shape* cannot be spelled — a claimed run with no

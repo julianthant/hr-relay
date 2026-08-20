@@ -1,5 +1,5 @@
 /**
- * The phone-capture surface end to end (doc 06 §5.1, doc 11, doc 12 §7, D174)
+ * The phone-capture surface end to end (ref data-intake-and-edit-data §5.1, ref clock-config-secrets, ref operator-trust §7, D174)
  * over REAL machinery: a real authority database on disk, the real
  * content-addressed artifact writer, the real command kernel, the real
  * `composeCaptureSurface` seam, the real PDF bundler over REAL photographs,
@@ -570,7 +570,7 @@ describe("capture start — the credential exists once", () => {
     assert.equal(
       result.session.expiresAt,
       new Date(Date.parse(NOW) + PRE_CONNECT_TTL_MS).toISOString(),
-      "the pre-connect budget is doc 06 §5.1's, from the clock and nothing else",
+      "the pre-connect budget is ref data-intake-and-edit-data §5.1's, from the clock and nothing else",
     );
 
     // The token is a credential: a fragment is never transmitted to a server,

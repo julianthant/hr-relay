@@ -13,7 +13,7 @@
  * bound input through the contract's input schema, a supplied output through
  * the contract's output schema, a gate result through the gate's result schema,
  * a child input through the TARGET's input schema. That is the same wall the
- * kernel puts around a real run (doc 02 §3), so a scenario cannot pass on a
+ * kernel puts around a real run (ref workflow-model §3), so a scenario cannot pass on a
  * value the runtime would reject.
  */
 import type { z } from "zod";

@@ -1,5 +1,5 @@
 /**
- * The capture PDF bundler (doc 06 §5.1, D167) — the real implementation of
+ * The capture PDF bundler (ref data-intake-and-edit-data §5.1, D167) — the real implementation of
  * `finalize-projector.ts`'s `CaptureBundler` seam.
  *
  * The seam's contract is one word: DETERMINISTIC. The finalize projector may
@@ -174,7 +174,7 @@ function buildCapturePdf(images: readonly EmbeddedImage[], documentId: string): 
     ], image.data);
   }
 
-  // Doc 06 §5.1: the bundle validates its own page count. A page tree that
+  // Ref data-intake-and-edit-data §5.1: the bundle validates its own page count. A page tree that
   // claims more pages than were emitted is a silently short document.
   if (emittedPageObjects.length !== images.length) {
     throw new Error(

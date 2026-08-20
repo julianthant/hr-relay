@@ -1,6 +1,6 @@
 /**
- * The unified completion (fan-out / approval) contract — doc 03 §4, adopted into
- * doc 02's descriptor as `completion`.
+ * The unified completion (fan-out / approval) contract — ref dashboard-surfaces §4, adopted into
+ * ref workflow-model's descriptor as `completion`.
  *
  * This replaces the legacy `approveTo` / `approveDocumentTo` /
  * `completeDelegatedRun` trio with ONE typed program in two arms:
@@ -8,7 +8,7 @@
  * - `staged-fanout` — the approval gate resolves into an ORDERED stage list.
  *   Stage N+1's derive receives the itemIds stage N **actually enqueued**, not
  *   the operator's selected set: a record filtered out by `eligible` is never
- *   enqueued and never reaches a later stage (doc 03 §4.1, as-built
+ *   enqueued and never reaches a later stage (ref dashboard-surfaces §4.1, as-built
  *   `approve.ts:306` / `oath.ts:455`).
  * - `complete-then-enqueue` — i9's shape: no approval gate exists, so there is
  *   nothing to approve; the enqueue happens at the prepare seam once the
@@ -16,10 +16,10 @@
  *   display-only failed rows.
  *
  * Two shapes deliberately have NO program and are pinned as such by the guard:
- * oath-upload (a sibling born-at-upload subscriber, doc 03 §4.5) and verify
- * (in-run enrichment through child-run nodes, doc 03 §4.6).
+ * oath-upload (a sibling born-at-upload subscriber, ref dashboard-surfaces §4.5) and verify
+ * (in-run enrichment through child-run nodes, ref dashboard-surfaces §4.6).
  *
- * **Cross-spec borrowing is closed structurally (doc 03 §4.2).**
+ * **Cross-spec borrowing is closed structurally (ref dashboard-surfaces §4.2).**
  * `defineCompletionProgram` returns a SEALED handle: its type exposes `mode` and
  * `gate` and nothing else, so `otherDescriptor.completion.stages[0].eligible` is
  * a type error rather than a convention. The one way back to the program is
@@ -66,7 +66,7 @@ export type ExtractedField = z.infer<typeof ExtractedFieldSchema>;
  * A record admitted by extraction and shown in Review. `recordId` is minted at
  * admission from the source-artifact digest plus stable page/form identity, so
  * item identity can be derived from it without ever touching an array index or
- * a run id (doc 03 §4.1).
+ * a run id (ref dashboard-surfaces §4.1).
  */
 export const PreviewRecordSchema = z.strictObject({
   recordId: StableRecordIdSchema,
@@ -124,7 +124,7 @@ export const MemberPlanEntrySchema = z.strictObject({
 });
 export type MemberPlanEntry = z.infer<typeof MemberPlanEntrySchema>;
 
-/* ── named predicates (doc 03 §4.2 mechanism 1) ──────────────────────────── */
+/* ── named predicates (ref dashboard-surfaces §4.2 mechanism 1) ──────────────────────────── */
 
 /**
  * A shared eligibility predicate. It exists as a named export in a shared
@@ -210,7 +210,7 @@ export type CompletionRevealKey = typeof COMPLETION_REVEAL;
 
 /**
  * What a descriptor carries. `mode` and `gate` are the projection-visible facts
- * doc 03 reads; the stages, derives, and predicates are not structurally
+ * ref dashboard-surfaces reads; the stages, derives, and predicates are not structurally
  * reachable, which is what makes cross-spec borrowing a compile error.
  */
 export interface SealedCompletionProgram<Program extends CompletionProgram> {
@@ -348,7 +348,7 @@ export function defineCompletionProgram<const Program extends CompletionProgram>
   });
 }
 
-/* ── what a launching coordinator declares it consumes (doc 03 §4.3) ─────── */
+/* ── what a launching coordinator declares it consumes (ref dashboard-surfaces §4.3) ─────── */
 
 export const CompletionConsumptionSpecSchema = z.strictObject({
   /** Fan-out children are stamped `operation-member` only when the intent is a coordinator. */

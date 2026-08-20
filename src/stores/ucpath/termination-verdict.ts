@@ -1,14 +1,14 @@
 /**
- * The one place a UCPath transaction scan becomes a doc-09 `ProbeVerdict`.
+ * The one place a UCPath transaction scan becomes a ref write-safety `ProbeVerdict`.
  *
- * ONE rich page read (D194/D201) and TWO folds, because doc 09 §5 needs two
+ * ONE rich page read (D194/D201) and TWO folds, because ref write-safety §5 needs two
  * genuinely different probes of the same rows: "is this person already being
  * terminated effective THIS DATE?" and "does this person have ANY in-progress
  * termination?". The read classifies nothing; these folds do, unconditionally
  * and with no page access of their own.
  *
  * Both the beat-① probe and the beat-⑥ verifier run the same fold, because they
- * ask the same question at different times — which is what makes doc 09 §4's
+ * ask the same question at different times — which is what makes ref write-safety §4's
  * promise real: a `present` found by recovery parses through the identical
  * schema the normal path used.
  *

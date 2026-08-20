@@ -1,5 +1,5 @@
 /**
- * Doc 13 §7.2 — the same production components, two data sources, one result.
+ * Ref frontend-backend-integration §7.2 — the same production components, two data sources, one result.
  *
  * Adapter #1 is the deterministic fixture corpus; adapter #2 is the real
  * projection over real HTTP and SSE, seeded through real transitions. If the

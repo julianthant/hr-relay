@@ -1,5 +1,5 @@
 /**
- * `archive-invariants` — the structural half of D80/D179 (doc 03 §10.2, doc 13
+ * `archive-invariants` — the structural half of D80/D179 (ref dashboard-surfaces §10.2, ref frontend-backend-integration
  * §8 guard #11).
  *
  * The behavioural clauses live in `tests/unit/archive-model.test.ts`, which
@@ -119,7 +119,7 @@ describe("archive invariants", () => {
       reached,
       [],
       `the archive read path value-reaches ${reached.join(", ")}; an archived run must render with the `
-      + "originating descriptor absent (doc 13 §8 guard #11)",
+      + "originating descriptor absent (ref frontend-backend-integration §8 guard #11)",
     );
 
     /*
@@ -189,7 +189,7 @@ describe("archive invariants", () => {
      * And the read-through itself is read-only: it may open a partition and
      * parse a line, and it may never write one. A "repair" here would rewrite
      * the record of what was really filed against a live HR system, which is
-     * the one thing doc 09 §6 forbids projecting past.
+     * the one thing ref write-safety §6 forbids projecting past.
      */
     const reader = readFileSync(join(REPO_ROOT, "src/infra/ledger/ledger-read-through.ts"), "utf8")
       .replaceAll(/\/\*[\s\S]*?\*\//gu, "")

@@ -7,7 +7,7 @@ import { ConfigSchema } from "./schema.js";
 
 /**
  * THE CONFIG SCHEMA'S OWN VERSION LINE, INDEPENDENT OF THE SQLITE MIGRATION
- * CHAIN (D133, doc 11 §4.1).
+ * CHAIN (D133, ref clock-config-secrets §4.1).
  *
  * A `config_snapshots` row is EVIDENCE of the configuration one run executed
  * under. Three facts make it un-rewritable:

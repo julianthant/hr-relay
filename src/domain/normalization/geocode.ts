@@ -1,5 +1,5 @@
 /**
- * The geocode provider payload contract (doc 06 §4.2) — shared by the
+ * The geocode provider payload contract (ref data-intake-and-edit-data §4.2) — shared by the
  * normalization task (builder), the Census/Nominatim adapters (parsers), and
  * every fixture, so one schema owns the wire shape.
  *

@@ -1,5 +1,5 @@
 /**
- * The Archive + version-bump wire (doc 03 §10.2 D80, doc 13 §5 "Archive +
+ * The Archive + version-bump wire (ref dashboard-surfaces §10.2 D80, ref frontend-backend-integration §5 "Archive +
  * version bump", D179).
  *
  * Two facts and no more: the paged archive index with the version state a bump
@@ -48,7 +48,7 @@ import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 
 /**
  * The archived run's FROZEN short code, as a listing surface reads it
- * (doc 02 §1.1.1, D242).
+ * (ref workflow-model §1.1.1, D242).
  *
  * It is an absence union and the label beside it is a plain string, which is
  * not an inconsistency: a label that was never frozen degrades to the workflow
@@ -92,7 +92,7 @@ export const ArchiveEntryWireSchema = z.strictObject({
    * same fact off `row.resolvedInstances`, so the two can never disagree.
    */
   resolvedInstances: z.array(ResolvedInstanceSchema),
-  /** doc 13 §5's "integrity" — what a relaunch must cite back. */
+  /** ref frontend-backend-integration §5's "integrity" — what a relaunch must cite back. */
   archiveFingerprint: FingerprintSchema,
 });
 export type ArchiveEntryWire = z.infer<typeof ArchiveEntryWireSchema>;
@@ -247,7 +247,7 @@ export const ArchivedRunDetailWireSchema = z.strictObject({
    */
   ledger: z.array(ResolvedLedgerLineWireSchema),
   /**
-   * When each class of this run's data is purged, COMPUTED per record (doc 03
+   * When each class of this run's data is purged, COMPUTED per record (ref dashboard-surfaces
    * §10.4). It is not a restatement of the policy: a surface handed the rules
    * is a surface free to apply them wrong, and the two halves that have no
    * instant say which kind of "no instant" they are — nothing purges the

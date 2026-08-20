@@ -1,5 +1,5 @@
 /**
- * person-lookup — doc 02 §8's worked example, and Phase 1's live exit slice.
+ * person-lookup — ref workflow-model §8's worked example, and Phase 1's live exit slice.
  *
  * This module is bundle-safe: it value-imports only zod, `src/domain/**`, and
  * the audited `src/base` builders, so the same declaration drives the daemon and
@@ -40,7 +40,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js
  * union and by the canonical view (D172).
  *
  * It IS the canonical `fullName` schema rather than a structurally identical
- * `z.string().min(1)`, because `defineIntakeProjection` proves doc 06 §1 by
+ * `z.string().min(1)`, because `defineIntakeProjection` proves ref data-intake-and-edit-data §1 by
  * OBJECT IDENTITY: a spreadsheet column bound to `name` is coerced through
  * `CANONICAL_FIELDS.fullName.coerce` and must then satisfy the very schema this
  * workflow validates with, not a copy that agrees today. Sharing one object
@@ -51,7 +51,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js
 const PersonNameSchema = CANONICAL_FIELDS.fullName.schema;
 
 /**
- * The ingress schema — the ONE place defaults are applied (doc 02 §2). There is
+ * The ingress schema — the ONE place defaults are applied (ref workflow-model §2). There is
  * deliberately no `dryRun` field: that is kernel envelope state (D6), and a
  * workflow that could declare it could also disagree with the executor about
  * whether a run may commit.
@@ -186,7 +186,7 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
   actions: STANDARD_WORKFLOW_ACTIONS,
   capabilities: {
     review: false,
-    // Doc 06 §6.2: the three CRM dates are the fields an operator genuinely
+    // Ref data-intake-and-edit-data §6.2: the three CRM dates are the fields an operator genuinely
     // corrects — a misread date fixed before anything downstream consumes it.
     // Each path names the `present` arm's value; a correction against a stored
     // `absent` outcome fails the save's full re-parse, which is the honest
@@ -257,7 +257,7 @@ export const personLookupDescriptor = defineWorkflowDescriptor({
     },
   ],
   /**
-   * Doc 03 §1.2: an EID-started lookup titles itself `EID 10873698` until the
+   * Ref dashboard-surfaces §1.2: an EID-started lookup titles itself `EID 10873698` until the
    * Person Org search has RESOLVED somebody, and then says who. The path runs
    * through the selection's discriminated union on purpose — `selected` is
    * `null` on the not-found and ambiguous arms, so the resolver reads those as

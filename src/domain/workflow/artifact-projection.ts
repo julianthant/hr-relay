@@ -1,5 +1,5 @@
 /**
- * Doc 06 §4.1 / doc 03 §2.1 (D45): deriving the stable-keyed artifact rows a
+ * Ref data-intake-and-edit-data §4.1 / ref dashboard-surfaces §2.1 (D45): deriving the stable-keyed artifact rows a
  * producing node's checkpoint commits atomically with.
  *
  * Pure and browser-safe: the derivation is a function of the descriptor's

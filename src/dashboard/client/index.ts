@@ -1,5 +1,5 @@
 /**
- * The ONE typed dashboard client (doc 13 §0.2/§2): query, subscription,
+ * The ONE typed dashboard client (ref frontend-backend-integration §0.2/§2): query, subscription,
  * command, error normalization, schema parsing, and reconnect all live behind
  * this facade. No other frontend module may touch `fetch` or an event stream.
  * The React surface (1i) consumes exactly this object.

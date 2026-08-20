@@ -1,5 +1,5 @@
 /**
- * The BFF's advisory seam (doc 12 §4.4, D178).
+ * The BFF's advisory seam (ref operator-trust §4.4, D178).
  *
  * It does three things and nothing else: read the subject run and its failure
  * from authority, obtain an admitted client bound to that run's OWN retained

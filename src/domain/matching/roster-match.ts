@@ -1,12 +1,12 @@
 /**
- * The roster match composition — doc 06 §4's scoring, REDESIGNED.
+ * The roster match composition — ref data-intake-and-edit-data §4's scoring, REDESIGNED.
  *
- * Doc 06 §4 splits the port precisely: the confidence→tier mapping and the
+ * Ref data-intake-and-edit-data §4 splits the port precisely: the confidence→tier mapping and the
  * name primitives carry legacy's live-verified knowledge (`match-confidence.ts`,
  * `name-match.ts`, each with provenance), while THIS composition — how EID
  * and name evidence combine into one per-subject verdict — is NEW code,
  * flagged as redesigned and re-verified against real rosters at the roster
- * migration (doc 06 §7's honest residual). It is pure: no I/O, no clock, so
+ * migration (ref data-intake-and-edit-data §7's honest residual). It is pure: no I/O, no clock, so
  * the store task stays a thin edge and every arm pins in a unit test.
  *
  * The verdict rules, in order:
@@ -50,9 +50,9 @@ export const ROSTER_ACCEPT_THRESHOLD = 0.85;
 
 /**
  * Who a subject is to its caller: an intake row (`ItemId`) or an admitted
- * OCR record (`StableRecordId`). Doc 06 §4's sketch named a `StableItemId`
+ * OCR record (`StableRecordId`). Ref data-intake-and-edit-data §4's sketch named a `StableItemId`
  * that was never built; the union of the two REAL identities is the as-built
- * resolution (doc 06 §4, D163). The matcher never interprets it — it is
+ * resolution (ref data-intake-and-edit-data §4, D163). The matcher never interprets it — it is
  * echoed back verbatim so the caller can correlate.
  */
 export const RosterSubjectIdSchema = z.union([ItemIdSchema, StableRecordIdSchema]);

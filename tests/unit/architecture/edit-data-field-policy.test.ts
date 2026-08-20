@@ -1,5 +1,5 @@
 /**
- * Doc 06 §6.2/§6.3 (D166): Edit Data's field policy is structural.
+ * Ref data-intake-and-edit-data §6.2/§6.3 (D166): Edit Data's field policy is structural.
  *
  * The default is read-only — a descriptor must DECLARE every correctable
  * node+field path WITH its operator-facing label (2i-C), a declared path must

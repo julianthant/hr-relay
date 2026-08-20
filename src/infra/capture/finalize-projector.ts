@@ -1,5 +1,5 @@
 /**
- * The capture finalize projector (doc 06 §5.1, D167): pending outbox →
+ * The capture finalize projector (ref data-intake-and-edit-data §5.1, D167): pending outbox →
  * bundle → content-addressed publish → ONE authority transaction recording
  * the final artifact, the handoff identities, the outbox settlement, and the
  * session's terminal state. It can never return success and silently lose

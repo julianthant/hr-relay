@@ -1,5 +1,5 @@
 /**
- * Doc 13 §7.1 — the stored a11y snapshot is an EXPECTATION, not a log.
+ * Ref frontend-backend-integration §7.1 — the stored a11y snapshot is an EXPECTATION, not a log.
  *
  * "A screenshot without the matching a11y snapshot is incomplete." The lane
  * used to honour half of that: the `.png` went through Playwright's baseline
@@ -28,13 +28,13 @@ export interface CaptureMetadata {
   readonly stateId: string;
   readonly viewport: string;
   readonly theme: string;
-  /** which adapter produced the data — "fixture" or "seeded" (doc 13 §7.2) */
+  /** which adapter produced the data — "fixture" or "seeded" (ref frontend-backend-integration §7.2) */
   readonly adapter: string;
   readonly fixtureId: string;
   readonly descriptorHash: string;
   readonly appVersion: string;
   readonly capturedAt: string;
-  /** keyboard-only / reduced-motion variants (doc 13 §7.1) */
+  /** keyboard-only / reduced-motion variants (ref frontend-backend-integration §7.1) */
   readonly variant: string;
 }
 

@@ -1,5 +1,5 @@
 /**
- * `cli storage doctor` and `cli storage restore` (doc 03
+ * `cli storage doctor` and `cli storage restore` (ref dashboard-surfaces
  * §2.5).
  *
  * `doctor` is the read-only recovery report. It opens NOTHING read-write —
@@ -66,7 +66,7 @@ const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loos
 const STORAGE_USAGE = [
   "usage: storage doctor [--json]",
   "       storage restore --from <manifest.json> [--json]",
-  "  doctor   read-only authority + backup health report (doc 03 §2.5); exit 0 only when",
+  "  doctor   read-only authority + backup health report (ref dashboard-surfaces §2.5); exit 0 only when",
   "           authority is healthy AND a verified current backup exists",
   "  restore  quarantine the suspect authority and swap in one EXACT verified backup,",
   "           rebuilding projections against the staged copy first; the runtime must be",

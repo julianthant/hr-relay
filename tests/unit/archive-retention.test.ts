@@ -1,5 +1,5 @@
 /**
- * Doc 03 §10.4's retention policy, COMPUTED per archived record (D86/D179).
+ * Ref dashboard-surfaces §10.4's retention policy, COMPUTED per archived record (D86/D179).
  *
  * The point of these cases is not that the arithmetic is right — it is that
  * each of the four halves of the policy answers with the arm that is TRUE of

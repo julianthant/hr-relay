@@ -273,7 +273,7 @@ describe("resolving an archived run's ledger pointers", () => {
       at("kuali", "2026-08-04", 0),
     ]);
     assert.equal(line.state, "unresolved");
-    // Doc 09 §6 forbids projecting past ledger corruption; reading past it on
+    // Ref write-safety §6 forbids projecting past ledger corruption; reading past it on
     // a trust surface is the same act with a friendlier face.
     assert.equal(line.state === "unresolved" ? line.failure : "", "line-malformed");
   });

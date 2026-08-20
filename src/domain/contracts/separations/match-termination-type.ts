@@ -69,7 +69,7 @@ export const SeparationsMatchTerminationType = defineTaskContract({
   },
   /**
    * A pure transform can never be fresher than its inputs, so it carries no
-   * freshness budget of its own; doc 02 §5.5 ages the Kuali checkpoint that
+   * freshness budget of its own; ref workflow-model §5.5 ages the Kuali checkpoint that
    * feeds it. `Infinity` is written explicitly for that reason.
    */
   freshness: { defaultMaxAgeMs: Number.POSITIVE_INFINITY, defaultOverride: "forbidden" },

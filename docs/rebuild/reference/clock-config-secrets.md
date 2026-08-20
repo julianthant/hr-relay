@@ -22,16 +22,16 @@ Grounded in the legacy repo's `src/config.ts`, settings, queue trace-id, env, an
 |---|---|
 | The Clock — sole time-read site, freshness `now`, trace-id time-of-day, span/ledger timestamps | **This doc** |
 | Config resolver — env > settings.json > default precedence, typed schema | **This doc** |
-| Immutable per-run config/instance resolution + snapshot | **This doc** (fields live on doc 02's `RunEnvelope`) |
+| Immutable per-run config/instance resolution + snapshot | **This doc** (fields live on ref workflow-model's `RunEnvelope`) |
 | Fiscal-year date source + rollover fail-loud | **This doc** |
 | Secrets accessor (`.env` / `.auth` / Duo credential) | **This doc** |
 | Local-only network boundary and secret/PII redaction classification | **This doc** |
 
-Imports (never redefines): doc 01 `CommitTaskContract.writeSafety`; doc 02 `RunEnvelope`, field
-provenance, and declared-DAG freshness walk—this doc supplies the clock/config snapshot; doc 03 span/
-event wire schema (`ts: string` on `Base` — this doc supplies the value); doc 05 timeouts/
-backpressure knobs (narrow this doc's config, don't re-declare precedence); doc 09 write-safety
-ledger (`write.attempting`/`write.committed` timestamps — this doc's Clock, doc 09's events); doc
+Imports (never redefines): ref task-contract `CommitTaskContract.writeSafety`; ref workflow-model `RunEnvelope`, field
+provenance, and declared-DAG freshness walk—this doc supplies the clock/config snapshot; ref dashboard-surfaces span/
+event wire schema (`ts: string` on `Base` — this doc supplies the value); ref execution-and-sessions timeouts/
+backpressure knobs (narrow this doc's config, don't re-declare precedence); ref write-safety write-safety
+ledger (`write.attempting`/`write.committed` timestamps — this doc's Clock, ref write-safety's events); doc
 12 evidence/diagnostic bundles consume this doc's redaction classifications.
 
 ---
@@ -108,7 +108,7 @@ the dashboard bundle imports commands — so `schema.ts` is evaluated in the bro
 `node:path`-derived defaults made that fatal: Vite's dev server replaces an externalized built-in
 with a proxy that throws on the first property read, so the named-import **binding alone** killed
 the bundle at module-evaluation time, before any default could be materialized. Making the defaults
-lazy is therefore not sufficient — the import itself has to be gone (doc 13 §8.13 owns the general
+lazy is therefore not sufficient — the import itself has to be gone (ref frontend-backend-integration §8.13 owns the general
 rule and its guard).
 
 **As-built, the resolver keeps its `env > settings.json > default` precedence unchanged, and the
@@ -174,7 +174,7 @@ prevent. The browser is not entitled to a filesystem default; it is entitled to 
 **One injectable interface is the sole permitted site of `new Date()`/`Date.now()` in the rebuild
 repo's `src/`.**
 Every timestamp in the rebuilt system—span `ts`, checkpoint fact `observedAt`/`correctedAt`, trace-id time-of-day,
-write-safety ledger events (doc 09), fiscal-year lookups — reads through it.
+write-safety ledger events (ref write-safety), fiscal-year lookups — reads through it.
 
 ```ts
 // src/domain/clock.ts — the ONLY file in the rebuild repo allowed to call new Date()/Date.now()
@@ -213,24 +213,24 @@ export function manualClock(at: Date, monotonicMs = 0): TestClock { /* advanceWa
 
 **Composition with existing contracts (nothing else changes shape — only the `now` input):**
 
-- **Doc 02 §5.5 freshness walk.** `now − fact.observedAt > fieldLimit` reads `clock.now()`. This
+- **Ref workflow-model §5.5 freshness walk.** `now − fact.observedAt > fieldLimit` reads `clock.now()`. This
   makes the freshness *safety* computation unit-testable for the first time — a `manualClock` test
   can assert the exact boundary (`maxAgeMs` exactly exceeded vs. not) without waiting real time.
-- **Doc 03 spans.** The executor holds one `Clock` instance; every `SpanEvent.ts` (`Base.ts: string`
-  in doc 03 §2) is `clock.now().toISOString()`, stamped once at emission, never re-derived.
+- **Ref dashboard-surfaces spans.** The executor holds one `Clock` instance; every `SpanEvent.ts` (`Base.ts: string`
+  in ref dashboard-surfaces §2) is `clock.now().toISOString()`, stamped once at emission, never re-derived.
 - **Trace ids.** `buildTraceId({ code, runId, at: clock.now() })` — the function itself
   (`queue-trace-id.ts`) ports verbatim (it was already pure); only the caller changes from
   `at: new Date()` to `at: clock.now()`.
-- **Doc 09 write-safety ledger.** `write.attempting`/`write.committed` timestamps and the crash-
+- **Ref write-safety write-safety ledger.** `write.attempting`/`write.committed` timestamps and the crash-
   window fence read `clock.now()` — same executor-held instance as spans, so a fence and its span
   are never timestamped by two different clock reads.
-- **Doc 09 prewrite age.** `probeToFenceMaxMs` uses `clock.monotonicMs()` at probe completion and
+- **Ref write-safety prewrite age.** `probeToFenceMaxMs` uses `clock.monotonicMs()` at probe completion and
   immediately before the fence. Wall-clock correction cannot make an over-age probe look fresh;
   expiration discards staged page state and restarts preflight.
 - **Checkpoint provenance timestamps**—live observations and operator corrections use the Clock;
   an operator correction does not replace the original observation time.
 
-**The guard (registered in doc 10's guard-of-guards manifest):**
+**The guard (registered in ref guards-and-tests's guard-of-guards manifest):**
 `clock-single-source.test.ts` (the rebuild repo's `tests/unit/architecture/`) — bans
 `new Date(` / `Date.now(` / `performance.now(` / direct `process.hrtime` anywhere in
 `src/**` **except** `src/domain/clock.ts`, using the same `Record<file,{count,reason}>`
@@ -285,7 +285,7 @@ export const ConfigSchema = z.strictObject({
     longNavigationMs: z.number().int().positive(),
     ukgNavigationMs: z.number().int().positive(),
     taskMs: z.number().int().positive(),
-    /** D125 — bounds ONE session acquisition (open + login); see doc 05. */
+    /** D125 — bounds ONE session acquisition (open + login); see ref execution-and-sessions. */
     sessionAcquireMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),
     /* … */
@@ -323,7 +323,7 @@ estimate of exactly zero may be admitted. It never means unlimited. Counters are
 capability across config fingerprints, while each admission decision retains and applies the exact
 immutable run snapshot's budget.
 
-The route entries above are deliberately exhaustive over doc 01's current `BrowserSystemId`, not a
+The route entries above are deliberately exhaustive over ref task-contract's current `BrowserSystemId`, not a
 sample of the most common systems. D68 coverage fails if a browser system lacks its closed endpoint
 schema/defaults or if an endpoint schema has no driver consumer. Naming follows the domain ids:
 `old-kronos` is represented by `oldKronos`, never an ambiguous parallel `ukg` key.
@@ -389,12 +389,12 @@ omit instance preferences (meaning production), but enqueue always resolves and 
 snapshot; runtime tasks never re-read mutable process settings mid-run.
 
 ```ts
-// amends doc 02's RunEnvelope — doc 02 remains the OWNER of RunEnvelope's shape; this field is
+// amends ref workflow-model's RunEnvelope — ref workflow-model remains the OWNER of RunEnvelope's shape; this field is
 // specified HERE because instance selection is this doc's concept (D1), same pattern as dryRun (D6)
-// living on the envelope but being fully specified in doc 02.
+// living on the envelope but being fully specified in ref workflow-model.
 interface RunEnvelope {
   // … runId, workflow, itemId, traceId, parent, shape, dryRun, startAt, injected,
-  //    freshnessOverride, retryOf, attempt, enqueuedAt (doc 02 §2, unchanged) …
+  //    freshnessOverride, retryOf, attempt, enqueuedAt (ref workflow-model §2, unchanged) …
   /**
    * Per-system instance targeting. ABSENT (the default) means every system this run touches
    * resolves to PRODUCTION — the loud-safe default. A system present here as `"test"` means this
@@ -423,7 +423,7 @@ interface RunEnvelope {
     production) — refusing to silently run against production."` This is the structural
     impossibility the charter asks for: a run that believes it's hitting a sandbox can never
     silently land on production.
-- **Recorded in the audit trail.** `RunQueued.resolvedInstance` (doc 03's span schema) carries the resolved
+- **Recorded in the audit trail.** `RunQueued.resolvedInstance` (ref dashboard-surfaces's span schema) carries the resolved
   map (even when empty/all-prod) — so every run's actual target, per system, is queryable from the
   ledger (gap-audit gap 5), not inferred.
 - **Worker-owned context partitioning.** Each worker owns its browser contexts, keyed by
@@ -442,14 +442,14 @@ have changed even when the route did not.
 **Phase 1f as-built (2026-08-03).** The worker loop binds the claimed run's `configFingerprint` on
 the session manager before any task executes and releases it when the run finishes; a driver lease
 without a bound fingerprint fails loud rather than defaulting to "whatever session exists". The
-concrete factory carries the fingerprint into the on-disk profile path too (doc 05, Phase-1f
+concrete factory carries the fingerprint into the on-disk profile path too (ref execution-and-sessions, Phase-1f
 concrete session factory), so a config change cannot be silently inherited through a warm profile.
 The bind/execute/release window is one shared discipline (`withBoundRunConfigFingerprint`,
 `src/core/worker-sessions.ts`) so no caller re-derives it. Driver leases taken OUTSIDE a claimed
-run's worker-loop window — today only doc 09 §4 recovery's idempotency probe — bind the TARGET
+run's worker-loop window — today only ref write-safety §4 recovery's idempotency probe — bind the TARGET
 run's retained `configFingerprint` themselves, read from that run's authority row, never recomputed
 from current config and never taken from caller claims; a missing/foreign binding there is a loud
-precondition refusal, not a silent skip (doc 09 §4 records the park/refusal split).
+precondition refusal, not a silent skip (ref write-safety §4 records the park/refusal split).
 
 Three config leaves landed with it: `browser.headless` (the runtime default is headless — Duo
 Autopilot answers the WebAuthn ceremony in-page, so there is no OS dialog to watch),
@@ -483,7 +483,7 @@ The isolation contract is not weakened by this. The default still comes from
 and `workerProfileDirectory` still takes the `browserSessionNamespace` segment from the contract —
 that namespace, not the root, is what makes a rebuild profile unreachable from the legacy runtime.
 A relative `profileRoot` is refused loudly rather than resolved. `test-runtime-root-isolation.test.ts`
-(doc 10) is the ratchet: no test may pass a real-root-derived path into a filesystem mutator, and a
+(ref guards-and-tests) is the ratchet: no test may pass a real-root-derived path into a filesystem mutator, and a
 test that constructs the real session factory must bind its own profile root.
 
 ### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
@@ -534,7 +534,7 @@ So the record is **read forward**, and the tolerance is registered rather than a
 - Reading an older generation forward is a concession to history; MINTING one is a bug.
   `ConfigSnapshotWriteSchema` refuses an insert whose config omits any current-generation leaf.
 - `auditConfigSnapshotGenerations` is the ratchet, enforced by
-  `tests/unit/architecture/config-snapshot-generations.test.ts` (doc 10): the current leaf set must
+  `tests/unit/architecture/config-snapshot-generations.test.ts` (ref guards-and-tests): the current leaf set must
   digest to the newest generation's pin, and every older generation's pinned set must still be
   reconstructible by removing the leaves introduced after it. **Adding or tightening a required
   config leaf without registering it and bumping `CURRENT_CONFIG_SNAPSHOT_GENERATION` fails there,
@@ -618,7 +618,7 @@ profile.
 **D94 cross-repo naming/accounting cross-reference.** Runtime code never reads the legacy repo;
 only the guard lane may do so. In inventories that name both repositories, `legacy:` qualifies a
 legacy path and an unprefixed path means this rebuild repo (ratified F2). Single-root legacy
-manifests remain unprefixed. Doc 10 §3.13 owns checkout resolution, commit-centred change
+manifests remain unprefixed. Ref guards-and-tests §3.13 owns checkout resolution, commit-centred change
 accounting, the clean-tree requirement, and the closed recheck/evidence catalog; this secrets doc
 only consumes that path-ownership convention.
 
@@ -659,7 +659,7 @@ export function optionalSecret(name: SecretName): string | undefined { /* … */
  * `timekeeperName` and every workflow credential stays `requiredAtBoot:false` (so process
  * boot doesn't demand it for workflows that never touch Kuali) but IS on the mandatory-at-startup
  * list for any run whose descriptor reaches a Kuali fill task — the descriptor declares which
- * secrets its tasks need (a `requires: SecretName[]` on the contract, mirroring doc 01's session
+ * secrets its tasks need (a `requires: SecretName[]` on the contract, mirroring ref task-contract's session
  * needs), so "lazy" is descriptor-driven, not a second ad hoc throw site.
  */
 
@@ -702,7 +702,7 @@ cell.
   exactly as they are; only the raw-file-read call site changes to go through this accessor.
 - **Redaction is schema-owned.** Secret schemas and sensitive domain fields carry a classification
   (`secret`, `credential-file`, `direct-identifier`, `sensitive-hr`, or `safe-diagnostic`) plus an
-  allowed evidence transform (`drop`, `digest`, `last4`, `basename`, `count`, or `allow`). Doc 12's
+  allowed evidence transform (`drop`, `digest`, `last4`, `basename`, `count`, or `allow`). Ref operator-trust's
   logger/evidence/bundle writers accept classified values and transform before serialization.
   Unknown/unclassified fields are dropped with a redaction warning, never passed through. Tests
   seed canary passwords, cookies, storage state, SSNs, DOBs, and private keys and scan every
@@ -727,7 +727,7 @@ binds its **own** loopback port and never reuses the legacy dashboard's. A non-l
 bind is rejected by the native server with a message that remote access is outside the current
 contract; adding it later requires a separate threat model and explicit operator decision.
 
-Doc 06's mobile capture is the sole explicit exception and does not turn the operator server into a
+Ref data-intake-and-edit-data's mobile capture is the sole explicit exception and does not turn the operator server into a
 remote app. `capture.ingress:"on-demand-ngrok"` starts a short-lived separately scoped ingress only
 after the operator creates a capture session; `forwarded` requires an explicit HTTPS URL;
 `disabled` makes Start Capture fail with a named configuration result. The ingress exposes the
@@ -738,7 +738,7 @@ stamps the resolved ingress mode/origin digest so troubleshooting can explain wh
 `ConfigSchema.superRefine` requires `forwardedUrl` exactly for `ingress:"forwarded"` and rejects it
 for the other modes, so a stale forwarded origin cannot be silently reused.
 
-**As-built (D174, 2026-08-09 — normative text in doc 06 §5.1).** All three modes resolve to an
+**As-built (D174, 2026-08-09 — normative text in ref data-intake-and-edit-data §5.1).** All three modes resolve to an
 origin or to a NAMED configuration result, and none of them falls back. `disabled` refuses
 `ingress-disabled`; `forwarded` resolves to its explicit HTTPS URL; `on-demand-ngrok` refuses
 `ingress-credential-missing` without its credential and **`ingress-not-built` with one**, because

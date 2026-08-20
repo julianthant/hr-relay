@@ -4,10 +4,10 @@
  * Day, open run, open section and the start dialog are all addressable, which
  * is what lets an operator send someone a link to the exact screen they are
  * looking at — and, not incidentally, what lets the parity lane ask two
- * different backends for the same screen (doc 13 §7.2).
+ * different backends for the same screen (ref frontend-backend-integration §7.2).
  *
  * Nothing here reads or writes server state; this is pure client UI state
- * (doc 13 §4) held in the one place the browser already persists for us.
+ * (ref frontend-backend-integration §4) held in the one place the browser already persists for us.
  */
 
 export interface AppRouteState {

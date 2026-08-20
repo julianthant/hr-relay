@@ -1,5 +1,5 @@
 /**
- * The seeded BFF (doc 13 §7.2, test-only adapter #2): the REAL production
+ * The seeded BFF (ref frontend-backend-integration §7.2, test-only adapter #2): the REAL production
  * dashboard stack — authority SQLite, the span/note JSONL writers, THE
  * run/queue projection, the command kernel, the start-plan service, the SSE
  * hub and `createDashboardApp` — booted on an isolated temp state root and an
@@ -285,7 +285,7 @@ function claimOf(run: RunRecord): { workerId: string; claimGeneration: number } 
 }
 
 /**
- * Fence a permanent write against this run and park it — the doc 09 §4 shape,
+ * Fence a permanent write against this run and park it — the ref write-safety §4 shape,
  * through the production repository's own CAS pair.
  *
  * The binding proof is a `subject-match`, which is the arm the operator surface
@@ -570,7 +570,7 @@ function seed(world: SeedWorld): Record<string, string> {
   // adapter has transitioned run 6 to `parked-write` since the seed was
   // written, and `availableSections` advertises the parked-write section from
   // that lifecycle alone — but the serving arm re-reads the intent the park
-  // NAMES and throws by design when authority does not hold it (doc 09 §4.1: a
+  // NAMES and throws by design when authority does not hold it (ref write-safety §4.1: a
   // parked run with no intent is a lie, not an empty panel). Nothing had ever
   // opened this run, so nobody had met the 500. It goes through the production
   // repository's own `fenceAttempt` → `parkAttempt` CAS pair rather than an
@@ -713,7 +713,7 @@ export interface SeededServer {
 export async function startSeededServer(
   input: Readonly<{ distDir: string; bundle: ParityBundleProof }>,
 ): Promise<SeededServer> {
-  // Doc 13 §7: the same working-tree proof the fixture adapter demands —
+  // Ref frontend-backend-integration §7: the same working-tree proof the fixture adapter demands —
   // asserted before any temp root, database or port exists.
   assertServedBundle(input.distDir, input.bundle);
   const root = mkdtempSync(join(tmpdir(), "hrauto-parity-seeded-"));

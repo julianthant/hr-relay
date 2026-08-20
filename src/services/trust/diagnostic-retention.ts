@@ -1,5 +1,5 @@
 /**
- * Doc 12 §2.2's retention/pin sweep.
+ * Ref operator-trust §2.2's retention/pin sweep.
  *
  * "Ordinary bundles follow notes retention unless pinned by an active
  * knowledge/fix record or a write-recovery case" is modelled entirely inside
@@ -14,7 +14,7 @@
  * a scenario fixture — may still reference exactly those bytes. The sweep
  * reports the now-unreferenced artifact ids; reclaiming them is an
  * artifact-store decision (a reference count the store does not keep today),
- * and inventing it here would be the kind of silent deletion doc 12 §10 warns
+ * and inventing it here would be the kind of silent deletion ref operator-trust §10 warns
  * about.
  */
 import { z } from "zod";

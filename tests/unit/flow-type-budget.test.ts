@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
 /**
- * Doc 07's Phase-1 §"Item 1e begins with a new real-scale type-inference proof":
+ * Doc 01 §"Item 1e begins with a new real-scale type-inference proof":
  * the real suite records `tsc --extendedDiagnostics` and FAILS if the
  * representative graph file exceeds 5 seconds or 1 GiB on the same baseline
  * machine. A regression outside that budget stops builder work for type-shape

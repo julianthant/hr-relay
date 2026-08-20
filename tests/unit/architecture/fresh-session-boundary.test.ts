@@ -1,5 +1,5 @@
 /**
- * Doc 05 §§0.6,4,7 (D87) + doc 11 §4 (D116): a browser-session boundary is
+ * Ref execution-and-sessions §§0.6,4,7 (D87) + ref clock-config-secrets §4 (D116): a browser-session boundary is
  * AUTHORED or IDENTITY-FORCED, never inferred, and it always closes with proof
  * before its replacement starts.
  *
@@ -19,7 +19,7 @@
  * SCOPE, stated honestly: the behavioral arms drive the REAL
  * `WorkerSessionManager` over the REAL store registry with authored needs. The
  * descriptor-level "node execution follows the boundary" ordering assertion in
- * doc 10 §7 cannot be written yet — no landed descriptor authors a fresh
+ * ref guards-and-tests §7 cannot be written yet — no landed descriptor authors a fresh
  * boundary node — and lands with the first workflow that does.
  */
 import assert from "node:assert/strict";

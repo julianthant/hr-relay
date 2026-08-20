@@ -1,5 +1,5 @@
 /**
- * The per-system login recipe contract (doc 05 §4 · doc 01 §7B session seam).
+ * The per-system login recipe contract (ref execution-and-sessions §4 · ref task-contract §7B session seam).
  *
  * Browser/context creation belongs to the worker session factory; the LOGIN
  * RECIPE belongs to the system's store, which owns that system's page

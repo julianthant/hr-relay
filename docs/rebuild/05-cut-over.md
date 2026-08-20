@@ -10,7 +10,7 @@ built live in `reference/`.
 <!-- roadmap-status: cutover -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §4 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §4 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **The two addresses.** The **legacy repo** (`hr-automation`) holds the production automation and
 remains the sole production authority — live-runnable, maintainable, and never deleted before
@@ -55,7 +55,7 @@ idempotent one-time command over an immutable backup; it is never a runtime adap
 **Single cutover procedure (D89):**
 
 1. Pass every phase/workflow/capability gate, including 60/80 coverage, Phase-2 50/70 branches,
-   live dry-runs, controlled write proofs, restore/soak, and the complete doc 13 surface matrix.
+   live dry-runs, controlled write proofs, restore/soak, and the complete ref frontend-backend-integration surface matrix.
 2. Stop new legacy enqueues; enumerate active/queued/gated/parked/unknown-write runs and drain,
    terminalize, park, or reconcile each explicitly. No uncertain write may be buried.
 3. Back up legacy state/config and rebuild state/config; verify both backups. Run only approved
@@ -76,7 +76,7 @@ idempotent one-time command over an immutable backup; it is never a runtime adap
 <!-- roadmap-status: rollback-window -->
 <!-- /roadmap-status -->
 
-_The rollback asset and what re-crossing it costs are step 5 of the single cutover procedure above (07 §4), and definition-of-done item 2 in §Exit criteria below: the whole legacy repository is preserved, and a rollback after native writes requires intent/ledger reconciliation and dedupe proof before an atomic switch back._
+_The rollback asset and what re-crossing it costs are step 5 of the single cutover procedure above (doc 05 §Phase summary), and definition-of-done item 2 in §Exit criteria below: the whole legacy repository is preserved, and a rollback after native writes requires intent/ledger reconciliation and dedupe proof before an atomic switch back._
 
 ## Later, unplanned
 <!-- roadmap: later-unplanned -->
@@ -86,16 +86,16 @@ _The rollback asset and what re-crossing it costs are step 5 of the single cutov
 
 ## Risk register (top sequencing risks)
 
-_Moved from 07-master-plan §5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | # | Risk | Why it bites | Mitigation |
 |---|---|---|---|
-| 1 | **A contract flaw surfaces late** | a fixture-proven base can be wrong in ways only a real run reveals | **D74 is the mitigation, and it worked**: person-lookup ran live as Phase 1's *exit* on 2026-08-04, and the live lane that produced it found four defects every fixture had passed — a login concluded from a URL (D120, 2026-08-03), a `node:path` import that reached the browser bundle (doc 13 §8.13), a span fold keyed on path alone that erased a re-run node, and a timeline seed that collided across run attempts. All four were fixed before the tails were built on them. Phase 2 now adds the controlled transaction proof with crash/outbox/dedupe evidence |
+| 1 | **A contract flaw surfaces late** | a fixture-proven base can be wrong in ways only a real run reveals | **D74 is the mitigation, and it worked**: person-lookup ran live as Phase 1's *exit* on 2026-08-04, and the live lane that produced it found four defects every fixture had passed — a login concluded from a URL (D120, 2026-08-03), a `node:path` import that reached the browser bundle (ref frontend-backend-integration §8.13), a span fold keyed on path alone that erased a re-run node, and a timeline seed that collided across run attempts. All four were fixed before the tails were built on them. Phase 2 now adds the controlled transaction proof with crash/outbox/dedupe evidence |
 | 2 | **Phase 1 (XL) overruns** | a long isolated build increases integration drift and delays the single cutover | Phase 1 is cut to the spine (D74); §3.7 sizes each item; D79 trims are taken; D90 change accounting forces rebuild rechecks after legacy maintenance |
 | 3 | **The two maintained repos drift** | a necessary legacy production fix changes knowledge already copy-ported into the rebuild repo, and D93's physical separation means nothing breaks loudly when it does | D90 accounting is now cross-repo and is the *only* drift detector: every legacy commit maps to capability ids and rebuild evidence in the rebuild repo's `config/legacy-change-accounting.json`, keyed by legacy commit hash (the legacy repo's root `CLAUDE.md` carries the standing duty); affected rebuild scenarios/ports must be reverified before readiness |
-| 4 | **A target can make settlement unknowable** (write-safety residual) | UI-only systems may expose neither an idempotent API nor a trustworthy immediate negative read after a click; early absence can be eventual-consistency lag, and a positive match can still be for the wrong subject | D48/D64/D69/doc 09: permanent key fence; fresh binding proof; typed positive proof; every counted negative observation must occur after the target-specific propagation window and repeated authoritative checks must agree; unsettled/ambiguous evidence parks; per-probe live verification at migration. The guarantee is at most one unattended commit attempt per intent generation plus verified convergence—not unconditional distributed exactly-once |
+| 4 | **A target can make settlement unknowable** (write-safety residual) | UI-only systems may expose neither an idempotent API nor a trustworthy immediate negative read after a click; early absence can be eventual-consistency lag, and a positive match can still be for the wrong subject | D48/D64/D69/ref write-safety: permanent key fence; fresh binding proof; typed positive proof; every counted negative observation must occur after the target-specific propagation window and repeated authoritative checks must agree; unsettled/ambiguous evidence parks; per-probe live verification at migration. The guarantee is at most one unattended commit attempt per intent generation plus verified convergence—not unconditional distributed exactly-once |
 | 5 | **Build context + operator-attention limits** | The program is long (15 workflow directories across 10 migration orders, plus shared capability closure); high WIP and oversized sessions cause ownership drift | One-at-a-time Phase 3, coherent local commits, explicit handoffs/checkpoints when needed, Phase-2 gates before scale, machine inventories/guards so review concentrates on live evidence; §3.7 sizes the work so attention is spent where the mass actually is |
-| 11 | **Decisions drift ahead of the docs that own them** | *Observed 2026-07-26*: the 07-23/24 operator ratifications sat in a review file for four days while docs 00/07/09 still specified the world they replaced — the master plan would have had Phase 1 build a lift adapter, a parity harness, and a generation-authority stamp that the operator had already deleted | Charter standing rule: **a decision is not ratified until it lands in its owning doc, in the same commit that records the answer.** Doc 04 is a changelog with pointers, never a second spec; review files are history. A doc's amendment date must be ≥ the latest round that touched it |
+| 11 | **Decisions drift ahead of the docs that own them** | *Observed 2026-07-26*: the 07-23/24 operator ratifications sat in a review file for four days while ref charter, the master plan and ref write-safety still specified the world they replaced — the master plan would have had Phase 1 build a lift adapter, a parity harness, and a generation-authority stamp that the operator had already deleted | Charter standing rule: **a decision is not ratified until it lands in its owning doc, in the same commit that records the answer.** Ref decisions is a changelog with pointers, never a second spec; review files are history. A doc's amendment date must be ≥ the latest round that touched it |
 | 6 | **Canonical UI registry becomes a second stale selector list** | Drivers change selectors but forget ids/catalog/scenarios, or obsolete ids multiply | registry is driver authority, generated catalog only, same-system dependency guard, selector verification metadata, non-identity search terms, explicit `supersedes` links, migration scenario before removal |
 | 7 | **Authority backup exists but has never been restored** | Corruption is discovered during a real run and the “backup” is unusable | Phase-1 automated corruption/restore drill and recurring doctor/backup-health surface; degraded mode blocks mutations instead of creating an empty DB |
 | 8 | **Evidence volume recreates an unreadable log pile** | screenshots/notes/bundles consume disk and hide decisive facts | structured indexes, on-demand bundles, 30d notes/30d spans, content-addressed dedupe, disk warnings/redaction |
@@ -104,7 +104,7 @@ _Moved from 07-master-plan §5 on 2026-08-20 (3b); this is the as-written record
 
 ## Program stop-loss / abort gate
 
-_Moved from 07-master-plan §5.1 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §5.1 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 The migration is reversible because production remains on the legacy repo until the single cutover. Rather than sink cost into a base
 that is not holding, the program has **objective STOP-AND-REASSESS triggers**. Hitting any one
@@ -194,7 +194,7 @@ A decision taken for the cutover itself lands here in the same commit that recor
 
 ## Exit criteria
 
-_Moved from 07-master-plan §6 (definition of done, whole program) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §6 (definition of done, whole program) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 The rebuild is complete when **all** hold:
 
@@ -239,9 +239,9 @@ The rebuild is complete when **all** hold:
     LAN mode. Diagnostic/backup/evidence permissions + redaction tests pass; the only remote
     listener is a live-session-scoped mobile-capture ingress whose deny-by-default route tests pass.
 
-_Moved from 07-master-plan §7.4 (added program-wide exit criteria) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.4 (added program-wide exit criteria) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
-Before definition-of-done item 2 (single cutover), all of doc 13 §10 must pass. In particular:
+Before definition-of-done item 2 (single cutover), all of ref frontend-backend-integration §10 must pass. In particular:
 
 - production React has one typed transport client and no direct component `fetch`/`EventSource`;
 - no raw legacy tracker/session/log row crosses the rebuilt API boundary;

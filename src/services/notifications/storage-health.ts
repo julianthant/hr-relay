@@ -1,5 +1,5 @@
 /**
- * Doc 03 §2.6's storage trigger, produced (D222): "storage degradation …
+ * Ref dashboard-surfaces §2.6's storage trigger, produced (D222): "storage degradation …
  * failed backup → `storage`" has named the backup lane a NOTIFICATION since
  * D79b, and until now nothing published it — the every-view storage band was
  * carrying the backup hazard instead, which is exactly the misplacement the

@@ -1,14 +1,14 @@
 /**
- * `roster/match-spreadsheet` — doc 06 §4's roster match contract.
+ * `roster/match-spreadsheet` — ref data-intake-and-edit-data §4's roster match contract.
  *
  * One dataset matched against another: the caller's subjects (intake rows or
  * admitted OCR records) against an operator-mapped roster spreadsheet,
  * producing one per-subject verdict with confidence, tier, and a FIRST-CLASS
  * mismatch field. A match the roster cannot make is `matchedEid: null` +
  * `mismatch: "no-match"` — the caller then falls through to person-lookup,
- * never a fabricated EID (doc 06 §7 vector #7).
+ * never a fabricated EID (ref data-intake-and-edit-data §7 vector #7).
  *
- * As-built deviations from doc 06 §4's sketch, recorded under D163:
+ * As-built deviations from ref data-intake-and-edit-data §4's sketch, recorded under D163:
  * - `subjectId` is the union of the two REAL caller identities (`ItemId` |
  *   `StableRecordId`) — the sketch's `StableItemIdSchema` was never built;
  * - the output is wrapped (`{ matches: [...] }`) so the one array leaf has a
@@ -24,7 +24,7 @@
  *   are distinct refusals worth naming — shoehorning either into
  *   `roster-unreadable` would hide what the operator must fix.
  *
- * Freshness is a FINITE 24h (doc 06 §4, resolved 2026-07-22): a roster match
+ * Freshness is a FINITE 24h (ref data-intake-and-edit-data §4, resolved 2026-07-22): a roster match
  * may feed a WRITE (an OnBase upload keyed on the matched EID), and a stale
  * match must not silently ride into that write on resume. A consuming
  * workflow may narrow it, never widen it without a reviewed policy change.
@@ -55,7 +55,7 @@ export const MatchSpreadsheetInputSchema = z.strictObject({
   rosterFileRef: ArtifactRefSchema,
   /** Which worksheet holds the roster. Absent means the first. */
   sheet: z.string().min(1).optional(),
-  /** The roster is operator-mapped too (doc 06 §2). */
+  /** The roster is operator-mapped too (ref data-intake-and-edit-data §2). */
   mapping: ColumnMappingSchema,
   /** When the roster is being read — resolves coercion exactly on replay. */
   readAt: IsoInstantSchema,

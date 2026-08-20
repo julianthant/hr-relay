@@ -1,5 +1,5 @@
 /**
- * Doc 09 §14.6 #2 — the identity-approval gate cannot be bypassed by graph
+ * Ref write-safety §14.6 #2 — the identity-approval gate cannot be bypassed by graph
  * shape: in a separation-class descriptor, a commit AND the terminal result are
  * graph-reachable ONLY through an operator gate node. The checker walks every
  * dependsOn ancestry path from a sink toward the graph roots; any path that
@@ -35,7 +35,7 @@ import {
   writeFixtureSaveDescriptor,
 } from "../fixtures/write-sequencer-fixtures.js";
 
-/** Workflow ids that carry doc 09 §14's ALWAYS-GATE separation policy. */
+/** Workflow ids that carry ref write-safety §14's ALWAYS-GATE separation policy. */
 const SEPARATION_CLASS_PATTERN = /separation|termination|offboard/iu;
 
 interface UngatedPath {
@@ -218,7 +218,7 @@ describe("identity gate before commit", () => {
     assert.deepEqual(violations[0].path, ["<terminal>", "side-read"]);
   });
 
-  it("binds the registered gate to doc 09 §14.4's typed result, not to a free-form payload", () => {
+  it("binds the registered gate to ref write-safety §14.4's typed result, not to a free-form payload", () => {
     // §14.6 risk 5: a gate result that is not schema-bound becomes free-form
     // control state. The kernel compares an incoming payload against THIS hash,
     // so asserting the registered gate carries the identity-approval schema is

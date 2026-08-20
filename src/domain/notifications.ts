@@ -41,7 +41,7 @@ export const NotificationRecordSchema = z.strictObject({
   summary: z.string().min(1).max(1_000),
   links: z.array(NotificationLinkSchema).min(1),
   /**
-   * D134 (doc 03 §2.6, doc 12 §6): a repeated identical trigger folds into the
+   * D134 (ref dashboard-surfaces §2.6, ref operator-trust §6): a repeated identical trigger folds into the
    * ONE row its `(actorId, dedupeFingerprint)` already owns. `count` is how many
    * times the trigger fired and `lastSeenAt` is the newest firing — neither is
    * derivable from an insert-only history, because the folded firings leave no
@@ -73,7 +73,7 @@ export const NotificationRecordSchema = z.strictObject({
 });
 
 /**
- * The two mutations doc 03 §2.6 requires of a durable notification, each CAS-ed
+ * The two mutations ref dashboard-surfaces §2.6 requires of a durable notification, each CAS-ed
  * on the row's exact current version. `fold` is the repeat-trigger path;
  * `state` is the operator's read/snooze path. Neither may touch identity.
  */

@@ -1,5 +1,5 @@
 /**
- * The boot document (doc 13 §3.1): one fetch, and the ONLY source of the
+ * The boot document (ref frontend-backend-integration §3.1): one fetch, and the ONLY source of the
  * shell's vocabulary — actor, clock, storage health, workflows, categories,
  * system instances, feature availability. The client derives navigation from
  * this list; there is no parallel workflow registry in the frontend.

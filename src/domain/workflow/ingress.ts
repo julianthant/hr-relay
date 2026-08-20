@@ -1,6 +1,6 @@
 /**
  * Run-surface ingress: `InputParserSpec`, `UploadFieldSpec`, `FileAcceptSpec`,
- * and `TextTemplate` (doc 02 §1.1).
+ * and `TextTemplate` (ref workflow-model §1.1).
  *
  * These are **closed, serializable domain unions with exhaustive interpreters**.
  * They contain no workflow callback, no endpoint function, and no component
@@ -11,7 +11,7 @@
  *
  * The parser deliberately does NOT produce a workflow input value. It produces
  * typed *entries*; the caller assembles a submission and parses it with the
- * workflow's own `input` schema (doc 02 §2). A parser that could mint a
+ * workflow's own `input` schema (ref workflow-model §2). A parser that could mint a
  * validated input would be a second, unaudited ingress path.
  */
 import { z } from "zod";

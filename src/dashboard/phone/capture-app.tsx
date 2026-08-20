@@ -1,5 +1,5 @@
 /**
- * The phone capture surface (2i-F, D175) — doc 06 §5.1's phone half.
+ * The phone capture surface (2i-F, D175) — ref data-intake-and-edit-data §5.1's phone half.
  *
  * ## The scene decides the shape
  *

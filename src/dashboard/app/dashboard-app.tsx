@@ -1,5 +1,5 @@
 /**
- * The composition root of the rebuild dashboard (doc 13 §2).
+ * The composition root of the rebuild dashboard (ref frontend-backend-integration §2).
  *
  * This is the ONLY file that knows the whole screen. Every surface below it
  * takes props and returns markup; every server read goes through the one typed
@@ -105,7 +105,7 @@ import {
 } from "./url-state.js";
 
 /**
- * THE ROW'S OWN CONTROLS, off the row (doc 13 §8.5).
+ * THE ROW'S OWN CONTROLS, off the row (ref frontend-backend-integration §8.5).
  *
  * This was `SERVED_ACTIONS = []` — an honest constant while `QueueBaseFields`
  * carried no `actions` field and no projector built one, which meant every
@@ -628,7 +628,7 @@ function LoadedApp({
         the shape the server asked for instead of reporting that no gate is open.
         No `gateAnswer` is supplied here on purpose — nothing on this path
         authored one, and a dispatcher that minted one would be answering for
-        the human (doc 09 §14.6 risk 1).
+        the human (ref write-safety §14.6 risk 1).
       */
       const composed = composeCommandRequest(action, target, {
         actorId: boot.actor.id,
@@ -642,7 +642,7 @@ function LoadedApp({
       }
       client.executeCommand(composed.request).then(
         (result) => {
-          // `conflict` and `rejected` are VALUES, not exceptions (doc 13 §3.4),
+          // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4),
           // and the server's own sentence is printed verbatim — it is the only
           // party that knows which version is live now.
           if (result.state === "conflict" || result.state === "rejected") {
@@ -673,7 +673,7 @@ function LoadedApp({
    * What it does NOT do is collapse the answer. `conflict` and `refused` are
    * per-run values here exactly as they are per-command above, and every one of
    * them goes into the band — the toast says only that the batch has answered,
-   * because a toast cannot carry a vector and doc 03 §2.4 forbids reducing one
+   * because a toast cannot carry a vector and ref dashboard-surfaces §2.4 forbids reducing one
    * to a word.
    */
   const dispatchBulk = useCallback(
@@ -1012,7 +1012,7 @@ function LoadedApp({
             and inherits this band unchanged.
 
             D222: only the unreachable AUTHORITY earns this band — a stale or
-            missing backup is a `storage` notification in the bell (doc 03
+            missing backup is a `storage` notification in the bell (ref dashboard-surfaces
             §2.6) plus the gear's attention dot, because it does not stop the
             work. It renders nothing at all otherwise, which is why it costs
             the shell no fixed height: an empty band held open for a state
@@ -1115,7 +1115,7 @@ function LoadedApp({
           ) : (
           <>
           {/*
-            ONE COMPOSED ACTION BAR (doc 03 §Shell, D18). It was two bands: a
+            ONE COMPOSED ACTION BAR (ref dashboard-surfaces §Shell, D18). It was two bands: a
             row of unrelated ghost buttons crammed right, above a bare status
             strip that hung off no inset at all — so the pills started 8px from
             the window edge while every other band in the shell started at
@@ -1207,10 +1207,10 @@ function LoadedApp({
 
             Ported from the demo's own panel region, legacy
             hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
-            `RebuildDemo.tsx:747-748`. Note this SUPERSEDES doc 03's 400/470
+            `RebuildDemo.tsx:747-748`. Note this SUPERSEDES ref dashboard-surfaces's 400/470
             table — the demo moved both side panels onto one 376px token after
-            those numbers were measured, and doc 13 §1 makes the demo the
-            visual oracle. Doc 03 §Shell is updated in the same commit.
+            those numbers were measured, and ref frontend-backend-integration §1 makes the demo the
+            visual oracle. Ref dashboard-surfaces §Shell is updated in the same commit.
 
             `relative` is the positioning context for the floating Workflow
             Panel, which is why the window now overlays the panels WITHOUT
@@ -1279,7 +1279,7 @@ function LoadedApp({
               />
 
             {/* NOTHING SELECTED IS A STATE, not the absence of one. It owes the
-                three things doc 03 §9 says an empty state owes and no more:
+                three things ref dashboard-surfaces §9 says an empty state owes and no more:
                 what would be here, why it is not, and what to do. It is reached
                 by switching workflows, so the reason is the switch. */}
             {detailValue !== undefined ? (

@@ -1,6 +1,6 @@
 /**
  * Opening a row: the small header, then only the selected panel section
- * (doc 13 §3.3/§7.4 — a terminal 50-person packet must not ship in the day
+ * (ref frontend-backend-integration §3.3/§7.4 — a terminal 50-person packet must not ship in the day
  * payload). Selection and section are client UI state; everything they fetch
  * is a finished server read model.
  */

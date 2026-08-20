@@ -1,14 +1,14 @@
 /**
  * `workflow-editor-compile-integrity` — ACTIVATED at Phase A (2i-G, D176).
  *
- * Doc 10 §3.10 writes this guard's invariant in two halves, and only the first
+ * Ref guards-and-tests §3.10 writes this guard's invariant in two halves, and only the first
  * exists today:
  *
- *   1. **Phase A (doc 12 §5.2, live now).** "Phase-2 read-only explorer
+ *   1. **Phase A (ref operator-trust §5.2, live now).** "Phase-2 read-only explorer
  *      projections round-trip from the real descriptor/contract/UI registries."
  *      Every arm below enforces exactly that, plus D79a's standing "no
  *      DSL/codegen artifact exists" and Phase A's read-only boundary.
- *   2. **Phase B (doc 12 §5.3/§5.4, NOT enforced).** Draft edits confined to the
+ *   2. **Phase B (ref operator-trust §5.3/§5.4, NOT enforced).** Draft edits confined to the
  *      closed presentation/policy union, stale-base apply, and the code-change
  *      brief. None of that exists — there is no draft, no validate, no apply —
  *      so there is nothing to hold, and this file gains those arms in the same
@@ -302,7 +302,7 @@ describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () =
   });
 
   it("ships no workflow-design runtime authority", () => {
-    // Doc 12 §5.6: generated `config/workflow-design/*.md` files are not runtime
+    // Ref operator-trust §5.6: generated `config/workflow-design/*.md` files are not runtime
     // authority. The descriptor is. A directory appearing here would be a second
     // authority for what a workflow IS.
     assert.deepEqual(gitVisibleFiles(["config/workflow-design"]), []);

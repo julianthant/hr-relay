@@ -16,6 +16,6 @@ import { z } from "zod";
 export const LedgerCompletionKindSchema = z.enum(["receipt", "save-verify", "upload-verify"]);
 export type LedgerCompletionKind = z.infer<typeof LedgerCompletionKindSchema>;
 
-/** Where the proof came from — doc 09 §4's three sources and no others. */
+/** Where the proof came from — ref write-safety §4's three sources and no others. */
 export const LedgerProofSourceSchema = z.enum(["normal-output", "recovery-probe", "operator-attestation"]);
 export type LedgerProofSource = z.infer<typeof LedgerProofSourceSchema>;

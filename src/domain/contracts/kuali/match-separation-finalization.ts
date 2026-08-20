@@ -1,5 +1,5 @@
 /**
- * `kuali/match-separation-finalization` — doc 09 §5's IDEMPOTENCY PROBE for the
+ * `kuali/match-separation-finalization` — ref write-safety §5's IDEMPOTENCY PROBE for the
  * Kuali finalization write (chunk 5).
  *
  * It answers exactly one question: does this document ALREADY carry this
@@ -25,11 +25,11 @@
  * Separations files a real, hard-to-reverse termination and the Kuali
  * finalization is what records its transaction number on the source document; a
  * probe is one page read against a page the run is already on. The declaration
- * itself lives on the commit contract, which is where doc 09 requires it.
+ * itself lives on the commit contract, which is where ref write-safety requires it.
  *
  * ## Why it is a separate contract from the verifier
  *
- * Same shape, different job and different beat (doc 09 §2.1): the probe runs at
+ * Same shape, different job and different beat (ref write-safety §2.1): the probe runs at
  * ① on its own read lease and may navigate freely; the verifier runs at ⑥ on
  * the RETAINED transaction page immediately after the click. A contract that
  * pointed its `verify` at the probe would be a verifier that never reloaded.

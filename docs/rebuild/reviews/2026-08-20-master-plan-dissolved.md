@@ -125,7 +125,7 @@ they answer the §b questionnaire (§3.4) and record what a workflow reuses/adds
 the program.
 
 **D263 (2026-08-20) — the plan has a machine-readable form, and it is bound to the docs both ways.**
-`docs/rebuild/14-roadmap.md`, written in the roadmap notation
+`docs/roadmap/roadmap.md`, written in the roadmap notation
 (`.claude/skills/custom-update-plan/SKILL.md` §Notation), is that form and the operator tracking view;
 `docs/roadmap/index.html` is GENERATED from it by `npm run roadmap` and is never hand-edited. It is a
 second VIEW of this plan, never a second plan — **this doc wins on any disagreement**, and the
@@ -165,7 +165,7 @@ Charter §"One master plan": *the foundation's documentation is part of the foun
 completes, its owning docs are updated to describe **as-built** reality (not just design intent), and
 this plan's phase table is checked off. A phase is not "done" until its doc delta is written. New
 sub-systems get new docs or amend existing ones; stale prose is corrected, never layered. Per D263
-(§0.1) a phase's close-out also ticks its node in `docs/rebuild/14-roadmap.md` and leaves a `log:`
+(§0.1) a phase's close-out also ticks its node in `docs/roadmap/roadmap.md` and leaves a `log:`
 line there naming what landed and what is left.
 
 ---
@@ -1294,7 +1294,7 @@ The rebuild is complete when **all** hold:
 
 ## 7. Frontend/backend integration amendment (2026-07-30)
 
-`docs/rebuild/13-frontend-backend-integration.md` is now the owning companion for the composition
+`docs/rebuild/reference/frontend-backend-integration.md` is now the owning companion for the composition
 boundary between the approved rebuild frontend and docs 02/03/06/09/11/12's backend contracts. It
 does **not** introduce another sequence; the delivery slices below amend the existing work items in
 this plan.

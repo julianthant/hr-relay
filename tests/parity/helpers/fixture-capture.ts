@@ -1,5 +1,5 @@
 /**
- * The phone-capture corpus for parity adapter #1 (doc 13 §7.2, 2i-F).
+ * The phone-capture corpus for parity adapter #1 (ref frontend-backend-integration §7.2, 2i-F).
  *
  * Nothing here is a hand-typed payload. Every session below is built and then
  * PARSED by `CaptureSessionWireSchema` — the same schema the real capture

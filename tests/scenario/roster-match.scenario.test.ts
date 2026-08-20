@@ -1,5 +1,5 @@
 /**
- * Executable scenarios for `roster/match-spreadsheet` (doc 06 §4).
+ * Executable scenarios for `roster/match-spreadsheet` (ref data-intake-and-edit-data §4).
  *
  * These run the REAL task implementation against real CSV bytes through the
  * recording artifact seam, with a real operator mapping built by the same

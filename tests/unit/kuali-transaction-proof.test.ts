@@ -12,8 +12,8 @@
  * repository can perform it.
  *
  * The absence assertions are deliberately durable rather than behavioural: a
- * log line saying "refused" proves nothing about `write_intents`, and doc 07's
- * Phase-2 exit is a statement about durable rows.
+ * log line saying "refused" proves nothing about `write_intents`, and doc 02
+ * §Exit criteria is a statement about durable rows.
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -295,7 +295,7 @@ describe("Kuali fail-closed completion — every non-present verdict parks", () 
     const parkedIntent = h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY);
     assert.equal(parkedIntent?.status, "parked");
     // A second attempt on the same permanent key refuses loudly rather than
-    // taking a second generation. Only doc 09 §4.1's typed resolutions release.
+    // taking a second generation. Only ref write-safety §4.1's typed resolutions release.
     await assert.rejects(
       h.bound(() => h.sequencer.executeTransaction(kualiContext(first.run, first.claim))),
       /is parked .*only the typed operator resolutions may release it/s,
@@ -507,7 +507,7 @@ describe("Kuali permanent-key dedupe", () => {
  * clicked Save, and read `absent` — the Kuali save mutation for that workflow
  * step does not carry the timekeeper field at all, so the write cannot land
  * there and the kernel parked, fail-closed. These arms are the repeatable
- * fixtures doc 07 asks for around that same code path: crash injection at
+ * fixtures doc 02 §Exit criteria asks for around that same code path: crash injection at
  * EVERY supported beat-⑦ seam, the recovery arms, browser-context cleanup, and
  * the context-exclusive lease under two workers on ONE authority database.
  * ──────────────────────────────────────────────────────────────────────────── */
@@ -531,7 +531,7 @@ describe("Kuali beat ⑦ — every crash seam is all-or-none", () => {
       );
 
       const intent = h.database.authority.writeIntents.findByPermanentKey("kuali", KUALI_IDEMPOTENCY_KEY);
-      assert.equal(intent?.status, "attempting", "the fence survives for doc-09 §4 recovery");
+      assert.equal(intent?.status, "attempting", "the fence survives for ref write-safety §4 recovery");
       assert.equal(
         h.database.authority.runCheckpoints.latest(KUALI_WORKFLOW_ID, KUALI_ITEM_ID, KUALI_NODE_ID),
         undefined,
@@ -572,7 +572,7 @@ describe("Kuali beat ⑦ — every crash seam is all-or-none", () => {
   }
 });
 
-describe("Kuali recovery of a crashed attempt (doc 09 §4)", () => {
+describe("Kuali recovery of a crashed attempt (ref write-safety §4)", () => {
   it("a validated present read-back backfills committed WITHOUT a second click", async () => {
     const h = harness({
       hooks: {

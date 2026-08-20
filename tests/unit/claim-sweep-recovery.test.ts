@@ -1,5 +1,5 @@
 /**
- * D118 (doc 05 §3): an expired claim is not ordinary requeue authority. An
+ * D118 (ref execution-and-sessions §3): an expired claim is not ordinary requeue authority. An
  * unfinished `attempting` write intent on the run's logical item routes the
  * sweep to a typed recovery-required outcome — parked loudly, never silently
  * requeued — and only intent-free rows take the ordinary recovery requeue.
@@ -282,7 +282,7 @@ describe("expired-claim sweep write-intent gate (D118)", () => {
     assert.equal(swept.length, 1);
     assert.equal(swept[0]?.state, "recovery-required");
     // Still owned: a claimed row has no legal parked-write edge, so the worker
-    // id stays wedged until a doc 09 §4.1 resolution settles the intent. The
+    // id stays wedged until a ref write-safety §4.1 resolution settles the intent. The
     // composition reports THAT rather than letting the first poll throw.
     assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "claimed");
     assert.equal(database.authority.runs.listByWorker(WORKER_ID).length, 1);

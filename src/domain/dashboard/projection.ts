@@ -77,7 +77,7 @@ const PipelineStepWireSchema = z.strictObject({
 });
 
 /**
- * The run's own so-what, as the queue's chip band prints it (doc 03 §9 D7).
+ * The run's own so-what, as the queue's chip band prints it (ref dashboard-surfaces §9 D7).
  *
  * `label`/`value` is the demo's `FactChipView` shape, and the values are the
  * ones the RECEIPT prints — the receipt's `output` facts, not a second
@@ -90,8 +90,8 @@ const RunFactWireSchema = z.strictObject({
 });
 
 /**
- * How this row is contained by its parent (doc 03 §2's delegation vocabulary,
- * doc 13 §1.1 — *projected, never inferred from a workflow id*).
+ * How this row is contained by its parent (ref dashboard-surfaces §2's delegation vocabulary,
+ * ref frontend-backend-integration §1.1 — *projected, never inferred from a workflow id*).
  *
  * - `root`   — no parent. The ordinary row.
  * - `member` — created by a parent fanning out. Renders nested in the group and
@@ -133,7 +133,7 @@ const LinkedRunWireSchema = z.strictObject({
  * A deliberate MIRROR of `RunPrioritySchema`, kept member-for-member identical
  * by `wire-connectivity.test.ts`'s mirror joint. The copy exists because
  * `src/domain/run/envelope.ts` reaches `workflow/checkpoint.js` and this module
- * is in the dashboard bundle's reach (doc 13 §8.13) — never because the two may
+ * is in the dashboard bundle's reach (ref frontend-backend-integration §8.13) — never because the two may
  * differ.
  */
 export const QueuePrioritySchema = z.enum(["interactive", "bulk"]);
@@ -159,8 +159,8 @@ const QueueBaseFields = {
   configFingerprint: FingerprintSchema,
   resolvedInstances: z.array(ResolvedInstanceSchema),
   /**
-   * Whether this run is a REHEARSAL (doc 02 §2's envelope, D6 — the one home
-   * for the flag; doc 09's `executeDryRun` vs `executeTransaction` is the same
+   * Whether this run is a REHEARSAL (ref workflow-model §2's envelope, D6 — the one home
+   * for the flag; ref write-safety's `executeDryRun` vs `executeTransaction` is the same
    * bit deciding whether a real HR write may happen at all).
    *
    * There is no absent arm and there must never be one: every envelope carries
@@ -196,7 +196,7 @@ const QueueBaseFields = {
   /**
    * How this row is contained by its parent — `root`, `member` or `linked`.
    *
-   * It is PROJECTED from the run's own shape and lineage (doc 13 §1.1's
+   * It is PROJECTED from the run's own shape and lineage (ref frontend-backend-integration §1.1's
    * *never inferred from a workflow id*), and it is served in its own right
    * rather than left to the client to reconstruct from `surfaceKind` plus
    * `lineage`: those two answer "how do I lay this out" and "who is my parent",
@@ -204,7 +204,7 @@ const QueueBaseFields = {
    */
   containment: ContainmentSchema,
   /**
-   * The runs this row DELEGATED TO and is waiting on (doc 03 §9 D6/D10/D13).
+   * The runs this row DELEGATED TO and is waiting on (ref dashboard-surfaces §9 D6/D10/D13).
    *
    * An EMPTY array is a real answer, exactly as it is for `actions`: this run
    * spawned no child that keeps its own row. Today every registered workflow
@@ -219,7 +219,7 @@ const QueueBaseFields = {
    */
   linkedRuns: z.array(LinkedRunWireSchema),
   /**
-   * What this run PRODUCED, in the words its receipt uses (doc 03 §9 D7).
+   * What this run PRODUCED, in the words its receipt uses (ref dashboard-surfaces §9 D7).
    *
    * Read from the run's ALREADY-DERIVED evidence receipt — the same plain
    * lookup `warnings` does, and never `ensureReceipt`: D141 makes derivation an
@@ -277,7 +277,7 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   /**
-   * What this run is ABOUT, in the system's own words (doc 03 §1.2).
+   * What this run is ABOUT, in the system's own words (ref dashboard-surfaces §1.2).
    *
    * It starts as the title the workflow's `presentation.title` composed from
    * the start input — `Separation 4502`, `EID 10620118` — and is REPLACED, once,
@@ -348,9 +348,9 @@ const QueueBaseFields = {
   panelKind: PanelKindSchema,
   availableSections: z.array(RunDetailSectionSchema),
   /**
-   * The row's OWN command controls (doc 03 §2.4, doc 13 §3.2/§8.5).
+   * The row's OWN command controls (ref dashboard-surfaces §2.4, ref frontend-backend-integration §3.2/§8.5).
    *
-   * Doc 13 §8.5 is the rule this field exists to satisfy: *interactive run
+   * Ref frontend-backend-integration §8.5 is the rule this field exists to satisfy: *interactive run
    * controls require an `ActionDescriptorWire`; status-key-to-command branches
    * fail.* Until this landed, `QueueBaseFields` carried no such field and no
    * projector built one, so `FooterActions`/`RowContextMenu` were handed an
@@ -639,7 +639,7 @@ export const WorkerBrowserWireSchema = z.strictObject({
  * ONE worker, AS AUTHORITY HOLDS IT (D248).
  *
  * The card is the durable worker lease (`src/domain/run/worker.ts`) joined with
- * the browser sessions its span stream has open. That direction is doc 05 §3's
+ * the browser sessions its span stream has open. That direction is ref execution-and-sessions §3's
  * own sentence — the lease exists partly because *"the Session Panel needs
  * worker phase without inferring it from whatever rows happen to be claimed"* —
  * and the projector used to do precisely the inference it names (a claimed row
@@ -667,7 +667,7 @@ export const WorkerBrowserWireSchema = z.strictObject({
  */
 export const WorkerCardWireSchema = z.strictObject({
   workerId: WorkerIdSchema,
-  /** The one workflow this worker claims for (doc 05 §3.1) — from the lease, never guessed. */
+  /** The one workflow this worker claims for (ref execution-and-sessions §3.1) — from the lease, never guessed. */
   workflowId: WorkflowIdSchema,
   state: z.enum(["starting", "idle", "working", "stopped", "failed"]),
   /** What the operator last ASKED of this worker; `run` is the un-directed state. */
@@ -731,7 +731,7 @@ export const WorkerCardWireSchema = z.strictObject({
  * waiting/storage family is `warning`, and `verified-done` is `info`.
  * `snoozed` wins the state only while the snooze is still in force; an
  * expired snooze reads as its underlying status again, because snooze
- * suppresses delivery without changing read state (doc 03 §2.6, D138).
+ * suppresses delivery without changing read state (ref dashboard-surfaces §2.6, D138).
  */
 export function notificationWireOf(
   record: z.infer<typeof NotificationRecordSchema>,

@@ -1,5 +1,5 @@
 /**
- * `ucpath/delete-pending-terminations` — the COMMIT arm of doc 09 §5's
+ * `ucpath/delete-pending-terminations` — the COMMIT arm of ref write-safety §5's
  * date-agnostic pending sweep, and this tree's third `effect:"commit"`
  * contract.
  *

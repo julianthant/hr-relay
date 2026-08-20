@@ -1,6 +1,6 @@
 # Legacy Queue Row + Log Panel — keep / ditch ledger (2026-07-25)
 
-**Status:** proposal, awaiting operator ratification. Feeds `docs/rebuild/03-tracker-dashboard.md`.
+**Status:** proposal, awaiting operator ratification. Feeds `docs/rebuild/reference/dashboard-surfaces.md`.
 **Question this answers:** "look at how the old rows and log panels look like and see what we can
 take from there and what we should ditch."
 

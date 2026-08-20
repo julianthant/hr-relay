@@ -1,5 +1,5 @@
 /**
- * Shared fixtures for the four D178 advisory arms (doc 07's Phase-2 exit
+ * Shared fixtures for the four D178 advisory arms (doc 02 §Exit
  * criterion: "AI-advisory fixtures prove redaction, strict output, provider
  * exhaustion, zero authority edge").
  *

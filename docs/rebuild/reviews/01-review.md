@@ -1,4 +1,4 @@
-# Adversarial review — 01-task-contract.md (2026-07-17)
+# Adversarial review — reference/task-contract.md (2026-07-17)
 
 Verdict: **buildable with amendments.** Findings 1–2 must be answered in doc 01 itself; 3–9 need
 concrete revisions before Phase 1. Resolutions: see `../04-reconciliation.md` (D4, D5, D15).

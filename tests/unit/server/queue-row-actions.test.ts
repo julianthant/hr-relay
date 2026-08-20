@@ -1,5 +1,5 @@
 /**
- * The per-row action projection (doc 03 §2.4, doc 13 §3.2/§8.5).
+ * The per-row action projection (ref dashboard-surfaces §2.4, ref frontend-backend-integration §3.2/§8.5).
  *
  * The load-bearing arm here is the LAST one. A queue row's controls are the one
  * place in this product where a projection decides what an operator may do to a
@@ -145,7 +145,7 @@ describe("queue-row action descriptors — the per-status set", () => {
   });
 
   /**
-   * Doc 13 §1: the demo is the visual oracle, and its footer set is per status
+   * Ref frontend-backend-integration §1: the demo is the visual oracle, and its footer set is per status
    * — a queued row shows `≫` and `×`, a finished row shows `↺` and `🗑`.
    * Everything served is also at `menu`, which is what makes the right-click
    * the row's FULL set rather than a second vocabulary.
@@ -256,7 +256,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     assert.deepEqual(queueRowActions(undefined, factsFor("queued")), []);
   });
 
-  /** Doc 03 §2.4's closed condition rules narrow a policy; they never widen it. */
+  /** Ref dashboard-surfaces §2.4's closed condition rules narrow a policy; they never widen it. */
   it("honours a descriptor condition that narrows an enabled action", () => {
     const policy = WorkflowActionPolicySchema.parse({
       enabled: ["retry", "cancel", "bump", "rename"],
@@ -281,7 +281,7 @@ describe("queue-row action descriptors — the per-status set", () => {
 
 describe("queue-row action descriptors — the CAS binding", () => {
   /**
-   * Doc 13 §3.2: the row carries "a monotonic `rowRevision` used by commands
+   * Ref frontend-backend-integration §3.2: the row carries "a monotonic `rowRevision` used by commands
    * and patches". A descriptor is the thing that CARRIES that revision to the
    * command, so a projection that stamped anything else would produce controls
    * that conflict on click for a reason the operator cannot see.

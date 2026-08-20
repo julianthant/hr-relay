@@ -56,7 +56,7 @@ export function deriveEvidenceEntryId(
 /**
  * A reference to another evidence row. `EvidenceRef`'s grammar admits
  * `artifact:`, `observation:`, and `receipt:` — an evidence ROW is the
- * observation record doc 12 §2.3 describes ("the semantic observation that a
+ * observation record ref operator-trust §2.3 describes ("the semantic observation that a
  * row refers to remains a dotted ObservationId in the UI vocabulary"), so a
  * row-to-row link is spelled `observation:<entry uuid>`.
  */

@@ -9,7 +9,7 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 <!-- roadmap-status: phase-2 -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3 (Phase 2 — the transaction proof, then the deferred base tails) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2 — the transaction proof, then the deferred base tails) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Goal.** Prove the half the spine could not: a page-scoped external-write transaction with fresh
 subject binding, crash recovery, and durable dedupe. **Then**, and only then, build the base tails
@@ -24,7 +24,7 @@ tail built before the transaction proof is a tail built against a guess.
 **The read half already happened.** Person-lookup was Phase 1's exit test (D74), so the spine
 arrives here already proven end to end: descriptor → contracts → one-item worker → worker-owned
 browser session → spans → the one projection → the four surfaces. Its worked example
-is in doc 02 §8; mark it as-built when the exit test passes.
+is in ref workflow-model §8; mark it as-built when the exit test passes.
 
 **Then: the deferred base tails.** Each was a Phase-1 work item that D74 moved behind the first
 live proof. They land in this order, because each is a consumer of the one before:
@@ -43,7 +43,7 @@ to order 6. One later checkpoint remains:
 <!-- roadmap-status: p2-proof -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3 (Phase 2's transactional work items and its target status) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's transactional work items and its target status) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Transactional work items.** Choose the smallest controlled test-instance or sacrificial test
 record whose prepare and commit paths are real and whose outcome is independently queryable. Build
@@ -74,7 +74,7 @@ debounces into the document model (~700 ms) and the run fenced and clicked insid
 `commit` returned at REQUEST time so the verifier's `page.reload()` cancelled the in-flight save.
 Both are fixed and both are now proven on the wire per run. UCPath and ServiceNow targets are still
 being named; OnBase is gated on the next real upload. Full evidence, measured numbers and durable row
-ids: doc 09 §Phase-2 controlled-commit as-built.
+ids: ref write-safety §Phase-2 controlled-commit as-built.
 
 ## 2g — event / trust layer
 <!-- roadmap: p2-2g -->
@@ -82,11 +82,11 @@ ids: doc 09 §Phase-2 controlled-commit as-built.
 <!-- roadmap-status: p2-2g -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3 (Phase 2's deferred-base-tails table, row 2g) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2g) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | Tail | Content | Owner |
 |---|---|---|
-| **2g** | Rest of the event/trust layer over 1f's minimal durable `FailureRecord` and terminal-result authorities: automatic redacted diagnostic bundles, rich failure/evidence projections, terminal run evidence receipts + `explain run`, durable actor-keyed notification inbox (read/unread + snooze per D79b), knowledge/fix records, and ordered actor-attributed ledger projection + recovery verification. **D82 acceptance test applies here:** the receipt must let the operator complete their double-check without opening UCPath | Docs 03/09/11/12 |
+| **2g** | Rest of the event/trust layer over 1f's minimal durable `FailureRecord` and terminal-result authorities: automatic redacted diagnostic bundles, rich failure/evidence projections, terminal run evidence receipts + `explain run`, durable actor-keyed notification inbox (read/unread + snooze per D79b), knowledge/fix records, and ordered actor-attributed ledger projection + recovery verification. **D82 acceptance test applies here:** the receipt must let the operator complete their double-check without opening UCPath | Refs dashboard-surfaces/write-safety/clock-config-secrets/operator-trust |
 
 ## 2h — data / intake foundation
 <!-- roadmap: p2-2h -->
@@ -94,11 +94,11 @@ _Moved from 07-master-plan §3 (Phase 2's deferred-base-tails table, row 2g) on 
 <!-- roadmap-status: p2-2h -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3 (Phase 2's deferred-base-tails table, row 2h) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2h) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | Tail | Content | Owner |
 |---|---|---|
-| **2h** | Data-service/intake foundation: extraction/normalization/ocr/roster stores; production provider pools/adapters/consumers over 1f's generic admission core; generic/duplicate-safe column mapping; strict validation/rejection; immutable intake manifests + rerun diff; the OCR three-producer routes + classify/group scanner stack (operator-added scope, D151/D157/D158); the i9 sectioned form (D160); executor/worker provider + artifact wiring (D162); durable capture sessions/photo artifacts/finalize outbox (crash matrix slimmed per D79d); Edit Data core; stable-keyed local artifact projector. **COMPLETE 2026-08-08 (D146–D167).** | Docs 01/03/06/12 |
+| **2h** | Data-service/intake foundation: extraction/normalization/ocr/roster stores; production provider pools/adapters/consumers over 1f's generic admission core; generic/duplicate-safe column mapping; strict validation/rejection; immutable intake manifests + rerun diff; the OCR three-producer routes + classify/group scanner stack (operator-added scope, D151/D157/D158); the i9 sectioned form (D160); executor/worker provider + artifact wiring (D162); durable capture sessions/photo artifacts/finalize outbox (crash matrix slimmed per D79d); Edit Data core; stable-keyed local artifact projector. **COMPLETE 2026-08-08 (D146–D167).** | Refs task-contract/dashboard-surfaces/data-intake-and-edit-data/operator-trust |
 
 ## 2i — the operator surface (A–G)
 <!-- roadmap: p2-2i -->
@@ -106,11 +106,11 @@ _Moved from 07-master-plan §3 (Phase 2's deferred-base-tails table, row 2h) on 
 <!-- roadmap-status: p2-2i -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3 (Phase 2's deferred-base-tails table, row 2i) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2i) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | Tail | Content | Owner |
 |---|---|---|
-| **2i** | Rest of the operator surface: evidence/failure/notification/run-explain views, storage health/backups, Edit Data + intake + capture UI, generated UI catalog, optional read-only AI advisories, and the **read-only Workflow Explorer** over tasks/delegation/scenarios/source links. **COMPLETE 2026-08-09 (D168–D180).** The explorer's EDIT half (doc 12 §5.3/§5.4 Phase B) is the one named exclusion — see the exit criteria below. | Docs 03/06/12 |
+| **2i** | Rest of the operator surface: evidence/failure/notification/run-explain views, storage health/backups, Edit Data + intake + capture UI, generated UI catalog, optional read-only AI advisories, and the **read-only Workflow Explorer** over tasks/delegation/scenarios/source links. **COMPLETE 2026-08-09 (D168–D180).** The explorer's EDIT half (ref operator-trust §5.3/§5.4 Phase B) is the one named exclusion — see the exit criteria below. | Refs dashboard-surfaces/data-intake-and-edit-data/operator-trust |
 
 ## 2j — the closing gate
 <!-- roadmap: p2-2j -->
@@ -118,11 +118,11 @@ _Moved from 07-master-plan §3 (Phase 2's deferred-base-tails table, row 2i) on 
 <!-- roadmap-status: p2-2j -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3 (Phase 2's deferred-base-tails table, row 2j) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2j) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 | Tail | Content | Owner |
 |---|---|---|
-| **2j** | Base integration/restore/soak + documentation gate: full scenario corpus, corruption→restore drill, dependency/control/capture concurrency matrix, worker teardown/multi-worker soak, redaction scan, capability-inventory validation, then update every owning doc to as-built. **COMPLETE 2026-08-09 (D181–D186).** | Docs 03/05/10/12 + this plan |
+| **2j** | Base integration/restore/soak + documentation gate: full scenario corpus, corruption→restore drill, dependency/control/capture concurrency matrix, worker teardown/multi-worker soak, redaction scan, capability-inventory validation, then update every owning doc to as-built. **COMPLETE 2026-08-09 (D181–D186).** | Refs dashboard-surfaces/execution-and-sessions/guards-and-tests/operator-trust + this plan |
 
 ## Left Phase 2 by explicit disposition
 <!-- roadmap: phase2-dispositions -->
@@ -130,7 +130,7 @@ _Moved from 07-master-plan §3 (Phase 2's deferred-base-tails table, row 2j) on 
 <!-- roadmap-status: phase2-dispositions -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3 (Phase 2's workflow-editor scope) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's workflow-editor scope) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Workflow editor scope (D79a — DSL mode TRIMMED).** The read-only explorer is 2i. Editing is
 limited to presentation overrides (hot-applied through their strict atomic file) plus a closed set
@@ -145,11 +145,11 @@ explicit operator architecture decision; a migration questionnaire cannot enable
 
 **The two criteria that left Phase 2 by explicit disposition** — the explorer's EDIT half (D186)
 and the production BFF serving no frontend bytes (D189) — are recorded in full, with their triggers
-and their owners, in §Exit criteria below, where 07 §3 wrote them.
+and their owners, in §Exit criteria below, where the master plan's §3 wrote them.
 
-## Integration amendment — Phase 2's share (07 §7)
+## Integration amendment — Phase 2's share (master plan §7)
 
-_Moved from 07-master-plan §7.1's two deferral bullets and §7.2's transaction-proof / `2g` / `2h` / `2i` rows on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.1's two deferral bullets and §7.2's transaction-proof / `2g` / `2h` / `2i` rows on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 - Data-service contract/impl work and its mapping/capture/Edit Data UI are deferred to `2h` under
   D74; only their boundary primitives and command type shells land earlier where required.
@@ -163,7 +163,7 @@ _Moved from 07-master-plan §7.1's two deferral bullets and §7.2's transaction-
 | **Phase-2 transaction proof** | wire preview, binding, fenced write, read-back, receipt/failure, write-parked resolution and command conflict through the same production client | the trust UI is backed by real intent/proof/ledger state, never fixture prose |
 | **2g** | Receipt/Failure/captures over 1f's minimal durable failure/result authority, rerun diff, notifications/search, archive snapshot generation and lazy detail resources | terminal and archived runs remain explainable without live-system or old-code access |
 | **2h** | descriptor upload/capture/spreadsheet starts, intake mapping/manifests, progressive Review records and Edit Data | complete upload→review→manifest/fan-out and correction→same-run/new-run flows |
-| **2i** | Settings/doctor/storage, Archive/version bump, Explorer overlay, Activity, worker/session controls and remaining product shell states | every product surface in doc 13 §5 has query/patch/command/authority coverage |
+| **2i** | Settings/doctor/storage, Archive/version bump, Explorer overlay, Activity, worker/session controls and remaining product shell states | every product surface in ref frontend-backend-integration §5 has query/patch/command/authority coverage |
 
 ## Decisions this phase ratified
 
@@ -184,17 +184,17 @@ ratification act and the normative pointer stay in the ledger; this is the phase
 
 ## Exit criteria
 
-_Moved from 07-master-plan §3 (Phase 2's hard exit criteria, with every bullet's final disposition) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's hard exit criteria, with every bullet's final disposition) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Hard exit criteria (Phase 2) — ALL MET 2026-08-09, with ONE criterion explicitly REASSIGNED
 (the explorer's edit half, D186).** Every bullet below carries its final disposition. The one
-reassignment is not a waiver: doc 12 §5.3 names the trigger that ends the deferral, and §5.4's apply
+reassignment is not a waiver: ref operator-trust §5.3 names the trigger that ends the deferral, and §5.4's apply
 protocol is unchanged by it.
 - *(Live person-lookup, `descriptor-coverage`, surface rendering, and speed sanity all moved to
   Phase 1's exit—see D74. The historical D13 live-lift parity gate remains rejected: D88 isolates
   the runtimes. New surfaces are validated by strict fixtures + isolated live proof, per §4.)*
-- ~~Docs updated: doc 02 §8 marked as-built; any contract flaw found is fixed in the owning doc
-  first.~~ **MET 2026-08-09 (2j).** Doc 02 §8.1 is the as-built: the worked example ran live as
+- ~~Docs updated: ref workflow-model §8 marked as-built; any contract flaw found is fixed in the owning doc
+  first.~~ **MET 2026-08-09 (2j).** Ref workflow-model §8.1 is the as-built: the worked example ran live as
   D74's exit test, and §8.1 records the five deltas the live run forced (D121/D122 fold identity,
   D123 `skipped`, D124 terminal duration, D125 session-acquire bound, D172's union input) plus what
   §8 structurally does not exercise. Every contract flaw the live runs found was fixed in its owning
@@ -213,7 +213,7 @@ protocol is unchanged by it.
   `ActionPage` query reports the step's `sectionSettings` as `edit`, and the two real causes were
   defects in this repository's driver: a ~700 ms gadget debounce the run fenced inside, and a
   `commit` that returned at request time so the verifier's reload cancelled the in-flight save. The
-  exit line was simply never updated to match §3.8 and doc 09 §Phase-2 controlled-commit as-built,
+  exit line was simply never updated to match §3.8 and ref write-safety §Phase-2 controlled-commit as-built,
   both of which recorded MET on 2026-08-04.)*
 - ~~Crash/outbox fixtures and context-exclusive lease tests remain green under
   multiple workers.~~ **MET 2026-08-04, and closed out in 2j (D182).** Over the REAL Kuali store and a real authority database:
@@ -227,7 +227,7 @@ protocol is unchanged by it.
   re-derivation, and the torn-tail / gap / duplicate / digest-mismatch refusals, with
   `ledger-projector` active. 2j's soak closes the last of it: after 3 workers × 30 runs on one
   database, `projectAll()` reports every partition `projected` and the whole-database invariant
-  sweep is `valid` (doc 05 §7.1, D182). Recovery demonstrates that one `absent` observation cannot retry, durable
+  sweep is `valid` (ref execution-and-sessions §7.1, D182). Recovery demonstrates that one `absent` observation cannot retry, durable
   `not_before` scheduling occupies no worker, and only contract-qualified negative
   settlement may increment the generation.
 - ~~Read-only explorer accurately renders the as-built person-lookup graph/task/UI/scenario/result
@@ -236,7 +236,7 @@ protocol is unchanged by it.
   the REAL registry in both directions — node identities/order/kinds/`dependsOn` equal
   `descriptorRuntimeNodes`, rendered task ids equal `workflowProjections(...).contracts`, every UI id
   equals the catalog's own `taskUses`, and every printed source link resolves to a git-tracked file.
-  Doc 12 §5.7 records the two named exclusions (the live-run overlay; scenario coverage *claims*).
+  Ref operator-trust §5.7 records the two named exclusions (the live-run overlay; scenario coverage *claims*).
   ~~Every supported constrained edit passes compile+scenario+
   diff+version+restart-gated atomic apply+rollback; every prohibited code/selector/proof edit
   refuses loudly and generates a code-change brief.~~ (No DSL authoring mode exists to test — D79a.)
@@ -244,7 +244,7 @@ protocol is unchanged by it.
   argument one level down: an editor exists to avoid a code change per tweak *across many
   workflows*, and this tree has one production workflow plus the one-node transaction proof, so
   building it now would fix its closed policy union and override schema against a sample of one.
-  The criterion is **reassigned, not waived** — doc 12 §5.3 names the trigger that ends the
+  The criterion is **reassigned, not waived** — ref operator-trust §5.3 names the trigger that ends the
   deferral (the second production workflow whose presentation/policy an operator wants to change
   without a code change) and §5.4's apply protocol is unchanged by it. `workflow-editor-compile-
   integrity` holds Phase A's read-only boundary today and its inventory entry records that it
@@ -273,7 +273,7 @@ protocol is unchanged by it.
     C9/C10 add the two-caller kernel race and the two-projector race over one pending outbox.
   - ~~AI-advisory fixtures prove redaction, strict output, explicit provider exhaustion, and zero
     authority edge.~~ **MET 2026-08-09 (2i-G, D178)**, one fixture per arm plus the activated
-    `ai-advisory-no-authority` guard; doc 12 §4.4 is the as-built.
+    `ai-advisory-no-authority` guard; ref operator-trust §4.4 is the as-built.
   - ~~A real-shaped copied authority DB passes corruption → read-only degraded mode →
     checksummed-backup restore → projection rebuild with claims/dependencies/checkpoints/intents/
     outboxes/capture handoffs intact.~~ **MET 2026-08-09 (2j, D181).** Drilled twice: in fixtures
@@ -283,7 +283,7 @@ protocol is unchanged by it.
     0.71 s, with 14 runs / 2 checkpoints / 2 write intents / 2 outbox rows preserved including the
     real Kuali controlled commit's durable footprint. `cli storage restore` did not exist before
     this slice and could not have: nothing in production had ever recorded the runtime-lock
-    snapshot its stopped-system proof is derived from. Measured numbers: doc 03 §2.5 D181.
+    snapshot its stopped-system proof is derived from. Measured numbers: ref dashboard-surfaces §2.5 D181.
 - **NAMED GAP carried out of Phase 2, not met-by-silence (2j, D189): the production BFF serves no
   frontend bytes.** `http-server.ts` has no static handler and `api.ts` 404s every unrouted path, so
   `npm run dashboard:prod` names a mode the runtime never parses and **2i-F's token-scoped
@@ -294,7 +294,7 @@ protocol is unchanged by it.
   ingress, behind the gate whose whole contract is "a phone origin reaches capture routes and
   nothing else", and the tunnel launcher (D175) is unbuilt anyway, so static bytes alone would not
   make the phone reachable. Owner: the first migration that needs the phone in production, building
-  both halves plus the guard arm. Doc 13 §6.9 is the normative record;
+  both halves plus the guard arm. Ref frontend-backend-integration §6.9 is the normative record;
   `config/legacy-capabilities.json`'s `legacy-route-static` stays honestly **open**.
 - ~~**Archive model (D80) proven**~~ — **MET 2026-08-09 (2i-G, D179).** All five clauses are pinned
   in `tests/unit/archive-model.test.ts` against the real authority database and the real command
@@ -306,5 +306,5 @@ protocol is unchanged by it.
   is not a retry, leaves the archived record identical and refuses a stale content digest; and a
   non-terminal prior-version run refuses the apply by name with **nothing archived at all**, not
   even the run that was eligible. Registry drift between review and apply is a sixth fixture.
-  `archive-invariants` is active. Doc 03 §10.2's *D179 — the archive model as-built* is the
+  `archive-invariants` is active. Ref dashboard-surfaces §10.2's *D179 — the archive model as-built* is the
   normative record.

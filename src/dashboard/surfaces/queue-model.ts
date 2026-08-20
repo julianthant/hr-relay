@@ -116,7 +116,7 @@ function elapsedMs(surface: QueueSurfaceWire, nowIso: string): number {
 
 /**
  * What this row is CALLED — the operator's own name for the run when they have
- * given it one, and otherwise the server's (doc 03 §1.2).
+ * given it one, and otherwise the server's (ref dashboard-surfaces §1.2).
  *
  * The server serves the two separately on purpose: `title` says what the system
  * thinks the run is about (the start-input title, replaced by the subject's

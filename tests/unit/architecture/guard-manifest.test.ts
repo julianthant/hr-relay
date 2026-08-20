@@ -90,7 +90,7 @@ function writeFixture(root: string, path: string, content: string): void {
 
 describe("reviewed architecture guard manifest", () => {
   it("records every retirement as an explicit replacement rather than a silent shrink", () => {
-    // Doc 10 §3.13: a retirement is only legitimate BECAUSE the inventory still
+    // Ref guards-and-tests §3.13: a retirement is only legitimate BECAUSE the inventory still
     // carries the entry, its retiring DECISION, and where the invariant went. A
     // guard that simply vanished from this file would be indistinguishable from
     // an accident.

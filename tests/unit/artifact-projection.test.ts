@@ -1,5 +1,5 @@
 /**
- * Doc 06 §4.1 / doc 03 §2.1 (D45, D164): the stable-keyed local artifact
+ * Ref data-intake-and-edit-data §4.1 / ref dashboard-surfaces §2.1 (D45, D164): the stable-keyed local artifact
  * projector, in three layers.
  *
  * 1. Derivation is PURE — the same checkpoint output always derives the same

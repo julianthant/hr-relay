@@ -1,6 +1,6 @@
 /**
  * Computes the checked-in build manifest behind `descriptor.contractFingerprint`
- * (doc 02 §1.1; schema in `src/domain/workflow/build-manifest.ts`).
+ * (ref workflow-model §1.1; schema in `src/domain/workflow/build-manifest.ts`).
  *
  * The hash covers canonical `(repo-relative path, file content)` tuples for a
  * descriptor module and its transitive relative-import closure, plus the

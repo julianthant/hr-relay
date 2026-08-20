@@ -1,5 +1,5 @@
 /**
- * The one sink projector (doc 06 §4.1, doc 03 §2.1): pending outbox row →
+ * The one sink projector (ref data-intake-and-edit-data §4.1, ref dashboard-surfaces §2.1): pending outbox row →
  * exclusive sink lease → head-verified idempotent sink write → head + ack in
  * ONE authority transaction.
  *
@@ -13,7 +13,7 @@
  *   transaction, so a row is never acknowledged against an unrecorded hash.
  *
  * The lease is LOCAL and exclusive — an `O_EXCL` lock file per sink — which
- * is exactly the scope doc 06 §4.1 names ("the local exclusive lease"). A
+ * is exactly the scope ref data-intake-and-edit-data §4.1 names ("the local exclusive lease"). A
  * held lock refuses loudly rather than queueing behind an unknown holder;
  * the multi-worker story is 2j's soak, not silent contention here.
  */

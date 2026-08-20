@@ -1,9 +1,9 @@
 /**
- * The Activity report's served CSV export (D240, doc 13 §6.7).
+ * The Activity report's served CSV export (D240, ref frontend-backend-integration §6.7).
  *
  * ## The rules travel with the numbers, or the export is a lie
  *
- * Doc 13 §5 has carried `export if later served` in the Activity row since 2i,
+ * Ref frontend-backend-integration §5 has carried `export if later served` in the Activity row since 2i,
  * and `docs/findings/activity.md` recorded the condition attached to building
  * it: **an exported report with the numbers and without the rules is precisely
  * the lying artifact this surface's whole design prevents.** The panel puts its

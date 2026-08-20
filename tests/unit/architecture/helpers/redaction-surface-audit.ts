@@ -1,5 +1,5 @@
 /**
- * Doc 10 §3.15 / D183 — the redaction surface scan's declaration half.
+ * Ref guards-and-tests §3.15 / D183 — the redaction surface scan's declaration half.
  *
  * `src/domain/redaction.ts` owns the ONE transform implementation and three
  * tables declare `(classification, transform)` per field:
@@ -40,14 +40,14 @@
  *
  * ## The egress classes, and why the matrix is shaped the way it is
  *
- * `operator-loopback` is the dashboard bound to `127.0.0.1` (doc 11 §6.1) and
+ * `operator-loopback` is the dashboard bound to `127.0.0.1` (ref clock-config-secrets §6.1) and
  * read by the single operator who is authorized to see this data — so every
  * origin is admissible there and the teeth are (a) every leaf is dispositioned
  * at all and (b) the canary sweep. The classes that actually let a value ESCAPE
  * are narrow on purpose: `process-egress` (an AI provider) admits only what
  * this repository wrote or explicitly redacted, and `os-notification` — text
  * that can render on a lock screen — admits only repository-authored strings,
- * which is exactly doc 03 §2.6's "no raw secrets or captured form contents in
+ * which is exactly ref dashboard-surfaces §2.6's "no raw secrets or captured form contents in
  * notification text" expressed as a schema property rather than a promise.
  *
  * This module deliberately does NOT re-implement redaction, re-derive a
@@ -109,7 +109,7 @@ import { REPO_ROOT, repoRelative, walkFiles } from "./guard-files.js";
 export const SurfaceEgressSchema = z.enum([
   /** Served over the loopback dashboard to the one authorized operator. */
   "operator-loopback",
-  /** Doc 12 §7's ONE non-loopback ingress: the operator's own phone. */
+  /** Ref operator-trust §7's ONE non-loopback ingress: the operator's own phone. */
   "phone-scoped",
   /** A row in the authority database, re-served and retained. */
   "durable-authority",
@@ -372,10 +372,10 @@ export const REDACTED_NAME_WAIVERS: readonly RedactedNameWaiver[] = Object.freez
         "D183 finding: `ContextSectionSchema`/`ContextDataSectionSchema` name their scalar "
         + "`valueRedacted`, and src/server/dashboard/queries/run-detail.ts serves the RAW recorded "
         + "value — the descriptor-declared detail patch, the stored checkpoint scalar, or a count. "
-        + "That is doc 03 §1.1(c)'s Data rail working as designed: the operator's own loopback "
+        + "That is ref dashboard-surfaces §1.1(c)'s Data rail working as designed: the operator's own loopback "
         + "surface is entitled to the values their run touched, and a digest there would answer "
         + "nothing. The NAME is the defect, not the value, and renaming a served wire field is a "
-        + "doc 03 contract change with its own decision — recorded here so the next reader does "
+        + "ref dashboard-surfaces contract change with its own decision — recorded here so the next reader does "
         + "not mistake the suffix for a guarantee.",
     },
   ]),
@@ -520,7 +520,7 @@ export function scannedSurfaceModules(): readonly string[] {
 /* ── 5. the canaries ──────────────────────────────────────────────────────── */
 
 /**
- * Doc 11 §6: "Tests seed canary passwords, cookies, storage state, SSNs, DOBs,
+ * Ref clock-config-secrets §6: "Tests seed canary passwords, cookies, storage state, SSNs, DOBs,
  * and private keys and scan every produced note/failure/screenshot metadata/
  * bundle/notification." Each value below is deliberately impossible in real
  * data — an unissued SSN area, an impossible birth date, a nonsense name — so a
@@ -653,12 +653,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.value.warnings[].summary", origin: "external-text" },
 
   /*
-   * The parked-write section (doc 09 §4.1). Its served actions are the same
+   * The parked-write section (ref write-safety §4.1). Its served actions are the same
    * server-authored `ActionDescriptorWire` leaves already dispositioned under
    * `wire/action-descriptor`, reached one level deeper.
    *
    * `payload.parkedMessage` is `external-text` and NOT repository-authored,
-   * which is the disposition that matters here: doc 09 §4's `park()` builds it
+   * which is the disposition that matters here: ref write-safety §4's `park()` builds it
    * by interpolating a thrown driver error's `message` and a probe verdict's
    * own `reason`. Nobody in this repository controls those bytes. It stays on
    * the loopback surface because "why did this stop" is the whole question the
@@ -703,7 +703,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.proofContract.reason", origin: "repository-authored" },
 
   /*
-   * The identity-approval gate section (doc 09 §14.4, separations chunk 3).
+   * The identity-approval gate section (ref write-safety §14.4, separations chunk 3).
    *
    * This is the one loopback payload that carries a person's identity in the
    * CLEAR, and the disposition is the review of exactly that: §14.4's acceptance
@@ -796,7 +796,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/queue-surface", path: "memberPreview.value", origin: "captured-hr-value" },
 
   /*
-   * The queue row's own served controls (doc 13 §8.5). Every leaf is authored
+   * The queue row's own served controls (ref frontend-backend-integration §8.5). Every leaf is authored
    * by `server/dashboard/projectors/queue-row-actions.ts` — a fixed label set
    * plus confirm copy whose only interpolations are the workflow's DESCRIPTOR
    * label and a member COUNT. No captured HR value reaches it, and that is a
@@ -1231,7 +1231,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "durable/failure-record", path: "subject.expected.displayRedacted", origin: "declared-redacted" },
   { surface: "durable/failure-record", path: "subject.observed.displayRedacted", origin: "declared-redacted" },
   { surface: "durable/failure-record", path: "summary", origin: "external-text",
-    exception: "doc 12 SS2.1 / D142: `error.message` verbatim is what tells the operator WHY, and the charter requires a thrown message to name the offending value. It is durable and operator-visible on purpose; the advisory drops it (advisory.ts `withheld`) precisely because that surface leaves the machine." },
+    exception: "ref operator-trust SS2.1 / D142: `error.message` verbatim is what tells the operator WHY, and the charter requires a thrown message to name the offending value. It is durable and operator-visible on purpose; the advisory drops it (advisory.ts `withheld`) precisely because that surface leaves the machine." },
 
   { surface: "durable/evidence-receipt", path: "decisions[].reason", origin: "repository-authored" },
   { surface: "durable/evidence-receipt", path: "input[].reason", origin: "repository-authored" },
@@ -1246,9 +1246,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "durable/diagnostic-bundle", path: "redaction.warnings[]", origin: "repository-authored" },
 
   { surface: "file/ledger-entry", path: "payload.idempotencyKey", origin: "captured-hr-value",
-    exception: "the permanent key IS the external transaction's natural identity (doc 09 SS3); a redacted key names no transaction and the dedupe fence could not be re-derived from it." },
+    exception: "the permanent key IS the external transaction's natural identity (ref write-safety SS3); a redacted key names no transaction and the dedupe fence could not be re-derived from it." },
   { surface: "file/ledger-entry", path: "payload.proof.value", origin: "captured-hr-value",
-    exception: "the schema-bound proof the external system returned is the whole content of a filed-transaction record (doc 09 SS6). A ledger of digests proves nothing was filed. It never leaves `.tracker-rebuild/ledger/`." },
+    exception: "the schema-bound proof the external system returned is the whole content of a filed-transaction record (ref write-safety SS6). A ledger of digests proves nothing was filed. It never leaves `.tracker-rebuild/ledger/`." },
 
   { surface: "egress/advisory-prompt", path: "answerSchema", origin: "repository-authored" },
   { surface: "egress/advisory-prompt", path: "instruction", origin: "repository-authored" },
@@ -1274,7 +1274,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
     { module: "src/domain/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
     { module: "src/domain/dashboard/subscription.ts", state: "audited", reason: "the stream envelope carries every live patch of the surfaces above" },
-    { module: "src/domain/capture-surface.ts", state: "audited", reason: "doc 12 SS7's phone capture page is the one non-loopback surface" },
+    { module: "src/domain/capture-surface.ts", state: "audited", reason: "ref operator-trust SS7's phone capture page is the one non-loopback surface" },
     { module: "src/domain/intake/wire.ts", state: "audited", reason: "the mapping grid shows the operator their own uploaded file" },
     { module: "src/domain/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },
     { module: "src/domain/notification-triggers.ts", state: "audited", reason: "the trigger event and its projection become OS-delivered text" },

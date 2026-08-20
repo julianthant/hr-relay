@@ -26,7 +26,7 @@ const unusedImportsRules = {
 //
 // D93 note: unlike the legacy repo, this tree has NO debt manifest and NO
 // relaxed tests tier. `src/**` and `tests/**` are both zero-debt strict from
-// the first file (doc 10 §1.1) — the whole point of a fresh repository.
+// the first file (ref guards-and-tests §1.1) — the whole point of a fresh repository.
 const typeAwareTuning = {
   "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: false }],
   "@typescript-eslint/no-base-to-string": "error",

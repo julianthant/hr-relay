@@ -1,5 +1,5 @@
 /**
- * Task-execution provenance collection (docs 01/02, D115).
+ * Task-execution provenance collection (refs task-contract/workflow-model, D115).
  *
  * `recordData` accepts only the small, strict point below. The executor-owned
  * collector adds the run/node/task identity and Clock timestamp, then refuses

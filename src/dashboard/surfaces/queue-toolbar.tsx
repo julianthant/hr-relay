@@ -3,7 +3,7 @@
  * src/dashboard/components/dev/rebuild-demo/DemoBulkBar.tsx (`DemoQueueToolbar`
  * :98 and its select-mode band).
  *
- * ONE BAR, THREE GROUPS, and the grouping is by what a control DOES — doc 03
+ * ONE BAR, THREE GROUPS, and the grouping is by what a control DOES — ref dashboard-surfaces
  * §Shell's "one composed action bar", and DESIGN.md's "toolbars group by what a
  * control DOES, separated by a hairline, not by uniform gaps":
  *
@@ -394,7 +394,7 @@ export function QueueToolbar({
       )}
 
       {/*
-        THE RESULT VECTOR (D235, doc 03 §2.4). A batch of four can come back
+        THE RESULT VECTOR (D235, ref dashboard-surfaces §2.4). A batch of four can come back
         "2 applied · 1 conflict · 1 refused" and the UI may NEVER collapse that
         into "Done" — so this band renders every run's own outcome, keeps it
         until it is dismissed, and never summarises without the rows underneath.

@@ -1,5 +1,5 @@
 /**
- * Delegation manifests (doc 02 §3.2, D102).
+ * Delegation manifests (ref workflow-model §3.2, D102).
  *
  * The failure this guards against is the one that loses work silently: a
  * fan-out whose input list changed between enqueue and replay, so the replay

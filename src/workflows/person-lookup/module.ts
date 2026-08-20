@@ -1,6 +1,6 @@
 /**
  * The server composition value for person-lookup: the bundle-safe descriptor
- * plus the lazy store loaders the daemon needs (doc 02 §1.2).
+ * plus the lazy store loaders the daemon needs (ref workflow-model §1.2).
  *
  * The split is what keeps `descriptor.ts` client-safe. This module may reach
  * into stores; the descriptor may not, and the coverage guard walks its import
@@ -18,7 +18,7 @@ import { ucpathStore } from "../../stores/ucpath/index.js";
 import { personLookupDescriptor, PersonLookupInput } from "./descriptor.js";
 
 /**
- * The first real intake projection (doc 06 §2.7, D172) — a spreadsheet of
+ * The first real intake projection (ref data-intake-and-edit-data §2.7, D172) — a spreadsheet of
  * people fanning out one lookup per row.
  *
  * **Two targets, and deliberately only two.** `emplId` and `name` are the whole

@@ -23,7 +23,7 @@ export const ServerClockWireSchema = z.strictObject({
   zone: z.literal("America/Los_Angeles"),
 });
 /**
- * The at-rest storage indicator (doc 03 §2.5).
+ * The at-rest storage indicator (ref dashboard-surfaces §2.5).
  *
  * `authority` HAD a third arm, `degraded`, and nothing could emit it — the
  * D181 shape, one level smaller. `buildBootstrap` decides this by calling
@@ -63,14 +63,14 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  *
  * `categoryId` is the RAW category the descriptor declares, and it is all the
  * server contributes to grouping. The heading text and the display ORDER are
- * the frontend's (doc 03 §Shell: "the frontend hardcodes only the display
+ * the frontend's (ref dashboard-surfaces §Shell: "the frontend hardcodes only the display
  * order, membership is the descriptor's, an unlisted category appends, and an
  * empty category drops") — this wire used to also carry a `workflowCategories`
  * projection whose label was `id.replace(/-/g, " ")` and whose order was
  * first-seen, i.e. two display decisions the server invented and no operator
  * chose. Both moved to `dashboard/surfaces/workflow-category.ts`.
  *
- * `role` is the RAW membership fact the module declares (doc 02 §1.2.1, D219)
+ * `role` is the RAW membership fact the module declares (ref workflow-model §1.2.1, D219)
  * — `standalone`, `composition`, or `chunk-harness` naming the composition this
  * entry is a step of. It is required, and display stays the frontend's on the
  * standing R2 D17/D18 split: the ONE grouping rule that nests a harness under
@@ -101,7 +101,7 @@ export const SettingsSectionPrimitiveSchema = z.strictObject({
 export const PreflightVerdictSchema = z.enum(["pass", "warning", "fail"]);
 
 /**
- * ONE doctor check, as the Top Bar's standing indicator reads it (doc 13 §5,
+ * ONE doctor check, as the Top Bar's standing indicator reads it (ref frontend-backend-integration §5,
  * the Top Bar row's "storage/preflight summary").
  *
  * `blocks` names what this check's failure would break — never "some

@@ -38,7 +38,7 @@
  *
  * ## Why a "Kuali write chunk" carries the identity gate
  *
- * Because doc 09 §14's ALWAYS-GATE binds separation FILINGS, and finalizing the
+ * Because ref write-safety §14's ALWAYS-GATE binds separation FILINGS, and finalizing the
  * RRSS document is what records a real termination against a real person on the
  * source record. `identity-gate-before-commit` enforces it structurally on any
  * descriptor whose id names the separation class: every ancestry path from the
@@ -62,9 +62,9 @@
  * saw, not a side read hanging off the graph root.
  *
  * _(CLOSED 2026-08-14 by chunk 6a: the composed `separations` graph renders the
- * resolved option INTO doc 09 §14.2's packet, so "you are finalizing document
+ * resolved option INTO ref write-safety §14.2's packet, so "you are finalizing document
  * 4510 against `000412 - Housing/Dining/Hospitality`" is on the screen and
- * inside the digest the approval binds to — D211, doc 09 §14.10. This descriptor
+ * inside the digest the approval binds to — D211, ref write-safety §14.10. This descriptor
  * stays the proving harness and declares `plan: not-composed` with its
  * reason.)_
  *
@@ -315,7 +315,7 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
        * The SAME target the prepare staged, bound from workflow input plus the
        * gate-approved identity and the department fold — never from the prepare's
        * own output. That is what makes the permanent key stable before any page
-       * mutation (doc 02 §3.1), and it is what the beat-⑥ read-back compares the
+       * mutation (ref workflow-model §3.1), and it is what the beat-⑥ read-back compares the
        * reloaded document against.
        */
       uses: KualiSaveSeparationFinalization,

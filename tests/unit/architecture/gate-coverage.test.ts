@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 
 /**
- * Gate-coverage guard, re-derived for this repository (D93, doc 10 §5 #6/#8).
+ * Gate-coverage guard, re-derived for this repository (D93, ref guards-and-tests §5 #6/#8).
  *
  * The legacy original exists because the dashboard spent months excluded from
  * every type gate: the root tsconfig excluded it and `typecheck:all` was

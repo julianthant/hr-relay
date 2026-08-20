@@ -1,7 +1,7 @@
 /**
  * The Session Panel's cards — the durable worker lease, rendered (D248).
  *
- * Doc 05 §3 says why the lease exists at all, and one of its three reasons is
+ * Ref execution-and-sessions §3 says why the lease exists at all, and one of its three reasons is
  * this surface: *"the Session Panel needs worker phase without inferring it
  * from whatever rows happen to be claimed."* Until D248 the projector inferred
  * exactly that — a claimed row meant `working`, an ended worker span meant
@@ -57,7 +57,7 @@ export interface WorkerSpanFold {
  * than being folded in, because `src/domain/run/worker.ts` says why in its own
  * header: a command records what was ASKED, the worker records what is TRUE,
  * and a card that read `Paused` while its worker was mid-transaction on a real
- * HR system would be the optimistic-authority pattern doc 13 §0 rejects.
+ * HR system would be the optimistic-authority pattern ref frontend-backend-integration §0 rejects.
  *
  * The terminal split is the one place this function adds anything: a lease that
  * settled `operator`/`shutdown` was asked to stop, and a lease that settled

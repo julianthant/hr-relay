@@ -327,7 +327,7 @@ export function PlanRefusals({ refused }: { refused: StartPlanResponse["refused"
 /**
  * The command's answer, never collapsed. `applied` says the request was
  * accepted — not that a row exists: the queue changes when the authoritative
- * projection says so (doc 13 §0.5), and this surface never inserts one.
+ * projection says so (ref frontend-backend-integration §0.5), and this surface never inserts one.
  */
 export function EnqueueResultBanner({
   result,

@@ -1,5 +1,5 @@
 /**
- * Executable scenarios for person-lookup (doc 02 §8; doc 12 §3.2).
+ * Executable scenarios for person-lookup (ref workflow-model §8; ref operator-trust §3.2).
  *
  * Each one walks the real descriptor's real bind/when/derive functions along one
  * path, re-parsing every value through the schema that owns it. There is no
@@ -119,7 +119,7 @@ describe("person-lookup scenarios", () => {
   });
 
   it("person-lookup/crm-failure-retry — a replayed search feeds a fresh cross-verification", () => {
-    // The retry shape from doc 02 §8: `searching` replays from its checkpoint,
+    // The retry shape from ref workflow-model §8: `searching` replays from its checkpoint,
     // `cross-verify` runs again, and `active-status` (always-rerun) folds both.
     const walk = walkDescriptor(personLookupDescriptor, { emplId: "10873698" }, {
       outputs: {

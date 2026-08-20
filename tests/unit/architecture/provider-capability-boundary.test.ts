@@ -21,7 +21,7 @@ function moduleText(node: ts.Expression | undefined): string | undefined {
 
 function isNetworkOwner(path: string): boolean {
   if (path.startsWith("src/infra/providers/")) return true;
-  // Doc 13 §2: `src/dashboard/client/**` is the ONE fetch/EventSource owner —
+  // Ref frontend-backend-integration §2: `src/dashboard/client/**` is the ONE fetch/EventSource owner —
   // the same single-owner principle this guard enforces for providers, applied
   // to the frontend transport. No other dashboard module may touch fetch.
   if (path.startsWith("src/dashboard/client/")) return true;
@@ -32,7 +32,7 @@ function isNetworkOwner(path: string): boolean {
   // `src/dashboard/phone/**` subtree: a component that reached for fetch
   // directly would still fail, which is the point.
   if (path === "src/dashboard/phone/capture-client.ts") return true;
-  // Doc 13 §0: the in-process BFF binds loopback node:http; exactly one host
+  // Ref frontend-backend-integration §0: the in-process BFF binds loopback node:http; exactly one host
   // module owns that listener.
   return path === "src/server/dashboard/http-server.ts";
 }
@@ -42,7 +42,7 @@ function isProviderConsumer(path: string): boolean {
 }
 
 /**
- * D162 (doc 06 §4.11): the admission kernel's ONE production consumer is the
+ * D162 (ref data-intake-and-edit-data §4.11): the admission kernel's ONE production consumer is the
  * run executor — it mints admitted clients per task invocation — and the
  * worker composition root supplies the kernel's ingredients. These allowlists
  * are the deliberate relaxation of the "consumers remain absent until Phase
@@ -53,7 +53,7 @@ const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/base/providers.ts",
   "src/core/provider-admission.ts",
   "src/core/run-executor.ts",
-  // D178. Doc 12 §4.4's advisory is the first provider consumer OUTSIDE a run
+  // D178. Ref operator-trust §4.4's advisory is the first provider consumer OUTSIDE a run
   // task: a task receives its clients through `ctx.providers` and never names
   // the type, but an on-demand operator advisory has no task context to
   // inherit. It still obtains its client from the kernel
@@ -74,7 +74,7 @@ const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
   "src/core/run-executor.ts",
   "src/server/worker/compose.ts",
   // D178. The dashboard process became a second admitted-provider consumer
-  // when doc 12 §4.4's on-demand advisory landed: it composes the pool and
+  // when ref operator-trust §4.4's on-demand advisory landed: it composes the pool and
   // mints the client through the kernel's `createAdvisoryProviderClient`,
   // exactly as the worker root does for a run. A composition root is the ONE
   // place this may happen — the query it hands the closure to names no

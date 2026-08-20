@@ -1,5 +1,5 @@
 /**
- * What happens to an archived run's data, and WHEN — doc 03 §10.4's retention
+ * What happens to an archived run's data, and WHEN — ref dashboard-surfaces §10.4's retention
  * policy (D86) rendered as computed instants per record rather than as prose
  * the surface would then be free to get wrong.
  *
@@ -14,7 +14,7 @@
  *   the pointers name) — retained "until purge", which is an operator ACT
  *   (`cli purge-run`) and not a schedule, so there is no instant and saying
  *   "never" would be a different lie;
- * - **the ledger** — never archived, never pruned (doc 03 §2.1 D21).
+ * - **the ledger** — never archived, never pruned (ref dashboard-surfaces §2.1 D21).
  *
  * Four outcomes, four arms. Collapsing "nothing will ever purge this" into
  * "no date is scheduled" would let the Retention card tell an operator their
@@ -22,7 +22,7 @@
  *
  * Everything here is a pure function of the archived record's own fields plus
  * the policy constants plus `now`. That is deliberate and load-bearing:
- * `buildArchivedRunDetail` resolves NOTHING outside the archive tables (doc 03
+ * `buildArchivedRunDetail` resolves NOTHING outside the archive tables (ref dashboard-surfaces
  * §10.2, proved by reading a record back with the registry emptied), so a
  * retention block that read the artifact store back would break the one
  * property the archive exists to have.
@@ -32,7 +32,7 @@ import { localDatePart } from "../clock.js";
 import { IsoInstantSchema } from "../ids.js";
 
 /**
- * D86 (doc 03 §2.1 / §10.4): `notes/` and `spans/` both prune at 30 days.
+ * D86 (ref dashboard-surfaces §2.1 / §10.4): `notes/` and `spans/` both prune at 30 days.
  * `pruneEventStreams` is the implementation and imports this constant, so the
  * date this module computes and the date that sweep acts on are one number.
  */
@@ -70,7 +70,7 @@ export type RetentionOutlook = z.infer<typeof RetentionOutlookSchema>;
  */
 export const ArchiveRetentionWireSchema = z.strictObject({
   computedAt: IsoInstantSchema,
-  /** The archived record itself — doc 03 §10.2's audit copy. */
+  /** The archived record itself — ref dashboard-surfaces §10.2's audit copy. */
   row: RetentionOutlookSchema,
   /** `notes/` + `spans/`: this run's log lines and its timeline. */
   eventStreams: RetentionOutlookSchema,
@@ -159,7 +159,7 @@ export function archiveRetention(input: ArchiveRetentionInput): ArchiveRetention
     : {
       state: "scheduled",
       purgeAt: eventStreamPurgeInstant(localDatePart(new Date(input.endedAt.value)), retentionDays),
-      basis: `notes/ and spans/ prune at ${String(retentionDays)} days by file date (D86, doc 03 §2.1). This is `
+      basis: `notes/ and spans/ prune at ${String(retentionDays)} days by file date (D86, ref dashboard-surfaces §2.1). This is `
         + "the earliest instant the partition holding this run's last events becomes eligible; the sweep runs "
         + "at dashboard boot, so the file survives until the first boot on or after it",
     });
@@ -171,7 +171,7 @@ export function archiveRetention(input: ArchiveRetentionInput): ArchiveRetention
     }
     : {
       state: "on-request",
-      basis: "captured bytes and checkpoint rows are retained until purge (doc 03 §10.4) — an operator act "
+      basis: "captured bytes and checkpoint rows are retained until purge (ref dashboard-surfaces §10.4) — an operator act "
         + "(`cli purge-run`), not a schedule, so there is no instant to name",
     };
 
@@ -186,7 +186,7 @@ export function archiveRetention(input: ArchiveRetentionInput): ArchiveRetention
     evidence,
     ledger: {
       state: "permanent",
-      basis: "the write ledger is never archived and never pruned (doc 03 §2.1 D21) — what was filed in a "
+      basis: "the write ledger is never archived and never pruned (ref dashboard-surfaces §2.1 D21) — what was filed in a "
         + "real HR system outlives every display lifecycle",
     },
     pointers: {

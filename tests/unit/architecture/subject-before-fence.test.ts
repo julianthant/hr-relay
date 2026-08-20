@@ -1,5 +1,5 @@
 /**
- * Doc 10 §3.9 — subject binding before the fence (doc 09 beat ③, doc 05 §6.1).
+ * Ref guards-and-tests §3.9 — subject binding before the fence (ref write-safety beat ③, ref execution-and-sessions §6.1).
  *
  * Statically: every transaction node pairs prepare/commit contracts with
  * compatible subject declarations in ONE system, and a commit's person or

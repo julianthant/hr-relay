@@ -1,5 +1,5 @@
 /**
- * The read-only Workflow Explorer projection (doc 12 §5.2 Phase A, D176).
+ * The read-only Workflow Explorer projection (ref operator-trust §5.2 Phase A, D176).
  *
  * "The explorer is a projection of the exact descriptor … not a mined or
  * parallel graph." That sentence is the whole design of this file: every fact
@@ -75,7 +75,7 @@ import type { PendingImplBindings } from "../../../control/workflow-registry.js"
 export interface ExplorerModuleView {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: readonly RegisteredTaskStore[];
-  /** The module's declared taxonomy (doc 02 §1.2.1, D219) — required, like the module's own. */
+  /** The module's declared taxonomy (ref workflow-model §1.2.1, D219) — required, like the module's own. */
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
   readonly captureIntake?: CaptureIntakeBinding;
@@ -352,7 +352,7 @@ const INPUT_BINDING_REASON: Record<"read" | "prepare" | "commit", string> = {
 };
 
 /**
- * How each field of one contract is recorded (doc 12 §5.9).
+ * How each field of one contract is recorded (ref operator-trust §5.9).
  *
  * Every arm is a statement the registry can make from the descriptor alone. The
  * `unknown` arm is the one that matters: a read contract whose provenance the
@@ -721,7 +721,7 @@ function workflowWire(
     icon: descriptor.icon,
     category: descriptor.category,
     // The MODULE's fact, never the descriptor's: taxonomy is not part of a
-    // run's contract identity (doc 02 §1.2.1, D219).
+    // run's contract identity (ref workflow-model §1.2.1, D219).
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,

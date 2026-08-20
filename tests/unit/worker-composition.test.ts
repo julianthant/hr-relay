@@ -293,7 +293,7 @@ describe("composed worker runtime", () => {
     assert.deepEqual(report.outcomes, []);
     assert.equal(report.stopped, "idle");
     assert.ok(
-      lines.some((line) => line.includes("orphaned claim routed to doc 09 recovery")),
+      lines.some((line) => line.includes("orphaned claim routed to ref write-safety recovery")),
       "the startup self-sweep did not report the recovery routing",
     );
     const run = crashed.authority.runs.get(RUN_ID);

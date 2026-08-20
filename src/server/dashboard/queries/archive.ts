@@ -1,13 +1,13 @@
 /**
- * The Archive read model and the version-bump state (D179; doc 03 §10.2, doc
- * 13 §5 "Archive + version bump", §3.6 `GET /api/v1/archive`).
+ * The Archive read model and the version-bump state (D179; ref dashboard-surfaces §10.2, doc
+ * ref frontend-backend-integration §5 "Archive + version bump", §3.6 `GET /api/v1/archive`).
  *
  * **Two halves with opposite rules, in one file so the difference is visible.**
  *
  * `buildArchivedRunDetail` reads ONE archived run and resolves NOTHING. No
  * descriptor, no projection, no live authority beyond the archive tables — the
  * stored record already holds the row, the detail, the receipt, the failure
- * and the evidence pointers, which is what "self-contained" means. Doc 13 §8
+ * and the evidence pointers, which is what "self-contained" means. Ref frontend-backend-integration §8
  * guard #11 checks it the only way that proves anything: by reading a record
  * back with the workflow registry emptied.
  *
@@ -299,7 +299,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
        * Computed from the record's OWN fields, the D86 policy constants and
        * `now` — no store read, no descriptor. Reading the artifact bytes back
        * to confirm a retention state would break the property this whole path
-       * exists to have (doc 03 §10.2: an archived run resolves nothing), so
+       * exists to have (ref dashboard-surfaces §10.2: an archived run resolves nothing), so
        * the pointer count states its derivation rather than claiming an
        * observation.
        */
@@ -444,7 +444,7 @@ function freezeData(deps: RunDetailQueryDeps, runId: string): ContextDataSection
 /**
  * The member rows, projected from the fold's OWN member ids.
  *
- * There is no live `people` section in this composition (doc 03 D19's People
+ * There is no live `people` section in this composition (ref dashboard-surfaces D19's People
  * tab is a group-panel surface 2h left unbuilt), so this is not a freeze of a
  * served payload — it is the same projection the queue renders, one row per
  * member, which is exactly what the demo's member table shows. A run with no

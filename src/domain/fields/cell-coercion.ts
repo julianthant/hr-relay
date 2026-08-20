@@ -1,9 +1,9 @@
 /**
- * The pure per-cell coercion core — doc 06 §2.4.
+ * The pure per-cell coercion core — ref data-intake-and-edit-data §2.4.
  *
  * Every helper here turns ONE raw spreadsheet/PDF cell string into a
  * canonical value or **throws**. There is deliberately no "best effort" arm:
- * doc 06 §7 vector #2 is precisely "coercion swallows a bad cell", and the
+ * ref data-intake-and-edit-data §7 vector #2 is precisely "coercion swallows a bad cell", and the
  * charter's fail-loud rule makes a substituted default the worst outcome this
  * program can produce. A malformed EID that becomes `""` is a wrong person; a
  * date this module guesses the century for is a wrong effective date on a live
@@ -11,7 +11,7 @@
  *
  * ## Why a throw here is not a swallowed failure downstream
  *
- * `CellCoercionError` is a TYPED, located failure. Doc 06 §5's intake pipeline
+ * `CellCoercionError` is a TYPED, located failure. Ref data-intake-and-edit-data §5's intake pipeline
  * catches exactly this class and records a durable `cell-coercion` row
  * rejection carrying the row, column, field and reason; every other throw
  * propagates untouched. That is a conversion into visible durable evidence,
@@ -60,7 +60,7 @@ export interface CellLocation {
 /**
  * A cell that cannot become a schema-valid canonical value.
  *
- * The message reproduces doc 06 §2.4's shape verbatim, because the operator
+ * The message reproduces ref data-intake-and-edit-data §2.4's shape verbatim, because the operator
  * reads it in the intake grid and has to know which cell to correct:
  *
  * ```

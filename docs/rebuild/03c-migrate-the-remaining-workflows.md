@@ -11,7 +11,7 @@ and what is left, and its exit criteria; contracts it built live in `reference/`
 <!-- roadmap-status: migrations -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3 (Phase 3+'s goal) and §3.1 (the migration loop) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3 (Phase 3+'s goal) and §3.1 (the migration loop) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **Goal.** Migrate the remaining workflows onto the new base, **one at a time**, slowly populating the
 task stores with what each needs. Every workflow gets its own migration plan doc (a child of this
@@ -23,7 +23,7 @@ capability milestones only; legacy source/tests remain production and rollback a
 2. **Author** — reuse store tasks (peer-to-peer, charter §1); add new tasks as reusable bases +
    name the workflow-specific customization (charter §3/§8); reuse/add canonical UI ids and driver
    operations first; write strict contracts + scenarios → impls → pure-logic unit tests (`fakeCtx`)
-   → descriptor/result/delegation policies (doc 10 §6 red→green order).
+   → descriptor/result/delegation policies (ref guards-and-tests §6 red→green order).
 3. **Safety guards fire** — strict schemas, driver boundary, scenario coverage, transaction pairing,
    subject-before-fence, dry-run commit-free, write safety/capability, permanent-key dedupe,
    command/delegation, provenance, graph/result typing, evidence, and stable identity all green.
@@ -44,7 +44,7 @@ capability milestones only; legacy source/tests remain production and rollback a
 
 ## Recommended migration order (by risk / complexity / reuse)
 
-_Moved from 07-master-plan §3.3 — its order-8 prerequisite block moved to `00-design-the-foundation.md` §ALWAYS-GATE identity approval, because D77 pulled that design into Phase 0 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.3 — its order-8 prerequisite block moved to `00-design-the-foundation.md` §ALWAYS-GATE identity approval, because D77 pulled that design into Phase 0 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **The ordering objective, made explicit (D84, amended by D88/D89).** Production availability does
 not vary by migration order because legacy automation remains authoritative until one final
@@ -58,7 +58,7 @@ That is deliberate: they are the highest-stakes writes, they reuse the most, and
 them early would mean proving the write-safety contract on the two workflows least able to absorb
 a contract flaw. The existing workflows continue serving production while this sequence runs, and
 the separations identity-approval gate (doc
-09 §14) is designed in Phase 0 rather than at order 8, so nothing about that workflow is
+ref write-safety §14) is designed in Phase 0 rather than at order 8, so nothing about that workflow is
 discovered late. If a dependency or evidence target becomes the binding constraint, this order is
 the thing to revisit.
 
@@ -104,20 +104,20 @@ not an unresolved architecture choice.
 
 ## The §b migration questionnaire (reusable template)
 
-_Moved from 07-master-plan §3.4 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.4 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 Embed in **every** workflow's migration plan doc; answer with the operator BEFORE building
-(charter §b). Grounded in docs 09 (write-safety) + 11 (freshness/instance) + 02 (gates).
+(charter §b). Grounded in ref write-safety (write-safety) + 11 (freshness/instance) + 02 (gates).
 
 1. **Real commits** — which actions mutate the external system? For each, define a prepare contract,
    commit contract, one transaction lease scope, stable idempotency key, expected subject,
    post-prepare semantic observation, normalizer/matcher, and mismatch/unknown evidence.
 2. **Completion check per submit** — receipt (UCPath/ServiceNow: source of the confirmation/ticket
    number + its schema) | save-verify (Kuali: the read-back task) | upload-verify (OnBase: the
-   positive read-back, OR an argued `unverifiableByPage`→always-park)? (Doc 09 §2.)
+   positive read-back, OR an argued `unverifiableByPage`→always-park)? (Ref write-safety §2.)
 3. **Double-submit probe policy and age budget per transaction** — `"always"` or
    `"retries-and-recovery-only"` (may miss only an older external write on an unseen durable key)? Required, no default
-   (doc 09 §5 / D17). What justified `probeToFenceMaxMs` bounds preparation after the live probe?
+   (ref write-safety §5 / D17). What justified `probeToFenceMaxMs` bounds preparation after the live probe?
 4. **Dry-run preview** — confirm what prepare evidence is shown and whether the run stops there;
    commit is structurally absent.
 5. **Freshness maxAges — justify the *value*, not just its presence.** For each read whose output
@@ -128,8 +128,8 @@ Embed in **every** workflow's migration plan doc; answer with the operator BEFOR
    data into a live write). Identity, match/item, idempotency, and proof fields are never overridable;
    `Infinity` must be argued in a comment.
 6. **Workflow-specific gates/data** — identity-approval gate? OCR approval gate? EID re-match?
-   roster column mapping/intake manifest, mobile capture, or normalization approval (doc 06)?
-   per-run test/prod instance need (doc 11 §4)?
+   roster column mapping/intake manifest, mobile capture, or normalization approval (ref data-intake-and-edit-data)?
+   per-run test/prod instance need (ref clock-config-secrets §4)?
 7. **Reuse map** — which store tasks reused (peer-to-peer), which new, and for each new task: its
    reusable-base design + the workflow-specific customization (charter §3/§8). Which canonical
    UI element/page-state/observation ids and typed driver methods are reused or added? Are any names
@@ -153,7 +153,7 @@ Embed in **every** workflow's migration plan doc; answer with the operator BEFOR
 
 ## Non-workflow capability closure inventory (D58)
 
-_Moved from 07-master-plan §3.6 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.6 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 Workflow directories are only part of the old program. The rebuild repo's
 `config/legacy-capabilities.json` is created in 1a from a legacy source inventory and maintained
@@ -218,9 +218,9 @@ inventories match. Nothing in this inventory authorizes legacy deletion.
 
 ## Live probe status (the design assumptions still unproven)
 
-_Moved from 07-master-plan §3.8 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.8 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
-Doc 09's write-safety contract requires each system to produce a typed completion proof. For two
+Ref write-safety's write-safety contract requires each system to produce a typed completion proof. For two
 of four systems that is still an *assumption*. The Kuali probe showed how cheap it is to settle:
 half a day of pre-authorized live access resolved a years-deep open question **and** produced four
 design constraints (save is UI-silent so reload read-back is mandatory; date values render as
@@ -233,7 +233,7 @@ Phase-1 blockers. Deferral changes timing only; it does not waive proof.
 | System | Completion arm | Status | Gate |
 |---|---|---|---|
 | **Kuali** | `save-verify` | ✅ **RESOLVED buildable** (live probe 2026-07-23, docs 4444/4453; read-only + a full write round-trip restored byte-identically) — **BUILT 2026-08-04** as `kuali/verify-timekeeper-annotation`, with its three element recipes ported and re-verified read-only the same day | — |
-| **UCPath** | `receipt` (`T…` transaction number) | ✅ **RESOLVED buildable — and the arm as specified was WRONG** (live probe 2026-08-04, D130; **read-only, no transaction created**, so the authorized submit was not spent). The `T…` lives on SS Smart HR's transaction detail (`UC_EXTENSIONS.UC_SS_TBH.GBL`), NOT on the submit and NOT on the Transaction Status dashboard, which has no Transaction ID column at all. **A Denied transaction carries a well-formed `T…`** (`T002204014`; 300 Denied rows live), so the proof is the PAIR `(transactionNumber, approvalStatus)` — doc 09 §2.2's number-only schema is corrected. Six constraints in doc 09 §13.6 | residual submit-side questions before Phase 2's controlled commit |
+| **UCPath** | `receipt` (`T…` transaction number) | ✅ **RESOLVED buildable — and the arm as specified was WRONG** (live probe 2026-08-04, D130; **read-only, no transaction created**, so the authorized submit was not spent). The `T…` lives on SS Smart HR's transaction detail (`UC_EXTENSIONS.UC_SS_TBH.GBL`), NOT on the submit and NOT on the Transaction Status dashboard, which has no Transaction ID column at all. **A Denied transaction carries a well-formed `T…`** (`T002204014`; 300 Denied rows live), so the proof is the PAIR `(transactionNumber, approvalStatus)` — ref write-safety §2.2's number-only schema is corrected. Six constraints in ref write-safety §13.6 | residual submit-side questions before Phase 2's controlled commit |
 | **ServiceNow** | `receipt` (`HRC0…` from the post-submit redirect) | ⏳ operator naming a target | before order 7 |
 | **OnBase** | `upload-verify` or `unverifiableByPage`→always-park | ⏸ **blocked — no probe target exists today**; gated on the next real document upload | before order 7 |
 
@@ -398,7 +398,7 @@ A round ratified by a future migration is added here in the same commit that rec
 
 ## Exit criteria
 
-_Moved from 07-master-plan §3.2 — the per-workflow exit criteria every migration answers, separations included on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.2 — the per-workflow exit criteria every migration answers, separations included on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 - §b questionnaire answered + recorded in the workflow's migration doc.
 - the rebuild repo's `typecheck` + `lint` + `test` + `test:architecture` green; the workflow's descriptor passes

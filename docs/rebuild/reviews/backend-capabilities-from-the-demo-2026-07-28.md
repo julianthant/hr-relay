@@ -3,7 +3,7 @@
 **Status (2026-07-30): harvest complete and incorporated.** The numbered findings remain the
 evidence appendix for individual backend capabilities. The cross-surface production architecture,
 route/stream/command composition, state ownership, delivery slices, and parity gates now live in
-`docs/rebuild/13-frontend-backend-integration.md`; doc 07 remains the only build sequence.
+`docs/rebuild/reference/frontend-backend-integration.md`; doc 07 remains the only build sequence.
 
 **Why this exists.** The `?view=rebuild-demo` redesign programme (commits `d1530a1f`..`fa6c251c`,
 on top of `1d656f76`..`a380406c`) was never only a frontend exercise. The operator's stated
@@ -336,6 +336,6 @@ direction, and the backend must grow them:
 ---
 
 *Companion documents:* the ratified presentation decisions these capabilities serve are in
-`docs/rebuild/03-tracker-dashboard.md` §9 (D5–D24 as amended 2026-07-28); the pending
+`docs/rebuild/reference/dashboard-surfaces.md` §9 (D5–D24 as amended 2026-07-28); the pending
 components-CLAUDE.md lesson for the same waves is
 `docs/rebuild/reviews/pending-lesson-dashboard-components-2026-07-28.md`.

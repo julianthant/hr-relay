@@ -1,5 +1,5 @@
 /**
- * The span/notes wire and at-rest contract (doc 03 §1.1) — a leaf module.
+ * The span/notes wire and at-rest contract (ref dashboard-surfaces §1.1) — a leaf module.
  *
  * This file imports NOTHING but zod on purpose (the same import budget a
  * bundle-safe descriptor gets): every JSONL line, projector ingest, and SSE
@@ -10,7 +10,7 @@
  * against `src/domain/ids.ts` so a drift fails the suite instead of silently
  * forking the vocabulary.
  *
- * Identity (doc 03 §1.1): run/task spans are `(runId, attempt, spanPath)`;
+ * Identity (ref dashboard-surfaces §1.1): run/task spans are `(runId, attempt, spanPath)`;
  * worker/browser spans are `(workerId, spanPath)`. Identity attributes are
  * written exactly once, by `run.queued`, and no arm of this union can restate
  * one: every other event is a `strictObject` that does not name them.
@@ -53,7 +53,7 @@ export const SpanBrowserSystemSchema = z.enum([
 ]);
 export const SpanSystemInstanceSchema = z.enum(["prod", "test"]);
 
-/** Doc 03 §1.1's outcome union; `skipped` is a task-span outcome. */
+/** Ref dashboard-surfaces §1.1's outcome union; `skipped` is a task-span outcome. */
 export const SpanOutcomeWireSchema = z.enum([
   "done", "failed", "cancelled", "discarded", "skipped", "interrupted", "superseded",
 ]);
@@ -93,7 +93,7 @@ const WorkerSpanIdentityFields = {
 } as const;
 
 /**
- * Run is born at ENQUEUE (doc 03 §1.1). Carries the queue row's immutable
+ * Run is born at ENQUEUE (ref dashboard-surfaces §1.1). Carries the queue row's immutable
  * identity attributes — stamped once, never re-derived by a projector.
  */
 const RunQueuedSchema = z.strictObject({
@@ -161,7 +161,7 @@ const GateOpenedSchema = z.strictObject({
 });
 
 /**
- * D210 / doc 01 §6.2 — a dry run's transaction node. Its parity twin lives in
+ * D210 / ref task-contract §6.2 — a dry run's transaction node. Its parity twin lives in
  * `src/core/span-emitter.ts`; see that arm for why it is not a `span.ended`.
  */
 const TransactionPreviewedSchema = z.strictObject({
@@ -173,7 +173,7 @@ const TransactionPreviewedSchema = z.strictObject({
    * D215 — `not-observed` is the fourth verdict, and it is the one an
    * `already-present` preview reports: beat ①'s probe settled the node before
    * anything was staged, so no page was prepared and no subject was read.
-   * It was ratified in doc 02 §2.1 and landed in the kernel's twin
+   * It was ratified in ref workflow-model §2.1 and landed in the kernel's twin
    * (`src/core/span-emitter.ts`) without reaching this wire leaf, so the FIRST
    * preview that ever settled — chunk 6c's composed dry run on doc 4502,
    * whose ordinary subject has no pending transaction — threw inside the JSONL
@@ -264,7 +264,7 @@ export const NoteLevelSchema = z.enum(["step", "success", "error", "waiting", "w
 
 /**
  * A closed key/value union — never a decision-bearing open map. The kinds
- * mirror the redaction transforms (doc 11): a value that reached this wire
+ * mirror the redaction transforms (ref clock-config-secrets): a value that reached this wire
  * either passed `allow` as text, or was transformed. Dropped fields do not
  * appear at all.
  */

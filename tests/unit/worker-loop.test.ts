@@ -1,5 +1,5 @@
 /**
- * Doc 05 §3 worker loop: claim → execute → next, one active item, heartbeat
+ * Ref execution-and-sessions §3 worker loop: claim → execute → next, one active item, heartbeat
  * renewal during long operations, claim-loss abort, and worker-stop session
  * closure — plus the Phase-1 `WorkerRuntimeExecutor` seam.
  */
@@ -82,7 +82,7 @@ describe("worker run loop", () => {
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done", "done"]);
 
     // Warm reuse across sequential items: one session per system for BOTH
-    // runs, closed only at worker stop (doc 05 §5).
+    // runs, closed only at worker stop (ref execution-and-sessions §5).
     assert.equal(harness.sessions.opens("ucpath"), 1);
     assert.equal(harness.sessions.opens("crm"), 1);
     assert.deepEqual(harness.sessions.closeReasons(), ["worker-stop", "worker-stop"]);
@@ -199,7 +199,7 @@ describe("worker run loop", () => {
   });
 });
 
-describe("durable worker directives (doc 03 §2.4), observed between items", () => {
+describe("durable worker directives (ref dashboard-surfaces §2.4), observed between items", () => {
   it("stops without claiming when the directive says stop", async () => {
     const harness = loopHarness();
     harness.authority.database.authority.runs.enqueue(personLookupQueuedRun());

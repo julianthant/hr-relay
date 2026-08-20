@@ -1,6 +1,6 @@
 /**
  * D258 — TWO executions at ONE span identity, and the id that has to tell them
- * apart (doc 03 §2.3; separations §9.22 item 6).
+ * apart (ref dashboard-surfaces §2.3; separations §9.22 item 6).
  *
  * The shape seeded here is not hypothetical. Run
  * `00419600-ef68-4e7d-8528-4705ad462bf5` / `sp-080639-0041`, enqueued

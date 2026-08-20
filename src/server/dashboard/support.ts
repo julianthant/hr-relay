@@ -24,7 +24,7 @@ export function errorText(error: unknown): string {
 }
 
 /**
- * The NODE ID inside a task span's path (doc 03 §1.1: `<trace>/<node>#<attempt>`).
+ * The NODE ID inside a task span's path (ref dashboard-surfaces §1.1: `<trace>/<node>#<attempt>`).
  *
  * It lives here rather than beside either of its two callers — the queue
  * projector and the run-detail query — because the ARCHIVE read path reaches

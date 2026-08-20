@@ -50,7 +50,7 @@ export function fmtFreshness(limit: number | "unbounded"): string {
  * its commit then writes, so counting both would report every write twice.
  *
  * The demo's third segment (`1 file`) stays absent: it is a per-run artifact
- * count, and doc 12 §5.7 already dispositioned it as a run fact rather than a
+ * count, and ref operator-trust §5.7 already dispositioned it as a run fact rather than a
  * registry one.
  */
 export function explorerGraphTotals(

@@ -1,6 +1,6 @@
 /**
  * `ucpath/stage-termination` — the PREPARE arm of chunk 4's transaction
- * (doc 09 §3 beat ②). Doc 09 §12's worked example calls it `fill-termination`;
+ * (ref write-safety §3 beat ②). Ref write-safety §12's worked example calls it `fill-termination`;
  * the shape is the same and this tree's naming rule wins.
  *
  * ## It stages the WHOLE wizard, and that is a finding, not a shortcut

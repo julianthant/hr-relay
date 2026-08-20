@@ -1,5 +1,5 @@
 /**
- * Doc 03 §2.6's "open operator gate" trigger, produced (D262).
+ * Ref dashboard-surfaces §2.6's "open operator gate" trigger, produced (D262).
  *
  * §2.6 has routed the open operator gate onto the `gate-waiting` trigger since
  * D79b, `NotificationTriggerEventSchema` has carried the `gate-opened` arm

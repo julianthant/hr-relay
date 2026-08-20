@@ -17,18 +17,18 @@ import {
 } from "./helpers/guard-files.js";
 
 /**
- * Guard (docs 07 §2 · 11 §5): the rebuild runtime reads `process.env` through
+ * Guard (roadmap §Phases at a glance · ref clock-config-secrets §5): the rebuild runtime reads `process.env` through
  * ONE owner.
  *
- * Doc 07's critical-path justification is explicit — "building 01+ on raw
+ * Doc 01 §Phase summary's critical-path justification is explicit — "building 01+ on raw
  * `new Date()`/`process.env` would require re-threading later; the
  * `clock-single-source` and `secrets-single-source` guards must be green from
  * the first `src` file." A second credential reader is not a style
  * problem: it is a value that never passes through `domain/secrets.ts`'s
- * classification, so doc 11's redaction contract cannot see it and it reaches
+ * classification, so ref clock-config-secrets's redaction contract cannot see it and it reaches
  * a log, an evidence record, or a diagnostic bundle unredacted.
  *
- * The rule, per doc 11 §5:
+ * The rule, per ref clock-config-secrets §5:
  *
  * - `src/domain/secrets.ts` is the sole *credential* reader. Every other
  *   consumer receives an already-resolved value.
@@ -45,7 +45,7 @@ import {
  * an injected parameter and reads nothing itself, so the tree is stricter than
  * the contract requires. The allowlist below is the shrink-only ported-leaf
  * escape hatch the other ratchets use and is deliberately EMPTY: new
- * `src` code gets zero tolerance (doc 11 §2).
+ * `src` code gets zero tolerance (ref clock-config-secrets §2).
  */
 
 const SECRET_OWNER = "src/domain/secrets.ts";

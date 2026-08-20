@@ -440,7 +440,7 @@ const PREFLIGHT_ADVISORY_NOTE =
  *
  * It mounts ONLY when the bootstrap document serves `preflight`
  * (`FrontendBootstrapWireSchema#preflight`, declared-unserved in
- * `config/pending-wire-bindings.json`, doc 13 §3.1). No served checks means no
+ * `config/pending-wire-bindings.json`, ref frontend-backend-integration §3.1). No served checks means no
  * stethoscope: a green glyph over checks nobody ran would be a pass verdict the
  * server never made. The rerun button is the paired command and is disabled by
  * name until that command exists — a control that 422s on click is worse than
@@ -519,7 +519,7 @@ function PreflightPopover({
 type NotificationWire = z.infer<typeof NotificationWireSchema>;
 
 /**
- * The row facts doc 03 §2.6 deliberately keeps OFF the notification wire.
+ * The row facts ref dashboard-surfaces §2.6 deliberately keeps OFF the notification wire.
  *
  * The demo's row carries a body sentence, a trigger label, a ping/inbox
  * routing verdict, a dedupe count and an OS-delivery flag. This wire carries
@@ -583,7 +583,7 @@ const NOTIFICATION_FILTERS = [
 type NotificationFilterKey = (typeof NOTIFICATION_FILTERS)[number]["key"];
 
 /**
- * 2i-B: the inbox bell over doc 03 §2.6's durable rows, in the demo's own
+ * 2i-B: the inbox bell over ref dashboard-surfaces §2.6's durable rows, in the demo's own
  * anatomy — a raw square button with a corner superscript badge, and a 480px
  * Drawer holding the filter chips, the rows and the standing footer.
  *
@@ -1025,7 +1025,7 @@ export function TopBar({
    */
   nowIso: string;
   /**
-   * The doctor's served checks (doc 13 §3.1). Absent on every build today —
+   * The doctor's served checks (ref frontend-backend-integration §3.1). Absent on every build today —
    * `FrontendBootstrapWireSchema#preflight` is declared-unserved — and its
    * absence is what keeps the stethoscope off the bar entirely.
    */

@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "scannedAt": "2026-08-05",
   "legacyCommit": "4deabc5a",
-  "purpose": "Doc 06 §1's D58/D68 scan, recorded so the canonical field registry can freeze. Every legacy workflow input schema, roster header rule, OCR form field, and Edit-Data editable field is listed with exactly one disposition: a canonical field id, or workflow-local WITH a reason. `intake-canonical-field-registry.test.ts` fails in BOTH directions — a registry field with no source here is unevidenced vocabulary, and a source field with no disposition is a field that was silently omitted.",
+  "purpose": "Ref data-intake-and-edit-data §1's D58/D68 scan, recorded so the canonical field registry can freeze. Every legacy workflow input schema, roster header rule, OCR form field, and Edit-Data editable field is listed with exactly one disposition: a canonical field id, or workflow-local WITH a reason. `intake-canonical-field-registry.test.ts` fails in BOTH directions — a registry field with no source here is unevidenced vocabulary, and a source field with no disposition is a field that was silently omitted.",
   "localReasons": {
     "execution-option": "an operator-chosen execution knob, not business data — it selects how a run behaves and never becomes a cell in a spreadsheet",
-    "file-or-artifact-ref": "a file, page, or artifact reference; doc 06 §1 keeps file refs, selectors, options, and discriminants out of the mappable vocabulary and doc 04 §4.1 routes them through the content-addressed artifact boundary instead",
+    "file-or-artifact-ref": "a file, page, or artifact reference; ref data-intake-and-edit-data §1 keeps file refs, selectors, options, and discriminants out of the mappable vocabulary and ref decisions §4.1 routes them through the content-addressed artifact boundary instead",
     "correlation-id": "a run/session/group correlation id assigned by the kernel or the dashboard, never by the operator and never by a source file",
     "run-produced": "produced by the run itself (a match verdict, a warning, an operator selection, a captured screenshot); it is contract output, not intake input, and its shape is owned by the producing contract",
     "computed-from-canonical": "derived arithmetically from canonical fields the same input already carries; mapping it separately would let a stale copy disagree with its own inputs",
@@ -91,7 +91,7 @@
         "ocrRunId": "correlation-id",
         "recordIndex": "correlation-id"
       },
-      "note": "`emplId` inside the roster seed is the same concept as the top-level EID and is recorded once under `legacy:src/services/matching/roster-loader.ts`; `ppsEidPadded` is the zero-padded spelling of `ppsEid`, which is a genuinely different identifier from `Eid` and therefore has its own canonical field and its own brand (doc 06 §1)."
+      "note": "`emplId` inside the roster seed is the same concept as the top-level EID and is recorded once under `legacy:src/services/matching/roster-loader.ts`; `ppsEidPadded` is the zero-padded spelling of `ppsEid`, which is a genuinely different identifier from `Eid` and therefore has its own canonical field and its own brand (ref data-intake-and-edit-data §1)."
     },
     {
       "ref": "legacy:src/workflows/onboarding/schema.ts",
@@ -295,7 +295,7 @@
         "zip": "postalCode"
       },
       "local": {},
-      "note": "These eight `COLUMN_PATTERNS` regexes are exactly what operator column mapping replaces. Their recognized header spellings are carried forward as `aliases` on the matching canonical fields, where they can only ever SUGGEST a binding (doc 06 §2.5)."
+      "note": "These eight `COLUMN_PATTERNS` regexes are exactly what operator column mapping replaces. Their recognized header spellings are carried forward as `aliases` on the matching canonical fields, where they can only ever SUGGEST a binding (ref data-intake-and-edit-data §2.5)."
     },
     {
       "ref": "legacy:src/services/ocr/forms/oath.ts",
@@ -392,7 +392,7 @@
         "section2Page": "file-or-artifact-ref",
         "ssnPage": "file-or-artifact-ref"
       },
-      "note": "Scanned at the D160 port. Legacy's `\"i9 ssn\"` supplemental sheet (a UCRS 419 statement) has no rebuild page kind on purpose: D154 derives the vocabulary from the real corpus, which has none, and such a sheet classifies `unrelated` — surfaced by name, never folded into a record. The corroboration/pairing outputs (`corroboration`, `disputedFields`, `orphanSection2`, the page back-links) are run-produced trust facts whose rebuild home is the grouping layer (doc 06 §4.8/§4.10) and doc 12's evidence surface, not intake mappings."
+      "note": "Scanned at the D160 port. Legacy's `\"i9 ssn\"` supplemental sheet (a UCRS 419 statement) has no rebuild page kind on purpose: D154 derives the vocabulary from the real corpus, which has none, and such a sheet classifies `unrelated` — surfaced by name, never folded into a record. The corroboration/pairing outputs (`corroboration`, `disputedFields`, `orphanSection2`, the page back-links) are run-produced trust facts whose rebuild home is the grouping layer (ref data-intake-and-edit-data §4.8/§4.10) and ref operator-trust's evidence surface, not intake mappings."
     },
     {
       "ref": "legacy:src/workflows/oath-signature/workflow.ts",
@@ -411,7 +411,7 @@
         "contactPhone": "cellPhone"
       },
       "local": {},
-      "note": "`employeeName` and `contactName` are two target paths sharing ONE canonical concept — exactly the D66 case doc 06 §2.1 keys bindings on the target field id to keep separate."
+      "note": "`employeeName` and `contactName` are two target paths sharing ONE canonical concept — exactly the D66 case ref data-intake-and-edit-data §2.1 keys bindings on the target field id to keep separate."
     },
     {
       "ref": "legacy:src/workflows/separations/workflow.ts",
@@ -430,7 +430,7 @@
       "kind": "owning-doc",
       "canonical": { "address2": "address2" },
       "local": {},
-      "note": "`address2` has no legacy source: legacy captured one street line and silently dropped apartment/unit detail. Doc 06 §4.2's `ContactFieldIdSchema` names it explicitly as part of the normalization contract, so the owning doc — not intuition — is what evidences it."
+      "note": "`address2` has no legacy source: legacy captured one street line and silently dropped apartment/unit detail. Ref data-intake-and-edit-data §4.2's `ContactFieldIdSchema` names it explicitly as part of the normalization contract, so the owning doc — not intuition — is what evidences it."
     }
   ]
 }

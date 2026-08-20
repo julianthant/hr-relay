@@ -15,7 +15,7 @@
  *  3. **A save is never proof.** `commit` returns only that the click happened
  *     AND that the mutation it issued carried the staged value. Landing proof
  *     comes exclusively from `readSavedTimekeeper`, which RELOADS first
- *     (doc 09 §13 OQ1 (a)).
+ *     (ref write-safety §13 OQ1 (a)).
  *  4. **The DOM holding the value is not Kuali holding the value.** A Kuali
  *     Build text gadget debounces into the document model; only the model is
  *     serialized by `submitDocumentV2`. Staging therefore waits for the model
@@ -785,7 +785,7 @@ async function waitForDocumentReady(page: Page, actionId: string): Promise<strin
 }
 
 export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRrssDocumentDriver {
-  // The ONE time source (doc 11): every observation instant this driver stamps
+  // The ONE time source (ref clock-config-secrets): every observation instant this driver stamps
   // comes from the injected clock, never from `new Date()`.
   const now = (): string => IsoInstantSchema.parse(clock.now().toISOString());
 

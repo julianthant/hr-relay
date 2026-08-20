@@ -1,5 +1,5 @@
 /**
- * The intake PARSE VIEW — the re-derived half of a session (doc 06 §2.2, D170).
+ * The intake PARSE VIEW — the re-derived half of a session (ref data-intake-and-edit-data §2.2, D170).
  *
  * A session retains the operator's decisions and the immutable source identity.
  * Everything else an intake surface shows — which worksheets the file holds,
@@ -16,7 +16,7 @@
  *
  * ## Why `layout` is nullable rather than a second refusal code
  *
- * "This sheet has no settled header row" is a normal, expected state — doc 06
+ * "This sheet has no settled header row" is a normal, expected state — ref data-intake-and-edit-data
  * §3's discovery deliberately preselects nothing when two candidates are
  * structurally indistinguishable, and the operator then picks. That is not a
  * failure to read the file, so it is not a refusal; the candidates are still
@@ -45,7 +45,7 @@ export type IntakeParseRefusalCode = z.infer<typeof IntakeParseRefusalCodeSchema
 export const IntakeLayoutSchema = z.strictObject({
   headerRowIndex: z.number().int().nonnegative(),
   columns: z.array(DetectedColumnSchema),
-  /** Doc 06 §2.3's order-insensitive layout identity, over these exact columns. */
+  /** Ref data-intake-and-edit-data §2.3's order-insensitive layout identity, over these exact columns. */
   headerFingerprint: FingerprintSchema,
   /**
    * Data rows, header-relative and in file order, with wholly blank rows

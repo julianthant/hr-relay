@@ -1,5 +1,5 @@
 /**
- * Bundle-safe workflow graph vocabulary (doc 02 §1.1/§3).
+ * Bundle-safe workflow graph vocabulary (ref workflow-model §1.1/§3).
  *
  * These are the node shapes a descriptor is made of. They carry pure functions
  * (`bind`, `choose`, `resolve`, `derive`) alongside serializable fields, so they
@@ -9,7 +9,7 @@
  * Nothing here imports a store, an executor, or Playwright. The exact node
  * tuple a builder accumulates is what feeds inference; `RuntimeFlowNode` exists
  * only so the composition root can switch exhaustively at runtime and is never
- * fed back into descriptor inference (doc 02 §3).
+ * fed back into descriptor inference (ref workflow-model §3).
  */
 import { z } from "zod";
 import type { JsonObject, JsonValue } from "../canonical-json.js";
@@ -84,9 +84,9 @@ export interface GraphNodeBase {
 
 export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends GraphNodeBase {
   readonly kind: "task";
-  /** Display label. Defaults to the contract's `title` (doc 02 §1.5 precedence). */
+  /** Display label. Defaults to the contract's `title` (ref workflow-model §1.5 precedence). */
   readonly label?: string;
-  /** The CONTRACT object (doc 01 / D3), imported by value. */
+  /** The CONTRACT object (ref task-contract / D3), imported by value. */
   readonly uses: C;
   /** Pure: workflow input + declared upstream outputs → `z.input<C["input"]>`. */
   readonly bind: (scope: Scope) => z.input<C["input"]>;
@@ -96,15 +96,15 @@ export interface TaskStepNode<Scope, C extends AnyReadTaskContract> extends Grap
    * explorer prints cannot disagree with the rule the executor applies.
    */
   readonly when?: NodeCondition;
-  /** Resume policy — REQUIRED, no default (doc 02 §5.3). */
+  /** Resume policy — REQUIRED, no default (ref workflow-model §5.3). */
   readonly replay: "checkpoint" | "always-rerun";
 }
 
 /**
- * The graph-scope view of doc 09's durable `TransactionOutcome`
+ * The graph-scope view of ref write-safety's durable `TransactionOutcome`
  * (`src/domain/write-safety.ts`), which stores `output`/`proof` as
  * schema-bound canonical values. Here they are the parsed, contract-typed
- * values a downstream `bind` actually reads. Same event, two altitudes — doc 09
+ * values a downstream `bind` actually reads. Same event, two altitudes — ref write-safety
  * owns the durable record and its validator; this is only its typed refinement,
  * so the name is distinct and nothing mints a second durable schema.
  *
@@ -251,7 +251,7 @@ export type ChildRunOutcome<Target extends AnyWorkflowRef> =
   | Readonly<{ state: "blocked"; runId: RunId; itemId: ItemId; failureId: FailureId; reason: string }>;
 
 /**
- * The durable validator for a child terminal outcome. Doc 02 §3.2 requires every
+ * The durable validator for a child terminal outcome. Ref workflow-model §3.2 requires every
  * child outcome to be schema-parsed and stored BEFORE the dependency transition.
  */
 export function childRunOutcomeSchema<ResultSchema extends z.ZodType>(result: ResultSchema) {
@@ -312,7 +312,7 @@ export type ChildRunNode<Scope, Target extends AnyWorkflowRef> =
 interface GateNodeBase extends GraphNodeBase {
   readonly kind: "gate";
   readonly label: string;
-  /** e.g. "needsReview" — doc 03's status projection key. */
+  /** e.g. "needsReview" — ref dashboard-surfaces's status projection key. */
   readonly statusKey?: string;
 }
 export interface OperatorGateNode<ResultSchema extends z.ZodType> extends GateNodeBase {
@@ -347,7 +347,7 @@ export type AnyGateNode =
 /**
  * Runtime discriminant union. The builder retains the descriptor's exact node
  * tuple; this alias is only for exhaustive runtime switching and never feeds
- * type inference (doc 02 §1.1).
+ * type inference (ref workflow-model §1.1).
  */
 export type RuntimeFlowNode =
   | TaskStepNode<RuntimeScope, AnyReadTaskContract>

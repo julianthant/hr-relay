@@ -1,5 +1,5 @@
 /**
- * The ONE delegation policy vocabulary (doc 02 §1.1/§3.2, ratified D102).
+ * The ONE delegation policy vocabulary (ref workflow-model §1.1/§3.2, ratified D102).
  *
  * It lives in its own leaf module because two very different consumers need it
  * and neither should pull the other's dependencies in: the bundle-safe workflow
@@ -10,7 +10,7 @@
  * D102 replaced 1c's unratified `DependencyPolicySchema` shape
  * (`failure: fail-parent|collect|ignore`, `retry: retry-child|replace-child|
  * parent-only`, `visibility: member|linked|delegated`), which appeared in no
- * owning doc and had no arm for doc 02's `block-parent`.
+ * owning doc and had no arm for ref workflow-model's `block-parent`.
  */
 import { z } from "zod";
 

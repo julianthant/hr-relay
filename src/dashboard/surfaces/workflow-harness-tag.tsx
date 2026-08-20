@@ -1,5 +1,5 @@
 /**
- * The ONE affix that says "this entry is a step, not a workflow" (doc 03
+ * The ONE affix that says "this entry is a step, not a workflow" (ref dashboard-surfaces
  * §Shell, D219).
  *
  * It lives beside `workflow-category.ts` and is shared by every listing surface

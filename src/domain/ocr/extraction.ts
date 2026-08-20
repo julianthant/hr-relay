@@ -4,7 +4,7 @@
  * An extraction can be produced three ways, and the operator must be able to
  * use any of them interchangeably:
  *
- *   1. a provider model reached through the admitted client (doc 01 §3.4);
+ *   1. a provider model reached through the admitted client (ref task-contract §3.4);
  *   2. an agent the operator runs in their own terminal;
  *   3. the operator, reading the page themselves.
  *
@@ -171,7 +171,7 @@ export const AdmittedRecordSchema = z.strictObject({
   /**
    * Paths a human must resolve before this record may be used: a MANDATORY
    * field that came back absent or unreadable. Empty means ready for review,
-   * not "approved" — doc 12's gate still applies.
+   * not "approved" — ref operator-trust's gate still applies.
    */
   blockingPaths: z.array(OcrFieldPathSchema),
   /** Digest of the admitted answers, for cross-producer comparison. */

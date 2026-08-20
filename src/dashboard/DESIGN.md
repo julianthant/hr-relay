@@ -4,8 +4,8 @@ PORTED, VERBATIM, from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32
 
 Everything below this comment is that file, byte for byte. Nothing in it was
 adapted for this repository, because the point of the document is that it is the
-SAME language: doc 13 §1 names the legacy rebuild-demo the visual authority for
-this tree, and doc 03 §9 records that this document "is binding on every surface
+SAME language: ref frontend-backend-integration §1 names the legacy rebuild-demo the visual authority for
+this tree, and ref dashboard-surfaces §9 records that this document "is binding on every surface
 built against this contract".
 
 It lives HERE, beside the code it governs, rather than only in the legacy repo,

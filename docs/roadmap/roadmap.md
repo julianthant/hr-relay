@@ -28,18 +28,18 @@ chip: complete
 doc: 00
 open: no
 
-> Docs 00–13 reconciled through Round 12 (D1–D94); testing policy ratified; the all-at-once cutover (D89/D93) and the two-repo model ratified; the separations identity gate designed here, not at order 8 (D77).
+> Every reference spec reconciled through Round 12 (D1–D94); testing policy ratified; the all-at-once cutover (D89/D93) and the two-repo model ratified; the separations identity gate designed here, not at order 8 (D77).
 
 builds:
 - [x] DOCS the plan SSOT `docs/rebuild/00–13`, each doc owning its contracts
-- [x] DOCS the decision changelog `04-reconciliation` as a pointer index
-- [x] DOCS ALWAYS-GATE identity approval designed (doc 09 §14)
+- [x] DOCS the decision changelog `reference/decisions` as a pointer index
+- [x] DOCS ALWAYS-GATE identity approval designed (ref write-safety §14)
 - [x] DOCS size model + MUST / SHOULD / LATER delivery tiers (D76)
 - [x] DOCS two-repo coexistence + one cutover (D88–D94)
 
 ### ALWAYS-GATE identity approval {#phase0-always-gate}
 status: done
-date: D77 · doc 09 §14
+date: D77 · ref write-safety §14
 
 > Manual approval on every separation, both types, no auto-approve-on-match — the control that defends against the `T002173685` wrong-person incident, pulled forward from order 8.
 
@@ -71,7 +71,7 @@ builds:
 - [x] BE guard plumbing + the reviewed guard inventory
 - [x] DOCS honest legacy baselines + the D58 capability inventory
 - [x] BE strict domain leaf (zod at every boundary)
-- [x] BE clock / config / secrets single-sourced (doc 11)
+- [x] BE clock / config / secrets single-sourced (ref clock-config-secrets)
 - [x] BE runtime isolation pinned (`.tracker-rebuild`, 3938/5174, locks)
 
 ### 1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG {#p1-authority}
@@ -83,8 +83,8 @@ builds:
 - [x] BE authority SQLite + backup / doctor / degraded mode / restore interlock
 - [x] BE the command family + proof union type shells
 - [x] BE semantic UI registry (406 ported selector keys, provenance-pinned) + ucpath / crm / kuali drivers
-- [x] BE task contracts (doc 01) and the three authoring tiers
-- [x] BE workflow DAG, delegation, the completion program (doc 02)
+- [x] BE task contracts (ref task-contract) and the three authoring tiers
+- [x] BE workflow DAG, delegation, the completion program (ref workflow-model)
 
 needs:
 - p1-base
@@ -297,20 +297,20 @@ status: planned
 date: D264 · audit 2026-08-20
 chip: ratified 2026-08-20 (D264) · D1–D5 planned · D6–D10 proposed
 
-> From the 2026-08-20 architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of doc 13 §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
+> From the 2026-08-20 architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of ref frontend-backend-integration §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
 
 builds:
 - [ ] BE D1 one status/outcome derivation — exported `deriveRunStatus`, ONE `TASK_OUTCOME` vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row (closes C1/C2, part of M3)
 - [ ] BOTH D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified, the D253 sentence corrected (closes C3/C4/M7/M8)
 - [ ] FE D3 every command settlement folds through `settleCommandResult` — 7 sites still enumerate both refusal arms by hand (closes C5)
-- [ ] BOTH D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; then MEASURED against a seeded 1,240-row / 108-member fixture and recorded as doc 13 §7.4's first numbers (closes P1)
+- [ ] BOTH D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; then MEASURED against a seeded 1,240-row / 108-member fixture and recorded as ref frontend-backend-integration §7.4's first numbers (closes P1)
 - [ ] BE D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded (closes P2/P3/P4)
-- [?] FE D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what doc 13 §2 says it is (closes M2)
+- [?] FE D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what ref frontend-backend-integration §2 says it is (closes M2)
 - [?] FE D7 split `LoadedApp` along its own seams — `useDayRoute`/`useRunDetailState`/`useBulkSelection` into `app/*-model.ts`, the five takeover layouts into `app/takeovers.tsx` (closes M1)
 - [?] BOTH D8 models for intake / archive / log-panel, the versioning half of `archive.tsx` split out, and ONE `foldTaskExecutions(row)` for pipeline / timeline / archive (closes M3/M5/M6)
 - [?] FE D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured (closes P5)
 - [?] BOTH D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped (closes M4)
-- [ ] BOTH D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads (`summary`, `enqueue`, `surfaces.inputRun`) and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251; doc 13 §4)
+- [ ] BOTH D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads (`summary`, `enqueue`, `surfaces.inputRun`) and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251; ref frontend-backend-integration §4)
 
 needs:
 - track-c
@@ -495,7 +495,7 @@ chip: needs you
 
 > The gate-age pill (D12 vs your later direction) · D192 re-disposition of `legacy-tool-ops-sanity-check-record` · A6's first live retry as evidence. (The decide-first findings are settled: hours-saved DROPPED by D239; archive tabs and export closed by D223/D240.)
 
-## session: 2026-08-20 | docs-cohesion steps 1–2 | the plan moved to docs/rebuild/14-roadmap.md (0990ebc5); the notation grew doc: · log: · session: (ea7704e0); D263 + D264 ratified; Track D redrawn
+## session: 2026-08-20 | docs-cohesion steps 1–2 | the plan moved out of the repo root (0990ebc5) and now sits at docs/roadmap/roadmap.md; the notation grew doc: · log: · session: (ea7704e0); D263 + D264 ratified; Track D redrawn
 
 ## today: 2026-08-20 · HEAD 8eb77ab · separations 8 / 9 · Tracks B+C DONE · parity re-frozen 151/151 · the three commits wait for 08-28
 
@@ -560,7 +560,7 @@ builds:
 - [ ] WIRE run modal — typed start inputs + start plan for person-lookup's two modes and i9-lookup (descriptor `surfaces.inputRun`)
 - [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
-- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 
 needs:
@@ -591,7 +591,7 @@ builds:
 - [ ] WIRE run modal — typed start inputs + start plan for crm-doc-download · sharepoint-download · old-kronos-reports (descriptor `surfaces.inputRun`)
 - [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
-- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH download viewer — the artifact-bytes route + a per-run downloads tile
 
@@ -623,7 +623,7 @@ builds:
 - [ ] WIRE run modal — typed start inputs + start plan for the OCR pipeline workflow (descriptor `surfaces.inputRun`)
 - [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
-- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH OCR review UI — expanded page ↔ extracted-text pair, approve / reject / retry page, one atomic correction list
 - [ ] WIRE review/approve commands + progressive record patches over the SSE stream
@@ -657,7 +657,7 @@ builds:
 - [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
 - [ ] BOTH gate ceremony — the approval shape this workflow's gate demands, server-computed
-- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] FE Group People — paged members + rollup + containment over real operation members
 
@@ -690,7 +690,7 @@ builds:
 - [ ] WIRE run modal — typed start inputs + start plan for i9-check (descriptor `surfaces.inputRun`)
 - [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
-- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] FE member rows with retention status; the workbook export control
 
@@ -723,7 +723,7 @@ builds:
 - [ ] WIRE run modal — typed start inputs + start plan for work-study and kronos-pay-rule (descriptor `surfaces.inputRun`)
 - [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
-- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH intake grid constants entry + unbind arm (`effectiveDate`, D172/D173)
 
@@ -757,7 +757,7 @@ builds:
 - [ ] WIRE run modal — typed start inputs + start plan for oath-upload and onbase (descriptor `surfaces.inputRun`)
 - [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
-- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] WIRE ServiceNow ticket receipt + OnBase upload-verify on the run-detail receipt
 
@@ -791,7 +791,7 @@ builds:
 - [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
 - [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
 - [ ] BOTH gate ceremony — the approval shape this workflow's gate demands, server-computed
-- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH roster ingest surface; the hire canary's ceremony
 
@@ -1013,7 +1013,7 @@ line there naming what landed and what is left.
 
 ## Phases at a glance
 
-_Moved from 07-master-plan §2 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §2 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite
 re-verifies it, and its four internal §-refs are repointed to the phase docs that now own those
 sections. Each phase's detail — its work items, what is done, its exit criteria — is its own doc
 under `docs/rebuild/`; the tree above is the same set of phases as nodes._
@@ -1029,7 +1029,7 @@ under `docs/rebuild/`; the tree above is the same set of phases as nodes._
 **Reading the Size column.** These are relative build sizes, not calendar — the calendar depends
 on session cadence, which the plan does not own. The unit is *work sessions of the kind this
 program actually runs in*: **S** ≈ 1, **M** ≈ 2–4, **L** ≈ 5–10, **XL** ≈ 10+. They expose
-delivery risk and help keep a long coexistence program tractable. Per-item sizes are in `doc 00` §Size model + delivery tiers; they are estimates
+delivery risk and help keep a long coexistence program tractable. Per-item sizes are in `ref charter` §Size model + delivery tiers; they are estimates
 offered for correction, not commitments.
 
 ---

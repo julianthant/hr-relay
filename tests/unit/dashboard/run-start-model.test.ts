@@ -4,7 +4,7 @@
  * None of them grew a wire: every value here is already on the client-bundled
  * descriptor. What these cases pin is that the modal's words about those values
  * stay TRUE — an exhaustive vocabulary, a reason set scoped to the modal's own
- * preconditions, and the claim doc 13 §D251 makes about the enqueue enum.
+ * preconditions, and the claim ref frontend-backend-integration §D251 makes about the enqueue enum.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -33,7 +33,7 @@ describe("the declared active-run policy, as the modal states it (D251)", () => 
     }
   });
 
-  it("pins doc 13 §D251's claim that NO registered workflow declares supersede-active", () => {
+  it("pins ref frontend-backend-integration §D251's claim that NO registered workflow declares supersede-active", () => {
     // The doc says the arm supersedes nothing because no planner path implements
     // it and nothing declares it. The second half is checkable, so it is checked:
     // the day a descriptor declares it, this case fails and the sentence gets

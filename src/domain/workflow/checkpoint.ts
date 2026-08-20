@@ -1,5 +1,5 @@
 /**
- * The checkpoint record, its loader, and the freshness walk (doc 02 §5.5–§5.7).
+ * The checkpoint record, its loader, and the freshness walk (ref workflow-model §5.5–§5.7).
  *
  * Three rules from the charter shape everything here.
  *
@@ -47,7 +47,7 @@ export const FactProvenanceSchema = z.strictObject({
   source: z.enum(["live", "derived", "operator"]),
   observedAt: IsoInstantSchema,
   originalObservedAt: IsoInstantSchema,
-  /** Present only for an operator correction (doc 02 §5.6 #3). */
+  /** Present only for an operator correction (ref workflow-model §5.6 #3). */
   correctedAt: IsoInstantSchema.optional(),
   supersedes: IsoInstantSchema.optional(),
 });
@@ -263,7 +263,7 @@ export function loadCheckpoint<OutputSchema extends z.ZodType>(
 /* ── the freshness walk (D8) ─────────────────────────────────────────────── */
 
 /**
- * One operator correction to a replayed upstream checkpoint (doc 02 §5.6 #3).
+ * One operator correction to a replayed upstream checkpoint (ref workflow-model §5.6 #3).
  *
  * `value` is deliberately raw JSON: the patch is not authority until the WHOLE
  * post-patch output re-parses through the producing contract's output schema,
@@ -405,7 +405,7 @@ function formatAge(ms: number): string {
 }
 
 /**
- * Returns one message per refused replay, in doc 02 §5.5's shape. Empty means
+ * Returns one message per refused replay, in ref workflow-model §5.5's shape. Empty means
  * every replayed fact is either fresh enough or provably cannot reach a commit
  * scheduled in this run.
  */
@@ -457,7 +457,7 @@ export function assertCheckpointFreshness(input: FreshnessWalkInput): void {
   if (violations.length > 0) throw new Error(violations.join("\n\n"));
 }
 
-/* ── canonical-input snapshot migrations (doc 02 §2) ─────────────────────── */
+/* ── canonical-input snapshot migrations (ref workflow-model §2) ─────────────────────── */
 
 /**
  * A changed canonical schema requires an explicit snapshot migration or a loud

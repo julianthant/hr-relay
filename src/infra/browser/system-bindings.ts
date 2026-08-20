@@ -27,7 +27,7 @@ import type { Page } from "playwright";
 export interface BrowserSystemBinding {
   readonly system: BrowserSystemId;
   /**
-   * The injected `Clock` is the ONE time source a driver may read (doc 11);
+   * The injected `Clock` is the ONE time source a driver may read (ref clock-config-secrets);
    * a driver that stamps its own observations with `new Date()` would be a
    * second clock the manual-clock tests could never control.
    */
@@ -37,7 +37,7 @@ export interface BrowserSystemBinding {
    * The authenticated-application PROOF — the same one the login recipe must
    * pass. A clean release re-navigates to the system's neutral entry route and
    * re-runs it; a page that cannot prove a live session is NOT reusable
-   * (doc 05 §4).
+   * (ref execution-and-sessions §4).
    *
    * This was a `(url: string) => boolean` predicate until 2026-08-03, when a
    * PeopleSoft signon page — same host, same route shape as the application —

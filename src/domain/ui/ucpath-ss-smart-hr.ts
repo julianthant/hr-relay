@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * The SS Smart HR transaction-detail semantic ids — UCPath's `receipt`
- * completion-proof surface (doc 09 §13 OQ2, settled by the 2026-08-04
+ * completion-proof surface (ref write-safety §13 OQ2, settled by the 2026-08-04
  * read-only live probe).
  *
  * A UCPath Smart HR submit mints a `T…` transaction number. That number is

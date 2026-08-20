@@ -39,7 +39,7 @@ import {
 } from "../../stores/common/spreadsheet-grid.js";
 
 /**
- * How many real values per column the mapping grid gets to show. Doc 06 §2.2
+ * How many real values per column the mapping grid gets to show. Ref data-intake-and-edit-data §2.2
  * asks for "a few"; five is enough for the suggestion scorer's sample
  * agreement to mean something while staying a glance rather than a data dump.
  */

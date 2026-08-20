@@ -1,7 +1,7 @@
 # Delegation — topology, shapes, and layouts (2026-07-25)
 
 **Status:** proposal — **§7 ANSWERED and ratified 2026-07-25 as D6–D20 in
-`docs/rebuild/03-tracker-dashboard.md` §9** (§5's S4 layout is deleted by D6). Where this ledger and
+`docs/rebuild/reference/dashboard-surfaces.md` §9** (§5's S4 layout is deleted by D6). Where this ledger and
 doc 03 §9 disagree, §9 wins.
 **Question this answers:** "figure out how single and multiple delegations should look across
 multiple workflows and how the design should be laid out and all the design layouts and what

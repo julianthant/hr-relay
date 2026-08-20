@@ -11,11 +11,11 @@ import {
 import { SchemaBoundCanonicalValueSchema } from "./schema-bound-value.js";
 
 /**
- * The identity a write is fenced against (doc 09 beat ③).
+ * The identity a write is fenced against (ref write-safety beat ③).
  *
  * It lives in the browser-safe half for the same reason `TransactionOutcome`
  * does (D144): a descriptor closure has to be able to hash a schema that embeds
- * it, and `write-safety.ts` imports `node:crypto`. Doc 09's module re-exports
+ * it, and `write-safety.ts` imports `node:crypto`. Ref write-safety's module re-exports
  * it, so its address is unchanged.
  */
 export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
@@ -74,14 +74,14 @@ export const NegativeSettlementPolicySchema = z.discriminatedUnion("kind", [
 ]);
 
 /**
- * The DURABLE settlement of one transaction node (doc 09 §3 beat ⑦ / §14), and
+ * The DURABLE settlement of one transaction node (ref write-safety §3 beat ⑦ / §14), and
  * the exact schema a `run_checkpoints` row for a transaction node is bound to.
  *
- * It lives in this browser-safe half rather than beside the rest of doc 09's
+ * It lives in this browser-safe half rather than beside the rest of ref write-safety's
  * write-safety records because a workflow descriptor's terminal `build` must
  * hash it (D144), and a descriptor closure may not reach a Node built-in —
  * `write-safety.ts` imports `node:crypto`. `write-safety.ts` re-exports it, so
- * doc 09's module stays the name every write-lane caller reads.
+ * ref write-safety's module stays the name every write-lane caller reads.
  *
  * `output` and `proof` are schema-bound canonical values: the commit contract's
  * own output/proof schema hashes live INSIDE this envelope, one level down.

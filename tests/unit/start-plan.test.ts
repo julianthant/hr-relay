@@ -1,5 +1,5 @@
 /**
- * Start planning and plan consumption (doc 13 §5.1).
+ * Start planning and plan consumption (ref frontend-backend-integration §5.1).
  *
  * The property under test throughout is that the operator acts on the truth:
  * what the plan says will start is what starts, what it refuses is named with a
@@ -266,7 +266,7 @@ describe("start planning", () => {
       assert.equal(supportsDryRun(descriptor), true, `${descriptor.id} must be previewable`);
       const support = workflowDryRunSupport(descriptor);
       assert.equal(support.state, "supported");
-      // The stop node is the FIRST transaction node, which is where doc 01
+      // The stop node is the FIRST transaction node, which is where ref task-contract
       // §10.1 says a preview ends.
       const firstTransaction = descriptorRuntimeNodes(descriptor)
         .find((node) => node.kind === "transaction");

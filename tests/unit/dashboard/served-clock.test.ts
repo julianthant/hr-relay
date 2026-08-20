@@ -1,5 +1,5 @@
 /**
- * The dashboard's ONE live instant (D256, doc 03 §"Wave-2 connection-proof
+ * The dashboard's ONE live instant (D256, ref dashboard-surfaces §"Wave-2 connection-proof
  * presentation deltas").
  *
  * The defect these pin, measured on the Track C connection proof (separations

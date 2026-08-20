@@ -2,7 +2,7 @@
  * The rebuild CLI's command surface. The `dashboard` command is real as of
  * 1g-spine: it starts the in-process typed BFF (projection + SSE + command
  * route) through the injected `dashboard` seam. The `worker` command is real
- * as of 1f: it runs one workflow-scoped doc 05 §3 worker through the injected
+ * as of 1f: it runs one workflow-scoped ref execution-and-sessions §3 worker through the injected
  * `worker` seam (`src/server/worker/compose.ts`).
  *
  * The seams exist because of the layer matrix, not taste: the compositions
@@ -38,7 +38,7 @@ export interface RebuildRuntimeStart {
 
 type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
 /**
- * Doc 12 §2.5's `explain` is SYNCHRONOUS on purpose: it opens authority, reads,
+ * Ref operator-trust §2.5's `explain` is SYNCHRONOUS on purpose: it opens authority, reads,
  * derives, closes, and returns the text. A promise here would let the process
  * exit before the database closed.
  */
@@ -50,13 +50,13 @@ type ExplainComposer = (isolation: RuntimeIsolation, args: readonly string[]) =>
  * terminal agent's tooling need not parse prose.
  */
 type OcrComposer = (args: readonly string[]) => { readonly output: string; readonly exitCode: number };
-/** The worker seam speaks the loop's exact schema-backed report (doc 05 §3). */
+/** The worker seam speaks the loop's exact schema-backed report (ref execution-and-sessions §3). */
 type WorkerComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<WorkerLoopReport>;
 /**
- * The `storage` seam (doc 03 §2.5, 2i-D). Read-only by contract — the doctor
+ * The `storage` seam (ref dashboard-surfaces §2.5, 2i-D). Read-only by contract — the doctor
  * inspects the authority copy and re-verifies backups without opening
  * anything read-write — and its exit code is scriptable: 0 only when
  * authority is healthy AND a verified current backup exists.
@@ -118,9 +118,9 @@ export function registerStorageComposer(composer: StorageComposer): void {
 }
 
 /**
- * The runtime's own phase status, in doc 07's identifiers.
+ * The runtime's own phase status, in the phase docs' identifiers.
  *
- * `completedThrough` is the LAST completed work item of doc 07's ordered
+ * `completedThrough` is the LAST completed work item of the phase docs' ordered
  * sequence, not the phase letter. Phase 1 closed with `1i-spine` (D74, live
  * person-lookup, 2026-08-04); Phase 2's controlled transaction proof was met
  * live the same day (D135, doc 4489); tail `2g` completed 2026-08-04
@@ -129,15 +129,15 @@ export function registerStorageComposer(composer: StorageComposer): void {
  * completed 2026-08-09 (D168–D180), and tail `2j` — the integration/restore/
  * soak/documentation gate — closed Phase 2 the same day (D181–D189).
  *
- * `active` is now **Phase 3**, the per-workflow migration loop (doc 07 §3.1),
- * and it is deliberately the phase rather than a workflow id: doc 07 §3.3
+ * `active` is now **Phase 3**, the per-workflow migration loop (doc 03c §Phase summary),
+ * and it is deliberately the phase rather than a workflow id: doc 03c §Recommended migration order
  * orders the migrations but the operator picks which one starts, so naming one
  * here would be this file asserting a decision it does not own.
  *
  * Two criteria left Phase 2 with an explicit disposition rather than a build,
  * and both are recorded where a reader will find them: the explorer's EDIT
- * half (D186, doc 12 §5.3 — reassigned with a named trigger) and the BFF's
- * missing static handler (D189, doc 13 §6.9 — a named gap with an owner).
+ * half (D186, ref operator-trust §5.3 — reassigned with a named trigger) and the BFF's
+ * missing static handler (D189, ref frontend-backend-integration §6.9 — a named gap with an owner).
  */
 const COMPLETED_THROUGH = "2j";
 const ACTIVE_ITEM = "3-workflow-migration";
@@ -149,12 +149,12 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  help       show this contract surface",
     "  phase      print the active isolated runtime resources",
     `  dashboard  start the in-process typed dashboard BFF (1g-spine, port ${String(isolation.backendPort)})`,
-    // Doc 05 names no CLI subcommand for its worker (§3 names only the
+    // Ref execution-and-sessions names no CLI subcommand for its worker (§3 names only the
     // `runWorker` loop), so `worker` is the recorded choice here.
-    "  worker <workflow-id> [--drain]  run one workflow-scoped browser worker (doc 05 §3)",
-    "  explain run <traceId|runId> [--json]  explain one run from authority (doc 12 §2.5)",
+    "  worker <workflow-id> [--drain]  run one workflow-scoped browser worker (ref execution-and-sessions §3)",
+    "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
-    "  storage doctor [--json]  read-only authority + backup health report (doc 03 §2.5; exit 0 = healthy AND current backup)",
+    "  storage doctor [--json]  read-only authority + backup health report (ref dashboard-surfaces §2.5; exit 0 = healthy AND current backup)",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup (D181)",
   ].join("\n");
 }

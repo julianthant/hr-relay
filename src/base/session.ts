@@ -18,7 +18,7 @@ import type { BrowserDriver } from "./task.js";
  * Proof that a worker browser resource is REALLY gone. Every field is a
  * required literal on the success path: a close that cannot assert page and
  * context closure must throw instead of returning a weaker proof, and the
- * session manager then retains the resource as poisoned (doc 05 §4).
+ * session manager then retains the resource as poisoned (ref execution-and-sessions §4).
  */
 export interface BrowserSessionCloseProof {
   readonly sessionId: BrowserSessionId;
@@ -36,7 +36,7 @@ export type BrowserSessionCloseReason =
   | "login-failed";
 
 /**
- * One authenticated worker-owned browser session for one system (doc 05 §1).
+ * One authenticated worker-owned browser session for one system (ref execution-and-sessions §1).
  * The D116 reuse identity is part of the resource itself: `instance` and
  * `configFingerprint` record exactly which resolved instance and immutable
  * run-config snapshot the session was authenticated under.

@@ -1,5 +1,5 @@
 /**
- * Doc 09 §6. The four requests the serialized ledger projector makes of
+ * Ref write-safety §6. The four requests the serialized ledger projector makes of
  * authority. Each one names the exact lease generation it believes it holds, so
  * a projector whose lease expired under it cannot advance a sequence or mark a
  * line appended.

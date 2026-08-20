@@ -1,5 +1,5 @@
 /**
- * The storage doctor route (doc 03 §2.5, 2i-D): run the read-only doctor on
+ * The storage doctor route (ref dashboard-surfaces §2.5, 2i-D): run the read-only doctor on
  * demand and project its infra report onto the browser-safe wire, with the
  * live backup service's last outcome beside it — a failed backup run leaves
  * no manifest for the on-disk doctor to see, so the service must say so

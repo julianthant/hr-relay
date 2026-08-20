@@ -103,7 +103,7 @@ export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
 } as const satisfies Record<ProviderCapabilityId, keyof z.output<typeof ProviderBudgetConfigSchema>>);
 
 /**
- * The absolute filesystem locations the runtime reads and writes (doc 11 §4).
+ * The absolute filesystem locations the runtime reads and writes (ref clock-config-secrets §4).
  *
  * PURE CONTRACT, NO DEFAULT — deliberately. This module also carries the
  * settings-override contract that `src/domain/commands.ts`, and through it the

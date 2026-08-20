@@ -2,7 +2,7 @@
  * The phone bundle's entry point (2i-F, D175).
  *
  * A SECOND entry in the same Vite build, not a route inside the operator app.
- * The reason is the scope boundary rather than the layout: doc 12 §7's ingress
+ * The reason is the scope boundary rather than the layout: ref operator-trust §7's ingress
  * serves this page's own asset closure and nothing else, and an entry is the
  * only thing a bundler can give an exact closure for. A phone route inside the
  * dashboard bundle would put the queue, the run detail, the command envelope

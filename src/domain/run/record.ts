@@ -1,5 +1,5 @@
 /**
- * The durable run record — doc 03 §2.3's task/claim store, doc 02 §4's state
+ * The durable run record — ref dashboard-surfaces §2.3's task/claim store, ref workflow-model §4's state
  * machine, made a schema.
  *
  * **Parks are states, not sentinel statuses.** The legacy pairing of a `status`
@@ -7,15 +7,15 @@
  * is what made every surface re-derive what a row meant. Here the lifecycle is
  * one discriminated union: a parked run *is* `parked-gate`, and it structurally
  * cannot carry a worker or a claim generation, because a parked run owns no
- * worker (doc 05 §2.1).
+ * worker (ref execution-and-sessions §2.1).
  *
  * **The claim is the fence.** `(workerId, claimGeneration)` on the row is the
  * whole ownership protocol: a worker renews exactly its one active claim, and a
  * zombie worker whose lease already expired cannot terminalize a row another
  * worker has since claimed, because its generation no longer matches.
  *
- * The input half follows doc 02 §2: raw and parsed are stored separately with
- * their schema hashes, and Edit Data can patch neither. Doc 03 §1.1 also allows
+ * The input half follows ref workflow-model §2: raw and parsed are stored separately with
+ * their schema hashes, and Edit Data can patch neither. Ref dashboard-surfaces §1.1 also allows
  * a sensitive-input authority reference in place of an inline input; no
  * workflow needs one before Phase 2, so that arm is deliberately absent rather
  * than invented here — it lands with the first workflow that carries one.
@@ -41,7 +41,7 @@ import { VerdictKeySchema } from "../workflow/presentation.js";
 import { RunEnvelopeSchema } from "./envelope.js";
 
 /**
- * Doc 03 §1.1's outcome union. `cancelled`, `discarded`, `interrupted`, and
+ * Ref dashboard-surfaces §1.1's outcome union. `cancelled`, `discarded`, `interrupted`, and
  * `superseded` are FIRST-CLASS outcomes — the `failed + step:"cancelled"`
  * sentinel family does not exist in this tree.
  */
@@ -80,7 +80,7 @@ const ClaimFields = {
 export const RunLifecycleSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("queued"),
-    /** Retry backoff rides here; a worker never sleeps holding a run (doc 05 §3). */
+    /** Retry backoff rides here; a worker never sleeps holding a run (ref execution-and-sessions §3). */
     notBefore: IsoInstantSchema.optional(),
     requeuedFrom: RequeueCauseSchema.optional(),
   }),
@@ -95,7 +95,7 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     state: z.literal("parked-gate"),
     gateId: GateIdSchema,
     parkedAt: IsoInstantSchema,
-    /** The node execution resumes at once the gate resolves (doc 02 §4). */
+    /** The node execution resumes at once the gate resolves (ref workflow-model §4). */
     resumeAt: NodeIdSchema,
   }),
   z.strictObject({
@@ -103,7 +103,7 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     writeIntentId: WriteIntentIdSchema,
     intentGeneration: PositiveIntSchema,
     parkedAt: IsoInstantSchema,
-    /** Doc 09 §4 park codes; there is no generic Done/Retry from here. */
+    /** Ref write-safety §4 park codes; there is no generic Done/Retry from here. */
     code: z.enum(["unknown", "ambiguous", "present-proof-invalid", "binding-invalid", "operator-required"]),
     message: z.string().min(1),
   }),
@@ -112,7 +112,7 @@ export const RunLifecycleSchema = z.discriminatedUnion("state", [
     outcome: RunOutcomeSchema,
     endedAt: IsoInstantSchema,
     failureId: FailureIdSchema.optional(),
-    /** Display-safe summary; never the only failure evidence (doc 03 §1.1). */
+    /** Display-safe summary; never the only failure evidence (ref dashboard-surfaces §1.1). */
     errorSummary: z.string().min(1).optional(),
     verdict: VerdictKeySchema.optional(),
     evidenceReceiptId: EvidenceReceiptIdSchema.optional(),
@@ -150,7 +150,7 @@ export function isTerminalRunState(lifecycle: RunLifecycle): boolean {
 }
 
 /**
- * Doc 02 §4's state machine as data. Everything absent from this table is
+ * Ref workflow-model §4's state machine as data. Everything absent from this table is
  * illegal — a run cannot slide from `queued` straight to `running` without a
  * claim, and a terminal row can only re-open through the one documented door:
  * an `interrupted` outcome being requeued.
@@ -164,7 +164,7 @@ const LEGAL_RUN_TRANSITIONS: ReadonlyMap<RunState, readonly RunState[]> = new Ma
   ["validating", ["validating", "running", "queued", "terminal"]],
   ["running", ["running", "parked-gate", "parked-write", "queued", "terminal"]],
   // A gate or write resolution re-enqueues; the fresh claim reacquires sessions
-  // (doc 02 §4). A parked run holds no worker, so it can never resume in place.
+  // (ref workflow-model §4). A parked run holds no worker, so it can never resume in place.
   ["parked-gate", ["parked-gate", "queued", "terminal"]],
   ["parked-write", ["parked-write", "queued", "terminal"]],
   ["terminal", ["queued"]],
@@ -197,7 +197,7 @@ export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): st
 }
 
 /**
- * Doc 02 §2: SQLite stores the raw submission, the parsed canonical value, and
+ * Ref workflow-model §2: SQLite stores the raw submission, the parsed canonical value, and
  * both schema hashes separately. Keeping the raw text means a later canonical
  * schema change can be diagnosed against what the operator actually submitted
  * instead of against a value already rewritten by a since-changed default.
@@ -222,7 +222,7 @@ export const RunRecordSchema = z.strictObject({
    * a generation that matches.
    */
   claimGeneration: NonNegativeIntSchema,
-  /** Operator-assigned label over a stable id (doc 03 D83); never identity. */
+  /** Operator-assigned label over a stable id (ref dashboard-surfaces D83); never identity. */
   displayName: RunDisplayNameSchema.optional(),
   /**
    * RETIRED (D234) — a parse-tolerated vestige, read by nothing and written by

@@ -8,7 +8,7 @@ export const REBUILD_COVERAGE_EXCLUSIONS = [
     activation: { ownerRoot: "src/generated", status: "planned" },
     reason: "Generated projections are verified by determinism guards.",
   },
-  // The .tsx presentation subtrees (doc 13 §2) landed with the 1i shell;
+  // The .tsx presentation subtrees (ref frontend-backend-integration §2) landed with the 1i shell;
   // their rendered behavior is proven by the headless Playwright parity lane
   // (tests/parity), not v8 line counting. Extracted .ts logic stays measured.
   {

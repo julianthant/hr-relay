@@ -1,6 +1,6 @@
 /**
  * Typed mutation surface: the ONE command envelope route plus start-plan
- * minting (doc 13 §3.4). The client validates the request BEFORE it leaves
+ * minting (ref frontend-backend-integration §3.4). The client validates the request BEFORE it leaves
  * (a malformed command never burns a round trip) and parses the result
  * verbatim — `conflict` and `rejected` are values, not exceptions, because
  * the operator acts on them.

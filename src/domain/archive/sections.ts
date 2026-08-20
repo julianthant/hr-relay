@@ -1,5 +1,5 @@
 /**
- * The archived run's FROZEN section payloads (D223, doc 03 §10.2).
+ * The archived run's FROZEN section payloads (D223, ref dashboard-surfaces §10.2).
  *
  * D179 froze the projected row, the detail, the receipt, the failure and the
  * evidence pointers. That left the archived detail rendering two tabs where
@@ -81,7 +81,7 @@ export const ArchivedCaptureTileSchema = z.strictObject({
   sensitivity: z.enum(["redacted", "restricted"]),
   /** The instant the BUNDLE was captured — the attachment's own row instant. */
   capturedAt: IsoInstantSchema,
-  /** Why the bundle exists at all (doc 12 §2.2's closed origin vocabulary). */
+  /** Why the bundle exists at all (ref operator-trust §2.2's closed origin vocabulary). */
   origin: z.enum(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"]),
   /** A screenshot's pixel size, so a thumbnail can hold its aspect. */
   dimensions: z.strictObject({ width: PositiveIntSchema, height: PositiveIntSchema }).optional(),
@@ -117,7 +117,7 @@ export const ArchivedAttemptOutcomeSchema = z.enum([
  *
  * The detail could say "1 attempt" and nothing about what each attempt DID: on
  * a run that failed twice before settling, the archive could not show the shape
- * of the retry. Span identity is `(runId, attempt, spanPath)` (doc 03 §1.1,
+ * of the retry. Span identity is `(runId, attempt, spanPath)` (ref dashboard-surfaces §1.1,
  * D74's lesson), so the attempt is already the grouping key the fold carries —
  * this is a projection of facts the row holds, not a new authority read.
  *

@@ -1,5 +1,5 @@
 /**
- * Doc 13 §8.14 — React Fast Refresh boundary purity for the dashboard's surfaces.
+ * Ref frontend-backend-integration §8.14 — React Fast Refresh boundary purity for the dashboard's surfaces.
  *
  * `@vitejs/plugin-react` accepts a module as a Fast Refresh boundary only when
  * EVERY export is a likely component (an uppercase-named function, or a
@@ -113,7 +113,7 @@ function surfaceFiles(): string[] {
       .map((f) => join(root, f)));
 }
 
-describe("dashboard refresh boundary (doc 13 §8.14)", () => {
+describe("dashboard refresh boundary (ref frontend-backend-integration §8.14)", () => {
   it("every surface and app module exports components only", () => {
     const files = surfaceFiles();
     expect(files.length).toBeGreaterThan(20);

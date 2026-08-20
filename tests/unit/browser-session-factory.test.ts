@@ -1,5 +1,5 @@
 /**
- * The real worker browser-session factory (doc 05 §4 · doc 11 §4).
+ * The real worker browser-session factory (ref execution-and-sessions §4 · ref clock-config-secrets §4).
  *
  * The Playwright launch itself is the ONE injected seam; everything the factory
  * decides — profile isolation, Duo prerequisites, authentication dispatch,

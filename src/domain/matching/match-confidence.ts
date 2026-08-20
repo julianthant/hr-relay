@@ -1,9 +1,9 @@
 /**
- * Confidence → tier bucketing for a roster/OCR match (doc 06 §4).
+ * Confidence → tier bucketing for a roster/OCR match (ref data-intake-and-edit-data §4).
  *
  * Ported VERBATIM from the legacy repository (D93 — copy with provenance,
  * never link): `legacy:src/dashboard/components/ocr/shared/match-confidence.ts`
- * at commit `0fd181c2`. Doc 06 §4 calls this mapping out by name: the
+ * at commit `0fd181c2`. Ref data-intake-and-edit-data §4 calls this mapping out by name: the
  * thresholds are LIVE-VERIFIED and port as-is into this one domain module so
  * the roster task and the dashboard badge import the SAME numbers — no
  * re-implementation, no drift.

@@ -70,14 +70,14 @@ export interface DashboardQueries {
   dashboardDay(day: string): Promise<DashboardDayWire>;
   runDetail(runId: string): Promise<RunDetailWire>;
   runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse>;
-  /** Doc 03 §2.5's read-only doctor, run on demand from Settings (2i-D). */
+  /** Ref dashboard-surfaces §2.5's read-only doctor, run on demand from Settings (2i-D). */
   storageDoctor(): Promise<StorageDoctorWire>;
-  /** Doc 06 §2.2 step 1 — the bytes go up, a durable session comes back (2i-E3). */
+  /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back (2i-E3). */
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
   /** The durable session joined with its re-derived parse view and hints. */
   intakeSession(intakeSessionId: string): Promise<IntakeSessionWire>;
   /**
-   * Doc 06 §5.1 — mint a phone capture session (2i-F, D175).
+   * Ref data-intake-and-edit-data §5.1 — mint a phone capture session (2i-F, D175).
    *
    * `201` carries the ONE raw token that ever exists outside the phone; `409`
    * carries a NAMED ingress refusal with its remediation. Both are outcomes the
@@ -87,7 +87,7 @@ export interface DashboardQueries {
    */
   startCaptureSession(request: CaptureStartRequest): Promise<CaptureStartResult>;
   /**
-   * Doc 12 §5.2's read-only explorer projection (2i-G, D176).
+   * Ref operator-trust §5.2's read-only explorer projection (2i-G, D176).
    *
    * There is deliberately no mutating counterpart on this interface: Phase A
    * has no draft, no validate and no apply, so the surface cannot offer one.
@@ -96,7 +96,7 @@ export interface DashboardQueries {
   /** The committed `generated/ui-catalog.json`, served read-only (2i-G, D177). */
   uiCatalog(): Promise<UiCatalogWire>;
   /**
-   * Doc 12 §4.4's on-demand failure advisory (2i-G, D178).
+   * Ref operator-trust §4.4's on-demand failure advisory (2i-G, D178).
    *
    * It is a METHOD an operator action calls, never a section the panel
    * prefetches: it spends a provider budget, so nothing may invoke it as a

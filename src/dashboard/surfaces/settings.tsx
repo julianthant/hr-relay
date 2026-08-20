@@ -1,5 +1,5 @@
 /**
- * Settings (doc 03 §2.5, 2i-D): the gear in the top bar, and the one section
+ * Settings (ref dashboard-surfaces §2.5, 2i-D): the gear in the top bar, and the one section
  * the bootstrap serves today — Storage.
  *
  * Storage is READ-ONLY health: the bootstrap summary at rest (age/health,
@@ -59,7 +59,7 @@ function backupStatusOf(backup: StorageHealthSummary["backup"]): DsStatus {
  * activity report all carry it.
  *
  * D222 narrowed what earns the band to exactly that one state. A stale or
- * missing backup does not stop the work, and doc 03 §2.6 has always named it
+ * missing backup does not stop the work, and ref dashboard-surfaces §2.6 has always named it
  * a `storage` NOTIFICATION — so it now reaches the operator as a durable
  * inbox row (published by the composition's backup-health watch) plus the
  * gear's attention dot, never as a band over every view. The unreachable

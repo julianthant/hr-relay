@@ -1,11 +1,11 @@
 /**
- * Name-match scoring and name-similarity classification (doc 06 §4).
+ * Name-match scoring and name-similarity classification (ref data-intake-and-edit-data §4).
  *
  * Ported from the legacy repository (D93 — copy with provenance, never link):
  * `legacy:src/services/matching/match.ts` at commit `ab9ab5ab` — `tokenize`,
  * `scoreNameMatch` (the five-tier scorer) and `classifyNameSimilarity` (the
  * order-insensitive same/similar/different classifier), each byte-equivalent
- * in behaviour. Doc 06 §4 draws the line precisely: the confidence→tier
+ * in behaviour. Ref data-intake-and-edit-data §4 draws the line precisely: the confidence→tier
  * BUCKETING (`match-confidence.ts`) is live-verified and ports verbatim,
  * while the roster SCORING COMPOSITION built over these functions
  * (`roster-match.ts`) is REDESIGNED code that must be re-verified against
@@ -14,7 +14,7 @@
  * inherit that pedigree.
  *
  * NOT ported, deliberately: `matchAgainstRosterAsync`'s LLM disambiguation
- * arm (a provider concern; doc 06 §4's rebuilt contract has no LLM tier),
+ * arm (a provider concern; ref data-intake-and-edit-data §4's rebuilt contract has no LLM tier),
  * `correctNameSpelling` (a Kuali write-path concern), and the address
  * helpers (address matching is not part of `roster/match-spreadsheet`).
  */

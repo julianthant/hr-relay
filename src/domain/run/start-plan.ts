@@ -1,5 +1,5 @@
 /**
- * The start plan — what a `start-run` command consumes (doc 13 §5.1).
+ * The start plan — what a `start-run` command consumes (ref frontend-backend-integration §5.1).
  *
  * Planning and starting are two steps on purpose. The plan is where input is
  * parsed, instances are resolved, identity and enqueue policy are evaluated,

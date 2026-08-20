@@ -1,6 +1,6 @@
 /**
- * The per-cell coercion core (doc 06 §2.4) and the canonical field registry
- * (doc 06 §1), tested where they are dangerous: on the cells that LOOK
+ * The per-cell coercion core (ref data-intake-and-edit-data §2.4) and the canonical field registry
+ * (ref data-intake-and-edit-data §1), tested where they are dangerous: on the cells that LOOK
  * coercible.
  *
  * Every case below is one where a "best effort" implementation would have
@@ -49,7 +49,7 @@ function coercionFailure(id: (typeof CANONICAL_FIELD_IDS)[number], raw: string):
   throw new Error(`${id} accepted ${JSON.stringify(raw)} when it should have refused`);
 }
 
-describe("doc 06 §2.4 per-cell coercion", () => {
+describe("ref data-intake-and-edit-data §2.4 per-cell coercion", () => {
   it("names the row, column, field and value in the message", () => {
     const failure = coercionFailure("eid", "10-4567");
     assert.equal(
@@ -160,7 +160,7 @@ describe("doc 06 §2.4 per-cell coercion", () => {
   });
 });
 
-describe("doc 06 §1 canonical field registry shape", () => {
+describe("ref data-intake-and-edit-data §1 canonical field registry shape", () => {
   it("exposes one entry per declared id, keyed by that id", () => {
     for (const id of CANONICAL_FIELD_IDS) assert.equal(CANONICAL_FIELDS[id].id, id);
   });

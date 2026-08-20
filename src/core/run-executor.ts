@@ -1,9 +1,9 @@
 /**
- * The Phase-1f graph interpreter (doc 02 §§4–5; doc 05 §3): a worker claims a
+ * The Phase-1f graph interpreter (ref workflow-model §§4–5; ref execution-and-sessions §3): a worker claims a
  * queued run and walks the descriptor's node tuple to a terminal state.
  *
  * The shape follows the run-state machine exactly. Entry validation runs in
- * `validating`, BEFORE any browser launches (doc 02 §5.4), and aggregates
+ * `validating`, BEFORE any browser launches (ref workflow-model §5.4), and aggregates
  * every problem into one legible terminal failure. Execution then advances
  * `running.currentNodeId` node by node; browser tasks reach their driver only
  * inside `WorkerSessionManager.withDriver`'s callback lease; every read output
@@ -12,16 +12,16 @@
  * authority composites with a factory-built `TerminalAuthorizationRecord`.
  *
  * Every task invocation is raced against an immutable, abortable deadline
- * (doc 05 §5.5): a service or driver call that ignores its signal cannot
+ * (ref execution-and-sessions §5.5): a service or driver call that ignores its signal cannot
  * occupy the worker past the bound.
  *
  * Replay policy is structural: the interpreter consults `loadCheckpoint` ONLY
  * for `replay:"checkpoint"` task nodes — an `always-rerun` node re-executes on
- * every resume and its stored rows are audit, never authority (doc 02 §5.3).
+ * every resume and its stored rows are audit, never authority (ref workflow-model §5.3).
  *
  * Two node arms are typed SEAMS, not implementations: the `transaction` arm
- * delegates to a `WriteSequencer` (doc 09's beat family — a separate task) and
- * the `child-run` arm to a `ChildRunExecutor` (doc 02 §3.2's enqueue/join
+ * delegates to a `WriteSequencer` (ref write-safety's beat family — a separate task) and
+ * the `child-run` arm to a `ChildRunExecutor` (ref workflow-model §3.2's enqueue/join
  * authority). Invoked without an implementation, each fails loud in the
  * `capability-unavailable` style — a structured terminal failure naming the
  * missing seam — and never skips the node. A sequencer post-fence park
@@ -151,7 +151,7 @@ type ChildRunRuntimeNode = Extract<RuntimeFlowNode, { kind: "child-run" }>;
 type TaskRuntimeNode = Extract<RuntimeFlowNode, { kind: "task" }>;
 
 /**
- * Doc 09 §4.1's write sequencer seam. It owns probe → lease → prepare →
+ * Ref write-safety §4.1's write sequencer seam. It owns probe → lease → prepare →
  * subject proof → fence → commit → beat-⑦ atomic settlement, and dry-run's
  * stop-after-prepare arm. A separate task implements it; this interpreter only
  * dispatches to it and fails loud when it is absent.
@@ -169,7 +169,7 @@ export interface WriteSequencerContext {
 export interface WriteSequencer {
   executeTransaction(context: WriteSequencerContext): Promise<unknown>;
   /**
-   * D210 — doc 09 §12's prepare-only arm. It is part of the seam rather than a
+   * D210 — ref write-safety §12's prepare-only arm. It is part of the seam rather than a
    * production-only extra because the interpreter's dry-run path is not
    * optional: a run whose envelope says `dryRun` has no other legal way through
    * a transaction node, and `executeTransaction` refuses to substitute one.
@@ -179,11 +179,11 @@ export interface WriteSequencer {
 
 /**
  * Raised by the write sequencer AFTER the intent and the run are durably
- * parked (`parked-write`, intent-first ordering — doc 09 §3's fail-closed
+ * parked (`parked-write`, intent-first ordering — ref write-safety §3's fail-closed
  * post-fence exit). It lives HERE, with the `WriteSequencer` seam it is part
  * of: the sequencer owns the durable settlement, and the interpreter's
  * `parked-write` outcome arm only OBSERVES it — no second settlement, no
- * failure terminalization. The doc 09 §4.1 typed operator resolutions are the
+ * failure terminalization. The ref write-safety §4.1 typed operator resolutions are the
  * only release paths.
  */
 export class WriteParkedError extends Error {
@@ -205,7 +205,7 @@ export class WriteParkedError extends Error {
   }
 }
 
-/** Doc 02 §3.2's delegation seam: atomic fan-out enqueue, park, and typed join. */
+/** Ref workflow-model §3.2's delegation seam: atomic fan-out enqueue, park, and typed join. */
 export interface ChildRunContext {
   readonly descriptor: AnyWorkflowDescriptor;
   readonly node: ChildRunRuntimeNode;
@@ -220,7 +220,7 @@ export interface ChildRunExecutor {
 }
 
 /**
- * Doc 03 §2.1 (D45) / doc 06 §4.1: the sink projector behind a descriptor's
+ * Ref dashboard-surfaces §2.1 (D45) / ref data-intake-and-edit-data §4.1: the sink projector behind a descriptor's
  * `artifactProjections`. The executor commits the checkpoint and the
  * stable-keyed `artifact_outbox` rows in ONE authority transaction, then
  * calls this seam BEFORE the node may report done — a projection that cannot
@@ -233,7 +233,7 @@ export interface RunArtifactProjector {
 }
 
 /**
- * Doc 01 §3.4 / D112's admitted-provider wiring for contracts that declare
+ * Ref task-contract §3.4 / D112's admitted-provider wiring for contracts that declare
  * `providers`. The executor mints one admitted client PER declared capability
  * PER task invocation, bound to the run's RETAINED config snapshot (read from
  * authority by the envelope's `configSnapshotId` — never re-resolved from
@@ -287,23 +287,23 @@ export interface RunExecutorDependencies {
   readonly clock: Clock;
   readonly ids: IdFactory;
   readonly scheduler: MonotonicDeadlineScheduler;
-  /** Immutable per-invocation task bound (doc 05 §5.5); no default, no opt-out. */
+  /** Immutable per-invocation task bound (ref execution-and-sessions §5.5); no default, no opt-out. */
   readonly taskDeadlineMs: number;
   readonly log: TaskLogger;
   readonly checkpointMigrations?: readonly CheckpointMigration[];
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
-  /** Doc 12 §2.2. Absent means no automatic bundle, never a silent empty one. */
+  /** Ref operator-trust §2.2. Absent means no automatic bundle, never a silent empty one. */
   readonly diagnostics?: RunDiagnosticCapture;
   /**
    * Absent means a contract declaring provider capabilities terminalizes with
    * a structured failure naming the missing wiring — never a bypass around
-   * admission (doc 06 §4.11).
+   * admission (ref data-intake-and-edit-data §4.11).
    */
   readonly providers?: RunProviderWiring;
   /**
-   * Doc 01 §2.1's kernel content-addressed writer. Absent means a contract
+   * Ref task-contract §2.1's kernel content-addressed writer. Absent means a contract
    * declaring `artifacts: "content-addressed"` terminalizes with a structured
    * failure naming the missing wiring.
    */
@@ -311,7 +311,7 @@ export interface RunExecutorDependencies {
   /**
    * Absent means a node with a declared durable artifact projection
    * terminalizes with a structured failure naming the missing wiring — a
-   * blocking projection is never silently skipped (doc 06 §4.1).
+   * blocking projection is never silently skipped (ref data-intake-and-edit-data §4.1).
    */
   readonly artifactProjector?: RunArtifactProjector;
 }
@@ -329,7 +329,7 @@ export const RunExecutionOutcomeSchema = z.discriminatedUnion("state", [
   /**
    * A post-fence park the sequencer already settled durably (intent parked,
    * run `parked-write`). First-class so a park never masquerades as a failure
-   * or an escaping error; released only by doc 09 §4.1's typed resolutions.
+   * or an escaping error; released only by ref write-safety §4.1's typed resolutions.
    */
   z.strictObject({
     state: z.literal("parked-write"),
@@ -484,7 +484,7 @@ export async function executeClaimedRun(
   };
 
   /**
-   * Doc 12 §2.2's task-failure capture trigger, wired to the one place a
+   * Ref operator-trust §2.2's task-failure capture trigger, wired to the one place a
    * Phase-1 run's `FailureRecord` becomes durable.
    *
    * The ordering is forced by the schema, not chosen: `FailureRecord`
@@ -531,7 +531,7 @@ export async function executeClaimedRun(
   };
 
   const interpret = async (): Promise<RunExecutionOutcome> => {
-    /* ── validating: doc 02 §5.4 entry validation, before any browser ────── */
+    /* ── validating: ref workflow-model §5.4 entry validation, before any browser ────── */
     transitionTo({ state: "validating", workerId: claim.workerId, claimedAt, heartbeatAt: instant() });
 
     const problems: string[] = [];
@@ -548,7 +548,7 @@ export async function executeClaimedRun(
     } catch (error) {
       problems.push(error instanceof Error ? error.message : "canonical input snapshot failed to parse");
     }
-    // Doc 02 §5.6 #3 / doc 06 §6 (D166): injected corrections apply to
+    // Ref workflow-model §5.6 #3 / ref data-intake-and-edit-data §6 (D166): injected corrections apply to
     // REPLAYED checkpoints during planning. Each group is consumed by its
     // node's replay arm below; anything left over names a node this run will
     // execute (or does not know), and a fresh read supersedes any correction
@@ -1220,7 +1220,7 @@ export async function executeClaimedRun(
               payload: { schemaHash: record.output.schemaHash, value: row.value },
               createdAt: instant(),
             }));
-            // Doc 03 §2.1 (D45): the checkpoint and its stable-keyed outbox
+            // Ref dashboard-surfaces §2.1 (D45): the checkpoint and its stable-keyed outbox
             // rows are ONE durable fact — neither may exist without the other.
             withTransaction((repositories) => {
               repositories.runCheckpoints.insert(record);
@@ -1382,16 +1382,16 @@ export async function executeClaimedRun(
             return await failNode(node, node.commit.uses.id, new TaskError(
               node.commit.uses.id,
               "capability-unavailable",
-              `transaction node "${node.id}" requires the doc-09 write sequencer, which is not wired; `
+              `transaction node "${node.id}" requires the ref write-safety write sequencer, which is not wired; `
               + "refusing to skip a write node",
             ));
           }
           /**
-           * D210 — the preview arm (doc 01 §6.2). A dry run reaches the
+           * D210 — the preview arm (ref task-contract §6.2). A dry run reaches the
            * transaction node, runs the sequencer's REAL prepare-only arm (zero
            * intent, zero fence, zero commit), records an honest
            * `transaction.previewed` span, and ENDS THE RUN HERE. Nothing
-           * downstream executes: doc 01 §10.1's default is that a preview stops
+           * downstream executes: ref task-contract §10.1's default is that a preview stops
            * after the first transaction prepare, and continuing would run nodes
            * whose inputs a real run derives from a commit output this run never
            * produced.

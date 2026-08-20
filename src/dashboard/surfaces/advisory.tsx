@@ -1,5 +1,5 @@
 /**
- * The failure advisory panel (doc 12 §4.4, D178).
+ * The failure advisory panel (ref operator-trust §4.4, D178).
  *
  * It sits INSIDE the failure record, below the record's own remediation
  * ladder, because that ordering is the claim: the record is the evidence and

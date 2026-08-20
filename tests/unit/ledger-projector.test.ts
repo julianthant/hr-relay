@@ -1,5 +1,5 @@
 /**
- * Doc 09 §6's recovery bullets, executed. Each `it` here is one of the four
+ * Ref write-safety §6's recovery bullets, executed. Each `it` here is one of the four
  * failure modes the doc names: commit-then-crash-before-projection,
  * two projectors racing one partition, a torn JSONL tail, and restore-from-
  * backup reconciliation that may not invent entries the outbox never held.
@@ -79,7 +79,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-describe("doc 09 §6 ledger projector", () => {
+describe("ref write-safety §6 ledger projector", () => {
   it("projects each committed outbox exactly once, in sequence, with actor attribution", () => {
     const root = newRoot();
     const database = open(root);

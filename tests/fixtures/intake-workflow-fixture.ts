@@ -1,7 +1,7 @@
 /**
  * A spreadsheet-capable fixture workflow for the D170 intake surface.
  *
- * It is doc 06 §8's worked example in miniature — an EID, an effective date
+ * It is ref data-intake-and-edit-data §8's worked example in miniature — an EID, an effective date
  * and an optional department — because that is the shape the intake pipeline
  * was designed against. No registered workflow declares an intake projection
  * yet (person-lookup's input is a union, which is real 2i-E3 design work), so

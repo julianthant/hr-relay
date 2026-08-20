@@ -1,5 +1,5 @@
 /**
- * The `xlsx-retention` sink (doc 06 §4.1, doc 03 §3.2): one workbook, one
+ * The `xlsx-retention` sink (ref data-intake-and-edit-data §4.1, ref dashboard-surfaces §3.2): one workbook, one
  * stable-keyed idempotent upsert, one atomic replace.
  *
  * ## The workbook layout is deliberately the durability layout, not a guess

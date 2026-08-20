@@ -25,12 +25,12 @@ Phase 2g still owns automatic bundles, receipts, explain/search, and rich operat
 
 | This doc **OWNS** | Imports from the owning sibling |
 |---|---|
-| Canonical UI vocabulary: `ElementId`, `ScreenId`, `PageStateId`, `ObservationId`, search terms, registry records, generated catalog, and the typed system-driver boundary | Task contract/store/session model → doc 01; page leases → doc 05 |
-| Operator evidence receipt, failure record, diagnostic bundle, `explain run`, and redaction policy | Event/storage wire and retention → doc 03; write-binding proof/write ledger → doc 09; secrets → doc 11 |
-| Scenario corpus/manifests and the bug→regression-scenario rule | Task `example` and errors → doc 01; graph outcomes → doc 02; test lanes/guards → doc 10 |
+| Canonical UI vocabulary: `ElementId`, `ScreenId`, `PageStateId`, `ObservationId`, search terms, registry records, generated catalog, and the typed system-driver boundary | Task contract/store/session model → ref task-contract; page leases → ref execution-and-sessions |
+| Operator evidence receipt, failure record, diagnostic bundle, `explain run`, and redaction policy | Event/storage wire and retention → ref dashboard-surfaces; write-binding proof/write ledger → ref write-safety; secrets → ref clock-config-secrets |
+| Scenario corpus/manifests and the bug→regression-scenario rule | Task `example` and errors → ref task-contract; graph outcomes → ref workflow-model; test lanes/guards → ref guards-and-tests |
 | Structured knowledge lifecycle and the AI-assisted `FixRecord` ledger | Existing lessons are migration inputs, not another authority |
-| Read-only workflow explorer and the staged, constrained workflow editor | Descriptor/graph/delegation model → doc 02; spans/projections → doc 03 |
-| The webpage-ready base capability inventory (§8) | Build order → doc 07 |
+| Read-only workflow explorer and the staged, constrained workflow editor | Descriptor/graph/delegation model → ref workflow-model; spans/projections → ref dashboard-surfaces |
+| The webpage-ready base capability inventory (§8) | Build order → the phase docs |
 
 This doc does **not** redefine task, graph, command, event, write-safety, config, or storage
 contracts. It defines the semantic/operator layer those contracts project into.
@@ -151,7 +151,7 @@ later 2g slice has to touch the released migration chain:
 
 `failures` also gains a searchable `fingerprint` column with an index and a not-null insert trigger,
 and `FailureRepository` gains `listByFingerprint`/`countByFingerprint` — §2.1's "same failure seen
-before" and §4.2's `explain failure <fingerprint>` are lookups, and the doc-03 repeat-threshold
+before" and §4.2's `explain failure <fingerprint>` are lookups, and the ref dashboard-surfaces repeat-threshold
 notification trigger needs a count, not a scan over parsed JSON.
 
 **Deliberately conservative, and named as such.** Knowledge and fix repositories are insert-only.
@@ -223,7 +223,7 @@ one machine — and why disk growth is not a problem worth a durable reference c
 
 **What that reasoning does not say.** It is about the standing value of *old* rows, not about
 durability *during* a write: a `write_intents` fence, its binding proof, and the parked-intent rows
-are load-bearing for the run that is in flight, and the fail-closed guarantees in doc 09 rest on
+are load-bearing for the run that is in flight, and the fail-closed guarantees in ref write-safety rest on
 them being durable at the instant they are written. Nothing here weakens that. Equally, **nothing
 already built is removed** — capture, capture-time redaction, the pin/purge invariants, the
 `purgeAfter` derivation from the bundle's own instant, and the sweep's own refusals stay exactly as
@@ -243,11 +243,11 @@ and duplicating it into an exportable artifact widens the blast radius for nothi
 `publish` settles create-or-fold in one authority transaction and only then attempts OS delivery.
 A delivery that throws is **reported and never written back**: status, count, and version are
 untouched, so the operator who missed the toast still finds an unread item — that, not the toast, is
-the alert (§6, doc 03 §10.4). No per-attempt delivery state is stored; storing one would invite a
+the alert (§6, ref dashboard-surfaces §10.4). No per-attempt delivery state is stored; storing one would invite a
 retry loop that mutates the record the operator is reading. A missing desktop channel reports
 `no-channel`, never success.
 
-Doc 03 §2.6's event list routes onto D79b's six trigger keys: run failure and subject mismatch →
+Ref dashboard-surfaces §2.6's event list routes onto D79b's six trigger keys: run failure and subject mismatch →
 `failed`; open operator gate → `gate-waiting`; unknown write outcome → `write-parked`; repeat
 threshold → `repeating`; storage degradation, stalled lease/outbox, and failed backup → `storage`;
 and the verified-done receipt → `verified-done`. The first five ping; `verified-done` is inbox-only.
@@ -297,7 +297,7 @@ The §2.3 receipt builder, its declared redaction, the §2.1 rich failure projec
 ### D140 — evidence classification and cross-source obligations are DECLARED
 
 `src/domain/trust/evidence-classification.ts` binds every leaf of every workflow input, task output,
-and workflow result to one doc 11 §6 classification plus one permitted transform. Three rules make
+and workflow result to one ref clock-config-secrets §6 classification plus one permitted transform. Three rules make
 it enforcement rather than decoration:
 
 - **An undeclared leaf fails loud.** `redactDiagnosticFields` drops an unclassified *diagnostic*
@@ -439,7 +439,7 @@ Owned by `src/core/receipt-derivation-binding.ts`; pinned by
 > receipt sentence deliberately does not, and names "the gate result record" with no table at all —
 > a trust artifact read months later must not send its reader hunting for a table nobody created.
 
-**Ratified 2026-08-12.** D202 built the ALWAYS-GATE and put the answer to doc 09 §14.6 risk 6 ("who
+**Ratified 2026-08-12.** D202 built the ALWAYS-GATE and put the answer to ref write-safety §14.6 risk 6 ("who
 approved is lost") into authority: the command kernel writes `resolvedBy`/`resolvedAt` onto the
 `gate_results` row inside the same transaction that stores the result and resumes the run, and a
 caller-supplied `approvedBy` beside that would be a claim sitting next to authority. D203 then taught
@@ -459,7 +459,7 @@ will — fabricating one would make a durable record claim a shape it does not h
   observation of a page.
 - **one `kind: "gate"` decision**, whose outcome comes from a DECLARED arm table and whose reason
   names the approver, the instant, the resolving command, and the evidence digest the approval was
-  bound to (doc 09 §14.5 — an approval is an observation of a specific packet).
+  bound to (ref write-safety §14.5 — an approval is an observation of a specific packet).
 - **a `verified` obligation** for the node, replacing the `unknown` that used to stand for
   "authority holds nothing", which was false.
 
@@ -536,7 +536,7 @@ neither surface does anything guess the word.
 **What the operator sees.** The panel draws a DECISION RECORD in the run's own stream at
 `resolvedAt` — the settled counterpart of the open gate's decision card, in the same geometry —
 carrying the verdict, the approver and the instant. The archived detail's Decision card names the
-approver for the same reason. Doc 03 owns the presentation; this section owns the derivation.
+approver for the same reason. Ref dashboard-surfaces owns the presentation; this section owns the derivation.
 
 Owned by `src/server/dashboard/queries/run-detail.ts` and `src/domain/dashboard/run-detail.ts`,
 over `src/domain/trust/gate-decisions.ts`; pinned by
@@ -544,7 +544,7 @@ over `src/domain/trust/gate-decisions.ts`; pinned by
 
 ### Named gap: a transaction node cannot yet be a terminal dependency — CLOSED by D144
 
-**Closed 2026-08-04 (D144, doc 09 §3.1).** The gap was real: the sequencer stored a transaction
+**Closed 2026-08-04 (D144, ref write-safety §3.1).** The gap was real: the sequencer stored a transaction
 checkpoint under the durable `TransactionOutcome` schema hash while the descriptor factory's
 terminal `build` demanded the COMMIT CONTRACT's output schema hash, and the interpreter never
 registered a transaction checkpoint as terminal evidence at all — so `kuali-timekeeper-annotation`
@@ -731,7 +731,7 @@ outputs, used elements/states, and scenarios. It cannot take an untracked raw lo
 Any named operation that reaches an `external-commit` element must accept and validate
 `MutationCapability`; this is checked through its dependency graph. Subject observation uses
 `driver.read(spec.observe)`, but normalization/comparison and `SubjectProof` construction belong to
-the kernel so a driver cannot assert its own match. Extra screenshots are requested through doc 01's
+the kernel so a driver cannot assert its own match. Extra screenshots are requested through ref task-contract's
 kernel/decorator capture surface, not an unrestricted task driver method.
 
 This preserves the port-first rule: live-verified leaf functions may initially move behind a
@@ -742,10 +742,10 @@ is improved incrementally only after its fixtures/live checks exist.
 
 | Concern | Canonical owner | Reuse meaning |
 |---|---|---|
-| Business/system operation (“search Person Org”, “fill termination”) | System task store (doc 01) | Compose the proven operation in workflows |
+| Business/system operation (“search Person Org”, “fill termination”) | System task store (ref task-contract) | Compose the proven operation in workflows |
 | UI vocabulary/locator/page-state/observation | UI registry + system driver (this doc) | All system tasks share one named UI fact/control |
-| Completed output within a run/item | Checkpoint store (doc 02) | Resume/replay without rescanning when freshness permits |
-| Pure workflow-specific transform/join | Workflow mini-store (doc 01) | Peer-reuse typed computation, no browser |
+| Completed output within a run/item | Checkpoint store (ref workflow-model) | Resume/replay without rescanning when freshness permits |
+| Pure workflow-specific transform/join | Workflow mini-store (ref task-contract) | Peer-reuse typed computation, no browser |
 
 The task store prevents repeated reinvention of *operations*. The UI registry prevents repeated
 reinvention of *selectors and page truth*. Checkpoints prevent repeated work *within a run/item*.
@@ -861,7 +861,7 @@ A retry/rerun receipt links to the prior run and shows a field-level diff:
 - configuration/descriptor/task fingerprint differences.
 
 The dashboard never labels replayed data as newly observed. This is the operator-facing projection
-of docs 02/09's provenance and permanent proof rules.
+of refs workflow-model/write-safety's provenance and permanent proof rules.
 
 ### 2.5 `explain run`
 
@@ -883,7 +883,7 @@ command and the generated catalog instead of asking the operator to manually ass
 
 ### 3.1 `example` is not a scenario
 
-Doc 01's contract `example` remains the canonical happy-path output used for type checks and cheap
+Ref task-contract's contract `example` remains the canonical happy-path output used for type checks and cheap
 stubs. A scenario includes inputs, page/data fixtures, timing/failure injection, expected actions,
 evidence, and terminal outcome. The previous plan's hand-scripted failure/cancel matrix is replaced
 by a registered corpus rather than remaining an unnamed side list.
@@ -1027,7 +1027,7 @@ also consume them. The operator-facing adapters remain on-demand and advisory:
 | run summary | optional narrative over the deterministic `RunEvidenceReceipt`; receipt facts/outcome always render beside it |
 | record sanity check | deterministic schema/rule issues are authoritative; optional model issues are separately labelled suggestions and never auto-block/approve |
 | selector suggestion | development-only candidate recipe/element-id brief from a redacted accessibility snapshot; it cannot edit the registry or stamp verification |
-| contact normalization | doc 06's typed normalization task; every proposed change shows source/confidence and requires the owning review policy |
+| contact normalization | ref data-intake-and-edit-data's typed normalization task; every proposed change shows source/confidence and requires the owning review policy |
 
 Every invocation parses a strict request, applies schema-driven redaction **before** provider use,
 and parses a closed result. It records `promptTemplateVersion`, redacted input digest/evidence refs,
@@ -1127,7 +1127,7 @@ at all. `createTimeoutDeadlineScheduler` moved out of the worker composition roo
 `setTimeout` gets born, and a bound armed on one of those is invisible to the kernel.
 
 **Deferred at D178, dispositioned at D192.** §4.4's table names five adapters; two landed (failure
-triage, and doc 06 §4.2's contact normalization). Of the remaining three, run summary and the
+triage, and ref data-intake-and-edit-data §4.2's contact normalization). Of the remaining three, run summary and the
 development-only selector-suggestion brief are now **retired** (D192, below); the record sanity
 check stays **open**, deferred to order-8. `AdvisorySurfaceIdSchema` carries no arm for any of them
 — a surface nothing can answer is a dead vocabulary, and retirement keeps it that way rather than
@@ -1158,7 +1158,7 @@ dispositions.**
   loop the charter already pre-authorizes.
 - **Record sanity check → RETIRED (operator ruling, 2026-08-18), its deferral condition having
   been MET deterministically.** D192 deferred it to the order-8 separations migration, where it was
-  to render as prose beside the doc 09 §14 ALWAYS-GATE identity approval. Separations arrived, and
+  to render as prose beside the ref write-safety §14 ALWAYS-GATE identity approval. Separations arrived, and
   the gate packet's own server-computed `comparisons` array (§14.2 — the deterministic side-by-side
   of disconfirming evidence, Kuali beside UCPath, leading the packet) now occupies exactly that
   slot; §9.17's live pass flagged the condition as materially satisfied and left the closure to the
@@ -1225,7 +1225,7 @@ locations without reverse-engineering row prose.
 > change *without* a code change. At that point the closed set has two consumers to be shaped by,
 > and §5.4's apply protocol (strict versioned override, temp+fsync+atomic-replace, stale-base
 > refusal, code-change brief for everything else) is what must be built — unchanged by this
-> deferral. Doc 07's Phase-2 exit criterion is amended accordingly; the criterion is not waived,
+> deferral. Doc 02 §Exit criteria is amended accordingly; the criterion is not waived,
 > it is reassigned to the migration that first needs it.
 
 In Phase-2 tail 2i, the editor may change only a closed, reviewable subset:
@@ -1339,7 +1339,7 @@ being evaluated against a fabricated input to print a specimen answer. A freshne
 **Two exclusions, each with its reason.**
 
 - **The live-run overlay** (§5.2's last bullet — the same graph carrying timings, attempts,
-  checkpoint reuse, failures, children, evidence and safe actions) is NOT in this slice. Doc 03's
+  checkpoint reuse, failures, children, evidence and safe actions) is NOT in this slice. Ref dashboard-surfaces's
   run-detail timeline already serves those facts per run; joining the two projections is its own
   work with its own wire, and shipping half of it would put a second, thinner run view beside the
   one operators already use.
@@ -1372,7 +1372,7 @@ holds" — honest, and less than the demo's authored sentence — and the record
 `whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
 refused**: `purpose` and `summary` are authored data (§5.9, D229), while `whenLabel` is refused
 because a sentence beside a predicate is a second description of one rule — the `when` itself became
-a DECLARED condition instead (doc 02 §3.3, D228). Read-only per D186
+a DECLARED condition instead (ref workflow-model §3.3, D228). Read-only per D186
 throughout: no edit affordances anywhere.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
@@ -1434,7 +1434,7 @@ value the charter forbids.
 
 **A node's `when`, in words.** §5.7 recorded the conditional line as "runs when the descriptor's own
 when() predicate holds" and named an authored `whenLabel` as the fix. The fix taken instead is
-**D228** (doc 02 §3.3): the condition is DECLARED data, the executor evaluates it and the surface
+**D228** (ref workflow-model §3.3): the condition is DECLARED data, the executor evaluates it and the surface
 renders it through `describeNodeCondition` — one value, two readers, so the sentence cannot disagree
 with the rule. §5.7's "a closure is reported as its presence" is unchanged for `bind`, `choose`,
 `derive` and the write-safety key; `when` simply stopped being a closure. The wire's
@@ -1470,7 +1470,7 @@ reported twice. The demo's third segment (`1 file`) stays absent for the reason 
 
 ## 6. Notifications—durable, event-derived, and actionable
 
-The notification wire is owned by doc 03; this section defines operator behavior. Notifications
+The notification wire is owned by ref dashboard-surfaces; this section defines operator behavior. Notifications
 are produced server-side from durable state/event transitions, never solely from a React effect.
 They survive dashboard reloads and dedupe by stable fingerprint.
 
@@ -1501,9 +1501,9 @@ authority repository with a mutation surface (`fold`, `updateState`) rather than
 
 **Why an update and not append-and-fold.** The folded firings leave no rows behind, so `count` and
 `lastSeenAt` are not derivable from any history — an append-only encoding would have to invent a row
-per firing purely to be counted, and doc 03 §2.6 explicitly says a repeat must NOT spam the inbox.
+per firing purely to be counted, and ref dashboard-surfaces §2.6 explicitly says a repeat must NOT spam the inbox.
 Read/unread and snooze are per-notification operator state by nature; folding them would make the
-unread inbox a projection rather than the authority doc 03 names it.
+unread inbox a projection rather than the authority ref dashboard-surfaces names it.
 
 **Why it does not touch the ledger's immutability.** A notification is derived operator-facing state
 about something else that happened; the ledger is the record of what was really filed against a live
@@ -1558,7 +1558,7 @@ Still mandatory:
 - bind the operator dashboard/API to loopback only; native LAN/remote operator mode is rejected;
 - permit exactly one explicit exception: an operator-started, short-lived mobile-capture ingress
   may expose only the token-scoped phone assets/status/upload/replace/reorder/delete/finalize routes
-  listed in doc 06 §5.1. The ingress starts with a capture session, expires/stops with it, and cannot
+  listed in ref data-intake-and-edit-data §5.1. The ingress starts with a capture session, expires/stops with it, and cannot
   route to queue, commands, files, evidence, settings, health, or any catch-all route;
 - never log/export secrets; restrict and redact SSN/I-9/HR data in notes/bundles/screenshots;
 - durable DB integrity/backups/restore because local single-operator state is irreplaceable;
@@ -1674,7 +1674,7 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
 
 ## 9. Mechanical guards
 
-Doc 10 registers the following:
+Ref guards-and-tests registers the following:
 
 - canonical UI ids/search terms unique; every task-used element/state/observation resolves;
 - raw `Page`/`Locator` imports and `page.` calls restricted to driver/session infrastructure;

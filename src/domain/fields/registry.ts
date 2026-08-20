@@ -1,5 +1,5 @@
 /**
- * The canonical field registry — doc 06 §1 and charter §11.
+ * The canonical field registry — ref data-intake-and-edit-data §1 and charter §11.
  *
  * This is the closed vocabulary an operator can bind a spreadsheet column to.
  * Its one load-bearing invariant is that **a workflow input field composes
@@ -11,7 +11,7 @@
  *
  * ## The registry is frozen against a recorded scan, not against intuition
  *
- * Doc 06 §1 requires that, before this vocabulary freezes, every legacy
+ * Ref data-intake-and-edit-data §1 requires that, before this vocabulary freezes, every legacy
  * workflow input schema, roster header rule, OCR form field and Edit-Data
  * field is scanned, and each mappable concept either gets one canonical id or
  * is explicitly recorded as workflow-local WITH a reason. That scan is
@@ -20,7 +20,7 @@
  *
  * ## Tight schemas need evidence; the rest carry an audit obligation
  *
- * `eid` is `/^10\d{6}$/` because doc 06 §9.1 resolved it and the loose legacy
+ * `eid` is `/^10\d{6}$/` because ref data-intake-and-edit-data §9.1 resolved it and the loose legacy
  * `/^\d{5,}$/` validators are recorded there as validation bugs. Dates are ISO
  * `DateOnly` because the domain owns the value and the DRIVER owns the
  * `MM/DD/YYYY` wire form. Where no such evidence exists, the field carries a
@@ -35,7 +35,7 @@
  * The operator fixes the cell against the live grid, which reads the
  * content-addressed source artifact, so the manifest never needs the raw
  * value — and duplicating a person's identifiers into a second durable store
- * is precisely what doc 12's classification rules exist to prevent. Each field
+ * is precisely what ref operator-trust's classification rules exist to prevent. Each field
  * therefore declares `(classification, redactTransform)`, refused at
  * definition time by the same table `redactDiagnosticFields` uses.
  */
@@ -115,7 +115,7 @@ export type CanonicalFieldId = z.infer<typeof CanonicalFieldIdSchema>;
  * `resolved` — a reviewed decision or live verification pins the exact shape.
  * `audit-at-migration` — the shape is deliberately conservative; the consuming
  * workflow's migration must scan its real fixtures through this schema and
- * report every rejection before tightening it (doc 06 §1's resolved base
+ * report every rejection before tightening it (ref data-intake-and-edit-data §1's resolved base
  * decision, generalized past `Eid`).
  */
 export const CanonicalFieldEvidenceSchema = z.enum(["resolved", "audit-at-migration"]);
@@ -128,7 +128,7 @@ export interface CanonicalField<S extends z.ZodType = z.ZodType> {
   readonly schema: S;
   /**
    * One raw cell → a pre-parse value. Throws `CellCoercionError` naming the
-   * row, column and value; never substitutes a default (doc 06 §7 #2).
+   * row, column and value; never substitutes a default (ref data-intake-and-edit-data §7 #2).
    */
   readonly coerce: (raw: string, location: CellLocation) => unknown;
   /** Header hints for the SUGGESTION engine only — never auto-applied (§2.5). */
@@ -150,7 +150,7 @@ const FACTORY_DEFINED_FIELDS = new WeakSet<CanonicalField>();
  *
  * Every check here is one a broken registry would otherwise pass silently:
  * an alias that duplicates another field's, a classification/transform pair
- * doc 11 forbids, and — the sharpest one — an `example` that its own `coerce`
+ * ref clock-config-secrets forbids, and — the sharpest one — an `example` that its own `coerce`
  * and `schema` reject. A registry whose declared sample values fail its own
  * pipeline is a registry whose suggestions and grid previews are fiction.
  */
@@ -232,7 +232,7 @@ export function isFactoryDefinedCanonicalField(candidate: CanonicalField): boole
   return FACTORY_DEFINED_FIELDS.has(candidate);
 }
 
-/** Doc 06 §2.3's header normalization — one definition, used everywhere. */
+/** Ref data-intake-and-edit-data §2.3's header normalization — one definition, used everywhere. */
 export function normalizeHeader(header: string): string {
   return header.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -321,7 +321,7 @@ export const EmailSchema = z.email();
 export const MiddleInitialSchema = z.string().regex(/^[A-Za-z]$/, "middle initial must be one letter");
 /**
  * The zero-padded PPS identifier a pre-UCPath roster carries. It is a
- * DIFFERENT identifier from `Eid`, not a looser spelling of one: doc 06 §1
+ * DIFFERENT identifier from `Eid`, not a looser spelling of one: ref data-intake-and-edit-data §1
  * requires a distinct domain type with an explicit verified conversion rather
  * than widening `Eid`, and legacy's `i9-check` keeps `ppsEid` beside `emplId`
  * precisely because UCPath may not know the person at all. No conversion is

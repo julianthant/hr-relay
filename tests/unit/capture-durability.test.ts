@@ -1,5 +1,5 @@
 /**
- * Doc 06 §5.1 / D79d (D167): the two durability obligations that survive the
+ * Ref data-intake-and-edit-data §5.1 / D79d (D167): the two durability obligations that survive the
  * trim, plus the mutation arms.
  *
  * - An OPEN session survives a restart because the session IS a durable row.

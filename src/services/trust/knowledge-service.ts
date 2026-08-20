@@ -1,5 +1,5 @@
 /**
- * Doc 12 §4 — the knowledge/fix surface over the v10 authority tables.
+ * Ref operator-trust §4 — the knowledge/fix surface over the v10 authority tables.
  *
  * Admission is audited BEFORE the insert, because the tables are insert-only:
  * a duplicate that lands cannot be retracted, so `auditKnowledgeAdmission` /

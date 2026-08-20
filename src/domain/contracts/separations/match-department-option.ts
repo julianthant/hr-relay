@@ -9,7 +9,7 @@
  * `derive` has nowhere to put "this run refuses, and here is why".
  *
  * It is a fold over facts the run already holds, so it is sessionless and
- * carries no freshness budget of its own — doc 02 §5.5 ages the reads that feed
+ * carries no freshness budget of its own — ref workflow-model §5.5 ages the reads that feed
  * it.
  */
 import { z } from "zod";

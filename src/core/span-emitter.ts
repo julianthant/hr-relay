@@ -1,5 +1,5 @@
 /**
- * The executor's REQUIRED span-emission port (doc 02 §6 semantics; doc 03 §1.1
+ * The executor's REQUIRED span-emission port (ref workflow-model §6 semantics; ref dashboard-surfaces §1.1
  * identities).
  *
  * The JSONL span writer, SQLite projection, and SSE transport are the 1g-spine
@@ -9,9 +9,9 @@
  * park, and attempt chip unreconstructable after the fact, so composition must
  * hand the executor a real sink and tests must hand it a recording fake.
  *
- * Identity follows doc 03 §1.1 exactly: run/task spans are addressed by
+ * Identity follows ref dashboard-surfaces §1.1 exactly: run/task spans are addressed by
  * `(runId, attempt, spanPath)` and worker/browser spans by
- * `(workerId, spanPath)`; the spanPath grammar is doc 02 §6's readable path
+ * `(workerId, spanPath)`; the spanPath grammar is ref workflow-model §6's readable path
  * style (`pl-104233-9f3e`, `pl-104233-9f3e/searching#2`,
  * `worker/person-lookup/worker-1`). The wire's process-level fields (`pid`)
  * belong to the writer, not to this port.
@@ -42,7 +42,7 @@ import { RequeueCauseSchema } from "../domain/run/record.js";
 
 const SpanPathSchema = z.string().min(1);
 
-/** Doc 03 §1.1's task/run outcome vocabulary; `skipped` is a task-span outcome. */
+/** Ref dashboard-surfaces §1.1's task/run outcome vocabulary; `skipped` is a task-span outcome. */
 export const SpanOutcomeSchema = z.enum([
   "done",
   "failed",
@@ -56,12 +56,12 @@ export type SpanOutcome = z.infer<typeof SpanOutcomeSchema>;
 
 /**
  * Why a `skipped` task span did not run — the same closed vocabulary the
- * durable result uses (`TerminalNotRunReasonSchema`, doc 02 §5.5). The
+ * durable result uses (`TerminalNotRunReasonSchema`, ref workflow-model §5.5). The
  * timeline reads this; it never re-derives a skip reason from a descriptor.
  */
 export const SpanNotRunReasonSchema = z.enum(["condition-false", "branch-not-selected"]);
 
-/** Run/task span identity — `(runId, attempt, spanPath)` (doc 03 §1.1). */
+/** Run/task span identity — `(runId, attempt, spanPath)` (ref dashboard-surfaces §1.1). */
 const RunSpanIdentityFields = {
   runId: RunIdSchema,
   attempt: PositiveIntSchema,
@@ -70,7 +70,7 @@ const RunSpanIdentityFields = {
   parentSpanPath: SpanPathSchema.optional(),
 } as const;
 
-/** Worker/browser span identity — `(workerId, spanPath)` (doc 03 §1.1). */
+/** Worker/browser span identity — `(workerId, spanPath)` (ref dashboard-surfaces §1.1). */
 const WorkerSpanIdentityFields = {
   workerId: WorkerIdSchema,
   spanPath: SpanPathSchema,
@@ -114,7 +114,7 @@ export const ExecutorSpanEventSchema = z.union([
     ...RunSpanIdentityFields,
     outcome: SpanOutcomeSchema,
     failureId: FailureIdSchema.optional(),
-    /** Display-safe summary; never the only failure evidence (doc 03 §1.1). */
+    /** Display-safe summary; never the only failure evidence (ref dashboard-surfaces §1.1). */
     errorSummary: z.string().min(1).optional(),
     /** Only on `skipped`, and only when a reason was actually recorded. */
     notRunReason: SpanNotRunReasonSchema.optional(),
@@ -134,7 +134,7 @@ export const ExecutorSpanEventSchema = z.union([
     gate: GateIdSchema,
   }),
   /**
-   * D210 / doc 01 §6.2 — "records an honest `transaction.previewed` span, and
+   * D210 / ref task-contract §6.2 — "records an honest `transaction.previewed` span, and
    * ends the run at the node". It is its own event rather than a `span.ended`
    * arm because no `SpanOutcome` value is true of it: a preview is neither
    * `done` (nothing was committed) nor `skipped` (the node ran). It carries the
@@ -183,14 +183,14 @@ export interface SpanEmitter {
   emit(event: ExecutorSpanEvent): void;
 }
 
-/** Run span path: the frozen trace id itself (doc 02 §6). */
+/** Run span path: the frozen trace id itself (ref workflow-model §6). */
 export function runSpanPath(traceId: TraceId): string {
   return traceId;
 }
 
 /**
  * Task span path: `<traceId>/<nodeId>#<claimGeneration>.<taskAttempt>`
- * (doc 02 §6, D214).
+ * (ref workflow-model §6, D214).
  *
  * The claim generation is what makes two executions of ONE node inside one run
  * attempt distinguishable. A gate park and its resume are two claims, and an
@@ -212,7 +212,7 @@ export function taskSpanPath(
     + `.${String(PositiveIntSchema.parse(taskAttempt))}`;
 }
 
-/** Worker span path: `worker/<workflow>/<workerId>` (doc 03 §1.1's example form). */
+/** Worker span path: `worker/<workflow>/<workerId>` (ref dashboard-surfaces §1.1's example form). */
 export function workerSpanPath(workflowId: WorkflowId, workerId: WorkerId): string {
   return `worker/${workflowId}/${workerId}`;
 }

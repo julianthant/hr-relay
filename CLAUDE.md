@@ -22,7 +22,7 @@ not own the field — was WRONG and is withdrawn. Kuali's own `ActionPage` query
 Kuali gadget debounce the run fenced inside, and a `commit` that returned at request time so the
 verifier's reload cancelled the in-flight save.)_ Write-heavy workflow migration is no longer
 blocked; each workflow still owes its own §3.2 controlled-commit proof. Evidence, measured numbers
-and durable row ids: `docs/rebuild/09-write-safety.md` §Phase-2 controlled-commit as-built.
+and durable row ids: `docs/rebuild/reference/write-safety.md` §Phase-2 controlled-commit as-built.
 
 **The four tails, in order.** **2g** (D134–D145) — schema v10, automatic redacted diagnostic
 capture, the durable actor-keyed notification inbox whose row commits before any OS delivery,
@@ -48,15 +48,15 @@ the failure record and the evidence receipt live — was **two pixels wide** at 
 1i-spine, because its root is a flex child that never claimed a width; the accessibility tree
 reported every word, which is exactly why review after review passed over an empty column (D187).
 **(4)** `buildRunEvidenceReceipt` minted a verification id for every node but emitted the row
-conditionally, so a run whose upstream node has no checkpoint — doc 02 §5.4's `startAt` resume with
+conditionally, so a run whose upstream node has no checkpoint — ref workflow-model §5.4's `startAt` resume with
 injected context, i.e. the Edit Data path — made the receipt underivable and answered HTTP 500 on
 the one surface whose job is to explain a run (D187). All four are fixed.
 
 **Two criteria left Phase 2 by explicit disposition, not by silence.** The Workflow Explorer's EDIT
-half (doc 12 §5.3, **D186**) is REASSIGNED on D79a's own argument one level down — an editor exists
+half (ref operator-trust §5.3, **D186**) is REASSIGNED on D79a's own argument one level down — an editor exists
 to avoid a code change per tweak across many workflows and this tree has one, so its closed policy
 union would be shaped by a sample of one; the trigger that ends the deferral is named. And the
-production BFF **serves no frontend bytes** (doc 13 §6.9, **D189**), so `dashboard:prod`
+production BFF **serves no frontend bytes** (ref frontend-backend-integration §6.9, **D189**), so `dashboard:prod`
 names a mode the runtime never parsed and 2i-F's token-scoped phone capture surface has no delivery
 path — deferred because those bytes would ride the one internet-exposed path behind the Host gate,
 and because the tunnel launcher is unbuilt anyway. Neither is a waiver; both name an owner.
@@ -69,8 +69,8 @@ test passed: run `4ebf7275-0158-49af-a78f-1f37948efb27` (trace `pl-000619-4ebf`)
 against real UCPath + CRM on the new executor, recovered a dead CRM session mid-run, terminalized
 `done` at attempt 2 with a correct result, and rendered all four parity surfaces from the ONE
 projection. The three presentation defects that run exposed were all FIXED the same day (D123
-skipped-arm, D124 terminal duration, D126 accessible-name collision) — see doc 03's _Phase 1g/
-1i-spine as-built presentation deltas_ and `docs/rebuild/01-build-the-spine.md` §Exit criteria. Doc 02 §8.1 is the
+skipped-arm, D124 terminal duration, D126 accessible-name collision) — see ref dashboard-surfaces's _Phase 1g/
+1i-spine as-built presentation deltas_ and `docs/rebuild/01-build-the-spine.md` §Exit criteria. Ref workflow-model §8.1 is the
 worked example's as-built and records the five deltas the live run forced. What Phase 1f itself landed, for context on the contracts below:
 registry/task-binding corrections, worker-owned browser-session lifecycle, and mandatory task
 provenance collection landed 2026-08-02. D109's start-plan ingress authority now retains exact raw
@@ -137,7 +137,7 @@ npm run test:architecture  # the guard suite alone
 npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
 npm run test:watch
 
-npm run test:parity        # doc 13 §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
+npm run test:parity        # ref frontend-backend-integration §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
 npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)
 
 npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)
@@ -321,7 +321,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
-  (`dashboard-refresh-boundary`, doc 13 §8.14, `src/dashboard/CLAUDE.md`).
+  (`dashboard-refresh-boundary`, ref frontend-backend-integration §8.14, `src/dashboard/CLAUDE.md`).
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
@@ -380,7 +380,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   fallback is the absence of a branch, which is why a fail-loud review reading for `catch { return
   [] }` walks straight past it. It is reachable by ordinary use, not by a corner case: a run's
   version moves whenever a worker claims it or the day stream folds a span under an open panel,
-  which is the exact race doc 03 D19's live lock exists to warn about. Three things generalize.
+  which is the exact race ref dashboard-surfaces D19's live lock exists to warn about. Three things generalize.
   **Make the exhaustiveness structural, in ONE place** — `settleCommandResult` switches over the
   discriminant so a fourth arm is a compile error, and a guard refuses any dashboard module that
   names one refusal arm without the other (with a checked-in violating fixture carrying the exact
@@ -396,7 +396,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   impossible: *"nothing durable says whether a recorded field was read or written"* and *"the
   originating system is still absent"*. Both sentences are TRUE of the `run_checkpoints` row and
   FALSE of the descriptor that wrote it — the producing node declares a task contract whose
-  `effect` is doc 01's own word for what it does to the world, and the store implementing that task
+  `effect` is ref task-contract's own word for what it does to the world, and the store implementing that task
   declares the system. This is D251's false-deferral shape one surface over, and the same
   correction applies: **before booking a wire row, check whether the DECLARATION answers it.** Two
   rules came out of serving it. **Reuse the deciding function, never re-derive its rule**: the
@@ -409,7 +409,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   arrow, because defaulting to `read` would claim the run changed nothing — the most expensive
   thing in this product to be wrong about.
 - **2026-08-20: a module that exports one helper beside its component is not a Fast Refresh
-  boundary, and the failure shows up two directories away (doc 13 §8.14).** Every surface under
+  boundary, and the failure shows up two directories away (ref frontend-backend-integration §8.14).** Every surface under
   `src/dashboard` exported folds, hooks or `Record` constants beside its components, so
   `@vitejs/plugin-react` refused each as a refresh boundary and every save invalidated upward into
   `dashboard-app.tsx` — the whole app remounted and lost its state on each edit, and nothing in the
@@ -426,7 +426,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   item 5, §9.20 item 6) — a worker's UCPath profile where every acquisition burned the full 60 s
   `sessionAcquireMs` bound while a cold profile logged in in under 20 s — was never about the profile.
   Duo's WebAuthn signature counter is per CREDENTIAL, one credential covers every UCSD system, and Duo
-  Autopilot's copy lives in `chrome.storage.local`, which is per BROWSER PROFILE — while doc 05 §1
+  Autopilot's copy lives in `chrome.storage.local`, which is per BROWSER PROFILE — while ref execution-and-sessions §1
   partitions profiles per `(worker, system, instance, configFingerprint)`. So N writers shared one
   server-side counter and none could see another's copy. `autoImportPackagedCredential` had said why
   that matters since the extension's first day (*"a unix timestamp is monotonic across fresh browser
@@ -447,7 +447,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   shown could not have been the failure that happened**: the landing bound is `duoApprovalSeconds`
   (180 s) inside an acquisition envelope of 60 s, so the envelope always fires first and
   `describeStalledLanding` — the function whose whole job is explaining a stalled Duo login — is
-  unreachable at the shipped defaults, handing over D125's message naming Duo hand-approval. Doc 05
+  unreachable at the shipped defaults, handing over D125's message naming Duo hand-approval. Ref execution-and-sessions
   §4.1's rule answers it from the other side: authentication is decided by CONTENT and so is its
   REFUSAL — Duo renders *"canceled or timed out"* about a second after the assertion, so the wait
   observes that and refuses in 9.52 s naming the real cause, with a negative control keeping a
@@ -482,7 +482,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - **2026-08-18: an alert lane that lives inside the thing it reports on cannot report that thing's
   death — and machinery with zero producers is a surface doing another surface's job (D222).** The
   durable notification inbox, its dedupe fold and the bell existed since 2g/2i-B with NO production
-  publisher wired, so the every-view `StorageBanner` had been carrying the backup hazard that doc 03
+  publisher wired, so the every-view `StorageBanner` had been carrying the backup hazard that ref dashboard-surfaces
   §2.6 always named a `storage` notification — every gate green, because nothing checks that a fact
   reaches the RIGHT surface. Moving it (operator decision) made the split structural: backup
   stale/missing publishes `storage-degraded` on state TRANSITIONS only — the D134 fold marks a row
@@ -503,8 +503,8 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   `timecard-search` could not be retried at all**, and the only way forward was the re-read
   affordance, which mints a different logical item — a different operator intent wearing a retry's
   clothes. Nothing had to be invented: `(workflow, item_id)` is the logical item the table is keyed
-  by, doc 02 §5.6 #1 has said *"retry = new attempt"* since Phase 1e, the DDL annotates `run_id` as
-  audit, and doc 09 §5's write sequencer already reads `envelope.attempt > 1` as *"this item has been
+  by, ref workflow-model §5.6 #1 has said *"retry = new attempt"* since Phase 1e, the DDL annotates `run_id` as
+  audit, and ref write-safety §5's write sequencer already reads `envelope.attempt > 1` as *"this item has been
   attempted before, so probe before you fence"* — a sentence that is only TRUE of an item-scoped
   counter, so a retry was presenting itself to the sequencer as a first attempt at the item (the
   `durable !== undefined` arm is what kept that safe, not the attempt). So the enqueue takes the item's next unspent attempt from
@@ -528,7 +528,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   while its full span history sat in `spans/*.jsonl` — daily-use, since 1i-spine. It hid because
   run STATUS joins authority per surface and LOGS re-read the notes JSONL per request, so the two
   surfaces beside the timeline kept working and the gap read as a rendering quirk; the fingerprint
-  was a run whose fold held exactly ONE event, its own `gate.resolved`. The fix takes doc 03 §2.3's
+  was a run whose fold held exactly ONE event, its own `gate.resolved`. The fix takes ref dashboard-surfaces §2.3's
   "one projector" sentence literally: the ONE live feed is an offset-aware disk tail
   (`ingestFromDisk`, byte cursors seeded by `rebuildFromJsonl` so the two paths can never
   double-fold a line), the `onEvent` hook is DELETED so "append first, fold after" is structural,
@@ -627,7 +627,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   shape, because a new row that named no execution would be indistinguishable from a historical one.
   The same defect had a second face nobody looked at: both executions emitted the same span path, so
   the projector's `(runId, attempt, spanPath)` fold collapsed them — D123's lesson one level in.
-  **(2)** `executeDryRun` evaluated `prepare` with no probe, and doc 09 §5's probes are part of the
+  **(2)** `executeDryRun` evaluated `prepare` with no probe, and ref write-safety §5's probes are part of the
   transaction's safety story rather than an optimization. For the ORDINARY separations subject — one
   with nothing pending — the real run's beat-① probe settles `already-present` before a page is
   staged, while the preview staged a grid with no row to bind and *refused*. **A rehearsal that fails
@@ -680,7 +680,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   binds to (D211).** Chunks 4 and 5 each hung a resolved value off the ALWAYS-GATE — the
   `{template, reasonCode}` map, the Kuali department option — precisely so a refusal would land before
   a human was asked, and each recorded the same open item in the same words: the value is a gate
-  dependency and *is not yet rendered INTO doc 09 §14.2's packet*. That reads like presentation and is
+  dependency and *is not yet rendered INTO ref write-safety §14.2's packet*. That reads like presentation and is
   not. §14.5 binds an approval to the digest of the exact packet shown, so a value the gate merely
   DEPENDS on is a value the approval does not cover: the operator approved a person while the dates,
   the template and the department their approval was about to authorize sat only in the graph. Moving
@@ -735,7 +735,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   KERNEL to read a `gate_results` row as a dependency's evidence — and the RECEIPT, which is the
   artifact an operator actually reads months later, still derived from checkpoints alone. So chunk
   3's settled live run listed `node.identity-approval` as `unknown` while `resolvedBy` sat in the
-  database, and doc 09 §14.6 risk 6 looked closed from the kernel's side and was open from the
+  database, and ref write-safety §14.6 risk 6 looked closed from the kernel's side and was open from the
   operator's. The fix is D144's shape a third time — the reader moves, nothing fabricates a
   checkpoint — plus one rule that generalises past gates: **a closed enum fed from an
   author-controlled payload needs a DECLARED mapping, never a field-name sniff.**
@@ -788,7 +788,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   control only on `different`. That single fact is the argument for ALWAYS-GATE stated in one line,
   and it is why the gate's packet leads with DISCONFIRMING evidence and computes its `approvalShape`
   SERVER-side: a frontend free to choose the control could quietly turn every gate into one click,
-  which is doc 09 §14.6's rubber-stamping risk manufactured by accident.
+  which is ref write-safety §14.6's rubber-stamping risk manufactured by accident.
 
 - **2026-08-12: A recovery mechanism that lives inside the thing it recovers cannot recover the
   thing it lives inside (D200).** `claimNext` throws while a worker id still owns a non-terminal
@@ -806,7 +806,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   only the scan predicate differs, so the D118 gate still parks a run holding an `attempting` intent
   instead of handing a possibly-landed real HR write back to the executor. And what no sweep may
   release — a `claimed` row with an attempting intent, which has no legal parked-write edge — is
-  refused at startup naming that run and doc 09 §4.1, not endured as an unexplained first-poll
+  refused at startup naming that run and ref write-safety §4.1, not endured as an unexplained first-poll
   throw. Side lesson from the same slice: `lineTaskLogger` spreads its fields over the log line, so
   a field named `message` silently replaces the line's own text.
 - **2026-08-12: A durable record must be stamped with a fact about ITSELF, and a hash that can be
@@ -862,7 +862,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   verification row only for a terminal dependency or a not-run node, while a downstream derived fact
   cites its upstream nodes by that same mint. `assertEvidenceRefsResolve` correctly refused the whole
   receipt — and the surface whose entire job is to explain a run answered HTTP 500. The state is
-  reachable in production, not only in fixtures: doc 02 §5.4's `startAt` resume with
+  reachable in production, not only in fixtures: ref workflow-model §5.4's `startAt` resume with
   `envelope.injected` (the Edit Data path) gives a downstream node its upstream VALUE with no upstream
   checkpoint. Every record-less node now emits `unknown`, which is the honest verdict and exactly what
   the verification section is for; `mandatory` still tracks the terminal dependency set, so confidence
@@ -875,7 +875,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   `open` at or before the runtime's own `completedThrough`, a `native`/`replaced` target that does not
   resolve, and evidence that only says "the legacy file still exists". The same rot had reached the
   guard inventory: six guards sat `planned` since Phase 0 with the literal invariant "Planned Phase 1+
-  guard: <name>." and the milestone `phase-1-or-later`, three of them contradicting doc 09's own
+  guard: <name>." and the milestone `phase-1-or-later`, three of them contradicting ref write-safety's own
   MET-live record. Four retired into the guards that already execute them; two kept, re-owned, with a
   trigger that names a commit somebody will write.
 
@@ -905,7 +905,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 - **2026-08-09: A credential that must survive a QR belongs in the FRAGMENT, and a refusal that
   varies is an oracle (D174).** The capture token has to reach a phone through a scanned link, which
-  looks like it forces a secret into a URL and breaks doc 11's "no secret-bearing URLs". It does
+  looks like it forces a secret into a URL and breaks ref clock-config-secrets's "no secret-bearing URLs". It does
   not: a URL fragment is never transmitted to any server, so `/capture.html#t=<token>` puts the
   credential in the one part of a link that no proxy, access log, or `Referer` header can see, and
   the phone then presents it in a header. A side benefit decided the ingress design — because the
@@ -957,7 +957,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   input — a different key names a DIFFERENT external transaction. Refusals print the whole check
   table with both fingerprints and the moved values, and `[held]`/`[MOVED]`/`[skip]` stay distinct.
   There is no waiver arm on purpose. A resolution releases the WRITE only: the run keeps its planned
-  `contractFingerprint`, so doc 02 §5.3 replay and `executeClaimedRun` are untouched.
+  `contractFingerprint`, so ref workflow-model §5.3 replay and `executeClaimedRun` are untouched.
 - **2026-08-04: A forward reference decides the write order, and durability decides the delivery
   order.** `diagnostic_bundles.failure_id` references the failure row while
   `FailureRecord.diagnosticBundleId` is a forward ref the failure must already carry, so capture is
@@ -1090,7 +1090,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   `env > settings.json > default` resolver, so a caller without it gets a loud zod error naming the
   leaf. An alias, polyfill, or browser stub for `node:path` would be strictly worse: a stubbed
   `resolve()` invents a plausible-but-wrong absolute path, which is the exact silent-wrong-value
-  failure this program forbids. `dashboard-wire-boundary.test.ts` (doc 13 §8.13) now walks the entry
+  failure this program forbids. `dashboard-wire-boundary.test.ts` (ref frontend-backend-integration §8.13) now walks the entry
   declared in `index.html` and fails on any reachable Node built-in, printing the whole import chain.
 - **2026-08-03: authentication is a CONTENT-level observation; a URL is never a proof.** A live
   UCPath login smoke passed in ~3 seconds having never authenticated: the recipe matched a host
@@ -1135,7 +1135,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - **2026-08-03: D116 binding belongs to whoever owns the run context, and a precondition failure
   never parks.** The sequencer never binds/releases the run config fingerprint itself: during a
   claimed run its leases run under the worker loop's `withBoundRunConfigFingerprint` window (the one
-  shared discipline helper in `src/core/worker-sessions.ts`). Doc-09 §4 recovery leases outside any
+  shared discipline helper in `src/core/worker-sessions.ts`). Ref write-safety §4 recovery leases outside any
   loop, so `recover` binds the TARGET run's retained `configFingerprint` from the authority run row
   — never recomputed from current config, never caller-claimed — around its probe lease, with the
   bind OUTSIDE the probe's catch: an unbound/foreign-bound host throws out of `recover` loudly
@@ -1143,7 +1143,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   parks `unknown`. The §4.1 operator resolutions lease no driver, so no binding applies. Tests bind
   through the same production API, and each surface pins the D116 refusal arm as a negative test.
 - **2026-08-03: The write sequencer is the sole MutationCapability mint, and beat ⑦ wraps the
-  narrow primitive.** `src/core/write-sequencer.ts` owns doc 09's beats ①–⑦ behind the
+  narrow primitive.** `src/core/write-sequencer.ts` owns ref write-safety's beats ①–⑦ behind the
   interpreter's `WriteSequencer` seam; `src/core/write-recovery.ts` owns §4 recovery and the
   kernel's `WriteResolutionExecutor`. The capability is runtime-unforgeable via a module-private
   WeakSet (drivers verify with `assertSequencerMintedMutationCapability`), and the
@@ -1190,7 +1190,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   weakened ledger.** Schema v10 folds a repeated identical trigger into the one row its
   `(actorId, dedupeFingerprint)` owns — `count`, `lastSeenAt`, and a version that advances by
   exactly one — because the folded firings leave no rows behind to derive those values from, and
-  doc 03 §2.6 forbids spamming the inbox. Identity and `createdAt` are frozen by trigger. The ledger
+  ref dashboard-surfaces §2.6 forbids spamming the inbox. Identity and `createdAt` are frozen by trigger. The ledger
   tables in the SAME migration go the other way: abort-on-delete, one `assigned → appended`
   transition, immutable seq/digest/partition. Never let "notifications are mutable" leak into
   anything that records what was actually filed.
@@ -1225,7 +1225,7 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   replayed checkpoint's exact stored record is what terminal evidence reuses. Every task invocation
   races a mandatory injected monotonic deadline so a signal-ignoring driver cannot hold the worker,
   and D118 makes the claim sweeper check `attempting` write intents before any requeue — a running
-  row parks as `parked-write`/`unknown`, everything else stays unclaimable until doc-09 recovery.
+  row parks as `parked-write`/`unknown`, everything else stays unclaimable until ref write-safety recovery.
   The transaction and child-run arms are typed seams that fail loud (`capability-unavailable`) when
   unwired; the SpanEmitter port is required with no no-op default — the JSONL writer is 1g-spine's.
 - **2026-08-03: Provider admission is durable authority, and timeout must race the invocation.**

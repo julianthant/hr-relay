@@ -10,7 +10,7 @@
  *
  * ## Two nodes, one page visit and one pure fold
  *
- * `document` is the whole RRSS separation form in one visit (D194 / doc 01
+ * `document` is the whole RRSS separation form in one visit (D194 / ref task-contract
  * §2.8). `termination-type` is the `separations` mini-store's pure resolution
  * of §4a — a fold over the prior node's output that reaches no browser at all.
  * They are two nodes rather than one because they fail for genuinely different
@@ -209,7 +209,7 @@ export const separationsKualiReadDescriptor = defineWorkflowDescriptor({
     },
   ],
   /**
-   * Doc 03 §1.2: `Document 4510` becomes the person the document is about, off
+   * Ref dashboard-surfaces §1.2: `Document 4510` becomes the person the document is about, off
    * the form's own employee-name control. It is a present/absent union arm —
    * the control is routinely blank on an unprocessed document — and an absent
    * arm keeps the document number, which is both honest and the only thing a

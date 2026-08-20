@@ -1,5 +1,5 @@
 /**
- * Durable phone-capture authority (doc 06 §5.1, D79d trim, D167).
+ * Durable phone-capture authority (ref data-intake-and-edit-data §5.1, D79d trim, D167).
  *
  * Capture is an input-acquisition service, not a workflow and not an
  * in-memory callback — legacy's open sessions died with the dashboard
@@ -36,7 +36,7 @@ export const CaptureIngressModeSchema = z.enum(["disabled", "on-demand-ngrok", "
 export type CaptureIngressMode = z.infer<typeof CaptureIngressModeSchema>;
 
 /**
- * Which path served this session's phone, stamped at start (D174, doc 11).
+ * Which path served this session's phone, stamped at start (D174, ref clock-config-secrets).
  *
  * `forwardedUrl` is ROUTING CONFIG and never authority, so the row keeps the
  * mode plus a digest of the origin — enough for troubleshooting to say "that

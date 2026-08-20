@@ -1,7 +1,7 @@
 /**
- * `ai-advisory-no-authority` (doc 12 §4.4 — activated at 2i-G, D178).
+ * `ai-advisory-no-authority` (ref operator-trust §4.4 — activated at 2i-G, D178).
  *
- * The guard stayed PLANNED until there was an advisory to guard: doc 12 §4.4
+ * The guard stayed PLANNED until there was an advisory to guard: ref operator-trust §4.4
  * had a contract and no producer, and a guard over an empty set is a claim
  * nothing can violate.
  *

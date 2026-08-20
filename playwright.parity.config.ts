@@ -1,5 +1,5 @@
 /**
- * The doc 13 §7 parity lane: seeded backend (or fixture BFF) + built React +
+ * The ref frontend-backend-integration §7 parity lane: seeded backend (or fixture BFF) + built React +
  * headless Chromium, both themes, reference viewports, screenshot + a11y
  * snapshot pairs. Run with `npm run test:parity`.
  *
@@ -51,7 +51,7 @@ export default defineConfig({
       // Playwright's default, pinned explicitly because it is now the lane's
       // ONLY nondeterminism allowance: 2.9× the measured 0.0682 floor. What it
       // does not see is a colour change that stays under the tolerance on every
-      // pixel it touches — doc 13 §7.1 names that residual and what covers it.
+      // pixel it touches — ref frontend-backend-integration §7.1 names that residual and what covers it.
       threshold: 0.2,
     },
   },

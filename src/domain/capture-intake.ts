@@ -1,8 +1,8 @@
 /**
  * What a workflow must DECLARE before a phone-capture bundle may be handed to
- * it (doc 06 §5.1, D174).
+ * it (ref data-intake-and-edit-data §5.1, D174).
  *
- * Doc 06 §5.1's rule is that "the downstream descriptor parses it like any
+ * Ref data-intake-and-edit-data §5.1's rule is that "the downstream descriptor parses it like any
  * upload; no special `pdfPath` or callback bypass exists". That is only true
  * if the bundle → canonical-input step is a declared, fingerprinted property
  * of the workflow rather than something the capture service invents. So this

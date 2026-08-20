@@ -1,5 +1,5 @@
 /**
- * The Run Modal's pure half — its vocabularies and its one fold (doc 13 §8.14).
+ * The Run Modal's pure half — its vocabularies and its one fold (ref frontend-backend-integration §8.14).
  *
  * It lives beside `run-start.tsx` rather than inside it because a module that
  * exports a component may export nothing else if React Fast Refresh is to treat

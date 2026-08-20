@@ -285,7 +285,7 @@ function gateSection(overrides: Record<string, unknown> = {}) {
 const APPROVE = commandAction({ command: "resolve-gate", resolution: "approved" });
 const REJECT = commandAction({ command: "resolve-gate", resolution: "rejected" });
 
-describe("composeCommandRequest — the identity gate (doc 09 §14.4)", () => {
+describe("composeCommandRequest — the identity gate (ref write-safety §14.4)", () => {
   it("composes an approval from SERVED facts only, and the kernel's schema accepts it", () => {
     const section = gateSection();
     assert.equal(section.value.approvalShape, "one-click");

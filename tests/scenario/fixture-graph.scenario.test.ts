@@ -1,6 +1,6 @@
 /**
  * Executable scenarios for the representative graph — one per derived coverage
- * point (doc 07 item 1e's "executable per-branch/gate/policy scenarios").
+ * point (doc 01 §1c · 1d · 1e's item 1e: "executable per-branch/gate/policy scenarios").
  *
  * Every scenario walks the descriptor's own pure functions along one path and
  * REPORTS the points it exercised; the test then asserts that report equals the
@@ -146,7 +146,7 @@ describe("fixture-graph scenarios", () => {
       expected: z.strictObject({ fromInput: z.string(), identity: z.literal("eid") }),
       observe: z.string(),
       match: z.literal("normalized-exact-eid"),
-      // Doc 09: the proof is observed AFTER prepare and BEFORE the fence, which
+      // Ref write-safety: the proof is observed AFTER prepare and BEFORE the fence, which
       // is the only window in which a mismatch can still stop the write.
       requiredAt: z.literal("after-prepare-before-fence"),
     }).parse(commit.uses.subject);

@@ -1,5 +1,5 @@
 /**
- * Doc 09 §6's ordered, actor-attributed ledger projection — the durable half.
+ * Ref write-safety §6's ordered, actor-attributed ledger projection — the durable half.
  *
  * Beat ⑦ writes an UNSEQUENCED `ledger-entry` outbox row inside the atomic
  * write-commit transaction. Exactly one projector then holds a lease on the
@@ -80,7 +80,7 @@ export const LedgerProjectionRecordSchema = z.strictObject({
 
 /**
  * Every way the on-disk partition can disagree with authority. Each one STOPS
- * projection for that partition: doc 09 §6 forbids rewriting or skipping past a
+ * projection for that partition: ref write-safety §6 forbids rewriting or skipping past a
  * ledger inconsistency, because the ledger is the record of what was really
  * filed against a live HR system.
  */

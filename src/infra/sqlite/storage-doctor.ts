@@ -29,7 +29,7 @@ export const BackupSummaryOptionsSchema = z.strictObject({
 });
 
 /**
- * The CHEAP backup indicator the bootstrap summary serves (doc 03 §2.5's
+ * The CHEAP backup indicator the bootstrap summary serves (ref dashboard-surfaces §2.5's
  * "expose age/health in Settings", 2i-D): newest parseable manifest, judged
  * by its own created-at age and the live authority generation gap. This
  * deliberately does NOT re-hash backup bytes — every manifest was

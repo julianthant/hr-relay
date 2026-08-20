@@ -141,7 +141,7 @@ describe("person-lookup full walk", () => {
     assert.equal(harness.sessions.logins(), 2);
     assert.deepEqual(harness.sessions.closeReasons(), []);
 
-    // Exact span sequence (doc 02 §6 / doc 03 §1.1 identities).
+    // Exact span sequence (ref workflow-model §6 / ref dashboard-surfaces §1.1 identities).
     const trace = TraceIdSchema.parse(run.envelope.traceId);
     const node = (id: string) => NodeIdSchema.parse(id);
     const spans = harness.emitter.events().map((event) => [
@@ -313,7 +313,7 @@ describe("failure, retry, and resume", () => {
     assert.equal(failed.state, "failed");
     assert.equal(ucpathSearches, 1);
 
-    // Cross-run retry: a NEW run on the same logical item (doc 02 §6).
+    // Cross-run retry: a NEW run on the same logical item (ref workflow-model §6).
     // D221 — a retry is the ITEM's next attempt, not a second attempt 1.
     const retryRun = personLookupQueuedRun({ runId: UUID_5, attempt: 2 });
     const retryEnvelope = retryRun.envelope as Record<string, unknown>;

@@ -1,6 +1,6 @@
 /**
  * `new-kronos/read-separation-timecard` — ONE visit to the WFD Timecard page
- * (D194 / doc 01 §2.8).
+ * (D194 / ref task-contract §2.8).
  *
  * Go To, the subject proof, the custom-range apply and the grid read are all
  * ONE page visit: none of them can be re-entered without redoing the whole
@@ -100,7 +100,7 @@ export const NewKronosReadSeparationTimecard = defineTaskContract({
   ],
   /**
    * The wrong-person control (S37, and the `T002173685` class of incident doc
-   * 09 §14 exists for). `.emp-nav-id` is the timecard's OWN identity header;
+   * ref write-safety §14 exists for). `.emp-nav-id` is the timecard's OWN identity header;
    * page-wide text is forbidden because the searched EID lingers in the search
    * chrome, which is exactly how legacy read one person's punches onto
    * another's separation.

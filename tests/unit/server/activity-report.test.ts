@@ -1,5 +1,5 @@
 /**
- * The Activity report (D180, doc 13 §5/§6.7) — the range rendering of THE ONE
+ * The Activity report (D180, ref frontend-backend-integration §5/§6.7) — the range rendering of THE ONE
  * run/queue projection.
  *
  * The report is not a second counting path, so the assertions below are mostly

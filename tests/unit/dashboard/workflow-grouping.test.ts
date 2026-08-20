@@ -1,5 +1,5 @@
 /**
- * The ONE workflow-listing rule, pinned as a pure function (doc 03 §Shell,
+ * The ONE workflow-listing rule, pinned as a pure function (ref dashboard-surfaces §Shell,
  * D219 — "a chunk harness is a step of its composition, never a peer
  * workflow").
  *

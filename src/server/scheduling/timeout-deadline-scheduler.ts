@@ -2,7 +2,7 @@
  * The ONE real timer behind the kernel's `MonotonicDeadlineScheduler` port.
  *
  * It lived inside the worker composition root until D178, when the dashboard
- * process gained a second admitted-provider consumer (doc 12 §4.4's on-demand
+ * process gained a second admitted-provider consumer (ref operator-trust §4.4's on-demand
  * advisory). Two composition roots needing the same timer is exactly the shape
  * that grows a second ad-hoc `setTimeout` — and a bound armed on one of those
  * is invisible to the kernel that is supposed to own it.

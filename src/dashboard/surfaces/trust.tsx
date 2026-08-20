@@ -1,9 +1,9 @@
 /**
- * The trust surfaces (doc 12 §2.1–§2.3, D140/D142 — UI half, 2i-A): the full
+ * The trust surfaces (ref operator-trust §2.1–§2.3, D140/D142 — UI half, 2i-A): the full
  * evidence receipt and the full failure record, rendered from the wire
  * content the sections have served since D140/D142.
  *
- * Rendering rules these components pin (doc 03 D18/D24, doc 12 D141/D142):
+ * Rendering rules these components pin (ref dashboard-surfaces D18/D24, ref operator-trust D141/D142):
  * - the WRITE-STATE sentence renders unconditionally, never behind a
  *   disclosure — "what this run left behind" is the record's first job;
  * - `sameFingerprintSeen` renders as a COUNT, never a list of other runs;
@@ -82,7 +82,7 @@ function fmtAge(ms: number): string {
   return `${String(Math.floor(totalMinutes / 60))}h ${String(totalMinutes % 60).padStart(2, "0")}m`;
 }
 
-/* ── the failure record body (doc 12 §2.1, D142) ─────────────────────────── */
+/* ── the failure record body (ref operator-trust §2.1, D142) ─────────────────────────── */
 
 const WRITE_STATE_SENTENCE: Record<FailureDetailWire["writeState"], string> = {
   "not-attempted": "This run wrote nothing — no write was attempted.",
@@ -105,7 +105,7 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
   return (
     <div className="flex flex-col gap-[var(--ds-space-base)]">
       <span className={cn(dsText.body, "break-words text-[color:var(--ds-danger)]")}>{detail.summary}</span>
-      {/* Unconditional and never behind a disclosure (doc 03 D18). */}
+      {/* Unconditional and never behind a disclosure (ref dashboard-surfaces D18). */}
       <span className={cn(dsText.body, "font-semibold text-[color:var(--ds-fg)]")}>
         {WRITE_STATE_SENTENCE[detail.writeState]}
       </span>
@@ -174,7 +174,7 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
   );
 }
 
-/* ── the receipt body (doc 12 §2.3, D140/D141) ───────────────────────────── */
+/* ── the receipt body (ref operator-trust §2.3, D140/D141) ───────────────────────────── */
 
 function FactsSection({ label, facts }: { label: string; facts: RunEvidenceReceiptWire["input"] }) {
   if (facts.length === 0) return null;

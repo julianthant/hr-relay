@@ -9,7 +9,7 @@ import {
 import { auditCanonicalInputSchema } from "../../src/validation/canonical-input-schema.js";
 import { EidSchema } from "../../src/domain/ids.js";
 
-/** The doc 02 §2 worked example: ingress applies two defaults, canonical does not. */
+/** The ref workflow-model §2 worked example: ingress applies two defaults, canonical does not. */
 const PersonLookupInput = z.union([
   z.strictObject({
     name: z.string().min(1),

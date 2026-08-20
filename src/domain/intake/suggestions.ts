@@ -1,12 +1,12 @@
 /**
- * The header-suggestion scorer — doc 06 §2.5, the redesigned successor to
+ * The header-suggestion scorer — ref data-intake-and-edit-data §2.5, the redesigned successor to
  * legacy's `COLUMN_PATTERNS` regex table.
  *
  * It **proposes**. It cannot bind. That is structural rather than
  * conventional: a `ColumnBinding` requires `confirmedAt`, and a `Suggestion`
  * has no such field and no way to acquire one — only `confirmBinding` in
  * `mapping.ts`, called from an operator action, mints one. So there is no code
- * path from this module to a populated `bindings` array, which is what doc 06
+ * path from this module to a populated `bindings` array, which is what ref data-intake-and-edit-data
  * §7 vector #1 asks for.
  *
  * The reason this matters more than it looks: legacy's regexes silently decided
@@ -22,7 +22,7 @@
  * canonical field's own `coerce` + `schema`. A column whose samples all parse
  * is corroborated; a column where none do is suppressed to zero no matter how
  * well its header scored, because a header that matches while the data cannot
- * is the mis-map doc 06 §2.4 wants surfaced.
+ * is the mis-map ref data-intake-and-edit-data §2.4 wants surfaced.
  *
  * A `CellCoercionError` here is an expected outcome, not a failure: it is the
  * measurement. Anything else propagates.

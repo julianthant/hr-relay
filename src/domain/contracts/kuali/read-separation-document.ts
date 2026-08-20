@@ -1,6 +1,6 @@
 /**
  * `kuali/read-separation-document` — ONE visit to the RRSS Separation Request
- * Form (D194 / doc 01 §2.8), returning the whole form.
+ * Form (D194 / ref task-contract §2.8), returning the whole form.
  *
  * `docs/migrations/separations.md` §2.3 lists this task as "the six fields off
  * the RRSS separation form". That row predates §2.8, which was ratified later
@@ -15,7 +15,7 @@
  *
  * Every other browser read in this tree binds a PERSON subject from its input.
  * This one cannot: the run names a document and the EID is what it DISCOVERS —
- * that is the whole point of the read. Doc 01's `artifact` subject kind with
+ * that is the whole point of the read. Ref task-contract's `artifact` subject kind with
  * `identity:"document-id"` is exactly this shape, proved against the level-1
  * heading Kuali renders the document number in (D129: an `actionId` names a
  * workflow STEP, not a document, so a run carries both and the number is proved

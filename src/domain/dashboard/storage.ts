@@ -1,5 +1,5 @@
 /**
- * The storage doctor wire (doc 03 §2.5, 2i-D): the read-only recovery report
+ * The storage doctor wire (ref dashboard-surfaces §2.5, 2i-D): the read-only recovery report
  * the Settings surface and `cli storage doctor` both render.
  *
  * This is a browser-safe PROJECTION of `src/infra/sqlite/recovery-contracts.ts`

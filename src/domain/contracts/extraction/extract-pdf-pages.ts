@@ -6,7 +6,7 @@
  * and re-read independently, and so `sourcePage` means something a human can
  * check against the paper.
  *
- * ## Doc 06 §3's `parse-pdf-fields` described a capability that does not exist
+ * ## Ref data-intake-and-edit-data §3's `parse-pdf-fields` described a capability that does not exist
  *
  * That entry says "same shape for a fielded PDF (onboarding's extraction step
  * ports here)". Reading legacy at `4deabc5a`: onboarding's `extract.ts` is

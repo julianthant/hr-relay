@@ -1,6 +1,6 @@
 /**
  * `kuali/stage-separation-finalization` — the PREPARE arm of chunk 5's Kuali
- * finalization transaction (doc 09 §3 beat ②).
+ * finalization transaction (ref write-safety §3 beat ②).
  *
  * ## It stages EVERY field in one pass, and that is §4e's answer, not a shortcut
  *

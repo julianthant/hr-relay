@@ -1,5 +1,5 @@
 /**
- * Doc 13 §7 — the parity lane must photograph the WORKING TREE.
+ * Ref frontend-backend-integration §7 — the parity lane must photograph the WORKING TREE.
  *
  * The lane serves `dist/dashboard` as static files. Nothing used to guarantee
  * that directory was a build of the current sources, so a run against a stale

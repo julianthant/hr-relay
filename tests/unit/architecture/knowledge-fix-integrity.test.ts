@@ -1,5 +1,5 @@
 /**
- * Guard: `knowledge-fix-integrity` (doc 10 §3.10; doc 12 §4 + §9).
+ * Guard: `knowledge-fix-integrity` (ref guards-and-tests §3.10; ref operator-trust §4 + §9).
  *
  * Knowledge records carry status/scope/evidence/validity and supersession refs;
  * no two ACTIVE records may claim the same scoped rule without an explicit
@@ -9,7 +9,7 @@
  * lesson append is not accepted as active architecture authority: `triageLesson`
  * has no arm that returns a record at all.
  *
- * The generated `KNOWLEDGE.md` projection is checked here too, because doc 12 §9
+ * The generated `KNOWLEDGE.md` projection is checked here too, because ref operator-trust §9
  * makes "generated active knowledge contains no superseded/retired/unverified
  * records" a guard obligation and the file is the thing an AI tool reads.
  */

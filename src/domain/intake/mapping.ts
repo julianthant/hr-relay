@@ -1,5 +1,5 @@
 /**
- * Operator column mapping — doc 06 §2.
+ * Operator column mapping — ref data-intake-and-edit-data §2.
  *
  * Three separate ideas live here, and keeping them separate is what makes the
  * design fail closed:
@@ -19,8 +19,8 @@
  * A saved mapping records `currentIndex` purely so the UI can say "the column
  * moved". It is never a fallback. If `eid` was bound to a column that is now
  * absent, falling back to "whatever is at index 3" would bind a DIFFERENT
- * column and launch real HR transactions against the wrong people — doc 06 §2.3
- * calls this out, and doc 06 §7 vector #3 is the guarded form of it.
+ * column and launch real HR transactions against the wrong people — ref data-intake-and-edit-data §2.3
+ * calls this out, and ref data-intake-and-edit-data §7 vector #3 is the guarded form of it.
  *
  * ## Why duplicate headers demand confirmation
  *
@@ -83,7 +83,7 @@ export const ColumnMappingSchema = z.strictObject({
 export type ColumnMapping = z.infer<typeof ColumnMappingSchema>;
 
 /**
- * `base64url(canonicalJson({ normalizedHeader, occurrence }))` — doc 06 §2.1.
+ * `base64url(canonicalJson({ normalizedHeader, occurrence }))` — ref data-intake-and-edit-data §2.1.
  *
  * Canonical JSON rather than delimiter concatenation because a delimiter can
  * be inside a header: `["a b","c"]` and `["a","b c"]` would collide under
@@ -121,7 +121,7 @@ export function detectColumns(
 }
 
 /**
- * Doc 06 §2.3's layout fingerprint: order-insensitive over
+ * Ref data-intake-and-edit-data §2.3's layout fingerprint: order-insensitive over
  * `{ normalized header, occurrence }` pairs.
  */
 export function headerFingerprint(columns: readonly DetectedColumn[]): Fingerprint {
@@ -135,7 +135,7 @@ export function headerFingerprint(columns: readonly DetectedColumn[]): Fingerpri
 }
 
 /**
- * The manifest's `mappingSnapshotHash` (doc 06 §5, D171): the identity of the
+ * The manifest's `mappingSnapshotHash` (ref data-intake-and-edit-data §5, D171): the identity of the
  * DECISIONS a plan was built from, as opposed to `mappingFingerprint`, which is
  * the identity of the LAYOUT they were made against.
  *
@@ -235,7 +235,7 @@ export type MappingReuse = z.infer<typeof MappingReuseSchema>;
 /**
  * Re-resolve a saved mapping against the layout actually detected.
  *
- * A fingerprint hit gets a mapping OFFERED, not applied: doc 06 §2.3 is
+ * A fingerprint hit gets a mapping OFFERED, not applied: ref data-intake-and-edit-data §2.3 is
  * explicit that reuse is "reuse-with-a-glance, not a silent auto-run". Every
  * binding is proved again from the header + occurrence, and every failure mode
  * lands as its own state with its own message rather than as a quiet drop.
@@ -370,7 +370,7 @@ export function resolveSavedMapping(args: {
 }
 
 /**
- * THE one way a `ColumnBinding` comes into existence — doc 06 §2.5's
+ * THE one way a `ColumnBinding` comes into existence — ref data-intake-and-edit-data §2.5's
  * "the mapping is only `bindings`-populated by an operator action".
  *
  * `confirmedAt` is the operator's act, and it is a required field. A

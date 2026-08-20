@@ -1,5 +1,5 @@
 /**
- * Doc 09 §6's mechanical arms: one ordered projector, idempotent by outbox id,
+ * Ref write-safety §6's mechanical arms: one ordered projector, idempotent by outbox id,
  * loud on every disagreement, and a `ledger/` directory that NO cleanup path
  * can reach. Every arm is executed against a violating fixture so a dead arm
  * cannot stand in for enforcement.
@@ -62,7 +62,7 @@ export function ledgerPruneReachabilityViolations(sources: readonly ScannedSourc
 }
 
 /**
- * Executors never append the ledger; exactly one module does (doc 09 §6). A
+ * Executors never append the ledger; exactly one module does (ref write-safety §6). A
  * second appender would be a second sequence authority.
  */
 export function ledgerSoleWriterViolations(sources: readonly ScannedSource[]): readonly string[] {

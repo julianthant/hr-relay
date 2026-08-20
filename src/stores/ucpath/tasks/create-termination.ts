@@ -71,7 +71,7 @@ export const createTerminationTask = defineTask(ucpathDriver, UcpathCreateTermin
         `UCPath Save and Submit was clicked for EID ${input.emplId} effective ${input.effectiveDate}, `
         + `and the post-submit read answered ${verdict.state}. PeopleSoft's outcome is unknown; `
         + "refusing to report success. The write may have landed, so this parks for an operator "
-        + "(docs/rebuild/09-write-safety.md §4.1).",
+        + "(docs/rebuild/reference/write-safety.md §4.1).",
       );
     }
     ctx.recordData([

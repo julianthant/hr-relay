@@ -1,5 +1,5 @@
 /**
- * D199 — what a settled run's evidence receipt actually binds to (doc 12 §2.3).
+ * D199 — what a settled run's evidence receipt actually binds to (ref operator-trust §2.3).
  *
  * A receipt is D141's pure function of authority: derive it again over the same
  * terminal run and the same durable rows and you must get the same bytes, which
@@ -83,7 +83,7 @@ import type { WriteIntentRecord } from "../domain/write-safety.js";
 
 /**
  * The named semantic checks, in evaluation order. Adding one is a contract
- * change (doc 12 §2.3 owns the list); removing one lets a receipt be re-derived
+ * change (ref operator-trust §2.3 owns the list); removing one lets a receipt be re-derived
  * against a declaration it was never built under.
  */
 export const ReceiptBindingCheckSchema = z.enum([

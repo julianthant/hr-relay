@@ -1,7 +1,7 @@
 /**
  * D144 — a transaction node IS a terminal dependency, proved end to end.
  *
- * This is the test the named gap in doc 12 asked for. It drives the REAL
+ * This is the test the named gap in ref operator-trust asked for. It drives the REAL
  * interpreter (`executeClaimedRun`) over the REAL `kuali-timekeeper-annotation`
  * descriptor, the REAL write sequencer, the REAL Kuali store, and a REAL
  * temporary authority database — no hand-assembled terminal rows anywhere. The

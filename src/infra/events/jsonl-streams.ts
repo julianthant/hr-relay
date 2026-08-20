@@ -1,9 +1,9 @@
 /**
- * The two JSONL event streams on disk (doc 03 §2.1): `spans/` and `notes/`
+ * The two JSONL event streams on disk (ref dashboard-surfaces §2.1): `spans/` and `notes/`
  * under the config-resolved state root, one file per `<workflow>-<date>`,
  * `O_APPEND` single-line writes, append-at-now partitioning, and the D86
  * 30-day prune. The ledger is deliberately NOT here — it has its own
- * serialized outbox projector (doc 09) and is never pruned.
+ * serialized outbox projector (ref write-safety) and is never pruned.
  */
 import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, statSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";

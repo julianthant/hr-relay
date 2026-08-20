@@ -1,5 +1,5 @@
 /**
- * Compose a doc 09 §4.1 confirmed-present PROOF from the field list the server
+ * Compose a ref write-safety §4.1 confirmed-present PROOF from the field list the server
  * described (D245), and refuse — by field, by name — everything the description
  * says is wrong.
  *
@@ -51,7 +51,7 @@ export function isOperatorSuppliedProofField(field: ProofFieldWire): boolean {
  * A blank draft per operator-supplied field. Deliberately blank, never
  * pre-filled from the run: the run holds what it TRIED to write, and offering
  * that back as the proof would turn an attestation about a live HR system into
- * a click-through of the system's own guess (doc 09 §14.6's rubber-stamping
+ * a click-through of the system's own guess (ref write-safety §14.6's rubber-stamping
  * shape, one control over).
  */
 export function initialProofDrafts(fields: readonly ProofFieldWire[]): Record<string, string> {

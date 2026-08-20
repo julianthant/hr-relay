@@ -224,7 +224,7 @@ const SIGNAL = new AbortController().signal;
 
 describe("branch + gate dispatch", () => {
   /**
-   * Doc 09 §14 / separations §4d: **no run mode can disable a gate.**
+   * Ref write-safety §14 / separations §4d: **no run mode can disable a gate.**
    *
    * `dryRun` is the only run-level mode this envelope carries, and it is the one
    * an operator would most plausibly expect to "just preview". It does not touch

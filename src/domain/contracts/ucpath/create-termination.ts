@@ -9,7 +9,7 @@
  *
  * ## The permanent key is EID + effective date
  *
- * Doc 09 §5 wants the NATURAL business key, and this one is exactly the
+ * Ref write-safety §5 wants the NATURAL business key, and this one is exactly the
  * question a duplicate would answer yes to: "is this person already being
  * terminated effective this date?" It never incorporates run position, attempt,
  * template, or reason code — a second run that picked a different reason code
@@ -64,7 +64,7 @@ export const UcpathCreateTerminationOutputSchema = z.strictObject({
 export type UcpathCreateTerminationOutput = z.infer<typeof UcpathCreateTerminationOutputSchema>;
 
 /**
- * The natural business key (doc 09 §5): the person and the effective date, and
+ * The natural business key (ref write-safety §5): the person and the effective date, and
  * nothing else. Legacy's own existence check asks the same question — an
  * EID + exact effdt + `"Terminat"` action match — which is the one part of its
  * duplicate control the behavior review rates `sound`.

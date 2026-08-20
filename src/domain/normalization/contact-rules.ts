@@ -1,5 +1,5 @@
 /**
- * Deterministic contact-normalization rules (doc 06 §4.2) — the pure half of
+ * Deterministic contact-normalization rules (ref data-intake-and-edit-data §4.2) — the pure half of
  * legacy's `normalize-contact.ts`, ported with provenance (D93):
  * `legacy:src/services/llm/normalize-contact.ts` at commit `0034671d` and
  * `legacy:src/services/address/format.ts` at commit `ab9ab5ab`.
@@ -21,7 +21,7 @@ import { z } from "zod";
 /**
  * The contact fields this tree advises on. It lives here rather than in the
  * task contract because two modules outside that contract need it — the store
- * task and doc 12 §4.4's advisory answer schema — and a vocabulary imported
+ * task and ref operator-trust §4.4's advisory answer schema — and a vocabulary imported
  * from a contract boundary would put the contract in both import closures.
  */
 export const ContactFieldIdSchema = z.enum([

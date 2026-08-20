@@ -309,7 +309,7 @@ export type WorkerState = WorkerCardWire["state"];
  *
  * Two arms LEFT this table rather than staying unreachable. `waiting` was the
  * demo's "blocked on a lease another worker holds", and this platform gives
- * every worker its own browser session per system (doc 05 §1), so there is no
+ * every worker its own browser session per system (ref execution-and-sessions §1), so there is no
  * cross-worker lease to wait on and nothing that could record a holder.
  * `paused` left because a pause is a DIRECTIVE, not a phase — see
  * `workerDirectiveNote` below, and the durable record's own header for why the
@@ -425,7 +425,7 @@ export const ALWAYS_TALLIED: WorkerState[] = ["working", "starting", "idle"];
  * The connection, as the operator sees it — the whole point of the bar's right
  * edge. `live` is the only quiet state; everything else says what is wrong,
  * because a dashboard that has stopped receiving patches while still painting
- * the last snapshot is the exact failure doc 13 §3.5 forbids.
+ * the last snapshot is the exact failure ref frontend-backend-integration §3.5 forbids.
  */
 export function connectionTone(state: SubscriptionState): {
   label: string;

@@ -1,9 +1,9 @@
 /**
- * The JSONL note writer — the high-volume half of the D10 split (doc 03
+ * The JSONL note writer — the high-volume half of the D10 split (ref dashboard-surfaces
  * §1.1). Notes are evidence, not control state: log lines and structured
  * fields addressed to their exact task attempt or worker/browser lifetime.
  *
- * Redaction is schema-owned (doc 11): a caller submits CLASSIFIED fields —
+ * Redaction is schema-owned (ref clock-config-secrets): a caller submits CLASSIFIED fields —
  * `{key, classification, transform, value}` — and the writer runs them through
  * `redactDiagnosticFields` before anything touches disk. An unclassified field
  * is DROPPED, never passed through, and the drop is visible: the emitted note

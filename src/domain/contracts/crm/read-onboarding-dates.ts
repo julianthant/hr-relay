@@ -1,6 +1,6 @@
 /**
  * `crm/read-onboarding-dates` — the optional dates step behind
- * person-lookup's `includeCrmDates` flag (doc 02 §8).
+ * person-lookup's `includeCrmDates` flag (ref workflow-model §8).
  *
  * Each date is an explicit present/absent arm rather than an optional string.
  * A blank start date and an unrecorded start date look identical once flattened,

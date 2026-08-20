@@ -1,5 +1,5 @@
 /**
- * The subject-derived row title (doc 03 §1.2).
+ * The subject-derived row title (ref dashboard-surfaces §1.2).
  *
  * A run's title starts as whatever `presentation.title` composed from the START
  * INPUT — `Separation 4502`, `EID 10620118`. That is the only honest thing to
@@ -41,7 +41,7 @@
 import type { JsonValue } from "../../../domain/canonical-json.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 
-/** The narrow authority read this needs — doc 02 §5.7's "latest compatible attempt wins". */
+/** The narrow authority read this needs — ref workflow-model §5.7's "latest compatible attempt wins". */
 export interface SubjectCheckpointSource {
   latestCheckpoint(
     workflowId: string,

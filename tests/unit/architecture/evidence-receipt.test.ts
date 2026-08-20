@@ -1,5 +1,5 @@
 /**
- * `evidence-receipt` — doc 10 §3.10's guard, activated with the D82 receipt
+ * `evidence-receipt` — ref guards-and-tests §3.10's guard, activated with the D82 receipt
  * builder (D140/D141).
  *
  * Its spec has two halves and both are executed here:
@@ -258,7 +258,7 @@ describe("evidence receipt — strictness", () => {
   });
 
   /**
-   * D204 — doc 09 §14.6 risk 6, closed on the evidence side.
+   * D204 — ref write-safety §14.6 risk 6, closed on the evidence side.
    *
    * A gate has no checkpoint and never will, so a receipt derived from
    * checkpoints alone listed the ALWAYS-GATE node `unknown` and dropped the one

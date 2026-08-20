@@ -7,8 +7,8 @@
  * authoritative observations — the displayed EID (the SUBJECT of the write) and
  * the displayed timekeeper name (the COMPLETION read-back).
  *
- * Two facts shape every recipe below and are not negotiable (doc 07 §3.8 /
- * doc 09 §13 OQ1, the operator-authorized 2026-07-23 live probe, D78):
+ * Two facts shape every recipe below and are not negotiable (doc 03c §Live probe status /
+ * ref write-safety §13 OQ1, the operator-authorized 2026-07-23 live probe, D78):
  *
  *  - **A Kuali save signal is worthless in BOTH directions.** The 2026-07-23
  *    probe recorded the save as UI-silent; the 2026-08-04 controlled attempt
@@ -88,7 +88,7 @@ export {
 } from "./kuali-document-identity.js";
 
 /**
- * The typed saved-state proof for doc 09's `save-verify` completion arm.
+ * The typed saved-state proof for ref write-safety's `save-verify` completion arm.
  *
  * It names the exact document identity, the exact persisted value, and the
  * subject the page displayed. It carries NO "clicked ok" flag by design — the
@@ -219,7 +219,7 @@ const CommitOperationSchema = z.custom<(
 /**
  * Kuali's task-facing semantic surface.
  *
- * `read` is not a task convenience — it is the seam the KERNEL calls at doc 09
+ * `read` is not a task convenience — it is the seam the KERNEL calls at ref write-safety
  * beat ③ to observe the subject on the exact staged page. `commit` is the only
  * method that can click Save, and it requires the unforgeable
  * `MutationCapability` the fenced write sequencer alone mints.

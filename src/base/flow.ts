@@ -1,5 +1,5 @@
 /**
- * The ONE workflow builder API (doc 02 §3; absorbs doc 01 §5).
+ * The ONE workflow builder API (ref workflow-model §3; absorbs ref task-contract §5).
  *
  * The builder accumulates two exact generics as nodes are added:
  *
@@ -52,7 +52,7 @@ import type {
  * branch/parallel/child/gate, `[C]` for a task, and `[P, C]` for a transaction,
  * so `.decorate` can only name a contract the node actually owns.
  *
- * `Out` is deliberately unconstrained. Doc 02 §3 originally wrote
+ * `Out` is deliberately unconstrained. Ref workflow-model §3 originally wrote
  * `Out extends JsonValue` to keep Page/Date/class instances out of checkpoints,
  * but inside a generic method `z.output<C["output"]>` is still `unknown`, so the
  * constraint rejects every well-formed node before its contract resolves. The
@@ -109,13 +109,13 @@ export interface StepOpts<
   C extends AnyReadTaskContract,
   D extends readonly (keyof S & string)[],
 > {
-  /** Defaults to the contract's `title` (doc 02 §1.5). */
+  /** Defaults to the contract's `title` (ref workflow-model §1.5). */
   readonly label?: string;
   readonly dependsOn: D;
   readonly bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]>;
   /** D228 — a DECLARED condition; the closure form is gone on purpose. */
   readonly when?: NodeConditionSpec;
-  /** REQUIRED — no default (doc 02 §5.3). */
+  /** REQUIRED — no default (ref workflow-model §5.3). */
   readonly replay: "checkpoint" | "always-rerun";
 }
 
@@ -440,7 +440,7 @@ export interface FlowBuilder<
 
 /**
  * What `build()` returns: the exact node tuple plus the accumulated `S`/`D`
- * generics the descriptor factory needs. The full `WorkflowDescriptor` (doc 02
+ * generics the descriptor factory needs. The full `WorkflowDescriptor` (ref workflow-model
  * §1.1) wraps this with the doc-03-owned presentation/enqueue/action fields.
  */
 export interface BuiltFlow<

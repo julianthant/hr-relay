@@ -4,7 +4,7 @@
  * A thin edge over pure domain logic: parse the roster artifact through the
  * SAME shared grid edge extraction uses, prove the operator's mapping fits
  * these exact bytes, coerce the bound cells through the canonical field
- * registry, and hand everything to `matchRosterSubjects` (doc 06 §4's
+ * registry, and hand everything to `matchRosterSubjects` (ref data-intake-and-edit-data §4's
  * redesigned composition, which owns every verdict rule).
  *
  * Fail-closed rules at this edge:

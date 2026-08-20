@@ -1,6 +1,6 @@
 /**
  * The JSONL span writer — the concrete `SpanEmitter` the executor is handed
- * (doc 03 §1.1, §2.1). Direct `O_APPEND` to `spans/<workflow>-<date>.jsonl`;
+ * (ref dashboard-surfaces §1.1, §2.1). Direct `O_APPEND` to `spans/<workflow>-<date>.jsonl`;
  * NOT SQLite — only the ledger and the write-committed terminal span ride the
  * SQLite outbox, and both already landed in 1c.
  *
@@ -24,7 +24,7 @@
  * process is not necessarily the serving process — the worker is its own OS
  * process, so an in-process post-append hook could only ever cover one
  * emitter's half of the stream. "JSONL append first, projection applies
- * after" (doc 03 §2.3) is therefore structural: the projection can only see
+ * after" (ref dashboard-surfaces §2.3) is therefore structural: the projection can only see
  * what already landed.
  */
 import { z } from "zod";
@@ -36,7 +36,7 @@ import { appendEventStreamLine } from "./jsonl-streams.js";
 export interface SpanJsonlWriterDeps {
   readonly stateRoot: string;
   readonly clock: Clock;
-  /** The writer owns the process-level field (doc 03 §1.1); injectable for tests. */
+  /** The writer owns the process-level field (ref dashboard-surfaces §1.1); injectable for tests. */
   readonly pid?: number;
 }
 

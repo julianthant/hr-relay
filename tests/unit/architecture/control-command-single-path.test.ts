@@ -1,7 +1,7 @@
 /**
- * `control-command-single-path` — doc 10 §3.9, activated by D113.
+ * `control-command-single-path` — ref guards-and-tests §3.9, activated by D113.
  *
- * Control surfaces mutate authority only through doc 03's D67/D95 command
+ * Control surfaces mutate authority only through ref dashboard-surfaces's D67/D95 command
  * protocol, and there is exactly ONE code path that executes it. Three halves
  * make that mechanical in Phase 1f:
  *
@@ -56,7 +56,7 @@ import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixture
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 
-/* ── the ratified Phase-1f partition (doc 03 §Phase-1f authority) ────────── */
+/* ── the ratified Phase-1f partition (ref dashboard-surfaces §Phase-1f authority) ────────── */
 
 const EXPECTED_ACTIVE = {
   start: ["start-run"],

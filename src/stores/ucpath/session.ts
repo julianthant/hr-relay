@@ -20,7 +20,7 @@
  *   when the redirect chain drops back onto campus discovery.
  *
  * Not ported: legacy's fixed `waitForTimeout` settles and its Duo poll loop
- * (doc 05 §5 — real readiness predicates under bounded deadlines only).
+ * (ref execution-and-sessions §5 — real readiness predicates under bounded deadlines only).
  *
  * ## 2026-08-03: what the ported URL predicate could not do
  *

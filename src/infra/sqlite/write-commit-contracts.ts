@@ -184,9 +184,9 @@ export const AtomicWriteCommitReportSchema = z.strictObject({
   }
 });
 
-/* ── Phase-1f intent state transitions (doc 09 §4/§4.1; D111/D118) ────────── */
+/* ── Phase-1f intent state transitions (ref write-safety §4/§4.1; D111/D118) ────────── */
 
-/** Doc 09 §4.3 park codes — mirrors the parked intent/run vocabulary exactly. */
+/** Ref write-safety §4.3 park codes — mirrors the parked intent/run vocabulary exactly. */
 export const WriteIntentParkCodeSchema = z.enum([
   "unknown",
   "ambiguous",
@@ -242,7 +242,7 @@ export const WriteIntentReopenRequestSchema = z.strictObject({
  * CAS a `retryable` permanent row to a NEW `attempting` generation. The intent
  * keeps its permanent identity (same id/system/key); the generation advances by
  * exactly one and carries a FRESH binding proof — no prior `WriteBindingProof`
- * is ever reused across generations (doc 09 §4.1.2).
+ * is ever reused across generations (ref write-safety §4.1.2).
  */
 export const WriteRefenceInputSchema = z.strictObject({
   expectedVersion: PositiveIntSchema,
@@ -255,7 +255,7 @@ export const WriteRefenceInputSchema = z.strictObject({
   }
 });
 
-/* ── the beat-⑦ outer bundle (doc 03 Phase-1f authority; doc 09 §3 beat ⑦) ── */
+/* ── the beat-⑦ outer bundle (ref dashboard-surfaces Phase-1f authority; ref write-safety §3 beat ⑦) ── */
 
 export const SequencedWriteCommitStepSchema = z.enum([
   "commit-write-attempt",
@@ -265,7 +265,7 @@ export const SequencedWriteCommitStepSchema = z.enum([
 
 /**
  * The complete beat-⑦ bundle. The Phase-1c four-row `commitWriteAttempt`
- * primitive stays narrow INSIDE it (doc 03: "a storage primitive inside this
+ * primitive stays narrow INSIDE it (ref dashboard-surfaces: "a storage primitive inside this
  * complete bundle, not a separately committable terminal path"); this outer
  * input additionally binds the current run claim, the schema-valid
  * `TransactionOutcome` checkpoint, and the run transition — one outer authority

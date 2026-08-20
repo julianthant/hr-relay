@@ -1,5 +1,5 @@
 /**
- * The ONE typed client (doc 13 §0.2): schema-parsed queries, normalized
+ * The ONE typed client (ref frontend-backend-integration §0.2): schema-parsed queries, normalized
  * errors, day-state patch application, and the resumable subscription's
  * protocol behavior — resume with Last-Event-ID, cursor-gap resnapshot,
  * reset-required, and a malformed envelope stopping loudly.

@@ -18,7 +18,7 @@
  *
  * So the ONLY landing proof is a reload read-back, `verify` points at
  * `kuali/verify-separation-finalization`, and any verdict other than `present`
- * parks (doc 09 §7 row 6). `output` carries the field set the click targeted —
+ * parks (ref write-safety §7 row 6). `output` carries the field set the click targeted —
  * a CLAIM, not proof; nothing in the kernel promotes it. `proofFromOutput`
  * exists to satisfy the static round-trip the contract factory checks and to
  * reconstruct node output from a probe-derived proof on the preflight-present
@@ -43,11 +43,11 @@
  *
  * ## Why `recoveryAbsence` is `stabilized`, and where its numbers come from
  *
- * **Ratified as D207 (doc 09 §4.2), which this is the first reuse under.** A
+ * **Ratified as D207 (ref write-safety §4.2), which this is the first reuse under.** A
  * measured window transfers with the MECHANISM when the reusing contract names
  * the same write request, the same negative read, and an absence that is safe in
  * the direction it can be wrong; and the transfer is **provisional until this
- * write's own controlled-commit proof confirms it** (doc 07 §3.1 step 5 —
+ * write's own controlled-commit proof confirms it** (doc 03c §Phase summary step 5 —
  * chunk 5c). The composed separations workflow may not rely on the stabilized
  * arm in production before that confirmation lands.
  *
@@ -57,7 +57,7 @@
  * 4490 recorded the save answering in ~2.5–3.0 s, Kuali's own document query
  * agreeing on the first sample ~270 ms later, and a full browser reload agreeing
  * within ~3 s: worst observed fence→trustworthy-negative ≈ 3.3 s (the table is
- * in `kuali/save-timekeeper-annotation.ts` and doc 09's Phase-2 as-built).
+ * in `kuali/save-timekeeper-annotation.ts` and ref write-safety's Phase-2 as-built).
  *
  * What transfers is the MECHANISM, not the field: `submitDocumentV2` serializes
  * the whole current-step section in one request either way, and the negative

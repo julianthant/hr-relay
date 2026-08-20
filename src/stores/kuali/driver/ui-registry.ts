@@ -176,7 +176,7 @@ const LegacySelectorProvenanceSchema = z.strictObject({
 /**
  * Kuali form controls are addressed the way the live accessibility tree
  * exposes them: role + the EXACT accessible name, `*` included. There is no
- * CSS arm and no `.or()` arm on purpose — doc 09 §13 OQ1 (c) records that DOM
+ * CSS arm and no `.or()` arm on purpose — ref write-safety §13 OQ1 (c) records that DOM
  * refs change on every reload, and the Save neighbourhood makes a fuzzy match
  * dangerous.
  */
@@ -1108,7 +1108,7 @@ export function auditKualiUiRegistry(registryInput: unknown = KUALI_UI_REGISTRY)
    *
    * The original rule ("exactly one") was written when this store had one
    * binding: the write's PERSON subject, the displayed EID. The separation read
-   * introduced a second, genuinely different subject — doc 01's `artifact` kind
+   * introduced a second, genuinely different subject — ref task-contract's `artifact` kind
    * with `identity:"document-id"`, because that read names a document and
    * DISCOVERS the person. Both must still be unambiguous, so the rule becomes
    * per-identity rather than being relaxed: exactly one `eid` subject

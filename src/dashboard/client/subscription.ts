@@ -1,5 +1,5 @@
 /**
- * The resumable dashboard-day subscription (doc 13 §3.5), client side.
+ * The resumable dashboard-day subscription (ref frontend-backend-integration §3.5), client side.
  *
  * Every envelope schema-parses before entering state — a malformed payload is
  * a visible protocol failure that stops the subscription with an error, never

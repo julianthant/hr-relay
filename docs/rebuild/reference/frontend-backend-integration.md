@@ -7,7 +7,7 @@ This document is the production-wiring companion for the rebuild demo. It answer
 **how do we make the rebuilt product render the approved frontend exactly, while ensuring every
 visible state and action is backed by durable, honest backend behavior?**
 
-This is **not a second build order**. Doc 07 remains the only sequencer. The slices here map onto
+This is **not a second build order**. The phase docs remain the only sequencer. The slices here map onto
 `1g-spine`, `1i-spine`, and the Phase-2 tails in that plan. Contract ownership remains with docs
 02/03/06/09/11/12; this document owns the composition boundary between those contracts and the
 production React application. If a wire shape below needs to change, its owning document must be
@@ -18,7 +18,7 @@ Visual authority (all demo paths below are in the **legacy repo**, where the dem
 - `src/dashboard/components/dev/rebuild-demo/DESIGN.md` — design language and interaction rules;
 - `src/dashboard/components/dev/rebuild-demo/ds/` — tokens and primitive behavior;
 - `src/dashboard/components/dev/rebuild-demo/` — the rendered product target;
-- `docs/rebuild/03-tracker-dashboard.md` §9 — ratified presentation decisions;
+- `docs/rebuild/reference/dashboard-surfaces.md` §9 — ratified presentation decisions;
 - `docs/rebuild/reviews/backend-capabilities-from-the-demo-2026-07-28.md` — backend discoveries
   made while building the target.
 
@@ -48,7 +48,7 @@ remain in `1g-spine` and `1i-spine`.
 
 The optimal foundation is a **typed dashboard backend-for-frontend (BFF) inside the rebuild repo's
 own Hono process**, backed by rebuilt authoritative SQLite state and server-side
-projections (doc 03). It is not a separate rebuild service and never shares the legacy Hono
+projections (ref dashboard-surfaces). It is not a separate rebuild service and never shares the legacy Hono
 process, routes, middleware, state, port, lock, or browser sessions.
 
 ```mermaid
@@ -99,7 +99,7 @@ The following are settled:
    we do not redesign while wiring production data.
 8. **The product does not explain itself.** General teaching copy lives in an accessible ⓘ
    popover; only a refusal, a genuine hazard, or a fact about the selected run may consume standing
-   surface space (doc 03 D24).
+   surface space (ref dashboard-surfaces D24).
 9. **Two repos, one cutover (D88/D89/D93).** The legacy repo's dashboard remains the production UI
    throughout construction, while the rebuild is built in the standalone `hr-automation-rebuild`
    repo. The two share no module graph, build, or process, so neither side *can* proxy, import,
@@ -158,7 +158,7 @@ server-authored product model and one client that parses it.
 
 ### 1.3 Existing rebuild contracts are strong but not yet sufficient for the current target
 
-Docs 02/03/06/09/11/12 already settle the hard backend foundation: descriptors, spans/notes,
+Refs workflow-model/dashboard-surfaces/data-intake-and-edit-data/write-safety/clock-config-secrets/operator-trust already settle the hard backend foundation: descriptors, spans/notes,
 authority vs projection storage, checkpoint edits, intake manifests, write fences, evidence,
 archive-on-version-bump, explorer, notifications, and config provenance. The current target adds
 or clarifies these integration requirements:
@@ -228,7 +228,7 @@ Rules:
 
 ## 3. Canonical transport contracts
 
-The names below are integration roles. Docs 02/03/06/09/11/12 own the final strict shapes.
+The names below are integration roles. Refs workflow-model/dashboard-surfaces/data-intake-and-edit-data/write-safety/clock-config-secrets/operator-trust own the final strict shapes.
 
 ### 3.1 `FrontendBootstrapWire`
 
@@ -272,7 +272,7 @@ The client derives navigation from this list; no parallel workflow registry surv
 each workflow's own `category` id and nothing else about grouping — there is no `workflowCategories`
 projection, because the one this wire used to carry invented both of its fields (`label` was
 `id.replace(/-/g, " ")`, `order` was the registry's first-seen index), so the Workflow Panel's
-headings read `separation` in whatever order a module happened to import. Doc 03 §Shell is the
+headings read `separation` in whatever order a module happened to import. Ref dashboard-surfaces §Shell is the
 owner and it is explicit: *the frontend hardcodes only the display order, membership is the
 descriptor's, an unlisted category appends, and an empty category drops.* The heading text and the
 order therefore live in `src/dashboard/surfaces/workflow-category.ts`, typed
@@ -336,7 +336,7 @@ number.
 lease is a card, a settled lease is a card while the retained span stream still names its worker,
 and a worker the spans name but authority does not is NOT a card — authority is what says a worker
 exists. Until D248 the projector derived a worker's phase from whichever rows happened to be
-claimed, which is exactly the inference doc 05 §3 says the lease exists to make unnecessary, and it
+claimed, which is exactly the inference ref execution-and-sessions §3 says the lease exists to make unnecessary, and it
 cost three of the six state arms the Session Panel drew: a daemon that had started and not yet
 reported read as `idle`, and a worker whose PROCESS DIED was drawn identically to one the operator
 had asked to stop.
@@ -347,7 +347,7 @@ what is TRUE, so folding a pending `pause` into the state word would let a card 
 its worker is mid-transaction on a live HR system. **Every arm of both has a producer** — the
 lifecycle's own `paused` and `stopping` states are NOT mirrored, because nothing reports them (the
 worker's heartbeat writes `idle`/`busy` and its exit writes `stopped`), and the demo's `waiting`
-arm is gone because this platform gives every worker its own browser session per system (doc 05 §1),
+arm is gone because this platform gives every worker its own browser session per system (ref execution-and-sessions §1),
 so there is no cross-worker lease to wait on and no holder to name. **`stopped` and `failed` split
 the terminal lifecycle by its RECORDED reason** (`operator`/`shutdown` versus `crashed`/
 `lease-expired`, the latter written by the recovery sweep), pinned by a refinement — that split is
@@ -370,7 +370,7 @@ The approved queue contract must include:
 - final pipeline and open gates;
 - member ids/rollups/containment and streamed-record rollups;
 - server-authored action descriptors with placement and version/audit tokens; CAS is enforced only
-  for the four real-race command families owned by doc 03;
+  for the four real-race command families owned by ref dashboard-surfaces;
 - `panelKind` plus closed available-section keys;
 - evidence/failure/receipt confidence pointers;
 - a monotonic `rowRevision` used by commands and patches.
@@ -447,14 +447,14 @@ never trusted.
 
 Target-family arms are closed and strict:
 
-- run, gate, notification, capture, and checkpoint/write-resolution arms from doc 03;
+- run, gate, notification, capture, and checkpoint/write-resolution arms from ref dashboard-surfaces;
 - **start** — consumes a server-issued start-plan token and immutable input/artifact refs;
 - **intake** — mapping confirmation, row correction/exclusion, validate, and manifest enqueue;
 - **worker/browser** — plan/spawn count, stop, refresh, reopen, pause/resume recovery;
 - **settings** — atomic N-leaf update against a settings revision;
 - **version/archive** — validate/apply major or minor bump against a version-plan revision.
 
-This requires doc 03’s command union to adopt the additional target families before `1c`. Dedicated
+This requires ref dashboard-surfaces’s command union to adopt the additional target families before `1c`. Dedicated
 legacy mutation endpoints are not recreated. Multipart bytes are the sole exception to the JSON
 command route: the upload endpoint validates and stores immutable bytes, then the command references
 the returned `ArtifactRef`.
@@ -472,11 +472,11 @@ card already carries, and has no refusal arm — the two states where stopping i
 settled lease, a worker already asked to stop) disable the control AT the card rather than being
 discovered after a click. Its `expectedVersion` is the served `leaseVersion`; the kernel revalidates
 the lease inside its own transaction and CASes on what it reads there, so the field states the
-operator's BASIS rather than claiming to be the check — the shape doc 05 §"A capture command's
+operator's BASIS rather than claiming to be the check — the shape ref execution-and-sessions §"A capture command's
 `expectedVersion` is not a CAS" already ratified.
 
 **A served descriptor may also declare how much CEREMONY its command costs, and a surface obeys it
-or refuses (D226, 2026-08-19).** The identity gate is the case that forced the rule: doc 09 §14.6
+or refuses (D226, 2026-08-19).** The identity gate is the case that forced the rule: ref write-safety §14.6
 risk 1 makes `approvalShape` a SERVER computation precisely so a frontend cannot quietly turn a
 risky approval into one click, and the `identity-gate` section serves it beside the packet and both
 typed resolutions. Three obligations follow for any surface that renders such a control, and they
@@ -495,7 +495,7 @@ generalise to every future server-declared ceremony:
    descriptor's identity, and a client that INVENTED one would put a value nobody authored onto a
    durable record. Composition stays in the one composer; the surface hands it the human's answer.
 
-The `RunDetailSectionResponse` arm this is stated over is `identity-gate`; doc 09 §14.11 owns the
+The `RunDetailSectionResponse` arm this is stated over is `identity-gate`; ref write-safety §14.11 owns the
 gate's own ceremony table.
 
 ### 3.5 Resumable subscription protocol
@@ -608,19 +608,19 @@ its row has an implementation and a test.
 | Surface | Initial query/read model | Live patch/invalidation | Commands | Backend authority/owner |
 |---|---|---|---|---|
 | Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services |
-| Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | doc 03 one run/queue projection |
+| Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection |
 | Queue Panel + rows | flat `QueueSurfaceWire[]` for selected day/workflow | complete row replacements and removals/tombstones | served row/bulk action descriptors | authority command state + span projection |
 | Log Panel + Context rail | `RunDetailWire`, paged notes, context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/hide/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence |
 | Group People | paged members + rollup + containment | per-member replacement and rollup patch | contextual member and bulk commands | delegation manifests + run projection |
 | OCR Review | record/page/capture projections with provenance and revision | progressive record replacements and OCR child state | approve/reject, retry page, re-research, relookup; one atomic correction list | OCR checkpoints/gates, evidence, commands |
-| Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | doc 12 evidence/failure store + doc 09 ledger/proof |
+| Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof |
 | Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority |
-| Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | doc 06 artifact/mapping/intake authority |
-| Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | doc 06 capture authority + artifact/finalize outbox |
+| Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | ref data-intake-and-edit-data artifact/mapping/intake authority |
+| Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox |
 | Session Panel | worker cards, browser health, current run, queue/wait reasons | worker/browser/run patches | plan/spawn/stop/refresh/reopen/pause/resume | worker/session authority and browser health services |
-| Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | doc 11 config/preflight + doc 03 authority recovery |
-| Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | doc 03 archive snapshots + descriptor/version service |
-| Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | navigation only in Phase A; safe edit commands later | docs 02/12 exact descriptor + spans/checkpoints |
+| Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery |
+| Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | ref dashboard-surfaces archive snapshots + descriptor/version service |
+| Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | navigation only in Phase A; safe edit commands later | refs workflow-model/operator-trust exact descriptor + spans/checkpoints |
 | Activity | server aggregate by range/category/workflow/status/outcome, plus the write-ledger block (D236) | explicit refresh or range invalidation; no per-row stream required | CSV export, SERVED (D240) — `GET /api/v1/reports/activity.csv`, caveats inside the artifact | aggregation query over the same run projection/receipts, beside the one ledger read-through |
 
 ### 5.1 Critical user flows
@@ -761,12 +761,12 @@ reader not to look.
 
 - **`origin`** — `{ nodeId, step, dir, system? }`. `dir` is the producing node's task **`effect`**:
   a `task` node runs a `read` contract and a `transaction` node's sink is a `commit`, and `effect`
-  is doc 01's own word for what a contract does to the world. It is a DECLARATION, never an
+  is ref task-contract's own word for what a contract does to the world. It is a DECLARATION, never an
   inference from the value — an entry with no field identity (a key recorded under an earlier
   descriptor) draws neutral ink and no arrow, because defaulting to `read` would be a claim that
   the run changed nothing. `system` is the driver system of the store that implements the task; a
   headless store owns none and the field is then absent rather than labelled.
-- **`freshness`** — `{ maxAge, override, feeds[] }`, the reuse bound of doc 02 §5.5. `maxAge` and
+- **`freshness`** — `{ maxAge, override, feeds[] }`, the reuse bound of ref workflow-model §5.5. `maxAge` and
   `override` are resolved through **`resolveFreshnessBound`**, the function `auditCheckpointFreshness`
   itself calls, so the sentence an operator reads and the rule the executor enforces are one
   declaration rather than two. `feeds` is `reachableCommits` over the static graph. An unbounded
@@ -796,7 +796,7 @@ an age limit that refuses nothing.
 superseded reading beside the current one and this wire carries one value per entry. `staged` and
 `unconfirmed` are structural absences: a `prepare` contract is `checkpoint: "in-memory-only"`, so a
 staged value never becomes the checkpoint a ledger row reads from, and an unconfirmed write is a
-`parked-write` run whose transaction node has no checkpoint at all — its honest surface is doc 09
+`parked-write` run whose transaction node has no checkpoint at all — its honest surface is ref write-safety
 §4.1's park section, which already serves it. A second badge in the rail would be a second authority
 for one fact.
 
@@ -810,7 +810,7 @@ server's `currentVersion`). Two browser surfaces branched on `rejected` alone.
   cleared the drafts and called `onSaved()`, for a correction the kernel never applied. That is a
   false "submitted" on the surface whose job is telling the operator what happened, and it is
   reachable by ordinary use — the run's version moves whenever a worker claims it or the day stream
-  folds a span under an open panel, which is the exact race doc 03 D19's live lock exists to warn
+  folds a span under an open panel, which is the exact race ref dashboard-surfaces D19's live lock exists to warn
   about.
 - The notification bell's mark-read / mark-unread / snooze swallowed the same arm in silence. A
   notification row carries its own `revision`, and the D134 fold advances it on every publish, so a
@@ -847,7 +847,7 @@ is a true sentence about a stale basis rather than a partial re-offer.
 
 ---
 
-## 6. Delivery sequence mapped to doc 07
+## 6. Delivery sequence mapped to the phase docs
 
 These are **vertical-slice acceptance units**, not new phases.
 
@@ -988,14 +988,14 @@ built-in enters the bundle. There is no live stream: the range is an explicit re
 *(Amended 2026-08-14. The original as-built read "no KPI-card row", describing the 2i-G surface
 this port replaced. That half carried no reason; the half that did — no chart runtime, §8 #13 —
 is unchanged and still enforced. The operator's demo argues the tile row's case explicitly and the
-ported surface ships it; this restatement is what ratifies the port per doc 04's rule that a
+ported surface ships it; this restatement is what ratifies the port per ref decisions's rule that a
 decision lands in its owning doc.)*
 
 #### D236 — the write-ledger block is SERVED, as a second authority (2026-08-19)
 
 `ActivityReportWire` gains `ledger: { systems: [{ system, entries, prod, test }] }`, the demo's last
 Activity block. **It is the one field on this payload that does not come out of
-`run-queue-projection.ts`'s fold**, and doc 03 §10.1 owns the carve-out that permits it — read it
+`run-queue-projection.ts`'s fold**, and ref dashboard-surfaces §10.1 owns the carve-out that permits it — read it
 there; the normative text is not restated here. What this doc owns is the wire shape and the route:
 
 - The block rides the SAME `GET /api/v1/reports/activity?from=&to=` response, over the same window.
@@ -1046,7 +1046,7 @@ as a file, and the panel header carries the demo's `Export` button beside the �
   asked for, and this copy is the one that gets mailed on.
 - **The caveats are a BLOCK of the artifact**, ahead of every total they qualify. The panel can put
   them one press away because the ⓘ is on the same screen as the numbers; a CSV has no ⓘ, and an
-  exported report with the numbers and without the rules is exactly the lying artifact doc 13 §5's
+  exported report with the numbers and without the rules is exactly the lying artifact ref frontend-backend-integration §5's
   `export if later served` was waiting on a decision about.
 - **One set of sentences, one rounding.** `activityReportCaveats` and `activityErrorRatePercent` live
   in the browser-safe contract (`src/domain/dashboard/activity.ts`) and BOTH consumers read them, so
@@ -1087,7 +1087,7 @@ test fixtures. Three consequences, all real:
 
 1. **`npm run dashboard:prod` claims a mode the runtime does not implement.** The script
    passes `--prod`; `startRebuildRuntime` never parses it. Today the operator's working path is the
-   Vite dev server on 5174 beside the BFF on 3938 (doc 03 §Operational isolation), which is why this
+   Vite dev server on 5174 beside the BFF on 3938 (ref dashboard-surfaces §Operational isolation), which is why this
    went unnoticed — the frontend has always been served by something else.
 2. **The phone capture page has no delivery path.** `api.ts` allow-lists `/capture.html` for the
    phone host gate and nothing in production serves that file, so 2i-F's token-scoped surface is
@@ -1281,7 +1281,7 @@ bullet owes — stay `proposed` behind one named trigger: **before the second mi
 
 ## 8. Mechanical guards
 
-Add these to doc 10’s inventory when their owning code lands:
+Add these to ref guards-and-tests’s inventory when their owning code lands:
 
 1. **Transport boundary:** `fetch`, `EventSource`, and upload-stream construction appear only in
    the rebuild repo's `src/dashboard/client/**`.
@@ -1302,7 +1302,7 @@ Add these to doc 10’s inventory when their owning code lands:
 9. **Start coverage:** every descriptor start method has both server and client interpreters;
    unsupported prod/test or dry-run combinations return a served absence/refusal.
 10. **Evidence honesty:** the `verified-done` verdict requires a verified receipt (and renders as
-    `Done` per doc 03 D22); failures require `writeState`;
+    `Done` per ref dashboard-surfaces D22); failures require `writeState`;
     every capture pointer carries dimensions or explicit missing metadata.
 11. **Archive self-containment:** archived detail tests run with the originating descriptor/runtime
     absent.

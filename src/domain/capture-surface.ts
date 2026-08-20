@@ -1,19 +1,19 @@
 /**
- * The phone-capture SURFACE contract (doc 06 §5.1, doc 11 §capture ingress,
- * doc 12 §7, D174).
+ * The phone-capture SURFACE contract (ref data-intake-and-edit-data §5.1, ref clock-config-secrets §capture ingress,
+ * ref operator-trust §7, D174).
  *
  * `src/domain/capture.ts` owns what capture DURABLY records. This module owns
  * what the phone is allowed to reach and what it is allowed to see, and it is
  * deliberately the one place both halves are written down:
  *
- * - `CAPTURE_PHONE_ROUTES` is a CLOSED union. Doc 12 §7 permits exactly one
+ * - `CAPTURE_PHONE_ROUTES` is a CLOSED union. Ref operator-trust §7 permits exactly one
  *   exception to the loopback rule — a short-lived capture ingress — and only
  *   for these routes. The ingress allowlist and the server's own registration
  *   are both derived from this constant, so "the phone cannot reach the queue"
  *   is a fact about one list rather than an agreement between two.
  *
  * - The token is a CREDENTIAL. It rides the URL FRAGMENT of the QR payload
- *   (never a path segment, never a query string — doc 11 bans secret-bearing
+ *   (never a path segment, never a query string — ref clock-config-secrets bans secret-bearing
  *   URLs, and a fragment is not transmitted to any server) and reaches the API
  *   in the `X-Capture-Token` header. Only its digest is durable, and no wire
  *   below carries either form.
@@ -91,13 +91,13 @@ export const CapturePhoneRouteSchema = z.strictObject({
 export type CapturePhoneRoute = z.infer<typeof CapturePhoneRouteSchema>;
 
 /**
- * Doc 12 §7's exhaustive list: "assets/status/upload/replace/reorder/delete/
- * finalize". `retry-finalize` and `discard` are the same closed doc 06 §5.1
+ * Ref operator-trust §7's exhaustive list: "assets/status/upload/replace/reorder/delete/
+ * finalize". `retry-finalize` and `discard` are the same closed ref data-intake-and-edit-data §5.1
  * command set the operator's own surface drives, and `photos/:photoId/bytes`
  * is what makes Review and Reorder show the photograph rather than a box —
  * a read of bytes the phone itself just uploaded, scoped to its own session.
  *
- * Adding a route here is a contract change in doc 06 §5.1, not an edit.
+ * Adding a route here is a contract change in ref data-intake-and-edit-data §5.1, not an edit.
  */
 export const CAPTURE_PHONE_ROUTES: readonly CapturePhoneRoute[] = deepFreeze([
   { method: "GET", path: "/api/v1/capture/phone/session", purpose: "read this session's own state" },
@@ -118,7 +118,7 @@ export const CAPTURE_PHONE_ROUTE_KEYS: readonly string[] = deepFreeze(
 
 /**
  * The ingress allowlist, DERIVED from the union above rather than restated
- * (doc 11: "its route allowlist is generated from the same capture-route
+ * (ref clock-config-secrets: "its route allowlist is generated from the same capture-route
  * schema"). A `:param` segment matches one segment and never a `/`, so
  * `/api/v1/capture/phone/photos/x/../../../runs` cannot walk out of the scope.
  */

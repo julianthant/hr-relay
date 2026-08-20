@@ -1,5 +1,5 @@
 /**
- * Doc 12 §4.4's operator-facing advisory producer (D178).
+ * Ref operator-trust §4.4's operator-facing advisory producer (D178).
  *
  * The whole module holds exactly two things: a clock and an admitted
  * `ProviderClient<"ai.advisory">`. That is the zero-authority edge stated as a

@@ -1,5 +1,5 @@
 /**
- * The resumable subscription hub (doc 13 §3.5) and the 1g exit invariant:
+ * The resumable subscription hub (ref frontend-backend-integration §3.5) and the 1g exit invariant:
  * a snapshot plus ANY valid patch sequence applied by the ONE client
  * function equals a fresh snapshot. Plus cursor resume, expired-cursor
  * fresh-snapshot, generation reset, and the loudly bounded subscriber queue.

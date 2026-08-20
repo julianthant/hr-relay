@@ -5,7 +5,7 @@
  *
  * WHERE GROUPING IS DECIDED, and why it is here rather than on the wire.
  *
- * Doc 03 §Shell is normative: *"Grouping in the panel comes from each
+ * Ref dashboard-surfaces §Shell is normative: *"Grouping in the panel comes from each
  * descriptor's own `category` … never a frontend list: the frontend hardcodes
  * only the display order, membership is the descriptor's, an unlisted category
  * appends, and an empty category drops."* The bootstrap wire used to carry a
@@ -66,7 +66,7 @@ const UNLISTED_ORDER = Number.MAX_SAFE_INTEGER;
 
 /**
  * The heading a PROVING workflow renders under, on every surface that lists
- * one (doc 03 §Shell, D241).
+ * one (ref dashboard-surfaces §Shell, D241).
  *
  * D220 dropped proving workflows from the rail and left them where they were
  * everywhere else — which meant `kuali-timekeeper-annotation` still headed the
@@ -120,7 +120,7 @@ export interface WorkflowGroupingFacts {
 }
 
 /**
- * The harness marking every listing surface renders (doc 03 §Shell, D219).
+ * The harness marking every listing surface renders (ref dashboard-surfaces §Shell, D219).
  *
  * It is present on an entry whose OWN served role is `chunk-harness` and on no
  * other — *its harness identity comes from its own role, not from its
@@ -154,7 +154,7 @@ export interface WorkflowHarnessMarking {
  * fails `tsc` rather than silently rendering harnesses as peers, and `members`
  * is a field it has to render on purpose. Nesting is exactly ONE level deep by
  * construction — a member never carries members, and the composition root
- * already makes a harness-of-a-harness chain unrepresentable (doc 02 §1.2.1).
+ * already makes a harness-of-a-harness chain unrepresentable (ref workflow-model §1.2.1).
  */
 export interface WorkflowGroupEntry<Entry> {
   readonly entry: Entry;
@@ -162,7 +162,7 @@ export interface WorkflowGroupEntry<Entry> {
   readonly harness: WorkflowHarnessMarking | undefined;
   /**
    * The proving harnesses of this entry, in first-seen order. ALWAYS RENDERED:
-   * doc 03 §Shell decides against a collapse-by-default disclosure, because a
+   * ref dashboard-surfaces §Shell decides against a collapse-by-default disclosure, because a
    * hidden harness's `Needs you` could vanish without an attention-forwarding
    * rule, and visible-but-subordinate hides nothing.
    */
@@ -200,7 +200,7 @@ function markingFor(
  * one rule — the Workflow Panel's rail, the Run Modal's picker (its startable
  * AND its "not startable" lists) and the Explorer all call it, over different
  * lists, so no two surfaces can drift into two orders or disagree about what
- * is a step and what is a workflow (doc 03 §Shell, D219).
+ * is a step and what is a workflow (ref dashboard-surfaces §Shell, D219).
  *
  *  - membership is the entry's `categoryId`, with ONE exception: an entry whose
  *    role is `proving` is grouped by its ROLE under `Test equipment`, appended

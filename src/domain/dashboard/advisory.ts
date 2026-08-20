@@ -1,5 +1,5 @@
 /**
- * The run-advisory wire (doc 12 §4.4, D178).
+ * The run-advisory wire (ref operator-trust §4.4, D178).
  *
  * It is deliberately NOT a run-detail section. A section is fetched whenever
  * the server advertises it, and an advisory SPENDS a provider budget — so a

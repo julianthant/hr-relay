@@ -677,7 +677,7 @@ export function StatusFilters({
  * Reopen / Pause auto-recovery) is NOT ported. `refresh-browser` and
  * `reopen-browser` are real kernel verbs whose process effects the dashboard
  * supervisor refuses BY NAME (`server/dashboard/compose.ts` —
- * `refreshBrowser`/`reopenBrowser` are undefined on purpose, doc 05's live
+ * `refreshBrowser`/`reopenBrowser` are undefined on purpose, ref execution-and-sessions's live
  * lane), so every item would open a menu that 500s on click.
  */
 function BrowserTile({
@@ -723,7 +723,7 @@ function BrowserTile({
  * Two demo elements are still absent, each for a producer that does not exist.
  * The lease-wait block ("waiting 4m for the ucpath lease, held by …") has
  * nothing to report: every worker opens its OWN browser session per system
- * (doc 05 §1), so there is no cross-worker lease and no holder to name. The
+ * (ref execution-and-sessions §1), so there is no cross-worker lease and no holder to name. The
  * micro-pipeline stays reserved and EMPTY: the wire serves no `steps[]`, and
  * dots drawn from nothing would be the worst kind of lie on a panel about what
  * a worker is doing.

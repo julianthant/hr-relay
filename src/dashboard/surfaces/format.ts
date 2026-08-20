@@ -3,7 +3,7 @@
  * src/dashboard/components/dev/rebuild-demo/demo-wire.ts (`fmtClock`,
  * `fmtElapsed`, `plural`) and demo-data.ts elapsed derivation.
  *
- * Display-only formatting (doc 13 §4, last row): elapsed time between server
+ * Display-only formatting (ref frontend-backend-integration §4, last row): elapsed time between server
  * timestamps is presentation; terminal durations remain server facts. Nothing
  * here decides anything.
  */

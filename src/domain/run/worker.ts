@@ -1,5 +1,5 @@
 /**
- * The durable worker lease — doc 05 §3's claim protocol, made addressable.
+ * The durable worker lease — ref execution-and-sessions §3's claim protocol, made addressable.
  *
  * A worker is a long-lived process assigned to ONE workflow that owns at most
  * one active run. The lease exists for three reasons a run row cannot serve:
@@ -12,9 +12,9 @@
  * operator's directive; the worker writes what is actually true. Pausing a busy
  * worker means "finish the active run, then stop claiming" — collapsing both
  * into one field would let a command record a state the worker has not reached,
- * which is precisely the optimistic-authority pattern doc 13 §0 rejects.
+ * which is precisely the optimistic-authority pattern ref frontend-backend-integration §0 rejects.
  *
- * There is no lane, capacity, or budget field here, and the guard in doc 05 §7
+ * There is no lane, capacity, or budget field here, and the guard in ref execution-and-sessions §7
  * rejects one: parallelism is worker count and nothing else.
  */
 import { z } from "zod";
@@ -67,7 +67,7 @@ export const LIVE_WORKER_STATES = Object.freeze(["starting", "idle", "busy", "pa
 
 export const WorkerLeaseRecordSchema = z.strictObject({
   workerId: WorkerIdSchema,
-  /** A worker claims only its own workflow's rows (doc 05 §3.1). */
+  /** A worker claims only its own workflow's rows (ref execution-and-sessions §3.1). */
   workflow: WorkflowIdSchema,
   processId: PositiveIntSchema,
   /** Bumped every time this worker id is (re)started; fences a zombie process. */

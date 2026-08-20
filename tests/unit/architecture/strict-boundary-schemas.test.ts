@@ -855,7 +855,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "VersionBumpPlan", schema: VersionBumpPlanSchema, fixtures: [VERSION_BUMP_PLAN] },
   { name: "VersionBumpApplication", schema: VersionBumpApplicationSchema, fixtures: [VERSION_BUMP_APPLICATION] },
   // `input.raw` is the operator's exact submission and `input.parsed.value` is
-  // a schema-bound canonical value — both are open JSON by contract (doc 02
+  // a schema-bound canonical value — both are open JSON by contract (ref workflow-model
   // §2), which is precisely why the archive keeps them beside their hashes.
   {
     name: "ArchivedRunRecord",
@@ -1489,7 +1489,7 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // ApprovedDocumentSchema, MemberPlanEntrySchema, CompletionProgramSampleSchema,
   // CompletionConsumptionSpecSchema, and CoordinatorPolicySchema are catalogued.
   // `SealedCompletionProgram` is deliberately opaque — a schema for it would
-  // re-expose exactly the structure doc 03 §4.2 closes.
+  // re-expose exactly the structure ref dashboard-surfaces §4.2 closes.
   "src/domain/workflow/completion.ts:NamedPredicate",
   "src/domain/workflow/completion.ts:PerRecordStage",
   "src/domain/workflow/completion.ts:PerDocumentStage",

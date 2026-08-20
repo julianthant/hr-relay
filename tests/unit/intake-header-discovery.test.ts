@@ -1,5 +1,5 @@
 /**
- * Doc 06 §3 header discovery, and §7 vector #9 in particular.
+ * Ref data-intake-and-edit-data §3 header discovery, and §7 vector #9 in particular.
  *
  * Legacy located the header row by finding a RECOGNIZED column name, so a
  * spreadsheet full of novel headings had no header row at all and the file was
@@ -19,7 +19,7 @@ import { CANONICAL_FIELDS, CANONICAL_FIELD_IDS } from "../../src/domain/fields/r
 const NO_ALIASES: ReadonlySet<string> = new Set();
 const ALIASES = canonicalAliasIndex(CANONICAL_FIELD_IDS.map((id) => CANONICAL_FIELDS[id]));
 
-describe("doc 06 §3 header discovery", () => {
+describe("ref data-intake-and-edit-data §3 header discovery", () => {
   it("finds a header beneath a preamble using structure alone", () => {
     const rows = [
       ["Work-Study July Export", "", ""],
@@ -139,7 +139,7 @@ describe("doc 06 §3 header discovery", () => {
   });
 
   it("counts sole use across OTHER rows, so two identical headings do not self-penalize", () => {
-    // Doc 06 §2.1 exists to keep two `Name` columns distinct; the ranking must
+    // Ref data-intake-and-edit-data §2.1 exists to keep two `Name` columns distinct; the ranking must
     // not treat that supported layout as evidence against the header row.
     const rows = [
       ["Name", "Name", "EID"],

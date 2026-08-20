@@ -15,7 +15,7 @@
  * nothing behind.
  *
  * So `prepare` stages **all three pages** and the **commit is the
- * `Save and Submit` click alone**. Everything before the doc 09 beat-⑤ fence is
+ * `Save and Submit` click alone**. Everything before the ref write-safety beat-⑤ fence is
  * provably reversible by navigating away; everything after it is not.
  *
  * ## Two things legacy does NOT have, and both matter
@@ -83,7 +83,7 @@ export const UCPATH_SMART_HR_DETAILS_READY =
 export const UCPATH_SMART_HR_INFORMATION_READY =
   z.literal("ucpath.smart-hr.information-ready").brand<"PageStateId">().parse("ucpath.smart-hr.information-ready");
 /**
- * The staged page the doc 09 beat-⑤ fence binds to. It is reached only when
+ * The staged page the ref write-safety beat-⑤ fence binds to. It is reached only when
  * every field of all three pages has been staged AND read back, which is why
  * `prepare` returns it by name: the write sequencer refuses to fence a prepare
  * output that cannot name the exact page it staged.
@@ -201,7 +201,7 @@ export const UcpathUsDateSchema = z.string().regex(
   "a UCPath Smart HR date is MM/DD/YYYY",
 );
 
-/** What a run asks for. The permanent key is EID + effective date (doc 09 §5). */
+/** What a run asks for. The permanent key is EID + effective date (ref write-safety §5). */
 export const UcpathTerminationTargetSchema = z.strictObject({
   emplId: EidSchema,
   /**
@@ -220,7 +220,7 @@ export const UcpathTerminationTargetSchema = z.strictObject({
 });
 export type UcpathTerminationTarget = z.infer<typeof UcpathTerminationTargetSchema>;
 
-/** The date-agnostic sweep's target: a person, and nothing else (doc 09 §5). */
+/** The date-agnostic sweep's target: a person, and nothing else (ref write-safety §5). */
 export const UcpathPendingSweepTargetSchema = z.strictObject({
   emplId: EidSchema,
   expectedName: z.string().min(1),

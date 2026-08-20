@@ -1,5 +1,5 @@
 /**
- * The run/claim store's request and outcome shapes (doc 05 §3, doc 02 §4).
+ * The run/claim store's request and outcome shapes (ref execution-and-sessions §3, ref workflow-model §4).
  *
  * Every outcome is a discriminated union rather than a nullable record. A
  * worker that asked for work and got `undefined` would be one `??` away from
@@ -116,7 +116,7 @@ export const RunPriorityBumpRequestSchema = z.strictObject({
 });
 
 /**
- * Doc 06 §6.4 (D166): the Edit-Data save. The version CAS is the whole race
+ * Ref data-intake-and-edit-data §6.4 (D166): the Edit-Data save. The version CAS is the whole race
  * protocol — a resume claim bumps the row version, so a save loaded at
  * generation G cannot land on a run that has moved. Patches merge by
  * (nodeId, fieldPath), later wins; they become authority only when a resume
@@ -188,9 +188,9 @@ export const RunClaimSweepRequestSchema = z.strictObject({
 });
 
 /**
- * D118 (doc 05 §3): an expired claim is NOT ordinary requeue authority. The
+ * D118 (ref execution-and-sessions §3): an expired claim is NOT ordinary requeue authority. The
  * sweeper checks the authoritative write-intent set for the run's logical
- * item first; any unfinished `attempting` intent routes the run to doc 09
+ * item first; any unfinished `attempting` intent routes the run to ref write-safety
  * recovery — parked loudly when the row was `running`, and left unclaimable
  * under its expired claim otherwise — and NEVER back to `queued`. Only the
  * write sequencer's typed recovery resolutions may release it.
@@ -216,7 +216,7 @@ export const RunItemQuerySchema = z.strictObject({
   itemId: ItemIdSchema,
 });
 
-/* ── start plans (doc 13 §5.1) ───────────────────────────────────────────── */
+/* ── start plans (ref frontend-backend-integration §5.1) ───────────────────────────────────────────── */
 
 export const StartPlanConsumeRequestSchema = z.strictObject({
   startPlanId: StartPlanIdSchema,
@@ -247,7 +247,7 @@ export const StartPlanConsumeOutcomeSchema = z.discriminatedUnion("state", [
 ]);
 export type StartPlanConsumeOutcome = z.infer<typeof StartPlanConsumeOutcomeSchema>;
 
-/* ── worker leases (doc 05 §3) ───────────────────────────────────────────── */
+/* ── worker leases (ref execution-and-sessions §3) ───────────────────────────────────────────── */
 
 export const WorkerStartRequestSchema = z.strictObject({
   workerId: WorkerIdSchema,

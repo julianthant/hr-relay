@@ -1,5 +1,5 @@
 /**
- * The durable intake session (doc 06 §2.2, 2i-E1): the in-progress
+ * The durable intake session (ref data-intake-and-edit-data §2.2, 2i-E1): the in-progress
  * upload → map → validate state that D159's terminal manifest deliberately
  * does not cover. The ROUTE creates a session (capture's exact precedent —
  * no open arm exists in the command family); the intake commands only
@@ -38,7 +38,7 @@ export const IntakeSessionStateSchema = z.enum([
 ]);
 export type IntakeSessionState = z.infer<typeof IntakeSessionStateSchema>;
 
-/** A value the operator typed once for the whole run (doc 06 §8 step 2). */
+/** A value the operator typed once for the whole run (ref data-intake-and-edit-data §8 step 2). */
 export const IntakeConstantSchema = z.strictObject({
   targetFieldId: IntakeTargetFieldIdSchema,
   value: JsonValueSchema,
@@ -52,7 +52,7 @@ export const IntakeRowCorrectionSchema = z.strictObject({
   correctedAt: IsoInstantSchema,
 });
 
-/** One explicit exclusion — doc 06 §5: never a silently dropped row. */
+/** One explicit exclusion — ref data-intake-and-edit-data §5: never a silently dropped row. */
 export const IntakeRowExclusionSchema = z.strictObject({
   sourceRow: PositiveIntSchema,
   reason: z.string().min(1),

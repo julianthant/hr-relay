@@ -1,5 +1,5 @@
 /**
- * Executable scenarios for `normalization/read-contact-advice` (doc 06 §4.2).
+ * Executable scenarios for `normalization/read-contact-advice` (ref data-intake-and-edit-data §4.2).
  *
  * These run the REAL task implementation with scripted admitted clients:
  *

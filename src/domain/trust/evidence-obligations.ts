@@ -1,5 +1,5 @@
 /**
- * Declared cross-source verification obligations (D140) — the half of doc 12
+ * Declared cross-source verification obligations (D140) — the half of ref operator-trust
  * §2.3 that makes a receipt a double-check rather than a transcript.
  *
  * D82's bar is that the operator finishes their double-check WITHOUT opening
@@ -29,7 +29,7 @@ export const EvidenceObligationSourceSchema = z.discriminatedUnion("kind", [
 ]);
 export type EvidenceObligationSource = z.infer<typeof EvidenceObligationSourceSchema>;
 
-/** Doc 12's `VerificationEvidence.obligation` grammar. */
+/** Ref operator-trust's `VerificationEvidence.obligation` grammar. */
 export const ObligationIdSchema = z.string().regex(
   /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/,
   "obligation id must be dot/dash-delimited lowercase",

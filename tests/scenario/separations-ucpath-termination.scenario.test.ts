@@ -314,7 +314,7 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
   });
 
   it("separations-ucpath-termination/subject-mismatch — a different displayed person yields zero fence and zero click", async () => {
-    // The hardest arm, and the one doc 09 beat ③ exists for: the probe AND the
+    // The hardest arm, and the one ref write-safety beat ③ exists for: the probe AND the
     // prepare both saw the right person, then Page B moved to a different one
     // before the fence. It is also the arm legacy has NO control for at all —
     // it never reads the displayed name anywhere in the termination flow, which

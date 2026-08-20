@@ -1,5 +1,5 @@
 /**
- * Fresh-identity minting, injected the same way time is (doc 11).
+ * Fresh-identity minting, injected the same way time is (ref clock-config-secrets).
  *
  * `crypto.randomUUID()` is as untestable as `Date.now()` and for the same
  * reason: a value the caller cannot pin makes a durable record impossible to
@@ -22,7 +22,7 @@ export const systemIdFactory: IdFactory = Object.freeze({
 });
 
 /**
- * `<workflow-code>-<HHMMSS>-<runId4>` (doc 03 §1.1), frozen at enqueue and
+ * `<workflow-code>-<HHMMSS>-<runId4>` (ref dashboard-surfaces §1.1), frozen at enqueue and
  * never recomputed. The last group is the run id's own first four hex digits,
  * so a trace id read off a screen leads back to exactly one run rather than to
  * whatever was running at that second.
@@ -32,7 +32,7 @@ export function deriveTraceId(code: string, runId: string, clock: Clock): TraceI
 }
 
 /**
- * The logical item id, DERIVED rather than minted (doc 02 §5.7).
+ * The logical item id, DERIVED rather than minted (ref workflow-model §5.7).
  *
  * `(workflow, itemId)` is the key retries share and a rerun-with-different-input
  * does not, so the id has to be a function of the identity the workflow itself

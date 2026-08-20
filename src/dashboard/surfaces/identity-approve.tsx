@@ -1,7 +1,7 @@
 /**
- * THE IDENTITY-APPROVAL CEREMONY (doc 09 §14.4/§14.6/§14.10, D226).
+ * THE IDENTITY-APPROVAL CEREMONY (ref write-safety §14.4/§14.6/§14.10, D226).
  *
- * The gate asks one question — *is this the right person* — and doc 09 §14.6
+ * The gate asks one question — *is this the right person* — and ref write-safety §14.6
  * risk 1 is explicit that the control which answers it may not be the same
  * control every time. ALWAYS-GATE fires on EVERY separation, so a gate that is
  * one click on every run carries no signal and trains the operator to approve
@@ -39,7 +39,7 @@
  *    here is what makes that binding something the operator actually saw.
  *
  * Every fact is served. This file composes no sentence about the decision, and
- * the commit verb is the SERVER's `confirmLabel` (doc 13 §8.5), for the same
+ * the commit verb is the SERVER's `confirmLabel` (ref frontend-backend-integration §8.5), for the same
  * reason `park-resolve.tsx` gives: only the server knows the casualties.
  */
 import { useEffect, useState } from "react";
@@ -430,7 +430,7 @@ function RefusedNotice({ refusal }: { refusal: Refused }) {
 /**
  * The dialog a served `resolve-gate` descriptor opens.
  *
- * CONFIRM-FIRST in doc 13 §8.5's literal sense: the title, the body and the
+ * CONFIRM-FIRST in ref frontend-backend-integration §8.5's literal sense: the title, the body and the
  * commit verb are the `confirm` block the SERVER authored. NO OPTIMISTIC
  * AUTHORITY — pressing the verb sends the one command envelope and then shows
  * what came back; a `conflict` or a `rejected` keeps the dialog, keeps every
@@ -478,7 +478,7 @@ export function IdentityApproveDialog({
     // `resolve-gate`, and the server authors a confirm block on both. Reaching
     // here means the descriptor changed shape under a surface mid-flight.
     throw new Error(
-      `action ${action.key} is not a doc 09 §14.4 gate resolution with a confirm block`,
+      `action ${action.key} is not a ref write-safety §14.4 gate resolution with a confirm block`,
     );
   }
 
@@ -520,7 +520,7 @@ export function IdentityApproveDialog({
     }
     setOutcome({ state: "sending" });
     client.executeCommand(composed.request).then((result) => {
-      // `conflict` and `rejected` are VALUES, not exceptions (doc 13 §3.4).
+      // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4).
       if (result.state === "conflict" || result.state === "rejected") {
         refuse(
           result.state === "rejected"
@@ -579,7 +579,7 @@ export function IdentityApproveDialog({
             THE ARM PICKS THE VARIANT AND THE GLYPH. An approval is what binds
             the rest of the separation to a person and is drawn `primary`;
             a rejection ENDS the run and is drawn `danger` with the slashed
-            circle. The LABEL stays the server's `confirmLabel` (doc 13 §8.5).
+            circle. The LABEL stays the server's `confirmLabel` (ref frontend-backend-integration §8.5).
 
             `disabled` is the CEREMONY's own verdict, not a guess: an
             unsupported shape, an unpicked candidate, an EID the packet never

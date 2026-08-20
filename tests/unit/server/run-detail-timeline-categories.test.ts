@@ -1,5 +1,5 @@
 /**
- * D225 — the run-detail timeline is CATEGORICAL (doc 03; separations §9.18).
+ * D225 — the run-detail timeline is CATEGORICAL (ref dashboard-surfaces; separations §9.18).
  *
  * The composed separations graph has eighteen nodes and drew eighteen
  * truncated stubs, two of them duplicates of each other because a gate resume
@@ -331,7 +331,7 @@ describe("D225 — the served categorical steps", () => {
 /* ── 3. D259 — the REPLAYED arm ──────────────────────────────────────────── */
 
 /**
- * A replayed node emits no spans, by design (doc 02 §5.3), and this timeline
+ * A replayed node emits no spans, by design (ref workflow-model §5.3), and this timeline
  * folds spans — so replay was invisible to it and every replayed step came out
  * `pending` on a run that had finished. Track C watched
  * `Identity check — pending, took 0s` on the very gate the operator had

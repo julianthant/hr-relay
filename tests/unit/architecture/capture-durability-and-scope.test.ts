@@ -1,13 +1,13 @@
 /**
- * `capture-durability-and-scope` (doc 06 §5.1, doc 11, doc 12 §7 — activated
+ * `capture-durability-and-scope` (ref data-intake-and-edit-data §5.1, ref clock-config-secrets, ref operator-trust §7 — activated
  * at 2i-F, D174).
  *
  * The guard stayed PLANNED through D167 for a stated reason: the durability
  * half existed but the phone-origin route enumeration did not, and half a
  * guard claims an invariant nothing enforces. Both halves exist now.
  *
- * SCOPE. Doc 12 §7 permits exactly ONE exception to loopback-only — a
- * short-lived capture ingress — and only for doc 06 §5.1's closed route union.
+ * SCOPE. Ref operator-trust §7 permits exactly ONE exception to loopback-only — a
+ * short-lived capture ingress — and only for ref data-intake-and-edit-data §5.1's closed route union.
  * The registered routes and the declared union must be the same set in both
  * directions, a request arriving on the ingress Host may reach nothing else
  * including every catch-all, and its refusal must be byte-identical to an

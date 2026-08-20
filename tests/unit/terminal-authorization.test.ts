@@ -1,5 +1,5 @@
 /**
- * The ONE terminal-authorization factory (docs 03/12): it authorizes only what
+ * The ONE terminal-authorization factory (refs dashboard-surfaces/operator-trust): it authorizes only what
  * the claim-holding worker actually owns, binds the exact consequence identity,
  * and preserves the pre-terminal CAS for byte-exact replay.
  */

@@ -1,8 +1,8 @@
 /**
- * `explain run` against the real authority database (doc 12 §2.5, D143).
+ * `explain run` against the real authority database (ref operator-trust §2.5, D143).
  *
  * The command's value is that an operator can paste a trace id from a screen
- * and get every fact doc 12 lists — including the ones authority does NOT
+ * and get every fact ref operator-trust lists — including the ones authority does NOT
  * hold, said out loud. These arms therefore assert the absences as hard as the
  * presences: a section that quietly rendered empty would read as "nothing
  * happened", which is the exact confusion this command exists to remove.
@@ -106,7 +106,7 @@ describe("explain run", () => {
     assert.match(view.nextSafeAction, /Nothing\. This run is settled/);
   });
 
-  it("renders an operator-readable report carrying every doc 12 §2.5 section", () => {
+  it("renders an operator-readable report carrying every ref operator-trust §2.5 section", () => {
     const text = renderExplainRun(explainRunFrom(seeded(), EXIT_TRACE_ID));
     for (const heading of [
       "state", "node timeline", "checkpoint reuse", "subject bindings", "failure",

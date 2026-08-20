@@ -1,16 +1,16 @@
 /**
- * The Phase-1 worker run loop (doc 05 §3): one workflow-scoped worker, one
+ * The Phase-1 worker run loop (ref execution-and-sessions §3): one workflow-scoped worker, one
  * active item, claim → execute → terminal/park, then the next eligible row.
  *
  * The loop owns exactly the concerns the interpreter cannot: claiming (the
  * store enforces the one-active-item invariant), heartbeat renewal during long
  * operations (a lost heartbeat aborts the run's signal instead of letting a
  * zombie keep driving a browser), the worker-lifetime browser-session set
- * (warm reuse across sequential items — doc 05 §5 — with `worker-stop` close
+ * (warm reuse across sequential items — ref execution-and-sessions §5 — with `worker-stop` close
  * proof at the end), and worker/browser span emission over the injected
  * `SpanEmitter`.
  *
- * Idle behavior is doc 05 §3's bounded re-poll: `deferred` sleeps exactly
+ * Idle behavior is ref execution-and-sessions §3's bounded re-poll: `deferred` sleeps exactly
  * until the earliest `not_before`, capped by `idleRepollMs`; a worker never
  * sleeps while owning a run.
  */
@@ -93,7 +93,7 @@ export interface WorkerLoopDependencies {
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
   /**
-   * Builds the doc-09 write sequencer over the loop-OWNED `WorkerSessionManager`
+   * Builds the ref write-safety write sequencer over the loop-OWNED `WorkerSessionManager`
    * (D116: the sequencer's driver leases must come from the exact manager whose
    * run-config-fingerprint window this loop binds). Production composition uses
    * this seam; `writeSequencer` stays for tests that pre-build one. Passing
@@ -101,20 +101,20 @@ export interface WorkerLoopDependencies {
    */
   readonly writeSequencerFor?: (sessions: WorkerSessionManager) => WriteSequencer;
   readonly childRuns?: ChildRunExecutor;
-  /** Doc 12 §2.2's automatic bundle capture; absent means no bundle is minted. */
+  /** Ref operator-trust §2.2's automatic bundle capture; absent means no bundle is minted. */
   readonly diagnostics?: RunDiagnosticCapture;
   /**
-   * Doc 06 §4.11: the admitted-provider wiring and the kernel artifact writer,
+   * Ref data-intake-and-edit-data §4.11: the admitted-provider wiring and the kernel artifact writer,
    * forwarded verbatim to the executor. Absent, a contract declaring either
    * capability terminalizes with a structured failure naming the missing
    * wiring — the loop never substitutes a client or a writer.
    */
   readonly providers?: RunProviderWiring;
   readonly artifacts?: ContentAddressedArtifactWriter;
-  /** Doc 06 §4.1's blocking sink projector; absent, a declaring node fails loud. */
+  /** Ref data-intake-and-edit-data §4.1's blocking sink projector; absent, a declaring node fails loud. */
   readonly artifactProjector?: RunArtifactProjector;
   /**
-   * Doc 03 §2.4's durable worker directives, observed BETWEEN items: the loop
+   * Ref dashboard-surfaces §2.4's durable worker directives, observed BETWEEN items: the loop
    * polls before each claim, so `stop` ends the loop only after the active run
    * settled and `pause` stops claiming without ending the worker. `stopSignal`
    * remains the mid-run abort channel (SIGINT / claim loss). A poll that
@@ -251,7 +251,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
       if (directive === "pause") {
         // Paused: claim nothing, keep the worker alive, re-poll on the bounded
-        // idle cadence (doc 05 §3 — a worker never sleeps unboundedly).
+        // idle cadence (ref execution-and-sessions §3 — a worker never sleeps unboundedly).
         await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
         continue;
       }
@@ -351,7 +351,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
   return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped });
 }
 
-/* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (doc 05 §0) ──── */
+/* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions §0) ──── */
 
 /**
  * Process effects behind the kernel's worker/browser arms. Phase 1 runs ONE
@@ -370,7 +370,7 @@ export function phase1WorkerId(workflowId: WorkflowId): WorkerId {
 }
 
 /**
- * The Phase-1 `WorkerRuntimeExecutor`: exactly one worker per workflow (doc 05
+ * The Phase-1 `WorkerRuntimeExecutor`: exactly one worker per workflow (ref execution-and-sessions
  * §0.3 scoped to this phase's single-operator runtime). A plan asking for more
  * throws — the command unwinds rather than acknowledging capacity that does
  * not exist — and the browser arms fail loud until the 1g supervisor can

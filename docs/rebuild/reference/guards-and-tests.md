@@ -31,7 +31,7 @@ guard inventory, TDD topology, and stub/live lanes.
 | | |
 |---|---|
 | **This doc OWNS** | The test/guard suite: ratchet inventory, strict-boundary/driver/subject/control/delegation/storage guards, transaction/write/outbox/provenance/artifact safety guards, descriptor projection coverage, accidental-shrink meta-test, TDD tiers, scenario/stub/live lanes. |
-| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **doc 01**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **doc 02**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **doc 03**. Worker/session/sleep-budget guards — **doc 05**. Receipt/idempotency/fence/subject contract — **doc 09**. Clock/config/secrets single-source — **doc 11**. Semantic UI registry, scenarios, evidence, knowledge/fix records, editor projections — **doc 12**. |
+| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, scenarios, evidence, knowledge/fix records, editor projections — **ref operator-trust**. |
 | **Charter bindings** | "Same quality umbrella from day one"; "fail loud"; §1a fill/submit split is the dry-run safety model. Descriptor SSOT replaces parity lists in the rebuild repo; the legacy repo's own guard tests remain through initial cutover. |
 
 **One-sentence thesis.** The umbrella is only real if ONE place owns *how* every doc's per-§ guard
@@ -270,7 +270,7 @@ same commits as those targets. The acceptance set is non-vacuous and fail-both-w
 - start planning preserves exact raw and canonical representations plus both schema hashes, and
   crash/conflict injection proves plan consumption + active-run policy + every run insert are one
   transaction;
-- every failed task/run resolves a persisted doc-12 `FailureRecord`, every successful run resolves
+- every failed task/run resolves a persisted ref operator-trust `FailureRecord`, every successful run resolves
   exactly one schema-bound terminal result, and neither can be reconstructed from display events.
   Crash injection covers authorization plus failure/result/outbox/run writes; recovery uses
   NULL-safe bidirectional invariants and direct partial-settlement fixtures. Initial success rejects
@@ -392,20 +392,20 @@ therefore rebuild-repo-relative, and the old absent-tree activation semantics re
 
 | Today's guard | Fate | How, under the new kernel |
 |---|---|---|
-| `fail-loud-catch-default` | **PORT (was EXTEND)** | glob `src/**` in the rebuild repo; zero-allowlist for new code. The single most important ratchet — it is what makes doc 09's probe safe (a `catch{return notFound}` on an idempotency probe is banned here). |
+| `fail-loud-catch-default` | **PORT (was EXTEND)** | glob `src/**` in the rebuild repo; zero-allowlist for new code. The single most important ratchet — it is what makes ref write-safety's probe safe (a `catch{return notFound}` on an idempotency probe is banned here). |
 | `nullish-literal-data-fallback` | **PORT (was EXTEND)** | scan all rebuild `src/**` except dashboard presentation code; zero-allowlist. This ratifies the Step-1a correction—the old five-folder subset silently omitted `base`, `exec`, `events`, `server`, `intake`, and `forms`. |
-| `wait-for-timeout-allowlist` | **PORT (was EXTEND)** | glob `src/stores/**` in the rebuild repo; **zero-allowlist new** (doc 05 §7 #3); shrink-only ported. Doc 05 adds the per-task `sleepMs` budget ratchet beside it. |
-| `inline-selectors-workflows` (+ base) | **RE-DERIVE, STRONGER** | task impls may contain neither raw selectors nor Playwright `Page`/`Locator` calls. Selectors are private to `stores/<system>/driver/**`; tasks call typed semantic driver methods (docs 01/12). Driver selector literals must belong to the canonical UI registry entry they implement. |
+| `wait-for-timeout-allowlist` | **PORT (was EXTEND)** | glob `src/stores/**` in the rebuild repo; **zero-allowlist new** (ref execution-and-sessions §7 #3); shrink-only ported. Ref execution-and-sessions adds the per-task `sleepMs` budget ratchet beside it. |
+| `inline-selectors-workflows` (+ base) | **RE-DERIVE, STRONGER** | task impls may contain neither raw selectors nor Playwright `Page`/`Locator` calls. Selectors are private to `stores/<system>/driver/**`; tasks call typed semantic driver methods (refs task-contract/operator-trust). Driver selector literals must belong to the canonical UI registry entry they implement. |
 | `evaluate-named-fn` | **PORT** | glob `src/stores/**` in the rebuild repo; unchanged rule (`__name` in `page.evaluate` still throws live). |
 | `import-cycles` | **PORT (was EXTEND)** | SCC over the rebuild repo's `src/`; `ALLOWED_CYCLES` starts empty for the new tree. |
 | `control-layering` | **PORT → matrix (was EXTEND)** | absorb gap-audit `08` #9: enforce the full `domain → infra/services/systems → core → control/workflows` direction over the rebuild `src/` (today only the `control` edge is guarded). |
 | `code-conventions` | **PORT + FIX MATCHING (was EXTEND)** | same rules over the rebuild `src/` (no default exports, kebab/Pascal filenames, no `.tsx` outside dashboard, console guard). Replace `path.includes(prefix)` exemptions with normalized repo-relative exact roots/segments: today's `/scripts/` exemption must not pre-authorize a future `src/**/scripts/**`. |
-| `cancel-mechanism` | **RE-DERIVE** | the one-mechanism invariant re-expressed against doc 05's worker runtime + `runRegistry` successor; still a structural ban on a second cancel path. |
-| `delegate-to-usage` / `delegate-to-all-impl-callers` | **RE-DERIVE** | delegation is now workflow-composition (docs 01/02). Re-expressed as "child runs enqueue only via the kernel composition API," but note: peer-to-peer store reuse is now *allowed* (charter §1), so the old "no cross-workflow internal import" shape loosens — see `workflow-boundaries`. |
+| `cancel-mechanism` | **RE-DERIVE** | the one-mechanism invariant re-expressed against ref execution-and-sessions's worker runtime + `runRegistry` successor; still a structural ban on a second cancel path. |
+| `delegate-to-usage` / `delegate-to-all-impl-callers` | **RE-DERIVE** | delegation is now workflow-composition (refs task-contract/workflow-model). Re-expressed as "child runs enqueue only via the kernel composition API," but note: peer-to-peer store reuse is now *allowed* (charter §1), so the old "no cross-workflow internal import" shape loosens — see `workflow-boundaries`. |
 | `workflow-boundaries` | **RE-DERIVE (loosened)** | charter §1 makes tasks peer-reusable, so importing another workflow's *task contract* is legal. New rule: a workflow may import another's **contracts** and store tasks, never its `descriptor.ts` internals or non-task private helpers. |
-| `tracker-row-emission` | **RE-DERIVE** | archetype-stamping is gone; the new invariant is doc 03's: writes go only through the typed span-emit path, `appendFileSync` to event JSONL banned outside the rebuild repo's `src/tracker/`. |
+| `tracker-row-emission` | **RE-DERIVE** | archetype-stamping is gone; the new invariant is ref dashboard-surfaces's: writes go only through the typed span-emit path, `appendFileSync` to event JSONL banned outside the rebuild repo's `src/tracker/`. |
 | `deletion-tombstones` | **PRESERVE LEGACY + RE-DERIVE** | Keep the existing legacy guard unchanged. The rebuild UI exposes reversible `hide/unhide`, never ambiguous Delete; runtime physical delete of authority/audit tables is forbidden and exact-id offline purge requires verified backup + receipt. No lift path exists. |
-| `dashboard-security-boundary` | **RE-DERIVE FOR LOCAL SCOPE + ISOLATION** | Both servers bind distinct configured loopback ports and accept only their own same-origin UI. No shared middleware, proxy/remount, route forwarding, state root, process lock, or browser profile/session is allowed; Phase 1 does not build a user/account system (docs 03/11/12/13). |
+| `dashboard-security-boundary` | **RE-DERIVE FOR LOCAL SCOPE + ISOLATION** | Both servers bind distinct configured loopback ports and accept only their own same-origin UI. No shared middleware, proxy/remount, route forwarding, state root, process lock, or browser profile/session is allowed; Phase 1 does not build a user/account system (refs dashboard-surfaces/clock-config-secrets/operator-trust/frontend-backend-integration). |
 | `frontend-tailwind-compliance` | **PORT (was EXTEND)** | over the rebuild repo's `src/dashboard`. |
 | `i9-check-import-guard` | **GENERALIZE** | a descriptor with no transaction/commit contract is structurally read-only; graph coverage proves it cannot reach a mutation capability. |
 | `origin-workflow-banned` | **DROP-OR-PORT** | the lineage field it bans does not exist in the rebuild; keep a banned-term guard only if the concept resurfaces. Decide at Phase 1. |
@@ -482,7 +482,7 @@ live probe uses/releases a read lease before transaction acquisition, `probeToFe
 positive, expiry or a lost fence CAS discards staged state with zero clicks, and cleanup/reset never
 occurs between prepare and commit.
 
-### 3.3 `write-safety-contract.test.ts` — completion union + fenced, evidence-qualified recovery (HOSTS doc 09's guard)
+### 3.3 `write-safety-contract.test.ts` — completion union + fenced, evidence-qualified recovery (HOSTS ref write-safety's guard)
 
 **Thesis:** every `effect:"commit"` contract has write safety; no escape hatch. Every completion
 arm—receipt/save/upload—has a nontrivial `proofSchema`, normal-output extractor, recovery-probe
@@ -519,12 +519,12 @@ outcome but asserts zero write-ledger outboxes, so observation cannot masquerade
 by index silently binds the wrong person when the list reorders — the class of the real wrong-person
 incident. Guard: ban `members[<int>]` / `items[<int>]` / `checkpoints[<int>]`-style positional lookups
 as a row/checkpoint **identity** in the rebuild repo's `src/{core,workflows,stores,tracker}/**` (iteration is fine;
-using the index as the persisted key is not). Structurally reinforces doc 02's `(workflow, item_id)`
-logical key (D9) and doc 03's `(runId, attempt, spanPath)` span identity (D10) — both are id-keyed.
+using the index as the persisted key is not). Structurally reinforces ref workflow-model's `(workflow, item_id)`
+logical key (D9) and ref dashboard-surfaces's `(runId, attempt, spanPath)` span identity (D10) — both are id-keyed.
 
 ### 3.5 `unverifiableByPage` requires an allowlist + reason (D22 — closes the verify escape hatch)
 
-Doc 09's `upload-verify.unverifiableByPage` is the one place a commit contract may declare "this page
+Ref write-safety's `upload-verify.unverifiableByPage` is the one place a commit contract may declare "this page
 genuinely cannot prove landing" and fall to always-park. Left unguarded it is a silent escape from
 proof-of-landing (review 09 #5). Ratchet: any `completion` carrying `unverifiableByPage` MUST have a
 matching `Record<contractId, { reason }>` allowlist entry and its
@@ -535,14 +535,14 @@ quiet default — today only OnBase is a candidate, and it must earn its line.
 
 ### 3.6 `commit-routes-through-mutation.ts` (D22 — closes the fence-bypass overclaim)
 
-Doc 09's fence-before-click is only "unbypassable" if every real submit actually goes through the
+Ref write-safety's fence-before-click is only "unbypassable" if every real submit actually goes through the
 sealed `stores/common/mutation.ts` primitive, which requires the open-intent capability. A leaf
 could otherwise fire a raw click. Ratchet: every `effect:"commit"` impl must route its transaction
 action through the mutation module—an import/capability graph check. Driver methods capable of a
 click/press-class external submit require that capability in their public signature and reach the
 sealed primitive internally; a commit impl or driver reaching such an action without it fails. This
 complements the raw-page boundary (§2): raw clicks live only in driver internals, and external-write
-clicks additionally require the one fenced choke point. Together they make doc 09's
+clicks additionally require the one fenced choke point. Together they make ref write-safety's
 "fence-before-click is unbypassable" a structural fact.
 
 ### 3.7 `artifact-effect-boundary.test.ts` — downloads are immutable; mutable files are projections
@@ -592,7 +592,7 @@ read while still permitting replay-safe browser downloads.
   a fail-both-ways allowlisted reason and exact staged-page-state `UnscopedBindingProof`; every
   mutation capability is bound to one `WriteBindingProof` digest, never an empty subject placeholder.
 - **`control-command-single-path.test.ts`.** Dashboard/CLI/gate/recovery/notification/capture
-  modules can mutate authority only through doc 03's D67 command family. Command ids are idempotent
+  modules can mutate authority only through ref dashboard-surfaces's D67 command family. Command ids are idempotent
   and target versions are carried on every wire arm; CAS is checked only for cancel-tree,
   edit-vs-resume, gate resolution, and write-recovery races. Hide is presentation-only; runtime
   physical deletes and UI label `Delete` fail. Enqueue
@@ -723,11 +723,11 @@ read while still permitting replay-safe browser downloads.
   round-trip from the real descriptor/contract/UI registries. Editable drafts are limited to the
   closed presentation/policy union; stale-base apply, graph/schema/selector/bind/proof edits, or an
   apply without reviewed semantic diff fail and yield a code-change brief. No DSL/codegen artifact
-  exists (doc 12 §5).
+  exists (ref operator-trust §5).
 
 ### 3.11 Old-capability closure, mobile capture, and advisory AI
 
-- **`legacy-capability-disposition.test.ts`.** Doc 07 §3.6's strict inventory covers every old
+- **`legacy-capability-disposition.test.ts`.** Doc 03c §Non-workflow capability closure inventory's strict inventory covers every old
   workflow directory, `services/*` module, route file/endpoint family, top-level dashboard component
   family, CLI subcommand/ops script, exporter/codegen/maintenance/dev tool exactly once. New legacy
   paths fail until classified. Runtime proxy is forbidden. Cutover-readiness mode rejects open/
@@ -790,7 +790,7 @@ worse than an honest `open`**, so a family whose core landed but whose operator-
 not (the Log Panel without its screenshot gallery, Settings without an editor, capture without an
 operator photo review) stays open and says exactly what is missing.
 
-**Three vocabulary additions**, all sanctioned by doc 07 §3.6 rather than invented here:
+**Three vocabulary additions**, all sanctioned by doc 03c §Non-workflow capability closure inventory rather than invented here:
 
 - `open` gains a required non-empty `reason`. A bare `{kind, milestone}` is *how* 73 entries came
   to name shipped milestones — there was nothing in the record to contradict.
@@ -816,7 +816,7 @@ guard — which *is* the proxy-free arm, since `proxy` is not in the union — a
    cite at least one rebuild path or script.** "The legacy file still exists" was the only evidence
    73 entries carried, and it proves nothing about this repo.
 
-**The completed set is DERIVED, not typed.** Doc 07's ordered work items are the guard's one
+**The completed set is DERIVED, not typed.** The phase docs' ordered work items are the guard's one
 milestone enum, and the marker is obtained by invoking the real `phase` command
 (`startRebuildRuntime(..., ["phase"])`) — the same thing an operator runs. A hand-typed list of
 finished milestones is a second answer that can disagree with the product. **Closing a tail is
@@ -828,7 +828,7 @@ one per arm plus the schema refusals.
 
 **Where the unbuilt entries actually belong.** The first pass parked sixteen on `2i` and one on
 `2j`, which was the wrong reading of what this file is for. `cutoverRequiresZeroOpen` gates
-**cutover** — doc 07 §6's whole-program flip — not a Phase-2 tail, and §2's row 3 already names the
+**cutover** — doc 05 §Exit criteria's whole-program flip — not a Phase-2 tail, and §2's row 3 already names the
 home for everything Phase 2 does not build: *per-workflow migration, **plus explicit non-workflow
 capability closure (§3.6)***, with its exit requiring every inventory entry to reach
 native/replaced/retired. Assigning 49 legacy operator surfaces to "milestone 2i" was an early guess
@@ -856,7 +856,7 @@ the entry itself:
   the tree has two workflows and no run corpus, so shaping them now would fix their facets and
   affordances against nothing.
 
-The milestone id is coarse by construction — doc 07 has no finer ordered item past 2j — so the
+The milestone id is coarse by construction — the phase docs have no finer ordered item past 2j — so the
 granularity lives where D184 put it: every entry's `reason` names what is missing and what decides
 it, and §3.3's order plus §3.6's grouped decisions are where each one actually lands.
 
@@ -872,7 +872,7 @@ frontend has no operator surface at all.
 **The inventory must never gate the program's own progress.** A tail that closes with an entry
 still parked on it is a record-keeping defect, not a reason to stop — so the guard runs the sweep
 AHEAD, asserting a clean audit for *every* base work item through `2j`. `completedThrough` stays
-strictly typed as a doc-07 work item, because its position in that order is the whole mechanism;
+strictly typed as a phase-doc work item, because its position in that order is the whole mechanism;
 `active` is deliberately a plain string, since past 2j it names a §3.3 **migration** rather than a
 base work item, and parsing it strictly would make an unrelated schema refuse to run the moment the
 marker advanced.
@@ -895,7 +895,7 @@ reviewed declared-without-adapter reason.
 Four ratified decisions are worthless as prose. Each gets a guard, and each guard is listed in the
 §5.1 registered set.
 
-- **`one-projection-counts.test.ts` (D81 — doc 03 §10.1).** The operator's standing complaint is
+- **`one-projection-counts.test.ts` (D81 — ref dashboard-surfaces §10.1).** The operator's standing complaint is
   that legacy per-workflow badges "always error out"; the audit found ≥4 historical fixes for
   count/badge divergence. Root cause is structural — several surfaces each free to derive their own
   count. This guard asserts that **no count or aggregate reachable from a surface path originates
@@ -905,7 +905,7 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   Workflow Panel total == Status Bar sum == rendered Queue Row count **by construction**. Failure
   mode it prevents: a future surface quietly re-deriving a number and re-opening a 4-fix bug class.
 
-- **`identity-gate-before-commit.test.ts` (D77 — doc 09 §14).** For every descriptor whose commit
+- **`identity-gate-before-commit.test.ts` (D77 — ref write-safety §14).** For every descriptor whose commit
   contract consumes an operator-approved subject, walk the graph and assert the commit node is
   reachable **only** through the identity-approval gate node — no branch bypasses it, no `startAt`
   entry point lands past it, and no gate node sits *inside* a transaction node (D26 forbids a park
@@ -914,7 +914,7 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   render as `done`. This is the static half of the wrong-person control; the runtime half is that a
   commit whose `expected` subject has no backing approved gate result cannot fence.
 
-- **`archive-invariants.test.ts` (D80 — doc 03 §10.2).** Three assertions: (1) rendering an
+- **`archive-invariants.test.ts` (D80 — ref dashboard-surfaces §10.2).** Three assertions: (1) rendering an
   archived run touches **zero** version-conditional code paths — the archived payload is
   self-contained, so a fixture with an archived run from a prior descriptor version renders through
   the same single path as a current run; (2) a version bump **refuses** while any prior-version run
@@ -922,7 +922,7 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   possible-submit being buried; (3) archiving never touches the write ledger.
 
 - **`runtime-isolation.test.ts` — RETIRED BY D93 (cross-tree half); `operational-isolation.test.ts`
-  + `legacy-change-accounting.test.ts` survive (D88/D90/D93 — charter/doc 03).** The original arm was
+  + `legacy-change-accounting.test.ts` survive (D88/D90/D93 — charter/ref dashboard-surfaces).** The original arm was
   a finite TypeScript-AST normal form over a closed `forbiddenBridgeClasses` registry: it proved that
   no file on either side reached the other through a dynamic import/`require`, process, filesystem/
   state/profile, runtime HTTP, or proxy/forward/remount sink, with a `legacy-preservation.json`
@@ -951,7 +951,7 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   resource row above. A muscle-memory `npm run dashboard` in the wrong checkout now starts that
   checkout's dashboard on its own port, under its own roots and locks — legible, and harmless.
 
-  **`test-runtime-root-isolation.test.ts` (2026-08-03 — doc 11 §4) covers the other direction: the
+  **`test-runtime-root-isolation.test.ts` (2026-08-03 — ref clock-config-secrets §4) covers the other direction: the
   TEST suite mutating a real runtime root.** `operational-isolation` proves the two runtimes bind
   distinct roots; it says nothing about who writes to them. A unit test did — the browser-session
   factory suite created profile directories under the real `.auth-rebuild` (because `open()` really
@@ -978,7 +978,7 @@ Four ratified decisions are worthless as prose. Each gets a guard, and each guar
   **`legacy-change-accounting` survived D93 and became the program's only drift detector (D94).** The
   guard lane resolves `HRAUTO_LEGACY_REPO`, defaulting to sibling `../hr-automation`, and fails loud
   if it is absent or not a Git checkout (ratified F1). Mixed-root inventories qualify legacy paths
-  with `legacy:` while single-root legacy manifests remain unprefixed (F2; doc 11 §6). The explicit
+  with `legacy:` while single-root legacy manifests remain unprefixed (F2; ref clock-config-secrets §6). The explicit
   Phase-0 commit is verified as an ancestor of legacy `HEAD`; its file/history authority is read
   directly from `git ls-tree -r <baselineCommit> -- src tests` rather than resurrecting the retired
   preservation cache (F3).
@@ -1137,7 +1137,7 @@ file outside the repository is never a Phase-1 gate and is deleted after its fin
 
 ### 3.15 `redaction-surface-scan.test.ts` — the redaction surface scan (D183, 2j)
 
-Doc 11 §6 already says redaction is schema-owned and that "tests seed canary passwords, cookies,
+Ref clock-config-secrets §6 already says redaction is schema-owned and that "tests seed canary passwords, cookies,
 storage state, SSNs, DOBs, and private keys and scan every produced note/failure/screenshot
 metadata/bundle/notification." Until D183 nothing owned that sentence: redaction appeared only as a
 **clause** inside §3.10's `evidence-receipt`, the notification guard, §3.11's `ai-advisory-no-authority`
@@ -1149,8 +1149,8 @@ and it has two halves that catch different failures. Neither is sufficient alone
 
 | egress class | what it is |
 |---|---|
-| `operator-loopback` | the dashboard bound to `127.0.0.1` (doc 11 §6.1), read by the one authorized operator |
-| `phone-scoped` | doc 12 §7's single non-loopback ingress — the operator's own phone |
+| `operator-loopback` | the dashboard bound to `127.0.0.1` (ref clock-config-secrets §6.1), read by the one authorized operator |
+| `phone-scoped` | ref operator-trust §7's single non-loopback ingress — the operator's own phone |
 | `durable-authority` | a row in the authority database, retained and re-served |
 | `durable-file` | bytes under the state root that are never pruned (the ledger) |
 | `process-egress` | bytes handed to a third party — today an AI provider |
@@ -1168,7 +1168,7 @@ format-constrained string — or a **redacted subtree**, or it must carry a decl
 - `external-text` — free text authored OUTSIDE this repository and copied verbatim (a thrown
   `error.message`, a page title, a provider's answer). Nobody here controls what it contains.
 
-The matrix is where the teeth are. `os-notification` admits **only** `repository-authored` — doc 03
+The matrix is where the teeth are. `os-notification` admits **only** `repository-authored` — ref dashboard-surfaces
 §2.6's "no raw secrets or captured form contents in notification text" as a schema property rather
 than a promise. `process-egress` admits only what this repository wrote or explicitly redacted.
 `durable-file` needs a written **exception** for a captured value and refuses external text outright.
@@ -1195,14 +1195,14 @@ A `*Redacted`-suffixed leaf must be declared `declared-redacted`, or its **name*
 a written reason; a source arm additionally refuses any `<name>Redacted:` write in `src/` that is not
 a schema declaration. Both halves exist because of what the first sweep found: `valueRedacted` on the
 run-detail Data and context sections **is not redacted** — `src/server/dashboard/queries/run-detail.ts`
-serves the raw recorded scalar, which doc 03 §1.1(c) entitles that rail to — so the value is fine and
+serves the raw recorded scalar, which ref dashboard-surfaces §1.1(c) entitles that rail to — so the value is fine and
 the NAME is the defect, waived by decision rather than quietly accepted. In the other direction,
 `page.urlRedacted`, `page.titleRedacted` and `subject.*.displayRedacted` have **no producer at all**
 today: they are declared, consumed by the run-detail wire and dropped by the advisory's table, and
 never filled. The first code that fills one is what the producer arm exists to stop, which is why it
 ships before the code it guards.
 
-**(b) The canary sweep.** Doc 11 §6's exact sentinel list — a password, a cookie, a storage-state
+**(b) The canary sweep.** Ref clock-config-secrets §6's exact sentinel list — a password, a cookie, a storage-state
 blob, a private key, a credential-file path, an unissued SSN, an impossible DOB — plus a person name
 and an EID, each impossible in real data so a hit is never a coincidence. The plant is asserted to
 have reached the source **before** anything is derived from it: a sweep whose sentinels never landed
@@ -1237,7 +1237,7 @@ in both directions, the surfaces those guards each see one at a time.
 
 ## 4. `descriptor-coverage.test.ts` — the ONE rebuild guard replacing parity-list design
 
-Owned by **doc 02 §1.4**; this doc owns the **crosswalk** (which legacy invariants it replaces in
+Owned by **ref workflow-model §1.4**; this doc owns the **crosswalk** (which legacy invariants it replaces in
 the rebuild repo, while the legacy repo's own guard files remain through initial cutover) and the
 **exhaustiveness argument**. A table-driven test over the core composition-root registry and its
 generated client projection. It is exhaustive because every named projection in this matrix is derived
@@ -1254,13 +1254,13 @@ project any surface fails the build:
 | run surfaces (`inputRun`/`uploadRun`) | `INPUT_RUN_REGISTRY`, `RUN_MODAL_REGISTRY`, the two `DASHBOARD_*_WORKFLOWS` lists | pure `DESCRIPTORS.filter(...)` derivations (#2) |
 | steps + gates (timeline source) | step-label switches (`formatStepName`, `types.ts:405`) | node ids unique; labels from contract `title`; timeline computed from spans + these (#3/#4) |
 | `systems` (session planner input) | hand `systems:` list | derived union of contract `<system>/` prefixes; each a known `SystemId`/service store (#4) |
-| `verdicts` | `queue-row-status-index` + `statusExtensions` | closed tuple keys unique; emitted verdict must belong to descriptor (doc 03) |
+| `verdicts` | `queue-row-status-index` + `statusExtensions` | closed tuple keys unique; emitted verdict must belong to descriptor (ref dashboard-surfaces) |
 | `completion` targets | OCR approve branching | targets typecheck vs target descriptors' strict `input` and terminal `result` (#5) |
 | graph branch/fork/child/gate subscriptions | handler-side delegation and wait registries | all edges/joins/targets/results/policies typed and validated; target input/result generics may not erase to unknown |
 | scenario corpus + minimal happy stub | e2e stub map | examples seed the minimal happy execution; descriptor references every branch/delegation/gate/control scenario in the checked manifest corpus (§7) |
 | runtimePolicy actions | `runtime-policy-coverage` | actions/gates read off descriptor (retires parity) |
 | `details`, capabilities, coordinator, completion-consumption, artifact projections | detail/runtime-policy special cases and i9 retention append | every emitted detail/action/member/coordinator projection validates; Edit Data paths exist in producing schemas and exclude identity/idempotency/proof/provenance; artifact source/key paths exist in exact node outputs and every sink kind resolves |
-| `enqueue`, actions, delegation policies | workflow-specific route/control handlers | only closed doc 03 policies/actions; every action projects the standard versioned command target, CAS is enforced only for doc 03's real-race arms, and no custom row mutation callback exists |
+| `enqueue`, actions, delegation policies | workflow-specific route/control handlers | only closed ref dashboard-surfaces policies/actions; every action projects the standard versioned command target, CAS is enforced only for ref dashboard-surfaces's real-race arms, and no custom row mutation callback exists |
 | task UI dependencies + subjects | selectors/helpers scattered through workflows | every semantic id resolves in the same-system driver registry; every write has an enforceable subject observation; raw page access is absent |
 | workflow terminal `result` | parent reading child tracker blobs | strict result derives only from declared terminal dependencies and every awaited child consumes that exact schema |
 | evidence requirements | implicit “done means probably okay” | required receipts/proofs/artifacts/failure/confidence project from the descriptor/contracts; terminal completeness validates |
@@ -1306,7 +1306,7 @@ set. The test asserts:
    consumes the reviewed fingerprint manifest rather than ignoring failures or comparing only a
    total count. The `*:rebuild` script names are retired by D93.
 9. **The visual-parity lane is held to the same standard as a guard arm (D132).** `npm run
-   test:parity` (doc 13 §7, owner) is outside the vitest projects, so §5's file-set audit cannot see
+   test:parity` (ref frontend-backend-integration §7, owner) is outside the vitest projects, so §5's file-set audit cannot see
    it; `parity-reference-authority.test.ts` covers it from inside the architecture suite instead. It
    proves the lane can FAIL in both of the ways it silently could not: a stored `.a11y.yml` /
    `.meta.json` reference is compared and left untouched on mismatch rather than rewritten (refresh
@@ -1317,7 +1317,7 @@ set. The test asserts:
    scan that resolves an empty file set (item 4).
    **D145 adds the third arm: a guard's THRESHOLD is part of what it claims.** The pixel half's
    allowance is `maxDiffPixels: 0`, so one moved pixel fails; its per-pixel colour tolerance is
-   pinned explicitly and calibrated against a recorded measurement (doc 13 §7.1). The prior
+   pinned explicitly and calibrated against a recorded measurement (ref frontend-backend-integration §7.1). The prior
    `maxDiffPixelRatio: 0.001` was chosen, not measured, and it hid a visible content change — and
    because `updateSnapshots: "changed"` decides what to rewrite with the same comparison, a
    too-wide allowance also disables the deliberate refresh, shipping pairs whose semantic half was
@@ -1326,7 +1326,7 @@ set. The test asserts:
    stated guarantee is stronger than the number it enforces is the same defect as a guard that
    cannot fail, and the number needs evidence in its owning doc.
 10. **The durable config leaf set is pinned per generation, the same way released migration bytes
-    are (D133).** `config-snapshot-generations.test.ts` (doc 11 §4.1, owner) is
+    are (D133).** `config-snapshot-generations.test.ts` (ref clock-config-secrets §4.1, owner) is
     `migration-history-immutability.test.ts`'s sibling for the OTHER durable contract: a required
     config leaf added — or tightened — without registering it in `CONFIG_SNAPSHOT_GENERATIONS` and
     bumping `CURRENT_CONFIG_SNAPSHOT_GENERATION` invalidates every stored `config_snapshots` row and
@@ -1371,13 +1371,13 @@ contracts; the manifest owns that they exist and stay wired. The set (contract-o
   `knowledge-fix-integrity`, `workflow-editor-compile-integrity`, `legacy-capability-disposition`,
   `capture-durability-and-scope`, `ai-advisory-no-authority`, `provider-capability-boundary`,
   `runtime-dependency-coverage`, `preflight-coverage`, and `authentication-proof-not-url`
-  (doc 05 §4.1: no login recipe concludes authentication from a URL or returns a `LoginResult`
+  (ref execution-and-sessions §4.1: no login recipe concludes authentication from a URL or returns a `LoginResult`
   outside `defineVerifiedLoginRecipe`; every landed browser-system binding supplies a verifier
   rather than an `isAuthenticatedUrl` predicate; the neutral reset asserts through the same
   `assertAuthenticatedApplication`).
-- **Descriptor SSOT (doc 02):** `descriptor-coverage` — replaces `archetype-coverage`,
+- **Descriptor SSOT (ref workflow-model):** `descriptor-coverage` — replaces `archetype-coverage`,
   `runtime-policy-coverage`, `instance-labels-coverage`, `queue-row-kind-coverage`, `i9-check-import-guard`.
-- **Task-store guards (doc 01):** pairing, reachability, bundle-safety, `example`-parse, freshness,
+- **Task-store guards (ref task-contract):** pairing, reachability, bundle-safety, `example`-parse, freshness,
   verb↔effect, `KnownTaskId` stringly-dispatch ratchet, `z.record` output ban, auth-boilerplate ban,
   copied-selector provenance/isolation/change-accounting, undeclared-error-code type-test, commit-capability boundary,
   declared-secret reachability (every `requireSecret` name appears in its contract and descriptor union),
@@ -1386,7 +1386,7 @@ contracts; the manifest owns that they exist and stay wired. The set (contract-o
   canonical-output-no-any, content-addressed-artifact boundary (direct mutable filesystem writes in
   task impls fail; workflow mini-stores cannot declare artifacts), provider-capability declaration/
   injection boundary.
-- **Event/dashboard guards (doc 03):** dashboard-component purity (no `workflow ===`), client
+- **Event/dashboard guards (ref dashboard-surfaces):** dashboard-component purity (no `workflow ===`), client
   re-projection import-boundary, identity-on-patch throw, undeclared-vocabulary emit-validation,
   sealed-completion (`defineFormSpec`, + oath-upload & verify pinned to NO `CompletionProgram`),
   runtime-isolation, one-time-import offline/idempotency coverage,
@@ -1394,10 +1394,10 @@ contracts; the manifest owns that they exist and stay wired. The set (contract-o
   immutable-backup/version/idempotency/quarantine-count import fixture, command idempotency/scoped-CAS/enqueue policies,
   authority target fail-closed behavior, durable notification delivery, SQLite backup/restore
   drill, native projection/fixture parity.
-- **Local artifact projector guards (docs 03/06):** stable non-positional outbox key, checkpoint+
+- **Local artifact projector guards (refs dashboard-surfaces/data-intake-and-edit-data):** stable non-positional outbox key, checkpoint+
   outbox atomicity, duplicate-delivery idempotence, single projector per sink, workbook head-hash
   conflict parks without overwrite, and blocking projection ack before terminal done.
-- **Parallelism guards (doc 05):** driver-lease/raw-Page boundary, subject observation ordering,
+- **Parallelism guards (ref execution-and-sessions):** driver-lease/raw-Page boundary, subject observation ordering,
   per-contract sleep budget, single-flight
   login, onbase-`exclusive` lease, `newPage(` ratchet, fan-out-starvation, authored fresh-session-boundary coverage,
   bounded task/transaction deadline, worker teardown soak, multi-worker overlap.
@@ -1413,7 +1413,7 @@ promise cannot quietly stay a promise.
 
 "Same quality umbrella, made concrete." A new task or workflow is built **test-first** against these:
 
-1. **Pure-logic unit** — `task.impl.run({ input, ctx: fakeCtx })`. Doc 01 §7B makes every task run a
+1. **Pure-logic unit** — `task.impl.run({ input, ctx: fakeCtx })`. Ref task-contract §7B makes every task run a
   plain-object call; the `fakeCtx` contract uses the matching effect-specific ctx with a fake typed
    `driver`/`recordData` and, only for commit tests, an explicit test mutation capability.
    No fake Page/Locator is exposed. `dryRun` is
@@ -1422,9 +1422,9 @@ promise cannot quietly stay a promise.
    function the run composes, tested with a fake ctx and no browser — the *primary* hardening tier
    (charter #2: types first, then this).
 2. **Contract / type** — every contract's mandatory `example` parses through its own `output` schema
-   (doc 01 guard #4); type-level tests pin that undeclared `errorCodes` fail `tsc`, a commit
+   (ref task-contract guard #4); type-level tests pin that undeclared `errorCodes` fail `tsc`, a commit
    contract missing typed completion proof fails the write-safety guard, and no task ctx has a `dryRun` member
-   (so a mis-declared read can't branch on dry-run — doc 01 §2.3). **Fixtures come from `example`**
+   (so a mis-declared read can't branch on dry-run — ref task-contract §2.3). **Fixtures come from `example`**
    (D3): the mandatory canonical output is the single reusable fixture — stubs, unit tests, and the
    dashboard preview all consume it, so it can't drift.
 3. **Architecture ratchets** — §2's ported grep-ratchets + §3–§5's new guards, each glob covering
@@ -1450,13 +1450,13 @@ gates** (`E2EScriptedFailError` → terminal `failed` + Retry). Migration:
   stub output is its contract's `example` (schema-parsed) instead of a hand-written `StepDataFn`. The
   hand-maintained per-workflow scripts disappear — the stub map is a descriptor projection
   (descriptor-coverage #(stub) covers it), so it can't drift from the real steps.
-- **What `example` cannot express lives in the registered scenario corpus** (doc 12): failure,
+- **What `example` cannot express lives in the registered scenario corpus** (ref operator-trust): failure,
   cancel, subject mismatch, proof unknown, gate, delegation, retry, and parallel overlap are strict
   `ScenarioManifest`s with deterministic fixture drivers and timed control events. The existing
   file-based hold/fail-gate mechanism (`e2e-gates/`) remains an implementation primitive, not an
-  unindexed parallel list. Doc 05 §7's multi-worker scenario holds two workers simultaneously
+  unindexed parallel list. Ref execution-and-sessions §7's multi-worker scenario holds two workers simultaneously
   and asserts distinct worker ids plus span overlap (`maxConcurrentWorkers ≥ 2`).
-- **Span-emitting workflows**: the stub daemon emits the same span/note events (doc 03) a real run
+- **Span-emitting workflows**: the stub daemon emits the same span/note events (ref dashboard-surfaces) a real run
   would, so native projection/BFF contracts and seeded dashboard fixtures are exercised without a
   browser. `oath-upload`-style real-handler-with-stubbed-legs cases port as test seams.
 
@@ -1464,7 +1464,7 @@ gates** (`E2EScriptedFailError` → terminal `failed` + Retry). Migration:
 cleared hands-off by the enrolled WebAuthn credential (charter §9 — no phone step). Its safety
 boundary is unchanged and is now *structural*: **`dryRun=true` = the submit task is not in the
    composition** (§3.1), so a live dry-run reads the real path and proves no commit span, fence,
-   intent, or mutation call exists, with no possibility of an irreversible write — the write-safety contract (doc 09) only
+   intent, or mutation call exists, with no possibility of an irreversible write — the write-safety contract (ref write-safety) only
 ever engages on a real submit, which a dry-run composition doesn't contain. The dashboard headless
 `playwright-cli` verification loop (root CLAUDE.md "Verifying dashboard changes") is unchanged: seed
 a synthetic tracker dir → boot the real new-server dashboard → drive + assert on the a11y snapshot.
@@ -1483,7 +1483,7 @@ a synthetic tracker dir → boot the real new-server dashboard → drive + asser
 | 6 | **The composition/pairing guard false-positives on prose** | both key off closed unions and graph nodes; one-click writes use a no-op prepare, not an escape hatch |
 | 7 | **This doc becomes a stale prose index** | §5's manifest is the machine SSOT; the two-way file↔inventory check exposes drift even if this prose lags. |
 | 8 | **Meta-risk: three new safety docs (09/10/11) drift** | Each is a D1-owned contract doc the master plan (07) *references*, never redefines; this doc imports their contracts and only hosts their guards. |
-| 9 | **The write-safety guard regresses to demanding a flat `receipt`** (would wrongly reject Kuali/OnBase) | §3.3 walks doc 09's `completion` UNION (`receipt\|save-verify\|upload-verify`, D22): save-verify/upload-verify pass with a typed `ProbeVerdict` read-back and NO confirmation number; a type-level test pins that demanding `receipt` of a save-verify contract is itself a guard bug. The `unverifiableByPage` allowlist (§3.5) and the mutation-primitive fence-routing ratchet (§3.6) each fail-both-ways, so the verify escape hatch and the fence bypass can't quietly re-open. |
+| 9 | **The write-safety guard regresses to demanding a flat `receipt`** (would wrongly reject Kuali/OnBase) | §3.3 walks ref write-safety's `completion` UNION (`receipt\|save-verify\|upload-verify`, D22): save-verify/upload-verify pass with a typed `ProbeVerdict` read-back and NO confirmation number; a type-level test pins that demanding `receipt` of a save-verify contract is itself a guard bug. The `unverifiableByPage` allowlist (§3.5) and the mutation-primitive fence-routing ratchet (§3.6) each fail-both-ways, so the verify escape hatch and the fence bypass can't quietly re-open. |
 | 10 | **A broad path exemption leaks into a nested rebuild directory** | `code-conventions` matches normalized repo-relative roots/segments, never `includes(prefix)`; a fixture proves `src/x/scripts/y.ts` is not exempt merely because `/scripts/` appears inside it. |
 | 11 | **A schema guard checks only top-level objects while nested records stay open** | schema walker recursively inspects object/union/lazy members and mutation-tests unknown keys at every nested object boundary |
 | 12 | **A scenario exists on disk but no lane ever executes it** | scenario runner emits coverage by scenario id + required assertion ids; manifest guard fails orphaned, referenced-but-unexecuted, or stale-contract-fingerprint scenarios |

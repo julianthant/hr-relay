@@ -1,8 +1,8 @@
 /**
- * `crm/read-onboarding-record` — doc 02 §8's cross-verification step.
+ * `crm/read-onboarding-record` — ref workflow-model §8's cross-verification step.
  *
- * Doc 02 §8 sketches this as `crm/find-onboarding-record`. The verb is `read`
- * here because doc 01's contract factory (landed in 1d) pins the effect→verb
+ * Ref workflow-model §8 sketches this as `crm/find-onboarding-record`. The verb is `read`
+ * here because ref task-contract's contract factory (landed in 1d) pins the effect→verb
  * vocabulary — `read | search | list | extract | match | verify` for a read —
  * and a name that disagrees with its effect is exactly the drift that check
  * exists to catch. The contract object is imported by value, so the rename is a

@@ -4,7 +4,7 @@
  * This is the only reader the archive uses, and it is deliberately narrow: it
  * opens a partition, finds the named sequence, and answers with the entry or
  * with the reason there is none. It NEVER writes, never appends, never
- * renumbers and never prunes — doc 03 §2.1 D21's ledger exemption is a
+ * renumbers and never prunes — ref dashboard-surfaces §2.1 D21's ledger exemption is a
  * property of this directory, and a "repair" here would rewrite the record of
  * what was really filed against a live HR system.
  *

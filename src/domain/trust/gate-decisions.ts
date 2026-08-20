@@ -1,6 +1,6 @@
 /**
  * Declared gate decisions (D204) — how a stored `gate_results` row becomes the
- * receipt's `DecisionEvidence` row, doc 12 §2.3 over doc 09 §14.6 risk 6.
+ * receipt's `DecisionEvidence` row, ref operator-trust §2.3 over ref write-safety §14.6 risk 6.
  *
  * ## Why this is declared rather than derived
  *
@@ -63,7 +63,7 @@ export const GateDecisionDeclarationSchema = z.strictObject({
   /**
    * The leaf carrying the evidence the decision was bound to, when the gate
    * declares one. The identity gate does: an approval is an observation of a
-   * SPECIFIC packet (doc 09 §14.5), so the digest is the load-bearing half of
+   * SPECIFIC packet (ref write-safety §14.5), so the digest is the load-bearing half of
    * "what did they actually approve".
    */
   boundEvidencePath: EvidenceLeafPathSchema.optional(),
@@ -81,7 +81,7 @@ export type GateDecisionDeclaration = z.infer<typeof GateDecisionDeclarationSche
 
 export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze([
   /**
-   * The ALWAYS-GATE identity approval (doc 09 §14.4). `rejected` terminalizes
+   * The ALWAYS-GATE identity approval (ref write-safety §14.4). `rejected` terminalizes
    * the run, so both arms are real outcomes an operator-facing record must be
    * able to state — a receipt that could only describe approvals would be a
    * receipt that never shows a refusal.

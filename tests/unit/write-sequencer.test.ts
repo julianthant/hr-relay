@@ -1,5 +1,5 @@
 /**
- * Doc 09 §3 beats ①–⑦ over the REAL authority database, worker session
+ * Ref write-safety §3 beats ①–⑦ over the REAL authority database, worker session
  * manager, and a sealed synthetic transaction corpus — only the process edges
  * (browser driver, clock, ids, timers, span sink) are recording fakes.
  */

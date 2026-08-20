@@ -29,7 +29,7 @@
  * WHAT 1i SERVES. `RunDetailWire` + the lazy sections. The rich failure
  * projection (cause chain, write-state sentence, remediation catalogue,
  * diagnostic bundle), evidence/captures/facsimiles, park resolution, checkpoint
- * editing, People rosters and progressive Review records are all doc 12 / doc 06
+ * editing, People rosters and progressive Review records are all ref operator-trust / ref data-intake-and-edit-data
  * surfaces landing in 2g/2h. This panel renders the FRAME and the served
  * identity for the failure and omits every field the wire does not carry —
  * it never invents a write state, because "nothing was written" and "we do not
@@ -145,14 +145,14 @@ export interface PanelSections extends ContextSections {
   receipt?: ReceiptSectionPayload;
   failure?: FailurePayload;
   /**
-   * Doc 09 §4.1's parked write. It has NO tab, deliberately: DESIGN.md names
+   * Ref write-safety §4.1's parked write. It has NO tab, deliberately: DESIGN.md names
    * `Write parked` a DECISION, and a decision's surface renders inline in the
    * stream at the line that produced it — the same placement the failure record
    * gets and for the same reason.
    */
   "parked-write"?: ParkedWritePayload;
   /**
-   * Doc 09 §14.4's identity-approval gate. It has no tab either, and for the
+   * Ref write-safety §14.4's identity-approval gate. It has no tab either, and for the
    * same reason: an open gate is a DECISION, and the decision card renders
    * inline in the stream at the line it stopped on.
    *
@@ -602,7 +602,7 @@ function InlineDecision({
  * gate leaves behind once somebody answers it. Before D237 there was nothing:
  * the wire's resolved arm was unreachable, so a settled gated run's panel went
  * silent about the one step a human performed — and "who approved this" is
- * exactly the question doc 09 §14.6 risk 6 exists for.
+ * exactly the question ref write-safety §14.6 risk 6 exists for.
  *
  * All three facts are the SERVER's, off one durable `gate_results` row: the
  * verdict through D204's declared arm table, the approver and the instant off
@@ -687,7 +687,7 @@ function InlineGateDecisionRecord({
  *
  * 1i serves the record's IDENTITY (`{ runId, failureId }`) and the facts around
  * it — the terminal outcome, the timeline's failed event, and the error-level
- * notes in the stream. The doc 12 projection that turns that id into a summary,
+ * notes in the stream. The ref operator-trust projection that turns that id into a summary,
  * a code, a write state and a remediation ladder is 2g. So this renders the
  * frame, names the record, and shows what the run's OWN stream said — and it
  * does not print a write-state sentence, because the difference between "wrote
@@ -706,7 +706,7 @@ function InlineFailureRecord({
   completedAt?: string;
   anchorRef?: (node: HTMLElement | null) => void;
   runId: string;
-  /** Doc 12 §4.4's advisory availability, off the bootstrap wire (D178). */
+  /** Ref operator-trust §4.4's advisory availability, off the bootstrap wire (D178). */
   aiAdvisory: CapabilityAvailability;
 }) {
   return (
@@ -1252,7 +1252,7 @@ export interface LogPanelProps {
   /** An applied correction bumped the run version — the owner refetches detail. */
   onDetailEdited: () => void;
   /**
-   * Doc 12 §4.4's advisory availability, from the bootstrap wire (2i-G, D178).
+   * Ref operator-trust §4.4's advisory availability, from the bootstrap wire (2i-G, D178).
    * The panel keeps its control and states the server's reason when no
    * provider is composed, rather than the affordance vanishing.
    */
@@ -1518,7 +1518,7 @@ export function LogPanel({
    * of the four ceremonies need something no served fact carries: which
    * candidate the operator chose, and why they rejected. Routing the gate
    * through the confirm-only path would have offered a risky approval as one
-   * click, which is doc 09 §14.6 risk 1 manufactured by accident — so the
+   * click, which is ref write-safety §14.6 risk 1 manufactured by accident — so the
    * descriptor opens the dialog that can carry the answer, and nothing else.
    */
   const handleGateResolution = useCallback<DashboardActionHandler>(
@@ -1534,7 +1534,7 @@ export function LogPanel({
       }
       if (identityGateArm(action) === undefined || action.kind !== "command") {
         throw new Error(
-          `the identity-gate section served ${action.key}, which names no doc 09 §14.4 resolution`,
+          `the identity-gate section served ${action.key}, which names no ref write-safety §14.4 resolution`,
         );
       }
       setGateTarget({ gate: gateSection, action });
@@ -1547,7 +1547,7 @@ export function LogPanel({
       if (parked === undefined) return;
       if (parkResolutionArm(action) === undefined || action.kind !== "command") {
         throw new Error(
-          `the parked-write section served ${action.key}, which is not a doc 09 §4.1 resolution`,
+          `the parked-write section served ${action.key}, which is not a ref write-safety §4.1 resolution`,
         );
       }
       setParkTarget({ parked, action });
@@ -1642,7 +1642,7 @@ export function LogPanel({
     && !parkedInView;
 
   /**
-   * Is this region drawing three columns? Measured, not inferred (doc 03 §Shell).
+   * Is this region drawing three columns? Measured, not inferred (ref dashboard-surfaces §Shell).
    *
    * The CSS half of the split is the CONTAINER query on the wrapper below. This
    * is the JS half, and it exists because one decision inside the region is a
@@ -1686,7 +1686,7 @@ export function LogPanel({
   // operator never asked to hide.
   const railState = useContextRail(threeColumn);
   // The rail widens to its edit width while the Data surface is EXPANDED
-  // (`--ds-w-context-rail-wide`, doc 03 D19(d)); the flag resets when the
+  // (`--ds-w-context-rail-wide`, ref dashboard-surfaces D19(d)); the flag resets when the
   // operator switches runs so one run's edit session can never widen another's.
   const [dataExpanded, setDataExpanded] = useState(false);
   useEffect(() => setDataExpanded(false), [detail.runId]);
@@ -1712,14 +1712,14 @@ export function LogPanel({
       A container query cannot style its own container, so the element that
       declares `@container/detail` can never be the element whose columns
       switch — asking from the same box is a query that never matches, and it
-      degrades silently to the stacked layout at every width (doc 03 §13.2 says
+      degrades silently to the stacked layout at every width (ref dashboard-surfaces §13.2 says
       the same thing about the explorer's `@container/graph`).
 
       It carries no padding and no border on purpose: the JS half above
       measures this box with `getBoundingClientRect`, so its border box has to
       BE its container-query box or the two halves can disagree.
 
-      `min-[1180px]:` on the container DECLARATION is doc 03 §Shell's first
+      `min-[1180px]:` on the container DECLARATION is ref dashboard-surfaces §Shell's first
       row, and it is the one question in this file the WINDOW is the right
       instrument for — it is the shell's own breakpoint, already spelled once
       in `dashboard-app.tsx`. Below it the shell is a single stacked column, so

@@ -1,5 +1,5 @@
 /**
- * D182 — doc 05 §7.1 rows C1–C4: the OVERLAP half of the 2j concurrency matrix.
+ * D182 — ref execution-and-sessions §7.1 rows C1–C4: the OVERLAP half of the 2j concurrency matrix.
  *
  * Everything else in this tree exercises concurrency one caller at a time: a
  * second `claimNext` issued by the test, a sweep run between two statements, a
@@ -12,7 +12,7 @@
  * against ONE shared `AuthorityDatabase`, and sample the durable claim set at
  * every span event and every driver call. Two facts have to hold at once and
  * they pull in opposite directions: no worker may ever hold two active rows
- * (doc 05 §0.3), and the workers must genuinely overlap (doc 05 §7's
+ * (ref execution-and-sessions §0.3), and the workers must genuinely overlap (ref execution-and-sessions §7's
  * "parallelism silently serializes" risk) — a matrix that only proved the first
  * would be satisfied by a runtime that ran everything on one worker.
  *
@@ -20,7 +20,7 @@
  * `phase1WorkerId(workflowId)`, so two composed workers on one workflow collide
  * on the authority worker LEASE by design. N-worker overlap is `runWorkerLoop`
  * called N times with distinct `workerId`s over one database — which is exactly
- * the shape doc 05 §2 says a future phase spawns.
+ * the shape ref execution-and-sessions §2 says a future phase spawns.
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -137,7 +137,7 @@ interface LoopHarness {
 
 /**
  * One worker's whole dependency set over the SHARED authority handle. Each
- * worker gets its own session factory (doc 05 §6.1 — one worker never shares a
+ * worker gets its own session factory (ref execution-and-sessions §6.1 — one worker never shares a
  * page) and its own id prefix, so a collision in checkpoints or spans would be
  * a real defect rather than a fixture artifact.
  */
@@ -253,7 +253,7 @@ describe("D182 C1 — two live worker loops drain one queue", () => {
     assert.equal(new Set(claims.map(({ runId }) => runId)).size, enqueued.length);
     assert.equal(new Set(claims.map(({ workerId }) => workerId)).size, 2, "both workers must have claimed");
 
-    // Doc 05 §7 "parallelism silently serializes": at some sampled instant TWO
+    // Ref execution-and-sessions §7 "parallelism silently serializes": at some sampled instant TWO
     // workers owned work at once. A serialized runtime would peak at one.
     assert.ok(observer.samples() > 20, `only ${String(observer.samples())} samples were taken`);
     assert.equal(observer.maxWorkersHoldingWork(), 2);

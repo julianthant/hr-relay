@@ -1,12 +1,12 @@
 /**
- * The composition root for workflows (doc 02 §1.2).
+ * The composition root for workflows (ref workflow-model §1.2).
  *
  * `WORKFLOW_MODULES` is the ONE unavoidable static module tuple. Every registry
  * and projection below derives from it, so adding a workflow is one import plus
  * one tuple entry rather than ten synchronized lists — which is the whole point
  * of §1.3. Lower layers never import workflows; the arrow only points this way.
  *
- * Doc 02 §1.2 writes this file's path as `src/core/workflow-registry.ts`. It
+ * Ref workflow-model §1.2 writes this file's path as `src/core/workflow-registry.ts`. It
  * lives under `src/control/` here because this tree's layer matrix (landed in
  * 1a) places `workflows` at the top layer beside `control`, and `core` below
  * it — so a registry in `core` importing workflow modules is a layer inversion
@@ -96,7 +96,7 @@ export interface WorkflowModuleBindingView {
 }
 
 /**
- * Doc 06 §1's spreadsheet-capable declaration, read off the workflow's own
+ * Ref data-intake-and-edit-data §1's spreadsheet-capable declaration, read off the workflow's own
  * server composition value (D170).
  *
  * It lives on the MODULE rather than the descriptor because an intake
@@ -149,7 +149,7 @@ export function intakeProjectionRegistry(
 export const INTAKE_PROJECTIONS = intakeProjectionRegistry(WORKFLOW_MODULES);
 
 /**
- * The same shape for a photographed DOCUMENT source (D174, doc 06 §5.1).
+ * The same shape for a photographed DOCUMENT source (D174, ref data-intake-and-edit-data §5.1).
  *
  * A capture handoff may only reach a workflow that has DECLARED how a bundle
  * becomes its input. None has: `person-lookup` is identified by an employee id
@@ -194,7 +194,7 @@ export function captureIntakeRegistry(
 export const CAPTURE_INTAKE_BINDINGS = captureIntakeRegistry(WORKFLOW_MODULES);
 
 /**
- * A module as the role audit needs to see it (doc 02 §1.2.1, D219).
+ * A module as the role audit needs to see it (ref workflow-model §1.2.1, D219).
  *
  * `role` is REQUIRED here for the same reason it is required on the module: an
  * optional field is one a new module forgets to fill while every surface still
@@ -265,7 +265,7 @@ export const WORKFLOW_ROLES = workflowRoleRegistry(WORKFLOW_MODULES);
 
 /**
  * Every registered workflow's SHORT CODE names exactly one workflow
- * (doc 02 §1.1, D242).
+ * (ref workflow-model §1.1, D242).
  *
  * The descriptor factory already refuses a malformed code, and a code cannot
  * check its own uniqueness — one descriptor never sees its siblings. Here is

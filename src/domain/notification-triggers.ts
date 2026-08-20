@@ -1,23 +1,23 @@
 /**
- * Doc 03 §2.6 + §10.4 (D79b/D86) and doc 12 §6 — the pure projection from a
+ * Ref dashboard-surfaces §2.6 + §10.4 (D79b/D86) and ref operator-trust §6 — the pure projection from a
  * durable server-side event onto the ONE notification row it owns.
  *
  * Three rules are structural here, not conventions:
  *
- *  1. **The trigger set is closed.** Doc 03 §2.6 names run failure, subject
+ *  1. **The trigger set is closed.** Ref dashboard-surfaces §2.6 names run failure, subject
  *     mismatch, open operator gate, unknown write outcome, storage
- *     degradation, stalled lease/outbox, failed backup, and doc 12 §6 adds the
+ *     degradation, stalled lease/outbox, failed backup, and ref operator-trust §6 adds the
  *     repeat-threshold and the verified-done receipt. D79b routes all of them
  *     onto the six `NotificationTrigger` keys; this module owns that routing so
  *     no caller invents a seventh.
  *  2. **A notification message carries no free text.** Every event arm is ids,
  *     closed codes, and counts; the title/summary are composed from those.
- *     There is deliberately no `message: string` channel, because doc 03 §2.6
+ *     There is deliberately no `message: string` channel, because ref dashboard-surfaces §2.6
  *     forbids raw secrets and captured form contents in notification text and
  *     the only way to guarantee that is to give leakage nowhere to enter.
  *  3. **Dedupe identity excludes the occurrence.** The fingerprint covers what
  *     makes two firings "the same trigger" and never the instant, the attempt,
- *     or the count — otherwise every repeat would mint a row and doc 03's "must
+ *     or the count — otherwise every repeat would mint a row and ref dashboard-surfaces's "must
  *     not spam the inbox" would be unenforceable.
  */
 import { z } from "zod";
@@ -38,7 +38,7 @@ import { NotificationRecordSchema, NotificationTriggerSchema } from "./notificat
 import { sha256Hex } from "./sha256.js";
 
 /**
- * Doc 03 §2.6's "storage degradation, stalled lease/outbox, failed backup",
+ * Ref dashboard-surfaces §2.6's "storage degradation, stalled lease/outbox, failed backup",
  * enumerated. A concern that is not on this list is not a notification — it is
  * a new decision.
  */

@@ -1,6 +1,6 @@
 /**
  * Describe a commit contract's COMPLETION PROOF schema as a flat list of typed
- * fields, so doc 09 §4.1's confirmed-present resolution can be composed by an
+ * fields, so ref write-safety §4.1's confirmed-present resolution can be composed by an
  * operator instead of only by the kernel (D245).
  *
  * ## Why this exists

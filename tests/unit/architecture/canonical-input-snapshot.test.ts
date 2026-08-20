@@ -1,5 +1,5 @@
 /**
- * The canonical-input snapshot contract (doc 02 §2, D62).
+ * The canonical-input snapshot contract (ref workflow-model §2, D62).
  *
  * A run's raw submission is parsed ONCE by `descriptor.input` — defaults and
  * transforms applied — and the resulting value is stored as the canonical

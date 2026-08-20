@@ -1,5 +1,5 @@
 /**
- * The two runtime process locks doc 03 §2.5's restore interlock needs, and the
+ * The two runtime process locks ref dashboard-surfaces §2.5's restore interlock needs, and the
  * OBSERVATION that composes them into a `RecoveryRuntimeLockSnapshot` (D181).
  *
  * ## Why this exists

@@ -13,7 +13,7 @@ left, and its exit criteria; contracts it built live in `reference/`.
 <!-- roadmap-status: dash-defaults -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §7.1 (the approved target's panel-kind tabs — the shell every later surface lands in) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.1 (the approved target's panel-kind tabs — the shell every later surface lands in) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 - The approved target has panel-kind tabs: run/member `Logs · Receipt`, review
   `Review · Logs · Receipt`, group `People · Logs · Receipt`; Data is in the permanent Context rail
@@ -37,9 +37,9 @@ _Moved from 07-master-plan §7.1 (the approved target's panel-kind tabs — the 
 <!-- roadmap-status: track-d -->
 <!-- /roadmap-status -->
 
-## Integration execution rule (07 §7.3)
+## Integration execution rule (master plan §7.3)
 
-_Moved from 07-master-plan §7.3 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §7.3 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 Every surface lands as one vertical slice: strict schema → server query/projector → subscription
 invalidation/patch → command path (when interactive) → production component → schema fixture →
@@ -74,5 +74,5 @@ phase's: they are listed here only because no phase owns them.
 
 07 records no exit block for the dashboard-defaults half of phase 3 — it predates
 Tracks B/C/D. What binds instead: every surface lands as one vertical slice (§Integration execution
-rule above), the program-wide surface criteria in `05-cut-over.md` §Exit criteria (07 §7.4) must all
+rule above), the program-wide surface criteria in `05-cut-over.md` §Exit criteria (doc 05 §Exit criteria) must all
 pass before the cutover, and each track's own tick-off lives in its section's status block.

@@ -1,5 +1,5 @@
 /**
- * The rail's persisted open state, and doc 03 D19's edit policy.
+ * The rail's persisted open state, and ref dashboard-surfaces D19's edit policy.
  *
  * It lives beside `context-rail.tsx` rather than inside it because a module that
  * exports a component may export nothing else if React Fast Refresh is to treat
@@ -68,7 +68,7 @@ export interface ContextRailState {
  * scrolling stack, and a spine there would hide the data behind a control that
  * gives back 34px of a column that no longer exists — so the stored preference
  * is simply not applied. The threshold that decides it has to be the same one
- * the columns switch on, and that one is now the COLUMN's width (doc 03
+ * the columns switch on, and that one is now the COLUMN's width (ref dashboard-surfaces
  * §Shell), which only the element that owns the box can measure. Asking the
  * window from here reintroduced the exact disagreement: with the workflow
  * panel docked at a 1280px window this hook said "three columns" while the
@@ -176,7 +176,7 @@ export type EditPolicy =
   | { kind: "locked"; reason: string };
 
 /**
- * Doc 03 D19's unlock rule, with the reason ALWAYS shown: a row is editable
+ * Ref dashboard-surfaces D19's unlock rule, with the reason ALWAYS shown: a row is editable
  * only when its own field policy, the run-level policy the server computed at
  * fetch, and the LIVE stream all agree — and whichever one disagrees supplies
  * the exact sentence the operator reads on the lock. The most specific reason
@@ -206,7 +206,7 @@ export function editPolicyFor(
 }
 
 /**
- * The doc 03 D19 staleness signal, read off the live day stream: the section
+ * The ref dashboard-surfaces D19 staleness signal, read off the live day stream: the section
  * was served editable at fetch, and the queue row's status is the one live
  * fact that says the run has since been claimed or settled. The kernel's CAS
  * is the authority either way — this exists so the operator learns BEFORE

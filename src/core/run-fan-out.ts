@@ -1,5 +1,5 @@
 /**
- * The ONE place N queued runs are inserted (doc 03 §2.4 Enqueue, D171, D174).
+ * The ONE place N queued runs are inserted (ref dashboard-surfaces §2.4 Enqueue, D171, D174).
  *
  * It began inside the command kernel because its only two callers were command
  * arms — `start-run` and `enqueue-intake-manifest`. The capture finalize
@@ -101,7 +101,7 @@ export function fanOutQueuedRuns(
   const versionChanges: VersionChange[] = [];
   for (const entry of planned) {
     // An authority read error here aborts the whole fan-out — never "continue
-    // and enqueue anyway" (doc 03 §2.4 Enqueue).
+    // and enqueue anyway" (ref dashboard-surfaces §2.4 Enqueue).
     const active = activeRunsForItem(repositories, envelope.workflow, entry.itemId);
     if (descriptor.enqueue === "reject-active" && active.length > 0) {
       refuse(

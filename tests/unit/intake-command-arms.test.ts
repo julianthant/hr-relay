@@ -15,7 +15,7 @@
  *
  * and, from D171 (2i-E2):
  *
- * - `enqueue-intake-manifest` gates on doc 06 §5's readiness, so an unresolved
+ * - `enqueue-intake-manifest` gates on ref data-intake-and-edit-data §5's readiness, so an unresolved
  *   rejection and a zero-valid-row file both refuse BY NAME instead of running
  *   a partial file or reporting a no-op success;
  * - the fan-out is ONE transaction with the manifest and the session CAS: a

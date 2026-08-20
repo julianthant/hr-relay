@@ -1,7 +1,7 @@
 /**
  * `separations-identity-check` — chunk 3 of the separations migration
  * (`docs/migrations/separations.md` §3): the UCPath identity passage, provable
- * ALONE, strictly read-only, and carrying doc 09 §14's **ALWAYS-GATE**.
+ * ALONE, strictly read-only, and carrying ref write-safety §14's **ALWAYS-GATE**.
  *
  * ## The graph, and why every node is unconditional
  *
@@ -24,7 +24,7 @@
  * so the alternative candidate that the `T002173685` incident turned on exists
  * only on the runs a Levenshtein threshold happened to select, and S15's
  * `similar` arm is precisely the case where it does NOT run. Running it every
- * time costs one UCPath search and makes doc 09 §14.2's two-candidate
+ * time costs one UCPath search and makes ref write-safety §14.2's two-candidate
  * side-by-side presentation a property of the graph.
  *
  * ## Why the gate is the LAST thing before the result, in a read-only workflow
@@ -261,7 +261,7 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
   code: "si",
   label: "Identity Check",
   summary:
-    "Chunk 3 of the separations migration: the UCPath identity passage, read-only, carrying doc 09 "
+    "Chunk 3 of the separations migration: the UCPath identity passage, read-only, carrying ref write-safety "
     + "§14's ALWAYS-GATE. Every run reads the job summary, searches the document's name, builds the "
     + "evidence packet, and parks for a human — no run mode changes that.",
   icon: "ShieldCheck",
@@ -320,7 +320,7 @@ export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({
     },
   ],
   /**
-   * Doc 03 §1.2. The start input's `employeeName` is the KUALI FORM'S CLAIM —
+   * Ref dashboard-surfaces §1.2. The start input's `employeeName` is the KUALI FORM'S CLAIM —
    * it is the thing this chunk exists to check, so a row that kept printing it
    * would be titling itself with the unverified half of its own question. Once
    * Job Summary has answered, the row states UCPath's record instead; before

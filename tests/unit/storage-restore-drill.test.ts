@@ -1,7 +1,7 @@
 /**
  * The 2j restore drill, driven through the OPERATOR'S OWN COMMAND (D181).
  *
- * Doc 07's Phase-2 exit asks that "a real-shaped copied authority DB passes
+ * Doc 02 §Exit criteria asks that "a real-shaped copied authority DB passes
  * corruption → read-only degraded mode → checksummed-backup restore →
  * projection rebuild with claims/dependencies/checkpoints/intents/outboxes/
  * capture handoffs intact". `storage-recovery.test.ts` already proves the
@@ -115,7 +115,7 @@ function captureSession() {
 }
 
 /**
- * One row in each durable family doc 07's criterion names, written through the
+ * One row in each durable family doc 02 §Exit criteria names, written through the
  * real repositories. `claimNext` is what makes the claim REAL — a hand-written
  * claim column would not be the thing the sweeper and the executor read.
  */

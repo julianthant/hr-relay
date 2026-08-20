@@ -1,5 +1,5 @@
 /**
- * Server-authored action descriptors (doc 13 §3.2/§8.5): the ONLY source from
+ * Server-authored action descriptors (ref frontend-backend-integration §3.2/§8.5): the ONLY source from
  * which a surface may render an interactive run control. A control the server
  * did not describe is unreachable, not hidden — surfaces render exactly the
  * descriptors they are handed and never re-derive availability from a status.
@@ -10,7 +10,7 @@
  * accepts (`src/domain/commands.ts`: run retry/cancel/bump/rename, gate
  * resolve-gate). The 1g BFF does not serve these yet — until it does, surfaces
  * receive an empty list and honestly draw no run-action controls (1i landing
- * note; serving lands with the doc 03 action-policy projection).
+ * note; serving lands with the ref dashboard-surfaces action-policy projection).
  */
 import { z } from "zod";
 import { WriteIntentIdSchema } from "../ids.js";
@@ -21,7 +21,7 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "delete", 
 /**
  * The command verbs a served action may name (kernel-accepted only).
  *
- * The two `resolve-write-*` verbs are doc 09 §4.1's typed operator resolutions.
+ * The two `resolve-write-*` verbs are ref write-safety §4.1's typed operator resolutions.
  * They are NOT interchangeable with `retry`: the kernel rejects generic retry
  * for a `parked-write` run by name, because a fenced write that may already
  * exist in a real HR system has no "try again" — only "I looked, and it is
@@ -50,7 +50,7 @@ export const ActionCommandKeySchema = z.enum([
 ]);
 
 /**
- * Doc 09 §4.1: both write resolutions are INTENT-scoped as well as run-scoped
+ * Ref write-safety §4.1: both write resolutions are INTENT-scoped as well as run-scoped
  * — the run version alone cannot express "resolve the write this browser was
  * looking at", because recovery can advance a generation without touching the
  * run row. A stale generation is refused by the kernel, which is why the
@@ -120,7 +120,7 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
     context.addIssue({
       code: "custom",
       path: ["writeTarget"],
-      message: `${action.command} takes no write target; only the doc 09 §4.1 resolutions are intent-scoped`,
+      message: `${action.command} takes no write target; only the ref write-safety §4.1 resolutions are intent-scoped`,
     });
   }
 });

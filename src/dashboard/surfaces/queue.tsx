@@ -9,7 +9,7 @@
  * WHAT CHANGED IN THE PORT. The demo rendered a fixture row object that knew
  * its own facts, chips, links, records and explanations. Here every row is a
  * `QueueSurfaceWire` — a finished server read model — and the component is a
- * pure renderer of it (doc 13 §0.1/§0.4): it classifies nothing, counts no
+ * pure renderer of it (ref frontend-backend-integration §0.1/§0.4): it classifies nothing, counts no
  * authoritative total, and derives no availability. Three consequences worth
  * knowing before editing:
  *
@@ -83,7 +83,7 @@ import {
   useAttentionAnnounce,
 } from "./queue-model.js";
 
-/* ── the queue's client-owned view state (doc 13 §4) ─────────────────────── */
+/* ── the queue's client-owned view state (ref frontend-backend-integration §4) ─────────────────────── */
 
 export interface QueueViewState {
   /** the row the detail panel is showing */
@@ -105,7 +105,7 @@ export interface QueueViewState {
    */
   panelWorkflowId?: string;
   /**
-   * Display-only "now", from the app's bootstrap-calibrated clock (doc 13 §4,
+   * Display-only "now", from the app's bootstrap-calibrated clock (ref frontend-backend-integration §4,
    * last row). Passed in rather than read here so elapsed values are a pure
    * function of served instants — which is also what makes a parity capture
    * of the same state byte-identical twice.
@@ -188,7 +188,7 @@ const STEP_TONE: Record<PipelineStep["state"], string> = {
  * step says its state alone rather than ` 0s`, which would be a measurement.
  *
  * `executions` has no demo counterpart because the demo has no gate resume:
- * doc 03 serves it only at two or more (D214/D225), and a node that ran twice
+ * ref dashboard-surfaces serves it only at two or more (D214/D225), and a node that ran twice
  * across a park spent BOTH intervals, so the count is what keeps `1m 40s` from
  * reading as one long try.
  */
@@ -405,7 +405,7 @@ function absentFacts(surface: QueueSurfaceWire): { label: string; reason: string
   if (surface.subtitle.state === "absent") facts.push({ label: "Subtitle", reason: surface.subtitle.reason });
   if (surface.liveMessage.state === "absent") facts.push({ label: "Live message", reason: surface.liveMessage.reason });
   /*
-   * D230/§9 D7's two absences, in the one place doc 03's second-batch delta
+   * D230/§9 D7's two absences, in the one place ref dashboard-surfaces's second-batch delta
    * says an operator reads them. Both are drawn on the ROW as nothing at all —
    * a chip that is not there — and "nothing at all" is the state that cannot
    * explain itself, which is what the ⓘ is for. Four distinct reasons hide
@@ -523,7 +523,7 @@ function RowFooterLine({
   onAction?: DashboardActionHandler;
   nowIso: string;
 }) {
-  // Elapsed is display-only arithmetic over two SERVED instants (doc 13 §4).
+  // Elapsed is display-only arithmetic over two SERVED instants (ref frontend-backend-integration §4).
   //
   // The second instant is the whole point. A queued run has started nothing,
   // so it shows no timer. A run still in flight shows live elapsed against

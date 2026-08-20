@@ -1,6 +1,6 @@
 /**
  * POST /api/v1/start-plans — minting the short-lived plan a `start-run`
- * command later consumes (doc 13 §5.1). Planning goes through the D109
+ * command later consumes (ref frontend-backend-integration §5.1). Planning goes through the D109
  * authority: `planStart` builds the exact raw+canonical record and the
  * `start_plans` repository persists it in one authority transaction.
  *

@@ -1,5 +1,5 @@
 /**
- * The build manifest behind `descriptor.contractFingerprint` (doc 02 §1.1).
+ * The build manifest behind `descriptor.contractFingerprint` (ref workflow-model §1.1).
  *
  * **Fingerprints are build-manifest based, never `Function.toString()`.** A
  * descriptor's fingerprint hashes canonical `(relative path, file content)`

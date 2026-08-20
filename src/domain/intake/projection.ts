@@ -1,5 +1,5 @@
 /**
- * `defineIntakeProjection` — doc 06 §1's load-bearing invariant, enforced.
+ * `defineIntakeProjection` — ref data-intake-and-edit-data §1's load-bearing invariant, enforced.
  *
  * A spreadsheet-capable workflow declares which of its input fields an operator
  * may bind a column to, and each declaration names the canonical field the
@@ -10,7 +10,7 @@
  * Why identity rather than equivalence: two structurally identical schemas can
  * drift apart in one commit, and the drift is invisible — the mapper keeps
  * coercing to the canonical shape while the workflow validates against the copy.
- * Doc 06 §7 vector #6 names this exactly ("an intake projection re-declares a
+ * Ref data-intake-and-edit-data §7 vector #6 names this exactly ("an intake projection re-declares a
  * regex looser than its canonical field"), and the legacy tree already shipped
  * it: `work-study` and `separations` validate EIDs with `/^\d{5,}$/` while the
  * canonical identifier is `/^10\d{6}$/`.
@@ -19,7 +19,7 @@
  *
  * A coerced cell is valid for its TARGET FIELD by construction. It is not
  * thereby valid for the whole input: cross-field refinements, discriminants and
- * required non-intake fields can still reject the assembled row. Doc 06 §1 says
+ * required non-intake fields can still reject the assembled row. Ref data-intake-and-edit-data §1 says
  * so in as many words, and §5's pipeline parses every assembled row through the
  * full workflow schema for exactly that reason.
  *
@@ -91,7 +91,7 @@ function intakeTargetPathRefusal(targetFieldId: IntakeTargetFieldId, failure: Sc
   if (failure.kind === "divergent-across-union") {
     return `intake projection target ${targetFieldId} resolves to ${String(failure.members)} DIFFERENT schema objects `
       + `across the input union at ${failure.at}; every arm that declares the path must share one schema object, `
-      + "because coercing a cell through one arm's copy is the drift doc 06 §7 #6 bans";
+      + "because coercing a cell through one arm's copy is the drift ref data-intake-and-edit-data §7 #6 bans";
   }
   return `intake projection target ${targetFieldId} walks through ${failure.at}, which is not a strict object`;
 }
@@ -124,7 +124,7 @@ export function defineIntakeProjection(
     if (resolved.schema !== field.schema) {
       throw new Error(
         `intake projection target ${targetFieldId} must reuse the canonical ${field.id} schema object; `
-          + "a structurally similar copy is exactly the drift doc 06 §7 #6 bans",
+          + "a structurally similar copy is exactly the drift ref data-intake-and-edit-data §7 #6 bans",
       );
     }
 

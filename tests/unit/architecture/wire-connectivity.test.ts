@@ -1,5 +1,5 @@
 /**
- * Wire connectivity — doc 13 §8.8, both directions (D107's pattern one layer up).
+ * Wire connectivity — ref frontend-backend-integration §8.8, both directions (D107's pattern one layer up).
  *
  * The defect class this exists to make loud is "built one half, never
  * connected", and this tree has shipped it twice with every gate green: a
@@ -202,7 +202,7 @@ function reachableSections(): { readonly reachable: ReadonlySet<string>; readonl
  * dropped fails as a stale entry, and a verb that is neither serveable nor
  * listed fails as an unreviewed asymmetry.
  *
- * The shape of the asymmetry is the point. An action descriptor is doc 13
+ * The shape of the asymmetry is the point. An action descriptor is ref frontend-backend-integration
  * §3.2's control on a run ROW — so a command whose target is not a run, or
  * whose payload the operator composes on a dedicated surface rather than by
  * clicking a row control, is correctly absent from the vocabulary.
@@ -468,9 +468,9 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
   it("keeps every wire mirror of a durable vocabulary member-for-member identical", () => {
     /*
      * A mirror is the fourth joint, and the one with no import to keep it
-     * honest. `run-detail.ts` re-declares doc 09's park codes and subject
+     * honest. `run-detail.ts` re-declares ref write-safety's park codes and subject
      * evidence because `write-safety.ts` imports `node:crypto` and this module
-     * is in the dashboard bundle's reach — the copy is forced by doc 13 §8.13,
+     * is in the dashboard bundle's reach — the copy is forced by ref frontend-backend-integration §8.13,
      * so the equality has to be asserted somewhere or it is only a comment.
      *
      * `z.toJSONSchema` is the comparison rather than a hand-listed member set:
@@ -494,7 +494,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
          * D95's scheduling class. `src/domain/dashboard/projection.ts` is in
          * the dashboard bundle's reach and `src/domain/run/envelope.ts` reaches
          * `workflow/checkpoint.js`, so the queue wire re-declares the enum for
-         * doc 13 §8.13's reason — and a member added to either side (a third
+         * ref frontend-backend-integration §8.13's reason — and a member added to either side (a third
          * priority class, say) has to show up on both.
          */
         name: "run priority",

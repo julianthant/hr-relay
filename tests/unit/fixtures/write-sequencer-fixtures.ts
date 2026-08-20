@@ -1,6 +1,6 @@
 /**
  * Synthetic transaction corpus for the write-sequencer / write-recovery tests
- * and the doc-10 §3.3/§3.9 guards: a real sealed prepare/commit/probe/verify
+ * and the ref guards-and-tests §3.3/§3.9 guards: a real sealed prepare/commit/probe/verify
  * contract set, a real browser store over a recording fake driver, a real
  * descriptor with one transaction node, and harness builders over the REAL
  * AuthorityDatabase + WorkerSessionManager. Only the process edges (browser,

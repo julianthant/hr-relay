@@ -1,5 +1,5 @@
 /**
- * The ONE mutation-capability registry (doc 09 beat ⑤, D111).
+ * The ONE mutation-capability registry (ref write-safety beat ⑤, D111).
  *
  * A `MutationCapability` is what stands between a commit task and a real HR
  * write. Its type brand is declare-only, so a structurally identical literal
@@ -46,7 +46,7 @@ export function mintMutationCapability(
  * The driver-side verification seam. A commit-capable driver method calls this
  * BEFORE resolving a locator, let alone clicking. A capability nobody minted,
  * or one bound to a different intent generation / binding-proof digest, throws
- * — doc 09 §7 row 10: "the mutation primitive fired without a fence ⇒ the
+ * — ref write-safety §7 row 10: "the mutation primitive fired without a fence ⇒ the
  * primitive throws — corruption, loud".
  */
 export function assertMintedMutationCapability(

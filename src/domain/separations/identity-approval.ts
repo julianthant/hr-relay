@@ -1,6 +1,6 @@
 /**
  * The ALWAYS-GATE identity approval's typed result, and the fold that consumes
- * it — doc 09 §14.4/§14.5, implemented.
+ * it — ref write-safety §14.4/§14.5, implemented.
  *
  * ## What the payload carries, and what it deliberately does NOT
  *
@@ -134,7 +134,7 @@ export function verifyIdentityApproval(
       code: "identity-approval-evidence-moved",
       reason: `the approval is bound to evidence ${result.evidenceDigest.slice(0, 12)}…, and this run's `
         + `identity evidence re-derives to ${reDerivedDigest.slice(0, 12)}…. An approval is an `
-        + "observation of a specific packet (doc 09 §14.5); it never survives the disappearance of "
+        + "observation of a specific packet (ref write-safety §14.5); it never survives the disappearance of "
         + "what it approved.",
     });
   }

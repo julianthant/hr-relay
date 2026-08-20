@@ -1,5 +1,5 @@
 /**
- * Executable scenarios for `extraction/extract-pdf-pages` (doc 06 §3.2).
+ * Executable scenarios for `extraction/extract-pdf-pages` (ref data-intake-and-edit-data §3.2).
  *
  * These render a real, hand-built PDF through the real task and the real
  * content-addressed writer seam. The sharp case is the last pair: a window that

@@ -1,5 +1,5 @@
 /**
- * The first PRODUCTION `ai.advisory` adapter — Gemini (doc 12 §4.4, D178).
+ * The first PRODUCTION `ai.advisory` adapter — Gemini (ref operator-trust §4.4, D178).
  *
  * It is the OCR adapter's sibling in shape and in discipline: transport and
  * PROVENANCE, nothing else. The instruction, the answer schema and the facts

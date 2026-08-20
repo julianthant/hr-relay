@@ -1,5 +1,5 @@
 /**
- * D162 executor capability wiring (doc 06 §4.11): the run executor mints
+ * D162 executor capability wiring (ref data-intake-and-edit-data §4.11): the run executor mints
  * admitted provider clients per task invocation over the run's RETAINED
  * config snapshot, injects the kernel's content-addressed writer, and every
  * unwired or unreadable-snapshot arm refuses with a structured node failure

@@ -1,5 +1,5 @@
 /**
- * The injected-checkpoint patch applier (doc 02 §5.6 #3, doc 06 §6.3) — the
+ * The injected-checkpoint patch applier (ref workflow-model §5.6 #3, ref data-intake-and-edit-data §6.3) — the
  * executor-side half of Edit Data.
  *
  * A patch is NOT authority until the WHOLE post-patch output re-parses

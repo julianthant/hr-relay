@@ -1,5 +1,5 @@
 /**
- * The doc 13 §7.1 capture contract.
+ * The ref frontend-backend-integration §7.1 capture contract.
  *
  * "The stored reference includes viewport, theme, fixture id, descriptor hash,
  * app version, and capture date. A screenshot without the matching a11y
@@ -30,7 +30,7 @@ export type { CaptureMetadata } from "./reference-store.js";
 export const PARITY_VIEWPORTS = Object.freeze([
   { name: "1280x720", width: 1280, height: 720 },
   { name: "1440x900", width: 1440, height: 900 },
-  /** the one narrow supported width (doc 13 §7.1) */
+  /** the one narrow supported width (ref frontend-backend-integration §7.1) */
   { name: "narrow-1024x768", width: 1024, height: 768 },
 ] as const);
 
@@ -152,7 +152,7 @@ export async function captureParityPair(
 
 /**
  * Reads the a11y tree without storing it — the dual-adapter comparison
- * (doc 13 §7.2) needs both adapters' trees in memory to assert they agree.
+ * (ref frontend-backend-integration §7.2) needs both adapters' trees in memory to assert they agree.
  */
 export async function readA11yTree(page: A11ySnapshotSource): Promise<string> {
   return page.locator("body").ariaSnapshot();

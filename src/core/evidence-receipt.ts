@@ -1,5 +1,5 @@
 /**
- * The `RunEvidenceReceipt` builder (doc 12 §2.3, D140/D141).
+ * The `RunEvidenceReceipt` builder (ref operator-trust §2.3, D140/D141).
  *
  * ## What this is for
  *
@@ -74,7 +74,7 @@
  *
  * D203 taught the provenance collector that; the receipt still derived from
  * checkpoints alone, so a settled gated run listed its gate node `unknown` and
- * the approver — the whole point of doc 09 §14.6 risk 6 — reached authority and
+ * the approver — the whole point of ref write-safety §14.6 risk 6 — reached authority and
  * stopped there. The reader moves again, for the same reason D144 gave: a
  * durable record must not be fabricated into the shape its reader expected.
  *
@@ -235,7 +235,7 @@ function scopeOf(node: RuntimeFlowNode): EvidenceValueScope {
   return { kind: "task-output", taskId: contract.id };
 }
 
-/** A `workflow:<id>/…` task contributes no browser session (doc 02 §3 / D2). */
+/** A `workflow:<id>/…` task contributes no browser session (ref workflow-model §3 / D2). */
 function isLocalProjection(contract: AnyTaskContract): boolean {
   return contract.id.startsWith("workflow:");
 }
@@ -342,7 +342,7 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
   }
   if (lifecycle.outcome === "interrupted") {
     throw new Error(
-      `run ${envelope.runId} ended interrupted; doc-09 recovery will requeue or settle it, and a `
+      `run ${envelope.runId} ended interrupted; ref write-safety recovery will requeue or settle it, and a `
       + "receipt may not name a verdict recovery has not reached",
     );
   }
@@ -466,7 +466,7 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
     });
   }
 
-  /** The descriptor's OWN declaration of what matters on a surface (doc 02 §1.5). */
+  /** The descriptor's OWN declaration of what matters on a surface (ref workflow-model §1.5). */
   const declaredDetails = new Set(
     descriptor.details.map((detail) => `${detail.source.nodeId}\u0000${detail.source.fieldPath}`),
   );
@@ -544,7 +544,7 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
          * which turns the ONE surface whose job is to explain a run into an
          * HTTP 500.
          *
-         * The state is reachable in production, not just in fixtures: doc 02
+         * The state is reachable in production, not just in fixtures: ref workflow-model
          * §5.4's `startAt` resume with `envelope.injected` (the Edit Data path,
          * D166/D168) gives a downstream node its upstream VALUE without any
          * upstream checkpoint. `unknown` is the honest verdict for "authority
@@ -685,7 +685,7 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
           id: entryId("warning", `stale-replay.${id}`),
           code: ErrorCodeSchema.parse("REPLAYED_FACT_OLDER_THAN_FRESHNESS_LIMIT"),
           summary: `node "${id}" replayed a checkpoint observed ${String(ageMs)}ms ago against a `
-            + `${String(limit)}ms freshness limit; doc 02 §5.5's walk proved it feeds no commit `
+            + `${String(limit)}ms freshness limit; ref workflow-model §5.5's walk proved it feeds no commit `
             + "scheduled in this run, so it is recorded and not load-bearing",
           loadBearing: false,
           evidence: [evidenceEntryRef(evidence.verificationId)],
@@ -827,7 +827,7 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
         code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
         summary: `write intent ${intent.writeIntentId} for ${intent.system} key `
           + `"${intent.idempotencyKey}" is still ${intent.status}; this run left an unsettled `
-          + "external write behind and only doc 09's typed operator resolutions may release it",
+          + "external write behind and only ref write-safety's typed operator resolutions may release it",
         loadBearing: true,
         evidence: [],
       });

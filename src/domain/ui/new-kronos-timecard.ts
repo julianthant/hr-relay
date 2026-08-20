@@ -2,7 +2,7 @@
  * New Kronos (UKG Dimensions / WFD) — the two page visits the separations
  * timecard read touches, and the semantic vocabulary its driver resolves.
  *
- * TWO screens, therefore TWO tasks (D194 / doc 01 §2.8): the **Employee Search
+ * TWO screens, therefore TWO tasks (D194 / ref task-contract §2.8): the **Employee Search
  * results** panel and the **Timecard**. Everything a run does on the timecard —
  * Go To, the subject proof, the range apply, the grid read — is one visit to
  * one page, because none of those steps can be re-entered without redoing the

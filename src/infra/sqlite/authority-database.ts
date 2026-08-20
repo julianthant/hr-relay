@@ -278,7 +278,7 @@ export const AuthoritySchemaInspectionSchema = z.strictObject({
 export const ImmutableInsertDispositionSchema = z.enum(["inserted", "existing"]);
 
 /**
- * Doc 12 §2.2's retention sweep result for one bundle. `absent` is a real
+ * Ref operator-trust §2.2's retention sweep result for one bundle. `absent` is a real
  * outcome — two sweeps racing the same due bundle must not both claim a purge —
  * and there is deliberately no "skipped" arm: a bundle that must not be purged
  * throws rather than being reported as quietly handled.
@@ -316,7 +316,7 @@ type CommandAuditRepository = Readonly<{
 }>;
 
 /**
- * Cancel-tree resolution (doc 03 §2.4) reads every delegation edge under a
+ * Cancel-tree resolution (ref dashboard-surfaces §2.4) reads every delegation edge under a
  * parent from authority. A child run whose edge row cannot be found makes the
  * tree inconsistent, and an inconsistent tree cancels nothing.
  */
@@ -331,16 +331,16 @@ type WriteIntentRepository = Readonly<{
   fenceAttempt(input: unknown): PermanentWriteResolution;
   /** D111: CAS a `retryable` permanent row to `attempting` generation+1 with a FRESH binding proof. */
   refenceRetryable(input: unknown): PermanentWriteResolution;
-  /** Doc 09 §4 arm 3: CAS `attempting` → `parked` on intent AND current attempt. */
+  /** Ref write-safety §4 arm 3: CAS `attempting` → `parked` on intent AND current attempt. */
   parkAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
-  /** Doc 09 §4 arm 2 / §4.1.2: CAS `attempting`|`parked` → `retryable` with a typed settlement. */
+  /** Ref write-safety §4 arm 2 / §4.1.2: CAS `attempting`|`parked` → `retryable` with a typed settlement. */
   settleRetryable(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
-  /** Doc 09 §4.1.1: CAS `parked` → `attempting` so beat ⑦ can accept confirmed-present. */
+  /** Ref write-safety §4.1.1: CAS `parked` → `attempting` so beat ⑦ can accept confirmed-present. */
   reopenParkedAttempt(input: unknown): z.infer<typeof WriteIntentRecordSchema>;
   get(writeIntentId: string): z.infer<typeof WriteIntentRecordSchema> | undefined;
   findByPermanentKey(system: unknown, idempotencyKey: unknown): z.infer<typeof WriteIntentRecordSchema> | undefined;
   /**
-   * Doc 12 §2.3/§2.5: what external writes did THIS run fence? `write_intents`
+   * Ref operator-trust §2.3/§2.5: what external writes did THIS run fence? `write_intents`
    * has no `run_id` column — an intent outlives the run that created it, which
    * is the point of a permanent key — so the run identity is read out of the
    * record itself. An `observed-present` row carries no `runId` at all and is
@@ -359,7 +359,7 @@ export interface AuthorityTerminalizationHooks {
 }
 
 /**
- * Doc 02 §5.7. `latest` answers "latest compatible attempt wins" — it returns
+ * Ref workflow-model §5.7. `latest` answers "latest compatible attempt wins" — it returns
  * the highest-numbered attempt for a logical item's node, and returns
  * `undefined` rather than an empty record when nothing was written, so the
  * caller's discriminated `loadCheckpoint` branch is the only way forward.
@@ -387,12 +387,12 @@ type RunCheckpointRepository = Readonly<{
     nodeId: string,
     attempt: number,
   ): readonly RunCheckpointRecord[];
-  /** Doc 12 §2.3: a receipt explains one logical item across every attempt. */
+  /** Ref operator-trust §2.3: a receipt explains one logical item across every attempt. */
   listByItem(workflowId: string, itemId: string): readonly RunCheckpointRecord[];
 }>;
 
 /**
- * Doc 05 §3's claim authority. `claimNext` and `renewClaim` are the only ways a
+ * Ref execution-and-sessions §3's claim authority. `claimNext` and `renewClaim` are the only ways a
  * worker gains or keeps a row, and both are CAS: the row moves out of `queued`
  * in the same transaction that reads it, and a heartbeat that no longer matches
  * `(workerId, claimGeneration)` reports `lost` instead of quietly succeeding.
@@ -441,7 +441,7 @@ type RunRepository = Readonly<{
   listParkedAtGate(): readonly RunRecord[];
   listChildren(parentRunId: string): readonly RunRecord[];
   /**
-   * Doc 12 §2.5: `explain run <traceId|runId>` accepts either identity. The
+   * Ref operator-trust §2.5: `explain run <traceId|runId>` accepts either identity. The
    * trace id is not a column — it is frozen at enqueue inside the envelope —
    * so this reads it out of the record rather than inventing an index for a
    * single-operator lookup.
@@ -468,16 +468,16 @@ type RunRepository = Readonly<{
   updatePresentation(input: unknown): RunUpdateOutcome;
   /** D95 run-priority `bump`: elevate one QUEUED row's claim class; never a requeue. */
   bumpPriority(input: unknown): RunUpdateOutcome;
-  /** Doc 06 §6.4 (D166): the Edit-Data save — CAS against the resume fence. */
+  /** Ref data-intake-and-edit-data §6.4 (D166): the Edit-Data save — CAS against the resume fence. */
   injectCheckpointPatches(input: unknown): RunUpdateOutcome;
   /** D118: an `attempting` write intent routes to recovery, never to requeue. */
   sweepExpiredClaims(input: unknown): readonly z.infer<typeof RunClaimSweepOutcomeSchema>[];
 }>;
 
 /**
- * Doc 12 §2.1/§4.2: a failure fingerprint is a JOIN key, not message text.
+ * Ref operator-trust §2.1/§4.2: a failure fingerprint is a JOIN key, not message text.
  * `listByFingerprint` powers "same failure seen before" and `explain failure`;
- * `countByFingerprint` is what the doc-03 repeat-threshold trigger reads.
+ * `countByFingerprint` is what the ref dashboard-surfaces repeat-threshold trigger reads.
  */
 type FailureRepository = Readonly<{
   get(failureId: string): FailureRecord | undefined;
@@ -487,7 +487,7 @@ type FailureRepository = Readonly<{
 }>;
 
 /**
- * Doc 12 §2.2. A bundle and its attachment index are written together: an
+ * Ref operator-trust §2.2. A bundle and its attachment index are written together: an
  * attachment row that outlived its bundle would be an unreachable artifact
  * reference, and a bundle whose attachments were not indexed would make
  * artifact-scoped retention unanswerable.
@@ -499,7 +499,7 @@ type DiagnosticBundleRepository = Readonly<{
   listAttachments(bundleId: string): readonly DiagnosticAttachmentStorageRecord[];
   findByArtifact(artifactId: string): readonly DiagnosticAttachmentStorageRecord[];
   /**
-   * Doc 12 §2.2's retention floor, read through the
+   * Ref operator-trust §2.2's retention floor, read through the
    * `(retention_kind, purge_after)` index v10 created for exactly this query.
    * A pinned bundle is structurally unreachable from here.
    */
@@ -515,7 +515,7 @@ type DiagnosticBundleRepository = Readonly<{
   purge(bundleId: string, now: string): z.infer<typeof DiagnosticPurgeDispositionSchema>;
 }>;
 
-/** Doc 12 §2.3. One terminal run, one server-derived receipt. */
+/** Ref operator-trust §2.3. One terminal run, one server-derived receipt. */
 type EvidenceReceiptRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunEvidenceReceipt>;
   get(receiptId: string): RunEvidenceReceipt | undefined;
@@ -523,7 +523,7 @@ type EvidenceReceiptRepository = Readonly<{
 }>;
 
 /**
- * Doc 12 §4.1/§4.2. Authored guidance and proven fixes. `list` returns EVERY
+ * Ref operator-trust §4.1/§4.2. Authored guidance and proven fixes. `list` returns EVERY
  * recorded row, whatever its status: the §4.3 duplicate/supersession audit has
  * to see retired and superseded records too, or a candidate could claim to
  * supersede something that never existed.
@@ -543,7 +543,7 @@ type FixRecordRepository = Readonly<{
 }>;
 
 /**
- * Doc 03 §2.6 / doc 12 §6. This is the ONE authority repository that updates a
+ * Ref dashboard-surfaces §2.6 / ref operator-trust §6. This is the ONE authority repository that updates a
  * row rather than appending: a repeated identical trigger folds into the row
  * its `(actorId, dedupeFingerprint)` already owns, and read/snooze is per-row
  * operator state. Identity, creation instant, and trigger are frozen by SQLite
@@ -562,7 +562,7 @@ type NotificationRepository = Readonly<{
 }>;
 
 /**
- * Doc 09 §6's serialized ledger projection authority. Executors never touch
+ * Ref write-safety §6's serialized ledger projection authority. Executors never touch
  * these rows; the projector does, one `(system, date)` partition at a time.
  */
 type LedgerProjectionRepository = Readonly<{
@@ -613,7 +613,7 @@ type OpaqueAuthorityRepositories = Readonly<{
 }>;
 
 /**
- * Doc 06 §5.1 (D167): the durable capture session. One row per session,
+ * Ref data-intake-and-edit-data §5.1 (D167): the durable capture session. One row per session,
  * updated under a version CAS — an open session survives a restart because
  * this row IS the session, not a projection of an in-memory one.
  */
@@ -635,7 +635,7 @@ type CaptureSessionRepository = Readonly<{
 }>;
 
 /**
- * Doc 06 §5.1 (D167): the stable-keyed finalize outbox. A crash at any
+ * Ref data-intake-and-edit-data §5.1 (D167): the stable-keyed finalize outbox. A crash at any
  * boundary replays the same row; `settle` is a `pending → done|failed` CAS
  * idempotent on an already-settled row, and `getByStableKey` is how a
  * duplicate finalize converges instead of minting a second handoff.
@@ -652,7 +652,7 @@ type CaptureFinalizationOutboxRepository = Readonly<{
 }>;
 
 /**
- * Doc 03 §2.1 (D45) / doc 06 §4.1: the stable-keyed local artifact outbox.
+ * Ref dashboard-surfaces §2.1 (D45) / ref data-intake-and-edit-data §4.1: the stable-keyed local artifact outbox.
  * Insert commits atomically with the producing node's checkpoint (the caller
  * wraps both in one authority transaction); `markProjected` is the sink
  * projector's acknowledgement — a CAS from `pending`, idempotent on an
@@ -680,7 +680,7 @@ type ArtifactSinkHeadRepository = Readonly<{
   record(input: unknown): ArtifactSinkHeadRecord;
 }>;
 
-/** Doc 06 §5 — insert-only; a rerun creates a new manifest (D159). */
+/** Ref data-intake-and-edit-data §5 — insert-only; a rerun creates a new manifest (D159). */
 type IntakeManifestRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof IntakePlanManifestSchema>>;
   get(manifestId: string): z.infer<typeof IntakePlanManifestSchema> | undefined;
@@ -688,7 +688,7 @@ type IntakeManifestRepository = Readonly<{
 }>;
 
 /**
- * Doc 06 §2.2's durable in-progress session (2i-E1). Create-in-mapping,
+ * Ref data-intake-and-edit-data §2.2's durable in-progress session (2i-E1). Create-in-mapping,
  * version-CAS updates that keep the searchable columns in step with the
  * record, and a by-source lookup so a re-upload of the same bytes can find
  * its open session instead of silently forking a second one.
@@ -721,7 +721,7 @@ type ArchivedRunRepository = Readonly<{
   list(): readonly ArchivedRunStorageRecord[];
 }>;
 
-/** Doc 06 §4.3 — one page, read once, for one form (D159). */
+/** Ref data-intake-and-edit-data §4.3 — one page, read once, for one form (D159). */
 type OcrExtractionRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof AdmittedExtractionSchema>>;
   get(sourceSha256: string, sourcePage: number, formType: string):
@@ -1109,7 +1109,7 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM leases WHERE worker_id <> record_key OR worker_id <> json_extract(record_json, '$.workerId') OR workflow <> json_extract(record_json, '$.workflow') OR lease_generation <> json_extract(record_json, '$.leaseGeneration') OR state <> json_extract(record_json, '$.lifecycle.state') OR directive <> json_extract(record_json, '$.control.directive') OR version <> json_extract(record_json, '$.version')",
   },
   {
-    // One worker owns at most one active run (doc 05 §0.3). This is the
+    // One worker owns at most one active run (ref execution-and-sessions §0.3). This is the
     // invariant the whole claim protocol exists to hold, so it is checked in
     // the database rather than trusted from the loop that maintains it.
     name: "worker-owns-at-most-one-active-run",
@@ -1204,7 +1204,7 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: "SELECT count(*) AS count FROM ledger_projections WHERE record_key IS NOT json_extract(record_json, '$.outboxId') OR partition_key IS NOT (system || ':' || ledger_date) OR system IS NOT json_extract(record_json, '$.system') OR ledger_date IS NOT json_extract(record_json, '$.date') OR seq IS NOT json_extract(record_json, '$.seq') OR state IS NOT json_extract(record_json, '$.lifecycle.state') OR line_digest IS NOT json_extract(record_json, '$.lineDigest') OR assigned_at IS NOT json_extract(record_json, '$.assignedAt') OR appended_at IS NOT json_extract(record_json, '$.lifecycle.appendedAt')",
   },
   {
-    // Doc 09 §6: sequences are dense from zero inside a partition, so
+    // Ref write-safety §6: sequences are dense from zero inside a partition, so
     // `nextSeq` is the count. A gap here means a lost or rewritten entry.
     name: "ledger-partition-sequence-is-dense",
     sql: `
@@ -2754,13 +2754,13 @@ export class AuthorityDatabase implements Disposable {
       }),
       diagnosticBundles: this.#buildDiagnosticBundleRepository(),
       /**
-       * Doc 06 §5's plan manifest (D159). Insert-only and byte-exact on replay:
+       * Ref data-intake-and-edit-data §5's plan manifest (D159). Insert-only and byte-exact on replay:
        * a manifest proves which file and mapping produced which items, and a
        * run has already fanned out against it, so a differing rebuild is a
        * refusal rather than an overwrite.
        */
       /**
-       * Doc 06 §2.2's in-progress session (2i-E1): created in `mapping` by the
+       * Ref data-intake-and-edit-data §2.2's in-progress session (2i-E1): created in `mapping` by the
        * upload route, mutated by the intake command arms under a version CAS.
        * The searchable columns move WITH the record on every update — a
        * column that lagged its own JSON would make "open session for this
@@ -2847,7 +2847,7 @@ export class AuthorityDatabase implements Disposable {
           parseJsonRecord(IntakePlanManifestSchema, JsonRowSchema.parse(row).record_json)),
       }),
       /**
-       * Doc 06 §4.3's admitted page extraction (D159). One page, read once, for
+       * Ref data-intake-and-edit-data §4.3's admitted page extraction (D159). One page, read once, for
        * one form: a second producer reading the same page is a REPLACEMENT a
        * human decides on, not a second row that silently doubles a person.
        */
@@ -3278,7 +3278,7 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       /**
-       * D179 / doc 03 §10.2 — the archive model's three durable facts. All
+       * D179 / ref dashboard-surfaces §10.2 — the archive model's three durable facts. All
        * three are insert-only here AND in SQL: the migration's triggers abort
        * every UPDATE and DELETE, so an archive cannot be quietly rewritten by
        * a future repository method either.
@@ -4045,7 +4045,7 @@ export class AuthorityDatabase implements Disposable {
       claimNext: (input: unknown) => {
         const request = RunClaimRequestSchema.parse(input);
         return this.withAuthorityTransaction(() => {
-          // One worker, one active item (doc 05 §0.3). A worker asking for a
+          // One worker, one active item (ref execution-and-sessions §0.3). A worker asking for a
           // second row is a bug in the loop, not a state to serve — and serving
           // it would put two runs and two browser-session sets under one owner.
           const held = HeldRunRowSchema.parse(this.#database.prepare(`
@@ -4140,7 +4140,7 @@ export class AuthorityDatabase implements Disposable {
           (current) => RunRecordSchema.parse({
             ...current,
             // A new attempt drops every single-resume affordance: a freshness
-            // override authorized ONE attempt (doc 02 §5.5), and injected
+            // override authorized ONE attempt (ref workflow-model §5.5), and injected
             // patches have already been persisted as checkpoints by the
             // executor that applied them. D221: the attempt it advances INTO is
             // the item's next one, never this run's `+ 1` — a sibling run of the
@@ -4277,10 +4277,10 @@ export class AuthorityDatabase implements Disposable {
           const outcomes: z.infer<typeof RunClaimSweepOutcomeSchema>[] = [];
           for (const row of rows) {
             const current = parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json);
-            // D118 (doc 05 §3): before any queued/claimable transition, check
+            // D118 (ref execution-and-sessions §3): before any queued/claimable transition, check
             // the authoritative write-intent set for this logical item. An
             // unfinished `attempting` intent means a write may have landed —
-            // the run routes to doc 09 recovery, never to ordinary requeue.
+            // the run routes to ref write-safety recovery, never to ordinary requeue.
             // The lookup runs inside this same transaction; if it throws, the
             // whole sweep unwinds rather than defaulting to "no unfinished
             // write".
@@ -4303,7 +4303,7 @@ export class AuthorityDatabase implements Disposable {
               }
               const message = `run ${current.envelope.runId} (${current.envelope.workflow}) has an unfinished `
                 + `attempting write intent ${unfinished.writeIntentId} (generation `
-                + `${String(unfinished.generation)}, task ${unfinished.taskId}); doc 09 recovery must settle it `
+                + `${String(unfinished.generation)}, task ${unfinished.taskId}); ref write-safety recovery must settle it `
                 + "before this run can be released";
               if (current.lifecycle.state === "running") {
                 const parked = RunRecordSchema.parse({
@@ -4461,7 +4461,7 @@ export class AuthorityDatabase implements Disposable {
     }
     // A run-NODE admission must be the node the run is executing right now.
     // An operator-advisory admission (D178) deliberately makes no such claim:
-    // doc 12 §4.4's advisory reads FINISHED authority on the presentation lane,
+    // ref operator-trust §4.4's advisory reads FINISHED authority on the presentation lane,
     // so requiring a live node would either make the feature impossible or
     // force it to name a node the descriptor never reached. What it still
     // binds is everything that is true — the run's identity, its retained

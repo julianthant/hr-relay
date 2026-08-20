@@ -3,7 +3,7 @@
  *
  * Unlike the day, intake and capture fixtures, these two are the REAL
  * projections. That is deliberate and it is what makes the references worth
- * having: doc 07's Phase-2 exit criterion is that the explorer "renders the
+ * having: doc 02 §Exit criteria asks that the explorer "renders the
  * as-built person-lookup graph accurately", and a hand-written fixture graph
  * would prove only that the surface can render a shape somebody typed. The
  * corpus already binds itself to the real descriptor this way — `fixture-day`'s

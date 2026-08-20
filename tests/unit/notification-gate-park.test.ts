@@ -1,5 +1,5 @@
 /**
- * D262: the needs-you watch — doc 03 §2.6's open operator gate, produced.
+ * D262: the needs-you watch — ref dashboard-surfaces §2.6's open operator gate, produced.
  *
  * The transition rule is the whole contract and it is pinned without a
  * database, because the notifier holds no authority handle: it is handed the

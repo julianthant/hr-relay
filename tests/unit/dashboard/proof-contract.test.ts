@@ -82,7 +82,7 @@ function draftsFor(fields: readonly ProofShapeField[], proof: unknown): Record<s
   return drafts;
 }
 
-describe("the served proof contract (doc 09 §4.1, D245)", () => {
+describe("the served proof contract (ref write-safety §4.1, D245)", () => {
   it("covers every registered commit contract — there is at least one", () => {
     assert.ok(registeredCommits().length > 0, "the tree registers no transaction node at all");
   });

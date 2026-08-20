@@ -1,5 +1,5 @@
 /**
- * THE THREE IDENTITY-APPROVAL CEREMONIES (doc 09 §14.6 risk 1, D226).
+ * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.6 risk 1, D226).
  *
  * ALWAYS-GATE fires on every separation, so the dominant failure mode is
  * RUBBER-STAMPING: a control that is one click on every run trains the operator
@@ -161,7 +161,7 @@ function available(detail: IdentityGateDetail) {
   return { state: "available" as const, value: detail };
 }
 
-describe("identityCeremonyFor — the server names the ceremony (doc 09 §14.6 risk 1)", () => {
+describe("identityCeremonyFor — the server names the ceremony (ref write-safety §14.6 risk 1)", () => {
   it("derives all three shapes from real packet inputs, never from a constant", () => {
     assert.equal(ONE_CLICK.approvalShape, "one-click");
     assert.equal(CHOOSE.approvalShape, "choose-a-candidate");

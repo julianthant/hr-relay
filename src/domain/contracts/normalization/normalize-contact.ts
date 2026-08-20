@@ -1,5 +1,5 @@
 /**
- * `normalization/normalize-contact` — doc 06 §4.2's typed-advice contract.
+ * `normalization/normalize-contact` — ref data-intake-and-edit-data §4.2's typed-advice contract.
  *
  * Legacy's `normalize-contact.ts` mixed deterministic cleanup, geocoder
  * fallback, and LLM inference, and a provider failure collapsed to `null` —
@@ -10,7 +10,7 @@
  * empty change list; and a field the rules cannot decide is `ambiguous` for
  * the operator — never a guess. Nothing here APPLIES advice: the review
  * gate shows before/after/source, and accepted changes become operator-
- * correction provenance (doc 06 §4.2).
+ * correction provenance (ref data-intake-and-edit-data §4.2).
  *
  * As-built deviations from the §4.2 sketch, recorded under D165 and D178:
  * - the `ai` source arm landed at D178 behind its own `ai` input flag, and it
@@ -100,7 +100,7 @@ export const NormalizationChangeSchema = z.strictObject({
       confidence: GeocodeConfidenceSchema,
     }),
     /**
-     * D178 unparks the `ai` arm doc 06 §4.2 sketched. `confidence` is the
+     * D178 unparks the `ai` arm ref data-intake-and-edit-data §4.2 sketched. `confidence` is the
      * MODEL's own number and is labelled as such on the review gate — it is
      * not a verdict, and an ai-sourced change can never be auto-applied.
      */
@@ -156,8 +156,8 @@ export const NormalizeContactInputSchema = z.strictObject({
 });
 
 /**
- * Doc 06 §4.2 sketches the id as `normalization/normalize-contact`, but
- * "normalize" is not a legal read verb (doc 01's grammar) — the same defect
+ * Ref data-intake-and-edit-data §4.2 sketches the id as `normalization/normalize-contact`, but
+ * "normalize" is not a legal read verb (ref task-contract's grammar) — the same defect
  * D149 fixed for `extraction/parse-csv`. The task READS a contact and
  * returns advice, so the id says that.
  */
@@ -172,7 +172,7 @@ export const NormalizeContact = defineTaskContract({
   subject: { kind: "none", reason: "pure per-record normalization advice resolves no person" },
   freshness: {
     // Provider-derived facts age; a day-old geocode observation must not ride
-    // a resume into a write unexamined (doc 06 §4.2's finite budget).
+    // a resume into a write unexamined (ref data-intake-and-edit-data §4.2's finite budget).
     defaultMaxAgeMs: 24 * 60 * 60_000,
   },
   provenance: { default: "derived" },

@@ -242,7 +242,7 @@ export function optionalSecret(
 
 /**
  * The ONE sanctioned production source of the environment object that
- * `resolveConfig`/`resolveConfigWithProvenance` take as a parameter (doc 11).
+ * `resolveConfig`/`resolveConfigWithProvenance` take as a parameter (ref clock-config-secrets).
  * The resolver itself never touches `process.env` — it reads only its
  * statically-declared `CONFIG_ENV_BINDINGS` keys off the value it is handed —
  * and no module outside this file may reach the environment, so composition

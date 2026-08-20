@@ -1,5 +1,5 @@
 /**
- * Doc 03 §2.6 / §10.4 (D79b) and doc 12 §6 — the durable, actor-keyed inbox.
+ * Ref dashboard-surfaces §2.6 / §10.4 (D79b) and ref operator-trust §6 — the durable, actor-keyed inbox.
  *
  * **The ordering is the whole contract.** A notification is a durable record
  * first and a desktop delivery second: the row is committed to authority
@@ -10,7 +10,7 @@
  * durable write, and the delivery call is made only after the transaction has
  * returned.
  *
- * The fold is the repeat path (doc 12 §6.1, D134): one row per
+ * The fold is the repeat path (ref operator-trust §6.1, D134): one row per
  * `(actorId, dedupeFingerprint)`, `count` incremented, `lastSeenAt` advanced,
  * `status` back to `unread` because a repeat is news again. This is derived
  * operator-facing state and is deliberately NOT the ledger's immutability —
@@ -36,7 +36,7 @@ import type { AuthorityRepositories } from "../../infra/sqlite/authority-databas
 
 /**
  * The OS delivery seam. It is allowed to fail, and the only thing the inbox
- * does with that failure is REPORT it — doc 10 §3.10 explicitly says no
+ * does with that failure is REPORT it — ref guards-and-tests §3.10 explicitly says no
  * per-attempt delivery state is required, and storing one would invite a retry
  * loop that mutates the record the operator is reading.
  */

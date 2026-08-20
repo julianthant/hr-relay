@@ -13,7 +13,7 @@ tasks, what is done and what is left, and its exit criteria; contracts it built 
 <!-- roadmap-status: phase-3 -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3.1 (the PHASE 3 ENTRY block — D193's operator choice and its reasoning) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.1 (the PHASE 3 ENTRY block — D193's operator choice and its reasoning) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 **PHASE 3 ENTRY — SEPARATIONS (order 8). Operator choice, 2026-08-12 (D193).** This loop has always
 left *which workflow goes first* to the operator; the choice is now made and it is **separations**.
@@ -48,7 +48,7 @@ this plan; they answer §3.4 and record reuse/additions, and never re-order the 
 <!-- roadmap-status: order-8 -->
 <!-- /roadmap-status -->
 
-_Moved from 07-master-plan §3.1 (separations' §3.2 status block, 2026-08-14) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `reviews/2026-08-20-master-plan-dissolved.md` §3.1 (separations' §3.2 status block, 2026-08-14) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
 
 > **Separations' §3.2 status, 2026-08-14 (`docs/migrations/separations.md` §6 owns the checklist;
 > §9.17 is the latest as-built).** **The live dry-run criterion and the D58 sweep are now MET; the
@@ -73,7 +73,7 @@ _Moved from 07-master-plan §3.1 (separations' §3.2 status block, 2026-08-14) o
 > orphaned claim). One live-lane finding — a `run`/`retry` minted a new run at attempt 1, so an
 > `always-rerun` node re-collided with the ORIGINAL run's checkpoint and **a separations run that
 > failed at or after `timecard-search` could not be retried at all** — was closed the SAME DAY as
-> **D221** (doc 02 §5.7: the checkpoint key's attempt is the ITEM's attempt) with its regression
+> **D221** (ref workflow-model §5.7: the checkpoint key's attempt is the ITEM's attempt) with its regression
 > pinned in `tests/unit/retry-item-attempt.test.ts`; the fix has not yet been exercised on a live
 > retry, which stays owed. The composed **REAL** run on canary doc 4510 (`ee9824f7`, not dry) refused
 > `NO_ACTIVE_EMPLOYMENT` **before the gate** — a valid result: UCPath shows one `Inactive` employment
@@ -179,7 +179,7 @@ ratification act and the normative pointer stay in the ledger; this is the phase
 
 ## Exit criteria
 
-Separations owes the **per-workflow** exit criteria in full — 07 §3.2, moved verbatim
+Separations owes the **per-workflow** exit criteria in full — doc 03c §Exit criteria, moved verbatim
 to `03c-migrate-the-remaining-workflows.md` §Exit criteria, which every migration answers including
 this one. Its live state as 07 recorded it (8 of 9 met; the three controlled commits and the three
 confirmation obligations that only they can discharge are the open one) is the status block under

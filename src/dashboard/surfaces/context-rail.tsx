@@ -3,7 +3,7 @@
  * src/dashboard/components/dev/rebuild-demo/DemoContextRail.tsx
  *
  * The Context rail — the permanent home of a run's DATA, beside the stream
- * rather than behind a tab (doc 13 §3.3: "Data lives in the Context rail").
+ * rather than behind a tab (ref frontend-backend-integration §3.3: "Data lives in the Context rail").
  *
  * WHAT THE WIRE SERVES, AND WHAT IT STILL DOES NOT. The demo's ledger drew four
  * axes this surface could not: DIRECTION (the `--ds-read-*` / `--ds-write-*`
@@ -25,7 +25,7 @@
  *    "nothing durable says whether a recorded field was read or written", which
  *    is TRUE of the checkpoint row and FALSE of the descriptor that produced
  *    it: the node that recorded a value declares a task contract, and that
- *    contract's `effect` is doc 01's own word for what it does to the world.
+ *    contract's `effect` is ref task-contract's own word for what it does to the world.
  *    So `dir` is a DECLARATION, not the guess the old comment refused — and a
  *    guess is still refused, which is why an entry with no field identity
  *    draws no arrow rather than a defaulted `read`. `system` comes from the
@@ -43,7 +43,7 @@
  *    `checkpoint: "in-memory-only"` so a staged value never becomes the
  *    checkpoint a ledger row is read from, and an unconfirmed write is a
  *    `parked-write` run whose transaction node has no checkpoint at all — its
- *    honest surface is doc 09 §4.1's park section, which serves it.
+ *    honest surface is ref write-safety §4.1's park section, which serves it.
  *
  * An absent axis draws NOTHING — never a placeholder, never a dash, and never
  * a plausible default.
@@ -411,7 +411,7 @@ function ContextSection({
 }
 
 // ---------------------------------------------------------------------------
-// the Data section — the merged Data / Edit Data surface (doc 03 §1.1(c))
+// the Data section — the merged Data / Edit Data surface (ref dashboard-surfaces §1.1(c))
 // ---------------------------------------------------------------------------
 
 const FIELD_KEY_SEPARATOR = "\u0000";
@@ -493,7 +493,7 @@ function AboutRunData() {
  * the wide surface but not leave it. `expanded` is now an explicit
  * Widen/Narrow control in this section's own header, at the top of the rail so
  * undoing a press costs no pointer travel, and entering editing still raises
- * it (doc 03 D19(d): the resting rail is tight to type a date into).
+ * it (ref dashboard-surfaces D19(d): the resting rail is tight to type a date into).
  */
 function DataSection({
   payload,
@@ -537,7 +537,7 @@ function DataSection({
     return [{ entry, policy, draft }];
   });
 
-  // Doc 03 D19(d): the resting rail is tight to type a date into, so the first
+  // Ref dashboard-surfaces D19(d): the resting rail is tight to type a date into, so the first
   // focus raises the wide surface. The Narrow control gives it back — which is
   // the half that did not exist (R6 f.3c).
   const enterEditing = (): void => {

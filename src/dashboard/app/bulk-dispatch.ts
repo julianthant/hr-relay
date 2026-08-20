@@ -21,7 +21,7 @@
  *     predicted is a refusal it should not have spent.
  *
  * Versions are frozen HERE, at composition, from each row's own descriptor
- * (`expectedVersion`) — doc 03's *"targets and versions are frozen at
+ * (`expectedVersion`) — ref dashboard-surfaces's *"targets and versions are frozen at
  * confirmation"*. Nothing re-reads a version between the confirm dialog and the
  * post, because that is precisely the drift the CAS exists to catch.
  */
@@ -144,7 +144,7 @@ export interface BulkCommandContext {
  * happened" can never be mistaken for "it worked".
  *
  * `mode` is always `best-effort` and is written here rather than taken from a
- * caller: the runtime executes no other mode (doc 03's bulk section), and a
+ * caller: the runtime executes no other mode (ref dashboard-surfaces's bulk section), and a
  * surface that could ask for `all-or-none` would be offering an atomicity this
  * kernel does not have.
  */

@@ -43,7 +43,7 @@
  * past.
  *
  * Importing the commit contracts here is safe and is checked two ways: their
- * closure reaches no Node built-in (doc 13 §8.13 — this module lands on the
+ * closure reaches no Node built-in (ref frontend-backend-integration §8.13 — this module lands on the
  * dashboard bundle) and no descriptor module (`archive-invariants` — an
  * archived run must render with its originating descriptor absent). A task
  * CONTRACT is neither: it is the schema of one write, and interpreting a
@@ -65,7 +65,7 @@ import { deriveSchemaHash } from "../schema-bound-value.js";
  *
  * The enums come from `ledger-primitives.js` rather than `ledger.js` because
  * this module lands on a wire the dashboard bundle reaches, and `ledger.js`
- * imports `write-safety.js`, which imports `node:crypto` (doc 13 §8.13 — a
+ * imports `write-safety.js`, which imports `node:crypto` (ref frontend-backend-integration §8.13 — a
  * browser-reachable Node built-in is a blank page in dev and a silent time
  * bomb in prod).
  */
@@ -88,7 +88,7 @@ export type LedgerColumn = z.infer<typeof LedgerColumnSchema>;
  * operator situation: a partition file that is gone is a retention or a
  * deployment question, a sequence past the end is an archive that names a line
  * the projector never appended, and a malformed line is ledger corruption —
- * the one thing doc 09 §6 forbids projecting past.
+ * the one thing ref write-safety §6 forbids projecting past.
  */
 export const LedgerResolutionFailureSchema = z.enum([
   "partition-missing",

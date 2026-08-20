@@ -58,9 +58,9 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
     },
   },
   /*
-   * SCOPE DECISION (2026-08-14, doc 10 §"the driver half of inline-selectors"):
+   * SCOPE DECISION (2026-08-14, ref guards-and-tests §"the driver half of inline-selectors"):
    * this arm stays scoped to `/tasks/` and is NOT widened to a store's `driver`
-   * directory. Doc 10's fate table wants "driver selector literals must belong
+   * directory. Ref guards-and-tests's fate table wants "driver selector literals must belong
    * to the canonical UI registry entry they implement", and the survey that
    * question demands answers it in the other direction: a driver's registry
    * INTERPRETER is built out of `page.locator(recipe.selector)` —

@@ -176,7 +176,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         // D194's rich Person Org read: the whole Employment Instances grid,
         // one page visit (separations chunk 3).
         // Separations chunk 4's UCPath termination write: TWO transactions
-        // (the date-agnostic pending sweep, then the filing) with doc 09 §5's
+        // (the date-agnostic pending sweep, then the filing) with ref write-safety §5's
         // two probe kinds and a verifier each, all on the SAME `ucpath` driver
         // declaration as the Person Org reads (D197 rule 1).
         "ucpath/create-termination",

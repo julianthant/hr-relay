@@ -38,7 +38,7 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
   const [subject, identity, ...flags] = input.args;
   if (subject !== "run") {
     throw new Error(
-      `explain supports only the "run" subject today (doc 12 §2.5 also names "failure <fingerprint>", `
+      `explain supports only the "run" subject today (ref operator-trust §2.5 also names "failure <fingerprint>", `
       + `which lands with the knowledge/fix slice); received "${subject ?? "(nothing)"}". ${SUBJECT_HELP}`,
     );
   }
@@ -46,13 +46,13 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
 
   const bundleIndex = flags.indexOf("--bundle");
   if (bundleIndex !== -1) {
-    // Doc 12 §2.5's `--bundle` exports a REDACTED portable diagnostic package
-    // plus a manifest and hash. The capture side of that package (doc 12 §2.2)
+    // Ref operator-trust §2.5's `--bundle` exports a REDACTED portable diagnostic package
+    // plus a manifest and hash. The capture side of that package (ref operator-trust §2.2)
     // is a separate 2g slice; exporting a package that silently omitted the
     // screenshots, DOM excerpts, and console/network evidence it promises would
     // be worse than refusing, because the recipient could not tell.
     throw new Error(
-      "--bundle needs the doc 12 §2.2 diagnostic capture slice, which is not wired; refusing to "
+      "--bundle needs the ref operator-trust §2.2 diagnostic capture slice, which is not wired; refusing to "
       + "export a diagnostic package that would be missing the evidence its manifest claims",
     );
   }

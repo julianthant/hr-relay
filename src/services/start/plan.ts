@@ -1,6 +1,6 @@
 /**
  * Start planning — the step between "the operator typed something" and "runs
- * exist" (doc 13 §5.1).
+ * exist" (ref frontend-backend-integration §5.1).
  *
  * The planner parses every submission, derives its logical identity, evaluates
  * the descriptor's enqueue policy against authority, and returns exactly what
@@ -97,7 +97,7 @@ export function resolveInstances(
 }
 
 /**
- * Whether this GRAPH can be previewed (doc 02 §2, D209) — never whether it has
+ * Whether this GRAPH can be previewed (ref workflow-model §2, D209) — never whether it has
  * a paste-a-line input surface. The derivation lives on the descriptor's own
  * projection so the planner, the command kernel and the explorer wire all read
  * ONE answer.

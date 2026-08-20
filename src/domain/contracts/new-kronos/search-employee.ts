@@ -1,6 +1,6 @@
 /**
  * `new-kronos/search-employee` — ONE visit to the WFD Employee Search results
- * panel (D194 / doc 01 §2.8).
+ * panel (D194 / ref task-contract §2.8).
  *
  * The output is the whole useful surface of that page, not the one field this
  * workflow needs: WFD's own `Total [N]` counter, EVERY candidate row it

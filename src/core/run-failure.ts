@@ -1,5 +1,5 @@
 /**
- * Executor-side construction of doc 12's strict `FailureRecord` (doc 03
+ * Executor-side construction of ref operator-trust's strict `FailureRecord` (ref dashboard-surfaces
  * §Phase-1f: `failures` is a non-rebuildable authority family — every failed
  * run stores one of these, and a display-safe span summary is not a
  * substitute).
@@ -10,7 +10,7 @@
  *   — the atomic failure composite cross-checks both against the descriptor
  *   and the run's `currentNodeId`, so a record naming the wrong node cannot
  *   terminalize the run;
- * - an ENTRY-VALIDATION failure (doc 02 §5.4) happens in `validating`, before
+ * - an ENTRY-VALIDATION failure (ref workflow-model §5.4) happens in `validating`, before
  *   any node executes, so it deliberately names no node — and lists EVERY
  *   problem in one summary rather than forcing a fix-one-refresh-repeat loop.
  */
@@ -39,7 +39,7 @@ export function failureCodeFromTaskCode(code: string): string {
 
 /**
  * The failure-CLASS fingerprint: workflow + node + task + code, not the
- * occurrence. Two runs failing the same way share it, which is what doc 12's
+ * occurrence. Two runs failing the same way share it, which is what ref operator-trust's
  * knowledge lookups key on.
  */
 export function deriveFailureFingerprint(input: Readonly<{
@@ -127,7 +127,7 @@ export interface EntryValidationFailureInput {
   readonly occurredAt: unknown;
 }
 
-/** Doc 02 §5.4: one failure lists ALL problems; no node executed, so no nodeId. */
+/** Ref workflow-model §5.4: one failure lists ALL problems; no node executed, so no nodeId. */
 export function buildEntryValidationFailureRecord(input: EntryValidationFailureInput): FailureRecord {
   const run = RunRecordSchema.parse(input.run);
   if (input.problems.length === 0) {

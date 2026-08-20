@@ -1,5 +1,5 @@
 /**
- * The archive model — charter §25 / doc 03 §10.2 (D80), as-built by D179.
+ * The archive model — charter §25 / ref dashboard-surfaces §10.2 (D80), as-built by D179.
  *
  * **No archive folders; the archive is durable, self-contained DATA.** A
  * descriptor carries a version plus a build-derived `contractFingerprint`, and
@@ -286,7 +286,7 @@ export type ArchivedEvidencePointers = z.infer<typeof ArchivedEvidencePointersSc
  * ONE archived run, self-contained.
  *
  * `row` and `detail` are the exact wire payloads the live surfaces last
- * rendered, frozen. That is deliberate and it is what doc 03 §10.2 asks for
+ * rendered, frozen. That is deliberate and it is what ref dashboard-surfaces §10.2 asks for
  * ("its final projected row"): the Archive renders them through the SAME
  * components, so there is exactly one rendering path and no branch anywhere
  * asks which version a run was.
@@ -310,7 +310,7 @@ const ArchivedRunContentFields = {
   ]),
   /**
    * The workflow's SHORT CODE, FROZEN at archive time beside the label
-   * (doc 02 §1.1.1, D242). The index prints `<code> v<N>` as the row's leading
+   * (ref workflow-model §1.1.1, D242). The index prints `<code> v<N>` as the row's leading
    * token, and every argument the frozen label makes applies unchanged: a
    * resolve at render time would be a descriptor read on the archived path,
    * and `traceId.slice(0, indexOf("-"))` would be a plausible-looking
@@ -476,7 +476,7 @@ export type ArchivedRunContent = z.infer<typeof ArchivedRunContentSchema>;
  * ONE archived run, self-contained.
  *
  * `row` and `detail` are the exact wire payloads the live surfaces last
- * rendered, frozen. That is deliberate and it is what doc 03 §10.2 asks for
+ * rendered, frozen. That is deliberate and it is what ref dashboard-surfaces §10.2 asks for
  * ("its final projected row"): the Archive renders them through the SAME
  * components, so there is exactly one rendering path and no branch anywhere
  * asks which version a run was.
@@ -515,7 +515,7 @@ export type ArchiveRelaunchRecord = z.infer<typeof ArchiveRelaunchRecordSchema>;
 /* ── content identity ────────────────────────────────────────────────────── */
 
 /**
- * `archiveFingerprint` in doc 13 §5's "self-contained archived detail,
+ * `archiveFingerprint` in ref frontend-backend-integration §5's "self-contained archived detail,
  * integrity". A relaunch cites it, and the kernel refuses a citation that does
  * not match the bytes it is about to read the input out of — a mismatched
  * digest means the operator is looking at a different record than the one

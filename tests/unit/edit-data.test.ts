@@ -1,5 +1,5 @@
 /**
- * Doc 06 §6 (D166): the Edit Data core, in three layers.
+ * Ref data-intake-and-edit-data §6 (D166): the Edit Data core, in three layers.
  *
  * 1. The APPLIER is pure: patches resolve by path, the WHOLE post-patch
  *    output re-parses through the producing schema, changed leaves become

@@ -1,5 +1,5 @@
 /**
- * The queue row's ONE time fact (D124, doc 03 §"as-built presentation
+ * The queue row's ONE time fact (D124, ref dashboard-surfaces §"as-built presentation
  * deltas"), extracted from `queue.tsx` so it is measured logic rather than
  * presentation.
  *

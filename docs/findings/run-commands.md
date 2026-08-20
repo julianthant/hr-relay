@@ -13,7 +13,7 @@ Two records lived here and are struck. Track B1 built the three ceremonies again
 every approvable candidate, then D211's write plan. An unrecognised shape returns `unsupported` and
 blocks the send with a named refusal — it never degrades to approve — and the arm's parameter is
 typed `never`, so a fourth shape is both a compile error and a runtime refusal. Normative text:
-**doc 09 §14.11**; the surface obligations generalise in **doc 13 §3.4**.
+**ref write-safety §14.11**; the surface obligations generalise in **ref frontend-backend-integration §3.4**.
 
 - ~~The identity gate draws its buttons and never draws its EVIDENCE~~ — closed, with one honest
   nuance the fix does not hide: the evidence renders in the **ceremony dialog**, one click from the
@@ -32,7 +32,7 @@ parked-write pair).
 
 ## RESOLVED 2026-08-20 — the parked write gets a way IN and keeps its way OUT (D245, D246)
 
-Both parked-write records are struck. Normative text: **doc 09 §4.1** for both; doc 04 round 75.
+Both parked-write records are struck. Normative text: **ref write-safety §4.1** for both; ref decisions round 75.
 
 - ~~`resolve-write-present` is refused in the UI and points at a CLI path that does not exist~~ —
   closed by **D245**, and the fix is the harder half the record named rather than the copy
@@ -66,7 +66,7 @@ Both parked-write records are struck. Normative text: **doc 09 §4.1** for both;
 ## RESOLVED 2026-08-19 — the presentation CAS hole, and the rename control behind it (D233)
 
 Two records are struck here; the surviving `unhide` record below is a different defect and is
-untouched. Normative text: **doc 03 §"Drawing the second batch"**.
+untouched. Normative text: **ref dashboard-surfaces §"Drawing the second batch"**.
 
 - ~~`hide` / `unhide` / `rename` cannot report a conflict~~ — closed. `executePresentation` CASed
   against its own re-read (`current.version`), which cannot fail, so a stale command applied
@@ -89,7 +89,7 @@ own reasoning and D233's rule.
 
 ## RESOLVED 2026-08-19 — the hide/unhide pair is retired, and bump joins the CAS rule (D234)
 
-Two records are struck here. Normative text: **doc 03 §"D234 — the queue's model is runs and
+Two records are struck here. Normative text: **ref dashboard-surfaces §"D234 — the queue's model is runs and
 archived runs"**.
 
 - ~~`unhide` is a dead verb across the whole stack~~ — closed by RETIREMENT, on the operator's
@@ -120,6 +120,6 @@ archived runs"**.
 
 The false copy is gone because the thing it apologized for now exists: the bulk strip composes
 Cancel/Retry from the intersection of the selection's own served `actions[]`, warns first, and the
-result-vector band reports run by run. Normative text: doc 03 §"D235 — a bulk command is N children
+result-vector band reports run by run. Normative text: ref dashboard-surfaces §"D235 — a bulk command is N children
 and one vector". Server: `POST /api/v1/commands/bulk`, N derived-id children through the one command
 path. Pinned by `tests/unit/dashboard/bulk-dispatch.test.ts` and `bff-flow.test.ts`'s D235 case.

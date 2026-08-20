@@ -1,5 +1,5 @@
 /**
- * `ucpath/match-existing-termination` — doc 09 §5's IDEMPOTENCY PROBE for the UCPath
+ * `ucpath/match-existing-termination` — ref write-safety §5's IDEMPOTENCY PROBE for the UCPath
  * termination, and chunk 4's **S44** read.
  *
  * It answers exactly one question: does this person ALREADY have a termination

@@ -15,7 +15,7 @@
  *   contains `mykronos.com/wfd`.
  *
  * NOT ported: legacy's `#failedLogin` re-`goto` recovery with its 1.5s settle,
- * its `waitForTimeout` sleeps, and its Duo poll loop — doc 05 §5 owns waiting
+ * its `waitForTimeout` sleeps, and its Duo poll loop — ref execution-and-sessions §5 owns waiting
  * and `defineVerifiedLoginRecipe` owns the landing wait.
  *
  * ## The finding this recipe exists to record (live, 2026-08-12)

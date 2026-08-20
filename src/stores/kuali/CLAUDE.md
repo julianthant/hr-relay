@@ -28,7 +28,7 @@ magnitude wider than the write's three fields — the DECLARATION stays one.
 
 **The two families have different SUBJECTS, and both are unambiguous.** The write binds a PERSON
 (`kuali.rrss-document.displayed-eid`); the read binds the DOCUMENT
-(`kuali.rrss-document.displayed-number`, doc 01's `artifact`/`document-id` kind), because a run names
+(`kuali.rrss-document.displayed-number`, ref task-contract's `artifact`/`document-id` kind), because a run names
 a document and DISCOVERS the person. The registry audit's old "exactly one subject-authoritative
 observation" rule is now one PER SUBJECT IDENTITY — narrowed per kind rather than relaxed.
 
@@ -319,7 +319,7 @@ reached a document through the Action List search box; the deep link is live-ver
   **A parked write WAS unresolvable once any file in its descriptor's 31-file contract closure
   changed** — `requireDescriptorMatchesRun` compared stored vs current `contractFingerprint` and
   printed ids and versions (which match) rather than fingerprints (which do not). **Fixed by D136**
-  (doc 09 §4.1): resolvability now binds to six named semantic checks — workflow identity, descriptor
+  (ref write-safety §4.1): resolvability now binds to six named semantic checks — workflow identity, descriptor
   version, the transaction node committing this task, the canonical-input schema, the permanent key
   RE-DERIVED from the exact durable input, and the retained binding proof — so an unrelated closure
   edit no longer strands a park, and a genuine move refuses with the whole check table. The

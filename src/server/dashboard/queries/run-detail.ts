@@ -1,5 +1,5 @@
 /**
- * `RunDetailWire` header + the lazy sections Person Lookup needs (doc 13
+ * `RunDetailWire` header + the lazy sections Person Lookup needs (ref frontend-backend-integration
  * §3.3, §6.2): logs (from the notes stream) and the context data/attempts
  * slices. Sections whose owning service lands later (receipt in 2g, review/
  * people/captures in 2h) are typed-absent through the wire's absence unions
@@ -107,7 +107,7 @@ export interface RunDetailGateNodeView {
 }
 
 /**
- * ONE transaction node's commit contract, in the shape doc 09 §4.1's
+ * ONE transaction node's commit contract, in the shape ref write-safety §4.1's
  * confirmed-present resolution needs (D245).
  *
  * `proofSchemaHash` is `deriveSchemaHash(completion.proofSchema, "output")` —
@@ -152,7 +152,7 @@ export interface RunDetailDataOriginView {
     maxAge: number | "unbounded";
     override: "forbidden" | "audited";
   }>[];
-  /** Commit nodes this node's facts can statically reach (doc 02 §5.5). */
+  /** Commit nodes this node's facts can statically reach (ref workflow-model §5.5). */
   readonly feeds: readonly Readonly<{ nodeId: string; label: string }>[];
 }
 
@@ -166,7 +166,7 @@ export interface RunDetailDataOriginView {
  * simply no longer does.
  */
 export interface RunDetailDescriptorView {
-  /** Doc 03 §1.2: where the RUN resolves the subject's name, if it ever does. */
+  /** Ref dashboard-surfaces §1.2: where the RUN resolves the subject's name, if it ever does. */
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
   /**
    * D225 — the descriptor's factory-derived categorical timeline (declared
@@ -181,7 +181,7 @@ export interface RunDetailDescriptorView {
   /** Absent for a descriptor with no gate node; empty is the same answer. */
   readonly gateNodes?: readonly RunDetailGateNodeView[];
   /**
-   * D245 — one entry per TRANSACTION node, carrying what doc 09 §4.1's
+   * D245 — one entry per TRANSACTION node, carrying what ref write-safety §4.1's
    * confirmed-present resolution has to satisfy for that node's commit
    * contract. Derived by the composition root beside `gateNodes` and for the
    * same stated reason: this directory never reaches the descriptor builders,
@@ -214,14 +214,14 @@ export interface RunDetailQueryDeps {
   readonly projection: RunQueueProjection;
   readonly authority: {
     getRun(runId: string): RunRecord | undefined;
-    /** Doc 02 §5.7's "latest compatible attempt wins" read, for edit values. */
+    /** Ref workflow-model §5.7's "latest compatible attempt wins" read, for edit values. */
     latestCheckpoint(
       workflowId: string,
       itemId: string,
       nodeId: string,
     ): RunCheckpointRecord | undefined;
     /**
-     * Doc 09 §4.1: the durable `write_intents` row a `parked-write` run names.
+     * Ref write-safety §4.1: the durable `write_intents` row a `parked-write` run names.
      * Read at REQUEST time, never folded into the projection — the intent is
      * the write-safety authority, and a resolution CASes against the exact
      * generation this read returned. A stale copy would let a browser resolve
@@ -470,7 +470,7 @@ function foldCategoryState(states: readonly TimelineStepState[], runTerminal: bo
  * D259 — WHERE a node with no span of its own got its fact, or why this build
  * refuses to say.
  *
- * A replayed node emits no spans by design (doc 02 §5.3) and this timeline
+ * A replayed node emits no spans by design (ref workflow-model §5.3) and this timeline
  * folds spans, so replay is invisible to it — which is how a terminal run
  * rendered `Identity check — pending, took 0s` one minute after the operator
  * approved that very gate (separations §9.22 item 3). The reader moves, exactly
@@ -484,7 +484,7 @@ function foldCategoryState(states: readonly TimelineStepState[], runTerminal: bo
  *    failed or cancelled run keeps `pending` for exactly that reason: nodes
  *    after the stop never ran, and prior-run checkpoints sit under them.
  * 2. **A checkpoint exists at `(workflow, itemId, nodeId)`** — the SAME
- *    item-scoped read the executor's planner itself makes (doc 02 §5.7).
+ *    item-scoped read the executor's planner itself makes (ref workflow-model §5.7).
  * 3. **A DIFFERENT run wrote it.** A row this run wrote is evidence the node
  *    executed HERE, so calling that a replay would be a second wrong word; the
  *    honest arm for "executed, span not folded" (a pruned stream) is a
@@ -636,7 +636,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
       : span.notRunReason === undefined
         ? { state: "absent", reason: "this step did not run; its span recorded no reason" } as const
         : { state: "present", reason: span.notRunReason } as const;
-    // The seed carries doc 03 §1.1's whole span identity. `<trace>/<node>#<taskAttempt>`
+    // The seed carries ref dashboard-surfaces §1.1's whole span identity. `<trace>/<node>#<taskAttempt>`
     // repeats verbatim across RUN attempts, so a node re-run after a recovered
     // failure yields two genuinely distinct folded spans that share a path — both
     // are real history and both must render, so the attempt has to reach the id.
@@ -665,7 +665,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
    * executions of one node at ONE `(attempt, spanPath)`: a gate park and its
    * resume are two executions inside one attempt, and an `always-rerun` node
    * re-executes across that boundary by design. Those lines are durable
-   * history and are never rewritten (doc 03 §2.3), so the id is disambiguated
+   * history and are never rewritten (ref dashboard-surfaces §2.3), so the id is disambiguated
    * at the FOLD: the first execution at a seed keeps the id it has always had,
    * and each further one appends `~<n>`. Read forward exactly as D214's own
    * key is — an ordinal of 1 appends nothing, so every id this projection has
@@ -727,7 +727,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
     && authority.envelope.dryRun;
   const outcome = lifecycle.state === "terminal"
     ? lifecycle.outcome === "interrupted"
-      ? { state: "absent", reason: "run interrupted; doc-09 recovery will requeue or settle it" }
+      ? { state: "absent", reason: "run interrupted; ref write-safety recovery will requeue or settle it" }
       : {
         state: "terminal",
         result: rehearsed
@@ -748,7 +748,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
       workflowId: row.queued.workflow,
       actorId: row.queued.actorId,
       /**
-       * The SAME title the queue row shows, through the same resolver (doc 03
+       * The SAME title the queue row shows, through the same resolver (ref dashboard-surfaces
        * §1.2): the composed start-input title, replaced by the subject's name
        * once this run has resolved one, with the operator's own name winning
        * over both. Two surfaces naming one run two ways is the divergence this
@@ -884,9 +884,9 @@ export function buildRunSection(
 
   if (section === "context-data") {
     // The descriptor-declared detail patches ARE the display-safe data facts
-    // (doc 03 §1.1), joined back to their declaring specs for field identity;
+    // (ref dashboard-surfaces §1.1), joined back to their declaring specs for field identity;
     // the descriptor's editData fields extend them with the raw checkpoint
-    // scalars a correction targets (doc 06 §6, 2i-C).
+    // scalars a correction targets (ref data-intake-and-edit-data §6, 2i-C).
     return RunDetailSectionResponseSchema.parse({
       section,
       payload: buildContextDataPayload(deps, row, authority),
@@ -942,7 +942,7 @@ export function buildRunSection(
   });
 }
 
-/* ── the parked-write section (doc 09 §4.1) ──────────────────────────────── */
+/* ── the parked-write section (ref write-safety §4.1) ──────────────────────────────── */
 
 /**
  * The binding proof's subject. A `subject-match` proof pins `expected` and
@@ -950,7 +950,7 @@ export function buildRunSection(
  * proof where they are not — so `expected` IS the fact, not half of it.
  *
  * The evidence is copied, not re-shaped: `SubjectEvidenceSchema` is already the
- * display-safe form doc 09 binds a write against, and every arm of it is a
+ * display-safe form ref write-safety binds a write against, and every arm of it is a
  * digest, a branded id, or a bounded suffix. A second projection here could
  * only invent a name for a redaction that happened at binding time.
  */
@@ -971,7 +971,7 @@ function parkedWriteSubject(proof: WriteBindingProof): unknown {
 }
 
 /**
- * WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY (D245, doc 09 §4.1).
+ * WHAT A CONFIRMED-PRESENT RESOLUTION MUST CARRY (D245, ref write-safety §4.1).
  *
  * `resolvePresent` refuses any proof whose `schemaHash` is not
  * `deriveSchemaHash(node.commit.uses.writeSafety.completion.proofSchema)` and
@@ -1005,7 +1005,7 @@ function parkedWriteProofContract(
     return unavailable(
       `workflow ${workflow} has no registered descriptor in this build, so the proof this write would `
       + "have to carry cannot be stated. Recording it PRESENT is unavailable until the build that "
-      + "declares this workflow is running (doc 09 §4.1, D136).",
+      + "declares this workflow is running (ref write-safety §4.1, D136).",
     );
   }
   const contract = (descriptor.writeContracts ?? [])
@@ -1014,7 +1014,7 @@ function parkedWriteProofContract(
     return unavailable(
       `${workflow} declares no transaction node committing ${intent.taskId} in this build, so there is no `
       + "commit contract to take a proof for. Recording it PRESENT is unavailable until that node is back "
-      + "— doc 09 §4.1's `transaction-node` check would refuse the resolution for the same reason.",
+      + "— ref write-safety §4.1's `transaction-node` check would refuse the resolution for the same reason.",
     );
   }
   if (contract.proof.state === "undescribable") {
@@ -1034,11 +1034,11 @@ function parkedWriteProofContract(
 }
 
 /**
- * The two typed resolutions, both always served (doc 09 §4.1, doc 13 §8.5).
+ * The two typed resolutions, both always served (ref write-safety §4.1, ref frontend-backend-integration §8.5).
  *
  * Serving only one would be this query deciding what the operator's look at
  * the target system is going to find, and there is no third arm on purpose:
- * doc 09 is explicit that no "force done" or "retry anyway" endpoint exists.
+ * ref write-safety is explicit that no "force done" or "retry anyway" endpoint exists.
  * Both carry `confirm` copy that names the CASUALTY in the operator's terms —
  * confirmed-present settles the run as though the transaction happened, and
  * confirmed-absent authorizes a fresh fence that will click again.
@@ -1091,7 +1091,7 @@ function parkedWriteActions(
 }
 
 /**
- * The identity-approval gate section (doc 09 §14.4).
+ * The identity-approval gate section (ref write-safety §14.4).
  *
  * Everything is DERIVED and nothing is minted. The packet is the stored output
  * of the node the gate waits on — located through the descriptor's `dependsOn`,
@@ -1300,7 +1300,7 @@ type ContextDataEditing =
   | { state: "editable"; expectedVersion: number }
   | { state: "locked"; reason: string };
 /**
- * The three provenance leaves the Data section serves (doc 02 §5.6).
+ * The three provenance leaves the Data section serves (ref workflow-model §5.6).
  *
  * They are OMITTED, never nulled: the wire's members are optional and an absent
  * one says "this build cannot date this value". A checkpoint that recorded no
@@ -1509,7 +1509,7 @@ function originOf(
  * correction.
  *
  * The checkpoint is a PARAMETER rather than a lookup, because the caller has
- * already had to resolve it: doc 03 §1.1(c)'s Data section lists what the run
+ * already had to resolve it: ref dashboard-surfaces §1.1(c)'s Data section lists what the run
  * touched, so a declared-correctable field with no stored checkpoint is not an
  * entry at all. Before D254 the retired `span.patched` fold could reach this
  * function with no checkpoint behind it, and the `display` argument carried
@@ -1601,7 +1601,7 @@ function buildContextDataPayload(
       authority.envelope.itemId,
       String(field.nodeId),
     );
-    // The Data section lists values the run TOUCHED (doc 03 §1.1(c)); a
+    // The Data section lists values the run TOUCHED (ref dashboard-surfaces §1.1(c)); a
     // declared-correctable field whose step never recorded is not among them.
     if (stored === undefined) continue;
     entries.push(editableEntryOf(
@@ -1623,7 +1623,7 @@ function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps):
   if (lifecycle.state !== "terminal") {
     return `run is ${lifecycle.state}; a receipt states a settled verdict and this run has none yet`;
   }
-  return "run was interrupted; doc-09 recovery will requeue or settle it before a receipt can name a verdict";
+  return "run was interrupted; ref write-safety recovery will requeue or settle it before a receipt can name a verdict";
 }
 
 /**
@@ -1631,7 +1631,7 @@ function receiptAbsenceReason(authority: RunRecord, trust?: RunDetailTrustDeps):
  * a whitelist BY CONSTRUCTION — every field is named here — so a field added
  * to the durable record later reaches no surface until someone decides how it
  * is classified. `sameFingerprintSeen` counts occurrences of the failure
- * CLASS, which is doc 12 §2.1's "same failure seen before" link.
+ * CLASS, which is ref operator-trust §2.1's "same failure seen before" link.
  */
 function failureDetailWire(
   runId: string,

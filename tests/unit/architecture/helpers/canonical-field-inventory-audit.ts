@@ -76,7 +76,7 @@ export function auditCanonicalFieldInventory(input: InventoryAuditInput): string
       }
       // Drift detection against the frozen legacy tree: a scanned field that
       // no longer appears in its source file means the scan is stale, which is
-      // exactly the silent omission doc 06 §1 forbids.
+      // exactly the silent omission ref data-intake-and-edit-data §1 forbids.
       if (text !== null && !new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(text)) {
         violations.push(`${source.ref}: scanned field ${name} no longer appears in that file`);
       }
@@ -136,7 +136,7 @@ export function auditCanonicalFieldRegistry(fields: ReadonlyMap<string, Canonica
       const owner = aliasOwners.get(normalized);
       // A header spelling that suggested two different fields would make the
       // scorer's top hit arbitrary, and an arbitrary suggestion the operator
-      // accepts with one click is doc 06 §7 vector #1 wearing a disguise.
+      // accepts with one click is ref data-intake-and-edit-data §7 vector #1 wearing a disguise.
       if (owner !== undefined && owner !== id) {
         violations.push(`alias "${alias}": claimed by both ${owner} and ${id}`);
       }

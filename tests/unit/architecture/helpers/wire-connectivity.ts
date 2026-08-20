@@ -1,5 +1,5 @@
 /**
- * The wire-connectivity audit's mechanical half (doc 13 §8.8).
+ * The wire-connectivity audit's mechanical half (ref frontend-backend-integration §8.8).
  *
  * D107's `pending-impl-bindings.json` proves a descriptor's contracts are
  * bound in BOTH directions. This is the same idea one layer up: a schema arm,
@@ -27,7 +27,7 @@ export const PendingWireBindingSchema = z.strictObject({
   /** `<Schema>#<arm>` or `route:<METHOD> <path>`. */
   binding: z.string().min(1),
   direction: z.enum(["declared-unserved", "served-unconsumed"]),
-  decision: z.string().regex(/^D\d+[a-z]?$/, "decision must name a doc 04 decision id"),
+  decision: z.string().regex(/^D\d+[a-z]?$/, "decision must name a ref decisions decision id"),
   note: z.string().min(1),
 });
 

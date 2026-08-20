@@ -527,7 +527,7 @@ export const KualiFinalizationTargetSchema = z.strictObject({
 export type KualiFinalizationTarget = z.infer<typeof KualiFinalizationTargetSchema>;
 
 /**
- * The typed saved-state proof for doc 09's `save-verify` completion arm.
+ * The typed saved-state proof for ref write-safety's `save-verify` completion arm.
  *
  * It names the document, the subject the page displayed, and the EXACT field
  * set that was found on it. It carries no "clicked ok" flag by design: the only

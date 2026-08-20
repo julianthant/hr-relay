@@ -1,6 +1,6 @@
 /**
- * Graph-level scenario coverage (doc 07 item 1e: "every branch/gate/delegation/
- * control path has an executable scenario"; doc 12 §3.2's minimum coverage).
+ * Graph-level scenario coverage (doc 01 §1c · 1d · 1e's item 1e: "every branch/gate/delegation/
+ * control path has an executable scenario"; ref operator-trust §3.2's minimum coverage).
  *
  * Task-level coverage is already the contract's job — `defineTaskContract`
  * requires `scenarios` at every tier above a pure workflow mini-store read. What
@@ -41,7 +41,7 @@ export type GraphCoveragePoint = z.infer<typeof GraphCoveragePointSchema>;
  * Derive every graph path that needs its own scenario.
  *
  * A `many`-cardinality delegation contributes zero/one/many fan-out sizes
- * because those are genuinely different code paths (doc 12 §3.2), not three
+ * because those are genuinely different code paths (ref operator-trust §3.2), not three
  * spellings of one.
  */
 export function deriveGraphCoveragePoints(

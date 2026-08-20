@@ -1,5 +1,5 @@
 /**
- * The intake session service (doc 06 §2.2, D170) — the ROUTE half of the
+ * The intake session service (ref data-intake-and-edit-data §2.2, D170) — the ROUTE half of the
  * upload → map → validate flow.
  *
  * **The route creates the session; commands only mutate it.** That is capture's
@@ -170,7 +170,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       });
 
     // The dispositions are RE-DERIVED against the retained `readAt`, never
-    // stored: doc 06 §5.0's pipeline is a pure function of its inputs, so a
+    // stored: ref data-intake-and-edit-data §5.0's pipeline is a pure function of its inputs, so a
     // stored copy could only drift while this cannot.
     const validation = session.validation.state === "none" || layout === null
       ? { state: "none" as const }
@@ -201,7 +201,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       })();
 
     /**
-     * Doc 06 §7 vector #11 (D171): these exact bytes may have run before. The
+     * Ref data-intake-and-edit-data §7 vector #11 (D171): these exact bytes may have run before. The
      * LATEST manifest for this (digest, workflow) pair is what a rerun would be
      * compared against, and the diff is computed against the session's CURRENT
      * mapping — so an operator who re-uploads last week's export sees whether

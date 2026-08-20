@@ -1,5 +1,5 @@
 /**
- * The canonical-input snapshot contract (doc 02 §2, D62).
+ * The canonical-input snapshot contract (ref workflow-model §2, D62).
  *
  * A workflow's raw submission is stored immutable for audit, then validated
  * ONCE by `descriptor.input` — defaults and transforms applied. The resulting

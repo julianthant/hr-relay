@@ -1,5 +1,5 @@
 /**
- * The resumable dashboard subscription hub (doc 13 §3.5) — transport-neutral;
+ * The resumable dashboard subscription hub (ref frontend-backend-integration §3.5) — transport-neutral;
  * the SSE route only serializes what this hub hands it.
  *
  * Protocol per connection: `hello` → `snapshot`* → `patch`* | `reset-required`

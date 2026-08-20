@@ -8,7 +8,7 @@ amended 2026-07-26 (Round 8, §2.7 — the three-tier authoring floor + scaffold
 repo at plain `src/`, so isolation is physical and the same-tree guards it required are retired),
 2026-08-12 (Round 48, §2.8 — the rich-extraction convention, one task per page visit, D194), and
 2026-08-12 (Round 49, §2.10 — the first store CUSTOMIZED under §2.8, D197).**
-Conforms to `00-charter.md` and the binding reconciliation memo `04-reconciliation.md`. The
+Conforms to `reference/charter.md` and the binding reconciliation memo `reference/decisions.md`. The
 abandoned Step-0 spike is evidence only and has been deleted; all three effect overloads must be
 re-proved.
 
@@ -28,10 +28,10 @@ re-proved.
 
 | This doc **references** (owner) |
 |---|
-| Workflow builder API (the single API), descriptor shape, RunEnvelope, run-state machine incl. **gates/parks**, checkpoint/resume + the freshness enforcement walk → **doc 02** |
-| Span/event wire schema, notes stream, completion (fan-out/approval) union, storage + SSE → **doc 03** |
-| `WriteSafety<In, Out, Proof>` shape attached to `CommitTaskContract` (typed proof/verify + idempotency probe + key, D22/D31) → **doc 09** |
-| Canonical `ElementId`/`PageStateId`/`ObservationId`, typed `SystemDriver`, scenarios, diagnostics, and knowledge records → **doc 12** |
+| Workflow builder API (the single API), descriptor shape, RunEnvelope, run-state machine incl. **gates/parks**, checkpoint/resume + the freshness enforcement walk → **ref workflow-model** |
+| Span/event wire schema, notes stream, completion (fan-out/approval) union, storage + SSE → **ref dashboard-surfaces** |
+| `WriteSafety<In, Out, Proof>` shape attached to `CommitTaskContract` (typed proof/verify + idempotency probe + key, D22/D31) → **ref write-safety** |
+| Canonical `ElementId`/`PageStateId`/`ObservationId`, typed `SystemDriver`, scenarios, diagnostics, and knowledge records → **ref operator-trust** |
 
 Grounding (read, not imagined) — every path in this block is a **legacy-repo** path
 (`hr-automation`); unqualified `src/` inside the design fences below is the **rebuild repo's** `src/`:
@@ -53,7 +53,7 @@ re-encoding switch).
 Work item 1b implements the task contract's shared leaf vocabulary, not the task factory/store work
 scheduled for 1d. The rebuild now has strict branded schemas for core ids and scalars, canonical
 JSON, explicit absence/uncertainty, and structured boundary failures. Semantic UI observations use
-stable dotted `ObservationId` values owned by doc 12; dynamic receipt/evidence rows use the separate
+stable dotted `ObservationId` values owned by ref operator-trust; dynamic receipt/evidence rows use the separate
 UUID-backed `EvidenceEntryId`, so a row occurrence can never masquerade as an observation recipe.
 `TraceId` accepts local `HHMMSS` hours only from `00` through `23`. Unit and strict-boundary tests
 pin the neighboring invalid shapes, recursively reject unknown object keys, and keep exported
@@ -176,13 +176,13 @@ Four boundary changes were made in the port; each removes a silent fallback or a
 rather than reshaping the algorithm, and each is pinned by a test:
 
 - **No raw `Page`.** Legacy `TimecardDriver` took `(page, …)` on every method. `SemanticTimecardDriver`
-  is page-free; concrete Kronos drivers own their Playwright internals (doc 12 §1.4).
+  is page-free; concrete Kronos drivers own their Playwright internals (ref operator-trust §1.4).
 - **No `waitForTimeout`.** The legacy orchestration slept 3s after navigation and after a period
   switch. Settling is a semantic page-state wait owned by the driver operation; the helper never sleeps.
 - **Navigation failure throws.** `goToTimecard(): Promise<boolean>` returning `false` made "could not
   open the timecard" indistinguishable from "no punch entries exist" — both surfaced as `null`.
 - **The driver cannot assert its own switch.** `switchPeriod(): Promise<boolean>` becomes a typed
-  `TimecardPeriodSwitch` carrying the before/after period labels, which the helper compares (doc 12
+  `TimecardPeriodSwitch` carrying the before/after period labels, which the helper compares (ref operator-trust
   §1.4). "There is no previous period" is a declared named arm, never inferred from a bare `false`.
 
 The window helper also computes its bounds in calendar days rather than `n * 86_400_000` ms: the
@@ -314,7 +314,7 @@ export type ContractFieldPath = Brand<string, "ContractFieldPath">;
  * checkpointed output of this read may age before it is allowed to feed a
  * commit task on resume. `Infinity` is legal but must be written literally
  * and justified in an adjacent comment (grep ratchet, §8). The enforcement
- * declared-dependency freshness walk is kernel behavior owned by doc 02.
+ * declared-dependency freshness walk is kernel behavior owned by ref workflow-model.
  */
 export interface Freshness {
   /** Default for facts in this output; field-path overrides may narrow it. */
@@ -344,13 +344,13 @@ export interface ProvenancePolicy {
 /**
  * `prepare` mutates only ephemeral browser state. `commit` is the sole class
  * allowed to call an external-write primitive. A prepare contract may appear
- * only as the first arm of a transaction node (doc 02), never as a resumable
+ * only as the first arm of a transaction node (ref workflow-model), never as a resumable
  * standalone step.
  */
 export type EffectClass = "read" | "prepare" | "commit";
 
 /** Bundle-safe, declarative expected↔observed subject binding. The observation itself is owned by
- * doc 12's UI registry/system driver. `none` is explicit so a person-scoped task cannot omit the
+ * ref operator-trust's UI registry/system driver. `none` is explicit so a person-scoped task cannot omit the
  * question accidentally. */
 export type SubjectBindingSpec =
   | { kind: "none"; reason: string }
@@ -437,10 +437,10 @@ A task is **two files**:
 - **contract**—plain data, bundle-safe, in the matching system/service/workflow contract namespace:
   id, zod
   input/output, `title`, `effect`, `errorCodes`, `freshness` (reads), write safety (commits),
-  and a **mandatory `example` output**. Descriptors (doc 02) and the dashboard import contracts
+  and a **mandatory `example` output**. Descriptors (ref workflow-model) and the dashboard import contracts
   ONLY. E2e stubs derive their **minimum happy-path value** from `example` (schema-parsed); failure,
   cancellation, concurrency, delegation, mismatch, and recovery behavior comes from the checked-in
-  `ScenarioManifest` corpus (doc 12). Examples are fixtures, never behavioral coverage.
+  `ScenarioManifest` corpus (ref operator-trust). Examples are fixtures, never behavioral coverage.
 - **impl**—`run` + session needs + read retry, in the matching store's `tasks/`, imports its typed
   system driver API and the store-owned driver declaration. Only `stores/<system>/driver/**` and
   session infrastructure import Playwright. `defineTask(driver, contract, impl)` binds browser
@@ -459,14 +459,14 @@ export interface TaskContractBase<
   /**
    * Human label. This is the DEFAULT for the descriptor's step.label (D16);
    * the only override layer is the operator presentation override, and the
-   * precedence rule is stated once, in doc 02.
+   * precedence rule is stated once, in ref workflow-model.
    */
   title: string;
   input: In;
   output: CanonicalJsonSchema<Out>;
   /** Declared error taxonomy. ctx.fail() only accepts these codes. */
   errorCodes: Codes;
-  /** Declared secret names; shape/accessor owned by doc 11. Empty/absent means none. */
+  /** Declared secret names; shape/accessor owned by ref clock-config-secrets. Empty/absent means none. */
   requires?: readonly SecretName[];
   /** D63: explicit non-browser remote I/O. Legal only for service-store contracts; absent means
    * deterministic/local. The task receives exactly this narrowed injected client set. */
@@ -474,7 +474,7 @@ export interface TaskContractBase<
   /** Explicit subject scope. Person-scoped tasks name the authoritative observation used to prove
    * which record/page is open; service/global tasks declare `{kind:"none"}`. */
   subject: SubjectBindingSpec;
-  /** Registered behavioral scenarios (doc 12). `example` is a value fixture, not coverage. */
+  /** Registered behavioral scenarios (ref operator-trust). `example` is a value fixture, not coverage. */
   scenarios: readonly [ScenarioId, ...ScenarioId[]];
   /**
    * Mandatory canonical output value. A guard parses it through `output`
@@ -510,7 +510,7 @@ export interface CommitTaskContract<Id extends TaskId<BrowserSystemId>, In exten
   Codes extends readonly [string, ...string[]]>
   extends TaskContractBase<Id, In, Out, Codes> {
   effect: "commit";
-  /** Required and non-optional. Shape owned by doc 09. */
+  /** Required and non-optional. Shape owned by ref write-safety. */
   writeSafety: WriteSafety<In, Out, Proof>;
 }
 
@@ -552,7 +552,7 @@ export function defineTaskContract<
  *    AnyPrepareContract = SealedPrepareContract<…same bounds…>
  *    AnyCommitContract  = SealedCommitContract<…same bounds…, z.ZodType, …codes…>
  *    AnyContract        = AnyReadContract | AnyPrepareContract | AnyCommitContract
- *  That union is exactly doc 02 §3's `AnyTaskContract`. */
+ *  That union is exactly ref workflow-model §3's `AnyTaskContract`. */
 ```
 
 `defineTaskContract` freezes the object and **fails loud at module load** on: id not matching
@@ -628,7 +628,7 @@ export interface CommitTaskImpl<
   Driver extends ContractDriver<C> = ContractDriver<C>,
 > {
   sessions: readonly [SessionNeed<BrowserSystemOf<C>>];
-  /** A commit attempt is never generically retried; doc 09 owns recovery. */
+  /** A commit attempt is never generically retried; ref write-safety owns recovery. */
   retry?: never;
   run: (args: { input: z.output<C["input"]>; ctx: CommitTaskCtx<Driver, C["errorCodes"]> })
     => Promise<z.input<C["output"]>>;
@@ -729,7 +729,7 @@ export interface BrowserTaskCtx<
 >
   extends TaskCtxCommon<Codes> {
   /** Only the declared browser system. Raw Page/Locator access is confined to driver/session
-   * infrastructure (doc 12); every operation is element/state/observation-addressed and traced. */
+   * infrastructure (ref operator-trust); every operation is element/state/observation-addressed and traced. */
   driver: Driver;
 }
 
@@ -750,16 +750,16 @@ export interface CommitTaskCtx<Driver extends { system: BrowserSystemId }, Codes
 `requiredAt:"before-subject-read"`, the driver freshly observes the declared identity before it
 extracts subject-scoped facts and the kernel—not task code—compares that typed observation to parsed
 input. For every transaction, the kernel observes on the retained staged page after prepare and
-immediately before doc 09's fence; mismatch/unknown means zero clicks. Artifact-scoped writes bind
-the staged document id/digest the same way. Doc 09 wraps a matched subject proof—or an explicitly
+immediately before ref write-safety's fence; mismatch/unknown means zero clicks. Artifact-scoped writes bind
+the staged document id/digest the same way. Ref write-safety wraps a matched subject proof—or an explicitly
 allowlisted unscoped page-state proof when no stronger subject exists—into the durable
 `WriteBindingProof` bound to the mutation capability and post-write verification. Searching for an EID, seeing it in stale page text, or
 trusting the workflow input does not count as observing the open record. The New Kronos stale-
 timecard incident is the required base scenario, not a separations-only workaround.
 
 **What TaskCtx deliberately does NOT have:** `updateData` (the untyped blob — display fields become
-projections of typed task outputs, doc 03), `step` (the graph node owns orchestration), `delegateTo` (delegation
-is workflow-level composition, doc 02), free-form `retry` (retry is declared, kernel-executed),
+projections of typed task outputs, ref dashboard-surfaces), `step` (the graph node owns orchestration), `delegateTo` (delegation
+is workflow-level composition, ref workflow-model), free-form `retry` (retry is declared, kernel-executed),
 and **any wait/park primitive** (§2.6).
 
 ### 2.4 Error taxonomy
@@ -805,12 +805,12 @@ export class TaskError extends Error {
 races every task against the immutable run snapshot's `timeouts.taskMs` and the run AbortSignal;
 transactions additionally have `timeouts.transactionMs`. Browser timeout poisons/releases the
 lease; service SDK/file operations must honor the same signal. A timeout before a fence may restart
-preflight; after a fence it enters doc 09 recovery and is never a generic retry. The things
+preflight; after a fence it enters ref write-safety recovery and is never a generic retry. The things
 today's code does that do NOT fit that shape are explicitly **not tasks**:
 
 - **Long waits — OCR approval, child-signature watching, external signals** (oath-upload's
   `subscribeToApproval` park + hours-long wait-signatures watch) are **gate nodes** declared in the
-  descriptor and owned by **doc 02's run-state machine**; their wire form is doc 03's
+  descriptor and owned by **ref workflow-model's run-state machine**; their wire form is ref dashboard-surfaces's
   `gate.opened`/`gate.resolved` events. A task never contains an unbounded poll.
 - **Session policy at a park (kernel rule, stated here because stores implement it):** a parked
   run **RELEASES its browser sessions** — holding a Duo'd UCPath page across an overnight approval
@@ -828,7 +828,7 @@ today's code does that do NOT fit that shape are explicitly **not tasks**:
 
 ### 2.7 The authoring floor — three declaration tiers (D79f, 2026-07-24)
 
-**The problem this solves.** As written across docs 01–06, every task owes roughly ten artifacts:
+**The problem this solves.** As written across the reference specs, every task owes roughly ten artifacts:
 input/output schemas, `errorCodes`, freshness, provenance classification, subject spec, a mandatory
 `example`, a non-empty scenario tuple, naming compliance — and a commit adds `writeSafety` plus
 crash/subject scenarios. For a UCPath commit that is exactly right. For a pure transform in a
@@ -850,7 +850,7 @@ Promoting a light task later (a second workflow wants it, so it moves to a syste
 tier automatically and fails the build until the additional artifacts exist — which is the correct
 moment to pay, not before.
 
-**`scaffold new-task` / `scaffold new-workflow` are part of the base.** Nothing in docs 01–06
+**`scaffold new-task` / `scaffold new-workflow` are part of the base.** Nothing in the reference specs
 previously promised a generator, and the read-only explorer (D55) does not emit code. The
 declaration toil is only acceptable if the boilerplate is *generated* — contract skeleton, impl
 stub, example, scenario stubs, and store registration, each with `TODO` markers that fail their
@@ -889,7 +889,7 @@ the measured duplication that motivated it, are recorded in `docs/migrations/sep
    load-bearing, not decorative: the executor validates that provenance covers **every** canonical
    output leaf on every run, so a rich field with no absent arm can fail a workflow that never
    needed it. Absence is reported as data; it is never a silent blank.
-5. **Every leaf declares its redaction classification at authoring time** (doc 12 §D140 — an
+5. **Every leaf declares its redaction classification at authoring time** (ref operator-trust §D140 — an
    undeclared leaf fails loud). A wider read owes a wider classification table up front; that is the
    one-time authoring cost the convention accepts.
 6. **The tier does not change.** A rich read is still a §2.7 **Standard**-tier task; what grows is
@@ -986,7 +986,7 @@ than it looks, and here the discarded value could move a real termination's effe
 `FailureRecord.code`: `employee-not-found`, `search-returned-no-match` and `search-no-signal` are
 three codes, not one boolean. A timeout is never a negative.
 
-**Session facts** (doc 05 §4.1 owns the contract; recorded here because they were settled in this
+**Session facts** (ref execution-and-sessions §4.1 owns the contract; recorded here because they were settled in this
 slice): New Kronos does **not** hop through `a5.ucsd.edu` — its SSO chain lands on ForgeRock under
 `*.prd.mykronos.com`, serving the same UCSD credential form. D120's two independent facts are the
 application-issued `kronosAuthToken` on the WFD host plus the absence of both the UCSD SSO form and
@@ -1064,7 +1064,7 @@ consequence a fixture cannot dodge is that it must satisfy BOTH halves structura
 not IMPLEMENT both, because a Person Org fixture that quietly answered a termination scan would be
 inventing HR transactions. Each half therefore refuses the other's operations **by name**.
 
-**ONE rich page read, TWO probe folds.** Doc 09 §5 wants two probe kinds — "is this person already
+**ONE rich page read, TWO probe folds.** Ref write-safety §5 wants two probe kinds — "is this person already
 being terminated effective THIS DATE?" and "does this person have ANY in-progress termination?" —
 and they are two questions about the same rows, not two page visits. `scanTerminationTransactions`
 returns every transaction the SS Smart HR surface shows and classifies nothing; the folds live in
@@ -1124,7 +1124,7 @@ src/                            # rebuild repo (hr-automation-rebuild) code root
     ucpath/
       index.ts                # defineBrowserStore("ucpath", driver, session, tasks) — THE impl registry
       session.ts              # SessionProvider: login/prepareLogin/resetUrl/idleRefresh/exclusive
-      driver/                 # ONLY task-adjacent layer allowed raw Page/Locator access (doc 12)
+      driver/                 # ONLY task-adjacent layer allowed raw Page/Locator access (ref operator-trust)
         index.ts              # typed SystemDriver implementation + named complex operations
         ui-registry.ts        # canonical elements/screens/states/observations
         selectors.ts          # copied/ported verified recipes + provenance (§3.3)
@@ -1143,8 +1143,8 @@ src/                            # rebuild repo (hr-automation-rebuild) code root
         index.ts
         tasks/merge-enrichment.task.ts
     common/                   # shared leaf code across stores — home of legacy src/systems/common/ (D15)
-  scenarios/                  # strict registered behavior corpus (doc 12)
-  knowledge/records/          # active/superseded/retired/unverified structured guidance (doc 12)
+  scenarios/                  # strict registered behavior corpus (ref operator-trust)
+  knowledge/records/          # active/superseded/retired/unverified structured guidance (ref operator-trust)
 ```
 
 ### 3.2 `defineStore` — one impl registry per task namespace
@@ -1194,7 +1194,7 @@ export function defineWorkflowStore<Id extends string,
   Cross-system behavior (person-lookup's UCPath+CRM dance) is workflow composition, never a task.
 - Runtime validation at module load: duplicate ids, id prefix mismatch → throw.
 - The store is the ONLY impl registry; the contract barrel is the ONLY contract registry.
-  Descriptors (doc 02), the dashboard task index, and the e2e stub happy paths are projections of
+  Descriptors (ref workflow-model), the dashboard task index, and the e2e stub happy paths are projections of
   the **contracts**; the daemon resolves impls through the **store**. Coverage ratchets (all in
   `npm run test:architecture`):
   1. **Pairing guard** — every system or workflow contract is bound by exactly one matching
@@ -1219,7 +1219,7 @@ export function defineWorkflowStore<Id extends string,
   **structural**, not policed: the two repos share no module graph, so a runtime import across them is
   impossible to write. Each new registry entry records its **legacy-repo commit hash + source path/key**,
   verification date, copied recipe/fallback chain, and rebuild fixture/live
-  verification. `ui-registry.ts` assigns stable doc-12 `ElementId`s; tasks call the typed driver.
+  verification. `ui-registry.ts` assigns stable ref operator-trust `ElementId`s; tasks call the typed driver.
   D90 **cross-repo** change accounting maps later legacy selector maintenance to the affected rebuilt
   ids and requires re-port/reverification where applicable — every legacy maintenance change is
   recorded against the affected capabilities/rebuild evidence in the rebuild repo's
@@ -1235,7 +1235,7 @@ export function defineWorkflowStore<Id extends string,
 - Existing LESSONS do **not** move wholesale. Each referenced lesson is triaged during migration:
   active invariant → structured `KnowledgeRecord`; incident-only context → linked incident history;
   superseded/duplicate/incorrect → excluded from the generated active guide. The old LESSONS file
-  remains with the legacy repo's store through the single cutover. See doc 12 §4.
+  remains with the legacy repo's store through the single cutover. See ref operator-trust §4.
 - The rebuild repo's `npm run ui:catalog` generates the new catalog; its `selector:search` searches
   canonical ids, labels, search terms, active knowledge, and recorded legacy-repo source paths. During
   coexistence the legacy repo's own `selectors:catalog` still serves legacy source in that repo, but it
@@ -1253,12 +1253,12 @@ Pure compute and non-browser pipelines get **service stores** under the same con
   Deterministic, no I/O beyond the filesystem. Its outputs land in workflow input fields via
   **operator-defined column mapping** (charter §11): the operator connects a source column title to
   a canonical field (e.g. some spreadsheet's column → `eid`); mapped values parse through the
-  workflow's zod input schema, so ingest is validated by construction. Full design: doc 06.
+  workflow's zod input schema, so ingest is validated by construction. Full design: ref data-intake-and-edit-data.
 - **`ocr`** — the OCR provider pipeline (`src/services/ocr/` ports here): model calls, fabrication
   tiering, tolerant-field handling. External I/O, but no browser; contracts declare
   `providers:["ocr.extract"]` and receive only the injected admitted client.
 - **`roster`** — spreadsheet matching, using the same operator-defined column mapping onto
-  canonical fields (charter §11). Full design: doc 06.
+  canonical fields (charter §11). Full design: ref data-intake-and-edit-data.
 - **`normalization`** — reusable contact/address cleanup currently split across
   `services/llm/normalize-contact.ts` and `services/address/`. Deterministic phone/state/ZIP rules,
   geocoder reads, and optional model suggestions return a strict discriminated result with one
@@ -1282,14 +1282,14 @@ Rules:
 - Provider adapters apply the immutable Clock/config snapshot, timeout, abort, retry/admission,
   redaction, request/response schema, usage/cost, and evidence policy once. Provider failure is a
   typed unavailable/invalid outcome or a declared task error; no adapter returns an empty value
-  that can mean success. D63 budgets and scheduling are owned by doc 05.
+  that can mean success. D63 budgets and scheduling are owned by ref execution-and-sessions.
 - A read that downloads or creates a local file declares `artifacts:"content-addressed"` and receives
   the kernel `ContentAddressedArtifactWriter`; direct mutable-path writes/imports from a task fail an
   architecture guard. A retry can therefore recreate the same cache artifact but cannot append a
   workbook or mutate operator-owned state. Mutable local projections use stable-keyed SQLite outboxes
-  and serialized projectors (docs 03/06), not task `run` side effects.
+  and serialized projectors (refs dashboard-surfaces/data-intake-and-edit-data), not task `run` side effects.
 - What service stores are NOT: a home for waits. Tracker-subscription waiting (oath-upload's
-  approval park) is a **gate** (§2.6, doc 02) — it must not be smuggled in as a `local` task.
+  approval park) is a **gate** (§2.6, ref workflow-model) — it must not be smuggled in as a `local` task.
 
 The old `services/timecard` is **not** another service store. Its pure calendar/range/year functions
 move to Clock-injected domain code; its current→previous orchestration becomes a semantic
@@ -1352,9 +1352,9 @@ export function decorateTask<T extends AnyTask>(
 
 | Layer | Mechanism | Example |
 |---|---|---|
-| One step of one workflow | `.decorate("transaction", hooks, label)` on doc 02's builder | pre/post-submit form screenshots in oath-signature |
-| Every step of one workflow | `.instrument(hooks)` on doc 02's builder | per-step audit screenshot policy |
-| Every task everywhere | kernel-level span hooks (doc 03) | step timing, `data:point` lanes |
+| One step of one workflow | `.decorate("transaction", hooks, label)` on ref workflow-model's builder | pre/post-submit form screenshots in oath-signature |
+| Every step of one workflow | `.instrument(hooks)` on ref workflow-model's builder | per-step audit screenshot policy |
+| Every task everywhere | kernel-level span hooks (ref dashboard-surfaces) | step timing, `data:point` lanes |
 
 Today's automatic end-of-step screenshots and error screenshots become kernel span hooks — zero
 per-workflow code, same as now, but attached at the task boundary instead of `ctx.step`.
@@ -1375,22 +1375,22 @@ per-workflow code, same as now, but attached at the task boundary instead of `ct
 ## 5. Composition — what the contract requires of the builder
 
 **The workflow builder API itself—read/transaction/branch/fork/child/gate nodes, replay, and
-resume—is owned and specified only by doc 02.** This section states the obligations task contracts
+resume—is owned and specified only by ref workflow-model.** This section states the obligations task contracts
 impose on that builder; it deliberately does not publish a second API sketch.
 
 - **Compile-time:** every node bind must return exactly `TaskInput<T>` (`z.input`—§2.2) and can only
   read workflow input plus declared upstream node outputs. Rename a task output field → every
   consuming read/transaction/branch/child mapping fails `tsc`.
   That is the charter's "a contract change on one side must fail to compile on the other."
-  Doc 02's builder accumulates both exact node outputs and each node's concrete contract tuple so
+  Ref workflow-model's builder accumulates both exact node outputs and each node's concrete contract tuple so
   decoration remains typed without reducing non-task graph outputs to a broad top type.
 - **Runtime:** the kernel parses the mapped value through `contract.input` before `run` (zod is
-  the second wall—this is also doc 02's "start from graph node N" entry validation: replayed
+  the second wall—this is also ref workflow-model's "start from graph node N" entry validation: replayed
   checkpoints flow into `outputs` and any missing required data fails the parse loudly, naming the
   task and field). `run`'s return is parsed through `contract.output` — a task cannot leak an
   out-of-contract shape downstream (today's "stub emitted the display label `"A"` instead of the
   enum" class of bug dies at the boundary it was born).
-- Branching/conditional steps, fan-out, gate nodes, and checkpoint/replay are doc 02 scope; the
+- Branching/conditional steps, fan-out, gate nodes, and checkpoint/replay are ref workflow-model scope; the
   contract here only fixes what a step IS.
 
 ---
@@ -1427,7 +1427,7 @@ export interface SessionProvider<S extends BrowserSystemId> {
   `auth: { ucpath: "on-first-use" }` — the kernel then logs in lazily at the first task that
   requests that page. That replaces `deferAuth: true` **and** the entire 15-line hand-rolled
   auth-step boilerplate in 5 workflows.
-- **Park/resume (D5):** when a run parks at a gate (doc 02), the kernel closes its contexts and
+- **Park/resume (D5):** when a run parks at a gate (ref workflow-model), the kernel closes its contexts and
   only then releases identity-exclusive leases; on resume it reacquires by calling `login` again.
   Idempotency is what makes release-on-park safe. Duo is cleared hands-off by Duo Autopilot inside `login`
   (§2.6, charter §9) — a login either finishes or throws; it never parks.
@@ -1441,11 +1441,11 @@ export interface SessionProvider<S extends BrowserSystemId> {
 
 ### 6.2 Dry-run: a graph composition, not a task flag
 
-- `dryRun` rides the **RunEnvelope** (kernel-owned, doc 02 — D6), never workflow input or TaskCtx.
+- `dryRun` rides the **RunEnvelope** (kernel-owned, ref workflow-model — D6), never workflow input or TaskCtx.
 - Read nodes execute normally. A transaction node executes its `prepare` arm under a retained page
   lease, records an honest `transaction.previewed` span, and ends the run at the node when dry-run
   policy is `stop-after-prepare`. Its `commit` arm is absent from the executable plan.
-  **How it ends is D210, normative in doc 02 §2.1:** the outcome is `done` (§10.1's "stops
+  **How it ends is D210, normative in ref workflow-model §2.1:** the outcome is `done` (§10.1's "stops
   successfully", discriminated by `envelope.dryRun`, which is already the durable record of the
   request), and the terminal result is a `RunDryRunPreviewResult` — the prepare output plus the
   beat-③ subject observation, `externalCommit: "none"` — bound to the PREVIEW schema hash rather
@@ -1456,11 +1456,11 @@ export interface SessionProvider<S extends BrowserSystemId> {
 - `dryRun:"unsupported"` belongs on the **transaction node**, not the commit task. The executor
   rejects such a run before launching a browser — and so does the START PLAN, because the node
   declaration is the whole of the answer: **dry-runnability is a property of the graph** (D209, doc
-  02 §2). A graph is previewable when every transaction node declares `stop-after-prepare`; a graph
+  ref workflow-model §2). A graph is previewable when every transaction node declares `stop-after-prepare`; a graph
   with no transaction node refuses by name rather than trivially succeeding, since previewing it
   would be indistinguishable from running it.
 - A genuine no-op established by durable history/live prewrite probe short-circuits before commit
-  and yields doc 02's typed `TransactionOutcome{disposition:"already-present"}` reconstructed from
+  and yields ref workflow-model's typed `TransactionOutcome{disposition:"already-present"}` reconstructed from
   validated proof. The commit impl is not called and no ledger entry claims this run filed it. It is
   not a dry-run simulation.
 - Transaction-node validation proves prepare and commit require the same browser system/context,
@@ -1501,7 +1501,7 @@ builder chain, not a field); more base machinery to maintain; harder to grep (ta
 **Recommendation: B.** It is the only shape where (a) the contract is inert data the descriptor
 layer can import without executing anything, (b) decoration structurally cannot fork the base, and
 (c) the team's existing mental model (`defineWorkflow`) carries over. The builder shape is retained
-**only** for workflow composition (doc 02), where accumulating generics genuinely need staged
+**only** for workflow composition (ref workflow-model), where accumulating generics genuinely need staged
 inference — tasks stay plain objects.
 
 ---
@@ -1515,19 +1515,19 @@ inference — tasks stay plain objects.
 | 3 | **Silent fallbacks in wrappers** — `catch { return { results: [] } }` in a task shell | The `fail-loud-catch-default` + `nullish-literal-data-fallback` ratchets are re-implemented in the rebuild repo over its own `src/` from day one (charter non-negotiable); plus: the kernel rethrows the base TaskError unconditionally and a unit test pins that an `onError` hook failure lands in `hookErrors`, never replacing the base error (D15) |
 | 4 | **Effect misdeclaration** — an external write hides in read/prepare code | Verb↔effect ratchet (`fill|stage`→prepare; `save|submit|upload|create|update|delete`→commit); external-write helpers require the unforgeable `MutationCapability`, which exists only on `CommitTaskCtx`; dry-run plans contain zero commit nodes |
 | 5 | **God tasks** — a task grows into a mini-workflow spanning systems | Browser store sessions are constrained to that system; service/workflow stores are sessionless and have no page. Cross-system logic physically belongs in graph composition |
-| 6 | **The untyped blob returns** — someone adds `any`/`Record<string, unknown>` side channels for display data | `CanonicalJsonSchema` rejects `any`/non-JSON outputs; `TaskCtx` has no `updateData`; display fields are projections of typed outputs (doc 03); a ratchet forbids `z.record(` in contract `output` schemas without an allowlist entry |
+| 6 | **The untyped blob returns** — someone adds `any`/`Record<string, unknown>` side channels for display data | `CanonicalJsonSchema` rejects `any`/non-JSON outputs; `TaskCtx` has no `updateData`; display fields are projections of typed outputs (ref dashboard-surfaces); a ratchet forbids `z.record(` in contract `output` schemas without an allowlist entry |
 | 7 | **Auth boilerplate re-accretes** — a workflow hand-rolls a login step | Auth timing is descriptor policy and execution is worker-owned; a grep-ratchet forbids login-task contracts and importing `stores/*/session.ts` login functions from workflows |
 | 8 | **Retry as a fallback** — cranking attempts to paper over a broken selector | `attempts` typed `2 \| 3`; `retryOn` has one value (`"transient"`); business-code errors are never transient unless the throw site explicitly claims it, which the fail-loud review catches |
 | 9 | **Decoration forks** — copying a base task file to tweak it | One-task-one-file + duplicate-id load-time throw; a ratchet flags two tasks whose `run` bodies import the same `impl` entry function with >90% identical text (cheap AST-less heuristic, allowlisted) |
 | 10 | **Verified legacy knowledge drifts after it is ported** | The bidirectional runtime-import guard (`src`↔`temp_src`) is **retired by D93** — separation is now physical (two repos, no shared module graph), so cross-runtime import is structurally impossible and needs no guard. The load-bearing mitigation is therefore **D90 cross-repo change accounting**: every copied selector/leaf records its legacy-repo commit hash + source path/key + verification evidence, and every legacy maintenance change is booked in the rebuild repo's `config/legacy-change-accounting.json` against the affected rebuilt capability ids, forcing re-port/reverification. The legacy repo is preserved wholesale through the single cutover |
 | 11 | **Contract/impl drift** — a contract edited without its impl (or vice versa), or a contract quietly importing server code | Pairing guard + bundle-safety import-graph guard (§3.2); the impl's `run` is typed against the contract's schemas, so a schema edit fails `tsc` in the impl; `example` re-parses on every CI run |
-| 12 | **Stale reads feeding writes** — a resumed run replays an old checkpoint into a commit | freshness+provenance metadata are mandatory on every read; derived outputs retain oldest input observation; `Infinity` needs a justification comment; graph dependencies are declared, never inferred by executing JavaScript bind functions (doc 02) |
+| 12 | **Stale reads feeding writes** — a resumed run replays an old checkpoint into a commit | freshness+provenance metadata are mandatory on every read; derived outputs retain oldest input observation; `Infinity` needs a justification comment; graph dependencies are declared, never inferred by executing JavaScript bind functions (ref workflow-model) |
 | 13 | **Undeclared error codes** — `ctx.fail` drifting to arbitrary strings | `const Codes` literal-tuple inference + a checked-in type-level test pinning that an undeclared code fails `tsc` (D15) |
-| 14 | **A read task hides a mutable local write** — retry duplicates a workbook row or overwrites an operator edit | read tasks can access only the content-addressed artifact writer when declared; direct mutable filesystem writes fail a guard; mutable sinks are stable-keyed serialized outbox projections (docs 03/06) |
+| 14 | **A read task hides a mutable local write** — retry duplicates a workbook row or overwrites an operator edit | read tasks can access only the content-addressed artifact writer when declared; direct mutable filesystem writes fail a guard; mutable sinks are stable-keyed serialized outbox projections (refs dashboard-surfaces/data-intake-and-edit-data) |
 | 15 | **TypeScript interface mistaken for runtime validation** — malformed JSON/DB/event payload is cast and reaches a write | every boundary owns a strict zod schema and parses on ingress/read; guard rejects non-strict persisted/wire objects and unchecked `as` casts at boundary adapters |
 | 16 | **Person input mistaken for page identity** — a stale employee remains open after a search | explicit subject scope on every task; reads that consume an already-open subject and every transaction resolve a registered authoritative observation at the declared point; wrong/unknown proof fails before extraction/commit; scenario corpus pins the New Kronos stale-timecard case |
-| 17 | **Selector duplication returns behind task helpers** | tasks cannot import `Page`/`Locator`, legacy selector maps, or locator recipes; only the driver layer can, and every task-used element/state/observation resolves through the doc-12 registry |
-| 18 | **One example masquerades as behavioral coverage** | contracts reference registered scenarios; error codes, wrong-subject, unexpected-state, cancellation, and transaction failure obligations are checked by doc 10's scenario-coverage guard |
+| 17 | **Selector duplication returns behind task helpers** | tasks cannot import `Page`/`Locator`, legacy selector maps, or locator recipes; only the driver layer can, and every task-used element/state/observation resolves through the ref operator-trust registry |
+| 18 | **One example masquerades as behavioral coverage** | contracts reference registered scenarios; error codes, wrong-subject, unexpected-state, cancellation, and transaction failure obligations are checked by ref guards-and-tests's scenario-coverage guard |
 | 19 | **A service task hides provider/network I/O in an import** | service contracts declare provider capabilities; task ctx exposes only injected narrowed clients; direct SDK/fetch imports outside registered infra adapters fail the D63 guard; provider budgets/preflight/scenarios are bidirectionally covered |
 
 Honest residual risks (no full mechanical guard): (a) *output schemas that are too loose*
@@ -1542,12 +1542,12 @@ two-commit rule but ultimately a review discipline.
 
 ### 9.1 `ucpath/search-person-org` (read) — the canonical example (D16)
 
-**Defined once, here; doc 02 imports it verbatim.** The output shape is taken from the REAL
+**Defined once, here; ref workflow-model imports it verbatim.** The output shape is taken from the REAL
 primitive it wraps — `lookupPersonInUcpath` (`src/workflows/person-lookup/lookup.ts`), which
 returns `PersonLookupRunResult { input, results, selection, allAttempts }` built from
 `EidResult` (`src/systems/ucpath/person-org-summary.ts:132`) and `PersonLookupSelection`
 (`src/workflows/person-lookup/outcome.ts:39`). Two deliberate exclusions from the contract:
-`allAttempts` (the per-strategy search trail — audit material for doc 03's notes stream, not data
+`allAttempts` (the per-strategy search trail — audit material for ref dashboard-surfaces's notes stream, not data
 a downstream step may key on) and `EidResult.rowIndex` (a page-local drill-in artifact).
 
 ```ts
@@ -1592,7 +1592,7 @@ export const SearchPersonOrg = defineTaskContract({
   effect: "read",
   /** Identity/status data that may feed a live write (separations feeds a
    *  termination off it). A checkpoint older than 15 min may not feed a
-   *  commit task on resume (D8; enforcement walk in doc 02). */
+   *  commit task on resume (D8; enforcement walk in ref workflow-model). */
   freshness: { defaultMaxAgeMs: 15 * 60_000 },
   provenance: { default: "live" }, // this execution read the authoritative UCPath grid
   subject: { kind: "none", reason: "identity-search" }, // resolves identity; no subject is open yet
@@ -1700,7 +1700,7 @@ export const SubmitImport = defineTaskContract({
   output: z.strictObject({ proof: OnBaseUploadProofSchema }),
   errorCodes: ["upload-unverified", "session-held-elsewhere"],
   example: { proof: ONBASE_UPLOAD_PROOF_EXAMPLE },
-  writeSafety: onBaseUploadSafety, // doc 09: typed state/artifact proof
+  writeSafety: onBaseUploadSafety, // ref write-safety: typed state/artifact proof
 });
 
 export const fillImport = defineTask(onbaseDriver, FillImport, {
@@ -1721,14 +1721,14 @@ export const submitImport = defineTask(onbaseDriver, SubmitImport, {
 });
 ```
 
-Doc 02 pairs these in one `transaction` node. The kernel retains the same OnBase page/context and
+Ref workflow-model pairs these in one `transaction` node. The kernel retains the same OnBase page/context and
 global identity lease from the first prepare action through commit verification. Dry-run executes
 `fillImport` and stops; `submitImport` is not in the executable plan.
 
 ### 9.3 Decorating (oath-signature's transaction audit shots)
 
 Decoration is this doc's; the full composed person-lookup flow (binding, conditional steps, gates)
-lives in doc 02 §3.2 and imports these contracts verbatim (D16).
+lives in ref workflow-model §3.2 and imports these contracts verbatim (D16).
 
 ```ts
 const auditedSave = decorateTask(ucpathStore.tasks.saveOathSignature, {
@@ -1736,7 +1736,7 @@ const auditedSave = decorateTask(ucpathStore.tasks.saveOathSignature, {
   after:  async ({ ctx }) => ctx.capture("oath-saved"),
 }, "oath-form-audit");
 // same type as the base — slots into any step the base fits; on the builder,
-// the equivalent is .decorate("transaction", hooks, "oath-form-audit") (doc 02).
+// the equivalent is .decorate("transaction", hooks, "oath-form-audit") (ref workflow-model).
 ```
 
 ---

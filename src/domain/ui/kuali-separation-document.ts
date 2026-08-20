@@ -1,6 +1,6 @@
 /**
  * Kuali Build — the RRSS **Separation Request Form** read surface (D194 /
- * doc 01 §2.8).
+ * ref task-contract §2.8).
  *
  * One page visit, one fixed strict output: everything the separation document
  * carries that a later composition could want, captured while we are standing
@@ -107,7 +107,7 @@ export const KUALI_RRSS_SEPARATION_READY = PageStateIdSchema.parse(
  * The document number the page itself displays — the SUBJECT of this read.
  *
  * The subject of a separation-document read is the DOCUMENT, not the person:
- * the run names a document and the EID is what the read discovers. Doc 01's
+ * the run names a document and the EID is what the read discovers. Ref task-contract's
  * `artifact` subject kind with `identity:"document-id"` is exactly that shape,
  * and it is why this observation exists beside the person-subject
  * `kuali.rrss-document.displayed-eid` the write binding uses.

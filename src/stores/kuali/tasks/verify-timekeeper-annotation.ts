@@ -6,7 +6,7 @@ import { kualiTimekeeperVerdict } from "../timekeeper-verdict.js";
 /**
  * Beat ⑥'s completion verifier. It runs on the RETAINED transaction page
  * immediately after the click, and its reload is the only thing that can turn
- * a UI-silent Kuali save into landing proof (doc 09 §13 OQ1 (a)).
+ * a UI-silent Kuali save into landing proof (ref write-safety §13 OQ1 (a)).
  *
  * Anything other than `present` parks the run: `absent` means the save did not
  * take, `unknown` means we could not tell, and neither may report success.

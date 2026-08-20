@@ -1,5 +1,5 @@
 /**
- * THE run/queue projection (doc 03 §2.2-2.3, D81 §10.1): the emit → JSONL →
+ * THE run/queue projection (ref dashboard-surfaces §2.2-2.3, D81 §10.1): the emit → JSONL →
  * fold → DashboardDayWire round-trip over a seeded world with
  * delegated, gated, failed, and terminal rows; count equality by
  * construction; runs_view persistence; apply-failure degradation with the
@@ -172,7 +172,7 @@ describe("THE run/queue projection (D81)", () => {
     );
 
     /*
-     * Doc 13 §8.5 — this world registers NO descriptor (the same reason its
+     * Ref frontend-backend-integration §8.5 — this world registers NO descriptor (the same reason its
      * pipeline shows only observed nodes), so no row may draw a control: the
      * `WorkflowActionPolicy` is the workflow's own statement of what it offers,
      * and a build that cannot read it must not guess a default set onto a run
@@ -182,7 +182,7 @@ describe("THE run/queue projection (D81)", () => {
   });
 
   /**
-   * The row's controls, joined from the run's OWN descriptor (doc 13 §8.5).
+   * The row's controls, joined from the run's OWN descriptor (ref frontend-backend-integration §8.5).
    * `queue-row-actions.test.ts` owns the per-status table; what this projection
    * owes is the join — the right policy, the right lifecycle facts, and the
    * row's own revision as every descriptor's CAS target.
@@ -700,7 +700,7 @@ describe("the live exit-run presentation shapes (D123/D124)", () => {
  * row. Every one of these is a real transition the kernel already performs;
  * none of them had a projection arm pinned before D190.
  */
-describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
+describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", () => {
   /**
    * A worker card is its LEASE (D248); the spans are what it is holding. Both
    * are seeded here so these arms exercise the join rather than one half.
@@ -958,7 +958,7 @@ describe("the fold arms a moving run reaches (doc 03 §2.2)", () => {
 });
 
 /**
- * The four row facts that had a consumer and no producer (doc 03 §1.2, §9
+ * The four row facts that had a consumer and no producer (ref dashboard-surfaces §1.2, §9
  * D12/D13/D22/D126). Each one is a field the queue component already drew the
  * moment it arrived, so what these arms pin is where the value comes FROM —
  * and, for three of them, which absences the row must state instead of

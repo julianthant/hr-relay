@@ -1,5 +1,5 @@
 /**
- * The capture surface service (doc 06 §5.1, doc 11, doc 12 §7, D174).
+ * The capture surface service (ref data-intake-and-edit-data §5.1, ref clock-config-secrets, ref operator-trust §7, D174).
  *
  * The phone never speaks the command protocol. It presents a token and a verb;
  * this service turns that into exactly one of D167's seven journaled capture
@@ -23,7 +23,7 @@
  *
  * A session past `expiresAt` is written to `expired` before it is refused, so
  * a restarted dashboard does not re-open a window the clock already closed.
- * The two budgets are doc 06 §5.1's: `preConnectTtlMs` from creation, then
+ * The two budgets are ref data-intake-and-edit-data §5.1's: `preConnectTtlMs` from creation, then
  * `activeIdleTtlMs` from the phone's first connect. The active budget is set
  * ONCE, at connect, rather than sliding on every read — a GET that rewrites
  * authority on every poll is a mutation wearing a read's clothes.
@@ -146,7 +146,7 @@ export interface CaptureServiceDependencies {
 /** Every capture command this surface issues came from the phone (D174). */
 const PHONE_SOURCE = "capture-phone";
 
-/** The phone's own commands are still the local operator's acts (doc 12 §7). */
+/** The phone's own commands are still the local operator's acts (ref operator-trust §7). */
 const ACTOR = LOCAL_OPERATOR_ACTOR_ID;
 
 export function createCaptureService(dependencies: CaptureServiceDependencies): CaptureService {
@@ -313,7 +313,7 @@ export function createCaptureService(dependencies: CaptureServiceDependencies): 
         `that photograph is ${String(upload.bytes.byteLength)} bytes, over the ${String(captureConfig.maxPhotoBytes)}-byte limit`,
       );
     }
-    // The artifact is written BEFORE the authority mutation, exactly as doc 06
+    // The artifact is written BEFORE the authority mutation, exactly as ref data-intake-and-edit-data
     // §5.1 requires: the command carries a resolvable ref, never bytes.
     const artifact = await dependencies.artifacts.put(upload.bytes, { mediaType: mediaType.data });
     return {
@@ -496,7 +496,7 @@ export interface CaptureIngressResolverDependencies {
 }
 
 /**
- * Doc 11's three modes, resolved to an origin or to a NAMED refusal.
+ * Ref clock-config-secrets's three modes, resolved to an origin or to a NAMED refusal.
  *
  * `on-demand-ngrok` is the shipped default and its tunnel launcher does not
  * exist in this repository yet, so it refuses `ingress-not-built` rather than

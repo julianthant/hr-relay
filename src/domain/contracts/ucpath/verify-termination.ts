@@ -1,5 +1,5 @@
 /**
- * `ucpath/verify-termination` — the `save-verify` READ-BACK at doc 09 beat ⑥.
+ * `ucpath/verify-termination` — the `save-verify` READ-BACK at ref write-safety beat ⑥.
  *
  * It is a separate contract from the idempotency probe even though both return
  * the same verdict shape, because the kernel calls them at different beats for

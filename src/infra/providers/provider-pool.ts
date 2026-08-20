@@ -1,5 +1,5 @@
 /**
- * The production provider pool (doc 06 §4.11, 2h-D): ONE `ProviderAdapter`
+ * The production provider pool (ref data-intake-and-edit-data §4.11, 2h-D): ONE `ProviderAdapter`
  * per capability that selects WHICH child — a (key, model) pairing — answers
  * each invocation.
  *

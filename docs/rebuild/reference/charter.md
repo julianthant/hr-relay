@@ -11,10 +11,11 @@ it becomes binding.
 
 **Standing rule — a decision is not ratified until it lands in its owning doc.** Operator answers
 recorded only in a review file or decision sheet are *proposals*. The commit that records an
-answer must also fold it into the owning doc (D1 matrix, `04-reconciliation.md`) and add one
-changelog line to doc 04. Review files and doc 04 are decision *history*; the owning doc is the
+answer must also fold it into the owning doc (D1 matrix, `reference/decisions.md`) and add one
+changelog line to ref decisions. Review files and ref decisions are decision *history*; the owning doc is the
 only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications sat four days in
-`reviews/second-look-2026-07-22.md` while docs 00/07/09 still specified the world they replaced.)
+`reviews/second-look-2026-07-22.md` while ref charter, the master plan and ref write-safety still
+specified the world they replaced.)
 
 ## Why we're rebuilding (evidence from the 2026-07-17 structural survey)
 
@@ -78,7 +79,7 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
    node**—never an internal prepare/commit arm. Entry validation fails loudly if required upstream
    outputs/provenance are missing and proceeds only when the full node-entry contract is satisfied. The
    task-N-consumes-task-N-1-output tension must be resolved by an explicit, validated mechanism
-   (design doc 02 owns this).
+   (design ref workflow-model owns this).
 5. **Descriptor SSOT** — a bundle-safe, plain-data descriptor per workflow containing its complete
    typed graph (task, transaction, branch, parallel/fork-join, child-run, and gate nodes), versioned
    identity, presentation, run surfaces/actions, input presets, item identity, completion program,
@@ -103,7 +104,7 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
 10. **Parallelism-first kernel (operator directive 2026-07-17).** Today's parallel-worker model is
    slow (e.g. the ~33s UCPath sleep tax, serialized per-worker items). The new execution kernel is
    designed from the ground up for fast parallel work — same parallel-running capability as today,
-   but re-architected for speed, not ported. Design doc: `05-execution-parallelism.md`.
+   but re-architected for speed, not ported. Design doc: `reference/execution-and-sessions.md`.
 11. **First-class data-service systems (operator directive 2026-07-17).** `extraction` (CSV + PDF),
    `normalization` (contact/address rules plus explicit provider-backed suggestions), `ocr`, and
    `roster` (spreadsheet matching) are their own systems with their own task stores. Remote
@@ -113,7 +114,7 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
    Extraction and roster use **operator-defined column mapping**: the operator manually connects a
    source column title to a canonical codebase field (e.g. some spreadsheet's column → `eid`); the
    mapped values flow into the workflow's zod input schema, so every cell and assembled row is
-   schema-validated with visible row-level rejection—not guessed into validity. Design doc: `06-data-intake-and-edit-data.md`.
+   schema-validated with visible row-level rejection—not guessed into validity. Design doc: `reference/data-intake-and-edit-data.md`.
 12. **Edit Data over checkpoints (operator directive 2026-07-17).** Whenever a run is stopped or
    parked for later resume, the data the workflow currently holds (its checkpoint state) is ALWAYS
    live-visible in the Context rail's merged Data section. Descriptor-allowlisted correction fields
@@ -134,8 +135,8 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
      `T002173685`). Permanent-key fencing closes double filing; the wrong-person class additionally
      requires the identity-approval gate, **ratified 2026-07-24 as ALWAYS-GATE** — manual operator
      approval on every separation, for both separation types (Kuali separations and I-9
-     separations), with no auto-approve-on-match mode. Its design is owned by doc 09 §14 and its
-     gate-node mechanism by doc 02. The plan never claims a probe that can read the wrong person
+     separations), with no auto-approve-on-match mode. Its design is owned by ref write-safety §14 and its
+     gate-node mechanism by ref workflow-model. The plan never claims a probe that can read the wrong person
      makes that class structurally impossible; the gate is what closes it.
    - **Kuali** — **SAVE-only, not a submit** (operator 2026-07-18): a write, but not an irreversible
      filing. No confirmation-number receipt needed; the automation must still verify the save
@@ -173,21 +174,21 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
     Branded ids/scalars and discriminated outcomes replace interchangeable strings; `optional`
     means not supplied, `nullable` means observed no value, and `unknown` is an explicit outcome
     that must be handled. Open `Record<string, unknown|JsonValue>` bags are forbidden for durable or
-    decision-driving data. Full rules: docs 01/03 and reconciliation D46.
+    decision-driving data. Full rules: refs task-contract/dashboard-surfaces and reconciliation D46.
 16. **Observed-subject binding before real writes.** The intended EID/name in a workflow input does
     not prove which person's page is open. Subject-scoped browser tasks may declare an authoritative
     UI observation and matching policy for high-risk reads; every prepare/commit pair must. A commit re-observes and matches the page
     after prepare, immediately before the fence/click, and records expected+observed proof in the
     transaction evidence. Missing/mismatched identity fails or parks before mutation. This closes
     the stale-page class seen in New Kronos and complements—does not replace—the separations
-    identity-approval gate. Full enforcement: docs 01/09/12.
+    identity-approval gate. Full enforcement: refs task-contract/write-safety/operator-trust.
 17. **Queue/control/delegation are kernel protocols, not workflow features.** Enqueue, retry,
     cancel, bump, hide/restore, authoritative tree targeting, dependency transitions, and command
     idempotency/versioning have one server-owned implementation. “Delete” means reversible
     **Hide from queue**; destructive Purge is a separate offline maintenance operation. Workflows
     can restrict safe actions, never redefine their semantics. Delegation declares typed child
     input/output, stable child identity, join/failure/partial/cascade/retry policy, and is persisted
-    atomically with the child manifest. Full design: docs 02/03.
+    atomically with the child manifest. Full design: refs workflow-model/dashboard-surfaces.
 18. **Semantic UI vocabulary + trustworthy evidence.** Important controls, screens, page states,
     and observations have stable canonical names, non-identity search terms, explicit `supersedes`
     links, and verification evidence. Browser
@@ -195,13 +196,13 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
     infrastructure. Every run projects a receipt of inputs, observations, decisions, actions,
     verification, output, reused checkpoints/proofs, warnings, and uncertainty. Failures produce a
     structured record and redacted diagnostic bundle addressable by `explain run`. Full design:
-    doc 12.
+    ref operator-trust.
 19. **Scenarios and knowledge improve with real use without becoming a pile.** Every task/workflow
     has a registered scenario corpus beyond one happy example; unexpected page states fail visibly
     and become new scenarios when understood. Existing LESSONS are triaged, not copied wholesale,
     into structured active/superseded/retired knowledge. AI-assisted fixes record the failure,
     affected ids/files, regression scenario, verification, and commit; raw chat is never authority.
-    Full design: doc 12.
+    Full design: ref operator-trust.
 20. **The workflow editor starts as the real graph, then earns safe editing.** The base includes a
     read-only descriptor/live-run explorer (deferred to the Phase-2 tails, not the spine). After
     the transaction proof it may edit presentation and a closed set of typed composition/policy
@@ -211,18 +212,18 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
     pipeline, no codegen, no exclusive source-vs-DSL mode. Workflows are source-authored; the
     editor does presentation + safe closed policy fields, and anything else generates a
     code-change brief. Reinstatement requires a new explicit operator architecture decision; a
-    migration questionnaire cannot enable it. Full design: doc 12.
+    migration questionnaire cannot enable it. Full design: ref operator-trust.
 21. **Irreplaceable local state has an operational recovery contract.** SQLite claims,
     checkpoints, dependencies, commands, intents, manifests, and outboxes are not reconstructible
     from JSONL. Startup integrity/migration/disk/WAL checks, rotating online backups, mandatory
     pre-migration backup, restore drills, and read-only rescue mode are part of the base. New writes
-    stay disabled when authority health is unknown. Full storage owner: doc 03.
+    stay disabled when authority health is unknown. Full storage owner: ref dashboard-surfaces.
 22. **Mobile photo capture is reliable intake, not an in-memory sidecar.** Open sessions, token
     expiry, ordered photo digests, finalization, and OCR/intake handoff survive dashboard restarts.
     Finalization is one durable, retryable operation: bundle/register/enqueue succeeds visibly or
     fails visibly; it cannot return success and lose a background callback. The main app remains
     loopback-only; an operator-started short-lived phone tunnel exposes only token-scoped capture
-    endpoints. Full intake design: doc 06; network boundary: doc 12.
+    endpoints. Full intake design: ref data-intake-and-edit-data; network boundary: ref operator-trust.
 23. **AI assistance is optional evidence, never authority.** OCR/contact normalization and
     operator-requested triage, sanity checks, selector suggestions, or run summaries return strict,
     provenance-labelled advisory outcomes. Redacted inputs only; unavailable/invalid model output
@@ -235,7 +236,7 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
     closing milestone and legacy-change-accounting links. Runtime proxy is not a disposition.
     Completing the inventory authorizes the single cutover only; the whole legacy repo — source and
     tests — remains preserved afterward. Any later retirement/deletion requires a separate explicit operator
-    authorization and its own capability/rollback proof. Master owner: doc 07; guard owner: doc 10.
+    authorization and its own capability/rollback proof. Master owner: the phase docs; guard owner: ref guards-and-tests.
 25. **Versioning by fingerprint; archiving by version bump; git is the archive (2026-07-24).**
     No archive folders. Descriptors carry a version + content fingerprint; guards force a bump on
     behavior change; every run permanently stamps the workflow version *and* app version it ran
@@ -257,14 +258,14 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
     dashboard the per-workflow badges "always error out" — the recorded bug class of count/badge
     divergence (≥4 separate fixes). In the rebuild, Workflow Panel badges, Status Bar counts, and
     Queue Panel rows are read from **one** server-side projection. A count may never be computed by
-    a second path, so it can never disagree or error independently. Projection owner: doc 03;
-    guard owner: doc 10.
+    a second path, so it can never disagree or error independently. Projection owner: ref dashboard-surfaces;
+    guard owner: ref guards-and-tests.
 27. **The receipt must survive the operator's double-check (2026-07-24 acceptance test).** The
     operator double-checks most real transactions today. The rebuilt row/receipt therefore carries
     the exact proof they would otherwise go fetch: the transaction/confirmation number, the
     post-submit confirmation screenshot, and the person identity observed at commit. **Acceptance:
-    the operator can complete their double-check without opening UCPath.** Owner: doc 09 (proof
-    content) + doc 12 (receipt surface).
+    the operator can complete their double-check without opening UCPath.** Owner: ref write-safety (proof
+    content) + ref operator-trust (receipt surface).
 
 ## Non-negotiables
 
@@ -275,7 +276,7 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
   lessons, OnBase single-session constraint. This code moves nearly verbatim and gets *wrapped* in
   new contracts. Re-derivation from scratch is forbidden — it discards live verification.
 - **Port knowledge, not stale lesson files.** Existing `LESSONS.md`/`CLAUDE.md` entries are evidence
-  for migration. They are triaged into doc 12's structured active knowledge or incident history;
+  for migration. They are triaged into ref operator-trust's structured active knowledge or incident history;
   superseded/incorrect/duplicate guidance does not move into the rebuilt prompt/search surface.
 - **Local-FIRST with multi-user seams (amended 2026-07-23; supersedes "local-only").** The tool
   stays single-operator today, but the operator intends to open it to others later and wants that
@@ -287,7 +288,7 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
   brings their own HR logins and Duo; (4) **per-actor notification/read state**. Still explicitly
   out of scope for Phase 1: RBAC/permissions UI, user management, teams, network deployment/TLS,
   per-user dashboards, remote sync, HA, distributed consensus. The operator server binds loopback;
-  doc 06's short-lived token-scoped mobile-capture ingress is the sole exception. Secret/SSN/
+  ref data-intake-and-edit-data's short-lived token-scoped mobile-capture ingress is the sole exception. Secret/SSN/
   HR-data redaction, reliable backups, strict validation, and fail-closed write/identity behavior
   remain mandatory because the tool handles real employee data and transactions.
 
@@ -312,7 +313,8 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
     layer sits over it rather than replacing it.
 - **Build speed is the top optimization target (2026-07-24).** Where two designs are both
   correct and both safe, the one that ships sooner wins. This is the tie-breaker behind the
-  Phase-1 restructure and the ratified ceremony trims (doc 07 §2.1/§3.7). It never overrides a
+  Phase-1 restructure and the ratified ceremony trims (roadmap §Phases at a glance,
+  doc 00 §Size model + delivery tiers). It never overrides a
   write-safety, identity, or fail-loud requirement — those are what the program is for.
 - **Same quality umbrella from day one.** The rebuild repo has its own tsconfig project, unit tests,
   and `npm run test:architecture` ratchets, all covering its whole tree from its first file. New
@@ -353,16 +355,20 @@ only readable current truth. (Added 2026-07-26 after the 07-23/24 ratifications 
   preserved as rollback code at initial cutover, which is strictly stronger than the in-tree
   preservation this decision originally assumed. Neither source nor tests are deleted without a
   later, separate operator authorization plus capability proof. After the new runtime has performed
-  native writes, rollback requires the reconciliation/dedupe bridge named in doc 07; the two engines
+  native writes, rollback requires the reconciliation/dedupe bridge named in doc 05 §Phase summary; the two engines
   never run concurrently as production authority.
 
 ## One master plan (operator directive 2026-07-17)
 
-When the design docs converge, they are consolidated into a SINGLE phased master plan
-(`07-master-plan.md`) containing every piece of information needed to build — there must never be
-multiple competing plans that can cause mix-ups. Each concept has exactly one owning doc (the D1
-matrix in `04-reconciliation.md`); the master plan sequences phases and references the owners, it
-does not redefine contracts. **After each build phase completes, it is documented**: subsequent
+When the design docs converge, they are consolidated into a SINGLE phased plan containing every
+piece of information needed to build — there must never be multiple competing plans that can cause
+mix-ups. _(As built: that plan is the eight phase docs `docs/rebuild/00`–`05`, one per phase, plus
+`docs/roadmap/roadmap.md`'s governance prose and phase table. It was ONE file, `07-master-plan.md`,
+until 2026-08-20, when it was dissolved into them and preserved at
+`docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md`; the one-plan rule is unchanged — the
+phase docs are one plan, split by phase, and nothing else may sequence the build.)_ Each concept has
+exactly one owning doc (the D1 matrix in `reference/decisions.md`); the plan sequences phases and
+references the owners, it does not redefine contracts. **After each build phase completes, it is documented**: subsequent
 phases add new docs and/or update existing ones so the documentation always matches what is built.
 The foundation's documentation is part of the foundation.
 

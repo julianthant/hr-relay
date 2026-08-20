@@ -1,6 +1,6 @@
 /**
  * THE run/queue projection — the single server-side read model every surface
- * renders (doc 03 §2.2/§2.3, D81 §10.1).
+ * renders (ref dashboard-surfaces §2.2/§2.3, D81 §10.1).
  *
  * Workflow Panel badges, Status Bar pills, and Queue Panel rows are three
  * renderings of ONE payload: `buildDashboardDayWire` derives the queue
@@ -21,7 +21,7 @@
  * deleting that table loses nothing — `rebuildFromJsonl` is the
  * `rebuild-from-native-jsonl` recovery class.
  *
- * Failure policy (doc 03 §2.3): JSONL append happens BEFORE any fold sees the
+ * Failure policy (ref dashboard-surfaces §2.3): JSONL append happens BEFORE any fold sees the
  * event — structurally, because the fold only reads the file. A failing fold
  * or an unparsable tailed line marks the projection degraded and schedules a
  * guarded rebuild — never a skip, and never a throw into the emitting path. A
@@ -31,7 +31,7 @@
  * Closed vocabulary mappings this projector owns (noted, not silent):
  * - run outcome → queue status: `done→done`, `failed→failed`,
  *   `cancelled|discarded|superseded→cancelled`; `interrupted` maps to
- *   `blocked` (the run stopped without a settled verdict — doc-09 recovery
+ *   `blocked` (the run stopped without a settled verdict — ref write-safety recovery
  *   will requeue or settle it; calling it cancelled or failed would claim a
  *   verdict nobody reached).
  * - task outcome → pipeline state: `done→done`, `failed→failed`,
@@ -86,7 +86,7 @@ import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../support.js";
 
 const TaskSpanFoldSchema = z.strictObject({
   /**
-   * Span identity is `(runId, attempt, spanPath)` (doc 03 §1.1), and the
+   * Span identity is `(runId, attempt, spanPath)` (ref dashboard-surfaces §1.1), and the
    * attempt is load-bearing HERE: `<trace>/<node>#<taskAttempt>` repeats
    * verbatim when a later RUN attempt re-runs the same node, so folding on
    * the path alone made attempt 2's start collide with attempt 1's entry —
@@ -153,7 +153,7 @@ export interface RunQueueProjectionDeps {
   readonly stateRoot: string;
   readonly clock: Clock;
   readonly appVersion: string;
-  /** One fingerprint over the registered descriptor set — doc 02's skew tripwire. */
+  /** One fingerprint over the registered descriptor set — ref workflow-model's skew tripwire. */
   readonly descriptorSetHash: Fingerprint;
   /**
    * D236 — the ONE second authority this projection reports beside its own
@@ -163,7 +163,7 @@ export interface RunQueueProjectionDeps {
    * of the carve-out. Every other number `buildActivityReportWire` serves is
    * folded from `#rows` in the loop below; this block arrives already folded
    * from `src/infra/ledger/`, an append-only audit corpus whose entries outlive
-   * the runs that filed them (doc 03 §10.1/§10.2 rule 1). Nothing here
+   * the runs that filed them (ref dashboard-surfaces §10.1/§10.2 rule 1). Nothing here
    * reconciles the two — a cross-check would assert they cover the same rows,
    * and they do not.
    */
@@ -179,13 +179,13 @@ export interface RunQueueProjectionDeps {
      * D248: the Session Panel's card set. Two reads, because the panel answers
      * two questions — every worker that EXISTS right now (`listLive`), and the
      * settled lease behind a worker the retained span stream still names
-     * (`get`). Doc 05 §3 gives the lease this job explicitly, so the projector
+     * (`get`). Ref execution-and-sessions §3 gives the lease this job explicitly, so the projector
      * no longer infers phase from whichever rows happen to be claimed.
      */
     listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
     /**
-     * D179/D80: whether a version bump has archived this run. Doc 03 §10.1 is
+     * D179/D80: whether a version bump has archived this run. Ref dashboard-surfaces §10.1 is
      * explicit that archived rows are excluded ONCE, inside the projection,
      * alongside member containment — so an archived run leaves the queue, the
      * workflow badge, the status pill, the month calendar and the Activity
@@ -207,9 +207,9 @@ export interface RunQueueProjectionDeps {
      */
     getReceipt(runId: string): RunEvidenceReceipt | undefined;
     /**
-     * Doc 02 §5.7's "latest compatible attempt wins" read, for the ONE fact the
+     * Ref workflow-model §5.7's "latest compatible attempt wins" read, for the ONE fact the
      * row derives from a stored node output: the subject's display name, at the
-     * leaf the descriptor declares (doc 03 §1.2, `run-subject-title.ts`).
+     * leaf the descriptor declares (ref dashboard-surfaces §1.2, `run-subject-title.ts`).
      *
      * It is read here rather than folded from a span because the fold has no
      * such fact to offer: D254 retired the `span.patched` detail channel — a
@@ -225,7 +225,7 @@ export interface RunQueueProjectionDeps {
     ): RunCheckpointRecord | undefined;
   };
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
-  /** The rebuildable projection tables (doc 03 §2.3). */
+  /** The rebuildable projection tables (ref dashboard-surfaces §2.3). */
   readonly projectionStore: {
     withProjectionTransaction<Result>(work: (repositories: ProjectionRepositories) => Result): Result;
   };
@@ -446,7 +446,7 @@ export class RunQueueProjection {
   }
 
   /**
-   * Doc 03 §2.3's failure policy, shared by every ingest path: degraded
+   * Ref dashboard-surfaces §2.3's failure policy, shared by every ingest path: degraded
    * health carrying the exact error, plus the guarded rebuild.
    */
   #degrade(lastError: string): void {
@@ -657,7 +657,7 @@ export class RunQueueProjection {
     }
 
     /**
-     * D210 — `transaction.previewed`. The JSONL stream carries it (doc 01 §6.2)
+     * D210 — `transaction.previewed`. The JSONL stream carries it (ref task-contract §6.2)
      * and this projection has no arm that could render it without lying: the
      * queue row's vocabulary is task spans and terminal outcomes, and a preview
      * is neither. It is deliberately IGNORED here rather than folded into a
@@ -741,7 +741,7 @@ export class RunQueueProjection {
       if (event.kind === "worker") worker.endedAt = event.ts;
       // A closed session is not a browser this worker holds — including a
       // poison close, which is a session that ended badly rather than one that
-      // is still there to act on (doc 05 §1: closure is OBSERVED, and this is
+      // is still there to act on (ref execution-and-sessions §1: closure is OBSERVED, and this is
       // the observation).
       else worker.browsers.delete(browserSessionOfSpanPath(event.spanPath).sessionId);
       worker.eventCount += 1;
@@ -957,7 +957,7 @@ export class RunQueueProjection {
    * D22/D126: the REAL warning count behind the `△ N` chip, plus the first
    * warning's own sentence for its title.
    *
-   * The warning set lives on the run's evidence receipt (doc 12's uncertainty
+   * The warning set lives on the run's evidence receipt (ref operator-trust's uncertainty
    * evidence) — the terminal result record stores the workflow's declared
    * result and knows nothing about uncertainty. The read is a plain lookup of
    * an already-derived receipt: deriving one here would make rendering a queue
@@ -1003,7 +1003,7 @@ export class RunQueueProjection {
   }
 
   /**
-   * Doc 03 §1.2: the subject's name, once this run has resolved one.
+   * Ref dashboard-surfaces §1.2: the subject's name, once this run has resolved one.
    *
    * The whole decision lives in `run-subject-title.ts` — a declared address,
    * one checkpoint read, no per-workflow branch — so the queue row and the
@@ -1121,7 +1121,7 @@ export class RunQueueProjection {
    *
    * The whole decision is the run's own SHAPE plus its lineage, both of which
    * are write-once identity attributes on the `run.queued` span — never the
-   * workflow id, which doc 13 §1.1 names as the inference this must not be.
+   * workflow id, which ref frontend-backend-integration §1.1 names as the inference this must not be.
    * A parented run whose shape is `operation-member` is the row a group counts;
    * any other parented run keeps its own row in its own panel and its parent
    * shows a chip.
@@ -1328,7 +1328,7 @@ export class RunQueueProjection {
       endedAt: this.#endedAt(row, authority, status),
       gateOpenedAt: this.#gateOpenedAt(row, authority, status),
       /**
-       * Doc 03 §1.2: the document number the plan composed, REPLACED once the
+       * Ref dashboard-surfaces §1.2: the document number the plan composed, REPLACED once the
        * run's own reads have settled the subject's name at the leaf this
        * workflow declares. A workflow that declares no subject leaf, and a run
        * whose declared node has not produced a checkpoint yet, both keep the
@@ -1357,10 +1357,10 @@ export class RunQueueProjection {
         ...(authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed" ? ["failure"] : []),
       ],
       /**
-       * The row's own command controls (doc 13 §8.5). Derived from the
+       * The row's own command controls (ref frontend-backend-integration §8.5). Derived from the
        * descriptor's declared `WorkflowActionPolicy` intersected with the
        * kernel's own preconditions — never from the status key, which is the
-       * branch doc 13 §8.5 fails a build for.
+       * branch ref frontend-backend-integration §8.5 fails a build for.
        */
       actions: queueRowActions(descriptor?.actions, {
         status,
@@ -1522,9 +1522,9 @@ export class RunQueueProjection {
   }
 
   /**
-   * The Activity report (D180, doc 13 §5/§6.7) — a range rendering of the SAME
+   * The Activity report (D180, ref frontend-backend-integration §5/§6.7) — a range rendering of the SAME
    * surfaces `buildDashboardDayWire` renders. It lives on this class, and not
-   * in a query module, because doc 13 §8 guard #4 names Activity aggregates
+   * in a query module, because ref frontend-backend-integration §8 guard #4 names Activity aggregates
    * explicitly: a report that summed rows a second way could disagree with the
    * day it summarises, which is the exact count/badge divergence D81 exists to
    * make unrepresentable. Archived rows and member containment are already

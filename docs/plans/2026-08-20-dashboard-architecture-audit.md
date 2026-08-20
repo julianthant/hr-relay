@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-20 · **Scope:** `src/server/dashboard/**` (BFF), `src/domain/dashboard/**` (wire),
 `src/dashboard/**` (frontend) · **Kind:** read-only structural audit + placement proposal ·
-**Status:** proposal — nothing below is ratified until it lands in its owning doc (doc 07 / doc 13)
+**Status:** proposal — nothing below is ratified until it lands in its owning doc (doc 03a / ref frontend-backend-integration)
 with a decision number. D255 is the last minted number; this document mints none.
 
 **Lens (operator, 2026-08-20):** solo, local, never hosted (D193). Everything here is ranked under
@@ -29,17 +29,17 @@ is a short list of targeted moves.
 
 ## 2 · The rebuild plan — phases, and what is done
 
-Source: `docs/rebuild/07-master-plan.md` §2 (the phase table), `ROADMAP.md` §1–§3, and
+Source: `docs/rebuild/reviews/2026-08-20-master-plan-dissolved.md` §2 (the phase table), `ROADMAP.md` §1–§3, and
 `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` §6 (the Phase 3
-tracks). Doc 07 wins on any disagreement.
+tracks). The phase docs win on any disagreement.
 
 | Phase | What it is | Status |
 |---|---|---|
-| **0** — foundation design | docs 00–13 reconciled, testing policy, all-at-once cutover ratified (D1–D94) | **COMPLETE 2026-07-31** |
+| **0** — foundation design | every reference spec reconciled, testing policy, all-at-once cutover ratified (D1–D94) | **COMPLETE 2026-07-31** |
 | **1** — the SPINE | 1a–1f base (guards, strict domain, authority storage/recovery, commands, registry, workers, write sequencer) + 1g-spine (span emission + the ONE projection + the BFF) + 1i-spine (Person Lookup parity slice in the approved shell) | **COMPLETE 2026-08-04** — D74 live exit: person-lookup ran against real UCPath + CRM on the new executor |
 | **2** — transaction proof + the deferred tails | controlled Kuali commit on real doc 4489 (D135) · 2g trust/evidence/notifications/ledger · 2h data-intake/OCR/capture/Edit Data · 2i operator surfaces (trust, bell, rail, settings, intake, phone capture, explorer, advisories, archive + Activity) · 2j integration/restore/soak gate | **COMPLETE 2026-08-09** — runtime marker `completedThrough: "2j"` |
-| **3+** — per-workflow migration | the 13 remaining legacy workflows, one at a time (doc 07 §3.3 order), each through the 7-step loop (§3.1) + non-workflow capability closure (§3.6) | **ACTIVE** — entry point **separations** (order 8, D193); Phase 3 is organised into the tracks below |
-| **Cutover** | one all-at-once authority switch (D89/D93); legacy preserved as the rollback asset | not started; gated on doc 07 §6 + §7.4 and doc 13 §10 |
+| **3+** — per-workflow migration | the 13 remaining legacy workflows, one at a time (doc 03c §Recommended migration order order), each through the 7-step loop (§3.1) + non-workflow capability closure (§3.6) | **ACTIVE** — entry point **separations** (order 8, D193); Phase 3 is organised into the tracks below |
+| **Cutover** | one all-at-once authority switch (D89/D93); legacy preserved as the rollback asset | not started; gated on doc 05 §Exit criteria + §7.4 and ref frontend-backend-integration §10 |
 
 ### Phase 3 as it stands today (the 2026-08-18 plan's tracks)
 
@@ -67,24 +67,24 @@ every load-bearing claim below was re-verified by hand.
 
 | Decision | Why it is right here | Enforced by |
 |---|---|---|
-| In-process Hono BFF, hand-rolled Node→Hono bridge (`http-server.ts:52-74`) | the chunk-by-chunk pipe is what lets SSE flush without `@hono/node-server`; no benefit to a network split for one operator | doc 13 §2 "the BFF remains in-process" |
-| REST snapshots + ONE SSE + ONE command route | matches append/project; GraphQL/WebSockets/polling rejected for stated reasons | doc 13 §0.3, §9 |
-| ONE projector (`run-queue-projection.ts:354`), 250 ms disk tail, no in-process hook | cross-process spans have no other way in (D218) | doc 03 §2.3, D218 |
+| In-process Hono BFF, hand-rolled Node→Hono bridge (`http-server.ts:52-74`) | the chunk-by-chunk pipe is what lets SSE flush without `@hono/node-server`; no benefit to a network split for one operator | ref frontend-backend-integration §2 "the BFF remains in-process" |
+| REST snapshots + ONE SSE + ONE command route | matches append/project; GraphQL/WebSockets/polling rejected for stated reasons | ref frontend-backend-integration §0.3, §9 |
+| ONE projector (`run-queue-projection.ts:354`), 250 ms disk tail, no in-process hook | cross-process spans have no other way in (D218) | ref dashboard-surfaces §2.3, D218 |
 | `src/domain/dashboard/*` zod schemas as the single wire truth; client types are all `z.infer`; no `any`/loose record at the wire | no handwritten twin anywhere | `dashboard-wire-boundary`, `strict-boundary-schemas` |
-| `client/` as one frozen facade; `subscription.ts` cursor/gap/generation logic headless and tested | the hard part of live updates, separated from React | `client-transport.test.ts`, doc 13 §3.5 |
+| `client/` as one frozen facade; `subscription.ts` cursor/gap/generation logic headless and tested | the hard part of live updates, separated from React | `client-transport.test.ts`, ref frontend-backend-integration §3.5 |
 | URL-as-state without a router; `activeTakeover` precedence as one function (`url-state.ts:129`) | deep-linkable, no dependency, testable | `global-keys.test.ts` |
 | Bespoke `primitives-layout/-status`; Radix only for dialog/popover/tooltip/context-menu/checkbox; `cva` only for Button/IconButton/Badge | the primitives encode DESIGN.md rules no library has | `DESIGN.md`, parity lane |
 | Tailwind: zero raw palette utilities, 1,472 `var(--ds-*)` references, inline `style` only for `<col>` widths | one approach, held | `tailwind palette` ratchet |
-| Surface/model pairing (`<surface>.tsx` components-only, `<surface>-model.ts` pure) | Fast Refresh boundary + the only way `.tsx` logic becomes unit-testable | `dashboard-refresh-boundary` (doc 13 §8.14) |
+| Surface/model pairing (`<surface>.tsx` components-only, `<surface>-model.ts` pure) | Fast Refresh boundary + the only way `.tsx` logic becomes unit-testable | `dashboard-refresh-boundary` (ref frontend-backend-integration §8.14) |
 | `.tsx` proven by the Playwright parity lane, extracted `.ts` by vitest | a deliberate split, documented in `vitest.config.ts` | coverage exclusions with reasons |
-| `{state:"present"|"absent", reason}` everywhere; `buildActivityReportWire` living on the projector (D81: one count path) | refuses coerced zeros; one count family | guards + doc 03 §10.1 |
+| `{state:"present"|"absent", reason}` everywhere; `buildActivityReportWire` living on the projector (D81: one count path) | refuses coerced zeros; one count family | guards + ref dashboard-surfaces §10.1 |
 | Layer discipline | server never imports `src/dashboard`; domain never imports infra; browser closure reaches no Node built-in | four mappers, zero findings |
 
 ### 3.2 Tier 1 — correctness (scale-free; fix regardless)
 
 | # | Finding | Evidence | Why it matters to one operator |
 |---|---|---|---|
-| C1 | **Detail-panel status diverges from queue status.** `statusOf` lacks the `row.ended` and `row.claimedBy` arms `#status` has, and inlines a copy of `RUN_OUTCOME_STATUS` | `queries/run-detail.ts:256` vs `projectors/run-queue-projection.ts:835`, `:267` | a run whose span stream ended before authority settled reads `done` in its row and `running`/`queued` in its panel — two derivations of one fact (doc 03 §2.3 says one); nobody else is there to notice |
+| C1 | **Detail-panel status diverges from queue status.** `statusOf` lacks the `row.ended` and `row.claimedBy` arms `#status` has, and inlines a copy of `RUN_OUTCOME_STATUS` | `queries/run-detail.ts:256` vs `projectors/run-queue-projection.ts:835`, `:267` | a run whose span stream ended before authority settled reads `done` in its row and `running`/`queued` in its panel — two derivations of one fact (ref dashboard-surfaces §2.3 says one); nobody else is there to notice |
 | C2 | **Two task-outcome vocabularies.** `TASK_OUTCOME_PIPELINE` maps `cancelled/discarded→blocked`; `TASK_OUTCOME_STEP` maps them `→cancelled` | `run-queue-projection.ts:342` vs `run-detail.ts:437` | same span, two words, two panels |
 | C3 | **HTTP status chosen by sniffing the error message** | `routes/api.ts:70-96` | a reworded message silently turns 404 into 500 |
 | C4 | **The capture phone-host gate middleware is inert** — `deps.capturePhoneHost` is never supplied | `routes/api.ts:141-156`, `compose.ts:759-818` | harmless until D189's ingress is built; a gate that compiles and never fires is D181's shape |
@@ -98,7 +98,7 @@ every load-bearing claim below was re-verified by hand.
 | P2 | **`#memberPreview` walks every member, then `.slice(0,3)`** — `getRun` + checkpoint per member | `run-queue-projection.ts:1178` | a 108-member group costs ~216 SQLite hits to print three names, on every day wire AND every SSE snapshot |
 | P3 | **Whole notes corpus read per logs GET**, and the archive freeze loops it up to 500× | `run-detail.ts:707` (`readEventStreamLines(stateRoot,"notes")`), `archive.ts:412` | 187k lines/month in legacy; a read that grows forever for a tool that runs for years |
 | P4 | **Duplicate receipt read per row** (`#warningVerdict` + `#facts` each `getReceipt`) ≈ 5 SQLite hits per terminal row per day wire and per snapshot | `run-queue-projection.ts:978`, `:1230` | ~6k queries to serve a 1,240-row day; fine on loopback SQLite today, but it multiplies P1 |
-| P5 | No virtualization/paging in queue/logs/activity/archive | plain `.map()` everywhere; only a comment at `primitives-data.tsx:42` | **an unmet documented budget** (doc 13 §7.4) — but secondary to P1: 1,240 plain rows render; 1,240 rows re-rendered per patch do not |
+| P5 | No virtualization/paging in queue/logs/activity/archive | plain `.map()` everywhere; only a comment at `primitives-data.tsx:42` | **an unmet documented budget** (ref frontend-backend-integration §7.4) — but secondary to P1: 1,240 plain rows render; 1,240 rows re-rendered per patch do not |
 
 Dropped under the lens (cloud/multi-tenant concerns, not yours): SSE keep-alive frames, request
 dedupe/abort-on-unmount, bundle bytes (343 kB gzip from disk), `/archive` N+1 and `/explorer`
@@ -124,7 +124,7 @@ total), one CAS transport for every mutating route.
 `run-start.tsx`). It drags 49 modules — all 8 descriptors, 22 task contracts, `base/workflow.ts`,
 the build manifest; 22 % of the 219-module closure; `grep -c separation` = 462 in `index-*.js` —
 to supply three plain fields. **D251 (today) ruled** that the bundle already carries these, so
-serving them over bootstrap would be a second source (doc 13 §8.2). The other reading: doc 13 §0.1
+serving them over bootstrap would be a second source (ref frontend-backend-integration §8.2). The other reading: ref frontend-backend-integration §0.1
 ("the frontend renders finished read models") and §4's owner column ("descriptor/config projection")
 point at the wire, and the reason there would be two sources is that `run-start.tsx` imports the
 registry at all. Bytes are irrelevant locally; the principle is not. Recorded here as **unclear**;
@@ -138,20 +138,20 @@ Nothing above is a new phase. Every item already has an owner in the existing st
 
 | Bucket | Items | Owning place | Why there |
 |---|---|---|---|
-| **Doc 03 §2.3 / doc 13 §10 item 5 — "one projection family, all counts reconcile"** | C1, C2, M3 | `docs/findings/dashboard-projection.md` (the category is literally "served surfaces disagree"); fix ratified in doc 03 | a second status derivation is a projection defect, not a frontend feature |
-| **Doc 13 §7.4 performance/resilience budgets** (program-wide pre-cutover exit criterion via doc 07 §7.4) | P1–P5 | doc 13 §7.4 — the budgets exist, "measured on the local production build with a realistic large fixture … thresholds recorded from the first Person Lookup slice"; **they have never been measured** | the budget text already names virtualize/page, the 50-member no-rebuild rule, and the one-EventSource rule; this audit supplies the first numbers |
-| **Doc 13 §3.4 one command protocol / §8 guards** | C5, M4, M7 (the dead `GET /dashboard`) | doc 13 §3.4 + `src/dashboard/CLAUDE.md` (correct the D253 sentence) | "one command protocol" is the contract; four patterns is drift by addition |
-| **Doc 13 §2 module boundaries + §8.14 refresh boundary** | M1, M2, M5, M6 | doc 13 §2 (`state/` is named as "normalized server cache + client-only UI state" — the cache half was never built) and `src/dashboard/CLAUDE.md` | the structure is documented; the implementation under-delivers it |
-| **D189 / capture ingress** | C4 | doc 13 §6.9 | the inert gate is the guard-arm D189 promised for the ingress slice; wire it or delete it before that slice starts |
+| **Ref dashboard-surfaces §2.3 / ref frontend-backend-integration §10 item 5 — "one projection family, all counts reconcile"** | C1, C2, M3 | `docs/findings/dashboard-projection.md` (the category is literally "served surfaces disagree"); fix ratified in ref dashboard-surfaces | a second status derivation is a projection defect, not a frontend feature |
+| **Ref frontend-backend-integration §7.4 performance/resilience budgets** (program-wide pre-cutover exit criterion via doc 05 §Exit criteria) | P1–P5 | ref frontend-backend-integration §7.4 — the budgets exist, "measured on the local production build with a realistic large fixture … thresholds recorded from the first Person Lookup slice"; **they have never been measured** | the budget text already names virtualize/page, the 50-member no-rebuild rule, and the one-EventSource rule; this audit supplies the first numbers |
+| **Ref frontend-backend-integration §3.4 one command protocol / §8 guards** | C5, M4, M7 (the dead `GET /dashboard`) | ref frontend-backend-integration §3.4 + `src/dashboard/CLAUDE.md` (correct the D253 sentence) | "one command protocol" is the contract; four patterns is drift by addition |
+| **Ref frontend-backend-integration §2 module boundaries + §8.14 refresh boundary** | M1, M2, M5, M6 | ref frontend-backend-integration §2 (`state/` is named as "normalized server cache + client-only UI state" — the cache half was never built) and `src/dashboard/CLAUDE.md` | the structure is documented; the implementation under-delivers it |
+| **D189 / capture ingress** | C4 | ref frontend-backend-integration §6.9 | the inert gate is the guard-arm D189 promised for the ingress slice; wire it or delete it before that slice starts |
 | **Hygiene** | C3, M7, M8 | no doc change; a commit | — |
-| **Operator ruling** | §3.5 | doc 13 §4 + D251 | a doc amendment either way |
+| **Operator ruling** | §3.5 | ref frontend-backend-integration §4 + D251 | a doc amendment either way |
 
 **Phase placement:** all of it is **Phase 3, non-workflow** — it is neither a workflow migration
 (§3.1) nor a legacy-capability closure (§3.6). The honest home is a **new Track D in the 2026-08-18
 plan — "dashboard hardening, pre-cutover budgets"** — sequenced *after* Track C's connection proof
 (so the proof runs against the tree the operator has been using, not a freshly refactored one) and
 *before* any workflow after separations starts consuming the dashboard in anger. The §7.4 budget
-measurement doubles as the **non-regression gate** doc 13 says those thresholds become.
+measurement doubles as the **non-regression gate** ref frontend-backend-integration says those thresholds become.
 
 ---
 
@@ -165,9 +165,9 @@ npm run test:coverage`, plus `npm run test:parity` for anything touching `.tsx`.
 | D1 | **One status/outcome derivation.** Export `deriveRunStatus(row, authority)` + one `TASK_OUTCOME` vocabulary + one `panelKindOf` from the projector; `run-detail.ts` and `archive.ts` read them. Record as a decision (it corrects the panel). | C1, C2, part of M3 | low | S |
 | D2 | **Hygiene commit.** Delete dead hooks/exports; un-export in-file-only components; typed `NotFoundError` instead of message-sniffing; wire `capturePhoneHost` (or delete the middleware with a D189 note); unify `testSystemsOf`/`plural`/`shortHash`; correct the D253 sentence. | C3, C4, C5 (doc half), M7, M8 | low | S |
 | D3 | **Fold every command settlement** through `settleCommandResult` (7 sites). | C5 | low | S |
-| D4 | **Patch-splice without full re-parse** — validate the patch (already parsed), splice, full parse on snapshot/reset only; `memo` `QueuePanel`/`TopBar`/`LogPanel`; memoize `viewState`/`nav`. Then **measure** P1 against a 1,240-row / 108-member seeded fixture and record the numbers in doc 13 §7.4. | P1, first §7.4 numbers | medium | M |
+| D4 | **Patch-splice without full re-parse** — validate the patch (already parsed), splice, full parse on snapshot/reset only; `memo` `QueuePanel`/`TopBar`/`LogPanel`; memoize `viewState`/`nav`. Then **measure** P1 against a 1,240-row / 108-member seeded fixture and record the numbers in ref frontend-backend-integration §7.4. | P1, first §7.4 numbers | medium | M |
 | D5 | **Bound the read scans**: `#memberPreview` slices ids before joining; one receipt read per row; notes reader scoped by `(workflow, run day-range)`; archive freeze reads the corpus once. Measure and record. | P2, P3, P4 | low–medium | S–M |
-| D6 | **`useResource` in `state/`** over `async-resource.ts` (per-key cache, invalidate-on-nonce); migrate the ≥9 copies; `state/` becomes what doc 13 §2 says it is. | M2 | medium | M |
+| D6 | **`useResource` in `state/`** over `async-resource.ts` (per-key cache, invalidate-on-nonce); migrate the ≥9 copies; `state/` becomes what ref frontend-backend-integration §2 says it is. | M2 | medium | M |
 | D7 | **Split `LoadedApp`** along its existing seams (`useDayRoute` / `useRunDetailState` / `useBulkSelection` into `app/*-model.ts`; the five takeover layouts into `app/takeovers.tsx`). | M1 | medium | M |
 | D8 | **Models for intake/archive/log-panel**; split the versioning half of `archive.tsx` into `versions.tsx`; one `foldTaskExecutions(row)` for pipeline/timeline/archive. | M3, M5, M6 | medium | M |
 | D9 | **Virtualized list primitive** in `ds/`, adopted by queue/logs/archive; re-measure. | P5 | medium | M |
@@ -180,8 +180,8 @@ maintainability slice and can be dispatched as independent worktree units after 
 
 ## 6 · What needs YOU
 
-**Ratified 2026-08-20 → D264** (doc 13 §4 + §7.4; `docs/rebuild/04-reconciliation.md` round 87;
-plan node `{#track-d}` in `docs/rebuild/14-roadmap.md`). The operator ruled all three:
+**Ratified 2026-08-20 → D264** (ref frontend-backend-integration §4 + §7.4; `docs/rebuild/reference/decisions.md` round 87;
+plan node `{#track-d}` in `docs/roadmap/roadmap.md`). The operator ruled all three:
 **(1) placement** — Track D under `{#dash-defaults}` after Track C, which is done, so the
 fold-into-Track-C alternative expired; **(2) §3.5** — `WORKFLOW_DESCRIPTORS` MOVES out of the
 bundle, bootstrap serves the three start-surface fields and the frontend drops the registry import,
@@ -193,7 +193,7 @@ behind one named trigger: before the second migration's `Dashboard · wire` task
    workflow's dashboard consumption. (Alternative: fold D1–D5 into Track C's close-out and defer
    D6–D10 to a named later trigger. I recommend the former; D6–D10 are exactly the kind of work that
    never gets a slot unless it has a track.)
-2. **Rule §3.5** — descriptors in the bundle stay (D251 as written) or move to bootstrap (a doc 13
+2. **Rule §3.5** — descriptors in the bundle stay (D251 as written) or move to bootstrap (a ref frontend-backend-integration
    §4 / D251 amendment).
 3. **Scope** — (a) D1–D3 only · (b) D1–D5 · (c) the whole track. Say which and I execute in that
    order, committing per row, gates green per commit, no push.

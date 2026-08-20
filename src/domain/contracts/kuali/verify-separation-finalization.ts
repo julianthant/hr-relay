@@ -1,6 +1,6 @@
 /**
  * `kuali/verify-separation-finalization` — the `save-verify` READ-BACK at
- * doc 09 beat ⑥, and the answer to the behavior review's open question:
+ * ref write-safety beat ⑥, and the answer to the behavior review's open question:
  * *"after a Kuali finalization save, what is the cheapest way to prove it
  * landed?"* (**S59**).
  *
@@ -26,7 +26,7 @@
  * | **S60** UCPath filed, Kuali finalization fails | `failed` with an error string; the distinction lives in the operator's head | a parked write with a named intent — §4c |
  *
  * It is a separate contract from the idempotency probe even though both return
- * the same verdict shape, because doc 09 §2.1 gives them different jobs at
+ * the same verdict shape, because ref write-safety §2.1 gives them different jobs at
  * different beats: the probe runs at ① on its own read lease and may navigate
  * freely; this runs on the RETAINED transaction page immediately after the
  * click, and its reload is the only thing that can turn a UI-silent Kuali save

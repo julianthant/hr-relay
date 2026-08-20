@@ -1,5 +1,5 @@
 /**
- * **What the writes will consume** — the block doc 09 §14.2's decision packet
+ * **What the writes will consume** — the block ref write-safety §14.2's decision packet
  * gained when the composition existed to fill it.
  *
  * ## Why it is on the PACKET and not merely in the graph
@@ -7,7 +7,7 @@
  * Chunks 4 and 5 both hung their resolved values off the gate as dependencies
  * and both recorded the same open item in the same words: *"the resolved
  * `{template, reasonCode}` is a gate DEPENDENCY here but is not yet rendered
- * INTO doc 09 §14.2's packet; the composition should carry it there"* and
+ * INTO ref write-safety §14.2's packet; the composition should carry it there"* and
  * *"'you are finalizing document 4510 against `000412 - Housing/Dining/Hospitality`'
  * belongs on the screen, not merely in the graph."* This is that block.
  *

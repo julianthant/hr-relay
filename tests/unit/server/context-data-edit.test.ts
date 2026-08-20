@@ -1,5 +1,5 @@
 /**
- * 2i-C: the context-data edit projection (doc 06 §6, doc 03 D19).
+ * 2i-C: the context-data edit projection (ref data-intake-and-edit-data §6, ref dashboard-surfaces D19).
  *
  * The Data section serves, per entry, exactly what a checkpoint correction
  * needs — the patch identity and the raw recorded scalar off the latest

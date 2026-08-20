@@ -1,6 +1,6 @@
 /**
  * `kuali/fill-timekeeper-annotation` — the PREPARE arm of Phase 2's Kuali
- * transaction proof (doc 09 §3 beat ②).
+ * transaction proof (ref write-safety §3 beat ②).
  *
  * Prepare opens the document by its deep link, proves it is the expected
  * document, and stages the timekeeper value in the live input with a read-back
@@ -9,7 +9,7 @@
  *
  * Its output is preview/span data only — the builder gives `commit.bind` the
  * same scope as `prepare.bind`, so nothing here can reach the durable
- * idempotency key (doc 02 §3.1, pinned by the `transaction-pairing` guard).
+ * idempotency key (ref workflow-model §3.1, pinned by the `transaction-pairing` guard).
  *
  * `stagedPageState` is required by name: the write sequencer reads it to bind
  * the binding proof to the EXACT staged page, and refuses to fence a prepare

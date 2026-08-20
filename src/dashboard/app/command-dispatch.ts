@@ -1,5 +1,5 @@
 /**
- * Turning a SERVED action descriptor into the ONE command envelope (doc 13
+ * Turning a SERVED action descriptor into the ONE command envelope (ref frontend-backend-integration
  * §3.4), for the confirm-first flow the app root mounts.
  *
  * The demo's `runAction` (legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -88,7 +88,7 @@ export interface CommandContext {
  * facts.
  *
  * `evidenceDigest` and `resultSchemaHash` are on the section precisely so a
- * client never derives them (doc 13's own note: a client computing that hash
+ * client never derives them (ref frontend-backend-integration's own note: a client computing that hash
  * would be a second implementation of the descriptor's identity). The
  * `chosenFrom` label comes from the served `options`, which the wire refines
  * against the packet the operator was shown — the post-gate node re-derives
@@ -298,7 +298,7 @@ export function composeCommandRequest(
  * disable the control at the card rather than being discovered after a click
  * (`canStopWorker`). `expectedVersion` is the lease version the card was drawn
  * from — the kernel revalidates the lease inside its own transaction and CASes
- * on what it reads there (doc 05's ratified shape for a required version that
+ * on what it reads there (ref execution-and-sessions's ratified shape for a required version that
  * does not itself gate), so this states the operator's basis rather than
  * claiming to be the check.
  */

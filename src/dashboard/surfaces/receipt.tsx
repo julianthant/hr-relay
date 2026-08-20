@@ -2,7 +2,7 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx
  *
- * The 1i Receipt PLACEHOLDER (doc 07 §7.1): the demo receipt's frame, verdict
+ * The 1i Receipt PLACEHOLDER (doc 01 §Integration amendment — Phase 1's share): the demo receipt's frame, verdict
  * band and absence treatments, fed only by what the 1g wire serves — the
  * terminal outcome and the receipt section resource (a pointer, or an explicit
  * missing / purged / error state). The full `RunEvidenceReceipt` body the demo

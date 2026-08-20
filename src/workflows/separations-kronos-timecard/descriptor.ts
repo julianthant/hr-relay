@@ -23,7 +23,7 @@
  *
  * ## Why two nodes and not five
  *
- * D194 / doc 01 §2.8: a read task's identity is a PAGE VISIT. The search
+ * D194 / ref task-contract §2.8: a read task's identity is a PAGE VISIT. The search
  * results panel and the timecard are two page visits; Go To, the subject proof,
  * the range apply and the grid read are all one visit to the timecard and
  * cannot be re-entered independently. §2.4's five-task sketch predates the
@@ -69,7 +69,7 @@ const EmployeeNameSchema = CANONICAL_FIELDS.fullName.schema;
  */
 const SEARCH_TIMEOUT_DEFAULT_MS = 15_000;
 
-/** The ingress schema — the ONE place defaults are applied (doc 02 §2). */
+/** The ingress schema — the ONE place defaults are applied (ref workflow-model §2). */
 export const SeparationsKronosTimecardInput = z.strictObject({
   emplId: EidSchema,
   /** What the run believes the person is called; compared, never substituted. */
@@ -114,7 +114,7 @@ export const SeparationsKronosTimecardResultSchema = z.strictObject({
     expectedName: z.string().min(1),
     observedDisplayName: z.string().min(1),
     /**
-     * The same classifier doc 09 §14's identity gate uses. It is REPORTED, not
+     * The same classifier ref write-safety §14's identity gate uses. It is REPORTED, not
      * enforced: the wrong-PERSON control is the EID subject binding, which has
      * already failed the run by the time this result exists. UKG and Kuali
      * render names differently, so failing on a name difference here would
@@ -196,7 +196,7 @@ const separationsKronosTimecardFlow = flow(SeparationsKronosTimecardInput)
      * failed at Go To with an empty panel.
      *
      * The general rule this settles: **a node whose real product is BROWSER
-     * state may not be `replay: "checkpoint"`.** Doc 02 §5.3 replay restores
+     * state may not be `replay: "checkpoint"`.** Ref workflow-model §5.3 replay restores
      * values, never page state, so a downstream task whose precondition is a
      * live page must be preceded by a node that actually runs. The search is a
      * ~2s read; re-running it is strictly cheaper than the failure mode.
@@ -334,7 +334,7 @@ export const separationsKronosTimecardDescriptor = defineWorkflowDescriptor({
     },
   ],
   /**
-   * Doc 03 §1.2: `EID 10620118` becomes the person, off the TIMECARD's own
+   * Ref dashboard-surfaces §1.2: `EID 10620118` becomes the person, off the TIMECARD's own
    * header — the page whose displayed subject is this workflow's S37
    * wrong-person control — and never off the search panel's `matched` row. The
    * results panel renders a candidate LIST, and its own contract says so: a

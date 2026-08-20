@@ -1,5 +1,5 @@
 /**
- * D253 (doc 13 §"D253") — every browser surface settles a command result
+ * D253 (ref frontend-backend-integration §"D253") — every browser surface settles a command result
  * through the ONE exhaustive fold.
  *
  * `CommandResultSchema` has three arms and TWO of them are refusals. A surface

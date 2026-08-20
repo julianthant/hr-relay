@@ -344,7 +344,7 @@ export function createAdmittedProviderClient(
 /**
  * The ONE way an operator-surface advisory obtains an admitted client (D178).
  *
- * Doc 12 §4.4's advisory is on-demand and presentation-lane: there is no
+ * Ref operator-trust §4.4's advisory is on-demand and presentation-lane: there is no
  * claimed run, no node and no task context to inherit an execution identity
  * from. The identity it binds instead is the SUBJECT run's — its id, its
  * retained attempt, and its own stored config snapshot, read from authority by

@@ -101,7 +101,7 @@ const ASSIGNMENTS_GRID_PORT_KEY = "personOrgSummary.body()";
 const RETURN_PORT_KEY = "personOrgSummary.returnToSearchButton()";
 
 /**
- * The SS Smart HR receipt surface (doc 09 §13 OQ2). Its own evidence pair and
+ * The SS Smart HR receipt surface (ref write-safety §13 OQ2). Its own evidence pair and
  * its own `verifiedAt` — the person-org family was verified 2026-08-02 and
  * must not inherit this probe's date, nor this family that one's.
  */
@@ -1239,7 +1239,7 @@ export const UCPATH_UI_REGISTRY = deepFreeze(UiRegistrySchema.parse({
     },
     {
       /**
-       * The page the doc 09 beat-⑤ fence binds to. Its evidence is the Last
+       * The page the ref write-safety beat-⑤ fence binds to. Its evidence is the Last
        * Date Worked INPUT rather than the Save button, because the input only
        * renders on an editable transaction — a read-only or already-submitted
        * one shows the span instead — so this state cannot be satisfied by a

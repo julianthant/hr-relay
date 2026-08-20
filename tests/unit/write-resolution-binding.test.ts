@@ -4,7 +4,7 @@
  *
  * Both directions are pinned here, because both are safety properties:
  *   - an INCIDENTAL closure move (an unrelated module in the same import
- *     graph) leaves every named check held, so the doc 09 §4.1 arms stay open;
+ *     graph) leaves every named check held, so the ref write-safety §4.1 arms stay open;
  *   - a SEMANTIC move (version bump, the transaction's commit task, the
  *     canonical-input schema, the permanent key, the retained binding proof)
  *     refuses, names the exact check that moved, and never reports an

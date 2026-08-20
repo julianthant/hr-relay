@@ -1,5 +1,5 @@
 /**
- * Proves parity adapter #2 (doc 13 §7.2) serves the REAL production BFF over
+ * Proves parity adapter #2 (ref frontend-backend-integration §7.2) serves the REAL production BFF over
  * real HTTP/SSE from state produced only by production transitions and the
  * production span/note writers — every assertion below parses the owning wire
  * schema, so a seed that drifts from the contract fails here, not in a

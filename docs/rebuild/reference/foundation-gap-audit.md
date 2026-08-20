@@ -5,7 +5,7 @@ four written design docs (01 task-contract, 02 workflow-model, 03 tracker-dashbo
 the charter (`00`), and the binding reconciliation (`04` — D1 ownership matrix). This doc **owns
 nothing** yet: it is a findings-and-design memo that names what the foundation of a production,
 single-operator, **real-HR-transaction** system needs that no doc currently owns adequately, ranks
-the gaps by risk, and designs the top three. Docs 06 (data-intake/Edit-Data) and 07 (master-plan)
+the gaps by risk, and designs the top three. Ref data-intake-and-edit-data (data-intake/Edit-Data) and 07 (master-plan)
 were planned-but-unwritten at the time. This file is evidence, not an implementation plan; current
 contracts live in 01–07 and 09–12, with build order in 07. **Paths re-grounded 2026-07-31 (Round 11,
 D93):** the rebuild now lives in its own `hr-automation-rebuild` repo — rebuild code at plain `src/`,
@@ -110,7 +110,7 @@ punted open question rather than an owned contract:
 > idempotency keys, no write-ahead intent record (except in exactly one workflow), and two of four
 > target systems (Kuali, OnBase) capture NO positive receipt at all. Every "did the write land?"
 > and "did we already write it?" is answered by re-probing the live target page, biased
-> `fail-open → SUBMIT`. Doc 02 §5.6 parks `needs-operator` on crash-mid-write and §OQ2 explicitly
+> `fail-open → SUBMIT`. Ref workflow-model §5.6 parks `needs-operator` on crash-mid-write and §OQ2 explicitly
 > leaves the disambiguating probe as an *optional* open question. The rebuild must promote
 > write-safety to a first-class, mandatory contract or it will faithfully port a design whose
 > documented failure mode is duplicate people and wrong-person terminations
@@ -127,17 +127,17 @@ be owned but is bounded / partially covered.
 
 | # | Concern | Owned today by | Risk | Recommended owner |
 |---|---|---|---|---|
-| 1 | **Write-safety: receipt capture + idempotency probe + exactly-once across the crash window** | UNOWNED — doc 01 mutate output has no required receipt; doc 02 §5.6 parks only, §OQ2 punts the probe as *optional* | **BLOCKER** | **NEW doc 09-write-safety** (contract side references doc 01; execution references doc 02 §5) |
+| 1 | **Write-safety: receipt capture + idempotency probe + exactly-once across the crash window** | UNOWNED — ref task-contract mutate output has no required receipt; ref workflow-model §5.6 parks only, §OQ2 punts the probe as *optional* | **BLOCKER** | **NEW doc reference/write-safety** (contract side references ref task-contract; execution references ref workflow-model §5) |
 | 2 | **Guard/test architecture SSOT** — porting the ratchets into the rebuild repo, the dry-run *composition* guard, the fill↔submit pairing guard, the descriptor meta-coverage guard | PARTIAL — each doc lists its OWN guards; no doc owns the suite, and the two safety-critical guards don't exist even in spec | **BLOCKER** | **NEW doc (10-guard-architecture)** referencing every doc's §guards |
-| 3 | **The clock** — one injectable, single-source time (freshness `now`, trace-id time-of-day, fiscal rollover, span ts) | UNOWNED — 445 direct `new Date()`/`Date.now()` reads; the D8 freshness *safety* mechanism computes `now − captured_at` off an unmockable wall clock | **BLOCKER** | **NEW `domain/clock` section** (doc 01 annex or its own short doc); consumed by 02/03/05 |
-| 4 | **Config precedence + per-system instance selection (test vs production)** | PARTIAL — `config.ts` + `settings/*` is a real single-source, but precedence is re-implemented per read-site, defaults duplicated, URL overrides are **process-global not per-run** | **MAJOR** | doc 01 annex (`stores/common/config`) + a RunEnvelope field (doc 02) |
-| 5 | **Audit trail / transaction ledger** — immutable record of what real transactions were filed, surviving pruning | ABSENT — JSONL is append-only-by-convention (`O_APPEND`), unsigned, no hash-chain, pruned at 30d; no dedicated ledger | **MAJOR** | folds into gap 1 (receipts ARE the ledger) + doc 03 retention floor |
+| 3 | **The clock** — one injectable, single-source time (freshness `now`, trace-id time-of-day, fiscal rollover, span ts) | UNOWNED — 445 direct `new Date()`/`Date.now()` reads; the D8 freshness *safety* mechanism computes `now − captured_at` off an unmockable wall clock | **BLOCKER** | **NEW `domain/clock` section** (ref task-contract annex or its own short doc); consumed by 02/03/05 |
+| 4 | **Config precedence + per-system instance selection (test vs production)** | PARTIAL — `config.ts` + `settings/*` is a real single-source, but precedence is re-implemented per read-site, defaults duplicated, URL overrides are **process-global not per-run** | **MAJOR** | ref task-contract annex (`stores/common/config`) + a RunEnvelope field (ref workflow-model) |
+| 5 | **Audit trail / transaction ledger** — immutable record of what real transactions were filed, surviving pruning | ABSENT — JSONL is append-only-by-convention (`O_APPEND`), unsigned, no hash-chain, pruned at 30d; no dedicated ledger | **MAJOR** | folds into gap 1 (receipts ARE the ledger) + ref dashboard-surfaces retention floor |
 | 6 | **Secrets / .env / .auth as an owned accessor** | PARTIAL — `validateEnv` is a clean choke for SSO, but `.auth/` Duo keys + LAN password + ~48 `process.env` reads in ~15 files escape it | **MAJOR** | with gaps 3/4 (`domain/environment`) |
 | 7 | **Fiscal-year rollover as fail-loud data** | UNOWNED — `ANNUAL_DATES` are static literals mirrored in two files + a dated filename; already stale (`jobEndDate 06/30/2026`), silently | **MAJOR** | with gap 4 |
-| 8 | **Schema/data migration across deploys** | PARTIAL — SQLite has a real versioned framework (`LATEST_SCHEMA_VERSION=23`, `MIGRATIONS[]`, `db.ts:130`); checkpoint `schema_hash` fail-loud refuses (doc 02 §5.7). Contract-schema→checkpoint deploy story under-owned | MINOR | doc 02 amendment |
+| 8 | **Schema/data migration across deploys** | PARTIAL — SQLite has a real versioned framework (`LATEST_SCHEMA_VERSION=23`, `MIGRATIONS[]`, `db.ts:130`); checkpoint `schema_hash` fail-loud refuses (ref workflow-model §5.7). Contract-schema→checkpoint deploy story under-owned | MINOR | ref workflow-model amendment |
 | 9 | **Module-layout / dependency-direction enforcement** | PARTIAL — layer order is DOCUMENTED-only; only the `control` edge, cross-workflow, cycles, and default-exports are guarded. No `domain→…→workflows` matrix | MINOR | fold into gap 2 |
-| 10 | **Structured logging homes** (log ↔ notes ↔ spans boundary) | OWNED — `log.ts` singleton + `AsyncLocalStorage` context + `console.*` guard. Rebuild must re-home logs onto the notes stream (doc 03) | MINOR | doc 03 amendment |
-| 11 | **Daemon/browser-health recovery ladder** | PARTIAL — doc 05 references it as "ports as pool behavior" but does not enumerate verdicts/rungs; it is load-bearing for real long runs | MINOR | doc 05 amendment |
+| 10 | **Structured logging homes** (log ↔ notes ↔ spans boundary) | OWNED — `log.ts` singleton + `AsyncLocalStorage` context + `console.*` guard. Rebuild must re-home logs onto the notes stream (ref dashboard-surfaces) | MINOR | ref dashboard-surfaces amendment |
+| 11 | **Daemon/browser-health recovery ladder** | PARTIAL — ref execution-and-sessions references it as "ports as pool behavior" but does not enumerate verdicts/rungs; it is load-bearing for real long runs | MINOR | ref execution-and-sessions amendment |
 
 ---
 
@@ -163,13 +163,13 @@ The strong UCPath receipt-scrape and the oath-upload marker are exactly the live
 the charter forbids re-deriving — they port. The gap is that they are per-workflow accidents, not a
 foundation contract.
 
-### 2.2 The contract addition (extends doc 01's `MutateTaskContract`)
+### 2.2 The contract addition (extends ref task-contract's `MutateTaskContract`)
 
 ```ts
 // src/domain/contracts/base.ts — additive on the MUTATE arm only
 export interface MutateTaskContract<Id, In, Out, Codes> extends TaskContractBase<Id, In, Out, Codes> {
   effect: "mutate";
-  dryRun: "simulate" | "unsupported";                 // doc 01 §2.2, unchanged
+  dryRun: "simulate" | "unsupported";                 // ref task-contract §2.2, unchanged
   /** PROOF the transaction landed — a NON-EMPTY subset of `output` that a human/audit can verify
    *  in the target system (confirmation number, ticket id, a post-submit read-back key). A mutate
    *  run returning submitted:true whose receipt fails this schema is a FAIL-LOUD park, never "done".
@@ -177,7 +177,7 @@ export interface MutateTaskContract<Id, In, Out, Codes> extends TaskContractBase
    *  before their submit tasks are allowed to report success. */
   receipt: z.ZodType;
   /** Answers "is this exact transaction ALREADY present in the live system?" BEFORE the submit,
-   *  and again on crash recovery. This makes doc 02 §OQ2's optional probe MANDATORY. */
+   *  and again on crash recovery. This makes ref workflow-model §OQ2's optional probe MANDATORY. */
   idempotency: {
     probe: TaskId;                 // a read task in the SAME store, e.g. "ucpath/find-existing-termination"
     key: (input: z.output<In>) => string;   // the natural key: EID ⊕ txn-type ⊕ effective-date
@@ -185,26 +185,26 @@ export interface MutateTaskContract<Id, In, Out, Codes> extends TaskContractBase
 }
 ```
 
-### 2.3 Kernel execution (owned by doc 09, references doc 02's run-state machine)
+### 2.3 Kernel execution (owned by ref write-safety, references ref workflow-model's run-state machine)
 
 A mutate task runs as a fixed five-beat sequence the kernel drives — the impl author cannot reorder
 it:
 
 1. **Probe (pre-write).** Run `idempotency.probe` (a `freshness:{maxAgeMs:0}` always-live read). If
    it returns a matching receipt → complete `done` with `{ submitted:false, reason:"already-present",
-   receipt }` (doc 01 §6.2 honest no-op semantics), emit an audit note. **No second submit.** A probe
+   receipt }` (ref task-contract §6.2 honest no-op semantics), emit an audit note. **No second submit.** A probe
    returning *ambiguous* (>1 match) → `ctx.fail` + park `needs-operator`, NEVER guess.
 2. **Fence.** Emit a new first-class span event `write.attempting` carrying `idempotency.key(input)`,
-   **committed to SQLite before the click** (doc 03's ordering invariant: SQLite commit precedes the
+   **committed to SQLite before the click** (ref dashboard-surfaces's ordering invariant: SQLite commit precedes the
    span). This is the crash-window fence.
-3. **Submit.** The `stores/common/mutation.ts` primitive fires (doc 01 §6.2 — it already throws if
+3. **Submit.** The `stores/common/mutation.ts` primitive fires (ref task-contract §6.2 — it already throws if
    `ctx.dryRun`). The fence emit is folded INTO the primitive wrapper so it cannot be skipped.
 4. **Capture.** Read back the receipt; parse through `contract.receipt`. A missing/empty receipt
    ⇒ park `needs-operator` ("clicked, cannot prove it landed — verify in <system>"), never `done`.
-5. **Commit.** Receipt checkpoint (doc 02 §5.7) + `write.committed` span event.
+5. **Commit.** Receipt checkpoint (ref workflow-model §5.7) + `write.committed` span event.
 
-**Exactly-once across the crash window (resolves doc 02 §OQ2).** Recovery finds `write.attempting`
-with no `write.committed`. Instead of blindly parking (doc 02's current default), the kernel
+**Exactly-once across the crash window (resolves ref workflow-model §OQ2).** Recovery finds `write.attempting`
+with no `write.committed`. Instead of blindly parking (ref workflow-model's current default), the kernel
 **auto-runs the same `idempotency.probe`**: probe hit → the write landed, backfill the receipt,
 complete `done`; probe miss → it never landed, safe to retry. Only an *ambiguous or failed* probe
 parks `needs-operator`. This is the exactly-once story the current `fail-open → SUBMIT` doctrine
@@ -216,12 +216,12 @@ lacks.
   the submit task IS the transaction boundary and carries the whole triple. A **dry-run composition
   excludes the submit task entirely (charter §a) — so there is nothing to make idempotent or
   probe in a dry run.** The write-safety contract only ever engages on a real submit. Clean.
-- **Doc 01 §6.2** — the mutation-primitive wrapper is the single home for both the dry-run throw
+- **Ref task-contract §6.2** — the mutation-primitive wrapper is the single home for both the dry-run throw
   and the `write.attempting` fence. One choke point.
-- **Doc 02 §5.6/§5.7** — receipts are `replay:"checkpoint"` outputs; a mutate step whose receipt
+- **Ref workflow-model §5.6/§5.7** — receipts are `replay:"checkpoint"` outputs; a mutate step whose receipt
   checkpoint exists already refuses re-execution. Gap 1 upgrades "park on crash" to "probe then
   park only if indeterminate."
-- **Doc 03** — `write.attempting`/`write.committed` are two new span events; the audit ledger (gap 5)
+- **Ref dashboard-surfaces** — `write.attempting`/`write.committed` are two new span events; the audit ledger (gap 5)
   is the durable set of `write.committed` events kept past the pruning floor. _(This entry also
   predicted the receipt would ride a `span.patched` detail on the run. It does not, twice over: D82
   DERIVES the receipt from authority and D141 persists it on demand, and D254 retired the
@@ -277,7 +277,7 @@ The charter's entire dry-run safety model rests on **composition** ("the submit 
 Nothing proves *statically* that a dry-run composition is submit-free. Two new guards close this:
 
 - **`dry-run-composition-submit-free.test.ts`.** For every descriptor, compute the dry-run
-  composition (doc 02's node list with submit tasks excluded) and assert **no reachable task has
+  composition (ref workflow-model's node list with submit tasks excluded) and assert **no reachable task has
   `effect:"mutate"` + `dryRun:"unsupported"`, and no reachable task imports a `stores/common/
   mutation.ts` primitive.** Keys off the closed contract `effect` + the closed mutation-primitive
   registry — not text heuristics. This makes charter §a a compile-adjacent invariant.
@@ -289,7 +289,7 @@ Nothing proves *statically* that a dry-run composition is submit-free. Two new g
 
 ### 3.3 What replaces the ~10 coverage guards (descriptor SSOT crosswalk)
 
-Doc 02 §1.4 defines ONE `descriptor-coverage.test.ts`. This doc owns the crosswalk that retires the
+Ref workflow-model §1.4 defines ONE `descriptor-coverage.test.ts`. This doc owns the crosswalk that retires the
 old parity guards:
 
 | Old guard / hand-list | Fate under the descriptor |
@@ -304,9 +304,9 @@ old parity guards:
 
 Four tiers, each with an owned home — this is what a rebuilt task/workflow gets TDD'd against:
 
-1. **Pure-logic unit** — `task.impl.run({ input, ctx: fakeCtx })`. Doc 01 §7B's plain-object shape
+1. **Pure-logic unit** — `task.impl.run({ input, ctx: fakeCtx })`. Ref task-contract §7B's plain-object shape
    makes every task run unit-testable with a fake ctx; the `fakeCtx` contract is defined here.
-2. **Contract/type** — every `example` parses (doc 01 guard #4); type-level tests (undeclared error
+2. **Contract/type** — every `example` parses (ref task-contract guard #4); type-level tests (undeclared error
    codes fail `tsc`, D15; a mutate contract without a receipt fails the write-safety guard).
 3. **Architecture ratchets** — the ported grep-ratchets, each glob extended to the rebuild repo's
    `src/**` with a **ZERO allowlist for new rebuild `src/` code** and shrink-only entries for ported
@@ -374,16 +374,16 @@ export const systemClock: Clock;                 // reads the OS
 export function fixedClock(at: Date): Clock;      // tests: deterministic freshness + trace ids
 ```
 
-The executor (doc 05) holds the Clock and threads it into: the freshness walk (doc 02 §5.5 — a
+The executor (ref execution-and-sessions) holds the Clock and threads it into: the freshness walk (ref workflow-model §5.5 — a
 **safety** computation now unit-testable), trace-id minting (feed the pure `buildTraceId(at)` from
-`clock.now()` instead of inline `new Date()`), span timestamps (doc 03), and tracker partitioning
+`clock.now()` instead of inline `new Date()`), span timestamps (ref dashboard-surfaces), and tracker partitioning
 (one `todayLocal()`).
 
 - **Config** — one resolver `resolve(key)` implementing `env > settings.json > default` ONCE (not
   per read-site), with the effective value + its **source** surfaced in Settings (port the read-only
   `.env` Credentials transparency the old system already shows), killing the silent-shadowing hazard.
 - **Per-run instance selection (safety).** `RunEnvelope.instance?: Partial<Record<SystemId,"prod"|
-  "test">>` (doc 02), defaulting **loudly to production**, surfaced on the run card and **recorded in
+  "test">>` (ref workflow-model), defaulting **loudly to production**, surfaced on the run card and **recorded in
   every span** — so a run against a test instance vs a real production submit is distinguishable in
   the audit trail (gap 5) and structurally impossible to confuse. Replaces the process-global URL
   override.
@@ -391,7 +391,7 @@ The executor (doc 05) holds the Clock and threads it into: the freshness walk (d
   for `FY{clock.now().fiscalYear}` **throws** "no ANNUAL_DATES configured for FY2027" instead of
   silently using a stale literal.
 - **Secrets** — one `requireSecret("UCPATH_PASSWORD")` that throws loud if unset (never `?? ""`);
-  the `.auth/` + Duo credential handling gets one owned home; doc 05's session-pool login reads
+  the `.auth/` + Duo credential handling gets one owned home; ref execution-and-sessions's session-pool login reads
   through it.
 
 ### 4.3 Guard + adversarial self-review
@@ -409,21 +409,21 @@ effective value AND its source.
 
 ## 5. PARTIALs — what a doc claims to own but under-specifies
 
-- **Doc 02 §OQ2 (crash-write probe).** Doc 02 *claims* checkpoint/resume but explicitly leaves the
+- **Ref workflow-model §OQ2 (crash-write probe).** Ref workflow-model *claims* checkpoint/resume but explicitly leaves the
   disambiguating probe as an optional open question. That is the exactly-once hole — gap 1 closes it.
-- **Doc 01 mutate output.** §6.2 specifies the honest *not-submitted* value but does NOT require an
+- **Ref task-contract mutate output.** §6.2 specifies the honest *not-submitted* value but does NOT require an
   honest *proven-submitted* receipt. A mutate output can today be `{ submitted:true }` with no
   verifiable proof — gap 1's `receipt` field closes it.
-- **Doc 02 §5.5 freshness depends on `now`** but no doc owns the clock — the safety mechanism rests
+- **Ref workflow-model §5.5 freshness depends on `now`** but no doc owns the clock — the safety mechanism rests
   on an unmockable, unowned input (gap 3).
-- **Doc 05 §3.3 browser-health ladder** is referenced as "the verdict ladder ports as pool behavior"
+- **Ref execution-and-sessions §3.3 browser-health ladder** is referenced as "the verdict ladder ports as pool behavior"
   without enumerating the verdicts (`ok/soft/wedged/expired/closed/dead`) or the refresh→reopen→
-  failed rungs. It is load-bearing for real long-running batches; doc 05 should enumerate it (gap 11).
-- **Doc 03 §OQ1 retention** leaves audit longevity open (proposes 30d spans). For a compliance HR
+  failed rungs. It is load-bearing for real long-running batches; ref execution-and-sessions should enumerate it (gap 11).
+- **Ref dashboard-surfaces §OQ1 retention** leaves audit longevity open (proposes 30d spans). For a compliance HR
   tool the *receipts* (gap 1/5) need a retention **floor** that survives `clean-tracker` (which
   prunes at 30d, `clean-tracker.ts:155`) — the operational trace and the audit ledger must have
   different lifetimes.
-- **Doc 02 §1.4 / doc 03 §6 guards are listed per-doc** but no doc owns the suite or the meta-guard
+- **Ref workflow-model §1.4 / ref dashboard-surfaces §6 guards are listed per-doc** but no doc owns the suite or the meta-guard
   that keeps them registered (gap 2).
 
 ---
@@ -446,8 +446,9 @@ effective value AND its source.
   and new rebuild `src/` code has zero tolerance.
 - **Meta-risk: three new docs is more surface to keep coherent** (the charter warns against multiple
   competing plans). **Guard:** each of the three is a *contract* doc owned in the D1 matrix, and the
-  master plan (doc 07) *references* them without redefining — the same discipline docs 01–05 already
-  follow. Gap 1's execution references doc 02 §5; gap 3's clock is consumed by 02/03/05 by reference.
+  master plan (now dissolved into the phase docs) *references* them without redefining — the same
+  discipline the other reference specs already follow. Gap 1's execution references ref workflow-model §5;
+  gap 3's clock is consumed by ref workflow-model / ref dashboard-surfaces / ref execution-and-sessions by reference.
   None redefines a sibling's owned concept.
 
 ---
@@ -459,7 +460,7 @@ effective value AND its source.
    achievable in Kuali (which deliberately removed its error detection as false-positive-prone) and
    OnBase, or does one of them need a documented `{ reason }` allowlist as genuinely
    unverifiable-by-page (and therefore always `needs-operator`-confirmed)?
-2. **Idempotency probe cost vs. speed (tension with doc 05).** A mandatory always-live pre-write
+2. **Idempotency probe cost vs. speed (tension with ref execution-and-sessions).** A mandatory always-live pre-write
    probe adds one UCPath round-trip per submit on the write tab — acceptable given the sleep-tax
    savings, or should the probe be skippable for a fresh run with zero prior attempts (risky —
    re-opens the crash window on the *first* attempt)?
@@ -471,6 +472,6 @@ effective value AND its source.
    RunEnvelope + audit-field cost now, or is process-global URL override (today's behavior)
    acceptable until a workflow genuinely needs mixed targeting?
 5. **Three new docs vs. annexes.** Own write-safety, guard-architecture, and clock/config/secrets as
-   three new numbered docs (clearest ownership), or fold the clock/config/secrets into a doc-01 annex
-   and the guard-architecture into doc 02/03 to keep the doc count down? The D1 matrix prefers one
+   three new numbered docs (clearest ownership), or fold the clock/config/secrets into a ref task-contract annex
+   and the guard-architecture into refs workflow-model/dashboard-surfaces to keep the doc count down? The D1 matrix prefers one
    owner per concept — but the master plan's "no competing plans" prefers fewer docs.

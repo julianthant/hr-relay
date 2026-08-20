@@ -11,7 +11,7 @@
  *
  * 1. **No raw `Page`.** The legacy driver took `(page, …)` on every method, so a
  *    caller could reach past the registry. Here the operations are page-free and
- *    the concrete Kronos drivers own their own Playwright internals (doc 12 §1.4).
+ *    the concrete Kronos drivers own their own Playwright internals (ref operator-trust §1.4).
  * 2. **No `waitForTimeout`.** The legacy orchestration slept 3s after navigation
  *    and after a period switch. Settling is a semantic page-state wait owned by
  *    the driver operation itself; this helper never sleeps.
@@ -21,7 +21,7 @@
  *    and fails loud.
  * 4. **The driver cannot assert its own switch.** `switchPeriod(): Promise<boolean>`
  *    is replaced by a typed outcome carrying the before/after period labels; THIS
- *    helper compares them (doc 12 §1.4 — normalization/comparison belong to the
+ *    helper compares them (ref operator-trust §1.4 — normalization/comparison belong to the
  *    kernel side of the boundary). "There is no previous period" must be declared
  *    explicitly by the driver, never inferred from a bare `false`.
  *

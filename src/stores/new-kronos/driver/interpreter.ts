@@ -358,7 +358,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     // which had resolved minutes earlier in the same session AND in run
     // `ab258c43`, came back `employee-not-found` on a first-sight sentinel. §4b
     // makes that failure terminal, so a false negative fails a real separation.
-    // Stabilizing a negative observation is the same discipline doc 09 applies
+    // Stabilizing a negative observation is the same discipline ref write-safety applies
     // post-fence: a `present` reading is evidence immediately, an `absent` one
     // has to hold still.
     let sentinelStreak = 0;
@@ -731,7 +731,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     // The timecard visit establishes its OWN precondition.
     //
     // A task may not inherit page state from the task before it: the worker
-    // releases and re-verifies a browser session between leases (doc 05 §4),
+    // releases and re-verifies a browser session between leases (ref execution-and-sessions §4),
     // which re-navigates to the system's neutral entry route — so the selection
     // the search task left in the panel is gone by the time this one runs.
     // Observed live on run `sk-125031-54c5` (2026-08-12): the search node
@@ -886,7 +886,7 @@ function createDriverInternals(page: Page, clock: Clock) {
 /**
  * The concrete New Kronos driver over a live page.
  *
- * The injected `Clock` is the ONE time source (doc 11): every `observedAt` here
+ * The injected `Clock` is the ONE time source (ref clock-config-secrets): every `observedAt` here
  * is a clock read, never `new Date()`.
  */
 export function createNewKronosTimecardDriver(page: Page, clock: Clock): NewKronosTimecardDriver {

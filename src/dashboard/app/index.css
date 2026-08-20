@@ -21,7 +21,7 @@
    rendered 3-5% wider than the visual oracle at every size — which is what the
    operator saw as "incorrect fonts". The demo loads it from Google Fonts with a
    `<link>` in its `index.html`; this tree self-hosts the same faces instead,
-   for a reason the demo does not have to care about: doc 13 §7's parity lane
+   for a reason the demo does not have to care about: ref frontend-backend-integration §7's parity lane
    compares at `maxDiffPixels: 0`, and a typeface that arrives over the network
    is a reference corpus that passes or fails on whether the network was up.
 

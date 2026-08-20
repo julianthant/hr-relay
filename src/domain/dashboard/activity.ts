@@ -1,10 +1,10 @@
 /**
- * The Activity report wire (doc 13 §5 "Activity", §3.6
+ * The Activity report wire (ref frontend-backend-integration §5 "Activity", §3.6
  * `GET /api/v1/reports/activity?from=&to=`, D180).
  *
  * **It is a rendering of the ONE run/queue projection over a date range, not a
  * second counting path.** D81 is the whole reason this wire exists in this
- * shape: doc 13 §8 guard #4 names Activity aggregates explicitly, so every
+ * shape: ref frontend-backend-integration §8 guard #4 names Activity aggregates explicitly, so every
  * total below is built inside `run-queue-projection.ts` from the same in-memory
  * surfaces the Queue Panel renders. A report that summed rows a second way
  * could disagree with the day it summarises, and count/badge divergence is the
@@ -28,7 +28,7 @@
  * **One block on this wire is NOT the projection's, and says so (D236).** The
  * write `ledger` is a second authority reported BESIDE the totals, never
  * derived from them — see `ActivityLedgerBlockSchema` for the whole carve-out
- * and doc 03 §10.1 for its ratification.
+ * and ref dashboard-surfaces §10.1 for its ratification.
  */
 import { z } from "zod";
 import {
@@ -52,7 +52,7 @@ import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
  */
 export const ACTIVITY_SAMPLE_LIMIT = 5;
 
-/** The durable terminal outcomes doc 02 §4 closes over. */
+/** The durable terminal outcomes ref workflow-model §4 closes over. */
 export const ActivityOutcomeSchema = z.enum([
   "done", "failed", "cancelled", "partial", "superseded", "discarded", "interrupted",
 ]);
@@ -75,7 +75,7 @@ export const ActivityWorkflowRegistrationSchema = z.discriminatedUnion("state", 
     state: z.literal("registered"),
     label: z.string().min(1),
     /**
-     * The workflow's SHORT CODE (doc 02 §1.1.1, D242) — the table's leading
+     * The workflow's SHORT CODE (ref workflow-model §1.1.1, D242) — the table's leading
      * token, so the name column can carry a name instead of a full label at
      * every row. It sits INSIDE the registered arm, not beside it, because the
      * code is resolved by the same registry lookup as the label and an
@@ -244,7 +244,7 @@ export type ActivityLedgerSystemTotal = z.infer<typeof ActivityLedgerSystemTotal
  * **The D81 CARVE-OUT (D236).** Every other total on this wire descends from
  * the ONE run/queue projection. This block does not, and it is here anyway.
  *
- * The write ledger is a DIFFERENT authority: doc 03 §10.2 rule 1 has said since
+ * The write ledger is a DIFFERENT authority: ref dashboard-surfaces §10.2 rule 1 has said since
  * Phase 0 that *"the write ledger is never archived — archiving is a display
  * lifecycle; the ledger is an audit one"*, and `src/infra/ledger/` is
  * append-only, never pruned, and partitioned by each entry's own `confirmedAt`.

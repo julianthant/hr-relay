@@ -1,5 +1,5 @@
 /**
- * Doc 06 §5 — mapped dataset → N inputs, with a pre-run rejection review.
+ * Ref data-intake-and-edit-data §5 — mapped dataset → N inputs, with a pre-run rejection review.
  *
  * This walks §8's worked example (42 rows, 2 bad EIDs, corrected in the grid)
  * and then attacks the invariants that make a partial intake impossible to
@@ -102,7 +102,7 @@ function manifestFrom(
   });
 }
 
-describe("doc 06 §5 intake validation", () => {
+describe("ref data-intake-and-edit-data §5 intake validation", () => {
   it("walks §8's worked example: 42 rows, 40 valid, 2 named rejections", () => {
     const rows = Array.from({ length: 42 }, (_, index) => {
       const row = index + 1;
@@ -255,7 +255,7 @@ describe("doc 06 §5 intake validation", () => {
   });
 });
 
-describe("doc 06 §5 manifest invariants", () => {
+describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
   const result = validate([["10456712", "Cleckoa, Crithe", "HDH"], ["10-4567", "Roe, Rick", "HDH"]]);
 
   it("refuses a manifest whose totals disagree with its own dispositions", () => {

@@ -10,18 +10,18 @@ half — the write sequencer's beat-span identity — deferred against a named t
 _(The 2026-08-14 "`span.patched` has a declared vocabulary and no emitter" record was CLOSED
 2026-08-20 by **D254**, an operator ruling: the channel is retired rather than built. The
 normative text — every removal site, what stayed and why, and the trigger that would re-open the
-question — is doc 03 §1.1's D254 block. The record's own text is kept below, struck through, so the
+question — is ref dashboard-surfaces §1.1's D254 block. The record's own text is kept below, struck through, so the
 diagnosis that led to the ruling stays readable.)_
 
 _(The 2026-08-14 "run timeline empty for runs enqueued after dashboard boot" record was
 resolved the same day by **D218** — the cross-process disk tail. The diagnosis and fix
-shape it carried are ratified as-built in doc 03 §2.3's D218 block; the regression tests
+shape it carried are ratified as-built in ref dashboard-surfaces §2.3's D218 block; the regression tests
 live in `tests/unit/server/run-queue-projection.test.ts` and `bff-flow.test.ts`.)_
 
 ## ~~`span.patched` has a declared vocabulary and no emitter — the detail-projection channel is dead~~ CLOSED
 
 **Recorded:** 2026-08-14 · **Status:** CLOSED 2026-08-20 by **D254** (retired, not built — operator
-ruling) · **Owning doc:** doc 03 §1.1 (span vocabulary / detail projections)
+ruling) · **Owning doc:** ref dashboard-surfaces §1.1 (span vocabulary / detail projections)
 
 **Disposition.** The channel was removed end to end: the wire arm, the writer's declared-key
 enforcement and its `declaredDetails` dep, the projector fold and `RunFoldRecord.details`, and the
@@ -65,7 +65,7 @@ record the executor really writes. So the channel went and the readers stayed on
 
 **Recorded:** 2026-08-19 (found by the B4a verification pass) · **Status:** the fold half is FIXED
 2026-08-20 by **D255**; the producer half is DEFERRED with a named trigger · **Owning doc:**
-doc 03 §2.3
+ref dashboard-surfaces §2.3
 
 **The original symptom, and the part of it that was wrong.** The record said the fold keys by
 `(attempt, spanPath)`, that a `span.started` unconditionally pushes, and that a REQUEUE re-executes
@@ -98,7 +98,7 @@ attempt. D214's identity fix never reached it.
 - **Where it would land first:** not the chip. A same-process repeat throws at the writer's
   `opens exactly once per identity` guard — a dead worker. The fold is the cross-process face.
 - **Trigger:** the first transaction node that can execute twice inside one attempt (an
-  `always-rerun` transaction node downstream of a gate; a doc-09 §4 recovery re-entering the
+  `always-rerun` transaction node downstream of a gate; a ref write-safety §4 recovery re-entering the
   sequencer under the same attempt), or the first requirement that a beat span attribute to its node
   on the timeline.
 - **Shape of the repair, decided in advance:** `<nodeSpanPath>/<beat>` — the beat span under the

@@ -1,5 +1,5 @@
 /**
- * Per-step durations on the run-detail timeline (doc 03 §1.1 span identity;
+ * Per-step durations on the run-detail timeline (ref dashboard-surfaces §1.1 span identity;
  * `docs/findings/archive.md` "Per-step durations in the archived timeline").
  *
  * The measurement is the executor's OWN pair of instants for one span —

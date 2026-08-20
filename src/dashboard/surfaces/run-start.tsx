@@ -5,7 +5,7 @@
  * fidelity pass (docs/plans/2026-08-13-detail-fidelity-audit.md, R8).
  *
  * **The** Start Run surface — 1i's typed method, wired to the real start
- * protocol (doc 13 §5.1):
+ * protocol (ref frontend-backend-integration §5.1):
  *
  *   1. the descriptor's own input surface decides the door exists; a workflow
  *      that declares none renders the served absence, not empty scaffolding;
@@ -103,7 +103,7 @@ import { type InstanceChoice, type SystemInstancePrimitive } from "./run-start-k
 import { testSystemsOf } from "./run-start-kit-model.js";
 import { ENQUEUE_POLICY_MEANING, ENQUEUE_POLICY_REASON } from "./run-start-model.js";
 
-/** the surface id this command family is audited under (doc 13 §3.4) */
+/** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
 const SOURCE_SURFACE = "run-start";
 
 const STAGES = Object.freeze([
@@ -124,7 +124,7 @@ export interface RunStartWorkflow {
   /** the served category this workflow is filed under — the picker's grouping */
   readonly categoryId: string;
   /**
-   * The served taxonomy fact (doc 02 §1.2.1, D219) — composed from the boot
+   * The served taxonomy fact (ref workflow-model §1.2.1, D219) — composed from the boot
    * document exactly as served, never inferred from an id prefix. It is what
    * the ONE grouping rule nests a chunk harness by, and what keeps this
    * dialog's default selection from opening on a step of a workflow.
@@ -222,7 +222,7 @@ function matchesQuery(workflow: RunStartWorkflow, query: string): boolean {
 type PickerEntry = RunStartWorkflow & { readonly id: string };
 
 /**
- * BOTH picker lists go through the ONE rule (doc 03 §Shell, D219) — the
+ * BOTH picker lists go through the ONE rule (ref dashboard-surfaces §Shell, D219) — the
  * startable catalogue and the "not startable" disclosure alike — so a chunk
  * harness is a step under its composition in each of them and a peer in
  * neither.

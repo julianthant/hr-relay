@@ -1,6 +1,6 @@
 /**
- * Graph-level scenario coverage across the registered descriptor set (doc 07
- * item 1e; doc 12 §3.2).
+ * Graph-level scenario coverage across the registered descriptor set (doc 01 §1c · 1d · 1e
+ * item 1e; ref operator-trust §3.2).
  *
  * Task-level coverage is `defineTaskContract`'s job. What no contract can see
  * is the GRAPH: a branch arm nobody exercises, a gate nobody resolves, a

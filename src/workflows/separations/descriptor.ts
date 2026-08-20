@@ -43,7 +43,7 @@
  * §4e is normative: every read lands as a typed variable before anything is
  * written, and the whole write half consumes those variables rather than
  * re-deriving anything at fill time. The gate sits between the two halves —
- * doc 09 §14.3, and D26, which forbids any park between `prepare` and `commit`.
+ * ref write-safety §14.3, and D26, which forbids any park between `prepare` and `commit`.
  * So the ALWAYS-GATE opens once, after the last read, before the first fence.
  *
  * §5A widened that gap on purpose (`maxAgeMs: Infinity` on the three reads —
@@ -52,7 +52,7 @@
  * makes the packet's write-plan block load-bearing: the operator approves the
  * VALUES, and §14.5's digest binds the approval to them.
  *
- * ## Three transaction nodes, in doc 09's order
+ * ## Three transaction nodes, in ref write-safety's order
  *
  * `clear-pending` (S30/S31 — legacy's first mutation, unfenced and unverified)
  * → `file-termination` (the real HR write) → `finalize-kuali` (§4e's one save
@@ -675,7 +675,7 @@ const separationsFlow = flow(SeparationsInput)
        * The SAME target the prepare staged, bound from workflow input plus the
        * gate-approved identity and the folds — never from the prepare's own
        * output. That is what makes the permanent key stable before any page
-       * mutation (doc 02 §3.1), and what the beat-⑥ read-back compares against.
+       * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
        */
       uses: KualiSaveSeparationFinalization,
       bind: ({ input, outputs }) => ({
@@ -771,7 +771,7 @@ export const separationsDescriptor = defineWorkflowDescriptor({
   /**
    * `reject-active` per item — and the item is the document plus the operator's
    * re-read ordinal. Two concurrent runs on one separation document is never
-   * intended, and doc 09's same-key mutex refuses the second fence anyway;
+   * intended, and ref write-safety's same-key mutex refuses the second fence anyway;
    * **S5** is why the mutex matters more than the enqueue policy, because
    * legacy's enqueue-supersede only cancels non-terminal prior runs, so a
    * completed document could be re-run with nothing but two live page probes
@@ -913,7 +913,7 @@ export const separationsDescriptor = defineWorkflowDescriptor({
     },
   ],
   /**
-   * Doc 03 §1.2: the queue row starts as `Separation 4502` — the only thing the
+   * Ref dashboard-surfaces §1.2: the queue row starts as `Separation 4502` — the only thing the
    * start input knows — and becomes the PERSON the moment UCPath's Job Summary
    * has answered. Three separations rows on one real day carried the same
    * document number, so the column an operator scans distinguished nothing.

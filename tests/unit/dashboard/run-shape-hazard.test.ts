@@ -1,5 +1,5 @@
 /**
- * The `wf <hash>` shape hazard fires only when the shape MOVED (doc 03
+ * The `wf <hash>` shape hazard fires only when the shape MOVED (ref dashboard-surfaces
  * §"Wave-2 connection-proof presentation deltas").
  *
  * The defect these pin, from the Track C connection proof (separations §9.22

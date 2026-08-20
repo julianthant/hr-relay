@@ -16,7 +16,7 @@
  *
  * ## Why the identity gate is in a "write chunk"
  *
- * Because doc 09 §14's ALWAYS-GATE binds separation FILINGS, and this chunk is
+ * Because ref write-safety §14's ALWAYS-GATE binds separation FILINGS, and this chunk is
  * the filing. `identity-gate-before-commit` enforces it structurally on any
  * descriptor whose id names the separation class: every ancestry path from a
  * transaction node — and from the terminal result — must reach the gate's own
@@ -31,15 +31,15 @@
  * able to act on. Declaring it in the gate's `dependsOn` does that AND satisfies
  * the guard's real property — data must not reach a commit that the operator
  * never saw. _(CLOSED 2026-08-14 by chunk 6a: the composed `separations` graph
- * renders the resolved `{template, reasonCode}` INTO doc 09 §14.2's packet
+ * renders the resolved `{template, reasonCode}` INTO ref write-safety §14.2's packet
  * through `SeparationWritePlanSchema`, so "you are approving a `UC_INVOL_TERM`
  * effective 06/11/2026" is on the screen and inside the digest the approval
- * binds to — D211, doc 09 §14.10. This descriptor stays the proving harness and
+ * binds to — D211, ref write-safety §14.10. This descriptor stays the proving harness and
  * declares `plan: not-composed` with its reason.)_
  *
  * ## Two transaction nodes, in this order, and the sweep is genuinely first
  *
- * Doc 09 §5 wants BOTH probe kinds ported. The date-agnostic one is the pending
+ * Ref write-safety §5 wants BOTH probe kinds ported. The date-agnostic one is the pending
  * sweep — legacy's `deletePendingTransaction`, which deletes every in-progress
  * `Terminat*` row for the EID and is, in legacy, *the first mutation the run
  * performs* with no fence and no read-back (**S30/S31**). A delete is an

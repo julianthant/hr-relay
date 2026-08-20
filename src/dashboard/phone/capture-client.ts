@@ -4,7 +4,7 @@
  * It is deliberately NOT `src/dashboard/client/**`. The operator client knows
  * the bootstrap, the day projection, the run detail, the command envelope and
  * the SSE stream — none of which the phone may reach, and all of which would
- * ride into the phone bundle the moment one import crossed. Doc 12 §7 permits
+ * ride into the phone bundle the moment one import crossed. Ref operator-trust §7 permits
  * exactly one exception to the loopback rule, and the closed route union in
  * `src/domain/capture-surface.ts` is its whole surface; this module speaks that
  * union and nothing else.

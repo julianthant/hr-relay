@@ -1,5 +1,5 @@
 /**
- * Doc 12 §2.2, executed: the closed trigger set, redaction AT capture, the
+ * Ref operator-trust §2.2, executed: the closed trigger set, redaction AT capture, the
  * two-phase failure↔bundle binding over the real interpreter and authority, and
  * the retention/pin sweep.
  */
@@ -108,7 +108,7 @@ function captureService(database: AuthorityDatabase, now = NOW): {
 }
 
 describe("diagnostic capture triggers", () => {
-  it("maps every doc 12 §2.2 trigger onto its stored origin arm", () => {
+  it("maps every ref operator-trust §2.2 trigger onto its stored origin arm", () => {
     const failureId = UUID_1;
     assert.deepEqual(diagnosticOriginOfTrigger({ trigger: "task-failure", failureId }), { kind: "failure", failureId });
     assert.deepEqual(diagnosticOriginOfTrigger({ trigger: "unexpected-state", failureId }), { kind: "unexpected-state", failureId });

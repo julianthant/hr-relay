@@ -6,7 +6,7 @@
  *   → the interpreter's typed `parked-write` OUTCOME arm (never an escaping
  *     error, never a failure terminalization)
  *   → the durable run row is `parked-write` and the intent is `parked`
- *   → the command kernel's doc 09 §4.1 typed resolutions — executed by
+ *   → the command kernel's ref write-safety §4.1 typed resolutions — executed by
  *     `createWriteResolutionExecutor` over the SAME AuthorityDatabase instance
  *     the kernel's transaction runs on
  *   → the run is resumable (`queued`, resuming AT the transaction node).
@@ -296,7 +296,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
 
   /*
    * D136 — the stranded-intent path. This is the exact live shape recorded in
-   * doc 09's Phase-2 as-built: an intent parked on 2026-08-04, then unrelated
+   * ref write-safety's Phase-2 as-built: an intent parked on 2026-08-04, then unrelated
    * work touched a file in the descriptor's ~31-file contract closure before
    * the operator got to it. Under the old whole-closure binding the typed
    * resolutions refused forever and the only way out was hand-editing rows or
@@ -327,8 +327,8 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
     assert.ok(resumed && resumed.lifecycle.state === "queued");
     assert.equal(resumed.envelope.startAt, WRITE_FIXTURE_NODE_ID);
     // The resolution releases the WRITE; it never re-plans the run. The run
-    // keeps the contract identity it was enqueued under, so doc 02 §5.3's
-    // replay binding stays exactly as strict as it was (see doc 09 §4.1).
+    // keeps the contract identity it was enqueued under, so ref workflow-model §5.3's
+    // replay binding stays exactly as strict as it was (see ref write-safety §4.1).
     assert.equal(resumed.envelope.contractFingerprint, parked.envelope.contractFingerprint);
   });
 
@@ -432,7 +432,7 @@ describe("post-fence park → typed outcome arm → typed operator resolution", 
  * parked write that refuses a bad answer must still be parked, at the same
  * generation, on the same run version.
  */
-describe("a confirmed-present proof that does not fit (doc 09 §4.1, D245)", () => {
+describe("a confirmed-present proof that does not fit (ref write-safety §4.1, D245)", () => {
   async function refusedPresent(payload: Record<string, unknown>) {
     const harness = roundTrip();
     await harness.park();
@@ -482,7 +482,7 @@ describe("a confirmed-present proof that does not fit (doc 09 §4.1, D245)", () 
 
 /**
  * D246. The record this closes read: *"Cancelling a parked-write run strands
- * the intent with no exit."* Doc 09 §4.1's "cancel cannot alter the intent" was
+ * the intent with no exit."* Ref write-safety §4.1's "cancel cannot alter the intent" was
  * honoured exactly — and the cancel still took both resolutions away with it,
  * because a terminal run serves no parked-write section and
  * `executeWriteResolution` refuses every lifecycle but `parked-write`.
@@ -491,7 +491,7 @@ describe("a confirmed-present proof that does not fit (doc 09 §4.1, D245)", () 
  * (the run is still parked, the intent still unresolved) and the refusal names
  * the intent, so an operator reading it knows which write to go answer.
  */
-describe("cancel over an unresolved fenced write (doc 09 §4.1, D246)", () => {
+describe("cancel over an unresolved fenced write (ref write-safety §4.1, D246)", () => {
   function cancelCommand(runId: string, expectedVersion: number) {
     return {
       commandId: nextCommandId(),
@@ -516,7 +516,7 @@ describe("cancel over an unresolved fenced write (doc 09 §4.1, D246)", () => {
     assert.equal(result.code, "invalid-state");
     assert.ok(result.message.includes(intent.writeIntentId), "the refusal names the intent to answer");
     assert.match(result.message, /parked/);
-    assert.match(result.message, /09 §4\.1/);
+    assert.match(result.message, /ref write-safety §4\.1/);
 
     // Nothing moved — not the run, not the intent, not the version.
     const after = harness.database.authority.runs.get(WRITE_FIXTURE_RUN_ID);

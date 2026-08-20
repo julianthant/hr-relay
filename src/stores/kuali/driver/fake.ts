@@ -211,7 +211,7 @@ export interface KualiFakeWorld {
   /**
    * What the EID field displays AFTER staging completes.
    *
-   * This is the doc 09 §2.1 case the beat-③ binding proof exists for: the probe
+   * This is the ref write-safety §2.1 case the beat-③ binding proof exists for: the probe
    * and the prepare both saw the right person, then the pooled page moved to a
    * DIFFERENT one before the fence. Set it to another EID to drive the
    * wrong-subject arm, or to an unreadable string to drive the unknown arm.
@@ -223,7 +223,7 @@ export interface KualiFakeWorld {
   commitThrows?: Error;
   /**
    * When set, the Save click SUCCEEDS but Kuali silently keeps the old value.
-   * This is the exact UI-silent failure doc 09 §13 OQ1 (a) records: nothing on
+   * This is the exact UI-silent failure ref write-safety §13 OQ1 (a) records: nothing on
    * the page says anything, and only a reload read-back can tell.
    */
   commitDoesNotPersist?: boolean;

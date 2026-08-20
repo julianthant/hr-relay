@@ -1,5 +1,5 @@
 /**
- * `kuali/read-timekeeper-annotation` — doc 09 §5's IDEMPOTENCY PROBE for the
+ * `kuali/read-timekeeper-annotation` — ref write-safety §5's IDEMPOTENCY PROBE for the
  * Kuali timekeeper-annotation transaction, and (through the same contract
  * shape) the model for its `save-verify` read-back sibling.
  *
@@ -14,7 +14,7 @@
  *                 document ⇒ park. A failed check is never "found nothing".
  *
  * Freshness is zero-age: a probe answer is only ever the live page, never a
- * checkpoint (doc 09 §2.1's `Idempotency.probe` requirement, enforced by the
+ * checkpoint (ref write-safety §2.1's `Idempotency.probe` requirement, enforced by the
  * `write-safety-contract` guard).
  */
 import { z } from "zod";

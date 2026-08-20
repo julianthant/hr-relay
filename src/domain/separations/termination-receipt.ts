@@ -72,7 +72,7 @@ export const TerminationReceiptSchema = z.strictObject({
   emplId: EidSchema,
   /** The name UCPath's own detail page showed for this transaction's subject. */
   displayedName: z.string().min(1),
-  /** Whether this run filed it, or found it already there (doc 09 §5). */
+  /** Whether this run filed it, or found it already there (ref write-safety §5). */
   disposition: z.enum(["committed", "already-present"]),
 });
 export type TerminationReceipt = z.infer<typeof TerminationReceiptSchema>;

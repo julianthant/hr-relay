@@ -1,12 +1,12 @@
 /**
- * Doc 06 §1 — the canonical field vocabulary is frozen against a RECORDED
+ * Ref data-intake-and-edit-data §1 — the canonical field vocabulary is frozen against a RECORDED
  * scan, and every entry in it is coherent.
  *
  * Three claims, each falsifiable:
  *
  * 1. `config/canonical-field-inventory.json` covers the registry in both
  *    directions. A canonical field nobody scanned is unevidenced vocabulary; a
- *    scanned field with no disposition is the silent omission doc 06 §1 bans
+ *    scanned field with no disposition is the silent omission ref data-intake-and-edit-data §1 bans
  *    in as many words ("No current mappable field may be silently omitted").
  * 2. Each scanned field still exists in the file the scan names. The legacy
  *    repository is frozen, so this can only fail when the inventory drifts.
@@ -47,7 +47,7 @@ function fixtureInventory(patch: (draft: CanonicalFieldInventory) => void): Cano
   return draft;
 }
 
-describe("doc 06 §1 canonical field registry", () => {
+describe("ref data-intake-and-edit-data §1 canonical field registry", () => {
   it("is covered by the recorded scan in both directions", () => {
     assert.deepEqual(auditCanonicalFieldInventory({ inventory, fields: registry, readSource }), []);
   });

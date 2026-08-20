@@ -1,5 +1,5 @@
 /**
- * The intake session wire (doc 06 §2.2, D170) — what the upload route returns
+ * The intake session wire (ref data-intake-and-edit-data §2.2, D170) — what the upload route returns
  * and what `GET /api/v1/intake/:sessionId` serves.
  *
  * It is the durable session JOINED with the re-derived parse view and the
@@ -8,11 +8,11 @@
  *
  * 1. **`expectedVersion` is the CAS token** every intake command target
  *    carries, served in its own right so a surface never has to invent one.
- * 2. **Suggestions are HINTS** (doc 06 §2.5). They ride beside `bindings` and
+ * 2. **Suggestions are HINTS** (ref data-intake-and-edit-data §2.5). They ride beside `bindings` and
  *    are never folded into it: only `confirmBinding`, reached from an operator
  *    action, mints a binding, and the wire preserves that separation so a
  *    client cannot accidentally render a proposal as a decision.
- * 3. **Rows are not served.** Doc 06 §2.2 step 1 is explicit — sample values
+ * 3. **Rows are not served.** Ref data-intake-and-edit-data §2.2 step 1 is explicit — sample values
  *    per column, never the whole file. A rejection carries its own redacted
  *    raw value, which is the one place a cell reaches the client verbatim.
  *
@@ -62,7 +62,7 @@ export const IntakeValidationWireSchema = z.discriminatedUnion("state", [
 export type IntakeValidationWire = z.infer<typeof IntakeValidationWireSchema>;
 
 /**
- * "This exact file has run before" — doc 06 §7 vector #11, served (D171).
+ * "This exact file has run before" — ref data-intake-and-edit-data §7 vector #11, served (D171).
  *
  * A rerun references an immutable manifest and an immutable artifact, so the
  * operator must SEE what moved before enqueueing the same bytes a second time.

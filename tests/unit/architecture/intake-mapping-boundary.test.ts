@@ -1,5 +1,5 @@
 /**
- * Doc 06 §7 vectors #1, #3, #6 and #13 — the mapping boundary.
+ * Ref data-intake-and-edit-data §7 vectors #1, #3, #6 and #13 — the mapping boundary.
  *
  * The suggestion scorer is the single most dangerous piece of intake, because
  * its output looks exactly like the answer. Legacy's `COLUMN_PATTERNS` decided
@@ -12,7 +12,7 @@
  * - A binding resolves by header + occurrence, never by stored index.
  * - A projection target must reuse its canonical field's schema OBJECT.
  * - The whole intake domain stays bundle-safe, because the mapping grid is a
- *   browser surface and doc 13 §8.13's lesson was that a Node built-in six hops
+ *   browser surface and ref frontend-backend-integration §8.13's lesson was that a Node built-in six hops
  *   away kills the app at module evaluation.
  *
  * Each static arm is executed against a violating fixture through the same
@@ -72,7 +72,7 @@ export function intakeBoundaryViolations(files: readonly ScannedFile[]): string[
   return violations;
 }
 
-describe("doc 06 §7 intake mapping boundary", () => {
+describe("ref data-intake-and-edit-data §7 intake mapping boundary", () => {
   it("scans a non-empty intake domain", () => {
     const files = intakeSources();
     assert.equal(files.length >= 3, true, "expected mapping, projection and suggestions modules");

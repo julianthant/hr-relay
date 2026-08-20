@@ -4,7 +4,7 @@
  * `demo-report-wire.ts` (the operator's rebuild-demo). Adapted to the served
  * `ActivityReportWire` — never linked at runtime (D93/D94).
  *
- * The Activity report (doc 13 §5 "Activity", §6.7, D180).
+ * The Activity report (ref frontend-backend-integration §5 "Activity", §6.7, D180).
  *
  * ## THESIS — a paragraph, then the shape of it
  *
@@ -18,13 +18,13 @@
  *
  * ## Every total descends from the ONE projection — except one, which says so
  *
- * Nothing on this page counts anything. D81 and doc 13 §8 guard #4 name
+ * Nothing on this page counts anything. D81 and ref frontend-backend-integration §8 guard #4 name
  * Activity aggregates explicitly, so the server builds them inside the same
  * `run-queue-projection` that renders the Queue Panel and this component
  * renders the payload verbatim — including the range's own day list, which is
  * why a day with no runs is simply absent rather than being invented as a zero.
  *
- * The write-ledger block is the ONE exception, ratified as such (D236, doc 03
+ * The write-ledger block is the ONE exception, ratified as such (D236, ref dashboard-surfaces
  * §10.1): it is a different authority, folded from the append-only ledger over
  * the same window and reported BESIDE these totals rather than derived from
  * them. It carries the seam in its own subtitle and in the ⓘ, because a second

@@ -11,7 +11,7 @@
  * 2. **One id kind wearing another's clothes.** A lowercase UUID matches the
  *    kebab-case slug pattern character for character, so before `slugText`
  *    refused the shape a run id could be written into a worker id and parse.
- *    Doc 03 §1.1 states the rule directly — workers persist across runs and
+ *    Ref dashboard-surfaces §1.1 states the rule directly — workers persist across runs and
  *    "never receive a synthetic run id" — and this is where it is mechanical.
  *
  * The extracted-record case is the sharpest one: `StableRecordId` is derived

@@ -30,7 +30,7 @@ import type {
 
 /**
  * The joined navigation surface. `read` has to accept BOTH families'
- * observations because the kernel calls it at doc 09 beat ③ with whichever
+ * observations because the kernel calls it at ref write-safety beat ③ with whichever
  * observation the running contract declared — a `read` typed to one family
  * would make the other family's subject binding unreachable.
  */

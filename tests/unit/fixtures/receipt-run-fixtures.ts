@@ -1,14 +1,14 @@
 /**
  * The two runs THIS program actually produced, as receipt evidence.
  *
- * 1. **The live person-lookup exit run** (doc 07 §Phase-1 exit criteria): EID
+ * 1. **The live person-lookup exit run** (doc 01 §Exit criteria): EID
  *    10873698, trace `pl-000619-4ebf`, terminal `done` at ATTEMPT 2 after the
  *    CRM browser died mid-run, `crm-dates` skipped `condition-false`, result
  *    `activeStatus.state = "active"` cross-verified against CRM record
  *    `a1ZVr000004Xoq9MAC`. This one is seeded through the REAL authority
  *    database and the REAL D110/D114 terminalization — nothing is hand-built.
  *
- * 2. **The controlled Kuali timekeeper commit** (doc 09 §15): doc 4489, EID
+ * 2. **The controlled Kuali timekeeper commit** (ref write-safety §15): doc 4489, EID
  *    10001828, value `PROBE-VERIFIED-0804`, intent
  *    `d1254233-dd33-4bc5-afaf-c2bf52ea693f` committed with a `subject-match`
  *    binding proof and a `reload-read-back` completion proof.
@@ -538,7 +538,7 @@ export interface IdentityGateReceiptEvidence {
 
 /**
  * A settled `separations-identity-check` run whose ALWAYS-GATE was resolved by
- * a real operator — the shape doc 09 §14.6 risk 6 is about.
+ * a real operator — the shape ref write-safety §14.6 risk 6 is about.
  *
  * The gate's payload and the post-gate node's output are bound to each other
  * the way a real run binds them: the approval's `evidenceDigest` is the one the

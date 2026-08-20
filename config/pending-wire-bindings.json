@@ -6,7 +6,7 @@
       "binding": "RunDetailSectionResponseSchema#review",
       "direction": "declared-unserved",
       "decision": "D184",
-      "note": "Doc 13 §3.3's Review panel kind. `availableSections` cannot return it for any lifecycle: no registered descriptor declares a review panel, and the review record store is 2h-deferred. Closes with the first workflow that declares one."
+      "note": "Ref frontend-backend-integration §3.3's Review panel kind. `availableSections` cannot return it for any lifecycle: no registered descriptor declares a review panel, and the review record store is 2h-deferred. Closes with the first workflow that declares one."
     },
     {
       "binding": "RunDetailSectionResponseSchema#people",
@@ -18,7 +18,7 @@
       "binding": "RunDetailSectionResponseSchema#context-evidence",
       "direction": "declared-unserved",
       "decision": "D184",
-      "note": "Doc 03 §1.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the 2g receipt section serves the trust content that exists today."
+      "note": "Ref dashboard-surfaces §1.1's Evidence rail. `buildRunDetail` serves `context.evidenceFacts: 0` with the comment that the evidence service is a later slice, so no composition can populate this arm; the 2g receipt section serves the trust content that exists today."
     },
     {
       "binding": "RunDetailSectionResponseSchema#captures",
@@ -30,13 +30,13 @@
       "binding": "FrontendBootstrapWireSchema#preflight",
       "direction": "declared-unserved",
       "decision": "D184",
-      "note": "Doc 13 §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the doc 11 preflight/config service that also serves the rerun command."
+      "note": "Ref frontend-backend-integration §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the ref clock-config-secrets preflight/config service that also serves the rerun command."
     },
     {
       "binding": "route:GET /api/v1/capture/sessions/:sessionId",
       "direction": "served-unconsumed",
       "decision": "D175",
-      "note": "The operator's capture-session poll. Doc 12 §7's QR flow hands the phone the session; the operator surface today creates a session and renders the QR without re-reading it, so the route is served for the operator poll the capture modal will do (`legacy-dashboard-capture`, phase-3-workflow-migration)."
+      "note": "The operator's capture-session poll. Ref operator-trust §7's QR flow hands the phone the session; the operator surface today creates a session and renders the QR without re-reading it, so the route is served for the operator poll the capture modal will do (`legacy-dashboard-capture`, phase-3-workflow-migration)."
     }
   ]
 }

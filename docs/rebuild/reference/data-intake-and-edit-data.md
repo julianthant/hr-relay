@@ -14,18 +14,18 @@ completed work.
 | The **operator column-mapping design** — the mapping object, per-source persistence + header fingerprint, the upload→map→validate→run UI flow, per-cell coercion, the unmapped-required block, fuzzy-suggestion policy |
 | The **extraction** intake task designs (`extraction/parse-csv`, `extraction/parse-pdf-fields`), **roster** matching (`roster/match-spreadsheet`), and typed **normalization** service outcomes — their contract shapes + intake semantics |
 | The **intake pipeline**: how a parsed+mapped dataset becomes N workflow inputs, and the pre-run per-row rejection review (nothing half-launches) |
-| Durable mobile-photo capture intake: session/photo/finalization state, bundle outbox, artifact handoff, expiry, restart recovery, and phone-scope lifecycle (network exposure policy remains doc 12) |
+| Durable mobile-photo capture intake: session/photo/finalization state, bundle outbox, artifact handoff, expiry, restart recovery, and phone-scope lifecycle (network exposure policy remains ref operator-trust) |
 | The **Edit-Data surface** — its data source, editable/read-only rules, the edit-during-resume concurrency rule |
-| Roster/retention projection semantics: typed stable-key record, blocking outbox, idempotent xlsx upsert, and concurrent-edit conflict policy (storage/projector authority remains doc 03) |
+| Roster/retention projection semantics: typed stable-key record, blocking outbox, idempotent xlsx upsert, and concurrent-edit conflict policy (storage/projector authority remains ref dashboard-surfaces) |
 
 | This doc **references** (owner) |
 |---|
 | **Canonical field definitions** — the field vocabulary + zod schemas live in the rebuild repo's `src/domain/` (defined THERE). This doc owns the *mapping/intake semantics onto* those fields, not the vocabulary itself |
-| Task contract/impl split (`defineTaskContract`/`defineTask`), service stores (D4), `freshness` field, error taxonomy → **doc 01** |
-| The **injected-data mechanism** (`RunEnvelope.injected`, §5.6 #3), checkpoint store + resume scope (D9), freshness walk (D8), the "Live Edit Data over checkpoints" subsection → **doc 02** |
-| SSE wire shapes (`detailSurfaces` incl. the Context-rail `data` section), the span vocabulary (incl. D254's retirement of `span.patched`), notes stream, SQLite projection role (D14) → **doc 03** |
-| Standard CAS command path for Edit Data → **doc 03** |
-| Scenario manifests, evidence receipts, run explanation, knowledge/fix records → **doc 12** |
+| Task contract/impl split (`defineTaskContract`/`defineTask`), service stores (D4), `freshness` field, error taxonomy → **ref task-contract** |
+| The **injected-data mechanism** (`RunEnvelope.injected`, §5.6 #3), checkpoint store + resume scope (D9), freshness walk (D8), the "Live Edit Data over checkpoints" subsection → **ref workflow-model** |
+| SSE wire shapes (`detailSurfaces` incl. the Context-rail `data` section), the span vocabulary (incl. D254's retirement of `span.patched`), notes stream, SQLite projection role (D14) → **ref dashboard-surfaces** |
+| Standard CAS command path for Edit Data → **ref dashboard-surfaces** |
+| Scenario manifests, evidence receipts, run explanation, knowledge/fix records → **ref operator-trust** |
 
 Grounding (read, not imagined) — every path in this block is a **legacy-repo** path
 (`hr-automation`); unqualified `src/` in the design sections below is the **rebuild repo's** `src/`:
@@ -56,7 +56,7 @@ Grounding (read, not imagined) — every path in this block is a **legacy-repo**
   for "what data does this run currently hold" — the tab edits stringified `data`, not checkpoints.
 
 The new model makes intake **operator-mapped and schema-validated by construction**, and makes Edit
-Data a **typed view of the run's checkpoints** edited through doc 02's `injected` mechanism.
+Data a **typed view of the run's checkpoints** edited through ref workflow-model's `injected` mechanism.
 
 ---
 
@@ -96,7 +96,7 @@ export interface CanonicalField<S extends z.ZodType = z.ZodType> {
 `eid` ports the canonical EID schema and normalization behavior into the rebuild repo without
 importing legacy code — under D93 that non-import is structural (separate repos, no shared module
 graph): `coerce` runs the native `normalizeEid` (strip non-digits), then the schema is
-`z.string().regex(/^10\d{6}$/)` (doc 01 §9.1 `SearchPersonOrg` + `isUcpathEmployeeId`).
+`z.string().regex(/^10\d{6}$/)` (ref task-contract §9.1 `SearchPersonOrg` + `isUcpathEmployeeId`).
 `firstName`/`lastName`/`fullName` port the canonical `ocr-person-name.ts` shapes (title-cased
 "Last, First"). `effectiveDate`/date fields coerce `MM/DD/YYYY` via the ported `dates.ts` helpers.
 
@@ -173,7 +173,7 @@ cannot load. And no normalized header alias may claim two fields: an ambiguous a
 §2.5 scorer's top hit arbitrary, and an arbitrary suggestion accepted with one click is §7 vector #1
 wearing a disguise.
 
-**Naming reconciliation.** `src/domain/ids.ts` already owned `IntakeManifestId`, and doc 03's D67
+**Naming reconciliation.** `src/domain/ids.ts` already owned `IntakeManifestId`, and ref dashboard-surfaces's D67
 command union already binds `enqueue-intake-manifest` to it. That id is THE manifest identity;
 §5's `IntakePlanIdSchema` is the same thing under an earlier name and no second id is minted.
 
@@ -306,7 +306,7 @@ asserts no code path writes `bindings` from the suggestion scorer directly.
 
 `src/domain/intake/` holds the three pieces, deliberately separate because that separation is what
 makes reuse fail closed. The whole tree is bundle-safe (no Node built-in) since the mapping grid is a
-browser surface — doc 13 §8.13's lesson applies to every new domain module, not only the ones that
+browser surface — ref frontend-backend-integration §8.13's lesson applies to every new domain module, not only the ones that
 already burned.
 
 **`projection.ts` — `defineIntakeProjection`.** It proves §1's invariant by **object identity**, not
@@ -461,7 +461,7 @@ satisfy the very schema the workflow validates with. The descriptor's source clo
 ## 3. Extraction store tasks (service store — D4)
 
 `extraction` is a service store (`sessions: []`, no browser, no `page` ctx). Contracts live in
-`src/domain/contracts/extraction/`; impls in `src/stores/extraction/tasks/` (doc 01 §3.4).
+`src/domain/contracts/extraction/`; impls in `src/stores/extraction/tasks/` (ref task-contract §3.4).
 
 ```ts
 // src/domain/contracts/extraction/parse-csv.ts   (effect: "read")
@@ -501,8 +501,8 @@ export const ParseCsv = defineTaskContract({
 
 ### 3.1 Phase-2h as-built — `extraction/extract-spreadsheet` (D149)
 
-**The id is `extraction/extract-spreadsheet`, not `parse-csv`.** Doc 01 owns the id grammar and its
-read verbs are `read|search|list|extract|match|verify`; `parse-` is not among them, and doc 01 §3.4's
+**The id is `extraction/extract-spreadsheet`, not `parse-csv`.** Ref task-contract owns the id grammar and its
+read verbs are `read|search|list|extract|match|verify`; `parse-` is not among them, and ref task-contract §3.4's
 own example already writes `extraction/extract-pdf-fields`. The illustrative id above is corrected
 here rather than the grammar being widened. One task covers `.csv` and `.xlsx` for the same reason:
 a caller must not branch on a file extension it should not be inspecting. Fielded-PDF extraction is
@@ -636,7 +636,7 @@ export const MatchSpreadsheet = defineTaskContract({
   `MatchConfidenceBadge`. A match the roster cannot make is `matchedEid: null` + `mismatch:"no-match"`
   (the caller then falls through to person-lookup), **never** a fabricated EID.
 - **Freshness (D8).** Because a roster match can feed a write, the contract declares a finite
-  `maxAgeMs`; the resume freshness walk (doc 02 §5.5) refuses a stale replayed match feeding a
+  `maxAgeMs`; the resume freshness walk (ref workflow-model §5.5) refuses a stale replayed match feeding a
   commit transaction, naming the roster + age + limit.
 
 **As-built (D163, 2026-08-08).** The store landed as sketched, with the port split exactly as
@@ -684,7 +684,7 @@ acknowledged. The finite sink registry is infrastructure keyed by sink kind, not
 registry; descriptor coverage validates every source/key path and sink id.
 
 Input/download `FileRef` values are likewise content-addressed artifact references created through
-doc 01's atomic writer, not arbitrary mutable paths.
+ref task-contract's atomic writer, not arbitrary mutable paths.
 
 **As-built (D164, 2026-08-08) — this section landed.** The v1 `artifact_outbox`/
 `artifact_sink_heads` shells (JSON tables with zero production rows) grew their REAL semantics at
@@ -694,8 +694,8 @@ projected` CAS that is idempotent on an already-projected row, and the typed sin
 row per sink under a generation CAS (the notifications discipline). The executor consumes
 `descriptor.artifactProjections` at runtime: the checkpoint and its derived stable-keyed rows
 commit in ONE authority transaction, the node then BLOCKS on `RunArtifactProjector.projectOutbox`,
-and a projection failure is a STRUCTURED NODE FAILURE — doc 02's state machine has no
-waiting-on-projection arm (a real gap between this section's "parks" language and doc 02 §4), and
+and a projection failure is a STRUCTURED NODE FAILURE — ref workflow-model's state machine has no
+waiting-on-projection arm (a real gap between this section's "parks" language and ref workflow-model §4), and
 the as-built resolution is fail-loud node failure with the durable rows surviving: a relaunch
 replays the checkpoint, RE-DERIVES the stable keys (a pure function of the exact output), finds
 its pending rows by `projectionId + stableKeyFingerprint` — never by run id — and resumes the
@@ -757,14 +757,14 @@ one provider may try the next provider only through a declared, scenario-pinned 
 Exhaustion is `advisory-unavailable`, not an empty change list. AI/geocoder values never overwrite
 OCR/input silently: the review gate shows before/after/source/confidence and accepted changes become
 operator-correction provenance. Ambiguous or unavailable **mandatory** fields block approval; truly
-optional suggestions may yield `done-with-warnings` only under doc 12's evidence rule. The contract
+optional suggestions may yield `done-with-warnings` only under ref operator-trust's evidence rule. The contract
 uses a finite freshness budget for provider-derived facts and registers rule-only, each-provider,
 rate-limit/failure, malformed-model-output, ambiguous, and approval/rejection scenarios.
 
 ---
 
 **As-built (D165, 2026-08-08) — this section landed, with the pool.** The store is
-`normalization/read-contact-advice` — the sketched `normalize-contact` id violated doc 01's
+`normalization/read-contact-advice` — the sketched `normalize-contact` id violated ref task-contract's
 read-verb grammar, the same defect D149 fixed. Deterministic rules ported with provenance
 (`legacy:src/services/llm/normalize-contact.ts` and `address/format.ts`): phone → canonical
 DIGITS (this tree's canonical phone; display formatting is the consuming workflow's), state/ZIP
@@ -798,7 +798,7 @@ and both keyless geocoders. Proof: `tests/unit/normalization-rules.test.ts`,
 from `geocode` because the two spend different budgets against different remote systems and a
 caller who wanted address verification has not thereby consented to a model reading the record.
 The task asks about the fields the deterministic rules could not decide — but **only those whose
-canonical `redactTransform` is `allow`**, because doc 12 §4.4's rule is that redaction happens
+canonical `redactTransform` is `allow`**, because ref operator-trust §4.4's rule is that redaction happens
 before the wire and the DECLARED classification decides, not the usefulness of the answer.
 `CANONICAL_FIELDS.relationship` is `sensitive-hr`, whose widest permitted transform is `count`, so
 the one field legacy's LLM fallback existed for is precisely the one this arm withholds: it stays
@@ -808,7 +808,7 @@ are `safe-diagnostic` and are. An answer naming a field the prompt did not carry
 rather than being applied — that is the model volunteering a value for a withheld field. A
 malformed answer is a refusal that leaves the fields ambiguous, never a partial accept, and joins
 `advisory-unavailable` beside the geocoders' own exhaustion. `ContactFieldIdSchema` and the new
-`ContactAdviceSchema` moved into `src/domain/normalization/contact-rules.ts` so doc 12's advisory
+`ContactAdviceSchema` moved into `src/domain/normalization/contact-rules.ts` so ref operator-trust's advisory
 module can reach the vocabulary without putting the task contract in its import closure. Proof:
 `normalization/contact/ai-advice` and `normalization/contact/ai-withheld-field` in the same
 scenario corpus — the second asserts the withheld value appears NOWHERE in the prepared request.
@@ -961,7 +961,7 @@ go find — the orphan Section 2 is this arm with `missingKinds: ["i9-section1"]
 does not hide a still-missing one: `missingKinds` is carried orthogonally to the enum. The
 one-page forms are unchanged by construction (a subject that exists has its only expected kind).
 Legacy's §1↔§2 field corroboration — the employer's Section 2 as an independent transcription that
-catches confidently-wrong Section 1 reads — needs both extractions in hand and is doc 12 evidence
+catches confidently-wrong Section 1 reads — needs both extractions in hand and is ref operator-trust evidence
 work above this layer; the grouping arm this section lands is what makes those pairs findable.
 
 **Measured live, 2026-08-08, on the whole real 44-page Xerox scan** (route 2: the stack classified
@@ -1195,7 +1195,7 @@ of its own.
 
 The mapping (§2) + the parsed rows (§3) + any roster match (§4) compose into **N workflow inputs,
 one per valid row**, feeding the run-surface fan-out (the multi-subject `operation` coordinator +
-`operation-member` children, doc 02):
+`operation-member` children, ref workflow-model):
 
 ```
 parse-csv → detected columns ─┐
@@ -1439,7 +1439,7 @@ advance. Partial fan-out is unrepresentable rather than merely avoided.
 
 **Deviation from §5's coordinator sentence, recorded.** §5 describes the fan-out as an `operation`
 coordinator plus `operation-member` children. Nothing in the runtime mints an `operation` run — the
-shape exists only in the queue projection's rendering, and doc 07's workflow tiers assign
+shape exists only in the queue projection's rendering, and doc 00 §Size model + delivery tiers assigns
 `operation-member` fan-out to the oath-signature / emergency-contact tier — so intake enqueues N
 independent `single` runs and the MANIFEST is what joins them.
 That is the artefact §5 already relies on to make "42 rows ran" checkable, and its `validRows[].itemId`
@@ -1533,7 +1533,7 @@ export type CaptureCommandRequest = CommandEnvelope & (
   discard takes a command id plus the observed session version for audit. Duplicate phone retries
   return the prior result; a serialized transaction validates the requested refs and state against
   current authority, rejecting an inapplicable command without treating version drift alone as a
-  CAS conflict. These are doc 03 D67 `CaptureCommandRequest` arms, not route-local mutations. Only
+  CAS conflict. These are ref dashboard-surfaces D67 `CaptureCommandRequest` arms, not route-local mutations. Only
   `finalized|discarded|expired` are terminal and never reopen; `failed` is a durable recoverable
   state whose Retry Finalize command idempotently creates the next stable finalization generation/
   outbox without changing photo identity/order.
@@ -1558,7 +1558,7 @@ export type CaptureCommandRequest = CommandEnvelope & (
 - **Network scope is explicit.** The loopback dashboard starts no public listener by default. When
   the operator starts capture, a short-lived ingress/tunnel may serve only the phone asset and
   token-scoped manifest/upload/replace/reorder/delete/finalize/status routes. Start/list/discard,
-  queue, files, settings, evidence, and commands remain loopback-only (doc 12 §7).
+  queue, files, settings, evidence, and commands remain loopback-only (ref operator-trust §7).
 
 Mandatory scenarios cover restart with an open session and restart mid-finalize, plus duplicate/
 reordered phone requests, expired token, HEIC conversion, corrupt/empty image, bundle failure/retry,
@@ -1599,7 +1599,7 @@ of D167's seams and adds the scope half the guard was waiting for.
 32 CSPRNG bytes as base64url (not a UUID — six fixed version/variant bits are the wrong shape for a
 bearer secret). It rides the QR payload's **URL FRAGMENT** (`/capture.html#t=<token>`), which no
 browser transmits and no proxy or access log can record, and reaches the API in the
-`X-Capture-Token` **header** — never a path segment, never a query value (doc 11 bans secret-bearing
+`X-Capture-Token` **header** — never a path segment, never a query value (ref clock-config-secrets bans secret-bearing
 URLs). Only `sha256("hrauto:capture-token:v1\0" + token)` is durable, and `captureSessions.
 findByTokenDigest` is how a token becomes a session. Because the phone asset URL carries no token,
 the ingress allowlist is a fixed set of paths with nothing interpolated into it.
@@ -1613,7 +1613,7 @@ because by then the caller has PROVEN it holds the session's token and a named r
 it what to do next.
 
 **The closed route union is declared once and derived twice.** `src/domain/capture-surface.ts`'s
-`CAPTURE_PHONE_ROUTES` is doc 12 §7's exception written down: session read, upload, photo read-back,
+`CAPTURE_PHONE_ROUTES` is ref operator-trust §7's exception written down: session read, upload, photo read-back,
 replace, delete, reorder, finalize, retry-finalize, discard. The BFF's registration and the
 ingress allowlist both derive from it, and a request arriving on the configured ingress **Host** is
 refused with a status and body **byte-identical to an unrouted path** — so the ingress cannot be
@@ -1717,7 +1717,7 @@ a violating fixture.
 
 ## 6. The Edit-Data surface (charter §12)
 
-Edit Data is a **typed view of a run's checkpoint state**, edited through doc 02's `injected`
+Edit Data is a **typed view of a run's checkpoint state**, edited through ref workflow-model's `injected`
 mechanism. It replaces the `prefilledData`/`splitPrefilled`/`save-data` side channel entirely.
 
 ### 6.1 Data source — fetch the snapshot, SSE only signals staleness
@@ -1728,7 +1728,7 @@ per-run SSE topic is consumed only as an invalidation signal.** Justification:
 - Checkpoints are **SQLite system-of-record** (D14) — low-frequency, not a stream.
 - An editable form must be a **consistent point-in-time snapshot**; a form whose values mutate under
   the operator's cursor (a live SSE feed) is a footgun.
-- Doc 03 already keeps per-run detail as request/response + a per-run SSE topic. Edit Data fetches
+- Ref dashboard-surfaces already keeps per-run detail as request/response + a per-run SSE topic. Edit Data fetches
   the checkpoint snapshot on open (carrying a **generation token** — the run's `attempt` + the
   latest span sequence it was loaded against). The per-run SSE topic's `run.claimed`/`gate.resolved`
   events are consumed **only** to warn "this run just resumed — your edit is stale" (drives the
@@ -1774,7 +1774,7 @@ resume can be triggered concurrently (a watcher gate resolving, an operator else
 Retry). **Rule: the resume claim is the fence; the Edit-Data save is a compare-and-swap against it.**
 
 - The operator loads the snapshot at generation `G` (`attempt` + span-seq).
-- On Save, the UI issues doc 03's standard `edit-checkpoint` command. Its injected-checkpoint write
+- On Save, the UI issues ref dashboard-surfaces's standard `edit-checkpoint` command. Its injected-checkpoint write
   is a **conditional SQLite transaction**: it commits only if
   the run is still in a non-executing state at generation `G` — i.e. **no `run.claimed` for a newer
   attempt** has landed and the gate has not resolved since load.
@@ -1846,7 +1846,7 @@ core.** Justification:
   input* schema (pre-run); Context Data correction parses each field against the *producing
   contract's output* schema (mid-run). Same UX ("loud per-cell error naming row/column/value"),
   different contract.
-- They have **different lifecycles + endpoints**: doc 02 §5.6 #4 already mandates that new-input and
+- They have **different lifecycles + endpoints**: ref workflow-model §5.6 #4 already mandates that new-input and
   injected are *separate endpoints* — "`injected` is rejected on a new-input run" so changed input
   can never silently ride stale context. Merging the two grids into one would blur exactly that
   boundary.

@@ -1,5 +1,5 @@
 /**
- * The intake corpus for parity adapter #1 (doc 13 §7.2, 2i-E3).
+ * The intake corpus for parity adapter #1 (ref frontend-backend-integration §7.2, 2i-E3).
  *
  * Nothing here is a hand-typed wire payload. A grid of cells goes in, and the
  * REAL domain functions produce every derived fact on the way out — the ranked

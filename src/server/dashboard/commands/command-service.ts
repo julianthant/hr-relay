@@ -1,9 +1,9 @@
 /**
  * The dashboard command service: the kernel is the ONE command path (D113);
- * this wrapper adds exactly what doc 03 assigns to 1g around it —
+ * this wrapper adds exactly what ref dashboard-surfaces assigns to 1g around it —
  *
  * 1. `run.queued` span emission for every run an applied `start-run` created
- *    (a run is born at ENQUEUE, doc 03 §1.1). Authority commits FIRST inside
+ *    (a run is born at ENQUEUE, ref dashboard-surfaces §1.1). Authority commits FIRST inside
  *    the kernel's transaction; the JSONL line follows — the doc's crash gap
  *    ("repairable, never a lost filing") lives between those two steps.
  * 1b. The same emission for every run an applied `enqueue-intake-manifest`
@@ -102,7 +102,7 @@ export function bulkChildCommandId(bulkCommandId: string, runId: string): z.infe
 
 /**
  * Applied run commands that emit no span but DO change what the queue row
- * projects, so the projection has to be told. The two doc 09 §4.1 write
+ * projects, so the projection has to be told. The two ref write-safety §4.1 write
  * resolutions belong here for exactly the reason `cancel` does: they move the
  * run off `parked-write` (to `queued` on absent, to a settled outcome on
  * present) and the row's status is folded from authority. Without the refresh
@@ -315,7 +315,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     /**
      * D235's loop. Every refusal below reaches NO target — it is a statement
      * about the request, not about a run — and every per-target answer is a
-     * vector entry, because doc 03 §2.4 forbids collapsing a partial result
+     * vector entry, because ref dashboard-surfaces §2.4 forbids collapsing a partial result
      * into "Done".
      */
     executeBulk(input: unknown): BulkRunCommandResponse {
@@ -340,7 +340,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
          * cannot be honoured by a loop — so it refuses by name rather than
          * running best-effort under an all-or-none label, which would be the
          * surface lying about atomicity it never had. The owner and the trigger
-         * are named in doc 03's bulk section.
+         * are named in ref dashboard-surfaces's bulk section.
          */
         return BulkRunCommandResponseSchema.parse({
           state: "refused",

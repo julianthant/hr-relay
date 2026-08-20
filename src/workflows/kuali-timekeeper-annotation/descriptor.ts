@@ -1,7 +1,7 @@
 /**
  * kuali-timekeeper-annotation — Phase 2's transaction proof.
  *
- * ONE transaction node and nothing else. Doc 07's Phase-2 rule is to pick "the
+ * ONE transaction node and nothing else. Doc 02 §Phase summary's rule is to pick "the
  * smallest controlled test-instance or sacrificial test record whose prepare
  * and commit paths are real and whose outcome is independently queryable", and
  * a graph with a single node is the smallest thing that can carry a real fence.
@@ -20,7 +20,7 @@
  *
  * ## Why it is deliberately NOT separation-class
  *
- * Doc 09 §14's ALWAYS-GATE (D77) binds separation FILINGS: the UCPath
+ * Ref write-safety §14's ALWAYS-GATE (D77) binds separation FILINGS: the UCPath
  * termination and the Kuali finalization that end someone's employment. This
  * workflow files nothing — it annotates a field — so registering it under the
  * separation class would put a gate in front of a write that is not the wrong-
@@ -28,7 +28,7 @@
  * does. The identity control here is the kernel's own beat-③ subject binding
  * against the document's displayed EID. The operator sign-off for the ONE
  * controlled commit is out-of-band and has not been given; see
- * `docs/rebuild/09-write-safety.md` §15.
+ * `docs/rebuild/reference/write-safety.md` §15.
  *
  * ## dryRun
  *
@@ -112,7 +112,7 @@ const kualiTimekeeperFlow = flow(KualiTimekeeperAnnotationInput)
       uses: KualiSaveTimekeeperAnnotation,
       // Workflow input only — the durable idempotency key is therefore stable
       // before any page mutation, which is what makes a crash between click and
-      // confirmation resolvable at all (doc 02 §3.1).
+      // confirmation resolvable at all (ref workflow-model §3.1).
       bind: ({ input }) => ({
         actionId: input.actionId,
         documentNumber: input.documentNumber,
@@ -175,7 +175,7 @@ export const kualiTimekeeperAnnotationDescriptor = defineWorkflowDescriptor({
   // expected to: the `span.patched` detail channel that was to carry one is RETIRED
   // (it never had a producer). A `details` declaration is read as a DECLARATION —
   // the evidence receipt's mandatory-leaf set, the run-detail data-origin bound, and
-  // the Explorer's field census (doc 03 §3.3).
+  // the Explorer's field census (ref dashboard-surfaces §3.3).
   details: [
     {
       key: "timekeeper-name",

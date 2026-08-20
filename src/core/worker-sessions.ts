@@ -1,5 +1,5 @@
 /**
- * Worker-local browser ownership (doc 05 §§2,4,6.1).
+ * Worker-local browser ownership (ref execution-and-sessions §§2,4,6.1).
  *
  * Drivers are exposed only inside `withDriver`'s awaited callback. A system is
  * serialized within one worker, a clean release resets before reuse, and every
@@ -225,8 +225,8 @@ async function waitForOperation<Result>(
 }
 
 /**
- * The bind/release half of D116 (doc 11 §4) as a first-class surface: the
- * caller that OWNS a run context — the worker loop for its claimed run, doc 09
+ * The bind/release half of D116 (ref clock-config-secrets §4) as a first-class surface: the
+ * caller that OWNS a run context — the worker loop for its claimed run, ref write-safety
  * §4 recovery for a target run's out-of-loop probe lease — binds that run's
  * retained immutable `configFingerprint` for exactly the duration of the
  * operation and releases it afterwards, success or failure.
@@ -287,7 +287,7 @@ export class WorkerSessionManager {
   }
 
   /**
-   * D116 (doc 11 §4): the worker loop binds the claimed run's immutable
+   * D116 (ref clock-config-secrets §4): the worker loop binds the claimed run's immutable
    * `configFingerprint` before any task executes, making the fingerprint part
    * of the session lookup identity rather than evidence metadata. Exactly one
    * run is bound at a time — a second bind without a release is a programming
@@ -534,7 +534,7 @@ export class WorkerSessionManager {
     }
     const existing = this.#resources.get(need.system);
     if (existing !== undefined) {
-      // D116 (doc 11 §4, doc 05 §7): reuse requires the COMPLETE identity —
+      // D116 (ref clock-config-secrets §4, ref execution-and-sessions §7): reuse requires the COMPLETE identity —
       // worker (this manager), system, resolved instance, AND the run's
       // config fingerprint. Any drift proves the old context closed (a forced
       // fresh boundary) before a replacement is authenticated; a context

@@ -25,7 +25,7 @@
  * Four hours, matching `search-person-org`, and for the same reason: person/org
  * rows change on an HR action, not continuously, and a same-day replay is
  * re-read before it can feed a write. `defaultOverride: "forbidden"` because
- * doc 09 §14.5 puts identity on the never-overridable list — an approval is an
+ * ref write-safety §14.5 puts identity on the never-overridable list — an approval is an
  * observation, and a stale observation re-opens the gate rather than being
  * waved through.
  */

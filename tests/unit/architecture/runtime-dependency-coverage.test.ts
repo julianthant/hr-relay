@@ -22,7 +22,7 @@ import { SECRET_FAMILY_SPECS } from "../../../src/domain/secrets.js";
 import { LEGACY_REPO_ROOT, gitVisibleFilesIn } from "./helpers/guard-files.js";
 
 /**
- * Guard (doc 10 §3.12 — D68): the rebuild's closed runtime-dependency sets
+ * Guard (ref guards-and-tests §3.12 — D68): the rebuild's closed runtime-dependency sets
  * agree with the legacy inventory they replace, in BOTH directions.
  *
  * `auditRuntimeDependencyCoverage` already closes the registry against itself
@@ -30,7 +30,7 @@ import { LEGACY_REPO_ROOT, gitVisibleFilesIn } from "./helpers/guard-files.js";
  * secret an owning dependency — and the rebuild lane exercises that with
  * mutation fixtures. What no lane covered is the direction that actually goes
  * stale in a coexistence program: **legacy grew a system or a provider and the
- * rebuild registry did not notice.** Doc 10 names the failure exactly — "a
+ * rebuild registry did not notice.** Ref guards-and-tests names the failure exactly — "a
  * missing ServiceNow/SharePoint/Old-Kronos endpoint or provider key ... fails
  * with the exact owner."
  *
@@ -38,7 +38,7 @@ import { LEGACY_REPO_ROOT, gitVisibleFilesIn } from "./helpers/guard-files.js";
  * imported: after D93 they are two repositories, and this guard is a
  * comparison of inventories, not a bridge between them.
  *
- * This guard also re-runs the registry audit inside `test:architecture`. Doc 10
+ * This guard also re-runs the registry audit inside `test:architecture`. Ref guards-and-tests
  * §5.1 registers `runtime-dependency-coverage` as a guard-of-guards entry, so
  * the gate that fails on registry drift must be the architecture lane — not
  * only the unit lane, which a legacy-only maintenance pass would not run.

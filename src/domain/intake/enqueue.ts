@@ -1,5 +1,5 @@
 /**
- * Session → manifest → readiness, as one pure derivation (doc 06 §5, D171).
+ * Session → manifest → readiness, as one pure derivation (ref data-intake-and-edit-data §5, D171).
  *
  * The enqueue arm is the irreversible half of intake: it turns an operator's
  * mapping into N real HR runs. Everything it decides with is therefore derived
@@ -9,7 +9,7 @@
  *
  * Three properties are the reason this is one function rather than three:
  *
- * 1. **Readiness is judged on the manifest that would be written.** Doc 06 §5's
+ * 1. **Readiness is judged on the manifest that would be written.** Ref data-intake-and-edit-data §5's
  *    `enqueueReadiness` reads a manifest's own dispositions, so building the
  *    manifest and gating on it cannot disagree — there is no second count of
  *    "how many rows are still rejected".
@@ -185,7 +185,7 @@ export function deriveIntakeEnqueuePlan(input: IntakeEnqueuePlanInput): IntakeEn
 }
 
 /**
- * What the CURRENT session presents to `rerunDiff` (doc 06 §7 vector #11).
+ * What the CURRENT session presents to `rerunDiff` (ref data-intake-and-edit-data §7 vector #11).
  *
  * The source digest is not a parameter: a prior manifest is FOUND by these
  * exact bytes, so that axis is equal by construction and the four remaining

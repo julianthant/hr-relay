@@ -548,7 +548,7 @@ describe("separations scenarios — the composition", () => {
     })));
     // And it changes NO permanent key: those are derived from the EID, the
     // effective date and the document, so a re-read can never file a second
-    // termination — doc 09's same-key mutex refuses the second fence.
+    // termination — ref write-safety's same-key mutex refuses the second fence.
     assert.match(TERMINATION_IDEMPOTENCY_KEY, /^ucpath:termination\|/u);
     assert.equal(TERMINATION_IDEMPOTENCY_KEY.includes("re-read"), false);
     assert.equal(SWEEP_IDEMPOTENCY_KEY.includes("re-read"), false);
@@ -729,7 +729,7 @@ describe("separations scenarios — the composition", () => {
   });
 
   it("separations/subject-mismatch — a page that moved after staging yields zero fence and zero click", async () => {
-    // Doc 09 beat ③, on all three writes. The composition is where this matters
+    // Ref write-safety beat ③, on all three writes. The composition is where this matters
     // most: three fences over two systems, and the operator approved ONE person.
     for (const node of [SWEEP_NODE, TERMINATION_NODE]) {
       // The sweep needs something to sweep, or its probe settles

@@ -1,6 +1,6 @@
 /**
- * Guard: `notification-durability` (doc 10 §3.10; doc 03 §2.6 + §10.4 D79b;
- * doc 12 §6/§6.1 D134).
+ * Guard: `notification-durability` (ref guards-and-tests §3.10; ref dashboard-surfaces §2.6 + §10.4 D79b;
+ * ref operator-trust §6/§6.1 D134).
  *
  * The load-bearing arm is the injected OS-delivery failure. Everything else in
  * this file exists to make that arm meaningful: the row must already be
@@ -86,7 +86,7 @@ const RUN_FAILED = {
   code: "CRM_UNAVAILABLE",
 } as const;
 
-/** One representative event per closed trigger, doc 03 §2.6's whole list. */
+/** One representative event per closed trigger, ref dashboard-surfaces §2.6's whole list. */
 const EVERY_EVENT = [
   RUN_FAILED,
   {
@@ -147,7 +147,7 @@ describe("notification-durability: every closed trigger commits a durable item",
   });
 
   it("has no free-text channel a captured value could enter through", () => {
-    // Doc 03 §2.6: notification text uses redacted arguments, never raw form
+    // Ref dashboard-surfaces §2.6: notification text uses redacted arguments, never raw form
     // contents. The event union is ids, closed codes, and counts — a caller
     // cannot hand it prose at all.
     assert.equal(
@@ -203,7 +203,7 @@ describe("notification-durability: the durable row is committed before delivery"
     assert.equal(stored.version, 1);
     assert.deepEqual(inbox.list(LOCAL_OPERATOR_ACTOR_ID, "unread").map(({ notificationId }) => notificationId),
       [report.notification.notificationId]);
-    // No per-attempt delivery state was written (doc 10 §3.10).
+    // No per-attempt delivery state was written (ref guards-and-tests §3.10).
     assert.deepEqual(Object.keys(stored).filter((key) => key.toLowerCase().includes("deliver")), []);
   });
 

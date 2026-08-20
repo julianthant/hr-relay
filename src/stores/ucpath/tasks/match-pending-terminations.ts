@@ -4,7 +4,7 @@ import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
 /**
- * Doc 09 §5's second probe kind, on the same rich read: does this person have
+ * Ref write-safety §5's second probe kind, on the same rich read: does this person have
  * ANY in-progress termination?
  *
  * Its polarity is the thing to keep straight — `present` means "there is

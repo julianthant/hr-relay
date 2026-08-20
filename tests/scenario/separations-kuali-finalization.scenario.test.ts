@@ -535,7 +535,7 @@ describe("separations-kuali-finalization scenarios", () => {
   });
 
   it("separations-kuali-finalization/subject-mismatch — the document moved after staging: zero fence, zero click", async () => {
-    // Doc 09 beat ③: the probe AND the prepare both saw the right person, then
+    // Ref write-safety beat ③: the probe AND the prepare both saw the right person, then
     // the pooled page moved to a different one before the fence. Ten staged
     // values are abandoned rather than saved onto somebody else's separation.
     const h = harness({ displayedEidAfterStage: FINALIZATION_OTHER_EID });

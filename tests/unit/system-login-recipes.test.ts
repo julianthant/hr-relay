@@ -1,5 +1,5 @@
 /**
- * The UCPath and CRM login recipes (doc 05 §4).
+ * The UCPath and CRM login recipes (ref execution-and-sessions §4).
  *
  * These flows drive REAL HR systems, so every arm here is about the same
  * question: can this code ever report "authenticated" without having observed

@@ -92,7 +92,7 @@ export interface AuthorityFake {
   /** D22/D126: the already-derived receipts the `△ N` warning count reads. */
   readonly receipts: Map<string, RunEvidenceReceipt>;
   getReceipt(runId: string): RunEvidenceReceipt | undefined;
-  /** Doc 09 §4.1: the durable write-safety rows the parked-write section reads. */
+  /** Ref write-safety §4.1: the durable write-safety rows the parked-write section reads. */
   readonly writeIntents: Map<string, WriteIntentRecord>;
   getWriteIntent(writeIntentId: string): WriteIntentRecord | undefined;
   putWriteIntent(record: WriteIntentRecord): void;

@@ -1,5 +1,5 @@
 /**
- * The generated UI catalog surface (doc 12 §1.3, doc 03 §13, D177).
+ * The generated UI catalog surface (ref operator-trust §1.3, ref dashboard-surfaces §13, D177).
  *
  * ## What this is, and why it is worth a surface
  *
@@ -15,7 +15,7 @@
  * ## THESIS — provenance sits beside the id, not behind it
  *
  * A selector catalog read without its verification date is worse than no
- * catalog: it invites acting on a mapping that may have rotted, and doc 12 §10
+ * catalog: it invites acting on a mapping that may have rotted, and ref operator-trust §10
  * says plainly that the registry "cannot make a stale live verification
  * current". So every row carries its `verifiedAt` and both evidence refs on the
  * same line as its id, at the same weight — never folded into a details
@@ -58,7 +58,7 @@ import { useDashboardClient } from "../state/client-context.js";
  * How loudly each entry kind is drawn.
  *
  * `observation` is the only tinted one: an observation is what a subject
- * binding and a write's completion proof are checked against (doc 12 §1.1), so
+ * binding and a write's completion proof are checked against (ref operator-trust §1.1), so
  * it is the kind whose staleness has consequences beyond a failed read.
  */
 const ENTRY_KIND = {

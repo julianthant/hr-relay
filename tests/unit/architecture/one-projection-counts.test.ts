@@ -1,5 +1,5 @@
 /**
- * D81 — ONE projection owns every count (doc 03 §10.1; doc 10 §3.13).
+ * D81 — ONE projection owns every count (ref dashboard-surfaces §10.1; ref guards-and-tests §3.13).
  *
  * The recorded bug class: legacy badges, the status strip, and the queue list
  * each derived their own counts, so any two could disagree (≥4 historical
@@ -28,7 +28,7 @@
  * 3. THE CARVE-OUT (D236) — the Activity report's write-ledger block is the ONE
  *    served total that does not descend from this projection, because the
  *    ledger is a different authority whose entries outlive the runs that filed
- *    them (doc 03 §10.1). An exemption nothing bounds is an exemption anything
+ *    them (ref dashboard-surfaces §10.1). An exemption nothing bounds is an exemption anything
  *    can join, so it is pinned from both sides: STRUCTURALLY, a ledger block is
  *    built in exactly one module and consumed in exactly one, so a third path
  *    over the ledger fails by file name; and BEHAVIOURALLY, filing entries into

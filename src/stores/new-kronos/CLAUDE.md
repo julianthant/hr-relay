@@ -8,7 +8,7 @@ separations **timecard read** and nothing else. Raw Playwright access and locato
 its import graph, and no `external-commit` element in its UI registry — `auditNewKronosUiRegistry`
 refuses one by name. A future write slice adds the capability deliberately; it cannot be inherited.
 
-## Two tasks, because there are two page visits (D194 / doc 01 §2.8)
+## Two tasks, because there are two page visits (D194 / ref task-contract §2.8)
 
 | Task | Page visit | What it returns |
 |---|---|---|
@@ -178,7 +178,7 @@ hit the search box's own echo of the query), and the `loadingOverlay` CSS union 
 - **2026-08-12: a node whose real product is BROWSER state may not be `replay: "checkpoint"`.** The
   search node's output is durable, but its POINT is the selection it leaves in the panel. Replaying
   the checkpoint restored the output into a fresh browser that had never opened the panel, and Go To
-  refused on an empty selection (live run `sk-124132-9beb`). Doc 02 §5.3 replay restores VALUES,
+  refused on an empty selection (live run `sk-124132-9beb`). Ref workflow-model §5.3 replay restores VALUES,
   never page state. The search node is `always-rerun` for exactly that reason, and the rule
   generalises to every store slice after this one.
 - **2026-08-12: a positive count is evidence; a click is not.** `#goToDropdownButton` is

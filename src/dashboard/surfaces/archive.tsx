@@ -3,7 +3,7 @@
  * src/dashboard/components/dev/rebuild-demo/DemoArchive.tsx (+
  * demo-archive-wire.ts for the query/sort/section vocabulary).
  *
- * The read-only Archive and the version-bump flow (doc 03 §10.2 D80, doc 13 §5,
+ * The read-only Archive and the version-bump flow (ref dashboard-surfaces §10.2 D80, ref frontend-backend-integration §5,
  * D179).
  *
  * ## THESIS — a record, and the act that made it one
@@ -264,7 +264,7 @@ function endedInstant(entry: ArchiveEntryWire): string | undefined {
 }
 
 /**
- * The row's leading identity token (doc 02 §1.1.1, D242).
+ * The row's leading identity token (ref workflow-model §1.1.1, D242).
  *
  * The demo reads `Tomás Rivera · pl v3.0` where this list read
  * `EID 10873698 · Person Lookup v1`, and the reason is width: at 800 rows a
@@ -1899,7 +1899,7 @@ interface BumpAuthoring {
 }
 
 /**
- * The change record doc 03 §10.2 has always asked for, collected at the one
+ * The change record ref dashboard-surfaces §10.2 has always asked for, collected at the one
  * moment somebody can answer it.
  *
  * `what` and `why` are required because a record with neither is the state

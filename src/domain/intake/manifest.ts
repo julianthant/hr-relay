@@ -1,5 +1,5 @@
 /**
- * The intake plan manifest — doc 06 §5.
+ * The intake plan manifest — ref data-intake-and-edit-data §5.
  *
  * This is the record that makes "42 rows ran" checkable. It proves which file
  * and mapping were used, which rows became which stable items, which cells the
@@ -212,7 +212,7 @@ export const IntakePlanManifestSchema = z.strictObject({
   createdAt: IsoInstantSchema,
   /**
    * Present exactly when this manifest's source is a finalized phone-capture
-   * bundle rather than an uploaded spreadsheet (D174, doc 06 §5.1).
+   * bundle rather than an uploaded spreadsheet (D174, ref data-intake-and-edit-data §5.1).
    *
    * §5.1 requires the bundle's manifest to name "a FileRef, source digest,
    * capture-session id, ordered photo digests, and form/workflow binding". The
@@ -225,7 +225,7 @@ export const IntakePlanManifestSchema = z.strictObject({
   capture: z.strictObject({
     captureSessionId: CaptureSessionIdSchema,
     finalizationGeneration: PositiveIntSchema,
-    /** In page order — the bundle IS the order (doc 06 §5.1). */
+    /** In page order — the bundle IS the order (ref data-intake-and-edit-data §5.1). */
     orderedPhotoSha256: z.array(FingerprintSchema).min(1),
   }).optional(),
   totals: IntakeManifestTotalsSchema,
@@ -448,7 +448,7 @@ export function buildIntakeManifest(args: {
 
 /**
  * The visible diff a "rerun with existing data" must show before it creates a
- * new run — doc 06 §7 vector #11.
+ * new run — ref data-intake-and-edit-data §7 vector #11.
  *
  * A rerun references an immutable manifest and an immutable artifact. If the
  * file, the mapping, the projection or the workflow contract has moved, that is
@@ -504,7 +504,7 @@ export function intakeInputHash(parsedInput: unknown) {
 }
 
 /**
- * Whether this manifest may fan out — doc 06 §2.2 step 4 and §5.
+ * Whether this manifest may fan out — ref data-intake-and-edit-data §2.2 step 4 and §5.
  *
  * A valid ZERO-row intake is NOT a no-op success. An operator who uploaded the
  * wrong sheet, or whose every row failed, must see `no-valid-rows` and an

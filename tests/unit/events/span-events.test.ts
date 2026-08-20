@@ -1,5 +1,5 @@
 /**
- * The span/notes wire leaf (doc 03 §1.1).
+ * The span/notes wire leaf (ref dashboard-surfaces §1.1).
  *
  * `src/events/types.ts` restates its id patterns locally so it can stay a
  * zod-only leaf; the parity cases here pin that restatement against the domain

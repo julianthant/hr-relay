@@ -10,7 +10,7 @@
 import { z } from "zod";
 
 /**
- * Charter §25's change record, as a value (doc 03 §10.2: "the scope of a bump
+ * Charter §25's change record, as a value (ref dashboard-surfaces §10.2: "the scope of a bump
  * is declared by whoever makes the change … and recorded in that update's
  * change record — same store as fix records: what, why, version, commit").
  *

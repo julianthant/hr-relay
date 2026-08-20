@@ -1,5 +1,5 @@
 /**
- * Doc 05 §5.5: tasks and transactions run under immutable, abortable
+ * Ref execution-and-sessions §5.5: tasks and transactions run under immutable, abortable
  * deadlines — a service or driver call that ignores its abort signal cannot
  * occupy a worker indefinitely.
  *

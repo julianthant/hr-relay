@@ -49,7 +49,7 @@ function corpusFor(stores: readonly RegisteredTaskStore[]) {
   };
 }
 
-/** Browser-only declaration view consumed by the doc-05 coverage guard. */
+/** Browser-only declaration view consumed by the ref execution-and-sessions coverage guard. */
 export const browserStoreRegistry = defineTaskStoreRegistry(BROWSER_STORES, corpusFor(BROWSER_STORES));
 
 /** The executable task index: browser stores plus workflow/service mini-stores. */

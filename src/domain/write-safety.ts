@@ -38,7 +38,7 @@ export {
   NegativeSettlementPolicySchema,
   probeVerdictSchema,
   // The durable transaction settlement lives in the browser-safe half so a
-  // descriptor closure can hash it (D144); doc 09's module stays its address.
+  // descriptor closure can hash it (D144); ref write-safety's module stays its address.
   // The subject evidence a fence binds and the D210 dry-run preview are there
   // for the same reason.
   SubjectEvidenceSchema,
@@ -154,7 +154,7 @@ const SafeToRetrySettlementSchema = z.strictObject({
 });
 
 /**
- * Doc 09 §4.1.2 — the operator's typed confirmed-absent resolution. It is the
+ * Ref write-safety §4.1.2 — the operator's typed confirmed-absent resolution. It is the
  * ONLY non-evidence path from `attempting`/`parked` to `retryable`: it records
  * who confirmed absence in the target system, when, and the non-empty evidence
  * note, scoped to the exact intent generation it resolves. It never deletes or

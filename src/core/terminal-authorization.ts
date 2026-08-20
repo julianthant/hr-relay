@@ -1,5 +1,5 @@
 /**
- * The ONE assembly point for `TerminalAuthorizationRecord` (docs 03/12,
+ * The ONE assembly point for `TerminalAuthorizationRecord` (refs dashboard-surfaces/operator-trust,
  * D110/D114).
  *
  * The interpreter never hand-builds this row inline: the record preserves the

@@ -3,7 +3,7 @@
  * src/dashboard/components/dev/rebuild-demo/DemoParkResolve.tsx
  * (`ParkResolveDialog` and `SettlingPanel`).
  *
- * THE TWO TYPED EXITS FROM `Write parked` (doc 09 §4.1, row-model D20).
+ * THE TWO TYPED EXITS FROM `Write parked` (ref write-safety §4.1, row-model D20).
  *
  * `Write parked` means one thing: a write was attempted against a real HR
  * system and nobody can tell whether it landed. There is no Resume and no
@@ -14,7 +14,7 @@
  * WHAT THIS SURFACE MAY SAY. Every fact on it is a field the server served on
  * the `parked-write` section, rendered verbatim: this file composes no sentence
  * about the park itself, because `parkedMessage` is the KERNEL's own sentence
- * (doc 09 §4's `park()` interpolates a driver error or a probe's reason into
+ * (ref write-safety §4's `park()` interpolates a driver error or a probe's reason into
  * it) and a second, friendlier paraphrase beside it would be this surface
  * guessing at what happened to a live transaction.
  *
@@ -22,7 +22,7 @@
  * the honest rendering rather than a porting shortfall:
  *
  *  - **The settle fence** (`fence clears at …`, "twice, at least 10 minutes
- *    apart"). Doc 09's `recoveryAbsence` is `operator-only` for every contract
+ *    apart"). Ref write-safety's `recoveryAbsence` is `operator-only` for every contract
  *    but the one live-measured Kuali write; the wire serves no fence window and
  *    a `minSinceFenceMs` invented here is exactly the banned constant.
  *  - **`SettlingPanel`** — the negative-settlement wait state. D198 is explicit
@@ -102,7 +102,7 @@ type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
  * The digest, cut for the eye and never for the record.
  *
  * The permanent write key EMBEDS the subject's identifier, which is why the
- * wire serves only its digest (doc 09). Sixty-four hex characters wrap to three
+ * wire serves only its digest (ref write-safety). Sixty-four hex characters wrap to three
  * lines in a 376px rail and carry no more meaning than their head does, so the
  * head is what is printed — and the whole value stays on the element's `title`,
  * because the operator's job here is to compare it against what a second
@@ -118,7 +118,7 @@ function shortDigest(digest: string): string {
  * WHO the fenced write was bound to. Every arm of `SubjectEvidence` is already
  * display-safe by construction — a bounded suffix, a branded artifact id, or a
  * closed catalog key beside a digest — so this renders the served members and
- * re-shapes none of them (doc 13 §3.4).
+ * re-shapes none of them (ref frontend-backend-integration §3.4).
  *
  * `inline` emits the chips with NO row of their own, for the dialog's fence
  * `Well`, which is one flex-wrap row of content-width chips (R8 finding 14). A
@@ -226,7 +226,7 @@ export function InlineParkedWrite({
         {/*
           The two resolutions, from the SERVED descriptors and nothing else —
           the same `banner` placement filter every other surface uses. A third
-          exit does not exist in doc 09 and cannot be invented here, because
+          exit does not exist in ref write-safety and cannot be invented here, because
           there is no descriptor to render it from.
 
           `ParkResolutions` draws the two write resolutions as the demo's tinted
@@ -252,7 +252,7 @@ export function InlineParkedWrite({
 
 /**
  * The run version both resolutions CAS against, taken off the descriptors the
- * server projected them at rather than off a second fetch — doc 13 §8.5's whole
+ * server projected them at rather than off a second fetch — ref frontend-backend-integration §8.5's whole
  * point is that a control carries the revision it was described at.
  */
 function parkedExpectedVersion(parked: ParkedWritePayload): number {
@@ -494,7 +494,7 @@ export interface ParkResolveTarget {
 
 /**
  * The dialog a served resolution opens. It is CONFIRM-FIRST in the literal
- * sense doc 13 §8.5 means: its title, its body and its commit verb are the
+ * sense ref frontend-backend-integration §8.5 means: its title, its body and its commit verb are the
  * `confirm` block the SERVER authored, because only the server knows the
  * casualties of settling a real HR transaction one way or the other.
  *
@@ -541,7 +541,7 @@ export function ParkResolveDialog({
     // The wire's own `superRefine` pins all three, so reaching here means the
     // descriptor changed shape under a surface that was mid-flight on it.
     throw new Error(
-      `action ${action.key} is not a doc 09 §4.1 write resolution with a confirm block and an intent target`,
+      `action ${action.key} is not a ref write-safety §4.1 write resolution with a confirm block and an intent target`,
     );
   }
 
@@ -634,7 +634,7 @@ export function ParkResolveDialog({
       },
       payload: request.payload,
     }).then((result) => {
-      // `conflict` and `rejected` are VALUES, not exceptions (doc 13 §3.4). The
+      // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4). The
       // server's sentence is printed verbatim: a stale generation is exactly
       // the state a second tab produces, and the server is the only party that
       // can say which generation is live now.
@@ -770,7 +770,7 @@ export function ParkResolveDialog({
               slashed circle. Both arms drew the ABSENT pair unconditionally, so
               the safe answer was wearing the dangerous answer's face.
 
-              The LABEL stays the server's `confirmLabel` — doc 13 §8.5, on
+              The LABEL stays the server's `confirmLabel` — ref frontend-backend-integration §8.5, on
               record as a deliberate deviation from the demo's client-authored
               strings (R8 finding 19). */}
           <Button

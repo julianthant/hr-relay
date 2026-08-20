@@ -1,6 +1,6 @@
 /**
- * The spreadsheet intake workspace — doc 06 §2.2's upload → map → validate →
- * run, and doc 03 §11's surface contract (2i-E3, D173).
+ * The spreadsheet intake workspace — ref data-intake-and-edit-data §2.2's upload → map → validate →
+ * run, and ref dashboard-surfaces §11's surface contract (2i-E3, D173).
  *
  * ## One axis carries the whole design: PROPOSED against DECIDED
  *
@@ -114,7 +114,7 @@ const SOURCE_SURFACE = "intake-workspace";
  */
 const INTAKE_ACCEPT = ".csv,.xlsx,.xls";
 
-/** Doc 06's own words for each rejection code, in the operator's terms. */
+/** Ref data-intake-and-edit-data's own words for each rejection code, in the operator's terms. */
 const REJECT_CODE_LABEL: Record<RowReject["code"], string> = {
   "unmapped-required": "unmapped field",
   "cell-coercion": "cell could not be read",
@@ -391,7 +391,7 @@ function columnLabel(column: DetectedColumn): string {
  * One row per DECLARED TARGET FIELD, never one per source column.
  *
  * The workflow's fields are the fixed axis and the file is the variable, which
- * is doc 06 §2.2 step 2 in as many words. Turning it around would make the
+ * is ref data-intake-and-edit-data §2.2 step 2 in as many words. Turning it around would make the
  * grid's shape depend on the spreadsheet, and an operator could finish it
  * without ever seeing a field the workflow wanted.
  */
@@ -615,7 +615,7 @@ function SuggestionCell({
 /* ── validation review ────────────────────────────────────────────────────── */
 
 /**
- * The pre-run rejection review (doc 06 §5).
+ * The pre-run rejection review (ref data-intake-and-edit-data §5).
  *
  * Rows are grouped by SOURCE ROW rather than listed per rejection, because a
  * row with three bad cells is one person the operator decides about once. Each

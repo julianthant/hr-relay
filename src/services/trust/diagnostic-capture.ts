@@ -1,5 +1,5 @@
 /**
- * Doc 12 §2.2 — automatic diagnostic capture.
+ * Ref operator-trust §2.2 — automatic diagnostic capture.
  *
  * Capture is TWO phases on purpose, and the reason is a foreign key:
  * `diagnostic_bundles.failure_id` references `failures(record_key)`, while
@@ -40,7 +40,7 @@ import {
 import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
 
 /**
- * The exact media type each attachment arm may carry. Doc 12 §2.2 allows a
+ * The exact media type each attachment arm may carry. Ref operator-trust §2.2 allows a
  * screenshot, a bounded accessibility/DOM excerpt, and console/network
  * summaries — not an arbitrary blob — and `DiagnosticAttachmentSchema` pins
  * the same pairs, so a mismatch fails at both ends.

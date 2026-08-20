@@ -1,11 +1,11 @@
 /**
- * `kuali/verify-timekeeper-annotation` — the `save-verify` READ-BACK doc 09
+ * `kuali/verify-timekeeper-annotation` — the `save-verify` READ-BACK ref write-safety
  * §10 lists as a genuine addition ("`kuali/read-saved-document` … does NOT
  * exist today … must be built and live-verified before Kuali submit tasks can
  * instantiate a passing `completion`").
  *
  * It is a separate contract from the idempotency probe even though both return
- * the same verdict shape, because doc 09 §2.1 gives them different jobs and the
+ * the same verdict shape, because ref write-safety §2.1 gives them different jobs and the
  * kernel calls them at different beats: the probe runs at ① on its own read
  * lease and may navigate freely; the verifier runs at ⑥ on the RETAINED
  * transaction page, immediately after the click, and is the ONLY thing that can
