@@ -243,17 +243,83 @@ size: XL
 chip: active
 open: yes
 
-> One workflow at a time through the seven-step loop (doc 07 §3.1): questionnaire → author → guards → **live dry run** → **controlled commit** → rebuild-ready → close-out. Organised since 2026-08-18 into four tracks; **Tracks 0 and B are landed, C is in progress, A is blocked on you.**
+> One workflow at a time through the seven-step loop (doc 07 §3.1): questionnaire → author → guards → **live dry run** → **controlled commit** → rebuild-ready → close-out. The order of work inside the phase: **the dashboard defaults first** (the generic surfaces every workflow inherits), then each workflow as ONE migration node — its store chunks, its live proofs, its controlled commits, and its own **dashboard wiring** on top of the defaults. Separations went first and forced the defaults into existence; they are now a prerequisite every later migration reads.
 
 needs:
 - p2-2j
 
-### Separations — built bottom-up, chunks 1 → 6c
-status: done
-date: D196–D215 · 2026-08-12 → 14
-chip: composition reached its preview terminal
+### Dashboard defaults — the generic surfaces every workflow inherits {#dash-defaults}
+status: active
+chip: B landed · C proving · D proposed
+size: L
 
-> Store tasks first, then one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives).
+> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C is proving the connection against a real run; Track D hardens the stack before cutover. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
+
+needs:
+- p2-2i
+
+#### Track B · dashboard completion {#track-b}
+status: done
+chip: B1–B8 all landed · 08-19 → 20
+
+> Separations as the forcing function; the findings ledger swept to zero-or-decided — the definition of "frontend done".
+
+builds:
+- [x] BOTH B1 the three identity-approval ceremonies + rejection, against the SERVER's shape; gated parity fixture (D226)
+- [x] BOTH B2 a settled gate's decision on the panel; a rehearsal never wears `verified-done` (D237/D238)
+- [x] FE B3 the run modal's four rows — three were already in the bundle, one drawn as a read-only fact (D250/D251)
+- [x] BOTH B4 queue rows: `QueueBaseFields` served + drawn, rename, the bulk strip + result vector, runs + archived runs (D230–D235)
+- [x] BOTH B5 archive: frozen sections, five tabs, Export, ledger read-through (D223)
+- [x] BOTH B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229)
+- [x] WIRE B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D252/D253)
+- [x] BE B8 findings ledger zero-or-decided; `span.patched` RETIRED; a span close binds to an OPEN entry (D254/D255)
+
+#### Track C · connection proof {#track-c}
+status: active
+chip: in progress — §9.22 written today
+
+> One pass: the REAL dashboard drives a REAL composed separations dry run — plan → start → gate parks → approve through the B1 ceremony → resume → preview terminal → archive — every UI assertion paired against a direct authority-database check. Closes with the ONE deliberate parity re-freeze. Re-runs over the real commits as Track A's final evidence. Already found and fixed two projection defects on the real run (D258/D259).
+
+builds:
+- [x] PROOF `docs/migrations/separations.md` §9.22 — items 1–8 recorded
+- [x] BE D258 a timeline event id carries its occurrence ordinal, read forward — the one pre-D214 run that was refusing every archive reads again
+- [x] BOTH D259 a replayed step is its own timeline arm (`replayed`, with `replayedFrom`), never `pending`
+- [~] PROOF every surface's assertion paired against a direct authority check over the ONE run
+- [ ] PROOF the deliberate parity re-freeze
+
+needs:
+- track-b
+#### Track D · dashboard hardening, pre-cutover budgets {#track-d}
+status: proposed
+chip: proposed 2026-08-20 — awaiting your ruling
+
+> From today's architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Ten ordered moves, none a rewrite; sequenced after Track C, before the next workflow leans on the dashboard. Doubles as the first measurement of doc 13 §7.4's performance budgets — a cutover exit criterion.
+
+builds:
+- [?] BE D1 one status/outcome derivation (the detail panel drops two arms the queue has)
+- [?] BOTH D2 hygiene: dead hooks/exports, typed 404, the inert phone-host gate, the D253 sentence
+- [?] FE D3 every command settlement through `settleCommandResult`
+- [?] FE D4 patch-splice without re-parsing the whole day + `memo`; record §7.4's first numbers
+- [?] BE D5 bound the read scans (member preview, notes corpus, duplicate receipt reads)
+- [?] FE D6 `useResource` in `state/`
+- [?] FE D7 split `LoadedApp`
+- [?] BOTH D8 models for intake / archive / log-panel; one task-span fold
+- [?] FE D9 virtualized list primitive
+- [?] WIRE D10 one CAS transport
+
+needs:
+- track-c
+- you: rule placement, the descriptor-bundle question (§3.5), and scope (D1–D3 / D1–D5 / all)
+### Separations — order 8, the first migration {#order-8}
+status: you
+size: XL
+chip: chunks 1–6c landed — commits blocked on your canary
+
+> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). What remains is the one thing code cannot do (name the canary) and the dashboard wiring's last two squares.
+
+needs:
+- dash-defaults
+- track-a
 
 #### 1 · new-kronos timecard read {#sep-1}
 status: done
@@ -356,31 +422,6 @@ builds:
 
 needs:
 - sep-6b
-
-### Platform fixes the live runs forced {#platform-fixes}
-status: done
-date: 2026-08-14 → 19
-
-builds:
-- [x] BE D218 the projector tails the span stream FROM DISK, cross-process
-- [x] BE D221 a retry is the ITEM's next attempt
-- [x] BOTH D219/D220 workflow roles (composition / chunk-harness / proving)
-- [x] BOTH D222 the backup hazard moved from the banner to the durable inbox
-- [x] BE D243/D244 Duo's shared signature counter — the browser-profile wedge root-caused
-
-### 2026-08-18 — the completion plan
-status: done
-date: docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md
-
-> Detail-fidelity wave R1–R8 complete; the run-detail timeline made categorical (D225). The rest of Phase 3's separations work organised into Tracks 0 / A / B / C.
-
-#### Track 0 · plan repairs {#track-0}
-status: done
-chip: landed
-
-builds:
-- [x] DOCS the four plan-text staleness items fixed
-
 #### Track A · separations backend completion {#track-a}
 status: you
 chip: blocked at A1 — needs you
@@ -406,71 +447,43 @@ needs:
 | A6 | One live RETRY on the composed graph — D221 landed and tested, never exercised on a real run | executable now |
 | ✓A7 | Root-cause the browser-profile wedge — **closed by D243/D244** | done |
 | A8 | Close-out (§3.1 step 7) → separations **rebuild-ready** | after A2–A7 |
-
-#### Track B · dashboard completion {#track-b}
-status: done
-chip: B1–B8 all landed · 08-19 → 20
-
-> Separations as the forcing function; the findings ledger swept to zero-or-decided — the definition of "frontend done".
-
-builds:
-- [x] BOTH B1 the three identity-approval ceremonies + rejection, against the SERVER's shape; gated parity fixture (D226)
-- [x] BOTH B2 a settled gate's decision on the panel; a rehearsal never wears `verified-done` (D237/D238)
-- [x] FE B3 the run modal's four rows — three were already in the bundle, one drawn as a read-only fact (D250/D251)
-- [x] BOTH B4 queue rows: `QueueBaseFields` served + drawn, rename, the bulk strip + result vector, runs + archived runs (D230–D235)
-- [x] BOTH B5 archive: frozen sections, five tabs, Export, ledger read-through (D223)
-- [x] BOTH B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229)
-- [x] WIRE B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D252/D253)
-- [x] BE B8 findings ledger zero-or-decided; `span.patched` RETIRED; a span close binds to an OPEN entry (D254/D255)
-
-needs:
-- sep-6c
-
-#### Track C · connection proof {#track-c}
+#### Dashboard · wire separations {#sep-dash}
 status: active
-chip: in progress — §9.22 written today
+chip: 7 of 9 wired — Track C proving the rest
 
-> One pass: the REAL dashboard drives a REAL composed separations dry run — plan → start → gate parks → approve through the B1 ceremony → resume → preview terminal → archive — every UI assertion paired against a direct authority-database check. Closes with the ONE deliberate parity re-freeze. Re-runs over the real commits as Track A's final evidence. Already found and fixed two projection defects on the real run (D258/D259).
-
-builds:
-- [x] PROOF `docs/migrations/separations.md` §9.22 — items 1–8 recorded
-- [x] BE D258 a timeline event id carries its occurrence ordinal, read forward — the one pre-D214 run that was refusing every archive reads again
-- [x] BOTH D259 a replayed step is its own timeline arm (`replayed`, with `replayedFrom`), never `pending`
-- [~] PROOF every surface's assertion paired against a direct authority check over the ONE run
-- [ ] PROOF the deliberate parity re-freeze
-
-needs:
-- track-b
-
-#### Track D · dashboard hardening, pre-cutover budgets {#track-d}
-status: proposed
-chip: proposed 2026-08-20 — awaiting your ruling
-
-> From today's architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Ten ordered moves, none a rewrite; sequenced after Track C, before the next workflow leans on the dashboard. Doubles as the first measurement of doc 13 §7.4's performance budgets — a cutover exit criterion.
+> What the generic surfaces learned about separations, and the two separations-specific things no default covers (the ALWAYS-GATE's ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
 
 builds:
-- [?] BE D1 one status/outcome derivation (the detail panel drops two arms the queue has)
-- [?] BOTH D2 hygiene: dead hooks/exports, typed 404, the inert phone-host gate, the D253 sentence
-- [?] FE D3 every command settlement through `settleCommandResult`
-- [?] FE D4 patch-splice without re-parsing the whole day + `memo`; record §7.4's first numbers
-- [?] BE D5 bound the read scans (member preview, notes corpus, duplicate receipt reads)
-- [?] FE D6 `useResource` in `state/`
-- [?] FE D7 split `LoadedApp`
-- [?] BOTH D8 models for intake / archive / log-panel; one task-span fold
-- [?] FE D9 virtualized list primitive
-- [?] WIRE D10 one CAS transport
+- [x] WIRE run modal — typed start inputs (document number, subject) from the descriptor's `surfaces.inputRun`; the four run-modal rows (D250/D251)
+- [x] WIRE queue row — subject title, class, rehearsal hue, linked-run chips, per-row actions, the bulk strip (D230–D235)
+- [x] WIRE run detail — the descriptor's declared timeline CATEGORIES (D225), per-step durations, the data rail naming step · direction · bound (D252)
+- [x] BOTH gate ceremony — the ALWAYS-GATE's three ceremonies + rejection, server-shaped (D226); the settled decision on the panel (D237)
+- [x] WIRE archive — separations' three commit contracts are the first `LEDGER_PRESENTATION_DECLARATIONS` entries (D223)
+- [x] WIRE explorer — field census, the declared `when` in words, the descriptor's prose (D227–D229)
+- [x] WIRE activity — separations in the per-workflow cross-tab + the write-ledger block (D236)
+- [ ] WIRE notifications — a park at the ALWAYS-GATE publishes a needs-you row to the durable inbox; today only `storage-degraded` has a publisher (D222; doc 03 §2.6)
+- [~] PROOF connection proof — every surface read against the real composed run, each UI assertion paired with authority (Track C, separations §9.22)
 
 needs:
-- track-c
-- you: rule placement, the descriptor-bundle question (§3.5), and scope (D1–D3 / D1–D5 / all)
+- dash-defaults
 
+### Platform fixes the live runs forced {#platform-fixes}
+status: done
+date: 2026-08-14 → 19
+
+builds:
+- [x] BE D218 the projector tails the span stream FROM DISK, cross-process
+- [x] BE D221 a retry is the ITEM's next attempt
+- [x] BOTH D219/D220 workflow roles (composition / chunk-harness / proving)
+- [x] BOTH D222 the backup hazard moved from the banner to the durable inbox
+- [x] BE D243/D244 Duo's shared signature counter — the browser-profile wedge root-caused
 ### Smaller operator calls open {#operator-calls}
 status: you
 chip: needs you
 
 > The gate-age pill (D12 vs your later direction) · D192 re-disposition of `legacy-tool-ops-sanity-check-record` · A6's first live retry as evidence. (The decide-first findings are settled: hours-saved DROPPED by D239; archive tabs and export closed by D223/D240.)
 
-## today: 2026-08-20 · HEAD 5f6713f · separations 7 / 9 · dashboard at "frontend done" · Track C live
+## today: 2026-08-20 · HEAD 5f6713f · separations 7 / 9 · dashboard defaults landed · Track C live
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
@@ -479,13 +492,12 @@ when: next | undated — order, not calendar
 chip: 12 workflows · order by risk / reuse
 open: yes
 
-> Doc 07 §3.3's risk-proof ordering, kept as-is after the separations entry: reads populate the stores, the OCR service unblocks four consumers, write-heavy lands last. **No workflow after separations is named yet.** Each owes the 12-item §b questionnaire before building, a live dry run, and (for writes) a controlled commit on a target you approve. **Store reality:** only ucpath, crm, kuali, new-kronos have real drivers today; onbase, servicenow, i9, old-kronos, sharepoint are 3-line session declarations with zero tasks.
+> Doc 07 §3.3's risk-proof ordering, kept as-is after the separations entry (order 8 is the migration in flight, under Phase 3 above): reads populate the stores, the OCR service unblocks four consumers, write-heavy lands last. **No workflow after separations is named yet.** Each owes the 12-item §b questionnaire before building, a live dry run, (for writes) a controlled commit on a target you approve — and its own **Dashboard · wire** task on top of the defaults. **Store reality:** only ucpath, crm, kuali, new-kronos have real drivers today; onbase, servicenow, i9, old-kronos, sharepoint are 3-line session declarations with zero tasks.
 
 needs:
 - phase-3
 
 note: **Legacy capability register:** 48 open · 20 replaced · 7 native · 3 retired — cutover requires zero open. Every entry advances to native / replaced / retired at its order's migration.
-
 ### Order 0 · person-lookup {#order-0}
 status: done
 size: M
@@ -493,6 +505,21 @@ chip: live-proven (Phase 1)
 
 builds:
 - [x] BOTH resolve a person by name / EID against real UCPath + CRM
+
+#### Dashboard · wire person-lookup {#order-0-dash}
+status: done
+chip: the Phase 1 slice
+
+> The first wiring, done in 1i-spine and proven live by D74: the typed Start Run surface, the queue row, run detail + receipt, the Context rail — all four parity surfaces from one projection.
+
+builds:
+- [x] WIRE run modal — name / EID typed inputs, the start plan
+- [x] WIRE queue row — the person-lookup row, status and timing (D123/D124/D126 fixes from the live run)
+- [x] WIRE run detail — timeline, receipt, Context rail; the two-pixel panel found and fixed in 2j (D187)
+- [x] WIRE archive · activity · explorer — person-lookup rows appear through the generic surfaces
+
+needs:
+- dash-defaults
 
 ### Order 1 · person-lookup Search + Match · i9-lookup {#order-1}
 status: planned
@@ -509,6 +536,22 @@ needs:
 - phase-2
 - you: §b questionnaire (12 answers) for each workflow
 
+#### Dashboard · wire Search + Match · i9-lookup {#order-1-dash}
+status: planned
+chip: inherits the defaults — wiring only
+
+> What the generic surfaces must learn about person-lookup's two modes and i9-lookup: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
+
+builds:
+- [ ] WIRE run modal — typed start inputs + start plan for person-lookup's two modes and i9-lookup (descriptor `surfaces.inputRun`)
+- [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+
+needs:
+- dash-defaults
+
 ### Order 2 · crm-doc-download · sharepoint-download · old-kronos-reports {#order-2}
 status: planned
 size: M
@@ -524,6 +567,23 @@ needs:
 - phase-2
 - you: §b questionnaire for each workflow
 
+#### Dashboard · wire the downloads {#order-2-dash}
+status: planned
+chip: inherits the defaults — wiring only
+
+> What the generic surfaces must learn about crm-doc-download · sharepoint-download · old-kronos-reports: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
+
+builds:
+- [ ] WIRE run modal — typed start inputs + start plan for crm-doc-download · sharepoint-download · old-kronos-reports (descriptor `surfaces.inputRun`)
+- [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+- [ ] BOTH download viewer — the artifact-bytes route + a per-run downloads tile
+
+needs:
+- dash-defaults
+
 ### Order 3 · the OCR pipeline workflow {#order-3}
 status: planned
 size: M
@@ -532,14 +592,30 @@ size: M
 
 builds:
 - [ ] BE the OCR pipeline workflow over the 2h extraction / normalization / ocr / roster stores
-- [ ] FE the **OCR review UI** — expanded page ↔ extracted-text pair (never a collapsed table)
-- [ ] WIRE review/approve commands + progressive record patches
 - [ ] BE **D189's byte path**: BFF static handler + `capture.html` + ngrok launcher + the phone-origin guard arm; `--prod` starts meaning what it says
 - [ ] WIRE capture → workflow binding (`CAPTURE_INTAKE_BINDINGS` filled for the first honest consumer)
 
 needs:
 - p2-2h
 - you: §b questionnaire
+
+#### Dashboard · wire the OCR pipeline {#order-3-dash}
+status: planned
+chip: inherits the defaults — wiring only
+
+> What the generic surfaces must learn about the OCR pipeline workflow: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
+
+builds:
+- [ ] WIRE run modal — typed start inputs + start plan for the OCR pipeline workflow (descriptor `surfaces.inputRun`)
+- [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+- [ ] BOTH OCR review UI — expanded page ↔ extracted-text pair, approve / reject / retry page, one atomic correction list
+- [ ] WIRE review/approve commands + progressive record patches over the SSE stream
+
+needs:
+- dash-defaults
 
 ### Order 4 · oath-signature · emergency-contact {#order-4}
 status: planned
@@ -550,12 +626,29 @@ size: L
 builds:
 - [ ] BOTH first operation fan-out + approval gates through the real review UI
 - [ ] BE oath-signature and emergency-contact workflows
-- [ ] FE Group People surface live over real members (paged members + rollup)
 - [ ] PROOF the first non-separations controlled commits on UCPath enter/fill
 
 needs:
 - order-3
 - you: §b questionnaire; controlled-commit target approval
+
+#### Dashboard · wire oath-signature · emergency-contact {#order-4-dash}
+status: planned
+chip: inherits the defaults — wiring only
+
+> What the generic surfaces must learn about oath-signature and emergency-contact: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
+
+builds:
+- [ ] WIRE run modal — typed start inputs + start plan for oath-signature and emergency-contact (descriptor `surfaces.inputRun`)
+- [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
+- [ ] BOTH gate ceremony — the approval shape this workflow's gate demands, server-computed
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+- [ ] FE Group People — paged members + rollup + containment over real operation members
+
+needs:
+- dash-defaults
 
 ### Order 5 · i9-check {#order-5}
 status: planned
@@ -567,12 +660,28 @@ builds:
 - [ ] BE the operation coordinator at scale
 - [ ] BE stable-keyed SQLite outbox + serialized workbook projector
 - [ ] BE the first Excel export writer (the master I-9 retention workbook)
-- [ ] FE i9-check surfaces (member rows, retention status)
 
 needs:
 - order-1
 - order-4
 - you: §b questionnaire
+
+#### Dashboard · wire i9-check {#order-5-dash}
+status: planned
+chip: inherits the defaults — wiring only
+
+> What the generic surfaces must learn about i9-check: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
+
+builds:
+- [ ] WIRE run modal — typed start inputs + start plan for i9-check (descriptor `surfaces.inputRun`)
+- [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+- [ ] FE member rows with retention status; the workbook export control
+
+needs:
+- dash-defaults
 
 ### Order 6 · work-study · kronos-pay-rule {#order-6}
 status: planned
@@ -582,7 +691,6 @@ size: L
 
 builds:
 - [ ] BE work-study and kronos-pay-rule commit contracts
-- [ ] BOTH intake grid constants entry + unbind arm (`effectiveDate`, D172/D173)
 - [ ] PROOF the canonical-EID audit gate: replay real stored inputs through `Eid` `/^10\d{6}$/`, surface every rejection
 - [ ] BE the new-kronos store gains its pay-rule write family
 
@@ -590,6 +698,23 @@ needs:
 - sep-1
 - p2-proof
 - you: §b questionnaire; controlled-commit target approval
+
+#### Dashboard · wire work-study · kronos-pay-rule {#order-6-dash}
+status: planned
+chip: inherits the defaults — wiring only
+
+> What the generic surfaces must learn about work-study and kronos-pay-rule: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
+
+builds:
+- [ ] WIRE run modal — typed start inputs + start plan for work-study and kronos-pay-rule (descriptor `surfaces.inputRun`)
+- [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+- [ ] BOTH intake grid constants entry + unbind arm (`effectiveDate`, D172/D173)
+
+needs:
+- dash-defaults
 
 ### Order 7 · oath-upload · onbase {#order-7}
 status: planned
@@ -608,19 +733,22 @@ needs:
 - you: name a ServiceNow live-probe target
 - you: name an OnBase probe target (none exists today)
 
-### Order 8 · separations {#order-8}
-status: you
-size: XL
-chip: chunks 1–6c landed — commits blocked on your canary
+#### Dashboard · wire oath-upload · onbase {#order-7-dash}
+status: planned
+chip: inherits the defaults — wiring only
 
-> write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193).
+> What the generic surfaces must learn about oath-upload and onbase: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
 builds:
-- [ ] PROOF everything under Track A above
-- [ ] DOCS the record-sanity-check advisory's disposition (D192 — deferred to this order)
+- [ ] WIRE run modal — typed start inputs + start plan for oath-upload and onbase (descriptor `surfaces.inputRun`)
+- [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+- [ ] WIRE ServiceNow ticket receipt + OnBase upload-verify on the run-detail receipt
 
 needs:
-- track-a
+- dash-defaults
 
 ### Order 9 · onboarding {#order-9}
 status: planned
@@ -632,12 +760,29 @@ builds:
 - [ ] BE the hire probe with the no-EID key (`ProbeVerdict`-widened)
 - [ ] BE roster ingest
 - [ ] BE the onboarding composition over the ucpath / crm / kuali / kronos stores
-- [ ] BOTH onboarding's gate ceremony + start surface
 
 needs:
 - order-8
 - order-5
 - you: §b questionnaire; a hire canary you approve
+
+#### Dashboard · wire onboarding {#order-9-dash}
+status: planned
+chip: inherits the defaults — wiring only
+
+> What the generic surfaces must learn about onboarding: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
+
+builds:
+- [ ] WIRE run modal — typed start inputs + start plan for onboarding (descriptor `surfaces.inputRun`)
+- [ ] WIRE queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] WIRE run detail — the descriptor's timeline categories, receipt, data rail (step · direction · bound)
+- [ ] BOTH gate ceremony — the approval shape this workflow's gate demands, server-computed
+- [ ] WIRE notifications — park / needs-you triggers into the durable inbox (doc 03 §2.6)
+- [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
+- [ ] BOTH roster ingest surface; the hire canary's ceremony
+
+needs:
+- dash-defaults
 
 ### Cross-cutting Phase 3 capabilities (no single order) {#cross-cutting}
 status: planned
@@ -653,7 +798,6 @@ builds:
 
 needs:
 - phase-3
-
 ## The X → Y traceback {#deferred}
 phase: Deferred
 status: planned
@@ -943,7 +1087,6 @@ chip: ideas, not a hosted future
 - **Per-workflow §b questionnaire** — 12 answers before each migration starts (doc 07 §3.4).
 - **Order-8 identity approval** — separations runs under the ratified ALWAYS-GATE policy; you approve each identity match (doc 09 §14).
 - **Canary/test-instance approval** — every write workflow's controlled commit needs a target you approve; dry-run alone can never prove landing (doc 07 §3.1 step 5). *For separations this is no longer a future gate — it is the current blocker (see "Needed from you right now").*
-
 
 ---
 

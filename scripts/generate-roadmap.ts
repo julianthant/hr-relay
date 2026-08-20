@@ -328,14 +328,18 @@ interface TreeNode {
 const NODE_W = 224;
 const NODE_H = 72;
 const PHASE_H = 88;
-const COL_STEP = 248;   // one leaf column
-const DEPTH_STEP = 116; // one task row (NODE_H + 44)
+const COL_STEP = 244;   // one top-level task column (NODE_W + 20)
+const MAX_COLS = 5;     // top-level tasks wrap into rows of this many, to save width
 const PHASE_DROP = 44;  // phase box bottom → first task row top
+const ROW_GAP = 40;     // between wrapped task rows
+const SUB_GAP = 10;     // between stacked sub-tasks
+const INDENT = 18;      // each nesting level steps right and narrows by this
 const PAD = 28;
 const BAND_GAP = 52;    // between phase bands
 const FLAG_H = 44;
 const TODAY_H = 40;
 const CHILD_X = PAD + NODE_W + 64; // tasks start to the right of the phase column
+const TRUNK_X = CHILD_X - 30;      // the bus line the task rows hang from
 
 function buildItemNode(item: Item, parentKey: string, index: number, registry: Map<string, Registered>): TreeNode {
   const key = item.id ?? `${parentKey}-${String(index + 1)}`;
@@ -391,31 +395,41 @@ function buildPhaseNode(node: PhaseNode, registry: Map<string, Registered>): Tre
   };
 }
 
-function leafRows(node: TreeNode): number {
-  return node.children.length === 0 ? 1 : node.children.reduce((sum, child) => sum + leafRows(child), 0);
-}
-
-/** Tidy top→down placement inside one phase band: leaves take consecutive columns, a parent sits centred over its children. */
-function place(node: TreeNode, depth: number, startCol: number, blockLeft: number, bandTop: number): void {
-  node.depth = depth;
-  node.y = depth === 0 ? bandTop : bandTop + PHASE_H + PHASE_DROP + (depth - 1) * DEPTH_STEP;
-  if (node.children.length === 0) {
-    node.rowCenter = startCol + 0.5;
-  } else {
-    let col = startCol;
-    for (const child of node.children) {
-      place(child, depth + 1, col, blockLeft, bandTop);
-      col += leafRows(child);
-    }
-    const first = node.children[0];
-    const last = node.children[node.children.length - 1];
-    node.rowCenter = first === undefined || last === undefined ? startCol + 0.5 : (first.rowCenter + last.rowCenter) / 2;
+/** Stack a node's descendants beneath it, indented and narrowed one step per level; returns the y below the last one. */
+function stack(node: TreeNode, depth: number, yCursor: number): number {
+  let y = yCursor;
+  for (const child of node.children) {
+    child.depth = depth;
+    child.w = NODE_W - INDENT * (depth - 1);
+    child.h = NODE_H;
+    child.x = node.x + INDENT;
+    child.y = y;
+    y = stack(child, depth + 1, y + NODE_H + SUB_GAP);
   }
-  node.x = blockLeft + node.rowCenter * COL_STEP - node.w / 2;
+  return y;
 }
 
-function maxDepth(node: TreeNode): number {
-  return node.children.length === 0 ? node.depth : Math.max(...node.children.map(maxDepth));
+/** A phase band: the phase box at the left; its tasks in rows of MAX_COLS to the right, each task's sub-tasks stacked beneath it. Returns the band height. */
+function layoutPhase(root: TreeNode, bandTop: number): number {
+  root.depth = 0;
+  root.x = PAD;
+  root.y = bandTop;
+  root.w = NODE_W;
+  root.h = PHASE_H;
+  let rowTop = bandTop + PHASE_H + PHASE_DROP;
+  let bottom = bandTop + PHASE_H;
+  root.children.forEach((task, index) => {
+    const col = index % MAX_COLS;
+    if (col === 0 && index > 0) rowTop = bottom + ROW_GAP;
+    task.depth = 1;
+    task.w = NODE_W;
+    task.h = NODE_H;
+    task.x = CHILD_X + col * COL_STEP;
+    task.y = rowTop;
+    const end = stack(task, 2, rowTop + NODE_H + SUB_GAP) - SUB_GAP;
+    bottom = Math.max(bottom, end);
+  });
+  return bottom - bandTop;
 }
 
 function flatten(node: TreeNode, into: TreeNode[]): TreeNode[] {
@@ -449,19 +463,38 @@ function wrapTitle(title: string, width: number, maxLines: number): string[] {
 
 const N = (value: number): string => String(Math.round(value * 10) / 10);
 
-/** Org-chart rail: parent bottom-centre drops to a rail, the rail spans the children, each child gets a stub. */
-function railConnector(parent: TreeNode): string {
+/** The phase's bus: out of the phase box's right side to a trunk, down the trunk, a rail per task row, a stub into each task. */
+function busConnector(root: TreeNode): string {
+  if (root.children.length === 0) return "";
+  const py = root.y + root.h / 2;
+  const parts: string[] = [`M${N(root.x + root.w)},${N(py)} H${N(TRUNK_X)}`];
+  let lastRail = py;
+  const rows = new Map<number, TreeNode[]>();
+  root.children.forEach((task, index) => {
+    const row = Math.floor(index / MAX_COLS);
+    rows.set(row, [...(rows.get(row) ?? []), task]);
+  });
+  for (const tasks of rows.values()) {
+    const first = tasks[0];
+    const last = tasks[tasks.length - 1];
+    if (first === undefined || last === undefined) continue;
+    const railY = first.y - PHASE_DROP / 2;
+    lastRail = Math.max(lastRail, railY);
+    parts.push(`M${N(TRUNK_X)},${N(railY)} H${N(last.x + last.w / 2)}`);
+    for (const task of tasks) parts.push(`M${N(task.x + task.w / 2)},${N(railY)} V${N(task.y)}`);
+  }
+  parts.splice(1, 0, `M${N(TRUNK_X)},${N(py)} V${N(lastRail)}`);
+  return parts.join(" ");
+}
+
+/** A stacked list: a line down from the parent's left edge, a stub into each child. */
+function stackConnector(parent: TreeNode): string {
   if (parent.children.length === 0) return "";
-  const px = parent.x + parent.w / 2;
-  const py = parent.y + parent.h;
-  const first = parent.children[0];
+  const x = parent.x + 10;
   const last = parent.children[parent.children.length - 1];
-  if (first === undefined || last === undefined) return "";
-  const railY = first.y - (first.y - py) / 2;
-  const left = Math.min(px, first.x + first.w / 2);
-  const right = Math.max(px, last.x + last.w / 2);
-  const stubs = parent.children.map((c) => `M${N(c.x + c.w / 2)},${N(railY)} V${N(c.y)}`).join(" ");
-  return `M${N(px)},${N(py)} V${N(railY)} M${N(left)},${N(railY)} H${N(right)} ${stubs}`;
+  if (last === undefined) return "";
+  const stubs = parent.children.map((c) => `M${N(x)},${N(c.y + 20)} H${N(c.x)}`).join(" ");
+  return `M${N(x)},${N(parent.y + parent.h)} V${N(last.y + 20)} ${stubs}`;
 }
 
 interface Band {
@@ -480,12 +513,8 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
   for (const node of roadmap.spine) {
     if (node.kind === "phase") {
       const root = buildPhaseNode(node, registry);
-      place(root, 0, 0, CHILD_X, cursor);
-      root.x = PAD;
-      root.y = cursor;
+      const bandHeight = layoutPhase(root, cursor);
       roots.push(root);
-      const depth = maxDepth(root);
-      const bandHeight = depth === 0 ? PHASE_H : PHASE_H + PHASE_DROP + (depth - 1) * DEPTH_STEP + NODE_H;
       cursor += bandHeight + BAND_GAP;
     } else if (node.kind === "flag") {
       flagIndex += 1;
@@ -502,11 +531,11 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
   const byKey = new Map(all.map((n) => [n.key, n] as const));
   const spineX = PAD + NODE_W / 2;
 
-  // tree edges (containment) — org-chart rails
-  const treeEdges = all
-    .filter((parent) => parent.children.length > 0)
-    .map((parent) => `<path class="te" d="${railConnector(parent)}"/>`)
-    .join("");
+  // tree edges (containment): the phase bus, then stacked lists under every task
+  const treeEdges = [
+    ...roots.map((root) => `<path class="te" d="${busConnector(root)}"/>`),
+    ...all.filter((n) => n.kind === "item" && n.children.length > 0).map((n) => `<path class="te" d="${stackConnector(n)}"/>`),
+  ].join("");
 
   // prerequisite edges (shown on hover/selection, or all at once): a vertical
   // S-curve between rows; an arc below both boxes when they share a row
@@ -564,7 +593,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
       const isPhase = node.kind === "phase";
       const available = node.requires.every((r) => requirementMet(r, registry));
       const cls = `nd ${node.kind} ${node.status}${available ? " avail" : " locked"}`;
-      const titleLines = wrapTitle(node.title, isPhase ? 27 : 28, 2);
+      const titleLines = wrapTitle(node.title, isPhase ? 27 : Math.floor((node.w - 40) / 6.8), 2);
       const titleY = isPhase ? node.y + 36 : node.y + 19;
       const title = titleLines
         .map((line, i) => `<tspan x="${N(node.x + 26)}" dy="${i === 0 ? 0 : 15}">${escapeHtml(line)}</tspan>`)
@@ -579,7 +608,7 @@ function renderCanvas(roadmap: Roadmap, registry: Map<string, Registered>): { sv
       const infoTone = !isPhase && node.chip !== undefined ? (node.chip.tone ?? node.status) : "meta";
       const info = infoText === undefined
         ? ""
-        : `<text class="info ${infoTone}" x="${N(node.x + 26)}" y="${N(node.y + 49)}">${escapeHtml(wrapTitle(infoText, 36, 1)[0] ?? "")}</text>`;
+        : `<text class="info ${infoTone}" x="${N(node.x + 26)}" y="${N(node.y + 49)}">${escapeHtml(wrapTitle(infoText, Math.floor((node.w - 40) / 5.6), 1)[0] ?? "")}</text>`;
       // the built-by-layer bar: one square per feature, filled when done
       const squares = node.features.slice(0, 14).map((f, i) => {
         const sx = node.x + 26 + i * 11;
