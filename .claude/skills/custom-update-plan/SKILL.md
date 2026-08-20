@@ -70,7 +70,7 @@ The owning doc gets the normative text; `04-reconciliation.md` gets the one-line
 
 ## Step 6 — republish the artifact (when the operator uses the hosted copy)
 
-The hosted page is the same `docs/roadmap/index.html`; republish via the Artifact tool **to the existing URL** (find it with `action: "list"` if this session does not have it) so the link stays stable. Keep title `HR Rebuild Roadmap` and favicon `🗺️`.
+The hosted page is the same `docs/roadmap/index.html`; republish via the Artifact tool **to the existing URL** — `https://claude.ai/code/artifact/8e678086-ab5f-44c0-8fdb-f04986fb95ff` (pass it as `url`; `action: "list"` also finds it) so the link stays stable. Keep title `HR Rebuild Roadmap` and favicon `🗺️`.
 
 ## Guardrails
 
