@@ -69,6 +69,22 @@ re-sequences phases. Per-workflow *migration plan docs* (Phase 3+) are **childre
 they answer the §b questionnaire (§3.4) and record what a workflow reuses/adds; they never re-order
 the program.
 
+**D263 (2026-08-20) — the plan has a machine-readable form, and it is bound to the docs both ways.**
+`docs/rebuild/14-roadmap.md`, written in the roadmap notation
+(`.claude/skills/custom-update-plan/SKILL.md` §Notation), is that form and the operator tracking view;
+`docs/roadmap/index.html` is GENERATED from it by `npm run roadmap` and is never hand-edited. It is a
+second VIEW of this plan, never a second plan — **this doc wins on any disagreement**, and the
+disagreement is CAUGHT rather than argued, because the binding is two-way and mechanical: every node
+carries a `doc:` line naming the `docs/rebuild/NN §x.y` sections that own its contracts, every doc
+section that describes a node carries `<!-- roadmap: <id> -->` under its heading, and the
+`roadmap-doc-binding` guard refuses a ref or a tag that resolves to nothing — so a rename on either
+side fails the gate instead of rotting. Three rules bind the tree itself. A `builds:` box is `[x]`
+**only** for what is landed at HEAD, with its commit or D-number cited in the line — never pre-marked.
+The tree never invents scope: an unplanned feature is a finding for `docs/findings/`, not a roadmap
+line. And session work is RECORDED where it happened — append-only per-node `log:` blocks plus one
+`## session:` spine marker per working session, written through `/custom-update-plan`'s `session`
+class, so the next agent reads a node's own history rather than re-deriving it from `git log`.
+
 ### 0.2 D1 ownership map — the quick index (concept → owning doc)
 
 Every concept has exactly one owner (reconciliation `04` D1). Reference the owner; never redefine.
@@ -93,7 +109,9 @@ Every concept has exactly one owner (reconciliation `04` D1). Reference the owne
 Charter §"One master plan": *the foundation's documentation is part of the foundation.* When a phase
 completes, its owning docs are updated to describe **as-built** reality (not just design intent), and
 this plan's phase table is checked off. A phase is not "done" until its doc delta is written. New
-sub-systems get new docs or amend existing ones; stale prose is corrected, never layered.
+sub-systems get new docs or amend existing ones; stale prose is corrected, never layered. Per D263
+(§0.1) a phase's close-out also ticks its node in `docs/rebuild/14-roadmap.md` and leaves a `log:`
+line there naming what landed and what is left.
 
 ---
 
