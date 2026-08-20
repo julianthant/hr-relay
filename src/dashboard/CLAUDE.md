@@ -47,6 +47,22 @@ npm run test:parity # doc 13 §7 visual/a11y parity lane
 
 ## Lessons learned
 
+- **2026-08-20: a `.then()` that handles one refusal arm calls the other one success (D253).** Two
+  surfaces here — the Context rail's Data save and the notification bell — branched on
+  `result.state === "rejected"` and let the CAS `conflict` arm fall through to the code that runs on
+  success. The rail closed its editor, cleared the drafts and reported a correction saved that the
+  kernel refused. Every command-issuing surface in this directory now settles through
+  `app/command-result.ts`'s `settleCommandResult`, and `command-result-exhaustive.test.ts` fails any
+  module that names one refusal arm without the other (both `===` and `!==` count; `archive.tsx`'s
+  negated early return is exhaustive and clean). When you add a surface that posts a command, read
+  the result through the fold — do not re-enumerate the arms.
+- **2026-08-20: the rail's "we cannot serve this" comments were about the checkpoint row, not the
+  descriptor (D252).** `context-rail.tsx` recorded direction and system as unservable for years. The
+  checkpoint row genuinely carries neither — but the node that wrote it declares a task contract
+  (`effect`) and the store implementing that task declares the system, and both reach the run-detail
+  query through `RunDetailDescriptorView.dataOrigins`, composed at the root because a descriptor may
+  not reach a store (D106). If a surface comment here says a fact has no producer, check the
+  descriptor and the module before believing it.
 - **2026-08-20: a fact the browser bundle already carries does not need a wire, and booking one as
   "unserved" invents backend work nobody owes (D251).** Three run-modal rows sat on the detail-audit
   ledger as wire gaps — the workflow's own sentence, its active-run policy, and the reason an

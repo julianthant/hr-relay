@@ -318,6 +318,43 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Lessons learned
 
+- **2026-08-20: an unhandled union arm IS a fallback, and it is the one nobody greps for (D253).**
+  `CommandResultSchema` has three arms and TWO are refusals — `rejected` and the CAS `conflict`. The
+  Context rail's Data save and the notification bell each branched on `rejected` alone, so a
+  conflict fell through to the SUCCESS path: the rail closed its editor, discarded the operator's
+  drafts and reported a correction **saved** that the kernel had refused. Nothing in either file
+  looks like the banned pattern — there is no `catch`, no `??`, no default value — because the
+  fallback is the absence of a branch, which is why a fail-loud review reading for `catch { return
+  [] }` walks straight past it. It is reachable by ordinary use, not by a corner case: a run's
+  version moves whenever a worker claims it or the day stream folds a span under an open panel,
+  which is the exact race doc 03 D19's live lock exists to warn about. Three things generalize.
+  **Make the exhaustiveness structural, in ONE place** — `settleCommandResult` switches over the
+  discriminant so a fourth arm is a compile error, and a guard refuses any dashboard module that
+  names one refusal arm without the other (with a checked-in violating fixture carrying the exact
+  shipped shape, so a walker resolving nothing cannot report the tree clean). **Keep the two
+  refusals distinguishable in the SENTENCE**, because the operator does different things about
+  them: a conflict gets the server's `currentVersion` and never the words "try again", since a
+  re-send of the same envelope carries the same stale `expectedVersion` and would be refused
+  identically. And **a surface that swallows a refusal in silence reads as a broken control, not as
+  a stale view** — the bell did nothing and said nothing, which sends the operator looking for a
+  bug in the button.
+- **2026-08-20: a comment that says a fact is unservable is a claim about the ROW, and the
+  descriptor usually knows better (D252).** The Context rail's header had recorded two demo axes as
+  impossible: *"nothing durable says whether a recorded field was read or written"* and *"the
+  originating system is still absent"*. Both sentences are TRUE of the `run_checkpoints` row and
+  FALSE of the descriptor that wrote it — the producing node declares a task contract whose
+  `effect` is doc 01's own word for what it does to the world, and the store implementing that task
+  declares the system. This is D251's false-deferral shape one surface over, and the same
+  correction applies: **before booking a wire row, check whether the DECLARATION answers it.** Two
+  rules came out of serving it. **Reuse the deciding function, never re-derive its rule**: the
+  freshness bound is resolved through `resolveFreshnessBound` and its sinks through
+  `reachableCommits` — the two functions `auditCheckpointFreshness` itself calls — so the sentence
+  an operator reads is the rule the executor applies rather than a second opinion that can drift.
+  And **print a constraint only where it can BITE**: the audit skips a checkpoint whose facts reach
+  no commit, so an empty `feeds` set prints nothing rather than an age limit that refuses nothing.
+  A serving is still allowed to refuse: an entry with no field identity draws neutral ink and NO
+  arrow, because defaulting to `read` would claim the run changed nothing — the most expensive
+  thing in this product to be wrong about.
 - **2026-08-20: a module that exports one helper beside its component is not a Fast Refresh
   boundary, and the failure shows up two directories away (doc 13 §8.14).** Every surface under
   `src/dashboard` exported folds, hooks or `Record` constants beside its components, so
