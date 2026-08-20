@@ -1654,7 +1654,7 @@ tree at 2026-08-20.
 | family | folder | runner | when | may touch | proves |
 |---|---|---|---|---|---|
 | **unit** | `tests/unit/**` (154 files / 49,398 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
-| **architecture guards** | `tests/unit/architecture/**` (65 files / 19,320 lines) | vitest project `unit` (the glob contains it); `npm run test:architecture` for a targeted run | every commit | the tree as DATA — source text, ASTs, the registries, `package.json`, `tsconfig.json`, the legacy repo read-only | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
+| **architecture guards** | `tests/unit/architecture/**` (65 files / 19,320 lines) | vitest project `unit` (its glob contains them); `npm run test:architecture` is a PATH FILTER for a targeted run, not a project — §10.9 changes that | every commit | the tree as DATA — source text, ASTs, the registries, `package.json`, `tsconfig.json`, the legacy repo read-only | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
 | **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (15) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores; no browser | that ONE declared graph path binds, refuses and terminates as authored, and that the coverage points it claims are the ones it walked |
 | **integration walks** | `tests/scenario/*.walk.test.ts` (1) | vitest project `scenario` | every commit | ONE real authority database and the production read models | the JOINS only composition can falsify; it claims no coverage point and carries no manifest row (D185) |
 | **dashboard unit tests** | `tests/unit/dashboard/**` (25 files) | vitest project `unit` | every commit | the extracted `*-model.ts` halves — folds, vocabularies, command composition; **no DOM** (this tree has no DOM test environment) | that a surface's pure half computes what the surface claims |
@@ -1953,15 +1953,26 @@ a manifest that vitest picked up would start a browser inside the per-commit gat
 them by GLOB rather than by discipline. `*.walk.test.ts` keeps D185's meaning exactly: a walk claims
 no coverage point and the manifest's `file` regex refuses a walk path outright.
 
-**Vitest projects.** Five, replacing today's two (`unit`, `scenario`):
+**Vitest projects.** Five, replacing today's two. At HEAD `vitest.config.ts` declares exactly
+`unit` (`tests/unit/**/*.test.ts` — the architecture suite is INSIDE that glob) and `scenario`
+(`tests/scenario/**/*.test.ts`), and `test:architecture` is a **path filter**
+(`vitest run tests/unit/architecture`), not a project. R10 makes each tier a named project so a tier
+is addressable by name rather than by a path string a rename can orphan:
 
 | project | include | in `test:coverage` |
 |---|---|---|
-| `unit` | `tests/unit/**/*.test.ts` (architecture inside it) | yes |
-| `architecture` | `tests/unit/architecture/**/*.test.ts` | yes — as today, a re-run of a subset, kept so `test:architecture` stays a one-word targeted run |
+| `unit` | `tests/unit/**/*.test.ts`, **excluding** `tests/unit/architecture/**` | yes |
+| `architecture` | `tests/unit/architecture/**/*.test.ts` | yes |
 | `scenario-workflows` | `tests/scenario/workflows/**/*.scenario.test.ts` + `tests/scenario/*.walk.test.ts` | yes |
 | `scenario-dashboard` | `tests/scenario/dashboard/**/*.scenario.test.ts` | yes |
 | `combined` | `tests/scenario/combined/**/*.combined.test.ts` | **no** — needs a dry run |
+
+The `unit` exclusion is the point of splitting them: today the architecture files are collected by
+`unit` and collected AGAIN by `test:architecture`, which is harmless as a targeted run and pure
+duplication inside `test:coverage`. `test:architecture` becomes `vitest run --project architecture`,
+and `guard-manifest` item 3 — "`test:architecture` selects the complete directory exactly, with no
+narrower file/glob/project/config/exclude escape hatch" — binds to the project's `include` instead of
+to a script's path argument, which is strictly the stronger of the two.
 
 `tests/e2e/**` is outside the vitest projects entirely, like `tests/parity/**`, and both are excluded
 from coverage instrumentation.
