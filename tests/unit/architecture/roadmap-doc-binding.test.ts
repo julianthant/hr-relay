@@ -87,72 +87,12 @@ const FIXTURE_ROOT = "tests/unit/architecture/fixtures/roadmap-binding";
  *
  * Every entry has the SAME reason — the notation grew `doc:` on 2026-08-20
  * (step 2a) and only `{#phase-0}` was bound by the dogfood commit; step 5.0
- * pastes the node map's `doc:` column onto the rest and step 6 empties this
- * list. It is a subset assertion in both directions: a node that gains its ref
+ * pasted the node map's `doc:` column onto the rest (81bf48dd), so this list is
+ * EMPTY from 5.0 on. It is a subset assertion in both directions: a node that gains its ref
  * must be deleted from here (stale), and a node that loses one, or a new node
  * that never had one, fails immediately.
  */
-const ALLOW_MISSING_DOC_REF: readonly string[] = [
-  "cross-cutting",
-  "dash-defaults",
-  "def-byte-path",
-  "def-capture-binding",
-  "def-explorer-edit",
-  "def-propagation",
-  "def-retention",
-  "def-sanity-check",
-  "def-search-export",
-  "def-settings",
-  "later-unplanned",
-  "operator-calls",
-  "order-0",
-  "order-0-dash",
-  "order-1",
-  "order-1-dash",
-  "order-2",
-  "order-2-dash",
-  "order-3",
-  "order-3-dash",
-  "order-4",
-  "order-4-dash",
-  "order-5",
-  "order-5-dash",
-  "order-6",
-  "order-6-dash",
-  "order-7",
-  "order-7-dash",
-  "order-8",
-  "order-9",
-  "order-9-dash",
-  "p1-authority",
-  "p1-base",
-  "p1-exit",
-  "p1-kernel",
-  "p1-spine",
-  "p2-2g",
-  "p2-2h",
-  "p2-2i",
-  "p2-2j",
-  "p2-proof",
-  "phase0-always-gate",
-  "phase0-size-model",
-  "phase2-dispositions",
-  "platform-fixes",
-  "rollback-window",
-  "sep-1",
-  "sep-2",
-  "sep-3",
-  "sep-4",
-  "sep-5",
-  "sep-6a",
-  "sep-6b",
-  "sep-6c",
-  "sep-dash",
-  "track-a",
-  "track-b",
-  "track-c",
-  "track-d",
-];
+const ALLOW_MISSING_DOC_REF: readonly string[] = [];
 
 /**
  * Arm (d)'s ratchet, and it is EMPTY on purpose: step 3a's skeletons gave all

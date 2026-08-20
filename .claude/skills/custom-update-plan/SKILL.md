@@ -100,7 +100,7 @@ Verbatim from the parser's own banner (`scripts/roadmap/parse-plan.ts`) — the 
 doc: 03a §2.1 · ref:write-safety §5 · 00
   An ATTRIBUTE line (so it sits in the attribute block under the heading,
   beside `status:`), legal on a phase, a task or a sub-task. Its value is
-  one or more refs joined by " · ". A ref is `<doc>` or `<doc> §<section>`,
+  one or more refs joined by " · " (the split happens only before a doc token, so a section may contain " · "). A ref is `<doc>` or `<doc> §<section>`,
   and `<doc>` is one of exactly two things:
     · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `04` `05`,
       the actionable `docs/rebuild/NN-*.md` docs (the number IS the phase,

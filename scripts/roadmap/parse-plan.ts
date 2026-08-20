@@ -26,7 +26,7 @@ import type { Layer, Status } from "./schema.js";
  *   doc: 03a §2.1 · ref:write-safety §5 · 00
  *     An ATTRIBUTE line (so it sits in the attribute block under the heading,
  *     beside `status:`), legal on a phase, a task or a sub-task. Its value is
- *     one or more refs joined by " · ". A ref is `<doc>` or `<doc> §<section>`,
+ *     one or more refs joined by " · " (the split happens only before a doc token, so a section may contain " · "). A ref is `<doc>` or `<doc> §<section>`,
  *     and `<doc>` is one of exactly two things:
  *       · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `04` `05`,
  *         the actionable `docs/rebuild/NN-*.md` docs (the number IS the phase,
@@ -72,7 +72,10 @@ const HEADING_RE = /^(#{2,5}) (.*?)(?: \{#([a-z0-9][a-z0-9-]*)\})?\s*$/;
  * spaces because the phase docs number no headings; it may not carry the ` · `
  * that separates refs, and may not have edge whitespace.
  */
-const DOC_REF_RE = /^(0[0-2]|03[abc]|0[45]|ref:[a-z][a-z0-9-]*)(?: §([^·\s](?:[^·]*[^·\s])?))?$/;
+const DOC_REF_RE = /^(0[0-2]|03[abc]|0[45]|ref:[a-z][a-z0-9-]*)(?: §(\S(?:.*\S)?))?$/;
+// Refs are joined by " · "; a section may itself contain " · " (phase-doc headings mirror node titles such as
+// "Order 0 · person-lookup"), so the split happens only before a DOC TOKEN, never inside a section.
+const DOC_REF_SPLIT_RE = / · (?=(?:0[0-2]|03[abc]|0[45])(?:\s|$)|ref:[a-z])/;
 
 /** The phase docs, in build order — the only numbers a `doc:` ref may name. */
 export const PHASE_DOC_NUMBERS = ["00", "01", "02", "03a", "03b", "03c", "04", "05"] as const;
@@ -118,7 +121,7 @@ export function isRealIsoDate(value: string): boolean {
 }
 
 function parseDocRefs(value: string, lineNo: number): RawDocRef[] {
-  const refs = value.split(" · ").map((ref) => ref.trim());
+  const refs = value.split(DOC_REF_SPLIT_RE).map((ref) => ref.trim());
   return refs.map((raw) => {
     const match = DOC_REF_RE.exec(raw);
     if (match === null) {
