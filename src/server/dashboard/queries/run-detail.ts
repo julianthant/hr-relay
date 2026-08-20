@@ -589,6 +589,38 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
     timelineEvents.push({ at: gate.resolvedAt, label: `gate:${gate.gate}`, state: "done", notRun: gateNotRun, durationMs: gateDuration, seed: `gate-resolved:${gate.gate}:${gate.resolvedAt}` });
   }
   timelineEvents.sort((a, b) => a.at.localeCompare(b.at) || a.seed.localeCompare(b.seed));
+  /**
+   * D258 — the OCCURRENCE ordinal, appended read-forward.
+   *
+   * `seed` is the whole span identity this build can emit — and a run written
+   * before D214 taught the span path its claim generation can hold two
+   * executions of one node at ONE `(attempt, spanPath)`: a gate park and its
+   * resume are two executions inside one attempt, and an `always-rerun` node
+   * re-executes across that boundary by design. Those lines are durable
+   * history and are never rewritten (doc 03 §2.3), so the id is disambiguated
+   * at the FOLD: the first execution at a seed keeps the id it has always had,
+   * and each further one appends `~<n>`. Read forward exactly as D214's own
+   * key is — an ordinal of 1 appends nothing, so every id this projection has
+   * ever derived stays byte-identical — while the second and later executions
+   * become the two distinct rows they truly were, instead of one duplicate id
+   * that `RunDetailWireSchema` refuses and that took the whole workflow's
+   * archive down with it (separations §9.22 item 6).
+   */
+  const seedOccurrences = new Map<string, number>();
+  const timelineWire = timelineEvents.map((event, index) => {
+    const occurrence = (seedOccurrences.get(event.seed) ?? 0) + 1;
+    seedOccurrences.set(event.seed, occurrence);
+    const seed = occurrence === 1 ? event.seed : `${event.seed}~${String(occurrence)}`;
+    return {
+      noteId: deterministicUuid(`timeline:${runId}:${seed}`),
+      sequence: index,
+      at: event.at,
+      label: event.label,
+      state: event.state,
+      notRun: event.notRun,
+      durationMs: event.durationMs,
+    };
+  });
 
   const openGate = row.openGates.at(-1);
   const lastResolved = row.resolvedGates.at(-1);
@@ -666,15 +698,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
       attempt: row.attempt,
     },
     timeline: {
-      events: timelineEvents.map((event, index) => ({
-        noteId: deterministicUuid(`timeline:${runId}:${event.seed}`),
-        sequence: index,
-        at: event.at,
-        label: event.label,
-        state: event.state,
-        notRun: event.notRun,
-        durationMs: event.durationMs,
-      })),
+      events: timelineWire,
       // D225: absent only when no registered descriptor can say what the
       // graph's shape is (a replayed historical workflow) — the client then
       // keeps the per-event strip, exactly as it does for pre-D225 archives.

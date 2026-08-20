@@ -1441,6 +1441,43 @@ to its node on the timeline. The fix then is D214's, applied at the producer: co
 UNDER the node's own span path (`<nodeSpanPath>/<beat>`), which needs the executor to hand the
 sequencer the node span path it already computed.
 
+#### D258 — the timeline event id carries the OCCURRENCE ordinal, read forward (2026-08-20)
+
+**The rule.** A timeline event's `noteId` is `deterministicUuid("timeline:<runId>:<seed>")` where the
+seed is the event's whole span identity (`task:<attempt>:<spanPath>`, or the gate's own
+open/resolved seed). From D258 the seed carries the **occurrence ordinal at that seed within this
+run**: the first occurrence appends nothing, and the *n*-th appends `~<n>`. Ordinals are assigned
+over the sorted event list, so the earlier execution is always the one that keeps the base id.
+
+**Read forward exactly as D214's key is.** An ordinal of 1 appends nothing, so every id this
+projection has ever derived — and every id an archived `RunDetailWire` froze — stays byte-identical.
+Nothing on disk is rewritten: a span line is durable history (§2.3), and the repair belongs at the
+fold, never at the stream.
+
+**What it fixes, and why it was expensive.** Run `00419600-ef68-4e7d-8528-4705ad462bf5` /
+`sp-080639-0041` (2026-08-14) holds **two** `span.started` and **two** `span.ended` at the identical
+`(attempt 1, sp-080639-0041/timecard-search#1)` — a **pre-D214** gate resume re-executing an
+`always-rerun` node, both executions emitting the same span path because the path did not yet carry
+the claim generation. D255 made the FOLD keep them apart; the id mint still derived one id for both,
+so `RunDetailWireSchema`'s `timeline note ids must be unique` refused the whole wire and that run's
+detail answered **HTTP 400**. Because a version bump is one atomic act over every prior-version run
+and the archive freezes the record through this same projection, ONE unreadable run refused
+`apply-version-bump` with `SCHEMA_INVALID` for the entire workflow — **zero runs could archive, and
+there is no per-run skip** (skipping would contradict D179's claim that the archive holds the bytes
+the operator last saw). Separations §9.22 item 6 is the record; `run-detail-timeline-collision`
+seeds exactly that shape — two full start/end pairs at one identity, written by the production JSONL
+writer from two processes because its identity guard refuses a re-open in-process — and pins that
+the detail parses, the ids are distinct, both executions render with their OWN measurements, and the
+archive snapshot derives. Re-folded from the real 2026-08-14 lines and the real authority row, that
+run now serves **14 events / 14 distinct ids**, its two `Timecard Search` executions measured
+separately at 30.18 s and 30.48 s.
+
+**Rejected:** rewriting or de-duplicating the stream (durable history, and the second execution
+really happened); a random or content-hashed id (an id that moves per serve breaks the client's
+React seed and every frozen archived record); and making the wire's uniqueness refinement advisory
+(the refinement is what caught this — a projection serving two rows under one id is the collision
+D123 exists to prevent).
+
 ### 2.4 One command protocol with strict target families
 
 The dashboard, CLI, recovery code, workflow editor, notification inbox, gate resolvers, and capture
