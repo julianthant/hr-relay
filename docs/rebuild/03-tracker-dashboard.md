@@ -903,6 +903,42 @@ As-built contract:
   against. `assertMonotonicFrozen` proves the page adopted it by reading the clock twice across
   real wall time: D187's rule, applied to a clock instead of a theme.
 
+### The open run-detail panel FOLLOWS its run (D257)
+
+**What was wrong.** `useRunDetail` refetched only when `runId` or `detailNonce` moved, and
+`detailNonce` was bumped ONLY by a dispatched command or an applied Data edit — never by the SSE
+day stream. So a panel left open through a run's own progress froze on the wire as of the last
+thing the operator clicked. On the proof: after the gate approval, the panel's header still read
+**`Queued` / "run is queued"** while the queue row beside it read **`Done · took 8m 20s`** and the
+BFF served `status: "done"`, and its tablist still offered only `Logs`. Because `receipt` enters
+`availableSections` only at terminal, **the evidence receipt was unreachable from a panel you had
+open** — the surface whose whole job is to explain a run did not notice the run finishing. A reload
+fixed it, and a workaround is a finding.
+
+As-built contract:
+
+- **The run's own served `rowRevision` is the follow key.** It is already on the day wire (it is
+  what every served action's CAS `expectedVersion` binds to), it is the authority version the
+  detail is read at, and it moves exactly when the run moves. The app hands the open run's row
+  revision to `useRunDetail`; nothing polls, and a run whose row this day does not hold (an
+  archived run, another day's run) serves no revision and is not followed, because it cannot move.
+- **It tracks CHANGES, never a difference.** Comparing the served revision against the loaded
+  detail's would refetch in a loop for as long as the two disagreed — and they legitimately can,
+  since one is read from authority and the other from the projection, so one is routinely a beat
+  ahead. The decision is a pure fold (`planRunDetailFollow`: `adopt` on a run switch, `settle`
+  after the window on a move, `hold` otherwise) so it is pinned by a test rather than only by a
+  live run.
+- **A burst coalesces; a switch does not wait.** A run's version moves on every heartbeat, node
+  transition and rename, and several can land inside one span-tail poll, so a moved revision is
+  adopted after a short settling window rather than per envelope. A run SWITCH adopts at once —
+  the switch already refetches, and waiting would spend a second read on a run just read.
+- **The sections follow for free, and neither half blanks.** `usePanelSections` already keys on the
+  detail's own `rowRevision`, so a followed detail re-reads every open section with it. Both keep
+  what they are showing while the next read is in flight: a panel that blanked to a spinner every
+  time its run advanced a node would be unreadable for exactly the runs worth watching. Opening a
+  DIFFERENT run still clears both, because the previous run's sections beside this run's header is
+  the wrong answer rather than a stale one.
+
 ## 0. What exists today (and what specifically hurts)
 
 | Today | Mechanism | Pain |

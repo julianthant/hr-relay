@@ -75,7 +75,7 @@ export function usePanelSections(
   tab: PanelTab,
 ): PanelSectionsState {
   const client = useDashboardClient();
-  const [state, setState] = useState<PanelSectionsState>({ sections: {} });
+  const [state, setState] = useState<PanelSectionsState & { readonly runId?: string }>({ sections: {} });
   const runId = detail?.runId;
   // The revision is a fetch dependency on purpose: an applied Data correction
   // refetches the detail at a bumped rowRevision, and the sections it served
@@ -90,19 +90,25 @@ export function usePanelSections(
       return;
     }
     let live = true;
-    setState({ sections: {} });
+    // The SAME run re-read (D257 — its revision moved, so the panel is
+    // following it) keeps what it already had on screen; a DIFFERENT run
+    // clears, because the previous run's sections beside this run's header
+    // would be the wrong answer rather than a stale one.
+    setState((current) => (
+      current.runId === String(runId) ? current : { runId: String(runId), sections: {} }
+    ));
     const names = wantedKey.split(",");
     void Promise.all(names.map(async (name) => client.runSection(runId, name))).then(
       (responses) => {
         if (!live) return;
-        setState({ sections: responses.reduce<PanelSections>(merge, {}) });
+        setState({ runId: String(runId), sections: responses.reduce<PanelSections>(merge, {}) });
       },
       (error: unknown) => {
         if (!live) return;
         if (error instanceof DashboardClientError) {
           // The panel keeps rendering its header and timeline; the sections it
           // could not read say so rather than looking empty.
-          setState({ sections: {}, error });
+          setState({ runId: String(runId), sections: {}, error });
           return;
         }
         throw error;
