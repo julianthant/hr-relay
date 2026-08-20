@@ -1651,166 +1651,218 @@ D123 exists to prevent).
 
 ### 2.4 One command protocol with strict target families
 
-The dashboard, CLI, recovery code, workflow editor, notification inbox, gate resolvers, and capture
-UI all issue the same idempotent command **envelope**, then one strict target-family arm (D67). They
-do not update queue rows, JSONL, or authority records directly. Workflow descriptors select from
-closed policies; workflows never own cancel/delete/retry/bump/update implementations.
+<!-- roadmap: p1-kernel -->
+<!-- roadmap-status: p1-kernel -->
+- [x] D67/D95 — nine closed target families over 36 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
+- [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
+- [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
+- [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/command-result.ts`, guarded by `command-result-exhaustive`)
+- [x] D109 — a descriptor-driven start consumes a server-issued `start_plan`, revalidated and consumed in the same transaction that creates the runs
+- [!] `supersede-active` is implemented in the kernel, unanticipated by the planner, and reported to the operator as unimplemented — three sites, two answers (below)
+> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/commands.ts, src/domain/dashboard/actions.ts, src/core/{command-kernel,run-fan-out}.ts, src/services/start/plan.ts and src/dashboard/app/command-result.ts; left: the `supersede-active` split, filed rather than fixed here
+<!-- /roadmap-status -->
 
-```ts
-export type EnqueuePolicy = "reject-active" | "supersede-active" | "allow-parallel";
-export type CommandActionId =
-  | "retry" | "cancel" | "bump" | "rename"
-  | "edit-checkpoint" | "resolve-write-present" | "resolve-write-absent";
-export type NavigationActionId = "open-review" | "open-evidence";
-export type WorkflowActionId = CommandActionId | NavigationActionId;
+The dashboard, CLI, recovery code, workflow editor, notification inbox, gate resolvers and capture
+UI all issue the same idempotent command **envelope**, then one strict target-family arm (D67).
+None of them updates a queue row, a JSONL line or an authority record directly. Workflow
+descriptors select from closed policies; a workflow never owns a cancel/delete/retry/bump/update
+implementation of its own.
 
-export interface WorkflowActionPolicy {
-  enabled: readonly WorkflowActionId[];
-  /** Optional descriptor conditions are closed rules over projected state, not callbacks. */
-  conditions?: readonly ActionConditionRule[];
-}
+**The shapes are in `src/domain/commands.ts`** — `CommandFamilySchema`, `CommandActionSchema`,
+`CommandRequestSchema`, `CommandResultSchema`, `BulkRunCommandRequestSchema` and
+`BulkRunCommandResponseSchema` — and in `src/domain/dashboard/actions.ts` for the served control
+descriptors. What follows is what they MEAN; the schemas are the contract.
 
-interface CommandEnvelope {
-  commandId: CommandId;                 // client-generated idempotency key
-  requestedAt: IsoInstant;
-  reason?: OperatorReason;
-}
-export type RunCommandRequest = CommandEnvelope & (
-  | {
-      target: { runId: RunId; expectedVersion: PositiveInt };
-      type: "retry" | "cancel" | "bump";
-      payload?: never;
-    }
-  | {
-      target: { runId: RunId; expectedVersion: PositiveInt };
-      type: "rename";
-      /** Trimmed NFC text, 1..120 Unicode code points, with control characters forbidden. */
-      payload: { displayName: RunDisplayName };
-    }
-  | { target: { runId: RunId; expectedVersion: PositiveInt };
-      type: "edit-checkpoint"; payload: EditCheckpointCommand }
-  | {
-      target: { runId: RunId; expectedVersion: PositiveInt };
-      type: "resolve-write-present" | "resolve-write-absent";
-      payload: ResolveWriteCommand;
-    });
-export type GateCommandRequest = CommandEnvelope & {
-  type: "resolve-gate";
-  target: { runId: RunId; gateId: GateId; expectedVersion: PositiveInt };
-  /** Generic only on the wire; the handler resolves the descriptor and parses the exact gate schema
-   * before atomically storing the result checkpoint + resolved event outbox. */
-  payload: { result: CanonicalJsonValue };
-};
-export type NotificationCommandRequest = CommandEnvelope & (
-  | { type: "notification-read" | "notification-unread";
-      target: { notificationId: NotificationId; expectedVersion: PositiveInt }; payload?: never }
-  | { type: "notification-snooze";
-      target: { notificationId: NotificationId; expectedVersion: PositiveInt };
-      payload: { until: IsoInstant } }
-);
-export type CommandRequest =
-  | StartCommandRequest | IntakeCommandRequest | WorkerBrowserCommandRequest
-  | SettingsCommandRequest | VersionArchiveCommandRequest | RunCommandRequest
-  | GateCommandRequest | NotificationCommandRequest | CaptureCommandRequest;
-// CaptureCommandRequest is owned by ref data-intake-and-edit-data and uses this envelope's idempotency, version-stamp,
-// and transactional current-state validation; it is not a blanket CAS arm.
+**D95 — command-family closure, and the two meanings formerly called bump (2026-07-31).** Every
+command arm carries exactly one closed target family; an id valid for one family cannot be erased
+to a generic string target. The registry is a frozen `Record<family, actions>` whose refinement
+refuses a family that is missing, duplicated or carries a different action set —
+`COMMAND_FAMILY_REGISTRY`, nine families over 36 actions:
 
-/** Multi-select never means "loop and hope". Targets and versions are frozen at confirmation. */
-export interface BulkCommandRequest {
-  bulkCommandId: CommandId;
-  type: "retry" | "cancel" | "bump";
-  targets: readonly [
-    { runId: RunId; expectedVersion: PositiveInt },
-    ...{ runId: RunId; expectedVersion: PositiveInt }[],
-  ];
-  mode: "all-or-none" | "best-effort";
-  requestedAt: IsoInstant;
-  reason?: OperatorReason;
-}
-export type CommandResult =
-  | { state: "applied" | "already-applied"; commandId: CommandId; affectedRunIds: RunId[] }
-  | { state: "conflict"; commandId: CommandId; currentVersion: PositiveInt; message: string }
-  | { state: "rejected"; commandId: CommandId; code: CommandRejectionCode; message: string };
+| Target family | Actions | Authoritative target |
+|---|---|---|
+| `start` | `start-run` | an exact workflow/start-plan token plus its pre-consume revision and bound descriptor/config/input fingerprints |
+| `intake` | `inspect-intake`, `confirm-intake-mapping`, `correct-intake-row`, `exclude-intake-row`, `validate-intake`, `enqueue-intake-manifest` | an exact intake artifact/session/manifest id plus observed version |
+| `worker-browser` | `plan-worker-count`, `spawn-worker`, `stop-worker`, `pause-worker`, `resume-worker`, `refresh-browser`, `reopen-browser` | an exact worker id, or worker id + browser session id, plus observed version where authority is mutable |
+| `settings` | `apply-settings` | one expected config revision plus one strict atomic multi-leaf patch — never per-field route writes |
+| `version-archive` | `plan-version-bump`, `apply-version-bump`, `relaunch-archived-run` | plan names an exact workflow/app scope and its fingerprints; apply consumes one immutable plan id/version and refuses blockers or drift |
+| `run` | `retry`, `cancel`, `bump`, `rename`, `edit-checkpoint`, `resolve-write-present`, `resolve-write-absent` | exact run id + observed version |
+| `gate` | `resolve-gate` | one exact `(runId, gateId)` with a schema-hash-bound result + observed version |
+| `notification` | `notification-read`, `notification-unread`, `notification-snooze` | one exact actor-owned notification + observed version |
+| `capture` | `capture-upload`, `capture-replace`, `capture-reorder`, `capture-delete`, `capture-finalize`, `capture-retry-finalize`, `capture-discard` | exact capture session/photo ids + observed version (`ref data-intake-and-edit-data`) |
 
-export type ActionDescriptorWire =
-  | {
-      kind: "command";
-      id: CommandActionId;
-      label: string;
-      tone: "neutral" | "warning" | "destructive";
-      target: { runId: RunId; expectedVersion: PositiveInt };
-      form?: ActionFormWire;
-    }
-  | {
-      kind: "navigation";
-      id: NavigationActionId;
-      label: string;
-      tone: "neutral";
-      target: { runId: RunId };
-    };
-```
+The string **`bump` is permanently reserved for run priority/claim order.** Descriptor and app
+version work uses `plan-version-bump` then `apply-version-bump`: the plan is reviewable and
+immutable, and apply cannot be synthesized from a run-priority command. No union arm, bulk action,
+route or UI descriptor may use one `bump` discriminant for both meanings. These nine are the
+exhaustive product mutation families; adding a tenth is a contract change in this doc, not a
+route-local string.
+
+**One arm is deferred, and the partition that says so is checked both ways at module load.**
+`PHASE1_ACTIVE` and `PHASE1_DEFERRED` (`src/core/command-kernel.ts`) must together cover the D95
+registry exactly — an action in neither, or in both, throws before any command can dispatch, so the
+deferral is a fact the process asserts about itself rather than a comment. Today the deferred set is
+exactly **`settings/apply-settings`** (`{#def-settings}`): it is schema-recognized and answers
+`rejected{code:"capability-unavailable"}` with **zero** authority side effects — no journal row, no
+audit row, no generation advance. Everything else in the table is live, including `edit-checkpoint`
+(D166), the whole `intake` family (D170/D171), `version-archive` (D179) and `capture` (D167). This
+section read *"`run`'s `edit-checkpoint` arm plus the `intake`, `settings`, `version-archive`,
+`notification` and `capture` families remain schema-recognized but return
+`capability-unavailable`"* until 2026-08-20; that was true of Phase 1f and of nothing since 2i.
+
+<!-- roadmap: def-settings -->
+<!-- roadmap-status: def-settings -->
+- [x] the family, its action and its target shape are ratified and schema-recognized (D95)
+- [x] the deferral is enforced and legible: `apply-settings` is the single member of `PHASE1_DEFERRED`, answering `capability-unavailable` with zero authority side effects
+- [x] Settings renders the sections the SERVER serves, read-only, so §2.5's "expose age/health in Settings" is met without the command (2i-D)
+- [ ] the handler itself — one expected config revision, one strict atomic multi-leaf patch over `ref clock-config-secrets`'s resolver, never per-field route writes
+> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/core/command-kernel.ts (PHASE1_DEFERRED) and src/dashboard/surfaces/settings.tsx; left: the write half, which is the node's whole scope
+<!-- /roadmap-status -->
+
+**A result has three arms and TWO of them are refusals (D253).** `CommandResultSchema` is
+`applied`/`already-applied` (carrying the affected targets), `conflict` (carrying the server's
+`currentVersion`) and `rejected` (carrying a closed `CommandRejectionCode`: `invalid-state`,
+`target-not-found`, `authority-unavailable`, `policy-refused`, `schema-mismatch`,
+`active-version-blockers`, `capability-unavailable`). A surface that branches on `rejected` alone
+treats a CAS conflict as success — which is exactly what the Context rail's Data save and the
+notification bell did, closing the editor and reporting a correction *saved* that the kernel had
+refused. Every module under `src/dashboard/**` therefore settles through ONE exhaustive fold,
+`settleCommandResult` (`src/dashboard/app/command-result.ts`), whose `switch` over the discriminant
+makes a fourth arm a compile error; `command-result-exhaustive` refuses any dashboard module that
+names one refusal arm without the other. The two refusals stay distinguishable in the SENTENCE,
+because the operator does different things about them: a conflict names the server's version and
+never says "try again", since re-sending the same envelope carries the same stale
+`expectedVersion` and would be refused identically.
+
+**A served control is an `ActionDescriptorWire`, and nothing else** (`src/domain/dashboard/actions.ts`;
+`ref frontend-backend-integration` §8.5). A control the server did not describe is unreachable, not
+hidden: surfaces render exactly the descriptors they are handed and never re-derive availability
+from a status. The descriptor is a two-arm discriminated union over `kind`:
+
+- shared: `key` (stable within a row), `label`, `detail?`, `intent` (`primary` · `neutral` ·
+  `destructive` · `violet` · `success` · `info` · `warning`), `icon?`, and `placement[]` — one or
+  more of `footer` · `banner` · `outcome` · `menu` · `data` · `review`, because the same command may
+  legitimately appear in a row footer and a context menu and must be described once.
+- `kind:"command"`: `command` — one of the SEVEN keys the kernel accepts from a surface
+  (`retry`, `cancel`, `bump`, `rename`, `resolve-gate`, `resolve-write-present`,
+  `resolve-write-absent`) — plus `expectedVersion` (the CAS target: the row revision the surface the
+  operator is holding was projected at), `confirm?` (title/body/confirmLabel/tone, where the body
+  names the casualties), `resolution?` (`approved`/`rejected`, for a gate option) and `writeTarget?`
+  (`{writeIntentId, intentGeneration}`).
+- `kind:"navigation"`: `navigate: {kind: "self" | "panel" | "drill", runId?}`.
+
+Two refinements make an unreachable control unrepresentable: a `resolve-write-*` without its intent
+target cannot be sent, and an intent target on any other verb names a scope that command does not
+accept. There is no `ActionFormWire`; a control that needs one value is a `menu` descriptor the
+surface intercepts, the same shape the gate ceremony's answer already uses.
+
+`ActionCommandKeySchema`'s seven keys are NOT the same list as the descriptor's
+`CommandActionIdSchema` (`src/domain/workflow/presentation.ts`), and the difference is deliberate:
+that one is the WORKFLOW's action policy — which run verbs a descriptor enables for its own rows —
+and a workflow does not enable `resolve-gate`, which the gate ceremony serves whenever a gate is
+open.
 
 Command semantics are binding:
 
 | Operation | Standard behavior |
 |---|---|
-| Enqueue | Validate raw input once, derive stable item id, then apply descriptor policy in one transaction. `reject-active` returns the existing active run; `supersede-active` terminalizes the exact active generation and creates the new run atomically; `allow-parallel` still requires a distinct stable item/variant key. An authority read error aborts—never “continue and enqueue anyway.” |
-| Retry | Creates a new run linked by `retryOf`, reuses immutable parsed input/config, validates checkpoints/freshness, and preserves the logical item. A parked unknown write uses resolution actions, never generic retry. |
-| Cancel | Resolves the full dependency tree from authoritative SQLite, applies every edge's ref workflow-model cancel policy, and commits state transitions together. If the tree is unavailable/inconsistent, no target is cancelled. Visible queue roots are never an authority fallback. |
-| Bump | **Run-family only:** changes priority/claim order through an idempotent transactional command; it does not fabricate a requeue, mutate business input, change a descriptor version, or archive anything. Running work returns a typed rejection unless the scheduler explicitly supports cooperative yield. Version drift alone does not conflict. |
-| Rename | Replaces only the operator-visible run display name with a strict `RunDisplayName` payload: NFC-normalized, already trimmed, 1–120 Unicode code points, and no control characters. Empty, whitespace-padded, overlong, non-normalized, or unknown-key payloads fail boundary parsing. Identity and trace id never change. |
-| ~~Hide / Unhide~~ | **RETIRED (D234.)** The queue's model is runs and archived runs; there is no third hidden class. See *"D234 — the queue's model is runs and archived runs"* below. |
+| Enqueue | Validate raw input once, derive the stable item id, then apply the descriptor's policy in ONE transaction. `reject-active` returns the existing active run; `supersede-active` terminalizes every active generation as `superseded` and creates the new run in the same transaction (`fanOutQueuedRuns`, `src/core/run-fan-out.ts`); `allow-parallel` still requires a distinct stable item/variant key. An authority read error aborts — never "continue and enqueue anyway". |
+| Retry | Creates a new run linked by `retryOf`, reuses the immutable parsed input/config, validates checkpoints and freshness, and preserves the logical item — taking the item's next unspent attempt from authority (D221). A parked unknown write uses the resolution actions, never generic retry. |
+| Cancel | Resolves the full dependency tree from authoritative SQLite, applies every edge's `ref workflow-model` cancel policy, and commits the transitions together. If the tree is unavailable or inconsistent, no target is cancelled. Visible queue roots are never an authority fallback. |
+| Bump | **Run-family only:** changes priority/claim order through an idempotent transactional command; it does not fabricate a requeue, mutate business input, change a descriptor version, or archive anything. Only a `queued` run can be bumped — the scheduler supports no cooperative yield, so a running run is a typed `invalid-state` rejection — and an already-`interactive` run is idempotently `applied` with no version change. |
+| Rename | Replaces only the operator-visible run display name with a strict `RunDisplayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters. Empty, whitespace-padded, overlong, non-normalized or unknown-key payloads fail boundary parsing. Identity and trace id never change. |
+| ~~Hide / Unhide~~ | **RETIRED (D234.)** The queue's model is runs and archived runs; there is no third hidden class. `ActionCommandKeySchema` carries neither key and `RunRecord.hidden` is a parse-tolerated vestige nothing writes. |
 | Purge | Not a row action. `cli purge-run <exact-run-id> --backup <path>` is an offline maintenance command requiring a fresh verified backup and refusing any active/dependency/write-authority reference. It writes a purge receipt. |
-| Edit checkpoint | Uses ref data-intake-and-edit-data's field-level patch/provenance model, creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
+| Edit checkpoint | Uses `ref data-intake-and-edit-data`'s field-level patch/provenance model (D166), creates a new run/attempt as specified there, and never mutates original input or a completed proof. |
+
+**`supersede-active` says two different things in three places, and the doc says so rather than
+picking one.** The kernel implements the row above exactly. The PLANNER does not anticipate it:
+`src/services/start/plan.ts` checks for an active run only under `reject-active`, so a plan composed
+under `supersede-active` never tells the operator which generation it is about to terminalize. And
+the run modal prints the policy's meaning as *"Declared, and not implemented — the planner
+supersedes nothing"* (`run-start-model.ts`). All eight registered descriptors declare
+`reject-active`, so the arm is unexercised either way and nothing is currently wrong on screen —
+which is precisely why it can rot. Reconciling it is a code change with an owner, filed rather than
+resolved in prose here.
 
 Every command is inserted durably before application and records the target's monotonic `version`.
 Re-delivery returns `already-applied`. **CAS is enforced on every run verb** (D233, and D234 for
-`bump` — the last arm that compared against its own re-read): a stale projection conflicts and forces
-a refresh, with no exceptions. The earlier reading of this line scoped CAS to *"real race families:
-cancel-tree, edit-vs-resume, gate resolution, and write recovery"* and let the rest validate current
-authority without rejecting on drift; that scoping was about STATE, not about version, and a name or
-a claim order is a value an operator authored. A rule with one exception is a rule nobody can check.
-The command audit
-records requester (`local-operator` for now), source surface, reason, before/after versions, affected
-dependency ids, and outcome. API routes are thin schema parsers over this service—there are no
-workflow-specific mutation endpoints except domain gates whose handlers themselves issue commands.
+`bump` — the last arm that compared against its own re-read): a stale projection conflicts and
+forces a refresh, with no exceptions. The earlier reading of this line scoped CAS to *"real race
+families: cancel-tree, edit-vs-resume, gate resolution, and write recovery"* and let the rest
+validate current authority without rejecting on drift; that scoping was about STATE, not about
+version, and a name or a claim order is a value an operator authored. A rule with one exception is
+a rule nobody can check. The command audit records the requester (`local-operator` for now), the
+source surface, the reason, before/after versions, affected dependency ids, and the outcome. API
+routes are thin schema parsers over this service — there are no workflow-specific mutation
+endpoints except domain gates whose handlers themselves issue commands.
 
-Bulk commands first resolve the union of all authoritative dependency targets. `all-or-none` locks,
-validates every policy plus expected versions for CAS-enforced arms, and applies one transaction or
-none. `best-effort` writes a child command/result per requested target and returns the complete
-applied/conflict/rejected vector; the UI may never collapse a partial result into “Done.” Bulk cancel
-defaults to `all-or-none`. There is no client loop whose last
-response overwrites earlier errors.
+**Bulk is N children and one vector (D235).** A bulk request first resolves the union of all
+authoritative dependency targets. `all-or-none` locks, validates every policy plus expected versions
+for the CAS-enforced arms, and applies one transaction or none — and this runtime **refuses**
+`all-or-none` by name rather than half-implementing it. `best-effort` writes a child command and
+result per requested target and answers with the complete vector: `BulkRunCommandResponseSchema` is
+`vector` (with `bulkCommandId`, `type`, `requestedCount` and the per-target results) or `refused`
+(a whole-request refusal that reached no target at all). Each per-target outcome is `applied`,
+`conflict` (carrying `currentVersion`), `refused` (the same `CommandRejectionCode` a single command
+would have answered with) or `errored` — a fourth arm on purpose, because a child can raise a
+structured error the kernel does not type, and collapsing that into `refused` would put a code
+nobody computed onto a real HR record. `requestedCount` is on the wire rather than derived from
+`results.length` so a STOPPED pass is legible: fewer results than requested means the remainder was
+never attempted. The UI may never collapse a partial result into "Done", and there is no client
+loop whose last response overwrites earlier errors.
 
-For descriptor-driven starts, the Enqueue row above is reached only by consuming the server-issued
-`start_plan` described in the Phase-1f ratification. The command target carries the plan id and
-pre-consume version, not mutable input. The handler compares every bound fingerprint/hash and consumes the plan in the
-same transaction as active-run resolution and run creation; “plan consumed but no run” and “run
-created from an unconsumed/stale plan” are both invalid states.
+**A descriptor-driven start consumes a server-issued plan (D109).** The Enqueue row above is reached
+only through a `start_plan`: the command target carries the plan id and its pre-consume revision,
+never mutable input. The plan retains, per entry, the exact strict-JSON RAW submission beside the
+once-parsed canonical snapshot and its digest — accepted AND refused entries both — plus separate
+ingress and canonical schema hashes, the descriptor/version/contract/config fingerprints, the config
+snapshot, resolved instances, the match key and item id, the proposed run set, expiry, revision and
+consumption state. `start-run` revalidates every binding, then in ONE authority transaction records
+the command outcome, applies the descriptor's active-run policy, marks the plan consumed and creates
+every accepted run with its immutable envelope and input snapshot. Any drift, expiry, spent-plan
+conflict, target lookup failure or run insert failure rolls back plan consumption, command
+application, supersession and every proposed run. A replay of the same `commandId` returns the
+recorded result only after every binding has revalidated, and another command cannot consume a spent
+plan. "Plan consumed but no run" and "run created from an unconsumed or stale plan" are both invalid
+states.
 
-**D95 — command-family closure and the two meanings formerly called bump (2026-07-31).** Every
-command arm carries exactly one closed target family; an id valid for one family cannot be erased
-to a generic string target. Phase 1c ratifies the following complete family shell before any route
-or handler exists:
+#### Phase 1f — what the kernel ratified (2026-08-02)
 
-| Target family | Closed action shell and authoritative target |
-|---|---|
-| `start` | `start-run`; exact workflow/start-plan token plus pre-consume revision and its bound descriptor/config/input fingerprints |
-| `intake` | inspect/confirm mapping, correct/exclude/validate, and enqueue-manifest actions; exact intake artifact/session/manifest id plus observed version |
-| `worker-browser` | plan/spawn/stop/pause/resume worker and refresh/reopen browser; exact worker id, or worker id + browser session id, plus observed version where authority is mutable |
-| `settings` | `apply-settings`; one expected config revision plus one strict atomic multi-leaf patch—never per-field route writes |
-| `version-archive` | `plan-version-bump`, `apply-version-bump`, and archived-run relaunch; the plan action names an exact workflow/app scope and fingerprints, while apply consumes one immutable plan id/version and refuses blockers or drift |
-| `run` | retry/cancel/**priority `bump`**/rename/edit-checkpoint/write resolution; exact run id + observed version |
-| `gate` | resolve one exact `(runId, gateId)` with schema-hash-bound result + observed version |
-| `notification` | read/unread/snooze one exact actor-owned notification + observed version |
-| `capture` | the closed ref data-intake-and-edit-data session/photo/finalize/discard arms; exact capture session/photo ids + observed version |
+Phase 1f closed the authority semantics the Phase-1c storage shell deliberately left open. Four of
+them are this section's, and all four are as-built:
 
-The string **`bump` is permanently reserved for run priority/claim order**. Descriptor/app version
-work uses only `plan-version-bump` then `apply-version-bump`; the plan is reviewable and immutable,
-and apply cannot be synthesized from a run-priority command. No union arm, bulk action, route, or UI
-descriptor may use one `bump` discriminant for both meanings. Start, intake, worker/browser,
-settings, version/archive, run, gate, notification, and capture are the exhaustive product mutation
-families; adding another family is a contract change in this owner doc, not a route-local string.
+- **`failures` is a non-rebuildable authority family.** Every failed task or run writes
+  `ref operator-trust`'s strict `FailureRecord` and stores its `failureId` with the failure
+  transition; a display-safe span summary is not a substitute. The composite mutation receives the
+  exact factory-built descriptor separately from the strict request, resolves a node's allowed task
+  ids from that authenticated runtime node, and rejects caller-invented node/task pairings.
+- **`run_results` is a non-rebuildable authority family.** One successful run writes
+  `ref workflow-model`'s `RunResultRecord` keyed by `runId`; its schema/result/dependency digests and
+  the terminal run transition and outbox commit together. A second identical write is idempotent; a
+  different result for the same run is corruption. Child joins read this authority rather than
+  reconstructing output from spans or checkpoints. Initial success additionally requires the
+  descriptor factory's seal and exact re-reads of the stored checkpoints.
+- **Both terminal composites first persist a strict `run_terminal_authorizations` row** keyed by
+  `runId`, binding the original expected version, worker/claim generation, descriptor identity,
+  timestamp and the exact failure or result/outbox identity. Replay must reproduce that row exactly
+  and prove the terminal row is its exact consequence: `run.version = expectedVersion + 1`, the
+  claim generation and authorization timestamp are retained, and the terminal state/outcome/failure
+  identity match the authorization arm. A terminal state cannot make a stale claim look valid.
+- **Beat ⑦ is one outer authority transaction** over the current claim generation and intent
+  generation: mark intent and attempt committed, persist the schema-valid transaction-output
+  checkpoint, insert the ledger and same-trace terminal-span outboxes, attach any real
+  evidence-receipt ref already produced, and transition the run. A failure after any storage step
+  rolls back all of them and leaves the intent `attempting`. The Phase-1c four-row helper is a
+  storage primitive INSIDE this bundle, not a separately committable terminal path; the whole
+  sequence now lives in `src/core/write-sequencer.ts` and belongs to `ref write-safety` §5.
+
+Migration v6 deleted pre-D109 start plans rather than fabricating raw ingress for them — they are
+short-lived proposals and must be re-planned. Released v7 remains byte-for-byte the
+failure/result/outbox migration and v8 alone adds the authorization table; v9 adds D112's provider
+budget counters and admissions. Every released migration's ordered statement bytes are pinned by
+literal digest, v1 through the current v15, so a schema change appends a version and its reviewed
+digest without editing history.
 
 ### 2.5 Non-rebuildable SQLite recovery contract
 
