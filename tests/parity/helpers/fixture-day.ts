@@ -178,6 +178,9 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     runNumber: input.seed === 4
       ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
       : { state: "present", value: input.seed },
+    // D269: the parity corpus predates run sessions and no surface reads the
+    // field yet; an absent arm keeps every frozen reference byte-identical.
+    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
     containment: kind === "member" ? "member" : "root",
     linkedRuns: [],
     facts: TERMINAL.has(input.status)
@@ -401,6 +404,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
    * attention chip counts), and a live worker carrying a standing `pause`
    * directive beside a state word that is still `idle`.
    */
+  workerPools: [],
   workerCards: [
     {
       workerId: "person-lookup-worker-1",

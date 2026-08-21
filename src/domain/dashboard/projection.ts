@@ -24,6 +24,7 @@ import {
   TraceIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
+  RunSessionIdSchema,
 } from "../ids.js";
 import {
   PanelKindSchema,
@@ -201,6 +202,20 @@ const QueueBaseFields = {
    */
   runNumber: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: PositiveIntSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
+  /**
+   * The dashboard-started GROUP this run belongs to (D269, ref execution-and-sessions
+   * §11.1) — read off `RunRecord.sessionId`, the ONE place membership lives.
+   * The session view reads membership from THIS field across the day's rows;
+   * `run_sessions` holds no member list to disagree with it.
+   *
+   * The absent arm is read-forward (D133): a run enqueued before schema v17
+   * carries no session, and the row says so with its reason rather than being
+   * folded into some default group.
+   */
+  session: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), sessionId: RunSessionIdSchema }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
   /**
@@ -796,6 +811,33 @@ export const NotificationWireSchema = z.strictObject({
   link: NotificationLinkWireSchema.optional(),
 });
 
+/**
+ * The per-workflow worker POOL declaration (D269, ref execution-and-sessions §11.5)
+ * — the CAS basis `plan-worker-count` and `spawn-worker` cite, served on the
+ * day wire from `worker_pools` and nowhere else.
+ *
+ * `version` is the pool row's version and is the ONLY honest `expectedVersion`
+ * for those two commands. It is not `WorkerCardWire.leaseVersion` (one
+ * worker's row, the basis `stop-worker` cites) and not `revision` (a patch
+ * cursor). A workflow ABSENT from this list has no pool row: its basis is 0
+ * and the first plan creates the row — the list carries authority rows only,
+ * and serving a fabricated `{desiredWorkers: 1, version: 0}` for every
+ * registered workflow would be the projection inventing a declaration nobody
+ * made.
+ *
+ * Like `workerCards` and `notifications`, this is a SNAPSHOT-level block: the
+ * day patch stream carries queue-row splices only (D4), so a changed pool
+ * reaches the client on the next snapshot, never through a patch.
+ */
+export const WorkerPoolWireSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  desiredWorkers: PositiveIntSchema,
+  version: PositiveIntSchema,
+  plannedBy: ActorIdSchema,
+  plannedAt: IsoInstantSchema,
+});
+export type WorkerPoolWire = z.infer<typeof WorkerPoolWireSchema>;
+
 function requireUnique(values: readonly string[], path: string, context: z.RefinementCtx): void {
   if (new Set(values).size !== values.length) {
     context.addIssue({ code: "custom", path: [path], message: `${path} identities must be unique` });
@@ -812,6 +854,8 @@ export const DashboardDayWireSchema = z.strictObject({
   statusCounts: z.array(StatusCountWireSchema),
   queueSurfaces: z.array(QueueSurfaceWireSchema),
   workerCards: z.array(WorkerCardWireSchema),
+  /** D269: one entry per workflow that HAS a pool row; see `WorkerPoolWireSchema`. */
+  workerPools: z.array(WorkerPoolWireSchema),
   notifications: z.array(NotificationWireSchema),
 }).superRefine((day, context) => {
   requireUnique(day.monthCounts.map(({ day: value }) => value), "monthCounts", context);
@@ -819,6 +863,7 @@ export const DashboardDayWireSchema = z.strictObject({
   requireUnique(day.statusCounts.map(({ status }) => status), "statusCounts", context);
   requireUnique(day.queueSurfaces.map(({ runId }) => runId), "queueSurfaces", context);
   requireUnique(day.workerCards.map(({ workerId }) => workerId), "workerCards", context);
+  requireUnique(day.workerPools.map(({ workflowId }) => workflowId), "workerPools", context);
   requireUnique(day.notifications.map(({ notificationId }) => notificationId), "notifications", context);
 });
 

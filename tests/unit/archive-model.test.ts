@@ -164,6 +164,10 @@ function snapshotSource(world: {
           runNumber: run.runNumber === undefined
             ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
             : { state: "present", value: run.runNumber },
+          // D269: the same read-forward shape for the session the live row carried.
+          session: run.sessionId === undefined
+            ? { state: "absent", reason: "enqueued before runs carried a session (D269)" }
+            : { state: "present", sessionId: run.sessionId },
           containment: "root",
           linkedRuns: [],
           facts: { state: "absent", reason: "this run's evidence receipt records no output fact" },

@@ -1171,6 +1171,40 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     });
   });
 
+  it("D269: serves the run's session off its own row, and names the absence of one", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1, sessionId: uuidOf(70) });
+    queuedEventOf(w, { seed: 2, sessionId: uuidOf(70) });
+    queuedEventOf(w, { seed: 3 });
+    const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
+    // Membership is the row's own field — two rows naming one session ARE that
+    // session's membership, with no stored list consulted.
+    assert.deepEqual(rows[0].session, { state: "present", sessionId: uuidOf(70) });
+    assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70) });
+    assert.deepEqual(rows[2].session, { state: "absent", reason: "enqueued before runs carried a session (D269)" });
+  });
+
+  it("D269: serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", () => {
+    const w = world();
+    assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerPools, []);
+    w.authority.putWorkerPool({
+      workflow: "person-lookup", desiredWorkers: 2, plannedBy: "local-operator",
+      plannedAt: instantOffsetOf(0), version: 3, createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0),
+    });
+    w.authority.putWorkerPool({
+      workflow: "separations", desiredWorkers: 1, plannedBy: "local-operator",
+      plannedAt: instantOffsetOf(0), version: 1, createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0),
+    });
+    const day = w.projection.buildDashboardDayWire(DAY);
+    assert.deepEqual(day.workerPools, [
+      { workflowId: "person-lookup", desiredWorkers: 2, version: 3, plannedBy: "local-operator", plannedAt: instantOffsetOf(0) },
+      { workflowId: "separations", desiredWorkers: 1, version: 1, plannedBy: "local-operator", plannedAt: instantOffsetOf(0) },
+    ]);
+    // The pool version is the CAS basis — never a worker card's lease version
+    // or revision, which this day does not even have.
+    assert.equal(day.workerCards.length, 0);
+  });
+
   it("reads priority from the envelope, which is what a bump rewrites", () => {
     const w = world();
     queuedEventOf(w, { seed: 1, priority: "bulk" });

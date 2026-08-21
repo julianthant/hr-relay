@@ -73,6 +73,7 @@ import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import type { WorkerLeaseRecord } from "../../../domain/run/worker.js";
+import type { WorkerPoolRecord } from "../../../domain/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
@@ -184,6 +185,8 @@ export interface RunQueueProjectionDeps {
      */
     listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
+    /** D269: every workflow's pool declaration — the spawn control's CAS basis, served from authority. */
+    listWorkerPools(): readonly WorkerPoolRecord[];
     /**
      * D179/D80: whether a version bump has archived this run. Ref dashboard-surfaces §10.1 is
      * explicit that archived rows are excluded ONCE, inside the projection,
@@ -1091,6 +1094,13 @@ export class RunQueueProjection {
       : { state: "present", value: authority.runNumber };
   }
 
+  /** D269: membership is the run row's own field — never a lookup in a stored member list. */
+  #session(authority: RunRecord): { state: "present"; sessionId: string } | { state: "absent"; reason: string } {
+    return authority.sessionId === undefined
+      ? { state: "absent", reason: "enqueued before runs carried a session (D269)" }
+      : { state: "present", sessionId: authority.sessionId };
+  }
+
   /**
    * How this row is contained by its parent.
    *
@@ -1317,6 +1327,7 @@ export class RunQueueProjection {
        */
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
+      session: this.#session(authority),
       containment: this.#containment(queued),
       linkedRuns: this.#linkedRuns(row),
       facts: this.#facts(status, receipt),
@@ -1512,6 +1523,19 @@ export class RunQueueProjection {
         .map(([statusKey, count]) => ({ status: statusKey, count })),
       queueSurfaces: surfaces,
       workerCards,
+      /**
+       * D269 — the pool block is AUTHORITY's, read whole on every snapshot
+       * exactly as the cards are: one entry per workflow that has a row, in
+       * workflow order, carrying the version the spawn control must cite.
+       * Snapshot-only by construction (the day patch carries row splices).
+       */
+      workerPools: this.#deps.authority.listWorkerPools().map((pool) => ({
+        workflowId: pool.workflow,
+        desiredWorkers: pool.desiredWorkers,
+        version: pool.version,
+        plannedBy: pool.plannedBy,
+        plannedAt: pool.plannedAt,
+      })),
       notifications: this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)
         .map((record) => notificationWireOf(record, this.#deps.clock.nowMs()))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
