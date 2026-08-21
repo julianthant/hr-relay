@@ -1572,78 +1572,102 @@ only. A fifth contract is where that stops being enough.
 ---
 
 ## 12. Worked example — a separations termination, with a crash
+<!-- roadmap: order-8 -->
+<!-- roadmap: sep-6a -->
 
-Input `{ emplId:"10001573", action:"termination", effectiveDate:"08/01/2026" }`, dry-run **off**,
-`instance:"prod"`. Composed nodes: cleanup transaction → termination transaction whose prepare arm
-is `ucpath/fill-termination`, commit arm is `ucpath/submit-termination`, and probe policy is always.
+<!-- roadmap-status: sep-6a -->
+- [x] the composition is BUILT — `src/workflows/separations/descriptor.ts` composes twenty nodes ending in three transactions: `clear-pending` → `file-termination` → `finalize-kuali`, all downstream of the `identity-approval` gate
+- [x] the gate's packet carries the WRITE PLAN, so the digest an approval binds to covers the dates, the template, the reason code and the department — not only the person (D211; §14.10)
+- [x] `identity-gate-before-commit` audits BOTH sinks (every transaction node AND the terminal result) and caught the descriptor's first draft reading the run's product off the pre-gate node (D202)
+- [ ] none of the three transactions has run its §3.2 controlled commit — the worked example below is the DESIGN walked against the real node names, not a record of a run
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/workflows/separations/descriptor.ts:262-280,528-660` and the four contract files; left: the three controlled commits (doc 03b)
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: order-8 -->
+- [x] separations is migration order 8's workflow and the first migration this program attempts; its graph, its gate and its three writes exist
+- [ ] its §3.2 proofs are what "rebuild-ready" waits on, and they wait on the operator's 08-28 window (doc 03b Track A)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/workflows/separations/descriptor.ts` and `docs/rebuild/03b-finish-separations.md` §Track A; left: everything downstream of the three commits
+<!-- /roadmap-status -->
+
+This walks ONE of the composition's three transactions — `file-termination` — with the node and
+contract names the descriptor actually uses. It is the design demonstrated, not a run record: the
+controlled commit is still owed (§3.2).
+
+Input `{ emplId:"10001573", action:"termination", effectiveDate:"08/01/2026" }`, dry run **off**,
+`instance:"prod"`. The graph reaches this node only through the `identity-approval` gate (§14.3),
+and the sweep transaction `clear-pending` runs BEFORE it — its own permanent key, its own fence,
+its own proof (§5).
 
 **Happy path (seven beats):**
 ```
-bind stable commit input + key="10001573|termination|08/01/2026"
-① durable lookup → unseen; separate read lease runs find-existing-termination →
-   { state:"absent", evidence:{idempotencyKeyDigest,source,sourceState,observedAt,queryDigest,evidenceRef} }
-   release read lease; record monotonic probe completion
-② acquire exclusive transaction lease; fill-termination stages the form
-③ driver observes ucpath.smart-hr.subject-eid="10001573" on the staged page;
-   kernel matches expected EID and constructs WriteBindingProof{kind:"subject-match",leaseId,
-     pageStateId,observedAt,digest}
-④ probe/subject age < probeToFenceMaxMs; fence
-   write_intents{key,status:"attempting",binding_proof_digest} COMMITTED (SQLite)
-   → span write.attempting
-⑤ commit mutation primitive: Save+Submit click (matching fence+subject capability → fires)
-⑥ capture readLatestTransactionNumber (re-nav on retained transaction page) → "T002173999"
-         pick(o)=o.receipt; schema z.strictObject({transactionNumber:/^T\d{6,}$/}).parse → ok
-⑦ atomic DB commit: typed TransactionOutcome{disposition:"committed",proofSource:"normal-output"}
-                        checkpoint + write_intents{status:"committed",
-                           proof_json, output_json, binding_proof_json}
-         + ledger/span outboxes { system:"ucpath", idempotencyKey:"10001573|termination|08/01/2026",
-                           proof:{transactionNumber:"T002173999"}, operator, instance:"prod",
-                           dryRun:false, proofSource:"normal-output", bindingProofDigest,
-                           fencedAt, confirmedAt:clock.now() }
-           // ledger projector assigns ordered sequence + actor metadata only after claiming this outbox
-         + span write.committed + span.ended(done)
+bind stable commit input + key = "ucpath:termination|10001573|08/01/2026"
+① durable lookup by (system, key) digest → unseen; a separate READ lease runs
+   ucpath/match-existing-termination →
+   { state:"absent", evidence:{idempotencyKeyDigest, source, sourceState, observedAt,
+                               queryDigest, evidenceRef} }
+   release the read lease; record the monotonic probe-completion instant
+② acquire the exclusive transaction lease; ucpath/stage-termination stages the Smart HR wizard
+③ the driver observes UCPath's DISPLAYED PERSON NAME on the staged page — the wizard page shows no
+   EID, so this subject binds `normalized-exact-name` against the name the GATE approved; the kernel
+   builds WriteBindingProof{kind:"subject-match", version:1, proofId, leaseId, pageStateId,
+   observedAt} and derives its digest
+④ elapsed < probeToFenceMaxMs (90 000 ms, authored — §5); fenceAttempt INSERTs
+   write_intents{status:"attempting", generation:1, version:1, bindingProofDigest} and its immutable
+   write_attempts row in one authority transaction → span write.attempting
+⑤ ucpath/create-termination clicks Save+Submit through the mutation primitive, which asserts the
+   capability was minted for THIS generation and THIS binding digest
+⑥ ucpath/verify-termination reads the SS Smart HR detail page back by its keyed deep link and
+   returns the PAIR — { transactionId:"T002173999", approvalStatus:"Pending", emplId,
+   effectiveDate, displayedName, source:"ss-smart-hr-detail-read" } — parsed through
+   UcpathTerminationProofSchema. A `T…` alone would have accepted a DENIED write (D130)
+⑦ ONE authority transaction: TransactionOutcome{disposition:"committed",
+   proofSource:"normal-output"} checkpoint + write_intents{status:"committed", completionProof} +
+   the ledger and terminal-span outbox rows + the run transition
 ```
 
-**Crash AFTER the click (⑤) but BEFORE capture (⑥).** The executor dies; the Save landed in PeopleSoft
-but no receipt was recorded. Lease expiry re-enqueues the run; recovery (§4) runs FIRST:
+**Crash AFTER the click (⑤) but BEFORE capture (⑥).** The executor dies; the Save landed in
+PeopleSoft but no receipt was recorded. Lease expiry re-enqueues the run; recovery (§4) runs FIRST:
 ```
-scan write_intents (separations, 10001573-item, ucpath-submit) → status:"attempting", no committed
-re-run ucpath/find-existing-termination key="10001573|termination|08/01/2026"
-  → { state:"present", proof:{transactionNumber:"T002173999"} }   // the row PeopleSoft now shows
-⇒ BACKFILL in one DB transaction: committed proof + ledger/span outboxes + done
+find the unfinished intent for this item → status:"attempting"
+re-run ucpath/match-existing-termination for key "ucpath:termination|10001573|08/01/2026"
+  → { state:"present", proof:{ transactionId:"T002173999", approvalStatus:"Pending", … } }
+⇒ BACKFILL in one authority transaction: committed proof + ledger/span outboxes + done
 ⇒ NO second Save. The permanent fence and typed positive proof establish convergence without a
-second unattended commit attempt.
+  second unattended commit attempt.
 ```
-Had an early recovery probe returned `absent`, it would be retained only as diagnostic evidence.
-The kernel would requeue without occupying a worker, take its first qualifying observation at least
-30s after the fence, then require a second same-key/same-state absence at least 5s
-later before marking the intent retryable. An early, malformed, or disagreeing absence would park.
-Had it returned `ambiguous` (two "Terminatn" rows for that EID+date) or
-`unknown` (grid didn't render) → `PARKED(needs-operator)`: *"termination for EID 10001573 effdt
-08/01/2026: probe found 2 matches / probe indeterminate — verify in UCPath, then retry or mark
-done."* Had the present proof failed `proofSchema` → `PARKED`, never `done`.
-Never a guess, never a duplicate `T…`.
 
-**Two runs, same key (D18).** Suppose a second run for the same
-`{10001573, termination, 08/01/2026}` starts while the first is mid-submit. Its beat ① consults
-`write_intents` FIRST, finds the first run's `attempting` row on
-`idempotency_key="10001573|termination|08/01/2026"`, and **fails loud without fencing or clicking** —
-*"another run is mid-submit for key 10001573|termination|08/01/2026 — refusing to double-fence."*
-Even if two starters race, one permanent-key INSERT/CAS wins. After commit, any future run finds and
-reuses the proof. Concurrent and sequential duplicates are both blocked.
+Had an early recovery probe returned `absent`, **nothing would follow from it** — this contract
+declares `recoveryAbsence: {kind:"operator-only"}` (§4.2), because settling a false negative here
+files a SECOND real termination. Recovery parks with the `operator-required` code and the operator
+uses §4.1's typed confirmed-present or confirmed-absent resolution. The stabilized arm walked
+through in earlier drafts of this section belongs to Kuali, not to UCPath, and writing it here would
+be the transfer D207 refuses.
 
-**Honest scope (D20/D64).** This is how the known double-**FILE** paths are controlled: the permanent
-fence + same-key mutex (D18), plus the pre-Save `present` probe and evidence-qualified recovery,
-prevent a second unattended click unless a new generation first earns typed stabilized-negative
-authority. Every uncertain state parks instead of fail-open→SUBMIT. This is deliberately not a
-claim of unconditional distributed exactly-once for a UI-only target.
-The duplicate-**PERSON** class (the too-early racy read that classified a rehire as a new hire — §0)
-is **NOT** structurally closed by subject binding: the selected record and staged page could agree
-while the selection itself was wrong. That remains a disclosed residual mitigated by porting race
-classifiers, typed ambiguity, per-probe live verification, identity gates, and the conditional
-create-path pending-termination sweep (§11). The fenced-generation guarantee controls duplicate
-attempts; subject binding means no commit on an observably different open record; neither alone
-proves every business choice.
+Had the probe returned `ambiguous` (two "Terminatn" rows for that EID and date) or `unknown` (the
+grid did not render) → `PARKED(needs-operator)` with the count, the instant, the query digest and at
+least two evidence refs: *"termination for EID 10001573 effdt 08/01/2026: probe found 2 matches —
+verify in UCPath, then resolve present or absent."* Had a `present` proof failed its `proofSchema`
+→ parked `present-proof-invalid`, never `done`. Never a guess, never a duplicate `T…`.
+
+**Two runs, same key (D18).** Suppose a second run for the same `{10001573, termination,
+08/01/2026}` starts while the first is mid-submit. Its beat ① reads the permanent intent FIRST,
+finds the first run's `attempting` row on the same key digest, and **fails loud without fencing or
+clicking**. Even if two starters race, the `idempotency_key_digest UNIQUE` constraint means one
+INSERT wins. After the commit, any future run finds and reuses the proof. Concurrent and sequential
+duplicates are both blocked — and a preview of the same node refuses in the same place, reporting
+that the key is mid-submit rather than rehearsing past it (D215).
+
+**Honest scope (D20/D64).** This is how the known double-**FILE** paths are controlled: the
+permanent fence and same-key mutex (D18), plus the pre-Save `present` probe and evidence-qualified
+recovery, prevent a second unattended click unless a new generation first earns typed
+stabilized-negative authority. Every uncertain state parks instead of failing open to SUBMIT. This
+is deliberately not a claim of unconditional distributed exactly-once for a UI-only target. The
+duplicate-**PERSON** class (§0's too-early racy read that classified a rehire as a new hire) is
+**NOT** structurally closed by subject binding: the selected record and the staged page could agree
+while the selection itself was wrong. That is what §14's gate is for, and on this write the binding
+is name-only (§2.2) — so the gate is carrying more of the wrong-person weight here than anywhere
+else in the tree. The fenced-generation guarantee controls duplicate attempts; subject binding means
+no commit on an observably different open record; neither alone proves every business choice.
 
 ---
 
