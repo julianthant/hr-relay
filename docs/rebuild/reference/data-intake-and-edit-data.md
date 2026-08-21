@@ -65,6 +65,25 @@ Data a **typed view of the run's checkpoints** edited through ref workflow-model
 <!-- roadmap: p2-2h -->
 <!-- roadmap: order-6 -->
 
+<!-- roadmap-status: p2-2h -->
+- [x] the canonical field registry is closed at 47 ids and frozen against the RECORDED D58/D68 scan, checked in both directions (§1/§1.1, D146; `src/domain/fields/registry.ts:56-110`, `config/canonical-field-inventory.json` at legacy `4deabc5a`)
+- [x] mapping identity, the layout fingerprint, per-cell coercion, the suggestion scorer and `defineIntakeProjection`'s object-identity proof are built and bundle-safe (§2.1–§2.6, D147)
+- [x] the extraction store's two tasks (§3.1/§3.2, D149/D152), the roster store with its honest port split (§4, D163) and the normalization store including D178's `ai` arm (§4.2, D165/D178)
+- [x] OCR: one admission gate three producers cannot bypass, the generated instruction, the form registry and the classify/group scanner (§4.3–§4.11, D151–D161)
+- [x] validation, rejection, the immutable manifest and the rerun diff, on schema v11's ABORT-on-rewrite authority (§5/§5.0/§4.9, D148/D159)
+- [x] the retention-projection model end to end, unwired by design (§4.1, D164)
+- [ ] two 2h designs have no caller and both are named in place: the saved-mapping STORE (§2.3) and a descriptor that DECLARES an artifact projection (§4.1)
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/{fields,intake,ocr}/**`, `src/stores/{extraction,roster,ocr,normalization}/**`, `src/infra/sqlite/migrations.ts:863-908`; left: the two uncalled designs
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: order-6 -->
+- [x] the canonical-EID audit gate this migration replays its fixtures through exists and is enforced — `/^10\d{6}$/` everywhere, with the loose legacy `/^\d{5,}$/` recorded as a validation bug rather than a second domain value (§1, §9.1)
+- [ ] `work-study` is not in the tree: no input schema, no intake projection, and §8's worked example is this migration's TARGET rather than a transcript
+- [ ] the weekly export's saved mapping — the whole point of §2.3's fingerprint — has no writer, so week two re-maps from scratch until `order-6-dash` builds one
+- [ ] `effectiveDate` as a per-run constant typed once (§8 step 2) rides the intake session's `constants`; the drawn control belongs to ref dashboard-surfaces §11
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `ls src/workflows/` (no work-study) and `src/domain/fields/registry.ts`; left: the workflow itself
+<!-- /roadmap-status -->
+
 The closed, typed field vocabulary is domain-owned (charter §11). This doc consumes it; it does not
 redefine the field schemas. **The ids shown below are an excerpt, not the Phase-1 inventory.** Before
 the registry freezes, D58/D68 scan every legacy workflow input/schema, roster/header rule, OCR form,
@@ -514,6 +533,15 @@ satisfy the very schema the workflow validates with. The descriptor's source clo
 <!-- roadmap: p2-2h -->
 <!-- roadmap: order-3 -->
 
+<!-- roadmap-status: order-3 -->
+- [x] every store this workflow composes exists and is pinned: `extraction/extract-pdf-pages` → `ocr/extract-form-page` → `roster/match-spreadsheet`, plus the classify/group scanner and `cli ocr stack` (§3.2, §4.3, §4.8)
+- [x] the durability floor is in SQL, not convention — `ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)` and ABORTs on update (schema v11, §4.9)
+- [ ] there is no OCR workflow: `src/workflows/` holds no descriptor that composes these tasks, so the graph, its review gate and its fan-out are exactly what this node builds
+- [ ] the roster SCORING has never met a real roster — the tiering ported verbatim, the scoring is new code, and this migration's live-verify is where §7's honest residual is discharged
+- [ ] `def-capture-binding` waits on this node: a photograph becomes a run only once an OCR-backed workflow exists to bind (§5.1)
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/stores/{extraction,ocr,roster}/tasks/`, `src/domain/ocr/stack.ts`, `src/server/ocr/compose.ts:91` and `ls src/workflows/`; left: the workflow
+<!-- /roadmap-status -->
+
 `extraction` is a service store (`sessions: []`, no browser, no `page` ctx). Contracts live in
 `src/domain/contracts/extraction/`; impls in `src/stores/extraction/tasks/` (ref task-contract §3.4).
 
@@ -658,6 +686,13 @@ the `.xlsx` fixture is produced by `write-excel-file`, which proves a real OOXML
 <!-- roadmap: p2-2h -->
 <!-- roadmap: order-9 -->
 <!-- roadmap: order-9-dash -->
+
+<!-- roadmap-status: order-9 -->
+- [x] the matching half is built and scenario-pinned — `roster/match-spreadsheet` with `name-eid-conflict` reporting confidence 0, a claimed EID never overridden, and five executable scenarios (§4, D163)
+- [ ] roster INGEST as a workflow step does not exist; onboarding's graph is what this node builds, and it is the first consumer that makes the 24 h freshness budget bite
+- [ ] onboarding's legacy extraction is Playwright scraping labelled fields off a CRM page — NOT a fielded-PDF read (§3.2's finding at legacy `4deabc5a`), so the port target is the scrape and no AcroForm reader is owed
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/stores/roster/tasks/match-spreadsheet.ts`, `tests/scenario/roster-match.scenario.test.ts` and `ls src/workflows/`; left: the workflow
+<!-- /roadmap-status -->
 
 `roster` matches one dataset against another (a mapped spreadsheet against extracted OCR records, or
 two rosters), producing per-subject matches with confidence.
