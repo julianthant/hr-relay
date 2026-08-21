@@ -7,35 +7,66 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 <!-- roadmap: phase-2 -->
 
 <!-- roadmap-status: phase-2 -->
+- [x] the controlled commit is MET LIVE — one real Kuali write on doc **4489**, dry run with zero durable rows, forced mismatch refused pre-fence, commit in 16.45 s proved by reload read-back, idempotent re-run `already-present` in 2 ms, both documents restored (D135, 2026-08-04)
+- [x] the four tails landed in order against a proven spine — **2g** D134–D145 · **2h** D146–D167 · **2i** D168–D180 · **2j** D181–D190
+- [x] the exit gate is CLOSED: every hard criterion MET 2026-08-09, with ONE criterion REASSIGNED (D186) and ONE NAMED GAP carried out (D189), each with a written trigger and an owner (§Left Phase 2 by explicit disposition, §Exit criteria)
+- [x] 2j did its job as a gate — four defects every earlier green gate missed, all fixed: the unreachable restore path (D181), the dark `paper-ink` corpus, the two-pixel run-detail panel, the underivable receipt (D187)
+- [ ] seven residuals ship WITH the phase, each owned by a later node — the notes emitter and the ledger drain, five unpublished notification arms, the knowledge projection, the retention sweep, the phone's delivery path, the empty capture bindings (see *What Phase 2 left standing*)
+> 2026-08-21 | docs-cohesion 02 | verified against the five reference docs' own `p2-*` status blocks (`reference/{operator-trust,dashboard-surfaces,data-intake-and-edit-data,frontend-backend-integration,guards-and-tests}.md`) and spot-checked in `src/core/{write-sequencer,evidence-receipt}.ts`, `src/services/notifications/**`, `src/infra/ledger/**`, `src/infra/sqlite/migrations.ts` (v10–v13); left: the seven residuals below, each attributed
+
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2 — the transaction proof, then the deferred base tails) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**Goal.** Prove the half the spine could not — a page-scoped external-write transaction with fresh
+subject binding, crash recovery and durable dedupe — and **then**, only then, build the base tails
+Phase 1 deferred, against a proven spine and a real consumer instead of synthetic fixtures.
 
-**Goal.** Prove the half the spine could not: a page-scoped external-write transaction with fresh
-subject binding, crash recovery, and durable dedupe. **Then**, and only then, build the base tails
-that Phase 1 deferred — now against a proven spine and a real consumer instead of synthetic
-fixtures.
+**Order mattered, and it paid.** The transaction proof came FIRST because it is the cheapest
+falsification of the write-safety contract, and every tail (evidence receipts, Edit Data over
+checkpoints, intake manifests) is shaped by what the write path turns out to need. A tail built
+before the proof is a tail built against a guess — and the proof did move the tails: D144 made a
+transaction node a terminal dependency by moving the READER rather than the writer, which is the
+shape 2g's receipt then reused twice (D199, D204).
 
-**Order matters here.** The transaction proof comes FIRST, before the tails. It is the cheapest
-possible falsification of the write-safety contract, and every tail (evidence receipts, Edit Data
-over checkpoints, intake manifests) is shaped by what the write path actually turns out to need. A
-tail built before the transaction proof is a tail built against a guess.
+**The read half arrived already proven.** Person-lookup was Phase 1's exit test (D74), so Phase 2
+opened on a spine proven end to end: descriptor → contracts → one-item worker → worker-owned
+browser session → spans → the one projection → the four surfaces. Its worked example is
+`ref workflow-model` §8.1, marked as-built when that test passed.
 
-**The read half already happened.** Person-lookup was Phase 1's exit test (D74), so the spine
-arrives here already proven end to end: descriptor → contracts → one-item worker → worker-owned
-browser session → spans → the one projection → the four surfaces. Its worked example
-is in ref workflow-model §8; mark it as-built when the exit test passes.
+### What Phase 2 proved and built
 
-**Then: the deferred base tails.** Each was a Phase-1 work item that D74 moved behind the first
-live proof. They land in this order, because each is a consumer of the one before:
+| | What it settled | Where the contract lives |
+|---|---|---|
+| **Transaction proof** (D122, D127–D130, D135) | one real Kuali write, fenced durable before the click, read back by reload; dry run, forced mismatch and idempotent re-run all refused or settled with zero durable rows | `ref write-safety` §Phase-2 controlled-commit as-built |
+| **2g — event / trust layer** (D134–D145) | schema v10, redacted diagnostic capture, the durable actor-keyed inbox, knowledge/fix admission, the ordered ledger projector, D82's receipt DERIVED from authority | `ref operator-trust` §2 · §4 · §6 · §6.1 · §6.3 · `ref dashboard-surfaces` §2.6 |
+| **2h — data / intake foundation** (D146–D167) | the 47-id canonical field registry, column mapping, validation/rejection, immutable manifests + rerun diff, the extraction/OCR/roster/normalization stores, the OCR three-producer routes and the classify/group scanner, provider + artifact wiring, durable capture sessions, the Edit Data core | `ref data-intake-and-edit-data` §1–§6 |
+| **2i — the operator surface** (D168–D180) | trust surfaces + the bell, the Edit Data rail, Settings + storage doctor with a live backup cadence, the intake surface over schema v12, the token-scoped phone capture surface, the read-only Workflow Explorer, the UI catalog, AI advisories, the archive model + Activity over schema v13 | `ref operator-trust` §1.3 · §5.7 · §5.8 · `ref data-intake-and-edit-data` §2.7 · §5.1 · §5.2 · `ref dashboard-surfaces` §10.2–§13 |
+| **2j — the closing gate** (D181–D190) | the scenario corpus and its two-direction audit, the corruption→restore drill (fixtures **and** once live on a copy of the standing database), the 3-worker soak and concurrency matrix, the redaction scan, the capability-inventory re-disposition, every owning doc to as-built | `ref operator-trust` §3 · §3.1 · `ref execution-and-sessions` §7.1 · `ref guards-and-tests` §3.11 · §3.15 · `ref dashboard-surfaces` §2.5 |
 
-**What Phase 2 still does not prove.** Workflow-specific gates and each production system's receipt/
-verify quality remain migration-specific. The foundation write sequence itself is no longer deferred
-to order 6. One later checkpoint remains:
-- **First-gate live checkpoint — order 4** (oath-signature/emergency-contact): the first live exercise
-  of the completion union + an approval gate (park/resolve) end to end on the new base.
-- **First workflow-specific production write checkpoint — order 6** validates that workflow's
-  receipt/probe policy on top of the already-proven transaction kernel.
+### What Phase 2 left standing
+
+Phase 2 is **DONE**, and seven mechanisms it built have no production caller. None is a defect in
+what was built — each is a complete, unit-proven mechanism whose producer or delivery path belongs
+to a slice that had not been drawn yet. They are listed here so a reader deciding "is Phase 2
+complete" is not surprised by them later, and each names the node that owns the fix.
+
+| Residual | State at HEAD | Owner |
+|---|---|---|
+| the **notes stream** has no emitter | `emitNote` is composed and never called; `.tracker-rebuild/notes/` has never existed, while the Logs section re-reads it per request and a failed run OPENS on it | `{#observed-logs}` (03a) — `ref dashboard-surfaces` §1.1 |
+| the **ledger projector** has no production caller | `createLedgerProjector` is written, unit-proven and guarded; only tests call it. Beat ⑦ writes the durable ledger OUTBOX row, so the audit floor is intact — nothing drains it to a file, and the composed READ half reads an empty corpus | **unowned — reported to the orchestrator**; `ref dashboard-surfaces` §1.2 states it in place |
+| **five of seven notification trigger arms** have no publisher | `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done`. The other two shipped as production publishers (D222 backup health, D262 the open operator gate) | each belongs to the surface or slice that owns the state it announces — `{#dash-defaults}` (03a) and the per-workflow `*-dash` nodes; `ref dashboard-surfaces` §2.6 |
+| the **knowledge projection** is unwired | knowledge/fix admission is durable and audited inside its insert transaction (D139); the projection has no caller, so no `KNOWLEDGE.md` exists, and `explain failure <fingerprint>` is not built | `ref operator-trust` §4.1/§4.2 name it in place; no node owns it — **reported** |
+| the **retention sweep** is uncalled | the retention-projection model is complete end to end and deliberately unwired (D164); the diagnostics/artifact sweep has no caller | `{#def-retention}` (04) — `never` by D193 |
+| the **phone capture surface** has no delivery path | the BFF serves no frontend bytes, so `/capture.html` 404s outside the dev server; the tunnel launcher (D175) is unbuilt | `{#def-byte-path}` (04) — D189, builds at the first phone-consuming migration |
+| **no workflow can receive a capture handoff** | `CAPTURE_INTAKE_BINDINGS` is empty, and saved-mapping reuse has no store, so every intake upload re-maps | `{#def-capture-binding}` (04) · `ref data-intake-and-edit-data` §2.3/§5.1 |
+
+**What Phase 2 deliberately does not prove.** Workflow-specific gates and each production system's
+receipt/verify quality stay migration-specific — the foundation write sequence is proven, each
+workflow still owes its OWN §3.2 controlled-commit proof at its migration. Two later checkpoints
+carry that forward, both in `03c`: the **first-gate live checkpoint** at order 4
+(oath-signature/emergency-contact — the first live exercise of the completion union plus an approval
+gate, park and resolve, end to end on the new base), and the **first workflow-specific production
+write checkpoint** at order 6, which validates that workflow's receipt/probe policy on top of the
+already-proven transaction kernel.
 
 ## Transaction proof — the first real write
 <!-- roadmap: p2-proof -->
