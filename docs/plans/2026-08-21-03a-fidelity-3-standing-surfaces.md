@@ -344,9 +344,182 @@ _(pending)_
 
 ---
 
-## 9. Design-system primitives — `DemoUiKit.tsx` + `demo-ui.tsx` + demo `ds/` ↔ `src/dashboard/ds/**`
+## 9. Design-system primitives — `DemoUiKit.tsx` + `demo-ui.tsx` + demo `ds/` + `DESIGN.md` ↔ `src/dashboard/ds/**`
 
-_(pending — this section is written by the ds pass)_
+**Demo:** `legacy `rebuild-demo/`` — `DemoUiKit.tsx` (1189), `demo-ui.tsx` (229), `DESIGN.md` (676), `ds/{tokens.css,tokens.ts,theme.ts,primitives-*.tsx}` · **Rebuild:** ``src/dashboard/`` — `ds/{tokens.css,tokens.ts,theme.ts,ui.tsx,primitives-*.tsx}`, `DESIGN.md`
+
+This is the highest-fidelity region in the whole audit, and it is high-fidelity by *construction* rather than by re-implementation: all six `primitives-*.tsx` files, `tokens.css`, `tokens.ts`, `theme.ts` and `DESIGN.md` were **copied byte-for-byte** from legacy `hr-automation@793abe1f` with a provenance header, and the total delta across ~2,700 lines of primitives and ~1,300 lines of tokens is **eight hunks**. Token comparison is therefore not an estimate: the demo declares **231 distinct custom properties**, the rebuild declares **237** — set difference is **zero missing, zero divergent values, six extra** (`--rehearsal` + four `--ds-rehearsal-*`, ruled D232; `--ds-w-explorer-measure`, ruled by ref dashboard-surfaces §13.5). The barrel is the same story: **122 exports in the demo, 124 in the rebuild, zero missing.** **The one structural finding is the opposite of drift — it is an absence: `DemoUiKit.tsx`, the 1189-line specimen page, has NO equivalent in the rebuild.** There is no `kit.html`, no `kit-entry.tsx`, no specimen surface, and `ui-catalog.tsx` is an unrelated thing (the generated *selector* catalog, D177). This matters beyond a missing dev page for a reason the tree itself creates: `src/dashboard/DESIGN.md` is ported **verbatim** and is declared *binding*, and it still tells its reader at `:112`, `:690`, `:691` and `:696-697` to skim `DemoUiKit.tsx` and to open `kit.html` on port 3943 — artifacts that do not exist in this checkout. Its own porting header lists exactly two adaptations and the specimen page is not among them, so the binding document ships a live instruction nobody in this tree can follow. That is the same failure shape as D188's "an inventory that gates cutover must not be milestoned by guesswork" and D187's parity lesson: **a claim in a governing doc that no artifact satisfies is worse than no claim.** Everything else here is exact or is an operator-ratified addition.
+
+### 9.1 Tokens
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---------|------|---------|---------|--------|
+| UK1 | File provenance header — rebuild prepends `/* Ported from legacy hr-automation@793abe1f…, src/dashboard/components/dev/rebuild-demo/ds/tokens.css */` | `tokens.css:1` | `tokens.css:1` | extra | ruled: D93 cross-repo "porting = copy with provenance" |
+| UK2 | File banner title — `REBUILD DEMO — DESIGN TOKENS  (dev-only)` vs `REBUILD DASHBOARD — DESIGN TOKENS` | `tokens.css:2` | `tokens.css:4` | divergent | ruled: D93 — this tree is not dev-only; the demo's own `DEV-ONLY` marker is the thing being retired |
+| UK3 | Palette-budget doctrine — demo `one accent + four semantic hues`, rebuild `one accent + FIVE semantic hues (info / success / warning / danger / rehearsal)` | `tokens.css:29-32` | `tokens.css:31-50` | divergent | ruled: D232 |
+| UK4 | Naming convention block `--ds-<group>-<role>[-<state>]` and the group list | `tokens.css:34` | `tokens.css:51` | exact | — |
+| UK5 | `:root` fallback block — aliases the app's own theme so a primitive outside a themed subtree still resolves | `tokens.css:45` | `tokens.css:62` | exact | — |
+| UK6 | `--ds-surface-*` family — 8 names (`page`, `1`, `2`, `3`, `selected`, `disabled`, `overlay`, `scrim`), 24 declarations across all three blocks | `tokens.css:51`,`56`,`70` | `tokens.css:68`,`73`,`786` | exact | — (24 tokens) |
+| UK7 | `--ds-surface-scrim: color-mix(in srgb, hsl(0 0% 0%) 66%, transparent)` (`:root`) / `rgba(0, 0, 0, 0.66)` (dark) | `tokens.css:56`,`749` | `tokens.css:73`,`791` | exact | — |
+| UK8 | `--ds-surface-selected: color-mix(in srgb, var(--ds-fg) 4%, var(--ds-surface-1))` | `tokens.css:70`,`751` | `tokens.css:87` | exact | — |
+| UK9 | `--ds-fg*` family — 6 names (`--ds-fg`, `-secondary`, `-muted`, `-faint`, `-inverse`, `-link`), 18 declarations | `tokens.css:161`,`762` | `tokens.css:178`,`804` | exact | — (18 tokens) |
+| UK10 | `--ds-border*` family — 7 names (`--ds-border`, `-subtle`, `-strong`, `-loud`, `-w`, `-w-emphasis`, `-w-rail`), 15 declarations | `tokens.css:146`,`153`,`756` | `tokens.css:163`,`170`,`798` | exact | — (15 tokens) |
+| UK11 | `--ds-border-w: 1px` / `--ds-border-w-emphasis` / `--ds-border-w-rail` | `tokens.css:153` | `tokens.css:170` | exact | — |
+| UK12 | `--ds-accent*` family — 5 names (`--ds-accent`, `-hover`, `-fg`, `-quiet`, `-mark`), 15 declarations; dark `#fafafa` | `tokens.css:177`,`775` | `tokens.css:194`,`817` | exact | — (15 tokens) |
+| UK13 | `--ds-control-*` family — 5 names (`-bg`, `-bg-hover`, `-bg-active`, `-border`, `-fg`), 15 declarations | `tokens.css:172`,`770` | `tokens.css:189`,`812` | exact | — (15 tokens) |
+| UK14 | `--ds-recess-*` family — 4 names (`-bg`, `-border`, `-fg`, `-fg-quiet`) | `tokens.css:119` | `tokens.css:136` | exact | — (4 tokens) |
+| UK15 | `--ds-status-waiting-*` — `bg`/`fg`/`mark`/`border`/`solid-bg`/`solid-fg`; `bg: color-mix(in srgb, var(--warning) 14%, transparent)`, dark `#f79009 14%` | `tokens.css:223`,`790` | `tokens.css:240`,`832` | exact | — (6 tokens × 3 blocks) |
+| UK16 | `--ds-status-failed-*` — 6 tokens; `bg: color-mix(in srgb, var(--destructive) 14%, transparent)`, dark `#f04438 14%` | `tokens.css:231`,`797` | `tokens.css:248`,`839` | exact | — |
+| UK17 | `--ds-status-parked-*` — 4 tokens; `bg: color-mix(in srgb, var(--warning) 13%, transparent)` | `tokens.css:239` | `tokens.css:256` | exact | — |
+| UK18 | `--ds-status-done-warnings-*` — 4 tokens; `bg: color-mix(in srgb, var(--warning) 9%, transparent)` (the 9% that separates it from parked's 13%) | `tokens.css:245` | `tokens.css:262` | exact | — |
+| UK19 | `--ds-status-running-*` — 4 tokens; `bg: color-mix(in srgb, var(--foreground) 6%, transparent)` — neutral on purpose | `tokens.css:253` | `tokens.css:270` | exact | — |
+| UK20 | `--ds-status-queued-*` — 4 tokens; `bg: transparent` | `tokens.css:259` | `tokens.css:276` | exact | — |
+| UK21 | `--ds-status-cancelled-*` — 6 tokens; `bg: color-mix(in srgb, var(--muted-foreground) 14%, transparent)` | `tokens.css:266` | `tokens.css:283` | exact | — |
+| UK22 | `--ds-status-verified-done-*` — 6 tokens; `bg: color-mix(in srgb, var(--success) 14%, transparent)` | `tokens.css:277` | `tokens.css:294` | exact | — |
+| UK23 | `--ds-status-*` total — 40 distinct names, **120 declarations** across the three blocks; both trees identical | `tokens.css:223-282` | `tokens.css:240-299` | exact | — (120 tokens) |
+| UK24 | `--ds-info-*` family — 7 names (`fg`,`mark`,`bg`,`border`,`solid-bg`,`solid-fg`,`solid-hover`), 21 declarations; dark `--ds-info-fg: #4ea1f3` | `tokens.css:283`,`290`,`836` | `tokens.css:300`,`307`,`878` | exact | — (21 tokens) |
+| UK25 | `--ds-danger*` family — 5 names (`--ds-danger`, `-fg`, `-quiet`, `-border`, `-solid`), 15 declarations; `--ds-danger-fg: hsl(0 65% 8%)` / dark `#2a0806` | `tokens.css:185`,`783` | `tokens.css:202`,`825` | exact | — (15 tokens) |
+| UK26 | `--ds-success-*` family — 4 names, 12 declarations; dark `--ds-success-mark: #12b76a`, light `#059669` | `tokens.css:293`,`843` | `tokens.css:310`,`885` | exact | — (12 tokens) |
+| UK27 | `--ds-read-*` direction family — 4 names, 12 declarations; `--ds-read-fg: #38bdf8`, light drops to sky-600/700 | `tokens.css:327`,`852` | `tokens.css:358`,`903` | exact | — (12 tokens) |
+| UK28 | `--ds-write-*` direction family — 4 names, 12 declarations; `--ds-write-fg: #c4b5fd` | `tokens.css:331`,`856` | `tokens.css:362`,`907` | exact | — (12 tokens) |
+| UK29 | `--rehearsal: #a78bfa` (`:root` + dark) / `#6d28d9` (light) — the raw fifth hue | — | `tokens.css:323`,`893` | extra | ruled: D232 |
+| UK30 | `--ds-rehearsal-fg` — `#a78bfa` dark (6.5:1 on `#18181b`) / `#6d28d9` light (7.1:1 on white) | — | `tokens.css:324`,`894` | extra | ruled: D232 |
+| UK31 | `--ds-rehearsal-mark` — `#a78bfa` dark / `#7c3aed` light (violet-600, 5.5:1 as a mark) | — | `tokens.css:325` | extra | ruled: D232 |
+| UK32 | `--ds-rehearsal-bg` — `color-mix(… 13%, transparent)` dark / `10%` light | — | `tokens.css:326` | extra | ruled: D232 |
+| UK33 | `--ds-rehearsal-border` — `color-mix(… 55%, transparent)` dark / `40%` light | — | `tokens.css:327` | extra | ruled: D232 |
+| UK34 | No `--ds-rehearsal-solid-*` step — deliberately absent so the hue is only ever a chip, never a fifth voice in the loudness ladder | — | `tokens.css:318-322` | extra | ruled: D232 |
+| UK35 | `--log-*` categorical ramp — 4 names (`slate`, `cyan`, `teal`, `violet`), 8 declarations; `--log-violet: #f79009` (amber, despite the name — the name outlived the colour) | `tokens.css:735`,`736` | `tokens.css:777`,`778` | exact | — (8 tokens) |
+| UK36 | `--ds-space-*` — 8 names: `hair` 2px, `tight`, `snug`, `base`, `cozy`, `loose`, `section`, `page` 32px | `tokens.css:368`,`375` | `tokens.css:399`,`406` | exact | — (8 tokens) |
+| UK37 | `--ds-radius-*` — 6 names: `xs` 3px, `sm`, `md`, `lg`, `xl`, `pill` | `tokens.css:570` | `tokens.css:612` | exact | — (6 tokens) |
+| UK38 | `--ds-h-*` control/layout heights — 19 names incl. `xs`,`sm`,`md`,`lg`,`row` 32px,`topbar` 44px,`toolbar`,`bar`,`timeline-bar`,`micro-pipeline`,`evidence-row/thumb/well`,`capture-box/thumb`,`member-line/well/well-open`,`review-page-min` | `tokens.css:391`,`408` | `tokens.css:422`,`439` | exact | — (19 tokens) |
+| UK39 | `--ds-w-rail: 200px` (the workflow rail) | `tokens.css:501` | `tokens.css:532` | exact | — |
+| UK40 | `--ds-w-side-panel: 376px` and `--ds-w-context-rail: var(--ds-w-side-panel)` — the context-rail column width | `tokens.css:506`,`507` | `tokens.css:537`,`538` | exact | — |
+| UK41 | `--ds-w-context-rail-wide: 520px` and `--ds-w-context-spine: 34px` | `tokens.css:514`,`515` | `tokens.css:545`,`546` | exact | — |
+| UK42 | Archive column widths — `--ds-w-archive-trace: 148px`, `-status`, `-when`, `-duration` | `tokens.css:479` | `tokens.css:510` | exact | — (4 tokens) |
+| UK43 | `--ds-w-popover-{sm,md,lg}` — `sm: 240px` | `tokens.css:518` | `tokens.css:560` | exact | — (3 tokens) |
+| UK44 | `--ds-w-menu: 216px`, `--ds-w-chip-cell: 148px`, `--ds-w-capacity-cell`, `--ds-w-row-indent`, `--ds-w-row-link-max`, `--ds-w-session-card`, `--ds-w-evidence-thumb`, `--ds-w-member-eid`, `--ds-w-member-detail` | `tokens.css:525`,`533` | `tokens.css:567`,`575` | exact | — (9 tokens) |
+| UK45 | `--ds-w-explorer-measure: 1120px` — the reading measure for the explorer / UI-catalog takeover (376px rail + ~700px record column) | — | `tokens.css:557` | extra | ruled: ref dashboard-surfaces §13.5 (`decisions.md` 2i-G / D176-D177 slice) |
+| UK46 | `--ds-text-*` type scale — 7 sizes exactly (`micro` 10px, `meta`, `ui`, `body`, `section`, `title`, `display`) | `tokens.css:345` | `tokens.css:376` | exact | — (7 tokens) |
+| UK47 | `--ds-lh-*` line heights — 7, paired 1:1 with the type scale (`micro` 13px …) | `tokens.css:346` | `tokens.css:377` | exact | — (7 tokens) |
+| UK48 | `--ds-elev-1: 0 1px 2px hsl(0 0% 0% / 0.35)`, `--ds-elev-2`, `--ds-elev-3` — three elevations, 9 declarations | `tokens.css:581`,`582`,`584`,`867` | `tokens.css:623`,`624`,`626`,`918` | exact | — (9 tokens) |
+| UK49 | `--ds-focus-ring`, `--ds-focus-ring-w: 2px`, `--ds-focus-ring-offset` — the one focus ring, 5 declarations | `tokens.css:604`,`605`,`866` | `tokens.css:646`,`647`,`917` | exact | — (5 tokens) |
+| UK50 | `--ds-dur-*` motion — 7 names (`1` 90ms, `2`, `3`, `4`, `enter` 150ms, `exit`, `move`), 21 declarations | `tokens.css:618`,`628` | `tokens.css:660`,`670` | exact | — (21 tokens) |
+| UK51 | `--ds-ease-{standard,out,in}`; `standard: cubic-bezier(0.45, 0, 0.55, 1)` | `tokens.css:648` | `tokens.css:690` | exact | — (3 tokens) |
+| UK52 | `:root[data-demo-theme-switching]` block — collapses every duration to `0ms` (`--ds-dur-1: 0ms`, `--ds-dur-enter: 0ms`) so a theme flip does not animate | `tokens.css:667`,`671` | `tokens.css:709`,`713` | exact | — |
+| UK53 | `graphite-warm` (dark) theme block — full literal palette, selector triple `[data-demo-theme="dark"], :root[…], body[…]` | `tokens.css:744` | `tokens.css:725` | exact | — |
+| UK54 | `paper-ink` (light) theme block — full literal palette, same selector triple | `tokens.css:888` | `tokens.css:939` | exact | — |
+| UK55 | **Whole-file token-set comparison** — 231 distinct custom properties in the demo, 237 in the rebuild; `comm` of the sorted name sets yields **zero demo-only names** | `tokens.css` | `tokens.css` | exact | — (231 tokens) |
+| UK56 | **Whole-file token-value comparison** — `diff -u` over both files reports only additions inside the value blocks; **not one existing declaration's value differs** in `:root`, dark or light | `tokens.css` | `tokens.css` | exact | — |
+| UK57 | `tokens.ts` — `dsText` (7 sizes + `nums`/`flush`/`tight` helpers) | `tokens.ts:20` | `tokens.ts:24` | exact | — |
+| UK58 | `tokens.ts` — `dsSurface`, `dsClip`, `dsBorder`, `dsRadius`, `dsElev` | `tokens.ts:50`,`87`,`104`,`114`,`124` | `tokens.ts:54`,`91`,`108`,`118`,`128` | exact | — |
+| UK59 | `tokens.ts` — `dsFocus = "outline-none ds-focus"`, `dsFocusWithin = "ds-focus-within"` | `tokens.ts:137`,`138` | `tokens.ts:141`,`142` | exact | — |
+| UK60 | `tokens.ts` — `dsMotion` (the five motion classes), `dsLayer`, `dsGap`, `dsPad`, `dsIcon` | `tokens.ts:152`,`181`,`210`,`224`,`248` | `tokens.ts:156`,`185`,`214`,`228`,`252` | exact | — |
+| UK61 | `tokens.ts` — **whole file byte-identical** apart from the 4-line provenance header, the `DEV-ONLY` marker, and the import-path line in the docblock | `tokens.ts` | `tokens.ts:1-16` | exact | — |
+| UK62 | `theme.ts` — `DemoTheme` union, `DEMO_THEME_ATTR`, `DEMO_THEME_LABEL = {dark:"Graphite Warm", light:"Paper Ink"}`, `useDemoTheme` | `theme.ts:42` | `theme.ts:47` | exact | — |
+| UK63 | `theme.ts` storage — demo reads/writes `localStorage` inline behind bare `try/catch`; rebuild routes through `readEnumPreference`/`writePreference` with an explicit `THEME_DEFAULT = "dark"` const | `theme.ts:45-56`,`99-118` | `theme.ts:50-58`,`101-113` | divergent | ruled: project CLAUDE.md fail-loud "when you catch, don't swallow" — a bare `catch { return "dark" }` is the banned pattern; no visual or DOM effect |
+| UK64 | `DESIGN.md` — ported **verbatim**, byte-for-byte, with a 24-line provenance comment stating so | `DESIGN.md:1` | `DESIGN.md:1-24` | exact | — |
+| UK65 | `DESIGN.md` — the one content edit: parity-review link `docs/rebuild/reviews/second-look-2026-07-22.md` → `docs/rebuild/history/design-inputs/2026-07-22-second-look.md` | `DESIGN.md:19` | `DESIGN.md:43` | divergent | ruled: 2026-08-20 docs restructure (ref frontend-backend-integration; the target file moved) |
+| UK66 | `DESIGN.md` porting header claims the barrel is `src/dashboard/ds/ui.ts`; the actual file is `ui.tsx` | — | `DESIGN.md:18` | divergent | **OPEN — operator call** |
+| UK67 | `DESIGN.md` porting header names only TWO adaptations (barrel path, guard file) — the missing specimen page is not disclosed | — | `DESIGN.md:13-22` | divergent | **OPEN — operator call** |
+| UK68 | `tailwind-palette` / `frontend-tailwind-compliance` ratchet arm — bans raw Tailwind palette classes and raw hex in string literals/JSX text, so no palette divergence *can* be introduced outside `tokens.css` | n/a | `ratchet-arms.ts:132`,`460-467` | extra | ruled: ref guards-and-tests (arm registered in `guard-inventory.json`) |
+| UK69 | Ratchet-arm port dropped 3 of legacy's 4 checks (reduced-motion coverage, z-index scale, image loading) while `DESIGN.md` still asserts two of them are "guard enforced" by name | `DESIGN.md:209`,`546`,`548-549` | `ratchet-arms.ts:441-457` | divergent | OPEN — operator call (self-declared in the arm's own comment: "a document claiming a guard that does not run is worse than no claim") |
+
+### 9.2 Primitives
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---------|------|---------|---------|--------|
+| UK70 | **Barrel export set** — 122 named exports in `demo-ui.tsx`, 124 in `ui.tsx`; `comm` of the sorted sets yields **zero demo-only exports** | `demo-ui.tsx` | `ui.tsx` | exact | — (122 exports) |
+| UK71 | Barrel — every re-export path rewritten `./ds/x` → `./x.js` (`verbatimModuleSyntax` + `.js` extensions) | `demo-ui.tsx:21-217` | `ui.tsx:25-229` | divergent | ruled: project CLAUDE.md conventions (`verbatimModuleSyntax`; `.js` on relative imports) |
+| UK72 | Every primitive file — `import { cn } from "@/lib/utils"` → `from "../lib/utils.js"` | all `primitives-*.tsx` | all `primitives-*.tsx` | divergent | ruled: project CLAUDE.md conventions (no `@/` alias in this tree) |
+| UK73 | Every primitive file — `DEV-ONLY —` stripped from each module docblock's first line | all `primitives-*.tsx` | all `primitives-*.tsx` | divergent | ruled: D93 — this tree is the product, not a dev-only demo |
+| UK74 | **Button** — `cva` with variants `primary` \| `secondary` \| `outline` \| `ghost` \| `danger` \| `dangerGhost`, sizes `sm` \| `md` \| `lg`, `block` boolean, `defaultVariants: {variant:"secondary", size:"md", block:false}`; `loading` renders `Loader2`; classes and DOM identical | `primitives-core.tsx:133` | `primitives-core.tsx:137` | exact | — |
+| UK75 | **IconButton** — variants `ghost` \| `outline` \| `danger`, sizes `xs` \| `sm` \| `md` \| `lg`, required `label` (becomes `aria-label`), `icon`, `loading`, `title`; same forwardRef, same DOM | `primitives-core.tsx:212` | `primitives-core.tsx:216` | exact | — |
+| UK76 | **Badge** — `cva` tones `neutral` \| `info` \| `success` \| `warning` \| `danger` \| `attention` \| `infoOutline`, `defaultVariants: {tone:"neutral"}` | `primitives-core.tsx:292` | `primitives-core.tsx:296` | exact | — |
+| UK77 | **CountBadge** — shares `badgeVariants`, `tone = "neutral"` default, tabular numerals | `primitives-core.tsx:301` | `primitives-core.tsx:305` | exact | — |
+| UK78 | **Chip / DsChipProps** — `CHIP_TONE` = `neutral` \| `info` \| `warning` \| `danger`; same `tone = "neutral"` default and same recessed-plane neutral | `primitives-core.tsx:334`,`389` | `primitives-core.tsx:338`,`393` | exact | — |
+| UK79 | **Kbd** | `primitives-core.tsx:480` | `primitives-core.tsx:484` | exact | — |
+| UK80 | **Spinner** | `primitives-core.tsx:503` | `primitives-core.tsx:507` | exact | — |
+| UK81 | **Skeleton** | `primitives-core.tsx:518` | `primitives-core.tsx:522` | exact | — |
+| UK82 | **Separator** | `primitives-core.tsx:532` | `primitives-core.tsx:536` | exact | — |
+| UK83 | **VisuallyHidden** | `primitives-core.tsx:553` | `primitives-core.tsx:557` | exact | — |
+| UK84 | **`DS_STATUS`** — the eight ratified statuses, same keys and same order: `waiting`, `failed`, `parked`, `doneWarnings`, `running`, `queued`, `cancelled`, `verifiedDone`; every `label`, `tier`, `icon`, `chip`, `solid` identical | `primitives-status.tsx:102` | `primitives-status.tsx:122` | exact | — (8 statuses) |
+| UK85 | `DS_STATUS_ORDER` and `DS_ATTENTION_STATUSES = ["waiting","failed"]` | `primitives-status.tsx:233`,`245` | `primitives-status.tsx:256`,`268` | exact | — |
+| UK86 | `DsStatusSpec.accessibleLabel?` — new optional field; `doneWarnings` gains `accessibleLabel: "Done with warnings"`. **Visible label is unchanged** (`"Done"`) | `primitives-status.tsx:52` | `primitives-status.tsx:56-73`,`174` | extra | ruled: D126 (amends ref dashboard-surfaces §9 row-model D22) |
+| UK87 | `dsStatusAccessibleName(status, age?)` — new exported fn; falls back to `label` for the other seven statuses | — | `primitives-status.tsx:289` | extra | ruled: D126 |
+| UK88 | `dsStatusText(status, age?)` — unchanged, still the *visible* vocabulary | `primitives-status.tsx:252` | `primitives-status.tsx:275` | exact | — |
+| UK89 | **StatusPill** — sizes `sm` \| `md`, `tier` drives solid vs tinted, same DOM | `primitives-status.tsx:273` | `primitives-status.tsx:311` | exact | — |
+| UK90 | **StatusDot** — `aria-label` changes from `spec.label` to `dsStatusAccessibleName(status)`; `title={spec.label}` unchanged, so **pixels are identical and only the a11y name moves** | `primitives-status.tsx:356` (`aria-label={spec.label}`) | `primitives-status.tsx:394` (`aria-label={dsStatusAccessibleName(status)}`) | divergent | ruled: D126 |
+| UK91 | **StatusIcon** | `primitives-status.tsx:386` | `primitives-status.tsx:427` | exact | — |
+| UK92 | **Panel** | `primitives-layout.tsx:31` | `primitives-layout.tsx:35` | exact | — |
+| UK93 | **PanelHeader** — `title`, `subtitle`, actions slot | `primitives-layout.tsx:55` | `primitives-layout.tsx:59` | exact | — |
+| UK94 | **PanelToolbar** | `primitives-layout.tsx:105` | `primitives-layout.tsx:109` | exact | — |
+| UK95 | **PanelBody** | `primitives-layout.tsx:131` | `primitives-layout.tsx:135` | exact | — |
+| UK96 | **PanelFooter** | `primitives-layout.tsx:135` | `primitives-layout.tsx:139` | exact | — |
+| UK97 | **Card** | `primitives-layout.tsx:157` | `primitives-layout.tsx:161` | exact | — |
+| UK98 | **CardHeader** | `primitives-layout.tsx:193` | `primitives-layout.tsx:197` | exact | — |
+| UK99 | **CardBody** | `primitives-layout.tsx:216` | `primitives-layout.tsx:220` | exact | — |
+| UK100 | **CardFooter** | `primitives-layout.tsx:363` | `primitives-layout.tsx:367` | exact | — |
+| UK101 | **CardBase** — trailing control on the row's bottom edge | `primitives-layout.tsx:259` | `primitives-layout.tsx:263` | exact | — |
+| UK102 | **CompareGrid** — cards read ACROSS | `primitives-layout.tsx:305` | `primitives-layout.tsx:309` | exact | — |
+| UK103 | **CompareCard** | `primitives-layout.tsx:335` | `primitives-layout.tsx:339` | exact | — |
+| UK104 | **SectionLabel** | `primitives-layout.tsx:378` | `primitives-layout.tsx:382` | exact | — |
+| UK105 | **Banner** — `BANNER_TONE` = `info` \| `success` \| `warning` \| `danger`; `DsBannerTone` derived as `keyof typeof BANNER_TONE`; icons `Info`/`CheckCircle2`/`TriangleAlert`/`CircleAlert`; forwards no unknown props | `primitives-layout.tsx:424` | `primitives-layout.tsx:428` | exact | — |
+| UK106 | **PageHeader** | `primitives-layout.tsx:479` | `primitives-layout.tsx:483` | exact | — |
+| UK107 | **MetaLine** — the provenance line | `primitives-layout.tsx:532` | `primitives-layout.tsx:536` | exact | — |
+| UK108 | **ChipRow** — wrapping row of peer facts, `--ds-w-chip-cell` track | `primitives-layout.tsx:585` | `primitives-layout.tsx:589` | exact | — |
+| UK109 | **Refusal** | `primitives-layout.tsx:630` | `primitives-layout.tsx:634` | exact | — |
+| UK110 | **BulletList** | `primitives-layout.tsx:676` | `primitives-layout.tsx:680` | exact | — |
+| UK111 | **EmptyState** — `title` + optional body | `primitives-layout.tsx:717` | `primitives-layout.tsx:721` | exact | — |
+| UK112 | **Tabs / TabList / Tab / TabPanel** — full roving-focus + `role="tablist"`/`tab`/`tabpanel` wiring identical | `primitives-layout.tsx:782`,`801`,`848`,`901` | `primitives-layout.tsx:786`,`805`,`852`,`905` | exact | — (4 primitives) |
+| UK113 | **Well** | `primitives-layout.tsx:939` | `primitives-layout.tsx:943` | exact | — |
+| UK114 | **useDsEnterTransition** | `primitives-layout.tsx:982` | `primitives-layout.tsx:986` | exact | — |
+| UK115 | **FloatingSurface** | `primitives-layout.tsx:1009` | `primitives-layout.tsx:1013` | exact | — |
+| UK116 | **Field / useFieldControl** — visible label, `aria-describedby` wiring, error announcement | `primitives-form.tsx:63`,`37` | `primitives-form.tsx:68`,`42` | exact | — |
+| UK117 | **Input** | `primitives-form.tsx:148` | `primitives-form.tsx:153` | exact | — |
+| UK118 | **Textarea** | `primitives-form.tsx:167` | `primitives-form.tsx:172` | exact | — |
+| UK119 | **Select** — same `ChevronDown` affordance and same DOM | `primitives-form.tsx:200` | `primitives-form.tsx:205` | exact | — |
+| UK120 | **Checkbox** — Radix, `Check`/`Minus` indeterminate | `primitives-form.tsx:269` | `primitives-form.tsx:274` | exact | — |
+| UK121 | **RadioGroup** | `primitives-form.tsx:314` | `primitives-form.tsx:319` | exact | — |
+| UK122 | **Switch** | `primitives-form.tsx:376` | `primitives-form.tsx:381` | exact | — |
+| UK123 | **SearchInput** — `Search`/`X` affordances | `primitives-form.tsx:432` | `primitives-form.tsx:437` | exact | — |
+| UK124 | **ValueField** | `primitives-form.tsx:505` | `primitives-form.tsx:510` | exact | — |
+| UK125 | **LockedValue** — `Lock` glyph | `primitives-form.tsx:600` | `primitives-form.tsx:605` | exact | — |
+| UK126 | **Dropzone** — a real `<input type="file">` inside a `<label>`; never filters a dropped file; drag depth is a counter not a boolean; `busy` disables and relabels | — | `primitives-form.tsx:666` | extra | ruled: D173 |
+| UK127 | `Upload` added to the `lucide-react` import in `primitives-form.tsx` (Dropzone's glyph) | `primitives-form.tsx:10` | `primitives-form.tsx:15` | extra | ruled: D173 |
+| UK128 | **Dialog / DialogTrigger / DialogClose** — Radix roots | `primitives-overlay.tsx:210-212` | `primitives-overlay.tsx:214-216` | exact | — |
+| UK129 | **DialogContent** — `DsDialogSize` = `sm` \| `md` \| `lg` \| `xl`; same scrim, focus trap, `X` close | `primitives-overlay.tsx:260`,`218` | `primitives-overlay.tsx:264`,`218` | exact | — |
+| UK130 | **DialogBody** | `primitives-overlay.tsx:348` | `primitives-overlay.tsx:352` | exact | — |
+| UK131 | **DialogFooter** | `primitives-overlay.tsx:366` | `primitives-overlay.tsx:370` | exact | — |
+| UK132 | **Drawer / DrawerTrigger / DrawerClose / DrawerContent** — `DsDrawerSide` = `right` \| `bottom` | `primitives-overlay.tsx:407-409`,`418` | `primitives-overlay.tsx:411-413`,`422` | exact | — |
+| UK133 | **Tooltip / TooltipProvider** | `primitives-overlay.tsx:521`,`508` | `primitives-overlay.tsx:525`,`512` | exact | — |
+| UK134 | **Popover / PopoverTrigger / PopoverAnchor / PopoverClose** | `primitives-overlay.tsx:573-576` | `primitives-overlay.tsx:577-580` | exact | — |
+| UK135 | **PopoverContent** — `DsPopoverWidth` = `sm` \| `md` \| `lg`, `side`, `title`, `hideTitle` | `primitives-overlay.tsx:621`,`583` | `primitives-overlay.tsx:625`,`583` | exact | — |
+| UK136 | **ContextMenu / ContextMenuTrigger / ContextMenuSeparator / ContextMenuContent / ContextMenuLabel / ContextMenuItem / openContextMenuFor** | `primitives-overlay.tsx:765-767`,`780`,`804`,`856`,`870` | `primitives-overlay.tsx:769-771`,`784`,`808`,`860`,`874` | exact | — (7 exports) |
+| UK137 | **DsToast / useToasts / ToastProvider** — `DsToastTone` = `info` \| `success` \| `warning` \| `danger`; a `danger` toast never auto-dismisses, everything else clears at 3s | `primitives-overlay.tsx:915`,`943`,`968` | `primitives-overlay.tsx:919`,`947`,`972` | exact | — |
+| UK138 | Toast id minting — demo `` `toast-${Date.now().toString(36)}-${Math.random()…}` ``, rebuild `` `toast-${String(nextToastId.current)}` `` from a per-provider `useRef` counter. Id is used **only as a React `key`** (`primitives-overlay.tsx:1059`), never emitted into the DOM, so rendered output is identical | `primitives-overlay.tsx:983` | `primitives-overlay.tsx:975-977`,`993-994` | divergent | ruled: `clock-single-source` guard (`guard-inventory.json:20`) bans the `Date.now()` read; ref frontend-backend-integration §7 parity lane needs the id deterministic |
+| UK139 | **useDsModalPresence / useDsModalOpen** | `primitives-overlay.tsx:118`,`130` | `primitives-overlay.tsx:122`,`134` | exact | — |
+| UK140 | **Table / THead / TBody / TH / TD** — hairline separators, tabular numerals, `DsSortDirection` sort affordances (`ArrowUp`/`ArrowDown`/`ChevronsUpDown`) | `primitives-data.tsx:28`,`63`,`71`,`106`,`156` | `primitives-data.tsx:32`,`67`,`75`,`117`,`167` | exact | — (5 primitives) |
+| UK141 | **TR** — rebuild adds `active:bg-[var(--ds-surface-3)]` + `dsMotion.fast` to the `interactive` arm; `hover:bg-[var(--ds-surface-2)]` and `selected` unchanged. `:active` is transient so no stored parity screenshot can observe it | `primitives-data.tsx:75` (`interactive && "cursor-pointer hover:bg-[var(--ds-surface-2)]"`) | `primitives-data.tsx:79` (adds `"active:bg-[var(--ds-surface-3)]"`, `dsMotion.fast`) | extra | **OPEN — operator call** |
+| UK142 | **ProgressBar** | `primitives-data.tsx:194` | `primitives-data.tsx:205` | exact | — |
+| UK143 | **TimelineSteps** — `DsStepState` = `done` \| `current` \| `pending` \| `failed` \| `skipped`; `STEP_DOT`/`STEP_TEXT` maps identical | `primitives-data.tsx:290` | `primitives-data.tsx:311` | exact | — |
+| UK144 | `DsStep.trailing` + `DsStep.trailingTitle` — new optional right-aligned column on the step row (the measured duration), plus the wrapper `<span>` reflow that hosts it (`flex-1 items-baseline gap-…` around the label stack) | `primitives-data.tsx:259`,`351-358` | `primitives-data.tsx:270`,`375-390` | extra | **OPEN — operator call** |
+| UK145 | **KeyValueList** | `primitives-data.tsx:372` | `primitives-data.tsx:403` | exact | — |
+| UK146 | **The specimen page itself** — `DemoUiKit.tsx`, 1189 lines, `TooltipProvider delayDuration={250}` + `ToastProvider` wrapping a `max-w-[1180px]` main | `DemoUiKit.tsx:124` | — | missing | **OPEN — operator call** |
+| UK147 | Kit `KitHeader` — sticky `h-[var(--ds-h-topbar)]` bar, `ShieldCheck` in an accent-quiet square, title *"Rebuild demo — design system"*, `Badge tone="info"` reading *"dev only · specimen page"*, and a 7-item anchor `nav aria-label="Sections"` | `DemoUiKit.tsx:145` | — | missing | **OPEN — operator call** |
+| UK148 | Kit `Section` specimen shell — `h2` at `dsText.section` + a `max-w-[80ch]` note paragraph over a `--ds-border-subtle` hairline | `DemoUiKit.tsx:174` | — | missing | **OPEN — operator call** |
+| UK149 | Kit `Row` specimen shell — a `w-[130px]` `SectionLabel` beside a wrapping specimen tray | `DemoUiKit.tsx:205` | — | missing | **OPEN — operator call** |
+| UK150 | Kit §Status — *"The eight statuses"*, note *"Four separating channels per status: hue, emphasis tier, icon and label…"*, plus the 8-row `QUEUE_SAMPLE` dense-queue proof | `DemoUiKit.tsx:227-300` | — | missing | **OPEN — operator call** |
+| UK151 | Kit §Actions — note *"One primary per surface, one danger per surface…"*; Rows `Variants`, `Sizes`, `States`, `Icon buttons` | `DemoUiKit.tsx:301-366` | — | missing | **OPEN — operator call** |
+| UK152 | Kit §Display — note *"Small parts that carry a value… Every number is tabular…"*; Rows `Badges`, `Counts`, `Chips`, `Keys`, `Loading` | `DemoUiKit.tsx:367-454` | — | missing | **OPEN — operator call** |
+| UK153 | Kit §Containers — note *"Depth comes from surface plus a hairline, never from a shadow…"*; Panel/Banner/MetaLine/BulletList/ChipRow/CardBase/CompareGrid/EmptyState specimens incl. the 5-width `CHIP_ROW_SPECIMEN` | `DemoUiKit.tsx:455-758` | — | missing | **OPEN — operator call** |
+| UK154 | Kit §Forms — note *"Every control has a visible label; errors are announced, not just coloured…"*; `Recorded value` and `Checkbox` specimens | `DemoUiKit.tsx:759-892` | — | missing | **OPEN — operator call** |
+| UK155 | Kit §Overlays — note *"Radix owns focus… A danger toast never auto-dismisses."*; Rows `Dialog`, `ContextMenu`, `Toast`, `Tooltip`, `Popover` + the Drawer specimen | `DemoUiKit.tsx:893-1113` | — | missing | **OPEN — operator call** |
+| UK156 | Kit §Foundations — note *"Seven type sizes, one 8px space rhythm, five surfaces, three elevations, one focus ring…"*; `TYPE_SPECIMENS`, `SURFACES` swatch list and the `ELEVATIONS` trio cast on `--ds-surface-page` | `DemoUiKit.tsx:1114-1188` | — | missing | **OPEN — operator call** |
+| UK157 | `kit.html` + `kit-entry.tsx` — the standalone mount for the specimen page | `kit.html`, `kit-entry.tsx` | — | missing | **OPEN — operator call** |
+| UK158 | `DESIGN.md` still instructs the reader to skim `DemoUiKit.tsx` and open `http://localhost:3943/…/kit.html` — a binding document naming artifacts absent from this tree | `DESIGN.md:112`,`690`,`691`,`696-697` | `DESIGN.md:112`,`690`,`691`,`696-697` | divergent | **OPEN — operator call** |
+| UK159 | `src/dashboard/surfaces/ui-catalog.tsx` — the generated **selector** catalog surface. NOT a DS specimen page; it is the demo's `DemoCatalogView.tsx` counterpart and does not display primitives | `DemoCatalogView.tsx` | `ui-catalog.tsx:1` | exact | — (noted here only to close the "is there an equivalent?" question) |
+
+**Counts:** exact 119 · divergent 13 · missing 12 · extra 15 · OPEN 18
 
 ---
 
