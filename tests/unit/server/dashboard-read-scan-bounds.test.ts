@@ -326,20 +326,20 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.deepEqual(section.payload.notes.map((note) => note.message), ["note 0", "note 1"]);
   });
 
-  it("scopes to the run's own window plus one day on each end", () => {
+  it("scopes to the run's own window, with a day of margin ABOVE it and none below", () => {
     const w = world();
-    // Enqueued at the harness's own clock, so the window below is the run's
-    // day ±1 and nothing else. (Left to the shared fixture instant, authority's
-    // `updatedAt` is older than the span stream's clock and the scope widens to
-    // cover BOTH — the union of a run's instants, which is the honest answer
-    // and never a narrower one.)
+    // Enqueued at the harness's own clock, so the window below is the run's own
+    // day and the day after it. (Left to the shared fixture instant, authority's
+    // `updatedAt` is older than the span stream's clock and the lower end moves
+    // back to cover BOTH — the union of a run's instants, which is the honest
+    // answer and never a narrower one.)
     terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
     const row = w.projection.runFold(uuidOf(1));
     const authority = w.authority.getRun(uuidOf(1));
     assert.ok(row !== undefined && authority !== undefined);
     assert.deepEqual(runNotePartitionScope(uuidOf(1), row, authority), {
       workflow: "person-lookup",
-      fromDate: "2026-08-02",
+      fromDate: "2026-08-03",
       toDate: "2026-08-04",
     });
   });

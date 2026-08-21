@@ -798,19 +798,30 @@ export interface RunNoteScanEntry {
 }
 
 /**
- * How many days either side of a run's OWN activity window the notes reader
- * still opens.
+ * The margin on each end of a run's own activity window, and it is DELIBERATELY
+ * asymmetric — the two ends carry different risks.
  *
  * `notes/` is partitioned append-at-now (`localDatePart(clock.now())` at the
  * moment of the write), while the window below is composed from the run's
- * durable instants. Those two agree to the second in every ordinary case and
- * can disagree across ONE midnight: a worker that writes its last note
- * milliseconds after the transition that closed the run files it on the next
- * day's partition. One day of margin covers that whole class; it is not a
- * guess at how far a note can drift, it is the width of the only boundary the
- * two clocks can fall on either side of.
+ * durable instants.
+ *
+ * **Below, none is needed.** A note is addressed to a run id, so it cannot have
+ * been written before the run existed, and the window's lower end is the OLDEST
+ * of the run's instants — its enqueue among them. A partition earlier than that
+ * cannot hold a line about this run, so opening one would be reading for the
+ * sake of it.
+ *
+ * **Above, one day.** A worker that writes its last note milliseconds after the
+ * transition that closed the run files it on the NEXT day's partition when that
+ * transition lands near midnight. One day covers that whole class; it is not a
+ * guess at how long a straggler can lag, it is the width of the one boundary
+ * the writer's clock and the run's last durable instant can fall either side
+ * of. It stays until something durable records which partitions a run wrote —
+ * a margin is the honest price of not having that fact, and the alternative is
+ * a logs page that silently drops the last thing a run said.
  */
-const NOTE_PARTITION_DAY_MARGIN = 1;
+const NOTE_PARTITION_MARGIN_DAYS_BEFORE = 0;
+const NOTE_PARTITION_MARGIN_DAYS_AFTER = 1;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function noteWindowInstant(runId: string, label: string, value: string): number {
@@ -856,11 +867,10 @@ export function runNotePartitionScope(
   if (authority.lifecycle.state === "terminal") {
     instants.push(noteWindowInstant(runId, "authority lifecycle endedAt", authority.lifecycle.endedAt));
   }
-  const margin = NOTE_PARTITION_DAY_MARGIN * DAY_MS;
   return {
     workflow: row.queued.workflow,
-    fromDate: localDatePart(new Date(Math.min(...instants) - margin)),
-    toDate: localDatePart(new Date(Math.max(...instants) + margin)),
+    fromDate: localDatePart(new Date(Math.min(...instants) - NOTE_PARTITION_MARGIN_DAYS_BEFORE * DAY_MS)),
+    toDate: localDatePart(new Date(Math.max(...instants) + NOTE_PARTITION_MARGIN_DAYS_AFTER * DAY_MS)),
   };
 }
 
