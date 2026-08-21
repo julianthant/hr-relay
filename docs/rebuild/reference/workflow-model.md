@@ -776,6 +776,108 @@ criterion about rail presence. How the role PRESENTS (rail nesting, picker, coun
 is ref dashboard-surfaces's (§Shell, D219); the bootstrap wire serves the raw fact and the frontend owns display,
 per the standing R2 D17/D18 split.
 
+#### 1.2.2 The workflow tree IS the rail and the timeline (D265, 2026-08-21)
+
+<!-- roadmap: workflow-tree -->
+
+<!-- roadmap-status: workflow-tree -->
+- [x] the rule, the separations mapping and the `workflow-layout` guard's invariant are written (this section, D265, 2026-08-21)
+- [ ] `src/workflows/separations/` holds six step folders and the composition's `timeline` is one category per folder
+- [ ] the five harnesses live INSIDE the step they prove; `chunk-harness` carries `step`; ids unchanged
+- [ ] `kuali-timekeeper-annotation` lives under `src/workflows/proving/`
+- [ ] `workflow-layout` is an active guard with its `guard-inventory.json` entry; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE
+> 2026-08-21 | workflow-tree ruling | ratified from the operator's ruling on the `src/workflows/` layout; the code unit is the next session's — nothing under `src/workflows/` has moved yet
+<!-- /roadmap-status -->
+
+**Operator ruling (2026-08-21).** *"We will just have a separations folder for the separations
+workflow and put identity-check, kronos-timecard folders inside. They will be the timeline steps, and
+separations will be shown in the workflow rail … this way the workflow rail and the timeline for each
+workflow is organized down to the folder level."* The eight registered workflows sat as eight sibling
+folders under `src/workflows/` — `separations` beside the five `separations-*` harnesses that are its
+steps, and `kuali-timekeeper-annotation` beside daily HR work — so the one place an author looks
+first said nothing about which of them an operator would ever see, and D219/D220/D241 had to say it
+on every surface instead. **The layout now says it, and the role and the layout are pinned to agree.**
+
+**The rule — three arms, one per role kind, read straight off the path:**
+
+| Path | What it is | Role (§1.2.1) | Where it shows |
+|---|---|---|---|
+| `src/workflows/<workflow>/descriptor.ts` + `module.ts` | a workflow the RAIL lists | `standalone` · `composition` | the rail, the picker, the Explorer |
+| `src/workflows/<workflow>/<step>/` | one TIMELINE STEP of that workflow — the folder name is the step's key | (a folder, not a module) unless it carries a harness: `{ kind: "chunk-harness", of: "<workflow>", step: "<step>" }` | one segment of that workflow's timeline; the harness nests under its composition in the picker and the Explorer (D219), never the rail (D220) |
+| `src/workflows/proving/<workflow>/` | test equipment — proves program MACHINERY, belongs to no composition | `proving` | `Test equipment` in the picker and the Explorer (D241), never the rail |
+
+1. **A top-level folder is a rail entry.** The rail is D220's filter (`standalone` + `composition`),
+   and since this ruling that filter is a READ of the tree's top level: nothing may sit at
+   `src/workflows/<x>/` that the rail would not list, and nothing the rail lists may live anywhere
+   else. `proving/` is the one reserved name — it is not a workflow and the guard refuses a module
+   there whose role is anything but `proving`.
+2. **A sub-folder is a timeline step, and the declared timeline is one category per sub-folder.**
+   D225 made the timeline categorical — a descriptor declares `timeline: [{ label, nodes }]`, one
+   category per segment, exhaustive over the graph. The step folder is where that category LIVES:
+   it holds the step's node fragments (the `.step()` / `.transaction()` / `.gate()` calls and the
+   pure folds only those nodes consume — what the composition imports to build itself) and the
+   composition declares exactly one category per step folder, keyed by the folder name, labelled
+   by the folder's own declared label. **D225's exhaustiveness now holds both ways:** a declared
+   category with no folder, a folder with no category, or a node owned by two folders each fails
+   at the gate naming the offender — the same failure mode D225 guarded one level down, a step
+   nobody can see. A workflow that declares no timeline (D225's honest default, one category per
+   node — `person-lookup`) has no step folders; the rule bites exactly when a timeline is declared.
+3. **A harness lives inside the step it proves.** D219's sentence — *a chunk harness is a step of
+   its composition* — becomes a path: the harness's `descriptor.ts` + `module.ts` sit in the step
+   folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The registry
+   refuses a `step` that `of` does not declare as a timeline category, exactly as it already refuses
+   an `of` that is not a registered composition. A harness that needs other steps' nodes IMPORTS
+   their fragments rather than restating them — today the three write harnesses each carry a second
+   copy of `job-summary` / `name-search` / `comparison` / the gate / `approval` so that each can
+   re-cross the ALWAYS-GATE before its write; after the move they import `identity-check/`'s, and
+   the four copies become one.
+4. **Test equipment sits under `proving/`.** `kuali-timekeeper-annotation` is the type specimen
+   (§1.2.1, D220/D241): it stays registered, startable and scenario-covered — it is the only write
+   against production Kuali that is benign and restorable, which is what makes it the honest way to
+   re-prove the sequencer live after a kernel change — but it is not a rail entry and has no steps,
+   so it cannot be a top-level folder. Whether it is KEPT at all is the operator's open call,
+   recorded at doc 03b §Smaller operator calls open; this rule only says where it lives while it exists.
+
+**What does NOT move, stated so nobody re-litigates it.** Workflow IDS are unchanged — a harness
+keeps `separations-identity-check`; the id is run identity and the path is layout, which is D170's
+and D219's argument in the other direction (a path move re-stamps no run, no receipt and no
+checkpoint). D225's rendering and fold are unchanged. D219/D220/D241's presentation is unchanged —
+every surface still reads the served ROLE, and what is new is that the `workflow-layout` guard pins
+the role and the path to each other, so the folder view an author sees and the dashboard view an
+operator sees can never disagree. Startability, §3.2 obligations and the D106 bundle boundary are
+untouched: a step folder's fragments are under `src/workflows/` and value-import only what a
+descriptor may.
+
+**The separations mapping — D225's six approved categories, as folders.**
+
+| `src/workflows/separations/<step>/` | Timeline label (D225) | Nodes | Harness inside (id unchanged) |
+|---|---|---|---|
+| `kuali-extraction/` | Kuali extraction | `action` · `document` · `plan` · `termination-type` | `separations-kuali-read` |
+| `identity-check/` | Identity check | `name-search` · `subject` · `comparison` · the gate · `approval` | `separations-identity-check` |
+| `job-summary/` | Job summary | `job-summary` · `employment` · `department-option` | none — proved inside `identity-check`'s harness |
+| `kronos-timecard/` | Kronos timecard | `timecard-search` · `timecard` · `dates` | `separations-kronos-timecard` |
+| `ucpath-transaction/` | UCPath transaction | `clear-pending` · `file-termination` · `receipt` | `separations-ucpath-termination` |
+| `kuali-finalization/` | Kuali finalization | `finalize-kuali` | `separations-kuali-finalization` |
+
+Folder names are the step KEYS (kebab-case, stable anchors like a tree id); the labels stay the
+operator-approved strings and the label/key pair is declared once in the folder. `kuali-read`
+becomes `kuali-extraction` because the folder IS the category and the category's name was already
+ruled.
+
+**The guard — `workflow-layout` (`tests/unit/architecture/workflow-layout.test.ts`, planned in
+`docs/rebuild/guard-inventory.json`, owned here).** Four arms, all decided against the real registry
+and the real tree, each with a violating fixture: (a) every registered module's path matches its
+role's arm above, and nothing else lives under `src/workflows/` — a stray folder is refused; (b) for
+every workflow that declares a timeline, the declared categories and the step folders are the same
+set, both directions; (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
+`descriptor-coverage` §1.4 and `workflow-editor-compile-integrity` derive a descriptor's path from
+its ROLE (`src/workflows/<id>/`, `src/workflows/<of>/<step>/`, `src/workflows/proving/<id>/`), never
+from its id alone — those two guards' existing per-id path literals are the lines that change.
+
+**Every later migration inherits this shape** (doc 03c §The seven-step migration playbook, step 2):
+one top-level folder when the workflow is a rail workflow, step folders for its declared timeline,
+harnesses inside the step they prove, equipment under `proving/`.
+
 ### 1.3 Every parallel registry becomes a projection
 
 <!-- roadmap: p1-kernel -->

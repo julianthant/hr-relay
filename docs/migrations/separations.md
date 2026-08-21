@@ -323,6 +323,11 @@ proved before anything is composed.
    (doc 03c §Phase summary step 5) — and that is a real gate, not a formality: it is what lets the composed
    workflow inherit two proven writes instead of proving both at once, at the end, on the largest
    graph in the program.
+   > 2026-08-21 — D265: the five sub-workflow IDS above are unchanged, but their HOME moves — each
+   > harness lives inside the step folder it proves under `src/workflows/separations/<step>/`
+   > (`kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction`
+   > · `kuali-finalization`), and `kuali-timekeeper-annotation` moves under `src/workflows/proving/`.
+   > `ref workflow-model` §1.2.2 owns the rule; doc 03b §The workflow tree is the code unit.
 3. **Then compose.** The full `separations` descriptor is assembled from the proven pieces with the
    ALWAYS-GATE identity node sitting **before** the transaction nodes (ref write-safety §14.3 — a gate is a long
    wait and D26 forbids any park between `prepare` and `commit`).
