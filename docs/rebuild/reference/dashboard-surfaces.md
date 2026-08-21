@@ -2398,8 +2398,8 @@ Two halves of one seam.
 
 **The control.** `rename` has been a kernel command since Phase 1c, and its absence from the served
 vocabulary was recorded as *"the display-name edit is an inline field on the row, not a
-descriptor-driven control"*. No build ever grew that field, so §9.3's operator-assigned display name
-was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and is
+descriptor-driven control"*. No build ever grew that field, so D83's operator-assigned display name
+(above) was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and is
 served at `menu` on EVERY status — `executePresentation` has no state precondition, so a run that has
 already written to UCPath can still be named, and that is precisely what makes a rename safe to
 offer: it touches the subject, the trace and the ordinal not at all. The one narrowing is row shape
