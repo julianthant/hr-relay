@@ -80,7 +80,9 @@ const READ_ONE = fixtureContract("read-timeline-one", "Read one");
 const READ_TWO = fixtureContract("read-timeline-two", "Read two");
 
 /** A two-node graph, so a declared timeline has something to be wrong about. */
-function descriptorWith(timeline?: readonly Readonly<{ label: string; nodes: readonly string[] }>[]) {
+function descriptorWith(
+  timeline?: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[],
+) {
   const fixtureFlow = flow(FixtureInput)
     .step("first", READ_ONE, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
     .step("second", READ_TWO, { dependsOn: ["first"], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
@@ -117,15 +119,20 @@ describe("D225 — the descriptor's declared timeline", () => {
     // The honest default for a graph small enough to read node by node: the
     // categorical strip and the old per-node strip are the same picture, so
     // nothing regresses for person-lookup-shaped workflows.
+    // D265: the default's KEY is the node id — the stable anchor a step folder
+    // and a `chunk-harness.step` name, while the label stays the display string.
     assert.deepEqual(descriptorWith().timeline, [
-      { label: "Read one", nodes: [{ id: "first", label: "Read one" }] },
-      { label: "Read two", nodes: [{ id: "second", label: "Read two" }] },
+      { key: "first", label: "Read one", nodes: [{ id: "first", label: "Read one" }] },
+      { key: "second", label: "Read two", nodes: [{ id: "second", label: "Read two" }] },
     ]);
   });
 
   it("normalizes a declared category and carries each member's own label", () => {
-    const declared = descriptorWith([{ label: "Everything", nodes: ["first", "second"] }]).timeline;
+    const declared = descriptorWith([
+      { key: "everything", label: "Everything", nodes: ["first", "second"] },
+    ]).timeline;
     assert.deepEqual(declared, [{
+      key: "everything",
       label: "Everything",
       nodes: [{ id: "first", label: "Read one" }, { id: "second", label: "Read two" }],
     }]);
@@ -135,7 +142,7 @@ describe("D225 — the descriptor's declared timeline", () => {
     // The load-bearing arm. A node missing from the declaration renders
     // nowhere, and nothing else in the system would ever notice.
     assert.throws(
-      () => descriptorWith([{ label: "Only the first", nodes: ["first"] }]),
+      () => descriptorWith([{ key: "only-the-first", label: "Only the first", nodes: ["first"] }]),
       /does not cover: second/,
     );
   });
@@ -143,8 +150,8 @@ describe("D225 — the descriptor's declared timeline", () => {
   it("REFUSES a node claimed by two categories", () => {
     assert.throws(
       () => descriptorWith([
-        { label: "A", nodes: ["first", "second"] },
-        { label: "B", nodes: ["second"] },
+        { key: "a", label: "A", nodes: ["first", "second"] },
+        { key: "b", label: "B", nodes: ["second"] },
       ]),
       /name node second twice/,
     );
@@ -153,8 +160,8 @@ describe("D225 — the descriptor's declared timeline", () => {
   it("REFUSES a category naming a node the graph does not declare", () => {
     assert.throws(
       () => descriptorWith([
-        { label: "A", nodes: ["first", "second"] },
-        { label: "B", nodes: ["ghost"] },
+        { key: "a", label: "A", nodes: ["first", "second"] },
+        { key: "b", label: "B", nodes: ["ghost"] },
       ]),
       /names undeclared node ghost/,
     );
@@ -163,10 +170,30 @@ describe("D225 — the descriptor's declared timeline", () => {
   it("REFUSES two categories sharing one label, because the strip keys on it", () => {
     assert.throws(
       () => descriptorWith([
-        { label: "Same", nodes: ["first"] },
-        { label: "Same", nodes: ["second"] },
+        { key: "one", label: "Same", nodes: ["first"] },
+        { key: "two", label: "Same", nodes: ["second"] },
       ]),
       /timeline category labels must be unique/,
+    );
+  });
+
+  it("REFUSES two categories sharing one key, naming the duplicate (D265)", () => {
+    // The key is the anchor a step folder and a `chunk-harness.step` name; two
+    // categories answering to one key would make "which step is this" a
+    // question with two answers.
+    assert.throws(
+      () => descriptorWith([
+        { key: "same", label: "One", nodes: ["first"] },
+        { key: "same", label: "Two", nodes: ["second"] },
+      ]),
+      /timeline category keys must be unique/,
+    );
+  });
+
+  it("REFUSES a category key that is not kebab-case", () => {
+    assert.throws(
+      () => descriptorWith([{ key: "Not Kebab", label: "All", nodes: ["first", "second"] }]),
+      /kebab-case/,
     );
   });
 });

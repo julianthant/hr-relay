@@ -927,7 +927,8 @@ export const separationsDescriptor = defineWorkflowDescriptor({
   subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
   /**
    * D225 — the operator-approved categorical timeline (2026-08-18, separations
-   * §9.18): six categories over the eighteen nodes, legacy's step vocabulary
+   * §9.18): six categories over the eighteen nodes, each keyed (D265) by the
+   * step folder that owns its nodes, legacy's step vocabulary
    * kept where it fits. Legacy's `transaction-check` folds into *UCPath
    * transaction*, because here the pending check is the sweep transaction plus
    * the in-write probes, not a standalone step. The gate is a MEMBER of
@@ -936,12 +937,12 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    * category's `×N` marker instead of drawing duplicate segments.
    */
   timeline: [
-    { label: "Kuali extraction", nodes: [ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
-    { label: "Identity check", nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
-    { label: "Job summary", nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
-    { label: "Kronos timecard", nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
-    { label: "UCPath transaction", nodes: [SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE] },
-    { label: "Kuali finalization", nodes: [FINALIZE_NODE] },
+    { key: "kuali-extraction", label: "Kuali extraction", nodes: [ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
+    { key: "identity-check", label: "Identity check", nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
+    { key: "job-summary", label: "Job summary", nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
+    { key: "kronos-timecard", label: "Kronos timecard", nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
+    { key: "ucpath-transaction", label: "UCPath transaction", nodes: [SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE] },
+    { key: "kuali-finalization", label: "Kuali finalization", nodes: [FINALIZE_NODE] },
   ],
   identity: {
     /**

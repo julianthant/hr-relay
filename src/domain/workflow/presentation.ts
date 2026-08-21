@@ -244,7 +244,25 @@ export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecR
  * descriptor that declares nothing gets the derived default of one category
  * per node, which is the honest shape for a small graph.
  */
+/**
+ * D265 — a timeline category's STABLE ANCHOR, distinct from its display label.
+ *
+ * The operator's ruling makes the workflow tree the rail and the timeline: a
+ * composition's step folder IS one declared category, the folder name IS this
+ * key, and a `chunk-harness` names the step it proves by this key
+ * (`src/domain/workflow/module-role.ts`). A label is prose an operator reads
+ * and an author may re-word; a key is an identifier a folder name and a role
+ * declaration both have to spell the same way, which is why it is kebab-case
+ * and its own field rather than a slugified label — slugifying "Kuali
+ * extraction" into an anchor would make re-wording the label silently move
+ * every reference to the step.
+ */
+export const TimelineCategoryKeySchema = z.string()
+  .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, "timeline category key must be kebab-case");
+export type TimelineCategoryKey = z.infer<typeof TimelineCategoryKeySchema>;
+
 export const TimelineCategorySpecSchema = z.strictObject({
+  key: TimelineCategoryKeySchema,
   label: z.string().min(1),
   nodes: z.array(NodeIdSchema).min(1),
 });
@@ -255,6 +273,7 @@ export type TimelineCategorySpec = z.infer<typeof TimelineCategorySpecSchema>;
  * their display labels so a projection never re-derives `labelOf`.
  */
 export const TimelineCategoryProjectionSchema = z.strictObject({
+  key: TimelineCategoryKeySchema,
   label: z.string().min(1),
   nodes: z.array(z.strictObject({ id: NodeIdSchema, label: z.string().min(1) })).min(1),
 });

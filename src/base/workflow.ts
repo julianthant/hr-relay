@@ -310,6 +310,8 @@ export interface AnyWorkflowDescriptor {
   readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
   /** D225 — plain data like `subjectProjection`, so it rides the broad view. */
   readonly timeline: readonly Readonly<{
+    /** D265 — the category's stable anchor: the step folder's name, and what a `chunk-harness.step` names. */
+    key: string;
     label: string;
     nodes: readonly Readonly<{ id: string; label: string }>[];
   }>[];
@@ -347,13 +349,15 @@ export interface WorkflowDescriptorSpec<
   /** Parsed into branded `ScenarioId`s by the factory, the way contracts do. */
   readonly scenarios: readonly [string, ...string[]];
   /**
-   * D225 — the authored form: category labels over node-id lists. Optional; a
+   * D225/D265 — the authored form: a `key` (the step's stable anchor, and the
+   * name of the step folder that holds its nodes), a `label` (what the operator
+   * reads) and the node-id list it covers. Optional; a
    * graph small enough to read per-node declares nothing and gets the default.
    * If declared, the factory demands it name every node exactly once. Plain
    * strings here — the factory parses them into branded node ids the same way
    * it parses scenario ids.
    */
-  readonly timeline?: readonly Readonly<{ label: string; nodes: readonly string[] }>[];
+  readonly timeline?: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[];
   /**
    * D229 — the authored form: one sentence per node, keyed by node id. Plain
    * strings, parsed by the factory into branded ids exactly as `timeline` is.
@@ -743,10 +747,16 @@ function deriveSteps(nodes: readonly RuntimeFlowNode[]): readonly StepProjection
 function deriveTimeline(
   id: string,
   nodes: readonly RuntimeFlowNode[],
-  declared: readonly Readonly<{ label: string; nodes: readonly string[] }>[] | undefined,
+  declared: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[] | undefined,
 ): readonly TimelineCategoryProjection[] {
   if (declared === undefined) {
+    // D265 — the per-node default's key is the NODE ID, which is already the
+    // kebab-case anchor this workflow's nodes are named by. A workflow that
+    // declares nothing has no step folders, so nothing else can name these
+    // keys; deriving them from the label instead would invent a second
+    // spelling of a name the graph already owns.
     return Object.freeze(nodes.map((node) => TimelineCategoryProjectionSchema.parse({
+      key: String(node.id),
       label: labelOf(node),
       nodes: [{ id: node.id, label: labelOf(node) }],
     })));
@@ -756,6 +766,7 @@ function deriveTimeline(
   const categories = declared.map((category) => {
     const parsed = TimelineCategorySpecSchema.parse(category);
     return TimelineCategoryProjectionSchema.parse({
+      key: parsed.key,
       label: parsed.label,
       nodes: parsed.nodes.map((nodeId) => {
         const label = labelByNode.get(String(nodeId));
@@ -776,6 +787,7 @@ function deriveTimeline(
       `${id}: a declared timeline is exhaustive (D225) and this one does not cover: ${missing.join(", ")}`,
     );
   }
+  assertUnique(id, "timeline category keys", categories.map((category) => category.key));
   assertUnique(id, "timeline category labels", categories.map((category) => category.label));
   return Object.freeze(categories);
 }
