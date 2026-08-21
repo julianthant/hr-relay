@@ -183,6 +183,7 @@ provenance are read-only. There is no separate Data/Edit Data tab or dialog.
 - [x] four `effect: "commit"` contracts exist — `kuali/save-timekeeper-annotation`, `kuali/save-separation-finalization`, `ucpath/create-termination`, `ucpath/delete-pending-terminations`
 - [ ] the per-system list is only part built: **CRM, ServiceNow, OnBase and I-9 have no commit contract at all**, and onbase/servicenow/i9 are three-line session declarations with zero tasks — each lands at its own migration (`{#migrations}`)
 - [ ] `recoveryAbsence: stabilized` is MEASURED for `kuali/save-timekeeper-annotation` only; both UCPath contracts stay `operator-only` because no UCPath propagation window has ever been measured
+> 2026-08-21 | workflow-tree ruling | D266 dismantles `kuali-timekeeper-annotation`: when the code unit lands the commit-contract count drops to three and the `stabilized` measurement stays as `ref write-safety` §3.4 history; the Kuali proof obligation is chunk 5c's own commit
 - [ ] the immutable ledger is built and guarded but its serialized writer has **no production caller** — `createLedgerProjector` is called only from `tests/`, so nothing drains the durable outbox to a file (doc 05 §Exit criteria)
 - [ ] the per-submit double-submit probe policy is decided per workflow at migration time via the §b questionnaire; **separations is the only workflow that has answered it**
 - [-] hash-chain / tail-anchor tamper evidence stays deferred to the multi-user phase (**D79**), and **D193** makes multi-user a LATER with no owner and no design

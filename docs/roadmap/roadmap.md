@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-21
-head: 5a389822
+head: 59851cdf
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -13,7 +13,7 @@ tiles:
 - Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
 - Active | Phase 3 | per-workflow migration · entered at separations
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
-- Decisions | D1–D265 | rounds 68–89 landed this wave · D131 retired, never reused
+- Decisions | D1–D266 | rounds 68–90 landed this wave · D131 retired, never reused
 - Gates | 64 guards | 2,271 tests · parity 151/151 re-frozen 08-20 · schema v15
 - !Critical-path blocker | Wait for 08-28 | canary **4537 named** — S7 admits its separation date then; the three commits run ② → ① → ③
 
@@ -620,6 +620,7 @@ builds:
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded (driven by the `{#claude-operator}`'s MCP tools)
 - [ ] BE coverage floor 80/80/80 global
 - [ ] PROOF the `idempotency-key-hygiene` guard §8 listed and nobody built, with its inventory entry (ref write-safety §8)
+- [ ] BE the FIRST T1 pair — `separations-kuali-finalization`, seeded from the dismantled `kuali-timekeeper-annotation` harness (D266; built inside `workflow-tree`)
 
 needs:
 - dash-defaults
@@ -628,6 +629,7 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion ref guards-and-tests | §10 written as-built against vitest.config.ts, run-executor/write-sequencer, tests/scenario, tests/parity and separations §9.22 (dc2901de); §7's stub lane verified NEVER PORTED → history; measured 84.23/82.15/84.74/71.76 · left: 5.2b–5.2d
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Testing tiers filled against §10: the DOCS line ticks (dc2901de), the six code lines stay open. Confirmed NO workflow in the tree has a T1 pair yet — `tests/scenario/workflows/` does not exist, including for the migrated person-lookup
+- 2026-08-21 | workflow-tree ruling | D266 — the first T1 pair is named: `separations-kuali-finalization`, seeded from the dismantled timekeeper harness; the `workflow-tree` code unit builds it
 
 ### Co-operate with Claude — a second actor on the one local BFF {#claude-operator}
 status: planned
@@ -1009,13 +1011,15 @@ size: M
 chip: next code unit
 doc: 03b §The workflow tree — folders are the rail and the timeline · ref:workflow-model §1.2.2 · ref:dashboard-surfaces §9.3 · ref:dashboard-surfaces §9.9 · 03c §The seven-step migration playbook
 
-> Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists, one sub-folder per TIMELINE step, test equipment under `proving/`. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` moves under `proving/`. IDs, run identity and every surface's rendering are unchanged — the `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
+> Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists, one sub-folder per TIMELINE step, test equipment under `proving/`. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` is DISMANTLED into the testing framework as the Kuali finalization step's first T1 pair (D266) — there is no `proving/`. IDs, run identity and every surface's rendering are unchanged — the `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
 
 builds:
 - [x] DOCS D265 ratified — the rule, the separations mapping and the `workflow-layout` guard's invariant written (`ref workflow-model` §1.2.2, 2026-08-21)
 - [ ] BE `src/workflows/separations/` gains six step folders, each holding its node fragments; the composition's `timeline` is one category per folder
 - [ ] BE the five harnesses move INTO the step they prove (`descriptor.ts` + `module.ts`, role `chunk-harness of separations, step <folder>`); ids unchanged; the write harnesses import `identity-check/`'s fragments instead of restating them
-- [ ] BE `kuali-timekeeper-annotation` moves to `src/workflows/proving/` (role `proving`, D220/D241)
+- [ ] BE `kuali-timekeeper-annotation` DISMANTLED (D266) — workflow, module, four `kuali/*-timekeeper-annotation` tasks + contracts + UI entries, its scenario + claims, the `proving` arm and the `Test equipment` group; parity refs re-frozen; the D188 successor in `guard-inventory.json` re-pointed
+- [ ] BE the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the timekeeper `kualiHarness` + its four real-sequencer scenarios (D266, `ref guards-and-tests` §10.3/§10.4)
+- [ ] PROOF that dry-run manifest run live once against the finalization canary via `cli dry-run-scenario`, recorded (the first `dry_run_scenario_results` row)
 - [ ] BE `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
 - [ ] BE the `workflow-layout` guard activated with its `guard-inventory.json` entry; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE, not its id
 - [ ] PROOF `npm run build:manifest` regenerated; the D191 gate green; rail, picker, Explorer and the separations timeline byte-identical (parity unchanged)
@@ -1025,17 +1029,18 @@ needs:
 
 log:
 - 2026-08-21 | workflow-tree ruling | drawn from your ruling on the `src/workflows/` layout; D265 ratified in ref workflow-model §1.2.2 with pointers in ref dashboard-surfaces §9.3/§9.9, 03b, 03c and `docs/migrations/separations.md`; `workflow-layout` listed planned in `guard-inventory.json` · left: the whole code unit — nothing under `src/workflows/` has moved
+- 2026-08-21 | workflow-tree ruling | D266 the same session — `proving/` withdrawn, `kuali-timekeeper-annotation` dismantled; its harness seeds the first T1 pair for `separations-kuali-finalization` (builds lines redrawn) · left: the code unit
 
 ### Smaller operator calls open {#operator-calls}
 status: you
 chip: needs you
 doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11 · ref:operator-trust §10 · ref:write-safety §13
 
-> TWO calls are open. One cannot be made before the day it lands on: whether to spend the narrow window right after ② files on **2026-08-28** to give `clear-pending`'s COMMITTED arm its only possible live witness, or to accept that arm as sequencer- and fixture-proved and say so in the close-out. Both are defensible; neither is a default. (Settled, recorded so nobody re-opens them: the gate-age pill and D192's re-disposition, both answered 2026-08-18; A6's first live retry delivered 2026-08-19; the Activity hours-saved tile DROPPED by D239; archive tabs and export closed by D223/D240; `span.patched` retired by D254.)
+> ONE call is left, and it cannot be made before the day it lands on: whether to spend the narrow window right after ② files on **2026-08-28** to give `clear-pending`'s COMMITTED arm its only possible live witness, or to accept that arm as sequencer- and fixture-proved and say so in the close-out. Both are defensible; neither is a default. (Settled, recorded so nobody re-opens them: the gate-age pill and D192's re-disposition, both answered 2026-08-18; A6's first live retry delivered 2026-08-19; the Activity hours-saved tile DROPPED by D239; archive tabs and export closed by D223/D240; `span.patched` retired by D254.)
 
 builds:
 - [!] PROOF ①'s COMMITTED arm has no witness and no mapped subject can give it one — the only honest window is re-running ① immediately after ② files on 08-28, before an approver clears the row; otherwise the arm ships proved by the sequencer and its fixtures, and the close-out says so. **Your call on 08-28**
-- [!] DOCS keep `kuali-timekeeper-annotation` as test equipment under `src/workflows/proving/` (recommended — the only benign, restorable write against production Kuali; scenario-covered every commit; the one `stabilized` propagation measurement) or RETIRE it with its scenario — **your call**; D265 moves it either way, only you delete it (2026-08-21)
+- [x] DOCS keep or retire `kuali-timekeeper-annotation` — ANSWERED 2026-08-21: RETIRE (D266), dismantled into the testing framework as the Kuali finalization step's T1 pair (`workflow-tree`)
 - [x] FE the gate-age pill — ANSWERED 2026-08-18: the status pill carries NO age (*the word names the work, not the wait*); the age renders in the row's footer meta and in the log panel (`ref dashboard-surfaces` amended; `src/dashboard/surfaces/queue.tsx:281`)
 - [x] DOCS D192's re-disposition of `legacy-tool-ops-sanity-check-record` — ANSWERED 2026-08-18: no AI feature; §14.2's server-computed `comparisons` array IS the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json`)
 
@@ -1045,6 +1050,7 @@ log:
 - 2026-08-21 | docs-dash-surfaces 5.1c | §9.1–§9.4, §9.9, §9.10 written as-built (`bbdf59b3`)
 - 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 - 2026-08-21 | workflow-tree ruling | a second call opened — keep or retire `kuali-timekeeper-annotation` (recommendation: keep, under `proving/`); doc 03b §Smaller operator calls open carries the reasoning
+- 2026-08-21 | workflow-tree ruling | answered the same session: RETIRE (D266)
 
 ## session: 2026-08-20 | docs-cohesion steps 1–2 | the plan moved out of the repo root (0990ebc5) and now sits at docs/roadmap/roadmap.md; the notation grew doc: · log: · session: (ea7704e0); D263 + D264 ratified; Track D redrawn
 
@@ -1053,9 +1059,9 @@ log:
 ## session: 2026-08-21 | docs-cohesion step 5 | every phase doc (00 01 02 03a 03b 03c 03d 04 05 06) and every reference doc rewritten as-built with status blocks; the tree bound both ways; R13–R15 drawn
 ## session: 2026-08-21 | docs-cohesion 03a fidelity fold | the three demo-fidelity ledgers folded into doc 03a and the tree — `track-f` drawn (status: you, ~150 OPEN questions), nineteen wire gaps on `dash-defaults`, the log-line anatomy on `observed-logs`, five lines on `def-settings`, three on `def-byte-path`, two on `def-search-export`
 
-## session: 2026-08-21 | workflow-tree ruling | `workflow-tree` drawn — D265, the `src/workflows/` layout IS the rail and the timeline (one folder per rail workflow, one sub-folder per timeline step, `proving/` for test equipment); `operator-calls` gains the `kuali-timekeeper-annotation` keep/retire call
+## session: 2026-08-21 | workflow-tree ruling | `workflow-tree` drawn — D265, the `src/workflows/` layout IS the rail and the timeline (one folder per rail workflow, one sub-folder per timeline step); D266 the same session — `kuali-timekeeper-annotation` dismantled into the testing framework as the first T1 pair (`separations-kuali-finalization`), `proving/` withdrawn, `operator-calls` answered
 
-## today: 2026-08-21 · HEAD 5a389822 · D265 ratified — the workflow tree is the rail and the timeline; the folder move is the next code unit · ~150 OPEN Track F questions wait on you · separations 8 / 9 · the three commits wait for 08-28
+## today: 2026-08-21 · HEAD 59851cdf · D265 + D266 ratified — the workflow tree is the rail and the timeline, the crash-test dummy is dismantled into the first T1 pair; the `workflow-tree` code unit is next · ~150 OPEN Track F questions wait on you · separations 8 / 9 · the three commits wait for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued

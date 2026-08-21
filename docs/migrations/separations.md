@@ -328,6 +328,9 @@ proved before anything is composed.
    > (`kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction`
    > · `kuali-finalization`), and `kuali-timekeeper-annotation` moves under `src/workflows/proving/`.
    > `ref workflow-model` §1.2.2 owns the rule; doc 03b §The workflow tree is the code unit.
+   > 2026-08-21 — D266: `kuali-timekeeper-annotation` (the "pattern" the two write sub-workflows above
+   > followed) is DISMANTLED; its real-sequencer harness seeds the first T1 pair, for
+   > `separations-kuali-finalization` (`tests/scenario/workflows/separations-kuali-finalization/`).
 3. **Then compose.** The full `separations` descriptor is assembled from the proven pieces with the
    ALWAYS-GATE identity node sitting **before** the transaction nodes (ref write-safety §14.3 — a gate is a long
    wait and D26 forbids any park between `prepare` and `commit`).
