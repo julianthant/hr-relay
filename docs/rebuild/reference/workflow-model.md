@@ -71,7 +71,23 @@ context** (typed data flow between tasks). Time lives in ref dashboard-surfaces'
 
 ## 1. The workflow descriptor
 
+<!-- roadmap: p1-authority -->
+
+<!-- roadmap-status: p1-authority -->
+- [x] ONE bundle-safe descriptor module per workflow, value-importing only zod + `src/domain/**` + the audited `src/base/**` builders — enforced by walking the real import graph (§1.1/§1.2, D106; `src/base/workflow.ts`, `tests/unit/architecture/descriptor-coverage.test.ts` "keeps every descriptor module's value-import closure bundle-safe")
+- [x] `identity` is a MATCH KEY only; the kernel mints `ItemId` from `(workflowId, matchKey)` at enqueue, because a descriptor cannot hash and two derivations of one identity drift (D103, `src/base/workflow.ts:170-183`)
+- [x] the typed DAG builder ships with the exact `S`/`Nodes` accumulators, `build()`-time forward-reference validation for branch and parallel targets (D104) and the mandated real-scale type proof (§3; `src/base/flow.ts`, `tests/types/flow-graph.typecheck.ts`, `tests/unit/flow-type-budget.test.ts`)
+- [x] `descriptor-coverage` is the ONE coverage guard — 17 cases over `DESCRIPTORS`, both directions (§1.4)
+- [x] checkpoint replay with a REQUIRED per-node `replay` policy, the D8 freshness walk, and the item-scoped store (§5.3 · §5.5 · §5.7)
+- [x] labels resolve from exactly two layers and no third (§1.5, D16)
+- [ ] six descriptor fields have ZERO producers among the eight registered workflows and are carried on the strength of the type proof alone: `presets`, `coordinator`, `completionConsumes`, `completion`, `surfaces.uploadRun`, `artifactProjections` (verified by grep over `src/workflows/*/descriptor.ts`) — each is named in place in the section that declares it
+- [ ] three of the six node kinds have zero producers for the same reason: no registered workflow declares a `branch`, a `parallel` or a `child-run` node (37 `.step`, 7 `.transaction`, 4 `.gate`). §3.2's delegation contract is proved by the type suite and `fixtureDescriptor`, never by a run
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/base/workflow.ts`, `src/base/flow.ts`, `src/control/workflow-registry.ts`, all eight `src/workflows/*/descriptor.ts`, `config/pending-impl-bindings.json` and `tests/unit/architecture/descriptor-coverage.test.ts`; left: the six unproduced fields and the three unproduced node kinds
+<!-- /roadmap-status -->
+
 ### 1.1 Shape
+
+<!-- roadmap: p1-authority -->
 
 One module per workflow: `src/workflows/<id>/descriptor.ts`. It imports **only** zod,
 `src/domain/**` (which includes the task **contracts** at `src/domain/contracts/<system>/`
@@ -330,6 +346,9 @@ export interface WorkflowDescriptor<
   surfaces: {
     /** Typed-text start (InputRunPanel). Absent ⇒ no input-run affordance. */
     inputRun?: { placeholder: string; parser: InputParserSpec;
+                 /** Real values this box starts, each proved by the factory to parse AND to
+                  *  satisfy the input schema before the descriptor exists (D250). */
+                 examples?: readonly InputRunExample[];
                  supportsDryRun?: boolean /* DERIVED — D209, never authored */;
                  emptyOpensUpload?: boolean };
     /** File-upload start (RunModal). Absent ⇒ no upload-run affordance. */
@@ -343,14 +362,23 @@ export interface WorkflowDescriptor<
   completion?: Completion; // exact factory-inferred program; never annotate as the broad union
   capabilities?: WorkflowCapabilities;  // ref dashboard-surfaces §3 (review/editData/delegation display rules)
   details: readonly DetailProjectionSpec<Nodes>[];
+  /** Where the RUN resolves the subject's display name, if it ever does (ref dashboard-surfaces §1.2). */
+  subjectProjection?: SubjectProjectionSpec<S>;
+  /** DERIVED (D225): the run-detail timeline's categorical shape — the declared categories
+   *  normalized with member labels, or one category per node. Always present, always exhaustive. */
+  timeline: readonly TimelineCategoryProjection[];
+  /** The descriptor's own sentence about what this workflow does (D229) … */
+  summary?: string;
+  /** … and one about each node, DERIVED into an exhaustive frozen list: a partial declaration
+   *  would leave some nodes silently prose-less on the one surface whose job is to explain them. */
+  nodePurposes: readonly NodePurposeSpec[];
   /** Semantics/types owned by ref dashboard-surfaces: one closed enqueue/action command protocol for every workflow. */
   enqueue: EnqueuePolicy;
   actions: WorkflowActionPolicy;
   presets?: readonly InputPreset<z.input<InputSchema>>[];
-  identity: {
-    matchKey: MatchKeySpec<z.output<InputSchema>>;
-    deriveItemId: ItemIdSpec<z.output<InputSchema>>;
-  };
+  /** Match key ONLY — the kernel mints `ItemId` from `(workflowId, matchKey)` at enqueue.
+   *  A descriptor is bundle-safe and cannot hash, so it cannot mint a UUID (D103, as-built below). */
+  identity: { matchKey: MatchKeySpec<z.output<InputSchema>> };
   presentation: WorkflowPresentationSpec<z.output<InputSchema>>;
   coordinator?: CoordinatorPolicy;
   completionConsumes?: readonly CompletionConsumptionSpec[];
@@ -421,6 +449,17 @@ hashes canonical `(repo-relative path, content)` tuples over the descriptor clos
 INSTALLED toolchain versions; type-only imports are inside the closure on purpose, because a changed
 type is a changed contract; the generated module is excluded from its own closure so the hash has a
 fixed point. `descriptor-coverage` regenerates and fails on any diff.
+
+**Six of these fields have no producer, and saying so is part of the contract.** Across the eight
+registered workflows, `presets`, `coordinator`, `completionConsumes`, `completion`,
+`surfaces.uploadRun` and `artifactProjections` are declared by **none** of them. They are not dead:
+each is the declaration a named later migration needs — `completion`/`completionConsumes`/
+`coordinator` arrive with the i9-check operation coordinator (order 5), `artifactProjections` with
+the OnBase/oath-upload artifact sinks (order 7), `uploadRun` with the first file-started workflow —
+and each is held to the same strict-schema and factory-proof discipline as a field that ships today,
+so the first consumer inherits a validated shape rather than authoring one. What they are NOT is
+proven by a run, and a reader deciding whether to build on one should know that. `subjectProjection`
+(five workflows), `verdicts` (seven) and `capabilities` (five) are in daily use by contrast.
 
 #### D260 — `inputRun` carries exactly ONE varying value per run, and `separations` needs two (2026-08-20)
 
