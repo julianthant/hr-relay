@@ -162,6 +162,7 @@ import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural } fr
 import { dsStatusOf } from "./status-model.js";
 import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
 import { ARCHIVE_INDEX, archivedRunTouchedTest } from "./archive-model.js";
+import { settleCommandResult } from "../app/command-result.js";
 
 const SOURCE_SURFACE = "archive";
 
@@ -2565,7 +2566,10 @@ export function ArchiveWorkspace({
           // Any applied command changes what the ledger holds, so the index is
           // re-read rather than patched: this surface has no live stream and a
           // client-side splice would be a second projection of the archive.
-          if (next.state === "applied" || next.state === "already-applied") setNonce((value) => value + 1);
+          // "Applied" is the ONE fold's verdict (D253, Track D row D3) — a
+          // re-read triggered by a refused command would show the operator an
+          // unchanged index as though it were the result of their click.
+          if (settleCommandResult(next).kind === "applied") setNonce((value) => value + 1);
         },
         (error: unknown) => {
           setBusy(false);
@@ -2642,7 +2646,11 @@ export function ArchiveWorkspace({
         detail={detail.value}
         sweep={sweepOfDetail}
         busy={busy}
-        relaunched={relaunched === detail.value.runId && result?.state === "applied"}
+        relaunched={
+          relaunched === detail.value.runId
+          && result !== undefined
+          && settleCommandResult(result).kind === "applied"
+        }
         onRelaunch={() => setConfirming(true)}
         onDismiss={() => setRelaunched(undefined)}
       />

@@ -69,6 +69,7 @@ import {
 } from "../ds/ui.js";
 import { systemClock } from "../../domain/clock.js";
 import type { CommandResult } from "../../domain/commands.js";
+import { settleCommandResult } from "../app/command-result.js";
 import {
   inputRunParserLabel,
   inputRunSeparatorLabel,
@@ -774,7 +775,12 @@ export function RunStartDialog({
     return keys;
   }, [plan, result]);
 
-  const applied = result?.state === "applied" || result?.state === "already-applied";
+  // D253 / Track D row D3 — "did the start land" is the ONE fold's question,
+  // and a replay of the same landing IS a landing: the plan token is single-use,
+  // so `already-applied` means this dialog's own send arrived twice, never that
+  // nothing was enqueued. `EnqueueResultBanner` still draws the four arms apart,
+  // because what the operator READS about a refusal is not the same question.
+  const applied = result !== null && settleCommandResult(result).kind === "applied";
   const blockedReason = inputRun.state !== "present"
     ? inputRun.reason
     : preview.problem !== null

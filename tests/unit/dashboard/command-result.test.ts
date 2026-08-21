@@ -5,16 +5,35 @@
  * Every arm of `CommandResultSchema` is pinned, and each result is parsed
  * THROUGH the schema first: a fold tested against hand-built objects is a fold
  * tested against a shape the wire may not produce.
+ *
+ * Track D row D3 widened the refused arms with the server's OWN facts —
+ * `message` verbatim, plus `code` or `currentVersion` — so that a surface which
+ * draws a refusal in its own components (a `Refusal` with a code chip, a
+ * `Banner` with a version meta line) can stop taking the union apart to get
+ * them back. Two of those facts are load-bearing and get their own cases:
+ * `message` must be the wire's sentence UNCOMPOSED (seven surfaces print it and
+ * the parity corpus photographs one of them), and every `code` the kernel can
+ * send must survive the fold, because a code that silently vanished is a bug
+ * report nobody can file.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { CommandResultSchema } from "../../../src/domain/commands.js";
+import { CommandRejectionCodeSchema, CommandResultSchema } from "../../../src/domain/commands.js";
 import { settleCommandResult } from "../../../src/dashboard/app/command-result.js";
 
 const COMMAND_ID = "0f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b";
 const RUN_ID = "8a1c9d2e-3f4b-4c5d-8e9f-0a1b2c3d4e5f";
 
 const settle = (raw: unknown) => settleCommandResult(CommandResultSchema.parse(raw));
+
+const CONFLICT_MESSAGE = "the run moved while this was open.";
+const REJECTED_MESSAGE = "run is terminal; corrections apply only to a resumable run";
+
+const conflictOf = (currentVersion: number, message = CONFLICT_MESSAGE) =>
+  settle({ state: "conflict", commandId: COMMAND_ID, currentVersion, message });
+
+const rejectedOf = (code: string, message = REJECTED_MESSAGE) =>
+  settle({ state: "rejected", commandId: COMMAND_ID, code, message });
 
 describe("settleCommandResult (D253)", () => {
   it("settles both landing arms as applied, and says which was a replay", () => {
@@ -30,12 +49,7 @@ describe("settleCommandResult (D253)", () => {
   });
 
   it("settles a CAS conflict as a REFUSAL carrying the server's own version", () => {
-    const settlement = settle({
-      state: "conflict",
-      commandId: COMMAND_ID,
-      currentVersion: 7,
-      message: "the run moved while this was open.",
-    });
+    const settlement = conflictOf(7);
     assert.equal(settlement.kind, "refused");
     if (settlement.kind !== "refused") return;
     assert.equal(settlement.reason, "conflict");
@@ -46,23 +60,80 @@ describe("settleCommandResult (D253)", () => {
     assert.doesNotMatch(settlement.problem, /try again/iu);
   });
 
+  it("carries a conflict's `currentVersion` as a NUMBER, for a surface that lays it out itself", () => {
+    const settlement = conflictOf(41);
+    assert.equal(settlement.kind === "refused" && settlement.reason === "conflict"
+      ? settlement.currentVersion
+      : undefined, 41);
+  });
+
+  it("keeps a conflict's `message` UNCOMPOSED — it is the wire's sentence, not the fold's", () => {
+    // Seven surfaces print this string where they used to print `result.message`,
+    // and the parity corpus photographs one of them. Composing into it here
+    // would move a reference nobody re-froze.
+    const settlement = conflictOf(2);
+    if (settlement.kind !== "refused" || settlement.reason !== "conflict") {
+      assert.fail("a conflict must settle as a conflict refusal");
+      return;
+    }
+    assert.equal(settlement.message, CONFLICT_MESSAGE);
+    // And the composed sentence is genuinely a DIFFERENT string, so a caller
+    // that wants the version gets it by asking for `problem`, never by accident.
+    assert.notEqual(settlement.problem, settlement.message);
+  });
+
   it("passes a kernel rejection's own sentence through UNCHANGED", () => {
-    const settlement = settle({
-      state: "rejected",
-      commandId: COMMAND_ID,
-      code: "invalid-state",
-      message: "run is terminal; corrections apply only to a resumable run",
-    });
-    assert.deepEqual(settlement, {
+    assert.deepEqual(rejectedOf("invalid-state"), {
       kind: "refused",
       reason: "rejected",
-      problem: "run is terminal; corrections apply only to a resumable run",
+      problem: REJECTED_MESSAGE,
+      // Nothing is added to a sentence that already names what was refused and
+      // why, so the one-slot text and the verbatim text are the same string.
+      message: REJECTED_MESSAGE,
+      code: "invalid-state",
     });
   });
 
+  it("carries EVERY rejection code the kernel can send, verbatim", () => {
+    // A code the fold dropped is a refusal an operator cannot quote. Driving
+    // the enum itself means a code added to the kernel is covered here the day
+    // it lands, rather than the day somebody remembers this file.
+    for (const code of CommandRejectionCodeSchema.options) {
+      const settlement = rejectedOf(code);
+      assert.equal(
+        settlement.kind === "refused" && settlement.reason === "rejected" ? settlement.code : undefined,
+        code,
+        `the fold must carry the ${code} rejection code`,
+      );
+    }
+  });
+
   it("keeps the two refusals distinguishable — they are different operator acts", () => {
-    const conflict = settle({ state: "conflict", commandId: COMMAND_ID, currentVersion: 2, message: "moved." });
-    const rejected = settle({ state: "rejected", commandId: COMMAND_ID, code: "policy-refused", message: "moved." });
+    const conflict = conflictOf(2, "moved.");
+    const rejected = rejectedOf("policy-refused", "moved.");
     assert.notDeepEqual(conflict, rejected);
+    // Even on the SAME server sentence, the two are told apart by `reason`
+    // alone — a surface never has to compare strings to know which it holds.
+    assert.equal(conflict.kind === "refused" ? conflict.reason : undefined, "conflict");
+    assert.equal(rejected.kind === "refused" ? rejected.reason : undefined, "rejected");
+  });
+
+  it("answers `refused` for BOTH refusal arms and `applied` for neither", () => {
+    // The whole point of the fold in one assertion: the verdict is a function
+    // of the arm, and a surface reading `kind` cannot let one refusal fall
+    // through to the path the other one blocks.
+    assert.deepEqual(
+      [
+        settle({ state: "applied", commandId: COMMAND_ID, affectedTargets: [{ family: "run", runId: RUN_ID }] }).kind,
+        settle({
+          state: "already-applied",
+          commandId: COMMAND_ID,
+          affectedTargets: [{ family: "run", runId: RUN_ID }],
+        }).kind,
+        conflictOf(3).kind,
+        rejectedOf("target-not-found").kind,
+      ],
+      ["applied", "applied", "refused", "refused"],
+    );
   });
 });

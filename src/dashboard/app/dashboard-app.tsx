@@ -50,6 +50,7 @@ import {
 import { ConfirmCommandDialog, type ActionTarget, type PendingCommand } from "../surfaces/actions.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
 import { composeCommandRequest, composeStopWorkerCommand, type CommandAction } from "./command-dispatch.js";
+import { settleCommandResult } from "./command-result.js";
 import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
 import {
@@ -643,10 +644,15 @@ function LoadedApp({
       client.executeCommand(composed.request).then(
         (result) => {
           // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4),
-          // and the server's own sentence is printed verbatim — it is the only
-          // party that knows which version is live now.
-          if (result.state === "conflict" || result.state === "rejected") {
-            toast({ tone: "danger", title: "Nothing was recorded", description: result.message });
+          // and WHETHER one of them landed is decided ONCE, by the fold (D253,
+          // Track D row D3) — this callback reads the verdict rather than
+          // re-taking the union apart. The description is still the server's
+          // own sentence verbatim: it is the only party that knows which
+          // version is live now, and neither refusal changes what this toast
+          // says about the command it answers.
+          const settlement = settleCommandResult(result);
+          if (settlement.kind === "refused") {
+            toast({ tone: "danger", title: "Nothing was recorded", description: settlement.message });
             return;
           }
           toast({ tone: "success", title: action.label, description: "Recorded." });
@@ -728,8 +734,12 @@ function LoadedApp({
         { actorId: boot.actor.id, source: "session-panel" },
       )).then(
         (result) => {
-          if (result.state === "conflict" || result.state === "rejected") {
-            toast({ tone: "danger", title: "Nothing was recorded", description: result.message });
+          // The same ONE fold (D253) — a stop the kernel refused must never
+          // look like one that landed, and "did it land" has exactly one
+          // implementation in this bundle.
+          const settlement = settleCommandResult(result);
+          if (settlement.kind === "refused") {
+            toast({ tone: "danger", title: "Nothing was recorded", description: settlement.message });
             return;
           }
           toast({
