@@ -590,11 +590,12 @@ what `{#test-tiers}` reads as its parallel case. It needs the Duo lease first.
 <!-- roadmap: observed-logs -->
 
 <!-- roadmap-status: observed-logs -->
-- [ ] BE provenance points emitted on the span at record time, redacted by declaration — an unclassified leaf fails loud
+- [x] BE provenance points emitted on the span at record time, redacted by declaration — an unclassified leaf fails loud (D270)
 - [ ] BE a transaction node's beats stream their observations (probe → stage → fence → click → read-back)
 - [ ] FE the log panel renders observed rows per step, in the Context rail's vocabulary
 - [ ] PROOF a separations dry run reads as a ledger of page facts
 > 2026-08-20 | docs-cohesion 03a | recorded points exist in memory at record time and reach no durable channel — finalizeRead validates them and the executor stores only provenance plus the parsed output (src/core/task-provenance.ts:264, src/core/run-executor.ts:1052)
+> 2026-08-21 | D270 | the emission half landed: `data.observed` on the SPAN stream, one event per `ctx.recordData` call, redacted by the declared classification (`ef090ea4` the arm + its wire twin, `68954117` the declarations, `4d074886` the executor, `aabd46f4` the projector). Left: the transaction beats (L2) and the FE rows (L3)
 <!-- /roadmap-status -->
 
 **The log should quote what the page said.** Every task already records its observations through
@@ -611,6 +612,49 @@ unclassified leaf fails loud, because dropping it silently would make a log look
 hiding what the run read. Nothing re-reads the page: a second scrape would be a second observation
 of a moving system, and two observations of one fact is exactly how a surface starts disagreeing
 with authority.
+
+**As built (D270, 2026-08-21).** The emission is a new span arm, `data.observed`, in both halves of
+the parity pair — `ExecutorSpanEventSchema` (`src/core/span-emitter.ts`) and `SpanEventWireSchema`
+(`src/events/types.ts`, the leaf the JSONL writer parses) — carrying
+`{nodeId, taskId, observedAt, points}` under the ordinary `(runId, attempt, spanPath)` identity, on
+the producing task's OWN span path. Four choices are worth reading, because each was decidable the
+other way.
+
+**The channel is the SPAN stream, not notes.** `ref dashboard-surfaces` §1.1 records that the notes
+stream has no production emitter and that `.tracker-rebuild/notes/` has never existed, so emitting
+there would have published into a directory nothing reads; and `NoteFieldWire`'s closed kind union
+(`text | count | digest | last4 | basename`) has nowhere to carry a point's `direction`, which is the
+one thing the rail cannot derive for itself. `assertNoteWithinRunScope` is therefore not on this
+path at all — no note is written.
+
+**One event per `ctx.recordData` CALL, at record time.** A batch is one observation of the page, so
+the collector reads the clock ONCE per call and every point in the batch shares the instant the
+event carries as `observedAt`. Record time rather than finalization is the load-bearing half: a task
+that throws after reading the page has still read the page, and a failed run's observations are
+exactly what an operator opens the panel for. The failed attempt of a retried node therefore
+publishes nothing if it threw before recording, and the successful attempt publishes on its own span
+path — D123/D214's rule, unchanged.
+
+**A point is redacted per LEAF, through the receipt's own function.** `redactObservedDataPoints`
+(`src/core/observed-data.ts`) splits a point's value by the provenance collector's leaf rule (an
+array is one leaf, an empty object is one leaf, a populated object recurses) and pushes each leaf
+through `redactEvidenceLeaf` — the same declared table `reference/operator-trust.md` §2.3 owns and
+the D82 receipt uses. There is deliberately no second redaction implementation: a log that leaked a
+value the receipt would have dropped is the same defect from a different surface. So one recorded
+`selection` point carries one redacted value per leaf, keyed by the full dotted path a
+`FactProvenance` row is written under.
+
+**An undeclared leaf fails the task, by name.** The refusal happens inside `ctx.recordData`, so it
+names the task and the field at the point of authorship rather than at a finalization the failing
+task may never reach. Every one of the eighteen task nodes across the five registered descriptors
+was already declared, which the scenario lane now proves by running them. The only declarations this
+added are the six paths the executor's own fixture contracts record; they are DECLARED rather than
+exempted, because a fixture bypass would mean the refusal is never exercised by a composed run.
+
+**The queue projection ignores the arm BY NAME** (`run-queue-projection.ts`). Folding a page
+observation into a task span it is not would be D123's collapse again, and a stream carrying an
+unfoldable line degrades the projection and schedules the guarded rebuild (D218) — so "ignored" had
+to be written down, not left to a fall-through. Rendering these rows is this node's FE row.
 
 **A transaction node streams its beats.** `ref write-safety` §5's sequence — probe → stage → fence →
 click → read-back — is the one place the operator most needs to watch the page rather than a

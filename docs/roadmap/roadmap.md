@@ -584,16 +584,16 @@ log:
 - 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
 
 #### Observed logs — the log carries what the page said {#observed-logs}
-status: planned
+status: active
 date: operator 2026-08-20
 size: M
 doc: 03a §Observed logs — the log carries what the page said · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.1 · ref:operator-trust §2.3
 
-> The log stream quotes the facts each task RECORDED — the provenance points: field, value, system, observed-at — redacted by the declared evidence classification, and never a second scrape. A transaction node's beats stream their observations while the step is still running, so the operator watches the page's own words rather than a step name. The log emission path and the log structure are rebuilt around recorded observations; the scope may widen when the operator reviews phase 3a.
+> The log stream quotes the facts each task RECORDED — the provenance points: field, value, direction, observed-at, with the SYSTEM resolved through `dataOrigins` rather than carried on the point (D252/D106) — redacted by the declared evidence classification, and never a second scrape. A transaction node's beats stream their observations while the step is still running, so the operator watches the page's own words rather than a step name. The log emission path and the log structure are rebuilt around recorded observations; the scope may widen when the operator reviews phase 3a.
 
 builds:
 - [ ] BE the notes stream gets a production emitter — `emitNote` is composed and never called; `.tracker-rebuild/notes/` does not exist, while the Logs section re-reads it per request and a failed run opens on it (audit C1)
-- [ ] BE provenance points emitted on the span at record time, redacted by declaration (an unclassified leaf fails loud)
+- [x] BE provenance points emitted on the span at record time, redacted by declaration (an unclassified leaf fails loud) — D270
 - [ ] BE transaction beats stream their observations (probe → stage → fence → click → read-back)
 - [ ] FE the log panel renders observed rows per step, in the Context rail's vocabulary
 - [ ] PROOF a separations dry run reads as a ledger of page facts
@@ -608,6 +608,7 @@ log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Observed logs written; the emission is a real build, not a re-read — `finalizeRead` validates the recorded points and the executor stores only `provenance` plus the parsed output (`src/core/task-provenance.ts:264`, `src/core/run-executor.ts:1052`), and `DataPoint` carries `direction` natively but NO system, which the store's declaration owns (D252/D106)
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion 03a fidelity fold | the demo's log-line anatomy booked here from ledger 2 (B52, B54, B69–B75, B78) — the line carries its own facts, which is what this node emits; the stream's GROUPING by step (B65) is a pure FE port today and sits on `{#track-f}` · left: all of it
+- 2026-08-21 | D270 | the EMISSION half landed — a twelfth span arm `data.observed`, one event per `ctx.recordData` call, redacted per leaf through the receipt's own declared table, an undeclared leaf failing the recording task by name, and the queue projection ignoring the arm by name (`ef090ea4` `68954117` `4d074886` `aabd46f4`). The channel is the SPAN stream, so the notes-emitter row is untouched · left: the transaction beats, the FE rows, the proof
 
 ### Testing tiers — the suite organized by what a test needs {#test-tiers}
 status: planned
