@@ -594,6 +594,20 @@ Rationale against alternatives:
   read layer with the OPEN-span forward-merge (same algorithm as `cross-midnight.ts`); synchronous
   SIGINT terminal writes; `O_APPEND` single-line writes. **Ledger is different:** executors write
   durable outbox rows and one serialized projector assigns ordered sequence and appends (ref write-safety).
+- **A note addressed to a run is written only inside that run's partition scope.** Append-at-now
+  partitioning and a scoped reader are two clocks with nothing between them: the writer files a line
+  under `localDatePart(clock.now())`, and a logs GET opens only the `(workflow, date)` partitions a
+  run's own durable instants select. So the scope is ONE shared function —
+  `runNotePartitionScope` in `src/domain/run/note-scope.ts` — a producer ASSERTS against
+  before the append (`assertNoteWithinRunScope`, refusing by name and naming the run, the note's
+  instant, its partition day and the bounds), and the logs reader opens exactly those partitions.
+  The producer's window is composed from authority alone and the reader's from authority PLUS the
+  span fold, so the reader's instant set is a superset and its window contains the producer's by
+  construction: a note the assertion admits is a note the reader opens the partition for. The
+  margin is asymmetric — none below (a note cannot predate its run's enqueue) and ONE day above (the
+  midnight a worker's last note can fall the other side of from the transition that closed the run).
+  `{#observed-logs}`, the first production note producer, inherits this rule: a note filed outside
+  the scope is a line on disk that the run's own logs tab can never serve, which is a silent drop.
 - **Local artifacts are not hidden task writes (D45).** A read task may create only immutable,
   content-addressed bytes under `artifacts/` through ref task-contract's writer; the returned `{id,sha256,bytes,
   mediaType}` is canonical JSON and checkpoints reference it without exposing a filesystem path.

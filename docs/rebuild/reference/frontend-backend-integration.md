@@ -2038,8 +2038,10 @@ doc 01's `tsc` type-inference budget; no 1,240-row or 108-member fixture existed
 `src/dashboard` virtualizes or pages; there is no `memo` in any surface or app module; nothing
 mentions backpressure. The section had been normative and unenforced since it was written, and the
 audit that found that is what Track D exists to answer. **What has changed since:** the measurement
-instrument and its BEFORE numbers landed 2026-08-21 (below). Everything else on that list still
-stands — the instrument measures the tree, it does not fix it.
+instrument and its BEFORE numbers landed 2026-08-21 (below), and Track D's **D5** then bounded the
+four server-side read scans and recorded its AFTER numbers against them. Everything else on that
+list still stands — nothing virtualizes or pages, no surface is memoized, and nothing handles
+backpressure — because the instrument measures the tree and D5 only fixed the reads it named.
 
 **D264 (2026-08-20) — Track D's D4/D5 supply the first numbers, and the numbers become the gates.**
 The thresholds this section defers to the first Person Lookup slice were never recorded: that slice
@@ -2133,6 +2135,57 @@ on a contended laptop would be a number with no defensible comparison behind it.
 the row that will owe one, and the parity lane already boots the real stack over a seeded state root
 (`tests/parity/helpers/seeded-bff.ts`), so the seam is there when it is wanted.
 
+#### The AFTER numbers — Track D **D5**, the bounded read scans (2026-08-21)
+
+Same command, same seed, same iteration count: `npm run perf:dashboard -- --iterations 11`, taken at
+commit `c547f65a` (tracked tree clean) on the same Apple M3 Pro · 11 cores · 18 GB · node v26.1.0 ·
+darwin-arm64. **One caveat on the durations and it is not a small one:** this run was taken while
+sibling worktree units were compiling and running suites on the same laptop, so read the millisecond
+columns as noisier than the baseline's stated ±15 %. The COUNTS are exact and unaffected — which is
+the whole reason they are in the table.
+
+| # | Path | median ms | p95 ms | Counters |
+|---|---|---|---|---|
+| 1 | `buildDashboardDayWire` | 157.95 | 224.56 | rows 1,240 · sqliteStatements **5,568** · sqliteStatementsPerRow **4.49** |
+| 2 | `applyDashboardDayPatch` | 29.19 | 36.96 | rowsAvailable 1,240 · dayWireSchemaParses 1 |
+| 3 | `buildRunSection(run, "logs")` | 40.55 | 61.74 | notesServed 13 · corpusLinesAvailable 20,800 · corpusBytesAvailable 5,691,200 · corpusFilesAvailable 4 · **corpusLinesInScope 17,680** · **corpusFilesInScope 2** |
+| 4 | `archiveSnapshots.snapshot(run)` | 42.33 | 59.15 | sqliteStatements **13** · projectedDayMs 52,489.2 |
+| 5 | `queueSurface` — 108-member operation vs a single row | — | — | operationRowStatements **8** · singleRowStatements 2 · **previewDeltaStatements 6** · members 108 |
+
+**The delta, per counter, and what each one is evidence of.**
+
+| Counter | BEFORE | AFTER | Why |
+|---|---|---|---|
+| `previewDeltaStatements` (row 5) | 216 | **6** | `#memberPreview` slices before it joins: three named members × (`getRun` + `latestCheckpoint`). It no longer scales with `members` at all — the same six for a 4-member group and a 40-member one, pinned in the unit lane. |
+| `sqliteStatements` (row 1) | 6,718 | **5,568** | −1,150, and the arithmetic closes exactly: **940** is one saved `getReceipt` per terminal row on the day (700 done + 180 failed + 60 cancelled), **210** is the 105 members the preview stopped joining × 2 reads each. |
+| `sqliteStatementsPerRow` (row 1) | 5.42 | **4.49** | The same 1,150 over the same 1,240 rows. |
+| `corpusFilesInScope` / `corpusLinesInScope` (row 3) | 4 / 20,800 (the reader was unscoped, so it equalled the corpus) | **2 / 17,680** | New counters, taken through the production `runNotePartitionScope`. See the honest reading below. |
+| `sqliteStatements` (row 4) | 14 | **13** | The receipt dedupe reaching the frozen row. |
+| `corpus…Available` (row 3) | 20,800 / 5,691,200 / 4 | unchanged | **By design, and the baseline predicted it**: these are the corpus SIZE, a fixture fact, not an observation of what the reader read. They are why the two `…InScope` counters were added. |
+| `dayWireSchemaParses` (row 2) | 1 | 1 | D4's row, untouched by D5. Its millisecond movement is machine noise. |
+
+**The logs row is the honest disappointment, and the reason is a property of THIS fixture, not of
+the fix.** 15 % fewer lines in scope is not the order of magnitude audit P3 describes, and the cause
+is arithmetic: the seeder gives the first 1,600 runs a 13-line trail in day order, and 1,240 of those
+runs are on the measured day — so **16,120 of the corpus's 20,800 lines sit in the measured run's
+OWN partition**, where no day-scoping can reach them. What actually changed is the shape of the
+bound, which is what P3 is about ("187k lines/month in legacy; a read that grows forever for a tool
+that runs for years"): the read is now **O(the run's own partitions + one day of margin)** instead of
+**O(days × workflows)**. At the D86 30-day retention that is 2 partitions instead of 30 for one
+workflow, and 2 instead of 30 × N once a second workflow writes notes — and it stops growing as the
+corpus ages, which is the property the finding names. A fixture that seeded four EVEN days would
+have printed a prettier number and measured less.
+
+**The archive freeze's own fix does not appear in row 4, and that is expected.** At 13 notes per run
+`freezeLogs` walks exactly ONE page, so reading the corpus once per freeze saves nothing here; row
+4's 14 → 13 and its ~4 ms are the receipt dedupe and the scoped notes read. The bound the freeze fix
+removes — up to `FROZEN_LOG_PAGE_LIMIT` (500) whole scans for one run, once per run in a version
+bump — bites a run with a long log, and is pinned in the unit lane instead (450 notes, three pages,
+one scan).
+
+**What D5 did NOT move, so nobody re-derives it:** rows 2 and 5's `rowsAvailable`/`members`, every
+`corpus…Available`, and the whole-day re-parse — those belong to D4 and D9.
+
 **These numbers become the gate by being RE-RUN, not by being retyped.** Track D's D4 and D5 run the
 exact command above against the exact same seed and record the delta beneath this table. Anything
 else — a hand-edited number, a different fixture, a different machine class — is a claim, not a
@@ -2143,7 +2196,7 @@ measurement.
 - [ ] D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified (the false D253 sentence in `src/dashboard/CLAUDE.md` was corrected with D3, `1b13115f`)
 - [x] D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold (`1b13115f`); the guard's second arm requires any module calling `.executeCommand(` to import it (`5c36a82d`)
 - [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against a seeded 1,240-row / 108-member fixture and recorded here as this section's first numbers
-- [ ] D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded
+- [x] D5 bound the read scans — the member preview slices ids before joining (`d6d6c758`), one receipt read per row (same commit), the notes reader scoped to its run's own `(workflow, date)` partitions (`c1fa129b`, margin corrected in `c547f65a`), the archive freeze scans once per page walk (`c74efcca`); all four pinned by their BOUND in `tests/unit/server/dashboard-read-scan-bounds.test.ts` (`4d3247d8`) and MEASURED above — day wire 6,718 → 5,568 statements, preview delta 216 → 6, logs scope 4 → 2 partitions
 - [ ] D11 the descriptor registry LEAVES the bundle — bootstrap serves `summary`, `enqueue` and `surfaces.inputRun`, and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251, §4)
 - [?] D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what §2 says it is
 - [?] D7 split `LoadedApp` along its own seams — `useDayRoute`/`useRunDetailState`/`useBulkSelection` into `app/*-model.ts`, the five takeover layouts into `app/takeovers.tsx`
@@ -2151,6 +2204,7 @@ measurement.
 - [?] D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured — this section's virtualize-or-page bullet
 - [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified that NOTHING in src/ or tests/ measures or asserts any budget in this section (no perf/budget/bench test, no 1,240-row fixture, no `memo`, no virtualization, no backpressure handling) — the section is normative and unenforced, exactly as D264 records; left: all eleven rows
+> 2026-08-21 | track-d D5 | D5 landed — the four read scans are bounded and the FIRST half of this section's owed numbers is recorded above (BEFORE `407d373f` → AFTER `c547f65a`, same command/seed/iterations). All four changes are behaviour-preserving, verified byte-identical over the perf fixture's whole day wire, three neighbouring days, six run details, six logs pages and five archive freezes. Two things a later reader should not have to re-derive: the day wire's −1,150 statements decompose exactly (940 receipt + 210 preview), and the logs row's modest 15 % is a property of the FIXTURE (78 % of its corpus is on the measured run's own day), not of the fix — what changed is that the read stopped growing with the corpus. Left: D4's half of the numbers, D2, D11
 > 2026-08-21 | track-d D1 | D1 landed as **D268** (`81bfed73`): one `deriveRunStatus`, one task-outcome vocabulary, one `panelKindOf`, pinned by `tests/unit/server/run-status-derivation.test.ts` asserting the queue row and the detail panel against each other; left: D2–D5, D11, and every number this section still owes
 > 2026-08-21 | track-d3 | D3 DONE (`1b13115f`, guard `5c36a82d`); left: ten rows. Nothing in this section's budgets moved — D3 is a settlement refactor with zero measured surface
 <!-- /roadmap-status -->
@@ -2326,6 +2380,6 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 - [~] 1 · 2 · 4 · 7 — partial, each with exactly one named blocker in the table above
 - [ ] 9 the complete reference matrix — Settings and the Session Panel are unroutable in the harness; keyboard/reduced-motion exist in one theme (§7.1)
 - [ ] 11 the cutover rehearsal — the isolation half is proven; the rehearsal itself has not run, and `--prod` must first mean what its name says (§6.9)
-- [ ] §7.4's budgets, which doc 05's exit criteria also gate on — normative and never measured; Track D's D4/D5 supply the first numbers
+- [ ] §7.4's budgets, which doc 05's exit criteria also gate on — normative and never measured until the 2026-08-21 instrument; D5's half of the numbers is recorded, D4's is not
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified each of the eleven criteria against the guard suite, the parity corpus and the served routes; left: 9 and 11 outright, four partials with one named blocker each, and the budgets
 <!-- /roadmap-status -->

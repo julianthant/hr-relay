@@ -31,8 +31,13 @@ import {
   type DashboardDayWire,
 } from "../../src/domain/dashboard/projection.js";
 import type { DashboardDayPatchSchema } from "../../src/domain/dashboard/subscription.js";
-import { listEventStreamFiles, readEventStreamLines } from "../../src/infra/events/jsonl-streams.js";
-import { buildRunSection } from "../../src/server/dashboard/queries/run-detail.js";
+import {
+  listEventStreamFiles,
+  readEventStreamLines,
+  readScopedEventStreamLines,
+  scopedEventStreamFiles,
+} from "../../src/infra/events/jsonl-streams.js";
+import { buildRunSection, runNotePartitionScope } from "../../src/server/dashboard/queries/run-detail.js";
 import { PERF_FIXTURE_PROFILE, seedDashboardPerfFixture, type PerfFixture } from "./dashboard-fixture.js";
 import { assertStatementCounterObserves, countSqliteStatements } from "./sqlite-statement-counter.js";
 
@@ -172,6 +177,33 @@ function noteCorpus(fixture: PerfFixture): { files: number; lines: number; bytes
   };
 }
 
+/**
+ * The partitions ONE logs GET is allowed to open, taken through the production
+ * decision function (`runNotePartitionScope`) rather than re-derived here — a
+ * benchmark that re-implemented the rule would report the rule it wrote, not
+ * the one the BFF applies.
+ *
+ * It is still a derived fact and not a syscall-level observation, for the
+ * reason the baseline paragraph already gives: Node snapshots ESM named
+ * imports of `node:fs` and no in-process counter can honestly watch that read.
+ * `…Available` above is the whole corpus; `…InScope` is what the reader may
+ * touch, and the gap between the two is the D5 finding stated as a count.
+ */
+function noteScopeForMeasuredRun(fixture: PerfFixture, runId: string): { files: number; lines: number } {
+  const row = fixture.runDetail.projection.runFold(runId);
+  const authority = fixture.runDetail.authority.getRun(runId);
+  if (row === undefined || authority === undefined) {
+    throw new Error(
+      `run ${runId} has no fold or no authority record; the logs scope it bounds cannot be reported`,
+    );
+  }
+  const scope = runNotePartitionScope(runId, row, authority);
+  return {
+    files: scopedEventStreamFiles(fixture.stateRoot, "notes", scope).length,
+    lines: readScopedEventStreamLines(fixture.stateRoot, "notes", scope).length,
+  };
+}
+
 /* ── the self-check (finding 1) ──────────────────────────────────────────── */
 
 /**
@@ -269,6 +301,7 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
     );
   }
   const corpus = noteCorpus(fixture);
+  const corpusInScope = noteScopeForMeasuredRun(fixture, measuredRun);
 
   /* D — the version-bump freeze, per run, over a five-run sample. */
   let sampleIndex = 0;
@@ -333,10 +366,12 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
         corpusLinesAvailable: corpus.lines,
         corpusBytesAvailable: corpus.bytes,
         corpusFilesAvailable: corpus.files,
+        corpusLinesInScope: corpusInScope.lines,
+        corpusFilesInScope: corpusInScope.files,
       },
-      note: "`noteLinesForRun` calls `readEventStreamLines(stateRoot, \"notes\")` unscoped as of this "
-        + "commit, so today it reads the whole corpus (`corpusLinesAvailable` etc., a fixture fact) to "
-        + "serve one run's page",
+      note: "`corpus…Available` is the whole corpus, unchanged by D5; `corpus…InScope` is what "
+        + "`noteLinesForRun` may open for THIS run, taken through the production "
+        + "`runNotePartitionScope`. Before D5 the reader was unscoped and the two were equal",
     },
     {
       id: "archive-freeze",
@@ -360,8 +395,10 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
         previewDeltaStatements: groupRow.count.statements - singleRow.count.statements,
         members: PERF_FIXTURE_PROFILE.operationMemberCount,
       },
-      note: "the delta is `#memberPreview` walking every member (getRun + latestCheckpoint) before "
-        + "`.slice(0, 3)`; it is paid on every day wire and every SSE snapshot",
+      note: "the delta is `#memberPreview`'s authority joins, paid on every day wire and every SSE "
+        + "snapshot. Before D5 it walked EVERY member (getRun + latestCheckpoint) and then "
+        + "`.slice(0, 3)`; it now joins only the members it can name, so the delta no longer scales "
+        + "with `members`",
     },
   ];
 }
