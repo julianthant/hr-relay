@@ -13,9 +13,12 @@
  * Port scope: the run-action renderers (footer, banner, park resolutions,
  * outcome, context menu) and the server-authored confirm dialog, typed against
  * the rebuild's `ActionDescriptorWire`. Still deferred with its surface:
- * `CommandResultFeed` + `toastAppliedCommandResult` (the applied-result feed
- * lands with the app's real `CommandResult` wiring; the REFUSAL half is already
- * live and raises its own persistent toast from `park-resolve.tsx`).
+ * `CommandResultFeed` + `toastAppliedCommandResult`. The reason they were once deferred on —
+ * "until the app's real `CommandResult` wiring" — is spent: `settleCommandResult` (D253) is that
+ * wiring, live since 2026-08-20, and all nine command-issuing surfaces settle through it. The
+ * applied-result feed is ABSENT pending the operator's ruling on whether it is built at all
+ * (`03a-finish-the-dashboard.md` OPEN question 24, ledger 2 B195/B196); the REFUSAL half is
+ * already live and raises its own persistent toast from `park-resolve.tsx`.
  *
  * `ParkResolutions` and the park command split were deferred here on the claim
  * that "no park commands exist in the Phase-1 action vocabulary". That claim is

@@ -2,13 +2,13 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx
  *
- * The 1i Receipt PLACEHOLDER (doc 01 §Integration amendment — Phase 1's share): the demo receipt's frame, verdict
- * band and absence treatments, fed only by what the 1g wire serves — the
+ * The demo receipt's frame, verdict band and absence treatments, fed by what the wire serves — the
  * terminal outcome and the receipt section resource (a pointer, or an explicit
- * missing / purged / error state). The full `RunEvidenceReceipt` body the demo
- * renders (writes with read-backs, per-member confirmations, completion
- * criteria, observations, decisions, reuse lanes, warnings) is fixture-fed and
- * lands with the trust surfaces in 2g; nothing here fabricates a line of it.
+ * missing / purged / error state). 2g landed the full `RunEvidenceReceipt` body: it renders in
+ * `trust.tsx`'s `ReceiptEvidenceBody` (input / observations / decisions / actions / verification /
+ * output / reuse / warnings), which this surface mounts once the resource resolves to a real
+ * receipt. This file owns the frame around it, not the body — the same false-deferral shape D251
+ * found on the picker (ledger 2 D39).
  *
  * The verdict word is read from `DS_STATUS`, never restated — a chip saying
  * `Done` beside a receipt saying `Verified done` was two names for one
