@@ -382,7 +382,7 @@
       "name": "one-time-import-offline",
       "file": "tests/unit/architecture/one-time-import-offline.test.ts",
       "status": "planned",
-      "owner": "docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md",
+      "owner": "docs/rebuild/05-cut-over.md",
       "invariant": "PLANNED, re-owned by D188 (2j, 2026-08-09) from the meaningless `phase-1-or-later` to the cutover gate. The invariant is that the one-time import of legacy operational data runs OFFLINE against a copy and never reaches a live system. It has no subject yet: no import path exists in this tree, and D150/D156 retired the legacy accounting that would have fed one. It activates in the commit that builds the cutover data migration (doc 05 \u00a7Exit criteria), not before.",
       "replacementRequired": true,
       "activationMilestone": "cutover-gate"

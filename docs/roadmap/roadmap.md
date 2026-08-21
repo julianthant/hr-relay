@@ -1317,15 +1317,20 @@ status: planned
 when: after Phase 3
 size: L
 chip: not started
-doc: 05 §Phase summary · 05 §Exit criteria · ref:dashboard-surfaces §5 · ref:dashboard-surfaces §5.4 · ref:frontend-backend-integration §10
+doc: 05 §Phase summary · 05 §Exit criteria · 05 §Legacy vs rebuild (as of 2026-08-21) · ref:dashboard-surfaces §5 · ref:dashboard-surfaces §5.4 · ref:frontend-backend-integration §7.4 · ref:frontend-backend-integration §10
 open: no
 
 > D89 / D93. No workflow flips individually, no mixed-engine production, ever. The entire legacy repo is preserved as the rollback asset; nothing in it is deleted until rollback-window closure with separate explicit authorization.
 
 builds:
+- [ ] BE the ledger's serialized writer composed in production — `createLedgerProjector` has no caller outside `tests/` while the read-through IS composed, so the dashboard reads a corpus nothing writes (doc 05 §Exit criteria 6)
+- [ ] PROOF the §7.4 performance and resilience budgets MEASURED on the local production build, and the numbers adopted as the non-regression gates (Track D D4/D5, D264)
+- [ ] PROOF the recovery drill rehearsed against the REAL authority database — the unit lane drills a real-shaped copy every commit, and D181 is what made `cli storage restore` reachable at all
+- [ ] PROOF T4 green — the agent-operated parallel end-to-end tier, which may not be scheduled before `{#parallel-runs}` and `{#duo-lease}` (ref guards-and-tests §10.8)
+- [ ] PROOF the cutover REHEARSAL — ref frontend-backend-integration §10 criterion 11; the isolation half is proven by `operational-isolation`, the rehearsal has never run
 - [ ] PROOF stop new legacy enqueues → drain / park / reconcile → back up both repos' state
 - [ ] BE approved offline one-time imports (`one-time-import-offline` guard activates)
-- [ ] PROOF atomically repoint the launcher → smoke gates
+- [ ] PROOF atomically repoint the launcher → smoke gates, with the legacy launch verified DISABLED as part of the same atomic unit (D89 step 4)
 - [ ] PROOF rollback bridge verified before the switch
 
 needs:
@@ -1340,24 +1345,34 @@ needs:
 - order-9
 - cross-cutting
 - track-d
-- fact: legacy capability register at zero open (48 open today)
+- fact: legacy capability register at zero open (47 open today, all owned by `phase-3-workflow-migration`)
 - fact: doc 05 §Exit criteria — the definition of done + the program-wide integration criteria (ref frontend-backend-integration §10) green in the real built app
+
+log:
+- 2026-08-21 | docs-cohesion 05 | doc 05 rewritten as-built — the register recount (47, not 48), five build items added for the definition-of-done conditions the tree lacked, and one FINDING: the ledger's serialized writer is built, tested and composed by nothing (`createLedgerProjector` is called only from `tests/`), so exit criterion 6 is open rather than met
 
 ### Rollback window, then closure {#rollback-window}
 status: planned
-doc: 05 §Rollback window, then closure · 05 §Phase summary · ref:dashboard-surfaces §5
+doc: 05 §Rollback window, then closure · 05 §Phase summary · 05 §Exit criteria · ref:dashboard-surfaces §5
 
-> Legacy code, tests and state intact; closure is its own later authorization.
+> Legacy code, tests and state intact; closure is its own later authorization. Nothing flips yet, so no window is open — and re-crossing is asymmetric: a launcher repoint before any native write, intent/ledger reconciliation and dedupe proof after one.
 
 needs:
 - cutover
+- you: the closure authorization — deletion or retirement of the legacy repo is OUTSIDE this cutover and has no trigger, no elapsed-time rule and no automatic expiry (D89)
+
+log:
+- 2026-08-21 | docs-cohesion 05 | the section was a pointer paragraph; it now states what the window IS, what closes it, and why nothing has opened — the rollback bridge stays a `{#cutover}` build item rather than being duplicated here
 
 ### Later, unplanned {#later-unplanned}
 status: never
 chip: ideas, not a hosted future
 doc: 05 §Later, unplanned · ref:operator-trust §7
 
-> Package the local app ("web app → real app"); a cooperation / multi-user mode built on top of solo (D193).
+> Package the local app ("web app → real app"); a cooperation / multi-user mode built on top of solo (D193). The LATER tier of D76's MUST / SHOULD / LATER sizing — what the stop-loss cuts FIRST — and it never blocks the cutover: doc 05 §Exit criteria names none of it.
+
+log:
+- 2026-08-21 | docs-cohesion 05 | filled as-built — the two D193(a) items carry no owner and no design (which is what separates them from a doc 04 deferral), the four D75 seams that keep them possible are built, and hosting is a decided refusal rather than a LATER item
 
 <!-- roadmap:end -->
 
