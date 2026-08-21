@@ -1794,8 +1794,20 @@ built arm. Three are live operator or orchestrator calls, each with the migratio
 ---
 
 ## 14. The identity-approval gate — the wrong-PERSON control
+<!-- roadmap: phase0-always-gate -->
 
-Status: **designed 2026-07-26 (D77).** Policy ratified by the operator 2026-07-24: **ALWAYS-GATE**
+<!-- roadmap-status: phase0-always-gate -->
+- [x] designed in Phase 0 on the operator's ALWAYS-GATE ratification (D77, 2026-07-26) — no auto-approve-on-match mode, both separation types
+- [x] BUILT, live-proved and terminal `done` over a real person through the real command endpoint (D202, §14.9)
+- [x] the packet carries §14.10's write plan, so the digest an approval binds to covers the values the writes will consume, not only the person (D211)
+- [x] all three ceremonies exist and an unrecognised `approvalShape` refuses BY NAME (D226, §14.11)
+- [x] the ONE ratified exemption is scoped and its expiry named (D127, §14.8)
+- [x] the argument in one line, live: the `T002173685` incident's own name pair classifies as `same`, so a tier-TRIGGERED gate would not have fired on the case it exists for (§14.10)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-evidence.ts` (`deriveApprovalShape`), `src/domain/separations/identity-approval.ts` (the three durable codes), `src/domain/trust/gate-decisions.ts`, `src/dashboard/app/identity-ceremony.ts`, `src/dashboard/surfaces/identity-approve.tsx`, `tests/unit/architecture/identity-gate-before-commit.test.ts`; left: nothing in the design — §14.7's two migration values are still unasked
+<!-- /roadmap-status -->
+
+Status: **designed 2026-07-26 (D77); BUILT and live-proved 2026-08-12 (D202), packet widened
+2026-08-14 (D211), all three ceremonies shipped 2026-08-19 (D226).** Policy ratified by the operator 2026-07-24: **ALWAYS-GATE**
 — manual approval on every separation, for both separation types the operator distinguishes
 (**Kuali separations** and **I-9 separations**), with **no auto-approve-on-match mode**. **Scope
 (D127, 2026-08-04): §14.8** records the one ratified exemption — `kuali-timekeeper-annotation`,
@@ -1804,6 +1816,7 @@ show. D77 is otherwise unchanged and still binds every commit that consumes an o
 subject.
 
 ### 14.1 Why this section exists at all
+<!-- roadmap: phase0-always-gate -->
 
 Everything else in this doc guards the *double-file* class. It cannot guard the *wrong-person*
 class, and §0 says so: incident `T002173685` was a **wrong-data** error — a name-search override
@@ -1850,6 +1863,8 @@ Three legacy mechanics do **not** port, because the rebuild has real gate nodes:
   the write live in one trace with one identity.
 
 ### 14.3 Where the gate sits in the graph
+<!-- roadmap: sep-3 -->
+<!-- roadmap: sep-6a -->
 
 ```
   read: resolve candidates ─► GATE identity-approval ─► transaction[ prepare ─► bind ─► fence ─► commit ─► proof ]
@@ -1928,13 +1943,62 @@ does eliminate is the class of wrong-person write that happened *with no human e
 candidate*, which is exactly what `T002173685` was.
 
 ### 14.7 Open question deliberately left to migration
+<!-- roadmap: order-8 -->
 
 The gate is designed here; two values belong to the separations §b questionnaire: the **freshness
 limit** on the approval (how long may an approval sit before re-gating — hours, not days), and
 whether **I-9 separations** show a different candidate packet than Kuali separations (the operator
 distinguishes the two types; the resolver schema is shared either way).
 
+
+### 14.8 Scope — the Kuali timekeeper-annotation workflow takes NO identity-approval gate (D127)
+<!-- roadmap: p2-proof -->
+
+**Ratified by the operator 2026-08-04.** `kuali-timekeeper-annotation` — the Phase-2 transaction
+proof (§Phase 2 transaction-proof as-built, D122) — **does not get an identity-approval gate.** Its
+wrong-person safety rests entirely on the **machine-verified subject binding**: the write sequencer
+reads the EID displayed on the live document and produces **zero fence and zero click** on
+mismatch, on an unreadable EID, or on a subject that changed after `prepare`. That is a proven
+control in this tree, not an assumption — the dry-run half drives those exact arms at beat ① and
+beat ③ over a real authority database.
+
+**Why the gate does not attach, stated as a rule and not as a preference.** §14 exists for the
+wrong-**business-selection** class: a run resolves *which human* to act on from a name search or a
+roster, and no page observation can catch a correct-looking selection of the wrong person. This
+workflow resolves nothing. The operator supplies the document, the run opens that exact document by
+its deep link, and the only question left — *is the document in front of me the one I mean?* — is a
+question the page can answer, which is precisely what binding does. Adding a gate here would ask
+the operator to confirm an identity the machine already verified against the live page, on every
+run, which is §14.6 risk 1 (rubber-stamping) manufactured deliberately: gates that carry no signal
+train the operator to click through the ones that do.
+
+**This is a SCOPED decision, not a general waiver, and must never be cited as one.** D77's
+ALWAYS-GATE policy is untouched and still binds every separation-class workflow, both types. More
+generally **D77 still binds any commit that consumes an operator-approved subject**: where a run's
+`expected` subject originates in an operator decision, the gate is mandatory, the binding proof
+still runs at the fence, and neither layer substitutes for the other (§14.1). The exemption here is
+narrow and rests on two facts that are checkable, so a future workflow claiming it must show both:
+
+1. **The subject is not selected by the run.** It arrives as an operator-supplied document/record
+   identity, and the run never resolves a person from a search, a name match, or a roster row.
+2. **The write files nothing of separation class.** `kuali/save-timekeeper-annotation` writes a
+   benign annotation field on a draft, reversible by writing the captured previous value back
+   (D122/D78). It does not terminate, hire, pay, or separate anyone.
+
+Lose either fact — the workflow starts resolving a person, or its target widens past the annotation
+field — and §14 attaches again. Recording that boundary is the point of writing this down: the
+exemption is a property of this graph, and it expires the moment the graph changes.
+
 ### 14.9 As-built — the gate is BUILT, and three things changed on contact (D202, 2026-08-12)
+<!-- roadmap: sep-3 -->
+
+<!-- roadmap-status: sep-3 -->
+- [x] separations chunk 3 builds §14 as `separations-identity-check` — two UCPath reads, a pure comparison producing the decision packet, the operator gate, and a post-gate check; registered, live-proved and terminal `done` over a real person (D202)
+- [x] `identity-gate-before-commit` audits BOTH sinks and caught the descriptor's first draft (D202); the same guard pins the registered gate's schema hash to `IdentityApprovalResultSchema`
+- [x] a gate has NO checkpoint and never will, so its durable record is the `gate_results` row — and the kernel's freshness walk reads it as ONE `operator`-sourced fact (D203), while the receipt reads it through the DECLARED mapping in `src/domain/trust/gate-decisions.ts` rather than sniffing the payload for a field called `decision` (D204)
+- [x] `ucpath/read-job-summary` returns the whole grid VERBATIM and classifies nothing; the disposition is a pure unconditional fold, so a single-employment person who is already terminated is checked rather than skipped (D201)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-approval.ts:83-165`, `src/domain/trust/gate-decisions.ts`, `tests/unit/architecture/identity-gate-before-commit.test.ts`; left: nothing in chunk 3
+<!-- /roadmap-status -->
 
 Separations chunk 3 (`docs/migrations/separations.md` §9.5/§9.6) builds §14 as
 `separations-identity-check`: two UCPath reads, a pure comparison producing the decision packet, the
@@ -1991,6 +2055,7 @@ decides without leaving the dashboard, and a wrong-person control whose evidence
 control that cannot be exercised.
 
 ### 14.10 The packet carries the WRITE PLAN, and the digest binds to it (D211, 2026-08-14)
+<!-- roadmap: sep-6a -->
 
 §14.4's packet list ends at "the fields that agreed vs disagreed", which is complete for a gate whose
 only question is *is this the right person*. Separations chunks 4 and 5 each discovered the other
@@ -2029,6 +2094,20 @@ the longer side. Legacy fires its wrong-person control only on `different`. A ti
 not have fired on the very case it exists for.
 
 ### 14.11 As-built — the THREE CEREMONIES exist, and an unknown shape refuses (D226, 2026-08-19)
+<!-- roadmap: track-b -->
+<!-- roadmap: sep-dash -->
+
+<!-- roadmap-status: track-b -->
+- [x] B1 — all three gate ceremonies are built and the surface renders exactly the one control the server asked for (`src/dashboard/app/identity-ceremony.ts`, `src/dashboard/surfaces/identity-approve.tsx`); the `choose` ceremony selects no default, and an unrecognised `approvalShape` refuses by name in both the type system and at runtime (D226)
+- [x] the parity corpus photographs a gated run for each shape, with the shapes DERIVED by `deriveApprovalShape` from real inputs rather than authored
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/separations/identity-evidence.ts:208` and the two dashboard modules; left: nothing in B1 — the rest of Track B is ref dashboard-surfaces's and ref frontend-backend-integration's
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: sep-dash -->
+- [x] wire square 5.1.4, the gate ceremony, is the one square this doc owns: the approval shape is computed SERVER-side and served, and the client may compose no leaf of the result but the operator's own decision
+- [ ] the other eight wire squares are ref dashboard-surfaces's, ref frontend-backend-integration's and ref operator-trust's
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/dashboard/app/identity-ceremony.ts` (`composeCommandRequest`) and `src/domain/dashboard/run-detail.ts:938-944`; left: nothing this doc owns
+<!-- /roadmap-status -->
 
 §14.6 risk 1 requires the **shape of the control to change with the risk**, and §14.9's as-built
 records how that is enforced on the server: `approvalShape` is computed in
@@ -2089,40 +2168,3 @@ section since it existed, so every `run-open-gate` reference showed a decision c
 answer it and all three ceremonies were unphotographed. Two gated fixtures now serve one each, with
 their shapes DERIVED by `deriveApprovalShape` from real inputs rather than authored — a fixture that
 asserted the shape would photograph its own opinion of a policy this section makes the server's.
-
-### 14.8 Scope — the Kuali timekeeper-annotation workflow takes NO identity-approval gate (D127)
-
-**Ratified by the operator 2026-08-04.** `kuali-timekeeper-annotation` — the Phase-2 transaction
-proof (§Phase 2 transaction-proof as-built, D122) — **does not get an identity-approval gate.** Its
-wrong-person safety rests entirely on the **machine-verified subject binding**: the write sequencer
-reads the EID displayed on the live document and produces **zero fence and zero click** on
-mismatch, on an unreadable EID, or on a subject that changed after `prepare`. That is a proven
-control in this tree, not an assumption — the dry-run half drives those exact arms at beat ① and
-beat ③ over a real authority database.
-
-**Why the gate does not attach, stated as a rule and not as a preference.** §14 exists for the
-wrong-**business-selection** class: a run resolves *which human* to act on from a name search or a
-roster, and no page observation can catch a correct-looking selection of the wrong person. This
-workflow resolves nothing. The operator supplies the document, the run opens that exact document by
-its deep link, and the only question left — *is the document in front of me the one I mean?* — is a
-question the page can answer, which is precisely what binding does. Adding a gate here would ask
-the operator to confirm an identity the machine already verified against the live page, on every
-run, which is §14.6 risk 1 (rubber-stamping) manufactured deliberately: gates that carry no signal
-train the operator to click through the ones that do.
-
-**This is a SCOPED decision, not a general waiver, and must never be cited as one.** D77's
-ALWAYS-GATE policy is untouched and still binds every separation-class workflow, both types. More
-generally **D77 still binds any commit that consumes an operator-approved subject**: where a run's
-`expected` subject originates in an operator decision, the gate is mandatory, the binding proof
-still runs at the fence, and neither layer substitutes for the other (§14.1). The exemption here is
-narrow and rests on two facts that are checkable, so a future workflow claiming it must show both:
-
-1. **The subject is not selected by the run.** It arrives as an operator-supplied document/record
-   identity, and the run never resolves a person from a search, a name match, or a roster row.
-2. **The write files nothing of separation class.** `kuali/save-timekeeper-annotation` writes a
-   benign annotation field on a draft, reversible by writing the captured previous value back
-   (D122/D78). It does not terminate, hire, pay, or separate anyone.
-
-Lose either fact — the workflow starts resolving a person, or its target widens past the annotation
-field — and §14 attaches again. Recording that boundary is the point of writing this down: the
-exemption is a property of this graph, and it expires the moment the graph changes.
