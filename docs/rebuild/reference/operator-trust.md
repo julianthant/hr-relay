@@ -1,25 +1,22 @@
 # 12 — Operator Trust, Semantic UI Vocabulary, Diagnostics, Knowledge & Workflow Authoring
 
-Status: **Binding design with the Phase 1b trust-schema foundation implemented 2026-07-31 — added
-2026-07-22 after the whole-plan/legacy-code review;
-amended 2026-07-26 (Round 8).** This document owns the human-facing foundation that turns the typed
-executor into a system the single operator can understand, debug, extend, and trust. It is
-**local-first with deliberate multi-user seams** (D75, §7): it does not add RBAC, user management,
-remote administration, distributed coordination, or enterprise deployment ceremony, but four seams
-that make a later multi-user migration configuration rather than a second rebuild are load-bearing
-from day one and may never be trimmed. It retains correctness controls, PII/secret redaction,
-local-only network defaults, durable recovery, and evidence because this tool reads and writes real
-HR records. **Round 8 also trims the DSL graph-authoring mode entirely (§5.4, D79a).**
-**Amended 2026-07-30 (Round 9):** the base-capability inventory names explicit per-workflow worker
-counts and authored fresh-browser-session boundaries instead of executor lanes/capacity math (D87).
-**Amended 2026-07-31 (Round 10):** UI knowledge is copied with provenance into an isolated rebuild;
-the explorer is Phase-2-only and graph DSL/codegen remains cut.
-**Amended 2026-07-31 (Round 11 — D93):** that isolated rebuild is now a standalone
-`hr-automation-rebuild` repo (rebuild code at plain `src/`), so copy-with-provenance records the
-legacy-repo commit hash alongside the source path/key and "no rebuilt module imports legacy code"
-is structural rather than guarded.
-**Amended 2026-08-02 (Round 18):** Phase 1f owns the minimal durable `FailureRecord` authority;
-Phase 2g still owns automatic bundles, receipts, explain/search, and rich operator projections.
+Status: **binding contract; as-built through Phase 2j, Track B (D227/D237) and D262's gate-park
+publisher, re-verified against the code 2026-08-20.** This document owns the human-facing foundation
+that turns the typed executor into a system the single operator can understand, debug, extend and
+trust. It is **local-first with deliberate multi-user seams** (D75, reaffirmed D193 — §7): no RBAC,
+no user management, no remote administration, no distributed coordination, but four seams that keep
+a later multi-user migration configuration rather than a second rebuild. It retains correctness
+controls, PII/secret redaction, local-only network defaults, durable recovery and evidence, because
+this tool reads and writes real HR records.
+
+**Where the code and this document disagreed on 2026-08-20, the code won and the sentence changed.**
+A contract that is designed but unbuilt now says so by name in its own section instead of being
+written in the present tense; each such gap names the node that owns it. The standing shape
+decisions this doc still carries: the DSL graph-authoring mode is trimmed (§5.4, D79a), the Workflow
+Explorer's EDIT half is deferred behind a named trigger (§5.3, D186), UI knowledge is copy-ported
+with provenance into a repository that shares no module graph with legacy (§1.3, D93), and the
+minimal durable `FailureRecord` is Phase 1f's while automatic bundles, receipts and `explain` are
+Phase 2g's (§2).
 
 ## Ownership (D1)
 
@@ -43,519 +40,19 @@ schema-versioned diagnostic attachment that no workflow, command, projection, or
 
 ---
 
-## Phase 1b as-built trust-schema subset (2026-07-31)
-
-Strict schemas now exist for failures, redacted diagnostic bundles, terminal evidence receipts,
-scenario manifests, preflight scenarios, and knowledge/fix records. Receipt invariants reject false
-verified completion, unresolved mandatory evidence, invalid warning/failure combinations, and
-duplicate evidence-entry identities. Every top-level evidence row schema is present in the strict
-boundary catalog and exercised against recursive unknown-key injection. This is the schema
-foundation only: evidence persistence/projection, `explain`, semantic UI registries/drivers, and
-authoring/explorer surfaces remain with their later owning work items.
-
-## Phase 1d UI seam ratification (2026-08-01)
-
-- **D98 — verification is conjunctive, not singular.** Every runtime/catalog element recipe,
-  page-state rule, or observation recipe carries both a required deterministic fixture-evidence ref
-  and a required read-only live-evidence ref. Candidate port-inventory rows carry neither and cannot
-  enter a runtime registry or generated catalog. The old singular `verified` field is retired.
-- **D99 — UI verification scenarios are UI-owned.** Registry scenario refs resolve against a small,
-  strict UI verification-scenario schema/corpus owned beside the UI registry. It imports the
-  canonical `ScenarioId` grammar and enforces global uniqueness with the existing trust scenario
-  corpus; it does not distort `ScenarioManifest` before 1e. Every actual registry fact resolves at
-  least one scenario non-vacuously.
-- **D101 — semantic ids are imported.** UI modules import/re-export the existing `ElementId`,
-  `ScreenId`, `PageStateId`, and `ObservationId` schemas/types from `src/domain/ids.ts`; no driver or
-  registry redeclares those closed identities.
-- **D208 (2026-08-14) — "resolves to exactly one node" and "resolves to exactly one EDITABLE node"
-  are different evidence strengths, and a write-surface anchor requires the second.** D98 made
-  verification conjunctive but left every positive assertion at one strength:
-  `exactly-one-visible` says a recipe resolved to a single node and says nothing about whether that
-  node could have been typed into. That is the whole of the evidence a **read-only** record can
-  supply, and it is not the evidence a **staging** anchor needs — a Kuali document rendered at a
-  step that owns no edit right resolves each control to exactly one node, disabled, and reads as
-  verified. `UiVerificationAssertionSchema` therefore carries a strictly stronger arm,
-  **`exactly-one-editable`**: the recipe resolved to one node AND that node was live-observed
-  `isEditable()` (text controls) or `isEnabled()` (select, checkbox, radio). The rules that follow
-  from it are normative:
-  1. An element recipe whose declared `UiEffect` is `prepare` or `external-commit` must carry
-     `exactly-one-editable` in its live-read-only manifest, or carry a named, dated exception
-     pointing at STRONGER evidence — a controlled commit on that exact control is stronger than any
-     assertion in this vocabulary, and `kuali/timekeeper-field` stands on D135's for exactly that
-     reason.
-  2. `exactly-one-editable` claims nothing about a WRITE. `externalWriteAttempted` stays
-     `z.literal(false)` in every manifest: a value staged into a control and discarded by a reload
-     never left the browser, and a manifest that could say otherwise would be the one place in this
-     tree where read-only evidence can assert an external effect.
-  3. The arm is **additive to** `exactly-one-visible`, never a rename of it. A read-only screen's
-     observation recipes keep the weaker arm truthfully; downgrading them would claim editability
-     nobody looked for, and upgrading the enum in place would silently restate every historical
-     manifest as evidence it never gathered.
-
-  As-built: nine of the ten separations-finalization controls in
-  `evidence/ui/kuali/separation-document.live.json` at `verifiedAt: 2026-08-14`
-  (`docs/migrations/separations.md` §9.12 item 3).
-
-  **Enforcement status, stated rather than assumed.** The schema arm exists and
-  `semantic-ui-registry` resolves every manifest assertion against the registry as before; rule 1 is
-  an **authoring** obligation today, not a machine check, because the one standing exception
-  (`kuali/timekeeper-field`, on D135's controlled commit) has nowhere structured to live — an
-  element cannot yet cite evidence stronger than an assertion arm. The trigger that ends that is the
-  second such exception: at two, the registry element gains a closed
-  `strongerEvidence: { kind: "controlled-commit"; decision: DecisionId }` field and
-  `semantic-ui-registry` refuses a `prepare`/`external-commit` element that carries neither
-  `exactly-one-editable` nor that field. One exception is a fact; two is a pattern, and a pattern is
-  what a guard can hold without inventing a schema for a sample of one (D79a's own argument).
-
-### Phase 1d as-built seed (2026-08-01)
-
-The first real registry/driver slice is intentionally narrow and submit-free: UCPath Person
-Organizational Summary owns semantic ids for its search/detail screens, EID input/display elements,
-ready states, and authoritative displayed-EID observation. Only the two reviewed legacy selector
-rows are classified as ported; `getContentFrame()` is private driver-root infrastructure and all
-other path-derived selector proposals remain unclassified candidates. The server registry owns the
-closed locator/state/read recipes and exact pinned legacy provenance. Bundle-safe domain modules
-export only schemas, stable ids, typed proofs, and the `UcpathPersonOrgDriver` contract.
-
-The deterministic fake proves search → canonical EID fill → detail → displayed-EID equality. A
-headless live/read-only Duo-Autopilot check independently proved exactly one iframe-scoped `Empl ID`
-textbox and exactly one authoritative `#PERSON_NPC_VW_EMPLID` whose text equaled the searched EID;
-the sanitized evidence manifests record no captured value and no external write attempt. Generated
-JSON/Markdown catalogs and `selector:search` consume the recipe-free projection only. Active guards
-make the disjoint `candidate:<system>/<proposal>` namespace unable to enter any catalog kind and
-keep raw Playwright calls in driver/session owners through AST plus transitive import-graph checks.
-`selector:search` fails loud when its generated catalog is stale, on a zero-match intent, and
-without an intent argument; behavioural CLI fixtures exercise both scripts as real child processes
-and assert the projection leaks no locator recipe, closing the legacy
-`src/scripts/selectors/{catalog,search,search-lib}.ts` capabilities as `replaced` (§3.6). Each
-published fact is bound to
-one exact fixture and live assertion carrying the same system, screen, scenario, date, and port-map
-row; same-screen state dependencies and acyclic `supersedes` edges are audited. Driver `fill` and
-`read` enforce required states immediately before interaction, and the displayed-EID recipe retains
-the full reviewed legacy three-arm `.or(...)` fallback order. External-commit implementations and
-`MutationCapability` assertions remain prohibited until the Phase-1f runtime token validator exists.
-
----
-
-## Phase 2g as-built — the trust tables exist (2026-08-04, D134)
-
-Authority schema **v10** creates every durable table this doc's §2.2/§2.3/§4 records need, so no
-later 2g slice has to touch the released migration chain:
-
-| Table | Owns | Column-bound facts (boot invariants check them against `record_json`) |
-|---|---|---|
-| `diagnostic_bundles` | §2.2 | run, origin kind, failure id, content digest, retention kind, purge instant. `purge_after` exists **exactly** when retention is `ordinary`; a failure id exists **exactly** when the origin is not `operator-request`. |
-| `diagnostic_attachments` | §2.2 | one row per `(bundle, artifact)`, with kind/digest/sensitivity, so an artifact is findable without scanning bundle JSON. The bundle's `attachments` array length must equal its indexed row count. |
-| `evidence_receipts` | §2.3 | one receipt per terminal run (`run_id` UNIQUE), with result, confidence, and failure id. `failed` is the only result that may name a failure and the only one that must; `verified-done` may only carry `verified` confidence. |
-| `knowledge_records` · `fix_records` | §4.1/§4.2 | status column for the active-only view; `fix_records.failure_fingerprint` is indexed for `explain failure`. |
-
-`failures` also gains a searchable `fingerprint` column with an index and a not-null insert trigger,
-and `FailureRepository` gains `listByFingerprint`/`countByFingerprint` — §2.1's "same failure seen
-before" and §4.2's `explain failure <fingerprint>` are lookups, and the ref dashboard-surfaces repeat-threshold
-notification trigger needs a count, not a scan over parsed JSON.
-
-**Deliberately conservative, and named as such.** Knowledge and fix repositories are insert-only.
-§4.3's audit ("marks stale records `unverified`") needs a CAS on a record version, and
-`KnowledgeRecordSchema` carries no `version` — adding one is a schema decision the maintenance slice
-should ratify rather than something this foundation guesses. §4.1's `knowledge/records/` file layout
-and the generated per-system `KNOWLEDGE.md` remain that slice's work; the table is the authority the
-generator reads.
-
-Not landed with D134: the receipt builder, `explain run`/`explain failure`, and the dashboard
-projections — all three land below in D140–D143, which is where the `evidence-receipt` guard becomes
-**active**. `notification-durability` and `knowledge-fix-integrity` activate with D138/D139 below.
-
----
-
-## Phase 2g as-built — capture, inbox, and knowledge (2026-08-04, D137/D138/D139)
-
-### D137 — a bundle is captured at the trigger, redacted at capture, and bound to its failure
-
-The trigger set is **closed and is §2.2's own sentence**: unexpected state, task failure, subject
-mismatch, recovery park, operator-requested snapshot. Each maps one-to-one onto a stored
-`DiagnosticBundle.origin` arm, and the mapping is what decides whether a `failureId` or a
-`requestedBy` actor is mandatory — a mis-triggered capture fails before an artifact is written.
-
-**Redaction is schema-owned and happens at capture.** `redactDiagnosticFields` DROPS every field it
-cannot classify, with a warning naming its index; nothing unclassified is "passed through for the UI
-to hide". A second lock refuses a bundle in which a never-exportable key (any secret name, cookie,
-storage state, SSN) survived as an `allowed` value, so a mis-classification fails loud instead of
-exporting. Only a screenshot may stay `restricted`; every other attachment arm is redacted text.
-
-**The failure and its bundle land in one transaction, and the ordering is forced.**
-`diagnostic_bundles.failure_id` references `failures(record_key)` while
-`FailureRecord.diagnosticBundleId` is a forward reference the failure row must already carry — so
-neither can be written second on its own. Capture is therefore two phases: `prepare` redacts and
-writes attachments to the content-addressed store (nothing durable in authority has moved; a crash
-leaves at most an unreferenced artifact, which that writer already tolerates), and the interpreter
-then terminalizes the failure carrying the prepared `bundleId` and `persist`s the bundle inside the
-SAME authority transaction as the terminal CAS. A failure can never point at a bundle that does not
-exist, and a bundle can never outlive its failure. Injecting the capture port without an authority
-transaction fails loud rather than settling half of it.
-
-**Retention is a bounded delete, and a pin is a recorded fact.** An ordinary bundle's `purgeAfter` is
-derived from its OWN capture instant plus the D86 notes floor, never from wall-clock now at sweep
-time. The sweep reads the `(retention_kind, purge_after)` index, so a pinned bundle is structurally
-unreachable from it; purging a pinned bundle by name, or one whose instant has not passed, throws.
-Attachment rows and the bundle row are deleted together so the boot invariant tying a bundle's
-`attachments` array to its indexed rows can never observe a half-purged bundle.
-
-The content-addressed **artifact bytes are not deleted**. They are shared by digest, so a receipt, a
-second bundle, or a scenario fixture may still hold exactly those bytes; the sweep reports the
-now-unreferenced artifact ids and reclaiming them needs a reference count the artifact store does
-not keep. That is a named residual, not an oversight.
-
-**Disposition, operator 2026-08-12 (D193): both storage remainders are `wont-build-unless-asked`.**
-The two open items in this area — **scheduling** the 14/8/5 retention sweep (the sweep function
-above is built and tested; nothing in the running system calls it on a cadence) and the
-**content-store refcount** that would let those unreferenced artifact bytes be reclaimed — move off
-"deferred with an owner" and onto **nobody's milestone**. They are not planned, not owed by any
-slice, and no future gate is blocked on them.
-
-**The operator's reasoning, recorded because it is the part that generalizes: this authority
-database stores records of COMPLETIONS, not primary records.** The real record of a completed HR
-transaction lives in **the external system itself** — the UCPath transaction, the Kuali document —
-and can be checked there, in more than one way. What the rows here carry is **how** a thing was
-completed and **whether** it completed; once a thing is completed and approved, those rows mean
-little going forward. That is why backup is **non-critical at this scope**, and why a manual folder
-copy of `.tracker-rebuild/` taken with the app stopped is an acceptable backup for one person on
-one machine — and why disk growth is not a problem worth a durable reference count.
-
-**What that reasoning does not say.** It is about the standing value of *old* rows, not about
-durability *during* a write: a `write_intents` fence, its binding proof, and the parked-intent rows
-are load-bearing for the run that is in flight, and the fail-closed guarantees in ref write-safety rest on
-them being durable at the instant they are written. Nothing here weakens that. Equally, **nothing
-already built is removed** — capture, capture-time redaction, the pin/purge invariants, the
-`purgeAfter` derivation from the bundle's own instant, and the sweep's own refusals stay exactly as
-designed, so scheduling it remains a small addition the day the operator asks. The decision is about
-*further investment*, not about what exists: **no further storage/retention work happens unless the
-operator asks for it.**
-
-**Named seams.** The interpreter terminalizes after its driver lease has closed, so it holds no page:
-screenshots and accessibility excerpts arrive through an injected `attachmentsFor` seam that the
-system-driver layer fills in. Absent, the bundle carries structured evidence only — never a
-fabricated screenshot. `FailureRecord.summary` is deliberately not copied into the bundle: it is
-free text that can carry a name or an EID, it already lives in the failure row the bundle joins to,
-and duplicating it into an exportable artifact widens the blast radius for nothing.
-
-### D138 — the durable row is committed BEFORE any delivery, and a failed toast changes nothing
-
-`publish` settles create-or-fold in one authority transaction and only then attempts OS delivery.
-A delivery that throws is **reported and never written back**: status, count, and version are
-untouched, so the operator who missed the toast still finds an unread item — that, not the toast, is
-the alert (§6, ref dashboard-surfaces §10.4). No per-attempt delivery state is stored; storing one would invite a
-retry loop that mutates the record the operator is reading. A missing desktop channel reports
-`no-channel`, never success.
-
-Ref dashboard-surfaces §2.6's event list routes onto D79b's six trigger keys: run failure and subject mismatch →
-`failed`; open operator gate → `gate-waiting`; unknown write outcome → `write-parked`; repeat
-threshold → `repeating`; storage degradation, stalled lease/outbox, and failed backup → `storage`;
-and the verified-done receipt → `verified-done`. The first five ping; `verified-done` is inbox-only.
-
-**A notification carries no free text.** Every trigger-event arm is ids, closed codes, and counts,
-and the title/summary are composed from those — because §2.6 forbids raw secrets and captured form
-contents in notification text, and the only way to guarantee that is to give leakage nowhere to
-enter. The dedupe fingerprint covers what makes two firings the same trigger and never the
-occurrence, the instant, or the count, so a repeat folds (§6.1) instead of minting a row. Snooze
-suppresses delivery only: it never flips status, and marking read never clears a snooze.
-
-### D139 — knowledge is admitted before it is inserted, and supersession is expressed forward
-
-The knowledge/fix tables are insert-only (D134), so a duplicate that lands cannot be retracted.
-Admission is therefore audited INSIDE the insert transaction. Two ACTIVE records may not claim the
-same scoped rule — identical scope plus either the same normalized title or a shared regression
-scenario — unless the successor explicitly supersedes the predecessor. An unknown supersedes ref, a
-self-reference, and a duplicate id are each refused with the conflict named.
-
-**Supersession is expressed forward by the new record**, and the active view subtracts every
-superseded id. Nothing rewrites the older row, so the generated guide stops showing stale advice
-without any record mutating and without the `version` field §4.3's audit would need. §4.3's
-"mark stale records `unverified`" still awaits that schema decision — this slice does not guess it.
-
-The generated per-system `KNOWLEDGE.md` is the ACTIVE view alone: superseded, retired, and
-unverified records never reach it, and its header says it is generated so it cannot read as a second
-authority. §4.1's `knowledge/records/` on-disk file layout is not built; the table is the authority
-and `writeKnowledgeProjection(root)` is the generator. Wiring it to an npm script is 2i's, with the
-explorer.
-
-A verified `FixRecord` requires a commit plus non-empty verification evidence plus a regression
-scenario; a draft may claim neither commit nor evidence; a verified fix may not link knowledge that
-is missing or itself `unverified`. **A raw appended lesson is not authority**: `triageLesson` has
-exactly one arm, and it returns the obligations the author still owes — there is no path from prose
-to a record.
-Still Phase-2g work, not landed here: automatic bundle capture triggers, retention/pinning sweeps,
-notification trigger wiring, and `explain failure`. The `notification-durability` and
-`knowledge-fix-integrity` guards stay **planned** until those features exist.
-
----
-
-## Phase 2g as-built — the receipt is derived, not minted (2026-08-04, D140–D143)
-
-The §2.3 receipt builder, its declared redaction, the §2.1 rich failure projection, and §2.5's
-`explain run` landed together. `evidence-receipt` is now **active**.
-
-### D140 — evidence classification and cross-source obligations are DECLARED
-
-`src/domain/trust/evidence-classification.ts` binds every leaf of every workflow input, task output,
-and workflow result to one ref clock-config-secrets §6 classification plus one permitted transform. Three rules make
-it enforcement rather than decoration:
-
-- **An undeclared leaf fails loud.** `redactDiagnosticFields` drops an unclassified *diagnostic*
-  field with a warning because that channel accepts free-form payloads. A receipt's leaves come from
-  schemas this repository owns, so an undeclared leaf is a missing declaration — a code gap, closed
-  the way `pending-impl-bindings.json` closes one. Dropping it would make a receipt look complete
-  while hiding what the run read or wrote.
-- **The leaf rule is the provenance collector's.** An array is a leaf, an empty object is a leaf, a
-  populated object recurses — exactly `src/core/task-provenance.ts`. A finer rule would produce
-  facts no stored `FactProvenance` row could date, forcing the receipt to guess an observation
-  instant.
-- **The transform is refused at DECLARATION time.** `evidenceTransformAllowed` backs both the
-  diagnostic-field schema and the classification schema, so a `secret`/`allow` line cannot sit in
-  the table looking reviewed until the first run that carries that field.
-
-Business values (`employeeStatus`, `rawStage`, `documentNumber`, onboarding dates, page-state ids,
-proof sources) are `safe-diagnostic`: they describe the transaction, not the person, and the queue
-row already shows them. Person identifiers are `direct-identifier`/`last4`. A LIST of people is
-`sensitive-hr`/`count` — "one candidate matched" is the fact that decides whether a search was
-unambiguous, answerable without naming anyone who was not selected.
-
-`evidence-obligations.ts` is what makes the receipt a double-check rather than a transcript. Each
-obligation names its sources by `(workflow input | node output, dotted path)` and a closed rule, and
-the receipt carries the SERVER's verdict with the facts it compared. The operator never eyeballs two
-redacted identifiers: the receipt already did the comparison. A source that is absent is reported
-absent — the comparison never silently shrinks to one side and calls that agreement.
-
-### D141 — the receipt is a pure function of authority, derived and then pinned
-
-The receipt is **not** written inside the terminal settlement transaction. Two reasons, in order of
-weight. First, authority must never depend on a projection to terminalize: a receipt-shaped problem
-must not be able to block or unwind a settlement of a real HR transaction. Second, the runs this
-program has already produced — the live person-lookup exit run and the controlled Kuali commit —
-terminalized before the builder existed, and a mint-only design could never explain them.
-
-The safety a mint-at-settlement design would have bought is bought differently: every identity folds
-from the run identity, and `generatedAt` is the terminal settlement instant rather than a clock read,
-so re-deriving one run yields the same bytes. `ensureRunEvidenceReceipt` always routes through
-`evidenceReceipts.insert`, whose immutable-insert check refuses a divergent rebuild **by name**. A
-receipt that disagrees with authority is louder than no receipt.
-
-`generatedAt = lifecycle.endedAt` is a stated reading: the receipt describes the run AS OF the
-instant its evidence closed. Nothing about the run changes after that, so a "when was this rendered"
-stamp would carry no information and would destroy determinism.
-
-A conditional node that did not run carries a `DecisionEvidence` with its closed reason and an
-`absent`, **non-mandatory** obligation. An absence the descriptor authored and D114's terminal record
-closed is a correct outcome, not an unresolved one; treating it as unresolved would push every
-correct run with a skipped node to `partial`.
-
-### D142 — the failure section serves content through a whitelist schema
-
-`FailureDetailWireSchema` names every field it projects off the durable `FailureRecord`. That is doc
-11's "unclassified fields drop" applied structurally: a field added to the durable record later
-reaches no surface until someone decides how it is classified, rather than relying on a filter
-someone has to remember to update. Subject identity travels as a digest plus an already-redacted
-display suffix, the page as `urlRedacted`/`titleRedacted`. `sameFingerprintSeen` is §2.1's "same
-failure seen before" as a count — what the operator acts on, answerable without projecting other
-runs' subjects onto this panel. An absent diagnostic bundle names the slice that will fill it.
-
-The receipt section serves the WHOLE `RunEvidenceReceipt`: §2.2 puts redaction at capture time, every
-value already carries its classification and transform, and a second wire projection could only lose
-them. Because the receipt now rides the run-detail wire, `src/domain/redaction.ts` is
-browser-reachable and drops `node:crypto`/`node:path` for `sha256Hex` and a two-separator basename.
-
-### D143 — `explain run` and the receipt are one derivation
-
-`cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
-sections in §2.5's order. For a settled run it derives the SAME receipt the dashboard serves, so a
-terminal explanation and a terminal receipt cannot disagree. Every section an operator could misread
-as "nothing happened" says why instead. `--bundle` **refuses**: exporting a diagnostic package
-missing the capture evidence its manifest claims is worse than refusing, because the recipient
-cannot tell.
-
-### D199 — the receipt binds to the surfaces its derivation consumes, not to the descriptor's closure
-
-**D141's "re-deriving one run yields the same bytes" was true only within one commit.**
-`buildRunEvidenceReceipt` stamped `descriptorFingerprint` from the CURRENT build's
-`descriptor.contractFingerprint`, so any edit anywhere in a ~31-file descriptor closure changed every
-already-settled run's derived receipt and `evidenceReceipts.insert` correctly refused it. Chunk 2's
-five live-proof `separations-kuali-read` receipts (`sd-140241-ca44`, `sd-140505-28ff`,
-`sd-140917-2b9e`, `sd-140921-3385`, `sd-140921-c0af`) were stranded exactly this way by a
-raw-control-byte fix that changed no semantics at all, and `explain run` answered
-`evidence receipt … already exists with different content` for all five. Re-running the documents was
-not available either: a read workflow whose identity is the thing it reads runs once per subject
-(`docs/migrations/separations.md` §"the re-run wall").
-
-Stamping the current build was also a **false statement** in its own right — the receipt claimed the
-run executed under whatever tree happened to be checked out. `descriptorFingerprint` is now the run's
-OWN retained `envelope.contractFingerprint`: a fact about the run, read from authority like
-everything else in a receipt.
-
-**The closure hash is neither necessary nor sufficient here, and that is the whole finding.** D136
-established the "not necessary" half for parked writes — nearly every edit in a closure leaves every
-consumed surface intact. A receipt adds the other direction: the declared redaction table
-(`src/domain/trust/evidence-classification.ts`) and the declared cross-source obligations live
-OUTSIDE every descriptor's import closure, so they move with `contractFingerprint` byte-identical.
-D197 moved one and two receipts changed content under a frozen hash. A hash that can be equal when
-the answer moved is not a binding.
-
-So resolvability is stated directly, one named check at a time, against exactly what
-`buildRunEvidenceReceipt` reads — the workflow id, the descriptor version, the runtime node walk,
-`descriptor.details`, the terminal execution's `dependsOn`, the declared obligations, and the declared
-redaction. Everything else it reads is a durable authority row, which is immutable and cannot move.
-
-| check | baseline | what a move means |
-|---|---|---|
-| `workflow-identity` | `run.envelope.workflow` | this descriptor is not the run's graph |
-| `descriptor-version` | `run.envelope.descriptorVersion` | the author declared that semantics moved |
-| `canonical-input` | `run.input.parsed.schemaHash` | the input facts would be redacted under a declaration authored for a different shape |
-| `evidence-graph` | checkpoint / terminal-dependency / write-intent rows | a node the run's evidence names left the graph |
-| `terminal-dependency-set` | the stored `RunResultRecord` | the mandatory-evidence set would move |
-| `declared-evidence` | **the stored receipt row** | the redaction, detail or obligation declaration this receipt was written under has changed |
-
-`declared-evidence` is the only check whose baseline is the receipt itself, and it is the only one
-that can see a declaration living outside the closure. It runs on re-derivation, attributes every
-divergent path to the ONE declaration that owns it (`declared-redaction`, `declared-details`,
-`declared-obligations`, `terminal-dependency-set`, `run-identity`, `receipt-composition`), and
-refuses — so a genuinely moved declaration reads as *what* moved instead of "the bytes differ".
-`evidenceReceipts.insert`'s immutable check stays underneath as the backstop for any caller that does
-not come through `ensureRunEvidenceReceipt`; this path never skips it.
-
-A refusal prints the whole check table with both fingerprints, `[held]`/`[MOVED]`/`[skip]` distinct
-and an unevaluated check never reported as held. **There is no waiver, override, or force arm.** A
-settled run's receipt is an operator-facing record of a real HR transaction; when a declaration truly
-moved, the honest outcomes are to restore it or to accept that the receipt is frozen — never to
-overwrite it with a newer story about what happened. Chunk 2's own five split exactly that way: the
-three whose only change was the closure re-derive byte-identically, and the two that also crossed
-D197's classification fix stay frozen and now say so by name.
-
-Owned by `src/core/receipt-derivation-binding.ts`; pinned by
-`tests/unit/receipt-derivation-binding.test.ts` and the `evidence-receipt` guard.
-
-### D204 — a gate's evidence is a `gate_results` row, so the approver reaches the receipt
-
-> **`gate_results` is a repository name, not a table.** `authority.gateResults` stores its records in
-> `checkpoint_payloads` keyed `<runId>:<gateId>` (`src/infra/sqlite/authority-database.ts`). This
-> section keeps the repository's vocabulary because that is what the code reads; the OPERATOR-facing
-> receipt sentence deliberately does not, and names "the gate result record" with no table at all —
-> a trust artifact read months later must not send its reader hunting for a table nobody created.
-
-**Ratified 2026-08-12.** D202 built the ALWAYS-GATE and put the answer to ref write-safety §14.6 risk 6 ("who
-approved is lost") into authority: the command kernel writes `resolvedBy`/`resolvedAt` onto the
-`gate_results` row inside the same transaction that stores the result and resumes the run, and a
-caller-supplied `approvedBy` beside that would be a claim sitting next to authority. D203 then taught
-the KERNEL that a gate dependency's durable evidence is that row rather than a checkpoint. **The
-receipt was not taught the same thing**, and it derives from checkpoints — so chunk 3's settled live
-run `si-161551-774c` listed `node.identity-approval` as `unknown` and carried no decision row at all.
-Risk 6 was answered durably and not in evidence, which on a trust surface is the same as unanswered:
-the receipt is the artifact an operator reads months later to see the human in the loop.
-
-**The reader moves, for the third time and for D144's reason.** A gate has no checkpoint and never
-will — fabricating one would make a durable record claim a shape it does not have. So
-`buildRunEvidenceReceipt` takes `gateResults` beside `checkpoints`, and a resolved gate node emits:
-
-- **its payload's leaves as observation facts**, sourced through a new `gate-result` arm of
-  `EvidenceSource` carrying the gate id and authority's own `resolvedBy`/`resolvedAt`. The source arm
-  is separate from `system` because a gate owns no task contract: what it dates is a DECISION, not an
-  observation of a page.
-- **one `kind: "gate"` decision**, whose outcome comes from a DECLARED arm table and whose reason
-  names the approver, the instant, the resolving command, and the evidence digest the approval was
-  bound to (ref write-safety §14.5 — an approval is an observation of a specific packet).
-- **a `verified` obligation** for the node, replacing the `unknown` that used to stand for
-  "authority holds nothing", which was false.
-
-**Why the decision arm is declared and not sniffed.** `DecisionEvidence.outcome` is a closed
-five-value enum and a gate's result payload is authored per gate, so mapping one to the other by
-looking for a field called `decision` would put a plausible-but-wrong word on a record of a human
-decision — a payload arm this build did not recognise would land as `approved` or vanish.
-`src/domain/trust/gate-decisions.ts` declares, per `(workflow, gate)`, the decision leaf, each stored
-value's outcome and operator-facing summary, and the bound-evidence leaf. An undeclared gate and an
-unlisted arm value both fail LOUD, exactly as `classifyEvidenceLeaf` does for an undeclared leaf, and
-the `evidence-receipt` guard fails when a registered descriptor grows a gate node without one.
-
-Redaction extends the same way rather than gaining a hole: `EvidenceValueScope` gains a
-`gate-result` arm scoped by `(workflow, gate)` — not by a task id, which a gate does not have — and
-the identity gate's four leaves are declared there. The approved `eid` is a `direct-identifier`
-taking `last4` like every other identifier on a receipt; the decision, the choice, the digest and the
-operator's own rejection reason are the DECISION and are shown, because a receipt whose job is to
-display the human in the loop cannot redact the human's reasoning out of it.
-
-The D199 check table gains no new check. `evidence-graph` grows one row-source: a gate result whose
-node left the graph, or whose node is no longer a gate, is a graph gap named as such — the second
-case is the stronger break, since the row would otherwise read as a decision about a step that no
-longer asks a human anything.
-
-**One consequence, recorded rather than waived.** A receipt stored BEFORE this decision cannot
-re-derive under it — `declared-evidence` moves, correctly, naming `receipt-composition` (four new
-observation rows) and `declared-obligations` (`verification[3].verdict: "unknown" → "verified"`).
-D199 has no waiver arm and gains none here. The two `separations-identity-check` receipts the chunk-3
-proof session minted were dropped from the standing authority database as an explicit operator
-repair — both describe read-only identity checks, both were minted under a build that structurally
-could not see the gate row, and §14.9 had already recorded that incompleteness as an open defect —
-and then re-derived under D204. That is a data decision about a pre-production database, taken and
-written down; it is not a code path, and no code path exists to take it.
-
-Owned by `src/core/evidence-receipt.ts` and `src/domain/trust/gate-decisions.ts`; pinned by the
-`evidence-receipt` guard against the REAL gated descriptor, with a foreign gate row, a gate that left
-the graph, and an undeclared arm value as negative controls.
-
-### D237 — a settled gate's panel names the verdict, the approver and the instant
-
-**Ratified 2026-08-19.** D202 put the approver into authority, D203 taught the kernel to read a
-`gate_results` row as a dependency's evidence, and D204 taught the RECEIPT the same thing. The
-**panel** was never taught it. `run-detail`'s `resolved` gate arm was keyed on the span stream's
-`resolutionKey`, and the command service emits the literal `resolved` for every gate — deliberately,
-with a comment naming the deferral (*"Until gate descriptors declare display keys (2h Review), the
-one honest key is the fact of resolution itself"*). So the approve/reject arm was **structurally
-unreachable**: every settled gated run's panel reported `gate: { state: "absent", reason: "gate
-identity-approval resolved with key resolved, which is not an approve/reject verdict" }`, a sentence
-that reads like a data problem and was a vocabulary deferral. Separations §9.17 item 7(a) recorded
-it against a real settled run; this closes it.
-
-**The source is the durable row, and it is the SAME row the receipt reads.** The panel query takes
-`authority.gateResults.listByRun(runId)` — D204's own read — and derives the verdict through D204's
-declared arm table (`src/domain/trust/gate-decisions.ts`), with `resolvedBy` and `resolvedAt` taken
-off the row the kernel wrote inside the resolving transaction. The span stream is not consulted for
-the verdict at all, which is the point: a projection of an event's display key was never authority
-for what a human decided, and the two surfaces an operator reads side by side — the panel and the
-receipt — now cannot disagree about who answered a gate. The wire's `resolved` arm therefore carries
-`resolvedBy` as a REQUIRED field; requiring it is safe precisely because the arm was unreachable, so
-no served wire and no archived record can hold a `resolved` gate that predates it, and an optional
-field would have bought read-forward safety for a shape nothing ever wrote at the price of a settled
-gate that renders without naming a human.
-
-**Where the panel and the receipt deliberately DIVERGE: what a gap does.** The receipt REFUSES to
-derive at all when a gate is undeclared or stores an arm value no declaration lists (D204) — it is
-the durable artifact, and a trust record that guessed would be worse than no record. The panel must
-still render the run it exists to explain, so each way the read can fail to produce a verdict is a
-NAMED absence instead: no durable row beside a folded `gate.resolved` span (stated as exactly that
-divergence, so a lost decision never reads as a workflow that asked for none), no declaration for
-`(workflow, gate)` naming the file that owes one, an arm value no declaration lists naming both what
-was stored and what is declared, and a declared outcome that is not an approve/reject verdict. In
-neither surface does anything guess the word.
-
-**What the operator sees.** The panel draws a DECISION RECORD in the run's own stream at
-`resolvedAt` — the settled counterpart of the open gate's decision card, in the same geometry —
-carrying the verdict, the approver and the instant. The archived detail's Decision card names the
-approver for the same reason. Ref dashboard-surfaces owns the presentation; this section owns the derivation.
-
-Owned by `src/server/dashboard/queries/run-detail.ts` and `src/domain/dashboard/run-detail.ts`,
-over `src/domain/trust/gate-decisions.ts`; pinned by
-`tests/unit/server/run-detail-gate-outcome.test.ts` with every named absence as a negative control.
-
-### Named gap: a transaction node cannot yet be a terminal dependency — CLOSED by D144
-
-**Closed 2026-08-04 (D144, ref write-safety §3.1).** The gap was real: the sequencer stored a transaction
-checkpoint under the durable `TransactionOutcome` schema hash while the descriptor factory's
-terminal `build` demanded the COMMIT CONTRACT's output schema hash, and the interpreter never
-registered a transaction checkpoint as terminal evidence at all — so `kuali-timekeeper-annotation`
-could not reach terminal `done` and the controlled commit had no receipt in authority. The stored
-hash was the correct one; the terminal side moved. `kualiReceiptEvidence`'s terminal record now
-comes from the real `buildRunResult`, and `tests/unit/transaction-terminal-dependency.test.ts`
-drives a queued Kuali run through the real interpreter to `done` and derives its receipt.
-
----
-
 ## 0. Why this is foundation work, not dashboard polish
+
+<!-- roadmap: phase-1 -->
+
+<!-- roadmap-status: phase-1 -->
+- [x] a stable operator vocabulary instead of TypeScript property paths — four branded ids, 120 catalog entries (§1.1, §1.7)
+- [x] tasks cannot reach a raw `Page` — `task-driver-boundary`, AST plus transitive import graph (§1.4)
+- [x] a failed run persists a structured record rather than a message — Phase 1f's durable `FailureRecord` (§2.1)
+- [x] a `done` run carries a receipt of inputs, observations, decisions, actions, verification, reuse and uncertainty (D141, §2.3)
+- [x] the explorer answered “documentation or editing surface” — read-only, edit half deferred behind a named trigger (D176/D186)
+- [ ] lessons still accumulate as prose: the structured store is built and nothing writes to it (§4.1)
+> 2026-08-20 | docs-cohesion operator-trust | verified each of §0's six drift problems against the code; five are closed by the base, the sixth (lessons → knowledge records) is blocked on a caller, not on a schema
+<!-- /roadmap-status -->
 
 The old codebase already contains many correct selectors, identity checks, screenshots, lessons,
 and queue actions, but they are difficult to reuse consistently:
@@ -584,7 +81,22 @@ meant to remove.
 
 ## 1. Canonical UI vocabulary and typed system drivers
 
+<!-- roadmap: p1-authority -->
+
+<!-- roadmap-status: p1-authority -->
+- [x] four branded semantic ids, imported and never redeclared (D101) — `src/domain/ids.ts:43-46`
+- [x] four per-store server-only registries; locator recipes never leave the server (§1.2, §1.7)
+- [x] typed drivers, raw Playwright confined to the driver/session owners — `task-driver-boundary`
+- [x] verification is conjunctive (D98/D99) and a staging anchor carries `exactly-one-editable` (D208)
+- [x] the generated catalog is the ONE projection and throws when stale (§1.3, D177)
+- [ ] `semantic-ui-registry` never calls Kuali's own audit functions — three stores of four (§1.7)
+- [ ] D208 rule 1 is an authoring obligation, not a machine check; its trigger is a second exception (§1.6)
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/ui/**, src/stores/*/driver/ui-registry.ts, generated/ui-catalog.json and tests/unit/architecture/{semantic-ui-registry,task-driver-boundary}.test.ts; left: the Kuali audit call site and D208's second exception
+<!-- /roadmap-status -->
+
 ### 1.1 Four identifiers with one job each
+
+<!-- roadmap: p1-authority -->
 
 ```ts
 export type ElementId = Brand<string, "ElementId">;          // "ucpath.smart-hr.save-submit"
@@ -605,10 +117,19 @@ zero or more search terms. Search terms help humans/AI find the canonical id; th
 identity.
 
 These semantic ids are definitions, not event occurrences. Receipt/evidence rows therefore carry a
-separate UUID-backed `EvidenceEntryId`; operator-correction `supersedes` links point to that prior
-entry id. `ObservationId` is never a UUID and is never reused as generic evidence-row identity.
+separate `EvidenceEntryId`; operator-correction `supersedes` links point to that prior entry id.
+`ObservationId` is never reused as generic evidence-row identity.
+
+**As-built.** The four ids are `brandedText<…>(QUALIFIED_ID_PATTERN, …)` at `src/domain/ids.ts:43-46`
+and are re-exported — never redeclared — by `src/domain/ui/contracts.ts:13-25` (D101). An
+`EvidenceEntryId` is **derived**, not minted: `deriveEvidenceEntryId(receiptId, kind, key)`
+(`src/domain/trust/evidence-identity.ts:46-54`) over a receipt id itself derived from `(runId,
+attempt)`, which is what lets §2.3.2 re-derive one run's receipt to the same bytes. A random UUID
+there would have made determinism impossible.
 
 ### 1.2 Registry record
+
+<!-- roadmap: p1-authority -->
 
 ```ts
 // Server-only definition under stores/<system>/driver/. Client/task code receives generated ids and
@@ -677,9 +198,33 @@ interpret the recipes. A
 specialized live-only read may reference a named driver operation, but that operation must resolve
 from the same system registry and carry a fixture/test.
 
+**As-built — the record above is the SHAPE, not one shared type.** There is no single
+`UiElementDefinition` in the tree and deliberately so (§1.5): each store owns its own schema family
+under `stores/<system>/driver/ui-registry.ts` — `src/stores/ucpath/driver/ui-registry.ts:181-274`,
+`crm/…:62,114,155`, `kuali/…:183,277,318`, `new-kronos/…:129,182,223` — because a locator recipe is
+a fact about ONE system's DOM and a shared union would have to admit every system's arms at once.
+What IS shared is the cross-store vocabulary and the safe projection: `src/domain/ui/contracts.ts`
+holds `UiSemanticKindSchema` / `UiSensitivitySchema` / `UiRoleSchema` / `UiEffectSchema` (`:27-32`),
+`UiCatalogVerificationSchema` (`:45-53`) and the `UiCatalogEntrySchema` union §1.3 projects
+(`:154-172`).
+
+Three shipped fields the record above does not show, and one it shows that does not exist. A real
+element carries **`provenance`** (`LegacySelectorProvenanceSchema`: the pinned legacy commit, path,
+key, source line and blob — the copy-with-provenance rule made structural), **`scope`**
+(`"page" | "content-frame"`, because PeopleSoft renders inside an iframe and a recipe that does not
+say which document it means is a recipe that resolves twice) and **`portContext`**; `supersedes` is
+a required array rather than optional. The `value?: CanonicalJsonSchema<…>` shown above is **not**
+how a value type is declared — the shipped field is a flat `valueType` enum (`"eid" | "text" |
+"rows" | "none"`), narrow on purpose. All 406 ported keys are pinned to a fixed legacy commit's
+blobs by `legacy-selector-port-provenance`, so legacy moving on cannot invalidate the provenance
+(and, per the charter, live re-verification at each migration is what keeps the SELECTOR current).
+
 ### 1.3 One canonical catalog for the operator and AI tools
 
-The build generates a **safe projection** at `generated/ui-catalog.json` and per-system
+<!-- roadmap: p1-authority -->
+<!-- roadmap: p2-2i -->
+
+The build generates a **safe projection** at `generated/ui-catalog.json` and one per-system
 `UI-CATALOG.md` from the server registry. Each entry includes canonical id, label, search terms,
 screen/state, role/effect, verified date plus fixture/live evidence refs, sensitivity classification, tasks that use it,
 related observations, and an exact registry source link. It deliberately omits locator/state/read
@@ -702,27 +247,62 @@ No rebuilt module imports legacy selector code — with the two repos sharing no
 that import is structurally impossible rather than merely banned — and the legacy repo remains
 preserved through cutover.
 
+**As-built.** `npm run ui:catalog` (`scripts/generate-ui-catalog.ts`) is the ONE writer;
+`buildSafeUiCatalog()` (`src/stores/ucpath/driver/catalog.ts:146-354`) merges all four registries
+into `generated/ui-catalog.json` plus **four** markdown projections —
+`src/stores/{ucpath,kuali,crm,new-kronos}/UI-CATALOG.md`. The projection SET is derived from the
+catalog's own `system` values (`uiCatalogSystems`, `catalog.ts:376-378`), not from a list, and
+`semantic-ui-registry` proves that derivation both ways: a store that ships a `driver/ui-registry.ts`
+appears in the catalog and its markdown is guarded. `assertSafeUiCatalogFresh` (`catalog.ts:356-363`)
+rebuilds and compares, throwing `generated UI catalog is stale; run npm run ui:catalog` — which is
+why §5.8's surface may serve the committed bytes without ever regenerating them. A fifth resolution
+example, added by D261 (2026-08-20): "the Kuali Action List row for this document number" →
+`kuali.action-list.document-link` (`ElementId`), beside
+`kuali.action-list.matched-document-number` (`ObservationId`) — both declared in
+`src/domain/ui/kuali-action-list.ts:44-60`.
+
 ### 1.4 Tasks do not receive raw `Page`
+
+<!-- roadmap: p1-authority -->
 
 Raw Playwright access is confined to `stores/<system>/driver/**`, worker-owned session
 infrastructure, and the registry interpreter. Browser task contexts receive a typed driver:
 
 ```ts
-export interface SystemDriver<S extends BrowserSystemId> {
-  goto(screen: ScreenIdFor<S>): Promise<PageStateProof>;
-  waitFor(state: PageStateIdFor<S>): Promise<PageStateProof>;
-  read<O extends ObservationIdFor<S>>(id: O): Promise<ObservationValue<O>>;
-  fill<E extends FieldElementIdFor<S>>(id: E, value: ElementValue<E>): Promise<ActionProof>;
-  /** Commit-class controls are excluded from this union. */
-  click<E extends NonCommitClickableElementIdFor<S>>(id: E): Promise<ActionProof>;
-  choose<E extends ChoiceElementIdFor<S>>(id: E, value: ElementValue<E>): Promise<ActionProof>;
-  /** The only generic path to an element declared `external-commit`. Prepare/read ctx cannot supply
-   * this unforgeable capability; the driver validates its intent generation + subject digest. */
-  commit<E extends CommitElementIdFor<S>>(
-    id: E, capability: MutationCapability,
-  ): Promise<ActionProof>;
+// src/domain/ui/driver.ts:43-62 — the shipped shape. The id sets are TYPE PARAMETERS a store fills.
+export interface SystemDriver<
+  S extends BrowserSystemId,
+  Screens extends ScreenId,
+  States extends PageStateId,
+  Fields extends Readonly<Record<string, string>>,
+  Observations extends Readonly<Record<string, string>>,
+  Clicks extends ElementId = never,
+> {
+  readonly system: S;
+  goto(screen: Screens): Promise<PageStateProof>;
+  waitFor(state: States): Promise<PageStateProof>;
+  fill<I extends keyof Fields & ElementId>(id: I, value: Fields[I]): Promise<UiActionProof>;
+  read<I extends keyof Observations & ObservationId>(id: I): Promise<Observations[I]>;
+  click(id: Clicks): Promise<UiActionProof>;
+}
+
+/** The only generic path to an element declared `external-commit`, and a SEPARATE interface: a
+ * store that cannot write does not carry the method at all. Prepare/read ctx cannot supply the
+ * unforgeable capability; the driver validates its intent generation + subject digest. */
+export interface CommitCapableSystemDriver<Commits extends ElementId = never> {
+  commit(id: Commits, capability: MutationCapability): Promise<UiActionProof>;
 }
 ```
+
+Two things the shape above says that an earlier draft of this section did not. A per-system driver
+is an **intersection**, not an instantiation — `UcpathStoreDriver` is the joined navigation driver
+plus `Pick<>` of exactly the named operations that store publishes
+(`src/domain/ui/ucpath-driver.ts:37-47`), and its `read` deliberately accepts BOTH id families
+because the kernel calls it at ref write-safety beat ③ with whichever observation the running
+contract declared. And there is **no `choose` verb**: `fill` is typed by the element's declared
+`valueType`, and a combobox, checkbox or radio is staged through the store's own named prepare
+operation (separations' one-pass ten-field staging) rather than a fourth generic method that would
+give one control two ways in.
 
 Every driver action automatically records the task/span, element id, page state before/after,
 duration, and selector recipe actually used. A task can still call a complex named driver method
@@ -740,6 +320,8 @@ is improved incrementally only after its fixtures/live checks exist.
 
 ### 1.5 Registry separation—no “one giant task store” ambiguity
 
+<!-- roadmap: p1-authority -->
+
 | Concern | Canonical owner | Reuse meaning |
 |---|---|---|
 | Business/system operation (“search Person Org”, “fill termination”) | System task store (ref task-contract) | Compose the proven operation in workflows |
@@ -752,31 +334,204 @@ reinvention of *selectors and page truth*. Checkpoints prevent repeated work *wi
 The workflow mini-store prevents repeated pure transformation code. A workflow never treats one as
 an informal substitute for another.
 
+### 1.6 Verification evidence is conjunctive, and a staging anchor needs the stronger arm
+
+<!-- roadmap: p1-authority -->
+
+_Ratified 2026-08-01 as the Phase-1d UI seam (D98 · D99 · D101), amended 2026-08-14 (D208).
+The four rulings amend §1.2's `verification` block and what §1.3 may project; they are stated
+here rather than in a dated block at the top of the file._
+
+- **D98 — verification is conjunctive, not singular.** Every runtime/catalog element recipe,
+  page-state rule, or observation recipe carries both a required deterministic fixture-evidence ref
+  and a required read-only live-evidence ref. Candidate port-inventory rows carry neither and cannot
+  enter a runtime registry or generated catalog. The old singular `verified` field is retired.
+- **D99 — UI verification scenarios are UI-owned.** Registry scenario refs resolve against a small,
+  strict UI verification-scenario schema/corpus owned beside the UI registry. It imports the
+  canonical `ScenarioId` grammar and enforces global uniqueness with the existing trust scenario
+  corpus; it does not distort `ScenarioManifest` before 1e. Every actual registry fact resolves at
+  least one scenario non-vacuously.
+- **D101 — semantic ids are imported.** UI modules import/re-export the existing `ElementId`,
+  `ScreenId`, `PageStateId`, and `ObservationId` schemas/types from `src/domain/ids.ts`; no driver or
+  registry redeclares those closed identities.
+- **D208 (2026-08-14) — "resolves to exactly one node" and "resolves to exactly one EDITABLE node"
+  are different evidence strengths, and a write-surface anchor requires the second.** D98 made
+  verification conjunctive but left every positive assertion at one strength:
+  `exactly-one-visible` says a recipe resolved to a single node and says nothing about whether that
+  node could have been typed into. That is the whole of the evidence a **read-only** record can
+  supply, and it is not the evidence a **staging** anchor needs — a Kuali document rendered at a
+  step that owns no edit right resolves each control to exactly one node, disabled, and reads as
+  verified. `UiVerificationAssertionSchema` therefore carries a strictly stronger arm,
+  **`exactly-one-editable`**: the recipe resolved to one node AND that node was live-observed
+  `isEditable()` (text controls) or `isEnabled()` (select, checkbox, radio). The rules that follow
+  from it are normative:
+  1. An element recipe whose declared `UiEffect` is `prepare` or `external-commit` must carry
+     `exactly-one-editable` in its live-read-only manifest, or carry a named, dated exception
+     pointing at STRONGER evidence — a controlled commit on that exact control is stronger than any
+     assertion in this vocabulary, and `kuali/timekeeper-field` stands on D135's for exactly that
+     reason.
+  2. `exactly-one-editable` claims nothing about a WRITE. `externalWriteAttempted` stays
+     `z.literal(false)` in every manifest: a value staged into a control and discarded by a reload
+     never left the browser, and a manifest that could say otherwise would be the one place in this
+     tree where read-only evidence can assert an external effect.
+  3. The arm is **additive to** `exactly-one-visible`, never a rename of it. A read-only screen's
+     observation recipes keep the weaker arm truthfully; downgrading them would claim editability
+     nobody looked for, and upgrading the enum in place would silently restate every historical
+     manifest as evidence it never gathered.
+
+  As-built: nine of the ten separations-finalization controls in
+  `evidence/ui/kuali/separation-document.live.json` at `verifiedAt: 2026-08-14`
+  (`docs/migrations/separations.md` §9.12 item 3).
+
+  **Enforcement status, stated rather than assumed.** The schema arm exists and
+  `semantic-ui-registry` resolves every manifest assertion against the registry as before; rule 1 is
+  an **authoring** obligation today, not a machine check, because the one standing exception
+  (`kuali/timekeeper-field`, on D135's controlled commit) has nowhere structured to live — an
+  element cannot yet cite evidence stronger than an assertion arm. The trigger that ends that is the
+  second such exception: at two, the registry element gains a closed
+  `strongerEvidence: { kind: "controlled-commit"; decision: DecisionId }` field and
+  `semantic-ui-registry` refuses a `prepare`/`external-commit` element that carries neither
+  `exactly-one-editable` nor that field. One exception is a fact; two is a pattern, and a pattern is
+  what a guard can hold without inventing a schema for a sample of one (D79a's own argument).
+
+### 1.7 As-built — what the four registries hold today
+
+<!-- roadmap: p1-authority -->
+
+_Counted from the committed `generated/ui-catalog.json` on 2026-08-20; the catalog is the projection,
+so these are the facts the operator and an AI can actually resolve._
+
+| system | screens | page states | elements | observations |
+|---|---|---|---|---|
+| `ucpath` | 7 | 10 | 30 | 4 |
+| `kuali` | 2 | 5 | 20 | 6 |
+| `new-kronos` | 2 | 4 | 16 | 1 |
+| `crm` | 3 | 4 | 5 | 1 |
+
+120 entries in all. By declared `UiEffect`: 33 `observe`, 18 `navigate`, 17 `prepare` and **three**
+`external-commit` — `ucpath.smart-hr.save-and-submit-button`,
+`ucpath.smart-hr.delete-selected-button` and `kuali.rrss-document.save-button`. Those three are the
+whole surface §1.4's `commit` seam and ref write-safety's fence exist for; every other element in
+the tree is structurally unable to leave a mark on a real system.
+
+Provenance is pinned rather than described: **406** ported legacy selector keys resolve to their
+exact source line in a FIXED legacy commit's blobs (`legacy-selector-port-provenance`), so legacy
+moving on cannot invalidate the record — what keeps a selector *current* is the charter's live
+re-verification at each workflow's migration, not a diff against legacy.
+
+**One gap, stated because a guard's inventory sentence reads wider than what it executes.**
+`semantic-ui-registry`'s structural audit calls `auditUcpathUiRegistry`, `auditCrmUiRegistry` and
+`auditNewKronosUiRegistry` and cross-checks id uniqueness across those three.
+`auditKualiUiRegistry` and `auditKualiUiEvidenceBindings`
+(`src/stores/kuali/driver/ui-registry.ts:1036`, `:1163`) exist and carry real business rules — global
+id uniqueness within Kuali, search-term collision, cross-screen dependency resolution, the Save
+button's `external-commit` assertion, D261's anchored-recipe restriction — and **nothing calls
+them**. Kuali is therefore proved today at the zod-schema level and through catalog freshness
+(`buildSafeUiCatalog` does include it), not through its own structural audit. The fix is one call
+site in the guard; until it lands, §9's first row is narrower than it sounds.
+
 ---
 
 ## 2. Trust evidence: what happened, why the result is credible, and what remains uncertain
 
+<!-- roadmap: p1-base -->
+<!-- roadmap: p2-2g -->
+
+<!-- roadmap-status: p1-base -->
+- [x] strict schemas for failures, redacted bundles, receipts, scenario manifests, preflight scenarios and knowledge/fix records (Phase 1b, 2026-07-31)
+- [x] every top-level evidence row in the strict boundary catalog, exercised against recursive unknown-key injection — `strict-boundary-schemas`
+- [x] receipt invariants refuse false verified completion and unresolved mandatory evidence — in the schema's own `superRefine`, and again as a SQL CHECK
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/**, src/infra/sqlite/migrations.ts; the 1b claim is exactly the schema half and this section now says which tables came later (D134)
+<!-- /roadmap-status -->
+<!-- roadmap-status: p2-2g -->
+- [x] schema v10's five durable tables plus the indexed `failures.fingerprint` (D134)
+- [x] automatic redacted diagnostic capture, two-phase, persisted inside the terminal transaction (D137)
+- [x] the durable actor-keyed inbox — the row commits before any delivery, and a repeat FOLDS (D134/D138)
+- [x] knowledge and fix admission audited INSIDE the insert transaction (D139)
+- [x] the receipt DERIVED from authority rather than minted at settlement (D140–D143)
+- [ ] `explain failure <fingerprint>` is not built (§2.1, §4.2)
+- [ ] the knowledge projection has no caller, so no `KNOWLEDGE.md` exists (§4.1)
+- [ ] the retention sweep has no caller (§2.2) — `{#def-retention}`, `never` by D193
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/{evidence-receipt,diagnostic-capture}.ts, src/services/{notifications,trust}/**, src/infra/sqlite/migrations.ts; left: the three unreachable halves above, each named in its own section
+<!-- /roadmap-status -->
+
+**The schemas landed first, then the tables.** Phase 1b (2026-07-31) built the strict
+boundary; schema v10 (D134, 2026-08-04) built the durable tables the rest of this section
+writes to.
+
+Strict schemas now exist for failures, redacted diagnostic bundles, terminal evidence receipts,
+scenario manifests, preflight scenarios, and knowledge/fix records. Receipt invariants reject false
+verified completion, unresolved mandatory evidence, invalid warning/failure combinations, and
+duplicate evidence-entry identities. Every top-level evidence row schema is present in the strict
+boundary catalog and exercised against recursive unknown-key injection. This is the schema
+foundation only: evidence persistence/projection, `explain`, semantic UI registries/drivers, and
+authoring/explorer surfaces remain with their later owning work items.
+
+Authority schema **v10** creates every durable table this doc's §2.2/§2.3/§4 records need, so no
+later 2g slice has to touch the released migration chain:
+
+| Table | Owns | Column-bound facts (boot invariants check them against `record_json`) |
+|---|---|---|
+| `diagnostic_bundles` | §2.2 | run, origin kind, failure id, content digest, retention kind, purge instant. `purge_after` exists **exactly** when retention is `ordinary`; a failure id exists **exactly** when the origin is not `operator-request`. |
+| `diagnostic_attachments` | §2.2 | one row per `(bundle, artifact)`, with kind/digest/sensitivity, so an artifact is findable without scanning bundle JSON. The bundle's `attachments` array length must equal its indexed row count. |
+| `evidence_receipts` | §2.3 | one receipt per terminal run (`run_id` UNIQUE), with result, confidence, and failure id. `failed` is the only result that may name a failure and the only one that must; `verified-done` may only carry `verified` confidence. |
+| `knowledge_records` · `fix_records` | §4.1/§4.2 | status column for the active-only view; `fix_records.failure_fingerprint` is indexed for `explain failure`. |
+
+`failures` also gains a searchable `fingerprint` column with an index and a not-null insert trigger,
+and `FailureRepository` gains `listByFingerprint`/`countByFingerprint` — §2.1's "same failure seen
+before" and §4.2's `explain failure <fingerprint>` are lookups, and the ref dashboard-surfaces repeat-threshold
+notification trigger needs a count, not a scan over parsed JSON.
+
+**Deliberately conservative, and named as such.** Knowledge and fix repositories are insert-only.
+§4.3's audit ("marks stale records `unverified`") needs a CAS on a record version, and
+`KnowledgeRecordSchema` carries no `version` — adding one is a schema decision the maintenance slice
+should ratify rather than something this foundation guesses. §4.1's `knowledge/records/` file layout
+and the generated per-system `KNOWLEDGE.md` remain that slice's work; the table is the authority the
+generator reads.
+
+Not landed with D134: the receipt builder, `explain run`/`explain failure`, and the dashboard
+projections — all three land below in D140–D143, which is where the `evidence-receipt` guard becomes
+**active**. `notification-durability` and `knowledge-fix-integrity` activate with D138/D139 below.
+
 ### 2.1 Durable `FailureRecord`
+
+<!-- roadmap: p1-kernel -->
+
+<!-- roadmap-status: p1-kernel -->
+- [x] the exact strict `FailureRecord` in non-rebuildable authority for every failed task/run, its `failureId` associated atomically with the failure transition (Phase 1f)
+- [x] four invariants live in the schema, not in a test: one primary cause, `transient` agreeing with it, no present-but-empty block, and `attempting`/`unknown` requiring a commit action
+- [x] the whitelist wire (D142) — a field added to the durable record reaches no surface until someone classifies it
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/failure.ts:72-103 and the run-detail failure section; the interface printed here was three fields out of date and now matches
+<!-- /roadmap-status -->
 
 A failed task/run persists a structured failure; `span.ended.error?: string` alone is retired.
 
 ```ts
+// src/domain/trust/failure.ts:72-103 — the shipped strict schema, read as an interface.
 export interface FailureRecord {
   failureId: FailureId;
-  fingerprint: string;                 // stable normalized task/code/state/element signature
+  fingerprint: FailureFingerprint;     // stable normalized task/code/state/element signature
   runId: RunId; traceId: TraceId; attempt: PositiveInt;
   workflowId: WorkflowId; nodeId?: NodeId; taskId?: TaskId;
   code: ErrorCode; summary: string; transient: boolean;
+  writeState: "not-attempted" | "prepared" | "attempting" | "committed" | "verified" | "unknown";
   subject?: { expected?: SubjectEvidenceWire; observed?: SubjectEvidenceWire;
-              proofRef?: WriteBindingProofId };
-  page?: { screen?: ScreenId; state?: PageStateId; urlRedacted?: string; title?: string };
+              proofRef?: WriteBindingProofId };            // at least one of the three
+  page?: { screen?: ScreenId; state?: PageStateId; urlRedacted?: string; titleRedacted?: string };
   action?: { elementId?: ElementId; operation?: UiActionKind; sequence?: PositiveInt };
-  causeChain: readonly FailureCause[];  // bounded, typed; hook/decorator errors remain secondary
+  causeChain: readonly FailureCause[];  // 1–12, EXACTLY ONE `primary`; the rest are secondary
   diagnosticBundleId?: DiagnosticBundleId;
-  remediation: readonly RemediationAction[];
+  remediation: readonly RemediationAction[];               // at least one
   occurredAt: IsoInstant;
 }
 ```
+
+Four invariants the shape alone does not show, all enforced in the schema's own `superRefine`: the
+cause chain carries exactly one `primary` and the record's `transient` flag must EQUAL that primary
+cause's; a `subject`, `page` or `action` block may not be present-but-empty; and a `writeState` of
+`attempting` or `unknown` requires `action.operation === "commit"` — the failure of a run that may
+have left a mark on a real system cannot be recorded without naming the act that might have left
+it. Both page strings are redacted at the point they are written (`titleRedacted`, not `title`).
 
 The event stream carries `{ failureId, code, summary, transient }`; the full record lives in
 SQLite/diagnostic storage and is fetched on demand. Failure fingerprints power “same failure seen
@@ -785,11 +540,46 @@ before” links without treating message text as identity.
 **Delivery boundary.** Phase 1f persists this exact strict record in non-rebuildable authority for
 every failed task/run and atomically associates its `failureId` with the failure transition. The
 minimum service can insert/read by id and detect conflicting replay; it does not synthesize a
-`diagnosticBundleId`. Phase 2g adds automatic bundle capture, evidence receipts, fingerprint search,
-`explain run`/`explain failure`, retention/pinning, and the rich dashboard projections over that
-same authority. There is no smaller Phase-1 failure schema and no Phase-2 replacement record.
+`diagnosticBundleId`. Phase 2g added automatic bundle capture (§2.2.1), evidence receipts (§2.3),
+fingerprint search (`FailureRepository.listByFingerprint`/`countByFingerprint` over the indexed
+`failures.fingerprint` column) and `explain run` (§2.5.1). There is no smaller Phase-1 failure schema
+and no Phase-2 replacement record.
+
+**`explain failure <fingerprint>` is NOT built.** The composer's own usage line names it, and its
+subject dispatch accepts only `run` (`src/server/explain/compose.ts:39-44`). The lookup it needs
+exists; the command does not. Owned by `{#track-a}`'s close-out beside the knowledge surface (§4.3),
+and named again in §4.2 where the doc used to describe it in the present tense.
+
+#### 2.1.1 The failure section serves content through a whitelist schema (D142)
+
+<!-- roadmap: p2-2g -->
+
+`FailureDetailWireSchema` names every field it projects off the durable `FailureRecord`. That is doc
+11's "unclassified fields drop" applied structurally: a field added to the durable record later
+reaches no surface until someone decides how it is classified, rather than relying on a filter
+someone has to remember to update. Subject identity travels as a digest plus an already-redacted
+display suffix, the page as `urlRedacted`/`titleRedacted`. `sameFingerprintSeen` is §2.1's "same
+failure seen before" as a count — what the operator acts on, answerable without projecting other
+runs' subjects onto this panel. An absent diagnostic bundle names the slice that will fill it.
+
+The receipt section serves the WHOLE `RunEvidenceReceipt`: §2.2 puts redaction at capture time, every
+value already carries its classification and transform, and a second wire projection could only lose
+them. Because the receipt now rides the run-detail wire, `src/domain/redaction.ts` is
+browser-reachable and drops `node:crypto`/`node:path` for `sha256Hex` and a two-separator basename.
 
 ### 2.2 Automatic diagnostic bundle
+
+<!-- roadmap: p2-2g -->
+<!-- roadmap: def-retention -->
+<!-- roadmap: def-search-export -->
+
+<!-- roadmap-status: def-retention -->
+- [ ] scheduling the sweep — it is built and tested and nothing calls it, so no bundle has ever been purged here
+- [ ] the content-store reference count that would let the reported unreferenced bytes be reclaimed
+- [x] D193 dispositioned BOTH `wont-build-unless-asked`, and the operator's reasoning is recorded in §2.2.1
+- [!] the node's own title names a “14/8/5 schedule” that no constant in this tree implements — the shipped number is 30 days from the bundle's own capture instant (§2.2)
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/diagnostic-capture.ts:44 and src/services/trust/diagnostic-retention.ts:45-85; left: the node title, which this doc cannot change
+<!-- /roadmap-status -->
 
 On an unexpected state, task failure, subject mismatch, recovery park, or operator-requested
 snapshot, the kernel captures one bounded bundle:
@@ -807,16 +597,117 @@ snapshot, the kernel captures one bounded bundle:
 - worker, lease, claim generation, clock health, disk/DB health;
 - checkpoint ids/freshness/provenance summaries and prior retry lineage.
 
-Bundles are content-addressed and indexed by `DiagnosticBundleId`. Retention is explicit: ordinary
-bundles follow notes retention unless pinned by an active knowledge/fix record or a write-recovery
-case. Restricted fields are redacted at capture time. Redaction is not deferred to the UI.
+Bundles are content-addressed and indexed by `DiagnosticBundleId`. Retention is explicit: an
+ordinary bundle's `purgeAfter` is its own capture instant plus **30 days**
+(`DIAGNOSTIC_ORDINARY_RETENTION_DAYS`, `src/domain/trust/diagnostic-capture.ts:44` — D86's notes
+floor, which is where the number comes from), unless the bundle is pinned by an active knowledge or
+fix record or a write-recovery case, which stores a named `reason` and no instant at all. Restricted
+fields are redacted at capture time. Redaction is not deferred to the UI.
+
+**As-built: the sweep is built, tested, and has no caller.** `createDiagnosticRetentionSweep`
+(`src/services/trust/diagnostic-retention.ts:45-85`) reads the `(retention_kind, purge_after)` index,
+re-derives each disposition and throws if it disagrees with the row, purges bundle and attachment
+rows together, and REPORTS the artifact ids whose last diagnostic reference it just removed. Nothing
+in `compose.ts`, in `src/cli.ts` or on any timer calls it, so **no bundle has ever been purged on
+this machine** — scheduling it, and the content-store reference count that would let those reported
+bytes be reclaimed, are `{#def-retention}`, dispositioned `wont-build-unless-asked` by D193 (the
+reasoning is in §2.2.1). Read §10's fourth residual through this: a restricted bundle is local, and
+it is not short-lived.
+
+**"14/8/5" names no constant in this tree.** The phrase reaches the tree node and
+ref dashboard-surfaces from an early draft; the shipped schedule is ONE number — 30 days from the
+bundle's own capture instant — with no tiering by kind, sensitivity or age. Cite the constant, not
+the phrase.
+
+#### 2.2.1 As-built — a bundle is captured at the trigger, redacted at capture, and bound to its failure (D137)
+
+<!-- roadmap: p2-2g -->
+
+The trigger set is **closed and is the sentence §2.2 opens with**: unexpected state, task failure, subject
+mismatch, recovery park, operator-requested snapshot. Each maps one-to-one onto a stored
+`DiagnosticBundle.origin` arm, and the mapping is what decides whether a `failureId` or a
+`requestedBy` actor is mandatory — a mis-triggered capture fails before an artifact is written.
+
+**Redaction is schema-owned and happens at capture.** `redactDiagnosticFields` DROPS every field it
+cannot classify, with a warning naming its index; nothing unclassified is "passed through for the UI
+to hide". A second lock refuses a bundle in which a never-exportable key (any secret name, cookie,
+storage state, SSN) survived as an `allowed` value, so a mis-classification fails loud instead of
+exporting. Only a screenshot may stay `restricted`; every other attachment arm is redacted text.
+
+**The failure and its bundle land in one transaction, and the ordering is forced.**
+`diagnostic_bundles.failure_id` references `failures(record_key)` while
+`FailureRecord.diagnosticBundleId` is a forward reference the failure row must already carry — so
+neither can be written second on its own. Capture is therefore two phases: `prepare` redacts and
+writes attachments to the content-addressed store (nothing durable in authority has moved; a crash
+leaves at most an unreferenced artifact, which that writer already tolerates), and the interpreter
+then terminalizes the failure carrying the prepared `bundleId` and `persist`s the bundle inside the
+SAME authority transaction as the terminal CAS. A failure can never point at a bundle that does not
+exist, and a bundle can never outlive its failure. Injecting the capture port without an authority
+transaction fails loud rather than settling half of it.
+
+**Retention is a bounded delete, and a pin is a recorded fact.** An ordinary bundle's `purgeAfter` is
+derived from its OWN capture instant plus the D86 notes floor, never from wall-clock now at sweep
+time. The sweep reads the `(retention_kind, purge_after)` index, so a pinned bundle is structurally
+unreachable from it; purging a pinned bundle by name, or one whose instant has not passed, throws.
+Attachment rows and the bundle row are deleted together so the boot invariant tying a bundle's
+`attachments` array to its indexed rows can never observe a half-purged bundle.
+
+The content-addressed **artifact bytes are not deleted**. They are shared by digest, so a receipt, a
+second bundle, or a scenario fixture may still hold exactly those bytes; the sweep reports the
+now-unreferenced artifact ids and reclaiming them needs a reference count the artifact store does
+not keep. That is a named residual, not an oversight.
+
+**Disposition, operator 2026-08-12 (D193): both storage remainders are `wont-build-unless-asked`.**
+The two open items in this area — **scheduling** the 14/8/5 retention sweep (the sweep function
+above is built and tested; nothing in the running system calls it on a cadence) and the
+**content-store refcount** that would let those unreferenced artifact bytes be reclaimed — move off
+"deferred with an owner" and onto **nobody's milestone**. They are not planned, not owed by any
+slice, and no future gate is blocked on them.
+
+**The operator's reasoning, recorded because it is the part that generalizes: this authority
+database stores records of COMPLETIONS, not primary records.** The real record of a completed HR
+transaction lives in **the external system itself** — the UCPath transaction, the Kuali document —
+and can be checked there, in more than one way. What the rows here carry is **how** a thing was
+completed and **whether** it completed; once a thing is completed and approved, those rows mean
+little going forward. That is why backup is **non-critical at this scope**, and why a manual folder
+copy of `.tracker-rebuild/` taken with the app stopped is an acceptable backup for one person on
+one machine — and why disk growth is not a problem worth a durable reference count.
+
+**What that reasoning does not say.** It is about the standing value of *old* rows, not about
+durability *during* a write: a `write_intents` fence, its binding proof, and the parked-intent rows
+are load-bearing for the run that is in flight, and the fail-closed guarantees in ref write-safety rest on
+them being durable at the instant they are written. Nothing here weakens that. Equally, **nothing
+already built is removed** — capture, capture-time redaction, the pin/purge invariants, the
+`purgeAfter` derivation from the bundle's own instant, and the sweep's own refusals stay exactly as
+designed, so scheduling it remains a small addition the day the operator asks. The decision is about
+*further investment*, not about what exists: **no further storage/retention work happens unless the
+operator asks for it.**
+
+**Named seams.** The interpreter terminalizes after its driver lease has closed, so it holds no page:
+screenshots and accessibility excerpts arrive through an injected `attachmentsFor` seam that the
+system-driver layer fills in. Absent, the bundle carries structured evidence only — never a
+fabricated screenshot. `FailureRecord.summary` is deliberately not copied into the bundle: it is
+free text that can carry a name or an EID, it already lives in the failure row the bundle joins to,
+and duplicating it into an exportable artifact widens the blast radius for nothing.
 
 ### 2.3 `RunEvidenceReceipt`
+
+<!-- roadmap: p2-2g -->
+<!-- roadmap: sep-6c -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: observed-logs -->
+
+<!-- roadmap-status: sep-6c -->
+- [x] a previewed run's receipt derives `partial` with `unknown` confidence, so `verified-done` is structurally unreachable for a preview (§2.3.7, D215/D238)
+- [x] the envelope's `dryRun` and the terminal preview result must AGREE or the derivation throws
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/evidence-receipt.ts:707-761; the preview terminal's receipt shape is as chunk 6c recorded it
+<!-- /roadmap-status -->
 
 Every terminal run—success, failure, cancellation, or partial outcome—has a server-derived receipt:
 
 Every `EvidenceFact`, `DecisionEvidence`, `ActionEvidence`, `VerificationEvidence`, `ReuseEvidence`,
-and `UncertaintyEvidence` row has its own `id: EvidenceEntryId`. The semantic observation that a row
+and `UncertaintyEvidence` row has its own `id: EvidenceEntryId`, DERIVED from
+`(receiptId, kind, key)` so a re-derivation reproduces it (§1.1). The semantic observation that a row
 refers to remains a dotted `ObservationId` in the UI/task vocabulary.
 
 ```ts
@@ -826,7 +717,8 @@ export interface RunEvidenceReceipt {
   generatedAt: IsoInstant;
   descriptorFingerprint: Fingerprint;
   configFingerprint: Fingerprint;
-  retryOf?: RunId;
+  retryOf: { state: "absent" } | { state: "present"; value: RunId };
+  failure: { state: "absent" } | { state: "present"; value: FailureId };  // `failed` only
   input: readonly EvidenceFact[];          // redacted canonical values + immutable input hash
   observations: readonly EvidenceFact[];   // source, observedAt, task, checkpoint origin
   decisions: readonly DecisionEvidence[];  // branch/gate/identity/dedupe decisions + reason
@@ -849,7 +741,316 @@ alongside its receipt. Read-only workflows still show source observations and de
 output is auditable. A receipt invariant test rejects `verified-done` with anything but verified
 confidence or any unresolved mandatory evidence obligation.
 
+**As-built** (`src/domain/trust/evidence.ts:118-184`, `src/core/evidence-receipt.ts`). The two enums
+above are exact and closed; **`rehearsal` is not one of them** (§2.3.7). The `superRefine` on the
+schema — not a separate test — is what refuses `verified-done` beside a warning, a failure or an
+unresolved mandatory obligation, refuses `done-with-warnings` with no non-load-bearing warning, and
+makes `failed` the only arm that may (and must) name a failure; authority repeats the pair it can
+express in SQL, `CHECK (result <> 'verified-done' OR confidence = 'verified')`
+(`src/infra/sqlite/migrations.ts:167`). The verdict itself is derived, never authored: `confidence`
+is `unknown` when a mandatory fact or obligation is unresolved or absent, `partial` when any warning
+stands, else `verified`; `result` then reads off the terminal outcome and that confidence
+(`evidence-receipt.ts:840-861`).
+
+#### 2.3.1 Evidence classification and cross-source obligations are DECLARED (D140)
+
+<!-- roadmap: p2-2g -->
+
+`src/domain/trust/evidence-classification.ts` binds every leaf of every workflow input, task output,
+and workflow result to one ref clock-config-secrets §6 classification plus one permitted transform. Three rules make
+it enforcement rather than decoration:
+
+- **An undeclared leaf fails loud.** `redactDiagnosticFields` drops an unclassified *diagnostic*
+  field with a warning because that channel accepts free-form payloads. A receipt's leaves come from
+  schemas this repository owns, so an undeclared leaf is a missing declaration — a code gap, closed
+  the way `pending-impl-bindings.json` closes one. Dropping it would make a receipt look complete
+  while hiding what the run read or wrote.
+- **The leaf rule is the provenance collector's.** An array is a leaf, an empty object is a leaf, a
+  populated object recurses — exactly `src/core/task-provenance.ts`. A finer rule would produce
+  facts no stored `FactProvenance` row could date, forcing the receipt to guess an observation
+  instant.
+- **The transform is refused at DECLARATION time.** `evidenceTransformAllowed` backs both the
+  diagnostic-field schema and the classification schema, so a `secret`/`allow` line cannot sit in
+  the table looking reviewed until the first run that carries that field.
+
+Business values (`employeeStatus`, `rawStage`, `documentNumber`, onboarding dates, page-state ids,
+proof sources) are `safe-diagnostic`: they describe the transaction, not the person, and the queue
+row already shows them. Person identifiers are `direct-identifier`/`last4`. A LIST of people is
+`sensitive-hr`/`count` — "one candidate matched" is the fact that decides whether a search was
+unambiguous, answerable without naming anyone who was not selected.
+
+`evidence-obligations.ts` is what makes the receipt a double-check rather than a transcript. Each
+obligation names its sources by `(workflow input | node output, dotted path)` and a closed rule, and
+the receipt carries the SERVER's verdict with the facts it compared. The operator never eyeballs two
+redacted identifiers: the receipt already did the comparison. A source that is absent is reported
+absent — the comparison never silently shrinks to one side and calls that agreement.
+
+#### 2.3.2 The receipt is a pure function of authority, derived and then pinned (D141)
+
+<!-- roadmap: p2-2g -->
+
+The receipt is **not** written inside the terminal settlement transaction. Two reasons, in order of
+weight. First, authority must never depend on a projection to terminalize: a receipt-shaped problem
+must not be able to block or unwind a settlement of a real HR transaction. Second, the runs this
+program has already produced — the live person-lookup exit run and the controlled Kuali commit —
+terminalized before the builder existed, and a mint-only design could never explain them.
+
+The safety a mint-at-settlement design would have bought is bought differently: every identity folds
+from the run identity, and `generatedAt` is the terminal settlement instant rather than a clock read,
+so re-deriving one run yields the same bytes. `ensureRunEvidenceReceipt` always routes through
+`evidenceReceipts.insert`, whose immutable-insert check refuses a divergent rebuild **by name**. A
+receipt that disagrees with authority is louder than no receipt.
+
+`generatedAt = lifecycle.endedAt` is a stated reading: the receipt describes the run AS OF the
+instant its evidence closed. Nothing about the run changes after that, so a "when was this rendered"
+stamp would carry no information and would destroy determinism.
+
+A conditional node that did not run carries a `DecisionEvidence` with its closed reason and an
+`absent`, **non-mandatory** obligation. An absence the descriptor authored and D114's terminal record
+closed is a correct outcome, not an unresolved one; treating it as unresolved would push every
+correct run with a skipped node to `partial`.
+
+#### 2.3.3 The receipt binds to the surfaces its derivation consumes, not to the descriptor's closure (D199)
+
+<!-- roadmap: sep-2 -->
+
+<!-- roadmap-status: sep-2 -->
+- [x] the receipt binds to the SURFACES its derivation consumes, not to the descriptor's 31-file closure (D199)
+- [x] `declared-evidence` takes the stored receipt row as its baseline — the only check that can see a declaration living outside the closure
+- [x] no waiver arm: chunk 2's five split three re-derived byte-identically, two frozen by design
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/receipt-derivation-binding.ts; the six-row check table matches the code
+<!-- /roadmap-status -->
+
+**D141's "re-deriving one run yields the same bytes" was true only within one commit.**
+`buildRunEvidenceReceipt` stamped `descriptorFingerprint` from the CURRENT build's
+`descriptor.contractFingerprint`, so any edit anywhere in a ~31-file descriptor closure changed every
+already-settled run's derived receipt and `evidenceReceipts.insert` correctly refused it. Chunk 2's
+five live-proof `separations-kuali-read` receipts (`sd-140241-ca44`, `sd-140505-28ff`,
+`sd-140917-2b9e`, `sd-140921-3385`, `sd-140921-c0af`) were stranded exactly this way by a
+raw-control-byte fix that changed no semantics at all, and `explain run` answered
+`evidence receipt … already exists with different content` for all five. Re-running the documents was
+not available either: a read workflow whose identity is the thing it reads runs once per subject
+(`docs/migrations/separations.md` §"the re-run wall").
+
+Stamping the current build was also a **false statement** in its own right — the receipt claimed the
+run executed under whatever tree happened to be checked out. `descriptorFingerprint` is now the run's
+OWN retained `envelope.contractFingerprint`: a fact about the run, read from authority like
+everything else in a receipt.
+
+**The closure hash is neither necessary nor sufficient here, and that is the whole finding.** D136
+established the "not necessary" half for parked writes — nearly every edit in a closure leaves every
+consumed surface intact. A receipt adds the other direction: the declared redaction table
+(`src/domain/trust/evidence-classification.ts`) and the declared cross-source obligations live
+OUTSIDE every descriptor's import closure, so they move with `contractFingerprint` byte-identical.
+D197 moved one and two receipts changed content under a frozen hash. A hash that can be equal when
+the answer moved is not a binding.
+
+So resolvability is stated directly, one named check at a time, against exactly what
+`buildRunEvidenceReceipt` reads — the workflow id, the descriptor version, the runtime node walk,
+`descriptor.details`, the terminal execution's `dependsOn`, the declared obligations, and the declared
+redaction. Everything else it reads is a durable authority row, which is immutable and cannot move.
+
+| check | baseline | what a move means |
+|---|---|---|
+| `workflow-identity` | `run.envelope.workflow` | this descriptor is not the run's graph |
+| `descriptor-version` | `run.envelope.descriptorVersion` | the author declared that semantics moved |
+| `canonical-input` | `run.input.parsed.schemaHash` | the input facts would be redacted under a declaration authored for a different shape |
+| `evidence-graph` | checkpoint / terminal-dependency / write-intent rows | a node the run's evidence names left the graph |
+| `terminal-dependency-set` | the stored `RunResultRecord` | the mandatory-evidence set would move |
+| `declared-evidence` | **the stored receipt row** | the redaction, detail or obligation declaration this receipt was written under has changed |
+
+`declared-evidence` is the only check whose baseline is the receipt itself, and it is the only one
+that can see a declaration living outside the closure. It runs on re-derivation, attributes every
+divergent path to the ONE declaration that owns it (`declared-redaction`, `declared-details`,
+`declared-obligations`, `terminal-dependency-set`, `run-identity`, `receipt-composition`), and
+refuses — so a genuinely moved declaration reads as *what* moved instead of "the bytes differ".
+`evidenceReceipts.insert`'s immutable check stays underneath as the backstop for any caller that does
+not come through `ensureRunEvidenceReceipt`; this path never skips it.
+
+A refusal prints the whole check table with both fingerprints, `[held]`/`[MOVED]`/`[skip]` distinct
+and an unevaluated check never reported as held. **There is no waiver, override, or force arm.** A
+settled run's receipt is an operator-facing record of a real HR transaction; when a declaration truly
+moved, the honest outcomes are to restore it or to accept that the receipt is frozen — never to
+overwrite it with a newer story about what happened. Chunk 2's own five split exactly that way: the
+three whose only change was the closure re-derive byte-identically, and the two that also crossed
+D197's classification fix stay frozen and now say so by name.
+
+Owned by `src/core/receipt-derivation-binding.ts`; pinned by
+`tests/unit/receipt-derivation-binding.test.ts` and the `evidence-receipt` guard.
+
+#### 2.3.4 A gate's evidence is a `gate_results` row, so the approver reaches the receipt (D204)
+
+<!-- roadmap: sep-3 -->
+
+<!-- roadmap-status: sep-3 -->
+- [x] a gate's durable evidence is its `gate_results` row, so the approver reaches the receipt (D204)
+- [x] the decision arm is DECLARED per `(workflow, gate)`; an undeclared gate and an unlisted arm value both fail loud
+- [x] redaction extends by a `gate-result` scope rather than a hole; the operator's reasoning is shown, not redacted
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/core/evidence-receipt.ts and src/domain/trust/gate-decisions.ts
+<!-- /roadmap-status -->
+
+> **`gate_results` is a repository name, not a table.** `authority.gateResults` stores its records in
+> `checkpoint_payloads` keyed `<runId>:<gateId>` (`src/infra/sqlite/authority-database.ts`). This
+> section keeps the repository's vocabulary because that is what the code reads; the OPERATOR-facing
+> receipt sentence deliberately does not, and names "the gate result record" with no table at all —
+> a trust artifact read months later must not send its reader hunting for a table nobody created.
+
+**Ratified 2026-08-12.** D202 built the ALWAYS-GATE and put the answer to ref write-safety §14.6 risk 6 ("who
+approved is lost") into authority: the command kernel writes `resolvedBy`/`resolvedAt` onto the
+`gate_results` row inside the same transaction that stores the result and resumes the run, and a
+caller-supplied `approvedBy` beside that would be a claim sitting next to authority. D203 then taught
+the KERNEL that a gate dependency's durable evidence is that row rather than a checkpoint. **The
+receipt was not taught the same thing**, and it derives from checkpoints — so chunk 3's settled live
+run `si-161551-774c` listed `node.identity-approval` as `unknown` and carried no decision row at all.
+Risk 6 was answered durably and not in evidence, which on a trust surface is the same as unanswered:
+the receipt is the artifact an operator reads months later to see the human in the loop.
+
+**The reader moves, for the third time and for D144's reason.** A gate has no checkpoint and never
+will — fabricating one would make a durable record claim a shape it does not have. So
+`buildRunEvidenceReceipt` takes `gateResults` beside `checkpoints`, and a resolved gate node emits:
+
+- **its payload's leaves as observation facts**, sourced through a new `gate-result` arm of
+  `EvidenceSource` carrying the gate id and authority's own `resolvedBy`/`resolvedAt`. The source arm
+  is separate from `system` because a gate owns no task contract: what it dates is a DECISION, not an
+  observation of a page.
+- **one `kind: "gate"` decision**, whose outcome comes from a DECLARED arm table and whose reason
+  names the approver, the instant, the resolving command, and the evidence digest the approval was
+  bound to (ref write-safety §14.5 — an approval is an observation of a specific packet).
+- **a `verified` obligation** for the node, replacing the `unknown` that used to stand for
+  "authority holds nothing", which was false.
+
+**Why the decision arm is declared and not sniffed.** `DecisionEvidence.outcome` is a closed
+five-value enum and a gate's result payload is authored per gate, so mapping one to the other by
+looking for a field called `decision` would put a plausible-but-wrong word on a record of a human
+decision — a payload arm this build did not recognise would land as `approved` or vanish.
+`src/domain/trust/gate-decisions.ts` declares, per `(workflow, gate)`, the decision leaf, each stored
+value's outcome and operator-facing summary, and the bound-evidence leaf. An undeclared gate and an
+unlisted arm value both fail LOUD, exactly as `classifyEvidenceLeaf` does for an undeclared leaf, and
+the `evidence-receipt` guard fails when a registered descriptor grows a gate node without one.
+
+Redaction extends the same way rather than gaining a hole: `EvidenceValueScope` gains a
+`gate-result` arm scoped by `(workflow, gate)` — not by a task id, which a gate does not have — and
+the identity gate's four leaves are declared there. The approved `eid` is a `direct-identifier`
+taking `last4` like every other identifier on a receipt; the decision, the choice, the digest and the
+operator's own rejection reason are the DECISION and are shown, because a receipt whose job is to
+display the human in the loop cannot redact the human's reasoning out of it.
+
+The D199 check table gains no new check. `evidence-graph` grows one row-source: a gate result whose
+node left the graph, or whose node is no longer a gate, is a graph gap named as such — the second
+case is the stronger break, since the row would otherwise read as a decision about a step that no
+longer asks a human anything.
+
+**One consequence, recorded rather than waived.** A receipt stored BEFORE this decision cannot
+re-derive under it — `declared-evidence` moves, correctly, naming `receipt-composition` (four new
+observation rows) and `declared-obligations` (`verification[3].verdict: "unknown" → "verified"`).
+D199 has no waiver arm and gains none here. The two `separations-identity-check` receipts the chunk-3
+proof session minted were dropped from the standing authority database as an explicit operator
+repair — both describe read-only identity checks, both were minted under a build that structurally
+could not see the gate row, and §14.9 had already recorded that incompleteness as an open defect —
+and then re-derived under D204. That is a data decision about a pre-production database, taken and
+written down; it is not a code path, and no code path exists to take it.
+
+Owned by `src/core/evidence-receipt.ts` and `src/domain/trust/gate-decisions.ts`; pinned by the
+`evidence-receipt` guard against the REAL gated descriptor, with a foreign gate row, a gate that left
+the graph, and an undeclared arm value as negative controls.
+
+#### 2.3.5 A settled gate's panel names the verdict, the approver and the instant (D237)
+
+<!-- roadmap: track-b -->
+
+**Ratified 2026-08-19.** D202 put the approver into authority, D203 taught the kernel to read a
+`gate_results` row as a dependency's evidence, and D204 taught the RECEIPT the same thing. The
+**panel** was never taught it. `run-detail`'s `resolved` gate arm was keyed on the span stream's
+`resolutionKey`, and the command service emits the literal `resolved` for every gate — deliberately,
+with a comment naming the deferral (*"Until gate descriptors declare display keys (2h Review), the
+one honest key is the fact of resolution itself"*). So the approve/reject arm was **structurally
+unreachable**: every settled gated run's panel reported `gate: { state: "absent", reason: "gate
+identity-approval resolved with key resolved, which is not an approve/reject verdict" }`, a sentence
+that reads like a data problem and was a vocabulary deferral. Separations §9.17 item 7(a) recorded
+it against a real settled run; this closes it.
+
+**The source is the durable row, and it is the SAME row the receipt reads.** The panel query takes
+`authority.gateResults.listByRun(runId)` — D204's own read — and derives the verdict through D204's
+declared arm table (`src/domain/trust/gate-decisions.ts`), with `resolvedBy` and `resolvedAt` taken
+off the row the kernel wrote inside the resolving transaction. The span stream is not consulted for
+the verdict at all, which is the point: a projection of an event's display key was never authority
+for what a human decided, and the two surfaces an operator reads side by side — the panel and the
+receipt — now cannot disagree about who answered a gate. The wire's `resolved` arm therefore carries
+`resolvedBy` as a REQUIRED field; requiring it is safe precisely because the arm was unreachable, so
+no served wire and no archived record can hold a `resolved` gate that predates it, and an optional
+field would have bought read-forward safety for a shape nothing ever wrote at the price of a settled
+gate that renders without naming a human.
+
+**Where the panel and the receipt deliberately DIVERGE: what a gap does.** The receipt REFUSES to
+derive at all when a gate is undeclared or stores an arm value no declaration lists (D204) — it is
+the durable artifact, and a trust record that guessed would be worse than no record. The panel must
+still render the run it exists to explain, so each way the read can fail to produce a verdict is a
+NAMED absence instead: no durable row beside a folded `gate.resolved` span (stated as exactly that
+divergence, so a lost decision never reads as a workflow that asked for none), no declaration for
+`(workflow, gate)` naming the file that owes one, an arm value no declaration lists naming both what
+was stored and what is declared, and a declared outcome that is not an approve/reject verdict. In
+neither surface does anything guess the word.
+
+**What the operator sees.** The panel draws a DECISION RECORD in the run's own stream at
+`resolvedAt` — the settled counterpart of the open gate's decision card, in the same geometry —
+carrying the verdict, the approver and the instant. The archived detail's Decision card names the
+approver for the same reason. Ref dashboard-surfaces owns the presentation; this section owns the derivation.
+
+Owned by `src/server/dashboard/queries/run-detail.ts` and `src/domain/dashboard/run-detail.ts`,
+over `src/domain/trust/gate-decisions.ts`; pinned by
+`tests/unit/server/run-detail-gate-outcome.test.ts` with every named absence as a negative control.
+
+#### 2.3.6 A transaction node IS a terminal dependency — the named gap, closed by D144
+
+<!-- roadmap: p2-2g -->
+
+**Closed 2026-08-04 (D144, ref write-safety §3.1).** The gap was real: the sequencer stored a transaction
+checkpoint under the durable `TransactionOutcome` schema hash while the descriptor factory's
+terminal `build` demanded the COMMIT CONTRACT's output schema hash, and the interpreter never
+registered a transaction checkpoint as terminal evidence at all — so `kuali-timekeeper-annotation`
+could not reach terminal `done` and the controlled commit had no receipt in authority. The stored
+hash was the correct one; the terminal side moved. `kualiReceiptEvidence`'s terminal record now
+comes from the real `buildRunResult`, and `tests/unit/transaction-terminal-dependency.test.ts`
+drives a queued Kuali run through the real interpreter to `done` and derives its receipt.
+
+#### 2.3.7 A DRY RUN is a rehearsal, and the label is derived from the verdict (D215/D238)
+
+<!-- roadmap: track-b -->
+
+**Ratified 2026-08-19.** `done → verified-done` used to be mechanical, so a preview that wrote
+nothing wore the label reserved for an independently verified real completion — while its own
+receipt already said otherwise. Nothing had to be invented: a previewed run derives
+`result: "partial"` from the receipt builder itself, because its `completion.terminal-result`
+obligation is `unknown` and its `DRY_RUN_PREVIEW` warning is load-bearing, which makes
+`verified-done` structurally unreachable for a preview (`evidence-receipt.ts:707-761`).
+
+Two facts about that arm are worth keeping. **The preview's two shapes are both recorded**: a
+staged-and-observed preview and one that settled at the probe (D215's `not-observed` subject
+verdict, the ordinary separations subject) produce different warning text, because a rehearsal that
+never staged anything is a different rehearsal. And **the two facts are cross-checked**: the
+envelope's `dryRun` flag and a terminal result bound to `RunDryRunPreviewResultSchema`'s hash must
+AGREE, and a mismatched pair throws rather than picking one (`:713-721`).
+
+The **label** lives one layer out, on the dashboard wire, and deliberately not on the receipt:
+`OutcomeWireSchema` carries `rehearsal: z.literal(true).optional()` beside the same five-arm
+`result`, with a refinement making `rehearsal === true` and `verified-done` unrepresentable
+(`src/domain/dashboard/run-detail.ts:286-300`). It is not a sixth result and not a new confidence
+tier — it is D6's envelope fact, already on the queue row, said again where an operator reads the
+outcome. `terminalOutcomeText` (`src/dashboard/surfaces/log-panel-model.ts:67-72`) is a pure
+exported function for the reason D187 taught: this tree renders no React in the unit lane, so an
+operator-facing sentence is only as pinned as the parity corpus unless it is extracted.
+
 ### 2.4 Rerun transparency
+
+<!-- roadmap: p2-2g -->
+<!-- roadmap: def-search-export -->
+
+<!-- roadmap-status: def-search-export -->
+- [ ] the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (§2.4)
+- [ ] the screenshot gallery and the artifact-bytes route the diagnostic store would serve (§2.2)
+- [x] the per-fact half exists today: `retryOf` plus `reuse` rows carrying `ageMs` and the bound they were judged against
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/domain/trust/evidence.ts:97-103 and src/core/command-kernel.ts:623; left: the comparison, which needs a run corpus to be worth shaping
+<!-- /roadmap-status -->
 
 A retry/rerun receipt links to the prior run and shows a field-level diff:
 
@@ -863,7 +1064,20 @@ A retry/rerun receipt links to the prior run and shows a field-level diff:
 The dashboard never labels replayed data as newly observed. This is the operator-facing projection
 of refs workflow-model/write-safety's provenance and permanent proof rules.
 
+**As-built — half of this is built, and the half that is missing is the DIFF.** A receipt carries
+`retryOf` (the prior run, minted by the kernel's retry at `src/core/command-kernel.ts:623`) and its
+own `reuse` rows — `fresh-live | checkpoint | corrected | prior-proof`, each with `ageMs` and the
+`freshnessLimitMs` it was judged against (`src/domain/trust/evidence.ts:97-103`) — so "was this
+observed again or replayed" is answered per fact, on the run's own receipt, and the trust surface
+prints `retry of <runId>` (`src/dashboard/surfaces/trust.tsx:289`). What does not exist is the
+FIELD-LEVEL COMPARISON of two receipts: nothing in `src/` reads a prior run's receipt beside the
+current one to say which input changed, which branch outcome moved, or which fingerprint differs.
+The operator can open both receipts; the system does not diff them. Owned by `{#def-search-export}`,
+which is where a corpus of runs to compare first becomes reachable.
+
 ### 2.5 `explain run`
+
+<!-- roadmap: p2-2g -->
 
 One CLI/API command is the canonical debug entry point:
 
@@ -871,17 +1085,57 @@ One CLI/API command is the canonical debug entry point:
 cli explain run <traceId|runId> [--json] [--bundle <dir>]
 ```
 
-It resolves the operation tree and prints: current/terminal state, node timeline, checkpoint reuse,
-subject bindings, failure fingerprint, last successful action, open gate/dependency, command
-history, notification state, write intent/proof, and concrete next safe action. `--bundle` exports a
-redacted portable diagnostic package plus a manifest/hash. Codex/Claude prompts reference this
-command and the generated catalog instead of asking the operator to manually assemble logs.
+It resolves the operation tree and prints, in this order: state, node timeline, checkpoint reuse,
+subject bindings, failure, last successful action, open gate, open dependency, command history,
+notifications, write intent/proof, evidence receipt, and the concrete next safe action
+(`src/server/explain/explain-run.ts:317-346`). Codex/Claude prompts reference this command and the
+generated catalog instead of asking the operator to manually assemble logs.
+
+**Three sections do not print what this paragraph once promised, and each says why rather than
+printing an empty heading — which is the whole discipline of this command.** `--bundle` **REFUSES**
+by name (§2.5.1): exporting a diagnostic package missing the capture evidence its manifest claims is
+worse than refusing. `command history` is absent because authority indexes commands by id, not by
+run, and the by-run projection is ref dashboard-surfaces's queue projection rather than this
+command's.
+
+The `notifications` section is absent too, and **its reason has gone stale**: it reads *"no
+notification trigger is wired yet … so this run has none rather than none being shown"*
+(`src/server/explain/explain-run.ts:256-260`), which was true when it was written and stopped being
+true at D262. `gate-park.ts` publishes a RUN-SCOPED row for a run parked at a gate (§6), so the one
+sentence a run explanation must never get wrong — *this run has none* — can now be false on exactly
+the runs an operator is most likely to explain. The honest arms are to read the inbox for the run's
+own links, or to narrow the reason to "this command does not read the inbox". It is a one-line
+reason string and a reader of a trust surface has no way to know it is old; recorded here rather
+than fixed, because this pass changes documents and not code.
+
+#### 2.5.1 `explain run` and the receipt are one derivation (D143)
+
+<!-- roadmap: p2-2g -->
+
+`cli explain run <traceId|runId> [--json]` resolves either identity and prints §2.5's
+sections in §2.5's order. For a settled run it derives the SAME receipt the dashboard serves, so a
+terminal explanation and a terminal receipt cannot disagree. Every section an operator could misread
+as "nothing happened" says why instead. `--bundle` **refuses**: exporting a diagnostic package
+missing the capture evidence its manifest claims is worse than refusing, because the recipient
+cannot tell.
 
 ---
 
 ## 3. Scenario corpus: workflows improve safely as new cases are discovered
 
+<!-- roadmap: p2-2j -->
+
+<!-- roadmap-status: p2-2j -->
+- [x] the executable corpus and `scenario-coverage`, audited in BOTH directions, plus D185's corpus-layout audit
+- [ ] `ScenarioManifest`'s preflight fault set has no runner and `preflight-coverage` stays `planned` (D188)
+- [ ] §3.2's coverage policy is not proved in full — the audit is over graph-derived points, not a contract's error enum
+- [ ] the tier layout moves to `ref guards-and-tests §Testing tiers` under R10; this section keeps what a scenario IS
+> 2026-08-20 | docs-cohesion operator-trust | verified against tests/scenario/** (16 files), tests/unit/architecture/scenario-coverage.test.ts and guard-inventory.json; left: the runner and the tier move
+<!-- /roadmap-status -->
+
 ### 3.1 `example` is not a scenario
+
+<!-- roadmap: p2-2j -->
 
 Ref task-contract's contract `example` remains the canonical happy-path output used for type checks and cheap
 stubs. A scenario includes inputs, page/data fixtures, timing/failure injection, expected actions,
@@ -913,7 +1167,32 @@ equivalents. `input` is a generic canonical-JSON envelope only because one corpu
 contract; corpus load resolves `scope`, parses it through that exact task/workflow input schema, and
 stores the parsed value plus schema fingerprint before any scenario can execute.
 
+**As-built — TWO mechanisms share the word "scenario", and only one of them runs.**
+`ScenarioManifest` above is real code (`src/domain/trust/scenario.ts:33-90`) and it has exactly one
+consumer: `PREFLIGHT_SCENARIO_MANIFESTS` (`src/domain/trust/preflight-scenarios.ts:32`), the closed
+set of preflight FAULT scenarios. **Nothing executes them.** The `preflight-coverage` guard is
+`planned` in `guard-inventory.json` and its test file does not exist on disk; D188's re-disposition
+says in as many words that the missing half is a corpus of executed fault scenarios and that the
+guard activates with the first migration that adds a preflight runner.
+
+The corpus that DOES run — `tests/scenario/**`, sixteen files — is built on a much smaller shape:
+`ScenarioCoverageClaim { scenarioId, covers }` (`tests/scenario/coverage-claims.ts`), one claim per
+scenario, each asserted by its own test to match the path the walk actually exercised. That is why a
+claim there cannot outlive the path it describes, and it is also why the rich manifest above buys
+nothing today: the executable lane never parses one. Both are honest; conflating them is what makes
+this section read as though the manifest gates the suite. It does not.
+
 ### 3.2 Minimum scenario coverage
+
+<!-- roadmap: p2-2j -->
+<!-- roadmap: track-a -->
+
+<!-- roadmap-status: track-a -->
+- [ ] regression scenarios for separations' close-out
+- [ ] knowledge records for separations — blocked on a CALLER, not on a schema: the store, the admission audit and the projection are built and unreachable (§4.1)
+- [ ] capability dispositions
+> 2026-08-20 | docs-cohesion operator-trust | verified the three doc-side close-out obligations against the code; all three open, and the knowledge half needs one composition-root wire rather than a design
+<!-- /roadmap-status -->
 
 - Every task: happy path, every declared business absence/error code, schema-invalid input/output.
 - Every browser task: expected page state, unexpected page state, selector missing, cancellation,
@@ -927,7 +1206,24 @@ stores the parsed value plus schema fingerprint before any scenario can execute.
   failure, hide/restore, enqueue coalesce/reject/supersede/parallel.
 - Storage: disk full, corrupt DB, missing/torn WAL, failed migration, backup restore, projector lag.
 
+**As-built, and being restructured.** Sixteen files under `tests/scenario/` walk the corpus today,
+and `scenario-coverage` audits it in BOTH directions — every branch, gate, delegation and
+transaction coverage point the graph derives is claimed, and every claim resolves to a real point
+AND a real file; D185 added a corpus-layout audit so a scenario title that parses as a `ScenarioId`
+must resolve rather than being read as prose. The list above is a coverage POLICY, and it is not met
+in full: nothing in the tree proves that every declared business absence code, every selector-missing
+arm or every storage fault has a scenario, because the audit is over graph-derived points, not over
+a contract's error enum.
+
+**Where the policy is moving.** R10 (operator, 2026-08-20) reorganizes `tests/` by what a test NEEDS
+— a no-dry-run tier and a dry-run tier built on a live `dryRun=true` run of each workflow with
+checkpoints asserted over authority — and the owning spec is **ref guards-and-tests §Testing tiers**,
+tracked as `{#test-tiers}`. This section keeps the operator-trust half (what a scenario IS, and why
+`example` is not one) and stops being the place the tier layout is described.
+
 ### 3.3 Unexpected states become data, never fallbacks
+
+<!-- roadmap: phase-1 -->
 
 If a page does not match a declared `PageStateId`, the driver returns/throws `UnexpectedPageState`
 with captured evidence and parks/fails according to the descriptor. It does not try an unlabeled
@@ -946,7 +1242,12 @@ test plus live evidence. A failure fingerprint may not be marked resolved with o
 
 ## 4. Structured knowledge and AI-assisted fix history
 
+<!-- roadmap: p2-2g -->
+<!-- roadmap: track-a -->
+
 ### 4.1 LESSONS are migration input, not the new authority
+
+<!-- roadmap: p2-2g -->
 
 The plan does **not** move `LESSONS.md` wholesale into each rebuilt store. During a store/workflow
 migration, each relevant old lesson is triaged into one of three destinations:
@@ -978,11 +1279,25 @@ export interface KnowledgeRecord {
 }
 ```
 
-Records are strict-schema JSON under `knowledge/records/`; one generated `KNOWLEDGE.md` per system
-shows **active only** guidance for humans/AI. Incident history and superseded records remain
-queryable but are not injected into ordinary prompts/search results unless explicitly requested.
+Records are strict-schema JSON; one generated `KNOWLEDGE.md` per system shows **active only**
+guidance for humans/AI. Incident history and superseded records remain queryable but are not
+injected into ordinary prompts/search results unless explicitly requested.
+
+**As-built — the authority is the TABLE, and the generator has no caller.** The `knowledge/records/`
+on-disk layout was never built and is not owed: `knowledge_records` / `fix_records` (schema v10) are
+the authority, and `projectKnowledgePages` / `renderKnowledgeMarkdown`
+(`src/domain/trust/knowledge-projection.ts:147-209`) render the ACTIVE view from it, with
+`writeKnowledgeProjection` (`src/services/trust/knowledge-service.ts:86-102`) writing the files
+behind a path-escape guard. D139 recorded that wiring the generator to an npm script was 2i's work,
+"with the explorer". **It did not happen.** Nothing in `src/cli.ts`, `compose.ts`, `src/dashboard/**`
+or `package.json` constructs the knowledge service or calls the projection, so no `KNOWLEDGE.md`
+exists in this tree and no record has ever been written by the running system. The store, the
+admission audit (§4.5) and the projection are real and unit-tested; the operator has no way to reach
+them. Owned by `{#track-a}`'s close-out, which is where the first migration's knowledge records land.
 
 ### 4.2 `FixRecord`—what Codex/Claude changed and how it was proven
+
+<!-- roadmap: p2-2g -->
 
 ```ts
 export interface FixRecord {
@@ -1004,10 +1319,15 @@ export interface FixRecord {
 Raw chats, AI explanations, and uncommitted reasoning are never runtime authority. A fix becomes
 trusted only through code + schemas + scenarios/tests/live evidence + an optional linked knowledge
 record. `status:"verified"` requires a commit id and non-empty verification evidence; an uncommitted
-or unproven change remains a visible draft and is excluded from active guidance. `cli explain
-failure <fingerprint>` shows prior fixes and whether the same scenario still passes.
+or unproven change remains a visible draft and is excluded from active guidance.
+
+`cli explain failure <fingerprint>` — which would show prior fixes and whether the same scenario
+still passes — **is not built** (§2.1). The indexed `fix_records.failure_fingerprint` column and
+`FailureRepository.listByFingerprint` exist for it; the command does not.
 
 ### 4.3 Maintenance and search
+
+<!-- roadmap: p2-2g -->
 
 - New record creation checks for matching scope/symptom/element/scenario before adding; suspected
   duplicates require an explicit supersedes/related link.
@@ -1015,7 +1335,26 @@ failure <fingerprint>` shows prior fixes and whether the same scenario still pas
   `unverified`; it never silently leaves dead guidance active.
 - Search defaults to `status:active`, current descriptor/task fingerprints, and the current UI ids.
 
+**As-built: the first bullet is built, the other two are not, and one of them cannot be built as
+written.** Duplicate admission IS enforced, inside the insert transaction (§4.5). The **audit**
+needs a CAS on a record version and `KnowledgeRecordSchema` carries no `version` — D134 named that
+as a schema decision the maintenance slice must ratify rather than guess, and it has not been taken,
+so nothing marks a stale record `unverified`. **Search does not exist**: there is no CLI command, no
+BFF route and no surface over knowledge or fix records at all. Both remainders belong to
+`{#track-a}`'s close-out beside §4.1's generator, and neither is blocking anything today for the
+plain reason that the table is empty.
+
 ### 4.4 Optional AI assistance reads the evidence; it never becomes the evidence
+
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-sanity-check -->
+
+<!-- roadmap-status: def-sanity-check -->
+- [x] the operator RULED on it: 2026-08-18, no AI feature — the §14.2 gate packet's server-computed `comparisons` array IS the sanity check (§4.4.2)
+- [x] `config/legacy-capabilities.json` carries `legacy-tool-ops-sanity-check-record` as `retired`, machine-checked by `legacy-capability-disposition`
+- [!] the tree still shows this node `planned` with `you: re-disposition D192`; the doc and the capability register both say RETIRED, and only the orchestrator may move a node
+> 2026-08-20 | docs-cohesion operator-trust | verified against config/legacy-capabilities.json and src/domain/dashboard/advisory.ts (AdvisorySurfaceIdSchema is still the D178 two-value shape); left: the node's own status
+<!-- /roadmap-status -->
 
 The old `services/llm` capabilities are explicitly dispositioned rather than disappearing behind a
 proxy. Shared provider/key/rate-limit clients move under infra because OCR and contact normalization
@@ -1040,9 +1379,9 @@ registry entry, or call the command/mutation services.
 - A migrated selector/element id updates records through the canonical registry mapping; free text
   is not used as the join key.
 
----
+#### 4.4.1 As-built — the prompt, the answer schema, and the zero-authority edge (D178)
 
-**As-built (D178, 2026-08-09) — this section landed, and the guard came with it.**
+<!-- roadmap: p2-2i -->
 
 **What a prompt is made of, and what it is NOT.** `src/domain/trust/advisory.ts` assembles every
 prompt from the subject record's LEAVES, each pushed through the ONE `redactValue` implementation
@@ -1141,9 +1480,11 @@ need the fuller form.
 `tests/scenario/normalization-contact.scenario.test.ts`. No test contacts a live provider: the
 production adapter takes its `fetch` by injection precisely so these can exist.
 
----
+#### 4.4.2 The three producerless adapters get their dispositions (D192, closed 2026-08-18)
 
-**As-built (D192, operator decision 2026-08-12) — the three producerless adapters get their
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-sanity-check -->
+
 dispositions.**
 
 - **Run summary → RETIRED.** `RunEvidenceReceipt` (D141/D144) is already the run's structured,
@@ -1171,11 +1512,59 @@ dispositions.**
 2026-08-18 — `legacy-tool-ops-sanity-check-record`), and the `legacy-capability-disposition` guard
 (D184) validates the shapes.
 
+### 4.5 As-built — knowledge is admitted before it is inserted, and supersession is expressed forward (D139)
+
+<!-- roadmap: p2-2g -->
+
+The knowledge/fix tables are insert-only (D134), so a duplicate that lands cannot be retracted.
+Admission is therefore audited INSIDE the insert transaction. Two ACTIVE records may not claim the
+same scoped rule — identical scope plus either the same normalized title or a shared regression
+scenario — unless the successor explicitly supersedes the predecessor. An unknown supersedes ref, a
+self-reference, and a duplicate id are each refused with the conflict named.
+
+**Supersession is expressed forward by the new record**, and the active view subtracts every
+superseded id. Nothing rewrites the older row, so the generated guide stops showing stale advice
+without any record mutating and without the `version` field §4.3's audit would need. §4.3's
+"mark stale records `unverified`" still awaits that schema decision — this slice does not guess it.
+
+The generated per-system `KNOWLEDGE.md` is the ACTIVE view alone: superseded, retired, and
+unverified records never reach it, and its header says it is generated so it cannot read as a second
+authority. §4.1's `knowledge/records/` on-disk file layout is not built; the table is the authority
+and `writeKnowledgeProjection(root)` is the generator. Wiring it to an npm script was 2i's, with the
+explorer — **it did not happen, and §4.1 now says so where a reader will look for it.**
+
+A verified `FixRecord` requires a commit plus non-empty verification evidence plus a regression
+scenario; a draft may claim neither commit nor evidence; a verified fix may not link knowledge that
+is missing or itself `unverified`. **A raw appended lesson is not authority**: `triageLesson` has
+exactly one arm, and it returns the obligations the author still owes — there is no path from prose
+to a record.
+**What that 2026-08-04 sentence left open, settled here (2026-08-20).** Automatic bundle capture
+triggers LANDED — the interpreter captures and persists inside the terminal transaction (§2.2.1).
+The retention sweep is built and has no caller (§2.2). Notification trigger wiring landed for TWO of
+seven event kinds (§6.3). `explain failure` is still not built (§2.1, §4.2). Both guards named there
+are now **active**: `notification-durability` and `knowledge-fix-integrity` execute in the suite and
+are registered in `guard-inventory.json` — the second covers both halves of §9's fix→scenario and
+active-knowledge rules.
+
 ---
 
 ## 5. Workflow explorer/editor—staged hybrid, one graph
 
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-explorer-edit -->
+
 ### 5.1 Decision
+
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-explorer-edit -->
+
+<!-- roadmap-status: def-explorer-edit -->
+- [ ] Phase B's closed editable subset — presentation, notification preference, allowlisted policy values (§5.3)
+- [ ] the compile/apply protocol: strict versioned override, temp+fsync+atomic-replace, stale-base refusal, code-change brief (§5.4)
+- [ ] the new-workflow authoring path (§5.5), folded into this node by the operator on 2026-08-20 rather than given its own
+- [x] the trigger is named and checkable: the SECOND production workflow whose policy an operator wants to change without a code change (D186)
+> 2026-08-20 | docs-cohesion operator-trust | verified NOTHING of the edit half exists — no draft union, no apply path, no compile route, no scaffold command in src/cli.ts; the deferral is whole, not partial
+<!-- /roadmap-status -->
 
 Build a **read-only workflow explorer in Phase-2 tail 2i**, with closed presentation/policy editing
 alongside it after graph, validation, versioning, and evidence are proven. A free-form visual
@@ -1183,6 +1572,8 @@ programmer and DSL/codegen are rejected: graph/composition, arbitrary code, sele
 write-proof logic remain reviewed source work.
 
 ### 5.2 Phase A—read-only explorer (Phase-2 tail 2i)
+
+<!-- roadmap: p2-2i -->
 
 The explorer is a projection of the exact descriptor and live span/checkpoint data—not a mined or
 parallel graph. It shows:
@@ -1201,7 +1592,22 @@ This serves both operator debugging and AI code changes: “the failure is at
 `separations/ucpath-transaction → ucpath.smart-hr.ready-to-submit`” resolves to stable ids and source
 locations without reverse-engineering row prose.
 
+**Phase A shipped in 2i-G and is as-built in §5.7 (the derivation and its two named exclusions),
+§5.8 (the catalog surface) and §5.9 (the node panel's derived field census).** Those three sections
+amend this one; they keep their own numbers because the tree's `{#p2-2i}` and `{#track-b}` nodes
+cite them.
+
 ### 5.3 Phase B—safe edits only
+
+<!-- roadmap: def-explorer-edit -->
+<!-- roadmap: phase2-dispositions -->
+
+<!-- roadmap-status: phase2-dispositions -->
+- [x] the Workflow Explorer's EDIT half left Phase 2 by explicit disposition, on D79a's own argument one level down (D186)
+- [x] nothing partial was built: no draft union, no half-authority, no config path that can reach a descriptor
+- [x] `workflow-editor-compile-integrity` is `active` with Phase-A arms only, and its inventory entry says so in as many words
+> 2026-08-20 | docs-cohesion operator-trust | verified against tests/unit/architecture/workflow-editor-compile-integrity.test.ts and guard-inventory.json; the deferral is a decision with a trigger, not a slip
+<!-- /roadmap-status -->
 
 > **DEFERRED OUT OF PHASE 2 — D186 (2j, 2026-08-09).** Phase B is **not built**, and this is a
 > decision rather than a slip. The argument is D79a's own, one level down: an editor exists to
@@ -1241,6 +1647,8 @@ and failed obligations.
 
 ### 5.4 Compile/apply protocol
 
+<!-- roadmap: def-explorer-edit -->
+
 Every edit is a draft with a base descriptor version/fingerprint. “Validate” runs the same builder,
 schema, graph, guard, and scenario checks as source-authored descriptors. “Generate patch” produces:
 
@@ -1265,19 +1673,27 @@ existing strict versioned override through temp+fsync+atomic-replace and can hot
 cannot apply the edit itself. Anything the closed editable set cannot express produces a
 **code-change brief**, never partial config and never a second authority.
 
-*(Historical rejected DSL design—do not implement.)*
-A DSL draft runs codegen, typecheck, graph guards, the impacted scenario set, and a clean build in an
-isolated output directory. Apply atomically stores the prior DSL/version for rollback, writes the new
-DSL+generated artifacts, and requires a controlled server restart; it never loads arbitrary code or
-hot-switches execution classes. Rollback restores the exact prior DSL/generated hash and re-runs the
-same gates. The editor never rewrites handwritten task/driver code. Enqueued runs retain their
-stamped descriptor/config snapshot; only new runs after restart use the activated version. A stale
-base fingerprint conflicts and must be rebased.
+_The rejected DSL pipeline's own design text — codegen, isolated build, restart-gated apply,
+exact-hash rollback — is preserved verbatim at
+`docs/rebuild/history/superseded/2026-08-20-operator-trust-5.4-dsl-authoring.md`. It is history,
+not a design to implement._
 
 ### 5.5 New-workflow authoring path
 
-The same explorer provides a guided scaffold flow so adding a workflow does not begin with string
-search and copied boilerplate:
+<!-- roadmap: def-explorer-edit -->
+
+> **NOT BUILT, and folded into the same deferral as §5.3.** No scaffold flow, CLI command or
+> generator exists: `src/cli.ts` registers `dashboard`, `worker`, `explain`, `ocr` and `storage` and
+> nothing else, and a repo-wide search for a scaffold/authoring path returns nothing. The section
+> below is the design, written in the present tense because it describes what the flow must do when
+> it is built — it does not describe anything an operator can run today. It travels with
+> `{#def-explorer-edit}` (the operator's ruling, 2026-08-20) rather than getting a node of its own,
+> even though authoring a NEW workflow and editing an existing one's policy are different
+> capabilities: both wait on the same explorer half, and one deferral with a named trigger is more
+> honest than two.
+
+The design: the same explorer provides a guided scaffold flow so adding a workflow does not begin
+with string search and copied boilerplate:
 
 1. choose a unique workflow id/code/category and strict input/result schemas from canonical fields;
 2. search registered tasks by intent/system/input/output, inspect their scenarios/UI dependencies,
@@ -1295,6 +1711,8 @@ then becomes selectable by workflows; this is the “fix once, reuse everywhere�
 
 ### 5.6 What happens to the old workflow modifier
 
+<!-- roadmap: def-explorer-edit -->
+
 Its useful presentation editing and operation mining are port inventory. The preserved legacy
 modifier stays inside the legacy repo; with no shared module graph (D93) it cannot be proxied or
 imported. The new read-only explorer replaces mined operations with descriptor tasks and
@@ -1303,6 +1721,18 @@ same descriptor projection. Generated `config/workflow-design/*.md` files are no
 authority; the descriptor and validated draft history are.
 
 ### 5.7 Phase A as-built — the explorer is a projection, and it proves it (2026-08-09, D176)
+
+<!-- roadmap: p2-2i -->
+
+<!-- roadmap-status: p2-2i -->
+- [x] the explorer is a projection of the ONE composition root, guarded in both directions over the REAL registry (D176)
+- [x] source links RESOLVE against a real listing; a miss is `unresolved` carrying the path it tried
+- [x] the UI catalog surface serves the COMMITTED artifact and refuses a stale one (D177)
+- [x] the node panel is a derived FIELD census (D227) and the descriptor's own prose is declared and guarded (D229)
+- [ ] the live-run overlay stays EXCLUDED by decision — run facts belong to the run-detail timeline
+- [ ] scenario coverage CLAIMS stay in the executable corpus by decision, not for want of a wire
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/server/dashboard/queries/explorer.ts and src/dashboard/surfaces/explorer.tsx; both exclusions are still deliberate and still true
+<!-- /roadmap-status -->
 
 Phase A landed in 2i-G. §5.2's list is served, with two named exclusions below.
 
@@ -1377,6 +1807,8 @@ throughout: no edit affordances anywhere.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
 
+<!-- roadmap: p2-2i -->
+
 §1.3's catalog was reachable only from `npm run selector:search` and two markdown projections. It
 now has a read-only surface, and two rules make it trustworthy.
 
@@ -1394,6 +1826,23 @@ stale live verification current, so every row carries its `verifiedAt` and both 
 same weight as its id — never folded into a disclosure a hurried reader skips.
 
 ### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
+
+<!-- roadmap: track-b -->
+<!-- roadmap: sep-dash -->
+<!-- roadmap: order-1-dash -->
+<!-- roadmap: order-2-dash -->
+<!-- roadmap: order-3-dash -->
+<!-- roadmap: order-4-dash -->
+<!-- roadmap: order-5-dash -->
+<!-- roadmap: order-6-dash -->
+<!-- roadmap: order-7-dash -->
+<!-- roadmap: order-9-dash -->
+
+<!-- roadmap-status: track-b -->
+- [x] B6 — the node panel is a FIELD table whose census projects the contract's own zod shape (D227)
+- [x] B2's derivation half — a settled gate names verdict, approver and instant from the durable row (D237), and a dry run reads `rehearsal`, never `verified-done` (D238)
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/validation/contract-boundary.ts, src/server/dashboard/queries/run-detail.ts and src/domain/trust/gate-decisions.ts; every wire square that cites this section reads the same derivation
+<!-- /roadmap-status -->
 
 §5.7's presentation delta recorded that the ported node panel listed TASK ARMS where the operator's
 demo lists contract FIELDS, and that the header counted arms with the ⓘ saying so. That gap is
@@ -1470,6 +1919,8 @@ reported twice. The demo's third segment (`1 file`) stays absent for the reason 
 
 ## 6. Notifications—durable, event-derived, and actionable
 
+<!-- roadmap: p2-2g -->
+
 The notification wire is owned by ref dashboard-surfaces; this section defines operator behavior. Notifications
 are produced server-side from durable state/event transitions, never solely from a React effect.
 They survive dashboard reloads and dedupe by stable fingerprint.
@@ -1489,7 +1940,12 @@ messages. Every durable notification links to a run/failure/gate/command/storage
 only actions currently authorized by the server projection. Reading/snoozing affects the
 notification, never the underlying run or failure.
 
+That list is the POLICY. §6.3 says which of it a producer actually fires today, and it is two of
+seven.
+
 ### 6.1 The fold is an UPDATE, and that is not a weakened ledger (D134)
+
+<!-- roadmap: p2-2g -->
 
 A repeated identical trigger folds into the **one row** its `(actorId, dedupeFingerprint)` already
 owns: `count` increments, `lastSeenAt` advances, `status` returns to `unread` (a repeat is news
@@ -1513,9 +1969,101 @@ may make exactly one `assigned → appended` transition and can never have its `
 partition rewritten, and `ledger/*.jsonl` is append-only and never pruned. Nothing about the
 notification fold is available to the ledger, and nothing in the ledger is mutable.
 
+### 6.2 The durable row is committed BEFORE any delivery, and a failed toast changes nothing (D138)
+
+<!-- roadmap: p2-2g -->
+
+`publish` settles create-or-fold in one authority transaction and only then attempts OS delivery.
+A delivery that throws is **reported and never written back**: status, count, and version are
+untouched, so the operator who missed the toast still finds an unread item — that, not the toast, is
+the alert (§6, ref dashboard-surfaces §10.4). No per-attempt delivery state is stored; storing one would invite a
+retry loop that mutates the record the operator is reading. A missing desktop channel reports
+`no-channel`, never success.
+
+Ref dashboard-surfaces §2.6's event list routes onto D79b's six trigger keys: run failure and subject mismatch →
+`failed`; open operator gate → `gate-waiting`; unknown write outcome → `write-parked`; repeat
+threshold → `repeating`; storage degradation, stalled lease/outbox, and failed backup → `storage`;
+and the verified-done receipt → `verified-done`. The first five ping; `verified-done` is inbox-only.
+
+**A notification carries no free text.** Every trigger-event arm is ids, closed codes, and counts,
+and the title/summary are composed from those — because §2.6 forbids raw secrets and captured form
+contents in notification text, and the only way to guarantee that is to give leakage nowhere to
+enter. The dedupe fingerprint covers what makes two firings the same trigger and never the
+occurrence, the instant, or the count, so a repeat folds (§6.1) instead of minting a row. Snooze
+suppresses delivery only: it never flips status, and marking read never clears a snooze.
+
 ---
 
+### 6.3 As-built — the closed vocabulary, the two publishers, and the five arms with no producer
+
+<!-- roadmap: p2-2g -->
+<!-- roadmap: sep-dash -->
+
+<!-- roadmap-status: sep-dash -->
+- [x] the notification square — `gate-park.ts` publishes `gate-opened` for a run parked at a gate, on transitions only (D262)
+- [ ] `failed`, `subject-mismatch` and `write-parked` have no producer, so the square is filled for the GATE arm alone (§6.3)
+- [!] there is no OS delivery implementation in the tree, so every publish settles `no-channel` — the durable row is the whole alert
+> 2026-08-20 | docs-cohesion operator-trust | verified against src/services/notifications/{gate-park,storage-health,inbox}.ts and src/server/dashboard/compose.ts; left: four unreachable trigger arms and the delivery channel
+<!-- /roadmap-status -->
+
+**The vocabulary is closed twice over.** `NotificationTriggerSchema`
+(`src/domain/notifications.ts:12-19`) has six arms — `failed`, `gate-waiting`, `write-parked`,
+`repeating`, `storage`, `verified-done` — and the EVENT a producer constructs,
+`NotificationTriggerEventSchema` (`src/domain/notification-triggers.ts:54-102`), has seven kinds,
+because `run-failed` and `subject-mismatch` both project to `failed`. `projectNotificationTrigger`
+(`:151-217`) is the one place an event becomes a row: it composes the trigger, the channel, the
+title, the summary and the links from ids, closed codes and counts, which is what makes D138's "a
+notification carries no free text" enforceable rather than aspirational.
+
+**Two producers exist, and both were built for a reason this doc should keep.**
+
+| event kind → trigger | producer | driven by | discipline |
+|---|---|---|---|
+| `storage-degraded` → `storage` | `src/services/notifications/storage-health.ts:62-92` (D222) | a 15-minute backup tick plus one boot beat (`compose.ts:268,442-486`) | publishes on state TRANSITIONS only, and advances its in-process memory ONLY after the durable publish resolves, so a throw leaves the transition pending and the next tick retries |
+| `gate-opened` → `gate-waiting` | `src/services/notifications/gate-park.ts:92-145` (D262) | a 5-second watch re-deriving `authority.runs.listParkedAtGate()` (`compose.ts:303,495-522`) | keyed `(runId, gateId)`, remembered only after the publish commits, and FORGOTTEN when the park leaves the observed set — so a re-park is news again |
+
+Both are watches over authority rather than hooks on a transition, which is D218's lesson applied
+before it could bite: a hook fires in the process that owns the emitter, and the worker is a
+different process from the BFF.
+
+**Five event kinds have no producer at all** — `run-failed`, `subject-mismatch`, `write-parked`,
+`repeating-failure` and `verified-done` — which leaves four of the six trigger arms (`failed`,
+`write-parked`, `repeating`, `verified-done`) unreachable in the running system. Every one of them
+is schema-valid, dedupe-folded and rendered the moment something publishes it; nothing does. Read
+the policy list above with that in mind: a run that fails, a subject that mismatches and a write that
+parks are exactly the events §6 exists for, and today the operator learns about them from the queue
+row and the run panel, not from the inbox. The wiring is per-node work: the failed/subject-mismatch/
+write-parked arms belong with `{#sep-dash}`'s and each `Dashboard · wire` set's notification square,
+`repeating` needs the `countByFingerprint` threshold §2.1 already indexes for, and `verified-done` is
+the one inbox-only arm.
+
+**Three more facts a reader of the wire will otherwise get wrong.** *Severity is not durable*: no
+record carries one, and `notificationWireOf` (`src/domain/dashboard/projection.ts:736-764`) derives
+`error` for `failed`/`write-parked`, `info` for `verified-done` and `warning` for the rest at
+projection time. *There is no notifications route*: the rows ride the one `DashboardDayWire`
+(`run-queue-projection.ts:1518-1520`), so the bell moves when the day snapshot does. And *there is no
+OS delivery implementation in this tree at all* — `OsNotificationDelivery` is an interface
+(`inbox.ts:43-45`), the production inbox is constructed without one (`compose.ts:444-448`), so every
+publish settles `no-channel` and the `ping` channel names an INTENT, not a delivery that happened.
+D138's guarantee still holds and is doing the work it was designed for: the row is the alert.
+
+**Read / unread / snooze are commands, CASed on the row's own `version`** — which the fold advances
+on every publish, so a bell action races a fold that is designed to happen. A stale one comes back
+`rejected` with `invalid-state` naming the version it moved to (`command-kernel.ts:993-1040`); the
+notification family does not currently produce the `conflict` arm, and the bell handles both through
+`settleCommandResult` regardless, because D253's defect was a surface that branched on one refusal
+and let the other fall through to success.
+
 ## 7. Local-FIRST scope, the multi-user seams, and the retained safety floor
+
+<!-- roadmap: later-unplanned -->
+
+<!-- roadmap-status: later-unplanned -->
+- [x] the four seams are built and carry one constant local operator: actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state
+- [x] D193 reaffirmed solo, local, never hosted — no slice designs for multi-user and none may claim scope in its name
+- [x] the one loopback exception is the operator-started, token-scoped mobile capture ingress
+> 2026-08-20 | docs-cohesion operator-trust | verified the seams are load-bearing in code (the inbox is actor-keyed, commands carry `actor`); nothing here proposes work, which is the point of the node
+<!-- /roadmap-status -->
 
 **Amended 2026-07-23 (D75).** The operator intends to open this tool to other people later and
 wants that to be *configuration, not a second rebuild*. So the scope statement is no longer
@@ -1572,8 +2120,22 @@ These are correctness and recoverability requirements, not production-scale cere
 
 ## 8. Base capability inventory (webpage-ready)
 
+<!-- roadmap: cross-cutting -->
+
+<!-- roadmap-status: cross-cutting -->
+- [x] eleven of the 49 inventory rows now name their own gap in brackets rather than reading as shipped
+- [ ] `apply-settings` is the kernel's ONE `PHASE1_DEFERRED` arm (`command-kernel.ts:141-148`) — Settings reads and nothing there saves
+- [ ] `test-login` and the workflow-preflight RUNNER are unbuilt; the storage/authority half of the doctor is real and was drilled at 2j (D181)
+- [ ] the cross-date search module, the artifact-bytes route and the export writers are unbuilt (rows 24, 42)
+> 2026-08-20 | docs-cohesion operator-trust | re-checked the inventory against the code row by row; the eleven bracketed rows are the whole delta, and each names the section that owns it
+<!-- /roadmap-status -->
+
 The following is the canonical list Claude may use to build an explanatory webpage. It describes
-what the **base** implements before workflow-specific leaf behavior is migrated:
+what the **base** implements before workflow-specific leaf behavior is migrated.
+
+**Read it as as-built EXCEPT where an item names its own gap in brackets** — re-checked against the
+code 2026-08-20, and eleven items now carry one. An item with no bracket is a capability an operator
+can reach today.
 
 1. Strict runtime-validated domain types and branded ids.
 2. Read / prepare / commit task effects with typed inputs, outputs, errors, freshness, provenance,
@@ -1604,18 +2166,27 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
     tail-anchor tamper evidence is deferred until multi-user.
 19. Content-addressed immutable artifacts and idempotent outbox-based mutable projections.
 20. Append-only span/note streams and server-side queue/timeline/session projections.
-21. Durable actor-keyed typed notifications with read/unread state and optional snooze.
+21. Durable actor-keyed typed notifications with read/unread state and optional snooze
+    **[no OS delivery exists; two of seven triggers have a producer — §6.3]**.
 22. Structured failure records and automatic redacted diagnostic bundles.
 23. Per-run evidence receipts showing inputs, observations, decisions, actions, verification,
     output, reuse, and uncertainty.
-24. `explain run`/`explain failure` CLI/API and portable diagnostic export.
-25. Registered scenario corpus with wrong-page/wrong-subject/crash/control/storage cases.
+24. `explain run` CLI/API **[`explain failure` is not built, and `--bundle` portable export
+    REFUSES rather than exporting a package it cannot complete — §2.1, §2.5]**.
+25. Registered scenario corpus with wrong-page/wrong-subject/crash/control/storage cases
+    **[sixteen executable scenarios audited both ways; §3.2's full coverage policy is not proved,
+    and the tiers move to ref guards-and-tests under R10]**.
 26. Bug-fix rule requiring a linked regression scenario or explicit evidence exception.
-27. Structured active/superseded/retired knowledge records instead of append-only lessons.
-28. AI FixRecord ledger linking code changes, failures, scenarios, evidence, and commits.
-29. Read-only workflow explorer overlaying descriptor design and live execution on the same graph.
-30. Constrained, versioned editing of closed presentation and operational-policy fields in Phase-2
-    tail 2i; graph/composition changes remain source-authored code changes.
+27. Structured active/superseded/retired knowledge records instead of append-only lessons
+    **[table, admission audit and projection built; nothing in the running system writes or reads
+    them — §4.1]**.
+28. AI FixRecord ledger linking code changes, failures, scenarios, evidence, and commits
+    **[same — the store exists, no surface reaches it]**.
+29. Read-only workflow explorer over the descriptor design **[the LIVE-EXECUTION overlay is a named
+    exclusion, not a slip: run facts stay on the run-detail timeline — §5.7]**.
+30. Constrained, versioned editing of closed presentation and operational-policy fields
+    **[DEFERRED out of Phase 2 by D186 with a named trigger — §5.3; nothing partial was built]**;
+    graph/composition changes remain source-authored code changes.
 31. Operator-defined spreadsheet mappings keyed by stable target-field path (not just concept),
     with projection fingerprints, duplicate-safe source columns, per-cell schema errors, and saved
     layout maps.
@@ -1634,11 +2205,13 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
     legacy/native generation or gradual production flip.
 39. Immutable intake admission manifests and hash-diffed reruns showing every valid, rejected, and
     explicitly excluded source row.
-40. Guided new-workflow scaffolding with task/schema search and a generated missing-obligations list.
+40. Guided new-workflow scaffolding with task/schema search and a generated missing-obligations list
+    **[not built; no scaffold command exists — §5.5]**.
 41. Loopback-only single-operator control runtime, with only the short-lived token-scoped mobile
     capture ingress exception; no RBAC/team/HA/remote operator deployment machinery in the base.
-42. Generated UI and active-knowledge catalogs plus exact source links for operator/Codex/Claude
-    reference—generated views are never a competing authority.
+42. Generated UI catalog plus exact source links for operator/Codex/Claude reference — generated
+    views are never a competing authority **[the ACTIVE-KNOWLEDGE catalog's generator has no caller,
+    so no `KNOWLEDGE.md` exists — §4.1]**.
 43. Durable restart-safe mobile capture sessions with immutable photo refs, idempotent ordering,
     retryable bundle outbox, and atomic PDF→intake/OCR handoff.
 44. Typed contact/address normalization that distinguishes unchanged, ambiguous, and provider-
@@ -1646,14 +2219,17 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
 45. Closed provider capabilities for OCR/geocoding/AI, with narrowed injected clients, infra-only
     SDK/network adapters, timeout/abort/concurrency/rate/cost budgets, preflight, evidence, and
     produced/unavailable/invalid outcomes—remote I/O cannot hide in an import.
-46. Optional schema-bounded AI triage/sanity/selector/summary assistance over redacted structured
-    evidence; it has no command, identity, registry-write, completion, or mutation authority.
+46. Optional schema-bounded AI **triage** assistance over redacted structured evidence, with no
+    command, identity, registry-write, completion or mutation authority **[the sanity-check, selector
+    and summary adapters are RETIRED, not pending — D192 and the 2026-08-18 ruling, §4.4.2]**.
 47. Machine-checked legacy capability disposition so every old service/route/UI/CLI/tool is native,
     replaced, retired in the target, or visibly blocking cutover; it never authorizes old-source deletion.
 48. One exhaustive runtime-dependency inventory covering every browser system, provider,
     endpoint, env/config/secret consumer, and preflight check in both directions.
-49. One typed environment doctor powering startup, Settings health, workflow preflight, and
-    `test-login`, with exact blocking capability and remediation instead of scattered checks.
+49. One typed environment doctor **[the storage/authority half powers startup and Settings health
+    and was drilled at 2j (D181); the workflow-preflight RUNNER and `test-login` are not built, and
+    `apply-settings` is the kernel's one `PHASE1_DEFERRED` arm — `command-kernel.ts:141-148`, so
+    Settings reads and nothing there saves. `{#cross-cutting}` / `{#def-settings}` own the rest]**.
 
 ### What is better than the old codebase
 
@@ -1674,33 +2250,76 @@ what the **base** implements before workflow-specific leaf behavior is migrated:
 
 ## 9. Mechanical guards
 
-Ref guards-and-tests registers the following:
+Ref guards-and-tests owns the register; this is the row set that answers for THIS doc, checked
+against `docs/rebuild/guard-inventory.json` and `tests/unit/architecture/` on 2026-08-20. Ten guards
+name `reference/operator-trust.md` as an owner, nine of them `active`.
 
-- canonical UI ids/search terms unique; every task-used element/state/observation resolves;
-- raw `Page`/`Locator` imports and `page.` calls restricted to driver/session infrastructure;
-- subject-scoped browser tasks have registered authoritative observations and mismatch scenarios;
-- strict runtime schemas parse all UI registry, scenario, knowledge, fix, evidence, failure, and
-  diagnostic manifests;
-- no persisted free-form `Record<string, unknown>`/`Record<string, JsonValue>` outside an explicit
-  opaque diagnostic payload that is never used for decisions;
-- every non-trivial fix references a registered regression scenario/evidence exception;
-- generated active knowledge contains no superseded/retired/unverified records;
-- workflow editor drafts cannot name unregistered tasks/fields/policies and cannot modify active
-  run snapshots;
-- diagnostic redaction fixtures prove restricted example values never appear in exported bundles;
-- durable notifications derive from server events and dedupe/lifecycle transitions are replay-safe.
+| the rule this doc states | the guard that holds it | status |
+|---|---|---|
+| canonical UI ids and search terms unique; every task-used element/state/observation resolves; catalogs byte-fresh and recipe-free; legacy candidate ids cannot enter a runtime catalog | `semantic-ui-registry` | active — **but it audits ucpath · crm · new-kronos only; Kuali's own audit functions exist and are never called (§1.7)** |
+| raw `Page`/`Locator`, `getBy*`, `evaluate`, `$` and frame access confined to the driver/session owners and `src/infra/browser/**` | `task-driver-boundary` | active (AST **and** transitive import graph) |
+| subject-scoped browser tasks have registered authoritative observations and mismatch scenarios | `subject-before-fence` (ref write-safety) for the ORDER, `ucpath-person-org-strict` for that one store's read discipline | active — **no general per-store guard exists; the rule is enforced by the sequencer at runtime and by one store's own suite** |
+| strict runtime schemas parse every UI-registry, scenario, knowledge, fix, evidence, failure and diagnostic boundary; no persisted open `Record` outside the opaque diagnostic attachment | `strict-boundary-schemas` (ref guards-and-tests) | active — recursive, including union and lazy members |
+| a receipt is strict at every level, carries a source and instant per fact, and refuses `verified-done` for non-verified confidence, an unresolved mandatory obligation, any warning or a failure id — each proven by a violating fixture; redaction is DECLARED | `evidence-receipt` | active |
+| every non-trivial fix links a registered regression scenario or a stated evidence exception; generated active knowledge shows no superseded/retired/unverified record; admission is audited inside the insert transaction | `knowledge-fix-integrity` | active |
+| a notification is a durable record FIRST and a delivery second — a delivery that throws leaves the row unread with count and version untouched | `notification-durability` | active (the load-bearing arm injects a throwing delivery) |
+| the explorer round-trips from the REAL registries in both directions, and no edit path exists | `workflow-editor-compile-integrity` | active **at Phase A only** — its inventory entry states it carries no Phase-B arms and gains them in the commit that builds them (§5.3) |
+| every registered workflow serves the descriptor's own `summary` and every node its own `purpose`, compared byte-for-byte against the declaration | `explorer-prose-declared` | active (D229) |
+| the advisory closure's value-import graph reaches no authority writer | `ai-advisory-no-authority` | active (D178) |
+| every declared runtime dependency has a preflight scenario exercising its FAILURE, not merely its presence | `preflight-coverage` | **planned** — re-owned by D188; activates with the first migration that adds a preflight runner (§3.1) |
 
----
+Two rules this section used to claim that no guard holds, stated rather than dropped. **Diagnostic
+redaction fixtures**: `redaction-surface-scan` (D183, owned by ref guards-and-tests) is the 2j sweep
+that proves no classified value reaches a wire, durable row, ledger file, notification or provider
+unreviewed, and `evidence-receipt` holds the declared-classification half — but there is no fixture
+asserting that a restricted EXAMPLE value cannot appear in an exported bundle, because §2.5's
+`--bundle` export does not exist to be scanned. **Workflow-editor drafts cannot modify active run
+snapshots**: unenforceable and unnecessary today for the same reason — there is no draft.
 
 ## 10. Explicit residuals
 
-- Locator/page-state correctness still ultimately depends on live system behavior. The registry
-  makes evidence, ownership, and reuse explicit; it cannot make a stale live verification current.
-- Some pages expose no authoritative subject identity. A subject-scoped write on such a page cannot
-  auto-commit; it must gain a verified cross-page observation/proof or park for typed operator
-  confirmation. “The search succeeded” is not sufficient evidence.
-- A constrained visual editor cannot express every complex workflow. Falling back to reviewed code
-  is expected, not a failure of the model.
-- Diagnostic screenshots may contain unavoidable HR context. Capture-time redaction/minimization
-  reduces exposure but cannot promise perfect visual redaction; restricted bundles remain local and
-  short-lived unless pinned.
+<!-- roadmap: operator-calls -->
+
+<!-- roadmap-status: operator-calls -->
+- [x] every residual re-checked against the code and classified closed / open / standing, with the owning node named (§10)
+- [x] one residual was FALSE as written — restricted bundles are local but not short-lived, because nothing purges them
+- [!] four residuals have NO node: the uncalled Kuali registry audits, `explain failure`, the absent OS delivery channel, and `explain run`'s notifications reason, stale since D262
+> 2026-08-20 | docs-cohesion operator-trust | the four unowned items are reported to the plan, not adopted here — this doc may not mint a node
+<!-- /roadmap-status -->
+
+Re-checked item by item against the code on 2026-08-20. Each row is **closed** (the mechanism
+exists — the residual was a gap and is not one now), **open** with the node that owns it, or
+**standing** (a true fact about the world that no build closes). Four items this pass found have no
+node at all; they are listed under the table and reported to the plan rather than quietly adopted.
+
+| residual | verdict | who owns it |
+|---|---|---|
+| Locator/page-state correctness ultimately depends on live system behaviour; the registry cannot make a stale live verification current | **standing** — and the registry's job is to make staleness VISIBLE, which it does: every element, state and observation carries `verifiedAt` plus both evidence refs at the same weight as its id (§1.2, §5.8) | every migration's live re-verification (`{#migrations}` and each `order-N`). D150 retired legacy change accounting on exactly this argument: a selector checked against the live system beats one diffed against legacy's copy |
+| Some pages expose no authoritative subject identity, so a subject-scoped write there cannot auto-commit — it must gain a verified cross-page observation or park for typed operator confirmation | **closed as a mechanism** (the fact about those pages stands): the park and the `operator-confirmed-absent` settlement arm are built and were exercised live — D128's controlled commit parked `unknown` with zero checkpoint, ledger and terminal rows | ref write-safety §4.1 owns the arm; nothing is owed here |
+| A constrained visual editor cannot express every complex workflow; falling back to reviewed code is expected | **open, and moot until an editor exists** — D186 deferred Phase B entire, so there is no partial editor and no half-authority (§5.3). §5.4's code-change brief is part of the deferred half | `{#def-explorer-edit}`, trigger named: the SECOND production workflow whose policy an operator wants to change without a code change |
+| Diagnostic screenshots may carry unavoidable HR context; capture-time redaction cannot promise perfect VISUAL redaction | **standing** — only a screenshot may stay `restricted`; every other attachment arm is redacted text, and a never-exportable key surviving as `allowed` fails the capture (§2.2.1) | this doc; no build closes it |
+| …“restricted bundles remain local and **short-lived** unless pinned” | **CORRECTED — the second half was false.** They are local. They are not short-lived: the sweep is built, tested, and has no caller, so no bundle has ever been purged on this machine (§2.2) | `{#def-retention}`, status `never` — D193 dispositioned scheduling AND the content-store refcount as `wont-build-unless-asked` |
+| `explain failure <fingerprint>` (§2.1, §4.2) | **open** — the indexed column and `listByFingerprint` exist; the command does not | **unowned** (see below) |
+| The knowledge/fix store has no writer, no reader and no surface; §4.3's audit needs a `version` field nobody has ratified (§4.1, §4.3) | **open** — table, admission audit and projection are built and unit-tested; nothing in the running system reaches them | `{#track-a}`'s close-out line (“regression scenarios, knowledge records, capability dispositions”) |
+| Five of seven notification event kinds have no producer, leaving four trigger arms unreachable (§6.3) | **open** | the notification square on `{#sep-dash}` and each `Dashboard · wire` set for `failed` / `subject-mismatch` / `write-parked`; `repeating` and `verified-done` are **unowned** |
+| A rerun's FIELD-LEVEL diff against the prior run (§2.4) | **open** — per-fact `reuse` rows and `retryOf` exist; nothing compares two receipts | `{#def-search-export}`, where a corpus of runs to compare first becomes reachable |
+| `preflight-coverage` is `planned`; nothing executes the preflight fault manifests (§3.1) | **open** | `{#cross-cutting}` — D188 re-owned it; it activates with the first migration that adds a preflight runner |
+| §3.2's minimum coverage policy is not proved in full (the audit is over graph-derived points, not a contract's error enum) | **open** | `{#test-tiers}` (R10), spec `ref guards-and-tests §Testing tiers` |
+
+**Four residuals no node names — reported, not adopted.** This doc may not mint a node, so each is
+stated here and carried to the plan.
+
+1. **Kuali's registry audit functions are never called.** `auditKualiUiRegistry` and
+   `auditKualiUiEvidenceBindings` hold real rules and no test invokes them, so
+   `semantic-ui-registry`'s structural audit covers three of the four stores (§1.7). One call site
+   closes it.
+2. **`explain failure <fingerprint>` has no owner.** It is a CLI capability rather than a workflow
+   close-out; the nearest home is `{#cross-cutting}`'s non-workflow capability inventory, which does
+   not list it today.
+3. **No OS delivery channel exists at all.** `OsNotificationDelivery` is an interface with no
+   production implementation, so every publish settles `no-channel` and the `ping` channel names an
+   intent (§6.3). D138's guarantee holds — the row IS the alert — but "the operator missed the
+   toast" describes a toast that cannot be shown.
+4. **`explain run`'s notifications absence reason went stale at D262** and can now tell an operator
+   *"this run has none"* about a run that has a `gate-opened` row (§2.5). A one-line reason string on
+   a trust surface, where a reader has no way to know it is old.
