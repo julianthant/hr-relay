@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
-asOf: 2026-08-20
-head: bf41158
+asOf: 2026-08-21
+head: 2d8e56cd
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -39,6 +39,7 @@ builds:
 
 log:
 - 2026-08-21 | docs-cohesion 00 | doc 00 rewritten as-built; all three status blocks in this subtree filled. Phase 0 is DONE and every `[x]` here re-verified, but the rewrite adds two lists the phase doc had nowhere to put — **six Phase-0 contracts AMENDED** by a later decision (D150 retired legacy change accounting, D191 the gate family with D91's floors untouched, D247 and D216 the isolation names, D263 the plan's form, D193c the Phase-3 ENTRY with D84's order intact, D184 the D58 inventory guard) and **two Phase-0 promises never built** — D79's `scaffold new-task` / `scaffold new-workflow` generators (the new-workflow half owned by `def-explorer-edit`, the **new-task half UNOWNED and reported**) and D85's `cli test workflow --dry-run` + `TestTargetRegistry` (reassigned to `test-tiers` by R10)
+- 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
 ### ALWAYS-GATE identity approval {#phase0-always-gate}
 status: done
@@ -77,6 +78,8 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion 01 | doc 01 rewritten as-built and all six status blocks filled; every `[x]` in this subtree re-verified against the code and NONE had to be corrected — the phase is DONE and stayed done. What the rewrite adds is a residuals table: five findings that trace back to a spine contract and are owned in LATER nodes (`track-c`, `observed-logs`, Track D rows D6 and D11, `def-byte-path`, `test-tiers`) plus ONE with no owner — `requestedBy` is stamped on every command envelope and never checked, with no D-number and no `pending-wire-bindings` entry, reported rather than assigned
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §0
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
+- 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
 ### 1a · 1b — guards, baselines, the strict domain leaf {#p1-base}
 status: done
@@ -94,6 +97,7 @@ builds:
 log:
 - 2026-08-21 | docs-cohesion 01 | verified at HEAD: nine executable ratchet arms, 75 inventory entries (65 active · 8 retired · 2 planned), the coverage floor still 60/80 at `vitest.config.ts:40-41`. Two of 1a's legacy-lane pieces are RETIRED with successors named (D93 the cross-tree guard family, D150 legacy-change-accounting), and two later decisions amended a 1b contract without re-opening it (D121 moved `paths` to a server-only module, D133 made a required config leaf a read-forward generation) · left: `cancel-mechanism` and `tracker-row-emission` are named in the ratchet port map and held by nothing, and R10's raise of the global floor to 80 has not landed
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §2
+- 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
 ### 1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG {#p1-authority}
 status: done
@@ -120,6 +124,9 @@ log:
 - 2026-08-21 | docs-cohesion 01 | verified at HEAD: migrations pinned by literal digest v1→v15, four branded semantic ids at `src/domain/ids.ts:43-46`, the 21-node type proof present in `tests/types/`. Two corrections the code forced — 1c's OFFLINE restore path was complete, tested and UNREACHABLE from its first day because nothing recorded the runtime-lock snapshot its stopped-system proof derives from (D181, found in 2j, fixed there, recorded here because it is 1c's contract); and 1e's type proof survives while its 5 s / 1 GiB BUDGET does not, so the recorded 0.47 s / 215 MiB is history and not a gate. D144, D214 and D221 amended 1e's checkpoint identity without moving a stored byte · left: §3.2's three unimplemented declaration shapes, the Kuali audit call site, D71's unmeasured budget, D208 rule 1
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §1
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2 rewritten as-built; status block filled (`632ce168`)
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
+- 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
 ### 1f — registry, workers, commands, the write sequencer {#p1-kernel}
 status: done
@@ -141,6 +148,8 @@ log:
 - 2026-08-21 | docs-cohesion 01 | verified at HEAD against `src/control/workflow-registry.ts` and `src/core/{command-kernel,run-executor,worker-loop,write-sequencer,write-recovery}.ts`; all five `[x]` stand. Folded in the two post-Phase-1 decisions that fixed the recovery half without re-opening the contract — D200 (the LEASE is the evidence: a sweep living inside a running worker cannot recover that worker) and a pointer to D218, which is 1g-spine's · left: `requestedBy` stamped and never checked (UNOWNED — no D-number, no `pending-wire-bindings` entry, reachable only with a second actor), the bulk `all-or-none` mode (D235), and `supersede-active`'s three sites giving two answers
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §2.1
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.4 rewritten as-built; status block filled (`632ce168`)
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 ### 1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell {#p1-spine}
 status: done
@@ -160,6 +169,8 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion 01 | all four `[x]` stand, and the parity line stands only BECAUSE of two later fixes recorded in doc 01: D132 (the lane asserted the `.png` and rewrote every `.a11y.yml` unconditionally, so a re-freeze was green by construction, and it served a bundle it never rebuilt) and D187 (every `paper-ink` reference photographed dark since the corpus existed, and the run-detail panel — where the failure record and the receipt live — two pixels wide at every viewport since this item, while the a11y tree reported every word). D218 corrected how the projection is FED: the in-process `onEvent` hook was a single-process assumption, so every run enqueued after the dashboard booted served an empty timeline · left: the notes stream has no emitter, five of six topics have no producer, `span.ended` carries no `verdict`, `src/dashboard/state/` has no cache half, the artifact schemas have no route — each owned in a later node
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §1 rewritten as-built; status block filled (`632ce168`)
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
+- 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
 ### Phase 1 exit — the live run {#p1-exit}
 status: done
@@ -176,6 +187,7 @@ needs:
 
 log:
 - 2026-08-21 | docs-cohesion 01 | the proof stands and its full record is doc 01 §Exit criteria — run `4ebf7275-0158-49af-a78f-1f37948efb27`, EID `10873698`, terminal `done` at attempt 2, `sleepMs` absent on every task span, projection counts agreeing across all four surfaces. The node's own residual became a decision: 262.9 s to surface a dead CRM session → D125's separate `sessionAcquireMs`. A later correction worth carrying — `describeStalledLanding` is unreachable at the shipped defaults (180 s Duo bound inside a 60 s acquisition envelope), which D244 answers by refusing on Duo's own content in 9.52 s · left: nothing on this node
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
 ## Transaction proof, then the deferred base tails {#phase-2}
 phase: Phase 2
@@ -214,6 +226,9 @@ needs:
 
 log:
 - 2026-08-21 | docs-cohesion 02 | re-verified in the contract file: `recoveryAbsence: stabilized` is `minSinceFenceMs: 30_000` / 2 reads / 5 s apart and is scoped to THIS contract — both UCPath contracts stay `operator-only` because no UCPath window was ever measured, so the `builds:` line is corrected
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
+- 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
+- 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
 
 ### 2g — event / trust layer {#p2-2g}
@@ -236,6 +251,8 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion 02 | three `[x]` lines sharpened against the code — the ledger projector has no production caller, the knowledge PROJECTION has no caller, and five of seven notification arms have no publisher; `ref:operator-trust §2` and `§6.3` added, `ref:dashboard-surfaces §2.6` already cited and now carries its own status block
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (e6fb6f37) — §2 / §4 / §6 as-built, with the three unreachable halves named in place: `explain failure <fingerprint>` unbuilt, the knowledge projection uncalled, the retention sweep uncalled
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 
 ### 2h — data / intake foundation {#p2-2h}
@@ -259,6 +276,7 @@ needs:
 
 log:
 - 2026-08-21 | docs-cohesion 02 | doc 02 §2h separates unwired-BY-DESIGN (the retention projection, D164) from unwired-by-omission (the saved-mapping store, an artifact-projection-declaring descriptor — both unowned and reported) and from waiting-on-a-declaring-workflow (the start-method kinds, the Review surface → `{#order-2}` / `{#order-3}`)
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 
 
 ### 2i — the operator surface (A–G) {#p2-2i}
@@ -284,6 +302,9 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion 02 | two `[x]` lines sharpened — Settings is READ-ONLY and the phone capture surface has no delivery path and no declared binding; `ref:operator-trust §1.3` and `ref:data-intake-and-edit-data §2.7 / §5.1 / §5.2` added; the Explorer's overlay and coverage-claims exclusions recorded as DECISIONS, distinct from D186's reassignment
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code (82c8550c) — §2.7 / §5.1 / §5.2 as-built; the phone surface has no production delivery path and `CAPTURE_INTAKE_BINDINGS` is empty, so no workflow can receive a handoff
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
+- 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
 
 ### 2j — the closing gate {#p2-2j}
@@ -307,6 +328,7 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion 02 | the scenario-corpus line now records that the manifest's preflight fault set has no runner; `ref:operator-trust §3.1` added; doc 02 §2j writes out all four findings with their causes and the four checks 2j left open (preflight runner, component/parity lane, D91's branch half, D85 parts 2–3)
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.5 rewritten as-built; status block filled (632ce168)
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
 
 ### Left Phase 2 by explicit disposition {#phase2-dispositions}
@@ -317,6 +339,7 @@ doc: 02 §Left Phase 2 by explicit disposition · ref:operator-trust §5.3 · re
 
 log:
 - 2026-08-21 | docs-cohesion 02 | both dispositions written out in doc 02 with their triggers and their shelf owners — D186 → `{#def-explorer-edit}` (04 §Edit a workflow's presentation / policy without a code change), D189 → `{#def-byte-path}` (04 §Run the dashboard without the dev server / use the phone page in production); D79a's trim kept as the standing constraint on whatever the editor becomes
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
 
 ## flag: 2026-08-12 | **D193 — scope and entry.** Solo, local, never hosted. Phase 3 enters at **separations (order 8)**, chosen to force the store task libraries into existence; the §3.3 ordering is NOT re-sequenced. Separations questionnaire fully answered → READY TO BUILD. `test:coverage` becomes the per-commit gate (D191).
@@ -385,6 +408,11 @@ builds:
 
 log:
 - 2026-08-20 | docs-cohesion 03a | all eight re-verified present in the tree for doc 03a's status block; the ledger's own README records five open records across two files and zero undecided ones, which is what makes "frontend done" checkable
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### Track C · connection proof {#track-c}
 status: done
@@ -407,6 +435,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03a | evidence pinned in doc 03a — separations §9.22 items 1–8 plus §9.24's live `sp-105225-1e0b`, and the re-freeze commit's own numbers: 139 references, 151 assert-mode cases green (`81287bb1`)
+- 2026-08-21 | docs-dash-surfaces 5.1c | §9.1–§9.4, §9.9, §9.10 written as-built (`bbdf59b3`)
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
 #### Track D · dashboard hardening, pre-cutover budgets {#track-d}
 status: planned
@@ -449,6 +479,7 @@ log:
 - 2026-08-20 | docs-cohesion step 4a | ratified by D264 — D1–D5 planned, D6–D10 proposed, D11 added (77a0be76)
 - 2026-08-20 | docs-cohesion 03a | every one of the eleven rows re-verified UNLANDED at HEAD rather than carried on the audit's say-so, with the file:line of each finding recorded in doc 03a's Track D table (no exported `deriveRunStatus`, two `TASK_OUTCOME` vocabularies, two `panelKindOf` copies, `settleCommandResult` imported by two surfaces, zero `React.memo`, `WORKFLOW_DESCRIPTORS` at `dashboard-app.tsx:25`)
 - 2026-08-20 | docs-cohesion frontend-backend-integration | all eleven rows tick in ONE place — ref frontend-backend-integration §7.4's status block, with a per-row map of where each lands; §7.4 records that NOTHING in src/ or tests/ measures any budget it names
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: planned
@@ -470,6 +501,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Duo ceremony lease written; verified UNBUILT at HEAD — nothing named `duo_ceremony_leases` exists in `src/` and `defineVerifiedLoginRecipe` (`src/infra/browser/authenticated-application.ts:159`) takes system + verify + flow and no lease token; `doc:` tightened to ref execution-and-sessions §4.1 and §4.2
+- 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
 
 #### Parallel runs — sessions and the worker pool {#parallel-runs}
 status: planned
@@ -493,6 +525,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Parallel runs written; one `builds:` line ADDED from reading the code — the pool version is a prerequisite of the spawn control, not a detail of it (`src/dashboard/surfaces/shell.tsx:1036` states the CAS reason the demo's `+` is absent); `doc:` tightened to ref execution-and-sessions §1, §3 and §7.1
+- 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
 
 #### Observed logs — the log carries what the page said {#observed-logs}
 status: planned
@@ -514,6 +547,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Observed logs written; the emission is a real build, not a re-read — `finalizeRead` validates the recorded points and the executor stores only `provenance` plus the parsed output (`src/core/task-provenance.ts:264`, `src/core/run-executor.ts:1052`), and `DataPoint` carries `direction` natively but NO system, which the store's declaration owns (D252/D106)
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 
 ### Testing tiers — the suite organized by what a test needs {#test-tiers}
 status: planned
@@ -682,6 +716,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | the migration's own section rewritten as-built — the nineteen-node graph over four stores, the D260 → D261 start door, the ALWAYS-GATE, and the program's first canary registry (4537 the canary · 4502 the dry-run subject · 4495 future-dated; 4510 and 4524 both evaporated between passes) · left: the three commits, and the registry moving into `config/test-subjects.json` under cohesion 5.2c (`test-tiers` owns it)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### 1 · new-kronos timecard read {#sep-1}
 status: done
@@ -718,6 +753,7 @@ builds:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/kuali/tasks/read-separation-document.ts`, `src/stores/separations/tasks/` and `src/domain/separations/termination-type.ts`; the two platform items this chunk surfaced (D199, D200) both landed · left: S2's refusal arm against a real non-separation document
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
 #### 3 · UCPath employment grid + the ALWAYS-GATE {#sep-3}
 status: done
@@ -734,6 +770,9 @@ builds:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/ucpath/tasks/read-job-summary.ts`, `src/domain/separations/identity-evidence.ts` and `tests/unit/architecture/identity-gate-before-commit.test.ts`; D213's settle-then-classify pair landed here too · nothing left
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### 4 · UCPath termination WRITE {#sep-4}
 status: done
@@ -751,6 +790,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/ucpath/tasks/` and separations §9.7–§9.9 — the PREPARE arm is live-proven and commit-freedom is proved from durable state (zero intents, zero checkpoints, five refusals for five) · left: the COMMIT arm (Track A ②, 08-28), `clear-pending`'s COMMITTED arm (no mapped witness — `operator-calls`), and the two unmeasured UCPath facts
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### 5a/b/c · Kuali finalization WRITE {#sep-5}
 status: done
@@ -767,6 +807,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | verified against `src/stores/kuali/tasks/*separation-finalization.ts` and separations §9.10–§9.12/§9.15/§9.16; §4e's section-ownership caveat is DISCHARGED for all twelve fields across three documents, and `exactly-one-editable` proved on three open documents · left: the seven wire-payload shapes (RECORDED, not asserted) and D207's provisional `stabilized` window — both commit-only, tracked on `track-a`
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### 6a · THE COMPOSITION {#sep-6a}
 status: done
@@ -786,6 +827,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | node list, gate ancestry and the packet's write-plan block verified against `src/workflows/separations/descriptor.ts`; the "this graph composes no plan" arm is REQUIRED with a stated reason rather than optional · nothing left
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### 6b · composed LIVE pass {#sep-6b}
 status: done
@@ -802,6 +845,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | D214 verified at `src/infra/sqlite/migrations.ts` (schema v14, nullable `claim_generation`, read forward so every historical `record_key` stays byte-identical); D215's probe-first preview arm verified in the sequencer · nothing left
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### 6c · PREVIEW TERMINAL reached {#sep-6c}
 status: done
@@ -819,6 +864,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | verified against separations §9.17 and `src/events/types.ts`'s restated union — the fourth defect reaching the preview terminal was D215's `not-observed` verdict never reaching the span WIRE leaf, fixed with its regression case (`e1ba81b`); the D58 capability sweep for separations came back three-for-three · nothing left
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
 #### Track A · separations backend completion {#track-a}
 status: planned
@@ -852,6 +899,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | A6 verified against separations §9.20's seven-run lineage table and A7 against `duo-autopilot/src/sign-count.js` + `tests/unit/duo-sign-count.test.ts`; A1's row no longer carries an EID — 03b's canary registry names subjects by document number only · left: A2–A5 and A8, every one of them downstream of 08-28
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 #### Dashboard · wire separations {#sep-dash}
 status: active
 chip: 9 of 9 wired — every square filled (D262 closed the last)
@@ -878,6 +927,9 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | all nine squares re-verified in the code rather than on the tree's say-so — `descriptor.ts` (`inputRun` · `timeline` · `nodePurposes` · `subjectProjection` · `presentation` · `verdicts`), `src/domain/archive/ledger-resolution.ts:167`, `src/services/notifications/gate-park.ts` composed at `src/server/dashboard/compose.ts:497`, `src/dashboard/app/identity-ceremony.ts`; the run-modal line said "document number, subject" and D261 left ONE box, so it is corrected · left: the two PROOF lines, T1 and T2
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-dash-surfaces 5.1c | §9.1–§9.4, §9.9, §9.10 written as-built (`bbdf59b3`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 ### Platform fixes the live runs forced {#platform-fixes}
 status: done
@@ -894,6 +946,8 @@ builds:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | all six verified present at the `file:line` doc 03b cites (`compose.ts:598`, `command-service.ts:159`, `authority-database.ts:3782`, `src/domain/workflow/module-role.ts`, `src/domain/notification-triggers.ts:92`, `duo-autopilot/src/sign-count.js`); D216 added — the doc's block enumerates six and the tree listed five · nothing left
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 ### Smaller operator calls open {#operator-calls}
 status: you
 chip: needs you
@@ -908,12 +962,17 @@ builds:
 
 log:
 - 2026-08-20 | docs-cohesion 03b | three of the four calls this node was drawn for were already settled and the tree still listed them open — corrected against `ref dashboard-surfaces`, `src/dashboard/surfaces/queue.tsx:281` and `config/legacy-capabilities.json` (disposition `retired`, operator ruling 2026-08-18) · left: the ① witness call, which has a deadline it cannot be made before
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-dash-surfaces 5.1c | §9.1–§9.4, §9.9, §9.10 written as-built (`bbdf59b3`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 ## session: 2026-08-20 | docs-cohesion steps 1–2 | the plan moved out of the repo root (0990ebc5) and now sits at docs/roadmap/roadmap.md; the notation grew doc: · log: · session: (ea7704e0); D263 + D264 ratified; Track D redrawn
 
 ## session: 2026-08-20 | docs-cohesion step 5.0 | doc: on every node; test-tiers · duo-lease · parallel-runs · observed-logs drawn (R10–R12)
 
-## today: 2026-08-20 · HEAD bf41158 · separations 8 / 9 · Tracks B+C DONE · docs rewrite batch 1 merged (03a · frontend-backend-integration · dashboard-surfaces audit) · the three commits wait for 08-28
+## session: 2026-08-21 | docs-cohesion step 5 | every phase doc (00 01 02 03a 03b 03c 03d 04 05 06) and every reference doc rewritten as-built with status blocks; the tree bound both ways; R13–R15 drawn
+
+## today: 2026-08-21 · HEAD 2d8e56cd · docs rewrite step 5 — every phase doc 00…06 and every reference doc rewritten as-built; 03a fidelity audit in flight · separations 8 / 9 · the three commits wait for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
@@ -932,6 +991,7 @@ note: **Legacy capability register:** 47 open · 20 replaced · 7 native · 4 re
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c written as-built: the seven-step playbook, all nine order rows, the recounted closure inventory. Chip corrected 12 → 13 workflows (15 `legacy-workflow-*` entries minus separations and person-lookup); the register recount CONFIRMS 47/20/7/4 and every open entry names `phase-3-workflow-migration`. Registry reality re-verified — only person-lookup and the six separations descriptors are registered, so orders 1-7 and 9 have no descriptor at all
+- 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 ### Order 0 · person-lookup {#order-0}
 status: done
 size: M
@@ -944,6 +1004,7 @@ builds:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | verified as-built: `src/workflows/person-lookup/descriptor.ts` + `module.ts` registered at `src/control/workflow-registry.ts:39`, live-proven by D74. Its `legacy-workflow-person-lookup` capability entry stays OPEN correctly — legacy's crm-search/match/outcome are order 1. No T1 pair exists
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
 #### Dashboard · wire person-lookup {#order-0-dash}
 status: done
@@ -1071,6 +1132,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Order 3 written: the four 2h service stores are REAL (`extraction` 2 tasks, `ocr` 1, `normalization` 1, `roster` 1) and the pipeline workflow is not. Three hazards recorded — D189's byte path as a HARD cutover blocker, `CAPTURE_INTAKE_BINDINGS` empty because no module declares one (`workflow-registry.ts:194`), and `RunShapeSchema`'s `operation` arm that nothing mints
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 
 #### Dashboard · wire the OCR pipeline {#order-3-dash}
 status: planned
@@ -1096,6 +1158,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | the heaviest wire sub-task and mostly a BUILD; `review` is in TAB_ORDER and `sectionsCompatible` (`domain/dashboard/run-detail.ts:309`) means `availableSections` can never return it, so the tab is structurally unreachable today
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 
 ### Order 4 · oath-signature · emergency-contact {#order-4}
 status: planned
@@ -1117,6 +1180,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Order 4 written: two independent firsts in one row — the first operation fan-out and the first non-separations controlled commit. The doc says not to collapse them: prove the fan-out with the write still dry, then prove the write on one member under ref write-safety §3.2's full contract
+- 2026-08-21 | docs-dash-surfaces 5.1c | §9.1–§9.4, §9.9, §9.10 written as-built (`bbdf59b3`)
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
 #### Dashboard · wire oath-signature · emergency-contact {#order-4-dash}
 status: planned
@@ -1164,6 +1229,9 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Order 5 written: `src/infra/artifacts/xlsx-retention-sink.ts` already proves ref data-intake-and-edit-data §4.1's contract, D164 leaves it uncomposed, and its own header names THIS migration as the owner of the operator-facing column layout. A scale proof with no external submit
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
+- 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
+- 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
 
 #### Dashboard · wire i9-check {#order-5-dash}
 status: planned
@@ -1208,6 +1276,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Order 6 written: `new-kronos` has a driver, a session provider and two READ tasks from separations chunk 1 (D196) and no write path. The canonical-EID gate is EVIDENCE — `EidSchema` is `/^10\d{6}$/` at `src/domain/ids.ts:184` and widening it is a wrong person who looks right
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### Dashboard · wire work-study · kronos-pay-rule {#order-6-dash}
 status: planned
@@ -1232,6 +1302,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | eight squares — seven standard minus the gate, plus the intake grid's constants entry and unbind arm (D172/D173); the intake workspace itself is 2i-E3 and built
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 
 ### Order 7 · oath-upload · onbase {#order-7}
 status: planned
@@ -1254,6 +1325,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Order 7 written: `servicenow` and `onbase` are 12-line unwired declarations with zero tasks, and TWO of this row's blockers need the operator, not an agent. `unverifiableByPage` would change the WORKFLOW (the operator confirms every upload), not just the assertion
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### Dashboard · wire oath-upload · onbase {#order-7-dash}
 status: planned
@@ -1298,6 +1371,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Order 9 written: `probeVerdictSchema` has four arms at `src/domain/write-safety-primitives.ts:50` and every permanent key in the tree is EID-derived — a hire CREATES the identity, so the widening is a real schema question, not a naming one. Its canary is the hardest target in the program
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 #### Dashboard · wire onboarding {#order-9-dash}
 status: planned
@@ -1347,6 +1422,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Cross-cutting written against the code and the five capability reasons: `settings.tsx` is read-only while the command union already carries `apply-settings`; no `/api/search` (deliberate — two runs is not a corpus); no screenshots routes and no artifact-bytes route; three legacy Excel writers and zero here; no setup script. None of the five is started
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
 ## The X → Y traceback {#deferred}
 phase: Deferred
@@ -1378,6 +1455,9 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 04 | the seam, the phone pipeline and the restart drain are all composed in production; the binding is the whole absence (`CAPTURE_INTAKE_BINDINGS` is `{}`, `src/control/workflow-registry.ts:194`)
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
+- 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
 ### Run the dashboard without the dev server / use the phone page in production {#def-byte-path}
 status: planned
@@ -1398,6 +1478,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 04 | six build items re-verified unlanded at HEAD; two read as done and are not — `--prod` reaches nothing, and the Host gate has never evaluated a request
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
 
 ### Edit a workflow's presentation / policy without a code change {#def-explorer-edit}
 status: planned
@@ -1410,6 +1491,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 04 | the new-workflow authoring path (`ref operator-trust` §5.5) travels with this node by the operator's ruling; Phase A proves its own boundary — the wire has nowhere to send a mutation
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
 
 ### A record-sanity-check advisory panel {#def-sanity-check}
 status: never
@@ -1423,6 +1506,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 04 | status corrected from `planned` — `ref operator-trust` §4.4.2 and `config/legacy-capabilities.json` have carried the 2026-08-18 retirement since it was ruled; `AdvisorySurfaceIdSchema` stays closed at its D178 two-value shape
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 
 ### Edit settings in the dashboard {#def-settings}
 status: planned
@@ -1442,6 +1526,8 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 04 | the family, target and atomic N-leaf payload are contracted; `apply-settings` is the ONE entry in `PHASE1_DEFERRED` (`src/core/command-kernel.ts:141-148`), so the executor is the absence
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
+- 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
 ### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned
@@ -1460,6 +1546,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 04 | per system, not global: Kuali is closed, UCPath and ServiceNow are open; the direction-of-error argument is why the transfer stops at Kuali
+- 2026-08-21 | docs-cohesion write-safety | ref write-safety rewritten as-built (`def314f3`); §3.2 the per-workflow proof criterion, §3.3/§3.4 the folded proofs, §14 the gate
 
 ### Search runs across dates / view screenshots / export Excel {#def-search-export}
 status: planned
@@ -1478,6 +1565,9 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion 04 | the full BFF route table re-read: no search endpoint, no artifact-bytes route, one served export; the evidence underneath is all durable, so these are routes rather than uncollected data
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
 
 ### Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes {#def-retention}
 status: never
@@ -1492,6 +1582,8 @@ builds:
 
 log:
 - 2026-08-20 | docs-cohesion 04 | title corrected — no constant implements a 14/8/5 schedule; `DIAGNOSTIC_ORDINARY_RETENTION_DAYS` is 30 (`src/domain/trust/diagnostic-capture.ts:44`). Both items stay `wont-build-unless-asked` (D193b)
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 
 ## One all-at-once authority switch {#cutover}
 phase: Cutover
@@ -1532,6 +1624,8 @@ needs:
 
 log:
 - 2026-08-21 | docs-cohesion 05 | doc 05 rewritten as-built — the register recount (47, not 48), five build items added for the definition-of-done conditions the tree lacked, and one FINDING: the ledger's serialized writer is built, tested and composed by nothing (`createLedgerProjector` is called only from `tests/`), so exit criterion 6 is open rather than met
+- 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
+- 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
 ### Rollback window, then closure {#rollback-window}
 status: planned
@@ -1556,6 +1650,8 @@ doc: 05 §Later, unplanned · ref:operator-trust §7 · ref:clock-config-secrets
 log:
 - 2026-08-21 | docs-cohesion 05 | filled as-built — the two D193(a) items carry no owner and no design (which is what separates them from a doc 04 deferral), the four D75 seams that keep them possible are built, and hosting is a decided refusal rather than a LATER item
 - 2026-08-21 | docs-cohesion R14 | the packaging half is no longer LATER — the operator promoted it to `{#desktop-app}` / doc 06, which gives it the owner and the design a LATER item by definition lacks; the cooperation / multi-user item and the hosting refusal are untouched
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
+- 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
 
 ## Ship the desktop app {#desktop-app}
 phase: Phase 6

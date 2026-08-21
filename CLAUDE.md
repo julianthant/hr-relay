@@ -22,7 +22,7 @@ not own the field — was WRONG and is withdrawn. Kuali's own `ActionPage` query
 Kuali gadget debounce the run fenced inside, and a `commit` that returned at request time so the
 verifier's reload cancelled the in-flight save.)_ Write-heavy workflow migration is no longer
 blocked; each workflow still owes its own §3.2 controlled-commit proof. Evidence, measured numbers
-and durable row ids: `docs/rebuild/reference/write-safety.md` §Phase-2 controlled-commit as-built.
+and durable row ids: `docs/rebuild/reference/write-safety.md` §3.4.
 
 **The four tails, in order.** **2g** (D134–D145) — schema v10, automatic redacted diagnostic
 capture, the durable actor-keyed notification inbox whose row commits before any OS delivery,

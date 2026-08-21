@@ -216,7 +216,7 @@
       "file": "tests/unit/architecture/bounded-task-deadline.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
-      "invariant": "Every task invocation in the Phase-1 interpreter runs under a mandatory, immutable, scheduler-armed abortable deadline (ref execution-and-sessions \u00a75.5): taskDeadlineMs is a required dependency with no default, both invocation arms race the deadline controller, and a task that ignores its signal still lands terminal failed with the wedged session poison-closed.",
+      "invariant": "Every task invocation in the Phase-1 interpreter runs under a mandatory, immutable, scheduler-armed abortable deadline (ref execution-and-sessions \u00a75 item 5): taskDeadlineMs is a required dependency with no default, both invocation arms race the deadline controller, and a task that ignores its signal still lands terminal failed with the wedged session poison-closed.",
       "replacementRequired": true
     },
     {
