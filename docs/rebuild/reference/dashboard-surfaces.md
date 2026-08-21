@@ -2728,6 +2728,8 @@ endpoint, the action-descriptor rule (§8.5) and the parity references.
 - [x] D235 — the bulk door is N children and one vector; offered ≠ eligible; skips counted and stated
 - [x] the subject-title seam: one declared `subjectProjection`, read from the stored checkpoint, throwing on a non-string leaf (`run-subject-title.ts`)
 - [x] the shape hazard compares a run against its OWN workflow's served fingerprint; three verdicts, both directions pinned
+- [x] D252 — a ledger value names its step, direction and freshness bound, all from the DECLARATION, through the same functions the executor calls (§9.3.1)
+- [x] D253 — three result arms, TWO refusals, one exhaustive `settleCommandResult` fold guarded against a violating fixture (§9.3.1)
 - [!] D16's "no confirmation dialog" against the served member-counting confirm — the code confirms; an operator call (`{#operator-calls}`)
 - [!] D12's gate age is fully served and the `waiting` pill draws none of it, on a recorded operator direction — an operator call (`{#operator-calls}`)
 - [ ] D9's `rejected` containment arm is not on the wire; the row model's vocabulary says three arms and `ContainmentSchema` serves two
@@ -3043,10 +3045,121 @@ follow key on the day wire and the parity references.
 
 #### 9.3.1 The Context rail — Data, Edit Data, provenance
 
-**Stub — written by unit 5.1c** (ruling 3: a sub-square of run detail, because the tree's
-`WIRE run detail` line names the data rail and the tree's `builds:` line must not have to change).
-Inherits D168/D252's Data section, D253's two refusal arms, and the two named-open arms of D19(c).
-The FLOW and the field policy stay `ref data-intake-and-edit-data` §6.4.1's.
+<!-- roadmap: track-b -->
+
+A sub-square of run detail rather than a square of its own: the tree's `WIRE run detail` line names
+the data rail, and the rail has no life apart from the run whose panel it rides. Its `track-b`
+checklist lives in §9.2's status block; this section adds no second one.
+
+**What it is.** The right-hand column of the run-detail panel, and the ONE place where a run's data
+ledger is both READ and CORRECTED. That merge is the decision: Logs and Data were mutually exclusive
+tabs, so the operator could not watch a run's log stream and see what that run read and wrote at the
+same time — a significant part of the reported clutter, because the panel appeared to hold more than
+it did while half of what it held was behind the other half. The split is by **reading pattern**, not
+importance: live state (what the run is doing, what it needs from you) stays in the centre column;
+reference data (what it read and wrote, who asked for it) moves to the rail.
+
+**Reads are editable in place; writes are shown and never editable.** The separate `Edit & re-run`
+dialog that briefly carried the editing half was introduced and then REMOVED at operator instruction
+(*"we also need the edit data and data tab to be together so i can have a feel of how its like to
+edit the data"*). The section WIDENS while editing — `--ds-w-context-rail-wide`, 520px, through the
+log panel's own grid — instead of opening a modal. `DemoTab` and `tabsFor` drop `"data"` entirely, so
+no dead tab id is reachable; `detailSurfaces` separately carries the `data` capability for the rail.
+Everything D19(c) promised survives byte-for-byte through both amendments: staged writes still render
+as staged, unconfirmed still says unconfirmed, nothing gains success styling it has not earned, the
+unlock rules (`editPolicyFor`, with the reason ALWAYS shown) and the CAS on the checkpoint generation
+carry over unchanged. The freshness *confirm* stays a dialog — it is a question with a typed answer
+and two mutually exclusive exits, which is what a dialog is for.
+
+**As-built for reads (2i-C, D168).** `editPolicyFor` composes three policies, each carrying its own
+sentence onto the lock: the entry's field policy and the run-level policy arrive ON the
+`context-data` wire, and the live staleness signal is `liveLockReasonOf` over the day stream's
+queue-row status — there is still no per-run SSE client, and the queue row flipping out of
+`queued` / `awaiting-approval` is the same "this run was claimed while you were editing" fact, with
+the kernel's CAS as the authority either way. Editing enters on FOCUS of a value box; Save issues one
+`run/edit-checkpoint` command whose applied result refetches the detail at the bumped `rowRevision`,
+which re-reads every open section through the same revision. A staged correction renders beside the
+recorded value it will supersede — *staged renders as staged*, applied to corrections.
+
+#### A ledger value names its STEP, its DIRECTION and the bound it is held under (D252)
+
+The rail served a label, a redacted value, an edit policy and an observation clock, and its own
+header comment recorded the two hardest remaining axes as unservable: *"nothing durable says whether
+a recorded field was read or written"* and *"the originating system is still absent"*. **Both
+sentences are true of the `run_checkpoints` ROW and false of the descriptor that produced it** —
+D251's false-deferral shape one surface over, a comment that tells the next reader not to look.
+`ContextDataSectionSchema.entries[]` grows two OPTIONAL blocks, read forward (D133).
+
+- **`origin`** — `{ nodeId, step, dir, system? }`. `dir` is the producing node's task **`effect`**: a
+  `task` node runs a `read` contract and a `transaction` node's sink is a `commit`, and `effect` is
+  `ref task-contract`'s own word for what a contract does to the world. It is a DECLARATION, never an
+  inference from the value — an entry with no field identity (a key recorded under an earlier
+  descriptor) draws neutral ink and **no arrow**, because defaulting to `read` would claim the run
+  changed nothing, which is the most expensive thing in this product to be wrong about. `system` is
+  the driver system of the store implementing the task; a headless store owns none and the field is
+  then absent rather than labelled.
+- **`freshness`** — `{ maxAge, override, feeds[] }`, `ref workflow-model` §5.5's reuse bound. `maxAge`
+  and `override` are resolved through **`resolveFreshnessBound`**, the function
+  `auditCheckpointFreshness` itself calls, so the sentence an operator reads and the rule the
+  executor enforces are one declaration rather than two opinions that can drift. `feeds` is
+  `reachableCommits` over the static graph. An unbounded policy travels as the WORD `unbounded`,
+  because `JSON.stringify(Infinity)` is `null` and a deliberate bound would arrive as a missing one.
+
+The schema **refuses a `freshness` block with no `origin`**: a bound is the producing step's
+declaration, and one served without a step to attribute it to is an unowned constraint on screen.
+
+Where the derivation lives is the second half. `RunDetailDescriptorView` grows `dataOrigins`,
+composed at the root beside `gateNodes` and `writeContracts` — `src/server/dashboard/queries/` never
+reaches the descriptor builders, and this view additionally needs the MODULE, because a task's system
+belongs to its store and a descriptor may not reach one (D106). Only the field paths a Data entry can
+carry are resolved (`details[].source` ∪ `capabilities.editData.fields`): a bound for a path no
+surface serves is a fact nobody reads.
+
+**What the rail draws.** Level 1 is the STEP, grouped by `origin.nodeId` and never by label — two
+steps may record a field of the same name, and merging them would attribute one step's read to
+another. The system chip rides the heading, not each row. The row rail carries the direction as a
+colour with an arrow and an `sr-only` word beside it, since colour is never the only differentiator.
+The bound prints under the value it bounds, and **only where it can bite**: `auditCheckpointFreshness`
+skips a checkpoint whose facts reach no commit, so an empty `feeds` set prints nothing rather than an
+age limit that refuses nothing.
+
+**What is still not drawn, and why none of it is a wire gap.** The demo's `refreshed` badge needs the
+superseded reading beside the current one and this wire carries one value per entry. `staged` and
+`unconfirmed` are STRUCTURAL absences: a `prepare` contract is `checkpoint: "in-memory-only"`, so a
+staged value never becomes the checkpoint a ledger row reads from, and an unconfirmed write is a
+`parked-write` run whose transaction node has no checkpoint at all — its honest surface is
+`ref write-safety` §4.1's park section (§9.4), which already serves it. A second badge in the rail
+would be a second authority for one fact.
+
+#### A refused command that looks like a save (D253)
+
+`CommandResultSchema` has three arms and **TWO of them are refusals**. The rail's Data save branched
+on `rejected` alone, so a CAS `conflict` fell through to the SUCCESS path: the rail closed its editor,
+discarded the operator's drafts and reported a correction **saved** that the kernel had refused.
+Nothing in the file looks like the banned pattern — no `catch`, no `??`, no default value — because
+the fallback is the ABSENCE of a branch, which is why a fail-loud review reading for `catch { return
+[] }` walks straight past it. It is reachable by ordinary use, not by a corner case: a run's version
+moves whenever a worker claims it or the day stream folds a span under an open panel.
+
+Every module under `src/dashboard/**` now settles through ONE exhaustive fold, `settleCommandResult`,
+whose `switch` over the discriminant makes a fourth arm a compile error, and the
+`command-result-exhaustive` guard refuses any dashboard module that names one refusal arm without the
+other — against a checked-in violating fixture carrying the exact shipped shape, so a walker
+resolving nothing cannot report the tree clean. The two refusals stay **distinguishable in the
+sentence**, because the operator does different things about them: a conflict gets the server's
+`currentVersion` and never the words "try again", since re-sending the same envelope carries the same
+stale `expectedVersion` and would be refused identically.
+
+**What this square still owes.** Two D19(c) arms are built for reads and named open: the
+`Load a prior run` / `Start a run from this data` footer, and `actions[]` gating at the `data`
+placement — the served-actions projection is still empty there, and the wire's `editing` union
+carries the gate until it lands. Beside them sits the fetched-and-unread `context-evidence` section
+(§9.3): it is explicitly withheld from the rail and has no consumer anywhere.
+
+**Wire.** `ref frontend-backend-integration` §5.1.3 owns `ContextDataSectionSchema`, the
+`edit-checkpoint` command and the parity references. The FLOW and the field policy — what may be
+corrected, under what freshness rule, and what a correction does to a resumed run — stay
+`ref data-intake-and-edit-data` §6.4.1's.
 
 ### 9.4 The gate ceremony — and the parked-write resolution beside it
 
