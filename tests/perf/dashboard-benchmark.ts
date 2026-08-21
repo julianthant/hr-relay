@@ -81,9 +81,15 @@ function round(value: number): number {
 function countDayWireParses<Result>(work: () => Result): { readonly value: Result; readonly parses: number } {
   const schema = DashboardDayWireSchema as unknown as { parse: (input: unknown) => unknown };
   const original = schema.parse.bind(DashboardDayWireSchema);
+  // Restore whatever was there — an OWN descriptor if zod defines `parse` per
+  // instance, and nothing at all if it lives on the prototype. Blind-deleting
+  // would strip the method itself in the first case, leaving every later parse
+  // in this process broken.
+  const ownDescriptor = Object.getOwnPropertyDescriptor(schema, "parse");
   let parses = 0;
   Object.defineProperty(schema, "parse", {
     configurable: true,
+    enumerable: ownDescriptor?.enumerable ?? false,
     writable: true,
     value: (input: unknown): unknown => {
       parses += 1;
@@ -93,7 +99,8 @@ function countDayWireParses<Result>(work: () => Result): { readonly value: Resul
   try {
     return { value: work(), parses };
   } finally {
-    delete (schema as Partial<typeof schema>).parse;
+    if (ownDescriptor === undefined) delete (schema as Partial<typeof schema>).parse;
+    else Object.defineProperty(schema, "parse", ownDescriptor);
   }
 }
 
