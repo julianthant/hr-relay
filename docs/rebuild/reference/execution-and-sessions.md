@@ -905,6 +905,29 @@ the successor) and thrown loud by the gate. At the shipped defaults the holder's
 always fires before its TTL (80 s), so takeover of a live process's lease is unreachable by
 construction; the arms exist for the clock-skewed and crashed cases.
 
+**Known window: a monotonic cancel racing a wall-clock takeover across sleep (review finding 2,
+2026-08-21).** The holder's own TTL cancel is armed on the kernel scheduler against
+`clock.monotonicMs()` (`performance.now()`); takeover, at the store, compares `expiresAt` — a wall-
+clock ISO instant — against `Date.parse(request.now)`. The two clocks agree while the process stays
+awake, and they diverge across a macOS sleep: `performance.now()` pauses (or at least does not track
+wall time 1:1) for the duration of the sleep, while `Date.now()`/`Date.parse` keep advancing. So a
+holder (process A) that suspends mid-ceremony can wake to find its own monotonic deadline has not
+yet fired — its scheduled TTL cancel is still pending — while the WALL-CLOCK `expiresAt` it armed
+before sleeping is long past. A waiter (process B), which only ever reads wall-clock time through
+`acquire`, sees the row past `expiresAt` and takes over at `generation + 1` the moment it next polls.
+A's resumed browser then still presents an assertion under the superseded generation 1 token; A
+learns only when its own `#release` runs and the store reports `superseded`
+(`DuoCeremonyLeaseExpiredError`'s message names the generation that overtook it). This is a genuine
+consequence of using two different clocks for the same lease's two halves — the holder's cancel MUST
+be monotonic (a wall-clock deadline is not safe to schedule against, ref clock-config-secrets), and
+takeover MUST be wall-clock (the row is read by a different process with its own monotonic origin,
+so a monotonic `expiresAt` would be meaningless to it). The spec accepts this window rather than
+resolving it: it is bounded by how long a sleep can last before a worker's next scheduled action
+would have fired anyway, it is the SAME class of "TTL fires while ceremony is in flight" the
+`DuoCeremonyLeaseExpiredError` arm already exists to cancel and report, and neither clock is a
+candidate for the other's job. No clock changes; this paragraph is the record that the window is
+known and named.
+
 **4. Waiters are bounded and refuse by NAME, before the envelope fires.** The gate polls `acquire`
 every `DUO_CEREMONY_LEASE_POLL_MS` (250 ms — a cadence, not an outcome) with a budget of the
 remaining envelope MINUS the grace, and at the budget throws `DuoCeremonyLeaseHeldError` naming the
