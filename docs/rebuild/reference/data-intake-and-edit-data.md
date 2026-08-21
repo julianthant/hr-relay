@@ -1366,16 +1366,25 @@ export const RowRejectSchema = z.discriminatedUnion("kind", [
                    paths: z.array(WorkflowInputPathSchema).min(2) }),
 ]);
 
+// src/domain/intake/manifest.ts:197-235 — as built
 export const IntakePlanManifestSchema = z.strictObject({
   version: z.literal(1),
-  planId: IntakePlanIdSchema,
+  manifestId: IntakeManifestIdSchema,        // §1.1: the ONE manifest identity
   workflow: WorkflowIdSchema,
-  source: z.strictObject({ artifactId: ArtifactIdSchema, sha256: Sha256Schema,
+  source: z.strictObject({ artifactId: ArtifactIdSchema, sha256: FingerprintSchema,
                            originalName: z.string().min(1) }),
-  mappingFingerprint: Sha256Schema,
-  mappingSnapshotHash: Sha256Schema,
+  mappingFingerprint: FingerprintSchema,     // the LAYOUT the decisions were made against
+  mappingSnapshotHash: FingerprintSchema,    // the DECISIONS themselves (§2.1)
+  intakeProjectionFingerprint: FingerprintSchema,
   workflowContractFingerprint: FingerprintSchema,
+  /** The schema every `parsedInput` was produced by, and must be re-read with. */
+  canonicalInputSchemaHash: FingerprintSchema,
   createdAt: IsoInstantSchema,
+  /** Present exactly when the source is a finalized phone-capture bundle, absent for a
+   *  spreadsheet — optional so every pre-D174 manifest still parses (§5.1, D174). */
+  capture: z.strictObject({ captureSessionId: CaptureSessionIdSchema,
+                            finalizationGeneration: PositiveIntSchema,
+                            orderedPhotoSha256: z.array(FingerprintSchema).min(1) }).optional(),
   totals: z.strictObject({ sourceRows: z.number().int().nonnegative(),
                            valid: z.number().int().nonnegative(),
                            rejected: z.number().int().nonnegative(),
