@@ -66,7 +66,11 @@ lands):**
 
 | was | is going to | unit |
 |---|---|---|
-| the as-built delta blocks above §0 (queue-row projection, the second batch, D225/D234/D235/D238, the Wave-2 connection proof) | §9.2 · §9.3 · §9.9 | 5.1c |
+| `## Queue-row projection as-built delta` + *The second batch* + *Drawing the second batch* + *The per-row action descriptors* + *The row title is the SUBJECT* | **§9.2** (landed) | 5.1c |
+| `### D234` runs and archived runs · `### D235` the bulk vector | **§9.2** (landed) | 5.1c |
+| *The shape hazard compares a run against ITS OWN workflow's served shape* | **§9.2** (landed) | 5.1c |
+| `## Phase 1g/1i-spine as-built presentation deltas` (D123 · D124 · D126) | §9.3 · §9.2 · §9.9 | 5.1c |
+| `### D225`/`#### D259` · `### D238` · *A live elapsed TICKS (D256)* · *The open run-detail panel FOLLOWS its run (D257)* | §9.3 · §9.9 | 5.1c |
 | §9's row-model D5–D24 and *Shell and layout as rebuilt* | §9.10 · §9.9 · §9.2 · §9.3 | 5.1c |
 | §10.1 Activity · §10.2 Archive · §10.3 display names · §10.4 the notification model | §9.5 · §9.5 · §9.2 · §9.6 | 5.1d |
 | §11 the intake workspace · §12 the capture phone · §13 the two takeovers | §9.7 · §9.7 · §9.5 | 5.1d |
@@ -180,314 +184,6 @@ As-built contract:
   a future status that shortens its word owes one too.
 
 ---
-
-## Queue-row projection as-built delta (2026-08-14)
-
-Four §1.2 row facts had a CONSUMER and no PRODUCER: `queue.tsx` drew each one the moment it
-arrived and the projection served none of them. This delta records what the ONE run/queue
-projection now derives, and — because three of the four have an absent arm — where each absence
-comes from. Nothing here is a new decision; D6, D12, D13 and D22-as-amended-by-D126 all already
-said what the row should say.
-
-- **`liveMessage` on a failed row (D13).** A terminal-failed run serves its `FailureRecord.summary`
-  **verbatim** — D13's "never *Unknown error*" is the same rule stated for the substitution this
-  projector must not make. Every other status carries a reasoned absence, and there are four
-  distinct ones: an in-flight run (no producer authors a progress sentence on this wire), a
-  settled non-failed run, a run whose span reports a failure authority has not settled, and a
-  terminal-failed run whose failure record authority does not hold. That last one is NAMED rather
-  than thrown, which deliberately differs from `buildActivityReportWire`: an aggregate with a hole
-  is a wrong number, but the same hole here would degrade the ONE projection every surface renders,
-  and the queue's ⓘ popover prints the reason — which puts the missing record in front of the
-  operator instead of behind an outage. `liveMessage.value` is therefore re-dispositioned in the
-  D183 redaction audit from `repository-authored` to **`external-text`**: it now inherits
-  `durable/failure-record` `summary`'s class, because a failure summary may quote a thrown message.
-- **`dryRun` (D6).** Read from the run envelope — the flag's one home, and the same bit ref write-safety's
-  `executeDryRun`/`executeTransaction` split turns on — never from the `run.queued` span's copy.
-  There is no absent arm and there must never be one: every envelope carries it, so "we do not know
-  whether this run writes" is not a state this system can be in.
-- **`gateOpenedAt` (D12).** Present ONLY on an `awaiting-approval` row (a schema refinement in the
-  same shape as D124's `refineEndedAt` refuses it anywhere else), sourced from the gate's own
-  `gate.opened` span — exactly what the run-detail decision notice reads, so two surfaces cannot
-  date one gate two ways. Authority's `lifecycle.parkedAt` is the FALLBACK and not the preferred
-  value, which inverts `endedAt`'s ordering on purpose: the executor emits `gate.opened`, then
-  releases the browser session, THEN parks, so `parkedAt` is the later instant by however long a
-  session close takes and preferring it would shave that off every gate's age. `updatedAt` is never
-  a source — it moves on every patch, and reporting a gate as *younger* than it is remains the one
-  direction this fact may not err in.
-  **Amended by operator ruling, 2026-08-18 — where the age RENDERS.** D12's queue-row half ("an
-  aging gate is the most actionable fact in the queue") is superseded by the demo's own layout,
-  which the operator confirmed against the reference screenshot: the status pill carries NO age
-  (`StatusPill`'s `waiting`-arm suppression stands — *"the word names the work, not the wait"*);
-  the wait age renders in the row's FOOTER meta and, at full strength, in the log panel — the
-  run-detail header's right-aligned age and the timeline's hatched waiting segment with the true
-  wait printed beneath it. `gateOpenedAt` stays served exactly as specified above; only the pill
-  half of D12 is amended. This closes the findings ledger's "gate age is served and the pill
-  refuses to draw it" record.
-- **`warnings` (D22/D126).** The `△ N` chip's count is the run's evidence-receipt warning set, with
-  the first warning's own summary as the chip's title. The read is a plain lookup of an
-  ALREADY-DERIVED receipt: D141 makes derivation an on-demand act that persists a row, and a read
-  model that wrote authority as a side effect of rendering a queue would be a projection deciding
-  when a durable record exists. There is no `count: 0` present arm — absence IS zero, as it is for
-  this doc's sparse count arrays — and the absent `reason` keeps three states apart that a silent
-  zero would collapse: not settled, no receipt derived, receipt with no warning.
-
-### The second batch: ordinal, class, links and outcome (2026-08-19)
-
-Six more §1.2/§9 row facts had a consumer and no producer. **What follows is the as-built for each
-one that has a REAL source; the ones whose source does not exist are NOT served as a permanently
-absent arm** — a wire field nothing can populate is the orphan `wire-connectivity.test.ts` exists to
-catch, and they are restated in `docs/findings/queue-rows.md` with the producer each one waits on.
-Only `runNumber` and the containment vocabulary are new decisions (**D230**, **D231**); the rest is
-ref frontend-backend-integration §3.2's approved queue contract finally being filled in.
-
-- **`runNumber` (D230).** Read from `RunRecord.runNumber`, never derived. A number computed from a
-  row's position in THIS day's sorted array would be a different number tomorrow for the same run,
-  which is the one property a name may not have. The absent arm is D133 read-forward and is the
-  only one: a run enqueued before schema v15 carries no ordinal, and the footer draws the trace id
-  in that slot meanwhile — the identity every log, receipt and support conversation already uses.
-  The two are siblings once both are present, never substitutes.
-- **`priority`.** Read from the run ENVELOPE, which is D95's `bump` target — not the `run.queued`
-  span's frozen copy. `bumpPriority` rewrites the envelope and emits no span of its own, so a row
-  reading the span would keep saying `bulk` after the operator's bump had already changed the claim
-  order. No absent arm, for `dryRun`'s reason: every envelope carries one. It is a deliberate enum
-  MIRROR of `RunPrioritySchema` (ref frontend-backend-integration §8.13 keeps `src/domain/run/envelope.ts` out of the bundle's
-  reach), pinned member-for-member by `wire-connectivity.test.ts`'s mirror joint.
-- **`containment` + `linkedRuns[]` (D231).** See ref decisions's D231 row for the whole contract. Two
-  things are worth restating here because they are queue-panel behaviour: the schema refuses a
-  payload where containment, lineage and `surfaceKind` disagree, and the member/linked partitions
-  are disjoint BY CONSTRUCTION rather than by intention — the rollup counts only `operation-member`
-  children, so a child is never both counted in a group and chipped beside it.
-- **`facts[]` (§9 D7).** Read from the run's ALREADY-DERIVED evidence receipt's `output` — the same
-  plain `getReceipt` lookup `warnings` does, never `ensureReceipt`, for D141's reason. The receipt's
-  outputs ARE the flattening the Receipt tab prints, so reading them here is what keeps the chip on
-  the row and the row in the tab from being two derivations of one result. A leaf becomes a chip
-  only when its redacted value is `allowed` **and** a JSON primitive: the queue is on screen all day
-  and gets screenshotted into tickets, so it is the last surface that may print a dropped or
-  transformed value, and flattening an object into a string would author a presentation the receipt
-  never did. Both exclusions are COUNTED into the absent `reason`, which is what keeps four states
-  apart that an empty band would collapse — not settled, no receipt derived, a receipt with no
-  output, and a receipt whose every output was withheld.
-- **`pipeline[].durationSec` / `executions`.** Summed over EVERY execution of the node rather than
-  taken from the last, because a node re-executed across a gate resume (D214) genuinely spent both
-  intervals and the chip reports time spent on the step. The same refusals as the run-detail
-  timeline's `durationMs`: a step with no end, no folded start, unreadable instants, or an end
-  before its start carries NO duration — zero is a measurement, and "unmeasured" is not.
-  `executions` is present only at two or more, because one is the ordinary case.
-- **`memberPreview` (operation rows only).** Composed from the member rows' OWN titles, resolved
-  through the same subject-or-composed-title rule those rows draw, so a preview can never name
-  somebody the group does not contain or spell a subject two ways; the `+N more` count comes off the
-  same member list as the rollup. Absent when the group has fanned out to nobody yet, or when the
-  span fold has not seen the members it names — a group is a real thing before its fan-out lands,
-  and an empty string in that slot would read as a group of nobody.
-
-**Why none of this went into `config/pending-wire-bindings.json`.** That manifest's `declared-unserved`
-direction is for a schema arm a producer cannot reach — a section key, a command verb, a route. Every
-field above is SERVED: its absence is a present/absent union whose `reason` the operator reads in the
-row's ⓘ popover, which is a stronger record than a manifest line nobody sees, and its arms are pinned
-beside the present one in `run-queue-projection.test.ts`. The fields with no producer at all were not
-added to the schema, so there is no orphan arm for the manifest to declare either.
-
-### Drawing the second batch: the rehearsal hue and the rename control (2026-08-19)
-
-The batch above put six facts on the wire and drew none of them. This is the consumption half, plus
-the two decisions it could not be built without.
-
-**Where each field renders.** `#N` is the footer's SECOND segment, a sibling of the trace chip and
-never a substitute for it — the ordinal is the short number an operator says out loud, the trace id
-is the string every log and receipt is grepped by, and a row whose ordinal is absent (pre-v15) simply
-does not draw the chip. `linkedRuns[]` and the parent route share ONE `PanelRedirectChip`, because
-every redirect must look identical; the chip prints the SERVED `label · status` and routes on the
-link's own `workflowId`, so a child that ran on another day still opens. `facts[]` are the demo's
-`FactChipView` pairs, sized by its `grow` rule so a redirect beside them keeps the spare space.
-`memberPreview` sits under a counted anchor and is SUPPRESSED once the member list is open — the
-preview and the list are then the same names twice, and the preview is the copy that truncates.
-`pipeline[].durationSec`/`executions` ride the micro-steps' hover sentence, where an unmeasured step
-states its state alone rather than ` 0s`. `containment` is a sentence in the row's ⓘ (`root` gets
-none — it is the ordinary row), and three more absent reasons join it there, because a chip that is
-not drawn is the one state that cannot explain itself.
-
-**D232 — the fifth semantic hue, spent on `dry run`.** The palette budget was one accent and four
-semantic hues (info / success / warning / danger) and the rehearsal chip has no honest home in any of
-them: `info` is what the `test` chip beside it is drawn in — the one pair on the row a glance has to
-separate — and every amber token in this product means *a human is involved*, which a rehearsal is
-not. So the budget grows to five, operator-ratified, and `--ds-rehearsal-*` is a REAL light/dark pair
-rather than an alias. Two naming rules travel with it. It is named for what it MEANS, not for its
-colour: `--log-violet` was a hue name on a semantic token and was later re-derived to amber for a
-different meaning, so the name outlived the colour and now lies about it. And it has no `-solid-*`
-step, because this hue is only ever a chip and a solid violet fill would be a fifth voice in the
-loudness ladder. The demo's own tone is *named* `violet` and *bound* to the amber parked tokens; this
-binds the colour the name describes, which is the one deliberate colour deviation on the row. The
-same hue draws the same fact on the Log Panel's provenance bar — one meaning, one colour.
-
-**D233 — a rename is a descriptor-driven control, and every run verb CASes the caller's version.**
-Two halves of one seam.
-
-- **The control.** `rename` has been a kernel command since Phase 1c, and its absence from the served
-  vocabulary was recorded as *"the display-name edit is an inline field on the row, not a
-  descriptor-driven control"*. No build ever grew that field, so §10.3's operator-assigned display
-  name was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and
-  is served at `menu` on EVERY status — `executePresentation` has no state precondition, so a run
-  that has already written to UCPath can still be named, and that is precisely what makes a rename
-  safe to offer: it touches the subject, the trace and the ordinal not at all. The one narrowing is
-  row shape rather than a kernel fact: a MEMBER row loses the control, because `displayName` replaces
-  the title on the row it rides and naming a member would put free text where the group's list prints
-  the person that item is about. The dialog is intercepted from the descriptor exactly as the identity
-  ceremony is, for the same reason — it carries a value only a human can author, so the composer
-  REFUSES a rename with no name rather than posting a plausible one, and the field states
-  `RunDisplayNameSchema`'s bounds where the operator types so a refusal is never the first they hear
-  of one.
-- **The CAS.** `executePresentation` re-read the run and CASed against its OWN re-read, which is a
-  compare-and-swap that cannot fail: a stale `Rename` or `Hide` from a tab left open since yesterday
-  applied silently and was reported as recorded. It was written on a true premise — presentation
-  changes no outcome, task, checkpoint, intent or evidence — and the premise is about STATE, not about
-  version. **A name is a value the operator authored**, so applying yesterday's over today's discards
-  somebody's edit while answering success. All three presentation verbs now CAS `request.target.expectedVersion`
-  like every other run verb, and hide kept the discipline because a CAS rule with one exception is a
-  rule nobody can check. The guard that covered this arm had been asserting the hole under the heading
-  *"scopes CAS to the real race families"*; it and its registered invariant both moved. **One arm the
-  fix did not reach was `bump`** — recorded rather than fixed at the time because it sits outside the
-  presentation seam — and it has since been closed on this same rule, with no new decision number:
-  `executeBump` re-read the run and passed its OWN `current.version` to `bumpPriority`. Its blast
-  radius is genuinely smaller (a stale bump reorders a queued run's claim, and is refused outright
-  once the run has left `queued`), which is an argument for the fix being cheap rather than for
-  leaving the one exception in place. The check lands BEFORE the lifecycle precondition, matching
-  `executeCancel`: a caller holding yesterday's version does not get to learn today's lifecycle from
-  the refusal it gets. **Every run verb now CASes `request.target.expectedVersion`. There are no
-  exceptions left.**
-
-**The provenance bar takes the two facts a rename makes readable.** `Priority` lands in the ⓘ with
-the reason it matters, which is the demo's own disposition (*"`by` and `priority` are the same two
-words on every row an operator starts on their own machine, so they cost a chip each to say
-nothing"*) — a chip would spend a slot on a constant. `Named by you` states what the rename did NOT
-touch, and is drawn only for a named run, because it answers a question an unnamed run never raises.
-
-### The per-row action descriptors (2026-08-14)
-
-The fifth row fact with a consumer and no producer, and the only one where BOTH halves were
-missing: `QueueBaseFields` carried no `actions` field and no projector built one, so
-`FooterActions`, `RowContextMenu` and the confirm-first dialog were handed an empty list and every
-queue row drew no command controls in any state. Nothing here is a new decision either — §2.4 owns
-the command protocol and ref frontend-backend-integration §3.2 already lists *server-authored action descriptors with
-placement and version/audit tokens* in the approved queue contract; ref frontend-backend-integration §8.5 is the rule the gap
-violated (*interactive run controls require an `ActionDescriptorWire`; status-key-to-command
-branches fail*).
-
-`QueueBaseFields.actions: ActionDescriptorWire[]` is now served on every row, built by
-`src/server/dashboard/projectors/queue-row-actions.ts` from the descriptor's declared
-`WorkflowActionPolicy` **intersected with the kernel's own preconditions**, and every descriptor's
-`expectedVersion` is bound to the row's `rowRevision` by a schema refinement. The served set:
-
-| Queue status | Served keys | Command | Footer |
-|---|---|---|---|
-| `queued` | `bump`, `cancel`, `rename` | `bump` / `cancel` / `rename` | `bump`, `cancel` |
-| `running`, `blocked`, `awaiting-approval` | `cancel`, `rename` | `cancel` / `rename` | `cancel` |
-| `done`, `failed`, `cancelled`, `partial` | `retry`, `rename` | `retry` / `rename` | `retry` |
-
-_(`rename` joined the served set with D233 and is `menu`-only; `hide` left it with D234. Placement no
-longer varies with status, because `hide`'s footer slot was the only one that read `terminal`.)_
-
-Plus two row-shape refinements: a delegated child drops `retry` (`executeRetry` refuses one by
-name), and an operation row's cancel is keyed `cancel-tree` so the footer titles it with its blast
-radius and its confirm body counts the members. Everything served is also at the `menu` placement,
-which is what makes the right-click the row's FULL set and the footer a frequent subset of the same
-list rather than a second vocabulary. A run whose workflow has no registered descriptor in this
-build serves an EMPTY list — the policy is the workflow's own statement of what it offers, and a
-build that cannot read it must not guess a default set onto a run it cannot describe.
-
-**Some kernel-accepted verbs are deliberately not served from a row**, each with an owner rather
-than an omission. `edit-checkpoint` — 2i-C's Edit Data rail owns it, because the payload is a field
-patch set a row cannot compose. `resolve-gate` / `resolve-write-present` /
-`resolve-write-absent` — each is answered from its own run-detail SECTION, which carries the packet
-or the evidence note its payload requires; a row control could not compose either, and offering one
-irreversible answer by two roads is what `command-dispatch.ts` already refuses by name.
-
-**What a descriptor is NOT is a second authority.** The admission checks are the STABLE facts about
-a row (its lifecycle class, its lineage, what its descriptor enables), never the racy ones —
-`executeRetry`'s `reject-active` check is deliberately left to the kernel's transaction, so a run
-that goes active between the projection and the click is refused there, with the server's own
-sentence, rather than pre-filtered into invisibility. That is D179's *Apply stays clickable* rule at
-row scale.
-
-**One conflict this work surfaced and did not resolve.** D12's queue-row half is now fully served
-and is still not DRAWN. `StatusPill` (`src/dashboard/ds/primitives-status.tsx`) suppresses the age
-for the `waiting` status on a recorded operator direction — *"Was `Waiting on you · age` in solid
-amber. Operator: drop the timer … the word names the work, not the wait"* — and `awaiting-approval`
-maps to exactly that status. So the row passes a real age into a pill that renders none. The wire
-is the half this delta lands; whether D12's queue-row sentence or the later operator direction wins
-on screen is an operator call, and the visible design is not relitigated here (D126's rule).
-
-### The row title is the SUBJECT, and `displayName` is served beside it (2026-08-14)
-
-§1.2 says a queue row is a projection of the run's identity attributes, and `run.queued.title` is
-the string the descriptor's `presentation.title` composed **from the start input**. That is the only
-honest thing to say before the run has read anything, and it is also why three of six rows on a real
-separations day read `Separation 4502` / `Separation 4524`: a document number is not a person, so the
-column an operator scans distinguished nothing. Nothing here is a new decision — §1.2 already makes
-the row a projection of what the run knows, and the run knows who its subject is well before it ends.
-
-**The title now STARTS as the composed one and is REPLACED, once, when the run's own reads settle the
-subject's name.** Never blanked while it waits, never guessed. Three states keep the composed title
-and each is a real answer rather than a fallback: the workflow declares no subject leaf, the declared
-node has produced no checkpoint yet, or the declared path's union arm was not the one the run took (a
-lookup that resolved nobody, a Kuali employee-name control that was blank).
-
-**The seam is a DECLARATION, and there is deliberately no per-workflow branch and no field-name
-sniff.** A descriptor carries one optional `subjectProjection: { nodeId, fieldPath }` beside its
-`details` projections; the factory proves the node exists and the path is OFFERED by that node's real
-output schema, and `src/server/dashboard/projectors/run-subject-title.ts` reads the stored checkpoint
-at exactly that address. This is D204's rule at the one surface where a wrong answer is a wrong
-person's NAME in the place the eye trusts most: a heuristic that is right for eight workflows and
-wrong for the ninth is not a mechanism, it is a coin toss with good odds. `inputSubject` is
-unaffected and answers a different question — what KIND of thing a run is about, versus where this
-graph settles that thing's name.
-
-The read is a checkpoint and not a folded detail, for a reason worth writing down: the `span.patched`
-detail channel had a declared vocabulary and **no emitter**, so a title sourced from `row.details`
-would have been a title that never changes — and that observation is what eventually retired the
-channel outright (D254, above). The checkpoint is the record the identity chunk actually writes. It is
-also the ONE stored node output a queue row reads — everything else on the row is fold ⊕ authority.
-
-A declared leaf that resolves to a NON-STRING or a blank string **throws**, naming the workflow, the
-node, the path and what was found. It is the one arm that does not degrade gracefully, on purpose: it
-can only be an authoring defect the build could not catch (a checkpoint is canonical JSON, so nothing
-between the contract and this read re-checks the leaf's type), and the alternatives are a row titled
-`[object Object]` or a silent revert to the document number that hides a declaration wrong since the
-day it was written. This deliberately differs from `liveMessage`'s named absence: that one describes
-DATA that may legitimately be missing, this one describes a DECLARATION that is legitimately never
-wrong.
-
-What the five declaring workflows now title their rows:
-
-| Workflow | Composed from input | Replaced by |
-|---|---|---|
-| `separations` | `Separation 4502` | `job-summary.displayedName` — UCPath's record, never the Kuali form's claim |
-| `separations-identity-check` | `Battistessa, Johnnie (10873698)` | `job-summary.displayedName` — the input name is the CLAIM this chunk exists to check |
-| `separations-kuali-read` | `Document 4510` | `document.employee.name.value` |
-| `separations-kronos-timecard` | `EID 10620118` | `timecard.subject.observedDisplayName` — the S37 wrong-person control's own page, never the search panel's candidate list |
-| `person-lookup` | `EID 10873698` | `searching.selection.selected.name` |
-
-`separations-ucpath-termination`, `separations-kuali-finalization` and `kuali-timekeeper-annotation`
-declare nothing, and that is complete rather than pending: the first two already title with a person
-their input carried, and the third's subject IS its document.
-
-**`QueueBaseFields.displayName` is now served in its own right, and is no longer folded into
-`title`.** `RunRecord.displayName` is durable and authority-owned, written only by the kernel's
-`rename` run command, and the projection used to serve `authority.displayName ?? queued.title` as one
-string. That collapse is what made the demo's *"Named by you — subject is …"* tooltip unwritable:
-once the two are one field, no surface can tell an operator-authored title from a system-derived one,
-and a renamed row loses the subject it was renamed away from. The row renders `displayName ?? title`
-and carries the tooltip only when the operator has actually renamed the run. The absent arm names its
-one reason, in the same shape `subtitle` uses for the same kind of fact.
-
-`run-detail`'s header title goes through the SAME resolver — a row and the panel it opens are the
-pair an operator sees side by side, and two surfaces naming one run two ways is exactly the
-divergence §2.2's one-projection rule exists to prevent.
-
-**What this does not land.** There is still no operator-facing way to REACH `rename`: the
-wire-connectivity guard's `KERNEL_ONLY_COMMANDS` records the display-name edit as an inline row field
-rather than a descriptor-driven control, and no build has one. So `displayName` is served, drawn and
-tooltipped, and today only a CLI/API caller can set it. That is a UI gap with an owner, not a wire
-gap.
 
 ### D225 — the run-detail timeline is CATEGORICAL (2026-08-18)
 
@@ -604,99 +300,6 @@ topological one); and leaving the fold alone and explaining `pending` in a toolt
 what the operator reads at a glance).
 
 ---
-
-### D234 — the queue's model is runs and archived runs (2026-08-19)
-
-**Operator ruling, dated:** *"There are runs and archived runs; there should be no hidden runs."*
-The `hide`/`unhide` presentation pair is RETIRED across the whole stack. This section is the
-normative text; every earlier sentence in this doc that describes hiding is superseded by it.
-
-**What it removes.** Both kernel arms (`executePresentation` keeps `rename` alone); both keys in
-`CommandActionSchema`, `RunCommandRequestSchema` and `BulkRunCommandRequestSchema`;
-`ActionCommandKeySchema`; `CommandActionIdSchema` and `STANDARD_WORKFLOW_ACTIONS`; the client
-composer's fall-through group; the row projector's `hide` descriptor; and — the half that actually
-changes what an operator sees — the **hidden-run exclusion in the queue projection**, which had been
-applied three separate times (the patch/snapshot notifier, the day wire, the Activity report). Every
-run is now rendered. Archiving (D179/D80) is the one thing that takes a run off the queue, and that
-is what makes the count story checkable: ONE whole-run exclusion, applied once, inherited by every
-surface.
-
-**Why it is a retirement and not a deferral.** `unhide` could never have been served: a hidden run
-was filtered out of the queue projection, so no row existed to hang the verb off, and no build ever
-grew a hidden-runs surface. So the reversible half of a *"reversible presentation tombstone"* was
-unreachable from the product, and the row's own confirm copy said so out loud — *"this build serves
-no surface that lists hidden runs, so the row cannot be brought back from here."* A one-way door
-dressed as a tombstone is worse than no door: an operator who hides a run has taken an action they
-cannot see the consequences of and cannot undo. The two honest exits were "build the hidden-runs
-view" or "retire the verb", and the operator chose.
-
-**The durable field is a parse-tolerated vestige, not a deletion.** `RunRecord.hidden` becomes
-`z.boolean().optional()`, written by nothing and read by nothing. It cannot simply be dropped:
-`RunRecordSchema` is strict, `hidden` has never been a SQL column (it lives inside the row's
-`record_json`), and every row the production database already holds carries `"hidden": false` — so
-removing the key would make the authority database refuse to open on every historical row. That is
-D133's read-forward rule pointing the other way, and the same reason no migration is written:
-released migration bodies are immutable and this field never appears in one. An ABSENT value means
-nothing and must never be given a meaning. Production carried **zero** rows with the flag set when
-this landed (40+ runs, none hidden), so nothing reappears.
-
-**What replaces the count arithmetic.** Nothing had to be invented — the exclusion pass already
-existed for archived rows and member containment, and hiding was one predicate inside it. Removing
-that predicate moves counts (a formerly hidden row now counts in the day, the badge, the status
-pill, the month calendar and the Activity report at the same instant, by construction) and moves no
-structure.
-
-**Two side effects worth stating.** Row placement no longer varies with status, because `hide`'s
-footer slot was the only one that read `terminal`. And a settled delegated MEMBER row is now served
-NO control at all — `retry` is refused for a child by the kernel and `rename` by row shape — which
-is the honest answer rather than a gap: every verb the row could draw is one somebody refuses.
-
-**The guard that could not see this.** `wire-connectivity` audited kernel↔schema symmetry in both
-directions and was structurally blind to a key that is accepted, blessed, and projected by nothing.
-Its command arm gains a third direction: every serveable verb must be one some PRODUCER emits, read
-by CALLING `queueRowActions` over every status in both member and non-member shapes (the standard
-its section arm already holds itself to, and the only way to read a computed key correctly) and by
-scanning the comment-stripped descriptor literals of `queries/run-detail.ts`. Comments are stripped
-and that is load-bearing: `unhide` appeared in the projector ONLY inside the prose explaining why it
-is never served, so a scan that counted prose would have called the dead key healthy for the whole
-phase it was dead.
-
-### D235 — a bulk command is N children and one vector (2026-08-19)
-
-**Operator ruling, dated 2026-08-18:** bulk commands are BUILT, and the two batch verbs are
-`cancel` and `retry` (`bump` is schema-admitted and deliberately not offered — a claim-order change
-applied to a selection is a re-ordering nobody asked for). Every bulk action is many REAL CAS-bound
-transitions, so the surface says so BEFORE it fires and reports PER-RUN outcomes, never one
-aggregate "Done". This section is the normative text.
-
-**The server half.** `POST /api/v1/commands/bulk` is a SECOND door, not a mode of the single-command
-door: one command answers one `CommandResult`, N commands answer N of them, and folding a vector
-into the single-result union would give the collapse-into-"Done" defect a place to hide. The
-executor is the SAME command-service path a single press reaches, run once per target — never one
-transaction spanning the batch — so the refusal vocabulary cannot fork. Each child's command id is
-DERIVED (`deriveStableUuid` over `bulkCommandId` + the run id), so re-delivering one bulk envelope
-replays exactly the same N children (`replayed: true`) instead of filing N more — D174's
-idempotency lesson, one family over. The vector's arms are `applied` / `conflict` (carrying the
-server's `currentVersion`, the only number that tells an operator to refresh) / `refused` (the SAME
-`CommandRejectionCode` a single press would get) / `errored` (an untyped throw is reported verbatim
-and STOPS the pass — issuing further writes into a system that just failed to answer is the
-opposite of fail-loud, and `requestedCount` is served precisely so the untried remainder is
-legible). Whole-request refusals reach NO target and are named: an empty target set, a run named
-twice (its second child would replay the first and report a transition it never made), and the
-`all-or-none` mode — schema-recognized, unexecuted, refused by name rather than run best-effort
-under an atomicity label this kernel does not have.
-
-**The client half** (`bulk-dispatch.ts`, the strip in `queue-toolbar.tsx`). OFFERED and ELIGIBLE
-are different rules and the strip says both out loud: a verb is offered when at least one selected
-row's own served `actions[]` admits it, and its frozen target set is the INTERSECTION of the
-selection with those rows — a row outside it is SKIPPED with its count and reason stated, never
-silently dropped and never sent. Versions are frozen at composition from each row's own descriptor
-(*"targets and versions are frozen at confirmation"*), the confirm copy states the per-run
-transition and the skip count, and a plan with nothing eligible REFUSES to become an envelope so
-"nothing happened" can never be mistaken for "it worked". The result band renders the vector run by
-run — subjects frozen from the plan that was sent, because a band that printed uuids is a report
-nobody can read and re-deriving titles from the current day goes blank the moment a batch outlives
-its page.
 
 ### D238 — a rehearsal's terminal outcome is never `verified-done` (2026-08-19)
 
@@ -855,38 +458,6 @@ As-built contract:
   time its run advanced a node would be unreadable for exactly the runs worth watching. Opening a
   DIFFERENT run still clears both, because the previous run's sections beside this run's header is
   the wrong answer rather than a stale one.
-
-### The shape hazard compares a run against ITS OWN workflow's served shape (as-built correction)
-
-**This mints no decision.** The hazard's contract was already stated — a run whose descriptor moved
-is not comparable with a current one, and a retry would replay retired code. The code compared the
-wrong pair, so this is a defect fix ratified in place rather than a new ruling.
-
-**What was wrong.** `RunProvenanceBar` computed `shapeMoved = surface.descriptorHash !==
-currentDescriptorHash`, where `surface.descriptorHash` is the RUN's one-workflow
-`contractFingerprint` (`run-queue-projection.ts`, from `queued.contractFingerprint`) and
-`currentDescriptorHash` was the bootstrap's `descriptorHash` — the hash of the whole eight-workflow
-SET. **Two different kinds of value, so never equal.** Every run the dashboard has ever drawn wore
-the amber *"Ran under Separation shape 59830cf6; runs are served by 76a28eef now … a retry would
-replay retired code"*, including the proof's three runs whose fingerprint was byte-identical to the
-one `GET /api/v1/explorer` served for `separations` and the build manifest held. This is D179's
-`staleApp` defect inverted, and worse: a warning that could never fire is bad, and one that can
-never NOT fire trains the eye past the one chip that would announce a genuinely retired shape.
-
-As-built contract:
-
-- **The comparison is against the run's OWN workflow's served fingerprint**, which the boot document
-  has always carried per workflow (`WorkflowBootstrapPrimitive.descriptorFingerprint`, served
-  straight from that descriptor's `contractFingerprint`). **No wire grows** — this is D251's rule
-  again: check what the served document already answers before booking a row.
-- **Three verdicts, not a boolean.** `classifyRunShape` returns `current`, `moved` (carrying the
-  shape now serving, so the sentence names it) or **`unserved`** — a run whose workflow this build
-  does not register has no current shape to have moved to, and calling that "moved" would state a
-  fact nobody established. It is still drawn as a hazard, with its own sentence, because a retry
-  there has nothing to run.
-- **Both directions are pinned by a test** (`tests/unit/dashboard/run-shape-hazard.test.ts`):
-  identical → silent, moved → warns naming the served shape, unregistered → `unserved`. A hazard is
-  only as trustworthy as its negative case, and this one had never had one.
 
 ## 0. What exists today (and what specifically hurts)
 
@@ -2968,11 +2539,404 @@ That changes where the declaration is READ, not what it says.
 
 <!-- roadmap: track-b -->
 
-**Stub — written by unit 5.1c.** Inherits the queue-row projection as-built delta and its four
-subsections, D124's `endedAt`, D230–D235, D238, D83/D233's rename, D234's runs-and-archived-runs
-model, the shape hazard, and row-model D5/D6/D9/D11/D13/D14/D16 as they bear on a row. Also §10.3's
-operator-assigned display names, from unit 5.1d's half. Wire:
-`ref frontend-backend-integration` §5.1.2. The `track-b` status block belongs here.
+**What it is.** The surface an operator lives on. One row per run, folded from the ONE run/queue
+projection (§2.2, D81) — never from a per-row query — so every count on every other surface is the
+same arithmetic this row is.
+
+**What it shows.** `QueueBaseFields`, and every field on it is served rather than inferred:
+`runNumber` · `title` / `displayName` · status · `startedAt` / `endedAt` · `priority` · `dryRun` ·
+`liveMessage` · `gateOpenedAt` · `warnings` · `facts[]` · `containment` + `linkedRuns[]` ·
+`pipeline[]` · `memberPreview` · `actions[]`. Three of those need saying in words, because they are
+where the row's honesty lives.
+
+- **The title is the SUBJECT.** It starts as the descriptor's composed title — the only honest
+  string before the run has read anything — and is REPLACED exactly once, when the run's own reads
+  settle the subject's name. Never blanked while it waits, never guessed. Three states keep the
+  composed title and each is a real answer rather than a fallback: the workflow declares no subject
+  leaf, the declared node has produced no checkpoint yet, or the declared path's union arm was not
+  the one the run took (a lookup that resolved nobody, a Kuali employee-name control that was
+  blank). This matters because three of six rows on a real separations day read `Separation 4502` /
+  `Separation 4524`, and a document number is not a person — the column an operator scans
+  distinguished nothing.
+- **`displayName` is served BESIDE the title, not folded into it.** The projection used to serve
+  `authority.displayName ?? queued.title` as one string, and that collapse is what made *"Named by
+  you — subject is …"* unwritable: once the two are one field, no surface can tell an
+  operator-authored title from a system-derived one, and a renamed row loses the subject it was
+  renamed away from. The row renders `displayName ?? title` and carries the tooltip only when the
+  operator has actually renamed the run.
+- **An absence is a reason, never a blank.** `liveMessage`, `gateOpenedAt`, `warnings`, `facts[]`,
+  `runNumber` and `memberPreview` are present/absent unions whose absent arm carries its own
+  `reason`, and the row's ⓘ popover prints it. That is what keeps four states apart that an empty
+  band would collapse — not settled, no receipt derived, a receipt with no output, and a receipt
+  whose every output was withheld.
+
+**What it commands.** Only what the server served it. `QueueBaseFields.actions:
+ActionDescriptorWire[]` is built by `src/server/dashboard/projectors/queue-row-actions.ts` from the
+descriptor's declared `WorkflowActionPolicy` **intersected with the kernel's own preconditions**,
+with every descriptor's `expectedVersion` bound to the row's `rowRevision` by a schema refinement.
+A status-key-to-command branch on the client is refused by `ref frontend-backend-integration` §8.5.
+
+| Queue status | Served keys | Footer subset |
+|---|---|---|
+| `queued` | `bump`, `cancel`, `rename` | `bump`, `cancel` |
+| `running`, `blocked`, `awaiting-approval` | `cancel`, `rename` | `cancel` |
+| `done`, `failed`, `cancelled`, `partial` | `retry`, `rename` | `retry` |
+
+Plus two row-shape refinements: a delegated child drops `retry` (`executeRetry` refuses one by
+name), and an operation row's cancel is keyed `cancel-tree` so the footer titles it with its blast
+radius. Everything served is also at the `menu` placement, which is what makes the right-click the
+row's FULL set and the footer a frequent subset of the same list rather than a second vocabulary. A
+run whose workflow has no registered descriptor in this build serves an EMPTY list — the policy is
+the workflow's own statement of what it offers, and a build that cannot read it must not guess a
+default set onto a run it cannot describe.
+
+Some kernel-accepted verbs are deliberately **not** served from a row, each with an owner rather
+than an omission: `edit-checkpoint` belongs to the Context rail (§9.3.1), because the payload is a
+field patch set a row cannot compose, and `resolve-gate` / `resolve-write-present` /
+`resolve-write-absent` are each answered from their own run-detail section (§9.4), which carries the
+packet or the evidence note the payload requires. Offering one irreversible answer by two roads is
+what `command-dispatch.ts` already refuses by name.
+
+**What a descriptor is NOT is a second authority.** The admission checks are the STABLE facts about
+a row (its lifecycle class, its lineage, what its descriptor enables), never the racy ones —
+`executeRetry`'s `reject-active` check is deliberately left to the kernel's transaction, so a run
+that goes active between the projection and the click is refused there, with the server's own
+sentence, rather than pre-filtered into invisibility. That is D179's *Apply stays clickable* rule at
+row scale.
+
+#### The row model as-built — where each fact comes from, and what its absence means
+
+Nothing below was a new decision when it was built; D6, D12, D13, D22-as-amended-by-D126 and
+`ref frontend-backend-integration` §3.2's approved queue contract had all already said what the row
+should say. What was missing was a PRODUCER — every one of these facts had a consumer drawing it
+the moment it arrived and a projection serving none of them.
+
+- **`liveMessage` (D13).** A terminal-failed run serves its `FailureRecord.summary` **verbatim** —
+  D13's "never *Unknown error*" is the same rule stated for the substitution this projector must not
+  make. Four distinct reasoned absences: an in-flight run (no producer authors a progress sentence
+  on this wire), a settled non-failed run, a run whose span reports a failure authority has not
+  settled, and a terminal-failed run whose failure record authority does not hold. That last one is
+  NAMED rather than thrown, which deliberately differs from `buildActivityReportWire`: an aggregate
+  with a hole is a wrong number, but the same hole here would degrade the ONE projection every
+  surface renders, and the ⓘ popover puts the missing record in front of the operator instead of
+  behind an outage. `liveMessage.value` is therefore `external-text` in the D183 redaction audit,
+  not `repository-authored` — a failure summary may quote a thrown message.
+- **`dryRun` (D6).** Read from the run ENVELOPE — the flag's one home, and the same bit
+  `ref write-safety`'s `executeDryRun` / `executeTransaction` split turns on — never from the
+  `run.queued` span's copy. There is no absent arm and there must never be one: every envelope
+  carries it, so *"we do not know whether this run writes"* is not a state this system can be in.
+- **`priority`.** Read from the envelope too, which is D95's `bump` target. `bumpPriority` rewrites
+  the envelope and emits no span of its own, so a row reading the span would keep saying `bulk`
+  after the operator's bump had already changed the claim order. It is a deliberate enum MIRROR of
+  `RunPrioritySchema` (§8.13 keeps `src/domain/run/envelope.ts` out of the bundle's reach), pinned
+  member-for-member by `wire-connectivity.test.ts`'s mirror joint.
+- **`endedAt` (D124).** Carried in its own right as an explicit presence union. `updatedAt` happens
+  to equal `lifecycle.endedAt` on a settled run, but the wire never *said* so, and the row that
+  computed `now − startedAt` for every non-`queued` status counted a finished run forever — 2h 47m
+  printed for ~14.5 minutes of work on the D74 live exit run. The projector serves
+  `lifecycle.endedAt` when authority is terminal and the run span's `endedAt` while in flight; an
+  in-flight row is schema-refused from carrying one; and a terminal row whose `endedAt` the server
+  could not serve renders an explicit **`duration unknown`** rather than substituting `now`.
+- **`gateOpenedAt` (D12).** Present ONLY on an `awaiting-approval` row (a refinement in the same
+  shape as D124's `refineEndedAt`), sourced from the gate's own `gate.opened` span — exactly what
+  the run-detail decision notice reads, so two surfaces cannot date one gate two ways. Authority's
+  `lifecycle.parkedAt` is the FALLBACK and not the preferred value, which inverts `endedAt`'s
+  ordering on purpose: the executor emits `gate.opened`, releases the browser session, THEN parks,
+  so preferring `parkedAt` would shave a session close off every gate's age. `updatedAt` is never a
+  source — it moves on every patch, and reporting a gate as *younger* than it is remains the one
+  direction this fact may not err in.
+- **`warnings` (D22/D126).** The `△ N` chip counts the run's evidence-receipt warning set, with the
+  first warning's own summary as the chip's title. It is a plain lookup of an ALREADY-DERIVED
+  receipt (`getReceipt`, never `ensureReceipt`): D141 makes derivation an on-demand act that
+  persists a row, and a read model that wrote authority as a side effect of rendering a queue would
+  be a projection deciding when a durable record exists. There is no `count: 0` present arm —
+  absence IS zero.
+- **`runNumber` (D230).** Read from `RunRecord.runNumber`, never derived. A number computed from a
+  row's position in this day's sorted array would be a different number tomorrow for the same run,
+  which is the one property a name may not have. Its single absent arm is D133 read-forward: a run
+  enqueued before schema v15 carries no ordinal and the footer draws the trace id in that slot
+  meanwhile. The two are siblings once both are present, never substitutes — `#N` is the short
+  number an operator says out loud, the trace id is the string every log and receipt is grepped by.
+- **`containment` + `linkedRuns[]` (D231).** The schema refuses a payload where containment, lineage
+  and `surfaceKind` disagree, and the member/linked partitions are disjoint BY CONSTRUCTION rather
+  than by intention — the rollup counts only `operation-member` children, so a child is never both
+  counted in a group and chipped beside it. `linkedRuns[]` and the parent route share ONE
+  `PanelRedirectChip`, because every redirect must look identical; it prints the SERVED
+  `label · status` and routes on the link's own `workflowId`, so a child that ran on another day
+  still opens.
+- **`facts[]`.** Read from the same already-derived receipt's `output`. A leaf becomes a chip only
+  when its redacted value is `allowed` **and** a JSON primitive: the queue is on screen all day and
+  gets screenshotted into tickets, so it is the last surface that may print a dropped or transformed
+  value, and flattening an object into a string would author a presentation the receipt never did.
+  Both exclusions are COUNTED into the absent reason.
+- **`pipeline[].durationSec` / `executions`.** Summed over EVERY execution of the node rather than
+  taken from the last, because a node re-executed across a gate resume (D214) genuinely spent both
+  intervals. The same refusals as the run-detail timeline: a step with no end, no folded start,
+  unreadable instants, or an end before its start carries NO duration — zero is a measurement, and
+  "unmeasured" is not. `executions` is present only at two or more, because one is the ordinary case.
+- **`memberPreview`** (operation rows only). Composed from the member rows' OWN titles, through the
+  same subject-or-composed-title rule those rows draw, so a preview can never name somebody the
+  group does not contain or spell a subject two ways. SUPPRESSED once the member list is open — the
+  preview and the list are then the same names twice, and the preview is the copy that truncates.
+
+**Why none of this went into `config/pending-wire-bindings.json`.** That manifest's
+`declared-unserved` direction is for a schema arm a producer cannot reach — a section key, a command
+verb, a route. Every field above is SERVED, and its absence is a union whose reason the operator
+reads, which is a stronger record than a manifest line nobody sees. The facts with no producer at
+all were never added to the schema, so there is no orphan arm to declare either; they are restated
+in `docs/findings/queue-rows.md` with the producer each one waits on.
+
+#### The subject-title seam is a DECLARATION
+
+There is deliberately no per-workflow branch and no field-name sniff. A descriptor carries one
+optional `subjectProjection: { nodeId, fieldPath }` beside its `details` projections; the factory
+proves the node exists and the path is OFFERED by that node's real output schema, and
+`src/server/dashboard/projectors/run-subject-title.ts` reads the stored checkpoint at exactly that
+address. This is D204's rule at the one surface where a wrong answer is a wrong person's NAME in the
+place the eye trusts most: a heuristic that is right for eight workflows and wrong for the ninth is
+not a mechanism, it is a coin toss with good odds. `inputSubject` is unaffected and answers a
+different question — what KIND of thing a run is about, versus where this graph settles that thing's
+name.
+
+The read is a CHECKPOINT and not a folded detail, for a reason worth keeping: the `span.patched`
+detail channel had a declared vocabulary and no emitter, so a title sourced from `row.details` would
+have been a title that never changes — and that observation is what eventually retired the channel
+outright (D254, §1.1). The checkpoint is the record the identity chunk actually writes, and it is the
+ONE stored node output a queue row reads; everything else on the row is fold ⊕ authority.
+
+A declared leaf that resolves to a NON-STRING or a blank string **throws**, naming the workflow, the
+node, the path and what was found. It is the one arm that does not degrade gracefully, on purpose: it
+can only be an authoring defect the build could not catch, and the alternatives are a row titled
+`[object Object]` or a silent revert to the document number that hides a declaration wrong since the
+day it was written. This deliberately differs from `liveMessage`'s named absence — that one describes
+DATA that may legitimately be missing, this one describes a DECLARATION that is legitimately never
+wrong.
+
+| Workflow | Composed from input | Replaced by |
+|---|---|---|
+| `separations` | `Separation 4502` | `job-summary.displayedName` — UCPath's record, never the Kuali form's claim |
+| `separations-identity-check` | `Battistessa, Johnnie (10873698)` | `job-summary.displayedName` — the input name is the CLAIM this chunk exists to check |
+| `separations-kuali-read` | `Document 4510` | `document.employee.name.value` |
+| `separations-kronos-timecard` | `EID 10620118` | `timecard.subject.observedDisplayName` — the S37 wrong-person control's own page, never the search panel's candidate list |
+| `person-lookup` | `EID 10873698` | `searching.selection.selected.name` |
+
+`separations-ucpath-termination`, `separations-kuali-finalization` and `kuali-timekeeper-annotation`
+declare nothing, and that is complete rather than pending: the first two already title with a person
+their input carried, and the third's subject IS its document. `run-detail`'s header title goes
+through the SAME resolver — a row and the panel it opens are the pair an operator sees side by side,
+and two surfaces naming one run two ways is exactly the divergence §2.2's one-projection rule exists
+to prevent.
+
+#### D232 — the fifth semantic hue, spent on `dry run`
+
+The palette budget was one accent and four semantic hues (info / success / warning / danger) and the
+rehearsal chip has no honest home in any of them: `info` is what the `test` chip beside it is drawn
+in — the one pair on the row a glance has to separate — and every amber token in this product means
+*a human is involved*, which a rehearsal is not. So the budget grows to five, operator-ratified, and
+`--ds-rehearsal-*` is a REAL light/dark pair rather than an alias. Two naming rules travel with it.
+It is named for what it MEANS, not for its colour: `--log-violet` was a hue name on a semantic token
+and was later re-derived to amber for a different meaning, so the name outlived the colour and now
+lies about it. And it has no `-solid-*` step, because this hue is only ever a chip and a solid violet
+fill would be a fifth voice in the loudness ladder. The demo's own tone is *named* `violet` and
+*bound* to the amber parked tokens; this binds the colour the name describes, which is the one
+deliberate colour deviation on the row. The same hue draws the same fact on the Log Panel's
+provenance bar — one meaning, one colour.
+
+#### D233 — a rename is a descriptor-driven control, and every run verb CASes the caller's version
+
+Two halves of one seam.
+
+**The control.** `rename` has been a kernel command since Phase 1c, and its absence from the served
+vocabulary was recorded as *"the display-name edit is an inline field on the row, not a
+descriptor-driven control"*. No build ever grew that field, so §9.3's operator-assigned display name
+was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and is
+served at `menu` on EVERY status — `executePresentation` has no state precondition, so a run that has
+already written to UCPath can still be named, and that is precisely what makes a rename safe to
+offer: it touches the subject, the trace and the ordinal not at all. The one narrowing is row shape
+rather than a kernel fact: a MEMBER row loses the control, because `displayName` replaces the title on
+the row it rides and naming a member would put free text where the group's list prints the person that
+item is about. The dialog is intercepted from the descriptor exactly as the identity ceremony is, for
+the same reason — it carries a value only a human can author, so the composer REFUSES a rename with no
+name rather than posting a plausible one, and the field states `RunDisplayNameSchema`'s bounds where
+the operator types so a refusal is never the first they hear of one.
+
+**The CAS.** `executePresentation` re-read the run and CASed against its OWN re-read, which is a
+compare-and-swap that cannot fail: a stale `Rename` from a tab left open since yesterday applied
+silently and was reported as recorded. It was written on a true premise — presentation changes no
+outcome, task, checkpoint, intent or evidence — and the premise is about STATE, not about version. **A
+name is a value the operator authored**, so applying yesterday's over today's discards somebody's edit
+while answering success. All presentation verbs now CAS `request.target.expectedVersion` like every
+other run verb. The guard that covered this arm had been asserting the hole under the heading *"scopes
+CAS to the real race families"*; it and its registered invariant both moved. **One arm the fix did not
+reach was `bump`** — recorded rather than fixed at the time because it sits outside the presentation
+seam — and it has since been closed on this same rule, with no new decision number: `executeBump`
+re-read the run and passed its OWN `current.version` to `bumpPriority`. The check lands BEFORE the
+lifecycle precondition, matching `executeCancel`: a caller holding yesterday's version does not get to
+learn today's lifecycle from the refusal it gets. **Every run verb now CASes
+`request.target.expectedVersion`. There are no exceptions left.**
+
+**The provenance bar takes the two facts a rename makes readable.** `Priority` lands in the ⓘ with the
+reason it matters — a chip would spend a slot on a constant (*"`by` and `priority` are the same two
+words on every row an operator starts on their own machine"*). `Named by you` states what the rename
+did NOT touch, and is drawn only for a named run, because it answers a question an unnamed run never
+raises.
+
+#### D234 — the queue's model is runs and archived runs
+
+**Operator ruling, dated 2026-08-19:** *"There are runs and archived runs; there should be no hidden
+runs."* The `hide` / `unhide` presentation pair is RETIRED across the whole stack. This subsection is
+the normative text; every earlier sentence in this doc that describes hiding is superseded by it,
+including §9.5's archive rules.
+
+**What it removes.** Both kernel arms (`executePresentation` keeps `rename` alone); both keys in
+`CommandActionSchema`, `RunCommandRequestSchema`, `BulkRunCommandRequestSchema`,
+`ActionCommandKeySchema`, `CommandActionIdSchema` and `STANDARD_WORKFLOW_ACTIONS`; the client
+composer's fall-through group; the row projector's `hide` descriptor; and — the half that actually
+changes what an operator sees — the **hidden-run exclusion in the queue projection**, which had been
+applied three separate times (the patch/snapshot notifier, the day wire, the Activity report). Every
+run is now rendered. Archiving (§9.5, D80/D179) is the one thing that takes a run off the queue, and
+that is what makes the count story checkable: ONE whole-run exclusion, applied once, inherited by
+every surface.
+
+**Why a retirement and not a deferral.** `unhide` could never have been served: a hidden run was
+filtered out of the queue projection, so no row existed to hang the verb off, and no build ever grew a
+hidden-runs surface. The row's own confirm copy said so out loud — *"this build serves no surface that
+lists hidden runs, so the row cannot be brought back from here."* A one-way door dressed as a tombstone
+is worse than no door. The two honest exits were "build the hidden-runs view" or "retire the verb", and
+the operator chose.
+
+**The durable field is a parse-tolerated vestige, not a deletion.** `RunRecord.hidden` becomes
+`z.boolean().optional()`, written by nothing and read by nothing. It cannot simply be dropped:
+`RunRecordSchema` is strict, `hidden` has never been a SQL column (it lives inside `record_json`), and
+every row the production database already holds carries `"hidden": false` — so removing the key would
+make authority refuse to open on every historical row. That is D133's read-forward rule pointing the
+other way, and the same reason no migration is written. An ABSENT value means nothing and must never be
+given a meaning. Production carried **zero** rows with the flag set when this landed (40+ runs, none
+hidden).
+
+**Two side effects worth stating.** Row placement no longer varies with status, because `hide`'s footer
+slot was the only one that read `terminal`. And a settled delegated MEMBER row is now served NO control
+at all — `retry` is refused for a child by the kernel and `rename` by row shape — which is the honest
+answer rather than a gap: every verb the row could draw is one somebody refuses.
+
+**The guard that could not see it.** `wire-connectivity` audited kernel↔schema symmetry in both
+directions and was structurally blind to a key that is accepted, blessed, and projected by nothing. Its
+command arm gains a third direction: every serveable verb must be one some PRODUCER emits, read by
+CALLING `queueRowActions` over every status in both member and non-member shapes and by scanning the
+comment-stripped descriptor literals of `queries/run-detail.ts`. Comments are stripped and that is
+load-bearing: `unhide` appeared in the projector ONLY inside the prose explaining why it is never
+served, so a scan that counted prose would have called the dead key healthy for the whole phase it was
+dead.
+
+#### D235 — a bulk command is N children and one vector
+
+**Operator ruling, dated 2026-08-18:** bulk commands are BUILT, and the two batch verbs are `cancel`
+and `retry` (`bump` is schema-admitted and deliberately not offered — a claim-order change applied to a
+selection is a re-ordering nobody asked for). Every bulk action is many REAL CAS-bound transitions, so
+the surface says so BEFORE it fires and reports PER-RUN outcomes, never one aggregate "Done".
+
+**The server half.** `POST /api/v1/commands/bulk` is a SECOND door, not a mode of the single-command
+door: one command answers one `CommandResult`, N commands answer N of them, and folding a vector into
+the single-result union would give the collapse-into-"Done" defect a place to hide. The executor is the
+SAME command-service path a single press reaches, run once per target — never one transaction spanning
+the batch — so the refusal vocabulary cannot fork. Each child's command id is DERIVED
+(`deriveStableUuid` over `bulkCommandId` + the run id), so re-delivering one bulk envelope replays
+exactly the same N children (`replayed: true`) instead of filing N more — D174's idempotency lesson,
+one family over. The vector's arms are `applied` / `conflict` (carrying the server's `currentVersion`,
+the only number that tells an operator to refresh) / `refused` (the SAME `CommandRejectionCode` a single
+press would get) / `errored` (an untyped throw is reported verbatim and STOPS the pass — issuing further
+writes into a system that just failed to answer is the opposite of fail-loud, and `requestedCount` is
+served precisely so the untried remainder is legible). Whole-request refusals reach NO target and are
+named: an empty target set, a run named twice, and the `all-or-none` mode — schema-recognized,
+unexecuted, refused by name rather than run best-effort under an atomicity label this kernel does not
+have.
+
+**The client half** (`bulk-dispatch.ts`, the strip in `queue-toolbar.tsx`). OFFERED and ELIGIBLE are
+different rules and the strip says both out loud: a verb is offered when at least one selected row's own
+served `actions[]` admits it, and its frozen target set is the INTERSECTION of the selection with those
+rows — a row outside it is SKIPPED with its count and reason stated, never silently dropped and never
+sent. Versions are frozen at composition from each row's own descriptor, the confirm copy states the
+per-run transition and the skip count, and a plan with nothing eligible REFUSES to become an envelope so
+"nothing happened" can never be mistaken for "it worked". The result band renders the vector run by run
+— subjects frozen from the plan that was sent, because a band that printed uuids is a report nobody can
+read and re-deriving titles from the current day goes blank the moment a batch outlives its page.
+
+#### The shape hazard compares a run against ITS OWN workflow's served shape
+
+**This minted no decision.** The hazard's contract was already stated — a run whose descriptor moved is
+not comparable with a current one, and a retry would replay retired code. The code compared the wrong
+pair, so this is a defect fix ratified in place.
+
+`RunProvenanceBar` computed `shapeMoved = surface.descriptorHash !== currentDescriptorHash`, where
+`surface.descriptorHash` is the RUN's one-workflow `contractFingerprint` and `currentDescriptorHash` was
+the bootstrap's `descriptorHash` — the hash of the whole eight-workflow SET. **Two different kinds of
+value, so never equal.** Every run the dashboard has ever drawn wore the amber *"Ran under Separation
+shape 59830cf6; runs are served by 76a28eef now … a retry would replay retired code"*, including the
+proof's three runs whose fingerprint was byte-identical to the one `GET /api/v1/explorer` served. This is
+D179's `staleApp` defect inverted, and worse: a warning that could never fire is bad, and one that can
+never NOT fire trains the eye past the one chip that would announce a genuinely retired shape.
+
+- The comparison is against the run's OWN workflow's served fingerprint, which the boot document has
+  always carried per workflow (`WorkflowBootstrapPrimitive.descriptorFingerprint`). **No wire grows** —
+  D251's rule again: check what the served document already answers before booking a row.
+- **Three verdicts, not a boolean.** `classifyRunShape` returns `current`, `moved` (carrying the shape
+  now serving, so the sentence names it) or **`unserved`** — a run whose workflow this build does not
+  register has no current shape to have moved to, and calling that "moved" would state a fact nobody
+  established. It is still drawn as a hazard, with its own sentence, because a retry there has nothing
+  to run.
+- **Both directions are pinned** (`tests/unit/dashboard/run-shape-hazard.test.ts`): identical → silent,
+  moved → warns naming the served shape, unregistered → `unserved`. A hazard is only as trustworthy as
+  its negative case, and this one had never had one.
+
+#### What the row model still owes, and one operator call
+
+The group half of the row model is a contract for a shape nothing can mint (§9.10): every enqueue path
+stamps `shape: "single"`, so D5's settle-collapse, D9's rejected-member arithmetic, D11's member well
+and D14's group-of-one have never run against a real group. The presentation is real and fixture-fed,
+and building it ahead of the workflows was correct; this section says it is ahead.
+
+Two corrections the audit forced, both against prose this doc carried:
+
+- **D11's two numbers were wrong.** `--ds-h-member-well` is
+  `calc(5 × --ds-h-member-line + 4 × --ds-border-w)` = 5 × 28 + 4 × 1 = **144px, five whole lines**
+  (`tokens.css`, `layout-metrics.ts`). The entry claimed *"136px ≈ 5.67 rows … deliberately not 144px"*
+  and described a half-cut sixth row as the depth cue; there is no half-cut row. And an **in-row expand
+  to 20 lines** exists (`--ds-h-member-well-open`) that the entry never mentioned. The components are
+  `MemberWell` / `MemberLine`, not the `PersonWell` / `PersonLine` the prose named.
+- **D9's `rejected` containment arm is not on the wire.** `ContainmentSchema` serves two arms; the row
+  model's vocabulary says three. Nothing mints a rejected member, so nothing is wrong on screen — but
+  the doc's own vocabulary and the served union disagree, and the served union is the one that is real.
+
+And one **operator call**, stated rather than resolved. D16 says cancelling a group has *"no
+confirmation dialog and no undo window"*; the served `cancel-tree` descriptor carries an
+`ActionConfirmWireSchema` whose body counts the members, and the row raises a confirm-first dialog. The
+code's behaviour is the confirm. Either D16's no-dialog half is superseded by the confirm-first pattern
+the whole surface now uses, or the code is wrong; that is an operator's call, and the visible design is
+not relitigated here (D126's rule). D12's queue-row half is the same shape from the other side — the age
+is fully served and the `waiting` pill draws none of it, on a recorded operator direction (*"the word
+names the work, not the wait"*), with the wait rendering in the row's FOOTER meta and, at full strength,
+in the log panel. Both sit under `{#operator-calls}`.
+
+**Wire.** `ref frontend-backend-integration` §5.1.2 owns `QueueBaseFields`' payload shape, the bulk
+endpoint, the action-descriptor rule (§8.5) and the parity references.
+
+<!-- roadmap-status: track-b -->
+- [x] D124 — `endedAt` served in its own right; an in-flight row is schema-refused from carrying one; a terminal row without one draws `duration unknown` (`projection.ts`, `format.ts`)
+- [x] D230 — `runNumber` read from authority, never from a row's position; the trace chip is its sibling, not its substitute
+- [x] D231 — `containment` + `linkedRuns[]`, disjoint by construction; one `PanelRedirectChip` for every redirect
+- [x] D232 — the fifth semantic hue, named for its meaning, chip-only, one colour on the row and the provenance bar
+- [x] D233 — `rename` served as a descriptor-driven control; every run verb CASes `expectedVersion`, `bump` included, no exceptions left
+- [x] D234 — hide/unhide retired stack-wide; ONE whole-run exclusion (archive) inherited by every count; `RunRecord.hidden` a parse-tolerated vestige
+- [x] D235 — the bulk door is N children and one vector; offered ≠ eligible; skips counted and stated
+- [x] the subject-title seam: one declared `subjectProjection`, read from the stored checkpoint, throwing on a non-string leaf (`run-subject-title.ts`)
+- [x] the shape hazard compares a run against its OWN workflow's served fingerprint; three verdicts, both directions pinned
+- [!] D16's "no confirmation dialog" against the served member-counting confirm — the code confirms; an operator call (`{#operator-calls}`)
+- [!] D12's gate age is fully served and the `waiting` pill draws none of it, on a recorded operator direction — an operator call (`{#operator-calls}`)
+- [ ] D9's `rejected` containment arm is not on the wire; the row model's vocabulary says three arms and `ContainmentSchema` serves two
+- [ ] D13's `Re-upload` is not in `ActionCommandKeySchema`; the failure summary half is built and served
+- [ ] every group-row fact (D5 collapse, D11's well, D14's group-of-one, `memberPreview`, the rollup) is drawn from fixtures — no `operation` run has ever been minted (§9.10)
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/tokens.css; left: the group shape's producer and two operator calls
+<!-- /roadmap-status -->
 
 ### 9.3 Run detail — open and follow a run
 
