@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-21
-head: 2d8e56cd
+head: 628a7a1d
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -368,7 +368,7 @@ chip: B+C done · D ratified (D264)
 size: L
 doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C is proving the connection against a real run; Track D hardens the stack before cutover. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
+> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C is proving the connection against a real run; Track D hardens the stack before cutover; **Track F is the fidelity bar above all three** — every region demo-exact or ruled, with ~150 OPEN questions waiting on the operator. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -378,6 +378,25 @@ builds:
 - [ ] BE producers for the five declared notification triggers that have none — run-failed · subject-mismatch · write-parked · repeating-failure · verified-done (audit C4)
 - [ ] BE the `operation` run shape is minted by SOME enqueue path — today every path stamps `single`, so §9's group model (member well, rollup, containment) is presentation over fixtures (audit C2)
 - [ ] PROOF T2 dashboard feature scenarios over the DEFAULT surfaces (R10)
+- [ ] BE a backfill-gap notification trigger — the one record that says WE DO NOT KNOW what you missed; ref dashboard-surfaces §2.6's trigger union carries no gap arm, so the bell's pinned Refusal block has nothing to draw (fidelity-1 A46)
+- [ ] BOTH member-outcome vocabulary on the member wire — the typed outcome word and the Outcome / Detail column-heading switch (fidelity-1 B83, B89)
+- [ ] BE per-status member counts on `memberRollup` — the well's six-status tally and a group's `△ N` fold (fidelity-1 B56, B77)
+- [ ] BOTH a declared `identifierProjection` so a member line can carry its EID column (fidelity-1 B75, B82)
+- [ ] BOTH the row-variant naming layer — per-row doing / why / constraint sentences and the row-type word behind the ⓘ (fidelity-1 B43–B48, B51; Track F's vocabulary-surface question decides whether the catalog is a surface too)
+- [ ] BE `facts[]` gains `arrowTo`, `warn` and `fullRow` so a fact chip can show direction, hazard and a full-width line (fidelity-1 B114–B116)
+- [ ] BOTH the served roster / People section — `View full list`, the workflow-specific `View all signers` label and the whole drill-in triage table (fidelity-1 B97, B98, B130–B135; the queue half of the Group People page line above)
+- [ ] BE the `records[]` extraction stream on the queue wire — the record well, `N of M read`, `N blocked`, per-record glyphs and the arriving line (fidelity-1 B100–B104)
+- [ ] BE `reviewRunId` so a packet can chip `OCR Review · {status} ↗` (fidelity-1 B110)
+- [ ] BE `extractedCount` so a row can chip `N people` (fidelity-1 B111)
+- [ ] BE `groupNoun` so the member-preview line reads as a counted anchor (fidelity-1 B68)
+- [ ] BE `StartPlanResponse.planned[]` grows the row's role, destination panel, containment, born-as status and note — the demo's whole `PlanRowCard` anatomy, and the same fields the applied banner's created-rows list reads (fidelity-1 C56, C65)
+- [ ] BE `StartPlanResponse` grows the plan's headline, its `warnings[]` and the ratified `decisions[]` its shape obeys — the modal counts `planned.length` because there is nothing else to print (fidelity-1 C55, C58, C59)
+- [ ] BOTH the descriptor start-capability projection — operator-variable sub-selections with their option lists, per-option unavailability reasons and visibility conditions; today the only declared sub-selection is a parser CONSTANT, which is locked by definition (fidelity-1 C50, C51)
+- [ ] BOTH a human label on `SurfaceField`, so a locked sub-selection names the choice instead of printing the field identifier (`keepNonHdh`) at the operator (fidelity-1 C49)
+- [ ] BOTH a declared run-flag list on the descriptor's start surface — each flag with its label and its note — beyond the single DERIVED `supportsDryRun` one hardcoded checkbox stands for (fidelity-1 C85, C86)
+- [ ] BE `CommandResult`'s `applied` and `rejected` arms grow a served headline and detail sentence, the settlement clock and the requesting actor; every title on the result banner is client-authored today (fidelity-1 C64, C66, C70)
+- [ ] BE the command `conflict` arm grows the contract pair — what the form was built against and what the server now serves — the fact the operator needs to know what moved (fidelity-1 C68)
+- [ ] BE the resolved host per `(system, instance)` on `SystemInstancePrimitive`, so Destination names the machine the run is about to touch instead of reassuring the operator (fidelity-1 C91)
 
 needs:
 - p2-2i
@@ -387,6 +406,7 @@ log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a written to the phase-doc contract — every surface verified against `src/dashboard/**` and `src/server/dashboard/**`, four of nine exit criteria MET; two honest gaps recorded rather than assumed built: the run-detail Review and People bodies have no producer (`availableSections` cannot return them) and belong to the OCR and group migrations
 - 2026-08-20 | docs-cohesion frontend-backend-integration | ref frontend-backend-integration rewritten as-built; §5.1 split into seven wire squares (5.1.1 run modal … 5.1.7 intake/capture/Edit Data), each separately citable and tagged; §1.1 and §5 gained a Built column · left: the per-run stream topics, the Review and People panel kinds, six Session-Panel controls
 - 2026-08-20 | docs-cohesion dashboard-surfaces audit | 109 sections classified (49 done · 32 needs-attention · 15 to-build · 8 superseded · 5 reference); C1–C4 booked as builds: lines; rewrite split into 5.1b/c/d
+- 2026-08-21 | docs-cohesion 03a fidelity fold | Track F drawn under this node (the demo-fidelity bar; ~150 OPEN questions as you-lines) and the nineteen `unserved:` wire gaps ledger 1 named booked here as `builds:` lines (A46; B43–B48, B51, B56, B68, B75, B77, B82, B83, B89, B97, B98, B100–B104, B110, B111, B114–B116, B130–B135; C49–C51, C55, C56, C58, C59, C64–C66, C68, C70, C85, C86, C91) — the preflight/doctor pair (A39/A42) already sits on `{#def-settings}`; ledger 3's dash-defaults proposals are all subsumed by Track F's lines · left: the rulings, then the builds
 
 #### Track B · dashboard completion {#track-b}
 status: done
@@ -571,6 +591,9 @@ builds:
 - [ ] BE transaction beats stream their observations (probe → stage → fence → click → read-back)
 - [ ] FE the log panel renders observed rows per step, in the Context rail's vocabulary
 - [ ] PROOF a separations dry run reads as a ledger of page facts
+- [ ] BOTH a log line carries its own facts, not just a level — the demo's nine-kind icon vocabulary with its read/write direction hues, the per-line `SystemChip`, the read/write `Pill` chips, the attempt badge and the duration; the search predicate widens to match a pill's label and value (fidelity-2 B69–B75, B78)
+- [ ] FE the `pause` line's own row tint, once a line carries its kind (fidelity-2 B71)
+- [ ] BE the timeline hover card's `System` row and its key lines — the same provenance points this node emits, read one level up (fidelity-2 B52, B54)
 
 needs:
 - track-d
@@ -578,6 +601,7 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Observed logs written; the emission is a real build, not a re-read — `finalizeRead` validates the recorded points and the executor stores only `provenance` plus the parsed output (`src/core/task-provenance.ts:264`, `src/core/run-executor.ts:1052`), and `DataPoint` carries `direction` natively but NO system, which the store's declaration owns (D252/D106)
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
+- 2026-08-21 | docs-cohesion 03a fidelity fold | the demo's log-line anatomy booked here from ledger 2 (B52, B54, B69–B75, B78) — the line carries its own facts, which is what this node emits; the stream's GROUPING by step (B65) is a pure FE port today and sits on `{#track-f}` · left: all of it
 
 ### Testing tiers — the suite organized by what a test needs {#test-tiers}
 status: planned
@@ -1001,8 +1025,9 @@ log:
 ## session: 2026-08-20 | docs-cohesion step 5.0 | doc: on every node; test-tiers · duo-lease · parallel-runs · observed-logs drawn (R10–R12)
 
 ## session: 2026-08-21 | docs-cohesion step 5 | every phase doc (00 01 02 03a 03b 03c 03d 04 05 06) and every reference doc rewritten as-built with status blocks; the tree bound both ways; R13–R15 drawn
+## session: 2026-08-21 | docs-cohesion 03a fidelity fold | the three demo-fidelity ledgers folded into doc 03a and the tree — `track-f` drawn (status: you, ~150 OPEN questions), nineteen wire gaps on `dash-defaults`, the log-line anatomy on `observed-logs`, five lines on `def-settings`, three on `def-byte-path`, two on `def-search-export`
 
-## today: 2026-08-21 · HEAD 2d8e56cd · docs rewrite step 5 — every phase doc 00…06 and every reference doc rewritten as-built; 03a fidelity audit in flight · separations 8 / 9 · the three commits wait for 08-28
+## today: 2026-08-21 · HEAD 628a7a1d · docs rewrite step 5 done; the 03a demo-fidelity audit folded in as Track F — ~150 OPEN questions wait on you · separations 8 / 9 · the three commits wait for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
@@ -1502,6 +1527,9 @@ builds:
 - [ ] BE the on-demand ngrok tunnel launcher (D175)
 - [ ] BE the guard arm — a phone-origin request may be served nothing outside the capture allow-list
 - [ ] BE wire or delete the INERT capture-ingress host gate: `deps.capturePhoneHost` is declared and read (`src/server/dashboard/routes/api.ts:65,142`) and supplied by nothing, so the middleware compiles and can never fire (also Track D row D2)
+- [ ] WIRE an operator-scoped capture-session read (list + one) and a poll or SSE — `CAPTURE_PHONE_ROUTES` is a closed phone-scoped union and the only operator route mints a session (fidelity-3 CP2, CP6–CP8, CP11, CP12, CP16, CP21; the surface half is `{#track-f}`'s operator-capture line)
+- [ ] WIRE `unreadable` / `focusScore` on `CapturePhotoWireSchema`, plus a photo's filename, pixel dimensions and arrival instant, so the unreadable-page alert and the tile frame have something to read (fidelity-3 CP9, CP10, CP13–CP15)
+- [ ] FE the phone's RETAKE — `PUT /api/v1/capture/phone/photos/:photoId` is already in `CAPTURE_PHONE_ROUTES` and `CapturePhoneClient` implements no `replacePhoto`, while the demo's own copy tells the operator to "Retake it on the phone" (fidelity-3 CP45)
 
 needs:
 - order-3
@@ -1509,6 +1537,7 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 04 | six build items re-verified unlanded at HEAD; two read as done and are not — `--prod` reaches nothing, and the Host gate has never evaluated a request
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
+- 2026-08-21 | docs-cohesion 03a fidelity fold | the capture WIRE gaps booked from ledger 3 §7 — an operator-scoped session read, the photo facts, the phone's retake; the operator SURFACE itself (CP3–CP5, CP17, CP18, CP59) is `{#track-f}`'s BOTH line · left: all of it
 
 ### Edit a workflow's presentation / policy without a code change {#def-explorer-edit}
 status: planned
@@ -1550,6 +1579,11 @@ builds:
 - [ ] FE the Settings write path and the doctor-rerun command control
 - [ ] BE `mergeSettings` must apply `override.browser` — today it silently drops it (ref clock-config-secrets §3)
 - [ ] BE a settings-file reader beside the `apply-settings` writer — `settings.json` has no producer (ref clock-config-secrets §3)
+- [ ] FE Settings → Help → Keyboard, or a global `?` — the top bar's keyboard glyph was deleted on the operator's instruction "we already have help in settings" and the destination was never built, so `ShortcutsPopover` (`top-bar.tsx:912`) has ZERO callers and `surfaces/shortcuts.tsx` is reachable from nowhere (fidelity-3 SE7, SE43, SE44; a Track F question)
+- [ ] BE `settingsSections` lists the status sections whose data is already served — System hosts reads `systemInstances` off the bootstrap, Workflow capabilities is descriptor-derived; neither needs new authority (fidelity-3 SE40–SE42; a Track F question)
+- [ ] FE the storage section's at-rest half — the three stat cards (authority generation, rows on disk, newest backup) and the `Backups` table with Size / Verdict / Note (fidelity-3 SE45, SE46, SE48, SE49)
+- [ ] WIRE `rowsOnDisk`, and a backup's `sizeLabel` and `note`, so those cards and that table have something true to print (fidelity-3 SE48, SE49)
+- [ ] FE once the write half lands: the four editable groups and their eight leaves, the three-layer provenance stack, the source badges, the hazard badge and its escalation banner, the per-section dirty marker and the one action bar (fidelity-3 SE9–SE36)
 
 needs:
 - cross-cutting
@@ -1558,6 +1592,7 @@ log:
 - 2026-08-20 | docs-cohesion 04 | the family, target and atomic N-leaf payload are contracted; `apply-settings` is the ONE entry in `PHASE1_DEFERRED` (`src/core/command-kernel.ts:141-148`), so the executor is the absence
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion clock-config-secrets | ref clock-config-secrets rewritten as-built (`80b03f1b`); `settings.json` has no producer; `mergeSettings` drops `override.browser`
+- 2026-08-21 | docs-cohesion 03a fidelity fold | five lines booked from ledger 3 §5 — the keyboard legend's destination, the two status sections already served, the storage at-rest half and its wire, the write half's full anatomy; the CONTAINER question (takeover vs dialog, SE1–SE4, SE8) is `{#track-f}`'s, not a build · left: all of it
 
 ### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned
@@ -1585,7 +1620,8 @@ doc: 04 §Search runs across dates / view screenshots / export Excel · ref:fron
 > No search module, artifact-bytes route or export writers in the BFF yet — capability register open; shaped against a real run corpus.
 
 builds:
-- [ ] BE the artifact-bytes route — the ref/resource schemas are complete and nothing serves bytes; it also unblocks the `captures` run-detail section and the screenshot gallery
+- [ ] BE the artifact-bytes route — the ref/resource schemas are complete and nothing serves bytes; it also unblocks the `captures` run-detail section, the screenshot gallery, and the ARCHIVE's evidence tiles (no archived capture can be opened at all — fidelity-3 AR188–AR190, AR249)
+- [ ] FE the archive's `Change records` section — the record rides `ArchiveSweepWire.changeRecord` today, so this is buildable with no wire change (fidelity-3 AR234)
 - [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only (`legacy-route-search`)
 - [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164); the Activity CSV (D240) is the only export served
 - [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (ref:operator-trust §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
@@ -1598,6 +1634,7 @@ log:
 - 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`): as-built deltas folded, 79 tags + 21 status blocks, §9 and §10 rebuilt from `guard-inventory` and the code
 - 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code, subsections reordered, status block filled (`82c8550c`)
 - 2026-08-21 | docs-dash-surfaces 5.1d | §9.5–§9.8 written as-built; §4/§5 rewritten in place; §10–§13 folded and deleted (`642fbe2c`)
+- 2026-08-21 | docs-cohesion 03a fidelity fold | the artifact-bytes line now names the archive's evidence tiles as a consumer and the `Change records` section is booked (ledger 3 AR188–AR190, AR234, AR249); the intake manifest / rerun-diff surface and its wire fields are `{#track-f}`'s BOTH line, and the unbooked findings (22 intake · 5 capture · 3 explorer) are in doc 03a §Stale and false claims · left: all of it
 
 ### Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes {#def-retention}
 status: never
