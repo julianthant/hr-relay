@@ -185,172 +185,6 @@ As-built contract:
 
 ---
 
-### D225 — the run-detail timeline is CATEGORICAL (2026-08-18)
-
-**Operator ruling.** The composed `separations` run drew **eighteen** segments across a panel column
-— *"Separati… Separati… Terminat… Name Se…"* — plus a nineteenth for the gate and duplicate
-`Timecar…`/`Approval…` pairs from the resume. Every label was truncated to illegibility, so the
-surface that exists to say what a run is doing said nothing. The operator's direction: *"we are not
-trying to name everything… group all the tasks from task stores in a category,"* keeping legacy's own
-step vocabulary. The rendering itself is unchanged and is not re-litigated — §1.1's strip, its three
-shapes, and its rule that **a wait is a state of a step, not a step of its own** all stand. What
-changes is WHAT a segment is.
-
-**A segment is a declared CATEGORY, and a node is a member of exactly one.** A descriptor carries an
-optional `timeline: [{ label, nodes }]` beside its `details` and `subjectProjection` declarations,
-and the factory derives the frozen `WorkflowDescriptor.timeline` from it — resolving each member's
-own display label through the same `labelOf` the step projection uses, so no consumer re-derives a
-label. A descriptor that declares nothing gets **one category per node**, which is the honest and
-unchanged shape for a graph small enough to read node by node (`person-lookup` and every chunk
-harness). This is the `subjectProjection` seam's rule again: a DECLARATION, never a sniff — nothing
-infers a grouping from node-id prefixes, store namespaces or contract ids, because a grouping that is
-right for eight workflows and wrong for the ninth mis-describes a real HR transaction in the one
-place an operator watches it happen.
-
-**A declared timeline is EXHAUSTIVE, and the factory refuses one that is not.** Every node in the
-graph must appear in exactly one category; a node left out, named twice, named but undeclared, or a
-duplicate category label each throws at `build()` naming the offender. The reason is the failure mode
-rather than tidiness: a node missing from the declaration would vanish from the timeline **silently**
-— no error, no gap, just a step nobody can see — which is the same class of defect as D187's
-two-pixel panel. The check is at the factory because that is where the graph and the declaration are
-both in hand.
-
-**The fold is served, not computed by the client** (`TimelineWireSchema.steps`). A category's state
-folds its members' states loudest-first — `failed` ▸ `blocked` ▸ `active` ▸ `cancelled`, then
-all-pending ▸ `pending`, all-done/skipped ▸ `done`/`skipped` — and the mixed remainder reads `active`
-on a live run and `pending` on a terminal one, because a terminal run's unreached members genuinely
-never ran. A member's state is its LATEST execution's; its duration is the SUM of every measured
-execution, through the same `spanDuration` §1.1 already owns. **A re-execution folds into `×N`, never
-into a second segment** — a gate park and its resume are two executions inside one attempt (D214), so
-an `always-rerun` node upstream of a gate emits its span path twice, and drawing two identical
-segments is D123's "same absence seen twice" one level up. A gate node owns no task span, so it takes
-its state from the run's own gate records and never a duration: **the wait belongs to the gate, and
-the gate belongs to its category.** Every segment discloses its members — label, state, duration — on
-hover and focus, so grouping hides nothing it folded.
-
-`steps` is optional on the wire for exactly one reason (D133 read-forward): a `RunDetailWire` frozen
-into an archived record before this leaf existed must still parse, and a replayed historical workflow
-has no registered descriptor to group by. Both serve no `steps` and the client renders the per-event
-strip, which is the same picture it drew before this decision. The `events` array is **unchanged and
-still served in full** — the categorical strip is a presentation of that history, never a replacement
-for it, and §1.1's span identity remains the record.
-
-**Separations' six categories, as approved** (`docs/migrations/separations.md` §9.18): Kuali
-extraction · Identity check · Job summary · Kronos timecard · UCPath transaction · Kuali
-finalization. Legacy's seventh step, `transaction-check`, folds into *UCPath transaction* rather than
-standing alone, because in this tree the pending check IS the sweep transaction plus the write
-sequencer's own probes — it is not a separate visit. The gate is a member of *Identity check*.
-
-**What this does not land.** The parity corpus does not photograph the categorical strip: the
-run-detail parity fixture composes its `RunDetailWire` directly and serves no `steps`, so every
-reference records the per-event fallback. That is a corpus gap with an owner (D187's lesson —
-a reference nobody takes is a defect nobody catches), and it closes with Track B's fixture work and
-its one deliberate re-freeze, not with a second re-freeze here.
-
-#### D259 — a REPLAYED step is its own arm, and it is never `pending` (2026-08-20)
-
-**The defect.** A replayed node emits no spans, by design (ref workflow-model §5.3 — "replayed nodes emit no
-spans" is the executor's structural replay policy), and this timeline folds spans. So a step whose
-checkpoint the run replayed had nothing to render and came out **`pending`**. Track C's connection
-proof watched a finished run report `Kuali extraction — pending`, `Job summary — pending` and
-`Identity check — pending, took 0s` — the last one on the very category whose gate the operator had
-personally approved a minute earlier — with `GET /api/v1/runs/:id` serving `steps[0].state =
-"pending"` after the run was terminal (separations §9.22 item 3). `pending` means *this has not
-happened yet*, which is false twice over: it did happen, and its result is the one the run consumed.
-
-**The fix is D144's shape — the reader moves, and nothing fabricates a span.** `TimelineStepWire.state`
-and its members gain a `replayed` arm, and a replayed member carries `replayedFrom` — the stored
-checkpoint's own `attempt` (D221's item attempt) and, when the row names one, its `claimGeneration`
-(D214's execution). A pre-D214 row names no generation, so the wire omits it rather than fabricating
-`1`. A replayed member carries **no duration**: a replay emits no span, so nothing measured it, and
-`0` would read as "it ran instantly" — the `took 0s` this decision exists to delete. The schema
-refuses both halves of the pairing (a `replayed` member with no source, a source on any other state)
-and refuses a measured replay.
-
-**Three conditions, each closing a way the claim could be false.** A step is `replayed` when it has
-no task span AND:
-
-1. **the run is terminal `done`** — only then did the executor visit every node, so "no span" cannot
-   also mean "the run stopped before reaching it". A failed or cancelled run keeps `pending`, because
-   nodes after the stop genuinely never ran while a prior run's checkpoints sit under them;
-2. **a checkpoint exists at `(workflow, itemId, nodeId)`** — the SAME item-scoped read the executor's
-   own planner makes (ref workflow-model §5.7);
-3. **a DIFFERENT run wrote it** — a row this run wrote is evidence the node executed HERE.
-
-A category is `replayed` only when EVERY member replayed; one member that executed makes it `done`,
-and the member disclosure carries the breakdown. A settled gate is untouched: a gate never replays
-across runs (`replay-gate` reads this run's own `gate_results` row), so it still reads `done` from
-its durable record.
-
-**On screen:** the hollow ring and outlined bar `skipped` uses — nothing happened HERE — in the
-verified-done hue, because the fact is settled; the word `replayed` where a measured step prints its
-duration; and the member line names `attempt N`. Hue is never the distinguisher: shape and word are.
-
-**Two residuals, stated rather than hidden.** A node this run's branch excluded — or whose declared
-`when` was false — while an EARLIER run of the same item executed it also lands in the replayed arm,
-because the executor's replay/skip decision is durable nowhere this projection reads; the trigger
-that closes it is D114's terminal `not-run` reasons reaching this query. And a node whose checkpoint
-THIS run wrote but whose spans are gone (a pruned stream) stays `pending`; "executed, span not
-folded" is a different honest arm and this build does not claim it.
-
-**Rejected:** emitting a span for a replayed node (it would make the executor's own replay policy
-untrue, and a synthetic span is exactly the fabrication D144 refused); inferring reach from the
-declared timeline order (a declared category order is author-controlled presentation, not a
-topological one); and leaving the fold alone and explaining `pending` in a tooltip (the wrong word is
-what the operator reads at a glance).
-
----
-
-### D238 — a rehearsal's terminal outcome is never `verified-done` (2026-08-19)
-
-**The defect, observed on a real settled run.** `run-detail` mapped lifecycle `done →
-verified-done` mechanically, so the composed separations DRY RUN that reached its preview terminal
-on doc 4502 (separations §9.17, and again §9.20 on run `4ee84ac2`) rendered the label this product
-reserves for an **independently verified real completion** — while the receipt for the same run said
-`partial` / `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning, and the authority schema itself
-carries `CHECK (result <> 'verified-done' OR confidence = 'verified')`. D210 named the gap as a
-carry-forward (*"the queue row and the timeline have no arm for a preview … Surfacing it on the
-queue row is a wire + UI change"*); §9.17 item 7(b) observed it on a settled preview. This closes
-it.
-
-**The verdict is the receipt's own, and there is no new tier.** A terminal `done` run whose OWN
-envelope asked for a dry run reached a PREVIEW terminal — nothing staged durably, no write intent,
-no fence, no commit — and it takes **`partial`**, which is exactly what `buildRunEvidenceReceipt`
-derives for it (its `completion.terminal-result` obligation is `unknown`, which makes `verified-done`
-structurally unreachable there, and its preview warning is load-bearing). The wire's `result` enum is
-unchanged and the confidence vocabulary is unchanged; the outcome arm gains only `rehearsal`, a
-statement about which KIND of run produced the verdict, restating the envelope fact D6 already puts
-on the queue row. A schema refinement makes `verified-done` beside `rehearsal` **unrepresentable**,
-so the pair cannot be re-derived by a later mapping.
-
-**Why the envelope is the right authority.** `dryRun` lives on the envelope and nowhere else (D6),
-is retained at plan time, and is the same fact D210's coherence check compares against the stored
-terminal row's preview schema hash. A run whose envelope and terminal record disagreed would be an
-incoherent record the receipt already refuses to describe; the panel does not re-litigate that, it
-reads the run's own flag.
-
-**`rehearsal` is `z.literal(true).optional()`.** Absence is the only other spelling of "not a
-rehearsal", so `false` would be a second one; and optional is D133 read-forward — a `RunDetailWire`
-frozen into an archived record before the field existed still parses, and its silence is not a claim
-that the run was real. Only the `done` arm can carry it: a dry run that **failed** or was
-**cancelled** reached no preview terminal, so `failed`/`cancelled` already say what happened and
-gain nothing.
-
-**What the operator sees.** The panel's outcome bar leads with the word — `dry run · partial ·
-09:20` — because `partial` alone reads as a run that half-worked, which is the opposite of what a
-clean rehearsal means; the verdict is only readable once you know which kind of run produced it. The
-sentence is an exported pure function (`terminalOutcomeText`) so it is pinned by a test rather than
-only by the parity corpus. D22's status vocabulary is untouched: `partial` still renders with the
-Done-with-warnings treatment, and the REAL `verified-done` path is unchanged in every particular.
-
-**Beside it, D237's decision record** (ref operator-trust owns the derivation): a settled gate now draws a
-DECISION RECORD in the run's own stream at its `resolvedAt`, in the same geometry as the open gate's
-decision card — verdict, approver, instant, all off one durable `gate_results` row. The card's tint
-carries the verdict and the chip goes loud only for a REFUSAL, because a rejected identity is the
-one an operator must not read past. Before this the panel drew a gate only while it was open, so a
-settled gated run said nothing about the one step a human performed.
----
-
 ## Wave-2 connection-proof presentation deltas (2026-08-20)
 
 Track C drove the REAL dashboard against a REAL composed dry run for the first time
@@ -422,42 +256,6 @@ As-built contract:
   of: across **678 diverging lines, not one is an elapsed**. Every `18m 0s`, `21m 0s`, `45m 0s` in
   the corpus reads back byte-identical through the ticking clock, which is the freeze doing exactly
   what it claims — and it is the strongest evidence available until the corpus is re-frozen.
-
-### The open run-detail panel FOLLOWS its run (D257)
-
-**What was wrong.** `useRunDetail` refetched only when `runId` or `detailNonce` moved, and
-`detailNonce` was bumped ONLY by a dispatched command or an applied Data edit — never by the SSE
-day stream. So a panel left open through a run's own progress froze on the wire as of the last
-thing the operator clicked. On the proof: after the gate approval, the panel's header still read
-**`Queued` / "run is queued"** while the queue row beside it read **`Done · took 8m 20s`** and the
-BFF served `status: "done"`, and its tablist still offered only `Logs`. Because `receipt` enters
-`availableSections` only at terminal, **the evidence receipt was unreachable from a panel you had
-open** — the surface whose whole job is to explain a run did not notice the run finishing. A reload
-fixed it, and a workaround is a finding.
-
-As-built contract:
-
-- **The run's own served `rowRevision` is the follow key.** It is already on the day wire (it is
-  what every served action's CAS `expectedVersion` binds to), it is the authority version the
-  detail is read at, and it moves exactly when the run moves. The app hands the open run's row
-  revision to `useRunDetail`; nothing polls, and a run whose row this day does not hold (an
-  archived run, another day's run) serves no revision and is not followed, because it cannot move.
-- **It tracks CHANGES, never a difference.** Comparing the served revision against the loaded
-  detail's would refetch in a loop for as long as the two disagreed — and they legitimately can,
-  since one is read from authority and the other from the projection, so one is routinely a beat
-  ahead. The decision is a pure fold (`planRunDetailFollow`: `adopt` on a run switch, `settle`
-  after the window on a move, `hold` otherwise) so it is pinned by a test rather than only by a
-  live run.
-- **A burst coalesces; a switch does not wait.** A run's version moves on every heartbeat, node
-  transition and rename, and several can land inside one span-tail poll, so a moved revision is
-  adopted after a short settling window rather than per envelope. A run SWITCH adopts at once —
-  the switch already refetches, and waiting would spend a second read on a run just read.
-- **The sections follow for free, and neither half blanks.** `usePanelSections` already keys on the
-  detail's own `rowRevision`, so a followed detail re-reads every open section with it. Both keep
-  what they are showing while the next read is in flight: a panel that blanked to a spinner every
-  time its run advanced a node would be unreadable for exactly the runs worth watching. Opening a
-  DIFFERENT run still clears both, because the previous run's sections beside this run's header is
-  the wrong answer rather than a stale one.
 
 ## 0. What exists today (and what specifically hurts)
 
@@ -2942,10 +2740,306 @@ endpoint, the action-descriptor rule (§8.5) and the parity references.
 
 <!-- roadmap: dash-defaults -->
 
-**Stub — written by unit 5.1c.** Inherits D123's `skipped` arm, D225's categorical timeline and
-D259's `replayed` step, D258's occurrence ordinal (whose derivation stays in §2.3, beside the fold
-it corrects), D257's follow, D19's served tab set, D21's equal-width segments, D187's `w-full`, and
-row-model D7/D8/D10/D17. Wire: `ref frontend-backend-integration` §5.1.3.
+**What it is.** The surface whose whole job is to explain ONE run. It is opened from a queue row
+(§9.2) and it names that run the SAME way the row does — the header title goes through the identical
+subject resolver, because a row and the panel it opens are the pair an operator sees side by side.
+
+**What it shows.** A header (title, status, timing, the provenance bar), the persistent step
+timeline, and a served set of sections rendered as tabs. Beside them, on the right, the Context rail
+(§9.3.1). Everything on it is read at ONE `rowRevision`, which is also the version every served
+action CASes against.
+
+**What it commands.** Nothing directly. The gate and park resolutions are §9.4's sections, the field
+corrections are §9.3.1's, and the row verbs stay on the row. The panel is a reader.
+
+#### The tab set is SERVED, and two declared kinds can never be
+
+D19(a) ratified that tabs derive from the panel kind rather than a fixed set, and named four sets —
+Run 2 · Review 3 · Group 3 · Member 2, over `Logs · Review · Receipt` plus `People` on a group. The
+built shape is a **served** set (`availableSections` → `tabsFor`), which is stronger than a fixed
+one, and the served set today is **`Logs` + `Receipt`**.
+
+`RunDetailSectionSchema` declares eleven arms; `availableSections` returns at most seven; and
+`review`, `people`, `captures` and `context-evidence` are never among them — `buildRunSection`
+**throws by name** for the first two, and the client draws them as `UnservedTab`. So two of D19's
+four panel kinds have no distinct set, because the runs that would have them (an OCR packet, a
+delegated group) cannot be minted (§9.10). That is a surface built ahead of its producer, said
+plainly rather than left to be discovered by an operator who clicks a tab that is not there.
+
+`context-evidence` is the odd one: the client FETCHES it whenever it is advertised and hands it to
+nothing — it is explicitly withheld from the rail and no consumer of `sections["context-evidence"]`
+exists. A fetched section with no reader is a wire round trip that cannot be observed to be wrong,
+which is worse than an unserved one.
+
+Two D19 arms carry over unchanged and are worth restating because they are about where evidence
+lives. **(b) Screenshots is not a tab** — captures are evidence and render inside Receipt, beside
+the outcome they qualify, under both the full `RunEvidenceReceipt` and the honest short receipt shown
+before a full one exists; the failure capture keeps its red frame in the tile and the lightbox.
+**(c)/(d) Data is not a tab and not a dialog** — it is a section of the Context rail, edited in
+place (§9.3.1). Tab defaults stay state-driven: a failure opens on Logs, a terminal run on Receipt,
+a running one on Logs.
+
+#### The timeline is CATEGORICAL (D225)
+
+**Operator ruling.** The composed `separations` run drew **eighteen** segments across a panel column
+— *"Separati… Separati… Terminat… Name Se…"* — plus a nineteenth for the gate and duplicate
+`Timecar…` / `Approval…` pairs from the resume. Every label was truncated to illegibility, so the
+surface that exists to say what a run is doing said nothing. The direction: *"we are not trying to
+name everything… group all the tasks from task stores in a category,"* keeping legacy's own step
+vocabulary. The RENDERING is unchanged and not re-litigated — the strip, its three shapes, and its
+rule that **a wait is a state of a step, not a step of its own** all stand. What changed is WHAT a
+segment is.
+
+**A segment is a declared CATEGORY, and a node is a member of exactly one.** A descriptor carries an
+optional `timeline: [{ label, nodes }]` beside its `details` and `subjectProjection` declarations,
+and the factory derives the frozen `WorkflowDescriptor.timeline` from it — resolving each member's
+display label through the same `labelOf` the step projection uses, so no consumer re-derives a label.
+A descriptor that declares nothing gets **one category per node**, the honest and unchanged shape for
+a graph small enough to read node by node. This is the `subjectProjection` seam's rule again: a
+DECLARATION, never a sniff — nothing infers a grouping from node-id prefixes, store namespaces or
+contract ids, because a grouping that is right for eight workflows and wrong for the ninth
+mis-describes a real HR transaction in the one place an operator watches it happen.
+
+**A declared timeline is EXHAUSTIVE and the factory refuses one that is not.** Every node must appear
+in exactly one category; a node left out, named twice, named but undeclared, or a duplicate category
+label each throws at `build()` naming the offender. The reason is the failure mode rather than
+tidiness: a node missing from the declaration would vanish from the timeline **silently** — no error,
+no gap, just a step nobody can see — which is D187's two-pixel panel one level up.
+
+**The fold is served, never computed by the client** (`TimelineWireSchema.steps`). A category's state
+folds its members' loudest-first — `failed` ▸ `blocked` ▸ `active` ▸ `cancelled`, then all-pending ▸
+`pending`, all-done/skipped ▸ `done`/`skipped` — and the mixed remainder reads `active` on a live run
+and `pending` on a terminal one, because a terminal run's unreached members genuinely never ran. A
+member's state is its LATEST execution's; its duration is the SUM of every measured execution. **A
+re-execution folds into `×N`, never a second segment** — a gate park and its resume are two
+executions inside one attempt (D214), so an `always-rerun` node upstream of a gate emits its span
+path twice, and drawing two identical segments is D123's "same absence seen twice" one level up. A
+gate node owns no task span, so it takes its state from the run's own gate records and never a
+duration: **the wait belongs to the gate, and the gate belongs to its category.** Every segment
+discloses its members — label, state, duration — on hover and focus, so grouping hides nothing it
+folded.
+
+`steps` is optional for exactly one reason (D133 read-forward): a `RunDetailWire` frozen into an
+archived record before this leaf existed must still parse, and a replayed historical workflow has no
+registered descriptor to group by. Both serve no `steps` and the client renders the per-event strip,
+which is the same picture it drew before. The `events` array is **unchanged and still served in
+full** — the categorical strip is a presentation of that history, never a replacement for it.
+
+**Separations' six categories, as approved** (`docs/migrations/separations.md` §9.18): Kuali
+extraction · Identity check · Job summary · Kronos timecard · UCPath transaction · Kuali
+finalization. Legacy's seventh step, `transaction-check`, folds into *UCPath transaction* rather than
+standing alone, because in this tree the pending check IS the sweep transaction plus the write
+sequencer's own probes. The gate is a member of *Identity check*.
+
+#### A REPLAYED step is its own arm, and it is never `pending` (D259)
+
+A replayed node emits no spans, by design (`ref workflow-model` §5.3), and this timeline folds spans
+— so a step whose checkpoint the run replayed had nothing to render and came out **`pending`**. Track
+C's connection proof watched a finished run report `Kuali extraction — pending`, `Job summary —
+pending` and `Identity check — pending, took 0s`, the last on the very category whose gate the
+operator had personally approved a minute earlier. `pending` means *this has not happened yet*, which
+is false twice over: it did happen, and its result is the one the run consumed.
+
+The fix is D144's shape — **the reader moves, and nothing fabricates a span.** `TimelineStepWire.state`
+and its members gain a `replayed` arm, and a replayed member carries `replayedFrom`: the stored
+checkpoint's own `attempt` (D221's item attempt) and, when the row names one, its `claimGeneration`
+(D214's execution). A pre-D214 row names no generation, so the wire omits it rather than fabricating
+`1`. A replayed member carries **no duration** — a replay emits no span, so nothing measured it, and
+`0` would read as "it ran instantly", the `took 0s` this decision exists to delete. The schema refuses
+both halves of the pairing and refuses a measured replay.
+
+**Three conditions, each closing a way the claim could be false.** A step is `replayed` when it has no
+task span AND: (1) the run is terminal `done` — only then did the executor visit every node, so "no
+span" cannot also mean "the run stopped before reaching it", and a failed or cancelled run keeps
+`pending`; (2) a checkpoint exists at `(workflow, itemId, nodeId)` — the SAME item-scoped read the
+executor's own planner makes; (3) a DIFFERENT run wrote it — a row this run wrote is evidence the node
+executed HERE. A category is `replayed` only when EVERY member replayed; one member that executed makes
+it `done`. A settled gate is untouched: a gate never replays across runs, so it still reads `done` from
+its durable record.
+
+On screen it is the hollow ring and outlined bar `skipped` uses — nothing happened HERE — in the
+verified-done hue, because the fact is settled; the word `replayed` where a measured step prints its
+duration; and `attempt N` on the member line. **Hue is never the distinguisher: shape and word are.**
+
+Two residuals, stated rather than hidden. A node this run's branch excluded — or whose declared `when`
+was false — while an EARLIER run of the same item executed it also lands in the replayed arm, because
+the executor's replay/skip decision is durable nowhere this projection reads; the trigger that closes
+it is D114's terminal `not-run` reasons reaching this query. And a node whose checkpoint THIS run wrote
+but whose spans are gone (a pruned stream) stays `pending` — "executed, span not folded" is a different
+honest arm and this build does not claim it. **Rejected:** emitting a span for a replayed node (it
+would make the executor's own replay policy untrue, and a synthetic span is exactly D144's
+fabrication); inferring reach from the declared timeline order (author-controlled presentation, not a
+topological fact); and leaving the fold alone and explaining `pending` in a tooltip (the wrong word is
+what the operator reads at a glance).
+
+#### `skipped` is its own arm and carries its closed reason (D123)
+
+`RunDetailWire`'s state enum used to be `pending|active|done|failed|blocked|cancelled`, so
+`buildRunDetail` mapped span outcome `skipped → cancelled`. In the D74 exit run the durable result was
+exactly right — `crm-dates` recorded `state: not-run, reason: condition-false` — while its timeline row
+said **Cancelled**, and this doc's own status vocabulary defines `Cancelled` as *"You stopped it. Not
+an alert — a deliberate act."* A branch whose condition was false is the opposite: nobody acted, and
+nothing was interrupted.
+
+- `TimelineEventWireSchema.state` is `pending|active|done|failed|blocked|cancelled|**skipped**`. The
+  query's closed mapping is `done→done`, `failed→failed`, `skipped→skipped`, `interrupted→blocked`,
+  `cancelled|discarded|superseded→cancelled`.
+- Every timeline event carries `notRun`, an explicit absence union. On a `skipped` event it is
+  `{ state: "present", reason }` over the **same closed vocabulary the durable result uses**
+  (`condition-false | branch-not-selected`), or an explicit `{ state: "absent", reason: "this step did
+  not run; its span recorded no reason" }`. A non-skipped event may never carry one — the schema
+  refuses it. **A missing reason is never back-filled.**
+- The reason reaches the wire as DATA, not inference: the executor stamps `notRunReason` on the
+  `span.ended` task event when it skips a node by `when`, the projector folds it verbatim, and the
+  query reads it. One fact, one vocabulary, three places, pinned by a parity arm in
+  `tests/unit/events/span-events.test.ts`.
+- The surface renders it distinctly and NOT by hue: a hollow ring and an outlined dashed bar against
+  `cancelled`'s solid one, with the accessible name `<label> — skipped, did not run: <why>`.
+
+#### Every step segment is the same width, and the duration is printed (D21)
+
+**Ratified 2026-07-27.** Equal-width segments regardless of duration. Each prints its duration beneath
+it, and the working / waiting totals sit on the axis below.
+
+**This reverses a prior operator-directed design.** The timeline was proportional — width ∝ elapsed —
+chosen deliberately on the grounds that the width WAS the data, and later hardened by clamping the gate
+wedge to ≤1.5× the step total while printing the real age beside it. Both the maths and the clamp are
+gone. **Why:** a genuinely proportional 34-minute gate beside three minutes of work is a true 91% of
+the track, and at 91% the step labels crush to `3.¹2 4..`. A timeline whose labels cannot be read tells
+you nothing about where the time went either — the literal encoding destroyed the thing it was
+encoding. Equal widths stay legible at every duration spread, including the ones this product actually
+produces (a gate is usually an order of magnitude longer than the work around it, so the pathological
+case is the common case).
+
+**Why this is NOT a no-fabrication violation, stated so a future agent does not "restore honesty".**
+Equal widths make no claim about duration, precisely BECAUSE the duration is printed as a number beside
+every segment and the totals are on the axis. Nothing implies a length it does not also state in words.
+The rule forbids *inventing* a number or drawing a quantity the data does not support; it does not
+require every visual dimension to be a data channel. Inventing the value was the bug the clamp era
+fixed, and that fix (`now − gate.openedAt`, never `max(active, 90)`) is retained in full. The operator
+made this call verbatim — *"all the timeline elements should have equal sizes doesnt matter the time"*
+— so **a future agent must not restore proportional widths on no-fabrication grounds.** If
+proportionality is ever wanted again it needs a fresh operator decision, not a correctness argument.
+
+Two 2026-07-28 extensions supersede the entry's original "gate/wait segment" and "dashed" wording. **A
+wait renders on the current step's OWN bar** — hatched, true elapsed age printed beneath — rather than
+as a separate trailing gate segment: a wait is a state of a step, and the old trailing segment meant
+`Your review` occupied two of six slots and read as two separate things, one apparently finished. A
+fail-safe is kept deliberately: a gate whose run records no waiting step still draws the old trailing
+segment, because a true fact is never dropped for want of a matching shape. And **a queued run draws
+every segment outlined and empty**, so the track states the run's SHAPE before it starts; the outline is
+continuous, not dashed, because the dash is spoken for (`Write parked` is the one thing in this product
+that dashes, and nothing else may borrow the cue). The track therefore has exactly **three legible
+states**: outlined-empty (not reached) · solid (done, or being worked now) · hatched (stopped here, on
+you).
+
+#### A rehearsal's terminal outcome is never `verified-done` (D238)
+
+**Observed on a real settled run.** `run-detail` mapped lifecycle `done → verified-done` mechanically,
+so the composed separations DRY RUN that reached its preview terminal on doc 4502 rendered the label
+this product reserves for an **independently verified real completion** — while the receipt for the
+same run said `partial` / `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning, and the authority
+schema itself carries `CHECK (result <> 'verified-done' OR confidence = 'verified')`.
+
+**The verdict is the receipt's own, and there is no new tier.** A terminal `done` run whose OWN
+envelope asked for a dry run reached a PREVIEW terminal — nothing staged durably, no write intent, no
+fence, no commit — and it takes **`partial`**, which is exactly what `buildRunEvidenceReceipt` derives
+for it. The `result` enum and the confidence vocabulary are unchanged; the outcome arm gains only
+`rehearsal`, a statement about which KIND of run produced the verdict, restating the envelope fact D6
+already puts on the queue row. A schema refinement makes `verified-done` beside `rehearsal`
+**unrepresentable**, so the pair cannot be re-derived by a later mapping. `rehearsal` is
+`z.literal(true).optional()`: absence is the only other spelling of "not a rehearsal", so `false` would
+be a second one, and optional is D133 read-forward. Only the `done` arm can carry it — a dry run that
+failed or was cancelled reached no preview terminal.
+
+**What the operator sees:** the outcome bar leads with the word — `dry run · partial · 09:20` — because
+`partial` alone reads as a run that half-worked, which is the opposite of what a clean rehearsal means;
+the verdict is only readable once you know which kind of run produced it. The sentence is an exported
+pure function (`terminalOutcomeText`) so it is pinned by a test rather than only by the parity corpus —
+this tree renders no React in the unit lane, so an operator-facing sentence is only as pinned as the
+corpus unless you extract it. D22's status vocabulary is untouched: `partial` still renders with the
+Done-with-warnings treatment, and the REAL `verified-done` path is unchanged in every particular.
+
+**Beside it, D237's decision record** (`ref operator-trust` owns the derivation): a settled gate draws a
+DECISION RECORD in the run's own stream at its `resolvedAt`, in the same geometry as the open gate's
+decision card — verdict, approver, instant, all off one durable `gate_results` row. The card's tint
+carries the verdict and the chip goes loud only for a REFUSAL, because a rejected identity is the one an
+operator must not read past. Before this the panel drew a gate only while it was open, so a settled
+gated run said nothing about the one step a human performed.
+
+#### The open panel FOLLOWS its run (D257)
+
+**What was wrong.** `useRunDetail` refetched only when `runId` or `detailNonce` moved, and
+`detailNonce` was bumped ONLY by a dispatched command or an applied Data edit — never by the SSE day
+stream. So a panel left open through a run's own progress froze on the wire as of the last thing the
+operator clicked. On the proof: after the gate approval, the panel's header still read **`Queued` /
+"run is queued"** while the queue row beside it read **`Done · took 8m 20s`** and the BFF served
+`status: "done"`, and its tablist still offered only `Logs`. Because `receipt` enters
+`availableSections` only at terminal, **the evidence receipt was unreachable from a panel you had
+open** — the surface whose whole job is to explain a run did not notice the run finishing. A reload
+fixed it, and a workaround is a finding.
+
+- **The run's own served `rowRevision` is the follow key.** It is already on the day wire (it is what
+  every served action's CAS `expectedVersion` binds to), it is the authority version the detail is read
+  at, and it moves exactly when the run moves. Nothing polls, and a run whose row this day does not
+  hold (an archived run, another day's run) serves no revision and is not followed, because it cannot
+  move.
+- **It tracks CHANGES, never a difference.** Comparing the served revision against the loaded detail's
+  would refetch in a loop for as long as the two disagreed — and they legitimately can, since one is
+  read from authority and the other from the projection, so one is routinely a beat ahead. The decision
+  is a pure fold (`planRunDetailFollow`: `adopt` on a run switch, `settle` after the window on a move,
+  `hold` otherwise) so it is pinned by a test rather than only by a live run.
+- **A burst coalesces; a switch does not wait.** A run's version moves on every heartbeat, node
+  transition and rename, and several can land inside one span-tail poll, so a moved revision is adopted
+  after a short settling window rather than per envelope. A run SWITCH adopts at once — the switch
+  already refetches, and waiting would spend a second read on a run just read.
+- **The sections follow for free, and neither half blanks.** `usePanelSections` keys on the detail's own
+  `rowRevision`, so a followed detail re-reads every open section with it. Both keep what they are
+  showing while the next read is in flight: a panel that blanked to a spinner every time its run
+  advanced a node would be unreadable for exactly the runs worth watching. Opening a DIFFERENT run
+  still clears both, because the previous run's sections beside this run's header is the wrong answer
+  rather than a stale one.
+
+#### The panel had no width, and the accessibility tree said it did (D187)
+
+`LogPanel`'s root is a flex child that never claimed one, so it sized to content and its own
+`grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]` resolved to **`2px 376px`**: the entire run-detail
+panel — where the failure record and the evidence receipt live — was a two-pixel sliver at every
+viewport from 1i-spine until 2j, while the a11y tree reported every word of it. D82's acceptance bar
+was unmet ON SCREEN through a dozen green gates and two deliberate reference reviews. The fix is
+`w-full` on the panel root; the lesson is §2.3's and the parity lane's, and it is why the timeline's
+own reference gap below is recorded rather than shrugged at.
+
+**What this square still owes.** The parity corpus does not photograph the categorical strip: the
+run-detail parity fixture composes its `RunDetailWire` directly and serves no `steps`, so every
+reference records the per-event fallback. That is a corpus gap with an owner, and it closes with the
+fixture work and a deliberate re-freeze, not with a second re-freeze bolted onto a doc pass. The
+delegated-run halves of D7 (a packet's extracted count while OCR review is open), D8 (approval exists
+only on the Review surface, disabled until every record is visited), D10 (depth-2 lookups surface on
+the OCR row and never on the packet group) and D17 (per-member confirmation numbers inline in the
+Receipt rollup) describe sections this build cannot serve; their contracts are §9.10's and the
+producers are the OCR and group workflows nobody has built.
+
+**Wire.** `ref frontend-backend-integration` §5.1.3 owns `RunDetailWire`, the section endpoints, the
+follow key on the day wire and the parity references.
+
+<!-- roadmap-status: dash-defaults -->
+- [x] D19 — the tab set is SERVED, not fixed; captures live in Receipt; Data is a rail section edited in place
+- [x] D21 — equal-width segments with the duration printed; the wait on the step's own bar; a queued run draws its shape; three legible states
+- [x] D123 — `skipped` is its own arm and carries the durable result's own closed reason, stamped by the executor and folded verbatim
+- [x] D225 — the timeline is categorical, the fold is served, and a declared timeline is exhaustive or the factory refuses it
+- [x] D259 — a replayed step is its own arm with `replayedFrom` and no duration; three conditions, two residuals stated
+- [x] D238 — a rehearsal takes the receipt's own `partial`; `verified-done` beside `rehearsal` is unrepresentable
+- [x] D237 — a settled gate's decision record renders inline at `resolvedAt` off the durable `gate_results` row (§9.4)
+- [x] D257 — the open panel follows its run on the served `rowRevision`; changes not differences; neither half blanks
+- [x] D187 — `w-full` on the panel root; the two-pixel run-detail column is closed
+- [x] D258 — the timeline event id carries the occurrence ordinal, read forward (derivation stays in §2.3, beside the fold it corrects)
+- [ ] `review` and `people` are declared and never served — `buildRunSection` throws by name and the client draws `UnservedTab`; the runs that would carry them cannot be minted (§9.10)
+- [ ] `context-evidence` is fetched whenever advertised and handed to nothing; no consumer exists
+- [ ] no parity reference photographs the categorical strip — the run-detail fixture serves no `steps`
+- [ ] D17's per-member receipt table: `receipt.tsx` renders no member rollup
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/server/dashboard/queries/run-detail.ts, src/domain/dashboard/run-detail.ts, src/base/workflow.ts, src/dashboard/surfaces/{log-panel,log-panel-model,receipt}*, src/dashboard/state/use-run-detail.ts; left: four declared-unservable sections and the categorical strip's missing reference
+<!-- /roadmap-status -->
 
 #### 9.3.1 The Context rail — Data, Edit Data, provenance
 
