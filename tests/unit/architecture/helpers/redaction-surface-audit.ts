@@ -949,6 +949,30 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // constrains it to two-to-four lowercase letters at the wire boundary
   // (D242), so the scan does not read it as a free-text leaf.
   { surface: "wire/bootstrap", path: "workflows[].label", origin: "repository-authored" },
+  /**
+   * D264/D11 — the served start block. Every leaf of it is a DESCRIPTOR
+   * CONSTANT: a sentence, a placeholder, a delimiter or a worked example that a
+   * developer typed into `src/workflows/<id>/descriptor.ts` and this repository
+   * ships. Nothing here is read from UCPath, Kuali or an operator's box — the
+   * block moved onto the wire precisely so the browser would stop holding the
+   * descriptors that declare it, and moving a constant does not change where its
+   * bytes came from.
+   *
+   * The one leaf that needs saying out loud is `examples[].text`: it is the
+   * text the modal TYPES FOR the operator (D250), so it looks like a subject
+   * identifier and is not one — `defineWorkflowDescriptor` proves every example
+   * parses and satisfies the workflow's own input schema, and the values are
+   * the fabricated demonstration EIDs and names the descriptor authors chose.
+   * A real person's identifier in an example would be a repository defect, not
+   * a wire one.
+   */
+  { surface: "wire/bootstrap", path: "workflows[].start.summary", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.placeholder", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.parser.split.delimiters[]", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.parser.constants[].value.text", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.examples[].label", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.examples[].note", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.examples[].text", origin: "repository-authored" },
 
   { surface: "wire/activity-report", path: "categories[].category.reason", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "durations.longestMs.reason", origin: "repository-authored" },

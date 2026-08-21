@@ -151,6 +151,21 @@ const WORKFLOW_PRIMITIVE = {
   descriptorFingerprint: HASH_A,
   availability: { state: "available" },
   role: { kind: "standalone" },
+  // D264/D11 — the served start block. It carries the typed-input door on
+  // purpose: the strict-boundary arm below walks whatever this literal reaches,
+  // so an inputRun-less primitive would leave `InputRunSurfaceSchema` and its
+  // parser spec unwalked by the very test that exists to walk them.
+  start: {
+    summary: "Look one person up in UCPath and CRM.",
+    enqueue: "reject-active",
+    inputRun: {
+      placeholder: "Enter EIDs or names, semicolon-separated",
+      parser: {
+        split: { kind: "delimited", delimiters: [";", "\n"] },
+        rules: [{ when: { kind: "otherwise" }, emit: "query" }],
+      },
+    },
+  },
 };
 
 const BOOTSTRAP = {

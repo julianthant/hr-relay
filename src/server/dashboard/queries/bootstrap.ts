@@ -107,6 +107,22 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       descriptorFingerprint: descriptor.contractFingerprint,
       availability: { state: "available" },
       role,
+      // D264 (amending D251) — the Run Modal's three start facts, projected
+      // from the SAME descriptor this process plans with. They used to be read
+      // off the bundle-safe descriptor tuple in the browser, which is what kept
+      // the whole composition root in the dashboard bundle; serving them here
+      // is what lets it leave. Each is passed through verbatim: `summary` and
+      // `inputRun` are omitted when the descriptor declares none, because their
+      // ABSENCE is the fact the modal renders, and `enqueue` is always declared
+      // so it is always served — the client no longer has a default to fall
+      // back to, which is the point.
+      start: {
+        ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
+        enqueue: descriptor.enqueue,
+        ...(descriptor.surfaces.inputRun === undefined
+          ? {}
+          : { inputRun: descriptor.surfaces.inputRun }),
+      },
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({
       system,
