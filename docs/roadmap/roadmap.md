@@ -560,7 +560,7 @@ log:
 - 2026-08-21 | duo-lease E2 | PROOF closed live: two cold workers (`live-a` / `live-b`) on ONE credential serialized their Duo ceremonies — generation 3 released 20:49:58.033Z, generation 4 acquired 20:49:58.261Z, both `logged-in`, zero waiter refusals; ref execution-and-sessions §10 §Live proof is the record. The four BE / DOCS lines above landed in E1 (`bfc7d318` · `cb7f17f8` · `37e747f0` · `1c244a40`) and are ticked in doc 03a and ref execution-and-sessions §10; ticking them HERE and moving this node's `status:` is the plan owner's pass
 
 #### Parallel runs — sessions and the worker pool {#parallel-runs}
-status: planned
+status: active
 date: R11 · 2026-08-20
 size: L
 doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-sessions §1 · ref:execution-and-sessions §3 · ref:execution-and-sessions §7.1 · ref:execution-and-sessions §11
@@ -569,8 +569,8 @@ doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-s
 
 builds:
 - [ ] BE worker pool — N workers per workflow, spawned and stopped from the dashboard (the kernel command arms exist and are validated; `createDashboardWorkerSupervisor` refuses spawn BY NAME today)
-- [ ] BE the projection serves a worker-POOL version — `spawn-worker`/`plan-worker-count` target `{workflowId, expectedVersion}` and `WorkerCardWire.revision` is ONE worker's row, so the FE control has no honest CAS basis until this lands
-- [ ] BE durable session record + grouping (B4's bulk dispatch is the seed)
+- [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis `spawn-worker`/`plan-worker-count` cite (`expectedVersion` = the pool row's version, 0 for an unplanned workflow), refused by name when stale; the day wire serves `workerPools[]` (`93b7b18e` · `b4f30ea0` · `24b04dfa`, D269)
+- [x] BE durable session record + grouping — `run_sessions` (insert-only, member-less) written by every fan-out before its first member; membership is the run row's `sessionId`; a retry inherits; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa`, D269)
 - [ ] FE session view — worker cards show membership and what each worker is doing, from authority
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded
 - [ ] BE pool-indexed worker ids — `phase1WorkerId(workflowId)` returns one id per workflow, so two composed workers collide on the authority worker lease (`src/core/worker-loop.ts`)
@@ -582,6 +582,7 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Parallel runs written; one `builds:` line ADDED from reading the code — the pool version is a prerequisite of the spawn control, not a detail of it (`src/dashboard/surfaces/shell.tsx:1036` states the CAS reason the demo's `+` is absent); `doc:` tightened to ref execution-and-sessions §1, §3 and §7.1
 - 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
+- 2026-08-21 | parallel-runs P12 | the AUTHORITY half built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (`93b7b18e`), the pool CAS in the kernel (`b4f30ea0`), the session written at every fan-out and inherited by retry (`57f2bb9c`), the wire's `workerPools[]` + row `session` (`24b04dfa`); left: the pool PROCESS (spawn + pool-indexed ids), the FE session view, the parallel PROOF
 
 #### Observed logs — the log carries what the page said {#observed-logs}
 status: planned

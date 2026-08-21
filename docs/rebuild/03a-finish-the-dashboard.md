@@ -548,11 +548,12 @@ pool, because the pool multiplies the hazard it removes.
 
 <!-- roadmap-status: parallel-runs -->
 - [ ] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard
-- [ ] BE the projection serves a worker-POOL version — `spawn-worker` and `plan-worker-count` target `{workflowId, expectedVersion}` and `WorkerCardWire.revision` is ONE worker's row, so no honest CAS basis exists for the control today
-- [ ] BE a durable session record and its grouping (B4's bulk dispatch is the seed)
+- [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis `spawn-worker`/`plan-worker-count` cite (0 for an unplanned workflow); the kernel refuses a stale one by name before the runtime seam; the day wire serves `workerPools[]` (`93b7b18e` · `b4f30ea0` · `24b04dfa`, D269)
+- [x] BE a durable session record and its grouping — `run_sessions` (insert-only, member-less), written by every fan-out before its first member; membership is `tasks.session_id` / `runs.listBySession`; a retry inherits; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa`, D269)
 - [ ] FE the session view — worker cards show membership and what each worker is doing, read from authority
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded
 > 2026-08-20 | docs-cohesion 03a | the kernel command arms exist and are validated (src/core/command-kernel.ts:95) while createDashboardWorkerSupervisor refuses spawn by name (src/server/dashboard/compose.ts:322) and the FE has no Add-workers control for the CAS reason quoted in src/dashboard/surfaces/shell.tsx:1036
+> 2026-08-21 | parallel-runs P12 | the authority half landed (D269) — ref execution-and-sessions §11 points 1 and 5 carry the as-built; left: the pool process (spawn + pool-indexed ids), the FE session view, the parallel proof
 <!-- /roadmap-status -->
 
 **A session is a dashboard-started group of N runs.** Every workflow follows the same
@@ -568,7 +569,10 @@ style preference: a claim is the one statement a process may make about ITSELF t
 can trust, which is the same argument D200 used when it made a won lease — not a heartbeat age —
 the evidence that a stale claim is orphaned.
 
-**What is already true, and what the seam actually needs.** The command arms are real and composed:
+**What is already true, and what the seam actually needs.** _(D269, 2026-08-21: the CAS basis and
+the session record this paragraph asks for are BUILT — `worker_pools` and `run_sessions`, schema
+v17; ref execution-and-sessions §11 points 1 and 5 are the as-built. The paragraph below is kept as
+the record of why.)_ The command arms are real and composed:
 `plan-worker-count`, `spawn-worker`, `stop-worker`, `pause-worker`, `resume-worker` all carry
 schemas, authority validation, the journal and typed refusals (`src/core/command-kernel.ts:95`). Two
 things are missing and only one of them is obvious. The dashboard's `WorkerProcessSupervisor` throws
