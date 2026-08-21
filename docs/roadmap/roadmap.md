@@ -267,6 +267,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion step 5.0 | every node in the tree now carries `doc:` — its phase-doc home section plus the reference specs that own its contracts (`81bf48dd`); `test-tiers` drawn as this phase's testing spine (R10) · left: step 4b's binding guard, then the per-doc rewrites
+- 2026-08-20 | docs-cohesion 03b | doc 03b rewritten as-built, all fourteen status blocks filled and the whole separations subtree re-bound to its headings; the phase stands at separations **8 of 9**, step 5 open on a calendar date · left: the three controlled commits from 08-28, then rebuild-ready and close-out
 
 ### Dashboard defaults — the generic surfaces every workflow inherits {#dash-defaults}
 status: active
@@ -456,13 +457,16 @@ needs:
 status: planned
 size: XL
 chip: 8 of 9 — the three commits wait for 08-28 (S7)
-doc: 03b §Separations — order 8, the first migration · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse)
+doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse)
 
 > write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). What remains is the calendar: canary 4537 is named and mapped, and S7 admits it on 2026-08-28.
 
 needs:
 - dash-defaults
 - track-a
+
+log:
+- 2026-08-20 | docs-cohesion 03b | the migration's own section rewritten as-built — the nineteen-node graph over four stores, the D260 → D261 start door, the ALWAYS-GATE, and the program's first canary registry (4537 the canary · 4502 the dry-run subject · 4495 future-dated; 4510 and 4524 both evaporated between passes) · left: the three commits, and the registry moving into `config/test-subjects.json` under cohesion 5.2c (`test-tiers` owns it)
 
 #### 1 · new-kronos timecard read {#sep-1}
 status: done
@@ -476,9 +480,13 @@ builds:
 - [x] BE two page-visit read tasks; `separations-kronos-timecard` sub-workflow
 - [x] BE virtualized-grid read terminated on coverage, not on the widget (D205)
 - [x] PROOF live proof: run `sk-171645-4adf`, 64-day window, 67 days covered
+- [?] BE a cold WFD profile's FIRST Employee Search can present a result row whose identity cell is still empty; the driver correctly refuses a row whose subject it cannot name, and whether that wants a bounded wait is the driver owner's call (separations §9.20 item 7 — recorded, not diagnosed)
 
 needs:
 - fact(met): §b questionnaire answered (2026-08-12)
+
+log:
+- 2026-08-20 | docs-cohesion 03b | verified against `src/stores/new-kronos/{driver,tasks,session.ts}` and separations §9.1/§9.2/§9.2a — nothing left for the migration itself · left: the cold-profile first-search observation, a driver-owner call rather than a separations one
 
 #### 2 · Kuali separation-document read {#sep-2}
 status: done
@@ -491,6 +499,10 @@ builds:
 - [x] BE a READ family on the existing `kuali` driver (14 more selectors live-re-verified)
 - [x] BE the `separations` pure mini-store
 - [x] PROOF §4a termination-type map captured live: 16 options + blank sentinel, exact-match-only, no default arm
+- [ ] PROOF S2's refusal arm — a non-separation Kuali document — has never been exercised against a real one; the operator's Action List has only ever held RRSS separation forms (separations §9.4)
+
+log:
+- 2026-08-20 | docs-cohesion 03b | verified against `src/stores/kuali/tasks/read-separation-document.ts`, `src/stores/separations/tasks/` and `src/domain/separations/termination-type.ts`; the two platform items this chunk surfaced (D199, D200) both landed · left: S2's refusal arm against a real non-separation document
 
 #### 3 · UCPath employment grid + the ALWAYS-GATE {#sep-3}
 status: done
@@ -505,6 +517,9 @@ builds:
 - [x] BE gate results as dependency evidence (D203) and in the receipt (D204)
 - [x] PROOF first live gated run — parked, real approval through the real command endpoint, resumed
 
+log:
+- 2026-08-20 | docs-cohesion 03b | verified against `src/stores/ucpath/tasks/read-job-summary.ts`, `src/domain/separations/identity-evidence.ts` and `tests/unit/architecture/identity-gate-before-commit.test.ts`; D213's settle-then-classify pair landed here too · nothing left
+
 #### 4 · UCPath termination WRITE {#sep-4}
 status: done
 date: D206 · prepare live 08-14
@@ -514,9 +529,13 @@ builds:
 - [x] BE two fenced transactions: the pending sweep + the filing
 - [x] PROOF Smart HR wizard prepare arm live-proven
 - [x] PROOF a duplicate-filing defect caught by the first live read
+- [ ] PROOF the two UCPath facts still carried as ported legacy knowledge — whether the confirmation dialog renders the `T…` inline, and the submit → searchable propagation window; `recoveryAbsence` stays `operator-only` until one is measured, because a guessed `minSinceFenceMs` is the banned unverified constant
 
 needs:
 - sep-3
+
+log:
+- 2026-08-20 | docs-cohesion 03b | verified against `src/stores/ucpath/tasks/` and separations §9.7–§9.9 — the PREPARE arm is live-proven and commit-freedom is proved from durable state (zero intents, zero checkpoints, five refusals for five) · left: the COMMIT arm (Track A ②, 08-28), `clear-pending`'s COMMITTED arm (no mapped witness — `operator-calls`), and the two unmeasured UCPath facts
 
 #### 5a/b/c · Kuali finalization WRITE {#sep-5}
 status: done
@@ -525,11 +544,14 @@ doc: 03b §5a/b/c · Kuali finalization WRITE · ref:write-safety §2.2 · ref:w
 
 builds:
 - [x] BE ONE transaction node behind the same gate
-- [x] PROOF all ten `submitDocumentV2` formKeys captured passively off Kuali's `ActionPage`
+- [x] PROOF all twelve `submitDocumentV2` formKeys captured passively off Kuali's `ActionPage` query — ten at separations §9.12, D217's two dates at §9.16
 - [x] BE the step-13 date write-backs folded into the one-pass staged set (D217)
 
 needs:
 - sep-2
+
+log:
+- 2026-08-20 | docs-cohesion 03b | verified against `src/stores/kuali/tasks/*separation-finalization.ts` and separations §9.10–§9.12/§9.15/§9.16; §4e's section-ownership caveat is DISCHARGED for all twelve fields across three documents, and `exactly-one-editable` proved on three open documents · left: the seven wire-payload shapes (RECORDED, not asserted) and D207's provisional `stabilized` window — both commit-only, tracked on `track-a`
 
 #### 6a · THE COMPOSITION {#sep-6a}
 status: done
@@ -539,13 +561,16 @@ doc: 03b §6a · THE COMPOSITION · ref:workflow-model §3 · ref:write-safety �
 > An approval of a person is not an approval of a date — the packet's digest covers what the approval authorises.
 
 builds:
-- [x] BE eighteen nodes, one ALWAYS-GATE, three fenced transactions
+- [x] BE nineteen nodes, one ALWAYS-GATE, three fenced transactions — eighteen composed at 6a, `resolve-action` added by D261 with no other edge, gate, key or `when` moved
 - [x] BE the gate packet carries the dates, template and department the approval binds
 
 needs:
 - sep-1
 - sep-4
 - sep-5
+
+log:
+- 2026-08-20 | docs-cohesion 03b | node list, gate ancestry and the packet's write-plan block verified against `src/workflows/separations/descriptor.ts`; the "this graph composes no plan" arm is REQUIRED with a stated reason rather than optional · nothing left
 
 #### 6b · composed LIVE pass {#sep-6b}
 status: done
@@ -560,6 +585,9 @@ builds:
 needs:
 - sep-6a
 
+log:
+- 2026-08-20 | docs-cohesion 03b | D214 verified at `src/infra/sqlite/migrations.ts` (schema v14, nullable `claim_generation`, read forward so every historical `record_key` stays byte-identical); D215's probe-first preview arm verified in the sequencer · nothing left
+
 #### 6c · PREVIEW TERMINAL reached {#sep-6c}
 status: done
 date: doc 4502 · canary 4510 refused pre-gate
@@ -573,10 +601,14 @@ builds:
 
 needs:
 - sep-6b
+
+log:
+- 2026-08-20 | docs-cohesion 03b | verified against separations §9.17 and `src/events/types.ts`'s restated union — the fourth defect reaching the preview terminal was D215's `not-observed` verdict never reaching the span WIRE leaf, fixed with its regression case (`e1ba81b`); the D58 capability sweep for separations came back three-for-three · nothing left
+
 #### Track A · separations backend completion {#track-a}
 status: planned
 chip: canary 4537 named — S7 unblocks 08-28
-doc: 03b §Track A · separations backend completion · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4
+doc: 03b §Track A · separations backend completion · 03b §Exit criteria · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4
 
 > Separations is at **8 of 9 exit criteria**. The canary is **doc 4537** (named 08-19, mapped live in §9.19: the first subject with an active terminable employment). S7 refuses to plan until its separation date, **2026-08-28** — then ② UCPath filing, ① the pending sweep on the row ② creates, ③ Kuali finalization.
 
@@ -594,12 +626,15 @@ needs:
 
 | # | Step | Status |
 |---|---|---|
-| ✓A1 | **Canary named: doc 4537 / EID 10628128** (08-19) — §9.19 mapped it live: one Active terminable employment, every finalization control resolving; 4524 and 4510 both gone | done |
+| ✓A1 | **Canary named: doc 4537** (08-19) — §9.19 mapped it live: one Active terminable employment, every finalization control resolving; 4524 and 4510 both gone. A subject is named by document number ONLY — a document number is not a person, and EIDs stay out of the repository (03b §The canary registry — every subject this migration has mapped) | done |
 | A2–A4 | Controlled commits, in the order the facts force: ② UCPath filing → ① pending sweep (on the row ② creates) → ③ Kuali finalization | **08-28** (S7) |
 | A5 | Obligations only the commits discharge (timings, propagation window, seven payload shapes, the preview arm live) | after A2–A4 |
 | ✓A6 | Live RETRY on the composed graph — six retries, no collision, one reached `done` (§9.20) | done |
 | ✓A7 | Root-cause the browser-profile wedge — **closed by D243/D244** | done |
 | A8 | Close-out (doc 03c's loop, step 7) → separations **rebuild-ready** | after A2–A7 |
+
+log:
+- 2026-08-20 | docs-cohesion 03b | A6 verified against separations §9.20's seven-run lineage table and A7 against `duo-autopilot/src/sign-count.js` + `tests/unit/duo-sign-count.test.ts`; A1's row no longer carries an EID — 03b's canary registry names subjects by document number only · left: A2–A5 and A8, every one of them downstream of 08-28
 #### Dashboard · wire separations {#sep-dash}
 status: active
 chip: 9 of 9 wired — every square filled (D262 closed the last)
@@ -608,7 +643,7 @@ doc: 03b §Dashboard · wire separations · ref:frontend-backend-integration §5
 > What the generic surfaces learned about separations, and the two separations-specific things no default covers (the ALWAYS-GATE's ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
 
 builds:
-- [x] WIRE run modal — typed start inputs (document number, subject) from the descriptor's `surfaces.inputRun`; the four run-modal rows (D250/D251)
+- [x] WIRE run modal — ONE typed box, the Kuali document number, from the descriptor's `surfaces.inputRun`; no `otherwise` arm, `timekeeperName` a declared constant, the action id resolved by the graph (D250/D251, D261)
 - [x] WIRE queue row — subject title, class, rehearsal hue, linked-run chips, per-row actions, the bulk strip (D230–D235)
 - [x] WIRE run detail — the descriptor's declared timeline CATEGORIES (D225), per-step durations, the data rail naming step · direction · bound (D252)
 - [x] BOTH gate ceremony — the ALWAYS-GATE's three ceremonies + rejection, server-shaped (D226); the settled decision on the panel (D237)
@@ -623,6 +658,9 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03b | all nine squares re-verified in the code rather than on the tree's say-so — `descriptor.ts` (`inputRun` · `timeline` · `nodePurposes` · `subjectProjection` · `presentation` · `verdicts`), `src/domain/archive/ledger-resolution.ts:167`, `src/services/notifications/gate-park.ts` composed at `src/server/dashboard/compose.ts:497`, `src/dashboard/app/identity-ceremony.ts`; the run-modal line said "document number, subject" and D261 left ONE box, so it is corrected · left: the two PROOF lines, T1 and T2
+
 ### Platform fixes the live runs forced {#platform-fixes}
 status: done
 date: 2026-08-14 → 19
@@ -634,12 +672,24 @@ builds:
 - [x] BOTH D219/D220 workflow roles (composition / chunk-harness / proving)
 - [x] BOTH D222 the backup hazard moved from the banner to the durable inbox
 - [x] BE D243/D244 Duo's shared signature counter — the browser-profile wedge root-caused
+- [x] BE D216 both repos name their browser-profile root `.auth`; the SESSION namespace is the distinct half (`config/runtime-isolation.json`)
+
+log:
+- 2026-08-20 | docs-cohesion 03b | all six verified present at the `file:line` doc 03b cites (`compose.ts:598`, `command-service.ts:159`, `authority-database.ts:3782`, `src/domain/workflow/module-role.ts`, `src/domain/notification-triggers.ts:92`, `duo-autopilot/src/sign-count.js`); D216 added — the doc's block enumerates six and the tree listed five · nothing left
 ### Smaller operator calls open {#operator-calls}
 status: you
 chip: needs you
 doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11
 
-> The gate-age pill (D12 vs your later direction) · D192 re-disposition of `legacy-tool-ops-sanity-check-record` · A6's first live retry as evidence. (The decide-first findings are settled: hours-saved DROPPED by D239; archive tabs and export closed by D223/D240.)
+> ONE call is left, and it cannot be made before the day it lands on: whether to spend the narrow window right after ② files on **2026-08-28** to give `clear-pending`'s COMMITTED arm its only possible live witness, or to accept that arm as sequencer- and fixture-proved and say so in the close-out. Both are defensible; neither is a default. (Settled, recorded so nobody re-opens them: the gate-age pill and D192's re-disposition, both answered 2026-08-18; A6's first live retry delivered 2026-08-19; the Activity hours-saved tile DROPPED by D239; archive tabs and export closed by D223/D240; `span.patched` retired by D254.)
+
+builds:
+- [!] PROOF ①'s COMMITTED arm has no witness and no mapped subject can give it one — the only honest window is re-running ① immediately after ② files on 08-28, before an approver clears the row; otherwise the arm ships proved by the sequencer and its fixtures, and the close-out says so. **Your call on 08-28**
+- [x] FE the gate-age pill — ANSWERED 2026-08-18: the status pill carries NO age (*the word names the work, not the wait*); the age renders in the row's footer meta and in the log panel (`ref dashboard-surfaces` amended; `src/dashboard/surfaces/queue.tsx:281`)
+- [x] DOCS D192's re-disposition of `legacy-tool-ops-sanity-check-record` — ANSWERED 2026-08-18: no AI feature; §14.2's server-computed `comparisons` array IS the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json`)
+
+log:
+- 2026-08-20 | docs-cohesion 03b | three of the four calls this node was drawn for were already settled and the tree still listed them open — corrected against `ref dashboard-surfaces`, `src/dashboard/surfaces/queue.tsx:281` and `config/legacy-capabilities.json` (disposition `retired`, operator ruling 2026-08-18) · left: the ① witness call, which has a deadline it cannot be made before
 
 ## session: 2026-08-20 | docs-cohesion steps 1–2 | the plan moved out of the repo root (0990ebc5) and now sits at docs/roadmap/roadmap.md; the notation grew doc: · log: · session: (ea7704e0); D263 + D264 ratified; Track D redrawn
 
