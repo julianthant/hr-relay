@@ -16,6 +16,8 @@ import {
   pruneEventStreams,
   readEventStreamLines,
   readEventStreamLinesFrom,
+  readScopedEventStreamLines,
+  scopedEventStreamFiles,
 } from "../../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
@@ -253,5 +255,119 @@ describe("stream files and the D86 prune", () => {
       () => appendEventStreamLine(stateRoot(), "spans", "person-lookup", "2026-08-03", "{}\n{}"),
       /one line per event/,
     );
+  });
+});
+
+describe("the D5 scoped reader — one workflow, one date range", () => {
+  /** Four partitions across two workflows and three days, one line each. */
+  function corpus(): string {
+    const root = stateRoot();
+    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-10", `{"n":"pl-10"}`);
+    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-11", `{"n":"pl-11"}`);
+    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-12", `{"n":"pl-12"}`);
+    appendEventStreamLine(root, "notes", "separations", "2026-08-11", `{"n":"sep-11"}`);
+    return root;
+  }
+
+  it("opens only the partitions inside the scope", () => {
+    const root = corpus();
+    const files = scopedEventStreamFiles(root, "notes", {
+      workflow: "person-lookup",
+      fromDate: "2026-08-11",
+      toDate: "2026-08-12",
+    });
+    assert.deepEqual(files.map(({ workflow, date }) => `${workflow}-${date}`), [
+      "person-lookup-2026-08-11",
+      "person-lookup-2026-08-12",
+    ]);
+  });
+
+  it("serves a SUBSEQUENCE of the unscoped read, in the same order", () => {
+    const root = corpus();
+    const scoped = readScopedEventStreamLines(root, "notes", {
+      workflow: "person-lookup",
+      fromDate: "2026-08-10",
+      toDate: "2026-08-12",
+    });
+    const unscoped = readEventStreamLines(root, "notes")
+      .filter((line) => line.file.workflow === "person-lookup");
+    assert.deepEqual(
+      scoped.map(({ text, lineNumber, file }) => [file.path, lineNumber, text]),
+      unscoped.map(({ text, lineNumber, file }) => [file.path, lineNumber, text]),
+    );
+  });
+
+  it("includes both ends of the range", () => {
+    const root = corpus();
+    const lines = readScopedEventStreamLines(root, "notes", {
+      workflow: "person-lookup",
+      fromDate: "2026-08-10",
+      toDate: "2026-08-10",
+    });
+    assert.deepEqual(lines.map(({ text }) => text), [`{"n":"pl-10"}`]);
+  });
+
+  it("does not read a partition outside the scope — a corrupt one there cannot be observed", () => {
+    const root = corpus();
+    // Unreadable bytes on a day the scope excludes: a reader that opened it
+    // would hand this to its caller's parse, so serving the in-scope lines is
+    // proof the file was never touched.
+    appendEventStreamLine(root, "notes", "person-lookup", "2026-08-13", "{ this is not json");
+    const lines = readScopedEventStreamLines(root, "notes", {
+      workflow: "person-lookup",
+      fromDate: "2026-08-12",
+      toDate: "2026-08-12",
+    });
+    assert.deepEqual(lines.map(({ text }) => text), [`{"n":"pl-12"}`]);
+    // …and the same file INSIDE the scope is served verbatim for the caller to
+    // refuse, exactly as the unscoped reader always did.
+    const widened = readScopedEventStreamLines(root, "notes", {
+      workflow: "person-lookup",
+      fromDate: "2026-08-12",
+      toDate: "2026-08-13",
+    });
+    assert.deepEqual(widened.map(({ text }) => text), [`{"n":"pl-12"}`, "{ this is not json"]);
+  });
+
+  it("refuses an inverted range by name rather than selecting nothing", () => {
+    const root = corpus();
+    assert.throws(
+      () => scopedEventStreamFiles(root, "notes", {
+        workflow: "person-lookup",
+        fromDate: "2026-08-12",
+        toDate: "2026-08-11",
+      }),
+      /the range is inverted/,
+    );
+  });
+
+  it("refuses a workflow id no partition file could carry", () => {
+    const root = corpus();
+    assert.throws(
+      () => scopedEventStreamFiles(root, "notes", {
+        workflow: "Person_Lookup",
+        fromDate: "2026-08-10",
+        toDate: "2026-08-12",
+      }),
+      /no notes partition file can carry that id/,
+    );
+  });
+
+  it("refuses a date that is not a date", () => {
+    const root = corpus();
+    assert.throws(() => scopedEventStreamFiles(root, "notes", {
+      workflow: "person-lookup",
+      fromDate: "yesterday",
+      toDate: "2026-08-12",
+    }));
+  });
+
+  it("serves nothing, without throwing, for a workflow that has written no partition", () => {
+    const root = corpus();
+    assert.deepEqual(readScopedEventStreamLines(root, "notes", {
+      workflow: "kuali-timekeeper-annotation",
+      fromDate: "2026-08-10",
+      toDate: "2026-08-12",
+    }), []);
   });
 });
