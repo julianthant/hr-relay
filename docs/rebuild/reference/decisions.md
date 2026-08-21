@@ -800,7 +800,7 @@ _phase: 1_
 
 | # | Decision | Owner (normative text) |
 |---|---|---|
-| **D121** | **NO MODULE THE DASHBOARD ENTRY CAN VALUE-REACH MAY STATICALLY IMPORT A NODE BUILT-IN; A CONFIG LEAF WHOSE DEFAULT ONLY EXISTS AT RUNTIME IS REQUIRED IN THE SHARED SCHEMA AND SUPPLIED BY THE SERVER RESOLVER, NEVER STUBBED OR POLYFILLED FOR THE BROWSER.** | ref frontend-backend-integration §8.13 (primary); ref clock-config-secrets §Phase-1i-spine config-path delta; ref guards-and-tests guard `dashboard-wire-boundary` |
+| **D121** | **NO MODULE THE DASHBOARD ENTRY CAN VALUE-REACH MAY STATICALLY IMPORT A NODE BUILT-IN; A CONFIG LEAF WHOSE DEFAULT ONLY EXISTS AT RUNTIME IS REQUIRED IN THE SHARED SCHEMA AND SUPPLIED BY THE SERVER RESOLVER, NEVER STUBBED OR POLYFILLED FOR THE BROWSER.** | ref frontend-backend-integration §8.13 (primary); ref clock-config-secrets §3 (A path default is a runtime value, not a contract value); ref guards-and-tests guard `dashboard-wire-boundary` |
 
 ## Reconciliation round 22 (2026-08-04) — the Phase-2 transaction proof, dry-run half
 
