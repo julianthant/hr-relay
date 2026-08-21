@@ -296,18 +296,22 @@ carries the exclusivity as a `superRefine`: exactly one of `staleBefore` / `work
 and never neither.
 
 ### 3.1 Dispatch and fairness
+<!-- roadmap: p1-kernel -->
 
-Within a workflow queue, claim order is priority then FIFO. Interactive work may be server-stamped
-ahead of bulk members, but there is no reserved interactive lane. Across workflows, the operator
-chooses worker counts per workflow, and each worker claims only its workflow's rows. A large fan-out
-cannot consume another workflow's workers.
+Within a workflow queue, claim order is priority then FIFO — literally
+`ORDER BY CASE priority WHEN 'interactive' THEN 0 ELSE 1 END, created_at, record_key`
+(`claimNext`, `src/infra/sqlite/authority-database.ts:4063`). Interactive work is therefore
+server-stamped ahead of bulk members with no reserved interactive lane, and the third key makes the
+order total, so two rows created in the same millisecond still claim deterministically. Across
+workflows, the operator chooses worker counts per workflow, and each worker claims only its
+workflow's rows. A large fan-out cannot consume another workflow's workers.
 
 Provider capacity is a separate admission domain, not a browser lane. Before a service task calls
-a remote provider, Phase 1f's generic capability admission service reserves the applicable
+a remote provider, the generic capability admission service reserves the applicable
 concurrency/rate/daily-use/cost budget from the run's immutable config snapshot. If admission is not
 available, the kernel records the typed wait/unavailable reason and releases or reschedules with
-`not_before`; it does not keep a worker asleep and cannot fall through to the adapter. Phase 2h
-adds production pools and consumers over this core, not a second scheduler.
+`not_before`; it does not keep a worker asleep and cannot fall through to the adapter. Phase 2h's
+production pools and consumers sit over this core, not beside a second scheduler.
 
 **D112 durable admission as built (2026-08-03).** Capability-global authority counters use fixed
 UTC-minute rate and fixed UTC-day request/cost windows, while each decision retains the requesting
@@ -318,7 +322,8 @@ cost down; invoke failure, timeout, crash/unknown, and lease expiry retain the f
 Actual cost above the estimate blocks that capability through the UTC day and fails loud. A
 retryable denial maps its exact `retryAt` to run `not_before` with cause `provider-capacity`; abort,
 timeout, and adapter-unavailable carry no retry instant. No admission path sleeps while holding a
-worker.
+worker. (`src/core/provider-admission.ts`; `provider-admission.test.ts`, `provider-pool.test.ts`,
+`advisory-provider-exhaustion.test.ts`.)
 
 ---
 
