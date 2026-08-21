@@ -169,15 +169,82 @@ linked at runtime, which two repositories make impossible anyway.
 <!-- roadmap: rollback-window -->
 
 <!-- roadmap-status: rollback-window -->
+- [x] the asset is defined and cannot be lost by accident — the WHOLE legacy repository (source, commands, tests) plus its verified state backup; nothing in it may be deleted through the rebuild or the initial cutover (D89/D93, `CLAUDE.md` cross-repo rules)
+- [x] the asset is stronger than the one D89 originally assumed — a separate repository rather than an in-tree `src` directory, because D93 moved the rebuild's ADDRESS (D93)
+- [x] re-crossing has a stated price, written before anyone needs it — after native writes, rollback requires intent/ledger reconciliation and dedupe proof before an atomic switch back (D89)
+- [ ] **nothing flips yet, so no window is open.** The switch has not happened; there is no rollback bridge to verify and no window to close
+- [ ] the rollback bridge verified BEFORE the switch — the `{#cutover}` node's fourth build item; unbuilt
+- [!] closure — deletion or retirement of the legacy repo is OUTSIDE this cutover and needs its own operator authorization, given after the window, never inside it
+> 2026-08-21 | docs-cohesion 05 | verified against `CLAUDE.md` "Cross-repo rules (D93/D94)" ("Nothing in the legacy repo may be deleted during the rebuild or the initial cutover — the whole repository is the D89 rollback asset") and `reference/decisions.md` D89/D93; nothing in `src/`, `config/` or `scripts/` implements any part of a switch, a bridge or a closure — left: the whole node, which cannot start before `{#cutover}`
+
 <!-- /roadmap-status -->
 
-_The rollback asset and what re-crossing it costs are step 5 of the single cutover procedure above (doc 05 §Phase summary), and definition-of-done item 2 in §Exit criteria below: the whole legacy repository is preserved, and a rollback after native writes requires intent/ledger reconciliation and dedupe proof before an atomic switch back._
+**The window is the interval between the switch and the authorization that ends it**, and it exists
+because a single all-at-once cutover has exactly one way to be wrong: it turns out the rebuild cannot
+carry a real day's work. During the window the legacy repo stays intact and runnable — not archived,
+not pruned, not partially deleted — so recovery is *repointing the launcher back*, the same act as
+the switch, in the other direction.
+
+**What is built: nothing.** No step of the cutover has run, so no window has opened. The rollback
+bridge named in the tree's fourth `{#cutover}` build item — the verification, before the switch, that
+the return path actually works — has not been written, and it is deliberately a PROOF item rather
+than a code item: what it must show is that the legacy launcher starts, reaches its own state root,
+and is not blocked by anything the rebuild did on the way past.
+
+**Re-crossing is not symmetric, and that asymmetry is the whole reason the window closes.** Before
+the rebuild writes anything native, rollback is a launcher repoint. After it does, the two worlds
+have both filed real HR transactions and rollback requires **intent/ledger reconciliation and dedupe
+proof** before the atomic switch back: every rebuild write intent must be matched against what the
+external system actually holds, because the legacy engine has no fence and no permanent-key record
+of what the rebuild already filed. A rollback that skips that step is how one termination gets filed
+twice.
+
+**Closure is a separate operator authorization, deliberately.** D89 puts deletion and retirement
+*outside* this cutover, and `CLAUDE.md`'s cross-repo rules restate it as a standing prohibition:
+nothing in the legacy repo may be deleted during the rebuild or the initial cutover. There is no
+trigger, no elapsed-time rule and no automatic expiry — the window closes when the operator says it
+does, and until then the honest description of the legacy repo is *frozen production reference and
+rollback asset*, not *old code*.
 
 ## Later, unplanned
 <!-- roadmap: later-unplanned -->
 
 <!-- roadmap-status: later-unplanned -->
+- [x] the tier exists and is named — D76's MUST / SHOULD / LATER delivery tiers; LATER is what gets cut FIRST when the stop-loss fires, and cutting it costs nothing that was promised
+- [x] the two LATER items are recorded with no owner and no design, which is the point — packaging the local system as a locally-run app ("web app → real app"), and a cooperation / multi-user mode built ON TOP OF solo, if ever (D193(a))
+- [x] the seams that keep them possible are already built and may never be trimmed as ceremony — actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state (D75, reaffirmed by D193)
+- [-] hosting — never, by design (D193(a)); "production" in these plans means the D89 day this repo becomes the operator's daily LOCAL tool
+- [-] designing for multi-user now — refused; no slice may claim scope, ceremony or abstraction in its name (D193(a))
+> 2026-08-21 | docs-cohesion 05 | verified against `ref operator-trust` §7 (the four seams, built and load-bearing) and `reference/decisions.md` D193(a); this node proposes no work and blocks no gate — nothing is left because nothing is owed
+
 <!-- /roadmap-status -->
+
+**This node holds the LATER tier, and its only rule is that it never blocks the cutover.** D76 sizes
+the program in three delivery tiers and the stop-loss cuts them in one order: **LATER first, then
+SHOULD, never MUST** (§Program stop-loss / abort gate). A LATER item is therefore defined by what
+happens to it under pressure — it is dropped without renegotiating anything the program promised —
+and `05-cut-over.md` §Exit criteria names none of them.
+
+**Two items, both recorded by D193(a) with no owner and no design.** *Packaging the local system as a
+locally-run app* — the "web app → real app" idea; and *a cooperation / multi-user mode built on top
+of the solo system*, if ever. Neither is scheduled, neither has a trigger, and neither is a
+deferral in the `04-close-the-deferrals.md` sense: a deferral names the event that ends it, and these
+name nothing because nobody has decided they will happen.
+
+**They are cheap to keep possible and expensive to design for now, which is why the answer is
+"seams, not scope".** The four D75 seams — actor attribution on every command, run, approval, gate
+resolution and ledger entry; one identity checkpoint; credential-set-keyed browser sessions;
+per-actor notification read state — are built, carry one constant `local-operator`, and cost nothing
+to keep. They exist because retrofitting an actor onto an immutable ledger is impossible: the old
+rows would have no honest answer. What is explicitly NOT built and may not be smuggled in under a
+LATER banner: RBAC, a permissions UI, user management, teams, tenant separation, remote or cloud
+deployment, TLS, per-user dashboards, remote sync, or public API compatibility.
+
+**Hosting is not LATER, it is never (D193(a)).** The distinction matters when reading this node: a
+LATER item might happen; hosting is a decided refusal, and it is why "production" throughout these
+plans means the D89 day this repository becomes the operator's daily LOCAL tool. The one deny-by-
+default exception to loopback stays what it already is — the operator-started, token-scoped mobile
+capture ingress.
 
 ## Risk register (top sequencing risks)
 
