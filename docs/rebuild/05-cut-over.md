@@ -215,7 +215,9 @@ rollback asset*, not *old code*.
 - [x] the seams that keep them possible are already built and may never be trimmed as ceremony — actor attribution, one identity checkpoint, credential-set-keyed sessions, per-actor notification state (D75, reaffirmed by D193)
 - [-] hosting — never, by design (D193(a)); "production" in these plans means the D89 day this repo becomes the operator's daily LOCAL tool
 - [-] designing for multi-user now — refused; no slice may claim scope, ceremony or abstraction in its name (D193(a))
+- [x] the PACKAGING half is no longer LATER — the operator promoted it to Phase 6 on 2026-08-21 (R14, `06-ship-the-desktop-app.md`, tree node `{#desktop-app}`), which gives it the owner and the design a LATER item by definition lacks
 > 2026-08-21 | docs-cohesion 05 | verified against `ref operator-trust` §7 (the four seams, built and load-bearing) and `reference/decisions.md` D193(a); this node proposes no work and blocks no gate — nothing is left because nothing is owed
+> 2026-08-21 | docs-cohesion R14 | one of the two items left this tier: packaging is Phase 6 now; the cooperation / multi-user item and the hosting refusal are untouched
 
 <!-- /roadmap-status -->
 
@@ -225,11 +227,15 @@ SHOULD, never MUST** (§Program stop-loss / abort gate). A LATER item is therefo
 happens to it under pressure — it is dropped without renegotiating anything the program promised —
 and `05-cut-over.md` §Exit criteria names none of them.
 
-**Two items, both recorded by D193(a) with no owner and no design.** *Packaging the local system as a
-locally-run app* — the "web app → real app" idea; and *a cooperation / multi-user mode built on top
-of the solo system*, if ever. Neither is scheduled, neither has a trigger, and neither is a
-deferral in the `04-close-the-deferrals.md` sense: a deferral names the event that ends it, and these
-name nothing because nobody has decided they will happen.
+**Two items were recorded by D193(a) with no owner and no design, and one of them now has both.**
+*Packaging the local system as a locally-run app* — the "web app → real app" idea — **left this tier
+on 2026-08-21**, when the operator made it **Phase 6** (`06-ship-the-desktop-app.md`, tree node
+`{#desktop-app}`, plan ruling R14): a Mac and Windows desktop app, delivered at the end of the
+program. What remains here is *a cooperation / multi-user mode built on top of the solo system*, if
+ever. It is not scheduled, it has no trigger, and it is not a deferral in the
+`04-close-the-deferrals.md` sense: a deferral names the event that ends it, and this one names
+nothing because nobody has decided it will happen. Phase 6 changes none of that — packaging is a
+delivery mechanism, not a step toward multi-user.
 
 **They are cheap to keep possible and expensive to design for now, which is why the answer is
 "seams, not scope".** The four D75 seams — actor attribution on every command, run, approval, gate

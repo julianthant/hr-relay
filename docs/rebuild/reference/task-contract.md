@@ -1002,7 +1002,7 @@ adds the capability deliberately; it cannot be inherited.
 
 ### 2.10 The first store CUSTOMIZED under §2.8 — `kuali` as-built (D197, 2026-08-12)
 
-§2.9 settled what a store BUILT whole owes. Separations chunk 2 is the other case `STORES.md` §1
+§2.9 settled what a store BUILT whole owes. Separations chunk 2 is the other case ref stores §1
 distinguishes — a **CUSTOMIZE** of an existing semantic-ready store — and it settles five more rules
 that are normative for every store slice that extends one rather than creating one.
 

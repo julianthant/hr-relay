@@ -73,7 +73,7 @@ answer carrying the decision it forces and the thing it refuses. Unanswerable qu
 name the workflow-specific customization (charter §3/§8); reuse or add canonical UI ids and typed
 driver operations FIRST, then write strict contracts → scenarios → impls → pure-logic unit tests
 (`fakeCtx`) → descriptor/result/delegation policies, in `ref guards-and-tests` §6's red→green order.
-Classify every task REUSE / CUSTOMIZE / BUILD against `STORES.md` before writing one — the store
+Classify every task REUSE / CUSTOMIZE / BUILD against ref stores before writing one — the store
 catalog is the reuse ledger, and a task that already exists under another name is the single
 cheapest thing to get wrong. **Artefacts:** `src/workflows/<id>/descriptor.ts` (bundle-safe: zod,
 `src/domain/**`, audited `src/base/**` only — D106) + `module.ts` (server composition) + the tuple

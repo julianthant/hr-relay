@@ -104,7 +104,7 @@ legacy's gate is switchable off by a run mode, which is §4d.
 
 **`src/stores/`:** `ucpath`, `crm`, and `kuali` have real drivers, login recipes, UI registries and
 tasks. `new-kronos`, `old-kronos`, `onbase`, `servicenow`, `i9`, and `sharepoint` are session
-declarations with `declareDriver(…, "unwired")` and **zero** tasks. `STORES.md` is the derived
+declarations with `declareDriver(…, "unwired")` and **zero** tasks. `ref stores` is the derived
 catalog of that reality; §4 of it already records the two gaps this migration closes (the ucpath
 write family, and the kuali separation read/finalization family).
 
@@ -153,14 +153,14 @@ Date reconciliation (LDW / separation date / effective date `+1`), voluntary-vs-
 classification, reason-code mapping (**fail loud on unmapped**, §4a), the comment builders, the
 Kronos window computation, and the name-similarity classification feeding the gate packet. All pure
 compute, all unit-testable with `fakeCtx`, none of it touching a browser. The shape to copy is
-`workflow:person-lookup/read-active-status` (`STORES.md` §2) — a sessionless, artifact-free,
+`workflow:person-lookup/read-active-status` (ref stores §2) — a sessionless, artifact-free,
 provider-free fold over prior node outputs.
 
 ### 2.6 The rich-extraction store convention — RATIFIED as D194
 
 > **Status: ANSWERED 2026-08-12 — Option A adopted, ratified as D194.** The normative text lives in
 > **ref task-contract §2.8** (task contracts owns "how wide a read task's output is", the same way §2.7 owns
-> "how much a task owes"); the derived view is `STORES.md` §1 "How stores work"; the pointer row is
+> "how much a task owes"); the derived view is ref stores §1 "How stores work"; the pointer row is
 > ref decisions round 48. Ref data-intake-and-edit-data is **not** an owner — it owns intake (column mapping, roster, capture), and
 > this is a task-authoring rule, so putting it there would have split one contract across two docs.
 > The options below are kept as the record of what was chosen from.
@@ -262,7 +262,7 @@ The consumer names the fields it wants; the task reads and returns exactly those
   broken field is `absent` **with a reason** rather than a hard failure of an unrelated workflow —
   and never a silent blank.
 - Each such task declares its per-leaf redaction classification at authoring time (ref operator-trust §D140).
-- The convention is then ratified as **D194** in ref task-contract §2.8 + `STORES.md` §1, and later migrations
+- The convention is then ratified as **D194** in ref task-contract §2.8 + ref stores §1, and later migrations
   inherit it.
 
 **Recommendation: Option A.** It delivers the operator's stated goal exactly (consumers never write
@@ -286,7 +286,7 @@ moves a hash existing run records already bind. The `crm` record/dates pair is t
 target — one shared page visit, one duplicated `First Day of Service` read — and the CRM **history**
 page stays its own task either way, because it is a genuinely second visit.
 
-Where it landed: **ref task-contract §2.8** (normative), `STORES.md` §1 (derived), ref decisions round 48 (pointer).
+Where it landed: **ref task-contract §2.8** (normative), ref stores §1 (derived), ref decisions round 48 (pointer).
 
 ---
 
@@ -787,7 +787,7 @@ successful save navigates away (`legacy:src/workflows/separations/steps/kuali-fi
 The rebuild has already proved the hazard on this exact system: **D128** — HTTP `200`, a rendered
 `Form saved`, and nothing persisted. The answer already exists as built, controlled-commit-proven
 code: `kuali/verify-timekeeper-annotation`, the reload read-back that is the *only* landing proof
-(D135; `STORES.md` §2, `kuali`). Item 2's draft already declares `save-verify` for both Kuali writes.
+(D135; ref stores §2, `kuali`). Item 2's draft already declares `save-verify` for both Kuali writes.
 
 **The one real option axis** is *how many read-backs*, which is really a restatement of item 1D
 (how many Kuali transaction nodes there are).
@@ -1465,7 +1465,7 @@ machinery is involved.
 ### 7. Reuse map — which tasks are reused, which are new
 
 > **VERDICT: ANSWERED via §2.6/D194 (how wide every new read task is) — no further operator input.**
-> The §2.2–§2.5 inventory itself is DRAFT STANDS: it is derived from the code, and `STORES.md` §1's
+> The §2.2–§2.5 inventory itself is DRAFT STANDS: it is derived from the code, and ref stores §1's
 > REUSE/CUSTOMIZE/BUILD rule decides each row.
 
 *What the answer determines:* the actual §2 inventory above, and for each new task, its
@@ -1709,7 +1709,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 - [x] `identity-gate-before-separation-commit` green — every commit is graph-reachable only through the gate node (ref write-safety §14.6 guard #2; the structural half of §4d) — and §14.5's digest binding is now proved LIVE (§9.14): the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's
 - [x] D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved — **MET 2026-08-14 (§9.17 item 6)**: three entries touched (`legacy-workflow-separations`, `legacy-tool-debug-kronos`, `legacy-tool-ops-sanity-check-record`), all correctly `open` at the runtime's own milestone, nothing stale under D188's arm, no legacy path deleted. One finding for the operator: **D192's deferral condition on `legacy-tool-ops-sanity-check-record` is now materially satisfied** — the §14.2 packet's `comparisons` array is exactly the prose-observations-beside-the-gate shape D192 asked for — and it is flagged rather than re-dispositioned, because closing an inventory entry is an operator decision
 - [x] Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated — **D212 and D213 landed with their tests (`d00b66c`, `1d019ee`); the two platform items above became D214/D215 and both landed with theirs; the `already-present` receipt arm platform slice 2 named landed at `b73b546`.** **PARTLY MET after §9.17**: the re-run's own defect — D215's `not-observed` subject verdict missing from the span WIRE leaf, which killed the worker on the first preview that ever settled — landed with its regression case at `e1ba81b`. **Of the two findings the pass named rather than pinned, one is now closed**: the retry checkpoint re-collision (§9.17 item 8) landed as **D221** with `tests/unit/retry-item-attempt.test.ts` — the attempt in an item-scoped checkpoint key is the ITEM's attempt, so a retry takes the item's next one and its `always-rerun` executions can no longer land on the retried run's key — and it is now **LIVE-PROVED on the composed graph (§9.20, 2026-08-19)**: six retries through the real command endpoint across two logical items (attempts 2→3 on doc 4510, 2→3→4→5→6 on doc 4502), every one minting the item's next unspent attempt, none refused, no collision, `timecard-search` — §9.18 item 8's own node — re-executed at three separate attempts, one retried run replaying eight checkpoints written by two earlier runs at two different attempts, and the last of them reaching a terminal **`done`** at D215's `already-present` preview terminal with zero durable write rows. **The last one is now CLOSED**: the browser-profile wedge (§9.17 item 5, §9.20 item 6) was root-caused, fixed and live-proved in **§9.21** as **D243/D244** — it was never about the profile. Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE, so a cold profile's import stamp jumped the shared counter to `now` while every warm profile crept by `+ 1` and could never catch up; one behind-counter assertion is then refused as a cloned key AND burns that profile's Duo device binding permanently, which is both the 60 s wedge and the reason deleting the directory was the only remediation anyone found. Bisected one variable in both directions on the same profile (stored counter 1 063 behind → **60.01 s** refused, no `PS_TOKEN`; the same state with the wall-clock floor → presented 1787193576 and **`logged-in` in 17.83 s**), and the runtime now refuses on Duo's own rendered refusal in **9.52 s** naming the real cause instead of burning the bound and blaming Duo hand-approval. Pinned by `tests/unit/duo-sign-count.test.ts` (the load-bearing case is a two-profile simulation) and two arms in `tests/unit/system-login-recipes.test.ts`, both verified RED pre-fix. §9.20 item 7's unrelated cold-profile New Kronos observation stays open and is a different finding
-- [x] **§2.6 confirmed and ratified: D194 recorded in ref task-contract §2.8, pointer in ref decisions round 48, `STORES.md` §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
+- [x] **§2.6 confirmed and ratified: D194 recorded in ref task-contract §2.8, pointer in ref decisions round 48, ref stores §1 updated** (2026-08-12) — every new read task this migration authors is authored under it
 
 ---
 
@@ -1731,7 +1731,7 @@ Repeated here so the checklist is in one place; the master plan owns the normati
 | Document | What it owns, relative to this doc |
 |---|---|
 | `docs/migrations/separations-legacy-behavior.md` | The traced legacy account: the happy path end to end, the **S1–S63 scenario table** (§2), per-scenario detail with source quotations (§3), the eleven dangerous patterns (§4), and the `unknown — needs live observation` list (§5). Every S-number cited above resolves there. |
-| `STORES.md` | The derived catalog of what every store has today — §1 "How stores work" (the REUSE/CUSTOMIZE/BUILD rule that §2.6's convention would amend), §2 per-store tables, §3 the two shipped workflows' consumption, §4 the gaps this migration closes. Code wins over that file wherever they disagree. |
+| `ref stores` | The derived catalog of what every store has today — §1 "How stores work" (the REUSE/CUSTOMIZE/BUILD rule that §2.6's convention would amend), §2 per-store tables, §3 the two shipped workflows' consumption, §4 the gaps this migration closes. Code wins over that file wherever they disagree. |
 | `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md` | §3.1 the Phase-3 entry block, §3.2 exit criteria (§6 above), §3.3 the migration order, **§3.4 the questionnaire template §5 above instantiates**. |
 | `docs/rebuild/reference/write-safety.md` | §2 completion arms, §4/§4.1 recovery and operator resolutions, §5 probe policy, §12 the worked two-transaction separations example, §13 the beat structure, **§14 the ALWAYS-GATE** (and §14.7's two values left to this questionnaire). |
 | `docs/rebuild/reference/decisions.md` | The decision index — **D193** (separations as the Phase-3 entry) and, if §2.6 is confirmed, **D194**. A pointer index only; never implement from it. |

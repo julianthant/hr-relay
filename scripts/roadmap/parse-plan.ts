@@ -28,7 +28,7 @@ import type { Layer, Status } from "./schema.js";
  *     beside `status:`), legal on a phase, a task or a sub-task. Its value is
  *     one or more refs joined by " · " (the split happens only before a doc token, so a section may contain " · "). A ref is `<doc>` or `<doc> §<section>`,
  *     and `<doc>` is one of exactly two things:
- *       · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `04` `05`,
+ *       · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `04` `05` `06`,
  *         the actionable `docs/rebuild/NN-*.md` docs (the number IS the phase,
  *         and phase 3 is three docs, so bare `03` is not one of them);
  *       · `ref:<slug>` — a spec under `docs/rebuild/reference/`, cited by name
@@ -67,18 +67,18 @@ const LAYER_TOKEN: Record<string, Layer> = { FE: "frontend", BE: "backend", BOTH
 
 const HEADING_RE = /^(#{2,5}) (.*?)(?: \{#([a-z0-9][a-z0-9-]*)\})?\s*$/;
 /**
- * `<doc>` or `<doc> §<section>` — `<doc>` a phase-doc number (`00`…`03a`…`05`)
+ * `<doc>` or `<doc> §<section>` — `<doc>` a phase-doc number (`00`…`03a`…`06`)
  * or `ref:<slug>` naming a `docs/rebuild/reference/` spec. The section admits
  * spaces because the phase docs number no headings; it may not carry the ` · `
  * that separates refs, and may not have edge whitespace.
  */
-const DOC_REF_RE = /^(0[0-2]|03[abc]|0[45]|ref:[a-z][a-z0-9-]*)(?: §(\S(?:.*\S)?))?$/;
+const DOC_REF_RE = /^(0[0-2]|03[abc]|0[456]|ref:[a-z][a-z0-9-]*)(?: §(\S(?:.*\S)?))?$/;
 // Refs are joined by " · "; a section may itself contain " · " (phase-doc headings mirror node titles such as
 // "Order 0 · person-lookup"), so the split happens only before a DOC TOKEN, never inside a section.
-const DOC_REF_SPLIT_RE = / · (?=(?:0[0-2]|03[abc]|0[45])(?:\s|$)|ref:[a-z])/;
+const DOC_REF_SPLIT_RE = / · (?=(?:0[0-2]|03[abc]|0[456])(?:\s|$)|ref:[a-z])/;
 
 /** The phase docs, in build order — the only numbers a `doc:` ref may name. */
-export const PHASE_DOC_NUMBERS = ["00", "01", "02", "03a", "03b", "03c", "04", "05"] as const;
+export const PHASE_DOC_NUMBERS = ["00", "01", "02", "03a", "03b", "03c", "04", "05", "06"] as const;
 
 interface RawDocRef {
   doc: string;

@@ -735,7 +735,7 @@ at **8 of 9**, and the ninth is open on a calendar date.
 | 6 | **`identity-gate-before-commit` green — every commit and the terminal result graph-reachable only through the gate** | **MET** | the guard walks both sinks (`tests/unit/architecture/identity-gate-before-commit.test.ts`), and §14.5's digest binding is proved LIVE: the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's (§9.14) |
 | 7 | **D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved** | **MET** 2026-08-14, and its one finding since CLOSED | three entries touched, none stale under D188's arm, no legacy path deleted (§9.17 item 6). The flagged item — D192's condition on `legacy-tool-ops-sanity-check-record` — was closed by the operator on 2026-08-18 and the entry is `retired` |
 | 8 | **Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated** | **MET** | D212/D213 (`d00b66c`, `1d019ee`), D214/D215, the `already-present` receipt arm (`b73b546`), the span-wire fork (`e1ba81b`), D221 (`tests/unit/retry-item-attempt.test.ts`, live-proved §9.20) and the browser-profile wedge (D243/D244, `tests/unit/duo-sign-count.test.ts`, both arms verified RED pre-fix) |
-| 9 | **§2.6 confirmed and ratified — D194 in `ref task-contract` §2.8, pointer in the ledger round 48, `STORES.md` §1 updated** | **MET** 2026-08-12 | every read task this migration authored is authored under it |
+| 9 | **§2.6 confirmed and ratified — D194 in `ref task-contract` §2.8, pointer in the ledger round 48, ref stores §1 updated** | **MET** 2026-08-12 | every read task this migration authored is authored under it |
 
 **The three confirmation obligations that only criterion 5 can discharge**, so they are not separate
 criteria and must not be counted as met: D207's provisional `stabilized` recovery-absence window;
@@ -751,7 +751,7 @@ The second migration is entitled to assume all of the following, none of which d
 
 1. **The store task libraries exist.** `kuali` (10 tasks), `ucpath` (10), `new-kronos` (2, built
    whole), and the pure `separations` mini-store (9 folds) — with D194/D196/D197's conventions
-   settled and `STORES.md` regenerated. A later migration adds tasks to a store that already has a
+   settled and ref stores regenerated. A later migration adds tasks to a store that already has a
    driver, a login recipe, a published UI registry and live-verified selectors.
 2. **The ALWAYS-GATE is built and proved live**, with its server-computed ceremonies (D226), its
    packet binding every value the approval authorizes (D211), its durable record readable as
