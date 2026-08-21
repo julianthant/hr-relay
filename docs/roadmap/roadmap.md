@@ -107,6 +107,11 @@ builds:
 - [x] BE semantic UI registry (406 ported selector keys, provenance-pinned) + ucpath / crm / kuali drivers
 - [x] BE task contracts (ref task-contract) and the three authoring tiers
 - [x] BE workflow DAG, delegation, the completion program (ref workflow-model)
+- [ ] BE the builder's `.auth()` override — neither `eager` nor `on-first-use` exists (ref workflow-model §3; needs `duo-lease`)
+- [ ] BE `cli stop <workflow>` (ref workflow-model §1.2)
+- [ ] FE the `Record<IconName, LucideIcon>` map — nothing renders `descriptor.icon` outside the Explorer wire (ref workflow-model §1.3)
+- [ ] BOTH the layer-1 `config/workflow-presentation/` override (ref workflow-model §1.5)
+- [ ] BE delete the unreachable `TransactionDryRunPreviewSchema` subject-mismatch arm (ref write-safety §2.1)
 
 needs:
 - p1-base
@@ -349,6 +354,7 @@ builds:
 - [ ] PROOF the parity corpus reaches Settings and the Session Panel — neither is routable from the lane's AppRoute; keyboard and reduced-motion exist in ONE theme
 - [ ] BE producers for the five declared notification triggers that have none — run-failed · subject-mismatch · write-parked · repeating-failure · verified-done (audit C4)
 - [ ] BE the `operation` run shape is minted by SOME enqueue path — today every path stamps `single`, so §9's group model (member well, rollup, containment) is presentation over fixtures (audit C2)
+- [ ] PROOF T2 dashboard feature scenarios over the DEFAULT surfaces (R10)
 
 needs:
 - p2-2i
@@ -375,6 +381,7 @@ builds:
 - [x] BOTH B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229)
 - [x] WIRE B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D252/D253)
 - [x] BE B8 findings ledger zero-or-decided; `span.patched` RETIRED; a span close binds to an OPEN entry (D254/D255)
+- [ ] PROOF the per-archived-run storage delta, on the first real sweep (ref dashboard-surfaces §9.5.1)
 
 log:
 - 2026-08-20 | docs-cohesion 03a | all eight re-verified present in the tree for doc 03a's status block; the ledger's own README records five open records across two files and zero undecided ones, which is what makes "frontend done" checkable
@@ -421,6 +428,16 @@ builds:
 - [?] FE D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured (closes P5)
 - [?] BOTH D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped (closes M4)
 - [ ] BOTH D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads (`summary`, `enqueue`, `surfaces.inputRun`) and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251; ref frontend-backend-integration §4)
+- [ ] BE the write ledger has NO production writer — `createLedgerProjector` is composed nowhere while `createLedgerReadThrough` is composed at two roots; `ledger/` has never been written (ref dashboard-surfaces §9.5.2 · ref write-safety §6.1)
+- [ ] BE a production tick that leases and drains the ledger outbox (ref write-safety §6.1)
+- [ ] BOTH ledger health as a storage notification per D222, not a banner (ref write-safety §6.1)
+- [ ] BE `remove-queue-surface` / `tombstone-queue-surface` have no producer (`src/domain/dashboard/subscription.ts`)
+- [ ] BE the stale `SpanPatched` comment in `src/domain/workflow/presentation.ts`
+- [ ] BOTH `supersede-active` — kernel implements, planner checks only `reject-active`, the run modal says unimplemented (ref dashboard-surfaces §2.4)
+- [ ] BE nothing reads a gate's `subscribes` — a children-terminal / external gate parks forever (`src/base/flow.ts` vs `run-executor.ts`)
+- [ ] FE the intake Dropzone's accept list + size cap are client literals; `INTAKE_UPLOAD_MAX_BYTES` / `INTAKE_UPLOAD_MEDIA_TYPES` unimported (ref dashboard-surfaces §9.7.1)
+- [ ] FE inspect and upload carry no spinning control (ref dashboard-surfaces §9.7.1)
+- [ ] BE the captures wire section is served and placed nowhere; context-evidence fetched and handed to nothing (03a finding)
 
 needs:
 - track-c
@@ -442,10 +459,10 @@ doc: 03a §Duo ceremony lease — one login at a time per credential · ref:exec
 > A durable per-credential lease in authority serializes EVERY Duo ceremony — from "navigate to SSO" until the content verifier proves the session — across every worker and every system. TTL is `sessionAcquireMs` + grace; waiters are bounded and refuse loud naming the holder; a refused assertion poison-closes and retries ONCE under the same lease on a FRESH profile, then fails naming the profile; `defineVerifiedLoginRecipe` takes a lease token only the lease store mints, pinned by a guard with a violating fixture. The hazard exists TODAY — two workflows' workers cold-starting together share one credential's server-side counter (D243).
 
 builds:
-- [ ] BE `duo_ceremony_leases` in authority + the lease token `defineVerifiedLoginRecipe` requires
+- [ ] BE `duo_ceremony_leases` in authority + the lease token `defineVerifiedLoginRecipe` requires + the grace config leaf `timeouts.duoCeremonyLeaseGraceMs` (a D133 snapshot-generation change)
 - [ ] BE bounded waiters + the fresh-profile-once recovery, both failing by name
 - [ ] BE the guard: no login path without the lease, with a violating fixture
-- [ ] PROOF two workers' cold starts serialize (unit) + a live two-worker cold start
+- [ ] PROOF two workers' cold starts serialize (unit) + a live two-worker cold start + a ref execution-and-sessions §7.1 concurrency-matrix row in the same commit
 - [ ] DOCS the decision in `reference/execution-and-sessions` + `reference/decisions`
 
 needs:
@@ -468,6 +485,7 @@ builds:
 - [ ] BE durable session record + grouping (B4's bulk dispatch is the seed)
 - [ ] FE session view — worker cards show membership and what each worker is doing, from authority
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded
+- [ ] BE pool-indexed worker ids — `phase1WorkerId(workflowId)` returns one id per workflow, so two composed workers collide on the authority worker lease (`src/core/worker-loop.ts`)
 
 needs:
 - track-d
@@ -513,6 +531,7 @@ builds:
 - [ ] BE the subject registry (labels in config, values outside git) + the durable `dry_run_scenario_results` row + `cli dry-run-scenario`
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded (driven by the `{#claude-operator}`'s MCP tools)
 - [ ] BE coverage floor 80/80/80 global
+- [ ] PROOF the `idempotency-key-hygiene` guard §8 listed and nobody built, with its inventory entry (ref write-safety §8)
 
 needs:
 - dash-defaults
@@ -814,6 +833,8 @@ builds:
 - [x] PROOF the first live RETRY on the composed graph — six retries, two lineages, one `done` (§9.20)
 - [x] BE browser-profile wedge root-caused (A7)
 - [ ] DOCS close-out: regression scenarios, knowledge records, capability dispositions → separations **rebuild-ready**
+- [ ] BE wire the knowledge projection into a composition root — no caller, no `KNOWLEDGE.md` has ever been written (ref operator-trust §4.5)
+- [ ] BE call Kuali's own registry audits from `semantic-ui-registry` — three stores of four are audited (ref operator-trust §8)
 
 needs:
 - sep-6c
@@ -850,6 +871,7 @@ builds:
 - [x] PROOF connection proof — every surface read against the real composed run, each UI assertion paired with authority (Track C, separations §9.22; five defects found and fixed same-day)
 - [ ] PROOF T1 scenario tests for separations (structural fixture + dry-run scenario) and its T3 pair (R10)
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -936,6 +958,7 @@ builds:
 - [x] WIRE run detail — timeline, receipt, Context rail; the two-pixel panel found and fixed in 2j (D187)
 - [x] WIRE archive · activity · explorer — person-lookup rows appear through the generic surfaces
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -977,6 +1000,7 @@ builds:
 - [ ] WIRE notifications — park / needs-you triggers into the durable inbox (ref dashboard-surfaces §2.6)
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -1019,6 +1043,7 @@ builds:
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH download viewer — the artifact-bytes route + a per-run downloads tile
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -1038,6 +1063,7 @@ builds:
 - [ ] BE **D189's byte path**: BFF static handler + `capture.html` + ngrok launcher + the phone-origin guard arm; `--prod` starts meaning what it says
 - [ ] WIRE capture → workflow binding (`CAPTURE_INTAKE_BINDINGS` filled for the first honest consumer)
 - [ ] PROOF T1 scenario tests for the OCR pipeline workflow (structural fixture + dry-run scenario) and its T3 pair (R10)
+- [ ] PROOF re-verify the roster SCORING against a real roster — the tiering ported verbatim, the scoring is new (ref data-intake-and-edit-data §7)
 
 needs:
 - p2-2h
@@ -1063,6 +1089,7 @@ builds:
 - [ ] WIRE review/approve commands + progressive record patches over the SSE stream
 - [ ] BOTH the OCR Review panel body — `review` is declared in TAB_ORDER but `availableSections` can never return it (03a finding)
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -1082,6 +1109,7 @@ builds:
 - [ ] BE oath-signature and emergency-contact workflows
 - [ ] PROOF the first non-separations controlled commits on UCPath enter/fill
 - [ ] PROOF T1 scenario tests for oath-signature · emergency-contact (structural fixture + dry-run scenario) and its T3 pair (R10)
+- [ ] DOCS the delegation / row-model vocabulary (ref dashboard-surfaces §9.10)
 
 needs:
 - order-3
@@ -1107,6 +1135,7 @@ builds:
 - [ ] FE Group People — paged members + rollup + containment over real operation members
 - [ ] BOTH the group People panel body — declared, never servable (03a finding)
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -1126,6 +1155,7 @@ builds:
 - [ ] BE stable-keyed SQLite outbox + serialized workbook projector
 - [ ] BE the first Excel export writer (the master I-9 retention workbook)
 - [ ] PROOF T1 scenario tests for i9-check (structural fixture + dry-run scenario) and its T3 pair (R10)
+- [ ] BE the artifact-projection path has no first consumer — no descriptor declares `artifactProjections:`, `RunArtifactProjector` is composed nowhere (ref dashboard-surfaces §3.2 · ref data-intake-and-edit-data §4.1)
 
 needs:
 - order-1
@@ -1150,6 +1180,7 @@ builds:
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] FE member rows with retention status; the workbook export control
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -1193,6 +1224,8 @@ builds:
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH intake grid constants entry + unbind arm (`effectiveDate`, D172/D173)
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE the saved-mapping store — a writer and loader for the `ColumnMapping` `resolveSavedMapping` already resolves; today every upload is a fingerprint miss (ref data-intake-and-edit-data §2.3)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -1237,6 +1270,7 @@ builds:
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] WIRE ServiceNow ticket receipt + OnBase upload-verify on the run-detail receipt
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -1281,6 +1315,7 @@ builds:
 - [ ] WIRE archive · activity · explorer — ledger presentation declarations for its commits, its cross-tab category, its descriptor prose
 - [ ] BOTH roster ingest surface; the hire canary's ceremony
 - [ ] PROOF T2 dashboard scenario for the wired surfaces (R10)
+- [ ] BE publish `run-failed` / `subject-mismatch` / `write-parked` — four of six trigger arms are unreachable (ref operator-trust §6.3)
 
 needs:
 - dash-defaults
@@ -1300,6 +1335,12 @@ builds:
 - [ ] BOTH screenshots gallery + the artifact-bytes route
 - [ ] BE Excel export writers (3 in legacy)
 - [ ] DOCS `test-login` / setup wizard equivalents, or their retirement with evidence
+- [ ] BE `explain failure <fingerprint>` — the indexed column and `listByFingerprint` exist; the command does not (ref operator-trust §4.2)
+- [ ] BE an OS delivery channel — `OsNotificationDelivery` has no production implementation, every publish settles `no-channel` (ref operator-trust §6.3)
+- [ ] BE the enqueue-time instance / URL check — `resolveInstances` has only a test caller (ref clock-config-secrets §4)
+- [ ] BE `requires: SecretName[]` on task contracts + the enqueue check; `validateBootSecrets` / `validateDescriptorSecrets` have no caller (ref clock-config-secrets §6)
+- [ ] BE the preflight runners + the doctor service — one runner exists, `buildPreflightReport` is test-only (ref clock-config-secrets §6.2)
+- [ ] DOCS a refreshed `.env.example` bound to the secrets registry (ref clock-config-secrets §6)
 
 needs:
 - phase-3
@@ -1328,6 +1369,9 @@ status: planned
 doc: 04 §Photograph a paper form on your phone → it becomes an OCR-backed run · ref:data-intake-and-edit-data §5.1 · ref:dashboard-surfaces §9.7.2 · ref:charter §22
 
 > `CAPTURE_INTAKE_BINDINGS` is deliberately empty — neither current workflow can honestly derive an employee id from a photograph. Comes due with the first OCR-consuming workflow; "close this first": the `run.queued` span from projector-enqueued runs.
+
+builds:
+- [ ] BE emit `run.queued` for a handoff-enqueued run — the finalize projector enqueues outside the command service (ref data-intake-and-edit-data §5.1)
 
 needs:
 - order-3
@@ -1390,6 +1434,8 @@ builds:
 - [ ] BE `apply-settings` stops answering `capability-unavailable` — the kernel's ONE `PHASE1_DEFERRED` arm; family, target and atomic N-leaf payload are already contracted
 - [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184), so the stethoscope popover never mounts
 - [ ] FE the Settings write path and the doctor-rerun command control
+- [ ] BE `mergeSettings` must apply `override.browser` — today it silently drops it (ref clock-config-secrets §3)
+- [ ] BE a settings-file reader beside the `apply-settings` writer — `settings.json` has no producer (ref clock-config-secrets §3)
 
 needs:
 - cross-cutting
