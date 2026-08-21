@@ -215,7 +215,114 @@ _(pending — this section is written by the explorer pass)_
 
 ## 5. Settings and the storage doctor — `DemoSettings.tsx` + `demo-settings-wire.ts` ↔ `surfaces/settings.tsx`
 
-_(pending)_
+**Demo:** `DemoSettings.tsx` (1241) · `demo-settings-wire.ts` (740) · mounted as a full-page takeover
+at `RebuildDemo.tsx:657` · **Rebuild:** `surfaces/settings.tsx` (357) · `settings-model.ts` (18) ·
+**Parity:** none — **there is no Settings scene in `tests/parity/references/`.**
+
+This is the widest gap of the nine, and the shape of it is one sentence: **the demo's Settings is a
+twelve-section full-page takeover behind a 220px left nav; the rebuild's is a `Dialog` with one
+section.** Most of that is correctly ruled — `apply-settings` is the single deferred kernel arm
+(`{#def-settings}`, D169, stance D193(b)), so the four editable groups, their eight leaves, the
+provenance stack, the hazard escalation, the draft/action bar and the whole result surface are
+absent BECAUSE nothing can save, and ref dashboard-surfaces §9.8 ratifies rendering the SERVER's
+section list rather than a hand-kept one. The storage half is not a port at all but a genuine
+re-derivation, and it is richer than the demo's: an on-demand doctor with authority state, eight
+pending-work counts, byte-re-verified backup health, restore candidates and — a fact the demo has no
+counterpart for — what the live backup SERVICE last did.
+
+**Three findings the records do not hold.** (1) **The keyboard legend is UNREACHABLE.** The demo made
+one change in two halves — delete the top bar's keyboard glyph (*"we already have help in settings"*)
+AND put the legend in Settings → Help → Keyboard. The rebuild ported the deletion and not the
+destination: `ShortcutsPopover` is exported from `top-bar.tsx:912` with **zero callers anywhere in
+`src/` or `tests/`**, there is no `?` binding in `app/global-keys.ts`, and Settings has no Help group
+— so `surfaces/shortcuts.tsx`, whose own header says *"a binding that is not here is unreachable from
+Help"*, is currently reachable from nowhere. (2) **Two demo status sections need no new authority.**
+System hosts reads `systemInstances`, which the bootstrap already serves, and Workflow capabilities
+is derived from the same served descriptors the Explorer reads — they are absent because
+`settingsSections` lists only `storage`, which is a server-side list decision, not a data gap. (3) A
+demo-side oddity worth carrying across: the `System behaviour` nav entry declares `icon: Cog`
+(`DemoSettings.tsx:159`) while its panel header renders `Camera` (`:635`) — whichever is ported, the
+pair should agree.
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---------|------|---------|---------|--------|
+| SE1 | the surface is a full-page takeover (`flex min-h-0 flex-1` + a left nav) → rebuild is a `Dialog` with `DialogContent title="Settings" size="lg"` | `DemoSettings.tsx:1074` | `settings.tsx:337` | divergent | **OPEN — operator call** (ref dashboard-surfaces §9.8 rules the section LIST and the read-only-ness; it is silent on the container) |
+| SE2 | `<nav aria-label="Settings sections">` — `w-[220px] shrink-0`, `border-r`, `bg-[var(--ds-surface-1)]`, `p-[var(--ds-space-base)]`, `gap-[var(--ds-space-hair)]` | `DemoSettings.tsx:1075-1077` | — | missing | **OPEN — operator call** (follows SE1) |
+| SE3 | nav's `Back to the dashboard` ghost `Button` with `ArrowLeft` `dsIcon.md`, `justify-start` | `DemoSettings.tsx:1079-1081` | — | missing | **OPEN — operator call** (follows SE1 — a dialog has no back; Archive and Explorer keep theirs) |
+| SE4 | `Separator className="my-[var(--ds-space-tight)]"` under the back button | `DemoSettings.tsx:1082` | — | missing | **OPEN — operator call** (follows SE1) |
+| SE5 | nav group heading `Settings` (`SectionLabel`, `px-base py-tight`) | `DemoSettings.tsx:1083` | — | missing | unserved: `settingsSections` serves only `{id:"storage"}` (`src/server/dashboard/queries/bootstrap.ts:122`) |
+| SE6 | nav group heading `Status` (`px-base pb-tight pt-cozy`) | `DemoSettings.tsx:1093` | — | missing | unserved: `settingsSections` serves only `storage` |
+| SE7 | nav group heading `Help` | `DemoSettings.tsx:1097` | — | missing | **OPEN — operator call** (Help is client-side and needs no served section) |
+| SE8 | `SectionButton` — `aria-current="page"`, `entry.icon` at `dsIcon.md shrink-0`, truncating label, active = `bg-[var(--ds-surface-selected)]` + `font-semibold`, idle = `fg-muted` with `hover:bg-[var(--ds-surface-3)]`, `dsFocus`, `dsMotion.base` | `DemoSettings.tsx:1164-1180` | — | missing | **OPEN — operator call** (follows SE1) |
+| SE9 | per-section `N unsaved` marker in `--ds-status-waiting-fg` with `title="N unsaved change(s) in <section>"` | `DemoSettings.tsx:1181-1188` | — | missing | ruled: `{#def-settings}` (D169, stance D193(b)) — nothing saves, so nothing is dirty |
+| SE10 | the draft is PAGE state keyed by leaf and survives a section switch | `DemoSettings.tsx:1042` | — | missing | ruled: `{#def-settings}` |
+| SE11 | the ONE action bar — `N unsaved change(s)`, a `MetaLine` of per-group counts, `Discard all` ghost, `Save N change(s)` primary; `rounded-lg`, `border-[color:var(--ds-border-loud)]`, `bg-[var(--ds-surface-2)]` | `DemoSettings.tsx:1132-1147` | — | missing | ruled: `{#def-settings}` — `apply-settings` is the one entry in `PHASE1_DEFERRED` and answers `rejected{code:"capability-unavailable"}` |
+| SE12 | `ResultSurface` — success `Banner`, a code-less danger `Banner`, and a `Refusal` with `outcome="nothing was saved"`, each over a `Well` list of per-leaf `saved`/`refused` outcomes with their codes | `DemoSettings.tsx:307-363` | — | missing | ruled: `{#def-settings}` |
+| SE13 | in-page degraded `Banner` — `Storage is read-only — no setting can be saved` | `DemoSettings.tsx:1105-1110` | — | missing | ruled: `{#def-settings}` + D222 |
+| SE14 | section `General` (`Cog`) — *"The dates that roll over each fiscal year."* | `demo-settings-wire.ts:76` | — | missing | ruled: `{#def-settings}` · unserved: `settingsSections` |
+| SE15 | section `Display` (`Monitor`) — *"How the queue is presented. Nothing here changes what a run does."* | `demo-settings-wire.ts:77` | — | missing | ruled: `{#def-settings}` · unserved: `settingsSections` |
+| SE16 | section `Performance` (`Gauge`) — *"How hard the executor is allowed to push. Every value here is a budget, not a target."* | `demo-settings-wire.ts:78` | — | missing | ruled: `{#def-settings}` · unserved: `settingsSections` |
+| SE17 | section `Paths` (`FolderTree`) — *"Where downloaded reports are written."* | `demo-settings-wire.ts:79` | — | missing | ruled: `{#def-settings}` · unserved: `settingsSections` |
+| SE18 | leaf `annual.fiscalYearStart` — *Fiscal year start*, date control | `demo-settings-wire.ts:146-148` | — | missing | ruled: `{#def-settings}` |
+| SE19 | leaf `display.defaultSort` — enum `Attention first` / `Newest first` / `Oldest first` | `demo-settings-wire.ts:156-167` | — | missing | ruled: `{#def-settings}` |
+| SE20 | leaf `display.groupAutoExpand` — enum `On` / `Off` | `demo-settings-wire.ts:173-183` | — | missing | ruled: `{#def-settings}` |
+| SE21 | leaf `performance.ocrConcurrency` — number | `demo-settings-wire.ts:189` | — | missing | ruled: `{#def-settings}` |
+| SE22 | leaf `performance.ocrValidationRetries` — number | `demo-settings-wire.ts:207` | — | missing | ruled: `{#def-settings}` |
+| SE23 | leaf `performance.duoTimeoutSec` — number | `demo-settings-wire.ts:218` | — | missing | ruled: `{#def-settings}` |
+| SE24 | leaf `performance.defaultWorkers` — number, the ONE leaf carrying a `hazard` | `demo-settings-wire.ts:229` | — | missing | ruled: `{#def-settings}` |
+| SE25 | leaf `paths.reportsDir` — text | `demo-settings-wire.ts:240` | — | missing | ruled: `{#def-settings}` |
+| SE26 | `LeafCard` — `grid-cols-1 … min-[900px]:grid-cols-[minmax(0,1fr)_300px]`, provenance column with `border-t` → `min-[900px]:border-l` | `DemoSettings.tsx:437,488` | — | missing | ruled: `{#def-settings}` |
+| SE27 | `ProvenanceStack` — three layers (`<env var name>` / `settings.json` / `code default`), unset in `fg-faint`, losers `line-through`, winner `font-semibold` + an `in effect` marker in `--ds-status-waiting-fg`, then `from <origin>` | `DemoSettings.tsx:248-283` | — | missing | ruled: `{#def-settings}` — the whole surface's thesis (`env > settings.json > default`) has no served counterpart |
+| SE28 | `SourceBadge` — tone map `env→warning`, `settings→info`, `default→neutral`, `title` = `SETTING_SOURCE_NOTE` | `DemoSettings.tsx:223-234` | — | missing | ruled: `{#def-settings}` |
+| SE29 | `WhatItDoes` ⓘ — `IconButton size="xs" variant="ghost"`, label `What <title> does`, `PopoverContent width="md"` | `DemoSettings.tsx:290-300` | — | missing | ruled: `{#def-settings}` |
+| SE30 | hazard `Badge tone="warning"` with `TriangleAlert` reading `hazard`, `title` = the consequence | `DemoSettings.tsx:446-451` | — | missing | ruled: `{#def-settings}` |
+| SE31 | hazard escalation `Banner tone="warning"` — `Above <safeMax> <unit>, this can put wrong data into a real record`, then the consequence and the detection | `DemoSettings.tsx:474-485` | — | missing | ruled: `{#def-settings}` |
+| SE32 | `unsaved` `Badge tone="info"` with `title="Typed, not yet saved. It is included in the page's Save."` | `DemoSettings.tsx:452-456` | — | missing | ruled: `{#def-settings}` |
+| SE33 | the leaf KEY printed `ml-auto` in `dsText.micro dsText.nums fg-faint` | `DemoSettings.tsx:457` | — | missing | ruled: `{#def-settings}` |
+| SE34 | numeric range hint — `min–safeMax safe · max max`, or `min–max accepted` when there is no hazard | `DemoSettings.tsx:463-468` | — | missing | ruled: `{#def-settings}` |
+| SE35 | `LeafControl` — enum → `Select max-w-[280px]`; number → `Input` `max-w-[140px]` with `min`/`max`/`step`/`inputMode="numeric"`; date → `Input type="date"`; text → `Input max-w-[280px]`; every one `aria-label="<label> value"` | `DemoSettings.tsx:386-420` | — | missing | ruled: `{#def-settings}` |
+| SE36 | the leaf's `unit` printed beside its control | `DemoSettings.tsx:462` | — | missing | ruled: `{#def-settings}` |
+| SE37 | status section `Environment & identity` (`Lock`, `dsIcon.lg`) — *"Values the deployment owns. Visible, and not yours to set."*, meta `N values`, four facts (`operator.timekeeperName`, `operator.actor`, `performance.navRetries`, `paths.trackerDir`) | `DemoSettings.tsx:149-155,534-556` | — | missing | unserved: no environment/identity axis on the bootstrap |
+| SE38 | `EnvironmentCard` — a `Lock` glyph beside a FLAT value (never a disabled input), a `ShieldAlert` reason in `--ds-status-waiting-fg`, the `toChangeIt` sentence, and a `Try to set it anyway` outline `Button` that returns a real refusal | `DemoSettings.tsx:567-617` | — | missing | unserved: no environment/identity axis; the refusal path is `{#def-settings}` |
+| SE39 | status section `System behaviour` — nav declares `Cog`, the panel header renders `Camera`; grouped constant tables `Value` / `In effect` (right) / `Why it is not a preference` | `DemoSettings.tsx:159,635,642-661` | — | missing | unserved: no system-behaviour constants axis |
+| SE40 | status section `System hosts` (`Link2`) — meta `N of M have a test host`, the per-run `Banner`, and a `System` / `Production` / `Test` table with a `none provisioned` arm | `DemoSettings.tsx:812-857` | — | missing | **OPEN — operator call** — the data is ALREADY served as `systemInstances` on the bootstrap; the section is absent because `settingsSections` does not list it |
+| SE41 | status section `Workflow capabilities` (`Table2`) — capability-major sections, an `N of M` `Badge` per capability, an ⓘ carrying each capability's meaning, three cell shapes (filled `Chip` / hairline `N/A` / warning `Not built` with its reason), and a `Where a dry run stops` posture table | `DemoSettings.tsx:682-806` | — | missing | **OPEN — operator call** — every cell is descriptor-derived, and the Explorer already reads those descriptors |
+| SE42 | capability `Banner tone="info"` — *"Read from the descriptors, not from a list somebody kept up to date"* | `DemoSettings.tsx:735-738` | — | missing | **OPEN — operator call** (follows SE41) |
+| SE43 | Help section `Keyboard` (`Keyboard` icon) — the grouped legend at `max-w-[64ch]` plus a `When they fire` bullet list of three rules | `DemoSettings.tsx:990-1015` | — | missing | **OPEN — operator call** — and the rebuild's `ShortcutsPopover` (`top-bar.tsx:912`) has **zero callers**, with no `?` binding, so the legend is reachable from nowhere |
+| SE44 | `initialSection` — the Top Bar's Help route lands the page on `Keyboard` | `DemoSettings.tsx:1029-1030` | — | missing | **OPEN — operator call** (follows SE43) |
+| SE45 | storage section header — `PanelHeader title="Storage health"`, `Database` at `dsIcon.lg`, subtitle *"The tracker volume, the authority generation, and the backups a restore would use."*, meta `newest backup <age>` → rebuild renders a bare `SectionLabel` reading `Storage` | `DemoSettings.tsx:869-875` | `settings.tsx:268` | divergent | **OPEN — operator call** |
+| SE46 | storage `Banner` — `Read-write — healthy` (success) / `Read-only — degraded` (danger), body = the reason or the integrity line | `DemoSettings.tsx:877-879` | — | missing | **OPEN — operator call** — the rebuild states health as two `HealthLine` rows with `StatusDot`s instead |
+| SE47 | two at-rest `HealthLine` rows (`StatusDot` + label + value) for Authority and Backup | — | `settings.tsx:269-270` | extra | ruled: ref dashboard-surfaces §9.8 — the at-rest summary rides the bootstrap every view already has |
+| SE48 | three stat `Card`s — `Authority generation`, `Rows on disk`, `Newest backup` — each a `SectionLabel`, a `dsText.display dsText.nums` number, and a `CardBase`-pinned note | `DemoSettings.tsx:885-921` | — | missing | unserved: `rowsOnDisk` has no counterpart; `authorityGeneration` IS served but only inside the on-demand doctor, never at rest |
+| SE49 | `Backups` table — `Taken` / `Age` / `Size` (right) / `Verdict` (a `success`/`warning`/`danger` `Badge`) / `Note` | `DemoSettings.tsx:923-950` | `settings.tsx:232-246` | divergent | unserved: backup `sizeLabel` and `note`; the rebuild prints restore candidates as plain `dsText.meta dsText.nums` lines rather than a table |
+| SE50 | degraded-only pair of `Card`s — `Still works` and a danger-toned `Does not work`, each a `BulletList` | `DemoSettings.tsx:952-967` | — | missing | ruled: ref dashboard-surfaces §9.8 — *"every line of them would have been a claim about a system nobody had asked"* |
+| SE51 | `Run storage doctor` `Button` with a `Running doctor…` disabled state and `aria-label="Run the read-only storage doctor"` | — | `settings.tsx:276-278` | extra | ruled: ref dashboard-surfaces §9.8 — two readings at two costs; the doctor is a deliberate press |
+| SE52 | doctor provenance line `Read-only doctor · checked <clock>` | — | `settings.tsx:164-166` | extra | ruled: ref dashboard-surfaces §9.8 |
+| SE53 | doctor authority line — `healthy — schema vN · generation N · N pages`, or `degraded — <code>: <summary>` | — | `settings.tsx:168-180` | extra | ruled: ref dashboard-surfaces §9.8 |
+| SE54 | doctor pending-work grid — eight labelled counts (pending commands, unresolved write intents, leases, durable outbox, terminal outbox, provider reservations, artifact outbox, capture finalizations), with an `unavailable — <cause>` arm | — | `settings.tsx:149-158,182-197` | extra | ruled: ref dashboard-surfaces §9.8 |
+| SE55 | doctor backup line — state, file name, age, and `generation gap N` or `generation gap unknown` | — | `settings.tsx:199-214` | extra | ruled: ref dashboard-surfaces §9.8 — byte-re-verified backup health |
+| SE56 | doctor backup-SERVICE line — `ok` / `FAILED` (`role="alert"`, danger) / `never-run` with its reason | — | `settings.tsx:216-230` | extra | ruled: ref dashboard-surfaces §9.8 — *"a backup run that threw leaves no manifest for the doctor to find"* |
+| SE57 | doctor restore candidates — `ok <manifest> — created … · generation … · age …` or `INVALID <manifest> — <code>: <summary>` | — | `settings.tsx:236-245` | extra | ruled: ref dashboard-surfaces §9.8 |
+| SE58 | NO restore button on either side | `DemoSettings.tsx:923-950` | `settings.tsx:232-246` | exact | — |
+| SE59 | doctor failure arm — a `role="alert"` danger line carrying the thrown message | — | `settings.tsx:280-284` | extra | ruled: ref dashboard-surfaces §9.8 |
+| SE60 | at-rest provenance sentence — *"Summary checked … — from the newest write-time-verified backup manifest; the doctor below re-verifies bytes."* | — | `settings.tsx:271-274` | extra | ruled: ref dashboard-surfaces §9.8 — two readings at two costs, said on the surface |
+| SE61 | a served section this build cannot draw says so by name — *"This build has no renderer for the served section "<id>"."* | — | `settings.tsx:345-350` | extra | ruled: ref dashboard-surfaces §9.8 |
+| SE62 | app-wide band trigger: demo fires on `storage === "read-only-degraded"`; rebuild fires on `authority !== "healthy"` only, and a stale/missing backup becomes an inbox row plus the gear's dot | `DemoSettings.tsx:1206` | `settings.tsx:101` | divergent | ruled: D222 |
+| SE63 | band container: demo is a bespoke `div` with `border-b border-[color:var(--ds-danger-border)]` and `bg-[var(--ds-danger-quiet)]`; rebuild uses the `Banner` primitive at `tone="danger"` | `DemoSettings.tsx:1209` | `settings.tsx:104-105` | divergent | **OPEN — operator call** |
+| SE64 | band icon `ShieldAlert` at `dsIcon.lg` in `--ds-danger` → rebuild takes `Banner`'s own danger icon | `DemoSettings.tsx:1211` | `settings.tsx:104` | divergent | **OPEN — operator call** |
+| SE65 | band title — `Storage is read-only — the dashboard is diagnostic only` → `Authority storage is unavailable` | `DemoSettings.tsx:1213-1215` | `settings.tsx:107` | divergent | ruled: ref dashboard-surfaces §9.8 — every word is derived from facts the bootstrap serves |
+| SE66 | band body — demo prints `snapshot.reason`; rebuild prints `AUTHORITY_HAZARD` plus the backup hazard when both are true, authority first | `DemoSettings.tsx:1216` | `settings.tsx:114-120` | divergent | ruled: ref dashboard-surfaces §9.8 / D24's hazard exemption |
+| SE67 | band `What still works?` / `Hide what still works` outline toggle with `aria-expanded`, disclosing two `Well`s | `DemoSettings.tsx:1219-1238` | — | missing | ruled: ref dashboard-surfaces §9.8 — no third sentence, no disclosure list |
+| SE68 | band `Storage health` secondary `Button` routing to Settings | `DemoSettings.tsx:1222-1224` | `settings.tsx:109-111` | exact | — |
+| SE69 | band `MetaLine` `checked <clock>` | — | `settings.tsx:121` | extra | ruled: ref dashboard-surfaces §9.8 |
+| SE70 | the gear's attention dot — `StatusDot` at the icon's top-right when `storageNeedsAttention` | — | `settings.tsx:328-332` | extra | ruled: D222 — the backup state reaches the operator as the dot plus an inbox row |
+| SE71 | the gear reports it owns the screen — `aria-pressed={open}` plus a `bg-[var(--ds-surface-3)]` fill | — | `settings.tsx:323-324` | extra | ruled: ref dashboard-surfaces §9.9 |
+| SE72 | the demo's storage-fixture switch, parked behind the demo badge | `DemoSettings.tsx:106-108` | — | missing | ruled: demo scaffolding — a fixture switch with no production counterpart |
+
+**Counts:** 72 rows — exact 2 · divergent 8 · missing 48 · extra 14 · **OPEN 15 marks** (SE1, SE2,
+SE3, SE4, SE7, SE8, SE40, SE41, SE42, SE43, SE44, SE45, SE46, SE63, SE64) across **10 distinct
+questions** — SE2/SE3/SE4/SE8 all follow SE1's container choice, SE42 follows SE41, and SE44 follows
+SE43.
 
 ---
 
