@@ -275,36 +275,64 @@ until **D204** did the same one surface further out.
 <!-- roadmap: phase0-size-model -->
 
 <!-- roadmap-status: phase0-size-model -->
+- [x] the model itself (**D76**): relative build sizes in **S ≈ 1 session · M ≈ 2–4 · L ≈ 5–10 · XL ≈ 10+**, offered for correction, never calendar
+- [x] the model is LIVE, not history — the tree's `size:` attribute carries D76's estimate for **every item this table sized**, item for item and unchanged, and `roadmap` §Phases at a glance carries the five phase-level ones
+- [x] the estimates held where they mattered: four XL items on Phase 1's critical path (`{#p1-authority}` for 1c·1d·1e, `{#p1-kernel}` for 1f), and Phase 1's own XL total, with the phase landing 07-31 → 08-04
+- [x] **MUST** — every spine item shipped: the write-safety contract and transaction sequence, authority storage + recovery, fail-loud/strict schemas, task/descriptor contracts, executor + command protocol, spans + the ONE projection, the four parity surfaces, and the identity-approval gate
+- [x] **SHOULD** — every Phase-2-tail item shipped in 2g/2h (D134–D167): evidence receipts + `explain run`, structured failures + diagnostic bundles, the notification inbox, intake mapping + manifests, Edit Data, durable capture
+- [x] **LATER** — all five shipped in **2i** before Phase 3 began, which is exactly what the tier required: the read-only Workflow Explorer, AI advisories, the generated UI catalog UI, knowledge/fix-record tooling, the activity report (D168–D180)
+- [x] D79's ratified trims all held — DSL graph-authoring cut and still cut; notification lifecycle is read/unread + snooze on an actor-keyed inbox; commands carry `version` + `actor` everywhere and enforce CAS only where a real race exists; capture is durable sessions + one finalize outbox; the ledger hash-chain is still deferred while the never-pruned ledger, atomic outbox, single projector and actor attribution all stand; the three authoring tiers are DERIVED from effect + store kind (`ref:task-contract` §2.7)
+- [x] the tiers were never exercised: nothing slipped, so the fallback shape they define for a paused rebuild is untested — which is the outcome the model wanted and not evidence that the model works
+- [ ] D79's one unbuilt trim-condition — the `scaffold new-task` / `scaffold new-workflow` generators the lightweight tier was ratified WITH (§Phase summary, "Two Phase-0 promises are still unbuilt")
+> 2026-08-21 | docs-cohesion 00 | verified every size attribute in docs/roadmap/roadmap.md against this table (all 24 sized items agree), the tier contents against 02-prove-writes-build-the-tails.md §2g/§2h/§2i, and D79's trims against src/domain/notifications.ts, src/domain/commands.ts and reference/task-contract.md §2.7; left: the scaffold generators, and five later nodes carry sizes this table never estimated
+
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.7 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**What D76 added, and why sizing is in a design phase at all.** The plan as first written contained
+**no sizing of any kind**. Sizes keep a long coexistence program reviewable and expose an overrun
+before it compounds into integration risk — and the tie-breaker D76 ratified beside them
+(*between two correct, equally safe designs the sooner one wins; never overriding write-safety,
+identity or fail-loud*) is only usable if "sooner" is something the plan can say out loud.
 
-This plan previously contained **no sizing of any kind**. Sizing keeps the isolated coexistence
-program reviewable and exposes overruns before they compound integration risk.
-
-**Sizes are relative build sizes, not calendar** (unit and scale defined under the §2 phase
-table: S ≈ 1 session, M ≈ 2–4, L ≈ 5–10, XL ≈ 10+). They are estimates offered for correction.
+**Sizes are relative build sizes, not calendar.** The unit is work sessions of the kind this program
+actually runs in: **S** ≈ 1, **M** ≈ 2–4, **L** ≈ 5–10, **XL** ≈ 10+. They are estimates offered for
+correction, not commitments. The same unit and the same scale are restated in `roadmap`
+§Phases at a glance, which sizes the five phases; this table sizes the items inside them.
 
 | Item | Size | What dominates it |
 |---|---|---|
-| 1a guard plumbing + honest baselines | **L** | not the guards—the D58 capability inventory, D90 isolation/change-accounting/preservation manifests, coverage activation, and diagnostic fingerprints over 1,344 test-lint errors + 2 warnings |
+| 1a guard plumbing + honest baselines | **L** | not the guards — the D58 capability inventory, D90 isolation/change-accounting/preservation manifests, coverage activation, and diagnostic fingerprints over 1,344 test-lint errors + 2 warnings |
 | 1b strict domain leaf + coverage activation | **L** | the exhaustive **bidirectional** runtime-dependency registry (D68 — every system endpoint, provider key, secret, feature flag, legacy env name, in both directions) |
 | 1c authority storage + recovery + type shell | **XL** | backup/doctor/degraded-mode/**restore drill** is a subsystem, not a table; plus the full command family + proof union types |
 | 1d semantic UI registry + drivers + task contracts | **XL** | inventorying every legacy selector key into one canonical-id registry with search terms and explicit `supersedes` links, then the driver boundary + effect overloads + capability + provider narrowing |
-| 1e workflow DAG + delegation + completion | **XL** | starts with the real-scale type proof (below); delegation policy matrix + completion program are each substantial on their own |
-| 1f registry + workers + commands + write sequencer | **XL** | the write sequence (probe→prepare→binding proof→fence→commit→proof→atomic outbox) plus one-item worker/session ownership and evidence-qualified negative recovery |
+| 1e workflow DAG + delegation + completion | **XL** | starts with the real-scale type proof (§Exit criteria); delegation policy matrix + completion program are each substantial on their own |
+| 1f registry + workers + commands + write sequencer | **XL** | the write sequence (probe → prepare → binding proof → fence → commit → proof → atomic outbox) plus one-item worker/session ownership and evidence-qualified negative recovery |
 | 1g-spine spans + the one projection | **M** | thin by design — emission + one projection, no services |
-| 1i-spine exact Person Lookup surface slice | **M** | thin by capability, exact by presentation — the target is already ratified and demoed (`?view=rebuild-demo`) |
+| 1i-spine exact Person Lookup surface slice | **M** | thin by capability, exact by presentation — the target is already ratified and demoed |
 | **Phase 1 total** | **XL** | four XL items on the critical path; this is the program's centre of mass |
-| Phase 2 transaction proof | **L** | mostly protocol + crash matrix; needs a named live target (§3.8) |
+| Phase 2 transaction proof | **L** | mostly protocol + crash matrix; needs a named live target |
 | Phase 2 tails 2g / 2h / 2i / 2j | **L / XL / L / M** | 2h is the largest tail (four service stores + mapping + manifests + capture + Edit Data) |
 | Migration orders 0–3 (reads, downloads, OCR pipeline) | **M** each | store population; high reuse payoff, low risk |
 | Migration orders 4–7 (OCR fan-out, i9, single writes, ServiceNow/OnBase) | **L** each | first gates, first workflow-specific commits, first upload-verify |
 | Migration orders 8–9 (separations, onboarding) | **XL** each | deepest write-safety proofs + the identity gate + roster ingest |
 
-**Delivery tiers — what may slip without invalidating the base.** The charter lists 27
-non-negotiables and every one is currently mandatory, with no articulated reduced-scope fallback
-behind the stop-loss (§5.1). These tiers give a paused/reassessed rebuild a defined shape:
+**As built, this table is the tree.** Every row above is the `size:` attribute on its node today —
+`{#p1-base}` L, `{#p1-authority}` XL, `{#p1-kernel}` XL, `{#p1-spine}` M, `{#p2-proof}` L,
+`{#p2-2g}` L, `{#p2-2h}` XL, `{#p2-2i}` L, `{#p2-2j}` M, `{#order-0}`–`{#order-3}` M,
+`{#order-4}`–`{#order-7}` L, `{#order-8}` and `{#order-9}` XL. Nothing was re-estimated after the
+fact. The one estimate currently under test is `{#order-8}`'s XL: separations is in flight at 8 of
+9 exit criteria, which is the first real measurement this model will get for a migration.
+
+**The table is no longer the whole inventory.** Five nodes minted since D76 are sized in its unit
+and were never in it — `{#dash-defaults}` L, `{#duo-lease}` S, `{#parallel-runs}` L,
+`{#observed-logs}` M, `{#test-tiers}` L. That is the model being applied rather than a gap: a new
+node gets a size because the notation asks for one. It is recorded here so a reader does not read
+this table as a closed list.
+
+**Delivery tiers — what may slip without invalidating the base.** The charter's numbered target
+architecture is **items 1–27**, and every one of them is mandatory, with no articulated
+reduced-scope fallback behind the program stop-loss (`05-cut-over.md` §Program stop-loss / abort
+gate). These tiers give a paused or reassessed rebuild a defined shape:
 
 - **MUST (the spine — never cut).** Write-safety contract and the transaction sequence; authority
   storage + recovery; fail-loud/strict schemas; task/descriptor contracts; executor + command
@@ -318,17 +346,31 @@ behind the stop-loss (§5.1). These tiers give a paused/reassessed rebuild a def
   AI advisories; generated UI catalog UI; knowledge/fix-record tooling; activity-report demo.
   Nothing in the write path depends on any of them, but Phase 3 does not begin until 2i closes.
 
-**Already-ratified trims folded in (D79).** DSL graph-authoring mode — cut (§Phase 2). Notification
-lifecycle — read/unread + snooze, actor-keyed inbox, not a five-state lifecycle. Commands — keep
-`version` + `actor` wire fields everywhere (multi-user seam, D75), enforce CAS only where a real
-race exists (cancel-tree, edit-vs-resume, gate resolution, write-recovery). Capture crash-proofing
-— durable sessions + one durable finalize outbox, not a restart-between-every-state matrix. Ledger
-hash-chain — deferred until multi-user is real; the never-pruned ledger, atomic outbox, single
-projector, and actor attribution all stay. Task authoring — a **lightweight tier** exists
-(**ref task-contract §2.7** owns the three tiers, and the tier is *derived* from effect + store kind, never
+_As built, the tiers were never used as a fallback — every item in all three shipped, and 2i closed
+before Phase 3 began. Two things did leave Phase 2, and neither is a tier slip: the Workflow
+Explorer's **EDIT** half was REASSIGNED by **D186** (the read-only half, which is what the LATER tier
+names, shipped), and the production byte path was deferred by **D189**. Both carry named triggers in
+`04-close-the-deferrals.md`, and the LATER tier's own rule — nothing in the write path depends on
+these — is why deferring them cost no correctness._
+
+**Already-ratified trims folded in (D79).** DSL graph-authoring mode — cut. Notification lifecycle —
+read/unread + snooze, actor-keyed inbox, not a five-state lifecycle. Commands — keep `version` +
+`actor` wire fields everywhere (multi-user seam, D75), enforce CAS only where a real race exists
+(cancel-tree, edit-vs-resume, gate resolution, write-recovery). Capture crash-proofing — durable
+sessions + one durable finalize outbox, not a restart-between-every-state matrix. Ledger hash-chain
+— deferred until multi-user is real; the never-pruned ledger, atomic outbox, single projector, and
+actor attribution all stay. Task authoring — a **lightweight tier** exists (**`ref:task-contract`
+§2.7** owns the three tiers, and the tier is *derived* from effect + store kind, never
 self-declared): a `workflow:` mini-store pure read needs schemas + example only; browser reads add
-freshness/provenance/subject; commits pay full fare. A **`scaffold new-task` / `scaffold new-workflow`
-generator** is part of the base — the declaration toil is only acceptable if it is generated.
+freshness/provenance/subject; commits pay full fare. A **`scaffold new-task` / `scaffold
+new-workflow` generator** is part of the base — the declaration toil is only acceptable if it is
+generated.
+
+_As built: every trim above held, and the last sentence did not. The generators do not exist
+(§Phase summary), so the lightweight tier is carrying the authoring cost on its own. D79's DSL cut
+also outlived its own phase — **D186** reassigned the workflow editor's edit half on D79a's argument
+one level down, and `{#deferred}`'s standing "never, by design" list still names DSL/codegen workflow
+authoring._
 
 ## Decisions this phase ratified
 
