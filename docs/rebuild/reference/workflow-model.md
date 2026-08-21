@@ -1685,6 +1685,8 @@ production included (charter §9) — MFA is not a gate and never parks a run.
 
 ## 5. Start-anywhere resumability
 
+<!-- roadmap: p1-authority -->
+
 ### 5.1 The tension, stated precisely
 
 Input is constant, but task N's *task input* is usually `f(input, outputs of tasks < N)`.
@@ -1692,27 +1694,34 @@ Input is constant, but task N's *task input* is usually `f(input, outputs of tas
 refuse loudly**. Nothing in between — a guessed or defaulted upstream value is exactly the
 silent-fallback class the root CLAUDE.md bans.
 
-### 5.2 Mechanisms compared (honestly)
+### 5.2 Mechanisms compared — SETTLED
 
-**A. Checkpoint replay (checkpointed run context, zod-validated at entry).** Persist every task's
-schema-parsed output as a checkpoint. "Start at N" loads N's declared ancestor checkpoints,
-re-validates each against its current schema/fingerprints, then runs N's bind + input parse.
-*Pros:* no re-execution of side effects; works after crash; hand-supplied data validates through
-the same schemas; serializability enforced for free (a Page handle can't pass a zod parse).
-*Cons:* a checkpoint can go stale against the live system (**mitigated structurally by D8 —
-§5.5**); schema evolution invalidates old checkpoints (loud refusal, but a refusal); needs a store.
+Three mechanisms were weighed in 2026-07-22 and §5.3 chose the first. The comparison itself is
+`history/superseded/2026-08-21-workflow-model-5.2-mechanisms-compared.md`; the settled result, which
+is what a reader needs here, is three sentences.
 
-**B. Re-derivation (recompute the prefix).** *Pros:* always consistent with live truth.
-*Cons:* **disqualifying** as the general mechanism — write tasks are not idempotent (re-running a
-Save = a duplicate HR transaction), and it forfeits exactly what resume-after-crash needs. Where
-it *is* right: volatile read-guards (live-page dupe probes).
+**A. Checkpoint replay is the model.** Persist every node's schema-parsed output; "start at N" loads
+N's declared ancestor checkpoints, re-validates each against its current schema and fingerprints,
+walks freshness (§5.5), then runs N's bind and input parse. It re-executes no side effect, works
+after a crash, validates hand-supplied data through the same schemas, and gets serializability free
+— a `Page` handle cannot pass a zod parse. Its two costs are real and are handled rather than
+denied: a checkpoint can go stale against the live system (structurally answered by D8's freshness
+walk) and schema evolution invalidates old checkpoints (a loud refusal, but a refusal).
 
-**C. Widened entry schemas (every upstream field optional-with-self-lookup).** Rejected outright —
-it moves lookup logic into every task, makes every contract field optional (mushy types), and is
-structurally a silent fallback: "missing because the pipeline broke" becomes indistinguishable
-from "missing by design".
+**B. Re-derivation survives only as a per-node policy.** Recomputing the prefix is disqualifying as
+the general mechanism — write tasks are not idempotent, so re-running a Save is a duplicate HR
+transaction, and it forfeits exactly what resume-after-crash needs. Where it IS right is the
+volatile read: that is what `replay: "always-rerun"` is, and §5.3 makes the choice explicit per node
+with no default.
+
+**C. Widened entry schemas were rejected outright** — optional-with-self-lookup on every upstream
+field moves lookup logic into every task, makes every contract field mushy, and is structurally a
+silent fallback: "missing because the pipeline broke" becomes indistinguishable from "missing by
+design", which is the one substitution this program bans everywhere.
 
 ### 5.3 Recommendation: checkpoint replay with explicit per-node policy
+
+<!-- roadmap: p1-authority -->
 
 Every resumable read node declares `replay` explicitly — **no default**:
 
@@ -1731,6 +1740,8 @@ Every resumable read node declares `replay` explicitly — **no default**:
 intent is reused, an unfinished intent enters recovery, and no path resumes directly at commit.
 
 ### 5.4 Exact failure behavior
+
+<!-- roadmap: p1-kernel -->
 
 Entry validation runs at claim time, **before any browser launches** (a doomed resume must not
 spend a Duo). On failure the run lands terminal `failed` with:
@@ -1792,6 +1803,8 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
   indeterminate (`ambiguous`/`unknown`/throw), never blindly.
 
 ### 5.6 The four scenarios
+
+<!-- roadmap: p1-authority -->
 
 1. **Retry a failed node.** Failure at node k ⇒ retry = new attempt, `startAt = k`. The attempt is
    the ITEM's, and a retry is a new RUN that takes the item's next unspent one (**D221**, §5.7) —
