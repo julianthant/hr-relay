@@ -6,8 +6,9 @@ which is doc 03b's). The count is recounted here rather than inherited: `config/
 holds 15 `legacy-workflow-*` entries, and removing separations (order 8) and person-lookup (order 0,
 migrated — though its directory stays open until order 1) leaves 13 workflow directories this phase
 has to close. Order 1 also puts two MODES on the already-migrated person-lookup, which is a change to
-an existing workflow rather than a fourteenth. Phase 3 is three docs: **3a** finishes the dashboard
-(`03a`), **3b** finishes separations (`03b`), **3c** is this one. It holds those tasks, what is done
+an existing workflow rather than a fourteenth. Phase 3 is four docs: **3a** finishes the dashboard
+(`03a`), **3b** finishes separations (`03b`), **3c** is this one, **3d** puts Claude on the same
+dashboard as a second actor (`03d`). It holds those tasks, what is done
 and what is left, and its exit criteria; contracts it built live in `reference/`. It also hosts
 **§Testing tiers** — the shape every migration below adds its tests to — because the tiers are a
 property of migrating a workflow, not of any one workflow; the tiers' own normative spec is

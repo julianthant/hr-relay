@@ -511,7 +511,7 @@ builds:
 - [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard`
 - [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file
 - [ ] BE the subject registry (labels in config, values outside git) + the durable `dry_run_scenario_results` row + `cli dry-run-scenario`
-- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded
+- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded (driven by the `{#claude-operator}`'s MCP tools)
 - [ ] BE coverage floor 80/80/80 global
 
 needs:
@@ -521,6 +521,133 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion ref guards-and-tests | §10 written as-built against vitest.config.ts, run-executor/write-sequencer, tests/scenario, tests/parity and separations §9.22 (dc2901de); §7's stub lane verified NEVER PORTED → history; measured 84.23/82.15/84.74/71.76 · left: 5.2b–5.2d
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Testing tiers filled against §10: the DOCS line ticks (dc2901de), the six code lines stay open. Confirmed NO workflow in the tree has a T1 pair yet — `tests/scenario/workflows/` does not exist, including for the migrated person-lookup
+
+### Co-operate with Claude — a second actor on the one local BFF {#claude-operator}
+status: planned
+date: R15 · 2026-08-21
+size: L
+doc: 03d §Phase summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
+
+> R15, the operator 2026-08-21. Claude Code, in the operator's own terminal and with NO api key — the terminal session IS the credential — becomes a SECOND ACTOR on the one local BFF: it reaches the same command protocol and the same read models over loopback through a local MCP server, and it monitors the whole dashboard through the SSE stream, the observed log and the notification inbox. Full parity — start runs, dry runs, retry/cancel, edit data, archive, settings, intake, explorer reads, notifications — with ONE exception, the **two-actor rule**: an identity gate or a controlled commit resolved by the `claude` actor is recorded `pending-confirmation`, has no effect, and lands only on a second approval by a DIFFERENT actor. What it INHERITS: the ONE command protocol and its CAS `expectedVersion`, so two operators racing get D253's named conflict rather than a silent overwrite; D181's `server` role lock, so there is ONE BFF even with the web dashboard AND the desktop app open, and each of them — Claude included — is a client of the one local port; the spine's unowned `requestedBy` residual, which becomes ENFORCEABLE the moment a second actor exists; ref write-safety §14's human control, which becomes the two-actor rule rather than being widened; and `{#observed-logs}`, which is what makes monitoring legible at all. R10's agent-operated T4 tier IS this capability. Nothing is built: `grep -rn mcp package.json src` matches nothing, and the BFF has no actor model beyond one literal.
+
+needs:
+- dash-defaults
+- observed-logs
+
+log:
+- 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
+
+#### Actor identity and the two-actor rule {#claude-actor}
+status: planned
+date: R15 · 2026-08-21
+size: M
+doc: 03d §Actor identity and the two-actor rule · ref:frontend-backend-integration §3.4 · ref:write-safety §14
+
+> The actor stops being a literal and becomes a derived fact. A closed union of two ids, a server that DERIVES the acting actor from the caller's own credential instead of trusting a request body, and a per-family policy table: parity everywhere, two-actor on the four arms that authorize a real HR write. This is first because an MCP server built before it would stamp `local-operator` on everything Claude does, and ref operator-trust already says why that cannot be repaired later — an immutable ledger's old rows have no honest answer.
+
+builds:
+- [ ] BE a closed actor union — `local-operator` and `claude` — replacing the `z.literal` in `src/domain/ids.ts:136` and the config `actor` default
+- [ ] BE `requestedBy` ENFORCED: the server derives the actor from the caller's credential, rejects a mismatched body and stamps the derived value (the spine's one unowned residual, doc 01)
+- [ ] BE the per-family parity table — two-actor for `gate/resolve-gate`, `run/resolve-write-present`, `run/resolve-write-absent` and a `start-run` with `dryRun: false`; parity everywhere else
+- [ ] BE a `pending-confirmation` resolution with NO effect until a DIFFERENT actor confirms it, re-binding the same evidence digest (a schema version; read-forward, since every existing row is a settled single-actor resolution)
+- [ ] WIRE attribution rendered wherever an actor is already durable — gate `resolvedBy`, `plannedBy`/`appliedBy`/`archivedBy`, the D82 evidence receipt
+- [ ] BE a guard: no command path stamps an actor the request did not authenticate, and no two-actor arm settles with one — with a violating fixture
+
+needs:
+- dash-defaults
+
+log:
+- 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
+
+#### The local MCP server {#claude-mcp}
+status: planned
+date: R15 · 2026-08-21
+size: L
+doc: 03d §The local MCP server · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.5 · ref:frontend-backend-integration §3.6
+
+> A loopback MCP server that is a CLIENT of the BFF, never a second server and never a second wire — it reuses `src/dashboard/client/transport.ts` rather than re-implementing it. A write tool per command family, a read tool per read model, and a tail over the one stream. The local port is not the new thing: the listener already binds `127.0.0.1` and refuses anything else. What is missing is a client Claude Code can speak to.
+
+builds:
+- [ ] BE the loopback MCP server over `/api/v1/**`, started from the CLI and registered in a project-scoped `.mcp.json` so the capability travels with the checkout
+- [ ] BE a write tool per command family — start plan + confirm, gate resolve, run retry/cancel/bump/rename, edit data, archive, settings, intake, notifications, capture, bulk
+- [ ] BE a read tool per read model — bootstrap, the day wire, run detail and every lazy section, the evidence receipt, archive, explorer, the activity report, the storage doctor, the UI catalog
+- [ ] BE a `tail` tool over the SSE stream — `Last-Event-ID` resume, `reset-required` reported rather than swallowed
+- [ ] BE actor `claude`, and the CAS `expectedVersion` passed through from the read that produced it — never cached across turns
+- [ ] BE both refusal arms surfaced verbatim (D253), only actions the served descriptors declare, and D226's ceremony obligations honoured by an agent surface too
+- [ ] BE a refusal BY NAME when no BFF answers — the MCP server never starts one, because D181 admits exactly one `server` holder
+
+needs:
+- claude-actor
+
+log:
+- 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
+
+#### Monitoring — the stream, the inbox, the observed log {#claude-monitor}
+status: planned
+date: R15 · 2026-08-21
+size: M
+doc: 03d §Monitoring — the stream, the inbox, the observed log · ref:operator-trust §6 · ref:frontend-backend-integration §3.5
+
+> The stream is already cursor-resumable and the projector is already fed by a disk tail, so a second reader is nearly free. The hole is per-actor: the inbox is read for ONE hardcoded id and rides the day wire with no route of its own. And a log of step names teaches an agent nothing — `{#observed-logs}` is what turns monitoring into something worth handing to a second watcher.
+
+builds:
+- [ ] BE the notification inbox served PER ACTOR — `run-queue-projection.ts:1518` reads one hardcoded id today
+- [ ] BE read / unread / snooze scoped to the acting actor's own rows — a notification is owned by an actor, not broadcast
+- [ ] BE a durable per-actor stream cursor, so a terminal session that ended resumes instead of re-reading the day
+- [ ] BE a "what changed since `<cursor>`" read that answers in one call
+- [ ] WIRE the observed log as a read tool — `{#observed-logs}`' provenance points, redacted by the declared evidence classification
+- [ ] PROOF a tail that reports its own degradation — `reset-required` and the health transitions surfaced, never a silent re-snapshot
+
+needs:
+- claude-mcp
+- observed-logs
+
+log:
+- 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
+
+#### One BFF, two clients {#claude-clients}
+status: planned
+date: R15 · 2026-08-21
+size: M
+doc: 03d §One BFF, two clients · ref:frontend-backend-integration §6.9 · ref:clock-config-secrets §3
+
+> "What happens if the user has both open" was answered by D181 before anyone asked it: the `server` role lock is taken before the authority database opens, so there is never more than one BFF on the machine. The web dashboard, the desktop app and Claude's MCP server are three clients of one port, one journal and one projection — which is what makes two actors safe rather than merely convenient.
+
+builds:
+- [ ] BE the role lock ELECTS the host; a second app attaches to the running BFF as a client and never starts a second one (doc 06's Electron half)
+- [ ] FE every actor-bearing surface renders the actor rather than assuming it — gate `resolvedBy`, `archivedBy`, `plannedBy`, the receipt, the notification row
+- [ ] BOTH a client roster the operator can see — who is attached right now and what each last did; live-only, and it says so rather than pretending to be durable
+- [ ] WIRE the no-BFF refusal, named, from every client — and never naming npm inside a packaged app (doc 06)
+- [ ] PROOF the conflict path as ORDINARY traffic — two clients on one run version, both refused by name with the server's `currentVersion`, neither reporting success
+
+needs:
+- claude-actor
+
+log:
+- 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
+
+#### Proof — a Claude-driven dry run, attributed end to end {#claude-proof}
+status: planned
+date: R15 · 2026-08-21
+size: M
+doc: 03d §Proof — a Claude-driven dry run, attributed end to end · ref:guards-and-tests §10
+
+> R10's T1 shape driven from a different client. Separations is the subject because it carries the ALWAYS-GATE and a transaction node, so the two-actor rule is exercised on the arm it was written for. One agent, one scenario — the parallel T4 tier comes later, after `{#parallel-runs}` and `{#duo-lease}`.
+
+builds:
+- [ ] PROOF a Claude Code session drives a separations dry run end to end through the MCP tools — start, watch, gate, settle — with no dashboard click
+- [ ] PROOF every action attributed to `claude` in the command journal, the spans and the evidence receipt
+- [ ] PROOF one identity gate proposed by claude and confirmed by the operator, plus the decline, the stale-digest re-open and the refused self-confirmation
+- [ ] PROOF both apps open during the run, one BFF, one journal, proved from the lock files
+- [ ] PROOF the result recorded durably the way every dry-run scenario is (R10), written as T4's first journey rather than as a transcript
+
+needs:
+- claude-mcp
+- claude-monitor
+- claude-clients
+
+log:
+- 2026-08-21 | docs-cohesion R15 | drawn from the operator's instruction; nothing built
 
 ### Separations — order 8, the first migration {#order-8}
 status: planned
@@ -1529,7 +1656,7 @@ log:
 _Lifted from the master plan's §0 on 2026-08-20 (cohesion step 3a) — verbatim except
 where a name moved: the design docs are now cited by slug under `docs/rebuild/reference/`, and the
 plan's own numbers are the phase docs `docs/rebuild/00`–`06` (the number IS the phase; phase 3 is
-three docs, `03a`/`03b`/`03c`). The master plan itself was dissolved into those docs on the same day
+four docs, `03a`/`03b`/`03c`/`03d`). The master plan itself was dissolved into those docs on the same day
 (step 3b); its as-written record, with a section-by-section table of where everything went, is
 `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`._
 
@@ -1585,8 +1712,8 @@ The operator's vision and the non-negotiables stay `reference/charter` (was doc 
 phases, tasks, exit criteria, the migration order, the deferrals and the cutover — is this file plus
 the phase docs under `docs/rebuild/`, one per tree phase: `00-design-the-foundation` ·
 `01-build-the-spine` · `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` ·
-`03b-finish-separations` · `03c-migrate-the-remaining-workflows` · `04-close-the-deferrals` ·
-`05-cut-over`.
+`03b-finish-separations` · `03c-migrate-the-remaining-workflows` · `03d-co-operate-with-claude` ·
+`04-close-the-deferrals` · `05-cut-over` · `06-ship-the-desktop-app`.
 
 ### Standing rule — each completed phase documents itself
 
@@ -1606,19 +1733,28 @@ re-verifies it, and its four internal §-refs are repointed to the phase docs th
 sections. Each phase's detail — its work items, what is done, its exit criteria — is its own doc
 under `docs/rebuild/`; the tree above is the same set of phases as nodes._
 
+_**Three rows were ADDED and one renumbered on 2026-08-21** — `3d` (R15), `4` and `6` (R14), with the
+cutover row renumbered `5` to match the shelf. The master plan's table stopped at the cutover and the
+shelf did not, so the sentence above — the same set of phases as nodes — was false for three of them.
+A glance table that omits a phase is worse than no glance table: it reads as a complete list._
+
 | Phase | Headline deliverable | Gate to exit | Size |
 |---|---|---|---|
 | **0** | Corrected foundation design approved; empty rebuild repo | **COMPLETE 2026-07-31:** decisions reconciled through Round 12; testing policy ratified; executable feasibility + honest gate baseline recorded; write-proof probes carry explicit later milestone gates (`doc 03c` §Live probe status) | **M** |
 | **1** | **The SPINE** — the minimum base that can carry one workflow end to end (1a–1f + the span/projection slice + the queue-surface slice) | **COMPLETE 2026-08-04.** 1a + 1b COMPLETE 2026-07-31; 1c + 1d + 1e COMPLETE 2026-08-01; **1f + 1g-spine + 1i-spine COMPLETE 2026-08-04**. The phase exit — **person-lookup ran LIVE on the spine** (D74) against real UCPath + CRM, run `4ebf7275-0158-49af-a78f-1f37948efb27` / trace `pl-000619-4ebf` — is **MET**; full gates green; strict/subject/control/delegation/recovery/scenario fixtures pinned. Evidence and the carried-forward presentation defects are recorded under §Phase 1's exit criteria | **XL** |
 | **2** | **Transaction proof, then the deferred base tails** — controlled real commit + crash/recovery, *then* trust tails, data services/intake/capture, explorer | subject-bound dry-run and controlled commit/crash/outbox/ledger proof green; then evidence/notification/knowledge, intake/capture/Edit-Data, and read-only explorer land against a proven spine | **XL** |
 | **3+** | Per-workflow rebuild migration, one at a time (order: `doc 03c` §Recommended migration order), plus explicit non-workflow capability closure (`doc 03c` §Non-workflow capability closure inventory) | each: §b questionnaire answered; isolated live dry-run + controlled write evidence where applicable; every capability inventory entry advances to native/replaced/retired; docs updated; legacy production remains authoritative until the final gate | **XL** |
-| **Cutover** | One all-at-once production authority switch (D89) | every workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; imports versioned/idempotent; launcher switches atomically; rollback bridge verified; legacy code/tests preserved | **L** |
+| **3d** | **Co-operate with Claude** — a second actor on the one local BFF: Claude Code in the terminal, a local MCP server, full parity except the two-actor rule on identity gates and controlled commits (`doc 03d`, R15) | MCP server registered and usable from the terminal; the parity table ENFORCED rather than documented; the two-actor rule proved on one identity gate; both apps open on one BFF; monitoring legible (`doc 03d` §Exit criteria) | **L** |
+| **4** · Deferred | Every "I want X; the plan said Y; Y is deferred" answer, each with the **trigger** that ends it (`doc 04`) | not a dated block of work: a deferral closes with the decision that ends it, and `doc 05` §Exit criteria names none of them, so none blocks the cutover | **—** |
+| **5** · Cutover | One all-at-once production authority switch (D89) | every workflow/shared capability ready; legacy enqueues stopped; active/uncertain work reconciled; both states backed up; imports versioned/idempotent; launcher switches atomically; rollback bridge verified; legacy code/tests preserved | **L** |
+| **6** | **Ship the desktop app** — the rebuild delivered as a Mac and Windows application: an Electron shell over the BFF, the worker pool the app owns, keychain credentials, signed installers (`doc 06`, R14) | installable on both operating systems with no checkout and no npm; a real workflow dry run from the INSTALLED app on both; credentials never in a file the app ships; the worker survives sleep or refuses loud (`doc 06` §Exit criteria) | **L** |
 
 **Reading the Size column.** These are relative build sizes, not calendar — the calendar depends
 on session cadence, which the plan does not own. The unit is *work sessions of the kind this
 program actually runs in*: **S** ≈ 1, **M** ≈ 2–4, **L** ≈ 5–10, **XL** ≈ 10+. They expose
 delivery risk and help keep a long coexistence program tractable. Per-item sizes are in `doc 00` §Size model + delivery tiers; they are estimates
-offered for correction, not commitments.
+offered for correction, not commitments. **Phase 4 carries no size on purpose** — it is not a block of
+work but eight named absences, each sized by the decision that ends it.
 
 ---
 

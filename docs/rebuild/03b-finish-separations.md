@@ -3,9 +3,11 @@
 Phase 3 migrates the legacy workflows one at a time. **Phase 3b is the FIRST of them** — separations,
 order 8 — chosen deliberately as the hard entry because a big multi-system workflow forces the store
 task libraries into existence for every migration after it (D193). This doc carries phase 3's own
-tree node `{#phase-3}` and the whole separations subtree; Phase 3 is three docs — **3a** finished the
+tree node `{#phase-3}` and the whole separations subtree; Phase 3 is four docs — **3a** finished the
 dashboard (`03a-finish-the-dashboard.md`, `{#dash-defaults}`), **3b** is this one, **3c** migrates
-the remaining twelve workflows (`03c-migrate-the-remaining-workflows.md`, `{#migrations}`).
+the remaining twelve workflows (`03c-migrate-the-remaining-workflows.md`, `{#migrations}`), and
+**3d** puts Claude on the same dashboard as a second actor (`03d-co-operate-with-claude.md`,
+`{#claude-operator}`).
 
 **What lives where.** This doc holds the work, its state at HEAD and its exit. The contracts it
 built or amended live in `reference/`. The as-built record of the migration itself — every live
