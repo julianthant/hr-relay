@@ -1151,9 +1151,13 @@ Verified on both real stacks. The 44-page I-9 scan's first four pages group as f
 an emergency-contact run, with page 2's sticky-note-covered name surfaced as unidentified rather than
 dropped.
 
-**Not built:** the sectioned-subject case (an I-9 §1 + §2 as one subject) and its orphan outcome.
-Every form that exists today is one page per person, so that arm would be unreachable and untested —
-it lands with the `i9` form, where D157's flag-never-block decision applies.
+**Deferred at D158, and landed with the `i9` form one decision later (§4.10, D160):** the
+sectioned-subject case — an I-9 §1 + §2 as one subject — and its orphan outcome. At D158 every form
+in the tree was one page per person, so the arm would have been unreachable and untested. It is now
+`SubjectCompletenessSchema`'s third arm, `incomplete`
+(`src/domain/ocr/stack.ts:89-102`): a person whose pages cover only part of the form is FLAGGED and
+never blocked, which is D157's decision and legacy's `orphanSection2` before it — the missing page
+is a fact about the paper the operator fed in, not a reason to hide the person who IS there.
 
 ### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
 
