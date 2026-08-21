@@ -544,7 +544,7 @@ builds:
 - [ ] BE `duo_ceremony_leases` in authority + the lease token `defineVerifiedLoginRecipe` requires + the grace config leaf `timeouts.duoCeremonyLeaseGraceMs` (a D133 snapshot-generation change)
 - [ ] BE bounded waiters + the fresh-profile-once recovery, both failing by name
 - [ ] BE the guard: no login path without the lease, with a violating fixture
-- [ ] PROOF two workers' cold starts serialize (unit) + a live two-worker cold start + a ref execution-and-sessions §7.1 concurrency-matrix row in the same commit
+- [x] PROOF two workers' cold starts serialize — unit (`1c244a40`) + the LIVE two-worker cold start (2026-08-21) + the ref execution-and-sessions §7.1 concurrency-matrix row
 - [ ] DOCS the decision in `reference/execution-and-sessions` + `reference/decisions`
 
 needs:
@@ -553,6 +553,7 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Duo ceremony lease written; verified UNBUILT at HEAD — nothing named `duo_ceremony_leases` exists in `src/` and `defineVerifiedLoginRecipe` (`src/infra/browser/authenticated-application.ts:159`) takes system + verify + flow and no lease token; `doc:` tightened to ref execution-and-sessions §4.1 and §4.2
 - 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
+- 2026-08-21 | duo-lease E2 | PROOF closed live: two cold workers (`live-a` / `live-b`) on ONE credential serialized their Duo ceremonies — generation 3 released 20:49:58.033Z, generation 4 acquired 20:49:58.261Z, both `logged-in`, zero waiter refusals; ref execution-and-sessions §10 §Live proof is the record. The four BE / DOCS lines above landed in E1 (`bfc7d318` · `cb7f17f8` · `37e747f0` · `1c244a40`) and are ticked in doc 03a and ref execution-and-sessions §10; ticking them HERE and moving this node's `status:` is the plan owner's pass
 
 #### Parallel runs — sessions and the worker pool {#parallel-runs}
 status: planned
