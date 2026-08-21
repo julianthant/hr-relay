@@ -76,110 +76,6 @@ Section numbers are load-bearing: thirteen tree nodes carry a `ref:task-contract
 §2.9 → §2.10 → §2.11 → §2.12, which is also their chronological order.
 
 ---
-## Phase 1d ratified seam decisions (2026-08-01)
-
-Phase 1d implements one task/store/session vocabulary and imports the closed identities already
-owned by `src/domain/ids.ts`; it does not create a second type universe.
-
-- **D96 — one `SessionNeed`.** Every browser task uses
-  `{system, access:"read"|"transaction", session:"reuse-worker"|"fresh", exclusive?:true,
-  acceptDownloads?:true}`. A read contract requires `access:"read"`; prepare and commit require
-  `access:"transaction"`. Store/factory validation rejects an effect/access mismatch, a session
-  system that differs from the store, or `exclusive:true` anywhere except OnBase. OnBase is the
-  only identity-exclusive session-provider declaration.
-- **D97 — artifact identity and content identity remain separate.** Public artifact references use
-  the existing UUID-backed `ArtifactId`; SHA-256 is the immutable content identity and private
-  content-addressed storage key. Byte-identical puts return the same reference, but no public
-  contract exposes a filesystem path.
-- **D100 — provider scope stops at the seam.** Phase 1d lands capability/client/adapter interfaces
-  and deterministic fakes. Admission, rate/concurrency/cost budgets belong to 1f; production
-  provider pools and consumers belong to 2h. A 1d declaration must not pretend either later layer
-  is operational.
-- **D101 — reuse closed ids.** `BrowserSystemId`, `ProviderCapabilityId`, `TaskId`, and UI semantic
-  ids are imported/re-exported from their existing domain owners. Contract/store modules never
-  redeclare their unions.
-
-### Phase 1d as-built — sealed task-contract core (2026-08-01)
-
-`src/domain/contracts/` now owns one bundle-safe `defineTaskContract` factory with distinct read,
-prepare, and commit overloads. It validates the existing `TaskId` namespace, verb/effect agreement,
-recursively strict input/output/proof schemas (including arrays, unions, lazy nodes, and wrappers),
-canonical-JSON examples, literal unique error codes, browser-only subject observations, typed
-same-store read-task probe/verifier references, and service-only provider declarations. `any`,
-`unknown`, open nested objects, and decision-bearing records/collections fail the recursive audit.
-The runtime definition parser is an exact effect-discriminated union too: raw JavaScript callers
-cannot add outer keys, submit empty error-code lists, use a durable prepare checkpoint, or attach
-read-only artifact metadata to a write contract.
-Read contracts require freshness plus provenance and resolve every field override against actual
-own schema fields; subject input paths do the same and identity/match pairs must agree. Prepare
-contracts are in-memory-only. Commit contracts require a closed parsed `writeSafety` union,
-canonical proof↔output↔present-probe agreement, permanent idempotency recovery policy, and
-post-prepare subject timing. An unscoped commit must name a closed reviewed
-`UnscopedCommitReasonId`; free-text `subject.none` remains available only to non-commit contracts.
-Browser/service/full tiers require scenarios; only a pure
-`workflow:<id>` light read may start empty. A store registry resolves all scenario/probe/verifier
-refs against its corpus; the definition-time read reference also rejects commit-verb ids.
-
-The factory alone stamps `__sealed`, replaces `example` with its parsed canonical output, and
-deep-copies/freezes declarative metadata, including reviewed policy arrays and their future entry
-objects. Zod schemas and proof/key functions retain their original
-unfrozen identities. `unverifiableByPage` requires `policy:"always-park"`, an
-operator-attestation proof arm, and an exact reviewed-policy entry (the seed policy is empty).
-Dynamic idempotency keys are deliberately validated only when execution has real parsed input;
-definition sealing makes no fake claim about an input-free key proof.
-
-`src/base/task.ts` exposes narrow pure/read/prepare/commit contexts. Only the commit context contains
-the opaque `MutationCapability`; none of these seams mints it. `TaskError` pins the
-`[task-id] code: message` form, defaults unknown failures to non-transient `unhandled`, and keeps
-declared error codes literal through `taskFailer(contract)` inference. Browser contexts carry the
-store's concrete semantic driver type, not a `{system}` projection. A factory-owned invariant
-`DriverDeclaration<Driver>` binds that type to `defineTask`; the store factory requires the same
-declaration and re-checks its identity plus exact driver/store system matching at runtime. This
-contract-core slice deliberately contained no task impl, store, session, artifact writer, provider
-adapter, or runtime mutation token; the bounded 1d seam below now owns the declarations while 1f
-still owns execution and mutation-token minting.
-
-### Phase 1d as-built — bounded task/store/session/provider/artifact seam (2026-08-01)
-
-`src/base/task.ts` now binds sealed contracts to effect-specific implementations through
-`defineTask`. Literal-preserving `taskId(...)` values keep browser/service/workflow namespaces in
-the type system: reads request read access, prepare/commit request transaction access, headless
-tasks are sessionless, provider clients are narrowed to the contract's exact declared capability
-keys, and a browser implementation receives the concrete driver operations declared by its store.
-Browser `defineTask(driver, contract, impl)` and `defineBrowserStore(..., driver, ..., tasks)` must
-share the exact factory-owned driver declaration; this prevents both type-erasing a semantic driver
-to `{system}` and registering a task against a different same-system driver API. The runtime
-backstop independently checks declaration identity, effect/access/system agreement, OnBase-only
-exclusivity, download↔content-addressed-read agreement, read-only retry policy, and headless
-restrictions before freezing the task.
-
-`src/base/store.ts` declares browser, service, and workflow stores. The registry rejects duplicate
-namespaces/task ids, prefix/effect drift, unpaired corpus entries, and missing implementations, and
-calls `assertTaskContractReferences` for every registered task so scenario/probe/verifier
-resolution cannot be skipped at composition. All nine browser systems now have explicit store and
-session declarations. Their login callbacks fail loud as intentionally unwired Phase-1d seams;
-they are not operational auth implementations. UCPath records the existing semantic driver as
-ready, the other eight driver declarations remain unwired, and OnBase alone requires
-`exclusive:true`. No declaration imports or exports a raw Playwright page.
-
-The public artifact seam is strict `{id,sha256,bytes,mediaType}` and never exposes a root or backing
-path. The real writer accepts only `.tracker-rebuild/artifacts` beneath a non-symlinked absolute
-workspace (the supplied workspace path itself is checked with `lstat`), persists metadata+payload
-as one content-addressed object through temp write → file fsync → atomic no-replace hard-link
-publication → temp unlink → directory fsync, returns one stable UUID ref for byte-identical content
-across writer instances, rejects conflicting media metadata, and reads only exact
-id+digest+metadata matches. Fault injection proves cleanup and recovery at every write boundary; a
-real child-process `SIGKILL` before publication proves retry recovery too. The protocol has no
-digest lock to strand: concurrent same-digest writers race at atomic publication, and every loser
-validates the winner before returning its exact ref. A crash may leave an unpublished temp whose
-name records its owner PID; a retry removes it only after the OS reports that PID absent, never
-because an age threshold elapsed. The provider seam uses strict capability-tagged,
-schema-hash-bound canonical
-request and `produced|unavailable|invalid-response` result envelopes; deterministic
-adapters/clients exhaust fail loud and never translate failure into an empty success. Provider
-admission/rate/concurrency/cost budgets, production adapters/pools/consumers, browser acquisition,
-login wiring, session lifecycle, and worker execution remain owned by 1f/2h.
-
 ### Phase 1d as-built — the first `stores/common/` leaf (2026-08-01)
 
 `src/stores/common/` is now populated by its first shared leaf: the Kronos timecard check, ported
@@ -252,44 +148,6 @@ holds the line instead is that `TaskId` is a branded literal type minted by `tas
 projection derives from the contract corpus (§3.2). (5) held: `stores/*/impl/**` carries ported
 leaves with provenance, and `legacy-selector-port-provenance` pins 406 keys to a fixed legacy
 commit's blobs.
-
-## Phase 1f executor ratification (2026-08-02)
-
-Phase 1f turns two Phase-1d seams into mandatory runtime behavior:
-
-- **Task provenance is collected, never inferred after the fact.** The executor constructs one
-  real collector for every `TaskCtxCommon`; production `recordData` cannot be omitted, replaced by
-  a no-op, or reconstructed from log prose. Each point is parsed through the strict `DataPoint`
-  boundary and attached to the current run/attempt/node/task span. Before a read output may become
-  a checkpoint or terminal-result dependency, the kernel checks the contract's resolved
-  `provenance` policy: every `live` output field has a point recorded during that execution, while
-  every `derived` field receives the complete declared upstream provenance with the oldest
-  contributing `observedAt`. Missing or contradictory provenance fails the task before durable
-  output. `fakeCtx` must supply an explicit recording fake so a unit test cannot accidentally prove
-  a production no-op.
-- **Provider admission is one generic kernel service.** Every `ctx.providers` call enters the same
-  capability-indexed admission path before an adapter can perform remote I/O. It applies the
-  immutable run config snapshot's timeout/abort, concurrency, rate, daily-usage, and cost limits;
-  records reservations/outcomes with the provider evidence; and returns a typed unavailable result
-  when admission cannot be granted. Counters and leases whose reset would change an admission
-  decision survive worker restart in authority storage. Tasks cannot hold a worker while sleeping
-  for provider capacity or bypass admission through an SDK/raw-network import. Phase 1f supplies
-  this capability-neutral core and deterministic adapters only; production provider pools and
-  OCR/geocoding/AI consumers remain Phase 2h.
-
-**D112 as built (2026-08-03).** A task-visible admitted client accepts only the strict canonical
-payload; it has no caller-supplied signal, timeout, deadline, budget, adapter, or admission id. The
-adapter boundary separately exposes a local conservative maximum-cost `estimate` and one `invoke`
-that receives only the kernel-composed abort signal, monotonic deadline, and durable admission id.
-The adapter result is strict response + measured usage + already-redacted evidence. The kernel
-reserves first, invokes outside SQLite, and durably settles before returning produced data; failure
-to settle after remote I/O is an explicit uncertain outcome and never leaks the response. Abort and
-deadline race the invocation itself, so even an adapter that ignores its signal releases the worker
-turn while the durable reservation retains conservative accounting. The Phase-1f deterministic
-harness observes estimates/invocations and scripts zero/fixture cost, abort, throw, malformed, and
-unavailable cases; it is not a direct client bypass.
-
----
 
 ## 2. The Task contract
 
@@ -485,333 +343,187 @@ and the factory's `output.parse(example)` plus `canonicalJsonStringify` is the r
 
 A task is **two files**:
 
-- **contract**—plain data, bundle-safe, in the matching system/service/workflow contract namespace:
-  id, zod
-  input/output, `title`, `effect`, `errorCodes`, `freshness` (reads), write safety (commits),
-  and a **mandatory `example` output**. Descriptors (ref workflow-model) and the dashboard import contracts
-  ONLY. E2e stubs derive their **minimum happy-path value** from `example` (schema-parsed); failure,
-  cancellation, concurrency, delegation, mismatch, and recovery behavior comes from the checked-in
-  `ScenarioManifest` corpus (ref operator-trust). Examples are fixtures, never behavioral coverage.
-- **impl**—`run` + session needs + read retry, in the matching store's `tasks/`, imports its typed
-  system driver API and the store-owned driver declaration. Only `stores/<system>/driver/**` and
-  session infrastructure import Playwright. `defineTask(driver, contract, impl)` binds browser
-  implementations; headless service/workflow tasks use `defineTask(contract, impl)`. The store is
-  the only impl registry.
+- **contract** — plain data, bundle-safe, at `src/domain/contracts/<store>/<verb-object>.ts`: id,
+  zod input/output, `title`, `effect`, `errorCodes`, `subject`, `scenarios`, a mandatory `example`,
+  plus `freshness`/`provenance` (reads) or `writeSafety` (commits). Descriptors (ref
+  workflow-model) and the dashboard import contracts ONLY.
+- **impl** — `run` + session needs + read retry, at `src/stores/<store>/tasks/<verb-object>.ts`. It
+  imports the store's driver declaration and its typed driver API. Only `src/stores/*/driver/**`
+  and `src/infra/browser/**` may touch Playwright (guard `task-driver-boundary`).
+  `defineTask(driver, contract, impl)` binds a browser task; a headless service or workflow task
+  uses `defineTask(contract, impl)`. The store is the only impl registry.
+
+**There is no contract barrel, and nothing needs one.** `src/domain/contracts/index.ts` re-exports
+`base.ts` and `write-safety.ts` and nothing else; each contract module is imported by name where it
+is used. The **contract corpus** — the closed `(id, effect)` list every reference resolves against
+— is projected from the REGISTERED STORES in `src/stores/index.ts` (`corpusFor`), so a contract
+that no store binds is not in the corpus at all, and `defineTaskStoreRegistry` refuses both
+directions: a registered task absent from the corpus, and a corpus id with no implementation. This
+is the correction to a long-standing sentence in this doc: the barrel was the design, the store
+registry is the as-built, and the store registry is strictly stronger — a barrel can list a
+contract nobody implements.
+
+**`example` is a checked fixture, and its original consumer was never built.** The factory parses
+it through `output` and the SEALED contract carries the PARSED canonical value in its place
+(`Sealed<Contract, Output>` replaces `example: z.input<Output>` with `z.output<Output>`), so
+`contract.example` is always canonical, always JSON-stringifiable and always schema-true. Three
+guards read it: `descriptor-coverage` re-parses every registered contract's example,
+`write-safety-contract` runs the commit proof round-trip over it, and `evidence-receipt` walks its
+leaves to prove every one has a declared redaction classification. What does NOT read it is an e2e
+stub lane — `maybeWrapE2EStub` and the per-workflow stub map were designed in D3 and never ported
+(`history/superseded/2026-08-20-guards-and-tests-stub-lane.md`, verified against the tree
+2026-08-20). Behavioural coverage comes from the registered `ScenarioManifest` corpus (ref
+operator-trust) and, from R10 onward, from live dry-run scenarios; the example is a value fixture
+and never coverage.
 
 ```ts
-// src/domain/contracts/base.ts (continued)
-export interface TaskContractBase<
-  Id extends TaskId,
-  In extends z.ZodType,
-  Out extends z.ZodType,
-  Codes extends readonly [string, ...string[]],
-> {
-  id: Id;
-  /**
-   * Human label. This is the DEFAULT for the descriptor's step.label (D16);
-   * the only override layer is the operator presentation override, and the
-   * precedence rule is stated once, in ref workflow-model.
-   */
-  title: string;
-  input: In;
-  output: CanonicalJsonSchema<Out>;
-  /** Declared error taxonomy. ctx.fail() only accepts these codes. */
-  errorCodes: Codes;
-  /** Declared secret names; shape/accessor owned by ref clock-config-secrets. Empty/absent means none. */
-  requires?: readonly SecretName[];
-  /** D63: explicit non-browser remote I/O. Legal only for service-store contracts; absent means
-   * deterministic/local. The task receives exactly this narrowed injected client set. */
-  providers?: readonly ProviderCapabilityId[];
-  /** Explicit subject scope. Person-scoped tasks name the authoritative observation used to prove
-   * which record/page is open; service/global tasks declare `{kind:"none"}`. */
-  subject: SubjectBindingSpec;
-  /** Registered behavioral scenarios (ref operator-trust). `example` is a value fixture, not coverage. */
-  scenarios: readonly [ScenarioId, ...ScenarioId[]];
-  /**
-   * Mandatory canonical output value. A guard parses it through `output`
-   * (§8); the e2e stub lane emits it as the task's happy-path response.
-   */
-  example: z.input<Out>;
-}
-
-export interface ReadTaskContract<Id extends TaskId, In extends z.ZodType,
-  Out extends z.ZodType, Codes extends readonly [string, ...string[]]>
-  extends TaskContractBase<Id, In, Out, Codes> {
-  effect: "read";
-  freshness: Freshness;                    // MANDATORY on every read (D8)
-  provenance: ProvenancePolicy;             // MANDATORY; prevents transform-based freshness laundering
-  /** Downloads/generated files are allowed only as content-addressed cache artifacts through
-   * the kernel writer. Mutable append/update targets are not read-task effects. */
-  artifacts?: "content-addressed";
-}
-
-export interface PrepareTaskContract<Id extends TaskId<BrowserSystemId>, In extends z.ZodType,
-  Out extends z.ZodType, Codes extends readonly [string, ...string[]]>
-  extends TaskContractBase<Id, In, Out, Codes> {
-  effect: "prepare";
-  /**
-   * Browser-page mutation only: navigate and stage fields. It has no external
-   * mutation capability in ctx and is legal only inside a transaction node.
-   */
-  checkpoint: "in-memory-only";
-}
-
-export interface CommitTaskContract<Id extends TaskId<BrowserSystemId>, In extends z.ZodType,
-  Out extends z.ZodType, Proof extends z.ZodType,
-  Codes extends readonly [string, ...string[]]>
-  extends TaskContractBase<Id, In, Out, Codes> {
-  effect: "commit";
-  /** Required and non-optional. Shape owned by ref write-safety. */
-  writeSafety: WriteSafety<In, Out, Proof>;
-}
-
-/** `const Codes` (TS5) keeps errorCodes as a literal tuple — without it the
- *  union collapses to string[] and ctx.fail() would accept anything (D15).
- *
- *  `defineTaskContract` uses one overload per effect. The abandoned Step-0
- *  spike was removed on 2026-07-21; this three-effect API must be re-proved in
- *  the new Phase-1 type spike before implementation. */
-type Sealed<T> = T & { readonly __sealed: true };
-export type SealedReadContract<Id extends TaskId, In extends z.ZodType,
-  Out extends z.ZodType, Codes extends readonly [string, ...string[]]> =
-  Sealed<ReadTaskContract<Id, In, Out, Codes>>;
-export type SealedPrepareContract<Id extends TaskId<BrowserSystemId>, In extends z.ZodType,
-  Out extends z.ZodType, Codes extends readonly [string, ...string[]]> =
-  Sealed<PrepareTaskContract<Id, In, Out, Codes>>;
-export type SealedCommitContract<Id extends TaskId<BrowserSystemId>, In extends z.ZodType,
-  Out extends z.ZodType, Proof extends z.ZodType,
-  Codes extends readonly [string, ...string[]]> =
-  Sealed<CommitTaskContract<Id, In, Out, Proof, Codes>>;
-
-export function defineTaskContract<
-  Id extends TaskId, In extends z.ZodType, Out extends z.ZodType,
-  const Codes extends readonly [string, ...string[]],
->(c: ReadTaskContract<Id, In, Out, Codes>): SealedReadContract<Id, In, Out, Codes>;
-export function defineTaskContract<
-  Id extends TaskId<BrowserSystemId>, In extends z.ZodType, Out extends z.ZodType,
-  const Codes extends readonly [string, ...string[]],
->(c: PrepareTaskContract<Id, In, Out, Codes>): SealedPrepareContract<Id, In, Out, Codes>;
-export function defineTaskContract<
-  Id extends TaskId<BrowserSystemId>, In extends z.ZodType, Out extends z.ZodType, Proof extends z.ZodType,
-  const Codes extends readonly [string, ...string[]],
->(c: CommitTaskContract<Id, In, Out, Proof, Codes>): SealedCommitContract<Id, In, Out, Proof, Codes>;
-// impl body freezes + fails loud at module load (validation below).
-
-/** The `Any*Contract` aliases used from here on are the SEALED effect-specific
- *  forms with generics erased to their bounds:
- *    AnyReadContract   = SealedReadContract<TaskId, z.ZodType, z.ZodType, readonly [string, ...string[]]>
- *    AnyPrepareContract = SealedPrepareContract<…same bounds…>
- *    AnyCommitContract  = SealedCommitContract<…same bounds…, z.ZodType, …codes…>
- *    AnyContract        = AnyReadContract | AnyPrepareContract | AnyCommitContract
- *  That union is exactly ref workflow-model §3's `AnyTaskContract`. */
+// src/domain/contracts/base.ts — one overload per effect (D7), `const Codes` keeps the tuple literal
+defineTaskContract(read)    → SealedReadContract
+defineTaskContract(prepare) → SealedPrepareContract
+defineTaskContract(commit)  → SealedCommitContract
 ```
 
-`defineTaskContract` freezes the object and **fails loud at module load** on: id not matching
-the system/workflow namespace grammar, unknown system prefix, malformed `workflow:<id>`, empty
-`errorCodes`, `example`
-failing `output.parse`, output/proof not canonical-JSON round-trippable, or a read contract missing
-`freshness`/`provenance`; non-strict schemas; unresolved scenario ids; or an invalid subject
-declaration. A browser task declaring `subject.kind:"person"` must resolve a same-system
-authoritative observation and a wrong-subject scenario. A service/workflow task cannot declare a
-browser observation. Browser and workflow-store contracts cannot declare provider capabilities;
-service contracts resolve every declared capability and required secret through the provider and
-preflight registries. A person-scoped commit must use
-`requiredAt:"after-prepare-before-fence"`; the descriptor/kernel reject any other declaration.
-`CanonicalJsonSchema` rejects `any` and known non-JSON output types at
-compile time; the factory
-round-trip is the runtime backstop. A **type-level test** pins that
-`ctx.fail("undeclared-code", …)` fails `tsc` (D15).
+**What the factory refuses, at module load.** `RuntimeTaskContractDefinitionSchema` is an exact
+effect-discriminated union of strict objects, so a raw JavaScript caller cannot add an outer key,
+submit an empty `errorCodes` list, give a prepare contract a durable checkpoint, or attach
+read-only `artifacts` metadata to a write contract. On top of that, `assertCommon` refuses: an id
+outside the namespace grammar; an empty title; a non-strict or `any`-bearing input/output; an
+`example` that does not parse or canonicalize; duplicate error codes; an unknown store namespace;
+`providers` on anything but a service read; a prepare/commit outside a browser namespace; an empty
+`scenarios` list anywhere except a `workflow:` read; a subject observation crossing systems or
+naming an input path the schema does not own; an identity/match pair that disagrees; an unscoped
+commit with free text instead of a reviewed id, or with a reason id the registry has not reviewed;
+a commit subject observed anywhere but `after-prepare-before-fence`; and a verb that disagrees with
+the effect (§2.5). Reads additionally resolve every freshness and provenance field path against the
+output schema. Commits additionally run the whole `writeSafety` round trip: the proof reconstructs
+the canonical output, the present-probe proof equals the output proof, the idempotency probe and
+the completion verifier are same-store READ task ids, and `recoveryAbsence` parses as a negative
+settlement policy. An `upload-verify` completion that declares `unverifiableByPage` must match an
+entry in `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` **by task id and by reason text** and must exercise
+an `operator-attestation` proof arm — the reviewed list is `contracts: []` today, so the field is
+currently unusable by construction, which is the correct state until OnBase's OQ2 is answered
+(order 7).
 
-```ts
-// src/base/task.ts (continued) — the impl side + the binding factory
-export type NamespaceOf<C> =
-  C extends { id: `${infer S extends TaskStoreId}/${string}` } ? S : never;
-export type BrowserSystemOf<C> = Extract<NamespaceOf<C>, BrowserSystemId>;
-export type SessionsFor<C> = [BrowserSystemOf<C>] extends [never]
-  ? readonly []
-  : readonly [SessionNeed<BrowserSystemOf<C>>];
-export type ProviderNeedsOf<C> = C extends { providers: readonly ProviderCapabilityId[] }
-  ? C["providers"] : readonly [];
-type ContractDriver<C extends AnyContract> = { system: BrowserSystemOf<C> };
-type BaseReadCtxFor<
-  C extends AnyReadContract,
-  Driver extends ContractDriver<C>,
-> = [BrowserSystemOf<C>] extends [never]
-  ? NamespaceOf<C> extends WorkflowStoreId
-    ? PureTaskCtx<C["errorCodes"]>
-    : ServiceTaskCtx<C["errorCodes"], ProviderNeedsOf<C>>
-  : ReadTaskCtx<Driver, C["errorCodes"]>;
-export type ReadCtxFor<C extends AnyReadContract, Driver extends ContractDriver<C>> =
-  BaseReadCtxFor<C, Driver> &
-  (C extends { artifacts: "content-addressed" }
-    ? { artifacts: ContentAddressedArtifactWriter }
-    : { artifacts?: never });
+**The seal is a runtime identity, not a flag.** `defineTaskContract` deep-copies and freezes the
+declarative metadata (`sealDeclarativeMetadata`, which refuses any non-plain object), replaces
+`example` with its parsed value, stamps `__sealed`, and registers the object in a module-private
+WeakSet. `assertFactorySealedTaskContract` is what `defineTask` calls, so a hand-built object that
+satisfies the TYPE — `__sealed: true` included — is refused by identity. Zod schemas and the
+proof/key FUNCTIONS keep their original unfrozen identities, because freezing a schema breaks it.
+Dynamic idempotency keys are validated only when execution has real parsed input: sealing makes no
+claim about a key it cannot compute.
 
-export interface DriverDeclaration<Driver extends { system: BrowserSystemId }> {
-  system: Driver["system"];
-  status: "unwired" | "semantic-ready";
-  // The factory owns a private invariant type member; callers cannot forge declarations.
-}
+**`defineTask` re-checks everything the type already said.** Four overloads (browser read, browser
+prepare, browser commit, headless read) plus a runtime backstop that refuses an impl with an
+unknown field, a missing `run`, a session count other than one for a browser task, a session system
+that is not the store's, an access that disagrees with the effect, `exclusive: true` outside OnBase
+or absent on OnBase, `acceptDownloads` without a content-addressed read contract, a retry policy on
+a prepare or commit, a headless task with a session or a driver, and a workflow mini-store task
+declaring artifacts. The bound task is frozen and registered in a second WeakSet, so
+`defineBrowserStore` can refuse anything `defineTask` did not mint.
 
-export interface ReadTaskImpl<
-  C extends AnyReadContract,
-  Driver extends ContractDriver<C> = ContractDriver<C>,
-> {
-  sessions: SessionsFor<C>; // browser store must name its own system; service/workflow store must be []
-  retry?: RetryPolicy;
-  /** Receives the PARSED input (z.output — defaults/transforms applied);
-   *  returns a pre-parse value (z.input of the output schema) that the
-   *  kernel parses through contract.output before anything downstream sees it. */
-  run: (args: { input: z.output<C["input"]>; ctx: ReadCtxFor<C, Driver> })
-    => Promise<z.input<C["output"]>>;
-}
-export interface PrepareTaskImpl<
-  C extends AnyPrepareContract,
-  Driver extends ContractDriver<C> = ContractDriver<C>,
-> {
-  sessions: readonly [SessionNeed<BrowserSystemOf<C>>];
-  retry?: never; // transaction node owns whole-pair retry before a fence; never retry half-filled page state
-  run: (args: { input: z.output<C["input"]>; ctx: PrepareTaskCtx<Driver, C["errorCodes"]> })
-    => Promise<z.input<C["output"]>>;
-}
-export interface CommitTaskImpl<
-  C extends AnyCommitContract,
-  Driver extends ContractDriver<C> = ContractDriver<C>,
-> {
-  sessions: readonly [SessionNeed<BrowserSystemOf<C>>];
-  /** A commit attempt is never generically retried; ref write-safety owns recovery. */
-  retry?: never;
-  run: (args: { input: z.output<C["input"]>; ctx: CommitTaskCtx<Driver, C["errorCodes"]> })
-    => Promise<z.input<C["output"]>>;
-}
+**The driver declaration is INVARIANT, and that is the whole point.**
+`DriverDeclaration<Driver>` carries a private identity function `(driver: Driver) => Driver` under
+a unique symbol, which makes `Driver` invariant: a task bound to one concrete driver API cannot be
+registered against another, and a semantic driver cannot be type-erased to `{ system }`.
+`declareDriverFor<KualiRrssDocumentDriver>()("kuali", "semantic-ready")` mints one; `declareDriver`
+mints the empty `unwired` form for a store that has no semantic operations yet. Both go through the
+same factory, which registers the declaration in a WeakSet — so `assertFactoryDeclaredDriver`
+refuses a forged one, and `defineBrowserStore` requires *object identity* with the store's own
+declaration, not merely a matching system. This is the rule `CLAUDE.md` states as "browser tasks
+bind the store's exact invariant `DriverDeclaration<ConcreteDriver>`", and §2.10's first as-built
+rule is what it looks like when a store grows a fifth task.
 
-/** Per-effect overloads (D7): pairing a commit contract with a read-shaped
- *  impl (or vice versa) fails to compile — the ctx types differ. This is
- *  "compile-time where possible"; the factory's runtime checks are the
- *  always-on backstop. */
-export function defineTask<C extends AnyReadContract, Driver extends ContractDriver<C>>(
-  driver: DriverDeclaration<Driver>, contract: C, impl: ReadTaskImpl<C, Driver>,
-): Task<C, Driver>;
-export function defineTask<C extends AnyPrepareContract, Driver extends ContractDriver<C>>(
-  driver: DriverDeclaration<Driver>, contract: C, impl: PrepareTaskImpl<C, Driver>,
-): Task<C, Driver>;
-export function defineTask<C extends AnyCommitContract, Driver extends ContractDriver<C>>(
-  driver: DriverDeclaration<Driver>, contract: C, impl: CommitTaskImpl<C, Driver>,
-): Task<C, Driver>;
-type HeadlessReadContract<C extends AnyReadContract> =
-  [BrowserSystemOf<C>] extends [never] ? C : never;
-export function defineTask<C extends AnyReadContract>(
-  contract: HeadlessReadContract<C>, impl: ReadTaskImpl<C>,
-): Task<C>;
+**`z.input` vs `z.output` (D15, review #4).** A node's bind produces `z.input` — a field with
+`.default(false)` is *omittable* at the mapping site — and `run` receives the parsed `z.output`
+value with defaults and transforms applied, returning a `z.input` of the output schema that the
+kernel parses before anything downstream sees it. Conflating the two (`z.infer` everywhere) would
+make every defaulted field required in mappings and defeat transforms.
 
-export type Task<C extends AnyContract, Driver extends ContractDriver<C> = ContractDriver<C>> =
-  Readonly<{ contract: C; impl: ImplFor<C, Driver> }> &
-  { readonly __task: true };
-
-export type ImplFor<C extends AnyContract, Driver extends ContractDriver<C>> =
-  C extends AnyReadContract ? ReadTaskImpl<C, Driver> :
-  C extends AnyPrepareContract ? PrepareTaskImpl<C, Driver> :
-  C extends AnyCommitContract ? CommitTaskImpl<C, Driver> : never;
-
-export type TaskInput<T> =
-  T extends { input: infer I extends z.ZodType } ? z.input<I> :
-  T extends { contract: { input: infer I extends z.ZodType } } ? z.input<I> : never;
-export type TaskOutput<T> =
-  T extends { output: infer O extends z.ZodType } ? z.output<O> :
-  T extends { contract: { output: infer O extends z.ZodType } } ? z.output<O> : never;
-```
-
-**`z.input` vs `z.output` (D15, review #4):** step input mappings produce `TaskInput<T>` =
-`z.input` — a field with `.default(false)` is *omittable* at the mapping site; `run` receives the
-parsed `z.output` value with defaults and transforms applied. Conflating the two (`z.infer`
-everywhere) would make every defaulted field required in mappings and defeat transforms.
+**A type-level test pins the negative.** `ctx.fail("undeclared-code", …)` must fail `tsc`; that is
+what `const Codes` inference and `taskFailer(contract)` exist for.
 
 ### 2.3 The task ctx (narrow by construction)
 
 ```ts
-export interface TaskCtxCommon<Codes extends readonly string[]> {
-  signal: AbortSignal;
-  log: TaskLogger;                             // structured; auto-tagged with taskId + span
-  /**
-   * Typed fail-loud throw. Produces a TaskError whose message names the task
-   * and the offending value:
-   *   ctx.fail("eid-not-found", `no Person Org row for EID ${input.emplId}`,
-   *            { subject: input.emplId })
-   * → "[ucpath/search-person-org] eid-not-found: no Person Org row for EID 10001573"
-   */
-  fail(code: Codes[number], message: string,
-       opts?: { subject?: string; transient?: boolean; cause?: unknown }): never;
-  /** Observational data-provenance points (port of today's ctx.recordData). */
-  recordData(point: DataPoint | DataPoint[]): void;
+// src/base/task.ts
+interface TaskCtxCommon<Codes> {
+  readonly signal: AbortSignal;
+  readonly log: TaskLogger;                    // debug/info/warn with flat structured fields
+  readonly fail: (code: Codes[number], message: string,
+                  options?: { subject?; transient?; cause? }) => never;
+  readonly recordData: (point: DataPoint | readonly DataPoint[]) => void;   // D115, always present
 }
-
-export interface PureTaskCtx<Codes extends readonly string[]>
-  extends TaskCtxCommon<Codes> {} // workflow transforms: no page/artifact/mutation
-
-export interface ServiceTaskCtx<Codes extends readonly string[],
-  Needs extends readonly ProviderCapabilityId[]>
-  extends TaskCtxCommon<Codes> {
-  /** Injected abortable clients, narrowed to the contract declaration. Each call is timeout/rate/
-   * concurrency-admitted, redacted, and action-evidenced by infra. No provider SDK or raw fetch is
-   * reachable from task code. An empty need tuple exposes no client. */
-  providers: ProviderClientSubset<Needs[number]>;
-}
-
-export interface ArtifactRef {
-  /** Stable UUID identity; never a digest or filesystem path. */
-  id: ArtifactId;
-  /** Immutable content identity and private content-addressed storage key. */
-  sha256: string;
-  bytes: number;
-  mediaType: string;
-}
-export interface ContentAddressedArtifactWriter {
-  /** Writes temp → fsync → atomic no-replace publication → directory fsync under the private
-   * artifact root. Same bytes return the same ArtifactRef; callers never learn the backing path. */
-  put(source: Uint8Array | NodeJS.ReadableStream,
-      meta: { mediaType: string }): Promise<ArtifactRef>;
-  /** Reads by validated ref; contracts never receive or expose an operator filesystem path. */
-  open(ref: ArtifactRef): Promise<NodeJS.ReadableStream>;
-}
-
-export interface BrowserTaskCtx<
-  Driver extends { system: BrowserSystemId },
-  Codes extends readonly string[],
->
-  extends TaskCtxCommon<Codes> {
-  /** Only the declared browser system. Raw Page/Locator access is confined to driver/session
-   * infrastructure (ref operator-trust); every operation is element/state/observation-addressed and traced. */
-  driver: Driver;
-}
-
-export interface ReadTaskCtx<Driver extends { system: BrowserSystemId }, Codes extends readonly string[]>
-  extends BrowserTaskCtx<Driver, Codes> {}
-
-export interface PrepareTaskCtx<Driver extends { system: BrowserSystemId }, Codes extends readonly string[]>
-  extends BrowserTaskCtx<Driver, Codes> {} // no external mutation capability
-
-export interface CommitTaskCtx<Driver extends { system: BrowserSystemId }, Codes extends readonly string[]>
-  extends BrowserTaskCtx<Driver, Codes> {
-  /** Only capability that can invoke an audited external-write primitive. */
-  mutation: MutationCapability;
-}
+type      PureTaskCtx    = TaskCtxCommon;                             // workflow: mini-store reads
+interface ServiceTaskCtx extends TaskCtxCommon { providers: ProviderClientSubset<Capabilities> }
+interface BrowserTaskCtx extends TaskCtxCommon { driver: Driver }     // the store's CONCRETE driver
+interface CommitTaskCtx  extends BrowserTaskCtx { mutation: MutationCapability }
+// a read declaring artifacts: "content-addressed" additionally receives
+//   { artifacts: ContentAddressedArtifactWriter }
 ```
 
-**Subject binding is kernel-enforced, not an optional leaf convention.** For a read that declares
-`requiredAt:"before-subject-read"`, the driver freshly observes the declared identity before it
-extracts subject-scoped facts and the kernel—not task code—compares that typed observation to parsed
-input. For every transaction, the kernel observes on the retained staged page after prepare and
-immediately before ref write-safety's fence; mismatch/unknown means zero clicks. Artifact-scoped writes bind
-the staged document id/digest the same way. Ref write-safety wraps a matched subject proof—or an explicitly
-allowlisted unscoped page-state proof when no stronger subject exists—into the durable
-`WriteBindingProof` bound to the mutation capability and post-write verification. Searching for an EID, seeing it in stale page text, or
-trusting the workflow input does not count as observing the open record. The New Kronos stale-
-timecard incident is the required base scenario, not a separations-only workaround.
+`ReadTaskCtx` and `PrepareTaskCtx` are aliases of `BrowserTaskCtx`: what distinguishes a commit is
+the `MutationCapability`, and **no seam here mints one**. The token's brand is declare-only, so the
+type cannot make it unforgeable; the runtime registry in `src/base/mutation-capability.ts` does,
+through a module-private WeakSet whose only permitted minting caller is
+`src/core/write-sequencer.ts` (guard `task-driver-boundary`, D122). A driver's `commit` operation
+verifies the token before it clicks.
 
-**What TaskCtx deliberately does NOT have:** `updateData` (the untyped blob — display fields become
-projections of typed task outputs, ref dashboard-surfaces), `step` (the graph node owns orchestration), `delegateTo` (delegation
-is workflow-level composition, ref workflow-model), free-form `retry` (retry is declared, kernel-executed),
-and **any wait/park primitive** (§2.6).
+**What TaskCtx deliberately does NOT have:** `updateData` (the untyped blob — display fields are
+projections of typed task outputs, ref dashboard-surfaces), `step` (the graph node owns
+orchestration), `delegateTo` (delegation is workflow-level composition, ref workflow-model),
+free-form `retry` (retry is declared, kernel-executed), and **any wait or park primitive** (§2.6).
+
+**Provenance is a data channel the executor owns, never an inference from logs (D115, 1f).** Every
+`TaskCtxCommon` carries a real collector: production `recordData` cannot be omitted, replaced by a
+no-op, or reconstructed from log prose, and `fakeCtx` must supply an explicit recording fake so a
+unit test cannot accidentally prove a production no-op. Each point is parsed through the strict
+`DataPoint` boundary — `{ direction: "read" | "write", field: ContractFieldPath, value: JsonValue }`
+— and the collector stamps the run/trace/attempt/workflow/node/task identity and the Clock instant
+(`src/domain/task-provenance.ts`). Before a read output may become a checkpoint or a terminal-result
+dependency, the kernel checks the contract's resolved `provenance` policy: every `live` field has a
+point recorded **during that execution**, and every `derived` field receives the complete declared
+upstream provenance and retains its **oldest** contributing `observedAt`. Missing or contradictory
+provenance fails the task before durable output. The declared upstream set is resolved from
+factory-authenticated descriptor metadata, never from a caller's claim, and undeclared evidence is
+rejected. Two arms of that evidence exist, because a gate is not a checkpoint: `checkpoints` are
+whole authority `run_checkpoints` rows, and `gateResults` are `gate_results` rows contributing
+exactly ONE `operator`-sourced fact dated at `resolvedAt` and no output leaves (D203 — a task that
+declared a gate as a dependency was structurally unrunnable until the READER moved).
+
+**Providers are admitted, never ambient (D63/D100/D112, 1f).** A service contract declares
+`providers: [...]` and `ctx.providers` is narrowed to exactly those capability keys; a task with no
+declaration has no client at all, and a browser or workflow contract may not declare one. Every
+call enters ONE capability-indexed admission path before an adapter can perform remote I/O: it
+applies the run's immutable config snapshot for timeout/abort, concurrency, rate, daily usage and
+cost; records reservations and outcomes with the provider evidence; and returns a typed
+`unavailable` result when admission cannot be granted. The task-visible client accepts only the
+strict canonical payload — no caller-supplied signal, timeout, deadline, budget, adapter or
+admission id — while the ADAPTER boundary separately exposes a conservative local `estimate` and
+one `invoke` that receives only the kernel-composed abort signal, monotonic deadline and durable
+admission id. The kernel reserves first, invokes outside SQLite, and durably settles before
+returning produced data; failure to settle after remote I/O is an explicit uncertain outcome and
+never leaks the response. Abort and deadline RACE the invocation, so an adapter that ignores its
+signal still releases the worker turn while the durable reservation retains conservative
+accounting. Counters and leases whose reset would change an admission decision survive worker
+restart in authority storage, so a task can neither hold a worker while sleeping for capacity nor
+bypass admission through an SDK or raw-network import (guard `provider-capability-boundary`).
+
+**Artifacts are content-addressed, and identity is not content (D97/D45).** A read that downloads
+or generates a file declares `artifacts: "content-addressed"` and receives
+`ContentAddressedArtifactWriter` — `put(bytes | Readable, { mediaType }) → ArtifactRef` and
+`open(ref) → Readable`, nothing else. The public reference is
+`{ id: ArtifactId, sha256: Fingerprint, bytes: number, mediaType }`: a UUID for the reference, a
+digest for the CONTENT, and **never a filesystem path or root**. Byte-identical puts return the
+same reference across writer instances; conflicting media metadata for one digest is refused; reads
+match on id, digest and metadata exactly. The real writer accepts only
+`.tracker-rebuild/artifacts` beneath a non-symlinked absolute workspace (the workspace path itself
+is `lstat`-checked) and publishes through temp write → file fsync → atomic no-replace hard link →
+temp unlink → directory fsync. There is no digest lock to strand: concurrent same-digest writers
+race at publication and every loser validates the winner before returning its exact ref. A crash
+may leave an unpublished temp whose name records its owner PID; a retry removes it only after the
+OS reports that PID absent, never because an age threshold elapsed (guard
+`artifact-effect-boundary`).
 
 ### 2.4 Error taxonomy
 
