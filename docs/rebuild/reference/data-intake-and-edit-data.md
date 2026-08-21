@@ -743,6 +743,21 @@ counted, logged, never an erased row and never a swallowed error. Five executabl
 <!-- roadmap: def-search-export -->
 <!-- roadmap: cross-cutting -->
 
+<!-- roadmap-status: order-5 -->
+- [x] the retention-workbook MODEL this migration needs is built and unit-pinned — `DurableArtifactProjectionSpec`, the one-transaction checkpoint + stable-keyed outbox commit, the blocking `RunArtifactProjector`, the `xlsx-retention` sink and the fail-closed conflict park (§4.1, D164; `src/infra/artifacts/artifact-sink-projector.ts`, `xlsx-retention-sink.ts`, 13 arms in `tests/unit/artifact-projection.test.ts`)
+- [x] the i9 document model the workflow reads is built as ONE form across two loose sections, with the section-absent arms named (§4.10, D160)
+- [ ] no descriptor declares `artifactProjections:` and no composition wires the projector — deliberately: the workbook PATH and the operator-facing retention columns are i9-check's own facts, and a declaring descriptor without the seam fails loud by name
+- [ ] the sink writes a four-column DURABILITY layout (`stableKey`/`keyValues`/`record`/`projectedAt`), not the operator's retention columns — those land with this migration
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/infra/artifacts/*`, `src/core/run-executor.ts:1078` and `grep -rl "artifactProjections:" src/workflows/` (empty); left: the declaration and the real column set
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: def-search-export -->
+- [x] this doc's half of the export writers exists — `write-excel-file` behind `src/infra/artifacts/xlsx-retention-sink.ts`, with an idempotent stable-keyed upsert and a temp → fsync → atomic-replace write
+- [ ] that writer emits a durability layout for ONE sink kind; an operator-facing "export these runs to Excel" writer is not built anywhere
+- [ ] the query surface (search runs across dates, view screenshots) is not this doc's — ref frontend-backend-integration §3.6 owns it, and the screenshot evidence store is ref operator-trust §2.2
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/infra/artifacts/xlsx-retention-sink.ts`; left: everything operator-facing — this doc contributes only the writer
+<!-- /roadmap-status -->
+
 `i9-check` currently appends to a master retention workbook. Calling that append part of the
 `roster/match-spreadsheet` read would make task retry duplicate rows and would violate the effect
 contract. The rebuilt roster task therefore returns only the typed match/retention record. Its
