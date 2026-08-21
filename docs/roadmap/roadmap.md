@@ -152,6 +152,10 @@ open: no
 needs:
 - p1-exit
 
+log:
+- 2026-08-21 | docs-cohesion 02 | doc 02 rewritten as-built — the phase reads DONE-with-named-residuals: nine mechanisms with no production caller or delivery path, each attributed to the node that owns the fix, plus four test-lane gaps owned by `{#test-tiers}`; the 23 `_phase: 2_` rounds in `reference/decisions.md` all indexed
+
+
 ### Transaction proof — the first real write {#p2-proof}
 status: done
 date: D128–D135 · 2026-08-04
@@ -162,29 +166,38 @@ doc: 02 §Transaction proof — the first real write · ref:write-safety §2.1 �
 
 builds:
 - [x] BE `kuali/save-timekeeper-annotation` — the one-transaction-node proving workflow
-- [x] PROOF fence durable before the click, reload read-back, propagation window measured (`recoveryAbsence: stabilized`)
+- [x] PROOF fence durable before the click, reload read-back, propagation window measured (`recoveryAbsence: stabilized` — THIS contract only; both UCPath contracts stay `operator-only`, unmeasured)
 - [x] BE mutation-capability registry; `write-sequencer.ts` the only mint
 - [x] BOTH preview / binding / fenced write / read-back / parked-write resolution through the production client
 
 needs:
 - p1-exit
 
+log:
+- 2026-08-21 | docs-cohesion 02 | re-verified in the contract file: `recoveryAbsence: stabilized` is `minSinceFenceMs: 30_000` / 2 reads / 5 s apart and is scoped to THIS contract — both UCPath contracts stay `operator-only` because no UCPath window was ever measured, so the `builds:` line is corrected
+
+
 ### 2g — event / trust layer {#p2-2g}
 status: done
 date: D134–D145
 size: L
-doc: 02 §2g — event / trust layer · ref:operator-trust §2.2 · ref:operator-trust §2.3 · ref:operator-trust §4 · ref:operator-trust §6 · ref:operator-trust §6.1 · ref:dashboard-surfaces §2.6 · ref:write-safety §6.1 · ref:frontend-backend-integration §6.5
+doc: 02 §2g — event / trust layer · ref:operator-trust §2 · ref:operator-trust §2.2 · ref:operator-trust §2.3 · ref:operator-trust §4 · ref:operator-trust §6 · ref:operator-trust §6.1 · ref:operator-trust §6.3 · ref:dashboard-surfaces §2.6 · ref:write-safety §6.1 · ref:frontend-backend-integration §6.5
 
 builds:
 - [x] BE schema v10
 - [x] BE automatic redacted diagnostic capture
-- [x] BE durable actor-keyed notification inbox (row commits before any OS delivery)
-- [x] BE knowledge / fix admission
-- [x] BE ordered fsync'd ledger projector
+- [x] BE durable actor-keyed notification inbox (row commits before any OS delivery) — 2 of the 7 trigger arms have publishers (D222/D262); five do not
+- [x] BE knowledge / fix admission — admission is durable and audited; the PROJECTION has no caller, so no `KNOWLEDGE.md` exists
+- [x] BE ordered fsync'd ledger projector — unit-proven and guarded; `createLedgerProjector` has NO production caller, so nothing drains the durable outbox to a file
 - [x] BE D82's evidence receipt DERIVED from authority
 
 needs:
 - p2-proof
+
+log:
+- 2026-08-21 | docs-cohesion 02 | three `[x]` lines sharpened against the code — the ledger projector has no production caller, the knowledge PROJECTION has no caller, and five of seven notification arms have no publisher; `ref:operator-trust §2` and `§6.3` added, `ref:dashboard-surfaces §2.6` already cited and now carries its own status block
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (e6fb6f37) — §2 / §4 / §6 as-built, with the three unreachable halves named in place: `explain failure <fingerprint>` unbuilt, the knowledge projection uncalled, the retention sweep uncalled
+
 
 ### 2h — data / intake foundation {#p2-2h}
 status: done
@@ -205,18 +218,22 @@ builds:
 needs:
 - p2-proof
 
+log:
+- 2026-08-21 | docs-cohesion 02 | doc 02 §2h separates unwired-BY-DESIGN (the retention projection, D164) from unwired-by-omission (the saved-mapping store, an artifact-projection-declaring descriptor — both unowned and reported) and from waiting-on-a-declaring-workflow (the start-method kinds, the Review surface → `{#order-2}` / `{#order-3}`)
+
+
 ### 2i — the operator surface (A–G) {#p2-2i}
 status: done
 date: D168–D180
 size: L
-doc: 02 §2i — the operator surface (A–G) · ref:frontend-backend-integration §6.7 · ref:dashboard-surfaces §10.2 · ref:dashboard-surfaces §11 · ref:dashboard-surfaces §12 · ref:dashboard-surfaces §13 · ref:operator-trust §5.7 · ref:operator-trust §5.8 · ref:data-intake-and-edit-data §6.4.1
+doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref:data-intake-and-edit-data §2.7 · ref:data-intake-and-edit-data §5.1 · ref:data-intake-and-edit-data §5.2 · ref:frontend-backend-integration §6.7 · ref:dashboard-surfaces §10.2 · ref:dashboard-surfaces §11 · ref:dashboard-surfaces §12 · ref:dashboard-surfaces §13 · ref:operator-trust §5.7 · ref:operator-trust §5.8 · ref:data-intake-and-edit-data §6.4.1
 
 builds:
 - [x] BOTH trust surfaces + notification bell over the durable inbox
 - [x] BOTH Edit Data rail (D168)
-- [x] BOTH Settings + storage doctor + live backup cadence (D169)
+- [x] BOTH Settings + storage doctor + live backup cadence (D169) — Settings is READ-ONLY; `apply-settings` is the kernel's one deferred arm
 - [x] BOTH intake surface over schema v12 (D170–D173)
-- [x] BOTH token-scoped phone capture: QR start, PDF bundler, intake handoff (D174/D175)
+- [x] BOTH token-scoped phone capture: QR start, PDF bundler, intake handoff (D174/D175) — no production delivery path (D189) and no workflow declares a capture binding
 - [x] BOTH read-only Workflow Explorer + UI catalog
 - [x] BOTH AI advisories (redaction / strict-output / exhaustion / zero-authority pinned)
 - [x] BOTH archive model (schema v13, UPDATE/DELETE aborted in SQL) + version bump + Activity report (D176–D180)
@@ -225,16 +242,21 @@ needs:
 - p2-2g
 - p2-2h
 
+log:
+- 2026-08-21 | docs-cohesion 02 | two `[x]` lines sharpened — Settings is READ-ONLY and the phone capture surface has no delivery path and no declared binding; `ref:operator-trust §1.3` and `ref:data-intake-and-edit-data §2.7 / §5.1 / §5.2` added; the Explorer's overlay and coverage-claims exclusions recorded as DECISIONS, distinct from D186's reassignment
+- 2026-08-21 | docs-cohesion data-intake-and-edit-data | reference doc verified against the code (82c8550c) — §2.7 / §5.1 / §5.2 as-built; the phone surface has no production delivery path and `CAPTURE_INTAKE_BINDINGS` is empty, so no workflow can receive a handoff
+
+
 ### 2j — the closing gate {#p2-2j}
 status: done
 date: D181–D190 · 2026-08-09
 size: M
-doc: 02 §2j — the closing gate · 03c §Non-workflow capability closure inventory (D58) · ref:execution-and-sessions §7.1 · ref:guards-and-tests §3.11 · ref:guards-and-tests §3.15 · ref:operator-trust §3 · ref:dashboard-surfaces §2.5
+doc: 02 §2j — the closing gate · 03c §Non-workflow capability closure inventory (D58) · ref:execution-and-sessions §7.1 · ref:guards-and-tests §3.11 · ref:guards-and-tests §3.15 · ref:operator-trust §3 · ref:operator-trust §3.1 · ref:dashboard-surfaces §2.5
 
 > **Found four real defects every earlier green gate missed:** `cli storage restore` could never have worked (D181); every `paper-ink` parity reference had been photographed dark; the run-detail trust panel was **2 px wide** since 1i-spine (D187); the receipt builder 500'd on a reachable path.
 
 builds:
-- [x] PROOF scenario corpus + `scenario-coverage` audit
+- [x] PROOF scenario corpus + `scenario-coverage` audit — the manifest's preflight fault set has no runner, so `preflight-coverage` stays `planned` (D188)
 - [x] PROOF restore drill on a copy of the real authority DB (corrupt → doctor refuses 0.92 s → restore 0.99 s)
 - [x] PROOF 3-worker soak, concurrency matrix, redaction scan
 - [x] DOCS capability-inventory validation (D184/D188)
@@ -243,11 +265,20 @@ builds:
 needs:
 - p2-2i
 
+log:
+- 2026-08-21 | docs-cohesion 02 | the scenario-corpus line now records that the manifest's preflight fault set has no runner; `ref:operator-trust §3.1` added; doc 02 §2j writes out all four findings with their causes and the four checks 2j left open (preflight runner, component/parity lane, D91's branch half, D85 parts 2–3)
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.5 rewritten as-built; status block filled (632ce168)
+
+
 ### Left Phase 2 by explicit disposition {#phase2-dispositions}
 status: never
 doc: 02 §Left Phase 2 by explicit disposition · ref:operator-trust §5.3 · ref:frontend-backend-integration §6.9
 
 > Workflow Explorer EDIT half — D186, trigger: the *second* production workflow whose policy you want to change · BFF serves no frontend bytes / no `dashboard:prod` — D189, builds at the first phone-consuming migration (orders 3–4), confirmed 2026-08-12.
+
+log:
+- 2026-08-21 | docs-cohesion 02 | both dispositions written out in doc 02 with their triggers and their shelf owners — D186 → `{#def-explorer-edit}` (04 §Edit a workflow's presentation / policy without a code change), D189 → `{#def-byte-path}` (04 §Run the dashboard without the dev server / use the phone page in production); D79a's trim kept as the standing constraint on whatever the editor becomes
+
 
 ## flag: 2026-08-12 | **D193 — scope and entry.** Solo, local, never hosted. Phase 3 enters at **separations (order 8)**, chosen to force the store task libraries into existence; the §3.3 ordering is NOT re-sequenced. Separations questionnaire fully answered → READY TO BUILD. `test:coverage` becomes the per-commit gate (D191).
 
