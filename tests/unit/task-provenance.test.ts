@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { createTaskProvenanceCollector } from "../../src/core/task-provenance.js";
+import type { RecordedDataBatch } from "../../src/core/task-provenance.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { ContractFieldPathSchema, ProvenancePolicySchema } from "../../src/domain/contracts/base.js";
@@ -169,6 +170,13 @@ function identityComparisonCheckpoint(): RunCheckpointRecord {
   });
 }
 
+/**
+ * D270 — the collector's record-time sink. An explicit recording fake, never a
+ * no-op: a missing runtime sink must not be able to hide behind one.
+ */
+const observedBatches: RecordedDataBatch[] = [];
+const recordBatch = (batch: RecordedDataBatch): void => { observedBatches.push(batch); };
+
 function collector(
   nodeId: string,
   taskId: string,
@@ -180,6 +188,7 @@ function collector(
     execution: execution(nodeId, taskId),
     upstreamEvidence: { checkpoints: [...checkpoints] },
     clock: manualClock(new Date(now)),
+    onRecord: recordBatch,
   });
 }
 
@@ -237,6 +246,37 @@ function dependencyCheckpoints(): Readonly<{
 }
 
 describe("task provenance collector", () => {
+  it("hands each recordData CALL to the sink at record time, under ONE shared instant (D270)", () => {
+    observedBatches.length = 0;
+    const provenance = collector("searching", SearchPersonOrg.id, []);
+    // A batch is one observation of the page, so it is one sink call...
+    provenance.recordData([
+      { direction: "read", field: "results", value: person.results },
+      { direction: "read", field: "selection", value: person.selection },
+    ]);
+    assert.equal(observedBatches.length, 1);
+    assert.equal(observedBatches[0]?.points.length, 2);
+    // ...stamped ONCE, so the emitted event carries an honest `observedAt`
+    // rather than one derived from whichever point happened to be first.
+    assert.deepEqual([...new Set(observedBatches[0]?.points.map((point) => point.recordedAt))],
+      [observedBatches[0]?.recordedAt]);
+
+    // The sink is called BEFORE finalization, which is the whole point: a task
+    // that throws after reading the page has still read the page.
+    assert.equal(observedBatches.length, 1);
+    provenance.finalizeRead(person);
+    assert.equal(observedBatches.length, 1);
+  });
+
+  it("calls the sink once per CALL, not once per task (D270)", () => {
+    observedBatches.length = 0;
+    const provenance = collector("searching", SearchPersonOrg.id, []);
+    provenance.recordData({ direction: "read", field: "results", value: person.results });
+    provenance.recordData({ direction: "read", field: "selection", value: person.selection });
+    assert.deepEqual(observedBatches.map((batch) => batch.points.map((point) => point.field)),
+      [["results"], ["selection"]]);
+  });
+
   it("authenticates the descriptor node and covers nested/array live output", () => {
     const provenance = collector("searching", SearchPersonOrg.id, []);
     provenance.recordData([
@@ -287,6 +327,7 @@ describe("task provenance collector", () => {
       execution: gatedExecution,
       upstreamEvidence: { checkpoints: [comparison], gateResults: [gateResult] },
       clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
     });
     const output = {
       documentNumber: "4510",
@@ -319,6 +360,7 @@ describe("task provenance collector", () => {
       execution: gatedExecution,
       upstreamEvidence: { checkpoints: [comparison], gateResults: [] },
       clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
     }), /declared dependency identity-approval has no upstream provenance/);
 
     assert.throws(() => createTaskProvenanceCollector({
@@ -329,6 +371,7 @@ describe("task provenance collector", () => {
         gateResults: [gateResult, { ...gateResult, gateId: "not-declared" }],
       },
       clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
     }), /received undeclared upstream gate result not-declared/);
   });
 
@@ -398,6 +441,7 @@ describe("task provenance collector", () => {
       execution: execution("searching", SearchPersonOrg.id),
       upstreamEvidence: { checkpoints: [] },
       clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
     }), /exact object returned by defineWorkflowDescriptor/);
 
     assert.throws(() => createTaskProvenanceCollector({
@@ -405,6 +449,7 @@ describe("task provenance collector", () => {
       execution: { ...execution("searching", SearchPersonOrg.id), workflowId: "fixture-graph" },
       upstreamEvidence: { checkpoints: [] },
       clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
     }), /execution workflow fixture-graph does not match descriptor person-lookup/);
 
     assert.throws(() => createTaskProvenanceCollector({
@@ -412,6 +457,7 @@ describe("task provenance collector", () => {
       execution: execution("searching", CrmReadOnboardingRecord.id),
       upstreamEvidence: { checkpoints: [] },
       clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
     }), /node searching uses task ucpath\/search-person-org, not crm\/read-onboarding-record/);
 
     assert.throws(() => createTaskProvenanceCollector({
@@ -419,6 +465,7 @@ describe("task provenance collector", () => {
       execution: execution("missing-node", SearchPersonOrg.id),
       upstreamEvidence: { checkpoints: [] },
       clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
     }), /has no execution node missing-node/);
 
     assert.throws(() => createTaskProvenanceCollector({
@@ -433,6 +480,7 @@ describe("task provenance collector", () => {
       },
       upstreamEvidence: { checkpoints: [] },
       clock: manualClock(new Date(NOW)),
+      onRecord: recordBatch,
     }), /transaction prepare\/commit roles require a role-specific non-read collector/);
   });
 

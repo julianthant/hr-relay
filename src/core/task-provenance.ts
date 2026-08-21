@@ -26,6 +26,19 @@ import type { FactProvenance } from "../domain/workflow/checkpoint.js";
 
 type ParsedDataPoint = z.output<typeof DataPointSchema>;
 
+/**
+ * ONE `ctx.recordData` call's worth of observation (D270).
+ *
+ * A batch is one observation of the page, so the collector reads the clock ONCE
+ * per call and stamps every point in it with that instant: `recordedAt` is
+ * therefore a fact the whole batch shares, which is what lets the emitted event
+ * carry a single honest `observedAt` instead of a derived one.
+ */
+export type RecordedDataBatch = Readonly<{
+  readonly recordedAt: string;
+  readonly points: readonly RecordedDataPoint[];
+}>;
+
 export type TaskProvenanceCollector = Readonly<{
   readonly recordData: (point: DataPoint | readonly DataPoint[]) => void;
   readonly finalizeRead: (output: unknown) => TaskProvenanceResult;
@@ -36,6 +49,18 @@ export type TaskProvenanceCollectorInput = Readonly<{
   readonly execution: z.input<typeof TaskExecutionIdentitySchema>;
   readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
+  /**
+   * Where a recorded batch goes AT RECORD TIME (D270). Required, with no no-op
+   * default, for the same reason the executor's `SpanEmitter` has none: a
+   * collector that could run with a silently absent sink would leave the
+   * observations a task made before it threw unreconstructable, and nothing
+   * would fail.
+   *
+   * The sink is called INSIDE `recordData`, so a throw from it — the intended
+   * answer to an undeclared leaf — surfaces at the recording task, naming the
+   * field, instead of at a finalization the failing task may never reach.
+   */
+  readonly onRecord: (batch: RecordedDataBatch) => void;
 }>;
 
 function jsonLeafPaths(value: JsonValue, prefix = ""): readonly string[] {
@@ -197,6 +222,9 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     if (finalized) throw new Error(`task ${execution.taskId} cannot record provenance after finalization`);
     const batch = Array.isArray(pointInput) ? pointInput : [pointInput];
     if (batch.length === 0) throw new Error(`task ${execution.taskId} recordData batch cannot be empty`);
+    // ONE clock read for the whole batch — see `RecordedDataBatch`.
+    const recordedAt = IsoInstantSchema.parse(input.clock.now().toISOString());
+    const recorded: RecordedDataPoint[] = [];
     for (const candidate of batch) {
       const point = DataPointSchema.parse(candidate);
       const existing = points.get(point.field);
@@ -211,12 +239,11 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
       if (overlapping !== undefined) {
         throw new Error(`task ${execution.taskId} recorded overlapping fields ${overlapping} and ${point.field}`);
       }
-      points.set(point.field, RecordedDataPointSchema.parse({
-        ...point,
-        execution,
-        recordedAt: IsoInstantSchema.parse(input.clock.now().toISOString()),
-      }));
+      const stored = RecordedDataPointSchema.parse({ ...point, execution, recordedAt });
+      points.set(point.field, stored);
+      recorded.push(stored);
     }
+    input.onRecord(Object.freeze({ recordedAt, points: Object.freeze(recorded) }));
   };
 
   const finalizeRead = (outputInput: unknown): TaskProvenanceResult => {

@@ -149,12 +149,18 @@ describe("person-lookup full walk", () => {
       event.spanPath,
       "outcome" in event ? event.outcome : "",
     ]);
+    // D270 — every executed task publishes its recorded observations on its own
+    // span, BETWEEN the open and the close. The skipped node has none, because
+    // a node that did not run observed nothing.
     assert.deepEqual(spans, [
       ["span.started", taskSpanPath(trace, node("searching"), 1, 1), ""],
+      ["data.observed", taskSpanPath(trace, node("searching"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("searching"), 1, 1), "done"],
       ["span.started", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
+      ["data.observed", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("cross-verify"), 1, 1), "done"],
       ["span.started", taskSpanPath(trace, node("active-status"), 1, 1), ""],
+      ["data.observed", taskSpanPath(trace, node("active-status"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("active-status"), 1, 1), "done"],
       ["span.started", taskSpanPath(trace, node("crm-dates"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("crm-dates"), 1, 1), "skipped"],
@@ -279,10 +285,13 @@ describe("failure, retry, and resume", () => {
     const crossVerifySpans = harness.emitter.events()
       .filter((event) => event.spanPath.includes("/cross-verify#"))
       .map((event) => [event.t, event.spanPath, "outcome" in event ? event.outcome : ""]);
+    // The failed attempt read nothing before it threw, so it publishes no
+    // observation; the successful one does, on ITS OWN span path (D123/D214).
     assert.deepEqual(crossVerifySpans, [
       ["span.started", taskSpanPath(trace, node("cross-verify"), 1, 1), ""],
       ["span.ended", taskSpanPath(trace, node("cross-verify"), 1, 1), "failed"],
       ["span.started", taskSpanPath(trace, node("cross-verify"), 2, 1), ""],
+      ["data.observed", taskSpanPath(trace, node("cross-verify"), 2, 1), ""],
       ["span.ended", taskSpanPath(trace, node("cross-verify"), 2, 1), "done"],
     ]);
   });
@@ -398,6 +407,107 @@ describe("failure, retry, and resume", () => {
     assert.match(failure.summary, /missing context "searching"/);
     assert.match(failure.summary, /ucpath\/search-person-org/);
     assert.match(failure.summary, /missing context "cross-verify"/);
+  });
+
+  it("emits every recorded point on the task's own span, redacted by declaration (D270)", async () => {
+    const harness = executorHarness({ sessions: happySessionHarness() });
+    const { database, clock } = harness.authority;
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+    const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "done");
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run);
+    const trace = TraceIdSchema.parse(run.envelope.traceId);
+    const searching = taskSpanPath(trace, NodeIdSchema.parse("searching"), 1, 1);
+
+    const observed = harness.emitter.events()
+      .filter((event) => event.t === "data.observed" && event.spanPath === searching);
+    // ONE event per `ctx.recordData` CALL: `searchPersonOrgTask` records both
+    // of its points in one batch, and a batch is one observation of the page.
+    assert.equal(observed.length, 1);
+    const event = observed[0];
+    assert.ok(event !== undefined && event.t === "data.observed");
+    assert.equal(event.nodeId, "searching");
+    assert.equal(event.taskId, "ucpath/search-person-org");
+    assert.equal(event.observedAt, event.ts);
+    assert.deepEqual(event.points.map((point) => point.field), ["results", "selection"]);
+    assert.deepEqual([...new Set(event.points.map((point) => point.direction))], ["read"]);
+
+    // Redaction is the DECLARED one, per leaf — a population is a count, a
+    // person identifier is a last4, and a status is allowed through whole.
+    const values = new Map(event.points.flatMap((point) => point.values.map((value) => [value.key, value])));
+    assert.equal(values.get("results")?.transform, "count");
+    assert.equal(values.get("selection.status")?.state, "allowed");
+    const emplId = values.get("selection.selected.emplId");
+    assert.equal(emplId?.transform, "last4");
+    assert.equal(emplId?.state === "transformed" ? String(emplId.value).length : -1, 4);
+
+    // A point covering a populated object contributes one value PER LEAF, in
+    // the same path vocabulary a `FactProvenance` row is written under.
+    const selection = event.points.find((point) => point.field === "selection");
+    assert.ok((selection?.values.length ?? 0) > 1);
+    assert.equal(selection?.values.every((value) => value.key.startsWith("selection.")), true);
+
+    // The whole identifier never reached the stream.
+    const checkpoint = database.authority.runCheckpoints.latest(WORKFLOW_ID, run.envelope.itemId, "searching");
+    const recorded = JSON.stringify(checkpoint?.output.value ?? {});
+    const wholeEid = /"emplId":"(\d+)"/.exec(recorded)?.[1];
+    assert.ok(wholeEid !== undefined && wholeEid.length > 4);
+    assert.equal(JSON.stringify(event).includes(wholeEid), false);
+  });
+
+  it("fails the task by name on an UNDECLARED leaf, emitting nothing for that batch (D270)", async () => {
+    // The point is honest about the page and the classification table has no
+    // line for it. Dropping it would make the log look complete while hiding
+    // what the run read, so the recording task fails instead.
+    const undeclaredCrossVerify = defineTask(crmDriver, CrmReadOnboardingRecord, {
+      sessions: [{ system: "crm", access: "read", session: "reuse-worker" }],
+      async run({ input, ctx }) {
+        const read = await ctx.driver.readOnboardingRecord(input);
+        ctx.recordData([{ direction: "read", field: "undeclaredLeaf", value: "x" }]);
+        return read.output;
+      },
+    });
+    const brokenCrmStore = defineBrowserStore("crm", crmDriver, crmSession, {
+      readOnboardingRecord: undeclaredCrossVerify,
+      readOnboardingDates: readOnboardingDatesTask,
+    });
+    const stores: (typeof taskStoreRegistry.stores)[number][] = taskStoreRegistry.stores.map((store) =>
+      store.namespace === "crm" ? brokenCrmStore : store);
+    const registry = defineTaskStoreRegistry(stores, {
+      scenarioIds: EXECUTABLE_SCENARIO_IDS,
+      tasks: stores.flatMap((store) => Object.values(store.tasks))
+        .map(({ contract }) => ({ id: contract.id, effect: contract.effect })),
+    });
+
+    const harness = executorHarness({ stores: registry });
+    const { database, clock } = harness.authority;
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+    const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    const run = database.authority.runs.get(RUN_ID);
+    assert.ok(run && run.lifecycle.state === "terminal");
+    const failureId = run.lifecycle.state === "terminal" ? run.lifecycle.failureId : undefined;
+    assert.ok(failureId);
+    const failure = database.authority.failures.get(failureId);
+    assert.ok(failure);
+    // The refusal names the task AND the field — the two things an author needs.
+    assert.match(failure.summary, /crm\/read-onboarding-record/);
+    assert.match(failure.summary, /undeclaredLeaf/);
+    assert.match(failure.summary, /no declared evidence classification/);
+
+    // Nothing from that batch reached the stream, and no checkpoint landed.
+    const trace = TraceIdSchema.parse(run.envelope.traceId);
+    const crossVerify = taskSpanPath(trace, NodeIdSchema.parse("cross-verify"), 1, 1);
+    assert.equal(
+      harness.emitter.events().filter((event) =>
+        event.t === "data.observed" && event.spanPath === crossVerify).length,
+      0,
+    );
+    assert.equal(
+      database.authority.runCheckpoints.latest(WORKFLOW_ID, run.envelope.itemId, "cross-verify"),
+      undefined,
+    );
   });
 
   it("fails a task whose provenance does not cover its output, before any checkpoint", async () => {
