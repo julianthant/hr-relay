@@ -265,6 +265,16 @@ function surfaceKindOf(shape: RunQueuedWire["shape"]): "single" | "preview" | "o
  * count: an aggregate that folded `unread` into `none` would report a run
  * nobody checked as a run that came back clean.
  */
+/**
+ * The receipt a row reads, or `undefined` for a row whose receipt was never
+ * derived. It is read ONCE per surface (D5): `#facts` and `#warnings` each used
+ * to call `getReceipt` for themselves, which was two authority statements per
+ * terminal row on every day wire and every resnapshot for one row's worth of
+ * facts. Passing the value keeps both readings of one receipt provably the same
+ * receipt, which re-reading never guaranteed.
+ */
+type ReceiptView = RunEvidenceReceipt;
+
 type WarningVerdict =
   | { kind: "not-terminal"; status: QueueSurfaceWire["status"] }
   | { kind: "unread" }
@@ -940,9 +950,8 @@ export class RunQueueProjection {
    * report needs the three absences KEPT APART, and reason-string matching
    * would be a second classifier wearing a comparison.
    */
-  #warningVerdict(runId: string, status: QueueSurfaceWire["status"]): WarningVerdict {
+  #warningVerdict(status: QueueSurfaceWire["status"], receipt: ReceiptView | undefined): WarningVerdict {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) return { kind: "not-terminal", status };
-    const receipt = this.#deps.authority.getReceipt(runId);
     if (receipt === undefined) return { kind: "unread" };
     const first = receipt.warnings[0];
     if (first === undefined) return { kind: "none" };
@@ -950,10 +959,10 @@ export class RunQueueProjection {
   }
 
   #warnings(
-    runId: string,
     status: QueueSurfaceWire["status"],
+    receipt: ReceiptView | undefined,
   ): { state: "present"; count: number; first: string } | { state: "absent"; reason: string } {
-    const verdict = this.#warningVerdict(runId, status);
+    const verdict = this.#warningVerdict(status, receipt);
     switch (verdict.kind) {
       case "not-terminal":
         return { state: "absent", reason: `run is ${verdict.status} and has not produced a terminal result` };
@@ -1139,6 +1148,21 @@ export class RunQueueProjection {
    * `#subjectTitle`-or-composed-title rule their rows draw, so a preview can
    * never name somebody the group does not contain or spell a subject two ways.
    * The count in the `+N more` tail comes off the same list as the rollup.
+   *
+   * D5 (ref frontend-backend-integration §7.4, audit P2): the SLICE happens before the JOIN.
+   * Deciding which members exist is a Map lookup per id and costs nothing;
+   * NAMING one is an authority `getRun` plus a checkpoint read, and a
+   * 108-member operation resolved all 108 to print three — 216 SQLite
+   * statements per group row, on every day wire and every resnapshot. Only the
+   * members that can appear are named; the `+N more` tail still counts the
+   * whole seen set, because the count is what the rollup is about.
+   *
+   * One consequence is deliberate and worth naming: `#authorityRun` refuses a
+   * member the span stream knows and authority does not, and that refusal now
+   * fires for the named few rather than for all of them. Nothing is weakened —
+   * the member's OWN row runs the same join through `#surface`, so an
+   * unaccounted run is still refused where it is rendered; the preview simply
+   * stops re-proving it 108 times.
    */
   #memberPreview(
     memberIds: readonly string[],
@@ -1146,21 +1170,20 @@ export class RunQueueProjection {
     if (memberIds.length === 0) {
       return { state: "absent", reason: "this group has fanned out to no members yet" };
     }
-    const titles: string[] = [];
+    const seen: { readonly memberId: string; readonly member: RunFoldRecord }[] = [];
     for (const memberId of memberIds) {
       const member = this.#rows.get(memberId);
-      if (member === undefined) continue;
-      const memberAuthority = this.#authorityRun(memberId);
-      titles.push(this.#subjectTitle(member.queued.workflow, memberAuthority) ?? member.queued.title);
+      if (member !== undefined) seen.push({ memberId, member });
     }
-    const shown = titles.slice(0, MEMBER_PREVIEW_LIMIT);
-    if (shown.length === 0) {
+    if (seen.length === 0) {
       return {
         state: "absent",
         reason: `this group names ${String(memberIds.length)} member(s) the span fold has not seen, so none can be named`,
       };
     }
-    const remaining = titles.length - shown.length;
+    const shown = seen.slice(0, MEMBER_PREVIEW_LIMIT).map(({ memberId, member }) =>
+      this.#subjectTitle(member.queued.workflow, this.#authorityRun(memberId)) ?? member.queued.title);
+    const remaining = seen.length - shown.length;
     return {
       state: "present",
       value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", "),
@@ -1186,13 +1209,12 @@ export class RunQueueProjection {
    * COUNTED into the absent reason rather than silently swallowed.
    */
   #facts(
-    runId: string,
     status: QueueSurfaceWire["status"],
+    receipt: ReceiptView | undefined,
   ): { state: "present"; value: readonly { label: string; value: string }[] } | { state: "absent"; reason: string } {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) {
       return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
     }
-    const receipt = this.#deps.authority.getReceipt(runId);
     if (receipt === undefined) {
       return {
         state: "absent",
@@ -1229,6 +1251,15 @@ export class RunQueueProjection {
     const { queued } = row;
     const shape = queued.shape;
     const status = this.#status(row, authority);
+    /**
+     * D5: ONE receipt read per row, for the two consumers that need it.
+     * A non-terminal row reads none at all — neither consumer has anything to
+     * say about a run that has not produced a terminal result — which is the
+     * same condition each of them tested for itself before.
+     */
+    const receipt = TERMINAL_QUEUE_STATUSES.has(status)
+      ? this.#deps.authority.getReceipt(queued.runId)
+      : undefined;
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
     /**
      * The children a group COUNTS, which is not every child it spawned. The
@@ -1287,7 +1318,7 @@ export class RunQueueProjection {
       runNumber: this.#runNumber(authority),
       containment: this.#containment(queued),
       linkedRuns: this.#linkedRuns(row),
-      facts: this.#facts(queued.runId, status),
+      facts: this.#facts(status, receipt),
       startedAt: queued.ts,
       updatedAt: authority.updatedAt,
       endedAt: this.#endedAt(row, authority, status),
@@ -1312,7 +1343,7 @@ export class RunQueueProjection {
         : { state: "present", value: queued.subtitle },
       status,
       liveMessage: this.#liveMessage(authority, status),
-      warnings: this.#warnings(queued.runId, status),
+      warnings: this.#warnings(status, receipt),
       pipeline: this.#pipeline(row),
       panelKind: panelKindOf(shape),
       availableSections: [
@@ -1563,7 +1594,10 @@ export class RunQueueProjection {
         // D22/D126 read through the SAME verdict the queue row's chip renders.
         // A run whose receipt was never derived is counted as unread, never as
         // read-back: this is the report's `unmeasuredRuns`, one axis over.
-        const verdict = this.#warningVerdict(surface.runId, surface.status);
+        const verdict = this.#warningVerdict(
+          surface.status,
+          TERMINAL_QUEUE_STATUSES.has(surface.status) ? this.#deps.authority.getReceipt(surface.runId) : undefined,
+        );
         const arm = verdict.kind === "present" ? "warnings" : verdict.kind === "none" ? "readBack" : "warningsUnknown";
         counts.completion[arm] += 1;
         completion[arm] += 1;
