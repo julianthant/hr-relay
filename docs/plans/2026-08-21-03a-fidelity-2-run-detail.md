@@ -288,3 +288,139 @@ B65 the stream's step grouping and sticky headings · B79 the empty-stream state
 `More lines follow.` · B83 the search control · B87 the live/idle dot (= A49) · B91 `open {age}` on
 the decision card. Plus one recorded TENSION, not an OPEN: B45, where D225's `since <clock>`
 contradicts the demo's own argument for the age.
+
+---
+
+## R-C — The Context rail: Data / Edit Data, provenance, freshness, the edit policy
+
+**Demo:** `DemoContextRail.tsx` (1204 lines).
+**Rebuild:** `src/dashboard/surfaces/context-rail.tsx` (1120) + `context-rail-model.ts` (220);
+mounted `log-panel.tsx:2000-2024`.
+
+**RE-AUDIT.** R6 enumerated 52 elements / 26 findings on 2026-08-13 and landed them in `05c3b33`.
+Four of its wire rows have since been dispositioned (D252, D253, and the delegation / prior-run
+rows on 2026-08-20), which changes the verdict on eleven of them. This table is the state at HEAD.
+
+### C-shell — the hook, the spine, the rail frame
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| C1 | rail storage key | `rebuild-demo.context-rail` `:125` | `hrauto-rebuild.context-rail` `context-rail-model.ts:41` | divergent | `ruled: R6 f.25` — operational isolation |
+| C2 | the blocked-storage arm | `try/catch → true` `:127-137` | `readEnumPreference` / `writePreference` returning a distinguishable outcome | divergent | `ruled:` the fail-loud house rule, stated in code — "not a reason to refuse the operator this one, but it is a distinguishable outcome, not a silence" |
+| C3 | the three-column decision | `matchMedia("(min-width:1280px)")` inside the hook `:147-161` | a MEASURED `threeColumn` argument from the layout owner `context-rail-model.ts:77` | divergent | `ruled: ref dashboard-surfaces §Shell` — see B8; the CSS half is a container query, so the JS half must read the same box |
+| C4 | who owns `dataExpanded` | the ONE hook — and `setOpen(false)` clears it `:181-191` | split: `LogPanel` holds the layout flag, `ContextRail` holds the header word; collapsing clears NEITHER | divergent | **OPEN — operator call.** Collapse the rail while it is expanded, then re-open it: the grid column is still `--ds-w-context-rail-wide` while the freshly mounted rail's header reads `Run data` and its control offers `Widen`. The demo cannot desync because one hook owns both |
+| C5 | spine `<aside aria-label="Run data, collapsed">` + border/bg/radius/`pb-base` | `:1054-1062` | `:912-918` | exact | |
+| C6 | spine expand `IconButton` + `PanelRightOpen` on the `h-bar` baseline, with the "position, not motion" reasoning | `:1069-1076` | `:925-937` | exact | |
+| C7 | spine control LABEL | `Show run data — extracted fields, attempts and delegation` `:1071` | `Show run data — extracted fields and attempts` `:932` | divergent | `ruled: R6 f.24` as-built — a spine may not advertise a section that does not render |
+| C8 | spine vertical `Run data` caps (`[writing-mode:vertical-rl]`) | `:1079` | `:940-942` | exact | |
+| C9 | spine vertical field count `plural(n, "field")` | `:1080-1082` | `:943-947` | exact | |
+| C10 | rail `<aside aria-label="Run data">`, `@container`, border/bg/radius | `:1119-1128` | `:1001-1010` | exact | |
+| C11 | rail header: `Database` glyph, title, the `Run data · editing` arm, `Hide run data` + `PanelRightClose` at `ml-auto` | `:1130-1147` | `:1012-1032` | exact | R6 f.4 |
+| C12 | rail body scroller `flex min-h-0 flex-1 flex-col gap-cozy overflow-y-auto` + cozy padding | `:1149` | `:1034` | exact | |
+| C13 | section ORDER — Data · Attempts · Delegation | `:1151` | `:1036` | exact | R6 f.19 |
+| C14 | `Evidence` is NOT a rail section | (the demo says so twice) | `:1039-1045` | exact | R6 f.19; re-homes to Receipt |
+| C15 | no summary count row at the rail floor | `:665-680` (the ban) | `:1109-1116` (the ban, restated in place) | exact | R6 f.20 |
+
+### C-Data head
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| C16 | the Data `<section>` accessible name | `aria-label="Data"` `:590` | `aria-label="Extracted fields"` `:611` | divergent | **OPEN — operator call** (R6 f.3a moved the visible `SectionLabel`; the a11y name moved with it, which the finding did not ask for) |
+| C17 | head row `flex items-center gap-snug` + `SectionLabel min-w-0 truncate` reading `Extracted fields` | `:591-592` | `:616-617` | exact | R6 f.3a |
+| C18 | `About run data` ⓘ trigger (`xs`, faint → fg, `data-[state=open]`) | `:600-608` | `:456-464` | exact | R6 f.3b |
+| C19 | ⓘ popover `title="Run data" side="bottom" align="start" width="lg"` | `:609` | `:465` | exact | |
+| C20 | ⓘ `KeyValueList` — `Generation` · `Captured {age} ago` · `Accepted age {N} min at {node}` | `:618-624` | absent | missing | `unserved:` `ContextDataSectionSchema` carries no checkpoint generation, `capturedAt` or consuming node (R6 f.7's batch; D252 served a per-ENTRY bound, which is a different fact) |
+| C21 | ⓘ bullet 1 | "…every field the run recorded, **grouped by the workflow step that produced it**." `:627` | "This ledger contains every field the run recorded." `:468` | divergent | **OPEN — operator call** — the clause was dropped when grouping was unserved, and D252 has since made it true again, so the sentence now UNDERSTATES the surface |
+| C22 | ⓘ bullet 2 — reads correctable, writes never edited | `:628` | `:469` | exact | |
+| C23 | ⓘ bullet — the freshness limit | `:629` | absent | missing | `ruled:` stated `:447-452` — no checkpoint-level `maxAgeMin` to name, and a bullet stating a limit the wire cannot name would invent the number. D252's per-ENTRY bound prints at C49 instead |
+| C24 | ⓘ bullet — the save arm | two arms (`continues` / records a correction) `:630-632` | the correction arm only `:474` | divergent | `unserved:` `continue-with-data` is not a served command here, stated `:470-473` |
+| C25 | ⓘ bullet — "Starting a custom run uses the complete data set shown here…" | `:633` | absent | missing | `unserved:` no custom-run descriptor (prior-runs / custom-run ledger row) |
+| C26 | ⓘ bullet — `editPolicySummary(row)` | `:634` | absent | missing | `unserved:` no per-run policy summary on the wire |
+| C27 | ⓘ bullet — "A correction takes a reason, and the reason becomes the field's operator provenance…" | (no counterpart) | `:475` | extra | `ruled: R6 f.21` on-record deviation |
+| C28 | Widen/Narrow `IconButton size="sm" ml-auto` + `Maximize2`/`Minimize2` + both labels verbatim | `:642-654` | `:622-634` | exact | R6 f.3c |
+| C29 | `FeedsIntoLine` (info-tinted block: `Result feeds` caps · the label · the target trace) | `:203-218`, mounted `:657` | absent | missing | `unserved:` no producer — the child's side of a delegation edge (delegation links ledger row, CLOSED 2026-08-20) |
+| C30 | the empty ledger — a plain `<p>`, not a card, with the demo's sentence verbatim | `:659-662` | `:637-644` | exact | R6 f.17 |
+
+### C-ledger row
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| C31 | the direction RAIL: `w-[--ds-border-w-emphasis] self-stretch rounded-pill` in the read/write mark colour, the arrow on the LABEL line, an `sr-only` word | `:234-263` | `:279-315` | exact | R6 f.12, landed by D252 |
+| C32 | the `sr-only` word | `write` `:260` | `written` `:312` | divergent | **OPEN — operator call** (one word; the demo's pair is `read`/`write`) |
+| C33 | the `dir === undefined` neutral rail | (no counterpart — the demo always knows) | `:280-290` | extra | `ruled: D252` — defaulting to `read` would claim the run changed nothing |
+| C34 | row wrapper `flex gap-snug py-snug` + inner `flex min-w-0 flex-1 flex-col gap-hair` | `:340-342` | `:346-352` | exact | |
+| C35 | label line `flex items-center gap-tight` | `:346` | `:360` | exact | |
+| C36 | the label element: a real `<label htmlFor>` with `cursor-text` when editable, a `<span>` when not, both `title`d, `flex-1 truncate font-medium fg-secondary` | `:333,346-355` | `:258-262,361-369` | exact | R6 f.14 + f.15 |
+| C37 | `changed` Badge (warning, `shrink-0`, "You changed this value. It is not saved yet.") | `:359-363` | `:687-695` | exact | R6 f.2 |
+| C38 | `corrected` Badge | `info`, title quotes the observed reading `:364-372` | `info`, title `Corrected by an operator at {clock}…` `:220-228` | divergent | `ruled: R6 f.10` (tone) + `f.22` (clocked, never raw ISO). The OBSERVED reading is not quoted — the wire carries one value per entry |
+| C39 | `refreshed` Badge | `:373-381` | absent | missing | `unserved:` needs the superseded reading beside the current one; this wire carries one value per entry (D252's row) |
+| C40 | `staged` Badge | `:382-390` | absent | missing | `unserved:` STRUCTURAL — a `prepare` contract is `checkpoint: "in-memory-only"`, so a staged value never becomes the checkpoint a ledger row reads (D252's row) |
+| C41 | `unconfirmed` Badge | `:391-399` | absent | missing | `unserved:` same — an unconfirmed write is a `parked-write` run whose transaction node has no checkpoint; its honest surface is `ref write-safety §4.1`'s park section |
+| C42 | the locked-policy ONE-WORD `tag` Badge (`policy.tag`, `title={policy.reason}`) | `:402-406` | absent — the reason rides `LockedValue` alone | missing | `unserved:` the edit wire carries a reason, no one-word tag. **Named in D252's row and it did not land with the rest of that batch** |
+| C43 | `derived` Badge | (no counterpart) | `:238-245` | extra | `ruled: R6 f.23` — W2's `source`; the `operator` arm draws nothing on purpose, stated `:233-237` |
+| C44 | `SystemChip` placement | on every ROW `:407` | on the STEP HEADING `:663-665` | divergent | `ruled: D252`, stated `:651-657` — every value a step recorded came from the same place |
+| C45 | the observation clock | `point.ts`, folded away below `@min-[26rem]` `:413-417` | `fmtClock(observedAt)` with NO fold `:246-253` | divergent | `ruled:` stated `:191-205` — the demo's two competitors for that line are unserved here, and a threshold carried across unexamined would hide the clock at every width the product draws (376 at rest, 520 mid-edit) |
+| C46 | the value line: `ValueField` when editable, `LockedValue` when not, `w-full` | `:425-429` | `:700-717` | exact | |
+| C47 | what `LockedValue` prints | the checkpoint base `:428` | `entry.valueRedacted` `:701` | exact | server-redacted, rendered verbatim; this surface never unmasks |
+| C48 | the pending-correction sentence under an editable value | (no counterpart) | `:718-725` | extra | `ruled: R6 f.22` keep-with-fix (clocked) |
+| C49 | the per-entry FRESHNESS note under the value (`Reusable for N min before <writes>. …`) | (the demo states this at checkpoint level, C20/C58) | `:731-735` + `context-rail-model.ts:151-164` | extra | `ruled: D252` — printed only where it can BITE; an empty `feeds` set refuses nothing, so it prints nothing |
+
+### C-grouping (LEVEL 1)
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| C50 | the ledger has a STEP level at all | `:762-803` | `:658-740` | exact | R6 f.1's first half, closed by D252 |
+| C51 | the step group's CHROME | a `Well` per step (`overflow-hidden p-0`), a RECESSED heading band (`min-h-[--ds-h-sm] items-center px-base py-tight`), a `border-t border-recess-border bg-surface-1` body, `px-base` rows separated by `border-t border-border-subtle`, and `gap-base` between groups `:762-803` | a bare `<div className="flex flex-col">` with a `SectionLabel` and `pt-snug` — no Well, no band, no row dividers, no inter-group gap `:658-667` | divergent | **OPEN — operator call.** R6 f.1 named "Well + recessed caps band + divided rows" in one breath; D252 delivered the LEVELS and none of the chrome, so the hierarchy the operator asked to see before reading any copy is carried by a caps label alone |
+| C52 | the heading's type treatment | `dsText.caps dsText.flush truncate fg-secondary` `:772` | `SectionLabel` `:662` | exact | the same caps treatment through the shared primitive |
+| C53 | grouping KEY and order | `[...new Set(row.data.map(d => d.step))]` — first appearance, by label `:504` | `groupEntriesByStep` — by `origin.nodeId`, plus an unattributed group | divergent | `ruled: D252`, stated `:651-657` — "grouped by node id and never by label" |
+| C54 | the UNATTRIBUTED group (rows the build cannot attribute, drawn with no heading) | (no counterpart) | `:659-667` | extra | `ruled: D252` — a made-up heading would be the guess |
+
+### C-refusals, freshness, the action dock
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| C55 | a REJECTED save | the `Refusal` primitive — headline, the server's `code` (or "unknown — the server refused without one"), `outcome="nothing was written to the checkpoint"`, a `Dismiss` button `:684-697` | one `role="alert"` red `<span>` carrying `settlement.problem` `:742-746` | divergent | **OPEN — operator call.** R6 f.6's as-built flattened every non-applied outcome to one danger span; D253 then routed the CAS `conflict` into that same span. So both refusals now read as one uncoded sentence where the demo shows the code — and "a refusal you cannot quote is one you cannot get help with" is the demo's own line |
+| C56 | the CAS-conflict BANNER — headline, detail, `The checkpoint moved because …`, per-field `yours` / `server now` Chips with a `take the server's` link, and the two exits (`Keep my edits and save against generation N` / `Discard my edits and load the fresh checkpoint`) | `:701-749` | absent (the conflict IS caught — `settleCommandResult` — and rendered as C55's span) | missing | `unserved:` the per-FIELD re-offer is a change to what `executeEditCheckpoint` RETURNS, not a wire projection (D253's row; trigger named: the first change to that refusal payload) |
+| C57 | the two TOASTS on a refused save — `Not saved — the checkpoint moved` / the refusal headline, each stating how many edits are still held | `:548-562` | absent | missing | **OPEN — operator call.** The drafts ARE held (`:586`), and nothing says so out loud; the operator sees a red line and no statement that their work survived |
+| C58 | the stale-checkpoint sentence on the surface (`Captured N ago — older than the Nm limit. Reusing them takes an override.`) | `:816-820` | absent | missing | `unserved:` no checkpoint-level `capturedAt`/`maxAgeMin` (R6 f.7). D252's per-entry bound (C49) is the served substitute |
+| C59 | the freshness OVERRIDE dialog — `These values are older than the next write accepts`, the four Chips (`captured`/`age`/`limit`/`consumed by`), the `Why reuse them?` `Textarea` with its 8-character minimum, and the three exits (`Cancel` / `Override — reuse these values` / `Re-read live instead`) | `:938-981` | absent | missing | `unserved:` `envelope.freshnessOverride` is planned at ENQUEUE and no command mints one from a panel (D252's row; trigger = that command) |
+| C60 | the LIVE LOCK sentence (`aria-live="polite"`, never `role="alert"`) | (no counterpart) | `:747-771` | extra | `ruled:` `efab4e1` finding 1 + `ref dashboard-surfaces` D19 |
+| C61 | the `Why is this correct?` reason `Field`, ABOVE the dock | (no counterpart — the demo's save is a mock) | `:773-791` | extra | `ruled: R6 f.21` on-record deviation — `CheckpointPatchSchema.reason` is `z.string().min(1)` |
+| C62 | dock `Well` + `grid grid-cols-2 gap-snug`, every button `w-full`, and the whole "every edge is a column" argument | `:827-858` | `:819-820` | exact | R6 f.5 |
+| C63 | the `aria-live="polite"` state line at row zero, spanning both columns | `:859-865` | `:821-831` | exact | |
+| C64 | the state line's `Loaded the values from run #N` arm | `:862-863` | absent | missing | `unserved:` reachable only through `Load prior run`, stated `:825-827` — not written as an unreachable branch |
+| C65 | `Load prior run` (`History`) | unconditional `:866-884` | behind an optional `onLoadPriorRun` that nothing passes `:832-842` | missing | `unserved:` prior-runs list (ledger row, CONSUMER READY 2026-08-14) — the dock draws two cells, which is the fail-visible absence |
+| C66 | `Reset edits` (`RotateCcw`, disabled at zero changes) | `:885-897` | `:843-852` | exact | |
+| C67 | the SAVE arm | the SERVER's descriptor — `continue-with-data` → `Play`, `edit-checkpoint` → `Save`; label, `title` and `variant` all off the descriptor `:898-915` | a fixed `primary` `Save {n} corrections` with `Save` `:853-873` | divergent | `unserved:` no `data`-placement action descriptors; the one command is `run/edit-checkpoint` |
+| C68 | the lone-commit-arm `col-start-2` rule (the primary's place is the bottom-right cell) | `:902-907` | `:862-867` | exact | comment ported verbatim |
+| C69 | `Start custom run` (`Play`) | unconditional `:916-927` | behind an optional handler nothing passes `:874-884` | missing | `unserved:` custom-run descriptor (same ledger row as C65) |
+| C70 | a `saveBlocked` sentence UNDER the dock | (no counterpart) | `:887-891` | extra | **OPEN — operator call** (honest, but it duplicates the primary's own `title`) |
+| C71 | `Saving…` on the primary while in flight | (no counterpart — the demo's save is synchronous) | `:872` | extra | **OPEN — operator call** (small; a real command needs a pending state, nothing records the addition) |
+
+### C-attempts and delegation
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| C72 | the `Attempts` section, gated on `> 1` attempts so a labelled section is never empty | `:1111-1114,1178-1186` | `:992-998,1077-1092` | exact | R6 f.18's gate |
+| C73 | what the section CONTAINS | `RunSelector` — a control that changes which attempt you are reading `:1183` | a locked `ContextSection` ledger `:1085-1090` | divergent | `ruled: R6 f.18` on-record deviation, stated `:1080-1084`; see A29 |
+| C74 | the `Separator` above it | `:1180` | `:1079` | exact | |
+| C75 | `DelegationLinks` — the `Delegation` section, its redirect-styled `<button>` links in the queue's grey language, the three sentence arms, `ArrowUpRight` | `:1000-1048,1187-1192` | absent | missing | `unserved:` no producer — no descriptor declares a `child-run` node and `ChildRunExecutor` is unwired (delegation ledger row, CLOSED 2026-08-20) |
+| C76 | the hidden-sections hint | `Attempts and delegation are hidden while you edit…`, ungated `:1196-1200` | `Attempts are hidden while you edit…`, gated on `hasAttempts` `:1103-1107` | divergent | `ruled: R6` as-built — this rail draws one of the demo's two hideable sections, and a control advertising a section that is not there lies about its contents |
+
+**R-C counts — 76 elements: 31 exact · 18 divergent · 17 missing · 10 extra.**
+
+**Since 08-14 (eleven of R6's 26 findings moved).** f.1's step LEVEL landed with D252 (C50) and its
+Well/band/divider CHROME did not (C51 — now the region's largest visual gap). f.12/f.13's
+`DirectionMark` and `SystemChip` landed with D252 (C31, C44). f.7's freshness split: the per-ENTRY
+bound is served (C49) and the checkpoint-level trio plus the override dialog remain unserved with
+named producers (C20, C23, C58, C59). f.6's `conflict` arm is now HANDLED rather than silently
+treated as a save (D253) — but it is handled by flattening into f.6's own one-span compromise
+(C55/C56). f.11's `staged`/`unconfirmed` closed as STRUCTURAL rather than as wire gaps (C40, C41),
+while its third member, the one-word policy `tag`, did not land and has no disposition of its own
+(C42). f.8/f.9's delegation and `feedsInto` closed with no producer (C29, C75).
+
+**OPEN in R-C (9 questions):** C4 the `dataExpanded` desync across a collapse · C16 the section's
+accessible name · C21 the ⓘ bullet that now understates the surface · C32 `written` vs `write` ·
+C51 the step group's missing chrome · C55 the flattened refusal (no code, no `Refusal`) · C57 the
+missing "your edits are still here" toasts · C70 the duplicated blocked-reason sentence · C71 the
+`Saving…` label.
