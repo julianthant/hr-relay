@@ -655,6 +655,17 @@ would be a descriptor read on the archived path, which is exactly what charter �
 
 ### 1.2 The bundle crossing
 
+<!-- roadmap: p1-authority -->
+<!-- roadmap: track-d -->
+
+<!-- roadmap-status: track-d -->
+- [x] the composition root is `src/control/workflow-registry.ts` and its `WORKFLOW_MODULES` tuple is the ONE static module list; every server registry derives from it (§1.3)
+- [x] the dashboard imports no workflow MODULE — no store loader, no Playwright, nothing server-side crosses (`dashboard-wire-boundary` walks the entry's reachable closure and fails on any Node built-in)
+- [!] Track D row **D11** — the dashboard DOES bundle the descriptors themselves. `src/workflows/descriptor-registry.ts`'s `WORKFLOW_DESCRIPTORS` is imported by `src/dashboard/app/dashboard-app.tsx:25`, so every descriptor's parsers, surfaces, node purposes and timeline ride the client bundle while the BFF's bootstrap serves only a seven-field row per workflow (`src/server/dashboard/queries/bootstrap.ts:102-110`). D11 moves the tuple out of the bundle and onto that wire; it amends D251 / ref frontend-backend-integration §4, and it is code work this docs pass does not do
+- [ ] `/api/workflow-definitions` — the endpoint this section described for four months — was never built, and nothing serves "a generated, schema-validated client projection plus presentation overrides". D11 is where it lands, if it lands
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/control/workflow-registry.ts`, `src/workflows/descriptor-registry.ts`, `src/dashboard/app/dashboard-app.tsx` and `src/server/dashboard/queries/bootstrap.ts`; left: D11
+<!-- /roadmap-status -->
+
 ```
 src/workflows/person-lookup/       # rebuild repo (hr-automation-rebuild) — D93
 ├── descriptor.ts     # bundle-safe: zod + domain (incl. contracts) only
@@ -669,7 +680,7 @@ the store index at daemon boot and **fails loud on any unresolved contract** —
 coverage guard pins it at CI.
 
 ```ts
-// src/core/workflow-registry.ts — composition root; lower layers never import workflows
+// src/control/workflow-registry.ts — composition root; lower layers never import workflows
 import { personLookupModule } from "../workflows/person-lookup/module.js";
 import { verifyModule } from "../workflows/verify/module.js";
 
@@ -680,13 +691,37 @@ export const DESCRIPTORS = WORKFLOW_MODULES.map((m) => m.descriptor);
 export const SERVER_REGISTRY = indexModulesByDescriptorId(WORKFLOW_MODULES);
 ```
 
-The dashboard never imports workflow modules. `core/workflow-registry.ts` validates descriptors at
-boot and `/api/workflow-definitions` serves a generated, schema-validated client projection plus
-presentation overrides. The build also emits the same projection for dashboard type tests. The
-SSE hello carries its fingerprint; a server/client mismatch fails loud. This removes the previous
-`domain → workflows → domain` cycle.
+**The dashboard never imports a workflow MODULE**, and that half is structural: `module.ts` carries
+the store loaders, so importing one would drag Playwright and `node:*` into the bundle —
+`dashboard-wire-boundary` (ref frontend-backend-integration §8.13) walks the entry's reachable
+closure and fails on any Node built-in, printing the whole import chain. `control/workflow-registry.ts`
+validates every descriptor at boot. This removes the previous `domain → workflows → domain` cycle.
+
+**It DOES import the descriptors, and that is a live gap with an owner.** `src/workflows/descriptor-registry.ts`
+exports `WORKFLOW_DESCRIPTORS` — the same eight objects `WORKFLOW_MODULES` composes, pinned
+object-identical and in order by `tests/unit/workflows/descriptor-registry.test.ts`, so it is not a
+second registry — and `src/dashboard/app/dashboard-app.tsx` imports it directly. So the parsers,
+surfaces, node purposes, timeline categories and summaries of every workflow ship in the client
+bundle, while the BFF's bootstrap serves only `{id, code, label, categoryId, descriptorFingerprint,
+availability, role}` per workflow (`src/server/dashboard/queries/bootstrap.ts:102-110`). The
+`/api/workflow-definitions` endpoint this section used to describe **does not exist** and never did.
+Moving the tuple out of the bundle onto a served projection is tree row **D11** under Track D; it
+amends D251 / ref frontend-backend-integration §4, and until it lands, a descriptor edit is a
+frontend rebuild. The SSE hello's fingerprint check is what keeps the bundled copy honest in the
+meantime: a server/client mismatch fails loud rather than rendering a stale surface.
 
 #### 1.2.1 The module's role declaration (D219, 2026-08-14)
+
+<!-- roadmap: platform-fixes -->
+
+<!-- roadmap-status: platform-fixes -->
+- [x] every MODULE declares a required closed `role`, validated fail-loud at the composition root; a dangling `chunk-harness.of` and a harness-of-a-harness are unrepresentable (§1.2.1, D219/D220; `src/domain/workflow/module-role.ts`, `src/control/workflow-registry.ts` `auditWorkflowModuleRoles`)
+- [x] a retry is the ITEM's next unspent attempt, taken from authority inside the inserting transaction; `runs.enqueue` refuses an attempt the item has already spent (§4/§5.6 #1/§5.7, D221)
+- [x] the checkpoint identity carries the claim generation, so a gate park and its resume are two executions rather than one refused insert (§5.7, D214, migration v14)
+- [x] the span path carries the claim generation too, so the two executions are two timeline rows (§6, D214)
+- [x] a dry run runs beat ① before it stages, so a rehearsal cannot fail where the performance succeeds (§2.1, D215)
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/module-role.ts`, `src/control/workflow-registry.ts`, `src/infra/sqlite/migrations.ts` (v14) and `src/core/run-executor.ts`; left: nothing in this doc's half — D218/D222 are ref dashboard-surfaces's and D243/D244 ref execution-and-sessions'
+<!-- /roadmap-status -->
 
 A registered workflow is one of three things to the program's taxonomy, and the MODULE — never the
 descriptor — states which, as a **required** closed union:
