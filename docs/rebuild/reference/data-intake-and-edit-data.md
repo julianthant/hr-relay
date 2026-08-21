@@ -914,6 +914,15 @@ scenario corpus — the second asserts the withheld value appears NOWHERE in the
 <!-- roadmap: p2-2h -->
 <!-- roadmap: order-3-dash -->
 
+<!-- roadmap-status: order-3-dash -->
+- [x] the three producers are admitted through ONE gate that cannot branch on the source, and an operator's hand reading fingerprints identically to the provider's (§4.3, D151; `src/domain/ocr/extraction.ts`, held by `ocr-producer-parity`)
+- [x] routes 2 and 3 are usable from a terminal today — `cli ocr forms | instruction | admit`, non-zero exit on refusal (`src/server/ocr/compose.ts:73`)
+- [x] route 1's production adapter is built as transport plus provenance (§4.11, D161; `src/infra/providers/gemini-ocr-extract.ts`)
+- [ ] the review row and the approval cards this square wires are the DRAWN surface, which this doc does not own — ref dashboard-surfaces §9 (D7/D8/D10) and ref frontend-backend-integration §5.1
+- [ ] `ocr_approvals` (schema v10) has no writer in `src/` outside the storage layer — the approval ACT is what the review surface adds
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/ocr/{extraction,instruction,form-registry,stack}.ts`, `src/server/ocr/compose.ts` and `grep -rl ocr_approvals src` (storage layer only); left: everything drawn
+<!-- /roadmap-status -->
+
 **Operator requirement (2026-08-05):** a page may be read by the automated provider pipeline, by an
 AI the operator runs in their own terminal, or by the operator — and *"all should result in the same
 result consistently… the output should be in the same format no matter who does it and nobody skips
@@ -931,7 +940,7 @@ canonical field runs the SAME `coerce` + `schema` an intake column runs, so a mo
 cell would be: the producer's confidence in its own output buys it nothing.
 
 **One instruction, generated from the registry.** `src/domain/ocr/form-registry.ts` declares what
-each form HAS; `buildExtractionInstruction` derives the field list, per-field prompt, expected shape
+each form HAS; `buildExtractionInstruction` (`src/domain/ocr/instruction.ts:40`) derives the field list, per-field prompt, expected shape
 and answer skeleton FROM it. A hand-maintained prompt is the failure this avoids — add a field and
 every route asks for it on its next run, where a prompt living in a string constant would let one
 route silently stop looking.
@@ -952,7 +961,8 @@ never approved. `answersFingerprint` digests what was read while excluding who r
 so "two routes agree" is checkable rather than asserted, and confidence is excluded because it is
 the producer's opinion of itself rather than a fact about the page.
 
-**Routes 2 and 3 are usable now**, through `cli ocr`:
+**Routes 2 and 3 are usable now**, through `cli ocr` (`src/server/ocr/compose.ts:73` — three
+subjects, `forms` · `instruction` · `admit`):
 
 ```
 cli ocr forms                      which forms exist, and how many fields each demands
