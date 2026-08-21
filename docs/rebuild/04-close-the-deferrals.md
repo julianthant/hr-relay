@@ -134,8 +134,9 @@ deferral is code that is missing.
 - [ ] BE `/capture.html` delivered, so 2i-F's token-scoped phone surface is reachable from a phone
 - [ ] BE the on-demand ngrok tunnel launcher (D175) — the shipped default names a launcher that does not exist
 - [ ] BE the guard arm — a phone-origin request may be served nothing outside the capture allow-list
-- [ ] BE wire or delete the INERT capture-ingress host gate: `deps.capturePhoneHost` is declared and read (`src/server/dashboard/routes/api.ts:65,142`) and supplied by nothing, so the middleware compiles and can never fire (also Track D row D2)
+- [x] BE the capture-ingress host gate is WIRED (Track D row D2, 2026-08-21, `47eeb44e`) — `capturePhoneHostOf` derives it from `capture.ingress: "forwarded"`, the same leaf the ingress resolver reads, and `capture-durability-and-scope` §2b refuses a composition root that stops supplying it; it was declared, read, and supplied by nothing since D174
 > 2026-08-20 | docs-cohesion 04 | verified against src/core/runtime-composition.ts:162-200, src/server/dashboard/routes/api.ts:141-403 (no static or asset route), src/domain/capture-surface.ts:83, src/server/dashboard/commands/capture-service.ts:495-546; left: all six build items
+> 2026-08-21 | track-d D2 | the host gate is off this list — wired, not deleted, because `forwarded` is a producer an operator can set today and the alternative was landing the scope check in the same slice that opens the door; left: the five BE build items above, unchanged
 <!-- /roadmap-status -->
 
 **What the deferral is.** The production BFF **serves no frontend bytes.** Every dashboard byte you
@@ -166,11 +167,13 @@ when its credential is absent or its launcher is missing.
 **Not built.** Six things, listed above. The two worth calling out because they read as done and are
 not: **`npm run dashboard:prod` names a mode the runtime never parsed** — `package.json:12` passes
 `--prod` and `startRebuildRuntime` dispatches on `args[0]` alone, so the flag reaches nothing — and
-**the Host gate is inert**. `deps.capturePhoneHost` is optional, and the middleware's first line is
-`if (phoneHost === undefined) return next();`. Nothing supplies it in any composition, so the
-allow-list that exists to keep a phone origin off the operator's dashboard has never evaluated a
-single request. It is correct code in front of a door nobody opened, and either wiring it or
-deleting it is part of closing this deferral.
+**the Host gate WAS inert** until Track D row D2 (2026-08-21, `47eeb44e`). `deps.capturePhoneHost`
+is optional and the middleware's first line is `if (phoneHost === undefined) return next();`, and
+nothing supplied it in any composition, so the allow-list that exists to keep a phone origin off the
+operator's dashboard had never evaluated a single request. D2 WIRED it rather than deleting it:
+`capture.ingress: "forwarded"` names a real HTTPS origin an operator can configure today, so the
+scope check has a producer now instead of arriving in the same slice that opens the door. The gate
+is therefore no longer part of closing this deferral; the five build items above are.
 
 ## Edit a workflow's presentation / policy without a code change
 <!-- roadmap: def-explorer-edit -->
