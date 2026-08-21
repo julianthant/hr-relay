@@ -453,20 +453,28 @@ frontend-backend-integration`; that doc is the per-contract truth, and this tabl
 
 ## Decisions this phase ratified
 
-_Derived from `reference/decisions.md`'s round headings on 2026-08-20 (3b) — the
-ratification act and the normative pointer stay in the ledger; this is the phase index._
+_Derived from `reference/decisions.md`'s round headings and checked 2026-08-21 against its
+`_phase: 2_` markers — **23 rounds carry the marker and all 23 are indexed below** (rounds 23 and 24
+are Phase 1's; round 46 onward is `platform`). The ratification act and the normative pointer stay
+in the ledger; this is the phase index and nothing here is normative._
 
 | Rounds | Dates | D-range | What they settled |
 |---|---|---|---|
-| 22 | 2026-08-04 | D122 | **the proof target**: the Kuali RRSS timekeeper annotation, its reload read-back arm, the one permitted capability mint, and `actionId` instability |
-| 25–27 | 2026-08-04 | D127–D130 | the identity-gate scope for the proof; the controlled commit and what the target taught (D128 — later withdrawn by D135 — and D129); the UCPath receipt probe (D130) |
+| 22 | 2026-08-04 | D122 | **the proof target** — the Kuali RRSS timekeeper annotation, its reload read-back arm, the one permitted capability mint, and `actionId` instability |
+| 25–27 | 2026-08-04 | D127–D130 | the identity-gate scope for the proof (D127); the controlled commit and what the target taught (D128 — **later withdrawn by D135** — and D129); the UCPath receipt probe (D130) |
 | 28–29 | 2026-08-04 | D132–D133 | the parity lane that could not fail; the config leaf that bricked every existing database (read-forward, never back-filled) |
 | 30–34 | 2026-08-04 | D134–D145 | **tail 2g** — the Kuali write lands and D128 is withdrawn (D135), the parked write outliving a refactor (D136), diagnostic capture (D137), the durable inbox (D138), knowledge records (D139), the receipt derived from authority (D140–D143), a transaction node as terminal evidence (D144), the ledger projector (D145) |
-| 35–38 | 2026-08-05 → 08-08 | D146–D169 | **tail 2h** — the canonical field vocabulary (D146–D149), the two repositories stop touching each other (D150) and the OCR/scanner stack (D151–D159), the i9 sectioned form (D160/D161), the executor as provider consumer (D162–D169) |
+| 35–38 | 2026-08-05 → 08-08 | D146–D169 | **tail 2h** — the canonical field vocabulary (D146–D149), the two repositories stop touching each other (D150), the OCR/scanner stack (D151–D159), the i9 sectioned form (D160/D161), the executor as provider consumer (D162–D169) |
 | 39–44 | 2026-08-09 | D170–D180 | **tail 2i** — the durable intake session (D170/D171), the intake grid's consumer (D172/D173), the phone reaching capture and nothing else (D174/D175), the explorer + catalog surface (D176/D177), the advisory that never becomes evidence (D178), the archive model and the report that reads it (D179/D180) |
-| 45 | 2026-08-09 | D181–D190 | **tail 2j, the gate** — the restore path that could not have worked (D181), the soak (D182), the capability inventory re-disposition (D184/D188), **D186** the explorer's EDIT half reassigned, **D187** the dark parity corpus / two-pixel panel / underivable receipt, **D189** the production BFF serves no frontend bytes |
+| 45 | 2026-08-09 | D181–D190 | **tail 2j, the gate** — the restore path that could not have worked (D181), the soak (D182), the redaction sweep (D183), the capability-inventory re-disposition (D184/D188), the corpus-layout audit (D185), **D186** the explorer's EDIT half reassigned, **D187** the dark parity corpus / two-pixel panel / underivable receipt, **D189** the production BFF serves no frontend bytes, **D190** the safety-critical coverage floor |
 
 **D131 is a retired gap — never reuse it.**
+
+**Two decisions that BIND Phase 2 were ratified after it closed, and are `platform`, not Phase 2.**
+D191 (2026-08-12) made `test:coverage` the per-commit gate on D190's own recommendation, and D193
+(2026-08-12) confirmed both Phase-2 dispositions and set the Phase-3 entry. They are cited in the
+sections above as evidence; they are not counted here, because the ledger's phase markers own that
+question and this table must agree with them.
 
 ## Exit criteria
 
