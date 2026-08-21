@@ -823,6 +823,8 @@ naming separately.
 
 ## 9. Settled defaults
 
+Built and holding:
+
 1. One active item per worker.
 2. Parallelism is explicit worker count, chosen per workflow.
 3. Session reuse is the descriptor default; fresh boundaries are explicit and observable.
@@ -830,3 +832,16 @@ naming separately.
    lane-based fairness math.
 5. Queue admission is blocked only by authority/storage correctness; worker availability affects
    when work starts, not whether it may be enqueued.
+6. Authentication is decided by CONTENT, and so is its refusal (§4.1, §4.2).
+
+Settled by ruling and not yet built — the design is in §10 and §11, and neither is re-openable
+without a new operator decision:
+
+7. **Every Duo ceremony is serialized per CREDENTIAL** (R12, §10). Not per worker, not per system,
+   not per profile — the counter is per credential, so the lease is too.
+8. **A session is a dashboard-started group of runs, and workers coordinate through AUTHORITY only**
+   (R11, §11). Run claims, session leases, write fences and the concurrency matrix; never peer
+   messaging.
+
+---
+
