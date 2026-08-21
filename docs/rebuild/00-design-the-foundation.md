@@ -216,19 +216,60 @@ proven ingest contract rather than inventing one mid-migration. _As built: all f
 <!-- roadmap: phase0-always-gate -->
 
 <!-- roadmap-status: phase0-always-gate -->
+- [x] the POLICY — manual approval on **every** separation, both separation types (Kuali and I-9), **no auto-approve-on-match** (**D77**, operator ratification 2026-07-24, designed 2026-07-26)
+- [x] the DESIGN is where D77 put it and still binds: `ref:write-safety` §14, with the gate-node mechanism owned by `ref:workflow-model` §4 — order 8 inherited a designed gate instead of owing one
+- [x] BUILT and live-proved at separations chunk 3 as `separations-identity-check` — two UCPath reads, a pure comparison producing the packet, the operator gate, a post-gate check; terminal `done` over a real person through the real command endpoint (**D202**, 2026-08-12)
+- [x] the gate dominates the run's OUTPUT, not only its decision — `identity-gate-before-commit` audits every transaction node AND the terminal result, and it caught the descriptor's first draft reading its product off the pre-gate node (D202)
+- [x] who approved is durable AND reaches the operator's evidence: `gate_results` carries the kernel's own `resolvedBy`/`resolvedAt` (D202), the kernel reads a gate row as a dependency's evidence rather than demanding a checkpoint (**D203**), and the receipt derives from it (**D204**) — §14.6 risk 6 closed on both halves
+- [x] the approval binds the WRITE PLAN, not only the person — the reconciled dates, the template and the department sit INSIDE the packet digest, so a value that moves after approval re-opens the gate (**D211**, 2026-08-14)
+- [x] all three approval ceremonies exist and an unknown shape refuses (**D226**, 2026-08-19) — until then the frontend implemented one of three, so an ambiguous packet had no answer available in the dashboard at all
+- [x] §14.7's two deferred values were answered where it said they would be, at the separations §b questionnaire (2026-08-12): freshness limit **4 hours**, and the I-9-packet question resolves out of scope because separations does not involve the I-9 packet (`docs/migrations/separations.md` §4b, residual 5A)
+- [x] the ONE ratified exemption is named and checkable — `kuali-timekeeper-annotation` resolves no person and files nothing (**D127**, `ref:write-safety` §14.8)
+- [ ] §14.4's manual-entry arm is built NARROWER than designed: an EID the packet never SHOWED is refused by name (`identity-approval-eid-not-shown`) because chunk 3 performs no second live read. Narrow in the safe direction, and the widening belongs to a chunk that can perform one — owner `ref:write-safety` §14.9
+- [ ] the honest residual D77 never claimed to close: the gate makes a wrong-person termination require a human to approve the wrong person **while looking at the disconfirming evidence**; it cannot make the class impossible, because the operator is the authority on which person is correct (`ref:write-safety` §14.6)
+> 2026-08-21 | docs-cohesion 00 | verified against reference/write-safety.md §14–§14.11, src/dashboard/app/identity-ceremony.ts, src/dashboard/surfaces/identity-approve.tsx, tests/unit/architecture/identity-gate-before-commit.test.ts and docs/migrations/separations.md §4b; left: the manual-EID widening and the standing residual, both owned in ref:write-safety
+
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.3 (the order-8 prerequisite block — the gate was pulled into Phase 0 by D77, so it is filed here rather than with the migration order) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**What Phase 0 decided, and why it is filed here rather than at order 8.** This slot in the
+migration order previously read *"the separations identity-approval GATE-NODE has no design yet."*
+That was the sharpest priority inversion in the whole plan: roughly 60 KB specified the permanent-key
+fence, which by its own admission prevents a double-**file** and never a wrong-**person** (risk #4,
+D20), while the single control that defends against the `T002173685` wrong-person incident was one
+deferred line. The operator ratified the policy on 2026-07-24 — **ALWAYS-GATE**, both separation
+types, no auto-approve-on-match — which made the design cheap, so it was written **in Phase 0**.
+Order 8 inherited a designed gate instead of owing one.
 
-**Order-8 prerequisite — RESOLVED, and pulled into Phase 0 (D77).** This slot previously read "the
-separations identity-approval GATE-NODE has no design yet." That was the sharpest priority
-inversion in the plan: the single control that actually defends against the `T002173685`
-**wrong-person** incident was undesigned and deferred to order 8, while the fence — which by its
-own admission prevents a double-**file** and never a wrong-**person** (risk #4, D20) — had a full
-design doc. The operator ratified the policy on 2026-07-24 (**ALWAYS-GATE**: manual approval on
-every separation, both separation types, no auto-approve-on-match), and the gate is now designed
-in **ref write-safety §14** during Phase 0, with its node mechanism owned by ref workflow-model §4. Order 8 inherits a
-designed gate instead of owing one.
+**The incident, and the one fact that settles the design.** `T002173685` was a wrong-DATA error: a
+name-search override date-matched a different career employee and filed a real termination against
+him. A permanent-key fence would have fenced that write perfectly and filed it anyway, because the
+key derived from the wrong person; the probe would have found no prior termination for that person,
+correctly, and authorized the click. The tempting cheaper design — gate only when the names look
+different — is falsified by the incident itself:
+`classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns **`same`**, because
+the token alignment tolerates extra tokens on the longer side, and legacy fires its wrong-person
+control only on `different`. **The incident would not have tripped a tier-triggered gate.** That is
+the argument for ALWAYS-GATE in one line, and it is why the packet leads with DISCONFIRMING evidence
+and computes its `approvalShape` on the SERVER — a frontend free to choose the control could quietly
+turn every gate into one click, which is `ref:write-safety` §14.6's rubber-stamping risk manufactured
+by accident.
+
+**Two layers, two different questions, neither substituting for the other.** The identity-approval
+gate answers *is this the right person to act on?* and is an operator decision; fresh subject binding
+answers *is the page I am about to click on showing that person?* and is a machine observation. A run
+must pass both: the gate produces an **approved subject**, and the binding proof asserts the staged
+page equals that subject at the instant of the fence. Neither is inferable from the other.
+
+**Where it is built, and what building it changed.** The normative design is `ref:write-safety` §14
+(gate mechanism `ref:workflow-model` §4); the as-built record is §14.9–§14.11 of the same doc, and
+the first live gated run was 2026-08-12. Three things landed differently from the design and each is
+stronger: the result payload carries **no** actor and **no** instant because authority does
+(a caller-supplied `approvedBy` would be a claim sitting next to authority); a manually typed EID the
+packet never showed is **refused**; and `chosenFrom` is **checked** against the packet rather than
+recorded. Two platform defects the same run found belong to the kernel and not to this design — a
+gate has no checkpoint, so a task declaring one as a dependency was structurally unrunnable until
+**D203** taught the reader to resolve a `gate_results` row, and the receipt kept saying `unknown`
+until **D204** did the same one surface further out.
 
 ## Size model + delivery tiers
 <!-- roadmap: phase0-size-model -->
