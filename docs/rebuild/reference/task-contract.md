@@ -1468,140 +1468,147 @@ Honest residual risks with no mechanical guard: (a) *output schemas that are too
 one canonical value per contract; (b) *the ported driver layer quietly growing new underived logic*
 — mitigated by the two-commit rule (§3.3) but ultimately review discipline; (c) rows 2 and 9 above.
 
-## 9. Worked example — three real tasks, decoration in practice
+## 9. Worked examples — one shipped, two designed
+
+§9.1 and §9.1.1 are transcriptions of contracts that exist and run; §9.2 and §9.3 are DESIGNS for
+stores that are declarations today (order 7) and for a mechanism that is unbuilt (§4). Each says
+which it is at its head, because a worked example is the first thing an author copies.
 
 ### 9.1 `ucpath/search-person-org` (read) — the canonical example (D16)
 
-**Defined once, here; ref workflow-model imports it verbatim.** The output shape is taken from the REAL
-primitive it wraps — `lookupPersonInUcpath` (`src/workflows/person-lookup/lookup.ts`), which
-returns `PersonLookupRunResult { input, results, selection, allAttempts }` built from
-`EidResult` (`src/systems/ucpath/person-org-summary.ts:132`) and `PersonLookupSelection`
-(`src/workflows/person-lookup/outcome.ts:39`). Two deliberate exclusions from the contract:
-`allAttempts` (the per-strategy search trail — audit material for ref dashboard-surfaces's notes stream, not data
-a downstream step may key on) and `EidResult.rowIndex` (a page-local drill-in artifact).
+<!-- roadmap: order-0 -->
+<!-- roadmap-status: order-0 -->
+- [x] the contract and its impl exist and are live-proven — `src/domain/contracts/ucpath/search-person-org.ts` + `src/stores/ucpath/tasks/search-person-org.ts`, run `4ebf7275` against real UCPath + CRM (D74, 2026-08-04)
+- [x] the CRM half is two contracts under the same rules (§9.1.1), each with its own `subject-mismatch` code
+- [x] `workflow:person-lookup/read-active-status` is the mini-store fold beside them — the whole store, one task
+- [ ] PROOF the T1 structural fixture scenario and its T3 dry-run pair (R10) — person-lookup has neither
+> 2026-08-21 | docs-cohesion 5.1 task-contract | transcribed from the shipped contract, which differs from the 2026-07-17 sketch this section used to show; the workflow-level half is ref workflow-model §8
+<!-- /roadmap-status -->
+
+**Defined once, here; ref workflow-model §8 composes it.** This is the shipped contract, abridged —
+the sketch that stood here until 2026-08-21 was written before the store existed and differed from
+it in four ways that matter to anyone copying it (below).
 
 ```ts
-// src/domain/contracts/ucpath/search-person-org.ts — bundle-safe: zod only
-import { z } from "zod";
-import { defineTaskContract } from "../base.js";
+// src/domain/contracts/ucpath/search-person-org.ts — bundle-safe: zod + domain ids only
+const UcpathCandidateSchema = z.strictObject({
+  emplId: EidSchema, name: z.string().min(1),
+  department: z.string().min(1), jobTitle: z.string().min(1),
+  employeeStatus: z.enum(["active", "inactive", "terminated", "unknown"]),
+  hdh: z.boolean(),                       // Housing/Dining/Hospitality — the operator may keep or drop
+});
 
-const Query = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("by-name"), name: z.string().min(1),
-                   keepNonHdh: z.boolean().default(false) }),
-  z.strictObject({ kind: z.literal("by-eid"), emplId: EidSchema }),
+/** The SELECTION is a discriminated union, and each arm carries its own invariant. */
+const UcpathPersonSelectionSchema = z.discriminatedUnion("status", [
+  z.strictObject({ status: z.literal("resolved"),  selected: UcpathCandidateSchema,
+                   candidateEids: z.array(EidSchema).min(1) }),
+  z.strictObject({ status: z.literal("ambiguous"), selected: z.null(),
+                   candidateEids: z.array(EidSchema).min(2), searchName: z.string().min(1) }),
+  z.strictObject({ status: z.literal("not-found"), selected: z.null(),
+                   candidateEids: z.array(EidSchema).max(0), searchName: z.string().min(1) }),
 ]);
 
-/** Mirrors EidResult (person-org-summary.ts) — required/optional per the real interface. */
-const Candidate = z.strictObject({
-  emplId: EidSchema, emplRecord: z.string(),
-  name: z.string(), lastName: z.string(),
-  hrStatus: z.string(), businessUnit: z.string(),
-  jobCode: z.string(), jobCodeDescription: z.string(),
-  // Populated after drill-in — optional on the real interface:
-  department: z.string().optional(), deptId: z.string().optional(),
-  positionNumber: z.string().optional(),
-  startDate: z.string().optional(),        // ORG Instance Last Hire — NOT the assignment EFFDT
-  effectiveDate: z.string().optional(),    // selected assignment-row EFFDT
-  terminationDate: z.string().optional(),
-  terminationReason: z.string().optional(),
-  expectedJobEndDate: z.string().optional(),
-  fte: z.string().optional(), emplClass: z.string().optional(),
-});
-
-const EXAMPLE_CANDIDATE: z.input<typeof Candidate> = {
-  emplId: "10873698", emplRecord: "0", name: "Nguyen,Amy", lastName: "Nguyen",
-  hrStatus: "Active", businessUnit: "SDCMP", jobCode: "004723",
-  jobCodeDescription: "BLANK AST 3", department: "HOUSING/DINING/HOSPITALITY",
-  deptId: "000123", positionNumber: "40012345",
-  startDate: "09/15/2025", effectiveDate: "01/01/2026",
-};
-
 export const SearchPersonOrg = defineTaskContract({
-  id: "ucpath/search-person-org",
-  title: "UCPath Person Org search",
+  id: taskId("ucpath/search-person-org"),
+  title: "Searching",                     // the DEFAULT step label (D16), so it reads as one
   effect: "read",
-  /** Identity/status data that may feed a live write (separations feeds a
-   *  termination off it). A checkpoint older than 15 min may not feed a
-   *  commit task on resume (D8; enforcement walk in ref workflow-model). */
-  freshness: { defaultMaxAgeMs: 15 * 60_000 },
-  provenance: { default: "live" }, // this execution read the authoritative UCPath grid
-  subject: { kind: "none", reason: "identity-search" }, // resolves identity; no subject is open yet
-  scenarios: [
-    "ucpath/search-person-org/by-eid-found",
-    "ucpath/search-person-org/not-found",
-    "ucpath/search-person-org/ambiguous",
-    "ucpath/search-person-org/unexpected-grid",
-  ],
-  input: Query,
-  // Mirrors PersonLookupRunResult minus allAttempts (audit → notes stream):
-  output: z.strictObject({
-    results: z.array(Candidate),
-    selection: z.strictObject({
-      status: z.enum(["resolved", "not-found", "ambiguous"]),   // PersonLookupStatus, verbatim
-      searchName: z.string(),
-      selected: Candidate.nullable(),
-      candidateEids: z.array(z.string()),
-    }),
-  }),
-  errorCodes: ["results-grid-missing", "drill-in-failed"],
-  example: {
-    results: [EXAMPLE_CANDIDATE],
-    selection: { status: "resolved", searchName: "Nguyen, Amy",
-                 selected: EXAMPLE_CANDIDATE, candidateEids: ["10873698"] },
-  },
+  input: z.union([
+    z.strictObject({ kind: z.literal("by-eid"),  emplId: EidSchema }),
+    z.strictObject({ kind: z.literal("by-name"), name: z.string().min(1), keepNonHdh: z.boolean() }),
+  ]),
+  output: z.strictObject({ results: z.array(UcpathCandidateSchema),
+                           selection: UcpathPersonSelectionSchema }),
+  errorCodes: ["search-unavailable", "unexpected-page-state"],
+  // The search IS identity resolution, so there is no prior subject to bind:
+  // the by-name arm has no EID to expect, and requiring one would force every
+  // caller to already know the answer.
+  subject: { kind: "none", reason: "the person search resolves identity rather than confirming it" },
+  freshness: { defaultMaxAgeMs: 4 * 60 * 60 * 1000, defaultOverride: "forbidden" },
+  provenance: { default: "live" },
+  scenarios: ["person-lookup/happy-by-eid", "person-lookup/ambiguous-name",
+              "person-lookup/not-found", "person-lookup/ucpath-drill-subject-mismatch"],
+  example: { /* one canonical resolved row, parsed and frozen by the factory */ },
 });
 ```
 
 ```ts
-// src/stores/ucpath/tasks/search-person-org.task.ts — server-side impl
-import { defineTask } from "../../../base/task.js";
-import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-org.js";
-import { ucpathDriver } from "../driver/declaration.js";
-import { lookupPersonInUcpath } from "../impl/person-lookup.js";   // ported primitive
-
-export const searchPersonOrg = defineTask(ucpathDriver, SearchPersonOrg, {
+// src/stores/ucpath/tasks/search-person-org.ts — server-side impl
+export const searchPersonOrgTask = defineTask(ucpathDriver, SearchPersonOrg, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
-  retry: { attempts: 2, backoffMs: 2000, retryOn: "transient" },
-  run: async ({ input, ctx }) => {
-    // Named driver operation wraps the verbatim-ported employment-instance expansion and
-    // preferred-row selection; actions still resolve through canonical UI ids/page states.
-    const lookup = await ctx.driver.searchPersonOrg(input,
-      input.kind === "by-name" ? { keepNonHdh: input.keepNonHdh } : {});
-    ctx.recordData({ direction: "read", field: "candidates", value: String(lookup.results.length) });
-    return { results: lookup.results, selection: lookup.selection };
+  retry: { attempts: 2, backoffMs: 2_000, retryOn: "transient" },
+  async run({ input, ctx }) {
+    const output = SearchPersonOrgOutputSchema.parse(await ctx.driver.searchPersonOrg(input));
+    ctx.recordData([
+      { direction: "read", field: "results",   value: output.results },
+      { direction: "read", field: "selection", value: output.selection },
+    ]);
+    return output;
   },
 });
 ```
 
-Note what vanished versus today's `searchingStep`: no `ctx.updateData` stamping (projection's job),
-no inline screenshot policy (decoration/kernel), no `dataString` casts, no per-call-site error
-prose rules ("never stamp prose into emplId" is structurally dead — `emplId` isn't a writable blob
-field). And note the `z.input`/`z.output` split working: a mapping may omit `keepNonHdh`
-(defaulted), while `run` receives it as a definite `boolean`.
+**Four things the pre-build sketch got wrong, and why the shipped shape is better.**
+
+1. **The candidate is SIX fields, not a 17-field mirror of legacy's `EidResult`.** The rich-read
+   convention (§2.8) came later and applies to a task's page visit, not to copying a legacy
+   interface: what the workflow needs is an identity, a status and enough context to choose
+   between two people. The rest of the Person Org grid is `ucpath/read-job-summary`'s (§2.11),
+   which is a different question about the same page and has its own contract.
+2. **The selection is a discriminated union with per-arm invariants**, not a flat record with a
+   `status` enum and a nullable `selected`. `ambiguous` REQUIRES at least two candidate EIDs and a
+   search name; `not-found` requires exactly zero; `resolved` requires the selected row and at
+   least one EID. The flat shape could spell "ambiguous with one candidate", which is a state no
+   page produces and every consumer would have to defend against.
+3. **`recordData` records the output FIELDS, not a summary.** Provenance covers every canonical
+   output leaf (§2.3), so recording a candidate COUNT would leave both real fields uncovered and
+   fail the read before its output could become a checkpoint.
+4. **`keepNonHdh` is required, so the closing note about `z.input` defaults does not apply to this
+   contract.** The `z.input`/`z.output` distinction is still exactly as §2.2 states it — it is just
+   not what this example demonstrates. What it does demonstrate is a two-arm input union where the
+   arms carry different fields, which is how a "search by X or by Y" task avoids a bag of
+   optionals.
+
+Note what vanished versus legacy's `searchingStep`: no `ctx.updateData` stamping (projection's
+job), no inline screenshot policy, no `dataString` casts, and no per-call-site error prose ("never
+stamp prose into emplId" is structurally dead — `emplId` is not a writable blob field).
 
 ### 9.1.1 CRM Person Lookup reads — source semantics and subject binding (D108)
 
 `crm/read-onboarding-record` retains the source's exact non-empty Process Stage label as
-`rawStage`; it does **not** fabricate a normalized status or an `updatedAt` timestamp that the
-live record page does not prove. The record identity is the URL record id plus the displayed
-UCPath EID and full name. `crm/read-onboarding-dates` owns exactly three business dates:
-`invitedOn` is the Onboarding History transition whose New Value is `Offer Letter Sent`,
-`startsOn` is the record's First Day of Service, and `completedOn` is the history transition whose
-New Value is `Completed`. `Date Signed` is not a completion timestamp and may not substitute for
-one. A verified blank becomes that field's explicit `absent` arm; a missing selector, malformed
-history row, or indeterminate page state throws.
+`rawStage`; it does **not** fabricate a normalized status or an `updatedAt` timestamp that the live
+record page does not prove. The record identity is the URL record id plus the displayed UCPath EID
+and full name. `crm/read-onboarding-dates` owns exactly three business dates: `invitedOn` is the
+Onboarding History transition whose New Value is `Offer Letter Sent`, `startsOn` is the record's
+First Day of Service, and `completedOn` is the history transition whose New Value is `Completed`.
+`Date Signed` is not a completion timestamp and may not substitute for one. A verified blank
+becomes that field's explicit `{state:"absent", reason}` arm — the dates contract's own `example`
+ships one, which is how the shape stays honest — while a missing selector, malformed history row,
+or indeterminate page state throws.
 
-Both tasks return a typed subject binding beside the extracted output. A found record proves the
-registered displayed-EID observation; a genuine zero-result search proves the exact EID query and
-may return only an absent result (or all-absent dates). The task compares the requested EID, binding
-EID, and every output EID before returning. Any mismatch uses the declared `subject-mismatch` error
-code; it never becomes an empty record, first result, or name-based guess.
+Both tasks bind a typed subject beside the extracted output and both declare `subject-mismatch` in
+`errorCodes`. A found record proves the registered displayed-EID observation; a genuine zero-result
+search proves the exact EID query and may return only an absent result. The task compares the
+requested EID, the binding EID and every output EID before returning. Any mismatch uses the
+declared code; it never becomes an empty record, a first result, or a name-based guess. The two
+freshness policies differ deliberately: the record is one hour `forbidden`, the dates one hour
+`audited`.
 
 ### 9.2 OnBase import — separate prepare/commit contracts, one transaction lease
 
+<!-- roadmap: order-7 -->
+<!-- roadmap-status: order-7 -->
+- [-] **DESIGN, not as-built.** The `onbase` store is a declaration only — `declareDriver("onbase", "unwired")`, zero tasks, no `driver/`, no `BROWSER_SYSTEM_BINDINGS` entry — and it is the one store that must declare `exclusive: true` on both its session provider and every task session (§2.1, D15)
+- [ ] BE the two contracts below, their driver and their login recipe, at order 7
+- [ ] BE OQ2 — whether the upload is verifiable by page at all. If it is not, `unverifiableByPage` requires an entry in `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` (empty today), `policy: "always-park"` and an `operator-attestation` proof arm (§2.2)
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/onbase/{index.ts,session.ts} and src/domain/contracts/write-safety.ts; the ServiceNow half of order 7 and the propagation windows are 03c's
+<!-- /roadmap-status -->
+
+The shape a prepare/commit pair takes, written before the store exists so the store is built into
+it rather than around it:
+
 ```ts
 export const FillImport = defineTaskContract({
-  id: "onbase/fill-import",
+  id: taskId("onbase/fill-import"),
   title: "Fill OnBase import",
   effect: "prepare",
   checkpoint: "in-memory-only",
@@ -1619,29 +1626,22 @@ export const FillImport = defineTaskContract({
 });
 
 export const SubmitImport = defineTaskContract({
-  id: "onbase/submit-import",
+  id: taskId("onbase/submit-import"),
   title: "Submit OnBase import",
   effect: "commit",
-  subject: { kind:"person", expected:{fromInput:"emplId", identity:"eid"},
-             observe:"onbase.import.employee-eid", match:"normalized-exact-eid",
-             requiredAt:"after-prepare-before-fence" },
+  subject: { …the same person binding — a commit MUST observe after prepare, before the fence },
   scenarios: ["onbase/import/commit", "onbase/import/proof-unknown", "onbase/import/crash-after-click"],
   input: z.strictObject({ emplId: EidSchema, documentDigest: Sha256Schema }),
   output: z.strictObject({ proof: OnBaseUploadProofSchema }),
   errorCodes: ["upload-unverified", "session-held-elsewhere"],
   example: { proof: ONBASE_UPLOAD_PROOF_EXAMPLE },
-  writeSafety: onBaseUploadSafety, // ref write-safety: typed state/artifact proof
+  writeSafety: onBaseUploadSafety,        // ref write-safety: typed state/artifact proof
 });
 
 export const fillImport = defineTask(onbaseDriver, FillImport, {
   sessions: [{ system: "onbase", access: "transaction", session: "reuse-worker", exclusive: true }],
-  run: async ({ input, ctx }) => {
-    await ctx.driver.goto("onbase.import.form");
-    const staged = await ctx.driver.fillImportFields(input);
-    return { stagedFields: staged };
-  },
+  run: async ({ input, ctx }) => ({ stagedFields: await ctx.driver.fillImportFields(input) }),
 });
-
 export const submitImport = defineTask(onbaseDriver, SubmitImport, {
   sessions: [{ system: "onbase", access: "transaction", session: "reuse-worker", exclusive: true }],
   run: async ({ input, ctx }) => {
@@ -1651,14 +1651,20 @@ export const submitImport = defineTask(onbaseDriver, SubmitImport, {
 });
 ```
 
-Ref workflow-model pairs these in one `transaction` node. The kernel retains the same OnBase page/context and
-global identity lease from the first prepare action through commit verification. Dry-run executes
-`fillImport` and stops; `submitImport` is not in the executable plan.
+Ref workflow-model pairs these in one `transaction` node. The kernel retains the same OnBase
+page/context and the global identity lease from the first prepare action through commit
+verification. A dry run executes `fillImport` and stops; `submitImport` is not in the executable
+plan. The pattern to copy is `ucpath`'s termination family (§2.12), which is the same shape built
+against a live system.
 
 ### 9.3 Decorating (oath-signature's transaction audit shots)
 
-Decoration is this doc's; the full composed person-lookup flow (binding, conditional steps, gates)
-lives in ref workflow-model §3.2 and imports these contracts verbatim (D16).
+<!-- roadmap: order-4 -->
+<!-- roadmap-status: order-4 -->
+- [-] **DESIGN.** `decorateTask` does not exist (§4), and neither does any screenshot capture — so the audit-shot example below cannot be written today
+- [ ] BE order 4 is the first workflow that WANTS it (oath-signature's pre/post-submit form shots). Whoever builds it lands `src/base/decorate.ts`, the builder's `.decorate(...)`, `TaskError.decoratedBy`/`hookErrors` (§2.4) and a capture port in one change — or decides the shots belong in the driver operation and retires §4
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified by absence in src/; order 4's other rows (the operation fan-out, the approval gates, the UCPath enter/fill commits) are 03c's and ref dashboard-surfaces §4's
+<!-- /roadmap-status -->
 
 ```ts
 const auditedSave = decorateTask(ucpathStore.tasks.saveOathSignature, {
@@ -1669,21 +1675,33 @@ const auditedSave = decorateTask(ucpathStore.tasks.saveOathSignature, {
 // the equivalent is .decorate("transaction", hooks, "oath-form-audit") (ref workflow-model).
 ```
 
+The composed person-lookup flow — binding, conditional nodes, gates — lives in ref workflow-model
+§8 and imports §9.1's contract verbatim (D16).
+
 ---
 
 ## 10. Settled design questions
 
-1. ~~Dry-run continuation~~ — **resolved 2026-07-21:** a dry run stops successfully after the first
-   transaction prepare arm by default. A later preview-only graph may continue only through nodes
-   whose inputs do not depend on a commit output; the graph validator proves that dependency.
-2. ~~Session lifetime ownership for OnBase exclusivity~~ — **resolved:** cross-process SQLite
-   lease covers the authenticated context lifetime; context closes before lease release (§2.1).
-3. ~~`errorCodes` granularity~~ — **resolved 2026-07-21:** contracts declare per-task literal tuples.
-   Shared error-code constants may live in a store, but each task explicitly selects its subset;
-   near-duplicate codes are preferable to a broad code a task can never emit.
-4. ~~Screenshot policy default~~ — **resolved 2026-07-21:** browser tasks capture the existing
-   automatic terminal audit screenshot through a kernel hook. Service/workflow tasks have no
-   screenshot ctx. Additional shots are explicit decoration; removing the terminal shot requires a
-   named system-level privacy/volume policy, not a per-workflow silent opt-out.
-5. ~~`KnownTaskId` codegen timing~~ — **resolved 2026-07-21:** checked in for reviewable diffs;
-   generation runs in the normal build and a freshness guard fails when the file differs.
+1. ~~Dry-run continuation~~ — **resolved 2026-07-21, and built:** a dry run stops successfully
+   after the first transaction prepare arm. D209 made previewability a derived property of the
+   graph and D210 made the terminal a preview result; both are in §6.2. A later preview-only graph
+   may continue only through nodes whose inputs do not depend on a commit output.
+2. ~~Session lifetime ownership for OnBase exclusivity~~ — **resolved:** a cross-process SQLite
+   lease covers the authenticated context lifetime and the context closes before the lease is
+   released (§2.1). Unexercised: no OnBase task exists yet (§9.2).
+3. ~~`errorCodes` granularity~~ — **resolved 2026-07-21:** contracts declare per-task literal
+   tuples. Shared error-code constants may live in a store, but each task selects its own subset;
+   near-duplicate codes are preferable to a broad code a task can never emit. §2.9's three distinct
+   negatives (`employee-not-found`, `search-returned-no-match`, `search-no-signal`) are that rule
+   paying off on a live grid.
+4. ~~Screenshot policy default~~ — **resolved 2026-07-21, NOT built.** The resolution was that
+   browser tasks capture the automatic terminal audit screenshot through a kernel hook, service and
+   workflow tasks have none, and additional shots are explicit decoration. The rebuild captures no
+   screenshots at all: the only visual/diagnostic capture is the failure-time redacted bundle
+   (D137). Re-decide it when §4 is built or when an operator asks for a shot, not by accident.
+5. ~~`KnownTaskId` codegen timing~~ — **the question is void: the codegen was never built** (§2.5,
+   §8 row 2). The 2026-07-21 answer ("checked in for reviewable diffs, generated in the normal
+   build, a freshness guard fails on a diff") describes a file that does not exist. What replaced
+   it in practice is the branded `TaskId` plus corpus-derived projections; what is genuinely open
+   is whether a task-id string literal outside contracts/stores/descriptors should be a guarded
+   violation.
