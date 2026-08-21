@@ -153,37 +153,41 @@ prevent. The browser is not entitled to a filesystem default; it is entitled to 
 
 ## 1. Grounding — what exists today, why it hurts
 
+**Every figure and path in this section is the LEGACY repository's, measured 2026-07-18 for doc 08's
+gap audit** (`legacy:src/…`, per the D94 path convention §4 restates). It is kept because it is the
+baseline each design below was chosen against, and because a rebuild claim like "one resolver" only
+means something beside the thing it replaced. Nothing here describes this repository.
+
 - **No central clock.** `grep -c "new Date(" src` = 238, `grep -c "Date\.now(" src` = 207 → **445
   direct wall-clock reads**, zero abstraction, confirmed against the gap audit's figure. The one
-  disciplined pattern, `buildTraceId({ at })` (`queue-trace-id.ts:76-82`), takes `at` as a
-  parameter specifically to stay pure and testable — but every production caller defeats it with
-  `at: new Date()` inline (`tracked-workflow.ts:229`, `run-one-item.ts:441`, `ocr/orchestrator.ts:
-  404`). `todayLocal()`-shaped date-partition formatting is duplicated ad hoc in ≥4 places
-  (`jsonl-core.ts:31`, `deletions/store.ts:13`). Injectability today is scattered private
+  disciplined pattern, `buildTraceId({ at })` (`legacy:src/tracker/queue-trace-id.ts:76-82`), takes
+  `at` as a parameter specifically to stay pure and testable — but every production caller defeats
+  it with `at: new Date()` inline (`tracked-workflow.ts:229`, `run-one-item.ts:441`,
+  `ocr/orchestrator.ts:404`). `todayLocal()`-shaped date-partition formatting is duplicated ad hoc
+  in ≥4 places (`jsonl-core.ts:31`, `deletions/store.ts:13`). Injectability is scattered private
   `now?: () => number` params (`duo-webauthn.ts:580`, `identity.ts:154`) — each hand-rolled, none
-  shared.
-- **Config is a real single-source with re-implemented precedence.** `src/config.ts` +
+  shared. **→ §2.**
+- **Config is a real single-source with re-implemented precedence.** `legacy:src/config.ts` +
   `domain/settings/types.ts` + `tracker/settings/store.ts` already do `env > settings.json >
   default` correctly (verified reading `config.ts` in full) — but the precedence expression
-  (`process.env.X ?? SETTINGS.y.z`) is written out at **every individual read site** (`KUALI_SPACE_
-  URL`, `ANNUAL_DATES.jobEndDate`, `getTimekeeperName`, …: 8 separate call sites in `config.ts`
-  alone), and the code-default literal is duplicated between `config.ts` and `DEFAULT_OPERATOR_
-  SETTINGS` (`types.ts:229-273`) with a hand-maintained comment as the only thing keeping them in
-  sync. Several knobs escape the settings schema entirely (`I9_APP_URL`, `CRM_SECTION_URLS`).
-  **URL overrides are process-global** — `SETTINGS.urls.*` applies to every run in the process;
-  there is no way to send one run at a test instance while another (concurrently) hits production.
-- **Secrets: one good choke, leaky edges.** `validateEnv()` (`utils/env.ts:33-49`) is a clean,
-  batch, fail-loud gate for the two UCPath SSO vars — but `HRAUTO_DASHBOARD_LAN_PASSWORD`, the
-  `.auth/duo-webauthn.json` private-key file (`DUO_WEBAUTHN_CREDENTIAL_PATH`,
+  (`process.env.X ?? SETTINGS.y.z`) is written out at **every individual read site**
+  (`KUALI_SPACE_URL`, `ANNUAL_DATES.jobEndDate`, `getTimekeeperName`, …: 8 separate call sites in
+  `config.ts` alone), and the code-default literal is duplicated between `config.ts` and
+  `DEFAULT_OPERATOR_SETTINGS` (`types.ts:229-273`) with a hand-maintained comment as the only thing
+  keeping them in sync. Several knobs escape the settings schema entirely (`I9_APP_URL`,
+  `CRM_SECTION_URLS`). **URL overrides are process-global** — `SETTINGS.urls.*` applies to every run
+  in the process; there is no way to send one run at a test instance while another concurrently hits
+  production. **→ §3 for the precedence, §4 for the per-run instance.**
+- **Secrets: one good choke, leaky edges.** `validateEnv()` (`legacy:src/utils/env.ts:33-49`) is a
+  clean, batch, fail-loud gate for the two UCPath SSO vars — but `HRAUTO_DASHBOARD_LAN_PASSWORD`,
+  the `.auth/duo-webauthn.json` private-key file (`DUO_WEBAUTHN_CREDENTIAL_PATH`,
   `infra/auth/duo-webauthn.ts:37`), and ~20 files reading `process.env.*` inline sit outside it.
   `getTimekeeperName()` (`config.ts:119-123`) is a second, independent throw-loud pattern — correct
-  in isolation, but a second place, not the one place.
+  in isolation, but a second place, not the one place. **→ §6.**
 - **Fiscal dates are static, mirrored, and already stale.** `ANNUAL_DATES.jobEndDate` defaults to
-  `"06/30/2026"` (`config.ts:109-113`, mirrored in `types.ts:232`) — today is 2026-07-18. The value
-  is already past and nothing detects or flags it; the next run that consumes it silently fills a
-  date that already lapsed.
-
----
+  `"06/30/2026"` (`config.ts:109-113`, mirrored in `types.ts:232`) — the audit ran on 2026-07-18.
+  The value was already past and nothing detected or flagged it; the next run that consumed it
+  silently filled a date that had lapsed. **→ §5.**
 
 ## 2. The Clock
 
