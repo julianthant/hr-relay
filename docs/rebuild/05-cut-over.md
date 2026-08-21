@@ -1,74 +1,169 @@
 # 05 · Phase 5 — cut over
 
 This doc is the dedicated home of **Phase 5**, tree node `{#cutover}` — the one all-at-once authority
-switch. It holds those tasks, what is done and what is left, and its exit criteria; contracts it
-built live in `reference/`.
+switch, its rollback window, the risks that decide whether the switch is safe, and **the program's
+definition of done**. If you open one list to decide whether this rebuild is finished, open
+§Exit criteria below: nothing else in `docs/rebuild/` claims to be that list. Contracts the cutover
+reads live in `reference/`.
+
+**Nothing here has been built.** Phase 5 is the only phase with zero landed work at HEAD, and that is
+by design — every item is an act performed once, on a day the operator chooses, after Phase 3 closes.
+What exists today is the *design* of the switch (ratified in Phase 0, D88–D94) and the *conditions*
+that must hold before it happens. This doc's job is to keep those conditions honest.
 
 ## Phase summary
 <!-- roadmap: cutover -->
 
 <!-- roadmap-status: cutover -->
+- [x] the model is ratified — ONE all-at-once authority switch, no workflow-scoped flip, no mixed-engine interval, no compat layer (D89, amended by D93 to a change of REPOSITORY)
+- [x] the rollback asset is defined and structurally safe — the whole legacy repo, never deleted through the initial cutover; deletion needs its own operator authorization (D89/D93)
+- [x] operational isolation is built and gated — roots, ports, process locks and browser session namespace pinned by `config/runtime-isolation.json` and proven by `operational-isolation` (D88, narrowed by D247)
+- [x] the capability register that the cutover gate reads exists and is enforced — `config/legacy-capabilities.json`, `cutoverRequiresZeroOpen: true`, `proxyDispositionAllowed: false` (D58/D184/D188)
+- [ ] **the switch itself** — no step of the five-step procedure has been rehearsed or run; `one-time-import-offline` is still a `planned` guard with no subject
+- [ ] **zero open capabilities** — 47 of 78 entries are `open` at HEAD, every one owned by `phase-3-workflow-migration`
+- [ ] **every migration order done** — order 0 done, order 8 (separations) in flight at 8 of 9 criteria, eight orders unstarted
+- [ ] **the §7.4 budgets measured** — `ref frontend-backend-integration` §7.4 has been normative and unenforced since it was written; Track D's D4/D5 take the first numbers
+- [ ] **T4, the parallel end-to-end tier** — unbuilt, and blocked behind `{#parallel-runs}` and `{#duo-lease}` (`ref guards-and-tests` §10.8)
+- [ ] **the cutover rehearsal** — `ref frontend-backend-integration` §10 criterion 11; the isolation half is proven, the rehearsal has never run
+- [!] the cutover DAY is the operator's call, and so is every step of it — this doc names the preconditions, never a date
+> 2026-08-21 | docs-cohesion 05 | verified against `config/legacy-capabilities.json` (78 entries: 47 open · 20 replaced · 7 native · 4 retired), `config/runtime-isolation.json`, `src/control/workflow-registry.ts`, `docs/rebuild/guard-inventory.json` (`one-time-import-offline`, `activationMilestone: cutover-gate`), `ref frontend-backend-integration` §7.4 + §10, `ref guards-and-tests` §10.1 + §10.8; left: the entire phase — every line above with an open box
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §4 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+### What Phase 5 is
 
-**The two addresses.** The **legacy repo** (`hr-automation`) holds the production automation and
-remains the sole production authority — live-runnable, maintainable, and never deleted before
-cutover. The **rebuild repo** (`hr-automation-rebuild`) holds the rebuild: source at plain `src/`,
-tests at `tests/`, config at `config/`, plan docs at `docs/rebuild/` (kept at that path so every
-cross-doc link in this program still resolves), gated by the plain `typecheck` / `lint` / `test` /
-`test:architecture` family. Its history starts fresh, seeded from the `feature/rebuild-phase1b` tip;
-that branch stays in the legacy repo as the pre-split record.
+**One switch, one direction, one day.** D89 is the whole phase in a sentence: *workflow migrations
+prove capabilities but never flip production individually.* There is no interval in which both
+engines accept production work, no per-workflow go-live, no proxy, no compatibility layer, and no
+per-run engine authority. Everything migrates in Phase 3 and everything switches at once here.
 
-**Isolation is physical, so the guards that simulated it are retired.** Two repositories share no
-module graph, no build, and no process: cross-runtime imports, invocation, proxying, and live-state
-access are structurally impossible rather than banned-and-checked. D88's bidirectional
-runtime-isolation guard family and the legacy preservation manifest's same-tree scanning — which
-imposed the rebuild's strict normal form on changed legacy files — are therefore **retired by D93**;
-legacy files are governed by the legacy repo's own existing gates, and the rebuild's own tree is
-strict from its first file.
+**D93 changed the switch's mechanics and nothing about its substance.** When the rebuild left
+`temp_src/` for its own repository, the flip stopped being an in-repo authority stamp and became
+*repointing the normal production launcher at a different checkout*. That is a strictly simpler act
+with a strictly stronger rollback asset: the thing preserved is an entire working repository — source,
+commands, tests, and a verified state backup — rather than a directory inside the tree that shipped.
 
-**What still has to be chosen and proved, because both worlds run on one machine:** distinct
-commands/entrypoints, distinct state/artifact roots, distinct ports, distinct process locks, and
-distinct browser profiles/sessions. These remain REQUIRED and remain gated — a shared port or a
-shared browser profile is a real collision that no repository boundary prevents.
+**The legacy repo is frozen production, not a dependency, and nothing in it is deleted.** Two
+repositories share no module graph, so cross-runtime imports, invocation, proxying and live-state
+access are structurally impossible rather than banned-and-checked — which is why D88's bidirectional
+guard family and the preservation manifest's same-tree scanning are **retired by D93**. Deletion or
+retirement of the legacy repo is outside this cutover and requires separate operator authorization
+(§Rollback window, then closure).
 
-**Legacy maintenance continues, accounted cross-repo (D90/D94).** Production fixes and their
-matching legacy tests stay allowed. The sequence is mandatory: commit the legacy `src/`/`tests/`
-change first, then add schema-v2 records in the rebuild repo for every changed path under that exact
-legacy commit. Records bind first-parent/commit blob hashes, affected capability ids (at least the
-independent reviewed exact/prefix impact floor), non-empty impact rationale, and closed rebuild
-recheck/evidence ids. The guard enumerates the complete commit/path history since the Phase-0
-baseline in order and rejects omissions, extras, stale hashes, bad ancestry, or any dirty legacy
-`src/`/`tests/` state—including staged and untracked changes. This intentional red interval is the
-fail-closed handoff between the two commits, not permission to account an uncommitted tree. The
-legacy root `CLAUDE.md` carries the same duty. Verified knowledge is ported by **copy with
-provenance** (legacy commit hash + source path), never linked at runtime. Legacy source and tests
-cannot be deleted during the rebuild or initial cutover; deletion is representable so the guard
-can diagnose it, then always fails.
+**What is forbidden, named so a future session recognizes the temptation.** Continuous tracker lift ·
+a legacy API proxy or remount · a compatibility SPA · per-run engine/generation authority ·
+workflow-scoped production flips · any interval where both engines accept production work. An
+optional historical importer is permitted only as an explicit versioned, idempotent one-time command
+over an **immutable backup** — it is never a runtime adapter, and the `one-time-import-offline` guard
+exists to hold that line the day such a command is written.
 
-The following are forbidden: continuous tracker lift, legacy API proxy/remount, a compatibility
-SPA, per-run engine/generation authority, workflow-scoped production flips, and any interval where
-both engines accept production work. An optional historical importer is an explicit versioned,
-idempotent one-time command over an immutable backup; it is never a runtime adapter.
+### The five-step procedure (D89, as amended by D93)
 
-**Single cutover procedure (D89):**
+1. **Pass every gate.** Phase, workflow and capability gates; the coverage floors; live dry runs;
+   the controlled write proof for every write path; the restore drill and the soak; and the complete
+   `ref frontend-backend-integration` §10 surface matrix in the real built app.
+2. **Stop new legacy enqueues; drain.** Enumerate every active, queued, gated, parked and
+   unknown-write legacy run and drain, terminalize, park or reconcile each one **explicitly**. No
+   uncertain write may be buried — an unresolved possible-submit is the one thing a switch cannot
+   carry across.
+3. **Back up both worlds and verify both backups.** Legacy state/config and rebuild state/config.
+   Run only approved versioned one-time imports, recording source digests and idempotent manifests.
+4. **Repoint the launcher atomically.** Verify the legacy launch is disabled and the rebuild's
+   health / read / write smoke gates pass. Every normal launch target moves as ONE unit — a partial
+   repoint is the mixed-engine interval D89 forbids, wearing a different name.
+5. **Preserve the entire legacy repo** — source, commands, tests, and the state backup — as the
+   rollback asset. After native writes, rollback requires intent/ledger reconciliation and dedupe
+   proof before an atomic switch back.
 
-1. Pass every phase/workflow/capability gate, including 60/80 coverage, Phase-2 50/70 branches,
-   live dry-runs, controlled write proofs, restore/soak, and the complete ref frontend-backend-integration surface matrix.
-2. Stop new legacy enqueues; enumerate active/queued/gated/parked/unknown-write runs and drain,
-   terminalize, park, or reconcile each explicitly. No uncertain write may be buried.
-3. Back up legacy state/config and rebuild state/config; verify both backups. Run only approved
-   versioned one-time imports, recording source digests and idempotent manifests.
-4. Atomically repoint the normal production launcher at the **rebuild repo**; verify the legacy
-   launch is disabled and rebuild health/read/write smoke gates pass. This is the same single
-   authority switch D89 always specified — D93 only makes the switch a change of repository rather
-   than an in-repo authority flip.
-5. Preserve the **entire legacy repo** — source, commands, tests, and the state backup — as the
-   rollback asset. Keeping a whole separate repository is strictly stronger than the in-tree
-   preservation D89 originally assumed. After native writes, rollback requires intent/ledger
-   reconciliation and dedupe proof before an atomic switch back. Deletion/retirement is outside this
-   cutover and requires separate operator authorization.
+### What must be TRUE before the switch — the eight preconditions
+
+These are §Exit criteria's conditions stated as *readiness*, in the order they will bind. Each one
+names where it is measured, so "is the rebuild ready" is a question with an address rather than an
+opinion.
+
+| # | Precondition | Measured at | State at HEAD |
+|---|---|---|---|
+| P1 | **Every migration order is migrated and live-verified** by a submit-free dry run against every real system it touches | the tree's `{#migrations}` order nodes; `03c-migrate-the-remaining-workflows.md` | **open** — order 0 done, order 8 at 8/9, eight orders unstarted |
+| P2 | **Every write path has its controlled-commit proof** on an operator-approved target | each workflow's §3.2 criterion; `ref write-safety` §Phase-2 controlled-commit as-built | **open** — the platform proof is MET (D135, doc 4489); each workflow still owes its own |
+| P3 | **The legacy capability register carries zero open entries** and no proxy disposition | `config/legacy-capabilities.json` (`cutoverRequiresZeroOpen: true`) | **open** — 47 of 78 |
+| P4 | **`ref frontend-backend-integration` §10's eleven integration criteria all pass** in the real built app | that section's own table | **open** — 5 met, 4 partial, 2 unmet (9 and 11) |
+| P5 | **§7.4's performance and resilience budgets are MEASURED and become the gates** | `ref frontend-backend-integration` §7.4; Track D rows D4/D5 | **open** — nothing is measured anywhere in this repository |
+| P6 | **T4, the agent-operated parallel end-to-end tier, is green** | `ref guards-and-tests` §10.8 | **open** — unbuilt; blocked behind `{#parallel-runs}` and `{#duo-lease}` |
+| P7 | **The recovery drill has been rehearsed against the real authority database**, not only in the unit lane | `ref dashboard-surfaces` §2.5; `storage-recovery.test.ts` | **partly met** — the automated drill runs every commit on a real-shaped copy and D181 made `cli storage restore` reachable at all; the operational rehearsal is unrecorded |
+| P8 | **The parity corpus is green** and covers the states the cutover is judged in | `npm run test:parity`; `ref frontend-backend-integration` §7.1 | **partly met** — 139 reference triples assert both halves (D132/D145); no reference photographs a disconnected, degraded, read-only or conflicted state |
+
+### The honest state at HEAD (2026-08-21)
+
+**Phase 3 is one order done and one in flight.** `src/workflows/` holds nine descriptor directories:
+`person-lookup` (order 0, as-built and **live-proven** by D74 — run `4ebf7275`, trace `pl-000619-4ebf`),
+`kuali-timekeeper-annotation` (not a legacy migration at all — it is the purpose-built one-node
+workflow that carries the Phase-2 controlled transaction proof, D135), and the seven that compose
+separations. The tree's own marker reads *separations 8 / 9*. Eight migration orders have not started.
+
+**Zero of the fifteen legacy workflow directories are closed**, and one of those zeros is instructive:
+`legacy-workflow-person-lookup` is still `open` even though order 0 shipped and ran live, because
+order 1's Search and Match modes have no counterpart for legacy's `crm-search.ts`, `match.ts` and
+`outcome.ts`. A capability entry closes when the legacy DIRECTORY is covered, not when a workflow by
+that name exists here. That is the register working as designed, and it is why P3's 47 is the number
+to watch rather than a workflow count.
+
+**Three preconditions have never been touched.** P5 (budgets) is normative and unenforced — the
+audit behind D264 found no perf test, no benchmark, no seeded large fixture, no `memo` in any
+surface, no virtualization and no backpressure handling. P6 (T4) cannot even be scheduled: running
+many parallel dry runs before `{#duo-lease}` exists is running the experiment that BURNS the Duo
+credential (D243). And the cutover rehearsal in §10 criterion 11 has never run, while
+`dashboard:prod` still names a mode the runtime never parsed (D189) — so "every launch target
+repoints atomically" is contradicted by the launcher itself.
+
+**What IS solid, so the list above is read as a to-do and not as a warning.** The kernel half of the
+cutover is done and proved: authority re-read + CAS before every transition, the seven-beat write
+sequencer with a durable fence before the click, the ordered fsync'd ledger, the derived evidence
+receipt, the immutable schema chain, and operational isolation held by a guard against
+`config/runtime-isolation.json`. Everything open above is *program* work — migrations, measurements
+and one rehearsed procedure — not a hole in the platform the switch would move onto.
+
+### The mechanics of the switch, as designed (D88–D94)
+
+**The two addresses.** The **legacy repo** (`hr-automation`) holds the production automation and stays
+the sole production authority — live-runnable, maintainable, and never deleted before cutover. The
+**rebuild repo** (`hr-automation-rebuild`) holds the rebuild: source at plain `src/`, tests at
+`tests/`, config at `config/`, plan docs at `docs/rebuild/`, gated by the plain
+`typecheck` / `lint` / `test:coverage` family (D191). Its history starts fresh, seeded from the
+`feature/rebuild-phase1b` tip, which stays in the legacy repo as the pre-split record.
+
+**What FLIPS on the day:** which checkout the normal production launcher starts, and therefore which
+runtime accepts new HR work. That is the entire switch. It is one repointing, verified by the legacy
+launch being disabled and the rebuild's smoke gates passing.
+
+**What STAYS, because both worlds live on one machine and a repository boundary does not separate two
+runtimes.** `config/runtime-isolation.json` pins the values and `operational-isolation` proves them:
+
+| | legacy | rebuild |
+|---|---|---|
+| state root | `.tracker` | `.tracker-rebuild` |
+| artifact root | `.tracker` | `.tracker-rebuild/artifacts` |
+| backend / frontend port | 3838 / 5173 | 3938 / 5174 |
+| process locks | `.tracker/daemons` | `.tracker-rebuild/locks` |
+| browser profile root / session namespace | `.auth` / `hrauto-legacy` | `.auth` / `hrauto-rebuild` |
+
+Two rows carry a decision rather than a value. **Command NAMES are not an isolation resource
+(D247):** `dashboard` means different things in the two checkouts, and a muscle-memory `npm run
+dashboard` in the wrong one starts *that* checkout's dashboard on *its* port under *its* roots and
+locks — legible and harmless, which is exactly what the rows above buy. What survives is the
+exact-script DRIFT check on both sides. And **the browser profile ROOT is shared on purpose (D216):**
+`.auth` is repo-relative in both checkouts, so the paths never collide; the SESSION NAMESPACE is the
+distinct half.
+
+**Cross-repo accounting is retired (D150), and the invariant it protected moved rather than lapsed.**
+D90/D94's commit-centred ledger — every legacy `src`/`tests` commit accounted in this repo before a
+gate could go green — was withdrawn on 2026-08-05 because it made an unrelated in-flight edit in the
+PRODUCTION repo a red gate in the rebuild, which is the wrong coupling. The risk it addressed (a
+ported selector or page-state fact going stale after legacy fixed it) is now carried by **mandatory
+live re-verification at each workflow's migration**, which is strictly stronger: a selector checked
+against the live system beats one diffed against legacy's copy of it. `config/legacy-change-accounting.json`
+stays in the tree as a frozen historical record read by nothing. The as-written D90/D94 obligation is
+preserved at `history/superseded/2026-08-20-05-cross-repo-accounting.md`. Porting is unchanged:
+**copy with provenance** — the legacy commit hash and source path recorded in the ported code, never
+linked at runtime, which two repositories make impossible anyway.
 
 ## Rollback window, then closure
 <!-- roadmap: rollback-window -->
