@@ -465,7 +465,7 @@ neutral reset asserts through `assertAuthenticatedApplication`.
 - [x] the login wait races Duo's rendered terminal refusal, so a dead ceremony refuses in ~9.5 s instead of burning the envelope (`waitForAuthenticatedLanding`, `src/infra/browser/ucsd-sso.ts:340`)
 - [x] the presented counter is `max(stored + 1, nowSec)`, monotonic across every profile sharing the credential (`duo-autopilot/src/sign-count.js`)
 - [x] the rule is pinned in THIS repo's gate, not the extension's offline lane (D244; `tests/unit/duo-sign-count.test.ts`)
-- [ ] the ceremonies themselves are not serialized — the arithmetic removes the counter GAP, the lease removes the RACE (§10)
+- [x] the ceremonies are serialized by §10's per-credential lease (D267, `cb7f17f8`) — the arithmetic removes the counter GAP, the lease removes the RACE
 > 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/infra/browser/ucsd-sso.ts, duo-autopilot/src/sign-count.js and src/domain/config/schema.ts (sessionAcquireMs 60 000 vs duoApprovalSeconds 180); left: §10's lease
 <!-- /roadmap-status -->
 
@@ -686,7 +686,8 @@ risk register those guards answer.
 - [x] C5–C8, the control half — teardown, `closeAll` re-entry, an unprovable poison-close, and the bounded fleet soak (`tests/unit/architecture/worker-teardown-soak.test.ts`)
 - [x] C9–C10, the capture/intake half (`tests/unit/concurrency-matrix.test.ts`)
 - [x] every other test this table cites resolves at HEAD: `run-authority`, `claim-sweep-recovery`, `kuali-transaction-proof`, `architecture/ledger-projector`, `worker-sessions`, `worker-composition`, `worker-loop`, `capture-durability`, `intake-session`, `intake-command-arms`
-- [ ] the standing rule's next row: §10's lease and §11's pool are each a new surface two callers can reach, so each adds its row in the commit that lands it
+- [x] C11, the Duo ceremony lease — two real `runWorkerLoop`-equivalent `WorkerSessionManager`s over ONE authority database, the second's ceremony beginning after the first's verifier returned, plus the waiter refusal and the TTL takeover (`tests/unit/duo-ceremony-gate.test.ts`, `1c244a40`)
+- [ ] the standing rule's next row: §11's pool is a new surface two callers can reach, so it adds its row in the commit that lands it
 > 2026-08-21 | docs-cohesion execution-and-sessions | verified every cited test file exists and that composeWorkerRuntime still derives its id from phase1WorkerId while createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:368, :379)
 <!-- /roadmap-status -->
 
@@ -849,106 +850,106 @@ without a new operator decision:
 <!-- roadmap: duo-lease -->
 
 <!-- roadmap-status: duo-lease -->
-- [ ] BE `duo_ceremony_leases` in authority, keyed on the CREDENTIAL, with acquire / release / expire and a generation
-- [ ] BE the `DuoCeremonyLeaseToken` the SSO helpers require, minted only by the lease store and unforgeable at runtime
-- [ ] BE bounded waiters that refuse by name before the acquisition envelope fires, naming the holder
-- [ ] BE the fresh-profile-once recovery, holding the lease across the retry and failing by name on the second refusal
-- [ ] BE the grace leaf, registered as a post-baseline optional leaf so an existing `config_snapshots` row still parses (D133)
-- [ ] BE the guard, with a violating fixture, registered in `guard-inventory.json` in the same commit
-- [ ] PROOF two workers' cold starts serialize (unit, manual clock) plus one live two-worker cold start
-- [ ] DOCS the decision — this section is its normative text; `reference/decisions.md` gets the pointer line in the same commit
-> 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified nothing named duo_ceremony_leases or a ceremony lease exists in src/, and defineVerifiedLoginRecipe (src/infra/browser/authenticated-application.ts:159) takes {system, verify, flow} and no token; the design below is R12 as ruled, written where the builder will read it
+- [x] BE `duo_ceremony_leases` in authority, keyed on the CREDENTIAL, with acquire / release / expire and a generation (`bfc7d318` — schema v16, `AuthorityDatabase.authority.duoCeremonyLeases`)
+- [x] BE the `DuoCeremonyLeaseToken` the SSO helpers require, minted only by the lease store and unforgeable at runtime (`bfc7d318` mint/retire, `cb7f17f8` the helpers assert it)
+- [x] BE bounded waiters that refuse by name before the acquisition envelope fires, naming the holder (`cb7f17f8` — `DuoCeremonyLeaseHeldError`, `src/core/duo-ceremony-gate.ts`)
+- [x] BE the fresh-profile-once recovery, holding the lease across the retry and failing by name on the second refusal (`cb7f17f8` — `WorkerSessionManager.#openAndLogin`, `PlaywrightWorkerSessionFactory.discardProfile`)
+- [x] BE the grace leaf, registered as a post-baseline optional leaf so an existing `config_snapshots` row still parses (D133) (`bfc7d318` — `timeouts.duoCeremonyLeaseGraceMs`, generation 3)
+- [x] BE the guard, with a violating fixture, registered in `guard-inventory.json` in the same commit (`37e747f0` — `duo-ceremony-lease`)
+- [ ] PROOF two workers' cold starts serialize — unit, manual clock: DONE (`1c244a40`, `tests/unit/duo-ceremony-gate.test.ts`); the live two-worker cold start is NOT yet run (how to: two `npm run cli -- … scripts/live-browser-login-smoke.ts ucpath --cold --worker <id>` processes side by side, see below)
+- [x] DOCS the decision — this section is its normative text; `reference/decisions.md` gets the pointer line in the same commit (D267)
+> 2026-08-21 | duo-lease E1 | built as-built in five commits (bfc7d318 store+token+leaf, cb7f17f8 gate+wiring+recovery, 37e747f0 guard, 1c244a40 proof, 23231b37 compose seam + manifest); the live two-worker cold start is the one box left open and is documented below
 <!-- /roadmap-status -->
 
-**DESIGNED, NOT BUILT.** This section is the owning contract for the tree's `{#duo-lease}` node.
-Nothing below exists in `src/` yet; everything below is normative for the commit that builds it.
+**AS-BUILT (D267, 2026-08-21).** This section is the owning contract for the tree's `{#duo-lease}`
+node and the normative text of D267. Everything below exists in `src/` at the cited commits.
 
-**The hazard is present today.** Duo's WebAuthn signature counter is per CREDENTIAL and lives on
-Duo's side; Duo Autopilot's copy lives in `chrome.storage.local`, which is per browser PROFILE; and
-§1 partitions profiles per worker. One credential covers every UCSD system, so N profiles write one
-server-side counter and none can see another's copy. D243's arithmetic
-(`max(stored + 1, nowSec)`) removed the counter GAP; it did not remove the RACE (§4.2). Two
-ceremonies inside the same wall-clock second present the same floored value, the second does not
-ADVANCE, and Duo reads a non-advancing counter as a cloned key. That configuration exists the moment
-a second workflow has a worker — before any pool is built (§11).
+**The hazard this closes.** Duo's WebAuthn signature counter is per CREDENTIAL and lives on Duo's
+side; Duo Autopilot's copy lives in `chrome.storage.local`, which is per browser PROFILE; and §1
+partitions profiles per worker. One credential covers every UCSD system, so N profiles write one
+server-side counter and none can see another's copy. D243's arithmetic (`max(stored + 1, nowSec)`)
+removed the counter GAP; it did not remove the RACE (§4.2): two ceremonies inside the same wall-clock
+second present the same floored value, the second does not ADVANCE, and Duo reads a non-advancing
+counter as a cloned key — which BURNS the profile (D243: three further logins refused with counters
+more than a thousand ahead; only a fresh directory recovered). So the lease's job is to stop the
+FIRST refusal; its correctness bar is that no two ceremonies for one credential ever overlap.
 
-**Why this is prevented, never recovered from.** A refused assertion BURNS the profile: D243
-recorded a profile that stayed refused across three further logins presenting counters more than a
-thousand ahead, and only a freshly created profile recovered. Deleting the directory is the only
-remediation anybody has found. So the lease's job is to stop the FIRST refusal, and its correctness
-bar is that no two ceremonies for one credential ever overlap — not that a burned profile heals.
+**1. The lease is per CREDENTIAL** (`src/domain/duo-ceremony-lease.ts`, table `duo_ceremony_leases`,
+schema v16). The key is `duoCeremonyCredentialKey(config)` (`src/core/duo-ceremony-gate.ts`): with
+`features.duoWebAuthn` on (the shipped default) it is `resolveSecretFileIdentity("duoWebauthnCredential")`
+(`src/domain/secrets.ts`) — a SHA-256 over the credential file's PUBLIC `(rpId, credentialId)` pairs,
+never a secret byte, never interpolated into a message (the `no-secret-values-in-logs` guard refuses
+it); an unresolvable identity THROWS at worker boot. With the feature off (a hands-on Duo deployment)
+there is no Autopilot counter, one human approves one prompt at a time, and the human IS the
+credential, so the key derives from `config.actor.id`. Neither arm is a fallback for the other, and
+there is no per-worker key anywhere. ONE row per credential, UPDATED across generations (the row IS
+the lock), never deleted (`duo_ceremony_leases_never_deleted`); every mirrored column is pinned to
+the record by the integrity audit (`duo-ceremony-lease-columns-match-record`).
 
-**1. The lease is per CREDENTIAL, and that is the whole design decision.** Not per worker (a worker
-is not what Duo counts), not per system (one credential covers ucpath, crm, kuali and new-kronos),
-not per profile (a profile's copy of the counter is exactly what nobody else can see). The key is a
-stable identity DERIVED from the credential — a digest of the credential file's identity, resolved
-through `src/domain/secrets.ts`, never the secret itself and never interpolated into a message
-(ref clock-config-secrets §6). A credential whose identity cannot be resolved fails loud; it must
-never fall back to a per-worker key, because a per-worker key is the current behaviour wearing a
-lease's name.
+**2. The scope is "navigate to SSO" until the content verifier proves the session.** `defineVerifiedLoginRecipe`
+(`src/infra/browser/authenticated-application.ts`) is now `{system, verify, navigate, ceremony}`: it
+probes, runs `navigate`, probes again, and runs `ceremony` ONLY inside `context.duoCeremony.withCeremony`,
+with §4.1's `assertAuthenticatedApplication` INSIDE that scope — so the lease closes when the
+two-fact proof returns, on success or on failure. A warm profile whose probe answers
+`already-authenticated` never reaches `ceremony` and never takes the lease. All four store recipes
+(ucpath · crm · kuali · new-kronos) are this shape; `flow` no longer exists.
 
-**2. The scope is "navigate to SSO" until the content verifier proves the session.** It opens before
-the first navigation that can reach the Duo ceremony and closes when §4.1's two-fact proof returns,
-on success or on failure. It does NOT cover the whole login: a warm profile whose `probe()` answers
-`already-authenticated` (§4.1) never navigates to SSO and never takes the lease, so the common path
-costs one probe and no contention. It does NOT cover a run, a claim, or a driver lease — a worker
-holding the ceremony lease is inside ONE `withDriver` acquisition, and every other worker keeps
-executing.
+**3. TTL is `timeouts.sessionAcquireMs` plus `timeouts.duoCeremonyLeaseGraceMs`** (default 20 000 ms:
+`browser.closeProofMs` 15 000 + margin, covering the holder's proven cleanup after its envelope
+fires). The leaf is generation 3 in `snapshot-generations.ts`, so every stored `config_snapshots` row
+still parses (D133). A `held` row at or past `expiresAt` is taken over by `acquire` at `generation + 1`
+(`tookOver` names whom). The holder arms its own TTL deadline on the kernel scheduler and CANCELS an
+in-flight ceremony through the acquisition's abort channel (`DuoCeremonyLeaseExpiredError`); a release
+that finds the row at a later generation is REPORTED by the store (`superseded`, never written over
+the successor) and thrown loud by the gate. At the shipped defaults the holder's envelope (60 s)
+always fires before its TTL (80 s), so takeover of a live process's lease is unreachable by
+construction; the arms exist for the clock-skewed and crashed cases.
 
-**3. TTL is `timeouts.sessionAcquireMs` plus a named grace, and the grace is a new config leaf.**
-The holder's own acquisition envelope is `sessionAcquireMs` (§4.3), so a TTL equal to it would let a
-waiter take the lease at the instant the holder is running its proven cleanup. The grace is a
-declared leaf (`timeouts.duoCeremonyLeaseGraceMs`), not a literal in the store — and because a
-required leaf is a durable-schema change, it registers in `src/domain/config/snapshot-generations.ts`
-as a post-baseline leaf so every existing `config_snapshots` row still parses (D133). A lease past
-its TTL is takeable by a waiter at the next generation; the previous holder's envelope has already
-fired by construction, and a holder that finds its own generation superseded must abandon and
-poison-close rather than present an assertion (§4's poison rule) — presenting one would be exactly
-the overlapping ceremony the lease exists to prevent.
+**4. Waiters are bounded and refuse by NAME, before the envelope fires.** The gate polls `acquire`
+every `DUO_CEREMONY_LEASE_POLL_MS` (250 ms — a cadence, not an outcome) with a budget of the
+remaining envelope MINUS the grace, and at the budget throws `DuoCeremonyLeaseHeldError` naming the
+holder's worker id, system, generation and `expiresAt` — 20 s before §4.3's message could have
+blamed hands-on approval. No retry loop: the acquisition fails, the opened context is closed with
+proof, and the lease is left to its holder.
 
-**4. Waiters are bounded and refuse by NAME, before the envelope fires.** A waiter's budget is what
-remains of its own `sessionAcquireMs` envelope minus the grace, so the lease refuses FIRST and the
-operator reads *"another worker holds the Duo ceremony for this credential"* with the holder's
-worker id, system and `expiresAt` — instead of §4.3's hands-on-approval message, which would be a
-real cause and the wrong one (§4.2's mis-attribution, one layer up). The refusal is a typed failure,
-never a retry loop: a worker that waits, refuses, and immediately re-queues would be a busy-wait
-against a resource whose whole point is that it is scarce.
+**5. Recovery is a FRESH profile, once, under the same lease.** `waitForAuthenticatedLanding` throws
+the distinct `DuoTerminalRefusalError` on §4.2's terminal refusal (both the raced arm and the
+post-timeout diagnosis). The gate keeps the lease across the FIRST such refusal; `WorkerSessionManager.#openAndLogin`
+then poison-closes with proof, calls `factory.discardProfile` (the SAME path removed and recreated,
+refusing anything outside the rebuild's profile namespace), and runs the login ONCE more under the
+held token. A second refusal fails loud naming the profile directory and does not delete a third
+time; a factory without `discardProfile` refuses the recovery by name; `gate.dispose()` in `finally`
+releases whatever a recovery that died between the two attempts still held.
 
-**5. Recovery is a FRESH profile, once, under the same lease.** On the terminal refusal §4.2 already
-observes, the worker poison-closes (proving closure — the directory cannot be touched while a
-context may hold it), recreates a fresh profile and retries the ceremony ONCE. The lease is HELD
-across the retry, not released: releasing it would let another worker start a ceremony against a
-credential that has just seen a cloned-key signal. "Fresh" means the burned directory is removed and
-recreated, because §1's path is a pure function of the session identity — adding a disambiguating
-segment instead would leak a directory per refusal and make the path stop describing the identity. A
-second refusal fails loud naming the profile directory, and does not delete a third time.
+**6. The token is unforgeable, and the SSO helpers require it.** `src/base/duo-ceremony-lease.ts`
+holds the declare-only brand, the module-private minted/retired `WeakSet`s, `mint`/`retire` (one
+permitted caller: the lease store in `authority-database.ts`) and `assertDuoCeremonyLeaseToken`;
+`waitForSsoForm`, `fillSsoCredentials`, `submitSsoForm` and `waitForAuthenticatedLanding` take the
+token and assert it (minted, not retired, minted for this system) before touching the page — the
+click in `submitSsoForm` is where the assertion is PRESENTED. The wrapper is the ONE caller of
+`withCeremony`; the gate (`src/core/duo-ceremony-gate.ts`) is the one caller of `acquire`/`release`.
 
-**6. The token is unforgeable, and the SSO helpers require it.** `defineVerifiedLoginRecipe` — the
-one wrapper every recipe is built by (§4.1) — is the ONE acquirer: it probes, acquires the lease
-when the probe says a ceremony is needed, hands a `DuoCeremonyLeaseToken` to the flow, and releases
-in a `finally`. The token is minted only by the lease store, in `MutationCapability`'s shape and for
-the same reason (a module-private `WeakSet`, one permitted minting caller, `assert…` at the
-consumer): a rule that can be satisfied by a caller's claim is not a rule. The helpers in
-`src/infra/browser/ucsd-sso.ts` that drive the SSO form and the Duo assertion take the token as a
-parameter, so a recipe that bypassed the wrapper could not reach SSO at all — the enforcement is
-structural first and a guard second.
+**7. The guard** `duo-ceremony-lease` (`tests/unit/architecture/duo-ceremony-lease.test.ts`, registered
+in `guard-inventory.json` in `37e747f0`): mint/retire named only by their module and the store; the brand
+conjured by `as`/`satisfies` nowhere else; `withCeremony` called only by the wrapper; every store
+recipe in the `{navigate, ceremony}` shape presenting `token` to every SSO helper. Each arm runs
+against `fixtures/duo-lease-recipe-violation.ts`, the exact pre-lease recipe shape.
 
-**7. The guard, with a violating fixture.** A new architecture guard, registered in
-`docs/rebuild/guard-inventory.json` in the same commit (both directions, per the house rule):
-no path may reach an SSO navigation or the Duo assertion without presenting a token; the token may
-be conjured by `as`/`satisfies` nowhere outside the lease module; and `defineVerifiedLoginRecipe` is
-the only acquirer. The fixture carries the shipped shape of a recipe that navigates without a token,
-so a walker that resolved nothing cannot report the tree clean.
-
-**8. Proof.** Two workers cold-starting one credential serialize — a unit case on the manual clock
-where the second's ceremony provably begins after the first's verifier returned — plus one live
-two-worker cold start recorded. And §7.1 gains a row in the same commit: a lease two callers can
-reach is exactly what the standing rule is about.
+**8. Proof.** `tests/unit/duo-ceremony-gate.test.ts` (`1c244a40`): two real `WorkerSessionManager`s over
+ONE authority database, fake factories running the REAL wrapper, manual clock — B's ceremony begins
+strictly after A's verifier returned; the waiter refusal at exactly the budget (40 s of a 60 s
+envelope) naming A; TTL takeover at generation 2 with A's in-flight ceremony cancelled and A's late
+release thrown as superseded; the three recovery arms plus an ordinary-failure control. §7.1 carries
+the row. **The live two-worker cold start has NOT been run yet**; the equipment is in place:
+`scripts/live-browser-login-smoke.ts` now opens the real authority database and takes `--worker <id>`,
+so `npx tsx scripts/live-browser-login-smoke.ts ucpath --cold --worker live-a & npx tsx scripts/live-browser-login-smoke.ts ucpath --cold --worker live-b`
+(two processes, fresh profiles) is the proof; record the two `[session] … login=logged-in` lines,
+their `+N.Ns` timings, and that neither printed a `DuoCeremonyLeaseHeldError`.
 
 **What this does not do.** It does not serialize logins (a warm reuse and any non-Duo authentication
 are untouched), it does not serialize runs or claims, and it does not make a burned profile
-recoverable. It also does not remove D243's arithmetic: the floor stays, because two ceremonies
-separated in TIME still need a counter that advances across profiles.
+recoverable. D243's arithmetic stays: two ceremonies separated in TIME still need a counter that
+advances across profiles.
 
 ---
 
