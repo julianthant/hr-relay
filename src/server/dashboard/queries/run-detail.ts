@@ -865,6 +865,28 @@ export function createRunNoteScanCache(): RunNoteScanCache {
   });
 }
 
+/**
+ * ONE note line, parsed, or a refusal that says WHICH line (D218).
+ *
+ * `JSON.parse` throws a `SyntaxError` reading "Unexpected token" and zod throws
+ * an issue list; neither names the file or the line number, so the operator
+ * whose logs tab just answered 500 has no way to find the byte that did it —
+ * and "read around it" is not available, because a line the corpus holds is
+ * durable history and skipping it reports real events as absent.
+ */
+function parseNoteLine(line: EventStreamLine): z.infer<typeof NoteAtRestSchema> {
+  try {
+    return NoteAtRestSchema.parse(JSON.parse(line.text));
+  } catch (cause) {
+    throw new Error(
+      `notes line ${line.file.path}:${String(line.lineNumber)} is not a readable note `
+      + `(${cause instanceof Error ? cause.message : String(cause)}); the logs reader refuses to read around a line `
+      + "the corpus holds, because a skipped line reports real history as absent (D218)",
+      { cause },
+    );
+  }
+}
+
 function noteLinesForRun(
   deps: RunDetailQueryDeps,
   row: RunFoldRecord,
@@ -876,10 +898,10 @@ function noteLinesForRun(
     const matches: RunNoteScanEntry[] = [];
     // The scope already selected this workflow's partitions, so the old
     // per-line `line.file.workflow !== workflow` skip can no longer be true —
-    // the same lines reach the parse, and an unparsable one still throws by
-    // name rather than being read around (D218).
+    // the same lines reach the parse, and an unparsable one throws by name
+    // rather than being read around (D218).
     for (const line of readScopedEventStreamLines(deps.stateRoot, "notes", runNotePartitionScope(runId, row, authority))) {
-      const note = NoteAtRestSchema.parse(JSON.parse(line.text));
+      const note = parseNoteLine(line);
       if ("runId" in note && note.runId === runId) matches.push({ line, note });
     }
     return matches;

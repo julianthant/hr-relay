@@ -310,13 +310,22 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.equal(section.payload.notes.length, 2);
   });
 
-  it("REFUSES an unparsable line inside the scope rather than reading around it (D218)", () => {
+  it("REFUSES an unparsable line inside the scope, naming the file and line it could not read (D218)", () => {
     const w = world();
     terminalDone(w, 1);
     emitNotes(w, 1, 2);
     poison(w, "2026-08-03");
-    assert.throws(() => buildRunSection(depsOf(w), uuidOf(1), "logs"));
+    // A bare SyntaxError/ZodError names no byte on disk, so the operator whose
+    // logs tab just answered 500 has nothing to grep for.
+    assert.throws(
+      () => buildRunSection(depsOf(w), uuidOf(1), "logs"),
+      new RegExp(
+        `notes line ${join(w.stateRoot, "notes", "person-lookup-2026-08-03.jsonl").replaceAll(/[.\\/]/g, "\\$&")}:3 `
+        + "is not a readable note",
+      ),
+    );
   });
+
 
   it("still serves a note written the day AFTER the run's last durable instant", () => {
     const w = world();
