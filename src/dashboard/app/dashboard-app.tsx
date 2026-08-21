@@ -37,7 +37,7 @@ import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { LogPanel } from "../surfaces/log-panel.js";
 import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-model.js";
-import { QueuePanel, type QueueFilterScope, type QueueViewState } from "../surfaces/queue.js";
+import { QueuePanel, type QueueFilterScope, type QueueHandlers, type QueueViewState } from "../surfaces/queue.js";
 import {
   attentionRunIds,
   queueRowTitle,
@@ -81,8 +81,8 @@ import {
   type WorkerCardWire,
 } from "../surfaces/shell-model.js";
 import { StorageBanner } from "../surfaces/settings.js";
-import { TopBar } from "../surfaces/top-bar.js";
-import { serverLocalDay, type ShellView } from "../surfaces/top-bar-model.js";
+import { TopBar, type NavControls, type NotificationRowWire } from "../surfaces/top-bar.js";
+import { serverLocalDay, type DayCountWire, type ShellView } from "../surfaces/top-bar-model.js";
 import { usePanelSections } from "./use-panel-sections.js";
 import {
   canGoBack,
@@ -123,8 +123,20 @@ import {
  * `sections["identity-gate"]` beside the packet they are about. Each payload is
  * composable only where its evidence is.
  */
+/**
+ * The stable empties the three `memo`'d panels are handed when the day has not
+ * loaded (D4). `?? []` in a prop slot mints a fresh array on every render, so
+ * under `memo` it is a prop that can never compare equal — the wrapper would
+ * be pure overhead for exactly the state (still loading) where the most
+ * renders happen. `dashboard-memo-prop-stability` refuses the literal form.
+ */
+const NO_SURFACES: readonly QueueSurfaceWire[] = Object.freeze([]);
+const NO_NOTIFICATIONS: readonly NotificationRowWire[] = Object.freeze([]);
+const NO_DAY_COUNTS: readonly DayCountWire[] = Object.freeze([]);
+const NO_ACTION_DESCRIPTORS: readonly ActionDescriptorWire[] = Object.freeze([]);
+
 function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDescriptorWire[] {
-  return surface?.actions ?? [];
+  return surface?.actions ?? NO_ACTION_DESCRIPTORS;
 }
 
 /** The closed tab vocabulary, so a `?section=` value is validated, not trusted. */
@@ -548,14 +560,26 @@ function LoadedApp({
     [startWorkflows, activeWorkflowId],
   );
 
-  const viewState: QueueViewState = {
-    ...(route.run === undefined ? {} : { selectedRunId: route.run }),
-    openWells,
-    selectMode,
-    bulkIds,
-    panelWorkflowId: activeWorkflowId,
-    nowIso,
-  };
+  /**
+   * ONE object per CHANGE, not one per render (D4).
+   *
+   * `QueuePanel` is `memo`'d, so a freshly built `state` object would defeat
+   * the wrapper on its own — it is the single prop most likely to do so,
+   * because it is the only composed one. `nowIso` is in the dependency list
+   * and ticks once a second (D256), which is the floor the panel redraws at by
+   * design; everything else here moves only when the operator moves it.
+   */
+  const viewState = useMemo(
+    (): QueueViewState => ({
+      ...(route.run === undefined ? {} : { selectedRunId: route.run }),
+      openWells,
+      selectMode,
+      bulkIds,
+      panelWorkflowId: activeWorkflowId,
+      nowIso,
+    }),
+    [route.run, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
+  );
 
   /**
    * What `Select all in view` may take: the TOP-LEVEL rows drawn on screen, in
@@ -833,6 +857,62 @@ function LoadedApp({
    * `bandOf`. Both are computed from the same `surfaces`/`sort` the panel below
    * renders, so a keyboard walk and a scroll cannot disagree.
    */
+  /**
+   * THE QUEUE'S HANDLERS, as ONE object that outlives a render (D4).
+   *
+   * This used to be an inline `handlers={{…}}` literal with five closures in
+   * it, so `QueuePanel`'s `memo` would have compared unequal on every render
+   * for a prop whose CONTENTS had not moved. The bodies are unchanged; only
+   * where they are built has.
+   */
+  const queueHandlers = useMemo(
+    (): QueueHandlers => ({
+      onSelect: selectRun,
+      /*
+        LIVE. `actionsOf` at the call site reads the row's own served
+        `actions[]`, so every control the server describes routes through
+        `runAction` → `composeCommandRequest` → the one command client. A row
+        served an empty list still draws nothing, with no branch here.
+      */
+      onAction: runAction,
+      onToggleWell: (runId) => {
+        const next = new Set(openWells);
+        if (next.has(runId)) next.delete(runId);
+        else next.add(runId);
+        onWells(next);
+      },
+      onToggleBulk: (runId) => {
+        const next = new Set(bulkIds);
+        if (next.has(runId)) next.delete(runId);
+        else next.add(runId);
+        onBulkIds(next);
+      },
+      /*
+        A parent can belong to ANOTHER workflow, so the jump moves the panel and
+        then selects — selecting alone would open a run the queue beside it is
+        scoped away from.
+      */
+      onOpenParent: (runId) => {
+        const parent = dayWire?.queueSurfaces.find((s) => String(s.runId) === runId);
+        if (parent !== undefined) setActiveWorkflowId(String(parent.workflowId));
+        selectRun(runId);
+      },
+      /*
+        THE FORWARD ROUTE (D231). Same two moves as the parent jump — switch the
+        panel, then select — but it never searches the day payload: the served
+        link carries its own `workflowId`, which is the whole reason the wire
+        serves the link rather than a bare id. A child that ran on another day is
+        exactly the case a lookup would fail silently on, and it is the case the
+        chip exists for.
+      */
+      onOpenLinked: (link) => {
+        setActiveWorkflowId(String(link.workflowId));
+        selectRun(String(link.runId));
+      },
+    }),
+    [selectRun, runAction, openWells, onWells, bulkIds, onBulkIds, dayWire, setActiveWorkflowId],
+  );
+
   const keyboardOrder = useMemo(
     () => visibleRunIds(surfaces, sort, nowIso),
     [surfaces, sort, nowIso],
@@ -927,6 +1007,76 @@ function LoadedApp({
 
   const navBackTo = navDestinationLabel(navHistory, "back", nameRun, workflowLabelOf);
   const navForwardTo = navDestinationLabel(navHistory, "forward", nameRun, workflowLabelOf);
+  /** The bar's history controls, as ONE object per change rather than per render (D4). */
+  const nav = useMemo(
+    (): NavControls => ({
+      canBack: canGoBack(navHistory),
+      canForward: canGoForward(navHistory),
+      ...(navBackTo === undefined ? {} : { backTo: navBackTo }),
+      ...(navForwardTo === undefined ? {} : { forwardTo: navForwardTo }),
+      onBack: () => travel("back"),
+      onForward: () => travel("forward"),
+    }),
+    [navHistory, navBackTo, navForwardTo, travel],
+  );
+
+  /**
+   * THE `memo` BOUNDARY'S PROPS (D4).
+   *
+   * `TopBar` and `LogPanel` are `memo`'d, so each of these used to be written
+   * inline in a prop slot and each was a fresh reference on every render:
+   * `dayWire?.queueSurfaces ?? []` mints an array whenever the day has not
+   * loaded, `SettingsSectionPrimitiveSchema.array().parse(…)` mints one AND
+   * re-runs a zod parse on every render of the whole app, and an inline
+   * `onDay`/`nav` closes over the route. Naming them here is what makes the
+   * wrappers below real rather than decorative;
+   * `dashboard-memo-prop-stability` refuses the inline forms.
+   */
+  const daySurfaces = useMemo(
+    (): readonly QueueSurfaceWire[] => dayWire?.queueSurfaces ?? NO_SURFACES,
+    [dayWire],
+  );
+  const dayNotifications = useMemo(
+    // The boot document composes this array from zod parts, so it infers as
+    // `unknown[]` at the wire; the day payload is already parsed whole.
+    (): readonly NotificationRowWire[] => dayWire?.notifications ?? NO_NOTIFICATIONS,
+    [dayWire],
+  );
+  const dayMonthCounts = useMemo(
+    (): readonly DayCountWire[] => dayWire?.monthCounts ?? NO_DAY_COUNTS,
+    [dayWire],
+  );
+  // Same story as `systemInstances`: the boot document composes this array from
+  // zod parts so it infers as `unknown[]`; re-parsing is the check bootstrap's
+  // own refinement makes, not a cast past one. It is done ONCE per boot
+  // document here rather than once per render of the app.
+  const settingsSections = useMemo(
+    () => SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections),
+    [boot.settingsSections],
+  );
+  const onSelectDay = useCallback(
+    (next: string): void => setRoute({ ...route, day: next }),
+    [route, setRoute],
+  );
+
+  /**
+   * The open panel's ROW and its served controls, resolved ONCE.
+   *
+   * Both used to be written inline, and the `find` ran twice per render over
+   * the whole day. Since D4's patch-splice an untouched row keeps its
+   * reference through an SSE patch, so this memo returns the SAME surface
+   * across a patch for any OTHER run — which is exactly what lets `LogPanel`'s
+   * `memo` skip a 2,000-line subtree during a bulk run.
+   */
+  const openPanelSurface = useMemo(
+    (): QueueSurfaceWire | undefined =>
+      detailValue === undefined
+        ? undefined
+        : dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId),
+    [dayWire, detailValue],
+  );
+  const openPanelActions = useMemo(() => servedActions(openPanelSurface), [openPanelSurface]);
+  const onDetailEdited = useCallback((): void => setDetailNonce((nonce) => nonce + 1), []);
 
   const ready = dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
@@ -972,33 +1122,23 @@ function LoadedApp({
       <TopBar
         view={shellView}
         onView={onShellView}
-        daySurfaces={dayWire?.queueSurfaces ?? []}
+        daySurfaces={daySurfaces}
         workflowLabelOf={workflowLabelOf}
         onOpenRun={selectRun}
-        notifications={dayWire?.notifications ?? []}
+        notifications={dayNotifications}
         actorId={boot.actor.id}
         nowIso={nowIso}
         storage={boot.storage}
-        // Same story as `systemInstances` below: the boot document composes
-        // this array from zod parts so it infers as `unknown[]`; re-parsing is
-        // the check bootstrap's own refinement makes, not a cast past one.
-        settingsSections={SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections)}
+        settingsSections={settingsSections}
         settingsOpen={settingsOpen}
         onSettingsOpen={setSettingsOpen}
         day={day}
         today={today}
-        monthCounts={dayWire?.monthCounts ?? []}
-        onDay={(next) => setRoute({ ...route, day: next })}
+        monthCounts={dayMonthCounts}
+        onDay={onSelectDay}
         theme={theme}
         onToggleTheme={onToggleTheme}
-        nav={{
-          canBack: canGoBack(navHistory),
-          canForward: canGoForward(navHistory),
-          ...(navBackTo === undefined ? {} : { backTo: navBackTo }),
-          ...(navForwardTo === undefined ? {} : { forwardTo: navForwardTo }),
-          onBack: () => travel("back"),
-          onForward: () => travel("forward"),
-        }}
+        nav={nav}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -1235,52 +1375,7 @@ function LoadedApp({
               <QueuePanel
                 surfaces={surfaces}
                 state={viewState}
-                handlers={{
-                  onSelect: selectRun,
-                  /*
-                    LIVE. `actionsOf` below reads the row's own served
-                    `actions[]`, so every control the server describes routes
-                    through `runAction` → `composeCommandRequest` → the one
-                    command client. A row served an empty list still draws
-                    nothing, with no branch here.
-                  */
-                  onAction: runAction,
-                  onToggleWell: (runId) => {
-                    const next = new Set(openWells);
-                    if (next.has(runId)) next.delete(runId);
-                    else next.add(runId);
-                    onWells(next);
-                  },
-                  onToggleBulk: (runId) => {
-                    const next = new Set(bulkIds);
-                    if (next.has(runId)) next.delete(runId);
-                    else next.add(runId);
-                    onBulkIds(next);
-                  },
-                  /*
-                    A parent can belong to ANOTHER workflow, so the jump moves
-                    the panel and then selects — selecting alone would open a
-                    run the queue beside it is scoped away from.
-                  */
-                  onOpenParent: (runId) => {
-                    const parent = dayWire?.queueSurfaces.find((s) => String(s.runId) === runId);
-                    if (parent !== undefined) setActiveWorkflowId(String(parent.workflowId));
-                    selectRun(runId);
-                  },
-                  /*
-                    THE FORWARD ROUTE (D231). Same two moves as the parent jump
-                    — switch the panel, then select — but it never searches the
-                    day payload: the served link carries its own `workflowId`,
-                    which is the whole reason the wire serves the link rather
-                    than a bare id. A child that ran on another day is exactly
-                    the case a lookup would fail silently on, and it is the case
-                    the chip exists for.
-                  */
-                  onOpenLinked: (link) => {
-                    setActiveWorkflowId(String(link.workflowId));
-                    selectRun(String(link.runId));
-                  },
-                }}
+                handlers={queueHandlers}
                 actionsOf={servedActions}
                 workflowLabelOf={workflowLabelOf}
                 parentOf={parentOf}
@@ -1299,7 +1394,7 @@ function LoadedApp({
                 <LogPanel
                   detail={detailValue}
                   sections={sections}
-                  surface={dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId)}
+                  surface={openPanelSurface}
                   /*
                     The WHOLE served list, not a placement slice: the prop's
                     contract is "every action the server served for this run"
@@ -1308,7 +1403,7 @@ function LoadedApp({
                     again to `outcome` intersected the two, so only a descriptor
                     carrying BOTH placements could ever have arrived.
                   */
-                  actions={servedActions(dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId))}
+                  actions={openPanelActions}
                   onAction={runAction}
                   tab={effectiveTab}
                   onTab={onTab}
@@ -1316,7 +1411,7 @@ function LoadedApp({
                   currentAppVersion={boot.appVersion}
                   servedDescriptorHash={workflowShapeOf(detailValue.header.workflowId)}
                   actorId={boot.actor.id}
-                  onDetailEdited={() => setDetailNonce((nonce) => nonce + 1)}
+                  onDetailEdited={onDetailEdited}
                   aiAdvisory={advisoryAvailability}
                   /* The SAME instant `viewState.nowIso` dates the queue's rows
                      from, so a waiting run's age is one number wherever it is

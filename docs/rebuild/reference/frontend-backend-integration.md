@@ -2211,11 +2211,65 @@ exact command above against the exact same seed and record the delta beneath thi
 else — a hand-edited number, a different fixture, a different machine class — is a claim, not a
 measurement.
 
+#### D4 — AFTER (2026-08-21)
+
+Taken at commit `bb406615` (tracked tree clean), the same `npm run perf:dashboard -- --iterations 11`
+against the same seed, same machine. **The machine was loaded by five sibling Track-D agents while
+these ran**, so three full runs were taken rather than one and the unchanged rows are reported
+beside the changed one — that is what makes the delta readable on a contended laptop.
+
+| # | Path | Audit | median ms | p95 ms | Counters |
+|---|---|---|---|---|---|
+| 1 | `buildDashboardDayWire` — the whole day snapshot | P2 / P4 | 159.71 | 223.22 | rows 1,240 · sqliteStatements 6,718 · sqliteStatementsPerRow 5.42 |
+| 2 | `applyDashboardDayPatch` — one SSE single-row patch | P1 | **0.02** | **0.02** | rowsAvailable 1,240 · **dayWireSchemaParses 0** |
+| 3 | `buildRunSection(run, "logs")` — one logs GET | P3 | 52.28 | 79.89 | notesServed 13 · corpusLinesAvailable 20,800 · corpusBytesAvailable 5,691,200 · corpusFilesAvailable 4 |
+| 4 | `archiveSnapshots.snapshot(run)` — the version-bump freeze, per run | P3 | 48.90 | 77.92 | sqliteStatements 14 · projectedDayMs 60,636 |
+| 5 | `queueSurface` — a 108-member operation vs a single row | P2 | — | — | operationRowStatements 218 · singleRowStatements 2 · previewDeltaStatements 216 · members 108 |
+
+**Row 2 is the only row D4 touches, and it is the whole finding.** `22.30 ms → 0.02 ms` median
+(`30.12 → 0.02` p95), and `dayWireSchemaParses` **1 → 0**: a single-row SSE patch no longer
+re-validates 1,240 rows to change one. Over three runs the patch median was 0.02 / 0.02 / 0.07 ms
+and the parse count was 0 in every one. **The count is the durable half of this delta** — it is
+exact, it is machine-independent, and it is the number a later reader should compare against; the
+milliseconds are a laptop's, and this one was busy.
+
+**Rows 1, 3, 4 and 5 are the control, and they did not move.** No code under any of them changed
+(rows 1/3/4 are D5's and D9's). Over the same three runs the day wire read 729.74 / 159.71 / 183.90
+ms, the logs GET 52.93 / 52.28 / 50.08, the freeze 48.05 / 48.90 / 50.15, and every count was
+byte-identical to the baseline's. Two of the three day-wire samples fall inside the 156–188 ms
+window the baseline itself recorded, and the 729.74 outlier is a contention spike on the longest
+measurement, not a regression — which is exactly why the row is reported three times instead of
+once. A table where the unchanged rows had also "improved" would have been measuring the machine.
+
+**What the second half of D4 — the `memo` work — did and did not buy, stated rather than measured.**
+`QueuePanel`, `TopBar` and `LogPanel` are now `memo`'d and every prop the app hands them is stable
+or primitive (`viewState`, the queue's five-closure `handlers`, `nav`, the day's three list props,
+the per-render `SettingsSectionPrimitiveSchema.array().parse`, `onDay`, `onDetailEdited`, and the
+open panel's row and served actions). The honest bound on it: the app's live instant (D256) is a
+prop of all three and ticks once a second, so a loaded day redraws once a second by design — a
+frozen elapsed is D256's own defect, not a saving. What `memo` removes is every re-render BETWEEN
+those ticks: a dialog opening, a selection toggling, a run-detail section landing, a nav step, a
+theme swap. The largest single win is `LogPanel`, which reads ONE row and never the day's list, so
+a patch for any other run now leaves every one of its props identical and a 2,000-line subtree
+skips entirely — **and that win exists only because of row 2's fix**, since zod's `parse` returned
+a fresh object graph and handed `surface` a new reference after every patch. The two halves of D4
+are one change.
+
+**No browser number is recorded here, and the reason is the same one the baseline gave.** A render
+count taken on a laptop running five sibling agents would not be a defensible comparison, and this
+section already declined a TTI figure on that argument. What stands in its place is a STATIC proof
+that the wrappers are real rather than decorative: `dashboard-memo-prop-stability` refuses an object
+literal, array literal, arrow, function expression or `new` in any prop slot of those three
+elements, and asserts the three are `memo`-wrapped — because a `memo` defeated by one fresh prop
+re-renders exactly as often as before while every gate stays green and no surface looks wrong. The
+empirical half is still owed and belongs with **D9**, which re-measures the list surfaces in a
+browser after virtualization lands.
+
 <!-- roadmap-status: track-d -->
 - [x] D1 one status/outcome derivation — `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in `src/server/dashboard/run-status.ts`, read by the queue projector AND `queries/run-detail.ts`; the unified task vocabulary keeps `cancelled` on D123's rule and `PipelineStepWireSchema.state` gains that arm (**D268**, `81bfed73`)
 - [ ] D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified (the false D253 sentence in `src/dashboard/CLAUDE.md` was corrected with D3, `1b13115f`)
 - [x] D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold (`1b13115f`); the guard's second arm requires any module calling `.executeCommand(` to import it (`5c36a82d`)
-- [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against a seeded 1,240-row / 108-member fixture and recorded here as this section's first numbers
+- [x] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against the seeded 1,240-row / 108-member fixture and recorded above — one SSE row patch `22.30 → 0.02 ms` and `dayWireSchemaParses 1 → 0`, with the four unchanged rows held as the control (`345475bf` the splice, `bb406615` the `memo` half + `dashboard-memo-prop-stability`)
 - [x] D5 bound the read scans — the member preview slices ids before joining (`d6d6c758`), one receipt read per row (same commit), the notes reader scoped to its run's own `(workflow, date)` partitions (`c1fa129b`, margin corrected in `c547f65a`), the archive freeze scans once per page walk (`c74efcca`); all four pinned by their BOUND in `tests/unit/server/dashboard-read-scan-bounds.test.ts` (`4d3247d8`) and MEASURED above — day wire 6,718 → 5,568 statements, preview delta 216 → 6, logs scope 4 → 2 partitions
 - [x] D11 the descriptor registry LEAVES the bundle — bootstrap serves `summary`, `enqueue` and `surfaces.inputRun` on `WorkflowStartWireSchema`, `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import, and `dashboard-wire-boundary` arm (15) holds the closure (amends D251, §4). Bundle 1,114,214 → 753,197 bytes
 - [?] D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what §2 says it is
@@ -2226,6 +2280,7 @@ measurement.
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified that NOTHING in src/ or tests/ measures or asserts any budget in this section (no perf/budget/bench test, no 1,240-row fixture, no `memo`, no virtualization, no backpressure handling) — the section is normative and unenforced, exactly as D264 records; left: all eleven rows
 > 2026-08-21 | track-d D5 | D5 landed — the four read scans are bounded and the FIRST half of this section's owed numbers is recorded above (BEFORE `407d373f` → AFTER `c547f65a`, same command/seed/iterations). All four changes are behaviour-preserving, verified byte-identical over the perf fixture's whole day wire, three neighbouring days, six run details, six logs pages and five archive freezes. Two things a later reader should not have to re-derive: the day wire's −1,150 statements decompose exactly (940 receipt + 210 preview), and the logs row's modest 15 % is a property of the FIXTURE (78 % of its corpus is on the measured run's own day), not of the fix — what changed is that the read stopped growing with the corpus. Left: D4's half of the numbers, D2, D11
 > 2026-08-21 | track-d D11 | D11 LANDED (`149bc5f8` the wire + server projection + registry-wide test, `0911becd` the frontend drop + `dashboard-wire-boundary` arm 15). §4's one named divergence is closed and §7.4's exit-criterion 2 is MET. Measured: the production bundle fell 1,114,214 → 753,197 bytes (32 %). Seven free-text leaves of the new block are dispositioned `repository-authored` in the redaction audit — every one is a descriptor constant, and moving a constant onto the wire does not change where its bytes came from. Left on this section: D2–D5's numbers
+> 2026-08-21 | track-d D4 | D4 landed (`345475bf` splice + tests, `bb406615` memo + stable props + guard): `applyDashboardDayPatch` no longer re-parses the whole day — one SSE row patch went 22.30 → 0.02 ms median with `dayWireSchemaParses` 1 → 0, measured three times against the same seed with rows 1/3/4/5 held as an unchanged control; the three hot panels are `memo`'d with every prop stabilized at the parent and a new guard (`dashboard-memo-prop-stability`) refusing the five provably-fresh prop shapes. Recorded honestly: the D256 live clock is a prop of all three panels and ticks 1 Hz, so `memo` buys the re-renders BETWEEN ticks, not the ticks; the browser render count is deliberately NOT taken on a contended laptop and is left to D9. Left: D2, D5, D11, and §7.4's remaining unmeasured budgets
 > 2026-08-21 | track-d D1 | D1 landed as **D268** (`81bfed73`): one `deriveRunStatus`, one task-outcome vocabulary, one `panelKindOf`, pinned by `tests/unit/server/run-status-derivation.test.ts` asserting the queue row and the detail panel against each other; left: D2–D5, D11, and every number this section still owes
 > 2026-08-21 | track-d3 | D3 DONE (`1b13115f`, guard `5c36a82d`); left: ten rows. Nothing in this section's budgets moved — D3 is a settlement refactor with zero measured surface
 <!-- /roadmap-status -->
