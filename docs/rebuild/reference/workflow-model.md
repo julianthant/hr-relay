@@ -773,6 +773,8 @@ per the standing R2 D17/D18 split.
 
 ### 1.3 Every parallel registry becomes a projection
 
+<!-- roadmap: p1-kernel -->
+
 | Today's hand-list | Becomes | Mechanism |
 |---|---|---|
 | `WORKFLOW_LOADERS` | one `WORKFLOW_MODULES` tuple | each module pairs one descriptor+loader; `DESCRIPTORS` and `SERVER_REGISTRY` derive from the tuple |
@@ -785,12 +787,36 @@ per the standing R2 D17/D18 split.
 | e2e stub map | derive the minimal happy path from task examples; load every non-happy path from the registered `ScenarioManifest` corpus (ref operator-trust) | examples are seed data, not behavioral coverage; failure/cancel/parallel/delegation/mismatch cases are named fixtures whose descriptor references are coverage-checked |
 | step-label switches (`formatStepName`, `types.ts:405`) | `getDescriptor(wf)` step label (§1.5) | `formatStepName` demoted to legacy-row fallback that `console.warn`s in dev |
 | `queue-row-status-index.ts` | `verdicts` + gate status from the client projection | the index file and the `statusExtensions` function registry are deleted; verdict mappings are plain data (ref dashboard-surfaces §1.3/§3) |
-| `:stop` npm scripts | one `cli stop <workflow>` reading `DESCRIPTORS` | scripts deleted |
+| `:stop` npm scripts | one `cli stop <workflow>` reading `DESCRIPTORS` | **not built.** `src/cli.ts` registers exactly five composers — `dashboard`, `worker`, `explain`, `ocr`, `storage` — and there is no `stop` verb. Stopping a worker today is Ctrl+C on the process that owns the lease |
+
+**Two rows in this table describe a projection that has no reader, and the table is where that has
+to be said.** `WORKFLOW_ICONS`: `ICON_NAMES` is a real closed union in
+`src/domain/workflow/presentation.ts` and `descriptor-coverage` refuses an `icon` outside it, but
+the exhaustive `Record<IconName, LucideIcon>` this row promises **does not exist** — the identifier
+`IconName` appears nowhere under `src/dashboard`, and `descriptor.icon` is read exactly once in the
+whole tree, by the Explorer wire (`src/server/dashboard/queries/explorer.ts:721`). No rail entry,
+picker row or queue row renders a descriptor's icon. `INSTANCE_LABELS`: `sessionLabel` is declared
+on the descriptor spec (`src/base/workflow.ts:226`) and read by nothing — no workflow declares one
+and no surface folds `sessionLabel ?? label`. Both are declarations waiting for their surface, and
+neither is a projection that replaced anything yet.
 
 ### 1.4 The ONE coverage guard
 
-The rebuild repo's `tests/unit/architecture/descriptor-coverage.test.ts` — a single table-driven test over
-`DESCRIPTORS`:
+<!-- roadmap: p1-authority -->
+
+The rebuild repo's `tests/unit/architecture/descriptor-coverage.test.ts` — a single table-driven
+sweep over `DESCRIPTORS`, seventeen cases at HEAD. **Seven of the ten items below are its; three are
+enforced elsewhere, and pretending otherwise would make this list a checklist nobody runs.** Item 7
+(graph legality) is split between `build()`'s own runtime backstops in `src/base/flow.ts` — duplicate
+ids, forward or repeated dependencies, a one-case branch, a one-branch or duplicate-branch-id
+parallel, a non-positive `probeToFenceMaxMs`, a gate whose `subscribes` disagrees with its resolver,
+decorating an undeclared node — and the `transaction-pairing` guard, which owns the transaction
+half. Item 9's ingress/canonical round-trip and the snapshot-migration chain are
+`canonical-input-snapshot`'s. Item 10's UI dependency projection is `semantic-ui-registry`'s, whose
+guarded projection set is DERIVED from the stores that ship a `driver/ui-registry` rather than
+enumerated here. Scenario obligations are `scenario-coverage`'s, and delegation's are
+`delegation-manifest`'s. Every one of those is registered in `docs/rebuild/guard-inventory.json`;
+what `descriptor-coverage` owns is the descriptor ↔ registry ↔ store-impl join:
 
 1. ids unique; codes unique + well-formed per §1.1.1, and every code composes a legal trace id;
    `icon` ∈ `ICON_NAMES`.
@@ -843,6 +869,8 @@ all fail.
 
 ### 1.5 Labels — exactly two layers (D16, precedence stated once, HERE)
 
+<!-- roadmap: p1-authority -->
+
 A step's display label resolves, highest precedence first:
 
 1. **Operator presentation override** — the serve-time `config/workflow-presentation/<id>.json`
@@ -850,8 +878,15 @@ A step's display label resolves, highest precedence first:
 2. **Descriptor `step.label`, defaulting to the contract's `title`** — one authored source with
    one default; omitting `label` is the normal case.
 
-There is no third source. Ref task-contract's contract `title` is the default, never a competing layer; doc
-03's projections carry the resolved label on the wire and never re-derive it client-side.
+There is no third source. Ref task-contract's contract `title` is the default, never a competing
+layer; ref dashboard-surfaces' projections carry the resolved label on the wire and never re-derive
+it client-side.
+
+**Layer 1 is declared and unbuilt.** No `config/workflow-presentation/` directory exists and nothing
+reads one, so every label an operator sees today comes from layer 2 alone. The override layer is
+Settings' work (ref operator-trust §5.2) and it is named here because a reader looking for "where do
+I rename a step" needs the answer to be "you edit the descriptor, for now" rather than a path that
+resolves to nothing.
 
 ---
 
