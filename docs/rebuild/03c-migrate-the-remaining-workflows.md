@@ -362,6 +362,14 @@ on `unverifiableByPage`, order-7 automation degrades to "operator manually confi
 <!-- roadmap: test-tiers -->
 
 <!-- roadmap-status: test-tiers -->
+- [x] DOCS the spec — `ref guards-and-tests` §10 is written as-built: the no-dry-run / dry-run split, T1a/T1b/T2/T3/T4, the subject registry, the durable result, layout, naming, the vitest project per tier and the run policy (dc2901de, R10)
+- [ ] BE T1 layout — `tests/scenario/workflows/<id>/` with ONE `structural.scenario.test.ts` per workflow plus its `dry-run.scenario.ts` manifest; the pretending fixture scenarios rewritten
+- [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard/*` that are scenarios in disguise (moved, not duplicated)
+- [ ] BE T3 the first combined pair — `docs/migrations/separations.md` §9.22's hand-run double-entry as a file
+- [ ] BE the subject registry `config/test-subjects.json` + the durable `dry_run_scenario_results` row + `cli dry-run-scenario`
+- [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded
+- [ ] BE the coverage floor at 80/80/80 global (measured 84.23 / 82.15 / 84.74 at the spec's writing)
+> 2026-08-20 | docs-cohesion 03c | the DOCS line is landed at HEAD (`ref guards-and-tests` §10.1–§10.12, dc2901de); the six code lines are 5.2b–5.2d and no workflow in this doc has a T1 pair yet — left: everything below DOCS
 <!-- /roadmap-status -->
 
 `tests/` is organized by **what a test needs**, and this is what every migration below adds its
