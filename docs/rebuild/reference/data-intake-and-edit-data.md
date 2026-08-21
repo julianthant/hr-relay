@@ -841,7 +841,7 @@ export const NormalizeContactOutputSchema = z.strictObject({
     z.strictObject({ kind: z.literal("advisory-unavailable"),
                      unavailable: z.array(ProviderFailureSchema).nonempty() }),
     z.strictObject({ kind: z.literal("ambiguous"),
-                     fields: z.array(ContactFieldIdSchema).nonempty() }),
+                     fields: z.array(ContactFieldIdSchema).min(1) }),   // as built: .min(1)
   ]),
 });
 ```
@@ -863,8 +863,10 @@ read-verb grammar, the same defect D149 fixed. Deterministic rules ported with p
 (`legacy:src/services/llm/normalize-contact.ts` and `address/format.ts`): phone → canonical
 DIGITS (this tree's canonical phone; display formatting is the consuming workflow's), state/ZIP
 tables, country aliases, and the relationship table with the in-law-before-substring order — the
-LLM fallback did not port (the `ai` source arm lands with 2i's advisory producer, so the schema
-carries no arm nothing can produce). A rule that cannot decide is `ambiguous`; provider
+LLM fallback did not port at D165 (the `ai` source arm was left for 2i's advisory producer, so the
+schema carried no arm nothing could produce; **D178 landed both** — the arm is
+`src/domain/contracts/normalization/normalize-contact.ts:107-112` and its producer is
+`src/stores/normalization/tasks/read-contact-advice.ts:266`, described at the end of this section). A rule that cannot decide is `ambiguous`; provider
 exhaustion is `advisory-unavailable` carrying each capability's closed reason; `before` values
 are redacted under each canonical field's own classification/transform through the ONE
 `redactValue` implementation, narrowed at the contract boundary to the string-valued arms a
