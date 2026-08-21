@@ -614,14 +614,42 @@ does today.
 ---
 
 ## 3. The kernel write sequence
+<!-- roadmap: p1-kernel -->
+<!-- roadmap: sep-6b -->
 
-The kernel drives a fixed seven-beat sequence. It binds/parses the commit input first from workflow
-input plus declared upstream outputs; commit input cannot depend on ephemeral prepare output. Beat ①
-uses an ordinary read lease and releases it. Beats ②–⑥ use one uninterrupted exclusive transaction
-lease, so a navigating probe can never destroy a staged form. Beat ③ is kernel-owned identity
-binding on the exact staged page—no task callback can skip it. Dry-run composes beat ② only and has
-no executable preflight/subject/fence/commit path or mutation capability. The impl author cannot
-reorder the real-write beats.
+<!-- roadmap-status: p1-kernel -->
+- [x] the seven beats are built in `src/core/write-sequencer.ts` behind the interpreter's `WriteSequencer` seam; §4 recovery and the typed resolutions are `src/core/write-recovery.ts` (D111, Phase 1f)
+- [x] beats ②–⑥ run inside ONE `sessions.withDriver` exclusive transaction lease, so a navigating probe can never destroy a staged form (`write-sequencer.ts:1492-1514`)
+- [x] beat ④'s fence is `writeIntents.fenceAttempt` for an unseen key and `refenceRetryable({expectedVersion, …})` for a retryable one — an optimistic-lock CAS, never a blind update (`write-sequencer.ts:1596-1607`)
+- [x] beat ⑤'s `MutationCapability` is minted by this module and nothing else, over a module-private WeakSet, and a driver asserts it before resolving a locator (`src/base/mutation-capability.ts`)
+- [x] beat ⑦ is ONE outer authority transaction over claim revalidation, the four-row primitive, the `TransactionOutcome` checkpoint, both outboxes and the run transition (`executeSequencedWriteCommit`, `write-sequencer.ts:512`)
+- [x] the post-fence park raises `WriteParkedError` and the interpreter has its typed arm; recovery has scheduling priority over claim expiry, and D200's lease-as-evidence sweep releases a claim no live process answers for
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-sequencer.ts`, `src/core/write-recovery.ts`, `src/base/mutation-capability.ts`, `src/infra/sqlite/migrations.ts:300-327`; left: nothing in the kernel — what remains is per-workflow (§3.2)
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: sep-6b -->
+- [x] a checkpoint's durable key is `(workflow, item, node, attempt, claimGeneration?)` — the claim generation is what distinguishes a gate resume's re-execution of an `always-rerun` node from the first execution inside the SAME attempt (D214; ref workflow-model §5.7 owns the key)
+- [x] a DRY RUN runs beat ① first, exactly as the real path does, so the ordinary separations subject settles `already-present` before anything is staged instead of refusing in `prepare` (D215; `write-sequencer.ts:1710-1760`)
+- [x] `transaction.previewed`'s fourth subject verdict `not-observed` reaches the JSONL wire schema as well as the kernel's union, and `span-events.test.ts:109` enumerates all four (D215; the fork that killed a live worker one emit short of terminal)
+- [ ] `probeToFenceMaxMs` is still unmeasured — see §5's *what a settled preview cannot measure*
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-sequencer.ts` (`executeDryRun`), `src/core/span-emitter.ts:155`, `src/events/types.ts:182`, `tests/unit/events/span-events.test.ts:109`; left: the `probeToFenceMaxMs` measurement, which needs a run that fences
+<!-- /roadmap-status -->
+
+The kernel drives a fixed seven-beat sequence. It binds and parses the commit input first, from
+workflow input plus declared upstream outputs; commit input cannot depend on ephemeral prepare
+output. Beat ① uses an ordinary read lease and releases it. Beats ②–⑥ run under one uninterrupted
+exclusive transaction lease, so a navigating probe can never destroy a staged form. Beat ③ is
+kernel-owned identity binding on the exact staged page — no task callback can skip it. The impl
+author cannot reorder the real-write beats.
+
+**A dry run is not "beat ② alone" (D215).** The preview arm `executeDryRun` runs beat ① FIRST —
+the durable permanent-key lookup and then the policy-controlled live probe — because that is what
+the real path does, and either can settle the node `already-present` before a page is ever staged.
+It has no executable fence, commit or mutation capability, and its `already-present` arm REPORTS the
+settlement the real path would reach without performing it: zero intent row, zero checkpoint, zero
+run transition. Where the real path refuses — mid-submit, parked, ambiguous, unknown, foreign absent
+evidence, a present read over a settled-absent durable row — the preview refuses identically. §5
+carries the argument.
 
 ```
 ① RESOLVE/PROBE → ② PREPARE → ③ BINDING PROOF → ④ FENCE → ⑤ EXTERNAL COMMIT → ⑥ PROOF → ⑦ DURABLE COMMIT
@@ -675,83 +703,81 @@ flowchart TD
 
 | Beat | What runs | What is DURABLE at end of beat | Fail-closed exit |
 |---|---|---|---|
-| **① Resolve + live probe** | From the already parsed stable commit input, derive the key and read the permanent `write_intents` row regardless of status/originating run. `committed` or `observed-present` ⇒ validate/reuse proof+typed output; `attempting` ⇒ recovery/owner check; `retryable` ⇒ eligible generation. Only an eligible unseen/retryable key may run the policy-controlled live probe, on a separate read lease. Record probe completion monotonic time. | one SQLite transaction records an unseen live `present` permanently as `observed-present`, checkpoints `TransactionOutcome{disposition:"already-present",proofSource:"live-probe"}`, advances run state, and enqueues its audit span—but **no write-ledger row** | invalid stored proof/output ⇒ corruption/park; attempting owner live ⇒ wait/fail loud; stale owner ⇒ recovery first; live `present` ⇒ typed no-click completion; ambiguous/unknown/throw parks |
-| **② Prepare** | Acquire the context-exclusive transaction lease and run the prepare contract. The parsed commit input is already frozen; prepare output is preview/span data only. Retry may restart from beat ① on a fresh/reset lease before any fence. | no write intent | prepare failure/timeout ⇒ release poisoned/clean page; no external side effect to recover |
-| **③ Binding proof** | Resolve the commit contract's required `SubjectBindingSpec`. Person/artifact scope executes its semantic observation after preparation on this exact page and builds `SubjectProof`; explicitly unscoped scope validates the allowlisted reason plus exact staged page state and builds `UnscopedBindingProof`. Both parse as `WriteBindingProof`. | proof is not yet authority, but is held for the fence transaction and evidence bundle | mismatch, unknown, missing/stale observation, unregistered unscoped reason, wrong system/page state, or schema failure ⇒ no fence/no click; close/poison page and emit a structured binding failure |
-| **④ Fence** | Check `probeToFenceMaxMs` **and** that `WriteBindingProof` was created after prepare for this run/attempt/lease. INSERT the unseen key or CAS its `retryable` row to `attempting`, incrementing generation. Store the parsed binding proof and enqueue `write.attempting` in the same SQLite transaction. The permanent primary key is the same-key mutex. | durable intent + binding proof + span outbox | elapsed proof or binding mismatch ⇒ no click; CAS conflict ⇒ discard staged page/no click; no generic retry after a won fence |
-| **⑤ External commit** | The external-write helper requires the unforgeable `MutationCapability` bound to the open intent generation **and binding-proof digest**. | live HR side effect | missing/mismatched fence capability or binding digest ⇒ throw before click |
-| **⑥ Capture / verify** | Extract `proofFromOutput` or run the verify read on the retained transaction page; every completion kind parses through its `proofSchema`. | proof remains in memory | absent/ambiguous/unknown/throw/schema failure parks; no arm can return unvalidated proof |
-| **⑦ Atomic durable commit** | ONE SQLite transaction validates the current claim+intent generations, marks the intent/attempt committed, writes the schema-valid `TransactionOutcome` checkpoint, immutable ledger outbox row (including binding-proof digest and the exact fenced subject/explicit absence), same-trace terminal-span/generic-outcome outbox row, any real evidence-receipt ref required by the active trust service, and the run transition. JSONL ledger/span projectors run afterward. | all authorities/outboxes durable together | transaction failure leaves intent attempting and enters recovery; trace/subject/claim mismatch fails before mutation; projector lag is repairable and never changes write outcome |
+| **① Resolve + live probe** | From the already-parsed stable commit input, derive the key and read the permanent write-intent row by `(system, key)` digest, regardless of status or originating run. `committed` or `observed-present` ⇒ validate and reuse the stored proof + typed output; `attempting` ⇒ recovery / owner check; `parked` ⇒ refuse, only a typed resolution releases it; `retryable` ⇒ eligible generation. Only an eligible unseen or retryable key may run the policy-controlled live probe, on a separate read lease. Record probe completion monotonic time. | one authority transaction records an unseen live `present` permanently as `observed-present`, checkpoints `TransactionOutcome{disposition:"already-present",proofSource:"live-probe"}`, advances run state and enqueues its audit span — but **no write-ledger row** | invalid stored proof/output ⇒ corruption, park; a live `attempting` owner ⇒ fail loud; a stale owner ⇒ recovery first; live `present` ⇒ typed no-click completion; ambiguous, unknown or a throwing probe parks |
+| **② Prepare** | Acquire the context-exclusive transaction lease and run the prepare contract. The parsed commit input is already frozen; prepare output is preview and span data only. A retry may restart from beat ① on a fresh or reset lease before any fence. | no write intent | prepare failure or timeout ⇒ release the poisoned page; there is no external side effect to recover |
+| **③ Binding proof** | Resolve the commit contract's required `SubjectBindingSpec`. A person or artifact scope executes its semantic observation after preparation on this exact page and builds `SubjectProof`; an explicitly unscoped scope validates the allowlisted reason plus the exact staged page state and builds `UnscopedBindingProof`. Both parse as `WriteBindingProof`, and the digest is derived immediately. | the proof is not yet authority, but is held for the fence transaction and the evidence bundle | mismatch, unknown, a missing or stale observation, an unregistered unscoped reason, the wrong system or page state, or a schema failure ⇒ no fence, no click; close or poison the page and emit a structured binding failure |
+| **④ Fence** | Check `probeToFenceMaxMs` against the monotonic clock **and** that the binding proof was created after prepare for this run/attempt/lease. `fenceAttempt` INSERTs the unseen key; `refenceRetryable({expectedVersion, …})` CASes a `retryable` row to `attempting` with `generation + 1` and `version + 1`. The intent record, its immutable attempt row and the `write.attempting` span outbox commit together. The `idempotency_key_digest` UNIQUE constraint is the same-key mutex. | durable intent + attempt + binding proof + span outbox | an elapsed budget throws `StagedPageDiscardedError` — no click; a lost CAS throws `FenceLostRaceError` — no click; there is no generic retry after a won fence |
+| **⑤ External commit** | The external-write helper requires the unforgeable `MutationCapability` bound to the open intent generation **and** the binding-proof digest. The sequencer mints it here and nowhere else. | live HR side effect | a missing or mismatched capability, generation or binding digest ⇒ the driver throws BEFORE resolving its locator |
+| **⑥ Capture / verify** | Extract `proofFromOutput`, or run the declared verifier on the retained transaction page; every completion kind parses through its `proofSchema`. | the proof remains in memory | absent, ambiguous, unknown, a throw or a schema failure parks intent-first then run (`parked-write`); no arm can return unvalidated proof |
+| **⑦ Atomic durable commit** | ONE authority transaction revalidates the current run claim and intent generation, marks intent and attempt committed, writes the schema-valid `TransactionOutcome` checkpoint, the immutable ledger outbox row (carrying the binding-proof digest and the exact fenced subject or its explicit absence), the same-trace terminal-span outbox row, any evidence-receipt ref the active trust service requires, and the run transition. The JSONL ledger and span projectors run afterward. | every authority row and outbox durable together | a transaction failure leaves the intent `attempting` and enters recovery; a trace, subject or claim mismatch fails before any mutation; projector lag is repairable and never changes a write outcome |
 
-**Ordering invariant:** stable commit input and live probe exist before page preparation; a fresh
-binding proof follows successful preparation on the same lease; the fence transaction in ④
+**Ordering invariant:** stable commit input and the live probe exist before page preparation; a
+fresh binding proof follows successful preparation on the same lease; the fence transaction in ④
 stores that proof and happens-before the click; the click happens-before landing-proof validation;
-proof validation happens-before the single ⑦ transaction. Ledger and span JSONL
-are projections of durable outboxes, not additional commit beats. This generalizes oath-upload's
+proof validation happens-before the single ⑦ transaction. The ledger and span JSONL files are
+projections of durable outboxes, not additional commit beats. This generalizes oath-upload's
 "marker durable before the POST" (`handler.ts:306-309`) into the kernel.
 
+**The durable shape, as built.** The three tables are JSON-record tables, not the wide-column sketch
+Phase 0 drew (`src/infra/sqlite/migrations.ts:300-327`). What carries the invariants is the schema
+the `record_json` is parsed with plus two SQL constraints:
+
 ```sql
--- rebuild state.db — SYSTEM-OF-RECORD (D14: not rebuildable, not deletable). The crash-window fence.
 CREATE TABLE write_intents (
-  system          TEXT NOT NULL,   -- SystemId
-  idempotency_key TEXT NOT NULL,
-  workflow        TEXT NOT NULL,
-  item_id         TEXT NOT NULL,
-  node_id         TEXT NOT NULL,
-  owner_run_id    TEXT NOT NULL,
-  owner_attempt   INTEGER NOT NULL,
-  generation      INTEGER NOT NULL DEFAULT 1,
-  status          TEXT NOT NULL CHECK(status IN
-                    ('attempting','retryable','committed','observed-present')),
-  origin          TEXT NOT NULL CHECK(origin IN
-                    ('automation-attempt','external-observed')),
-  fenced_at       TEXT,
-  committed_at    TEXT,
-  binding_proof_json TEXT,               -- required for origin='automation-attempt'; live-probe
-  binding_proof_schema_hash TEXT,        -- observed-present rows instead retain probe evidence
-  binding_proof_digest TEXT,
-  proof_json      TEXT,
-  proof_schema_hash TEXT NOT NULL,
-  output_json     TEXT,
-  output_schema_hash TEXT NOT NULL,
-  PRIMARY KEY (system, idempotency_key),
-  CHECK(origin='external-observed' OR
-        (binding_proof_json IS NOT NULL AND binding_proof_schema_hash IS NOT NULL
-         AND binding_proof_digest IS NOT NULL))
-);
-
+  record_key            TEXT PRIMARY KEY,            -- the writeIntentId
+  idempotency_key_digest TEXT NOT NULL UNIQUE,       -- ← the same-key mutex, one row per (system, key)
+  status                TEXT NOT NULL,
+  record_json           TEXT NOT NULL CHECK (json_valid(record_json)),
+  created_at            TEXT NOT NULL
+) STRICT;
 CREATE TABLE write_attempts (
-  system TEXT NOT NULL, idempotency_key TEXT NOT NULL, generation INTEGER NOT NULL,
-  run_id TEXT NOT NULL, attempt INTEGER NOT NULL,
-  status TEXT NOT NULL CHECK(status IN ('attempting','retryable','committed')),
-  started_at TEXT NOT NULL, ended_at TEXT,
-  binding_proof_json TEXT,         -- immutable proof for THIS generation; the intent holds latest
-  binding_proof_schema_hash TEXT,
-  binding_proof_digest TEXT,
-  resolution_json TEXT,             -- typed operator/recovery evidence; never overwrites history
-  PRIMARY KEY (system, idempotency_key, generation),
-  CHECK(binding_proof_json IS NOT NULL AND binding_proof_schema_hash IS NOT NULL
-        AND binding_proof_digest IS NOT NULL)
-);
-
+  record_key TEXT PRIMARY KEY,
+  write_intent_id TEXT NOT NULL REFERENCES write_intents(record_key) ON DELETE RESTRICT,
+  generation INTEGER NOT NULL CHECK (generation >= 1),
+  record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+  created_at TEXT NOT NULL,
+  UNIQUE (write_intent_id, generation)              -- ← one immutable attempt per generation
+) STRICT;
 CREATE TABLE durable_outbox (
-  id TEXT PRIMARY KEY, kind TEXT NOT NULL, aggregate_key TEXT NOT NULL,
-  payload_json TEXT NOT NULL, created_at TEXT NOT NULL, projected_at TEXT
-);
+  record_key TEXT PRIMARY KEY,
+  write_intent_id TEXT NOT NULL REFERENCES write_intents(record_key) ON DELETE RESTRICT,
+  generation INTEGER NOT NULL CHECK (generation >= 1),
+  kind TEXT NOT NULL,
+  record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+  created_at TEXT NOT NULL
+) STRICT;
 ```
 
-`write_attempts` contains only generations in which this automation crossed a fence; a live probe
-that discovers an externally present transaction creates no attempt row. Committed and externally-
-observed-present keys remain in the primary-key table forever. A later run with the same business key
-parses and reuses the stored proof; it cannot create a second fence merely because the earlier row
-is already satisfied. `observed-present` blocks a click but writes no ledger entry: discovering a
-transaction is not evidence this automation filed it. There is no operator action that reopens a committed key. Normal recovery from a
-proven-absent click changes the same row to `retryable` and increments its generation on the next
-fence rather than deleting history. If an externally reversed transaction must legitimately be
-filed again, its input carries a distinct audited correction/revision identity that derives a new
-natural key; "void the fence and click again" is not an operation.
+`WriteIntentRecordSchema` is a discriminated union over **five** statuses — `observed-present`,
+`attempting`, `committed`, `retryable`, `parked` — and its `superRefine` re-derives BOTH digests
+from the row's own fields, so a stored row cannot lie about which key it fences or which proof it
+holds. `observed-present` is the arm with no attempt and no binding proof, because nothing was
+staged: discovering a transaction is not evidence this automation filed it, and that row writes no
+ledger entry while still blocking every later click. `parked` carries a closed
+`parkedCode` — `unknown`, `ambiguous`, `present-proof-invalid`, `binding-invalid`,
+`operator-required` — and a non-empty message, which is what §4.1's two typed resolutions act on.
+Every arm carries a `version`, and that is the optimistic lock a re-fence and an operator resolution
+both CAS against.
+
+`write_attempts` contains only generations in which this automation crossed a fence. Committed and
+externally-observed-present keys remain forever; a later run with the same business key parses and
+reuses the stored proof and cannot create a second fence merely because the earlier row is already
+satisfied. There is no operator action that reopens a committed key. Normal recovery from a
+proven-absent click moves the same row to `retryable` and the next fence increments its generation
+rather than deleting history. If an externally reversed transaction must legitimately be filed
+again, its input carries a distinct audited correction identity that derives a NEW natural key;
+"void the fence and click again" is not an operation.
 
 ### 3.1 Beat ⑦'s checkpoint IS terminal evidence, and it is bound to the envelope (D144, 2026-08-04)
+<!-- roadmap: p2-2g -->
+
+<!-- roadmap-status: p2-2g -->
+- [x] a transaction node may be named in a descriptor's `flow.result.dependsOn` — the checkpoint row's own schema hash is the `TransactionOutcome` envelope's, and both nested hashes are verified beneath it (D144)
+- [x] the interpreter reads back the exact row beat ⑦ committed and refuses if it is absent or does not project to the settlement just reported; it never mints one (`src/core/run-executor.ts`)
+- [x] `TransactionOutcomeSchema` lives in the browser-safe half so a descriptor closure can hash it without reaching `node:crypto`
+- [x] the evidence receipt derives from authority rather than being minted at settlement, and a gate contributes its own `gate_results` row as evidence (D82, D203, D204 — ref operator-trust owns the receipt)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/write-safety-primitives.ts:88-107`, `src/core/write-sequencer.ts:512-604`, `src/core/run-executor.ts`; left: nothing — 2g's write-lane half is closed
+<!-- /roadmap-status -->
 
 A transaction node may be named in a descriptor's `flow.result.dependsOn` exactly like a task node.
 Two things had to be true for that, and neither weakens D110/D114.
@@ -769,9 +795,9 @@ than checking either alone. A commit contract whose output or proof schema moves
 fails loud, at the terminal boundary, naming the contract and both hashes.
 
 **A transaction node's terminal scope value is `TypedTransactionOutcome<C>`, not the bare commit
-output.** Ref workflow-model §1.1 already says the node output IS the outcome wrapper, and every descriptor is
-authored that way (`outputs[node].disposition`, `outputs[node].output.<field>`). The terminal factory
-therefore *projects* the durable envelope onto that shape through
+output.** Ref workflow-model §1.1 already says the node output IS the outcome wrapper, and every
+descriptor is authored that way (`outputs[node].disposition`, `outputs[node].output.<field>`). The
+terminal factory therefore *projects* the durable envelope onto that shape through
 `projectTransactionOutcome` (`src/domain/workflow/graph.ts`) before the authored `derive` runs, so
 `derive` and a downstream `bind` see the same shape for the same node. "Which schema owns this
 node's FIELD PATHS" (a detail's `fieldPath`) stays the commit contract's output and is a different
@@ -779,11 +805,59 @@ question; conflating the two is what produced the gap.
 
 **The interpreter registers the row it did not write.** `src/core/run-executor.ts` reads back the
 exact `run_checkpoints` row beat ⑦ committed and refuses if it is absent, or if it does not project
-to the very settlement the sequencer just reported. It never mints a checkpoint from the value it was
-handed. `tests/unit/transaction-terminal-dependency.test.ts` drives a queued
+to the very settlement the sequencer just reported. It never mints a checkpoint from the value it
+was handed. `tests/unit/transaction-terminal-dependency.test.ts` drives a queued
 `kuali-timekeeper-annotation` run through the real interpreter, real sequencer and real authority to
 terminal `done`, and derives its evidence receipt from the result.
 
+**Why `TransactionOutcomeSchema` sits in `write-safety-primitives.ts`.** A descriptor's terminal
+`build` must hash the schema, and a descriptor closure may not reach a Node built-in;
+`write-safety.ts` imports `node:crypto`. The schema therefore lives in the browser-safe half and
+`write-safety.ts` re-exports it, so this doc's module stays the address every write-lane caller
+reads. `SubjectEvidence`, `AbsentEvidence`, `probeVerdictSchema`, `NegativeSettlementPolicy` and the
+dry-run preview travel with it for the same reason.
+
+### 3.2 The controlled-commit criterion — every write workflow owes its own
+<!-- roadmap: track-a -->
+
+<!-- roadmap-status: track-a -->
+- [x] the criterion is MET once, on the kernel, by `kuali-timekeeper-annotation` (§3.4, D135) — that is what unblocked write-heavy migration
+- [ ] separations owes **three** controlled commits — `ucpath/create-termination`, `ucpath/delete-pending-terminations`, `kuali/save-separation-finalization` — each on an operator-approved canary, and they wait for the 08-28 window (doc 03b)
+- [ ] chunk 5c's Kuali commit additionally carries D207's named obligation: confirm the transferred 30 s window or move it (§4.2)
+- [ ] `probeToFenceMaxMs` per workflow is still unmeasured, and a settled preview cannot measure it (§5)
+- [ ] every later migration order owes the same five-part shape at its own migration — orders 4, 6, 7 and 9 name it explicitly (doc 03c)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/{ucpath,kuali}/*`, `docs/rebuild/03b-finish-separations.md`, `docs/rebuild/03c-migrate-the-remaining-workflows.md` §The seven-step migration playbook step 5; left: all three separations commits and every non-separations write
+<!-- /roadmap-status -->
+
+The kernel is proven once. **A store's receipt and probe quality is not proven by that, and never
+transfers**, so every workflow with a write owes this criterion at its own migration, against a
+configured test instance or a deliberately harmless operator-approved canary. Doc 03c's step 5 is
+the process; this is the contract it enforces. Five parts, all five required:
+
+| # | What must be shown | Why it cannot be dropped |
+|---|---|---|
+| 1 | **a dry run with ZERO durable rows** — no `write_intents`, no `write_attempts`, no `durable_outbox`, no `run_checkpoints`, no minted capability, no commit span | a preview that leaves a row is not a preview; and this is the arm every later test tier is built on |
+| 2 | **a forced subject mismatch refused with ZERO fence and ZERO click**, on a page that WAS staged | beat ③ is the only control against a stale or switched page, and the only way to know it fires is to make it fire |
+| 3 | **ONE controlled commit** whose proof is the declared read-back PLUS both outbox rows PLUS the terminal span | a green click is not a landing. §3.4's own first attempt returned HTTP `200` with a rendered *Form saved* and persisted nothing |
+| 4 | **an idempotent re-run answering `already-present`** with no browser and no second click | the permanent key is the whole double-submit story; an unexercised mutex is an assumption |
+| 5 | **the target restored**, each restore proved by the same read-back | a canary you cannot put back is a production edit with a test's name on it |
+
+**Absence of a safe target BLOCKS rebuild-ready — it does not license a substitution.** Doc 03c
+states this as a gate and it is a write-safety rule: a dry run alone cannot prove landing, recovery
+or dedupe, and converting a green dry run into a write-safety claim is the one substitution this
+program forbids. The §b questionnaire records the target, the reversibility, the expected proof and
+the stop condition BEFORE the step runs.
+
+**A propagation measurement is a separate, optional sixth part.** A workflow whose contract declares
+`recoveryAbsence: {kind:"operator-only"}` owes parts 1–5 and no numbers. A workflow claiming
+`stabilized` owes the measurement too, under §4.2's mechanism rule — and if it INHERITED a window,
+its controlled commit must confirm or move it.
+
+**Where each proof lives.** The Phase-2 kernel proof is §3.4 below, with doc 02 carrying the phase
+record. Separations' three are doc 03b's, with `docs/migrations/separations.md` §6 as the checklist
+and its §9.x as the live log; they wait for the operator's 08-28 window. Every later order names its
+own in doc 03c. A proof is RECORDED, never re-run: re-running one would be a second real HR write
+(ref guards-and-tests §10.1).
 ---
 
 ## 4. Crash-window recovery (positive proof or stabilized negative proof)
