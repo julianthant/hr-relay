@@ -12,7 +12,7 @@ completed work.
 | This doc **owns** (siblings reference, never redefine) |
 |---|
 | The **operator column-mapping design** — the mapping object, per-source persistence + header fingerprint, the upload→map→validate→run UI flow, per-cell coercion, the unmapped-required block, fuzzy-suggestion policy |
-| The **extraction** intake task designs (`extraction/parse-csv`, `extraction/parse-pdf-fields`), **roster** matching (`roster/match-spreadsheet`), and typed **normalization** service outcomes — their contract shapes + intake semantics |
+| The **extraction** intake task designs (built as `extraction/extract-spreadsheet` and `extraction/extract-pdf-pages` — §3.1/§3.2 renamed the design's `parse-csv`/`parse-pdf-fields`), **roster** matching (`roster/match-spreadsheet`), OCR extraction (`ocr/extract-form-page`) and typed **normalization** service outcomes (`normalization/read-contact-advice`) — their contract shapes + intake semantics |
 | The **intake pipeline**: how a parsed+mapped dataset becomes N workflow inputs, and the pre-run per-row rejection review (nothing half-launches) |
 | Durable mobile-photo capture intake: session/photo/finalization state, bundle outbox, artifact handoff, expiry, restart recovery, and phone-scope lifecycle (network exposure policy remains ref operator-trust) |
 | The **Edit-Data surface** — its data source, editable/read-only rules, the edit-during-resume concurrency rule |
@@ -108,15 +108,17 @@ spreadsheet-capable workflow declares an `intake` projection naming which input 
 those field schemas reuse canonical schema objects rather than parallel regexes:
 
 ```ts
-// src/workflows/work-study/input.ts
-export const WorkStudyInput = z.strictObject({
-  emplId:        fields.eid.schema,            // same object the mapper coerces to
-  effectiveDate: fields.effectiveDate.schema,
-});
-export const WorkStudyIntake = defineIntakeProjection(WorkStudyInput, {
-  emplId: fields.eid, effectiveDate: fields.effectiveDate,
+// src/workflows/person-lookup/module.ts:43 — the one declared projection at HEAD
+export const personLookupIntake = defineIntakeProjection(PersonLookupInput, {
+  emplId: CANONICAL_FIELDS.eid,          // the same schema object the mapper coerces to
+  name:   CANONICAL_FIELDS.fullName,
 });
 ```
+
+The declaration rides the workflow's **server composition module**, never its descriptor (§2.7's
+reason: it would fold into `contractFingerprint` and re-stamp every existing run). `work-study` —
+this section's original example — is not in the tree yet; it arrives with the order-6 migration, and
+until then `person-lookup` is the only workflow an operator can map a column to.
 
 This proves each coerced cell satisfies its target field. The assembled row is still parsed through
 the **full workflow schema**, so cross-field refinements/default interactions may reject it visibly;
@@ -178,9 +180,12 @@ cannot load. And no normalized header alias may claim two fields: an ambiguous a
 §2.5 scorer's top hit arbitrary, and an arbitrary suggestion accepted with one click is §7 vector #1
 wearing a disguise.
 
-**Naming reconciliation.** `src/domain/ids.ts` already owned `IntakeManifestId`, and ref dashboard-surfaces's D67
-command union already binds `enqueue-intake-manifest` to it. That id is THE manifest identity;
-§5's `IntakePlanIdSchema` is the same thing under an earlier name and no second id is minted.
+**Naming reconciliation.** `src/domain/ids.ts` owns `IntakeManifestId`, and ref dashboard-surfaces's
+D67 command union binds `enqueue-intake-manifest` to it. That id is THE manifest identity, and it is
+the only one the tree ever grew: `IntakePlanIdSchema` — the name §5 was drafted against — exists
+nowhere in `src/`, so the reconciliation this paragraph asked for happened by the second id never
+being minted. `IntakeManifestIdSchema` is what `src/domain/intake/manifest.ts:199` and
+`src/core/capture-intake-handoff.ts:170` both parse.
 
 ---
 
@@ -193,20 +198,20 @@ command union already binds `enqueue-intake-manifest` to it. That id is THE mani
 <!-- roadmap: p2-2h -->
 
 ```ts
-// src/domain/intake/mapping.ts  (domain — bundle-safe, zod only)
-export const ColumnMapping = z.strictObject({
+// src/domain/intake/mapping.ts:72-83  (domain — bundle-safe, zod only) — as built
+export const ColumnMappingSchema = z.strictObject({
   workflow:       WorkflowIdSchema,
   /** Exact target-field set/schema this map was built against (D66). */
   intakeProjectionFingerprint: FingerprintSchema,
   /** header fingerprint of the source this mapping was built for (§2.3). */
-  fingerprint:    Sha256Schema,
+  fingerprint:    FingerprintSchema,        // as built: FingerprintSchema, not a bare Sha256
   savedAt:        IsoInstantSchema,         // provenance, drives stale display
-  headerRowIndex: z.number().int(),        // which sniffed row is the header (parsers agree on this)
+  headerRowIndex: z.number().int().nonnegative(),   // which sniffed row is the header
   /** Stable within one parsed layout: normalized header + duplicate occurrence. */
   columns:        z.array(z.strictObject({
     sourceColumnId: z.string(), header: z.string(), normalizedHeader: z.string(),
-    occurrence: z.number().int().positive(), currentIndex: z.number().int(),
-  })),
+    occurrence: z.number().int().positive(), currentIndex: z.number().int().nonnegative(),
+  })),                                      // as built: DetectedColumnSchema.omit({ samples: true })
   /** Target-field binding, not canonical-concept binding (D66). Two target paths may intentionally
    * use the same canonical field, e.g. homeCity and mailingCity. */
   bindings: z.array(z.strictObject({
@@ -216,7 +221,7 @@ export const ColumnMapping = z.strictObject({
     confirmedAt: IsoInstantSchema,
   })),
 });
-export type ColumnMapping = z.infer<typeof ColumnMapping>;
+export type ColumnMapping = z.infer<typeof ColumnMappingSchema>;
 ```
 
 The mapping binds each stable target id from `defineIntakeProjection` by
@@ -238,8 +243,9 @@ artifact id) are branded at parse time, so equally shaped strings cannot be inte
 
 <!-- roadmap: p2-2i -->
 
-1. **Upload.** Operator uploads a `.csv`/`.xlsx`. `extraction/parse-csv`|`parse-pdf-fields` (§3)
-   returns the **detected columns + a few sample values per column** (never the whole file to the
+1. **Upload.** Operator uploads a `.csv`/`.xlsx` to `POST /api/v1/intake/files?workflow=<id>`
+   (§2.7 — creation carries BYTES, so it is a route and not a command arm).
+   `extraction/extract-spreadsheet` (§3.1) returns the **detected columns + a few sample values per column** (never the whole file to the
    client at this stage — sample rows only).
 2. **Map.** The mapping grid shows each stable target field/path the *target workflow* requires
    (+ optionals), including its canonical concept label,
@@ -274,6 +280,17 @@ Order-insensitive and unambiguous: canonical JSON preserves element boundaries, 
 cannot collide semantically with `["a","b c"]`. Duplicate counts/occurrences are included.
 Saved at `config/column-mappings/<workflow>/<fingerprint>.json` (gitignored operator state, mirrors
 `config/settings.json`).
+
+> **As built (2026-08-20): the reuse LOGIC is built, the STORE is not.** `resolveSavedMapping`,
+> `heldBindings` and the three refusal gates are complete and unit-pinned in
+> `src/domain/intake/mapping.ts:243-407`, and `intake-mapping-boundary.test.ts` holds the
+> "index never binds" rule. Nothing calls them: there is no writer for
+> `config/column-mappings/`, no saved-mapping table (schema v12 stores the in-progress
+> `intake_sessions` row and v11 the terminal `intake_manifests` row — neither is a reusable
+> mapping), and `resolveSavedMapping`'s only callers are its own tests. So today every upload is
+> a fingerprint MISS by construction and the operator re-maps each time. The reuse rules below stay
+> NORMATIVE — they are what the store must obey when it is built. Owner: `order-6-dash`
+> (the first recurring layout is work-study's weekly export), reported as a `builds:` line.
 
 - **Exact fingerprint hit** → the saved `ColumnMapping` is **pre-loaded into the grid, visibly**,
   and the operator still clicks Run. This is reuse-with-a-glance, **not** a silent auto-run — the
@@ -397,7 +414,8 @@ were deferred-arm placeholders no producer ever sent, so there is nothing to mig
 `{targetFieldId, sourceColumnId, headerFingerprint}`; `correct-intake-row` →
 `{sourceRow, field, correctedValue}`; `exclude-intake-row` → `{sourceRow, reason}`;
 `validate-intake` stays payload-free. All five target `{intakeSessionId, expectedVersion}`.
-`enqueue-intake-manifest` stays deferred until 2i-E2.
+`enqueue-intake-manifest` was still deferred at D170 and landed one decision later — D171, §5.2 —
+so all six arms are live at HEAD (`src/domain/commands.ts:172-177`, the family list at `:432`).
 
 Four rules run through the arms:
 
@@ -426,15 +444,24 @@ retained at all (§4.6's two-digit-year resolution must replay identically). `GE
 **server composition module**, not its descriptor: an intake projection declares which input fields
 an operator may bind a column to, which the server needs and a run envelope does not, and putting it
 on the descriptor would fold it into `contractFingerprint` and re-stamp every existing run's
-contract for a surface that touches none of them. No registered workflow declares one yet —
-person-lookup's input is a UNION and `defineIntakeProjection` resolves target paths through a strict
-object, so that declaration is real design work belonging with the grid surface (2i-E3). Until then
-every arm and the upload route refuse **by name** rather than mapping against an invented target set.
+contract for a surface that touches none of them. At D170 no registered workflow declared one — person-lookup's input is a UNION and
+`defineIntakeProjection` resolved target paths only through a strict object — so every arm and the
+upload route refused **by name** rather than mapping against an invented target set. §2.8 (D172)
+taught the resolver to walk a union and declared the first projection; the refusal arm stays, and it
+is what any workflow without a projection still gets.
 
 ### 2.8 Phase-2i as-built — the first real projection, and unions resolve (D172)
 
 <!-- roadmap: p2-2i -->
 <!-- roadmap: order-6-dash -->
+
+<!-- roadmap-status: order-6-dash -->
+- [x] the intake model this square wires is workflow-GENERIC and live — the durable session (schema v12), the upload route and all six command arms (§2.7/§2.8, D170–D172); a new workflow needs only a `defineIntakeProjection` declaration on its `module.ts`
+- [ ] `work-study` has no projection because the workflow is not in the tree — `person-lookup` is the only one declared (`src/workflows/person-lookup/module.ts:43`); order 6 brings the second
+- [ ] saved-mapping reuse has no store, so a recurring weekly export is re-mapped on every upload — §2.3's as-built note; this square is where that writer belongs
+- [ ] the per-row `execution-option` constants entry and the unbind arm live in the DRAWN workspace, which this doc does not own — ref dashboard-surfaces §11 (2i-E3, D173)
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/commands.ts:172-177,432`, `src/domain/intake/mapping.ts`, `src/workflows/person-lookup/module.ts:43` and `src/infra/sqlite/migrations.ts:904`; left: the second projection and the mapping store
+<!-- /roadmap-status -->
 
 `person-lookup` is the first workflow to declare an intake projection, so this is the commit where
 the route and all six arms stop refusing by name. Three decisions, each of which a permissive
