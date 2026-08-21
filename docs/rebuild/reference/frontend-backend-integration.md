@@ -2044,7 +2044,11 @@ on-demand act, and because a quarter is what puts BOTH `#warningVerdict` arms on
 `npm run perf:dashboard -- --iterations 11`, on an Apple M3 Pro · 11 cores · 18 GB · node v26.1.0 ·
 darwin-arm64. Durations are the median and nearest-rank p95 of 11 samples after one discarded
 warm-up; **counts are exact** (the world is deterministic, so a count that varied would mean the
-measurement had a side effect) and were byte-identical across every run taken.
+measurement had a side effect) and were byte-identical across every run taken. The machine is a
+laptop that carries other work, so read the durations as ±15 % — three runs at this commit put the
+day wire between 156 and 188 ms — and read the counts as exact. That asymmetry is the reason the
+counters are in the table at all: they are what a later comparison can be made on without owning
+the machine.
 
 | # | Path | Audit | median ms | p95 ms | Counters |
 |---|---|---|---|---|---|
@@ -2074,8 +2078,13 @@ report zero is a check that cannot fail. `corpusLinesScanned` / `corpusBytesRead
 named imports of `node:fs` and no in-process counter can honestly observe that read. Since the seed
 holds the corpus constant, the millisecond column is what moves when D5 scopes the reader.
 
-**P5 is not on this table.** Virtualization is a DOM property, not a server one; it belongs to D9,
-which this section's virtualize-or-page bullet already owns, and which re-measures after it lands.
+**P5 is not on this table, and neither is a browser number.** Virtualization is a DOM property, not
+a server one; it belongs to D9, which this section's virtualize-or-page bullet already owns, and
+which re-measures after it lands. A time-to-interactive figure against the production bundle was
+scoped and deliberately NOT taken: the five findings above are all server-side, and a TTI measured
+on a contended laptop would be a number with no defensible comparison behind it. D4's `memo` work is
+the row that will owe one, and the parity lane already boots the real stack over a seeded state root
+(`tests/parity/helpers/seeded-bff.ts`), so the seam is there when it is wanted.
 
 **These numbers become the gate by being RE-RUN, not by being retyped.** Track D's D4 and D5 run the
 exact command above against the exact same seed and record the delta beneath this table. Anything
