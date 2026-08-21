@@ -13,13 +13,33 @@ because a binding document nobody in this checkout can open is not binding. The
 two repositories share no module graph (D93), so this is a copy with provenance
 and never a link — if the legacy original changes, re-port it and move the hash.
 
-Two paragraph-level notes for a reader in THIS tree:
+Three adaptations for a reader in THIS tree (a third was undisclosed until Track F named it,
+2026-08-21):
 
-  - "one import (`demo-ui.tsx`)" is `src/dashboard/ds/ui.ts` here. The rule is
-    unchanged: surfaces import the barrel, never `ds/*` directly.
+  - "one import (`demo-ui.tsx`)" is `src/dashboard/ds/ui.tsx` here (not `ui.ts` — the barrel is a
+    `.tsx` file). The rule is unchanged: surfaces import the barrel, never `ds/*` directly.
   - the guards this document says are enforced live in
-    `tests/unit/architecture/helpers/ratchet-arms.ts` as the
-    `frontend-tailwind-compliance` arm, not in a file of their own.
+    `tests/unit/architecture/helpers/ratchet-arms.ts` as the `frontend-tailwind-compliance` arm,
+    not in a file of their own. Precisely: legacy's arm ran four checks (reduced-motion coverage,
+    the z-index scale, image loading discipline, palette/hex); this port dropped three and shipped
+    only palette/hex, and this document went on asserting "guard enforced" for the reduced-motion
+    and z-index claims below (`:233`, `:570-572`) regardless (a document claiming a guard that does
+    not run is worse than no claim — `ratchet-arms.ts:441-457`). Commit `5cc035b9` (2026-08-12)
+    brought the other three back: today ALL FOUR run — `motion-reduce:animate-none` pairing on the
+    four `animate-*` utilities (narrower than legacy's full "reduced-motion coverage over
+    animation": it checks the same-line Tailwind modifier, not every transition), `@keyframes`/raw
+    `animation` bans, an arbitrary `z-[…]` ban (narrower than a full "z-index scale" audit: it bans
+    one anti-pattern, it does not verify `dsLayer`'s ORDER is used correctly), and image alt/loading
+    discipline. So "guard enforced" below is currently TRUE, narrowly — read the arm's own comment
+    for the exact scope before trusting either claim at face value again.
+  - the specimen page this document repeatedly points to (`DemoUiKit.tsx` at `:112`; the file-map
+    table's `DemoUiKit.tsx`/`kit.html`/`kit-entry.tsx` rows and the "Seeing the specimen page"
+    section at `:690-697`, including the port-3943 command) **does not exist in this tree.** No
+    file under `src/dashboard/ds/` or anywhere else in this repository is a specimen page, and
+    `npx vite --config vite.dashboard.config.ts --port 3943` serves nothing at the path named
+    below. The deferral is real and undecided: `03a-finish-the-dashboard.md` OPEN question 3
+    ("A DS specimen page — build it, or record the deferral with a trigger"), ledger 3 UK146–UK157.
+    Skim `ds/primitives-*.tsx` and `ds/ui.tsx` directly until it is ruled.
 -->
 
 # Rebuild demo — design brief
