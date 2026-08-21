@@ -82,7 +82,46 @@ is done. What survived it is the eight rows above._
 <!-- roadmap: def-capture-binding -->
 
 <!-- roadmap-status: def-capture-binding -->
+- [x] the whole capture pipeline is built and composed — token-scoped phone page, durable session, ordered photos, bundle finalization, restart drain (2i-F, D174)
+- [x] the handoff seam exists and refuses BY NAME rather than inventing an input — `captureIntakeRegistry` (`src/control/workflow-registry.ts:167-193`)
+- [ ] a workflow that can honestly derive its input from a photograph — `CAPTURE_INTAKE_BINDINGS` is `{}` because none exists (`src/control/workflow-registry.ts:194`)
+- [ ] the phone page has no delivery path either, which is `{#def-byte-path}` — both close at order 3
+> 2026-08-20 | docs-cohesion 04 | verified against src/control/workflow-registry.ts:150-194 and src/server/dashboard/compose.ts:747-760; left: the binding itself, which order 3 declares
 <!-- /roadmap-status -->
+
+**What the deferral is.** You can photograph a paper form with your phone today and the system will
+keep the photographs — a token-scoped capture session, an ordered set of digests, a finalized
+bundle. What it will not do is turn that bundle into a queued run, because **no workflow has
+declared how a bundle becomes its input.**
+
+**The decision that deferred it: D174** (round 41, 2026-08-09). The handoff seam was built with an
+explicitly EMPTY registry rather than a plausible first binding, and the registry's own comment says
+why: `person-lookup` is identified by an employee id or a name, `kuali-timekeeper-annotation` by a
+document number, and neither is derivable from a photograph without an OCR-backed workflow that does
+not exist. This is `INTAKE_PROJECTIONS` between D170 and D172 for the same reason — an invented
+binding puts a plausible-but-wrong canonical input into a real run.
+
+**Its trigger: the first OCR-consuming workflow, order 3.** The OCR pipeline workflow migrates at
+order 3 precisely so its OCR/roster consumers at orders 4–6 and 9 have something to build on; it is
+the first descriptor whose input a photograph can honestly produce. When it declares a
+`CaptureIntakeBinding` through `defineCaptureIntakeBinding`, the registry stops being empty and the
+handoff stops refusing. The node's own "close this first" is the `run.queued` span identity for
+projector-enqueued runs — a capture-minted run is enqueued off the operator's own path, and the
+projection folds every run through a write-once `run.queued` identity
+(`src/server/dashboard/projectors/run-queue-projection.ts:541-549`), so that is the seam to prove
+before a bundle mints one.
+
+**Built today.** Everything except the binding. `composeCaptureSurface` is wired into the production
+dashboard composition (`src/server/dashboard/compose.ts:747-760`) with the real registry, restart
+recovery drains whatever the last process left `pending` before the first request is served, and the
+capture surface's own tests assert against `CAPTURE_INTAKE_BINDINGS` itself rather than a fixture —
+`tests/unit/server/capture-surface.test.ts:896` names the production state in a comment so a test
+can never prove a surface the product does not have. D174's identity rule holds underneath: a replay
+returns the SAME manifest and run ids because both are `deriveStableUuid(namespace,
+outbox.stableKey)`, never minted.
+
+**Not built.** One thing: a workflow whose input a photograph can produce. Nothing else about this
+deferral is code that is missing.
 
 ## Run the dashboard without the dev server / use the phone page in production
 <!-- roadmap: def-byte-path -->
