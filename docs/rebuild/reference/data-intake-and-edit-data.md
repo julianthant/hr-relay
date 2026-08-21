@@ -1504,6 +1504,15 @@ artifact, mapping snapshot, intake projection, workflow contract and canonical-i
 <!-- roadmap: def-capture-binding -->
 <!-- roadmap: order-3 -->
 
+<!-- roadmap-status: def-capture-binding -->
+- [x] every part of the seam this deferral needs is built and guarded — the durable session, the token that lives only in a URL fragment, the uniform refusal, the deterministic PDF bundler, the derived handoff identities and the `IntakePlanManifest.capture` block (§5.1, D167/D174; `capture-durability-and-scope` active)
+- [x] `defineCaptureIntakeBinding` + `captureIntakeRegistry` exist and refuse a hand-built binding or one over a COPY of the descriptor's input schema (`src/control/workflow-registry.ts:182-194`)
+- [ ] `CAPTURE_INTAKE_BINDINGS` is EMPTY — no `module.ts` in `src/workflows/` declares `captureIntake`, so every finalize refuses by name. Not an oversight: neither registered workflow's identity is derivable from a photograph
+- [ ] what unblocks it is an OCR-BACKED workflow, i.e. order 3 — this node's whole content is "declare the binding once that workflow exists"
+- [ ] a handoff-enqueued run emits no `run.queued` span (the enqueue happens in the finalize projector, not the command service), so it would not appear on the queue — unreachable today, and the fixture asserting the registry is empty is deliberately what fails the day a binding lands
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/control/workflow-registry.ts:194`, `src/server/dashboard/compose.ts:752` and `grep -rn captureIntake src/workflows/*/module.ts` (no matches); left: the binding, which waits on order 3
+<!-- /roadmap-status -->
+
 > **Scope trim (D79d, operator 2026-07-24) — read before implementing.** Phone capture is
 > **rarely used**: most documents arrive as scanned PDFs. So this section's durability obligations
 > are cut to the two that matter, and the rest is explicitly not built:
@@ -1739,6 +1748,17 @@ is the moment this must be closed. (2) `inspectSecret` returning `unknown` — a
 rather than a missing one — is read as "not present", so the refusal says
 `ingress-credential-missing` when the honest diagnosis is "could not be read". Fail-closed in
 direction, imprecise in wording; left as-is because the remediation it prints is correct either way.
+
+**The surface is built; the BYTES have no delivery path (D189).** `CAPTURE_PHONE_ASSET_ENTRY` is
+`/capture.html` (`src/domain/capture-surface.ts:83`) and the bundle behind it is real
+(`src/dashboard/phone/`), but the production BFF **serves no frontend bytes at all** — there is no
+static handler, so the one asset URL the QR points at 404s outside the vite dev server
+(`src/core/runtime-composition.ts:140` names the gap; ref frontend-backend-integration §6.9 owns
+it). Nothing about this section's model is wrong and nothing here needs rebuilding: the token, the
+routes, the refusals and the outbox are all correct and tested, and a phone still cannot load the
+page in production. Deferred on D189's own argument — those bytes would ride the one
+internet-exposed path behind the Host gate, and the tunnel launcher is unbuilt anyway. Owner:
+`def-capture-binding`'s sibling deferral in doc 04, not this doc.
 
 **`capture-durability-and-scope` is ACTIVE.** It enforces the closed union in both directions, the
 `:param` segment bound, the byte-identical ingress refusal (driven through a real Hono app with a
