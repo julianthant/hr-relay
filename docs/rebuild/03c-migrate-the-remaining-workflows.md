@@ -139,7 +139,10 @@ that line, not a green suite, is what a `PROOF` tick on the tree is allowed to c
 
 ## Recommended migration order (by risk / complexity / reuse)
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.3 — its order-8 prerequisite block moved to `00-design-the-foundation.md` §ALWAYS-GATE identity approval, because D77 pulled that design into Phase 0 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Origin: the dissolved master plan's §3.3; its order-8 prerequisite block lives in
+`00-design-the-foundation.md` §ALWAYS-GATE identity approval, because D77 pulled that design into
+Phase 0. Re-verified against the code on 2026-08-20 — the ordering and its argument stand, and the
+per-row detail is in the §Order N sections below._
 
 **The ordering objective, made explicit (D84, amended by D88/D89).** Production availability does
 not vary by migration order because legacy automation remains authoritative until one final
@@ -199,7 +202,8 @@ not an unresolved architecture choice.
 
 ## The §b migration questionnaire (reusable template)
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.4 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Origin: the dissolved master plan's §3.4. Re-verified 2026-08-20 — the twelve items still name
+live contracts, and `docs/migrations/separations.md` §1 is the worked example of all twelve answered._
 
 Embed in **every** workflow's migration plan doc; answer with the operator BEFORE building
 (charter §b). Grounded in ref write-safety (write-safety) + 11 (freshness/instance) + 02 (gates).
@@ -344,7 +348,9 @@ inventories match. Nothing in this inventory authorizes legacy deletion.
 
 ## Live probe status (the design assumptions still unproven)
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.8 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Origin: the dissolved master plan's §3.8. Re-verified 2026-08-20 — Kuali and UCPath are settled and
+BUILT (`src/stores/kuali/tasks/verify-timekeeper-annotation.ts`, `src/stores/ucpath/tasks/verify-termination.ts`);
+ServiceNow and OnBase are unchanged and both are `you:` lines on `{#order-7}`._
 
 Ref write-safety's write-safety contract requires each system to produce a typed completion proof. For two
 of four systems that is still an *assumption*. The Kuali probe showed how cheap it is to settle:
@@ -965,7 +971,9 @@ A round ratified by a future migration is added here in the same commit that rec
 
 ## Exit criteria
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.2 — the per-workflow exit criteria every migration answers, separations included on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Origin: the dissolved master plan's §3.2 — the per-workflow criteria every migration answers,
+separations included. Re-verified and re-stated below as the PHASE's own checklist, with each line's
+MET/open state at HEAD._
 
 - §b questionnaire answered + recorded in the workflow's migration doc.
 - the rebuild repo's `typecheck` + `lint` + `test` + `test:architecture` green; the workflow's descriptor passes
