@@ -32,7 +32,7 @@ says so in one line rather than opening a second block.
 
 | | Concept | Where |
 |---|---|---|
-| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + archive-on-bump (D80)**, **run display names (D83)** | §1–§5, §9–§13 |
+| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + archive-on-bump (D80)**, **run display names (D83)** | §1–§5, §9 |
 | **Imports from `ref task-contract`** | the task contract and `defineTask`, the task-id grammar (`<system>/<verb-object>`, D2), the closed `SystemId` union, the error taxonomy | referenced, never redefined |
 | **Imports from `ref workflow-model`** | the descriptor shape and builder, `RunEnvelope` (`dryRun`'s one home, D6), the run-state machine including gates and parks (D5), the checkpoint store, and the readable span-path grammar | referenced, never redefined |
 | **Exports `ref workflow-model` adopts** | verdict/detail semantics, completion-program semantics, and the wire projections; the descriptor carries every consumed field | §3–§4 |
@@ -40,8 +40,8 @@ says so in one line rather than opening a second block.
 | **Imports from `ref frontend-backend-integration`** | the HTTP/SSE transport, the per-square wiring matrix (§5.1), the action-descriptor rule (§8.5) and the parity lane (§7) | referenced, never redefined |
 
 The "Where" column read `§§1–5, §9–10` until 2026-08-20 and had been wrong since 2i: §11 (intake),
-§12 (the capture phone) and §13 (the two reference takeovers) are this doc's too, and are folding
-into §9 with the rest of the surfaces.
+§12 (the capture phone) and §13 (the two reference takeovers) were this doc's too. They folded into
+§9 on 2026-08-21, so the column is now `§1–§5, §9` and stays true as surfaces are added.
 
 ## § number map (old → new)
 
@@ -61,10 +61,11 @@ into.
 | `## Phase 1f authority and command ratification` | §2.4's *Phase 1f — the authority and command ratification*, which is what `ref dashboard-surfaces §Phase-1f authority` still names |
 | `## 9. Ratified delegation and presentation decisions` | §9.10 — §9 is now *The operator surfaces* |
 
-**Folding into §9 (the two surface units; the number in the left column still resolves until each
-lands):**
+**Folded into §9 — every row below has landed. The numbers in the left column still RESOLVE: the
+alias headings at the foot of this doc redirect each to its destination, and they exist only until
+`docs/roadmap/roadmap.md`'s `doc:` refs are retargeted, at which point the whole alias block goes.**
 
-| was | is going to | unit |
+| was | is now | unit |
 |---|---|---|
 | `## Queue-row projection as-built delta` + *The second batch* + *Drawing the second batch* + *The per-row action descriptors* + *The row title is the SUBJECT* | **§9.2** (landed) | 5.1c |
 | `### D234` runs and archived runs · `### D235` the bulk vector | **§9.2** (landed) | 5.1c |
@@ -73,8 +74,12 @@ lands):**
 | `### D225`/`#### D259` · `### D238` · `## Wave-2 connection-proof presentation deltas` (D256 · D257) | **§9.3 · §9.9** (landed) | 5.1c |
 | *Shell and layout as rebuilt* | **§9.9** (landed); its superseded 400/470 widths → `history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md` | 5.1c |
 | §9's row-model D5–D24 | **§9.10** (landed), with its per-entry table naming §9.1 · §9.2 · §9.3 · §9.3.1 · §9.4 · §9.9 | 5.1c |
-| §10.1 Activity · §10.2 Archive · §10.3 display names · §10.4 the notification model | §9.5 · §9.5 · §9.2 · §9.6 | 5.1d |
-| §11 the intake workspace · §12 the capture phone · §13 the two takeovers | §9.7 · §9.7 · §9.5 | 5.1d |
+| §10.1 the ONE projection + D236 · §10.2 the archive + D179/D242/D223 | **§9.5.2 · §9.5.1** (landed) | 5.1d |
+| §10.3 operator-assigned display names (D83) · §10.4 the notification model (D79b/D86) | **§9.2 · §9.6** (landed) | 5.1d |
+| §11 the intake workspace · §12 the capture phone | **§9.7.1 · §9.7.2** (landed), with Edit Data's PLACE as §9.7.3 | 5.1d |
+| §13 the two reference takeovers | **§9.5.3** (landed); the takeover precedence rule moved up to §9.5, where all five keys are | 5.1d |
+| `## Phase 1e as-built completion + delegation-manifest delta` | **§4's opening · §4.1 · §4.4** (landed) — folded into the subsections it amends | 5.1d |
+| §5.1–§5.4, the `<details>` coexistence design | `history/superseded/2026-08-21-dashboard-surfaces-coexistence.md`; §5 keeps the live boundary contract | 5.1d |
 
 Two contracts deliberately do NOT move with their surface, because they are the model rather than
 the screen: the durable notification row stays in §2.6 (the bell and the inbox are §9.6), and the
@@ -2073,11 +2078,11 @@ absence, and which ratified decision settled it.
 A `Dashboard · wire` task in `docs/roadmap/roadmap.md` names a square. It must name the same square
 in both docs, which is why the taxonomy is shared rather than each doc's own.
 
-**Being written.** §9 is the destination of the 2026-08-20 reorganization (cohesion plan R9 item 3;
-the § number map at the top of this doc). Two units fill it, and until each lands, the material it
-folds is where the map says: the as-built delta blocks above §0, and §10–§13 below. A stub says who
-is writing it and what it inherits — that is a transitional state with a named owner, not an empty
-promise.
+**Complete as of 2026-08-21.** §9 is the destination of the 2026-08-20 reorganization (cohesion plan
+R9 item 3; the § number map at the top of this doc), and both surface units have landed: §9.1–§9.4,
+§9.9 and §9.10 (unit 5.1c) and §9.5–§9.8 (unit 5.1d). Nothing folds into it any more, §10–§13 are
+gone, and the numbers they held redirect from the alias block at the foot of this doc until the
+tree's `doc:` refs are retargeted.
 
 ### 9.1 The run modal — plan, confirm, enqueue
 
@@ -2376,6 +2381,16 @@ fill would be a fifth voice in the loudness ladder. The demo's own tone is *name
 *bound* to the amber parked tokens; this binds the colour the name describes, which is the one
 deliberate colour deviation on the row. The same hue draws the same fact on the Log Panel's
 provenance bar — one meaning, one colour.
+
+#### Operator-assigned run display names (D83)
+
+Any run can be renamed by the operator. The label rides the **row and the receipt**; the trace id is
+preserved underneath and remains the join key for spans, notes and the ledger. A rename is a command
+arm (D67), is actor-attributed (D75), and never mutates identity — it is presentation over a stable
+id, exactly like the presentation-override layer (D16). Per D95 its payload is one strict
+`displayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters and
+no unknown keys. How it is REACHED, and the CAS every presentation verb now carries, is the block
+below.
 
 #### D233 — a rename is a descriptor-driven control, and every run verb CASes the caller's version
 
@@ -4596,16 +4611,41 @@ dropped, and this table is how a citation to the old flat list resolves.
 
 ---
 
-## 10. Round-8 obligations this doc owns (2026-07-26)
+## § aliases — the numbers §5.1–§5.4 and §10–§13 used to hold
 
-Four operator ratifications from 2026-07-24 land here. Each is stated as a contract, not a
-preference, because each has a guard.
+**Transitional, and deliberately ugly so nobody mistakes one for a section.** Each heading below is
+a one-line REDIRECT. They exist because section numbers are load-bearing here — 33 tree nodes carry
+a `ref:dashboard-surfaces §N` ref the `roadmap-doc-binding` guard resolves against a real heading,
+~150 code comments cite one, and `history/` plus `docs/migrations/separations.md` cite the OLD
+numbers and are deliberately not swept (the § number map at the top of this doc is the permanent
+record for those). Unit 5.1d REPORTED the tree retargets rather than editing the tree; the
+orchestrator applies them in one sweep and **deletes this whole block in the same commit**. A
+citation that lands here is not broken — it is one sweep behind.
 
-### 10.3 Operator-assigned run display names (D83)
+### 5.1 The seam: one direction, one place — see §5, and `history/superseded/2026-08-21-dashboard-surfaces-coexistence.md`
 
-Any run can be renamed by the operator. The label rides the **row and the receipt**; the trace id is
-preserved underneath and remains the join key for spans, notes, and the ledger. A rename is a
-command arm (D67), is actor-attributed (D75), and never mutates identity — it is presentation over
-a stable id, exactly like the presentation-override layer (D16). Per D95, its payload is one strict
-`displayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters,
-and no unknown keys.
+### 5.2 The mapping from the kernel terminal contract — see §5, and the same history file
+
+### 5.3 Source authority, immutable per run — see §5; the `(engine, cutoverGeneration)` stamp never shipped
+
+### 5.4 The flip is SCOPED, then per-workflow migration — see §5; one all-at-once switch, `doc 05`
+
+### 10. Round-8 obligations this doc owns — see §9.5.2 · §9.5.1 · §9.2 · §9.6
+
+### 10.1 ONE projection owns every count (D81) — see §9.5.2
+
+### 10.2 Versioning and archive-on-version-bump (D80) — see §9.5.1
+
+### 10.3 Operator-assigned run display names (D83) — see §9.2
+
+### 10.4 Notification model (D79b + D86) — see §9.6
+
+### 11. The intake workspace — see §9.7.1
+
+### 12. The capture phone surface — see §9.7.2
+
+### 12.6 The QR and the token — see §9.7.2, which states the TTL bound the old title implied away
+
+### 13. The two reference takeovers — see §9.5.3
+
+### 13.2 A structure rail beside a record column — see §9.5.3
