@@ -1367,4 +1367,234 @@ This is the highest-fidelity region in the whole audit, and it is high-fidelity 
 
 ## Roll-up
 
-_(pending — written last)_
+### Counts
+
+| # | Region | Rows | exact | divergent | missing | extra | OPEN marks |
+|---|--------|-----:|------:|----------:|--------:|------:|-----------:|
+| 1 | Archive | 250 | 96 | 100 | 24 | 30 | 71 |
+| 2 | Activity report | 117 | 57 | 21 | 12 | 27 | 8 |
+| 3 | Workflow Explorer | 182 | 54 | 42 | 34 | 52 | 31 |
+| 4 | UI catalog | 69 | 0 | 0 | 39 | 30 | 6 |
+| 5 | Settings + storage doctor | 72 | 2 | 8 | 48 | 14 | 15 |
+| 6 | Data intake | 155 | 4 | 61 | 56 | 34 | 66 |
+| 7 | Phone capture | 62 | 1 | 3 | 20 | 38 | 6 |
+| 8 | Version-bump dialog | 53 | 2 | 30 | 13 | 8 | 39 |
+| 9 | Design-system primitives | 159 | 119 | 13 | 12 | 15 | 18 |
+| | **Total** | **1119** | **335** | **278** | **258** | **248** | **260** |
+
+**How to read the spread.** The two ends are the interesting part. The design system is 75% `exact`
+because it was COPIED rather than re-implemented; the UI catalog is 0% `exact` because the two files
+paired under that name are not the same surface at all. Everything between is a port whose
+divergences are mostly ruled — the 260 OPEN marks collapse to **roughly 60 distinct questions**,
+because a single decision (the bump's arms, the specimen page, the Settings container) drags a
+dozen rows behind it.
+
+**Parity blind spots found while doing this.** `tests/parity/references/` has scenes for archive,
+activity, explorer, catalog, intake and capture, and **none for Settings, none for the version-bump
+dialog, and none for a UI-kit page** — the three regions with the largest gaps are the three nobody
+photographs.
+
+---
+
+### The OPEN list, as decisions rather than rows
+
+Each entry is one question for the operator, with every row it settles. `→` names the rows.
+
+**Structural — each of these decides many rows**
+
+1. **The archive index is not virtualised.** `@tanstack/react-virtual` is not a dependency of this
+   repo; the row/section pixel constants, `overscan`, the two spacer `<tr>`s and one flat item list
+   are all absent, and each sweep gets its own `<TBody>`. `archive.tsx:12-19` still argues the demo's
+   800-row case. → AR32, AR33, AR34, AR35, AR51
+2. **The version bump's MAJOR/MINOR arms are a label.** Nothing in `src/domain/archive/`, the archive
+   query or the command kernel branches on `VersionBumpChangeRecordSchema.kind`, so a bump recorded
+   `minor` archives every prior-version run and can be refused by a non-terminal one — the two things
+   the demo says a minor bump must never do. → VB1, and behind it VB13, VB22, VB23, VB26, VB30, VB31,
+   VB33, VB45
+3. **There is no DS specimen page.** `DemoUiKit.tsx` (7 sections) has no counterpart — no `kit.html`,
+   no `kit-entry.tsx`, no surface on which the full primitive set can be reviewed. Build it, or record
+   the deferral with a named trigger. → UK146–UK157
+4. **The row-and-panel vocabulary has no rebuild surface.** The demo's catalog names 8 row variants,
+   3 containment kinds, a rollup chain and 4 panel kinds; only `panelKind` (`run`/`member`/`group`)
+   reaches the wire, and `review` has no arm. D184 retires the demo SHELL as a port target and does
+   not answer this. → CA1, CA16, CA23, CA36
+5. **Settings is a `Dialog`; the demo is a full-page takeover behind a 220px nav.** §9.8 rules the
+   section list and the read-only-ness and is silent on the container. → SE1, SE2, SE3, SE4, SE8
+6. **The keyboard legend is reachable from nowhere.** The demo made one change in two halves — delete
+   the top bar's keyboard glyph (*"we already have help in settings"*) AND add Settings → Help →
+   Keyboard. The rebuild ported the deletion only: `ShortcutsPopover` (`top-bar.tsx:912`) has zero
+   callers in `src/` or `tests/`, and `app/global-keys.ts` binds no `?`. → SE7, SE43, SE44
+7. **Two Settings status sections need no new authority.** System hosts reads `systemInstances`,
+   already on the bootstrap; Workflow capabilities is descriptor-derived, from the same descriptors
+   the Explorer reads. They are absent because `settingsSections` lists only `storage`. → SE40, SE41,
+   SE42
+8. **The operator half of phone capture does not exist.** `DemoCapture.tsx` is the DESKTOP view of a
+   phone session; the rebuild built the phone. After the QR is scanned nothing on the desktop shows
+   pages received, the phase, the expiry, an unreadable page or a contact sheet. D175 rules the phone;
+   nothing rules the operator half's disappearance. → CP3, CP4, CP5, CP17, CP18, CP59
+9. **Intake stages 5 and 6 have no surface.** The Manifest stage renders nowhere (the enqueued banner
+   shows one bare `manifest <uuid>`) and the rerun diff's added/removed lists are unserved. D173
+   ratifies the dialog→workspace reshaping in detail and says nothing about where these went. →
+   IN15, IN16, IN123, IN124, IN126, IN127, IN131, IN137, IN139, IN144
+10. **The intake review gate is gone.** `Run` goes live the moment validation returns, with unresolved
+    rejections on screen — `intake-review--paper-ink--1280x720.a11y.yml` shows `button "Run 3 rows"`
+    beside four unresolved rejects. The kernel refuses it so nothing wrong is filed, but
+    `ref data-intake-and-edit-data` §2.2 step 4 and §7 vector 4 both say the button is disabled, and
+    the courtesy blocker list never names `unresolved-rejections`. → IN118, IN119, IN120
+11. **No archived capture can be opened.** The tile is inert: no `Open` / `What it was` action, no
+    lightbox, no purged note. A "what it was" viewer needs no bytes, so D179's pointers-only rule does
+    not decide it. → AR188, AR189, AR190, AR249
+12. **The reviewed bump plan reports a count, never the runs.** The demo lists every archivable run by
+    name in a scrolling `Well`. → VB25, VB24
+
+**Records that are false or stale at HEAD — fix the record or fix the code**
+
+13. `docs/findings/queue-rows.md:221` says *"`dryRun` LANDED on `QueueBaseFields` … and the archived
+    detail draws it."* It does not — `dryRun`, `priority`, `warnings`, `displayName` and `subtitle`
+    are all served on `detail.row` and read by nothing in `archive.tsx`. → AR62, AR67, AR95, AR96,
+    AR121, AR123
+14. `archive.tsx:386-388` says *"The demo's `major`/`minor` word has no counterpart on this wire."*
+    D223 put `changeRecord.value.kind` on `ArchiveSweepWire`, so the sweep badge, its `sr-only`
+    summary, the popover description and the Archived-by card all print the SCOPE on a dead premise.
+    → AR77, AR78, AR91, AR129
+15. `ref operator-trust` §5.7 rules the Explorer's `Version registry` action absent *"because no
+    version-registry surface exists in this tree"*; `archive.tsx:2351` renders
+    `<Table label="Workflow version registry">`. → EX5
+16. `explorer.tsx:8-10` claims `skippedAboveBoundary` was ported; `explorer-model.ts` exports no such
+    function and no early-skip mark is drawn. → EX180
+17. `src/dashboard/DESIGN.md` is ported verbatim and declared binding, and at `:112`, `:690`, `:691`
+    and `:696-697` instructs its reader to skim `DemoUiKit.tsx` and open `kit.html` on port 3943 —
+    artifacts absent from this tree. Its porting header names two adaptations and neither the missing
+    page nor the barrel's real path. Behind it, the ratchet-arm port dropped 3 of legacy's 4 checks
+    while `DESIGN.md:209`,`:546`,`:548-549` still name two of them as guard-enforced. → UK66, UK67,
+    UK69, UK158
+18. `ref dashboard-surfaces` §9.5.3 says catalog entry is *"two `ghost` buttons in the panel's action
+    bar beside `Import spreadsheet`"*; no such button exists in `queue-toolbar.tsx`, `shell.tsx` or
+    `dashboard-app.tsx`, and the catalog is reachable only by typing `?catalog=`. → CA41
+19. `ref data-intake-and-edit-data`'s D173 text says *"CONSTANTS RENDER READ-ONLY"*; `intake.tsx:934`
+    reads `session.constants.length` inside a blocker computation and nothing renders one. Recorded as
+    IN155 (`ruled: D173`) rather than OPEN, because no arm sets a constant today — but the decision's
+    own sentence is not satisfied by the code.
+
+**Cross-region conventions the operator should rule once**
+
+20. **The takeover `Panel` wrapper.** Every rebuild takeover wraps the demo's bare `div` in a `Panel`
+    with `aria-label` and a `useDsEnterTransition` translate/opacity enter (`activity.tsx:1095`,
+    `archive.tsx:2168`, `explorer.tsx:1475`). Consistent, and nowhere ruled. → AC12, AR9
+21. **`overflow-x-auto` wrappers.** The rebuild wraps tables the demo leaves bare. → AC62, AC77, AR225
+22. **Raw wire enums where the demo prints a label.** The archive's status filter and rows, the bump's
+    blocker table, and the Activity caveats all print `awaiting-approval` / `blocked` / `partial`
+    where the demo prints `Review` / `Write parked` / `Parked` — and `status-model.ts:73` maps
+    `blocked → parked`, so the Activity caveat contradicts every pill on its own page. → AC24, AR27,
+    VB19
+23. **Async states the demo has no counterpart for** — `Skeleton` panes and `Refusal` panes on the
+    archive and Activity. Honest additions; nowhere ruled as a convention. → AR244, AR245
+24. **Two names per row in the Explorer** — the rebuild prints the node LABEL beside the id, and adds
+    a `contracts` count and a `re-runs on every attempt` line that `ref operator-trust` §5.2 does not
+    list. → EX66, EX87, EX88, EX127, EX133, EX165
+25. **The Explorer's editable pencil moved out of the field cell** into two `FactRow`s below the table,
+    reversing the demo's stated argument that *"editability is a property of a FIELD, so it is a mark
+    on the field's own row"*. → EX114, EX125
+
+**Copy, token and shape drift — one operator pass would clear most of these**
+
+26. Archive copy: back-button label, table label, both empty-state arms, the test-instance
+    `aria-label`, the sweep name/trace/title/popover strings, the detail header title and subtitle,
+    the export toast, the relaunch banner's title and body, the summary `MetaLine`, the ledger well
+    and table labels, the log-line and data-point shapes, the People tab, the capture tile geometry
+    and badge tones, the relaunch preview's badge and cautions, and the Versions view's four banner
+    sentences. → AR4, AR27, AR37, AR39, AR54, AR56, AR59, AR68, AR80, AR82, AR83, AR84, AR90, AR94,
+    AR97, AR102, AR103, AR105, AR106, AR124, AR127, AR128, AR133, AR141, AR142, AR148, AR150, AR152,
+    AR153, AR154, AR162, AR163, AR169, AR172, AR174, AR177, AR178, AR182, AR184, AR187, AR207, AR211,
+    AR212, AR218, AR220, AR221, AR223, AR229, AR239, AR241
+27. Intake naming and copy: 18 renamed labels and sentences (title, subtitle, Cancel→Close, the
+    invisible `Source file` heading, `sha` length, row-count wording, the mapping table's name and two
+    column heads, the unbound option, the duplicate-header suffix, the rejections empty state, the six
+    reject labels, the exclude placeholder and button, the fix button, and `Start N runs`→`Run N rows`).
+    → IN2, IN3, IN7, IN27, IN44, IN45, IN64, IN66, IN69, IN72, IN73, IN74, IN95, IN101, IN110, IN115,
+    IN116, IN138
+28. Intake shape: the rejection list became cards, the fix and exclude editors collapsed into inline
+    inputs, the exclusions `Well` became a chip section, and the enqueue-result banner family changed
+    arms. → IN21–IN24, IN30, IN32, IN34, IN46, IN47, IN55, IN56, IN61, IN70, IN75, IN97–IN100,
+    IN102, IN103, IN107–IN109, IN111–IN114, IN117, IN122
+29. Intake facts the wire serves and the surface drops: per-candidate `confidence`, suggestion `score`,
+    the reject `code`, the whole corrections list, the manifest `artifact` id and `createdAt`, and the
+    footer's header-row and fingerprint echo. → IN8, IN9, IN53, IN82, IN106, IN121, IN126, IN127, IN131
+30. Explorer copy and geometry: the list header meta, four graph-less arms that are structurally
+    unreachable, the connector sentence, three kind words and their tones, the fact-chip vocabulary,
+    the empty-contract sentence, the `colgroup` split, two posture notes, the delegation paragraph's
+    capitalisation, the pencil paragraph's voice, and the whole empty-state block plus its new action.
+    → EX8, EX13, EX18, EX20, EX23, EX26, EX55, EX65, EX72, EX73, EX74, EX75, EX96, EX101, EX103,
+    EX155, EX156, EX166, EX168, EX171, EX172
+31. Version-bump dialog: the authoring step's shape and every string in it. → VB4–VB12, VB14–VB17,
+    VB27–VB29, VB32, VB34, VB36–VB38, VB40, VB41, VB43, VB44, VB47, VB50
+32. Activity: the date pair carries no `role="group"`/`aria-label` where the chip group did, two
+    spacing tokens drift, and a `shrink-0` the demo does not have. → AC10, AC11, AC19, AC90
+33. Settings storage: the section header, the health banner, the stat cards and the backups table.
+    → SE45, SE46, and the banner's container/icon (SE63, SE64)
+34. DS: `TR`'s `interactive` arm gains an `active:` state and `dsMotion.fast`, and `DsStep` gains a
+    `trailing` duration column that reflows `TimelineSteps`. → UK141, UK144
+35. Catalog: the row `MetaLine` counts verification scenarios where §5.8's thesis is naming them.
+    → CA59
+
+---
+
+### Proposed `builds:` lines
+
+Notation per `.claude/skills/custom-update-plan/SKILL.md` §Notation — `FE` / `BE` / `BOTH` / `WIRE` /
+`DOCS` / `PROOF`. These are PROPOSED, not landed: this audit edits no doc and no roadmap node.
+
+**`{#dash-defaults}`** — `docs/rebuild/03a-finish-the-dashboard.md` §roadmap-status
+
+```
+- [ ] FE the archive index is VIRTUALISED — `@tanstack/react-virtual` is not a dependency of this repo, the row/section pixel constants, the spacer rows and the one flat item list are all absent, and each sweep still gets its own `<TBody>`, while `archive.tsx:12-19` argues the demo's 800-row case (fidelity-3 AR32–AR35, AR51)
+- [ ] FE the archive index draws the facts its own detail already holds — `dryRun`, `warnings`, `displayName`, `subtitle` and `priority` are served on `detail.row` and read by nothing (fidelity-3 AR62, AR67, AR95, AR96, AR121, AR123)
+- [ ] FE the sweep head prints the bump KIND — `changeRecord.value.kind` has ridden `ArchiveSweepWire` since D223 (fidelity-3 AR77, AR78, AR91, AR129)
+- [ ] FE every closed-enum status renders through its ds label — the archive filter and rows, the bump blocker table and the Activity caveats print raw wire enums, and `status-model.ts:73` maps `blocked → parked` so the caveat contradicts its own page's pills (fidelity-3 AC24, AR27, VB19)
+- [ ] FE the intake review gate — `Run` is live beside unresolved rejections, which `ref data-intake-and-edit-data` §2.2 step 4 and §7 vector 4 both say it is not, and the courtesy blocker list never names `unresolved-rejections` (fidelity-3 IN118–IN120)
+- [ ] FE the version bump's MAJOR/MINOR arms behave, or the field stops claiming they do — nothing branches on `VersionBumpChangeRecordSchema.kind`, so a `minor` bump archives every prior-version run (fidelity-3 VB1)
+- [ ] FE the reviewed bump plan names the runs it would archive, not their count (fidelity-3 VB25)
+- [ ] DOCS the four false-at-HEAD provenance claims are corrected or the code catches up — `docs/findings/queue-rows.md:221`, `archive.tsx:386-388`, `ref operator-trust` §5.7 vs `archive.tsx:2351`, `explorer.tsx:8-10` (fidelity-3 §Roll-up 13–16)
+- [ ] PROOF a parity scene for Settings, for the version-bump dialog and for a DS specimen page — the three regions with the largest gaps are the three the corpus does not photograph
+```
+
+**`{#def-settings}`** — `docs/rebuild/04-close-the-deferrals.md` §roadmap-status
+
+```
+- [ ] FE Settings → Help → Keyboard, or a global `?` — the top bar's keyboard glyph was deleted on the operator's instruction *"we already have help in settings"* and the destination was never built, so `ShortcutsPopover` (`top-bar.tsx:912`) has ZERO callers and `surfaces/shortcuts.tsx` is reachable from nowhere (fidelity-3 SE7, SE43, SE44)
+- [ ] BE `settingsSections` lists the status sections whose data is already served — System hosts reads `systemInstances` off the bootstrap, Workflow capabilities is descriptor-derived; neither needs new authority (fidelity-3 SE40–SE42)
+- [ ] FE the storage section's at-rest half — the three stat cards (authority generation, rows on disk, newest backup) and the `Backups` table with Size / Verdict / Note (fidelity-3 SE45, SE46, SE48, SE49)
+- [ ] WIRE `rowsOnDisk`, and a backup's `sizeLabel` and `note`, so those cards and that table have something true to print (fidelity-3 SE48, SE49)
+- [ ] the container question — Settings is a `Dialog` and the demo is a full-page takeover behind a 220px nav; `ref dashboard-surfaces` §9.8 rules the section list and is silent on the shape (fidelity-3 SE1–SE4, SE8)
+- [ ] FE once the write half lands: the four editable groups and their eight leaves, the three-layer provenance stack, the source badges, the hazard badge and its escalation banner, the per-section dirty marker and the one action bar (fidelity-3 SE9–SE36)
+```
+
+**`{#def-byte-path}`** — `docs/rebuild/04-close-the-deferrals.md` §roadmap-status
+
+```
+- [ ] BOTH the OPERATOR half of phone capture — `DemoCapture.tsx` is the DESKTOP view of a phone session and this tree built the phone; after the QR is scanned nothing shows pages received, the phase, the expiry, an unreadable page or a contact sheet. D175 rules the phone; nothing rules the operator half (fidelity-3 CP3–CP5, CP17, CP18, CP59)
+- [ ] WIRE an operator-scoped capture-session read (list + one) and a poll or SSE — `CAPTURE_PHONE_ROUTES` is a closed phone-scoped union and the only operator route mints a session (fidelity-3 CP2, CP6–CP8, CP11, CP12, CP16, CP21)
+- [ ] WIRE `unreadable` / `focusScore` on `CapturePhotoWireSchema`, plus a photo's filename, pixel dimensions and arrival instant, so the unreadable-page alert and the tile frame have something to read (fidelity-3 CP9, CP10, CP13–CP15)
+- [ ] FE the phone's RETAKE — `PUT /api/v1/capture/phone/photos/:photoId` is already in `CAPTURE_PHONE_ROUTES` and `CapturePhoneClient` implements no `replacePhoto`, while the surface's own copy tells the operator to "Retake it on the phone" (fidelity-3 CP45)
+```
+
+**`{#def-search-export}`** — `docs/rebuild/04-close-the-deferrals.md` §roadmap-status
+
+```
+- [ ] BE the artifact-bytes route also unblocks the ARCHIVE's evidence tiles — no archived capture can be opened at all, so the demo's `Open` / `What it was` action, its lightbox and its purged note have nowhere to land (fidelity-3 AR188–AR190, AR249)
+- [ ] FE the archive's `Change records` section — the record rides `ArchiveSweepWire.changeRecord` today, so this is buildable with no wire change (fidelity-3 AR234)
+- [ ] FE the intake MANIFEST stage and the rerun diff — plan id, source sha, artifact id, mapping fingerprint, mapping snapshot hash, workflow contract fingerprint, the totals line and the per-source-row disposition table; the enqueued banner shows one bare `manifest <uuid>` today (fidelity-3 IN123–IN137)
+- [ ] WIRE the intake fields those two stages need on `IntakeSessionWire` — `mappingFingerprint`, `mappingSnapshotHash`, `workflowContractFingerprint`, a pre-flight `intakeManifestId`, `SourceRowDispositionSchema` / `ValidRowSchema`, and `RerunDiffSchema.added` / `removed` (fidelity-3 IN125, IN128–IN130, IN133–IN136, IN142, IN143)
+- [ ] DOCS book the wire gaps this audit named that nothing books — 22 intake and 5 capture gaps have no `docs/findings/intake.md` or `capture.md`, `docs/findings/explorer.md` reports zero open records while three explorer gaps are real (the minor version half, per-node `skippedInDryRun`, per-field `when`), and no minor/presentation version exists anywhere in the tree so every `v3.1`-shaped tag renders `v1`
+```
+
+---
+
+### What this audit did NOT do
+
+It changed nothing. No surface, no token, no doc, no roadmap node and no findings file was edited —
+the deliverable is this ledger. The `ruled:` citations were each verified against
+`docs/rebuild/reference/decisions.md` and the owning doc at HEAD; where no decision covered a
+divergence it is marked **OPEN** rather than attributed to a decision that does not say it. The nine
+regions were audited from source, against the demo running at `http://localhost:5173/?view=rebuild-demo`
+and the parity references, at the paths named in each section header.
