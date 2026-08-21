@@ -572,98 +572,106 @@ later and are indexed by `02-prove-writes-build-the-tails.md`.
 
 ## Exit criteria
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's hard exit criteria, with the three presentation defects the exit run exposed) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**ALL MET 2026-08-04.** Each criterion below carries its evidence; where a later phase found the
+criterion was met more narrowly than it read, the correction is stated inline rather than left for
+a reader to discover.
 
-**Hard exit criteria (Phase 1) — ALL MET 2026-08-04.**
+### THE exit test — person-lookup runs LIVE on the spine (D74). MET 2026-08-04
 
-- **THE exit test — person-lookup runs LIVE on the spine (D74). MET 2026-08-04.** A submit-free live
-  run against real UCPath + CRM (Duo cleared hands-off by Autopilot, charter §9) produced a correct
-  person-lookup result on the new executor, and every projected surface (Queue Row, Log Panel,
-  Session Card, Workflow Panel count) rendered from the descriptor via the single 1g-spine
-  projection — verified headless with the `playwright-cli` seed→boot→assert loop (root
-  `CLAUDE.md`). This criterion is not satisfiable by fixtures; that is the point of moving it here.
-  Its `descriptor-coverage` guard is green, and the speed criterion — which budgets **fixed sleep
-  time**, ref execution-and-sessions §5 — is met at **zero**, with wall clock recorded beside it as an observation and
-  not as a threshold.
+A submit-free live run against real UCPath + CRM (Duo cleared hands-off by Autopilot,
+`reference/charter.md` §9) produced a correct person-lookup result on the new executor, and every
+projected surface rendered from the descriptor via the single 1g-spine projection — verified
+headless with the `playwright-cli` seed→boot→assert loop. **This criterion is not satisfiable by
+fixtures; that is the point of moving it here.** Its `descriptor-coverage` guard is green, and the
+speed criterion — which budgets **fixed sleep time** (`ref:execution-and-sessions` §5) — is met at
+**zero**, with wall clock recorded beside it as an observation and not as a threshold.
 
-  **The run.** `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, workflow
-  `person-lookup`, input EID `10873698`, terminal `done` **at attempt 2**. Node walk:
-  `searching` done (22.5s) → `cross-verify` **cancelled** (262.9s — the CRM browser died) → run
-  re-attempt → `cross-verify` done (12.8s) → `active-status` done → `crm-dates` **skipped**
-  (`condition-false`).
+**The run.** `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, workflow
+`person-lookup`, input EID `10873698`, terminal `done` **at attempt 2**. Node walk: `searching` done
+(22.5 s) → `cross-verify` **cancelled** (262.9 s — the CRM browser died) → run re-attempt →
+`cross-verify` done (12.8 s) → `active-status` done → `crm-dates` **skipped**
+(`condition-false`).
 
-  **The result is correct, not merely schema-valid.** `activeStatus.state = "active"`, `hdh = true`,
-  reason *"UCPath reports active and CRM record a1ZVr000004Xoq9MAC matches…"*;
-  `crmDates.state = "not-requested"`. The terminal dependencies record `active-status` resolved with
-  full output/provenance fingerprints and `crm-dates` as `state: not-run, reason: condition-false` —
-  a closed reason for a conditional node, exactly as D114 requires, never a silent omission.
+**The result is correct, not merely schema-valid.** `activeStatus.state = "active"`, `hdh = true`,
+reason *"UCPath reports active and CRM record a1ZVr000004Xoq9MAC matches…"*;
+`crmDates.state = "not-requested"`. The terminal dependencies record `active-status` resolved with
+full output and provenance fingerprints, and `crm-dates` as `state: not-run, reason:
+condition-false` — a closed reason for a conditional node, exactly as D114 requires, never a silent
+omission.
 
-  **Mid-run recovery worked unprompted.** The poisoned CRM session was closed, reopened, and the node
-  re-ran under attempt 2 with no operator action. That is 1f's worker-owned browser lifecycle and
-  D118's recovery-before-requeue behaving as designed against a real failure rather than a fixture.
+**Mid-run recovery worked unprompted.** The poisoned CRM session was closed, reopened, and the node
+re-ran under attempt 2 with no operator action. That is 1f's worker-owned browser lifecycle and
+D118's recovery-before-requeue behaving as designed against a real failure rather than a fixture.
 
-  **The four parity surfaces, all from the ONE projection** (BFF 3938, frontend 5174), verified
-  headless against this run: Queue row (*"EID 10873698 — done"*, trace `pl-000619-4ebf`, attempt 2);
-  Workflow Panel count (1); Session Panel (*"0 working 1 idle"*, status Live, v0.1.0); Log Panel
-  run-detail timeline showing all five events **including both Cross Verification entries**.
-  Projection counts agreed across every surface (All 1 / Done 1 / workflow 1) — D81 proved by a real
-  run, not only by its guard.
+**The four parity surfaces, all from the ONE projection** (BFF 3938, frontend 5174), verified
+headless against this run: the Queue row (*"EID 10873698 — done"*, trace `pl-000619-4ebf`, attempt
+2); the Workflow Panel count (1); the Session Panel (*"0 working 1 idle"*, status Live, v0.1.0); and
+the Log Panel run-detail timeline showing all five events **including both Cross Verification
+entries**. Projection counts agreed across every surface (All 1 / Done 1 / workflow 1) — D81 proved
+by a real run, not only by its guard.
 
-  **Speed sanity — what this criterion budgets is FIXED SLEEP, and it is zero (ref execution-and-sessions §5).** Ref execution-and-sessions
-  §5 is the speed contract, and the quantity it names is the *sleep tax*: fixed `waitForTimeout`
-  sleeps are replaced by waits on real readiness predicates, and cumulative fixed-sleep time is
-  recorded per task span. **Met exactly, and at the floor:** `sleepMs` is **absent on every task
-  span** of the exit run. The executor emitted no fixed sleeps at all, because it waits on
-  conditions and never on a hardcoded duration — so legacy's ~24s of `waitForTimeout` on this path
-  is *removed*, not reduced, and there is no residual sleep budget to shrink later.
+**Speed sanity — what this criterion budgets is FIXED SLEEP, and it is zero.**
+`ref:execution-and-sessions` §5 is the speed contract, and the quantity it names is the *sleep tax*:
+fixed `waitForTimeout` sleeps are replaced by waits on real readiness predicates, and cumulative
+fixed-sleep time is recorded per task span. **Met exactly, and at the floor:** `sleepMs` is **absent
+on every task span** of the exit run. The executor emitted no fixed sleeps at all, because it waits
+on conditions and never on a hardcoded duration — so legacy's ~24 s of `waitForTimeout` on this path
+is *removed*, not reduced, and there is no residual sleep budget to shrink later.
 
-  **Wall clock is recorded as an OBSERVATION, not as a pass/fail threshold.** The UCPath person-org
-  read took **22.5s end to end**, dominated by UCPath's own page loads. Stated plainly: **22.5s is
-  not materially below the old ~24s**, and it must never be reported as though it were a speed win.
-  The two numbers do not measure the same thing — 22.5s is total wall clock for the read, ~24s was
-  legacy's *sleep alone* — so comparing them proves nothing in either direction, and **no exit
-  criterion turns on the 22.5s.** What the measurement does establish is that removing the sleep tax
-  cost nothing, and that the remaining time is real work on the far side of the network. Making that
-  work faster is a Phase-2 concern and was not attempted here.
+**Wall clock is recorded as an OBSERVATION, not as a pass/fail threshold.** The UCPath person-org
+read took **22.5 s** end to end, dominated by UCPath's own page loads. Stated plainly: **22.5 s is
+not materially below the old ~24 s**, and it must never be reported as though it were a speed win.
+The two numbers do not measure the same thing — 22.5 s is total wall clock for the read, ~24 s was
+legacy's *sleep alone* — so comparing them proves nothing in either direction, and **no exit
+criterion turns on the 22.5 s.** What the measurement does establish is that removing the sleep tax
+cost nothing, and that the remaining time is real work on the far side of the network. Making that
+work faster is a Phase-2 concern and was not attempted here. Authentication is D120 content-level
+proof, live-verified at ~17 s (ucpath) and ~12 s (crm) including a real Duo ceremony — also
+observations, on the same footing.
 
-  Authentication is D120 content-level proof, live-verified at ~17s (ucpath) and ~12s (crm)
-  including a real Duo ceremony — also observations, on the same footing.
+**Failure latency — root-caused and FIXED 2026-08-04 (D125).** The `cross-verify` cancellation took
+**262.9 s** to surface. The run recovered correctly and no wrong data was produced, but 4 m 23 s is
+the cost of discovering a dead browser session, and it was charged to the operator's wall clock. The
+hang was in session ACQUISITION, not in the read: `factory.open` succeeded (which is why the run's
+CRM close span reads `login-failed` with no matching start span), and the login recipe then chained
+steps that are each individually bounded while **nothing bounded the chain**. The only outer bound
+reaching that code was `timeouts.taskMs` (180 000 ms) — which must stay generous for the real read
+and never fired here anyway: the D118 claim sweep (wall-clock 60 s staleness, 30 s cadence) requeued
+the run first, the heartbeat then reported the claim lost, and the span closed `cancelled`. Claim
+expiry is recovery, not a liveness bound. The fix is a separate, much shorter acquisition bound —
+`timeouts.sessionAcquireMs`, default 60 000 ms — armed on the same kernel scheduler, failing loud
+and never retrying (`ref:execution-and-sessions` §"Session acquisition is bounded separately from
+the task").
 
-  **Failure latency — root-caused and FIXED 2026-08-04 (D125).** The `cross-verify` cancellation took
-  **262.9s** to surface. The run recovered correctly and no wrong data was produced, but 4m23s is the
-  cost of discovering a dead browser session, and it was charged to the operator's wall clock. The
-  hang was in session ACQUISITION, not in the read: `factory.open` succeeded (which is why the run's
-  CRM close span reads `login-failed` with no matching start span), and the login recipe then chained
-  steps that are each individually bounded while **nothing bounded the chain**. The only outer bound
-  reaching that code was `timeouts.taskMs` (180 000 ms) — which must stay generous for the real read
-  and never fired here anyway: the D118 claim sweep (wall-clock 60s staleness, 30s cadence) requeued
-  the run first, the heartbeat then reported the claim lost, and the span closed `cancelled`. Claim
-  expiry is recovery, not a liveness bound. The fix is a separate, much shorter acquisition bound —
-  `timeouts.sessionAcquireMs`, default 60 000 ms — armed on the same kernel scheduler, failing loud
-  and never retrying. See ref execution-and-sessions §"Session acquisition is bounded separately from the task".
+_A later correction to this same message, worth knowing: `describeStalledLanding` — the function
+whose whole job is explaining a stalled Duo login — is unreachable at the shipped defaults, because
+`duoApprovalSeconds` (180 s) sits inside a 60 s acquisition envelope. D244 answers it from the other
+side: the refusal is decided by CONTENT, so the wait observes Duo's own "canceled or timed out" and
+refuses in 9.52 s naming the real cause._
 
-**Three presentation defects the exit run exposed — ALL THREE FIXED 2026-08-04.** All three are
-presentation-only: the durable authority is correct in every case, which is why none of them
-blocked the exit. They were logged here because this program's
-charter is that a surface must never mislead the operator, and each of these did. Normative text
-lives in ref dashboard-surfaces's *Phase 1g/1i-spine as-built presentation deltas*.
+### Three presentation defects the exit run exposed — ALL THREE FIXED 2026-08-04
+
+All three are presentation-only: the durable authority is correct in every case, which is why none
+of them blocked the exit. They are logged because this program's charter is that a surface must
+never mislead the operator, and each of these did. Normative text lives in `ref:dashboard-surfaces`
+§Phase 1g/1i-spine as-built presentation deltas.
 
 1. **FIXED (D123) — a conditionally-skipped node rendered as "cancelled" in the run-detail
    timeline.** The `RunDetailWire` step-state enum (`src/domain/dashboard/run-detail.ts`) had no
    `skipped` arm, so `src/server/dashboard/queries/run-detail.ts` mapped `skipped → cancelled`. The
    durable result was right (`crm-dates` = `not-run / condition-false`); the timeline was not.
-   "Cancelled" names an act someone took — ref dashboard-surfaces D-status vocabulary is explicit that it means
-   *"You stopped it"* — and a branch that was never supposed to run is the opposite. The wire enum
-   now has a `skipped` arm, every timeline event carries an explicit `notRun` reason-or-absence over
-   the durable result's own closed vocabulary, the executor stamps that reason on the skip span, and
-   the surface draws a skipped step with its own shape and its own accessible name.
+   "Cancelled" names an act someone took — the D-status vocabulary is explicit that it means *"You
+   stopped it"* — and a branch that was never supposed to run is the opposite. The wire enum now has
+   a `skipped` arm, every timeline event carries an explicit `notRun` reason-or-absence over the
+   durable result's own closed vocabulary, the executor stamps that reason on the skip span, and the
+   surface draws a skipped step with its own shape and its own accessible name.
 2. **FIXED (D124) — the queue row's elapsed kept counting after a run went terminal.**
    `RowFooterLine` (`src/dashboard/surfaces/queue.tsx`) computed `now − startedAt` for every
-   non-`queued` status, so the exit-test row displayed **2h 47m** for a run whose actual execution
-   was ~14.5 minutes. It was **elapsed-since-start, not run duration**. The queue wire now serves an
-   explicit terminal `endedAt`, an in-flight row may not carry one at all, and the row renders
-   `took <endedAt − startedAt>` once terminal — or an explicit `duration unknown` with the server's
-   reason if the instant is genuinely missing, never a silent fall back to `now`.
+   non-`queued` status, so the exit-test row displayed **2 h 47 m** for a run whose actual execution
+   was ~14.5 minutes. It was **elapsed-since-start, not run duration.** The queue wire now serves an
+   explicit terminal `endedAt`, an in-flight row is schema-refused from carrying one, and the row
+   renders `took <endedAt − startedAt>` once terminal — or an explicit `duration unknown` with the
+   server's reason if the instant is genuinely missing, never a silent fall back to `now`.
 3. **FIXED (D126) — two status controls computed the same ACCESSIBLE name, "Done — n".**
    `verifiedDone` and `doneWarnings` in `src/dashboard/ds/primitives-status.tsx` both carry
    `label: "Done"`, so `StatusFilters` produced two buttons named `"Done — 1"` / `"Done — 0"` and
@@ -671,40 +679,61 @@ lives in ref dashboard-surfaces's *Phase 1g/1i-spine as-built presentation delta
    refused to change it**: on screen the pair is *not* colour-only — `doneWarnings` draws an amber
    warning triangle with its count beside the pill and `verifiedDone` draws the bare green word, so
    icon + hue + count are three visible channels and the short word is the one that fits the header.
-   The real defect was assistive-technology only. Ref dashboard-surfaces's D22 is amended to record that as-built
-   ground (icon + colour + a distinct accessible name, no longer "the word remains"), and the fix is
-   a non-visual `accessibleLabel` channel — `doneWarnings` announces `Done with warnings` while the
-   drawn word is untouched. Verified by re-freezing the parity corpus: **56 `.a11y.yml` references
-   changed, zero `.png` files.**
-- In the rebuild repo, `npm run typecheck`, `npm run lint`, `npm run test`, and
-  `npm run test:architecture` are **all green**, with every guard inventoried and covering the
-  rebuild `src/` and `tests/` roots. In the legacy repo, `npm run lint:legacy-tests-ratchet` is the
-  honest gate while maintained legacy tests still exist; `npm run lint:tests` is reported truthfully
-  but is not an initial-cutover gate. The manifest may remain or shrink, but any new/replaced
-  fingerprint fails and touched legacy files cannot add debt. The rebuild repo's `test:coverage`
-  gates 60/80 lines/statements/functions; branches are report-only.
-- Write-safety fixtures pin simultaneous and later sequential same-key dedupe, proof validation for
-  every completion arm, fresh subject binding, crash injection across atomic commit, and ledger
-  projector concurrency/tail loss. Alternating-EID/file-digest mismatch produces zero fence/click.
-- Command/delegation fixtures prove transactional enqueue policies, versioned/idempotent actions,
-  scoped CAS only for real-race arms,
-  authority-only cancel targets, zero/one/many/partial/cancel/retry/replay/multi-edge child behavior,
-  and no duplicate active runs when authority lookup fails.
-- Strict schema mutation tests cover every durable/wire/config/intake/evidence boundary recursively;
-  raw Page/Locator/selector access exists only in driver/session internals; generated UI catalog has
-  no duplicate ids, invalid `supersedes` references, or unresolved dependencies.
-- A real-shaped copied authority DB passes corruption detection → read-only degraded mode → newest
-  checksummed-backup restore → projection rebuild, preserving commands/dependencies/checkpoints/
-  write intents/outboxes. Backup age/health is visible.
-- Every task/workflow/UI dependency in the spine references executed scenarios (every branch, gate,
-  delegation policy, and control path has one). *Evidence receipts, diagnostic bundles, and the
-  notification inbox move to the Phase-2 tails — the spine emits spans and the ONE projection.*
-- **D81 one-projection guard is green:** no count anywhere is computed by a second path.
-- Zero new-code allowlist entries in any extended ratchet (ported leaves shrink-only, argued).
-- Every activated guard arm resolves a non-empty file set; ESLint's CLI target and typed config block
-  both cover the rebuild repo's `src/` and `tests/`. Missing paths and unmatched patterns are
-  failures, not skips.
-- **No external HR WRITE yet.** The exit test is a submit-free live read; existing selector
-  knowledge maps from the maintained legacy registry, and newly introduced page-state/observation
+   The real defect was assistive-technology only. `ref:dashboard-surfaces`'s D22 is amended to record
+   that as-built ground, and the fix is a non-visual `accessibleLabel` channel — `doneWarnings`
+   announces `Done with warnings` while the drawn word is untouched. Verified by re-freezing the
+   parity corpus: **56 `.a11y.yml` references changed, zero `.png` files.**
+
+_A later correction, and it is the reason the parity lane is what it is today: D132 found that the
+lane ASSERTED only the `.png` and rewrote every `.a11y.yml` unconditionally — so this re-freeze was
+green by construction — and D187 found that every `paper-ink` reference had been photographed dark
+and the run-detail panel was two pixels wide. Both are fixed; both are recorded in §1i-spine above._
+
+### The gate criteria — MET, with the command names as they stand today
+
+- **The gates are green over the whole tree.** `npm run typecheck`, `npm run lint` and
+  `npm run test:coverage` pass with every guard inventoried and covering `src/` and `tests/`.
+  *Correction to the criterion as written:* it named `npm run test` + `npm run test:architecture` as
+  the per-commit pair and a legacy-side `lint:legacy-tests-ratchet` beside them. **D191** replaced
+  the pair with `test:coverage` (a strict superset, measured faster), and the legacy half retired
+  with **D93/D150** — nothing here reads legacy's working tree and legacy work blocks no rebuild
+  gate. `test:coverage` gates **60/80** lines/statements/functions (`vitest.config.ts:40-41`);
+  branches are report-only. R10 raises the global floor to 80 and has not landed (`{#test-tiers}`).
+- **Write-safety fixtures** pin simultaneous and later sequential same-key dedupe, proof validation
+  for every completion arm, fresh subject binding, crash injection across the atomic commit, and
+  ledger-projector concurrency and tail loss. Alternating EID and file-digest mismatch produce zero
+  fence and zero click.
+- **Command and delegation fixtures** prove transactional enqueue policies, versioned idempotent
+  actions, scoped CAS only for real-race arms, authority-only cancel targets, the
+  zero/one/many/partial/cancel/retry/replay/multi-edge child behaviours, and no duplicate active
+  runs when authority lookup fails.
+- **Strict schema mutation tests** cover every durable / wire / config / intake / evidence boundary
+  recursively; raw `Page`/`Locator`/selector access exists only in driver and session internals; the
+  generated UI catalog has no duplicate ids, invalid `supersedes` references, or unresolved
+  dependencies.
+- **Recovery is proved end to end:** a real-shaped copied authority DB passes corruption detection →
+  read-only degraded mode → newest checksummed-backup restore → projection rebuild, preserving
+  commands, dependencies, checkpoints, write intents and outboxes, with backup age and health
+  visible. *Correction:* the OFFLINE restore path this criterion also covers was proved by fixture
+  and was **unreachable in production** until D181 supplied the runtime-lock snapshot its one-time
+  stopped-system proof derives from — see §1c above.
+- **Every task, workflow and UI dependency in the spine references executed scenarios** (every
+  branch, gate, delegation policy and control path has one). Evidence receipts, diagnostic bundles
+  and the notification inbox were correctly OUT of scope here and landed in the 2g tail (D134–D145).
+- **D81's one-projection guard is green:** no count anywhere is computed by a second path.
+- **Zero new-code allowlist entries** in any extended ratchet (ported leaves are shrink-only and
+  argued), and every activated guard arm resolves a non-empty file set — ESLint's CLI target and its
+  typed config block both cover `src/` and `tests/`, so a missing path or an unmatched pattern is a
+  failure and not a skip.
+- **No external HR WRITE.** The exit test is a submit-free live read; existing selector knowledge is
+  ported from the legacy registry with provenance, and newly introduced page-state and observation
   recipes receive read-only live verification as they enter the catalog. All external-write proof
-  begins in Phase 2.
+  begins in Phase 2, and the controlled-commit proof was MET live on 2026-08-04 (D135).
+
+### What this phase leaves open
+
+Nothing in Phase 1's own scope. Every residual the later rewrites found on a spine contract is
+listed with its owner in §Phase summary above, and each is owned by a later node: `{#track-c}`,
+`{#observed-logs}`, **Track D row D6** and **row D11**, `{#def-byte-path}`, `{#test-tiers}`, and
+three reference-doc sections. One residual — `requestedBy` stamped and never checked — has **no**
+owner today and is reported as such rather than assigned by this doc.
