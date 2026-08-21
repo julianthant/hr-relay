@@ -398,13 +398,45 @@ the vitest project per tier, the run policy, the subject registry, the durable r
 <!-- roadmap: order-0 -->
 
 <!-- roadmap-status: order-0 -->
+- [x] the workflow exists and is registered — `src/workflows/person-lookup/descriptor.ts` + `module.ts`, tuple entry in `src/control/workflow-registry.ts`
+- [x] it ran LIVE against real UCPath + CRM (D74, 2026-08-04): run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, recovered a dead CRM session mid-run and terminalized `done` at attempt 2
+- [x] the store tasks it forced into existence — `ucpath/search-person-org`, `crm/read-onboarding-record`, `crm/read-onboarding-dates`, `person-lookup/read-active-status`
+- [ ] PROOF T1 — no `tests/scenario/workflows/person-lookup/` exists; the structural fixture scenario and the dry-run manifest are both unwritten (`ref guards-and-tests` §10.11)
+- [ ] the legacy capability entry `legacy-workflow-person-lookup` stays **open**, correctly: legacy's `crm-search.ts` / `match.ts` / `outcome.ts` have no rebuild counterpart, and those are order 1's Search + Match modes
+> 2026-08-20 | docs-cohesion 03c | verified against `src/workflows/person-lookup/descriptor.ts`, `src/control/workflow-registry.ts:39` and `config/legacy-capabilities.json`; left: the T1 pair, and the capability entry closes only at order 1
 <!-- /roadmap-status -->
+
+The Phase-1 spine proof, and the only order row that is migrated. It resolves a person by name or
+EID against real UCPath and real CRM. It is here as the WORKED EXAMPLE of the loop, not as work:
+`ref workflow-model` §8/§8.1 is its descriptor and the five deltas the live run forced,
+`ref task-contract` §9.1/§9.1.1 are its two canonical task contracts.
+
+**What its live run bought the rest of this doc.** D74's argument is that a real run falsifies
+contracts a fixture cannot, and it did: the `skipped` timeline arm (D123), the terminal-duration
+defect (D124), the accessible-name collision (D126), the `(runId, attempt, spanPath)` fold key, and
+`timeouts.sessionAcquireMs` (D125 — the dead CRM session cost 262.9 s of a ~14.5-minute run). Every
+order below budgets for the failure path on that evidence, not the happy path.
+
+**What it still owes.** Its T1 pair, like every other workflow — the tiers were specified after it
+shipped. And its legacy directory does not close here: order 1 is what closes it.
 
 ### Dashboard · wire person-lookup
 <!-- roadmap: order-0-dash -->
 
 <!-- roadmap-status: order-0-dash -->
+- [x] run modal — name / EID typed inputs and the start plan (`ref frontend-backend-integration` §5.1.1)
+- [x] queue row — the person-lookup row with status and timing, after D123/D124/D126 (§5.1.2)
+- [x] run detail — timeline, receipt, Context rail; the two-pixel panel D187 found and fixed (§5.1.3)
+- [x] archive · activity · explorer — person-lookup rows appear through the generic surfaces (§5.1.5)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces (`ref guards-and-tests` §10.12)
+> 2026-08-20 | docs-cohesion 03c | the four wire squares are the 1i-spine slice, live-proven by D74 and re-frozen in 2j's parity pass; left: the T2 scenario
 <!-- /roadmap-status -->
+
+The first wiring, done in 1i-spine before the `Dashboard · wire` template existed — which is why it
+has four squares rather than seven: person-lookup does not gate, raises no park notification and
+consumes no intake, so §5.1.4, §5.1.6 and §5.1.7 have nothing to declare. That is the template
+working, not a gap: a square is absent when the workflow has nothing to put in it, and present-but-
+empty when the wire has not been run.
 
 ## Order 1 · person-lookup Search + Match · i9-lookup
 <!-- roadmap: order-1 -->
