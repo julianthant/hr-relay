@@ -2,7 +2,9 @@
 
 Status: **revised 2026-07-22 after the whole-plan/legacy-code review; amended 2026-07-26
 (Round 8, §5.1 — the mobile-capture durability trim, D79d) and 2026-07-31 (Round 11 — standalone
-rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild` repo at plain `src/`).**
+rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild` repo at plain `src/`);
+**verified against the code and re-ordered 2026-08-21 (docs-cohesion, plan
+`docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md` §3.5).**
 Intake now produces a durable, replayable admission manifest; every data boundary is strict;
 scenario coverage and evidence make partial/excluded rows impossible to mistake for silently
 completed work.
@@ -12,7 +14,7 @@ completed work.
 | This doc **owns** (siblings reference, never redefine) |
 |---|
 | The **operator column-mapping design** — the mapping object, per-source persistence + header fingerprint, the upload→map→validate→run UI flow, per-cell coercion, the unmapped-required block, fuzzy-suggestion policy |
-| The **extraction** intake task designs (`extraction/parse-csv`, `extraction/parse-pdf-fields`), **roster** matching (`roster/match-spreadsheet`), and typed **normalization** service outcomes — their contract shapes + intake semantics |
+| The **extraction** intake task designs (built as `extraction/extract-spreadsheet` and `extraction/extract-pdf-pages` — §3.1/§3.2 renamed the design's `parse-csv`/`parse-pdf-fields`), **roster** matching (`roster/match-spreadsheet`), OCR extraction (`ocr/extract-form-page`) and typed **normalization** service outcomes (`normalization/read-contact-advice`) — their contract shapes + intake semantics |
 | The **intake pipeline**: how a parsed+mapped dataset becomes N workflow inputs, and the pre-run per-row rejection review (nothing half-launches) |
 | Durable mobile-photo capture intake: session/photo/finalization state, bundle outbox, artifact handoff, expiry, restart recovery, and phone-scope lifecycle (network exposure policy remains ref operator-trust) |
 | The **Edit-Data surface** — its data source, editable/read-only rules, the edit-during-resume concurrency rule |
@@ -62,6 +64,28 @@ Data a **typed view of the run's checkpoints** edited through ref workflow-model
 
 ## 1. Canonical field registry (vocabulary lives in the rebuild repo's `src/domain/`, referenced here)
 
+<!-- roadmap: p2-2h -->
+<!-- roadmap: order-6 -->
+
+<!-- roadmap-status: p2-2h -->
+- [x] the canonical field registry is closed at 47 ids and frozen against the RECORDED D58/D68 scan, checked in both directions (§1/§1.1, D146; `src/domain/fields/registry.ts:56-110`, `config/canonical-field-inventory.json` at legacy `4deabc5a`)
+- [x] mapping identity, the layout fingerprint, per-cell coercion, the suggestion scorer and `defineIntakeProjection`'s object-identity proof are built and bundle-safe (§2.1–§2.6, D147)
+- [x] the extraction store's two tasks (§3.1/§3.2, D149/D152), the roster store with its honest port split (§4, D163) and the normalization store including D178's `ai` arm (§4.2, D165/D178)
+- [x] OCR: one admission gate three producers cannot bypass, the generated instruction, the form registry and the classify/group scanner (§4.3–§4.11, D151–D161)
+- [x] validation, rejection, the immutable manifest and the rerun diff, on schema v11's ABORT-on-rewrite authority (§5/§5.0/§4.9, D148/D159)
+- [x] the retention-projection model end to end, unwired by design (§4.1, D164)
+- [ ] two 2h designs have no caller and both are named in place: the saved-mapping STORE (§2.3) and a descriptor that DECLARES an artifact projection (§4.1)
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/{fields,intake,ocr}/**`, `src/stores/{extraction,roster,ocr,normalization}/**`, `src/infra/sqlite/migrations.ts:863-908`; left: the two uncalled designs
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: order-6 -->
+- [x] the canonical-EID audit gate this migration replays its fixtures through exists and is enforced — `/^10\d{6}$/` everywhere, with the loose legacy `/^\d{5,}$/` recorded as a validation bug rather than a second domain value (§1, §9.1)
+- [ ] `work-study` is not in the tree: no input schema, no intake projection, and §8's worked example is this migration's TARGET rather than a transcript
+- [ ] the weekly export's saved mapping — the whole point of §2.3's fingerprint — has no writer, so week two re-maps from scratch until `order-6-dash` builds one
+- [ ] `effectiveDate` as a per-run constant typed once (§8 step 2) rides the intake session's `constants`; the drawn control belongs to ref dashboard-surfaces §11
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `ls src/workflows/` (no work-study) and `src/domain/fields/registry.ts`; left: the workflow itself
+<!-- /roadmap-status -->
+
 The closed, typed field vocabulary is domain-owned (charter §11). This doc consumes it; it does not
 redefine the field schemas. **The ids shown below are an excerpt, not the Phase-1 inventory.** Before
 the registry freezes, D58/D68 scan every legacy workflow input/schema, roster/header rule, OCR form,
@@ -105,15 +129,17 @@ spreadsheet-capable workflow declares an `intake` projection naming which input 
 those field schemas reuse canonical schema objects rather than parallel regexes:
 
 ```ts
-// src/workflows/work-study/input.ts
-export const WorkStudyInput = z.strictObject({
-  emplId:        fields.eid.schema,            // same object the mapper coerces to
-  effectiveDate: fields.effectiveDate.schema,
-});
-export const WorkStudyIntake = defineIntakeProjection(WorkStudyInput, {
-  emplId: fields.eid, effectiveDate: fields.effectiveDate,
+// src/workflows/person-lookup/module.ts:43 — the one declared projection at HEAD
+export const personLookupIntake = defineIntakeProjection(PersonLookupInput, {
+  emplId: CANONICAL_FIELDS.eid,          // the same schema object the mapper coerces to
+  name:   CANONICAL_FIELDS.fullName,
 });
 ```
+
+The declaration rides the workflow's **server composition module**, never its descriptor (§2.7's
+reason: it would fold into `contractFingerprint` and re-stamp every existing run). `work-study` —
+this section's original example — is not in the tree yet; it arrives with the order-6 migration, and
+until then `person-lookup` is the only workflow an operator can map a column to.
 
 This proves each coerced cell satisfies its target field. The assembled row is still parsed through
 the **full workflow schema**, so cross-field refinements/default interactions may reject it visibly;
@@ -130,6 +156,8 @@ may still have non-intake fields such as file refs, selectors, options, and disc
 > `Eid` globally.
 
 ### 1.1 Phase-2h as-built — the registry is frozen against a recorded scan (D146)
+
+<!-- roadmap: p2-2h -->
 
 `src/domain/fields/registry.ts` holds the closed `CanonicalFieldId` union (47 ids) and
 `src/domain/fields/cell-coercion.ts` holds the pure per-cell core. The D58/D68 scan this section
@@ -173,31 +201,38 @@ cannot load. And no normalized header alias may claim two fields: an ambiguous a
 §2.5 scorer's top hit arbitrary, and an arbitrary suggestion accepted with one click is §7 vector #1
 wearing a disguise.
 
-**Naming reconciliation.** `src/domain/ids.ts` already owned `IntakeManifestId`, and ref dashboard-surfaces's D67
-command union already binds `enqueue-intake-manifest` to it. That id is THE manifest identity;
-§5's `IntakePlanIdSchema` is the same thing under an earlier name and no second id is minted.
+**Naming reconciliation.** `src/domain/ids.ts` owns `IntakeManifestId`, and ref dashboard-surfaces's
+D67 command union binds `enqueue-intake-manifest` to it. That id is THE manifest identity, and it is
+the only one the tree ever grew: `IntakePlanIdSchema` — the name §5 was drafted against — exists
+nowhere in `src/`, so the reconciliation this paragraph asked for happened by the second id never
+being minted. `IntakeManifestIdSchema` is what `src/domain/intake/manifest.ts:199` and
+`src/core/capture-intake-handoff.ts:170` both parse.
 
 ---
 
 ## 2. Operator-defined column mapping
 
+<!-- roadmap: p2-2h -->
+
 ### 2.1 The mapping object (zod-typed)
 
+<!-- roadmap: p2-2h -->
+
 ```ts
-// src/domain/intake/mapping.ts  (domain — bundle-safe, zod only)
-export const ColumnMapping = z.strictObject({
+// src/domain/intake/mapping.ts:72-83  (domain — bundle-safe, zod only) — as built
+export const ColumnMappingSchema = z.strictObject({
   workflow:       WorkflowIdSchema,
   /** Exact target-field set/schema this map was built against (D66). */
   intakeProjectionFingerprint: FingerprintSchema,
   /** header fingerprint of the source this mapping was built for (§2.3). */
-  fingerprint:    Sha256Schema,
+  fingerprint:    FingerprintSchema,        // as built: FingerprintSchema, not a bare Sha256
   savedAt:        IsoInstantSchema,         // provenance, drives stale display
-  headerRowIndex: z.number().int(),        // which sniffed row is the header (parsers agree on this)
+  headerRowIndex: z.number().int().nonnegative(),   // which sniffed row is the header
   /** Stable within one parsed layout: normalized header + duplicate occurrence. */
   columns:        z.array(z.strictObject({
     sourceColumnId: z.string(), header: z.string(), normalizedHeader: z.string(),
-    occurrence: z.number().int().positive(), currentIndex: z.number().int(),
-  })),
+    occurrence: z.number().int().positive(), currentIndex: z.number().int().nonnegative(),
+  })),                                      // as built: DetectedColumnSchema.omit({ samples: true })
   /** Target-field binding, not canonical-concept binding (D66). Two target paths may intentionally
    * use the same canonical field, e.g. homeCity and mailingCity. */
   bindings: z.array(z.strictObject({
@@ -207,7 +242,7 @@ export const ColumnMapping = z.strictObject({
     confirmedAt: IsoInstantSchema,
   })),
 });
-export type ColumnMapping = z.infer<typeof ColumnMapping>;
+export type ColumnMapping = z.infer<typeof ColumnMappingSchema>;
 ```
 
 The mapping binds each stable target id from `defineIntakeProjection` by
@@ -227,8 +262,11 @@ artifact id) are branded at parse time, so equally shaped strings cannot be inte
 
 ### 2.2 The UI flow (upload → map → validate → run)
 
-1. **Upload.** Operator uploads a `.csv`/`.xlsx`. `extraction/parse-csv`|`parse-pdf-fields` (§3)
-   returns the **detected columns + a few sample values per column** (never the whole file to the
+<!-- roadmap: p2-2i -->
+
+1. **Upload.** Operator uploads a `.csv`/`.xlsx` to `POST /api/v1/intake/files?workflow=<id>`
+   (§2.7 — creation carries BYTES, so it is a route and not a command arm).
+   `extraction/extract-spreadsheet` (§3.1) returns the **detected columns + a few sample values per column** (never the whole file to the
    client at this stage — sample rows only).
 2. **Map.** The mapping grid shows each stable target field/path the *target workflow* requires
    (+ optionals), including its canonical concept label,
@@ -246,6 +284,8 @@ artifact id) are branded at parse time, so equally shaped strings cannot be inte
 
 ### 2.3 Per-source persistence — header fingerprint (recommended scheme)
 
+<!-- roadmap: p2-2h -->
+
 A recurring layout (the same weekly work-study export) should not be re-mapped each time. Reuse is
 keyed by a **header fingerprint**:
 
@@ -262,6 +302,17 @@ cannot collide semantically with `["a","b c"]`. Duplicate counts/occurrences are
 Saved at `config/column-mappings/<workflow>/<fingerprint>.json` (gitignored operator state, mirrors
 `config/settings.json`).
 
+> **As built (2026-08-20): the reuse LOGIC is built, the STORE is not.** `resolveSavedMapping`,
+> `heldBindings` and the three refusal gates are complete and unit-pinned in
+> `src/domain/intake/mapping.ts:243-407`, and `intake-mapping-boundary.test.ts` holds the
+> "index never binds" rule. Nothing calls them: there is no writer for
+> `config/column-mappings/`, no saved-mapping table (schema v12 stores the in-progress
+> `intake_sessions` row and v11 the terminal `intake_manifests` row — neither is a reusable
+> mapping), and `resolveSavedMapping`'s only callers are its own tests. So today every upload is
+> a fingerprint MISS by construction and the operator re-maps each time. The reuse rules below stay
+> NORMATIVE — they are what the store must obey when it is built. Owner: `order-6-dash`
+> (the first recurring layout is work-study's weekly export), reported as a `builds:` line.
+
 - **Exact fingerprint hit** → the saved `ColumnMapping` is **pre-loaded into the grid, visibly**,
   and the operator still clicks Run. This is reuse-with-a-glance, **not** a silent auto-run — the
   operator always sees the resolved bindings before any row launches.
@@ -276,6 +327,8 @@ Saved at `config/column-mappings/<workflow>/<fingerprint>.json` (gitignored oper
   near-miss layout can never partially reuse a stale mapping.
 
 ### 2.4 Per-field coercion + loud per-cell errors
+
+<!-- roadmap: p2-2h -->
 
 Coercion is per canonical field (`field.coerce`), then the value is `field.schema.parse`d. A bad
 cell **throws a legible error naming row + column + value** — never a substituted default, never a
@@ -293,6 +346,8 @@ hint ("column 'DeptCode' bound to `effectiveDate` — all 42 rows failed date co
 
 ### 2.5 Fuzzy header auto-match — SUGGESTIONS only, never silent auto-apply
 
+<!-- roadmap: p2-2h -->
+
 The suggestion engine scores each detected header against every target field's referenced canonical
 field `aliases` + `label` (the redesigned successor of `COLUMN_PATTERNS`). It **proposes** a binding (a highlighted
 dropdown default the operator can accept in one click) but **never applies it** — the grid starts
@@ -303,6 +358,8 @@ is exactly the silent-substitution class we ban. Mechanically enforced: the mapp
 asserts no code path writes `bindings` from the suggestion scorer directly.
 
 ### 2.6 Phase-2h as-built — projection, mapping and suggestions (D147)
+
+<!-- roadmap: p2-2h -->
 
 `src/domain/intake/` holds the three pieces, deliberately separate because that separation is what
 makes reuse fail closed. The whole tree is bundle-safe (no Node built-in) since the mapping grid is a
@@ -346,6 +403,8 @@ claiming two fields so the scorer cannot be made arbitrary from the registry sid
 
 ### 2.7 Phase-2i as-built — the durable session, the parser seam, and the five arms (D170)
 
+<!-- roadmap: p2-2i -->
+
 §2.2's flow is stateful across many operator actions, and D159's manifest is deliberately terminal,
 so the in-progress state gets its own durable row. Schema **v12**'s `intake_sessions` (2i-E1
 foundation) retains exactly the operator's DECISIONS plus the immutable source identity — the whole
@@ -376,7 +435,8 @@ were deferred-arm placeholders no producer ever sent, so there is nothing to mig
 `{targetFieldId, sourceColumnId, headerFingerprint}`; `correct-intake-row` →
 `{sourceRow, field, correctedValue}`; `exclude-intake-row` → `{sourceRow, reason}`;
 `validate-intake` stays payload-free. All five target `{intakeSessionId, expectedVersion}`.
-`enqueue-intake-manifest` stays deferred until 2i-E2.
+`enqueue-intake-manifest` was still deferred at D170 and landed one decision later — D171, §5.2 —
+so all six arms are live at HEAD (`src/domain/commands.ts:172-177`, the family list at `:432`).
 
 Four rules run through the arms:
 
@@ -405,12 +465,24 @@ retained at all (§4.6's two-digit-year resolution must replay identically). `GE
 **server composition module**, not its descriptor: an intake projection declares which input fields
 an operator may bind a column to, which the server needs and a run envelope does not, and putting it
 on the descriptor would fold it into `contractFingerprint` and re-stamp every existing run's
-contract for a surface that touches none of them. No registered workflow declares one yet —
-person-lookup's input is a UNION and `defineIntakeProjection` resolves target paths through a strict
-object, so that declaration is real design work belonging with the grid surface (2i-E3). Until then
-every arm and the upload route refuse **by name** rather than mapping against an invented target set.
+contract for a surface that touches none of them. At D170 no registered workflow declared one — person-lookup's input is a UNION and
+`defineIntakeProjection` resolved target paths only through a strict object — so every arm and the
+upload route refused **by name** rather than mapping against an invented target set. §2.8 (D172)
+taught the resolver to walk a union and declared the first projection; the refusal arm stays, and it
+is what any workflow without a projection still gets.
 
 ### 2.8 Phase-2i as-built — the first real projection, and unions resolve (D172)
+
+<!-- roadmap: p2-2i -->
+<!-- roadmap: order-6-dash -->
+
+<!-- roadmap-status: order-6-dash -->
+- [x] the intake model this square wires is workflow-GENERIC and live — the durable session (schema v12), the upload route and all six command arms (§2.7/§2.8, D170–D172); a new workflow needs only a `defineIntakeProjection` declaration on its `module.ts`
+- [ ] `work-study` has no projection because the workflow is not in the tree — `person-lookup` is the only one declared (`src/workflows/person-lookup/module.ts:43`); order 6 brings the second
+- [ ] saved-mapping reuse has no store, so a recurring weekly export is re-mapped on every upload — §2.3's as-built note; this square is where that writer belongs
+- [ ] the per-row `execution-option` constants entry and the unbind arm live in the DRAWN workspace, which this doc does not own — ref dashboard-surfaces §11 (2i-E3, D173)
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/commands.ts:172-177,432`, `src/domain/intake/mapping.ts`, `src/workflows/person-lookup/module.ts:43` and `src/infra/sqlite/migrations.ts:904`; left: the second projection and the mapping store
+<!-- /roadmap-status -->
 
 `person-lookup` is the first workflow to declare an intake projection, so this is the commit where
 the route and all six arms stop refusing by name. Three decisions, each of which a permissive
@@ -460,46 +532,70 @@ satisfy the very schema the workflow validates with. The descriptor's source clo
 
 ## 3. Extraction store tasks (service store — D4)
 
+<!-- roadmap: p2-2h -->
+<!-- roadmap: order-3 -->
+
+<!-- roadmap-status: order-3 -->
+- [x] every store this workflow composes exists and is pinned: `extraction/extract-pdf-pages` → `ocr/extract-form-page` → `roster/match-spreadsheet`, plus the classify/group scanner and `cli ocr stack` (§3.2, §4.3, §4.8)
+- [x] the durability floor is in SQL, not convention — `ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)` and ABORTs on update (schema v11, §4.9)
+- [ ] there is no OCR workflow: `src/workflows/` holds no descriptor that composes these tasks, so the graph, its review gate and its fan-out are exactly what this node builds
+- [ ] the roster SCORING has never met a real roster — the tiering ported verbatim, the scoring is new code, and this migration's live-verify is where §7's honest residual is discharged
+- [ ] `def-capture-binding` waits on this node: a photograph becomes a run only once an OCR-backed workflow exists to bind (§5.1)
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/stores/{extraction,ocr,roster}/tasks/`, `src/domain/ocr/stack.ts`, `src/server/ocr/compose.ts:91` and `ls src/workflows/`; left: the workflow
+<!-- /roadmap-status -->
+
 `extraction` is a service store (`sessions: []`, no browser, no `page` ctx). Contracts live in
 `src/domain/contracts/extraction/`; impls in `src/stores/extraction/tasks/` (ref task-contract §3.4).
 
 ```ts
-// src/domain/contracts/extraction/parse-csv.ts   (effect: "read")
-export const ParseCsv = defineTaskContract({
-  id: "extraction/parse-csv",
-  title: "Parse CSV/XLSX into rows + detected columns",
+// src/domain/contracts/extraction/extract-spreadsheet.ts:70-90 — as built (D149)
+export const ExtractSpreadsheet = defineTaskContract({
+  id: taskId("extraction/extract-spreadsheet"),
+  title: "Parsing spreadsheet",
   effect: "read",
-  provenance: { default: "live" }, // observes these content-addressed bytes now
-  freshness: { defaultMaxAgeMs: Infinity }, // content-addressed bytes do not age;
-                                       // justified: re-parsing the same bytes is deterministic (grep ratchet).
-  subject: { kind: "none", reason: "deterministic local artifact parsing" },
-  scenarios: ["intake/csv/happy", "intake/csv/no-header", "intake/csv/duplicate-headers",
-              "intake/csv/unreadable"],
-  input:  z.strictObject({ fileRef: FileRefSchema, sheet: z.string().min(1).optional() }),
-  output: z.strictObject({
-    headerRowIndex: z.number().int().nullable(), // null means operator selection required
-    headerCandidates: z.array(z.strictObject({ rowIndex:z.number().int(), cells:z.array(z.string()),
-                                               confidence:z.number().min(0).max(1) })),
-    columns: z.array(z.strictObject({ header: z.string(), index: z.number().int(),
-                                      samples: z.array(z.string()) })), // sample values for the grid
-    rows:    z.array(z.array(z.string())),                          // raw cell matrix, header-relative
-  }),
-  errorCodes: ["unreadable-file", "empty-sheet", "invalid-header-selection"],
-  example: { /* … */ },
+  provenance: { default: "live" },   // observes these content-addressed bytes now
+  freshness: {
+    defaultMaxAgeMs: Number.POSITIVE_INFINITY,  // the artifact id IS its digest
+    defaultOverride: "forbidden",               // so an override could only lie
+  },
+  artifacts: "content-addressed",
+  subject: { kind: "none", reason: "deterministic local artifact parsing resolves no person" },
+  scenarios: ["intake/spreadsheet/happy", "intake/spreadsheet/no-header",
+              "intake/spreadsheet/duplicate-headers", "intake/spreadsheet/unreadable"],
+  input:  ExtractSpreadsheetInputSchema,   // { artifact, sheet?, headerRowIndex? }
+  output: ExtractSpreadsheetOutputSchema,  // {
+    //   sheets, sheet,                       every sheet the workbook holds, and the one read
+    //   headerRowIndex: … .nullable(),       null ⇒ operator selection required
+    //   headerCandidates: ServedHeaderCandidate[],
+    //   columns: DetectedColumn[],           STABLE ids, not positions (§2.1) — [] while null
+    //   rows: string[][],                    header-relative — [] while null
+    //   skippedRows,                         the preamble above the header, so the grid can show it
+    // }
+  errorCodes: ["unreadable-file", "empty-sheet", "unknown-sheet", "invalid-header-selection"],
 });
-// parse-pdf-fields: same shape for a fielded PDF (onboarding's extraction step ports here).
 ```
 
-- **Header discovery does not require a known alias.** The first 20 rows are ranked using generic
+Two deltas from the design sketch this section was drafted as, both recorded where they were
+decided. The task is `extraction/extract-spreadsheet`, not `parse-csv`; and its sibling is
+`extraction/extract-pdf-pages` — a page RASTERIZER — not `parse-pdf-fields`, because no legacy code
+reads an AcroForm anywhere (§3.2, D152). `columns` carries `DetectedColumn`, so the grid receives
+`sourceColumnId` from the extraction itself and never binds by position.
+
+- **Header discovery does not require a known alias.** The first `HEADER_SCAN_DEPTH` = 20 rows
+  (`src/domain/intake/header-discovery.ts:85`) are ranked using generic
   structure (non-empty cell density, mostly-string cells, uniqueness, data rows beneath). Existing
-  recognizable-header logic contributes confidence but is not a precondition. High confidence may
-  preselect visibly; otherwise `headerRowIndex:null` and the operator chooses from candidate rows.
+  recognizable-header logic contributes confidence but is not a precondition. A candidate
+  preselects visibly only when it clears `HEADER_PRESELECT_FLOOR` = 0.7 AND beats the runner-up by
+  `HEADER_PRESELECT_MARGIN` = 0.1 (`:87-91`) — two indistinguishable candidates are not a
+  preselection; otherwise `headerRowIndex:null` and the operator chooses from candidate rows.
   The chosen row is re-parsed and validated before mapping.
 - **Fail-loud stays.** Empty/unreadable sheets throw. If no plausible row exists, the UI requires an
   explicit row selection or rejects it; novel headings never abort before the mapping grid.
 - The task is pure/deterministic; its output feeds §5's mapping+fan-out, never a write directly.
 
 ### 3.1 Phase-2h as-built — `extraction/extract-spreadsheet` (D149)
+
+<!-- roadmap: p2-2h -->
 
 **The id is `extraction/extract-spreadsheet`, not `parse-csv`.** Ref task-contract owns the id grammar and its
 read verbs are `read|search|list|extract|match|verify`; `parse-` is not among them, and ref task-contract §3.4's
@@ -542,6 +638,8 @@ and every such file landed in "ambiguous". Dates in both wire forms now count as
 correct on its own terms — a header cell is essentially never a date.
 
 ### 3.2 Phase-2h as-built — `extraction/extract-pdf-pages`, and a correction (D152)
+
+<!-- roadmap: p2-2h -->
 
 **§3's `parse-pdf-fields` described a capability that does not exist.** It says "same shape for a
 fielded PDF (onboarding's extraction step ports here)". Reading legacy at `4deabc5a`: onboarding's
@@ -587,14 +685,25 @@ the `.xlsx` fixture is produced by `write-excel-file`, which proves a real OOXML
 
 ## 4. Roster store tasks (service store — D4)
 
+<!-- roadmap: p2-2h -->
+<!-- roadmap: order-9 -->
+<!-- roadmap: order-9-dash -->
+
+<!-- roadmap-status: order-9 -->
+- [x] the matching half is built and scenario-pinned — `roster/match-spreadsheet` with `name-eid-conflict` reporting confidence 0, a claimed EID never overridden, and five executable scenarios (§4, D163)
+- [ ] roster INGEST as a workflow step does not exist; onboarding's graph is what this node builds, and it is the first consumer that makes the 24 h freshness budget bite
+- [ ] onboarding's legacy extraction is Playwright scraping labelled fields off a CRM page — NOT a fielded-PDF read (§3.2's finding at legacy `4deabc5a`), so the port target is the scrape and no AcroForm reader is owed
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/stores/roster/tasks/match-spreadsheet.ts`, `tests/scenario/roster-match.scenario.test.ts` and `ls src/workflows/`; left: the workflow
+<!-- /roadmap-status -->
+
 `roster` matches one dataset against another (a mapped spreadsheet against extracted OCR records, or
 two rosters), producing per-subject matches with confidence.
 
 ```ts
-// src/domain/contracts/roster/match-spreadsheet.ts   (effect: "read")
+// src/domain/contracts/roster/match-spreadsheet.ts:69-85 — as built (D163)
 export const MatchSpreadsheet = defineTaskContract({
-  id: "roster/match-spreadsheet",
-  title: "Match subjects against a roster",
+  id: taskId("roster/match-spreadsheet"),
+  title: "Matching against roster",
   effect: "read",
   provenance: { default: "derived" }, // carries subject+roster sources/oldest observedAt
   /** D8: a roster match may feed a WRITE (an OnBase upload keyed on the matched
@@ -604,22 +713,21 @@ export const MatchSpreadsheet = defineTaskContract({
   subject: { kind: "none", reason: "pure cross-source roster matching" },
   scenarios: ["roster/match/exact-eid", "roster/match/name-only", "roster/match/ambiguous",
               "roster/match/name-eid-conflict", "roster/match/no-match"],
-  input:  z.strictObject({
-    subjects: z.array(z.strictObject({ subjectId: StableItemIdSchema,
-                                 name: fields.fullName.schema.optional(),
-                                 eid:  fields.eid.schema.optional() })),
-    rosterFileRef: FileRefSchema,
-    mapping: ColumnMapping,                     // the roster is operator-mapped too (§2)
-  }),
-  output: z.array(z.strictObject({
-    subjectId:       StableItemIdSchema,
-    matchedEid:      fields.eid.schema.nullable(),
-    matchConfidence: z.number().min(0).max(1),  // 0–1 — same axis as today
-    tier:            z.enum(["high", "medium", "low"]),   // ported bucketing (below)
-    mismatch:        z.enum(["none", "name-eid-conflict", "no-match", "ambiguous"]),
-  })),
-  errorCodes: ["roster-unreadable", "no-name-column"],
-  example: { /* … */ },
+  artifacts: "content-addressed",
+  input:  MatchSpreadsheetInputSchema,   // { subjects[], rosterArtifact, mapping, sheet?, readAt }
+                                         // the roster is operator-mapped too (§2); `readAt` is
+                                         // required so a replayed coercion resolves identically
+  output: MatchSpreadsheetOutputSchema,  // { matches: [ … ] } — wrapped, so the one array leaf
+                                         //   has a named provenance path
+  //  each match:
+  //  z.strictObject({
+  //    subjectId:       ItemId | StableRecordId,
+  //    matchedEid:      fields.eid.schema.nullable(),
+  //    matchConfidence: z.number().min(0).max(1),          // 0–1 — same axis as today
+  //    tier:            z.enum(["high", "medium", "low"]), // ported bucketing (below)
+  //    mismatch:        z.enum(["none", "name-eid-conflict", "no-match", "ambiguous"]),
+  //  })
+  errorCodes: ["roster-unreadable", "no-name-column", "no-eid-column", "mapping-mismatch"],
 });
 ```
 
@@ -628,7 +736,8 @@ export const MatchSpreadsheet = defineTaskContract({
   **live-verified pure mapping** — they port **verbatim** into a domain module both the roster task
   and the dashboard badge import (no re-implementation). The *scoring* that produces the 0–1
   confidence (name/address/EID alignment) is **redesigned** onto the canonical fields and must be
-  **re-verified** at the roster migration (order 3) — flagged as redesigned, not claimed
+  **re-verified** against a real roster at the first migration that runs it — order 3, the OCR
+  pipeline, which is what matches extracted records against a roster (roster INGEST is order 9) — flagged as redesigned, not claimed
   live-verified.
 - **Mismatch surfacing.** A `name-eid-conflict` (the roster's name and EID point at different people)
   or `ambiguous` (multiple candidates) is a **first-class output field**, not a swallowed default —
@@ -665,6 +774,26 @@ counted, logged, never an erased row and never a swallowed error. Five executabl
 (`tests/scenario/roster-match.scenario.test.ts`) pin the contract's arms end to end.
 
 ### 4.1 Mutable retention workbooks are serialized projections, not read-task side effects
+
+<!-- roadmap: order-5 -->
+<!-- roadmap: order-5-dash -->
+<!-- roadmap: def-search-export -->
+<!-- roadmap: cross-cutting -->
+
+<!-- roadmap-status: order-5 -->
+- [x] the retention-workbook MODEL this migration needs is built and unit-pinned — `DurableArtifactProjectionSpec`, the one-transaction checkpoint + stable-keyed outbox commit, the blocking `RunArtifactProjector`, the `xlsx-retention` sink and the fail-closed conflict park (§4.1, D164; `src/infra/artifacts/artifact-sink-projector.ts`, `xlsx-retention-sink.ts`, 13 arms in `tests/unit/artifact-projection.test.ts`)
+- [x] the i9 document model the workflow reads is built as ONE form across two loose sections, with the section-absent arms named (§4.10, D160)
+- [ ] no descriptor declares `artifactProjections:` and no composition wires the projector — deliberately: the workbook PATH and the operator-facing retention columns are i9-check's own facts, and a declaring descriptor without the seam fails loud by name
+- [ ] the sink writes a four-column DURABILITY layout (`stableKey`/`keyValues`/`record`/`projectedAt`), not the operator's retention columns — those land with this migration
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/infra/artifacts/*`, `src/core/run-executor.ts:1078` and `grep -rl "artifactProjections:" src/workflows/` (empty); left: the declaration and the real column set
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: def-search-export -->
+- [x] this doc's half of the export writers exists — `write-excel-file` behind `src/infra/artifacts/xlsx-retention-sink.ts`, with an idempotent stable-keyed upsert and a temp → fsync → atomic-replace write
+- [ ] that writer emits a durability layout for ONE sink kind; an operator-facing "export these runs to Excel" writer is not built anywhere
+- [ ] the query surface (search runs across dates, view screenshots) is not this doc's — ref frontend-backend-integration §3.6 owns it, and the screenshot evidence store is ref operator-trust §2.2
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/infra/artifacts/xlsx-retention-sink.ts`; left: everything operator-facing — this doc contributes only the writer
+<!-- /roadmap-status -->
 
 `i9-check` currently appends to a master retention workbook. Calling that append part of the
 `roster/match-spreadsheet` read would make task retry duplicate rows and would violate the effect
@@ -717,6 +846,8 @@ lock, and the executor's atomic-commit, blocking-failure, and cross-run resume a
 
 ### 4.2 Contact/address normalization is typed advice, not a silent fallback
 
+<!-- roadmap: p2-2h -->
+
 The old path mixes deterministic phone/state/ZIP cleanup, Census→Nominatim fallback, and optional
 LLM inference inside `services/llm/normalize-contact.ts`; provider failure collapses to `null`, which
 is indistinguishable from “nothing needed changing.” The rebuild exposes one reusable
@@ -747,7 +878,7 @@ export const NormalizeContactOutputSchema = z.strictObject({
     z.strictObject({ kind: z.literal("advisory-unavailable"),
                      unavailable: z.array(ProviderFailureSchema).nonempty() }),
     z.strictObject({ kind: z.literal("ambiguous"),
-                     fields: z.array(ContactFieldIdSchema).nonempty() }),
+                     fields: z.array(ContactFieldIdSchema).min(1) }),   // as built: .min(1)
   ]),
 });
 ```
@@ -769,8 +900,10 @@ read-verb grammar, the same defect D149 fixed. Deterministic rules ported with p
 (`legacy:src/services/llm/normalize-contact.ts` and `address/format.ts`): phone → canonical
 DIGITS (this tree's canonical phone; display formatting is the consuming workflow's), state/ZIP
 tables, country aliases, and the relationship table with the in-law-before-substring order — the
-LLM fallback did not port (the `ai` source arm lands with 2i's advisory producer, so the schema
-carries no arm nothing can produce). A rule that cannot decide is `ambiguous`; provider
+LLM fallback did not port at D165 (the `ai` source arm was left for 2i's advisory producer, so the
+schema carried no arm nothing could produce; **D178 landed both** — the arm is
+`src/domain/contracts/normalization/normalize-contact.ts:107-112` and its producer is
+`src/stores/normalization/tasks/read-contact-advice.ts:266`, described at the end of this section). A rule that cannot decide is `ambiguous`; provider
 exhaustion is `advisory-unavailable` carrying each capability's closed reason; `before` values
 are redacted under each canonical field's own classification/transform through the ONE
 `redactValue` implementation, narrowed at the contract boundary to the string-valued arms a
@@ -815,6 +948,18 @@ scenario corpus — the second asserts the withheld value appears NOWHERE in the
 
 ### 4.3 Phase-2h as-built — OCR extraction admits three producers identically (D151)
 
+<!-- roadmap: p2-2h -->
+<!-- roadmap: order-3-dash -->
+
+<!-- roadmap-status: order-3-dash -->
+- [x] the three producers are admitted through ONE gate that cannot branch on the source, and an operator's hand reading fingerprints identically to the provider's (§4.3, D151; `src/domain/ocr/extraction.ts`, held by `ocr-producer-parity`)
+- [x] routes 2 and 3 are usable from a terminal today — `cli ocr forms | instruction | admit`, non-zero exit on refusal (`src/server/ocr/compose.ts:73`)
+- [x] route 1's production adapter is built as transport plus provenance (§4.11, D161; `src/infra/providers/gemini-ocr-extract.ts`)
+- [ ] the review row and the approval cards this square wires are the DRAWN surface, which this doc does not own — ref dashboard-surfaces §9 (D7/D8/D10) and ref frontend-backend-integration §5.1
+- [ ] `ocr_approvals` (schema v10) has no writer in `src/` outside the storage layer — the approval ACT is what the review surface adds
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/ocr/{extraction,instruction,form-registry,stack}.ts`, `src/server/ocr/compose.ts` and `grep -rl ocr_approvals src` (storage layer only); left: everything drawn
+<!-- /roadmap-status -->
+
 **Operator requirement (2026-08-05):** a page may be read by the automated provider pipeline, by an
 AI the operator runs in their own terminal, or by the operator — and *"all should result in the same
 result consistently… the output should be in the same format no matter who does it and nobody skips
@@ -832,7 +977,7 @@ canonical field runs the SAME `coerce` + `schema` an intake column runs, so a mo
 cell would be: the producer's confidence in its own output buys it nothing.
 
 **One instruction, generated from the registry.** `src/domain/ocr/form-registry.ts` declares what
-each form HAS; `buildExtractionInstruction` derives the field list, per-field prompt, expected shape
+each form HAS; `buildExtractionInstruction` (`src/domain/ocr/instruction.ts:40`) derives the field list, per-field prompt, expected shape
 and answer skeleton FROM it. A hand-maintained prompt is the failure this avoids — add a field and
 every route asks for it on its next run, where a prompt living in a string constant would let one
 route silently stop looking.
@@ -853,7 +998,8 @@ never approved. `answersFingerprint` digests what was read while excluding who r
 so "two routes agree" is checkable rather than asserted, and confidence is excluded because it is
 the producer's opinion of itself rather than a fact about the page.
 
-**Routes 2 and 3 are usable now**, through `cli ocr`:
+**Routes 2 and 3 are usable now**, through `cli ocr` (`src/server/ocr/compose.ts:73` — three
+subjects, `forms` · `instruction` · `admit`):
 
 ```
 cli ocr forms                      which forms exist, and how many fields each demands
@@ -889,6 +1035,8 @@ interchangeable, not merely similar.
 
 ### 4.4 Phase-2h as-built — the forms are legacy's, and reading them found two gaps (D153)
 
+<!-- roadmap: p2-2h -->
+
 Operator confirmation (2026-08-06): the rebuild handles the same forms legacy does, so the field
 sets are ported rather than redesigned. Porting them exposed **two structural gaps in D151's first
 shape**, both of which are forms of the skipping the operator asked to make impossible:
@@ -914,7 +1062,166 @@ Legacy's `originallyMissing` — an array of fields the model judged blank, reco
 diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
 field at the moment of reading, by the producer that read it.
 
+### 4.5 Phase-2h as-built — measured against the real document corpus (D154)
+
+<!-- roadmap: p2-2h -->
+
+`hr-automation/data/documents` holds the operator's real scans, and reading them corrected the form
+model twice.
+
+**The oath is one person per page, and its Employee ID box is usually blank.** Every oath in the
+corpus is a UPAY 586 with one name at the top; the multi-row sign-in sheet legacy supported is used
+by **no workflow** (operator, 2026-08-06). So `recordsPerPage` is gone and `record` is a single
+nullable value — an array of at most one is generality with no user. The corpus also shows two
+states a naive reading would get wrong: the EMPLOYEE ID box is frequently **blank** on a real oath
+(that is normal, and the DEPARTMENT number printed beside it must not be substituted), and a
+**signed-but-unwitnessed** oath — employee signature present, date and authorized-official signature
+and title and county all empty — is common and meaningful, not an OCR failure. Both are now
+`extractionNotes`.
+
+**The page-kind vocabulary comes from the corpus, not from intuition.** `i9.pdf` is decisive: its
+page 1 is a Section 2 for one person and page 2 is a Section 1 for a **different** person — loose
+sections, out of order — and both are numbered "page 7/8 of 9", so **seven of every nine pages in an
+I-9 packet carry no data at all**. The vocabulary is therefore `oath` · `emergency-contact` ·
+`i9-section1` · `i9-section2` · `boilerplate` · `unrelated` · `blank`. The last three are kept apart
+deliberately: all mean "no data here", but only `unrelated` means something is in the stack that does
+not belong (the corpus has a Kronos sick-hours report in the same folder), and only `blank` might
+mean the scanner double-fed. `pageFingerprint` folds the CLASSIFICATION as well as the answers, so
+two producers that both read "no data" while disagreeing about why have not agreed.
+
+**What this does NOT yet solve — the recommended next slice.** Pairing an I-9 Section 1 with its
+Section 2 is a **grouping** problem that sits ABOVE this gate, and the corpus proves it cannot be
+positional. The recommendation is three stages rather than one: **classify** every page in the stack
+(cheap, and the operator's first checkpoint — "44 pages → 12 oath, 3 EC, 2 §1, 3 §2, 24
+boilerplate"), then **group** classified pages into subjects by the name read off each page with an
+explicit `orphan-section2` outcome (legacy's `orphanSection2` was this problem), then **extract** per
+subject. `ocr/extract-form-page` is stage 3 and already assumes its caller knows the form type;
+stages 1 and 2 are what let a caller know it.
+
+**Not built yet:** the `i9` form, whose multi-section structure is its own slice; the production
+`ocr.extract` adapter behind the client seam (the contract and store are wired, so it is a real model
+call away); and durable storage of admitted extractions. All sit over this gate; none may add a rule
+of its own.
+
+### 4.6 Phase-2h as-built — a two-digit year is resolved, not refused (D155)
+
+<!-- roadmap: p2-2h -->
+
+The first live run of the OCR gate over real paper — `detect-test.pdf`, read page by page through
+route 2 — reported the stack correctly (4 emergency-contact pages flagged as *not this workflow*, 3
+oath pages extracted, 0 refused) and exposed one defect.
+
+Page 5's oath is dated **`11/3/21`**, and `single-oath.pdf` is dated **`4-23-26`**. Two-digit years,
+one dash-separated, and both are the normal way these forms are filled in. The coercer refused both
+— while the generated brief was simultaneously telling every producer that `M/D/YY` and `M-D-YY` are
+expected. **The instruction and the validator contradicted each other**, and on a real batch every
+oath date would have landed `unreadable` and gone to a human.
+
+`parseUsOrIsoDate` now accepts `-` as well as `/`, and resolves a two-digit year against **when the
+value was observed**: the 2000s reading unless that lands more than a year ahead of the observation,
+otherwise the 1900s. So `21`→2021, `26`→2026, `98`→1998. This is a documented rule rather than a
+guess, and it is sound for what this system reads — a signature date, hire date, date of birth or
+separation date is in the past or at most an appointment starting within the year, never seventy
+years early.
+
+The reference is the **observation instant, not `now`**, and it is carried on `CellLocation.readAt`
+rather than read from a clock inside the coercer. The intake pipeline passes the run's instant and
+the OCR gate passes the submission's own `readAt`, so re-admitting a stored submission years later
+resolves its dates exactly as the first admission did. A century that moved under a replay would be
+the silent wrong value this rule exists to avoid.
+
+### 4.7 Grouping cannot assume adjacency — measured on raw scanner output (D157)
+
+<!-- roadmap: p2-2h -->
+
+The open question was whether a person's pages arrive together in a real scan. Two genuine scans
+answer it, and they answer it **differently** — which is itself the finding.
+
+Provenance first, because it decides what counts as evidence. `detect-test.pdf` carries
+`/Creator (VersaLink B7035)` and `Xerox Scan_08052026141856.pdf` carries `/Creator (VersaLink C7020)`
+— both raw Xerox MFP output, unbroken. `multiple-oath.pdf` carries `/Producer (macOS Version 26.1)`
+and is the assembled one. So the two scans are the ground truth and the tidy file is not.
+
+- **`detect-test.pdf` (7 pages, EC + oath).** A person's pages ARE adjacent: page 1 is an
+  emergency-contact form with no partner, then three EC→oath pairs (Tran, Goiset, Provenzano), each
+  person's two forms together.
+- **`Xerox Scan_08052026141856.pdf` (44 pages, I-9).** A person's pages are NOT adjacent. The first
+  four pages are four DIFFERENT people with alternating section types — §2 Casey · §1 Cho · §2
+  Cisneros · §1 Chan — not alphabetical, not paired, and no two consecutive pages belonging to one
+  person.
+
+**So adjacency is a property of how a particular pile was assembled, not of scanning.** Grouping
+must therefore match by the NAME read off each page, across the whole stack, and may use adjacency
+only as a tiebreaker between equally good name matches — never as the rule. A design that paired
+neighbours would have produced Casey's Section 1 from Cho's page: a real I-9 verification attached
+to the wrong person, which is the worst failure this program can produce.
+
+Two properties make the name match workable, both visible in the corpus. An I-9 Section 2 carries
+*"Employee Last Name, First Name and Middle Initial from Section 1"* at the top, so both pages of a
+pair name the same person independently. And a page whose own name is unreadable — `detect-test.pdf`
+page 2 has a sticky note over it — can still be grouped from its partner, which is grouping earning
+its keep rather than merely tidying.
+
+An unmatched Section 2 is **flagged, not blocked** (operator, 2026-08-06); legacy's `orphanSection2`
+was the same decision, and it backed the row with the roster PPS EID.
+
+### 4.8 Phase-2h as-built — stages 1 and 2 of the scanner pipeline (D158)
+
+<!-- roadmap: p2-2h -->
+
+`src/domain/ocr/stack.ts` lands classification-consumption and grouping;
+`cli ocr stack <classified.json> <form-type>` is the operator surface.
+
+**Every page lands in exactly one bucket** — a subject, `unidentified`, `otherForms` or `dataless` —
+and `pagesAccounted` must equal `pagesClassified`. That total coverage is the whole point of looking
+before extracting: a page belonging to no bucket is a page nobody knows was skipped.
+
+**`personMatchKey` is exact, and deliberately narrow.** Lowercased alphabetic tokens, sorted, with
+single letters dropped. Sorted because `Clauldia, Drona A.` (an I-9 §2 header) and `Drona Clauldia` (a §1's
+separate boxes) are one person. Initials dropped because a middle initial is written inconsistently
+and its absence must not split one person in two. Below two tokens it returns **null** — a surname
+alone would group siblings — and such a page is `unidentified` rather than guessed at. There is no
+fuzzy scoring: that is exactly where this would start inventing people.
+
+Verified on both real stacks. The 44-page I-9 scan's first four pages group as four separate people;
+`detect-test.pdf` reports 3 subjects ready and 4 wrong-type pages for an oath run, and the mirror for
+an emergency-contact run, with page 2's sticky-note-covered name surfaced as unidentified rather than
+dropped.
+
+**Deferred at D158, and landed with the `i9` form one decision later (§4.10, D160):** the
+sectioned-subject case — an I-9 §1 + §2 as one subject — and its orphan outcome. At D158 every form
+in the tree was one page per person, so the arm would have been unreachable and untested. It is now
+`SubjectCompletenessSchema`'s third arm, `incomplete`
+(`src/domain/ocr/stack.ts:89-102`): a person whose pages cover only part of the form is FLAGGED and
+never blocked, which is D157's decision and legacy's `orphanSection2` before it — the missing page
+is a fact about the paper the operator fed in, not a reason to hide the person who IS there.
+
+### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
+
+<!-- roadmap: p2-2h -->
+
+Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
+admitted extraction survived exactly as long as the process did. Schema **v11** adds
+`intake_manifests` and `ocr_extractions`.
+
+Both carry their identifying facts as **columns** beside the record JSON, for the reason v10 gave
+`failures` a searchable fingerprint: *"has this file been run before"* and *"has this page already
+been read"* are questions an operator asks constantly, and a scan over parsed JSON is not an answer.
+
+`intake_manifests` is **immutable and undeletable** by trigger. A manifest is the rerun authority —
+it proves which file and mapping produced which items — and a run has already fanned out against it,
+so a rewrite would rewrite history somebody acted on. A rerun creates a new manifest; §5's
+`rerunDiff` is what shows the operator the difference.
+
+`ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)`: **one page, read once, for
+one form.** A second producer reading the same page with a different result is refused by name — a
+replacement is a decision a human makes, not a second row that silently doubles a person in the
+fan-out. A byte-identical re-read is idempotent, so replaying a submission is safe.
+
 ### 4.10 Phase-2h as-built — the i9 is ONE form across two loose sections (D160)
+
+<!-- roadmap: p2-2h -->
+<!-- roadmap: order-5 -->
 
 The last form lands, and with it the two arms D158 deliberately left unwritten because no form
 needed them: a form whose data pages are SECTIONS, and the sectioned subject in grouping.
@@ -986,6 +1293,8 @@ schema decision (the shape is shared by every consumer), left open rather than g
 
 ### 4.11 Phase-2h as-built — route 1's production adapter is transport plus provenance (D161)
 
+<!-- roadmap: p2-2h -->
+
 The first production `ocr.extract` adapter exists: `src/infra/providers/gemini-ocr-extract.ts`,
 Gemini, legacy's priority-1 OCR provider. The design constraint is §4.3's, made concrete: the
 adapter ADDS NO RULE. It sends the instruction the store task built from the registry, inline with
@@ -1049,149 +1358,9 @@ admission module, and every other module stays confined exactly as before. The e
 whose task observes the real writer round-trip and whose admission row settles in authority under
 the minted id with the run's snapshot identity.
 
-### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
-
-Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
-admitted extraction survived exactly as long as the process did. Schema **v11** adds
-`intake_manifests` and `ocr_extractions`.
-
-Both carry their identifying facts as **columns** beside the record JSON, for the reason v10 gave
-`failures` a searchable fingerprint: *"has this file been run before"* and *"has this page already
-been read"* are questions an operator asks constantly, and a scan over parsed JSON is not an answer.
-
-`intake_manifests` is **immutable and undeletable** by trigger. A manifest is the rerun authority —
-it proves which file and mapping produced which items — and a run has already fanned out against it,
-so a rewrite would rewrite history somebody acted on. A rerun creates a new manifest; §5's
-`rerunDiff` is what shows the operator the difference.
-
-`ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)`: **one page, read once, for
-one form.** A second producer reading the same page with a different result is refused by name — a
-replacement is a decision a human makes, not a second row that silently doubles a person in the
-fan-out. A byte-identical re-read is idempotent, so replaying a submission is safe.
-
-### 4.8 Phase-2h as-built — stages 1 and 2 of the scanner pipeline (D158)
-
-`src/domain/ocr/stack.ts` lands classification-consumption and grouping;
-`cli ocr stack <classified.json> <form-type>` is the operator surface.
-
-**Every page lands in exactly one bucket** — a subject, `unidentified`, `otherForms` or `dataless` —
-and `pagesAccounted` must equal `pagesClassified`. That total coverage is the whole point of looking
-before extracting: a page belonging to no bucket is a page nobody knows was skipped.
-
-**`personMatchKey` is exact, and deliberately narrow.** Lowercased alphabetic tokens, sorted, with
-single letters dropped. Sorted because `Clauldia, Drona A.` (an I-9 §2 header) and `Drona Clauldia` (a §1's
-separate boxes) are one person. Initials dropped because a middle initial is written inconsistently
-and its absence must not split one person in two. Below two tokens it returns **null** — a surname
-alone would group siblings — and such a page is `unidentified` rather than guessed at. There is no
-fuzzy scoring: that is exactly where this would start inventing people.
-
-Verified on both real stacks. The 44-page I-9 scan's first four pages group as four separate people;
-`detect-test.pdf` reports 3 subjects ready and 4 wrong-type pages for an oath run, and the mirror for
-an emergency-contact run, with page 2's sticky-note-covered name surfaced as unidentified rather than
-dropped.
-
-**Not built:** the sectioned-subject case (an I-9 §1 + §2 as one subject) and its orphan outcome.
-Every form that exists today is one page per person, so that arm would be unreachable and untested —
-it lands with the `i9` form, where D157's flag-never-block decision applies.
-
-### 4.7 Grouping cannot assume adjacency — measured on raw scanner output (D157)
-
-The open question was whether a person's pages arrive together in a real scan. Two genuine scans
-answer it, and they answer it **differently** — which is itself the finding.
-
-Provenance first, because it decides what counts as evidence. `detect-test.pdf` carries
-`/Creator (VersaLink B7035)` and `Xerox Scan_08052026141856.pdf` carries `/Creator (VersaLink C7020)`
-— both raw Xerox MFP output, unbroken. `multiple-oath.pdf` carries `/Producer (macOS Version 26.1)`
-and is the assembled one. So the two scans are the ground truth and the tidy file is not.
-
-- **`detect-test.pdf` (7 pages, EC + oath).** A person's pages ARE adjacent: page 1 is an
-  emergency-contact form with no partner, then three EC→oath pairs (Tran, Goiset, Provenzano), each
-  person's two forms together.
-- **`Xerox Scan_08052026141856.pdf` (44 pages, I-9).** A person's pages are NOT adjacent. The first
-  four pages are four DIFFERENT people with alternating section types — §2 Casey · §1 Cho · §2
-  Cisneros · §1 Chan — not alphabetical, not paired, and no two consecutive pages belonging to one
-  person.
-
-**So adjacency is a property of how a particular pile was assembled, not of scanning.** Grouping
-must therefore match by the NAME read off each page, across the whole stack, and may use adjacency
-only as a tiebreaker between equally good name matches — never as the rule. A design that paired
-neighbours would have produced Casey's Section 1 from Cho's page: a real I-9 verification attached
-to the wrong person, which is the worst failure this program can produce.
-
-Two properties make the name match workable, both visible in the corpus. An I-9 Section 2 carries
-*"Employee Last Name, First Name and Middle Initial from Section 1"* at the top, so both pages of a
-pair name the same person independently. And a page whose own name is unreadable — `detect-test.pdf`
-page 2 has a sticky note over it — can still be grouped from its partner, which is grouping earning
-its keep rather than merely tidying.
-
-An unmatched Section 2 is **flagged, not blocked** (operator, 2026-08-06); legacy's `orphanSection2`
-was the same decision, and it backed the row with the roster PPS EID.
-
-### 4.6 Phase-2h as-built — a two-digit year is resolved, not refused (D155)
-
-The first live run of the OCR gate over real paper — `detect-test.pdf`, read page by page through
-route 2 — reported the stack correctly (4 emergency-contact pages flagged as *not this workflow*, 3
-oath pages extracted, 0 refused) and exposed one defect.
-
-Page 5's oath is dated **`11/3/21`**, and `single-oath.pdf` is dated **`4-23-26`**. Two-digit years,
-one dash-separated, and both are the normal way these forms are filled in. The coercer refused both
-— while the generated brief was simultaneously telling every producer that `M/D/YY` and `M-D-YY` are
-expected. **The instruction and the validator contradicted each other**, and on a real batch every
-oath date would have landed `unreadable` and gone to a human.
-
-`parseUsOrIsoDate` now accepts `-` as well as `/`, and resolves a two-digit year against **when the
-value was observed**: the 2000s reading unless that lands more than a year ahead of the observation,
-otherwise the 1900s. So `21`→2021, `26`→2026, `98`→1998. This is a documented rule rather than a
-guess, and it is sound for what this system reads — a signature date, hire date, date of birth or
-separation date is in the past or at most an appointment starting within the year, never seventy
-years early.
-
-The reference is the **observation instant, not `now`**, and it is carried on `CellLocation.readAt`
-rather than read from a clock inside the coercer. The intake pipeline passes the run's instant and
-the OCR gate passes the submission's own `readAt`, so re-admitting a stored submission years later
-resolves its dates exactly as the first admission did. A century that moved under a replay would be
-the silent wrong value this rule exists to avoid.
-
-### 4.5 Phase-2h as-built — measured against the real document corpus (D154)
-
-`hr-automation/data/documents` holds the operator's real scans, and reading them corrected the form
-model twice.
-
-**The oath is one person per page, and its Employee ID box is usually blank.** Every oath in the
-corpus is a UPAY 586 with one name at the top; the multi-row sign-in sheet legacy supported is used
-by **no workflow** (operator, 2026-08-06). So `recordsPerPage` is gone and `record` is a single
-nullable value — an array of at most one is generality with no user. The corpus also shows two
-states a naive reading would get wrong: the EMPLOYEE ID box is frequently **blank** on a real oath
-(that is normal, and the DEPARTMENT number printed beside it must not be substituted), and a
-**signed-but-unwitnessed** oath — employee signature present, date and authorized-official signature
-and title and county all empty — is common and meaningful, not an OCR failure. Both are now
-`extractionNotes`.
-
-**The page-kind vocabulary comes from the corpus, not from intuition.** `i9.pdf` is decisive: its
-page 1 is a Section 2 for one person and page 2 is a Section 1 for a **different** person — loose
-sections, out of order — and both are numbered "page 7/8 of 9", so **seven of every nine pages in an
-I-9 packet carry no data at all**. The vocabulary is therefore `oath` · `emergency-contact` ·
-`i9-section1` · `i9-section2` · `boilerplate` · `unrelated` · `blank`. The last three are kept apart
-deliberately: all mean "no data here", but only `unrelated` means something is in the stack that does
-not belong (the corpus has a Kronos sick-hours report in the same folder), and only `blank` might
-mean the scanner double-fed. `pageFingerprint` folds the CLASSIFICATION as well as the answers, so
-two producers that both read "no data" while disagreeing about why have not agreed.
-
-**What this does NOT yet solve — the recommended next slice.** Pairing an I-9 Section 1 with its
-Section 2 is a **grouping** problem that sits ABOVE this gate, and the corpus proves it cannot be
-positional. The recommendation is three stages rather than one: **classify** every page in the stack
-(cheap, and the operator's first checkpoint — "44 pages → 12 oath, 3 EC, 2 §1, 3 §2, 24
-boilerplate"), then **group** classified pages into subjects by the name read off each page with an
-explicit `orphan-section2` outcome (legacy's `orphanSection2` was this problem), then **extract** per
-subject. `ocr/extract-form-page` is stage 3 and already assumes its caller knows the form type;
-stages 1 and 2 are what let a caller know it.
-
-**Not built yet:** the `i9` form, whose multi-section structure is its own slice; the production
-`ocr.extract` adapter behind the client seam (the contract and store are wired, so it is a real model
-call away); and durable storage of admitted extractions. All sit over this gate; none may add a rule
-of its own.
-
 ## 5. Intake pipeline: mapped dataset → N inputs, with a pre-run rejection review
+
+<!-- roadmap: p2-2h -->
 
 The mapping (§2) + the parsed rows (§3) + any roster match (§4) compose into **N workflow inputs,
 one per valid row**, feeding the run-surface fan-out (the multi-subject `operation` coordinator +
@@ -1234,16 +1403,25 @@ export const RowRejectSchema = z.discriminatedUnion("kind", [
                    paths: z.array(WorkflowInputPathSchema).min(2) }),
 ]);
 
+// src/domain/intake/manifest.ts:197-235 — as built
 export const IntakePlanManifestSchema = z.strictObject({
   version: z.literal(1),
-  planId: IntakePlanIdSchema,
+  manifestId: IntakeManifestIdSchema,        // §1.1: the ONE manifest identity
   workflow: WorkflowIdSchema,
-  source: z.strictObject({ artifactId: ArtifactIdSchema, sha256: Sha256Schema,
+  source: z.strictObject({ artifactId: ArtifactIdSchema, sha256: FingerprintSchema,
                            originalName: z.string().min(1) }),
-  mappingFingerprint: Sha256Schema,
-  mappingSnapshotHash: Sha256Schema,
+  mappingFingerprint: FingerprintSchema,     // the LAYOUT the decisions were made against
+  mappingSnapshotHash: FingerprintSchema,    // the DECISIONS themselves (§2.1)
+  intakeProjectionFingerprint: FingerprintSchema,
   workflowContractFingerprint: FingerprintSchema,
+  /** The schema every `parsedInput` was produced by, and must be re-read with. */
+  canonicalInputSchemaHash: FingerprintSchema,
   createdAt: IsoInstantSchema,
+  /** Present exactly when the source is a finalized phone-capture bundle, absent for a
+   *  spreadsheet — optional so every pre-D174 manifest still parses (§5.1, D174). */
+  capture: z.strictObject({ captureSessionId: CaptureSessionIdSchema,
+                            finalizationGeneration: PositiveIntSchema,
+                            orderedPhotoSha256: z.array(FingerprintSchema).min(1) }).optional(),
   totals: z.strictObject({ sourceRows: z.number().int().nonnegative(),
                            valid: z.number().int().nonnegative(),
                            rejected: z.number().int().nonnegative(),
@@ -1316,6 +1494,8 @@ ran when exclusions exist.
 
 ### 5.0 Phase-2h as-built — validation, rejection and the manifest (D148)
 
+<!-- roadmap: p2-2h -->
+
 `src/domain/intake/validate.ts` is **format-agnostic**: it takes an already-parsed cell matrix plus
 the detected columns, the confirmed bindings and the projection, and returns exactly one disposition
 per source row. The extraction store owns turning a `.csv`/`.xlsx`/PDF into that matrix, so the
@@ -1355,120 +1535,20 @@ stays blocked and inspectable rather than reporting a no-op success.
 artifact, mapping snapshot, intake projection, workflow contract and canonical-input schema — and a
 "rerun with existing data" must show the diff before creating a run (§7 vector #11).
 
-### 5.2 Phase-2i as-built — the enqueue: readiness, the manifest mint, the fan-out (D171)
-
-`enqueue-intake-manifest` is the sixth intake arm and the irreversible one: it turns a reviewed
-mapping into N real HR runs. It activates here (2i-E2) over D170's durable session, and everything
-below is normative.
-
-**The command targets the SESSION.** Its placeholder target named an `intakeManifestId` that cannot
-exist when the command is issued — the command is what mints it — so it is amended (D161/D167's
-rule: no producer ever sent the old shape) to `{intakeSessionId, expectedVersion}`, the same target
-its five siblings carry, plus an explicit `payload: {dryRun}`. `dryRun` is required rather than
-defaulted, exactly as `StartPlanIngressSchema` requires it: a fan-out that silently chose one is a
-fan-out that silently chose whether to touch a real system.
-
-**It is the ONE intake arm that CASes.** The five mapping arms validate current authority and retain
-the observed version for audit; this one refuses on version drift, because if anything moved since
-the operator read the reject list they are enqueueing a plan they never saw. The other gates, in
-order and each naming exactly what blocks: the session must exist; an already-`enqueued` session is
-refused naming its manifest (`a manifest fans out exactly once`); a `mapping` or `discarded` session
-is refused with §5's mandatory review named; the session must retain a source file name; the
-workflow must declare an intake projection and a registered descriptor; and `dryRun` on a workflow
-with no dry-run boundary is `policy-refused` — the same `dry-run-unsupported` rule `planStart`
-applies, evaluated through the same `supportsDryRun`.
-
-**Readiness is judged on the manifest that would be written.** `deriveIntakeEnqueuePlan`
-(`src/domain/intake/enqueue.ts`) re-runs `validateIntakeRows`, builds the manifest and returns it
-beside `enqueueReadiness(manifest)`, so there is no second count of "how many rows are still
-rejected" that could disagree with the row the operator would be handed. The pass runs against the
-session's RETAINED `readAt`, so a two-digit year resolves exactly as it did at review. A refusal
-carries the readiness `message`, its `reason`, and the unresolved source rows.
-
-**A correction's `original` is read from the source, never carried.** The session retains only the
-corrected value, so the manifest's `IntakeCorrection.original` is looked up in the bound column of
-the re-derived row and redacted through the canonical field's own declared
-`(classification, transform)`. A correction whose field is unbound, whose column is absent, or whose
-row is beyond the file THROWS: each means the session and its layout have become mutually
-inconsistent, which no command sequence can produce, and recording a plausible blank would put a lie
-in an immutable manifest.
-
-**`mappingSnapshotHash` is the identity of the DECISIONS**, where `mappingFingerprint` is the
-identity of the LAYOUT. `deriveMappingSnapshotHash` folds the workflow, sheet, settled header row,
-layout fingerprint, confirmed bindings and run constants, sorted by target field id so two sessions
-that reached the same mapping in a different order hash the same. It deliberately excludes
-`confirmedAt` (a mapping is what it maps, not when it was clicked — folding the instant would make
-`rerunDiff` report a change for a re-confirmed identical binding) and corrections/exclusions (the
-manifest records those in full in their own arrays; §7 #11 asks whether the run was planned the same
-WAY).
-
-**The manifest must name its file, so the session retains one.** `source.originalName` is required
-by the D159 schema and a content-addressed artifact has a digest, not a name — so
-`POST /api/v1/intake/files` requires a `filename` query parameter and the session retains it as
-`sourceName`. The leaf is OPTIONAL on the session record and required at the route: a row minted
-before it existed must still parse (D133 — a stored record is read forward, never back-filled), and
-enqueue refuses such a session by name rather than inventing a name the manifest would claim forever.
-
-**One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
-inserted; `start-run` and this arm reach it with different plans and identical obligations — the
-descriptor's enqueue policy is evaluated against live authority per item, `supersede-active`
-supersedes, a `reject-active` collision refuses the WHOLE command, and a proposed run id that
-already exists is a fault rather than an adoption.
-
-**What an intake run's envelope carries.** `shape: "single"` and `priority: "bulk"` are server
-stamps, not caller claims. Per row: a fresh `runId`, the row's `itemId` from the manifest, a
-`traceId` derived from the descriptor code, the descriptor's current version/fingerprint, every
-browser system resolved to `prod` through the same `resolveInstances` the planner uses,
-`ingressSchemaHash` from the descriptor's input schema, and `input.parsed` bound to
-`canonicalInputSchemaHash` after re-reading the manifest's stored `parsedInput` through the
-descriptor's CURRENT canonical schema (D62 — never its ingress parser); a value that fails that
-parse throws naming the source row and enqueues nothing. `input.raw` is the manifest's own stored
-`parsedInput`: that value IS what intake submitted, and `validRows[].inputHash` pins its bytes.
-
-**The config identity is injected and PROVED.** `start-run` copies it from the start plan and
-`retry` from the run it retries; an intake fan-out has neither, so `CommandKernelDependencies`
-carries a `configIdentity` supplied by the composition root — the same resolved fingerprint and
-stored snapshot the start-plan service uses — and the arm reads the `config_snapshots` row back and
-compares its fingerprint before stamping a single envelope. A caller-claimed identity would be an
-unverified value; an unproved one would leave a run naming a snapshot nobody can read back.
-
-**Everything commits together.** The manifest insert, every run insert, and the session CAS to
-`enqueued` (with its required `intakeManifestId`) run in the ONE outer authority transaction, so a
-refusal on the last row of a file leaves no manifest, no run, no state change and no generation
-advance. Partial fan-out is unrepresentable rather than merely avoided.
-
-**Deviation from §5's coordinator sentence, recorded.** §5 describes the fan-out as an `operation`
-coordinator plus `operation-member` children. Nothing in the runtime mints an `operation` run — the
-shape exists only in the queue projection's rendering, and doc 00 §Size model + delivery tiers assigns
-`operation-member` fan-out to the oath-signature / emergency-contact tier — so intake enqueues N
-independent `single` runs and the MANIFEST is what joins them.
-That is the artefact §5 already relies on to make "42 rows ran" checkable, and its `validRows[].itemId`
-joins to runs through `(workflow, itemId)`. Inventing a coordinator with no descriptor behind it
-would be the fabrication this program bans; the coordinator receipt §5 describes lands with the
-first workflow that genuinely needs one.
-
-**The runs reach the queue like any others.** The dashboard command service emits one `run.queued`
-span per enqueued run, joined to the manifest by `itemId` (unique in a file by
-`duplicate-identity`), titled with the workflow's OWN `presentation.title` over the manifest's
-stored `parsedInput`. A count mismatch between valid rows and reported runs throws rather than
-filing a partial fan-out.
-
-**`rerunDiff` is served, not just computable.** The session wire carries an optional `rerun`
-`{intakeManifestId, createdAt, totals, diff}` whenever the LATEST manifest for this
-`(source digest, workflow)` pair exists — on the upload response and on
-`GET /api/v1/intake/:sessionId` alike, since both render from one `buildWire`. The prior manifest is
-found BY the session's own digest, so the `source-artifact` axis is equal by construction and the
-diff reports the mapping, projection, contract and canonical-schema axes. An enqueued session serves
-its own manifest reading `same-plan`, which is the manifest view the run surface links to.
-
-**One more identity, closed.** `intakeProjectionRegistry` now refuses a module whose projection was
-built over a COPY of its descriptor's input schema rather than the schema object itself. Everything
-above rests on that identity: validation parses each assembled row through the PROJECTION's schema
-and enqueue re-reads the stored value through the DESCRIPTOR's canonical schema. It is the same
-identity-not-equivalence argument `defineIntakeProjection` already makes per target field, applied
-to the whole input.
-
 ### 5.1 Mobile photo capture is a recoverable artifact-intake source
+
+<!-- roadmap: p2-2i -->
+<!-- roadmap: def-capture-binding -->
+<!-- roadmap: order-3 -->
+
+<!-- roadmap-status: def-capture-binding -->
+- [x] every part of the seam this deferral needs is built and guarded — the durable session, the token that lives only in a URL fragment, the uniform refusal, the deterministic PDF bundler, the derived handoff identities and the `IntakePlanManifest.capture` block (§5.1, D167/D174; `capture-durability-and-scope` active)
+- [x] `defineCaptureIntakeBinding` + `captureIntakeRegistry` exist and refuse a hand-built binding or one over a COPY of the descriptor's input schema (`src/control/workflow-registry.ts:182-194`)
+- [ ] `CAPTURE_INTAKE_BINDINGS` is EMPTY — no `module.ts` in `src/workflows/` declares `captureIntake`, so every finalize refuses by name. Not an oversight: neither registered workflow's identity is derivable from a photograph
+- [ ] what unblocks it is an OCR-BACKED workflow, i.e. order 3 — this node's whole content is "declare the binding once that workflow exists"
+- [ ] a handoff-enqueued run emits no `run.queued` span (the enqueue happens in the finalize projector, not the command service), so it would not appear on the queue — unreachable today, and the fixture asserting the registry is empty is deliberately what fails the day a binding lands
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/control/workflow-registry.ts:194`, `src/server/dashboard/compose.ts:752` and `grep -rn captureIntake src/workflows/*/module.ts` (no matches); left: the binding, which waits on order 3
+<!-- /roadmap-status -->
 
 > **Scope trim (D79d, operator 2026-07-24) — read before implementing.** Phone capture is
 > **rarely used**: most documents arrive as scanned PDFs. So this section's durability obligations
@@ -1706,6 +1786,17 @@ rather than a missing one — is read as "not present", so the refusal says
 `ingress-credential-missing` when the honest diagnosis is "could not be read". Fail-closed in
 direction, imprecise in wording; left as-is because the remediation it prints is correct either way.
 
+**The surface is built; the BYTES have no delivery path (D189).** `CAPTURE_PHONE_ASSET_ENTRY` is
+`/capture.html` (`src/domain/capture-surface.ts:83`) and the bundle behind it is real
+(`src/dashboard/phone/`), but the production BFF **serves no frontend bytes at all** — there is no
+static handler, so the one asset URL the QR points at 404s outside the vite dev server
+(`src/core/runtime-composition.ts:140` names the gap; ref frontend-backend-integration §6.9 owns
+it). Nothing about this section's model is wrong and nothing here needs rebuilding: the token, the
+routes, the refusals and the outbox are all correct and tested, and a phone still cannot load the
+page in production. Deferred on D189's own argument — those bytes would ride the one
+internet-exposed path behind the Host gate, and the tunnel launcher is unbuilt anyway. Owner:
+`def-capture-binding`'s sibling deferral in doc 04, not this doc.
+
 **`capture-durability-and-scope` is ACTIVE.** It enforces the closed union in both directions, the
 `:param` segment bound, the byte-identical ingress refusal (driven through a real Hono app with a
 no-ingress negative control), the token never becoming durable or wire state, the allowlist of who
@@ -1715,12 +1806,132 @@ a violating fixture.
 
 ---
 
+### 5.2 Phase-2i as-built — the enqueue: readiness, the manifest mint, the fan-out (D171)
+
+<!-- roadmap: p2-2i -->
+
+`enqueue-intake-manifest` is the sixth intake arm and the irreversible one: it turns a reviewed
+mapping into N real HR runs. It activates here (2i-E2) over D170's durable session, and everything
+below is normative.
+
+**The command targets the SESSION.** Its placeholder target named an `intakeManifestId` that cannot
+exist when the command is issued — the command is what mints it — so it is amended (D161/D167's
+rule: no producer ever sent the old shape) to `{intakeSessionId, expectedVersion}`, the same target
+its five siblings carry, plus an explicit `payload: {dryRun}`. `dryRun` is required rather than
+defaulted, exactly as `StartPlanIngressSchema` requires it: a fan-out that silently chose one is a
+fan-out that silently chose whether to touch a real system.
+
+**It is the ONE intake arm that CASes.** The five mapping arms validate current authority and retain
+the observed version for audit; this one refuses on version drift, because if anything moved since
+the operator read the reject list they are enqueueing a plan they never saw. The other gates, in
+order and each naming exactly what blocks: the session must exist; an already-`enqueued` session is
+refused naming its manifest (`a manifest fans out exactly once`); a `mapping` or `discarded` session
+is refused with §5's mandatory review named; the session must retain a source file name; the
+workflow must declare an intake projection and a registered descriptor; and `dryRun` on a workflow
+with no dry-run boundary is `policy-refused` — the same `dry-run-unsupported` rule `planStart`
+applies, evaluated through the same `supportsDryRun`.
+
+**Readiness is judged on the manifest that would be written.** `deriveIntakeEnqueuePlan`
+(`src/domain/intake/enqueue.ts`) re-runs `validateIntakeRows`, builds the manifest and returns it
+beside `enqueueReadiness(manifest)`, so there is no second count of "how many rows are still
+rejected" that could disagree with the row the operator would be handed. The pass runs against the
+session's RETAINED `readAt`, so a two-digit year resolves exactly as it did at review. A refusal
+carries the readiness `message`, its `reason`, and the unresolved source rows.
+
+**A correction's `original` is read from the source, never carried.** The session retains only the
+corrected value, so the manifest's `IntakeCorrection.original` is looked up in the bound column of
+the re-derived row and redacted through the canonical field's own declared
+`(classification, transform)`. A correction whose field is unbound, whose column is absent, or whose
+row is beyond the file THROWS: each means the session and its layout have become mutually
+inconsistent, which no command sequence can produce, and recording a plausible blank would put a lie
+in an immutable manifest.
+
+**`mappingSnapshotHash` is the identity of the DECISIONS**, where `mappingFingerprint` is the
+identity of the LAYOUT. `deriveMappingSnapshotHash` folds the workflow, sheet, settled header row,
+layout fingerprint, confirmed bindings and run constants, sorted by target field id so two sessions
+that reached the same mapping in a different order hash the same. It deliberately excludes
+`confirmedAt` (a mapping is what it maps, not when it was clicked — folding the instant would make
+`rerunDiff` report a change for a re-confirmed identical binding) and corrections/exclusions (the
+manifest records those in full in their own arrays; §7 #11 asks whether the run was planned the same
+WAY).
+
+**The manifest must name its file, so the session retains one.** `source.originalName` is required
+by the D159 schema and a content-addressed artifact has a digest, not a name — so
+`POST /api/v1/intake/files` requires a `filename` query parameter and the session retains it as
+`sourceName`. The leaf is OPTIONAL on the session record and required at the route: a row minted
+before it existed must still parse (D133 — a stored record is read forward, never back-filled), and
+enqueue refuses such a session by name rather than inventing a name the manifest would claim forever.
+
+**One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
+inserted; `start-run` and this arm reach it with different plans and identical obligations — the
+descriptor's enqueue policy is evaluated against live authority per item, `supersede-active`
+supersedes, a `reject-active` collision refuses the WHOLE command, and a proposed run id that
+already exists is a fault rather than an adoption.
+
+**What an intake run's envelope carries.** `shape: "single"` and `priority: "bulk"` are server
+stamps, not caller claims. Per row: a fresh `runId`, the row's `itemId` from the manifest, a
+`traceId` derived from the descriptor code, the descriptor's current version/fingerprint, every
+browser system resolved to `prod` through the same `resolveInstances` the planner uses,
+`ingressSchemaHash` from the descriptor's input schema, and `input.parsed` bound to
+`canonicalInputSchemaHash` after re-reading the manifest's stored `parsedInput` through the
+descriptor's CURRENT canonical schema (D62 — never its ingress parser); a value that fails that
+parse throws naming the source row and enqueues nothing. `input.raw` is the manifest's own stored
+`parsedInput`: that value IS what intake submitted, and `validRows[].inputHash` pins its bytes.
+
+**The config identity is injected and PROVED.** `start-run` copies it from the start plan and
+`retry` from the run it retries; an intake fan-out has neither, so `CommandKernelDependencies`
+carries a `configIdentity` supplied by the composition root — the same resolved fingerprint and
+stored snapshot the start-plan service uses — and the arm reads the `config_snapshots` row back and
+compares its fingerprint before stamping a single envelope. A caller-claimed identity would be an
+unverified value; an unproved one would leave a run naming a snapshot nobody can read back.
+
+**Everything commits together.** The manifest insert, every run insert, and the session CAS to
+`enqueued` (with its required `intakeManifestId`) run in the ONE outer authority transaction, so a
+refusal on the last row of a file leaves no manifest, no run, no state change and no generation
+advance. Partial fan-out is unrepresentable rather than merely avoided.
+
+**Deviation from §5's coordinator sentence, recorded.** §5 describes the fan-out as an `operation`
+coordinator plus `operation-member` children. Nothing in the runtime mints an `operation` run — the
+shape exists only in the queue projection's rendering, and doc 00 §Size model + delivery tiers assigns
+`operation-member` fan-out to the oath-signature / emergency-contact tier — so intake enqueues N
+independent `single` runs and the MANIFEST is what joins them.
+That is the artefact §5 already relies on to make "42 rows ran" checkable, and its `validRows[].itemId`
+joins to runs through `(workflow, itemId)`. Inventing a coordinator with no descriptor behind it
+would be the fabrication this program bans; the coordinator receipt §5 describes lands with the
+first workflow that genuinely needs one.
+
+**The runs reach the queue like any others.** The dashboard command service emits one `run.queued`
+span per enqueued run, joined to the manifest by `itemId` (unique in a file by
+`duplicate-identity`), titled with the workflow's OWN `presentation.title` over the manifest's
+stored `parsedInput`. A count mismatch between valid rows and reported runs throws rather than
+filing a partial fan-out.
+
+**`rerunDiff` is served, not just computable.** The session wire carries an optional `rerun`
+`{intakeManifestId, createdAt, totals, diff}` whenever the LATEST manifest for this
+`(source digest, workflow)` pair exists — on the upload response and on
+`GET /api/v1/intake/:sessionId` alike, since both render from one `buildWire`. The prior manifest is
+found BY the session's own digest, so the `source-artifact` axis is equal by construction and the
+diff reports the mapping, projection, contract and canonical-schema axes. An enqueued session serves
+its own manifest reading `same-plan`, which is the manifest view the run surface links to.
+
+**One more identity, closed.** `intakeProjectionRegistry` now refuses a module whose projection was
+built over a COPY of its descriptor's input schema rather than the schema object itself. Everything
+above rests on that identity: validation parses each assembled row through the PROJECTION's schema
+and enqueue re-reads the stored value through the DESCRIPTOR's canonical schema. It is the same
+identity-not-equivalence argument `defineIntakeProjection` already makes per target field, applied
+to the whole input.
+
 ## 6. The Edit-Data surface (charter §12)
+
+<!-- roadmap: p2-2h -->
+<!-- roadmap: p2-2i -->
 
 Edit Data is a **typed view of a run's checkpoint state**, edited through ref workflow-model's `injected`
 mechanism. It replaces the `prefilledData`/`splitPrefilled`/`save-data` side channel entirely.
 
 ### 6.1 Data source — fetch the snapshot, SSE only signals staleness
+
+<!-- roadmap: p2-2i -->
 
 **Decision: the editable checkpoint snapshot is FETCHED (request/response), not SSE-streamed; the
 per-run SSE topic is consumed only as an invalidation signal.** Justification:
@@ -1739,15 +1950,19 @@ field-level provenance `{ source, observedAt?, correctedAt?, supersedes? }`.
 
 ### 6.2 What is editable vs read-only
 
+<!-- roadmap: p2-2i -->
+
 | Run state | Edit Data |
 |---|---|
 | **Parked at a gate** (approval / await-signatures / identity-approval) | **Visible; explicitly declared fields editable.** Descriptor `capabilities.editData.fields` names node+field paths. Default is read-only, never "all checkpoint JSON." |
 | **Stopped / failed** (terminal but resumable — `single`, real `operation-member`, D9) | Same explicit field policy; an accepted edit becomes `injected` on retry/resume. |
 | **Running** (actively claimed, a live task owns a page) | **READ-ONLY** — the run's checkpoints are being written by the live task; editing not-yet-written state is meaningless and racy. Show live checkpoint state read-only. |
-| **Terminal `done`** | **Read-only.** Correcting-and-rerunning a done item is the *separate* new-input path (§6.5), not Edit Data. |
+| **Terminal `done`** | **Read-only.** Correcting-and-rerunning a done item is the *separate* new-input path (§6.5 — the start-plan flow), not Edit Data. |
 | **Display-only rows** (operation coordinators, i9 display-only members) & **OCR per-page internals** | **No checkpoint Data section in Context** — D9 excludes them (nothing to resume). |
 
 ### 6.3 Editing = typed field patches; editing is not freshness
+
+<!-- roadmap: p2-2i -->
 
 An edit is **not** a free-form blob write. Each editable path is explicitly declared on the
 descriptor and checked against the producing contract's output schema. Stable item/match identity,
@@ -1768,6 +1983,8 @@ before validation); the new path parses every edit through the **same** contract
 the value, so a corrupt edit cannot enter the run.
 
 ### 6.4 Concurrency — edit-during-resume is fail-closed (loud), the resume wins
+
+<!-- roadmap: p2-2i -->
 
 A parked run holds no browser (D5), so normally no task executes while the operator edits. But a
 resume can be triggered concurrently (a watcher gate resolving, an operator elsewhere clicking
@@ -1792,6 +2009,25 @@ edit onto a run that has moved on. (Editing a *running* task's checkpoints is fo
 §6.2, so the only race is park/stop ↔ resume, which the CAS closes.)
 
 #### 6.4.1 As-built — the rail wiring (2i-C, 2026-08-08, D168)
+
+<!-- roadmap: p2-2i -->
+<!-- roadmap: track-b -->
+
+<!-- roadmap-status: p2-2i -->
+- [x] 2i-C, the Edit Data rail: the `context-data` wire carries the policy, `authority.version` is the generation token, drafts re-parse into the recorded scalar's type, and all five save arms plus the three consume arms are pinned (`tests/unit/edit-data.test.ts`, `edit-data-field-policy` active)
+- [x] 2i-E, the intake surface over schema v12: the durable session, the upload route, all six command arms and the first real projection (§2.7/§2.8/§5.2, D170–D172)
+- [x] 2i-F, the token-scoped phone capture surface: the fragment token, the uniform refusal, the bundler and the derived handoff ids (§5.1, D174; `capture-durability-and-scope` active)
+- [x] the rail's CAS-conflict arm — silently reported saved until B7/D253 fixed it — is now exhaustive at the discriminant and guarded (§6.4.1)
+- [ ] the phone surface has no production delivery path: the BFF serves no frontend bytes, so `/capture.html` 404s outside the dev server (§5.1, D189)
+- [ ] no workflow can receive a capture handoff — `CAPTURE_INTAKE_BINDINGS` is empty (§5.1); and saved-mapping reuse has no store, so every intake upload re-maps (§2.3)
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/dashboard/{app/command-result.ts,surfaces/context-rail.tsx}`, `src/domain/intake/*`, `src/domain/capture*.ts` and `src/infra/sqlite/migrations.ts:904`; left: the two delivery gaps above
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: track-b -->
+- [x] B7's half of this doc is closed: the Data save's unhandled CAS `conflict` is fixed at the discriminant, not at the call site — `settleCommandResult` plus the `command-result-exhaustive` guard with a fixture carrying the exact shipped shape (D253)
+- [ ] the rest of Track B is not this doc's — ref dashboard-surfaces and ref frontend-backend-integration own the surfaces; this section owns only the Edit Data model beneath the rail
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/dashboard/app/command-result.ts` and the `command-result-exhaustive` guard entry in `docs/rebuild/guard-inventory.json`
+<!-- /roadmap-status -->
 
 The operator surface over the D166 core landed; where the build deviates from the sketches above,
 the as-built shape is normative:
@@ -1837,6 +2073,19 @@ the as-built shape is normative:
   before any command is built, a rejection keeps the drafts and shows the kernel's sentence
   verbatim, and the per-save `reason` (required, non-empty) becomes every patch's
   `CheckpointPatch.reason`.
+- **The CAS conflict arm was UNHANDLED until D253, so §6.4's whole rule was false in the rail.**
+  `CommandResultSchema` has three arms and TWO are refusals — `rejected` and the CAS `conflict` —
+  and this rail branched on `rejected` alone, so a conflict fell through to the SUCCESS path: the
+  editor closed, the operator's drafts were discarded, and a correction the kernel had REFUSED was
+  reported saved. That is exactly the state §6.4 exists to make loud, and it was reachable by
+  ordinary use — a run's version moves whenever a worker claims it or the day stream folds a span
+  under an open panel. The fix is structural: `settleCommandResult`
+  (`src/dashboard/app/command-result.ts`) switches over the discriminant so a fourth arm is a
+  compile error, and the `command-result-exhaustive` guard refuses any dashboard module naming one
+  refusal arm without the other. The two refusals stay DISTINGUISHABLE in the sentence, because the
+  operator does different things about them: a conflict carries the server's `currentVersion` and
+  never the words "try again" — re-sending the same envelope carries the same stale
+  `expectedVersion` and would be refused identically.
 
 **Decision: the pre-first-start intake correction grid (§5) and checkpoint correction in the
 Context rail's Data section are SEPARATE surfaces that share ONE pure per-cell coercion/validation
@@ -1879,37 +2128,63 @@ insert — fail-closed pending the archive/attempt-model work. §6.5's new-input
 start-plan flow. Proof: `tests/unit/edit-data.test.ts` (applier, all five save arms, and the
 three consume arms) plus the activated `edit-data-field-policy` guard.
 
+### 6.5 The new-input path is the start plan, not Edit Data
+
+<!-- roadmap: p2-2i -->
+
+§6.2 and §6.4.1 both send a reader here and this section did not exist, so it says what the two
+call sites mean. **Editing a run's checkpoints and starting a run with different input are
+different acts, and only the first is Edit Data.** A `done` item, or any item whose ORIGINAL INPUT
+was wrong, is corrected by submitting a new start plan — `src/services/start/plan.ts`, the `start`
+command family's one arm `start-run` (`src/domain/commands.ts:461`), which retains the exact raw
+ingress JSON beside the canonical snapshot and binds both schema hashes (D109). That is the path
+identity, idempotency-key inputs and workflow input take, and §6.3 makes it structural: those paths
+are non-editable, so there is no Edit Data route to them by construction.
+
+Two neighbours of it, both named so nobody looks for a third mechanism. An intake-born item's
+equivalent is §5's **rerun against the immutable manifest**, which revalidates against the current
+workflow fingerprint and shows a diff before creating a run — the same "new run, new input, visible
+change" shape, keyed by a manifest rather than a typed form. And an ARCHIVED run's is the archive
+relaunch (ref dashboard-surfaces §10.2, D179), which mints a fresh run and records relaunch
+provenance keyed by it. None of the three mutates a terminal row, which is the invariant all of
+them exist to keep.
+
 ---
 
 ## 7. Adversarial self-review — silent-fallback vectors and their guards
 
 | # | Silent-fallback vector | Mechanical guard |
 |---|---|---|
-| 1 | **Fuzzy header auto-applies a wrong binding** (Name→fullName when Legal Name is the real one) | Suggestions are hints only; a guard asserts `ColumnMapping.bindings` is written ONLY by an operator action, never by the scorer. Fingerprint reuse pre-loads a *visible* mapping the operator still confirms (§2.3) |
-| 2 | **Coercion swallows a bad cell** (a malformed EID becomes `""` or a guessed value) | `field.coerce` throws a per-cell error naming row/column/value; the cell becomes a **row rejection** (§5), never a substituted default. The `fail-loud-catch-default` + `nullish-literal-data-fallback` ratchets are re-implemented in the rebuild repo over its own `src/intake` from day one |
-| 3 | **Mapping reuse on a changed/duplicate layout** | unambiguous canonical-JSON fingerprint; bindings resolve by header+occurrence; missing columns unmap; duplicate headings require visible sample confirmation; index never silently binds |
-| 4 | **A rejected row silently vanishes (or a partial file launches)** | `Run` is disabled until the reject list is reviewed; only the `valid` set fans out; each reject carries row/column/value/reason and must be fixed or explicitly excluded (§5) — nothing half-launches |
-| 5 | **An Edit-Data save races a resume and clobbers a running item** | The save is a CAS against the resume-claim fence at generation `G`; a concurrent claim → **loud reject, resume wins** (§6.4). Running-task checkpoints are read-only outright (§6.2) |
-| 6 | **An intake projection re-declares a regex looser than its canonical field** | Guard asserts every *mapped* input key points at the same `CanonicalField.schema` object; non-intake workflow fields remain legal. The full assembled input still parses through the workflow schema; every migrated legacy EID fixture is audited against canonical `Eid`, and a truly distinct identifier must get a separately named/validated domain type (§1) |
-| 7 | **Roster match fabricates an EID on no-match** | `matchedEid` is `nullable`; `mismatch:"no-match"` is a first-class output; the caller falls through to person-lookup — a guard bans `?? "<eid-literal>"`-shaped fallbacks in the roster impl |
+| 1 | **Fuzzy header auto-applies a wrong binding** (Name→fullName when Legal Name is the real one) | Suggestions are hints only; a guard asserts `ColumnMapping.bindings` is written ONLY by an operator action, never by the scorer. Fingerprint reuse pre-loads a *visible* mapping the operator still confirms (§2.3). **Held by `intake-mapping-boundary` (active)** — `suggestions.ts` may not name `confirmBinding`, and a `Suggestion` has no `confirmedAt` to acquire |
+| 2 | **Coercion swallows a bad cell** (a malformed EID becomes `""` or a guessed value) | `field.coerce` throws a per-cell error naming row/column/value; the cell becomes a **row rejection** (§5), never a substituted default. **Held by the `fail-loud-catch-default` and `nullish-literal-data-fallback` ratchet arms** (`tests/unit/architecture/helpers/ratchet-arms.ts`), which scan the whole of `src/**` — there is no `src/intake`; the domain half is `src/domain/intake/` and the service half `src/server/intake/` |
+| 3 | **Mapping reuse on a changed/duplicate layout** | unambiguous canonical-JSON fingerprint; bindings resolve by header+occurrence; missing columns unmap; duplicate headings require visible sample confirmation; index never silently binds. **Held by `intake-mapping-boundary` (active)** |
+| 4 | **A rejected row silently vanishes (or a partial file launches)** | `Run` is disabled until the reject list is reviewed; only the `valid` set fans out; each reject carries row/column/value/reason and must be fixed or explicitly excluded (§5) — nothing half-launches. **Held by `IntakePlanManifestSchema`'s own refinements** (unique 1..n source-row coverage, exact derived totals, `valid > 0`), not by a named guard |
+| 5 | **An Edit-Data save races a resume and clobbers a running item** | The save is a CAS against the resume-claim fence at generation `G`; a concurrent claim → **loud reject, resume wins** (§6.4). Running-task checkpoints are read-only outright (§6.2). **Held by `command-result-exhaustive` (active, D253)** on the surface side — the arm that made this vector real in the rail until 2026-08-20 (§6.4.1) |
+| 6 | **An intake projection re-declares a regex looser than its canonical field** | Guard asserts every *mapped* input key points at the same `CanonicalField.schema` object; non-intake workflow fields remain legal. The full assembled input still parses through the workflow schema; every migrated legacy EID fixture is audited against canonical `Eid`, and a truly distinct identifier must get a separately named/validated domain type (§1). **Held by `intake-mapping-boundary` + `intake-canonical-field-registry` (both active)**, and by `defineIntakeProjection` refusing anything but the same schema OBJECT |
+| 7 | **Roster match fabricates an EID on no-match** | `matchedEid` is `nullable`; `mismatch:"no-match"` is a first-class output; the caller falls through to person-lookup — the `nullish-literal-data-fallback` ratchet arm bans `?? "<eid-literal>"`-shaped fallbacks in the roster impl |
 | 8 | **A stale roster match rides into a write on resume** | finite field freshness + declared DAG walk refuses stale facts feeding a commit; an unrelated Edit Data patch cannot reset their observed time |
 | 9 | **Novel headers never reach mapping** | parser candidate generation is alias-independent; fixture with zero known aliases must reach header selection + mapping rather than throw |
-| 10 | **Edit Data changes identity or write proof** | Default read-only; descriptor allowlists exact node+field paths. Guard rejects item/match/idempotency/proof/provenance paths and paths absent from the producing schema; the full patched output re-parses |
-| 11 | **A rerun called “same data” actually uses a changed file, mapping, or workflow schema** | rerun references an immutable `IntakePlanManifest`; artifact/mapping/contract hashes are compared and any difference requires a visible new-plan diff + confirmation |
-| 12 | **A partial intake looks like all source rows completed** | coordinator/evidence receipt always shows source, valid, rejected, explicitly excluded, enqueued, and terminal counts; manifest/member insert is atomic and counts are invariant-checked |
-| 13 | **Two target fields sharing one canonical concept overwrite each other** | bindings key on the intake projection's stable target-field id and also record its canonical field id; duplicate targets, changed projection fingerprints, or canonical mismatch fail before validation (D66) |
+| 10 | **Edit Data changes identity or write proof** | Default read-only; descriptor allowlists exact node+field paths. **Held by `edit-data-field-policy` (active)**: only a READ node's output is correctable, only a checkpoint-replayed node qualifies, a declared path must resolve through the producing task's own output schema, and the full patched output re-parses |
+| 11 | **A rerun called “same data” actually uses a changed file, mapping, or workflow schema** | rerun references an immutable `IntakePlanManifest`; artifact/mapping/contract hashes are compared and any difference requires a visible new-plan diff + confirmation. **Held in SQL** — schema v11's `intake_manifests_immutable_update` / `_never_deleted` triggers ABORT, so the authority cannot be rewritten even by a bug |
+| 12 | **A partial intake looks like all source rows completed** | coordinator/evidence receipt always shows source, valid, rejected, explicitly excluded, enqueued, and terminal counts; manifest/member insert is atomic and counts are invariant-checked by the manifest schema's refinements |
+| 13 | **Two target fields sharing one canonical concept overwrite each other** | bindings key on the intake projection's stable target-field id and also record its canonical field id; duplicate targets, changed projection fingerprints, or canonical mismatch fail before validation (D66). **Held by `intake-mapping-boundary` (active)** |
 
 Honest residual (no full mechanical guard): the redesigned roster *scoring* (0–1 confidence) is only
-verified at the roster migration (order 3) live-verify — the *tiering* ports verbatim, the *scoring*
+verified at order 3's live-verify (the first migration that runs a roster match; roster INGEST is order 9) — the *tiering* ports verbatim, the *scoring*
 is new code and must be re-checked against real rosters, not assumed.
 
 ---
 
 ## 8. Worked example — a work-study spreadsheet, end to end
 
-Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow.
+<!-- roadmap: order-6 -->
 
-1. **Upload → parse.** `extraction/parse-csv` sniffs the header row and returns three columns:
+Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow. **This example is the
+order-6 TARGET state, not a transcript**: `work-study` is not in the tree, and step 4's saved
+mapping has no store (§2.3). Steps 1–3, 5 and 6 are each executable today against a workflow that
+declares an intake projection — `person-lookup` is the one that does.
+
+1. **Upload → parse.** `extraction/extract-spreadsheet` sniffs the header row and returns three columns:
    `"Employee ID#"`, `"Student Name"`, `"Dept"` (+ sample values per column). Fingerprint computed.
 2. **Map.** No saved mapping for this fingerprint (first time). The grid shows the two required
    canonical fields — `eid`, and a name field — plus optional `department`. Fuzzy suggestions
@@ -1922,8 +2197,10 @@ Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow.
    - row 31, column `"Employee ID#"` → `eid`: value `"TBD"` — not numeric.
 4. **Fix in the intake grid.** The operator corrects row 17's cell to `10456712` (re-coerces live →
    valid) and row 31 to `10998801` (valid). Now **42 valid, 0 unresolved**; the immutable manifest
-   still records two rejection events and two corrections linked to the original cells. The mapping is saved under
-   `config/column-mappings/work-study/<fingerprint>.json` for next week's identically-shaped export.
+   still records two rejection events and two corrections linked to the original cells. The mapping would be saved under
+   `config/column-mappings/work-study/<fingerprint>.json` for next week's identically-shaped export
+   — **the one step of this example nothing implements**: the reuse logic exists and no writer
+   does, so today week two re-maps from scratch (§2.3).
 5. **Run.** `Run` enables; 42 inputs fan out as an `operation` coordinator + 42 `operation-member`
    rows, each input `WorkStudyInput`-valid by construction.
 6. **A member parks / stops.** Member #12 (`emplId 10456712`) parks at a gate (or fails at a step).
@@ -1938,13 +2215,17 @@ Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow.
 
 ## 9. Settled intake defaults
 
+Cited elsewhere as **§9.1–§9.5** — the numbered items below, which are questions closed by
+decision, not headings.
+
 1. ~~Canonical EID width~~ — **resolved 2026-07-22:** adopt `/^10\d{6}$/` everywhere and audit the
    loose legacy consumers at migration. A genuinely different source identifier gets a distinct
    domain type and explicit conversion; there is no `legacyEid` escape hatch (§1).
 2. ~~Mapping storage location~~ — **resolved 2026-07-21:** versioned, schema-validated JSON at
    `config/column-mappings/<workflow>/<fingerprint>.json`, written temp+fsync+rename. It is
    operator-greppable configuration, not run authority; malformed files fail loud and never fall
-   back to a nearest mapping.
+   back to a nearest mapping. *(The decision stands and is UNBUILT — §2.3 records what exists and
+   who owns the writer. A settled question is not a shipped feature.)*
 3. ~~Roster freshness budget~~ — **resolved 2026-07-22:** 24h is the conservative base maximum and
    consumers may narrow it. File mtime is not truth (copying a file changes it); freshness is the
    observation time of the immutable content-addressed roster artifact. Crossing the budget requires
