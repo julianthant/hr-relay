@@ -424,3 +424,92 @@ accessible name · C21 the ⓘ bullet that now understates the surface · C32 `w
 C51 the step group's missing chrome · C55 the flattened refusal (no code, no `Refusal`) · C57 the
 missing "your edits are still here" toasts · C70 the duplicated blocked-reason sentence · C71 the
 `Saving…` label.
+
+---
+
+## R-D — The Receipt tab: the verdict band, the evidence body, the captures
+
+**Demo:** `DemoReceipt.tsx` (492) + `DemoLogPanel.tsx:1942-2054` (`ReceiptTab` / `StagedBlock` /
+`ShortReceipt`) + `DemoEvidence.tsx` (1039, of which `ReceiptCapturesSection` and its stack are the
+Receipt tab's).
+**Rebuild:** `src/dashboard/surfaces/receipt.tsx` (133) + `trust.tsx` `ReceiptEvidenceBody`
+(`:207-295`) + `system-chip.tsx`; mounted `log-panel.tsx:1953-1964`.
+
+**FIRST AUDIT** — no region of the 08-13 wave opened `DemoReceipt.tsx` or `DemoEvidence.tsx`.
+`receipt.tsx`'s own header still calls itself "the 1i Receipt PLACEHOLDER" and says the full body
+"lands with the trust surfaces in 2g"; 2g landed, `ReceiptEvidenceBody` exists, and the header was
+never corrected — so the first finding of this region is that its own deferral note is stale.
+
+### D-tab frame
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| D1 | `ReceiptTab` composition — the full receipt OR a short one, then a `border-t p-cozy` captures block | `DemoLogPanel.tsx:1942-1959` | `ReceiptView` alone `log-panel.tsx:1953-1964` | divergent | see D2 and D4 |
+| D2 | `ShortReceipt` — the pre-receipt summary card: tone-tinted box, `ShieldCheck` + headline, the `verified` corner tag, the `lines[]` label/value rows with their per-line `read-back` marks, inline per-person confirmations, the `note` | `DemoLogPanel.tsx:1984-2054` | an `EmptyState` "No receipt yet — {reason}. A receipt is written at the run's terminal outcome." `receipt.tsx:69-73` | divergent | `unserved:` the demo's `row.receipt` is a fixture-authored summary; nothing in this tree serves a pre-terminal receipt digest, and D82 is explicit that a receipt is DERIVED at the terminal instant. The rebuild's honest absence is arguably the better answer — recorded, not silently swapped |
+| D3 | `StagedBlock` — `Staged — goes live when the run continues` / `Unconfirmed — resolve present or absent`, per-value `ArrowUpFromLine` + field + value + `SystemChip`, drawn under BOTH receipt arms | `DemoLogPanel.tsx:1963-1982,1950,2051` | absent | missing | `unserved:` STRUCTURAL, the same argument as C40/C41 — a `prepare` contract is `checkpoint: "in-memory-only"` and an unconfirmed write is a `parked-write` run with no checkpoint (D252's row) |
+| D4 | `ReceiptCapturesSection` and its whole stack — `Screenshots` label + count Badge, the per-kind `Chip` filter row, the `Download ▾` menu (text / JSON / copy trace), the per-step capture groups with their count Badges, `ReceiptCaptureCard`, `CaptureLightbox`, `PageFacsimile`, `ExtractionRecord`, `CaptureThumb` | `DemoEvidence.tsx:100-113,300-1039`; mounted `DemoLogPanel.tsx:1955-1957` | absent | missing | `unserved:` `RunDetailSectionResponseSchema#captures` is `declared-unserved` (D184). R6 f.19 also re-homes `context-evidence` HERE when the evidence service lands, so this is the one slot two ledger rows point at |
+
+### D-verdict band
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| D5 | band container `flex flex-col gap-snug border px-cozy py-base rounded-lg` + the four tone arms | `DemoReceipt.tsx:194-205` | `receipt.tsx:103-114` | exact | |
+| D6 | `ShieldCheck` at `dsIcon.lg` + its three fg arms | `:208-218` | `:117-127` | exact | |
+| D7 | the verdict WORD, read from `DS_STATUS` and never restated; `partial` keeping its own word | `:74-80,219` | `:31-37,128` | exact | the "typed once — rename the status and the receipt follows" rule ported |
+| D8 | the `confidence` Chip beside the word (`{confidence} — {CONFIDENCE_COPY}`, `neutral` when verified else `warning`) | `:82-86,220-222` | absent from the band — `confidence` is a word in the body's trailing `MetaLine` (`trust.tsx:286`) | divergent | **OPEN — operator call.** The band is where a verdict is QUALIFIED; the demo pairs the word and its confidence in one glance, and `CONFIDENCE_COPY`'s three sentences ("read back from the system of record" / "some of it read back" / "nothing was read back") have no counterpart at all |
+| D9 | band `MetaLine` — `receipt {id} · generated {clock} · attempt N · retry of X · filed by {actor}` | `:224-232` | scattered: `completed {clock}` on the band `:130`, `receipt {id} · run {id}` in a `Receipt` section `:84`, and `confidence / result / attempt / retry of / generated` in the body's trailing MetaLine `trust.tsx:284-292` | divergent | **OPEN — operator call** (every fact but one exists; the demo's one identity line is now three places, and the receipt ENDS on facts the demo opens with) |
+| D10 | `filed by {actor}` | `:230` | absent | missing | `unserved:` `RunEvidenceReceiptSchema` carries no actor (`src/domain/trust/evidence.ts:128-152`). D82 derives the receipt from authority and the run's `actorId` is on the QUEUE surface, not on the receipt |
+
+### D-banners
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| D11 | the `receiptInvariant` Banner — "This receipt fails its own invariant — the verdict is not printed as fact" | `:235-239` | absent | missing | **OPEN — operator call.** The authority schema carries `CHECK (result <> 'verified-done' OR confidence = 'verified')` and D238 made the pair unrepresentable, so the demo's client-side invariant may be structurally satisfied here — but nothing in the tree records that reasoning, and a derived receipt can still arrive with an unmet mandatory verification |
+| D12 | the TEST-instance Banner, both sentences verbatim | `:241-246` | `receipt.tsx:75-80` | exact | drawn from the ROW's `resolvedInstances` rather than the receipt's own, stated `:48-52` |
+| D13 | the DRY-RUN Banner — info, "Dry run — this run was a rehearsal", "A dry run reads everything and writes nothing. Any value below is an observation, never a change." | `:248-252` | absent | missing | **OPEN — operator call.** `dryRun` is served (D232 draws the chip on the provenance bar) and D238 already puts `dry run ·` in the outcome sentence; `ReceiptView` is simply not passed the flag. The receipt is the artifact read months later — it is the surface that most needs the word |
+
+### D-sections
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| D14 | `ReceiptSection` = `<section>` + `SectionLabel` + `gap-snug` children | `:95-102` | `receipt.tsx:39-46` / `trust.tsx:70-77` (`TrustSection`, which adds an `aria-label`) | exact | |
+| D15 | `Who the system said this was, at the moment of the write` — the `subjectAtCommit` Well: `ScanEye`, the name, an `EID` Chip, `SystemTag`, the right-hand clock, the proof sentence | `:254-270` | absent | missing | `unserved:` the receipt schema has no subject-at-commit block. The fact EXISTS one table over — the write intent's fenced subject digest, and `FailureDetailWire.subject` renders the analogous pair on the failure side — so the producer is the receipt DERIVATION projecting it, not a new observation |
+| D16 | `What was written, and what proved it` — a `WriteAction` `Well` per commit/prepare | `:104-180,272-280` | a flat `Actions` `TrustSection`: one `FactRow` reading `{taskId}` · `{kind} — {WRITE_STATE_SENTENCE}` · `{clock}` `trust.tsx:226-237` | divergent | the region's largest gap; each missing part is D17–D22 |
+| D17 | the `commit` / `prepare` Badge (info / neutral) | `:110` | absent — the kind is folded into the value string | divergent | `unserved:` the kind IS served (`ActionEvidenceSchema.kind`); the Badge is not drawn. **OPEN — operator call** |
+| D18 | the action `target` + `SystemTag` + the right-hand clock | `:111-113` | `taskId` only; no system, clock at the row's `meta` | divergent | `unserved:` `ActionEvidenceSchema` carries `{id, taskId, kind, writeState, proofRef?, artifactId?, occurredAt}` — no target and no system |
+| D19 | the `wrote[]` field/value table inside the Well | `:116-123` | absent | missing | `unserved:` same — the receipt's action entry carries no written values |
+| D20 | the CONFIRMATION block — success-tinted, `{label}` in caps + the number — OR the fallback sentence "{SYSTEM} issues no confirmation number for this operation — the read-back below is the proof." | `:125-141` | absent | missing | `unserved:` no confirmation on the action entry. This is the single most operator-visible absence on the receipt: the number an HR filing is quoted by |
+| D21 | the READ-BACK block — four arms (`read back` / `NOT read back — the system cannot show it` / `NOT read back — no check was made` / `read-back FAILED — outcome unverified`), each with its icon, its tint, the observed-or-note line and the clock | `:88-93,143-175` | absent per action; the receipt's `Verification` section carries obligations and verdicts instead | divergent | `unserved:` the action entry has a `proofRef` but no read-back verdict. The FACT is in the receipt (a `verification` entry), just not beside the write it proves |
+| D22 | `action.detail` | `:177` | absent | missing | `unserved:` no detail on the action entry |
+| D23 | `Per-person confirmations (N)` — the four-column `Table` (Person / EID / Confirmation / Read back) with the `verified` / `none to read` / `unverified` arms, and the D17 note beneath it | `:282-330` | absent | missing | `unserved:` no `members` on the receipt, and no `operation`-shaped workflow exists — the same producer B111 and the member-roster ledger row wait on |
+| D24 | `Completion criteria` — per criterion a `Check`/`X`/`CircleAlert`, `{criterion} — {result}`, `{method} → {observed} · {clock}`, and the note | `:332-368` | `Verification` — one `FactRow`: `{obligation}` · `{verdict}` · `required` `trust.tsx:239-253` | divergent | `unserved:` `VerificationEvidenceSchema` carries `{id, obligation, mandatory, verdict, evidence[]}` — no method, observed, instant or note. The ICON, however, is a pure port over the served verdict and is simply absent — **OPEN** |
+| D25 | `What was read` — the observations `Table` (Field / Value / System / Observed) plus the per-read action rows | `:370-411` | `Observations` — a `FactsSection` of `FactRow`s printing `{field}` · `{value}` · `{source.kind}` `trust.tsx:211` | divergent | **OPEN — operator call, and this one is SERVED-AND-DROPPED.** `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry `taskId` AND `observedAt` (`evidence.ts:25-26`); `trust.tsx` prints `source.kind` alone. The demo's `System` and `Observed` columns are both derivable from the bytes already on the wire |
+| D26 | `What was decided, and why` — `{key}: {outcome}` + `decided by the operator \| decided by rule · {clock}` + the reason | `:413-429` | `Decisions` — `{kind} — {outcome}` · reason `trust.tsx:213-224` | divergent | `unserved:` `DecisionEvidenceSchema` has no `by` and no `at`. Derivable one hop away for a GATE — D204's `gate-result` source arm carries `resolvedBy`/`resolvedAt` and the decision cites it through `evidence[]` — which makes this a derivation, not an observation |
+| D27 | `The input this run was given` — a `KeyValueList` with `· redacted at capture`, and an `input hash {…}` `MetaLine` | `:431-439` | `Input` — a `FactsSection` printing `redacted — {classification}` for a redacted value `trust.tsx:210` | divergent | the redaction treatment is exact-equivalent (and stronger — it names the classification). **The `input hash` line is OPEN and SERVED-AND-DROPPED**: `EvidenceSourceSchema`'s `input` arm carries `inputFingerprint` (`evidence.ts:24`) |
+| D28 | `Fresh or replayed` — `{lane} — {label} · {age}` + the detail sentence | `:441-453` | `Reused evidence` — `{kind}` · `{age} old` · `limit {age}` `trust.tsx:257-268` | divergent | `unserved:` `ReuseEvidenceSchema` carries `{id, kind, source, ageMs, freshnessLimitMs}` — `kind` is the demo's `lane`; there is no label and no detail. The rebuild ADDS the limit, which the demo does not print |
+| D29 | `What remains uncertain` — `CircleAlert` + the text + the explicit "load-bearing — this is why the run cannot read as done" / "declared non-load-bearing — it cannot change the transaction or the core result" sentence | `:455-473` | `Warnings` — `{code}` · summary · a `load-bearing` meta word `trust.tsx:270-282` | divergent | **OPEN — operator call**: the icon is gone and the demo's two full sentences collapse to one word, on the section whose whole job is saying what is still uncertain |
+| D30 | the receipt `note` paragraph | `:475-477` | absent | missing | `unserved:` no `note` on the receipt |
+| D31 | the FINGERPRINT footer — `border-t pt-base`, the `Fingerprint` glyph, and `trace` / `descriptor` / `config` Chips | `:479-484` | absent | missing | **OPEN — operator call, SERVED-AND-DROPPED.** `traceId`, `descriptorFingerprint` and `configFingerprint` are all on `RunEvidenceReceiptSchema` (`evidence.ts:129,135-136`), and D199's whole argument is that the receipt's `descriptorFingerprint` is a fact about THAT RUN. The provenance bar prints two of the three; the receipt — the artifact read months later — prints none |
+| D32 | the receipt's own `failure` id | (no counterpart — the demo has none) | absent | missing | `unserved`-inverse: `RunEvidenceReceiptSchema.failure` is served and drawn nowhere. **OPEN — operator call** (a failed run's receipt does not name the failure record beside it) |
+| D33 | SECTION ORDER | verdict → invariant → test → dry-run → subject → writes → members → criteria → reads → decisions → input → reuse → warnings → note → fingerprints | input → observations → decisions → actions → verification → output → reuse → warnings → trailing meta | divergent | `ruled:` stated `trust.tsx:14-15` — "the receipt's schema order IS the narrative order". Note it inverts the demo's: the demo opens on the WRITE and closes on the input; this opens on the input |
+| D34 | an `Output` facts section | (no counterpart — the demo's equivalent is the writes block) | `trust.tsx:255` | extra | `ruled:` `RunEvidenceReceiptSchema.output` |
+| D35 | empty sections omitted rather than explained | throughout | `trust.tsx:16-17` | exact | D24 restraint |
+| D36 | the receipt-ABSENT arms — `missing` / `purged` EmptyStates and an `error` danger Banner carrying the code | (no counterpart — the demo's receipt always exists) | `receipt.tsx:88-94` | extra | `ruled: D184/D198` declared-absence pattern |
+| D37 | `SystemChip` atom | `DemoEvidence.tsx:66-84` | `system-chip.tsx:28-46` | exact | `SYSTEM_ACCENT` maps every system to the ONE `SYSTEM_CHIP` class (`demo-data.ts:67-75`), so a single constant is byte-equivalent; the label goes through `SYSTEM_LABEL` rather than `toUpperCase()`, stated `:7-10` |
+| D38 | `SystemTag` atom, with `· TEST` called out | `DemoEvidence.tsx:87-97` | `system-chip.tsx:49-58` | exact | |
+| D39 | `receipt.tsx`'s own header comment | — | `:5-11` calls itself "the 1i Receipt PLACEHOLDER" and says the full body "lands with the trust surfaces in 2g" | — | **OPEN — operator call (a stale claim, not an element).** 2g landed; `ReceiptEvidenceBody` renders input/observations/decisions/actions/verification/output/reuse/warnings. The sentence is the same false-deferral shape D251 found on the picker and f.1 found on the park cards |
+
+**R-D counts — 39 rows: 9 exact · 15 divergent · 12 missing · 3 extra** (D39 is a comment, counted
+in none of the four).
+
+**Since 08-14:** the whole region is new to the ledger. What moved at HEAD: 2g's
+`ReceiptEvidenceBody` replaced the 1i placeholder body (D5–D9, D24–D29 all describe a real body
+rather than an empty frame), and D199 put the run's OWN `descriptorFingerprint` on the receipt —
+which is what makes D31 a served-and-dropped finding rather than a wire gap.
+
+**OPEN in R-D (10 questions), and three of them are SERVED-AND-DROPPED — the receipt is not
+printing bytes it already holds:** D25 the observation's `taskId` + `observedAt` · D27 the
+`inputFingerprint` · D31 the `trace` / `descriptor` / `config` footer · D32 the receipt's `failure`
+id. Plus: D8 the confidence Chip and its three sentences · D9 the scattered identity line · D11 the
+invariant Banner · D13 the dry-run Banner · D17 the commit/prepare Badge · D24 the criterion icon ·
+D29 the uncertainty icon and its two full sentences · D39 the stale placeholder comment.
