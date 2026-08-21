@@ -1,13 +1,22 @@
-# 08 — Foundation Gap Audit: the unowned cross-cutting concerns
+# Foundation Gap Audit — the unowned cross-cutting concerns (was doc 08)
+
+_**Frozen historical record (2026-07-21 → 2026-07-22).** The three TOP GAPs this memo found were
+all CLOSED in Phase 1; their normative text lives in `reference/write-safety.md`,
+`reference/guards-and-tests.md` and `reference/clock-config-secrets.md`, and those docs — not this
+one — are what binds. Kept **verbatim** (plan ruling R9 item 4): its value is the record of what was
+missing and why, which gutting it would destroy. **Tags only** were added, plus the re-grounded
+pointers in the paragraph below; doc numbers, file paths and "today" inside the body are as they
+stood in 2026-07 and are read as history, never as claims about the tree._
 
 Status: **historical gap-discovery memo; superseded at its contract seams by 2026-07-22 Round 7.** A principal-architect pass over the
-four written design docs (01 task-contract, 02 workflow-model, 03 tracker-dashboard, 05 execution),
-the charter (`00`), and the binding reconciliation (`04` — D1 ownership matrix). This doc **owns
-nothing** yet: it is a findings-and-design memo that names what the foundation of a production,
+four written design docs (task-contract, workflow-model, dashboard-surfaces, execution-and-sessions),
+the charter, and the binding reconciliation (`reference/decisions.md` — D1 ownership matrix). This doc **owns
+nothing**: it is a findings-and-design memo that names what the foundation of a production,
 single-operator, **real-HR-transaction** system needs that no doc currently owns adequately, ranks
-the gaps by risk, and designs the top three. Ref data-intake-and-edit-data (data-intake/Edit-Data) and 07 (master-plan)
+the gaps by risk, and designs the top three. Ref data-intake-and-edit-data (data-intake/Edit-Data) and the master plan
 were planned-but-unwritten at the time. This file is evidence, not an implementation plan; current
-contracts live in 01–07 and 09–12, with build order in 07. **Paths re-grounded 2026-07-31 (Round 11,
+contracts live in `docs/rebuild/reference/`, with build order in the phase docs `docs/rebuild/00`–`05`
+and the plan tree at `docs/roadmap/roadmap.md`. **Paths re-grounded 2026-07-31 (Round 11,
 D93):** the rebuild now lives in its own `hr-automation-rebuild` repo — rebuild code at plain `src/`,
 tests at `tests/`, config at `config/` — so every rebuild path below is repo-relative there. That is
 an address change only; this memo still owns nothing.
@@ -454,6 +463,19 @@ effective value AND its source.
 ---
 
 ## 7. Open questions for the operator / orchestrator
+<!-- roadmap: operator-calls -->
+
+_All five are CLOSED, and this section is kept as the record of the Phase-0 operator-call register
+rather than as a live list. §7.1 → Kuali is SAVE-only and verified by reload read-back, OnBase by
+typed operator attestation (charter §13, ref write-safety §3). §7.2 → the probe policy is decided
+per workflow at migration time via the §b questionnaire, not defaulted here (ref write-safety §5).
+§7.3 → the immutable ledger is separate and never pruned; hash-chain tamper evidence is deferred to
+the multi-user phase (D79), which D193 makes a LATER with no owner. §7.4 → per-run instance
+selection is owned by ref clock-config-secrets. §7.5 → the three docs were written and are
+`reference/write-safety.md`, `reference/guards-and-tests.md` and `reference/clock-config-secrets.md`.
+The operator call that IS open lives at the tree's `{#operator-calls}` node and in
+`03b-finish-separations.md` §Smaller operator calls open — this doc holds no status block for it._
+
 
 1. **Kuali & OnBase receipts.** Gap 1 forces a post-submit read-back to prove a filed doc for the
    two systems that capture nothing today — is a live-verifiable "filed document" read-back
