@@ -27,6 +27,7 @@
  * each is a fixed map over a closed served enum or a display-only subtraction
  * of two served instants — never a second opinion about what a run IS.
  */
+import { memo } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
 import { cn } from "../lib/utils.js";
@@ -1456,7 +1457,24 @@ export function QueueRow({
  */
 export type QueueFilterScope = { kind: "needsYou" } | { kind: "status"; word: string };
 
-export function QueuePanel({
+/**
+ * D4 (Track D, ref frontend-backend-integration §7.4; audit finding P1) — this
+ * panel is `memo`'d, and every prop it takes is stable or primitive at the one
+ * place that renders it (`app/dashboard-app.tsx`;
+ * `dashboard-memo-prop-stability` refuses an inline object, array, arrow or
+ * call in any of its prop slots, because ONE of those turns this wrapper into
+ * pure overhead).
+ *
+ * What it buys and what it cannot: the app's live instant (D256) reaches this
+ * panel through `state.nowIso` and ticks once a second, so a queue drawn from
+ * a served day re-renders once a second no matter what — that is the floor,
+ * and it is deliberate (a frozen elapsed is D256's own defect). What `memo`
+ * removes is every re-render BETWEEN those ticks: a dialog opening, a
+ * selection toggling, a run-detail section landing, a nav step, a theme swap,
+ * and an SSE patch whose row is not in this panel's scope. At the §7.4
+ * fixture's 1,240 rows each of those used to redraw the whole queue.
+ */
+export const QueuePanel = memo(function QueuePanel({
   surfaces,
   state,
   handlers,
@@ -1681,5 +1699,4 @@ export function QueuePanel({
       </div>
     </section>
   );
-}
-
+});

@@ -14,7 +14,7 @@
  * projection (D81). The pill, the calendar cells and the Status Bar therefore
  * cannot disagree, because there is nothing here that counts anything.
  */
-import { useMemo, useRef, useState, type ReactElement } from "react";
+import { memo, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -991,7 +991,20 @@ function ShellViewSwitcher({
 /**
  * The Top Bar.
  */
-export function TopBar({
+/**
+ * D4 (Track D, ref frontend-backend-integration §7.4; audit finding P1) — this
+ * panel is `memo`'d, and every prop it takes is stable or primitive at the one
+ * place that renders it (`app/dashboard-app.tsx`;
+ * `dashboard-memo-prop-stability` refuses an inline object, array, arrow or
+ * call in any of its prop slots, because ONE of those turns this wrapper into
+ * pure overhead).
+ *
+ * The bar takes `nowIso` — the app's live instant (D256) — so like the queue
+ * it redraws once a second by design; `memo` removes the re-renders BETWEEN
+ * ticks, which is every command dispatch, every dialog, every run-detail
+ * section fetch and every SSE patch that does not move the day's rows.
+ */
+export const TopBar = memo(function TopBar({
   notifications,
   actorId,
   nowIso,
@@ -1138,4 +1151,4 @@ export function TopBar({
       </span>
     </header>
   );
-}
+});

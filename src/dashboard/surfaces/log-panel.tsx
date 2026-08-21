@@ -36,6 +36,7 @@
  * know" are the two sentences an operator acts on most differently.
  */
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -1268,6 +1269,15 @@ export interface LogPanelProps {
 }
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
+/**
+ * The `actions` default, hoisted OUT of the parameter list (D4).
+ *
+ * `actions = []` in the destructuring minted a fresh array on every
+ * render of a panel called without it, which under `memo` below is a prop
+ * that can never compare equal — the wrapper would then be pure overhead
+ * for exactly the caller that passes the fewest props.
+ */
+const NO_ACTIONS: readonly ActionDescriptorWire[] = Object.freeze([]);
 
 /**
  * Ported from legacy hr-automation@1bffbd65,
@@ -1398,11 +1408,29 @@ function PanelKindInfo({
   );
 }
 
-export function LogPanel({
+/**
+ * D4 (Track D, ref frontend-backend-integration §7.4; audit finding P1) — the
+ * run-detail panel is `memo`'d, and every prop it takes is stable or primitive
+ * at the one place that renders it (`app/dashboard-app.tsx`;
+ * `dashboard-memo-prop-stability` refuses an inline object, array, arrow or
+ * call in any of its prop slots).
+ *
+ * This is the panel `memo` buys the most on, and it is only buyable because of
+ * D4's OTHER half. The panel reads ONE row (`surface`), never the day's list —
+ * so an SSE patch for any other run leaves every prop here identical and this
+ * whole 2,000-line subtree skips. Before the patch-splice landed it could not:
+ * `applyDashboardDayPatch` re-parsed the day through zod on every patch, and a
+ * `parse` returns a fresh object graph, so `surface` was a new reference after
+ * every patch for every run. The splice and the wrapper are one change.
+ *
+ * `servedNow` is the app's live instant (D256) and ticks once a second, so the
+ * open panel still redraws on that tick by design.
+ */
+export const LogPanel = memo(function LogPanel({
   detail,
   sections,
   surface,
-  actions = [],
+  actions = NO_ACTIONS,
   tab,
   onTab,
   onAction = NOOP_ACTION,
@@ -2046,6 +2074,6 @@ export function LogPanel({
     </div>
     </div>
   );
-}
+});
 
 export type { RunDetailWire };
