@@ -481,6 +481,36 @@ log:
 - 2026-08-20 | docs-cohesion frontend-backend-integration | all eleven rows tick in ONE place — ref frontend-backend-integration §7.4's status block, with a per-row map of where each lands; §7.4 records that NOTHING in src/ or tests/ measures any budget it names
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
+#### Track F · demo fidelity — every detail, region by region {#track-f}
+status: you
+date: fidelity re-audit 2026-08-21
+size: L
+chip: ~150 OPEN questions — needs you
+doc: 03a §Demo fidelity — every detail, region by region
+
+> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119; 756 exact; ~150 distinct OPEN questions), and this node carries them until each is ported or recorded with its argument.
+
+builds:
+- [!] DOCS the operator rules the 37 shell / queue / run-start OPEN questions (ledger 1 §Roll-up)
+- [!] DOCS the operator rules the 54 run-detail OPEN questions (ledger 2 §Roll-up)
+- [!] DOCS the operator rules the ~60 standing-surface OPEN questions, the twelve structural ones first — the virtualised archive · the bump's MAJOR/MINOR arms · a DS specimen page · the row-and-panel vocabulary surface · Settings as a takeover · the keyboard legend · intake stages 5–6 · the intake review gate · the archived-capture lightbox · the bump plan naming its runs · the operator capture half · the two Settings sections already served (ledger 3 §Roll-up)
+- [ ] FE the served-and-dropped facts — 8 in run detail (the receipt footer, the failure's occurredAt / traceId / attempt, `page.urlRedacted`, `action.elementId`) + the standing-surface ones the ledger 3 roll-up lists (doc 03a §Served-and-dropped)
+- [ ] FE the structural run-detail ports — the failure-record disclosure + write-state block, the focusable timeline segment, the step-group Well, one-owner `dataExpanded`, the grouped log stream
+- [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
+- [ ] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
+- [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
+- [ ] BE a diagnostic bundle is readable (ledger 2 E29)
+- [ ] BOTH the intake manifest + rerun-diff surface (ledger 3 IN15/IN16)
+- [ ] BOTH the operator half of phone capture (ledger 3 CP3–CP5)
+- [ ] PROOF the parity corpus re-frozen once over every change, with the three missing scenes (Settings · the version-bump dialog · a DS specimen page)
+
+needs:
+- track-b
+- you: rule the ~150 OPEN questions in the three ledgers — each becomes ported, or a recorded divergence with its argument
+
+log:
+- 2026-08-21 | docs-cohesion 03a fidelity fold | node drawn from the three 2026-08-21 ledgers; doc 03a §Demo fidelity carries the per-region table, every OPEN question as one line, the served-and-dropped list and the stale-claims table · left: the operator's rulings, then every FE / BE / BOTH / PROOF line above
+
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: planned
 date: R12 · 2026-08-20
