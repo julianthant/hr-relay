@@ -860,19 +860,35 @@ implementation each, in `src/server/dashboard/run-status.ts`; the queue projecto
 `queries/run-detail.ts` both read them, and no surface may re-derive either fact privately.
 
 **What it was.** The projector's `#status` had two arms the panel's private `statusOf` did not —
-the fold's own `ended`, and `claimedBy`. Both arms exist because a span lands BEFORE the
-transaction it describes commits: a worker emits its run `span.ended` before terminal authority is
-written, and `run.claimed` before the claiming CAS is visible to a reader. So in the ordinary window
-between the two, a finished run read `done` in its queue row and `queued` in the panel that row
-opens — one run, one instant, two words, on the pair of surfaces an operator looks at side by side.
-The audit recorded it as C1 (`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.2).
+the fold's own `ended`, and `claimedBy`. Neither arm exists because a span lands before the
+transaction it describes commits; in production it is the other way round. `run-executor.ts`
+settles the terminal CAS (`terminalizeFailure`/`terminalizeSuccess`) and only then emits the run's
+`span.ended` (`:517-529`, `:618-624`); `worker-loop.ts` claims the run — the CAS inside
+`claimNext` — and only then emits `run.claimed` (`:258` before `:286`). Authority leads; the fold
+lags behind it by however long the projector's disk tail takes to ingest the line. The window this
+section used to describe — a fold reading `ended`/`claimedBy` while authority still answers
+non-terminal or unclaimed — is not a live race; it is representable only through the test harness,
+which writes span events straight to the stream and can order them however a case needs
+(`tests/unit/server/helpers/dashboard-harness.ts`'s `runEndedEventOf`/`claimEventOf`). What the
+live system actually got wrong sat one level down and needed no timing at all:
+`TASK_OUTCOME_PIPELINE` mapped `cancelled|discarded|superseded` to `blocked` while
+`TASK_OUTCOME_STEP` mapped them to `cancelled`, for every folded span, unconditionally. The audit
+recorded the run-status half as C1 (`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.2);
+it names a correct requirement on the derivation even though the executor's real ordering never
+exercises it.
 
 **Precedence, stated once.** Authority terminal outranks everything (the terminal lifecycle is
 written inside the transaction that settles the run); then the fold's `ended`; then `parked-write`
 → `blocked`; then `parked-gate` or any open gate span → `awaiting-approval`; then a
 claimed/validating/running lifecycle or a folded `claimedBy` → `running`; otherwise `queued`.
 `partial` stays unreachable from a lifecycle: it is a RESULT verdict (D238's receipt), and deriving
-it here would be a second opinion about a run's completeness.
+it here would be a second opinion about a run's completeness. The fold's `ended`/`claimedBy` arms
+stay ranked directly under authority terminal even though the executor's own ordering never lets
+them fire ahead of it: the projector's disk tail means the fold can still be the last fact to
+settle before the next served wire, and keeping authority strictly first — rather than dropping the
+fold arms, or letting a second derivation trust the fold on its own — is what stops the fold from
+ever acting as a second authority. That is the whole point of D266: ONE derivation, and authority
+always wins when it has an opinion.
 
 **The task vocabulary, and why `cancelled` won.** `TASK_OUTCOME_PIPELINE` mapped
 `cancelled|discarded|superseded` to `blocked` and `TASK_OUTCOME_STEP` mapped them to `cancelled`

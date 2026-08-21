@@ -163,9 +163,15 @@ describe("D266 — one run-status derivation", () => {
   });
 
   it("is literally the one exported function — no second copy to drift", () => {
-    // The structural half: the pair above can only stay equal while both call
-    // this. Asserting the function's own answer against both surfaces is what
-    // makes a re-inlined private copy fail rather than quietly pass.
+    // This pins the OLD divergence, not a structural guarantee: nothing here
+    // stops a future edit from re-inlining a second `statusOf`/`taskStateOf`
+    // copy that happens to answer the same words on every case above — no
+    // architecture guard refuses a second derivation (that is a possible
+    // future guard, not one this suite claims). What this case actually
+    // checks is behavioral: both surfaces answer through `deriveRunStatus`
+    // itself, on the exact inputs (a folded `ended`, a folded `claimedBy`,
+    // the unified outcome vocabulary) that the missing arms used to get
+    // wrong.
     const w = world();
     queuedEventOf(w, { seed: 7 });
     runEndedEventOf(w, 7, "superseded");

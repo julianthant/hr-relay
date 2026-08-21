@@ -121,8 +121,11 @@ committed read `done` in its queue row and `queued` in the panel that row opens.
 
 **Why nothing caught it.** Both derivations were internally consistent and separately tested; no
 test compared the pair, which is the only comparison that can see this class of defect. The window
-it needs is ordinary rather than exotic — every worker emits its run span before the CAS that
-settles the run.
+the RUN-level half needs is not one the executor's own ordering produces — `run-executor.ts` settles
+the terminal CAS before a worker emits its run span, so the fold lags authority rather than leading
+it, and the divergence is representable only through the test harness. The TASK-level half needed no
+window at all: `TASK_OUTCOME_PIPELINE`/`TASK_OUTCOME_STEP` disagreed unconditionally, for every
+folded span, regardless of timing.
 
 **Disposition.** `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in
 `src/server/dashboard/run-status.ts`, read by the projector and the run-detail query alike; the

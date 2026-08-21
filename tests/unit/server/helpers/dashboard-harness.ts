@@ -440,7 +440,11 @@ export function taskEventsOf(
   }
 }
 
-/** The run's own `span.ended` — the settlement the fold sees before authority. */
+/**
+ * The run's own `span.ended`, written straight to the stream — the harness's
+ * way to put the fold ahead of authority, an order the real executor never
+ * produces (it settles the terminal CAS before it emits).
+ */
 export function runEndedEventOf(
   world: DashboardWorld,
   seed: number,

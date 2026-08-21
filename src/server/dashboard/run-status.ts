@@ -6,11 +6,17 @@
  * row's status came from the projector's own `#status`, which reads the span
  * fold's `ended` and `claimedBy` beside the authority lifecycle; the run-detail
  * panel's came from a private `statusOf` that had NEITHER arm and inlined its
- * own copy of the outcome map. So a run whose `span.ended` reached the fold
- * before the terminal CAS landed — the ordinary window between a worker's last
- * emit and its authority transaction — read `done` in its row and `queued` in
- * the panel that opens from that row. Same run, same instant, two words, and
- * nobody else is here to notice.
+ * own copy of the outcome map. In production the two never disagree over
+ * TIMING: `run-executor.ts` settles the authority CAS
+ * (`terminalizeFailure`/`terminalizeSuccess`) and only then emits the run's
+ * `span.ended` (`:517-529`, `:618-624`), and `worker-loop.ts` claims the run
+ * and only then emits `run.claimed` (`:258` before `:286`) — authority leads,
+ * the fold lags by however long the projector's disk tail takes to ingest the
+ * line. The window this file used to describe — a fold reading
+ * `ended`/`claimedBy` before authority reflects it — is reachable only
+ * through the test harness, which writes span events directly to the stream
+ * and can order them however a case needs. What WAS live is the vocabulary
+ * split one level down.
  *
  * The task half was the same defect one level down: `TASK_OUTCOME_PIPELINE`
  * mapped `cancelled`/`discarded` to `blocked` and `TASK_OUTCOME_STEP` mapped
@@ -78,16 +84,23 @@ export interface RunStatusFold {
  * 1. **Authority terminal wins outright.** A terminal lifecycle is written by
  *    the terminal-authority contract inside the transaction that settles the
  *    run; nothing in the span stream outranks it.
- * 2. **The run's own `span.ended` is next.** It is emitted before that
- *    transaction commits, so between the two a run really has finished and
- *    authority really has not said so yet. Reading only authority there
- *    reports a finished run as queued, which is the C1 defect.
+ * 2. **The run's own `span.ended` is next.** In production it is emitted
+ *    AFTER the authority CAS that settles the run (`run-executor.ts` calls
+ *    `terminalizeFailure`/`terminalizeSuccess` before emitting), so this arm
+ *    never outranks arm 1 live — the fold catches up to authority, never the
+ *    other way round. It stays second anyway: this is the ONE place both
+ *    surfaces read, and a fold that could show `ended` out of turn (a
+ *    replay, a rebuilt projection, the test harness writing spans straight
+ *    to the stream) must still resolve to the word authority would settle
+ *    on, never a competing verdict.
  * 3. **A parked write is `blocked`, a parked gate or any open gate span is
  *    `awaiting-approval`** — the lifecycle and the stream agree on these and
  *    either is sufficient.
  * 4. **A claimed/validating/running lifecycle, or a folded `claimedBy`, is
- *    `running`.** The `run.claimed` span likewise lands before the claiming
- *    transaction is visible to a reader.
+ *    `running`.** `worker-loop.ts` claims the run — the CAS — before it
+ *    emits `run.claimed`, so the same is true here: authority reaches
+ *    `claimed` first, and `claimedBy` is a fallback for a fold read out of
+ *    that order, not a description of the live path.
  * 5. Otherwise `queued`.
  *
  * `partial` is deliberately unreachable here: it is a RESULT verdict (a

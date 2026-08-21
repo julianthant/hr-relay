@@ -40,9 +40,13 @@
  * This query derives NEITHER the run's status NOR its panel kind on its own
  * (D266). `deriveRunStatus` and `panelKindOf` come from `../run-status.ts`, the
  * same functions the queue projection's row is built from. The private
- * `statusOf` they replaced was missing the fold's `ended` and `claimedBy` arms,
- * so a run whose `span.ended` had folded before its terminal transaction
- * committed read `done` in its queue row and `queued` in this panel.
+ * `statusOf` they replaced was missing the fold's `ended` and `claimedBy`
+ * arms — a real gap (a re-inlined private copy is exactly what D266 closes)
+ * even though the ordering that would exploit it live never occurs:
+ * `run-executor.ts` settles the terminal CAS before emitting the run's
+ * `span.ended`, so authority leads and the fold only ever lags. The window
+ * those arms cover is one the test harness can construct by writing spans
+ * directly to the stream, not one the executor's own path produces.
  */
 import { z } from "zod";
 import type { JsonValue } from "../../../domain/canonical-json.js";
