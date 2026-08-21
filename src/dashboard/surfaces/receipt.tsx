@@ -23,6 +23,7 @@ import { Banner, DS_STATUS, EmptyState, MetaLine, SectionLabel, dsIcon, dsText }
 import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import { fmtClock } from "./format.js";
+import { testInstanceSystems } from "./test-instance-hazard.js";
 import type { OutcomeWire, TerminalOutcomeResult } from "./status-model.js";
 
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
@@ -59,7 +60,7 @@ export function ReceiptView({
   receipt: ReceiptSectionPayload;
   resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
 }) {
-  const testSystems = resolvedInstances.filter(({ instance }) => instance === "test").map(({ system }) => system);
+  const testSystems = testInstanceSystems(resolvedInstances);
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-loose)] p-[var(--ds-space-cozy)]">
@@ -73,7 +74,7 @@ export function ReceiptView({
       )}
 
       {testSystems.length > 0 && (
-        <Banner tone="warning" title={`Written to the TEST instance of ${testSystems.join(", ").toUpperCase()} — this is not a filing`}>
+        <Banner tone="warning" title={`Written to the TEST instance of ${testSystems.join(", ")} — this is not a filing`}>
           Everything below really happened, on a test system. Nothing on this receipt changed a production record, and the
           confirmation numbers are test-instance numbers.
         </Banner>

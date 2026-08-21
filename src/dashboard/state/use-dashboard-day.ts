@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from "react";
 import type { DashboardDayWire } from "../../domain/dashboard/projection.js";
-import { DashboardClientError, type SubscriptionState } from "../client/index.js";
+import type { SubscriptionState } from "../client/index.js";
 import { failed, loaded, LOADING, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";
 
@@ -44,37 +44,4 @@ export function useDashboardDay(day: string): DashboardDayState {
   }, [client, day]);
 
   return { day: dayResource, connection };
-}
-
-/**
- * The day snapshot fetched once, without a stream — the parity lane's
- * deterministic read path and the fallback a surface uses when it needs a
- * coherent day but no live updates.
- */
-export function useDashboardDaySnapshot(day: string): AsyncResource<DashboardDayWire> {
-  const client = useDashboardClient();
-  const [resource, setResource] = useState<AsyncResource<DashboardDayWire>>(LOADING);
-
-  useEffect(() => {
-    let live = true;
-    setResource(LOADING);
-    client.dashboardDay(day).then(
-      (value) => {
-        if (live) setResource(loaded(value));
-      },
-      (error: unknown) => {
-        if (!live) return;
-        if (error instanceof DashboardClientError) {
-          setResource(failed(error));
-          return;
-        }
-        throw error;
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [client, day]);
-
-  return resource;
 }

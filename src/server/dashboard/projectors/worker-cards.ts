@@ -41,7 +41,7 @@ export interface WorkerBrowserFold {
 }
 
 /** What this worker's span fold knows; absent when the stream has never named it. */
-export interface WorkerSpanFold {
+interface WorkerSpanFold {
   /** Span events folded for this worker — a patch cursor, never a CAS token. */
   readonly revision: number;
   /** The run its `run.claimed` span named and no terminal span has cleared. */

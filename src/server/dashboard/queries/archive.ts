@@ -83,6 +83,7 @@ function archivedWorkflowCode(
 }
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "./run-detail.js";
+import { TargetNotFoundError } from "../../failures.js";
 
 export interface ArchiveQueryDeps {
   readonly clock: Clock;
@@ -241,7 +242,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
   return deps.authority.withAuthorityTransaction((repositories) => {
     const record = repositories.archivedRuns.get(runIdInput);
     if (record === undefined) {
-      throw new Error(`archived run ${runIdInput} does not exist`);
+      throw new TargetNotFoundError(`archived run ${runIdInput} does not exist`);
     }
     /**
      * The ONLY registry read on this path, and it decides an AFFORDANCE, not
@@ -348,7 +349,7 @@ export function createArchiveSnapshotSource(deps: RunDetailQueryDeps): ArchiveSn
     snapshot(runId: string): ArchiveRunSnapshot {
       const row = deps.projection.queueSurface(runId);
       if (row === undefined) {
-        throw new Error(
+        throw new TargetNotFoundError(
           `run ${runId} has no span fold; refusing to archive a run the projection cannot render, `
           + "because an archived row that could not be built now can never be built later",
         );
@@ -391,7 +392,7 @@ const FROZEN_LOG_PAGE_LIMIT = 500;
 function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): ArchivedProjectionSections {
   const fold = deps.projection.runFold(runId);
   if (fold === undefined) {
-    throw new Error(`run ${runId} has no span fold; its sections cannot be frozen`);
+    throw new TargetNotFoundError(`run ${runId} has no span fold; its sections cannot be frozen`);
   }
   return ArchivedProjectionSectionsSchema.parse({
     logs: { state: "present", value: freezeLogs(deps, runId) },

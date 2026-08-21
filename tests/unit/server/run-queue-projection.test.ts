@@ -13,6 +13,7 @@ import { afterEach, describe, it } from "vitest";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
+import { ProjectionDegradedError } from "../../../src/server/failures.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
@@ -432,6 +433,20 @@ describe("THE run/queue projection (D81)", () => {
     assert.equal(w.projection.health().state, "degraded");
     assert.match(w.projection.health().lastError ?? "", /no run\.queued span/);
     assert.throws(() => w.projection.buildDashboardDayWire(DAY), /degraded and refuses to serve counts/);
+    // `buildActivityReportWire` shares the same degraded-health guard as
+    // `buildDashboardDayWire` and must re-kind to the SAME typed refusal
+    // (ProjectionDegradedError, not a plain Error) so /api/v1/reports/activity
+    // and .csv answer PROJECTION_DEGRADED/retryable:true instead of a bare 500.
+    assert.throws(
+      () => w.projection.buildActivityReportWire(DAY, DAY),
+      /degraded and refuses to serve activity aggregates/,
+    );
+    try {
+      w.projection.buildActivityReportWire(DAY, DAY);
+      assert.fail("expected buildActivityReportWire to throw while degraded");
+    } catch (error) {
+      assert.ok(error instanceof ProjectionDegradedError, "must throw the typed refusal, not a plain Error");
+    }
     assert.equal(w.scheduledRebuilds.length, 1);
 
     w.scheduledRebuilds[0]();

@@ -39,6 +39,7 @@ import {
   CAPTURE_TOKEN_HEADER,
   CaptureSessionWireSchema,
   CaptureTokenSchema,
+  capturePhoneHostOf,
   deriveCaptureTokenDigest,
   isCapturePhoneAsset,
   matchesCapturePhoneRoute,
@@ -47,6 +48,7 @@ import { CaptureSessionSchema } from "../../../src/domain/capture.js";
 import { REPO_ROOT, repoRelative, walkFiles } from "./helpers/guard-files.js";
 
 const API_ROUTES_FILE = join(REPO_ROOT, "src/server/dashboard/routes/api.ts");
+const DASHBOARD_COMPOSE_FILE = join(REPO_ROOT, "src/server/dashboard/compose.ts");
 
 /* ── 1. the closed union matches the registered routes, both ways ─────────── */
 
@@ -207,6 +209,57 @@ describe("capture scope — the ingress is deny-by-default", () => {
     const app = scopedApp({ phoneHost: PHONE_HOST });
     const headers = { host: "127.0.0.1:3938" };
     assert.equal((await app.request("http://x/api/v1/bootstrap", { headers })).status, 200);
+  });
+});
+
+/* ── 2b. the gate has a PRODUCER, and it is the ingress's own config leaf ─── */
+
+/**
+ * The scope filter above is only enforcement if something supplies the host it
+ * keys on. Between D174 and Track D row D2 nothing did — `deps.capturePhoneHost`
+ * was read in `api.ts` and passed by no composition root, so the gate compiled
+ * and could never fire (D189 item 3, D181's shape). These arms pin both halves
+ * of the wiring: the derivation, and the composition root that calls it.
+ */
+describe("capture scope — the phone host is derived from the ingress's own config", () => {
+  it("names a host for a forwarded ingress and nothing for the two modes with no origin", () => {
+    assert.equal(
+      capturePhoneHostOf({ ingress: "forwarded", forwardedUrl: "https://Capture.Example.ngrok.app" }),
+      "capture.example.ngrok.app",
+    );
+    assert.equal(
+      capturePhoneHostOf({ ingress: "forwarded", forwardedUrl: "https://capture.example.app:8443/x" }),
+      "capture.example.app:8443",
+    );
+    // No ingress means no phone origin to scope: the gate admits everything,
+    // which is what keeps the operator's own loopback requests working.
+    assert.equal(capturePhoneHostOf({ ingress: "disabled" }), undefined);
+    assert.equal(capturePhoneHostOf({ ingress: "on-demand-ngrok" }), undefined);
+  });
+
+  it("REFUSES a forwarded ingress it cannot read a host out of, rather than going unscoped", () => {
+    // The violating fixture. Answering `undefined` here would silently drop
+    // §7's scope on the one path exposed to the public internet.
+    assert.throws(
+      () => capturePhoneHostOf({ ingress: "forwarded" }),
+      /no forwardedUrl/,
+    );
+    assert.throws(
+      () => capturePhoneHostOf({ ingress: "forwarded", forwardedUrl: "capture.example.app" }),
+      /is not a URL/,
+    );
+  });
+
+  it("the dashboard composition root supplies the host from that derivation", () => {
+    const source = readFileSync(DASHBOARD_COMPOSE_FILE, "utf8");
+    assert.ok(
+      source.includes("capturePhoneHostOf(resolved.config.capture)"),
+      "compose.ts must derive the phone host from the SAME capture config leaf the ingress resolver reads",
+    );
+    assert.ok(
+      /\.\.\.\(capturePhoneHost === undefined \? \{\} : \{ capturePhoneHost \}\)/.test(source),
+      "compose.ts must pass capturePhoneHost to createDashboardApp, or the gate has no producer again",
+    );
   });
 });
 

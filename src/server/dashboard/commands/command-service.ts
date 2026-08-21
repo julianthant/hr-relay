@@ -60,6 +60,7 @@ import { runSpanPath } from "../../../core/span-emitter.js";
 import type { SpanJsonlWriter } from "../../../infra/events/span-jsonl-writer.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { errorText } from "../support.js";
+import { TargetNotFoundError } from "../../failures.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
@@ -94,7 +95,7 @@ export interface DashboardCommandService {
  */
 const BULK_CHILD_COMMAND_NAMESPACE = "hrauto:bulk-run-child-command:v1";
 
-export function bulkChildCommandId(bulkCommandId: string, runId: string): z.infer<typeof CommandIdSchema> {
+function bulkChildCommandId(bulkCommandId: string, runId: string): z.infer<typeof CommandIdSchema> {
   // Parsed rather than asserted: a derivation that stopped producing UUID shape
   // would otherwise reach the kernel's journal as a key nothing can look up.
   return CommandIdSchema.parse(deriveStableUuid(BULK_CHILD_COMMAND_NAMESPACE, `${bulkCommandId}\0${runId}`));
@@ -271,7 +272,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         }
         const original = deps.projection.runFold(request.target.runId);
         if (original === undefined) {
-          throw new Error(
+          throw new TargetNotFoundError(
             `retry of ${request.target.runId} cannot emit run.queued: the original run has no span fold to carry its title`,
           );
         }

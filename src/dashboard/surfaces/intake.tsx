@@ -98,7 +98,7 @@ import {
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { CaptureStart } from "./capture-start.js";
-import { fmtClock } from "./format.js";
+import { fmtClock, pluralize, shortHash } from "./format.js";
 
 type DetectedColumn = z.infer<typeof DetectedColumnSchema>;
 type ColumnBinding = z.infer<typeof ColumnBindingSchema>;
@@ -359,19 +359,15 @@ function SourceBand({
             </span>
           }
         >
-          {`${String(session.bindings.length)} bound ${plural(session.bindings.length, "column")}, `
-            + `${String(session.corrections.length)} ${plural(session.corrections.length, "correction")} and `
-            + `${String(session.exclusions.length)} ${plural(session.exclusions.length, "exclusion")} `
+          {`${String(session.bindings.length)} bound ${pluralize(session.bindings.length, "column")}, `
+            + `${String(session.corrections.length)} ${pluralize(session.corrections.length, "correction")} and `
+            + `${String(session.exclusions.length)} ${pluralize(session.exclusions.length, "exclusion")} `
             + "name rows and columns under the current header row, so re-reading the file drops them."}
         </Banner>
         </Arriving>
       )}
     </section>
   );
-}
-
-function plural(count: number, word: string): string {
-  return count === 1 ? word : `${word}s`;
 }
 
 /** Why the header row is what it is — the discovery reason, in words. */
@@ -877,7 +873,7 @@ const RERUN_AXIS_LABEL: Record<string, string> = {
  * running again would file the same rows a second time.
  */
 function RerunBanner({ rerun }: { rerun: NonNullable<IntakeSessionWire["rerun"]> }) {
-  const meta = [`manifest ${rerun.intakeManifestId.slice(0, 8)}…`, `ran ${fmtClock(rerun.createdAt)}`,
+  const meta = [`manifest ${shortHash(rerun.intakeManifestId)}…`, `ran ${fmtClock(rerun.createdAt)}`,
     `${String(rerun.totals.valid)} of ${String(rerun.totals.sourceRows)} rows ran`];
   if (rerun.diff.kind === "same-plan") {
     return (

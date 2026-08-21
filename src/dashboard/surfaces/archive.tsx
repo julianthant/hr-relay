@@ -158,7 +158,8 @@ import type { CommandResult, VersionScope } from "../../domain/commands.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural } from "./format.js";
+import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural, shortHash } from "./format.js";
+import { testInstanceSystems } from "./test-instance-hazard.js";
 import { dsStatusOf } from "./status-model.js";
 import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
 import { ARCHIVE_INDEX, archivedRunTouchedTest } from "./archive-model.js";
@@ -182,10 +183,6 @@ const DRIFT_TEXT: Record<string, string> = {
 
 function driftWords(drift: readonly string[]): string {
   return drift.map((reason) => DRIFT_TEXT[reason] ?? reason).join(" · ");
-}
-
-function shortHash(value: string): string {
-  return value.slice(0, 8);
 }
 
 /* ── the query ───────────────────────────────────────────────────────────── */
@@ -242,13 +239,6 @@ function queryIsFiltered(query: ArchiveQuery): boolean {
 }
 
 /* the test-instance predicate lives in `archive-model.ts` — see the note there */
-
-/** The systems whose TEST instance this run resolved, for the hazard's title. */
-function testInstanceSystems(entry: ArchiveEntryWire): readonly string[] {
-  return entry.resolvedInstances
-    .filter((resolved) => resolved.instance === "test")
-    .map((resolved) => resolved.system);
-}
 
 /**
  * A run's measured duration, or an explicit absence. `endedAt` is served in
@@ -476,7 +466,7 @@ function ArchiveRow({
           */}
           {archivedRunTouchedTest(entry) && (
             <TriangleAlert
-              aria-label={`touched a test instance of ${testInstanceSystems(entry).join(", ")}`}
+              aria-label={`touched a test instance of ${testInstanceSystems(entry.resolvedInstances).join(", ")}`}
               className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-status-waiting-fg)]")}
             />
           )}
@@ -1128,7 +1118,7 @@ function ArchivedRunDetail({
   const seconds = row.endedAt.state === "present"
     ? elapsedSecondsBetween(row.startedAt, row.endedAt.value)
     : undefined;
-  const testInstances = row.resolvedInstances.filter((resolved) => resolved.instance === "test");
+  const testInstances = testInstanceSystems(row.resolvedInstances);
   const evidenceCount = detail.evidence.artifactIds.length
     + detail.evidence.checkpointNodeIds.length
     + detail.evidence.writeIntentIds.length;
@@ -1236,7 +1226,7 @@ function ArchivedRunDetail({
             <Chip label="attempt">{String(detail.detail.header.attempt)}</Chip>
             {testInstances.length > 0 && (
               <Chip tone="warning" icon={<TriangleAlert aria-hidden className={dsIcon.sm} />}>
-                test instance · {testInstances.map((resolved) => resolved.system).join(", ")}
+                test instance · {testInstances.join(", ")}
               </Chip>
             )}
             {detail.relaunch.state === "available"

@@ -4,7 +4,6 @@
  * this slice cannot yet serve is an explicit `unavailable` with its owning
  * milestone named — never a plausible placeholder.
  */
-import { z } from "zod";
 import type { CapabilityAvailability } from "../../../domain/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { workflowProjections } from "../../../base/workflow.js";
@@ -129,5 +128,3 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     ],
   });
 }
-
-export const BootstrapDaySchema = z.iso.date();

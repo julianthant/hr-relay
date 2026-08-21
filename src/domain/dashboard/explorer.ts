@@ -569,13 +569,6 @@ export const WorkflowExplorerWireSchema = z.strictObject({
 });
 export type WorkflowExplorerWire = z.infer<typeof WorkflowExplorerWireSchema>;
 
-/** Every task arm across a workflow's nodes, in graph order. */
-export function explorerWorkflowTasks(
-  workflow: ExplorerWorkflowWire,
-): readonly Readonly<{ node: ExplorerNodeWire; task: ExplorerTaskWire }>[] {
-  return workflow.nodes.flatMap((node) => node.tasks.map((task) => ({ node, task })));
-}
-
 /* ── the generated UI catalog surface (D177) ─────────────────────────────── */
 
 /**

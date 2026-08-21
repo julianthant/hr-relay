@@ -5,10 +5,7 @@
  * is a finished server read model.
  */
 import { useEffect, useState } from "react";
-import type {
-  RunDetailSectionResponse,
-  RunDetailWire,
-} from "../../domain/dashboard/run-detail.js";
+import type { RunDetailWire } from "../../domain/dashboard/run-detail.js";
 import { DashboardClientError } from "../client/index.js";
 import { failed, IDLE, loaded, LOADING, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";
@@ -146,48 +143,6 @@ export function useRunDetail(
       live = false;
     };
   }, [client, runId, reloadNonce, followedRevision]);
-
-  return resource;
-}
-
-/**
- * One section of the open run. A section the detail did not advertise is never
- * requested — `availableSections` is the server's statement of what exists, and
- * asking anyway would turn a legitimate absence into an error toast.
- */
-export function useRunSection(
-  runId: string | undefined,
-  section: string | undefined,
-  availableSections: readonly string[],
-): AsyncResource<RunDetailSectionResponse> {
-  const client = useDashboardClient();
-  const [resource, setResource] = useState<AsyncResource<RunDetailSectionResponse>>(IDLE);
-  const advertised = section !== undefined && availableSections.includes(section);
-
-  useEffect(() => {
-    if (runId === undefined || section === undefined || !advertised) {
-      setResource(IDLE);
-      return;
-    }
-    let live = true;
-    setResource(LOADING);
-    client.runSection(runId, section).then(
-      (value) => {
-        if (live) setResource(loaded(value));
-      },
-      (error: unknown) => {
-        if (!live) return;
-        if (error instanceof DashboardClientError) {
-          setResource(failed(error));
-          return;
-        }
-        throw error;
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [client, runId, section, advertised]);
 
   return resource;
 }

@@ -30,8 +30,9 @@ import { StartRefusalCodeSchema } from "../../../domain/run/start-plan.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { planStart } from "../../../services/start/plan.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
+import { TargetNotFoundError } from "../../failures.js";
 
-export const StartPlanIngressSchema = z.strictObject({
+const StartPlanIngressSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   submissions: z.array(JsonValueSchema).min(1),
   dryRun: z.boolean(),
@@ -40,7 +41,7 @@ export const StartPlanIngressSchema = z.strictObject({
   requestedInstance: InstanceSelectionSchema.optional(),
 });
 
-export const StartPlanWireSchema = z.strictObject({
+const StartPlanWireSchema = z.strictObject({
   wireVersion: z.literal(1),
   startPlanId: StartPlanIdSchema,
   workflowId: WorkflowIdSchema,
@@ -98,7 +99,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       const ingress = StartPlanIngressSchema.parse(input);
       const descriptor = deps.descriptors.resolve(ingress.workflowId);
       if (descriptor === undefined) {
-        throw new Error(`workflow ${ingress.workflowId} is not registered; nothing to plan`);
+        throw new TargetNotFoundError(`workflow ${ingress.workflowId} is not registered; nothing to plan`);
       }
       const record = planStart(
         {

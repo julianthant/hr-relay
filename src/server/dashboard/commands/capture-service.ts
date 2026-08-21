@@ -55,6 +55,7 @@ import {
 } from "../../../domain/capture-surface.js";
 import { CapturePhotoIdSchema, CaptureSessionIdSchema } from "../../../domain/ids.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../domain/ids.js";
+import { TargetNotFoundError } from "../../failures.js";
 
 /* ── refusals ────────────────────────────────────────────────────────────── */
 
@@ -327,7 +328,7 @@ export function createCaptureService(dependencies: CaptureServiceDependencies): 
     async start(request: CaptureStartRequest): Promise<CaptureStartResult> {
       const workflow = z.string().min(1).parse(request.workflow);
       if (dependencies.descriptors.resolve(workflow) === undefined) {
-        throw new Error(`workflow ${workflow} is not registered; capture cannot be started for it`);
+        throw new TargetNotFoundError(`workflow ${workflow} is not registered; capture cannot be started for it`);
       }
       const ingress = dependencies.ingress();
       if (ingress.state === "refused") {
@@ -375,7 +376,7 @@ export function createCaptureService(dependencies: CaptureServiceDependencies): 
       const session = dependencies.authorityRead.getCaptureSession(
         CaptureSessionIdSchema.parse(sessionId),
       );
-      if (session === undefined) throw new Error(`capture session ${sessionId} is not in authority`);
+      if (session === undefined) throw new TargetNotFoundError(`capture session ${sessionId} is not in authority`);
       return toWire(expireIfOverdue(session));
     },
 

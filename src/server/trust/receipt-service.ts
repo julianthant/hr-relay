@@ -20,6 +20,7 @@ import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import type { RunEvidenceReceipt } from "../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../domain/trust/failure.js";
 import type { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { TargetNotFoundError } from "../failures.js";
 
 export interface ReceiptServiceDeps {
   readonly database: AuthorityDatabase;
@@ -41,7 +42,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
   const store: EvidenceReceiptStore = Object.freeze({
     getRun: (runId: string) => {
       const run = authority.runs.get(runId);
-      if (run === undefined) throw new Error(`run ${runId} does not exist in authority`);
+      if (run === undefined) throw new TargetNotFoundError(`run ${runId} does not exist in authority`);
       return run;
     },
     getResult: (runId: string) => {
@@ -62,7 +63,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     },
     listCheckpointsByRun: (runId: string) => {
       const run = authority.runs.get(runId);
-      if (run === undefined) throw new Error(`run ${runId} does not exist in authority`);
+      if (run === undefined) throw new TargetNotFoundError(`run ${runId} does not exist in authority`);
       return authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId);
     },
     listWritesByRun: (runId: string): readonly ReceiptWriteEvidence[] => authority.writeIntents
@@ -80,7 +81,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
 
   const descriptorFor = (runId: string): AnyWorkflowDescriptor => {
     const run = authority.runs.get(runId);
-    if (run === undefined) throw new Error(`run ${runId} does not exist in authority`);
+    if (run === undefined) throw new TargetNotFoundError(`run ${runId} does not exist in authority`);
     const descriptor = byId.get(String(run.envelope.workflow));
     if (descriptor === undefined) {
       throw new Error(

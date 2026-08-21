@@ -146,6 +146,32 @@ export function dayLabelWithToday(day: string, today: string): string {
   return day === today ? `${dayLabel(day)} · today` : dayLabel(day);
 }
 
+/**
+ * The NOUN alone, agreeing with a count printed elsewhere in the sentence —
+ * `3 bound ${pluralize(3, "column")}`, where the adjective sits between the two
+ * and `plural` cannot be used.
+ *
+ * It was a second private `plural` inside `intake.tsx` with the same name and a
+ * different return, which is the worst shape a fork can take: a call site moving
+ * between the two files compiles and prints a count twice or not at all.
+ */
+export function pluralize(n: number, noun: string, pluralNoun?: string): string {
+  return n === 1 ? noun : pluralNoun ?? `${noun}s`;
+}
+
+/** The count and the noun together — `3 columns`. */
 export function plural(n: number, noun: string, pluralNoun?: string): string {
-  return `${n} ${n === 1 ? noun : pluralNoun ?? `${noun}s`}`;
+  return `${n} ${pluralize(n, noun, pluralNoun)}`;
+}
+
+/**
+ * An opaque durable identifier cut for the eye — a manifest id, a plan id, a
+ * receipt id, a fingerprint. The full value always stays reachable beside it
+ * (a title, a ⓘ, the detail panel); this is the chip length, in ONE place, so
+ * two surfaces cannot show the same id at two lengths.
+ */
+export const SHORT_HASH_PREFIX = 8;
+
+export function shortHash(value: string): string {
+  return value.slice(0, SHORT_HASH_PREFIX);
 }
