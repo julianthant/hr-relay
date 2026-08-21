@@ -1040,7 +1040,34 @@ outcome. `terminalOutcomeText` (`src/dashboard/surfaces/log-panel-model.ts:67-72
 exported function for the reason D187 taught: this tree renders no React in the unit lane, so an
 operator-facing sentence is only as pinned as the parity corpus unless it is extracted.
 
-### 2.4 Rerun transparency
+#### 2.3.8 The demo's `receiptInvariant` Banner is structurally unnecessary here (ledger 2 D11)
+
+<!-- roadmap: track-b -->
+
+**Answered 2026-08-21.** The demo's Receipt renders a `receiptInvariant` Banner that fires when a
+receipt claims `result: "verified-done"` without `confidence: "verified"` — a defensive display for
+a pairing the demo's own data could carry. The question ledger 2 D11 left open was whether this
+tree's receipt can hold that pairing at all; it cannot, at two independent layers, so the Banner has
+no case to ever draw.
+
+**The authority layer.** `evidence_receipts`' DDL carries `CHECK (result <> 'verified-done' OR
+confidence = 'verified')` (`src/infra/sqlite/migrations.ts:167`) — SQLite refuses the INSERT before
+the row exists.
+
+**The domain layer, independently.** `RunEvidenceReceiptSchema`'s `superRefine`
+(`src/domain/trust/evidence.ts:123,162`) rejects the same pairing at PARSE time: `if
+(receipt.result === "verified-done") { if (receipt.confidence !== "verified") context.addIssue(...)
+}`. This is the schema the wire and every in-process consumer read through — it makes the pair
+unrepresentable before a byte reaches the database, not merely after.
+
+Both checks encode the SAME invariant `receiptInvariant` exists to warn about, so no receipt this
+tree can construct — durable or in-memory — ever reaches `receipt.tsx`/`trust.tsx`'s
+`ReceiptEvidenceBody` in the state the Banner is for. Building the Banner would be dead code: a
+warning for a state the type system and the database both already refuse to let exist. This is
+distinct from D238's `rehearsal`/`verified-done` refinement (§2.3.7) — that pair is about a DIFFERENT
+mismatch (a dry run wearing the verified label) enforced on `OutcomeWireSchema`, one layer out on
+the dashboard wire; this one is about `result`/`confidence` on the receipt itself, enforced at
+authority and at the domain schema both.
 
 <!-- roadmap: p2-2g -->
 <!-- roadmap: def-search-export -->
@@ -1796,8 +1823,12 @@ the ⓘ saying so in as many words — **superseded by §5.9 (D227), which serve
 and counts fields**; the graph header omits the demo's file-count segment (a per-run
 fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
 (a descriptor-authored phase would sit inside §5.3's closed editable set once Phase B exists); and
-the demo's `Version registry` header action is absent because no version-registry surface exists in
-this tree. The conditional-node line printed "runs when the descriptor's own when() predicate
+the demo's `Version registry` header action is absent from the Explorer's toolbar — corrected
+2026-08-21: the surface itself is not missing, only the Explorer's DOOR to it. `archive.tsx`
+renders `<Table label="Workflow version registry">` inside the Archive's `Versions & bumps` view
+(`:2342`, D179/D223), reachable today by opening the Archive (`?archive=`) and clicking its
+`Versions & bumps` tab — the view is client-side state, not its own URL param. The Explorer simply
+carries no button or link that opens it (ledger 3 EX5). The conditional-node line printed "runs when the descriptor's own when() predicate
 holds" — honest, and less than the demo's authored sentence — and the recorded fix named an authored
 `whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
 refused**: `purpose` and `summary` are authored data (§5.9, D229), while `whenLabel` is refused
