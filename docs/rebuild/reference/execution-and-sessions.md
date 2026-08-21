@@ -57,17 +57,30 @@ understandable ownership model and removes the proposed scheduler inside each pr
 1. **No executor lanes.** There is no global `lanes` number, lane reservation, capacity chip, or
    per-workflow lane cap.
 2. **No static per-system capacity math.** There is no `ucpath 1/1` or `crm 1/2` budget contract.
-   Concrete browser health tiles show the sessions that actually exist.
+   Concrete browser session tiles show the sessions that actually exist (§4's D248 as-built).
 3. **One worker, one active item.** A worker does not claim a second run until its active run parks
-   or reaches a terminal state.
+   or reaches a terminal state. This is enforced as a THROW, not a typed outcome: `claimNext`
+   refuses while a worker id still owns a non-terminal run (§3.0).
 4. **Parallelism is worker count.** Starting N workers for a workflow creates N independent workers.
-   The Add-workers UI does not invent a hidden lease calculation or global cap.
-5. **Browser sessions belong to a worker.** Distinct workers own independent system sessions.
+   The Add-workers UI does not invent a hidden lease calculation or global cap. **As built, the
+   runtime starts one worker per workflow, from the CLI** — `createPhase1WorkerRuntimeExecutor`
+   refuses a plan for `desiredWorkers !== 1` and the dashboard's supervisor refuses to spawn a
+   process by name (`src/core/worker-loop.ts`, `src/server/dashboard/compose.ts`). The pool that
+   makes item 4 reachable from a surface is §11, and it is designed, not built. Nothing about the
+   kernel serializes: §7.1's matrix runs N real loops over one authority database today.
+5. **Browser sessions belong to a worker.** Distinct workers own independent system sessions, down
+   to independent on-disk profile directories (§1).
 6. **Workflows declare fresh-session boundaries.** Reuse is normal. If a particular step must run
    in a new browser session, the workflow descriptor says so explicitly. The kernel never infers a
    boundary from a counter, step name, or queue state.
 7. **No cross-workflow browser pool.** Authenticated pages are not shared between unrelated
    workflows.
+
+**One resource is shared whether we like it or not, and item 7 does not reach it.** Every UCSD
+system authenticates through one SSO credential, and Duo's WebAuthn signature counter for that
+credential lives on Duo's side while every profile keeps its own unsynchronised copy (§4.2). So two
+workers that never share a page still share a counter. That is not a pool and cannot be fixed by
+declaring one; §10 serializes the CEREMONY instead.
 
 “Lane” remains valid terminology for test suites (`stub lane`, `live lane`) and visual workflow
 graph branches. Those uses do not describe executor capacity and are unaffected.
@@ -75,16 +88,33 @@ graph branches. Those uses do not describe executor capacity and are unaffected.
 ---
 
 ## 1. Units, named precisely
+<!-- roadmap: phase-1 -->
+<!-- roadmap: parallel-runs -->
 
 - **Run** — one item's execution of a workflow.
-- **Worker** — one long-lived process/instance assigned to one workflow. It owns at most one active
-  run and its browser sessions.
+- **Worker** — one long-lived process assigned to one workflow. It owns at most one active run and
+  its browser sessions. Its id is its identity in authority: the worker LEASE admits exactly one
+  live process per id, which is what makes "every row still claimed by this id is orphaned" a
+  statement a process may make about itself (§3.0).
 - **Browser session** — one authenticated `BrowserContext` and controlled page/window set for one
   system inside one worker.
+- **Profile instance** — the on-disk Chromium profile directory a browser session runs in. Chromium
+  locks a profile directory, so two live sessions may never share one. The path is
+  `<browserProfileRoot>/<browserSessionNamespace>/<workerId>/<system>-<instance>-<fingerprint12>`
+  (`workerProfileDirectory`, `src/infra/browser/browser-session-factory.ts`). **Read the segments
+  precisely**: `instance` here is the runtime ENVIRONMENT (`prod` | `test`,
+  `src/domain/config/instance.ts`), not a per-worker counter — the per-worker separation is the
+  `workerId` segment, and the fingerprint segment is D116's rule applied to disk state so a config
+  change cannot be inherited through a warm profile. The namespace segment is what keeps a rebuild
+  profile from ever being the legacy one even if both roots pointed at the same directory (D216).
 - **Driver lease** — exclusive task-length access to a system driver backed by the worker's current
   browser session. A transaction may retain it across prepare → fence → commit → proof.
 - **Fresh-session boundary** — an authored workflow instruction that closes the current session for
   a named system before the next node and authenticates a new one.
+- **Session** (§11, designed, not built) — a dashboard-started GROUP of runs, and the only unit in
+  this list that names more than one run. It is not a browser session and not a worker; it is what
+  an operator starts when they dispatch a batch, and the thing a worker pool serves. Today the word
+  appears in this doc only as "browser session"; §11 is where the group sense is specified.
 
 ---
 
