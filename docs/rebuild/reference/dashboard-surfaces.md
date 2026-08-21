@@ -32,7 +32,7 @@ says so in one line rather than opening a second block.
 
 | | Concept | Where |
 |---|---|---|
-| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + archive-on-bump (D80)**, **run display names (D83)** | §1–§5, §9–§13 |
+| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + archive-on-bump (D80)**, **run display names (D83)** | §1–§5, §9 |
 | **Imports from `ref task-contract`** | the task contract and `defineTask`, the task-id grammar (`<system>/<verb-object>`, D2), the closed `SystemId` union, the error taxonomy | referenced, never redefined |
 | **Imports from `ref workflow-model`** | the descriptor shape and builder, `RunEnvelope` (`dryRun`'s one home, D6), the run-state machine including gates and parks (D5), the checkpoint store, and the readable span-path grammar | referenced, never redefined |
 | **Exports `ref workflow-model` adopts** | verdict/detail semantics, completion-program semantics, and the wire projections; the descriptor carries every consumed field | §3–§4 |
@@ -40,8 +40,8 @@ says so in one line rather than opening a second block.
 | **Imports from `ref frontend-backend-integration`** | the HTTP/SSE transport, the per-square wiring matrix (§5.1), the action-descriptor rule (§8.5) and the parity lane (§7) | referenced, never redefined |
 
 The "Where" column read `§§1–5, §9–10` until 2026-08-20 and had been wrong since 2i: §11 (intake),
-§12 (the capture phone) and §13 (the two reference takeovers) are this doc's too, and are folding
-into §9 with the rest of the surfaces.
+§12 (the capture phone) and §13 (the two reference takeovers) were this doc's too. They folded into
+§9 on 2026-08-21, so the column is now `§1–§5, §9` and stays true as surfaces are added.
 
 ## § number map (old → new)
 
@@ -61,10 +61,11 @@ into.
 | `## Phase 1f authority and command ratification` | §2.4's *Phase 1f — the authority and command ratification*, which is what `ref dashboard-surfaces §Phase-1f authority` still names |
 | `## 9. Ratified delegation and presentation decisions` | §9.10 — §9 is now *The operator surfaces* |
 
-**Folding into §9 (the two surface units; the number in the left column still resolves until each
-lands):**
+**Folded into §9 — every row below has landed. The numbers in the left column still RESOLVE: the
+alias headings at the foot of this doc redirect each to its destination, and they exist only until
+`docs/roadmap/roadmap.md`'s `doc:` refs are retargeted, at which point the whole alias block goes.**
 
-| was | is going to | unit |
+| was | is now | unit |
 |---|---|---|
 | `## Queue-row projection as-built delta` + *The second batch* + *Drawing the second batch* + *The per-row action descriptors* + *The row title is the SUBJECT* | **§9.2** (landed) | 5.1c |
 | `### D234` runs and archived runs · `### D235` the bulk vector | **§9.2** (landed) | 5.1c |
@@ -73,8 +74,12 @@ lands):**
 | `### D225`/`#### D259` · `### D238` · `## Wave-2 connection-proof presentation deltas` (D256 · D257) | **§9.3 · §9.9** (landed) | 5.1c |
 | *Shell and layout as rebuilt* | **§9.9** (landed); its superseded 400/470 widths → `history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md` | 5.1c |
 | §9's row-model D5–D24 | **§9.10** (landed), with its per-entry table naming §9.1 · §9.2 · §9.3 · §9.3.1 · §9.4 · §9.9 | 5.1c |
-| §10.1 Activity · §10.2 Archive · §10.3 display names · §10.4 the notification model | §9.5 · §9.5 · §9.2 · §9.6 | 5.1d |
-| §11 the intake workspace · §12 the capture phone · §13 the two takeovers | §9.7 · §9.7 · §9.5 | 5.1d |
+| §10.1 the ONE projection + D236 · §10.2 the archive + D179/D242/D223 | **§9.5.2 · §9.5.1** (landed) | 5.1d |
+| §10.3 operator-assigned display names (D83) · §10.4 the notification model (D79b/D86) | **§9.2 · §9.6** (landed) | 5.1d |
+| §11 the intake workspace · §12 the capture phone | **§9.7.1 · §9.7.2** (landed), with Edit Data's PLACE as §9.7.3 | 5.1d |
+| §13 the two reference takeovers | **§9.5.3** (landed); the takeover precedence rule moved up to §9.5, where all five keys are | 5.1d |
+| `## Phase 1e as-built completion + delegation-manifest delta` | **§4's opening · §4.1 · §4.4** (landed) — folded into the subsections it amends | 5.1d |
+| §5.1–§5.4, the `<details>` coexistence design | `history/superseded/2026-08-21-dashboard-surfaces-coexistence.md`; §5 keeps the live boundary contract | 5.1d |
 
 Two contracts deliberately do NOT move with their surface, because they are the model rather than
 the screen: the durable notification row stays in §2.6 (the bell and the inbox are §9.6), and the
@@ -504,7 +509,7 @@ flowchart LR
 Three things to read off it: a write reaches **authority in one atomic transaction** before any
 JSONL exists (so a crash between them is repairable, never a lost filing); the **ledger has exactly
 one ordered writer**, with actor-attributed entries reconciled from atomic outboxes; and **every
-count in the UI descends from one node** (D81, §10.1) — there is
+count in the UI descends from one node** (D81, §9.5.2) — there is
 no second path a badge could take.
 
 ### 2.1 On disk — JSONL-per-day stays, two streams
@@ -1264,7 +1269,7 @@ evidence/failure/run — never raw secrets or captured form contents.
 
 **The trigger union, and which arms anything actually publishes.** `NotificationTriggerEventSchema`
 (`src/domain/notification-triggers.ts`) has seven arms; `projectNotificationTrigger` maps each onto
-its D79b channel, severity and title, and that routing is implemented exactly as §10.4 describes it.
+its D79b channel, severity and title, and that routing is implemented exactly as §9.6 states it.
 Only two arms have a production publisher — `grep -rn '\.publish(' src/` returns exactly two callers:
 
 | trigger arm | routes to | publisher |
@@ -1485,39 +1490,10 @@ step-label switches, the stub map) becomes a projection of the descriptor set wi
 
 ---
 
-## Phase 1e as-built completion + delegation-manifest delta (2026-08-01)
-
-`src/domain/workflow/completion.ts` implements §4. Three as-built points:
-
-- **`PerDocumentStage.deriveItemId` returns `ItemId`, not `string`.** §4.1's sketch types the
-  per-record stage's id as `ItemId` and the per-document stage's as a bare `string`; there is no
-  reason for two identity types on one program, and the loose one is the arm that could smuggle a
-  positional id.
-- **The program is sealed, and reveal is a named function.** §4.2's "branded opaque type whose
-  completion config is not structurally reachable" is implemented as a handle exposing `mode` and
-  `gate` only, plus `revealCompletionProgram`. `descriptor-coverage` additionally checks that no
-  workflow module calls it, so §4.2's second mechanism (no spec-to-spec reach) is mechanical too.
-- **Construction proves the chain against a mandatory sample**, including the §4.1 rule that stage
-  N+1 receives the ids stage N ACTUALLY enqueued after `eligible` filtering.
-
-**Durable delegation manifest (D105).** The 1c `DelegationManifestSchema` could not express what the
-1e planner writes, and all three gaps were silent losses rather than validation:
-
-- it recorded no `policy`, so the manifest — the authority a replay verifies against — was not the
-  durable home of the policy the operator selected (D102 says one vocabulary END TO END);
-- its `join` carried only `all`/`all-settled`, making an awaited one-child edge (`join:"one"`) and
-  an un-awaited fan-out (`join:"none"`) unwritable, even though the latter's manifest reference IS
-  the node's output;
-- `children` required `min(1)`, so a zero-child fan-out — a legitimate empty upstream list that
-  ref workflow-model §3.2 requires to stay an explicit satisfied join — had no writable record.
-
-All three are corrected in `src/domain/dependencies.ts`, with `join`/`cardinality` agreement
-enforced. Like D102 this is a zod-validated JSON payload, so no authority migration version is
-consumed by the shape change.
-
----
-
 ## 4. Unified completion contract (replaces approveTo / approveDocumentTo / completeDelegatedRun)
+
+<!-- roadmap: order-4 -->
+<!-- roadmap: order-7 -->
 
 **Re-derived from `tracker/dashboard/ocr/approve.ts` + `prepare.ts` as-built (D11), not the OCR
 happy path.** The as-built route is a *staged program with durable state*, and the contract must
@@ -1526,10 +1502,27 @@ stages (per-document consumes per-record's *actually-enqueued* itemIds), oath-up
 sibling-subscriber shape with NO coordinator, and i9's prepare-route enqueue + task-less
 display-only failed rows.
 
+**Where this stands, stated once so that no subsection below has to imply it.** The TYPED layer is
+built, sealed and mechanically proven: `src/domain/workflow/completion.ts` is §4.1's shape,
+`defineCompletionProgram` proves a program against a mandatory sample at construction, and
+`src/base/workflow.ts:237-239` admits it on a descriptor as
+`completion?: SealedCompletionProgram<Completion>`. **Nothing declares one.**
+`grep -rn "completion:" src/workflows/` returns nothing; no descriptor declares `completionConsumes`
+or `coordinator` either; and the two execution seams a running program would need — the child-run
+executor and the parallel `all-settled` join — refuse BY NAME with `capability-unavailable`
+(`src/core/run-executor.ts:1508-1515` and `:1350-1356`). So this section is a contract built AHEAD
+of its first consumer, which is the right order for a shape that decides what a fan-out may mint,
+and it is not a description of anything that runs today. The workflows that will declare it are
+`{#order-4}` (oath-signature · emergency-contact) and `{#order-7}` (oath-upload · onbase), and §7 is
+the worked example the program is read against.
+
+The `order-4` checklist lives at §9.10, which owns the group PRESENTATION this contract feeds; the
+one status block here is `order-7`'s, at §4.5.
+
 ### 4.1 The typed staged completion program
 
 ```ts
-// src/descriptor/completion.ts
+// src/domain/workflow/completion.ts — the built home; §4.1 sketched it as `src/descriptor/`
 import { z } from "zod/v4";
 import type { AnyWorkflowRef } from "./ref.js";
 // WorkflowRef<InputSchema,ResultSchema> carries both concrete schemas (refs task-contract/workflow-model).
@@ -1598,6 +1591,25 @@ descriptors are inferred values and are never annotated as broad `CompletionProg
 fixture renames a target input field and requires every `derive` site—including i9—to fail `tsc`.
 Broad target erasure, untyped `derive` results, or exported erased stage arrays are forbidden.
 
+**As-built (Phase 1e, 2026-08-01), three corrections the implementation forced.**
+
+- **`PerDocumentStage.deriveItemId` returns `ItemId`, not `string`.** The sketch above types the
+  per-record stage's id as `ItemId` and the per-document stage's as a bare `string`; there is no
+  reason for two identity types on one program, and the loose one is the arm that could smuggle a
+  positional id. Both are `ItemId` in `completion.ts:173-179`, and `stableItemId` calls each derive
+  TWICE and refuses a program whose id is not stable (`:259-266`) — an unstable id is how one
+  logical item becomes two durable ones.
+- **The program is sealed, and reveal is a named function.** §4.2's "branded opaque type whose
+  completion config is not structurally reachable" is a handle exposing `mode` and `gate` only, plus
+  `revealCompletionProgram` (`completion.ts:216-228, 337-347`); `descriptor-coverage` additionally
+  walks `src/workflows/**`'s whole import closure and fails any workflow module that so much as
+  names `revealCompletionProgram`, so §4.2's second mechanism is mechanical rather than a rule.
+- **Construction proves the chain against a mandatory sample**, including the §4.1 rule that stage
+  N+1 receives the ids stage N ACTUALLY enqueued after `eligible` filtering: `proveStagedFanOut`
+  parses each stage's derived input through the target's own schema and threads the enqueued ids
+  forward, resetting them to the empty list when the sample record is filtered out
+  (`completion.ts:268-298`).
+
 ### 4.2 Cross-spec borrowing becomes impossible
 
 Today: `onbase-emergency-contact.ts:82` reaches into `emergencyContactOcrFormSpec.approveTo!.canFanOut`.
@@ -1619,6 +1631,18 @@ export const hasResolvedEid: NamedPredicate = definePredicate("has-resolved-eid"
    surface is the shared-predicate module and explicit `extendFormSpec(base, overrides)` which
    re-validates the result. The architecture guard (§6) additionally bans importing one spec
    module from another spec module (registry + shared modules only).
+
+**As-built: mechanism 2 shipped, mechanism 1 shipped under a different name and a narrower one.**
+The seal is real and guarded (§4.1's as-built). Mechanism 1's home is not: there is no
+`src/forms/shared/eligibility.ts`, no `defineFormSpec` and no `extendFormSpec` anywhere in the tree
+— the rebuild has no "form spec" object for one to reach into, because a workflow's eligibility
+rides its descriptor. What was built instead is the predicate half, and it is stronger than a naming
+convention: `definePredicate(id, test)` is the ONLY mint (`completion.ts:141-149`, freezing the
+predicate and adding it to a module-private `WeakSet`), and `proveStagedFanOut` calls
+`assertFactorySealedPredicate` on every stage's `eligible` before it runs, so a hand-built
+`{ id, test }` object literal — the exact shape a second spec's config would be fished out as — is
+refused at construction by name (`:150-154`, `:285`). The import-ban clause has nothing to govern
+yet and gains its subject with the first workflow that declares a program.
 
 ### 4.3 Intent-derived child shape and stage consumption — declarative, coordinator-owned
 
@@ -1653,6 +1677,17 @@ task store, and the dependency step of the program skips them by type, not by a 
 
 Standalone approve stays rejected loud (approval ≡ delegation, ported rule — approve.ts:162-171).
 
+**As-built: both declarations exist and nothing declares either, and the display-only coordinator
+has no runtime at all.** `CompletionConsumptionSpecSchema` and `CoordinatorPolicySchema` are built
+(`completion.ts:353-367`), re-exported through `src/base/workflow.ts:52-59` and admitted on every
+descriptor as optional fields (`:263-264`, `:321-322`) — so the move off `data.operationWorkflow`
+onto the launching descriptor is expressible today. No descriptor uses either field. The
+display-only half is further from built than that: there is **no `displayOnly` field on `run.queued`
+anywhere in the wire union** — the word survives only in `completion.ts:363`'s own comment — and no
+enqueue path stamps anything but `shape: "single"`, so a display coordinator cannot be minted and
+`rollupOperationStatus` has never folded a real group (§9.10 carries that whole absence, with the
+kernel's own statement of it at `command-kernel.ts:1608-1612`).
+
 ### 4.4 Durability: the approval manifest is part of the contract's execution, ported as-is
 
 The `ocr_approvals` machinery (2026-07 hardening) is transport-level idempotency and orthogonal to
@@ -1666,6 +1701,37 @@ approval, not a stuck review); terminal presentation (`gate.resolved("approval",
 presentation failure can never turn enqueued children into a failed approval. Dispatch failure →
 `gate.resolved("approval","failed")` + `span.ended("failed")` (today's `approve-failed`), emitted
 with inherited identity (ISS-006 rule, now structural — identity lives on `run.queued`).
+
+**As-built: the table exists, its shape does not.** `ocr_approvals` is a released authority table
+and it is an OPAQUE json record — `jsonRecordTable("ocr_approvals")` (`migrations.ts:295`, in the
+released set at `:455`), served through `opaque("ocr_approvals")` (`authority-database.ts:3764`)
+against `OpaqueAuthorityRecordSchema` (`storage-records.ts:248`). There is no strict schema, no
+production writer, and none of the claim / lease / heartbeat / conflict / recovery machinery this
+subsection ports: `resumeRecoverableOcrApprovals` does not exist in this tree. An opaque row is the
+right holding shape for a payload nobody parses yet — the boundary rule this repository enforces is
+that a row a reader INTERPRETS must be recursively strict, and nothing reads this one — but it is
+not the ported durability, and "ported as-is" above describes the plan rather than the tree.
+
+**Durable delegation manifest (D105, 2026-08-01).** The 1c `DelegationManifestSchema` could not
+express what the 1e planner writes, and all three gaps were silent losses rather than validation:
+
+- it recorded no `policy`, so the manifest — the authority a replay verifies against — was not the
+  durable home of the policy the operator selected (D102 says one vocabulary END TO END);
+- its `join` carried only `all`/`all-settled`, making an awaited one-child edge (`join:"one"`) and
+  an un-awaited fan-out (`join:"none"`) unwritable, even though the latter's manifest reference IS
+  the node's output;
+- `children` required `min(1)`, so a zero-child fan-out — a legitimate empty upstream list that
+  `ref workflow-model` §3.2 requires to stay an explicit satisfied join — had no writable record.
+
+All three are corrected in `src/domain/dependencies.ts`, with `join`/`cardinality` agreement
+enforced. Like D102 this is a zod-validated JSON payload, so no authority migration version was
+consumed by the shape change. What that bought is the SHAPE, not a running planner: the record is a
+recursively strict schema over an immutable repository (`storage-records.ts:239`,
+`authority-database.ts:3098-3101`), and its only writer would be the same child-run delegation seam
+§4's opening says is unwired — `DelegationManifestRefSchema` is read at `run-executor.ts:1523`,
+inside the arm that refuses `capability-unavailable`. So `delegation_manifests` is a strict,
+writable table with no production row, which is the honest half-way state and is why the correction
+was worth making before the first writer rather than after it.
 
 ### 4.5 oath-upload — owner-consumes via a sibling born-at-upload task (no coordinator)
 
@@ -1691,6 +1757,29 @@ oath/ec/onbase-ec/verify/i9 — oath-upload is a fan-out *target*, not a form). 
   and submit form a transaction node. The submit idempotency window is ref write-safety's write intent. None
   of these hides in a handler side channel.
 
+**As-built: the gate DECLARATION exists, and nothing consumes it.** `GateDecl` has three arms, and
+two of them are subscriptions — `resolvedBy: "children-terminal"` with a
+`WorkflowGateSource<AnyWorkflowRef, …>` and `resolvedBy: "external"` with an `ExternalGateSource`
+(`src/base/flow.ts:207-234`) — so the shape this subsection needs is writable today, and `build()`
+refuses a non-operator gate that declares no source (`:674-678`). What is absent is every consumer:
+`grep -rn "subscribes" src/` returns those five lines and nothing else, and the executor has ONE
+gate arm — it emits `gate.opened`, closes the browser session and parks the run waiting for an
+operator command (`src/core/run-executor.ts:1363-1377`), whatever the gate declared. A
+`children-terminal` gate would therefore park forever, so the arm is a declared-but-unreachable one
+of exactly the kind D254 retired elsewhere, and it is named here rather than left to be discovered
+by the first workflow that declares it. There is also no `oath-upload` workflow, no
+`subscribeToApproval`, and no born-at-upload prepare seam: `src/workflows/` holds person-lookup,
+kuali-timekeeper-annotation and the six separations descriptors.
+
+<!-- roadmap-status: order-7 -->
+- [x] the shape is DECIDED and recorded here rather than mis-modelled as a CompletionProgram (D11) — oath-upload is a fan-out target with no form spec, and its ticket is a real `single` task
+- [x] the gate declaration surface exists: `resolvedBy: "children-terminal" | "external"` each carry a typed `subscribes` source, and `build()` refuses a non-operator gate without one (`src/base/flow.ts:207-234, 674-678`)
+- [ ] nothing CONSUMES a subscription — the executor's one gate arm parks for an operator command whatever the gate declared (`run-executor.ts:1363-1377`); a `children-terminal` gate parks forever today
+- [ ] no `oath-upload` workflow, no `subscribeToApproval`, no born-at-upload prepare seam, and no OnBase store
+- [ ] §4.4's approval durability — `ocr_approvals` is an opaque table with no writer, so the sibling subscriber has nothing to subscribe TO
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/base/flow.ts, src/core/run-executor.ts, src/workflows/, `grep -rn 'subscribeToApproval\|subscribes' src/`; left: every consumer — this node's whole build
+<!-- /roadmap-status -->
+
 ### 4.6 verify — in-run enrichment, not completion
 
 verify has **no completion contract**: no approve targets, no `completeDelegatedRun`. Its
@@ -1698,6 +1787,14 @@ fan-outs (`verify.ts:523-660`) happen during the run: ref workflow-model models 
 a first-class parallel `all-settled` node, followed by a typed join/enrichment step. Child inputs,
 results, cancellation, and joins are descriptor-visible and checkpointed. This doc still does not
 model them as completion. i9 is §4.1's post-completion enqueue; verify is mid-run enrichment.
+
+**As-built: the node kind exists and the join it needs refuses.** A `parallel` node is
+interpretable only with `join: "all"`; `all-settled` fails the node by name — *"the all-settled arm
+lands with its owning milestone (capability-unavailable)"* (`src/core/run-executor.ts:1350-1356`) —
+and the `child-run` arm refuses the same way when the delegation executor seam is unwired
+(`:1508-1515`). Both are typed seams that refuse rather than degrade, which is the correct shape for
+a capability nothing has built: a `parallel` node that quietly ran its branches sequentially would
+be a different execution than the descriptor declared.
 
 ---
 
@@ -1768,142 +1865,58 @@ is strictly stronger than the previous "`src` remains rollback code". After nati
 requires explicit ledger/intent reconciliation and dedupe proof before the launcher can point back.
 At no point may both repos accept production work.
 
-<details>
-<summary>Historical D12/D13 coexistence design — superseded by D88/D89/D93; do not implement</summary>
+**As-built, and what the gate actually measures.** The physical half is done and is not a claim
+anybody has to trust: two repositories, no shared module graph, no shared build, no shared process.
+The one-machine half is pinned as DATA and proved by a test — `config/runtime-isolation.json`
+(schemaVersion 3) names every resource that must differ, `operational-isolation.test.ts` asserts
+each from the one exported direct-`const` `defineRuntimeIsolation` call a composition root invokes
+at top level, and `src/domain/runtime-environment.ts:12-15` marks every legacy path with the
+explicit `legacy:` scheme so a bare path can never be ambiguous across two trees that both have a
+`src/`. Two narrowings have since been ratified and both are in the table above rather than in
+anybody's memory: D216 dropped `browserProfileRoot` from `DISTINCT_RESOURCE_KEYS` (the roots are
+repo-relative and never collide; the SESSION namespace is the half that must stay distinct), and
+D247 (2026-08-20) settled that command NAMES are not an isolation resource at all — a muscle-memory
+`npm run dashboard` in the wrong checkout starts that checkout's dashboard on its own port, under
+its own roots and locks, which the distinctness table makes legible and harmless.
 
-The following subsections are preserved only to explain why continuous lift, engine generations,
-and a scoped dashboard flip were rejected. They are not current requirements and may not be used
-as an implementation contract.
+**What is NOT done is the register the cutover is gated on.** `config/legacy-capabilities.json`
+carries `cutoverRequiresZeroOpen: true` over 78 entries, and at HEAD they read **47 open · 20
+replaced · 7 native · 4 retired**. That number is the cutover's real distance, and it is a fact
+about this file rather than an estimate — which is why the gate is written as a config flag a guard
+reads rather than as a sentence in a plan. `proxyDispositionAllowed: false` closes the escape hatch
+in the same file: a capability may not be dispositioned by proxying it back to legacy, so the count
+can only fall by building or by retiring.
 
-### 5.1 The seam: one direction, one place
+**Legacy change accounting is retired (D150, 2026-08-05), and the bullet above it stands as
+history.** Nothing here reads legacy's working tree and no legacy work blocks a rebuild gate;
+`config/legacy-change-accounting.json` stays as a frozen record of what was reconciled through the
+split. What replaced it is live re-verification at each workflow's migration, which the charter
+already makes mandatory — a selector checked against the live system beats one diffed against
+legacy's copy of it.
 
-**Decision: a read-side lift adapter in the new server — legacy events are lifted into span form;
-there is exactly one projection pipeline.** Rejected alternatives (unchanged): dual projection
-paths (two codebases in visual parity for months), dual-write from old src (destabilizes it),
-down-emit shim (unneeded once the scoped flip lands first).
+**The coexistence design that was rejected.** §5.1–§5.4 held a 130-line contract for a read-side
+lift adapter, a legacy→native status mapping, per-run `(engine, cutoverGeneration)` authority and a
+scoped dashboard flip, inside a `<details>` block labelled *superseded by D88/D89/D93 — do not
+implement*. It moved whole to
+`history/superseded/2026-08-21-dashboard-surfaces-coexistence.md` (2026-08-21), because a long
+unbuildable contract kept inside a live reference doc is read by somebody eventually — and one of
+its sentences (§5.3's `(engine, cutoverGeneration)` stamp) was already being cited from outside the
+block as if it were live. Nothing about it is deleted; §5's live half above is what answers those
+questions now, and `docs/rebuild/05-cut-over.md` owns the phase.
 
-```ts
-// temp_src/tracker/compat/lift-legacy.ts — PURE, deleted at end of migration.
-// Reads legacy state via the OLD validators (imported from src/tracker — the one sanctioned
-// old→new import, quarantined to this module) and lifts each legacy run into spans.
-export function liftLegacyRun(
-  schemaVersion: LegacyEmitSchemaVersion,
-  entries: TrackerEntry[], logs: LogEntry[], sessions: SessionEvent[],
-): LiftResult;
-// LiftResult = { spans: SpanEvent[]; notes: Note[] } | { quarantined: QuarantinedRow }
-```
-
-Legacy emit shapes are **versioned, not frozen**. Central legacy emitters stamp one reviewed
-`LegacyEmitSchemaVersion` covering row/log/session channels; records predating the field are explicit
-`v0`. The lifter dispatches through a closed version→adapter map. A guard snapshots the legacy wire
-schemas: changing a source schema without bumping the version, adding its adapter, and adding
-old+new golden fixtures fails CI. Production `src` can therefore receive necessary fixes during the
-multi-quarter migration without silently changing the meaning of already-stored rows.
-
-**Lift inputs come from the visible-entries layer, never raw files (review #9):** the lifter reads
-through `readVisibleEntries*` / the tombstone-filtered SQLite views (`deletions/visible.ts`), so an
-operator-deleted run stays deleted — raw-file reads would resurrect it. Session-event lifting
-applies the same tombstone filter.
-
-**Lift policy is quarantine, NEVER throw (D12) — for invalid rows.** A row the lifter cannot
-classify — an invalid `data.archetype` (which
-`resolveRowArchetype` throws on today, `row-archetype.ts:96-99`; the lifter catches at the row
-boundary) or an unknown status/step combination — produces a
-`quarantined` diagnostic: a loud queue card carrying a schema-redacted excerpt + reason, a warn
-note, and a
-count on the SSE hub (`quarantine` topic, §2.2). One bad row degrades to a visible quarantine card; it can never take down
-the projection read path for every workflow, which a throw would.
-
-### 5.2 The mapping — enumerated from the kernel terminal contract (D12)
-
-Re-derived from `tracked-workflow.ts` / `jsonl-core.ts` / the route emitters — not the OCR happy
-path. Legacy statuses are `pending | running | done | failed | skipped`; everything else is step
-sentinels and read-time reclassification. The lift decodes each exactly once:
-
-| Legacy state (source) | Lifted form |
-|---|---|
-| `pending` row (pre-emit) | `run.queued` — shape via `resolveRowArchetype` incl. `batch`→`operation` normalization (legacy normalization lives HERE ONLY); identity attrs from the pending row's data |
-| first `running` row / step transitions | `run.claimed` + `span.started(task)` per step change; `attempt` starts at 1 |
-| same-runId re-pend after progress (`returnTaskToQueued` — row-lifecycle "reassign", VL-004) | `run.requeued(cause:"reassign", nextAttempt: n+1)`; the next running row opens attempt n+1 task spans — span identity `(runId, attempt, spanPath)` keeps "once per attempt" true (review #10) |
-| re-pend under a NEW runId | new run with `retryOf` = prior runId |
-| `running` with pseudo-step `` `<step>:failed:<err>` `` (`tracked-workflow.ts:365-370`) | NOT a step named that string: parsed at the first `:failed:` → `span.ended(task <step>, "failed", error)`; the run stays open until its terminal row |
-| plain `done`, no step (`:420` — the MOST COMMON terminal) | `span.ended(run, "done")` |
-| `done` + `step="approved"` (+ `fannedOutItemIds`) | `gate.resolved("approval","approved")` + `span.ended(run,"done")` |
-| `done` + `data.eidApproval="pending"` (identity-approval pause, `domain/identity-approval.ts:12-40`) | **NOT a completed run**: `gate.opened("identity-approval")`, run stays open/parked — the legacy `done` here is a browser-release artifact, and lifting it as done loses an operator gate (review #10). `"dismissed"` → `gate.resolved("identity-approval","dismissed")` + `span.ended(run,"done", verdict:"dismissed")`; an approve re-queue is a new run (`retryOf`) that resolves the gate `"approved"` |
-| `failed` + real step (`:493`) | `span.ended(run,"failed", error)`; reached step = the step (already closed failed by the pseudo-step row above) |
-| `failed` + `step="cancelled"` / `"discarded"` (cancel sentinels, ISS-007) | `span.ended(run,"cancelled")` / `span.ended(run,"discarded")` — sentinel decoded at the seam |
-| `failed` + `step="superseded"` (re-upload, `ocr/prepare.ts:309-332`) | `span.ended(run,"superseded")` — first-class outcome |
-| `failed` + `step="approve-failed"` (approve dispatch failure) | `gate.resolved("approval","failed")` + `span.ended(run,"failed", error)` |
-| `failed` + `step="ocr-prep-failed"` (oath-upload born-task failure, `prepare.ts:392-417`) | `span.ended(run,"failed", error)` |
-| `skipped` row (`:377-380` — a per-STEP marker, not a run terminal) | `span.ended(task <step>, "skipped")`; the run continues |
-| older non-terminal run + a newer run for the same itemId (read-time reclassification, `jsonl-core.ts:447-503`) | `span.ended(run,"interrupted")` — mirrored EXACTLY: only `pending`/`running` reclassify, only non-newest runs; reached step preserved (`step ?? "interrupted"`), no fabricated duration |
-| SIGINT synchronous terminal (`failed`, lastStep, archetype re-stamp) | `span.ended(run,"failed"|"interrupted")` per the message; identity still from the pending row |
-| `running` + `step="awaiting-approval"` **with** `parentRunId` (delegated OCR, `prep-rows.ts:29-41`) | `gate.opened("approval")`, statusKey `needsReview` |
-| `running` + `step="awaiting-approval"` **without** `parentRunId` (standalone OCR — review #10) | `gate.opened("approval")` STILL opens (the run IS parked on the operator); only the projected status key differs (`in-review`, mirroring today's delegated-only `needsReview` scoping) — the gate is keyed on row state, not on delegation |
-| `running` + `step="wait-approval"` / `"wait-signatures"` (oath-upload waits) | `gate.opened("await-approval")` / `gate.opened("await-signatures")` (§4.5 gates) |
-| operation coordinator rows (display-only, stamped at prepare) & i9 `data.displayOnly==="true"` members | `run.queued { displayOnly: true }` (+ `span.ended` for the failed members) — **NO fabricated `run.claimed`, NO worker span** (review #9); actions project Hide only |
-| session events | worker/browser spans keyed by (instance, pid) — the pid heuristics live here and ONLY here |
-| data diffs on re-emits | **no successor event — D254 retired `span.patched`.** The lift's own reason for the row (a legacy re-stamp must fold into details, never identity) is satisfied structurally instead: no arm but `run.queued` names an identity attribute, so a re-stamp has nowhere to land |
-| anything else — invalid archetype or unknown status/step | **quarantine (§5.1), never throw, never a silent default** |
-
-**Pinned by versioned real-tracker fixtures (D12):** a test corpus of copied real `.tracker`
-days for every supported legacy schema version (plus seeded operation/preview/cross-midnight fixtures) replays through the lift asserting
-**zero quarantines** and asserting the invariants above (every attempt's spans open/close exactly
-once; no claimed/worker spans on display-only rows; tombstoned runs absent). An unstamped/unregistered
-shape is quarantined visibly; the source-schema/version guard is what prevents shipping one knowingly.
-
-### 5.3 Source authority — immutable per run
-
-Every enqueue stamps `(engine:"legacy"|"native", cutoverGeneration)` in the authoritative run
-record; the lift assigns the registered legacy generation to already-running tasks. All later
-events inherit authority by `runId`, never by timestamp. Starting generation N+1 routes new runs
-to native while the enumerated generation-N legacy run set drains normally. A duplicate event for
-one run from the wrong engine quarantines; a legitimate late legacy terminal does not.
-
-Cutover is transactional: increment generation, atomically switch enqueue routing, record the
-legacy drain set, and reject new legacy enqueues. Rollback creates another generation; it never
-rewrites an existing run. Cross-generation delegation still joins by runId/parentRunId/traceId.
-
-### 5.4 The flip is SCOPED (D13), then per-workflow migration
-
-Review #7 sized the wholesale flip honestly: ~103 endpoints across 23 route files, ~122
-components, 5 SSE topics, 5 hard derived-state clusters — an unacceptable pre-Phase-2
-mega-milestone that also strains "old system keeps working". So the flip covers the **four parity
-surfaces only**:
-
-1. **Phase 1:** build `temp_src/events` + projections + SQLite projector + new SSE server + lift
-   adapter + the replay fixture (§5.2). All workflows are legacy; the new server renders
-   everything via lift.
-2. **Parity gate — queue rows + log panel/timeline + session cards + wfCounts, nothing more:**
-   golden-payload tests serve the same fixture tracker dirs (including the real-day corpus)
-   from both servers; those four surfaces are diffed field-by-field. The e2e stub lane
-   (`HRAUTO_E2E_STUBS`) runs against the new dashboard.
-3. **Flip:** `npm run dashboard` boots the new server + new SPA **for the four surfaces**.
-   Everything else — **Capture, the Workflow Modifier, Settings, the AI-assist endpoints** (and
-   the rest of the ~103-endpoint long tail: exports, screenshot/blob serving…) — is
-   **proxied/re-mounted onto the old route handlers** inside the new server, each with its own
-   later migration milestone. **Exception — OCR's review/approve mutation routes are NOT in the
-   proxied long tail:** they are part of the OCR workflow's own scoped-flip surface set and
-   migrate *with* the OCR workflow at master-plan order 3–4 (§5.3 / Phase 2+ per-workflow
-   migration), exercising the native completion union + approval gates — not left proxied to the
-   old `/api/ocr/approve-batch`. The old SPA stays runnable for one week **against a compatibility
-   API projected from the unified native/lifted read model**. It does not read legacy files directly,
-   so native runs remain visible during rollback. No native event is down-written to legacy storage.
-4. **Phase 2+ (per-workflow migration):** each cutover increments the workflow generation; new
-   runs switch to native spans while the registered legacy drain set continues through the lift. The dashboard cannot tell the
-   difference — that is the definition of the seam holding.
-5. **Deletion:** when the last workflow migrates, delete `lift-legacy.ts`, the legacy validators
-   it imported, and the `rows|logs|sessions` readers; when the last proxied surface migrates,
-   delete the old route handlers. A ratchet guard fails if `compat/` survives with zero legacy
-   workflows registered.
-
-**Honest milestone estimate:** the scoped flip is still the largest single pre-Phase-2 item —
-the four surfaces are exactly the five-cluster derived-state core (queue collapse, status keying,
-pipeline math, session attribution, counts) — but it is bounded by the lift mapping table (§5.2)
-plus four wire shapes, not by 122 components; the proxied long tail migrates per-surface behind
-its own milestones with no parity deadline coupling.
-
-</details>
+<!-- roadmap: cutover -->
+<!-- roadmap-status: cutover -->
+- [x] D93 — the isolation is PHYSICAL: two repositories, no shared module graph, build or process, so a cross-runtime import is impossible rather than banned
+- [x] the one-machine distinctness is pinned in `config/runtime-isolation.json` and proved by `operational-isolation.test.ts`, from one top-level `defineRuntimeIsolation` call
+- [x] D216 — one narrowing, argued and recorded: the profile ROOT name may coincide, the browser session namespace may not
+- [x] D247 — command names are not an isolation resource; each named script must be byte-exactly its declared script
+- [x] D89/D93 — the switch is one all-at-once repoint of the launcher, and the whole legacy repository is the rollback asset; nothing in it is deleted
+- [x] the rejected coexistence design is preserved in `history/superseded/`, and its absence from the tree is verified (no `liftLegacy`/`compat/`/`temp_src`, no `engine` on `RunRecord`, `proxyDispositionAllowed: false`)
+- [ ] the legacy capability register at zero open — **47 open** of 78 today (20 replaced · 7 native · 4 retired); `cutoverRequiresZeroOpen: true` makes it the gate
+- [ ] the cutover run itself — stop new legacy enqueues, drain/park/reconcile, back up both runtimes, the approved one-time import, the atomic repoint, the rollback bridge (`doc 05`)
+- [ ] `one-time-import-offline` is a `planned` guard with NO subject: no import path exists in this tree, and it activates in the commit that builds the cutover data migration
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against config/runtime-isolation.json, config/legacy-capabilities.json (78 entries: 47 open · 20 replaced · 7 native · 4 retired), src/domain/runtime-environment.ts, tests/unit/architecture/operational-isolation.test.ts; left: 47 capabilities and the cutover run
+<!-- /roadmap-status -->
 
 ---
 
@@ -2065,11 +2078,11 @@ absence, and which ratified decision settled it.
 A `Dashboard · wire` task in `docs/roadmap/roadmap.md` names a square. It must name the same square
 in both docs, which is why the taxonomy is shared rather than each doc's own.
 
-**Being written.** §9 is the destination of the 2026-08-20 reorganization (cohesion plan R9 item 3;
-the § number map at the top of this doc). Two units fill it, and until each lands, the material it
-folds is where the map says: the as-built delta blocks above §0, and §10–§13 below. A stub says who
-is writing it and what it inherits — that is a transitional state with a named owner, not an empty
-promise.
+**Complete as of 2026-08-21.** §9 is the destination of the 2026-08-20 reorganization (cohesion plan
+R9 item 3; the § number map at the top of this doc), and both surface units have landed: §9.1–§9.4,
+§9.9 and §9.10 (unit 5.1c) and §9.5–§9.8 (unit 5.1d). Nothing folds into it any more, §10–§13 are
+gone, and the numbers they held redirect from the alias block at the foot of this doc until the
+tree's `doc:` refs are retargeted.
 
 ### 9.1 The run modal — plan, confirm, enqueue
 
@@ -2369,14 +2382,24 @@ fill would be a fifth voice in the loudness ladder. The demo's own tone is *name
 deliberate colour deviation on the row. The same hue draws the same fact on the Log Panel's
 provenance bar — one meaning, one colour.
 
+#### Operator-assigned run display names (D83)
+
+Any run can be renamed by the operator. The label rides the **row and the receipt**; the trace id is
+preserved underneath and remains the join key for spans, notes and the ledger. A rename is a command
+arm (D67), is actor-attributed (D75), and never mutates identity — it is presentation over a stable
+id, exactly like the presentation-override layer (D16). Per D95 its payload is one strict
+`displayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters and
+no unknown keys. How it is REACHED, and the CAS every presentation verb now carries, is the block
+below.
+
 #### D233 — a rename is a descriptor-driven control, and every run verb CASes the caller's version
 
 Two halves of one seam.
 
 **The control.** `rename` has been a kernel command since Phase 1c, and its absence from the served
 vocabulary was recorded as *"the display-name edit is an inline field on the row, not a
-descriptor-driven control"*. No build ever grew that field, so §9.3's operator-assigned display name
-was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and is
+descriptor-driven control"*. No build ever grew that field, so D83's operator-assigned display name
+(above) was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and is
 served at `menu` on EVERY status — `executePresentation` has no state precondition, so a run that has
 already written to UCPath can still be named, and that is precisely what makes a rename safe to
 offer: it touches the subject, the trace and the ordinal not at all. The one narrowing is row shape
@@ -3138,32 +3161,988 @@ the three commands and the parity references.
 
 ### 9.5 Archive · Activity · Explorer — the three read surfaces
 
-**Stub — written by unit 5.1d**, which may add §9.5.1–§9.5.3 for the three. Inherits §10.1 (D81's
-one projection, D236's write-ledger carve-out — whose corpus is empty until the ledger projector is
-wired, §2.1), §10.2 and D179/D223 (the archive), and §13 (the explorer and the UI catalog, with
-D186's EDIT half deferred under `{#def-explorer-edit}`). Wire:
-`ref frontend-backend-integration` §5.1.5.
+<!-- roadmap: p2-2i -->
+<!-- roadmap: p1-spine -->
+<!-- roadmap: track-b -->
+
+**What they are.** Three surfaces that answer a question about runs the operator is no longer
+running: what a swept run WAS (§9.5.1), what a range of days ADDS UP TO (§9.5.2), and what a
+workflow IS (§9.5.3). None of them commands a run. The Archive's one control relaunches onto the
+current version, Activity's one control exports what it already shows, and the explorer and the UI
+catalog have no mutating client method at all — which is why they can share a section: their common
+contract is that a read surface must not wear an editor's affordances.
+
+**They are TAKEOVERS, and precedence is resolved in ONE place.** Each replaces the main region
+rather than dimming it, for §9.7.1's reason — a half-visible queue behind a reference view is the
+modal it deliberately is not. A link may carry any combination of keys, so `activeTakeover`
+(`src/dashboard/app/url-state.ts:129-142`) states the winner rather than leaving it to whichever
+JSX branch is tested first: **`intake` → `archive` → `activity` → `explore` → `catalog`**. The
+operator's in-progress WORK outranks the two places they navigate to and stay, and those outrank the
+two things they look UP; the workflow-scoped reference outranks the system-scoped one. Writing any
+one key clears the other four (`dashboard-app.tsx:939-947`), so "which is open" is never ambiguous
+in the URL either. *(This paragraph read "**three** takeover keys … `intake` → `explore` →
+`catalog`" until 2026-08-21 — the sentence predates the archive and activity surfaces, which were
+added to the resolver in the right places and not to the doc.)*
+
+**Wire.** `ref frontend-backend-integration` §5.1.5 owns the endpoints, the payload shapes and the
+parity references for all three.
+
+<!-- roadmap-status: p2-2i -->
+- [x] 2i-A trust surfaces — the evidence receipt and the failure record render in the run's own panel (§9.3; `ref operator-trust` owns the artifacts)
+- [x] 2i-B the durable notification inbox and its bell (§9.6; the durable model is §2.6)
+- [x] 2i-C the Context rail and its Edit Data half (§9.3.1; the field policy is `ref data-intake-and-edit-data` §6)
+- [x] 2i-D Settings over a live backup cadence, with the read-only storage doctor (§9.8; the contract is §2.5)
+- [x] 2i-E the intake workspace over schema v12 — all seven surface decisions (D173, §9.7.1)
+- [x] 2i-F the token-scoped capture phone surface (D175, §9.7.2)
+- [x] 2i-G the archive model and the Activity report over schema v13, the read-only Workflow Explorer, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
+- [!] the bell's `Pings` / `Inbox` filter chips can never be non-zero — `delivery` is a client-side extra that never crosses the wire (§9.6)
+- [!] the intake Dropzone's accept list and size cap are client literals, not the server constants the doc claimed (§9.7.1)
+- [!] the capture token is TTL-bounded, not single-use, and `Start Capture` lives only inside the intake takeover's empty dropzone state (§9.7.2)
+- [ ] D186 — the explorer's EDIT half, deferred BY DISPOSITION with a named trigger (`{#def-explorer-edit}`, §9.5.3)
+- [ ] D189 — the production BFF serves no frontend bytes, so 2i-F's surface has no delivery path (`{#def-byte-path}`, §9.7.2)
+- [ ] the per-archived-run storage delta is unmeasured: no production database has archived a run (§9.5.1)
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
+<!-- /roadmap-status -->
+
+#### 9.5.1 The Archive — a record that needs no old code to read (D80)
+
+**No archive folders, no compat shims — git is the archive.** Descriptors carry a version + content
+fingerprint; a guard forces a bump on behavior change; **every run permanently stamps the workflow
+version and the app version it ran with, at enqueue.**
+
+**On a version bump, all runs of prior versions leave the dashboard.** Active surfaces, counts, and
+filters only ever contain current-version runs; prior runs move to a read-only **Archive** (a
+browsable view + on-disk store). A **dashboard/app update bumps the effective version of every
+workflow**, because old runs may not be interpretable against new dashboard state.
+
+The rule that makes this pay for itself: **an archived run is stored as self-contained data** — its
+final projected row, its receipt, and evidence pointers — so rendering it requires **zero
+old-version code**. No compat shims, no version fallbacks, exactly one rendering path in the
+dashboard forever. That is the whole point; an archive that needed old code to read would recreate
+the coupling the rebuild exists to remove.
+
+Four hard rules:
+
+1. **The write ledger is never archived.** What was filed in a real HR system stays forever,
+   independent of run archival. Archiving is a *display* lifecycle; the ledger is an *audit* one.
+2. **Relaunch from archive starts a fresh run on the current version** from the archived immutable
+   input. It is never a resume of the old run — resume across a fingerprint change is exactly what
+   D35 forbids.
+3. **A bump cannot archive a non-terminal run.** Queued/parked runs must be terminalized first
+   (cancelled, or for a parked write RESOLVED present/absent per §parked-intent resolution), and
+   the bump flow lists them. **An unresolved possible-submit is never buried in an archive** — this
+   is the write-safety carve-out and it is not negotiable for convenience.
+4. **Archive is the ONLY whole-run exclusion.** This rule read *"Hide/Unhide still exists for
+   same-version runs (reversible presentation tombstone, D49); archive-on-bump is the automatic
+   path, Hide is the manual one"* until 2026-08-21, and it had been false since **D234** (§9.2)
+   retired the `hide`/`unhide` pair across the whole stack: `ActionCommandKeySchema` holds neither
+   key (`src/domain/dashboard/actions.ts:47-50`) and `RunRecord.hidden` is a parse-tolerated
+   vestige written by nothing (`src/domain/run/record.ts:232-244`). D234 claimed the correction and
+   nobody made it here, which is how a reader arriving from a `ref dashboard-surfaces §10.2`
+   citation met a retired control described as live. One exclusion, inherited by every count,
+   applied once inside the projection.
+
+**D95 command naming:** this lifecycle is executed only through the `version-archive` family's
+`plan-version-bump` and `apply-version-bump` actions. The run-family `bump` action in §2.4 remains
+queue priority/claim order only and can never plan, apply, or imply version/archive work.
+
+The scope of a bump is declared by whoever makes the change — single-workflow, multi-workflow, or
+dashboard — and recorded in that update's change record (same store as fix records: what, why,
+version, commit).
+
+##### D179 — the archive model as-built (2i-G, 2026-08-09)
+
+**The app version is the other half of the archive key, and it was not being kept.** The queue
+projection stamped `deps.appVersion` — the build serving the PAGE — on every row, so the run-detail
+"served by a different app build" comparison compared a value with itself and could never fire.
+`RunRecord` now carries an `appVersion` stamped at the ONE enqueue point (`fanOutQueuedRuns`, and
+the retry arm, which stamps the build it is enqueued under rather than inheriting the one it
+retries). It is **read forward, never back-filled** (D133's rule): a run from before D179 reports
+its absence with its reason, and an application-scope bump treats an unstamped run as prior-version
+— the fail-closed reading, since it demonstrably is not the current build's.
+
+**Authority schema v13** adds three tables, all insert-only in SQL rather than by convention,
+because an archive whose rows could be rewritten is a WEAKER record than the live row it replaced:
+
+| table | holds |
+|---|---|
+| `version_bump_applications` | the applied bump — charter §25's change record |
+| `archived_runs` | one self-contained record per swept run, with its content digest |
+| `archive_relaunches` | relaunch provenance, keyed by the FRESH run |
+
+`version_plans` (released in v1, zero production rows because the family was deferred) gets its
+first real shape under the same D164 precedent `artifact_outbox` set: it holds the exact
+`VersionBumpPlan` rather than an opaque payload, and it moves `planned → applied` exactly once
+under a CAS — the same discipline a start plan follows, because it is the same problem.
+
+**An archived run is the FINAL PROJECTED ROW plus its detail, receipt, failure and evidence
+POINTERS.** The kernel takes those payloads through an `ArchiveSnapshotSource` seam that the server
+implements over the same run/queue projection and run-detail query the live surfaces render, so the
+frozen bytes are the bytes the operator last saw rather than a second derivation of them. The
+workflow LABEL is frozen into the record too: resolving it at read time would be a descriptor read
+on the archived path, and falling back to the id would substitute a plausible value for one nobody
+recorded. Evidence is pointers only — the content-addressed bytes, the checkpoints and the ledger
+lines all stay exactly where they are.
+
+**The workflow's SHORT CODE is frozen beside the label (D242, generation 3).** The index row's
+leading identity token is `<code> v<N>` — `sd v1`, not `Separation Documents v1` — because at 800
+rows a full label costs the name column real width and the code costs four characters; the whole
+label moves to the row's `title`, so nothing is lost, it moves to the hover. Every argument the
+frozen label makes applies unchanged, and one more: `traceId.slice(0, indexOf("-"))` looks like a
+free derivation and is silently wrong for exactly the case a frozen field exists for — a run
+planned under a code the workflow has since changed. Both facts come from ONE registry lookup at
+sweep time, so the record refuses a half-resolved pair (a label present beside an absent code) and
+the sweep passes both from a single `resolve`. Two absences reach the wire and each keeps its own
+sentence: a record written before generation 3 holds no code at all, and a record swept after its
+workflow was unregistered says so itself. A row whose code is absent falls back to its LABEL, which
+is a real name the record holds, and puts the reason in the title — never a derived code. The
+version registry and the Activity per-workflow table print the CURRENT registry's code beside the
+label; the Activity CSV gives it its own column rather than gluing it onto the label, because a
+spreadsheet sorts and filters columns. The code itself is ref workflow-model §1.1.1's.
+
+**The three arms, and where each refusal is computed:**
+
+- `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the
+  charter's requirement is that the flow LISTS the blockers — the list is what the operator needs
+  in order to clear it. An `application`-scope plan must name the RUNNING build; a scope nobody can
+  verify could archive every run on the strength of a typo.
+- `apply-version-bump` re-derives candidates **and blockers from authority inside the applying
+  transaction**, never from the plan's copy: a run that went queued between review and apply is
+  exactly the possible-submit the refusal exists to keep out of an archive. It refuses on
+  `active-version-blockers` naming every blocking run by trace, workflow and state; on registry
+  drift; and on an app build that moved since review. A refused apply leaves the plan `planned`, so
+  the SAME reviewed plan applies once the blocker settles — a refusal is not a spent plan.
+- `relaunch-archived-run` cites the record's content digest, resolves the CURRENT descriptor, and
+  replans from the archived RAW submission through today's ingress and canonical schemas. It never
+  replays the archived canonical value — that value was validated by a schema which has, by
+  definition, since moved — and it is not a retry: the fresh run carries no `retryOf`, and neither
+  side of the link is rewritten to record it.
+
+**Archived rows leave every live read once, inside the projection**, beside hidden rows and member
+containment (§9.5.2) — so a swept run leaves the queue, the workflow badge, the status pill, the
+month calendar and the Activity report at the same instant, by construction.
+
+**The Archive surface is read-only structurally.** No retry, no cancel, no hide, no resolution —
+absent, not disabled, because a disabled control still claims the act exists. The one control is
+Relaunch, and the archived-detail query resolves the registry for exactly one thing: whether a
+current version exists to relaunch ONTO. `archive-invariants` proves the rest by reading a stored
+record back with the descriptor list empty.
+
+**D223 (operator ruling, 2026-08-18) — the archived detail is the DEMO's detail: five tabs and an
+Export control.** The operator ruled "for the archive stuff just follow how the demo looks",
+settling the two decide-first records the findings ledger had parked here. **(1) Tabs.** An
+archived run renders Summary · Logs · Data · People (where the run has members) · Evidence, like
+the demo's `ArchivedRunDetail` — which means the archive snapshot FREEZES the section payloads
+(log lines, data points with their provenance, member outcome rows) beside the projected row at
+archive time, in the same seam that already freezes the row, detail, receipt and failure. Counts
+alone are ratified insufficient: an archived run whose logs are unreadable is not "self-contained
+data". This extends the archived record (a schema-version bump on the archive tables, read-forward
+per D133: a pre-D223 record reports its tabs absent with the reason, never fabricates them), and
+`archive-invariants`' bar is unchanged — every tab renders with the descriptor list EMPTY.
+**(2) Export.** The archived detail's panel header carries the demo's Export control, writing
+`archive-<traceId>.json` composed of EXACTLY the display-redacted `ArchivedRunDetailWire` the
+surface already holds — the export inherits the display redaction and carries nothing more, so no
+new redaction surface exists. Both halves are build items owned by the separations-completion
+plan's Track B5; this ruling is the ratification the records were waiting for.
+
+##### D223 as-built — the frozen sections, Export, and the change record (Track B5, 2026-08-19)
+
+**Archive schema generation 2.** The archived record's own
+`archiveSchemaGeneration` is the version that moved — not the SQL schema, which
+did not, and no migration was written. `archived_runs` stores the record as
+JSON, the generation schema is a union of the generations this reader
+implements, the new blocks are optional, and a generation-1 row's
+`contentDigest` is byte-identical because canonical JSON omits an absent key.
+What the generation buys is the half an optional field cannot carry:
+`refineSectionGeneration` refuses a WRITER that omits the block, in both
+directions. A reader must admit a generation-1 record — those bytes are on disk
+and nothing may back-fill them — and a writer may not produce one, or "this
+build could not freeze the logs" would be recorded as "this record predates
+logs", which is a silent downgrade on the record whose whole job is to be
+complete.
+
+**What is frozen, and where each half comes from.** Four sections ride the
+existing `ArchiveSnapshotSource` seam, so the frozen bytes are the bytes the
+live surfaces last rendered rather than a second derivation: **logs** (EVERY
+note line, walked through the live section's own cursor to `end-of-page` — a
+frozen `nextCursor: present` would name a fetch the archive has no endpoint
+for, and the freeze refuses past a bound rather than truncating), **data**,
+**people** (projected from the fold's own `memberRunIds`; a member the
+projection cannot render REFUSES the archive, for the same reason an
+unrenderable row does), and **attempts**. The fifth, **captures**, is derived
+from authority beside the evidence pointers, because a diagnostic bundle is not
+a read-model fact.
+
+Every section is an explicit absence union and never an empty payload standing
+in for two facts. A run with no members and a run whose member rows could not be
+projected are different situations; so are "this run wrote no log line" and
+"this record predates frozen logs" — the wire's `sections` absence names its own
+generation and states that the payloads are not reconstructible.
+
+**The captures are DESCRIBED pointers, not copies.** D179's "evidence is
+pointers only" is about the BYTES and it stands — nothing on this path reads the
+content store. What a tile adds is what a pointer alone could never say: kind,
+media type, size, digest, sensitivity, the capture instant, the bundle's origin,
+a screenshot's pixel size, and the bundle's DECLARED retention (never an
+observation of whether the bytes are still there — that is `archiveRetention`'s
+read-time computation). `step` and `system` are joined off the bundle's ORIGIN
+failure, the only place either is recorded, and both stay named absences when
+the origin names no failure or the failure names no node; borrowing the run's
+last node would attach a capture to a step it may not belong to. `system` is
+read as the declared store half of a `TaskId` (`<registered-store>/<operation>`)
+— a component of the identifier's own grammar, not a substring somebody hopes
+means something.
+
+**The per-attempt history is a projection of an identity the fold already
+carried.** Span identity is `(runId, attempt, spanPath)` (§1.1), so grouping by
+attempt reads the key rather than inferring a boundary from instants. Attempt 1
+is emitted even when it folded no span — a run that died before its first task
+still HAD a first attempt. There is deliberately no per-attempt trace id (a
+trace belongs to the run) and no per-attempt status pill (it would have to be
+invented from the span mix); the mix is served verbatim and the surface counts
+it.
+
+**Export** writes `archive-<traceId>.json` containing EXACTLY the
+display-redacted `ArchivedRunDetailWire` the surface holds — not a
+re-derivation and not a second projection, which is why it opens no new
+redaction surface. Every new wire leaf is dispositioned in the redaction audit
+against the disposition its LIVE twin already carries; a frozen copy that
+relaxed an origin would be a downgrade nobody reviewed.
+
+**`LEDGER_PRESENTATION_DECLARATIONS` is keyed by the PROOF SCHEMA HASH.**
+`(system, completionKind)` cannot work: separations files two different UCPath
+writes — the pending-transaction sweep and the termination — and both are
+`save-verify` on `ucpath`. `proof.schemaHash` is the contract's own identity and
+is already on every line, so a declaration carries the commit contract's
+`proofSchema`, derives that hash from it, and PARSES the stored proof through it
+before reading a leaf; a line whose proof names a declared schema and does not
+satisfy it is reported by name rather than read past. Two of the three
+declarations state their confirmation column ABSENT with a reason, which is the
+point of a declaration rather than a gap in it — UCPath issues no receipt for an
+in-progress-grid delete, and Kuali's save is UI-silent (D128) and proves
+completion by reload read-back. "This write has no confirmation number" and
+"nobody has declared how to read one" are different facts and an operator
+reading a blank cell must be able to tell them apart.
+
+**Charter §25's change record now exists.** The paragraph above ("the scope of a
+bump is declared by whoever makes the change … and recorded in that update's
+change record: what, why, version, commit") had no collecting surface, so every
+sweep could say who applied it and when and nothing about why. It is authored at
+PLAN time in a dialog — the only person who can say why a version moved is the
+one moving it, and asking later means asking somebody who did not make the
+change. It rides the plan, so the fingerprint the operator's apply cites back
+covers the words as well as the run sets, and apply copies it into the
+application VERBATIM; re-authoring it there would let the recorded reason differ
+from the one the plan was reviewed under. `commit` is an explicit absence union
+rather than a required string, because a workflow bump usually has a commit and
+an application bump often does not, and demanding a hash would put a fabricated
+one on the record that exists to be trustworthy. It is read forward on the same
+terms as the sections: a pre-generation-2 sweep says "nobody was asked" rather
+than showing an empty block, which would read as "nobody had a reason".
+
+**`fromVersions` is derived from the ARCHIVED RECORDS, not from the plan.** A
+plan's `observedIdentities` are the versions the bump moves TO; "from what" is
+answered by what the swept runs were actually carrying, so the index folds the
+distinct `archivedIdentity.descriptorVersion` of the records each application
+owns. A sweep that archived nothing has no from-version and the empty list is
+that fact — there is no run to read one off.
+
+**What `archive-invariants` proves after this.** The structural bar is
+unchanged and met: the archived-run read path still value-reaches no registry
+module anywhere in its import closure, so every tab renders with the descriptor
+list EMPTY — which `archive-model.test.ts` now executes tab by tab, alongside a
+generation-1 record read forward and a run that FILED a real ledger line,
+archived and resolved back with the registry empty. Importing the three commit
+contracts into the ledger read-through is inside that bar two ways: their
+closure reaches no Node built-in (ref frontend-backend-integration §8.13 — the module lands on the
+dashboard bundle) and no descriptor module. A task contract is neither; it is
+the schema of one write, and the ledger is never archived, so interpreting its
+lines with current code is exactly right.
+
+**Storage growth — still unmeasured, and that is a fact about the corpus rather than an
+oversight.** The operator accepted the per-archived-run cost on 2026-08-18. The measured per-run
+delta is owed in this block once a real archive exists: at 2026-08-21 **no production database has
+archived a run**, so every number here would be a measurement of a fixture. The measurement is
+`{#track-b}`'s to close on the first real sweep.
+
+**Where the read path is proved.** `buildArchivedRunDetail` resolves NOTHING — no descriptor, no
+projection, no live authority beyond the archive tables — and says so at the top of the file it
+shares with its opposite (`src/server/dashboard/queries/archive.ts:1-20`): `buildArchiveIndex`
+re-derives current identities, candidates and blockers per request, because the version STATE a
+bump would act on is a fact about the registry NOW and a plan goes stale the moment a run is
+enqueued. Two halves with opposite rules, in one file so the difference is visible.
+
+#### 9.5.2 Activity — a range rendering of the ONE projection, and the one exemption (D81)
+
+**The recorded bug.** The operator reports that in the legacy dashboard the per-workflow badges
+"always error out" — matching the audit's bug class #7, count/badge divergence, with ≥4 separate
+fixes over the project's life. The root cause is structural, not arithmetic: badges, the status
+strip, and the queue list were each free to derive their own counts, so any two could disagree and
+each had to be fixed independently.
+
+**The contract.** There is exactly **one** server-side run/queue projection. **Workflow Panel
+badges, Status Bar pills, and Queue Panel rows are three renderings of that one payload.** A count
+is never computed a second time — not in React, not in a second endpoint, not in a "just for the
+badge" aggregate. If a surface needs a number the projection does not yet expose, the projection
+gains a field; it does not gain a sibling.
+
+Consequences that follow and must not be re-litigated per surface: **collapse rules, hidden rows,
+archived runs (§9.5.1), and delegated-member containment are applied once, inside the projection.**
+**The Activity report (D180) is a range rendering of this same payload**, built inside the
+projection for the same reason: a report that summed rows a second way could disagree with the day
+it summarises. Its contract lives in ref frontend-backend-integration §6.7. One block on it — the write ledger — is the single
+ratified exception, and it is spelled out immediately below (D236).
+A member counted in a group is not also counted at top level because there is no second place that
+could count it.
+
+##### D236 — the write-ledger carve-out (2026-08-19, operator ruling)
+
+**There is exactly ONE exemption from the sentence above, and it is named here so nothing else can
+claim to be it.** The Activity report's `Write ledger — what was actually filed` block is folded
+from the durable write ledger (`src/infra/ledger/`), **not** from this projection.
+
+**Why it cannot be derived from the projection.** §9.5.1 rule 1 already decides the half that
+matters: *the write ledger is never archived — archiving is a display lifecycle, the ledger is an
+audit one.* The ledger is append-only and is never pruned (D86), so **its entries outlive the runs
+that filed them**: a window whose runs have all left the live surfaces on a version bump can still
+hold ledger lines, and folding those lines out of the run corpus would report *"nothing was filed"*
+about real HR transactions that were. That is not a count/badge divergence — it is a different
+question over a different corpus, and D81 exists to stop two answers to ONE question, not to forbid
+a second question.
+
+**The shape of the exemption, which is what keeps it from spreading.**
+
+1. **Reported BESIDE the totals, never derived from them.** `ActivityReportWire.ledger` is its own
+   block. The wire's refinements deliberately assert **no** relationship between it and `totalRuns`,
+   the status buckets or the workflow cross-tab — a cross-check would be a claim that the two corpora
+   cover the same rows, and that claim is false. What IS checked is one level down, where both
+   numbers come from the same authority: each system row's `entries` must partition into
+   `prod` + `test`.
+2. **The seam is stated where the reader is.** The block carries it in its own subtitle, and
+   `activityReportCaveats` carries it into the panel's ⓘ and into the CSV export (D240). A second
+   authority the reader cannot see is a second authority the reader assumes is the first one.
+3. **ONE reader, reused.** The fold lives on the existing archive read-through
+   (`LedgerReadThrough.foldActivityRange`), not in a new module: two readers of an append-only audit
+   file would be two parse disciplines, and the wrong one would be wrong about what was filed into a
+   live HR system. A line it cannot read **throws by name** rather than being skipped — the pointer
+   path can answer one citation with a reason, a fold has no such column, and skipping silently
+   subtracts a filed transaction from the count of what was filed.
+4. **The window closes on the entry's own `confirmedAt`**, read through the same local-day rule this
+   projection buckets rows with. A partition FILE name is a UTC date and decides only which files are
+   opened (widened one day at each end); letting it decide membership would drop a write confirmed
+   late in the local day out of the report over a timezone.
+5. **The empty state is now honest.** "No ledger entries. Nothing in this report's reach filed
+   anything into a real HR system" is a fact the moment the axis is served, and was an *assertion*
+   before it was — which is why the ported surface omitted the block entirely rather than rendering
+   its empty state over an unserved axis.
+
+**Guard (ref guards-and-tests).** `one-projection-counts` — any count/aggregate in a surface path that does not
+originate from the projection payload fails. Backed by a fixture asserting Workflow Panel total,
+Status Bar sum, and rendered Queue Row count are equal by construction for a seeded world that
+includes archived, delegated, and rejected rows. *(The `?view=rebuild-demo` replica already
+proves this shape: one `countRows()` feeds rail badges, Status Bar, and queue — divergence is
+structurally unrepresentable there.)* **D236's exemption is bounded by the same guard, from both
+sides:** a write-ledger block may be BUILT only in `src/domain/dashboard/activity.ts` and
+`src/infra/ledger/ledger-read-through.ts`, and ASKED FOR only in that read-through and the one
+projection — exact set equality both ways, so a third counting path over the ledger fails by file
+name. The behavioural arm files real ledger lines into the seeded world and requires the block to
+move while every count stays byte-identical: *"reported beside the totals"* is a claim about what
+does not happen, so that is what is asserted.
+
+##### As-built — what the page counts, what it refuses to count, and the block that is always empty
+
+**The surface counts nothing.** `buildActivityReportWire`
+(`src/server/dashboard/projectors/run-queue-projection.ts:1538-1710`) builds every total inside the
+same projection that renders the Queue Panel, `activity.tsx` renders the payload verbatim —
+including the range's own day list, so a day with no runs is simply ABSENT rather than invented as a
+zero — and the report REFUSES to build at all while the projection is degraded (`:1539-1543`),
+because a total folded over a partial corpus is worse than no total.
+
+**D239 — hours saved is DROPPED, deliberately.** The demo's headline "hours saved" tile has no
+honest home: the number would be a per-run manual-minutes estimate nobody has measured, on the one
+artifact in this product that leaves the operator's screen and lands in front of a supervisor. The
+distinct-people bullet went with it for the same reason (`activity.tsx:54`,
+`src/domain/dashboard/activity.ts:470`). What replaced it is a headline row that carries the
+OUTSTANDING work and an error rate that states its denominator on the tile.
+
+**D240 — the CSV carries the rules, ahead of the numbers.** `GET /api/v1/reports/activity.csv`
+writes labelled blocks, and the FIRST block is `activityReportCaveats` — the same exported sentences
+the panel's ⓘ renders, read by both consumers rather than copied
+(`src/server/dashboard/queries/activity-export.ts`). A panel can afford a caveat one press away; a
+spreadsheet has no ⓘ, so an export with the numbers and without the rules is precisely the lying
+artifact this surface is built to prevent. Two smaller rules travel with it: the error rate is the
+one `activityErrorRatePercent` the tile renders, so the exported rate cannot round differently from
+the screen it was taken from; and a cell is quoted when it must be and never REWRITTEN — a leading
+`=` is left exactly as the payload spells it, because prefixing it to defuse a spreadsheet's formula
+parser would put a different string in the export than the one on screen.
+
+**The write-ledger block is served and its corpus is EMPTY, on every real machine.** The fold, the
+seam sentence and the empty state are all built and bounded by the guard above — and
+`createLedgerProjector`, the only writer of `.tracker-rebuild/ledger/`, **has no production caller**:
+`grep -rn 'createLedgerProjector' src/` finds its definition and its barrel re-export and nothing
+else, while the READ side is composed three times (`server/dashboard/compose.ts:546`,
+`server/storage/compose.ts:185`, and the archive query). So every Activity report in existence draws
+*"No ledger entries. Nothing in this report's reach filed anything into a real HR system"* — which
+is a true sentence about the FILES and a false impression about the world, since D135's controlled
+commit did file one and left both durable outbox rows behind. The gap is the outbox→ledger
+projection, not the fold; §2.1 owns the stream, and the missing composition is `{#track-d}`'s
+hygiene row.
+
+<!-- roadmap: def-search-export -->
+<!-- roadmap-status: def-search-export -->
+- [x] the Activity CSV (D240) — the one export this product serves, caveats first, from the served payload
+- [ ] BE the artifact-bytes route: the ref/resource schemas are complete and nothing serves bytes, which is also what blocks the run-detail `captures` section and any screenshot gallery
+- [ ] BOTH cross-date run search — the top bar filters the SERVED DAY only, and Activity's range is an aggregate rather than a row search (§9.9 owns the day search)
+- [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164)
+- [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (`ref operator-trust` §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/server/dashboard/queries/activity-export.ts, src/domain/dashboard/activity.ts, src/dashboard/client/queries.ts; left: every non-CSV half of this node
+<!-- /roadmap-status -->
+
+#### 9.5.3 The Workflow Explorer and the UI catalog — read-only by construction (D176/D177)
+
+Ref operator-trust §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
+sit and what they refuse to look like.
+
+##### A read-only explorer must not look like an editor
+
+The shape this category always ships is the workflow-builder canvas: draggable rounded nodes, bezier
+edges, a palette down one side. On this surface that shape is a **lie** — it draws a mutation
+affordance over a graph nobody may mutate, and ref operator-trust §5.1 rejected the free-form visual programmer
+outright. It is refused.
+
+What a reader actually arrives holding is an id or a failure location (`separations/ucpath-transaction
+→ ucpath.smart-hr.ready-to-submit`), and what they must leave with is the exact node, contract, UI
+ids, scenarios and source paths. So **the identifier is the interface**: every id on the page is a
+`Chip`, which this system already renders monospaced and truncation-safe, and the page spends its
+whole budget on them.
+
+##### A structure rail beside a record column
+
+The rail carries the graph — nodes in declaration order, with a controller's downstream nodes
+**indented beneath it** so a branch case reads as "instead of" and a parallel branch as "alongside".
+`dependsOn` alone cannot express that difference; collapsing them would make a branch look like a
+fan-out that always runs. The record column carries the selected node's whole binding in one
+uninterrupted read, because the question is a lookup and a lookup that hides half its answer behind
+a second click is a worse index than the source tree.
+
+Two properties of the rail are pinned by test rather than by intent: every node appears **exactly
+once** whatever the control structure, and a node whose controller is declared *after* it still
+appears — a node missing from the rail is a graph the surface failed to show, which is worse than
+one drawn flat.
+
+The split keys on the **column**, not the window (§9.9): this is a takeover whose
+width changes with the workflow panel's mode. A container query cannot style its own container, so
+the query is asked from a wrapper — asking from the same element is a query that never matches, and
+it silently degrades to the stacked layout at every width.
+
+##### One saturated mark, spent on consequence
+
+Colour is restrained to the point of being an argument. Of six node kinds only **transaction** is
+tinted, because it is the one fact on the page that can change a real HR system; in the catalog only
+**observation** and a non-`observe` element `effect` are tinted, because an observation is what a
+subject binding and a completion proof are checked against and an `external-commit` element is what
+acts on a page. A page that colours six kinds six ways spends its whole colour budget on taxonomy
+and has nothing left for consequence. In every case the word travels beside the glyph, so the tint
+is never the only encoding.
+
+##### Two keys, not one — and why an empty `?catalog=` opens it
+
+Both replace the queue at `?explore=<workflowId>` and `?catalog=<term>`, for §9.7.1's reason: a
+half-visible queue behind a reference view is the modal it deliberately is not. Two keys rather than
+one shared key, because the two are different scopes — the explorer opens on the ACTIVE workflow and
+the catalog is system-scoped — and a shared key would make "which is open" ambiguous.
+
+An **empty** `?catalog=` is meaningful: open, nothing typed. Presence rather than length is what
+opens it. Which takeover wins when a link carries several is §9.5's one resolver, and these two are
+last in it by design — a reference view is what the operator looks UP, so it yields to the place they
+navigated to and to the work they have in progress.
+
+Entry is two `ghost` buttons in the panel's action bar beside `Import spreadsheet`. They are
+secondary because neither is a command — neither takes an argument from the operator nor changes
+anything.
+
+##### As-built notes
+
+- **`ChipRow` is the wrong primitive at this width, and that is not a criticism of it.** Its
+  equal-width grid exists to stop an orphan in the queue's ~400px column. In a ~700px record column
+  holding a dozen SHORT facts (`code pl`, `version 1`) `auto-fit` cuts seven 160px tracks and leaves
+  every chip alone at the left of one; the shared ending edge is bought with gaps wide enough that
+  the set stops reading as a set. Both surfaces pack their facts in a wrapping flex row instead, and
+  the ragged right edge is the deliberate cost — the primitive's own note already says a row that is
+  not a track of peers "is a flex row, and the chip is one item in it".
+- **`--ds-w-explorer-measure` (1120px) is a reading measure, not a panel width.** A reference surface
+  given the full 1400px of a takeover sprays its facts across the panel. The content sits at the
+  panel's leading edge rather than centred, so the rail does not drift as the record column changes
+  height.
+- **A raw millisecond is arithmetic, not a fact.** `10002992` reads as `4h`, with the exact value on
+  the chip's `title`: a contract review needs the millisecond, a glance needs the hour.
+- **Motion is inherited, not extended.** Both takeovers arrive exactly as the intake takeover does
+  (4px from above, `ds-motion-enter`) — two takeovers sharing one region and arriving from opposite
+  edges read as two different products. The rail entry carries the house pressable pair
+  (`dsMotion.fast` + `active:translate-y-px`), the same one `Button` and `Chip` use. The record swap
+  and the live catalog filter are **deliberately unanimated**: one is list navigation and the other
+  fires on every keystroke, and both are exactly where motion only adds latency.
+- **The parity fixtures are the REAL projections.** A hand-written fixture graph would prove only
+  that the surface can render a shape somebody typed, and doc 02 §Exit criteria is about the
+  as-built graph. A change to the graph now moves these references, which is the drift signal the
+  corpus exists to give.
+
+##### As-built — read-only is structural, and three declarations do the explaining
+
+**There is no mutating method to call.** The explorer's whole client surface is
+`workflowExplorer(): Promise<WorkflowExplorerWire>` over `GET /api/v1/explorer`
+(`src/dashboard/client/queries.ts:243-249`) — read-only is a property of the client, not a
+convention the surface observes — and the page says so in its own words where a reader would look
+for an edit control: *"Nothing here is editable. Read-only was ratified first
+(`ref operator-trust` §5.1), and the editing half is deferred out of Phase 2 by D186"*
+(`explorer.tsx:1339-1342`). The only pencils on the page are read-only indicators.
+
+**D227 — the node panel's census is walked off the contract's own zod shape.** `Field · System ·
+Recorded`, counted from the same schema object the arm's `inputSchemaHash`/`outputSchemaHash`
+fingerprint: a read is one OUTPUT leaf of a `read` arm, a write is one INPUT leaf of a `commit` arm,
+and the prepare arm's inputs are deliberately uncounted because it stages the values its commit then
+writes — counting both would report every write twice (`explorer-model.ts:44-70`). `Recorded`
+carries the field's declared PROVENANCE, never a run's value, with a reachable `unknown` arm.
+
+**D228 — a node's `when` is rendered from the rule the executor applies.** `describeNodeCondition`
+is a total projection of the same `NodeCondition` value `evaluateNodeCondition` decides with
+(`src/domain/workflow/node-condition.ts:125-135`), switching exhaustively over the closed union, so
+the sentence on the page cannot drift from the condition in the graph. An authored `whenLabel` was
+refused for exactly that reason: it would be a second description of one rule.
+
+**D229 — the ⓘ opens with the descriptor's own words.** `summary` and an EXHAUSTIVE `nodePurposes`
+list are plain descriptor data, declared by all eight registered workflows; the wire carries an
+`absent` arm naming the file that owes a sentence rather than throwing — the explorer serves every
+workflow in ONE document, and refusing the surface over missing prose would take the operator's
+index of the system down — and `explorer-prose-declared` makes that arm unreachable for a REGISTERED
+workflow by failing the build. Nothing composes prose from a label.
+
+**The UI catalog is the same contract at system scope.** `ui-catalog.tsx` renders the semantic UI
+registry with the same chip-first, one-tinted-mark discipline, and its entry sits beside the
+explorer's in the panel's action bar. Neither is a command, which is why both are `ghost` buttons.
+
+<!-- roadmap: def-explorer-edit -->
+<!-- roadmap-status: def-explorer-edit -->
+- [x] the deferral is a DISPOSITION with an argument, not a gap: D186 reassigns the EDIT half on D79a's own reasoning one level down — an editor exists to avoid a code change per tweak ACROSS many workflows, and a closed policy union shaped by a sample of one is a union shaped by one workflow's accident
+- [x] the read half is complete and structurally read-only (above), and the surface states the deferral on screen rather than in a doc only
+- [ ] the trigger that ends the deferral is the third workflow that wants the same presentation tweak — until then an authoring surface would have to bump a version to mean anything (`ref operator-trust` §5.5 owns the two apply levels)
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{explorer,explorer-model,ui-catalog}*, src/dashboard/client/queries.ts, src/server/dashboard/queries/explorer.ts, src/domain/workflow/node-condition.ts; left: the EDIT half, by disposition
+<!-- /roadmap-status -->
 
 ### 9.6 Notifications — the durable inbox and its bell
 
-**Stub — written by unit 5.1d.** Inherits §10.4's routing table and the bell/inbox surface. The
-durable MODEL stays in §2.6 — including the trigger table showing that five of seven arms have no
-publisher, which is the fact this square renders around. Wire:
-`ref frontend-backend-integration` §5.1.6.
+<!-- roadmap: p2-2g -->
+<!-- roadmap: platform-fixes -->
+
+The `p2-2g` checklist lives at §2.6, which owns the durable ROW — the fold, the trigger union, the
+publish-then-deliver ordering — and `platform-fixes`' at §2.3's D218 block. This section adds
+neither: it owns the SURFACE, which is what a row can say once it reaches a screen.
+`ref operator-trust` §6 owns the model's justification and its boundary against the ledger.
+
+**What it is.** One bell in the top bar carrying an unread count, opening an inbox of the durable
+rows for this actor. Nothing about it is a toast: a desktop notification is a delivery convenience
+and the row is the record, so an inbox item exists whether or not anything was ever displayed by the
+operating system.
+
+**Routing, ratified (D79b + D86).** **failed · gate-waiting · write-parked · repeating · storage** →
+**Ping**; **verified-done** → **Inbox only**. Pings are silent. The lifecycle is deliberately
+slimmed from five states (unread/read/acknowledged/snoozed/resolved plus per-attempt delivery
+records — that was multi-user incident tooling) to **read/unread plus an optional snooze**, and the
+inbox is **actor-keyed from day one** (the D75 seam) even though there is one actor today. Retention:
+notes 30d, spans 30d, **ledger forever**, artifacts and checkpoints until purge.
+
+**Unchanged and load-bearing: durability.** A notification is a durable record first and a desktop
+delivery second — **a failed OS delivery still leaves an unread inbox item.** Desktop delivery may
+never be the only alert.
+
+**What the wire carries, and what it deliberately does not.** `NotificationWireSchema` is eight
+fields: `notificationId`, `actorId`, `severity`, `title`, `state`, `occurredAt`, `revision`, and
+D262's optional `link` (`src/domain/dashboard/projection.ts:754-787`). The durable row's `summary`,
+`trigger` and `count` stay off it: they are prose and derived counts, and §2.6's line is that ids and
+closed codes may cross to a surface while prose may not. D262 moved exactly one fact across, and it
+is an id — a needs-you alert whose only affordance is "mark read" is an alert nobody can act on, so
+a row that names a run draws `Open run` (or `Open failure`), and a `storage` row, which names no run,
+draws no button rather than one that navigates nowhere.
+
+**Every action CASes the row's own revision.** `notification-read`, `notification-unread` and
+`notification-snooze` are the whole family (`src/domain/commands.ts:266-267`), each carrying
+`expectedVersion: entry.revision` — the bell holds a served row, not a guess about it — and both
+refusal arms are settled through the one exhaustive fold, because a conflict that fell through to the
+success path is D253's defect on a control whose only feedback is that the row changed. Snooze has
+no inverse on purpose: the kernel serves no `notification-unsnooze`, so the surface offers none.
+
+**The bell reads the SAME served instant every other surface does.** A notification's age is a fact
+about the server's clock, so the row ages against the one calibrated `nowIso` §9.9's D256 clock
+distributes — a browser whose wall clock is off would otherwise age an alert against a time nobody
+else believes.
+
+**As-built, and the three absences the surface is honest about.**
+
+1. **Five of the seven trigger arms have no publisher.** `grep -rn '\.publish(' src/` returns exactly
+   two production callers: `src/services/notifications/storage-health.ts:80` (`storage-degraded`,
+   D222) and `src/services/notifications/gate-park.ts:119` (`gate-opened`, D262). `run-failed`,
+   `subject-mismatch`, `write-parked`, `repeating-failure` and `verified-done` are schema-declared,
+   routed by `projectNotificationTrigger`, renderable — and unreachable. Each belongs to the slice
+   that owns the state it announces (a terminal failure, a subject verdict, a parked write, a repeat
+   fold, a verified completion), which is why they are not one build item; the routing table above is
+   therefore a contract for five arms nothing exercises, and D19 row 19's rot vector — *"OS
+   notification fails, so a critical unknown write is invisible"* — cannot yet fire from the other
+   side either.
+2. **There is no OS channel at all.** `createNotificationInbox` takes an OPTIONAL `delivery` port and
+   the dashboard composition passes none (`src/server/dashboard/compose.ts:443-448`), so every
+   publish settles `delivery: { state: "no-channel" }` — the schema's own word for *"no desktop
+   channel configured"*, chosen over an absent field precisely so it can never be read as
+   *"delivered"*. Durability is what makes that acceptable rather than a hole: the row is committed
+   before delivery is attempted, so the inbox is complete whatever the channel does.
+3. **The `Pings` and `Inbox` filter chips can never be non-zero.** They count rows that DECLARE a
+   delivery route, and `delivery` is a client-side optional extra that never crosses the wire
+   (`src/dashboard/surfaces/top-bar.tsx:517-547, 624-633`). The surface renders the routing rule it
+   cannot measure. It is an on-record deviation from the demo rather than a placeholder — the panel's
+   footer states the routing in words, and the empty state answers the filter with *"The records
+   still exist — switch the filter to see them. A count that reads zero here never means a
+   notification was deleted"* — but a chip whose count is structurally zero is still a control that
+   cannot do anything, and it is `{#track-d}`'s hygiene row to serve `delivery` or drop the chips.
+
+**Wire.** `ref frontend-backend-integration` §5.1.6 owns the bell's payload, the three commands and
+the parity references.
 
 ### 9.7 Intake, mobile capture and Edit Data
 
-**Stub — written by unit 5.1d**, which may add §9.7.1–§9.7.3. Inherits §11 (the intake workspace's
-seven surface decisions) and §12 (the capture phone), with the FLOW, the manifest, readiness and
-capture durability staying `ref data-intake-and-edit-data`'s. Wire:
-`ref frontend-backend-integration` §5.1.7.
+<!-- roadmap: p2-2i -->
+<!-- roadmap: order-6-dash -->
+
+The `p2-2i` checklist lives at §9.5; this square's two deferral blocks are `{#def-byte-path}` and
+`{#def-capture-binding}`, both in §9.7.2.
+
+**What they are.** The three ways data that did not come from a person typing into the run modal
+reaches a run: a spreadsheet (§9.7.1), a photograph (§9.7.2), and a correction to a run's own
+recorded facts (§9.7.3). `ref data-intake-and-edit-data` owns all three FLOWS — the upload → map →
+validate → run sequence (§2.2), the invariant that makes it safe (§2.5), the manifest and readiness
+(§5.2), capture's durable record (§5.1) and Edit Data's field policy (§6). This doc owns what each
+one LOOKS like and what it refuses to draw.
+
+**Wire.** `ref frontend-backend-integration` §5.1.7 owns the endpoints, the manifest handoff and the
+parity references for all three.
+
+#### 9.7.1 The intake workspace (2i-E3, D173)
+
+Ref data-intake-and-edit-data §2.2 owns the FLOW (upload → map → validate → run) and ref data-intake-and-edit-data §2.5 owns the invariant that
+makes it safe. This section owns how that flow is presented, because three of its decisions are
+surface decisions with consequences and one of them is the reason the surface exists at all.
+
+##### Proposed against decided is a PLACE, not a colour
+
+`ref data-intake-and-edit-data` §2.5 forbids a suggestion ever being pre-applied, and the mechanism already exists — only
+`confirm-intake-mapping` mints a binding, reachable from nothing but a press. The surface's job is
+to make the same fact legible, and it spends its whole visual budget on it:
+
+- a **decided** binding is a solid control in the row's own `Bound column` cell, carrying the
+  file's real sample values beneath it — so the operator confirms what a column HOLDS rather than
+  what it is called, which is the only defence against a correctly-named column of wrong data;
+- a **proposal** is recessed and dashed, lives in a **different column** (`Suggested`), and always
+  carries an explicit verb (`Use it`) plus the scorer's own reasons in words. An `ambiguous`
+  proposal states its ambiguity and receives no visual preference, because picking one of two
+  indistinguishable columns for the operator is the silent guess in miniature.
+
+Two states that are never in the same place cannot be confused for one another. A tone would have
+had to be learned; a position does not.
+
+##### The grid's rows are the WORKFLOW's fields, never the file's columns
+
+One row per declared intake target (ref data-intake-and-edit-data §2.2 step 2 in as many words). The workflow's
+requirements are the fixed axis and the spreadsheet is the variable — turn it around and the grid's
+shape depends on the export, and an operator can finish it without ever seeing a field the workflow
+wanted. Unmapped required targets are therefore visible by construction rather than by a check.
+
+##### It is a workspace at `?intake=<sessionId>`, not a dialog
+
+The session is a durable row (D170). It survives reload, and mapping a dozen columns then reviewing
+four hundred rejections takes minutes during which the operator will want to look at the queue.
+Trapping a task whose whole state is already safe on the server is what a modal is for and this is
+not that, so the workspace takes over the main region beside the existing queue/panel pair and is
+abandonable at any moment; `?intake=new` opens it at the dropzone and the upload response replaces
+that with the session's own id. The takeover HIDES the queue rather than dimming it — a
+half-visible queue behind a takeover is the modal it deliberately is not.
+
+Three bands, and the outcome band is `sticky bottom-0` on purpose: an operator scrolling a long
+grid must always be able to read WHY Run is disabled, and a disabled button whose explanation is
+off-screen is how a person concludes the product is broken.
+
+##### Readiness is DERIVED for courtesy and JUDGED by the kernel
+
+The band names the blockers it can see on the served wire — no header row settled, nothing bound,
+an unvalidated mapping. That is a courtesy, never the authority: `enqueueReadiness` judges the
+manifest the arm would actually write (ref data-intake-and-edit-data §5.2), and its refusal renders verbatim. A surface
+that decided readiness itself would eventually disagree with the server about what is about to
+happen, which on this product means disagreeing about whether real HR runs were filed.
+
+Staleness needs no client arithmetic either. Every mapping arm sets `validation: {state:"none"}`,
+so "the review you are looking at describes the current mapping" is a served fact.
+
+##### The destructive act names its cost before it happens
+
+Changing the sheet or the header row discards every binding, correction and exclusion (D170 — they
+all named rows and columns under the old layout). The surface confirms first, with the counts, and
+the confirmation ARRIVES rather than blinking in. Discovering it afterwards would be the definition
+of a surprise.
+
+##### Which control is in flight, not merely that one is
+
+Every intake command is a round trip. Locking the surface while showing a spinner nowhere means the
+operator presses `Use it` and the interface appears to do nothing, so the workspace tracks the
+in-flight command's KEY and that control alone carries the spinner. Everything else disables.
+
+**As-built: five of the seven command keys carry a spinning control, and two do not.** `bind:`,
+`fix:`, `exclude:`, `validate` and `run` each own a keyed `Button` that spins. `inspect` — the sheet
+and header-row `Select`s — and `upload` do not: the selects merely `disabled` themselves
+(`intake.tsx:299, 317`) and the `Dropzone` takes a `busy` flag (`:1198`). Both are the same class of
+round trip and both change the whole grid underneath, so the rule this subsection states is not yet
+true of them; it is a `{#track-d}` hygiene row, not a redesign.
+
+##### As-built notes
+
+- **`Dropzone` is a new DS primitive** (`primitives-form.tsx`): a real `<input type="file">` inside
+  a `<label>`, so the drop target and the browse control are one control that the keyboard, the
+  screen reader and touch all reach for free. It **never filters a dropped file** — `accept` is a
+  picker hint, and
+  a file the server would refuse is handed over so the server can refuse it BY NAME. Drag state is
+  a counter, not a boolean, because `dragleave` fires when the pointer crosses into a child.
+  **What it states about itself is NOT the server's constants**, though this note claimed so until
+  2026-08-21: `INTAKE_ACCEPT` (`intake.tsx:115`) and the hint *"A .csv or .xlsx, up to 25 MB"*
+  (`:1196`) are hardcoded client literals, while `INTAKE_UPLOAD_MAX_BYTES` and
+  `INTAKE_UPLOAD_MEDIA_TYPES` sit unimported at `src/server/dashboard/commands/intake-service.ts:60,
+  66-70`. Two of them can drift apart silently, and the printed figure is already imprecise —
+  25 × 1024 × 1024 is 25 MiB. Importing the constants is the fix and is a `{#track-d}` hygiene row;
+  the refusal path is unaffected either way, because the server is what refuses.
+- **The transport grew `requestJsonResponse`.** The intake upload is the one route whose STATUS is
+  the answer: `201` created a session for these bytes, `200` joined the open one they already have.
+  Any other status throws — falling through to "refused" would report a server defect as the
+  operator's bad file.
+- **`Banner` forwards no unknown props**, so `data-demo-enter` spread onto it type-checks (a spread
+  skips excess-property checking) and is silently dropped at runtime. Arriving surfaces wrap
+  instead. Generalize the shape: a spread onto a component with explicit props is not a compile-time
+  guarantee that the prop arrives.
+- **The parity lane dismisses the floating workflow window for the intake states only.** The window
+  covers the workspace's left edge — its target-field column and its stage tabs — and dismisses on
+  the first click outside it, which is the operator's very first act on a takeover. The queue's
+  references keep it, because the queue is what that window is FOR.
+- **Deferred, with its reason.** There is no arm that sets a run-wide CONSTANT and none that REMOVES
+  a binding, so the grid renders `constants` read-only (today always empty) and its column control
+  offers no "unbind". Offering either would be a control that silently does nothing. person-lookup
+  does not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the
+  first workflow with a required non-column field (ref data-intake-and-edit-data §8's `effectiveDate`) will need the arm.
+
+---
+
+#### 9.7.2 The capture phone surface (2i-F, D175)
+
+Ref data-intake-and-edit-data §5.1 owns what capture DURABLY records and which routes exist; this section owns what the
+person holding the phone sees. It is the only surface in this program rendered on a device the
+operator does not sit at, and every decision below comes from that.
+
+##### The use scene picks the theme, not the category
+
+The operator dashboard is dark because it lives on a desk. The phone surface is **light**, because
+its use scene is somebody standing at a filing cabinet or a front desk with a paper form in one
+hand, often under a window. A dark UI at whatever brightness the phone happens to be on is the most
+common way a capture flow becomes unreadable at the exact moment it is being used. Nothing is
+restyled to achieve this: `tokens.css` already ships both themes behind `data-demo-theme`, so the
+phone selects the light theme and spends no new colour. The palette budget, the `--ds-*` layer, and
+the tailwind ratchet are unchanged, and no operator surface moves. **Two vocabularies, one fact:**
+the attribute VALUE is `light` — stamped on both `<html>` and `<body>` of `capture.html:2, 22`, with
+`<meta name="color-scheme" content="light">` beside it — and `Paper Ink` is that palette's product
+NAME (`DEMO_THEME_LABEL`, `src/dashboard/ds/theme.ts:45-48`, and the word the parity references
+carry). A reader who greps for `paper-ink` in the phone entry finds nothing and should not conclude
+the theme is unset.
+
+##### It is ONE page whose bottom bar changes verb
+
+Capture → review/reorder → finalize are three states of one page, not three pages and not a wizard.
+The task is short, the durable session means a reload lands exactly where the operator was, and a
+step indicator would spend the top of a small screen narrating a sequence the bottom bar already
+states. The action bar is pinned in the thumb zone and is the only place a primary action ever
+appears; what changes between states is its verb, not its position.
+
+##### Order is meaning, so it is a numeral and a button — never a drag
+
+Every photograph tile carries its page number as a large real numeral, because the durable record
+enforces contiguous ordinals and the bundle IS the order. Reordering is explicit ▲/▼ controls, not
+drag: a drag target inside a scrolling list on a touch screen is the classic failure mode, it
+cannot be half-performed with a keyboard, and it announces nothing to a screen reader. Buttons are
+reachable, announceable, and each one is a complete act.
+
+##### The camera is the platform's, not ours
+
+Photographs are taken through a real `<input type="file" accept="image/*" capture="environment">`
+inside a `<label>` — the same real-input-in-a-label pattern the `Dropzone` primitive established
+(D173). Building a viewfinder would mean re-implementing focus, exposure and orientation worse than
+the phone already does, on the one surface where a bad photograph is the whole failure.
+
+##### A failure is the server's own sentence, in reserved space
+
+The error region is always in the DOM with its height reserved, so a refusal never jumps the layout
+under a thumb that is already moving. It is a `role="alert"` and it renders the server's message
+VERBATIM — the kernel's refusal, the projector's failure, the named upload rejection. The phone
+composes no prose of its own and swallows no catch: the operator holding the phone is the person who
+has to choose between Retry Finalize and Discard, and "something went wrong" decides nothing for
+them. Colour is never the only carrier.
+
+##### The QR is the operator's half, and the token is minted once and bounded by TTL
+
+Start Capture is a small control inside the existing dashboard. It calls the loopback-only session
+route and renders the returned `phoneUrl` as an inline-SVG QR built by `src/domain/qr-code.ts` — a
+pure encoder rather than a dependency, so the payload never leaves the process. The raw token is
+MINTED once and rendered once: the durable row holds only its digest, and the URL carries the token
+in the FRAGMENT, which no server sees. A refused ingress renders its `message` and `remediation` in
+place of the QR, because "capture is unavailable" without the reason is a dead end an operator
+cannot act on.
+
+**Minted once is not USED once, and the difference matters to whoever holds the phone.** This
+subsection read *"the token exists once"* until 2026-08-21 and was being read as single-use. The
+phone presents the token on EVERY request and the server resolves it fresh each time —
+`resolveToken` digests it, finds the session, expires it if overdue and stamps the active budget on
+first touch (`src/server/dashboard/commands/capture-service.ts:221-259`). What bounds it is TIME:
+`preConnectTtlMs` (15 min by default) from creation, then `activeIdleTtlMs` (1 h) from the phone's
+first connect (`src/domain/config/schema.ts:265-266`). Every way a token can fail to name a live
+session — unknown, malformed, expired, discarded — answers identically, because a difference there
+is an enumeration oracle on a public origin (D174).
+
+**Where the control actually lives.** *"A small control inside the existing dashboard"* is as-built
+only inside the intake takeover's empty or refused dropzone state (`intake.tsx:1182-1206`), and it
+VANISHES once a session loads. So the phone path is reachable exactly when the operator has already
+opened intake and has no file — which is the right moment, and is narrower than this paragraph
+reads. A second entry point is a surface decision nobody has made; it is recorded here rather than
+implied away.
+
+##### As-built notes (2026-08-09)
+
+- **The phone is a SEPARATE Vite entry**, `capture.html` over `src/dashboard/phone/`, not a route in
+  the operator SPA. Serving the operator bundle over a public tunnel would ship the whole operator
+  UI to the phone origin, and no route filter can un-send bytes. `build.manifest` is emitted so the
+  ingress allowlist is generated from the phone entry's own asset closure rather than hand-listed.
+  `dashboard-wire-boundary` now walks **every** `*.html` entry under `src/dashboard`, not just
+  `index.html` — otherwise a second entry would silently escape D120's Node-built-in check — and a
+  new arm proves the phone closure reaches no operator surface, client, or app module.
+- **One transport owner per bundle.** `provider-capability-boundary` pinned `fetch` to
+  `src/dashboard/client/**`; the phone legitimately needs its own, so
+  `src/dashboard/phone/capture-client.ts` is named as the phone bundle's single transport owner
+  rather than the rule being relaxed. Its error path returns a `CapturePhoneError` that names why a
+  body was unreadable — the `fail-loud-catch-default` ratchet caught a `.catch(() => undefined)`
+  there and was right to.
+- **The camera stays the primary control even after the first photograph**, and Review is the quiet
+  one on the left. Promoting Review was a hazard, not a taste question: Review and Send would then
+  both be "primary, on the right", so a second tap from a thumb already travelling would finalize
+  the bundle.
+- **Motion is the house language, not a phone dialect.** The one authored moment — a photograph
+  settling into the list — uses `--ds-dur-enter` and `--ds-travel-md`. An invented
+  `--ds-phone-*` pair differing by 30ms and 2px would have been a second motion language that also
+  needed its own `prefers-reduced-motion` block to stay honest; the house tokens already collapse.
+  Press feedback is `active:scale-[0.97]`, not a 1px translate: a finger COVERS a 48px control, so
+  the only visible feedback is at its edges.
+- **Red is reserved for Discard.** Per-tile Remove was `danger`-toned, which put three red controls
+  down the reorder list — louder than Send, inverting the attention ladder the token file is
+  explicit about.
+- **Parity: 15 references added** (five states × pixel/a11y/provenance) at one phone viewport in
+  their own block, so the operator corpus is not multiplied. **12 moved, none silently**: the
+  `intake-upload` triples, because the QR start control lives on that surface; the a11y diff is
+  exactly the three lines it adds.
+- **Pre-existing defect found and NOT fixed here:** the intake takeover renders a dark shell under
+  the light theme, leaving the dropzone heading near-invisible. It is identical in the committed
+  baseline and is a sibling of the `paper-ink`-renders-dark residual already deferred to 2j's corpus
+  work; fixing it here would re-freeze references for a reason unrelated to capture.
+
+---
+
+##### The two deferrals this surface waits on
+
+<!-- roadmap: def-byte-path -->
+<!-- roadmap-status: def-byte-path -->
+- [x] the phone surface itself is built, parity-photographed and reachable in DEV through the vite entry — the deferral is the delivery path, not the page
+- [ ] BE the BFF static handler: every unrouted path 404s today, so `/capture.html` is not served by the production process at all (D189 — the production BFF serves no frontend bytes)
+- [ ] BE `--prod` parsed by the runtime: `package.json` passes the flag and `src/core/runtime-composition.ts` dispatches on `args[0]` alone, so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard` — a name the runtime never parsed
+- [ ] BE the on-demand tunnel launcher (D175), unbuilt — which is why the deferral costs nothing today: there is no origin for a phone to reach
+- [ ] BE the guard arm: a phone-origin request may be served nothing outside the capture allow-list
+- [ ] BE wire or delete the INERT Host gate — `deps.capturePhoneHost` is declared and read (`src/server/dashboard/routes/api.ts:65, 142`) and supplied by nothing, so the middleware compiles and can never fire
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/server/dashboard/routes/api.ts, src/core/runtime-composition.ts, src/dashboard/capture.html, vite.dashboard.config.ts; left: every byte-serving half — this is a deferral with a named owner, not a waiver (D189)
+<!-- /roadmap-status -->
+
+<!-- roadmap: def-capture-binding -->
+<!-- roadmap-status: def-capture-binding -->
+- [x] the whole pipeline is composed in production: the session routes, the phone client, the finalize outbox, the restart drain and the intake handoff (D174's derived identities, so a replay returns the SAME manifest and run ids rather than a second run)
+- [ ] `CAPTURE_INTAKE_BINDINGS` is `{}` (`src/control/workflow-registry.ts:194`) — the registry is derived from the workflow modules and NEITHER registered workflow can honestly turn a photograph into an employee id, so the binding is the whole absence
+- [ ] the trigger is the first OCR-consuming workflow (`{#order-3}`); until then a capture that cannot bind refuses BY NAME into durable `failed` rather than inventing one (D174)
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/control/workflow-registry.ts, src/core/capture-intake-handoff.ts, src/server/dashboard/commands/capture-service.ts; left: the binding, which waits on a workflow that can consume a photograph
+<!-- /roadmap-status -->
+
+#### 9.7.3 Edit Data — the rail is the place, the policy is elsewhere
+
+Edit Data has no takeover and no surface of its own, deliberately: a correction is made where the
+value is READ, which is the run's own Context rail (§9.3.1). That is the whole surface decision, and
+the two halves it implies are recorded where they belong — the rail's ledger presentation, its
+direction and freshness bound (D252) and its two refusal arms (D253) are §9.3.1's; the field policy,
+the checkpoint-edit command, the concurrency rule and what is editable at all are
+`ref data-intake-and-edit-data` §6's, and `editPolicyFor`'s composition stays with the rail because
+it is presentation over that policy rather than a second copy of it.
+
+What is NOT built is named there too and not re-argued here: the rail's `Load a prior run` /
+`Start a run from this data` footer, and `actions[]` gating at the `data` placement — the served
+actions projection for that placement is empty today and the wire's `editing` union carries the gate
+meanwhile (§9.3.1, `{#track-b}`).
 
 ### 9.8 Settings and the storage doctor
 
-**Stub — written by unit 5.1d.** A dashboard-only square: `ref frontend-backend-integration` §5.1
-has no counterpart. Inherits the Settings surface as 2i-D built it, read-only over the sections the
-server serves. The CONTRACT — the boot interlock, the backup cadence, the doctor, D181's restore and
-the process locks — stays in §2.5, and the `apply-settings` deferral in §2.4.
+<!-- roadmap: p2-2j -->
+<!-- roadmap: def-settings -->
+<!-- roadmap: def-retention -->
+
+A dashboard-only square: `ref frontend-backend-integration` §5.1 has no counterpart, because
+Settings issues no command. Three checklists reach it and none of them opens here — `p2-2j`'s is at
+§2.5 (the boot interlock, the backup cadence, the doctor, D181's restore and the process locks),
+`def-settings`' at §2.4 (the ONE deferred kernel arm), and `def-retention`'s at §2.1 (the sweep and
+the backup path). This section owns what the operator SEES of all that.
+
+**What it is.** The gear in the top bar, opening the sections the SERVER lists. There is exactly
+one today — `settingsSections: [{ id: "storage", label: "Storage", revision: 1 }]`
+(`src/server/dashboard/queries/bootstrap.ts:122`) — and the surface renders the server's list rather
+than its own, so a section this build cannot draw says so BY NAME instead of disappearing. A missing
+section is indistinguishable from a section nobody added, and only one of those is a defect.
+
+**Nothing here saves anything, and that is a deferral rather than an omission.** `apply-settings` is
+the one command arm the kernel declares and refuses (§2.4, `{#def-settings}`), so Storage is
+read-only health and no control on the page pretends otherwise — there are no disabled inputs
+waiting for a backend, because a disabled control still claims the act exists.
+
+**Two readings, at two costs.** The **at-rest summary** rides the bootstrap every view already has
+(`authority`, `backup`, `checkedAt`) — that is what the gear's attention dot is computed from
+(`storageNeedsAttention`: authority not healthy, OR backup not current). The **doctor** is a
+deliberate press: `buildStorageDoctor` runs the read-only inspection on demand
+(`src/server/dashboard/queries/storage.ts`) and returns authority state, pending durable work,
+byte-re-verified backup health, the restore candidates and — beside them — what the live backup
+SERVICE last did. That last field exists because the on-disk view cannot see a failure: a backup run
+that threw leaves no manifest for the doctor to find, so the process that owns the cadence has to
+say so itself (`never-run` | `ok` | `failed`, each with its reason).
+
+**The surface lists restore candidates and cannot restore.** D181's offline restore requires a
+one-time stopped-system proof derived from the runtime lock snapshot, and the dashboard is one of
+the processes that proof is about — so the act is `cli storage restore` and the page's job is to
+tell the operator which candidate is `verified-compatible`, which is `invalid` and why. A button
+here would have to either fabricate the proof or fail every time it was pressed.
+
+**D222 — the band was narrowed to the one state that stops the work.** `StorageBanner` renders on
+EVERY view (it is mounted above the takeover switch, so the queue, intake, archive, explorer,
+catalog and Activity all carry it) and it now appears for **unreachable authority only**. A stale or
+missing backup does not stop runs or writes and §2.6 has always named it a `storage` NOTIFICATION,
+so it reaches the operator as a durable inbox row plus the gear's dot instead of a band over
+everything. The authority case stays a band for a structural reason rather than a volume preference:
+**the inbox is an authority table, so an authority that cannot be written cannot record a
+notification about its own death.** When both are true the band prints both sentences, authority
+first, because that is the one that changes what happens next.
+
+**The band is a HAZARD, which is one of D24's two exemptions.** It names the state, the ONE
+consequence that changes what the operator should do next, and the route to the doctor. No third
+sentence, no disclosure list, no defence of the design — and every word of it is derived from facts
+the bootstrap actually serves, which is why the ported demo's two "what still works / what is
+blocked" lists were not ported with it.
 
 ### 9.9 The shell — top bar, worker cards, keys, theme
 
@@ -3637,645 +4616,41 @@ dropped, and this table is how a citation to the old flat list resolves.
 
 ---
 
-## 10. Round-8 obligations this doc owns (2026-07-26)
+## § aliases — the numbers §5.1–§5.4 and §10–§13 used to hold
 
-Four operator ratifications from 2026-07-24 land here. Each is stated as a contract, not a
-preference, because each has a guard.
+**Transitional, and deliberately ugly so nobody mistakes one for a section.** Each heading below is
+a one-line REDIRECT. They exist because section numbers are load-bearing here — 33 tree nodes carry
+a `ref:dashboard-surfaces §N` ref the `roadmap-doc-binding` guard resolves against a real heading,
+~150 code comments cite one, and `history/` plus `docs/migrations/separations.md` cite the OLD
+numbers and are deliberately not swept (the § number map at the top of this doc is the permanent
+record for those). Unit 5.1d REPORTED the tree retargets rather than editing the tree; the
+orchestrator applies them in one sweep and **deletes this whole block in the same commit**. A
+citation that lands here is not broken — it is one sweep behind.
 
-### 10.1 ONE projection owns every count (D81)
+### 5.1 The seam: one direction, one place — see §5, and `history/superseded/2026-08-21-dashboard-surfaces-coexistence.md`
 
-**The recorded bug.** The operator reports that in the legacy dashboard the per-workflow badges
-"always error out" — matching the audit's bug class #7, count/badge divergence, with ≥4 separate
-fixes over the project's life. The root cause is structural, not arithmetic: badges, the status
-strip, and the queue list were each free to derive their own counts, so any two could disagree and
-each had to be fixed independently.
+### 5.2 The mapping from the kernel terminal contract — see §5, and the same history file
 
-**The contract.** There is exactly **one** server-side run/queue projection. **Workflow Panel
-badges, Status Bar pills, and Queue Panel rows are three renderings of that one payload.** A count
-is never computed a second time — not in React, not in a second endpoint, not in a "just for the
-badge" aggregate. If a surface needs a number the projection does not yet expose, the projection
-gains a field; it does not gain a sibling.
+### 5.3 Source authority, immutable per run — see §5; the `(engine, cutoverGeneration)` stamp never shipped
 
-Consequences that follow and must not be re-litigated per surface: **collapse rules, hidden rows,
-archived runs (§10.2), and delegated-member containment are applied once, inside the projection.**
-**The Activity report (D180) is a range rendering of this same payload**, built inside the
-projection for the same reason: a report that summed rows a second way could disagree with the day
-it summarises. Its contract lives in ref frontend-backend-integration §6.7. One block on it — the write ledger — is the single
-ratified exception, and it is spelled out immediately below (D236).
-A member counted in a group is not also counted at top level because there is no second place that
-could count it.
+### 5.4 The flip is SCOPED, then per-workflow migration — see §5; one all-at-once switch, `doc 05`
 
-#### D236 — the write-ledger carve-out (2026-08-19, operator ruling)
+### 10. Round-8 obligations this doc owns — see §9.5.2 · §9.5.1 · §9.2 · §9.6
 
-**There is exactly ONE exemption from the sentence above, and it is named here so nothing else can
-claim to be it.** The Activity report's `Write ledger — what was actually filed` block is folded
-from the durable write ledger (`src/infra/ledger/`), **not** from this projection.
+### 10.1 ONE projection owns every count (D81) — see §9.5.2
 
-**Why it cannot be derived from the projection.** §10.2 rule 1 already decides the half that
-matters: *the write ledger is never archived — archiving is a display lifecycle, the ledger is an
-audit one.* The ledger is append-only and is never pruned (D86), so **its entries outlive the runs
-that filed them**: a window whose runs have all left the live surfaces on a version bump can still
-hold ledger lines, and folding those lines out of the run corpus would report *"nothing was filed"*
-about real HR transactions that were. That is not a count/badge divergence — it is a different
-question over a different corpus, and D81 exists to stop two answers to ONE question, not to forbid
-a second question.
+### 10.2 Versioning and archive-on-version-bump (D80) — see §9.5.1
 
-**The shape of the exemption, which is what keeps it from spreading.**
+### 10.3 Operator-assigned run display names (D83) — see §9.2
 
-1. **Reported BESIDE the totals, never derived from them.** `ActivityReportWire.ledger` is its own
-   block. The wire's refinements deliberately assert **no** relationship between it and `totalRuns`,
-   the status buckets or the workflow cross-tab — a cross-check would be a claim that the two corpora
-   cover the same rows, and that claim is false. What IS checked is one level down, where both
-   numbers come from the same authority: each system row's `entries` must partition into
-   `prod` + `test`.
-2. **The seam is stated where the reader is.** The block carries it in its own subtitle, and
-   `activityReportCaveats` carries it into the panel's ⓘ and into the CSV export (D240). A second
-   authority the reader cannot see is a second authority the reader assumes is the first one.
-3. **ONE reader, reused.** The fold lives on the existing archive read-through
-   (`LedgerReadThrough.foldActivityRange`), not in a new module: two readers of an append-only audit
-   file would be two parse disciplines, and the wrong one would be wrong about what was filed into a
-   live HR system. A line it cannot read **throws by name** rather than being skipped — the pointer
-   path can answer one citation with a reason, a fold has no such column, and skipping silently
-   subtracts a filed transaction from the count of what was filed.
-4. **The window closes on the entry's own `confirmedAt`**, read through the same local-day rule this
-   projection buckets rows with. A partition FILE name is a UTC date and decides only which files are
-   opened (widened one day at each end); letting it decide membership would drop a write confirmed
-   late in the local day out of the report over a timezone.
-5. **The empty state is now honest.** "No ledger entries. Nothing in this report's reach filed
-   anything into a real HR system" is a fact the moment the axis is served, and was an *assertion*
-   before it was — which is why the ported surface omitted the block entirely rather than rendering
-   its empty state over an unserved axis.
+### 10.4 Notification model (D79b + D86) — see §9.6
 
-**Guard (ref guards-and-tests).** `one-projection-counts` — any count/aggregate in a surface path that does not
-originate from the projection payload fails. Backed by a fixture asserting Workflow Panel total,
-Status Bar sum, and rendered Queue Row count are equal by construction for a seeded world that
-includes archived, delegated, and rejected rows. *(The `?view=rebuild-demo` replica already
-proves this shape: one `countRows()` feeds rail badges, Status Bar, and queue — divergence is
-structurally unrepresentable there.)* **D236's exemption is bounded by the same guard, from both
-sides:** a write-ledger block may be BUILT only in `src/domain/dashboard/activity.ts` and
-`src/infra/ledger/ledger-read-through.ts`, and ASKED FOR only in that read-through and the one
-projection — exact set equality both ways, so a third counting path over the ledger fails by file
-name. The behavioural arm files real ledger lines into the seeded world and requires the block to
-move while every count stays byte-identical: *"reported beside the totals"* is a claim about what
-does not happen, so that is what is asserted.
+### 11. The intake workspace — see §9.7.1
 
-### 10.2 Versioning and archive-on-version-bump (D80)
+### 12. The capture phone surface — see §9.7.2
 
-**No archive folders, no compat shims — git is the archive.** Descriptors carry a version + content
-fingerprint; a guard forces a bump on behavior change; **every run permanently stamps the workflow
-version and the app version it ran with, at enqueue.**
+### 12.6 The QR and the token — see §9.7.2, which states the TTL bound the old title implied away
 
-**On a version bump, all runs of prior versions leave the dashboard.** Active surfaces, counts, and
-filters only ever contain current-version runs; prior runs move to a read-only **Archive** (a
-browsable view + on-disk store). A **dashboard/app update bumps the effective version of every
-workflow**, because old runs may not be interpretable against new dashboard state.
+### 13. The two reference takeovers — see §9.5.3
 
-The rule that makes this pay for itself: **an archived run is stored as self-contained data** — its
-final projected row, its receipt, and evidence pointers — so rendering it requires **zero
-old-version code**. No compat shims, no version fallbacks, exactly one rendering path in the
-dashboard forever. That is the whole point; an archive that needed old code to read would recreate
-the coupling the rebuild exists to remove.
-
-Four hard rules:
-
-1. **The write ledger is never archived.** What was filed in a real HR system stays forever,
-   independent of run archival. Archiving is a *display* lifecycle; the ledger is an *audit* one.
-2. **Relaunch from archive starts a fresh run on the current version** from the archived immutable
-   input. It is never a resume of the old run — resume across a fingerprint change is exactly what
-   D35 forbids.
-3. **A bump cannot archive a non-terminal run.** Queued/parked runs must be terminalized first
-   (cancelled, or for a parked write RESOLVED present/absent per §parked-intent resolution), and
-   the bump flow lists them. **An unresolved possible-submit is never buried in an archive** — this
-   is the write-safety carve-out and it is not negotiable for convenience.
-4. **Hide/Unhide still exists** for same-version runs (reversible presentation tombstone, D49).
-   Archive-on-bump is the automatic path; Hide is the manual one.
-
-**D95 command naming:** this lifecycle is executed only through the `version-archive` family's
-`plan-version-bump` and `apply-version-bump` actions. The run-family `bump` action in §2.4 remains
-queue priority/claim order only and can never plan, apply, or imply version/archive work.
-
-The scope of a bump is declared by whoever makes the change — single-workflow, multi-workflow, or
-dashboard — and recorded in that update's change record (same store as fix records: what, why,
-version, commit).
-
-#### D179 — the archive model as-built (2i-G, 2026-08-09)
-
-**The app version is the other half of the archive key, and it was not being kept.** The queue
-projection stamped `deps.appVersion` — the build serving the PAGE — on every row, so the run-detail
-"served by a different app build" comparison compared a value with itself and could never fire.
-`RunRecord` now carries an `appVersion` stamped at the ONE enqueue point (`fanOutQueuedRuns`, and
-the retry arm, which stamps the build it is enqueued under rather than inheriting the one it
-retries). It is **read forward, never back-filled** (D133's rule): a run from before D179 reports
-its absence with its reason, and an application-scope bump treats an unstamped run as prior-version
-— the fail-closed reading, since it demonstrably is not the current build's.
-
-**Authority schema v13** adds three tables, all insert-only in SQL rather than by convention,
-because an archive whose rows could be rewritten is a WEAKER record than the live row it replaced:
-
-| table | holds |
-|---|---|
-| `version_bump_applications` | the applied bump — charter §25's change record |
-| `archived_runs` | one self-contained record per swept run, with its content digest |
-| `archive_relaunches` | relaunch provenance, keyed by the FRESH run |
-
-`version_plans` (released in v1, zero production rows because the family was deferred) gets its
-first real shape under the same D164 precedent `artifact_outbox` set: it holds the exact
-`VersionBumpPlan` rather than an opaque payload, and it moves `planned → applied` exactly once
-under a CAS — the same discipline a start plan follows, because it is the same problem.
-
-**An archived run is the FINAL PROJECTED ROW plus its detail, receipt, failure and evidence
-POINTERS.** The kernel takes those payloads through an `ArchiveSnapshotSource` seam that the server
-implements over the same run/queue projection and run-detail query the live surfaces render, so the
-frozen bytes are the bytes the operator last saw rather than a second derivation of them. The
-workflow LABEL is frozen into the record too: resolving it at read time would be a descriptor read
-on the archived path, and falling back to the id would substitute a plausible value for one nobody
-recorded. Evidence is pointers only — the content-addressed bytes, the checkpoints and the ledger
-lines all stay exactly where they are.
-
-**The workflow's SHORT CODE is frozen beside the label (D242, generation 3).** The index row's
-leading identity token is `<code> v<N>` — `sd v1`, not `Separation Documents v1` — because at 800
-rows a full label costs the name column real width and the code costs four characters; the whole
-label moves to the row's `title`, so nothing is lost, it moves to the hover. Every argument the
-frozen label makes applies unchanged, and one more: `traceId.slice(0, indexOf("-"))` looks like a
-free derivation and is silently wrong for exactly the case a frozen field exists for — a run
-planned under a code the workflow has since changed. Both facts come from ONE registry lookup at
-sweep time, so the record refuses a half-resolved pair (a label present beside an absent code) and
-the sweep passes both from a single `resolve`. Two absences reach the wire and each keeps its own
-sentence: a record written before generation 3 holds no code at all, and a record swept after its
-workflow was unregistered says so itself. A row whose code is absent falls back to its LABEL, which
-is a real name the record holds, and puts the reason in the title — never a derived code. The
-version registry and the Activity per-workflow table print the CURRENT registry's code beside the
-label; the Activity CSV gives it its own column rather than gluing it onto the label, because a
-spreadsheet sorts and filters columns. The code itself is ref workflow-model §1.1.1's.
-
-**The three arms, and where each refusal is computed:**
-
-- `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the
-  charter's requirement is that the flow LISTS the blockers — the list is what the operator needs
-  in order to clear it. An `application`-scope plan must name the RUNNING build; a scope nobody can
-  verify could archive every run on the strength of a typo.
-- `apply-version-bump` re-derives candidates **and blockers from authority inside the applying
-  transaction**, never from the plan's copy: a run that went queued between review and apply is
-  exactly the possible-submit the refusal exists to keep out of an archive. It refuses on
-  `active-version-blockers` naming every blocking run by trace, workflow and state; on registry
-  drift; and on an app build that moved since review. A refused apply leaves the plan `planned`, so
-  the SAME reviewed plan applies once the blocker settles — a refusal is not a spent plan.
-- `relaunch-archived-run` cites the record's content digest, resolves the CURRENT descriptor, and
-  replans from the archived RAW submission through today's ingress and canonical schemas. It never
-  replays the archived canonical value — that value was validated by a schema which has, by
-  definition, since moved — and it is not a retry: the fresh run carries no `retryOf`, and neither
-  side of the link is rewritten to record it.
-
-**Archived rows leave every live read once, inside the projection**, beside hidden rows and member
-containment (§10.1) — so a swept run leaves the queue, the workflow badge, the status pill, the
-month calendar and the Activity report at the same instant, by construction.
-
-**The Archive surface is read-only structurally.** No retry, no cancel, no hide, no resolution —
-absent, not disabled, because a disabled control still claims the act exists. The one control is
-Relaunch, and the archived-detail query resolves the registry for exactly one thing: whether a
-current version exists to relaunch ONTO. `archive-invariants` proves the rest by reading a stored
-record back with the descriptor list empty.
-
-**D223 (operator ruling, 2026-08-18) — the archived detail is the DEMO's detail: five tabs and an
-Export control.** The operator ruled "for the archive stuff just follow how the demo looks",
-settling the two decide-first records the findings ledger had parked here. **(1) Tabs.** An
-archived run renders Summary · Logs · Data · People (where the run has members) · Evidence, like
-the demo's `ArchivedRunDetail` — which means the archive snapshot FREEZES the section payloads
-(log lines, data points with their provenance, member outcome rows) beside the projected row at
-archive time, in the same seam that already freezes the row, detail, receipt and failure. Counts
-alone are ratified insufficient: an archived run whose logs are unreadable is not "self-contained
-data". This extends the archived record (a schema-version bump on the archive tables, read-forward
-per D133: a pre-D223 record reports its tabs absent with the reason, never fabricates them), and
-`archive-invariants`' bar is unchanged — every tab renders with the descriptor list EMPTY.
-**(2) Export.** The archived detail's panel header carries the demo's Export control, writing
-`archive-<traceId>.json` composed of EXACTLY the display-redacted `ArchivedRunDetailWire` the
-surface already holds — the export inherits the display redaction and carries nothing more, so no
-new redaction surface exists. Both halves are build items owned by the separations-completion
-plan's Track B5; this ruling is the ratification the records were waiting for.
-
-#### D223 as-built — the frozen sections, Export, and the change record (Track B5, 2026-08-19)
-
-**Archive schema generation 2.** The archived record's own
-`archiveSchemaGeneration` is the version that moved — not the SQL schema, which
-did not, and no migration was written. `archived_runs` stores the record as
-JSON, the generation schema is a union of the generations this reader
-implements, the new blocks are optional, and a generation-1 row's
-`contentDigest` is byte-identical because canonical JSON omits an absent key.
-What the generation buys is the half an optional field cannot carry:
-`refineSectionGeneration` refuses a WRITER that omits the block, in both
-directions. A reader must admit a generation-1 record — those bytes are on disk
-and nothing may back-fill them — and a writer may not produce one, or "this
-build could not freeze the logs" would be recorded as "this record predates
-logs", which is a silent downgrade on the record whose whole job is to be
-complete.
-
-**What is frozen, and where each half comes from.** Four sections ride the
-existing `ArchiveSnapshotSource` seam, so the frozen bytes are the bytes the
-live surfaces last rendered rather than a second derivation: **logs** (EVERY
-note line, walked through the live section's own cursor to `end-of-page` — a
-frozen `nextCursor: present` would name a fetch the archive has no endpoint
-for, and the freeze refuses past a bound rather than truncating), **data**,
-**people** (projected from the fold's own `memberRunIds`; a member the
-projection cannot render REFUSES the archive, for the same reason an
-unrenderable row does), and **attempts**. The fifth, **captures**, is derived
-from authority beside the evidence pointers, because a diagnostic bundle is not
-a read-model fact.
-
-Every section is an explicit absence union and never an empty payload standing
-in for two facts. A run with no members and a run whose member rows could not be
-projected are different situations; so are "this run wrote no log line" and
-"this record predates frozen logs" — the wire's `sections` absence names its own
-generation and states that the payloads are not reconstructible.
-
-**The captures are DESCRIBED pointers, not copies.** D179's "evidence is
-pointers only" is about the BYTES and it stands — nothing on this path reads the
-content store. What a tile adds is what a pointer alone could never say: kind,
-media type, size, digest, sensitivity, the capture instant, the bundle's origin,
-a screenshot's pixel size, and the bundle's DECLARED retention (never an
-observation of whether the bytes are still there — that is `archiveRetention`'s
-read-time computation). `step` and `system` are joined off the bundle's ORIGIN
-failure, the only place either is recorded, and both stay named absences when
-the origin names no failure or the failure names no node; borrowing the run's
-last node would attach a capture to a step it may not belong to. `system` is
-read as the declared store half of a `TaskId` (`<registered-store>/<operation>`)
-— a component of the identifier's own grammar, not a substring somebody hopes
-means something.
-
-**The per-attempt history is a projection of an identity the fold already
-carried.** Span identity is `(runId, attempt, spanPath)` (§1.1), so grouping by
-attempt reads the key rather than inferring a boundary from instants. Attempt 1
-is emitted even when it folded no span — a run that died before its first task
-still HAD a first attempt. There is deliberately no per-attempt trace id (a
-trace belongs to the run) and no per-attempt status pill (it would have to be
-invented from the span mix); the mix is served verbatim and the surface counts
-it.
-
-**Export** writes `archive-<traceId>.json` containing EXACTLY the
-display-redacted `ArchivedRunDetailWire` the surface holds — not a
-re-derivation and not a second projection, which is why it opens no new
-redaction surface. Every new wire leaf is dispositioned in the redaction audit
-against the disposition its LIVE twin already carries; a frozen copy that
-relaxed an origin would be a downgrade nobody reviewed.
-
-**`LEDGER_PRESENTATION_DECLARATIONS` is keyed by the PROOF SCHEMA HASH.**
-`(system, completionKind)` cannot work: separations files two different UCPath
-writes — the pending-transaction sweep and the termination — and both are
-`save-verify` on `ucpath`. `proof.schemaHash` is the contract's own identity and
-is already on every line, so a declaration carries the commit contract's
-`proofSchema`, derives that hash from it, and PARSES the stored proof through it
-before reading a leaf; a line whose proof names a declared schema and does not
-satisfy it is reported by name rather than read past. Two of the three
-declarations state their confirmation column ABSENT with a reason, which is the
-point of a declaration rather than a gap in it — UCPath issues no receipt for an
-in-progress-grid delete, and Kuali's save is UI-silent (D128) and proves
-completion by reload read-back. "This write has no confirmation number" and
-"nobody has declared how to read one" are different facts and an operator
-reading a blank cell must be able to tell them apart.
-
-**Charter §25's change record now exists.** The paragraph above ("the scope of a
-bump is declared by whoever makes the change … and recorded in that update's
-change record: what, why, version, commit") had no collecting surface, so every
-sweep could say who applied it and when and nothing about why. It is authored at
-PLAN time in a dialog — the only person who can say why a version moved is the
-one moving it, and asking later means asking somebody who did not make the
-change. It rides the plan, so the fingerprint the operator's apply cites back
-covers the words as well as the run sets, and apply copies it into the
-application VERBATIM; re-authoring it there would let the recorded reason differ
-from the one the plan was reviewed under. `commit` is an explicit absence union
-rather than a required string, because a workflow bump usually has a commit and
-an application bump often does not, and demanding a hash would put a fabricated
-one on the record that exists to be trustworthy. It is read forward on the same
-terms as the sections: a pre-generation-2 sweep says "nobody was asked" rather
-than showing an empty block, which would read as "nobody had a reason".
-
-**`fromVersions` is derived from the ARCHIVED RECORDS, not from the plan.** A
-plan's `observedIdentities` are the versions the bump moves TO; "from what" is
-answered by what the swept runs were actually carrying, so the index folds the
-distinct `archivedIdentity.descriptorVersion` of the records each application
-owns. A sweep that archived nothing has no from-version and the empty list is
-that fact — there is no run to read one off.
-
-**What `archive-invariants` proves after this.** The structural bar is
-unchanged and met: the archived-run read path still value-reaches no registry
-module anywhere in its import closure, so every tab renders with the descriptor
-list EMPTY — which `archive-model.test.ts` now executes tab by tab, alongside a
-generation-1 record read forward and a run that FILED a real ledger line,
-archived and resolved back with the registry empty. Importing the three commit
-contracts into the ledger read-through is inside that bar two ways: their
-closure reaches no Node built-in (ref frontend-backend-integration §8.13 — the module lands on the
-dashboard bundle) and no descriptor module. A task contract is neither; it is
-the schema of one write, and the ledger is never archived, so interpreting its
-lines with current code is exactly right.
-
-**Storage growth.** The operator accepted the per-archived-run cost on
-2026-08-18. The measured per-run delta is owed in this block once a real archive
-exists — no production database has archived a run yet, and a number from a
-fixture would be a measurement of the fixture.
-
-### 10.3 Operator-assigned run display names (D83)
-
-Any run can be renamed by the operator. The label rides the **row and the receipt**; the trace id is
-preserved underneath and remains the join key for spans, notes, and the ledger. A rename is a
-command arm (D67), is actor-attributed (D75), and never mutates identity — it is presentation over
-a stable id, exactly like the presentation-override layer (D16). Per D95, its payload is one strict
-`displayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters,
-and no unknown keys.
-
-### 10.4 Notification model (D79b + D86)
-
-**Slimmed from the five-state lifecycle** (unread/read/acknowledged/snoozed/resolved + per-attempt
-delivery records — that was multi-user incident tooling) **to read/unread + optional snooze.** The
-inbox is **actor-keyed from day one** (D75 seam) even though there is one actor today.
-
-Routing, ratified: **failed · gate-waiting · write-parked · repeating · storage** → **Ping**;
-**verified-done** → **Inbox only**. Pings are silent. Retention: notes 30d, spans 30d, **ledger
-forever**, artifacts + checkpoints until purge.
-
-Unchanged and load-bearing: durability. A notification is a durable record first and a desktop
-delivery second — **failed OS delivery still leaves an unread inbox item.** Desktop delivery may
-never be the only alert.
-
----
-
-## 11. The intake workspace — the surface contract (2i-E3, D173)
-
-Ref data-intake-and-edit-data §2.2 owns the FLOW (upload → map → validate → run) and ref data-intake-and-edit-data §2.5 owns the invariant that
-makes it safe. This section owns how that flow is presented, because three of its decisions are
-surface decisions with consequences and one of them is the reason the surface exists at all.
-
-### 11.1 Proposed against decided is a PLACE, not a colour
-
-§2.5 forbids a suggestion ever being pre-applied, and the mechanism already exists — only
-`confirm-intake-mapping` mints a binding, reachable from nothing but a press. The surface's job is
-to make the same fact legible, and it spends its whole visual budget on it:
-
-- a **decided** binding is a solid control in the row's own `Bound column` cell, carrying the
-  file's real sample values beneath it — so the operator confirms what a column HOLDS rather than
-  what it is called, which is the only defence against a correctly-named column of wrong data;
-- a **proposal** is recessed and dashed, lives in a **different column** (`Suggested`), and always
-  carries an explicit verb (`Use it`) plus the scorer's own reasons in words. An `ambiguous`
-  proposal states its ambiguity and receives no visual preference, because picking one of two
-  indistinguishable columns for the operator is the silent guess in miniature.
-
-Two states that are never in the same place cannot be confused for one another. A tone would have
-had to be learned; a position does not.
-
-### 11.2 The grid's rows are the WORKFLOW's fields, never the file's columns
-
-One row per declared intake target (ref data-intake-and-edit-data §2.2 step 2 in as many words). The workflow's
-requirements are the fixed axis and the spreadsheet is the variable — turn it around and the grid's
-shape depends on the export, and an operator can finish it without ever seeing a field the workflow
-wanted. Unmapped required targets are therefore visible by construction rather than by a check.
-
-### 11.3 It is a workspace at `?intake=<sessionId>`, not a dialog
-
-The session is a durable row (D170). It survives reload, and mapping a dozen columns then reviewing
-four hundred rejections takes minutes during which the operator will want to look at the queue.
-Trapping a task whose whole state is already safe on the server is what a modal is for and this is
-not that, so the workspace takes over the main region beside the existing queue/panel pair and is
-abandonable at any moment; `?intake=new` opens it at the dropzone and the upload response replaces
-that with the session's own id. The takeover HIDES the queue rather than dimming it — a
-half-visible queue behind a takeover is the modal it deliberately is not.
-
-Three bands, and the outcome band is `sticky bottom-0` on purpose: an operator scrolling a long
-grid must always be able to read WHY Run is disabled, and a disabled button whose explanation is
-off-screen is how a person concludes the product is broken.
-
-### 11.4 Readiness is DERIVED for courtesy and JUDGED by the kernel
-
-The band names the blockers it can see on the served wire — no header row settled, nothing bound,
-an unvalidated mapping. That is a courtesy, never the authority: `enqueueReadiness` judges the
-manifest the arm would actually write (ref data-intake-and-edit-data §5.2), and its refusal renders verbatim. A surface
-that decided readiness itself would eventually disagree with the server about what is about to
-happen, which on this product means disagreeing about whether real HR runs were filed.
-
-Staleness needs no client arithmetic either. Every mapping arm sets `validation: {state:"none"}`,
-so "the review you are looking at describes the current mapping" is a served fact.
-
-### 11.5 The destructive act names its cost before it happens
-
-Changing the sheet or the header row discards every binding, correction and exclusion (D170 — they
-all named rows and columns under the old layout). The surface confirms first, with the counts, and
-the confirmation ARRIVES rather than blinking in. Discovering it afterwards would be the definition
-of a surprise.
-
-### 11.6 Which control is in flight, not merely that one is
-
-Every intake command is a round trip. Locking the surface while showing a spinner nowhere means the
-operator presses `Use it` and the interface appears to do nothing, so the workspace tracks the
-in-flight command's KEY and that control alone carries the spinner. Everything else disables.
-
-### 11.7 As-built notes
-
-- **`Dropzone` is a new DS primitive** (`primitives-form.tsx`): a real `<input type="file">` inside
-  a `<label>`, so the drop target and the browse control are one control that the keyboard, the
-  screen reader and touch all reach for free. It states what it takes and its size cap from the
-  server's own constants, and it **never filters a dropped file** — `accept` is a picker hint, and
-  a file the server would refuse is handed over so the server can refuse it BY NAME. Drag state is
-  a counter, not a boolean, because `dragleave` fires when the pointer crosses into a child.
-- **The transport grew `requestJsonResponse`.** The intake upload is the one route whose STATUS is
-  the answer: `201` created a session for these bytes, `200` joined the open one they already have.
-  Any other status throws — falling through to "refused" would report a server defect as the
-  operator's bad file.
-- **`Banner` forwards no unknown props**, so `data-demo-enter` spread onto it type-checks (a spread
-  skips excess-property checking) and is silently dropped at runtime. Arriving surfaces wrap
-  instead. Generalize the shape: a spread onto a component with explicit props is not a compile-time
-  guarantee that the prop arrives.
-- **The parity lane dismisses the floating workflow window for the intake states only.** The window
-  covers the workspace's left edge — its target-field column and its stage tabs — and dismisses on
-  the first click outside it, which is the operator's very first act on a takeover. The queue's
-  references keep it, because the queue is what that window is FOR.
-- **Deferred, with its reason.** There is no arm that sets a run-wide CONSTANT and none that REMOVES
-  a binding, so the grid renders `constants` read-only (today always empty) and its column control
-  offers no "unbind". Offering either would be a control that silently does nothing. person-lookup
-  does not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the
-  first workflow with a required non-column field (ref data-intake-and-edit-data §8's `effectiveDate`) will need the arm.
-
----
-
-## 12. The capture phone surface — the surface contract (2i-F, D175)
-
-Ref data-intake-and-edit-data §5.1 owns what capture DURABLY records and which routes exist; this section owns what the
-person holding the phone sees. It is the only surface in this program rendered on a device the
-operator does not sit at, and every decision below comes from that.
-
-### 12.1 The use scene picks the theme, not the category
-
-The operator dashboard is dark because it lives on a desk. The phone surface is **light**, because
-its use scene is somebody standing at a filing cabinet or a front desk with a paper form in one
-hand, often under a window. A dark UI at whatever brightness the phone happens to be on is the most
-common way a capture flow becomes unreadable at the exact moment it is being used. Nothing is
-restyled to achieve this: `tokens.css` already ships both themes behind `data-demo-theme`, so the
-phone selects `paper-ink` and spends no new colour. The palette budget, the `--ds-*` layer, and the
-tailwind ratchet are unchanged, and no operator surface moves.
-
-### 12.2 It is ONE page whose bottom bar changes verb
-
-Capture → review/reorder → finalize are three states of one page, not three pages and not a wizard.
-The task is short, the durable session means a reload lands exactly where the operator was, and a
-step indicator would spend the top of a small screen narrating a sequence the bottom bar already
-states. The action bar is pinned in the thumb zone and is the only place a primary action ever
-appears; what changes between states is its verb, not its position.
-
-### 12.3 Order is meaning, so it is a numeral and a button — never a drag
-
-Every photograph tile carries its page number as a large real numeral, because the durable record
-enforces contiguous ordinals and the bundle IS the order. Reordering is explicit ▲/▼ controls, not
-drag: a drag target inside a scrolling list on a touch screen is the classic failure mode, it
-cannot be half-performed with a keyboard, and it announces nothing to a screen reader. Buttons are
-reachable, announceable, and each one is a complete act.
-
-### 12.4 The camera is the platform's, not ours
-
-Photographs are taken through a real `<input type="file" accept="image/*" capture="environment">`
-inside a `<label>` — the same real-input-in-a-label pattern the `Dropzone` primitive established
-(D173). Building a viewfinder would mean re-implementing focus, exposure and orientation worse than
-the phone already does, on the one surface where a bad photograph is the whole failure.
-
-### 12.5 A failure is the server's own sentence, in reserved space
-
-The error region is always in the DOM with its height reserved, so a refusal never jumps the layout
-under a thumb that is already moving. It is a `role="alert"` and it renders the server's message
-VERBATIM — the kernel's refusal, the projector's failure, the named upload rejection. The phone
-composes no prose of its own and swallows no catch: the operator holding the phone is the person who
-has to choose between Retry Finalize and Discard, and "something went wrong" decides nothing for
-them. Colour is never the only carrier.
-
-### 12.6 The QR is the operator's half, and the token exists once
-
-Start Capture is a small control inside the existing dashboard. It calls the loopback-only session
-route and renders the returned `phoneUrl` as an inline-SVG QR built by `src/domain/qr-code.ts` — a
-pure encoder rather than a dependency, so the payload never leaves the process. The raw token exists
-in exactly that one response and is rendered, never stored: the durable row has only its digest, and
-the URL carries it in the FRAGMENT, which no server sees. A refused ingress renders its `message`
-and `remediation` in place of the QR, because "capture is unavailable" without the reason is a dead
-end an operator cannot act on.
-
-### 12.7 As-built notes (2026-08-09)
-
-- **The phone is a SEPARATE Vite entry**, `capture.html` over `src/dashboard/phone/`, not a route in
-  the operator SPA. Serving the operator bundle over a public tunnel would ship the whole operator
-  UI to the phone origin, and no route filter can un-send bytes. `build.manifest` is emitted so the
-  ingress allowlist is generated from the phone entry's own asset closure rather than hand-listed.
-  `dashboard-wire-boundary` now walks **every** `*.html` entry under `src/dashboard`, not just
-  `index.html` — otherwise a second entry would silently escape D120's Node-built-in check — and a
-  new arm proves the phone closure reaches no operator surface, client, or app module.
-- **One transport owner per bundle.** `provider-capability-boundary` pinned `fetch` to
-  `src/dashboard/client/**`; the phone legitimately needs its own, so
-  `src/dashboard/phone/capture-client.ts` is named as the phone bundle's single transport owner
-  rather than the rule being relaxed. Its error path returns a `CapturePhoneError` that names why a
-  body was unreadable — the `fail-loud-catch-default` ratchet caught a `.catch(() => undefined)`
-  there and was right to.
-- **The camera stays the primary control even after the first photograph**, and Review is the quiet
-  one on the left. Promoting Review was a hazard, not a taste question: Review and Send would then
-  both be "primary, on the right", so a second tap from a thumb already travelling would finalize
-  the bundle.
-- **Motion is the house language, not a phone dialect.** The one authored moment — a photograph
-  settling into the list — uses `--ds-dur-enter` and `--ds-travel-md`. An invented
-  `--ds-phone-*` pair differing by 30ms and 2px would have been a second motion language that also
-  needed its own `prefers-reduced-motion` block to stay honest; the house tokens already collapse.
-  Press feedback is `active:scale-[0.97]`, not a 1px translate: a finger COVERS a 48px control, so
-  the only visible feedback is at its edges.
-- **Red is reserved for Discard.** Per-tile Remove was `danger`-toned, which put three red controls
-  down the reorder list — louder than Send, inverting the attention ladder the token file is
-  explicit about.
-- **Parity: 15 references added** (five states × pixel/a11y/provenance) at one phone viewport in
-  their own block, so the operator corpus is not multiplied. **12 moved, none silently**: the
-  `intake-upload` triples, because the QR start control lives on that surface; the a11y diff is
-  exactly the three lines it adds.
-- **Pre-existing defect found and NOT fixed here:** the intake takeover renders a dark shell under
-  the light theme, leaving the dropzone heading near-invisible. It is identical in the committed
-  baseline and is a sibling of the `paper-ink`-renders-dark residual already deferred to 2j's corpus
-  work; fixing it here would re-freeze references for a reason unrelated to capture.
-
----
-
-## 13. The two reference takeovers — the surface contract (2i-G, D176/D177)
-
-Ref operator-trust §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
-sit and what they refuse to look like.
-
-### 13.1 A read-only explorer must not look like an editor
-
-The shape this category always ships is the workflow-builder canvas: draggable rounded nodes, bezier
-edges, a palette down one side. On this surface that shape is a **lie** — it draws a mutation
-affordance over a graph nobody may mutate, and ref operator-trust §5.1 rejected the free-form visual programmer
-outright. It is refused.
-
-What a reader actually arrives holding is an id or a failure location (`separations/ucpath-transaction
-→ ucpath.smart-hr.ready-to-submit`), and what they must leave with is the exact node, contract, UI
-ids, scenarios and source paths. So **the identifier is the interface**: every id on the page is a
-`Chip`, which this system already renders monospaced and truncation-safe, and the page spends its
-whole budget on them.
-
-### 13.2 A structure rail beside a record column
-
-The rail carries the graph — nodes in declaration order, with a controller's downstream nodes
-**indented beneath it** so a branch case reads as "instead of" and a parallel branch as "alongside".
-`dependsOn` alone cannot express that difference; collapsing them would make a branch look like a
-fan-out that always runs. The record column carries the selected node's whole binding in one
-uninterrupted read, because the question is a lookup and a lookup that hides half its answer behind
-a second click is a worse index than the source tree.
-
-Two properties of the rail are pinned by test rather than by intent: every node appears **exactly
-once** whatever the control structure, and a node whose controller is declared *after* it still
-appears — a node missing from the rail is a graph the surface failed to show, which is worse than
-one drawn flat.
-
-The split keys on the **column**, not the window (see §Shell and layout): this is a takeover whose
-width changes with the workflow panel's mode. A container query cannot style its own container, so
-the query is asked from a wrapper — asking from the same element is a query that never matches, and
-it silently degrades to the stacked layout at every width.
-
-### 13.3 One saturated mark, spent on consequence
-
-Colour is restrained to the point of being an argument. Of six node kinds only **transaction** is
-tinted, because it is the one fact on the page that can change a real HR system; in the catalog only
-**observation** and a non-`observe` element `effect` are tinted, because an observation is what a
-subject binding and a completion proof are checked against and an `external-commit` element is what
-acts on a page. A page that colours six kinds six ways spends its whole colour budget on taxonomy
-and has nothing left for consequence. In every case the word travels beside the glyph, so the tint
-is never the only encoding.
-
-### 13.4 They are takeovers, and precedence is resolved in one place
-
-Both replace the queue at `?explore=<workflowId>` and `?catalog=<term>`, for §11.3's reason: a
-half-visible queue behind a reference view is the modal it deliberately is not. Two keys rather than
-one shared key, because the two are different scopes — the explorer opens on the ACTIVE workflow and
-the catalog is system-scoped — and a shared key would make "which is open" ambiguous.
-
-An **empty** `?catalog=` is meaningful: open, nothing typed. Presence rather than length is what
-opens it. Three takeover keys can be present on one link, so `activeTakeover` resolves the winner in
-ONE place (`intake` → `explore` → `catalog`): the operator's in-progress WORK outranks either
-reference view. Leaving that to whichever JSX branch is tested first is how two surfaces come to
-disagree about which of them is showing.
-
-Entry is two `ghost` buttons in the panel's action bar beside `Import spreadsheet`. They are
-secondary because neither is a command — neither takes an argument from the operator nor changes
-anything.
-
-### 13.5 As-built notes
-
-- **`ChipRow` is the wrong primitive at this width, and that is not a criticism of it.** Its
-  equal-width grid exists to stop an orphan in the queue's ~400px column. In a ~700px record column
-  holding a dozen SHORT facts (`code pl`, `version 1`) `auto-fit` cuts seven 160px tracks and leaves
-  every chip alone at the left of one; the shared ending edge is bought with gaps wide enough that
-  the set stops reading as a set. Both surfaces pack their facts in a wrapping flex row instead, and
-  the ragged right edge is the deliberate cost — the primitive's own note already says a row that is
-  not a track of peers "is a flex row, and the chip is one item in it".
-- **`--ds-w-explorer-measure` (1120px) is a reading measure, not a panel width.** A reference surface
-  given the full 1400px of a takeover sprays its facts across the panel. The content sits at the
-  panel's leading edge rather than centred, so the rail does not drift as the record column changes
-  height.
-- **A raw millisecond is arithmetic, not a fact.** `10002992` reads as `4h`, with the exact value on
-  the chip's `title`: a contract review needs the millisecond, a glance needs the hour.
-- **Motion is inherited, not extended.** Both takeovers arrive exactly as the intake takeover does
-  (4px from above, `ds-motion-enter`) — two takeovers sharing one region and arriving from opposite
-  edges read as two different products. The rail entry carries the house pressable pair
-  (`dsMotion.fast` + `active:translate-y-px`), the same one `Button` and `Chip` use. The record swap
-  and the live catalog filter are **deliberately unanimated**: one is list navigation and the other
-  fires on every keystroke, and both are exactly where motion only adds latency.
-- **The parity fixtures are the REAL projections.** A hand-written fixture graph would prove only
-  that the surface can render a shape somebody typed, and doc 02 §Exit criteria is about the
-  as-built graph. A change to the graph now moves these references, which is the drift signal the
-  corpus exists to give.
+### 13.2 A structure rail beside a record column — see §9.5.3
