@@ -127,7 +127,50 @@ deferral is code that is missing.
 <!-- roadmap: def-byte-path -->
 
 <!-- roadmap-status: def-byte-path -->
+- [x] the phone surface itself is built and bundled — its own entry, its own closure, `CAPTURE_PHONE_ASSET_ENTRY = "/capture.html"` (`src/domain/capture-surface.ts:83`)
+- [x] the ingress refuses BY NAME when it cannot be built — `on-demand-ngrok` with no credential answers a named remediation, never a loopback QR (`src/server/dashboard/commands/capture-service.ts:531-546`)
+- [ ] BE the BFF static handler — port the parity fixture's traversal-checked, content-typed `serveStatic` (`tests/parity/helpers/fixture-bff.ts:298`); every unrouted path 404s today
+- [ ] BE `--prod` parsed by `startRebuildRuntime` — the flag `package.json:12` passes is read by nothing (`src/core/runtime-composition.ts:162-200`), so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard`
+- [ ] BE `/capture.html` delivered, so 2i-F's token-scoped phone surface is reachable from a phone
+- [ ] BE the on-demand ngrok tunnel launcher (D175) — the shipped default names a launcher that does not exist
+- [ ] BE the guard arm — a phone-origin request may be served nothing outside the capture allow-list
+- [ ] BE wire or delete the INERT capture-ingress host gate: `deps.capturePhoneHost` is declared and read (`src/server/dashboard/routes/api.ts:65,142`) and supplied by nothing, so the middleware compiles and can never fire (also Track D row D2)
+> 2026-08-20 | docs-cohesion 04 | verified against src/core/runtime-composition.ts:162-200, src/server/dashboard/routes/api.ts:141-403 (no static or asset route), src/domain/capture-surface.ts:83, src/server/dashboard/commands/capture-service.ts:495-546; left: all six build items
 <!-- /roadmap-status -->
+
+**What the deferral is.** The production BFF **serves no frontend bytes.** Every dashboard byte you
+have ever seen came from the vite dev server on 5174; the BFF on 3938 answers `/api/v1/**` and
+`/events/v1` and 404s everything else. Two consequences, and the second is the one that matters: the
+dashboard has no way to run without the dev server, and 2i-F's token-scoped phone capture page —
+built, bundled, entry-pointed at `/capture.html` — **has no delivery path to a phone at all.**
+
+**The decision that deferred it: D189** (round 45, 2026-08-09), a named gap with an owner rather
+than a waiver, taken at the Phase-2 exit. Its reasoning has two halves. Those bytes would ride the
+one internet-exposed path in this system — the capture ingress behind the Host gate — which is a
+security surface, not a build task. And the tunnel launcher D175 specified is unbuilt anyway, so
+serving the page would produce a QR that scans perfectly and fails on the phone with a network
+error explaining nothing. D193(a) fixes what "production" means here: **LOCAL** — the day this repo
+becomes the operator's daily tool on their own machine, never a hosting platform.
+
+**Its trigger: order 3**, alongside `{#def-capture-binding}`. The two close together on purpose —
+a delivered phone page with no workflow that can consume a photograph is a page with nothing to do,
+and a capture binding with no delivery path is a binding no phone can reach.
+
+**Built today.** The phone surface, completely: its own bundle entry, its own module closure that
+may not reach `surfaces/`/`client/`/`app/`, D174's fragment-borne token (`#t=<token>`, never
+transmitted to a server), the closed phone route union, and the uniform refusal that makes an
+unknown / malformed / expired / discarded token indistinguishable. The ingress preflight is honest
+in the other direction too: `capture.ingress` is `on-demand-ngrok` by default and refuses by name
+when its credential is absent or its launcher is missing.
+
+**Not built.** Six things, listed above. The two worth calling out because they read as done and are
+not: **`npm run dashboard:prod` names a mode the runtime never parsed** — `package.json:12` passes
+`--prod` and `startRebuildRuntime` dispatches on `args[0]` alone, so the flag reaches nothing — and
+**the Host gate is inert**. `deps.capturePhoneHost` is optional, and the middleware's first line is
+`if (phoneHost === undefined) return next();`. Nothing supplies it in any composition, so the
+allow-list that exists to keep a phone origin off the operator's dashboard has never evaluated a
+single request. It is correct code in front of a door nobody opened, and either wiring it or
+deleting it is part of closing this deferral.
 
 ## Edit a workflow's presentation / policy without a code change
 <!-- roadmap: def-explorer-edit -->
