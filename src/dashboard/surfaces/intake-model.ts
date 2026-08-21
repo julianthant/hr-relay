@@ -23,7 +23,7 @@ import type { ServedHeaderCandidateSchema } from "../../domain/intake/header-dis
 import type { IntakeRowCorrectionSchema } from "../../domain/intake/session.js";
 import type { SuggestionSchema } from "../../domain/intake/suggestions.js";
 import type { IntakeSessionWire } from "../../domain/intake/wire.js";
-import { shortHash } from "./format.js";
+import { fmtClock, shortHash } from "./format.js";
 
 type ServedHeaderCandidate = z.infer<typeof ServedHeaderCandidateSchema>;
 type IntakeRowCorrection = z.infer<typeof IntakeRowCorrectionSchema>;
@@ -114,4 +114,37 @@ export function layoutMetaItems(session: IntakeSessionWire): string[] {
  */
 export function correctionText(correction: IntakeRowCorrection, fieldLabel: string): string {
   return `${fieldLabel} → “${correction.correctedValue}”`;
+}
+
+/**
+ * What the enqueued manifest is made of (IN126/IN127/IN131,
+ * `DemoIntake.tsx:961-971`).
+ *
+ * The demo's Manifest STAGE is a `KeyValueList` of eight rows; four of them are
+ * not on `IntakeSessionWire` at all and stay booked as unserved. These are the
+ * ones the wire already carries, drawn in the demo's shape, in the demo's
+ * order, where the enqueued banner used to print one bare `manifest <uuid>`.
+ *
+ * `created` reads `rerun.createdAt` — the MANIFEST's instant. `session.createdAt`
+ * is when the file was uploaded, which the source band already prints as
+ * `uploaded …`; labelling it `created` on a manifest block would be the right
+ * kind of fact read from the wrong instance of it (D256's shape). When an
+ * enqueued session carries no rerun view, the row is simply absent rather than
+ * filled from the nearest plausible instant.
+ */
+export function manifestFacts(session: IntakeSessionWire): { key: string; value: string }[] {
+  const facts: { key: string; value: string }[] = [];
+  if (session.intakeManifestId !== undefined) {
+    facts.push({ key: "manifest", value: session.intakeManifestId });
+  }
+  facts.push({ key: "source", value: `${sourceLabel(session)} · sha ${session.artifact.sha256.slice(0, 12)}` });
+  facts.push({ key: "artifact", value: session.artifact.id });
+  if (session.rerun !== undefined) {
+    facts.push({ key: "created", value: fmtClock(session.rerun.createdAt) });
+    facts.push({
+      key: "rows",
+      value: `${String(session.rerun.totals.valid)} of ${String(session.rerun.totals.sourceRows)} rows`,
+    });
+  }
+  return facts;
 }

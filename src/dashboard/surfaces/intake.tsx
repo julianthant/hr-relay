@@ -71,6 +71,7 @@ import {
   EmptyState,
   Field,
   Input,
+  KeyValueList,
   MetaLine,
   Panel,
   PanelBody,
@@ -103,6 +104,7 @@ import {
   correctionText,
   headerCandidateOptionLabel,
   layoutMetaItems,
+  manifestFacts,
   sourceLabel,
   suggestionProposalText,
 } from "./intake-model.js";
@@ -1288,16 +1290,17 @@ export function IntakeWorkspace({
                 Its rows are now runs in the queue. The manifest is the join — every run it minted
                 references it, which is what makes &quot;all of them ran&quot; a checkable claim.
               </span>
-<MetaLine
-                items={[
-                  session.intakeManifestId === undefined
-                    ? undefined
-                    : `manifest ${session.intakeManifestId}`,
-                  session.rerun === undefined
-                    ? undefined
-                    : `${String(session.rerun.totals.valid)} of ${String(session.rerun.totals.sourceRows)} rows`,
-                ]}
-              />
+              {/*
+                * IN126 / IN127 / IN131 / `DemoIntake.tsx:961-971` — what the
+                * manifest is made OF, where a bare `manifest <uuid>` used to
+                * stand. The id alone names a record without saying what it
+                * binds; the demo answers that with a `KeyValueList`, and the
+                * three facts this wire carries — the source and its digest,
+                * the artifact, the instant — are drawn in its shape and its
+                * order. The four it does not carry stay booked as unserved
+                * rather than filled from the nearest plausible value.
+                */}
+              <KeyValueList items={manifestFacts(session)} />
             </span>
           </Banner>
         )}

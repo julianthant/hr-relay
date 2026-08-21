@@ -16,14 +16,19 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { FIXTURE_INTAKE_MAPPING } from "../../parity/helpers/fixture-intake.js";
+import {
+  FIXTURE_INTAKE_MAPPING,
+  FIXTURE_INTAKE_VALIDATED,
+} from "../../parity/helpers/fixture-intake.js";
 import { IntakeRowCorrectionSchema } from "../../../src/domain/intake/session.js";
 import { SuggestionSchema } from "../../../src/domain/intake/suggestions.js";
-import type { IntakeSessionWire } from "../../../src/domain/intake/wire.js";
+import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/domain/intake/wire.js";
 import {
   correctionText,
   headerCandidateOptionLabel,
   layoutMetaItems,
+  manifestFacts,
+  sourceLabel,
   suggestionProposalText,
 } from "../../../src/dashboard/surfaces/intake-model.js";
 
@@ -122,5 +127,57 @@ describe("IN121 — a correction is listed, and the half nothing serves is not i
     // One arrow, one quoted value: a second quoted pair would be a claim about
     // a cell nothing on this wire describes.
     assert.equal(text.split("“").length - 1, 1);
+  });
+});
+
+const MANIFEST_ID = "3f2a9c14-77b8-4d6e-9a01-5c8e2b4f6a90";
+
+describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowhere else", () => {
+  // Parsed rather than spread-and-cast: the enqueued shape is exactly what the
+  // route would serve, so a schema change reaches these cases instead of being
+  // typed around.
+  const enqueued: IntakeSessionWire = IntakeSessionWireSchema.parse({
+    ...FIXTURE_INTAKE_VALIDATED,
+    state: "enqueued",
+    intakeManifestId: MANIFEST_ID,
+    rerun: {
+      intakeManifestId: MANIFEST_ID,
+      createdAt: "2026-08-21T18:30:00.000Z",
+      totals: { sourceRows: 5, valid: 3, rejected: 1, rejectionEvents: 1, excluded: 1, corrected: 1 },
+      diff: { kind: "same-plan" },
+    },
+  });
+
+  it("draws the source with its digest, the artifact and the manifest's own instant", () => {
+    const keys = manifestFacts(enqueued).map((fact) => fact.key);
+    assert.deepEqual(keys, ["manifest", "source", "artifact", "created", "rows"]);
+    const source = manifestFacts(enqueued).find((fact) => fact.key === "source");
+    assert.equal(source?.value, `${sourceLabel(enqueued)} · sha ${enqueued.artifact.sha256.slice(0, 12)}`);
+    assert.equal(manifestFacts(enqueued).find((fact) => fact.key === "artifact")?.value, enqueued.artifact.id);
+  });
+
+  it("reads `created` off the MANIFEST, never off the upload that preceded it", () => {
+    const shifted: IntakeSessionWire = IntakeSessionWireSchema.parse({
+      ...enqueued,
+      createdAt: "2020-01-01T00:00:00.000Z",
+    });
+    const created = manifestFacts(shifted).find((fact) => fact.key === "created");
+    assert.ok(created !== undefined);
+    // The session's own createdAt moved twenty-six years and the manifest's
+    // instant did not: the block is about the manifest.
+    assert.equal(created.value, manifestFacts(enqueued).find((fact) => fact.key === "created")?.value);
+  });
+
+  it("omits `created` rather than substituting one when no manifest view is served", () => {
+    const withoutRerun: IntakeSessionWire = { ...enqueued, rerun: undefined };
+    const keys = manifestFacts(withoutRerun).map((fact) => fact.key);
+    assert.deepEqual(keys, ["manifest", "source", "artifact"]);
+  });
+
+  it("names a pre-D171 file as one that predates the field, never as a blank", () => {
+    const unnamed: IntakeSessionWire = { ...enqueued, sourceName: undefined };
+    const source = manifestFacts(unnamed).find((fact) => fact.key === "source");
+    assert.ok(source !== undefined);
+    assert.ok(source.value.startsWith("(this session predates file names) · sha "), source.value);
   });
 });
