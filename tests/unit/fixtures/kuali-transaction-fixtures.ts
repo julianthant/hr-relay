@@ -12,6 +12,7 @@
  * document number, or EID belongs in the tree: the live surface was verified
  * read-only and captured no values.
  */
+import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -177,6 +178,7 @@ export function kualiHarness(options: Readonly<{
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: fixtureDuoCeremonyGates(clock),
   });
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("c");

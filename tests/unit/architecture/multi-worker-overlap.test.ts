@@ -22,6 +22,7 @@
  * called N times with distinct `workerId`s over one database — which is exactly
  * the shape ref execution-and-sessions §2 says a future phase spawns.
  */
+import { fixtureDuoCeremonyGates } from "../fixtures/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { runWorkerLoop, type WorkerLoopDependencies } from "../../../src/core/worker-loop.js";
@@ -179,6 +180,7 @@ function workerHarness(
       scheduler,
       taskDeadlineMs: 60_000,
       sessionAcquireMs: 20_000,
+      duoCeremony: fixtureDuoCeremonyGates(authority.clock),
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
       idleRepollMs: 1_000,
       log: recordingLogger().log,

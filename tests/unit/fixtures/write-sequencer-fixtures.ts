@@ -6,6 +6,7 @@
  * AuthorityDatabase + WorkerSessionManager. Only the process edges (browser,
  * clock, ids, timers, span sink) are fakes.
  */
+import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { z } from "zod";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkerSessionProvider } from "../../../src/base/session.js";
@@ -610,6 +611,7 @@ export function writeFixtureSessionManager(
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: fixtureDuoCeremonyGates(clock),
   });
 }
 

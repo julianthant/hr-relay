@@ -36,6 +36,7 @@
  * `defineVerifiedLoginRecipe` in `authenticated-application.ts`).
  */
 import type { Page } from "playwright";
+import type { DuoCeremonyGate } from "../../base/duo-ceremony-lease.js";
 import type { Config } from "../../domain/config/schema.js";
 import type { RuntimeInstance } from "../../domain/config/instance.js";
 import type { BrowserSystemId } from "../../domain/ids.js";
@@ -73,6 +74,23 @@ export class BrowserLoginError extends Error {
     this.system = system;
     this.step = step;
     this.observedUrl = observedUrl;
+  }
+}
+
+/**
+ * Duo's OWN terminal refusal of the WebAuthn assertion (ref execution-and-sessions
+ * §4.2, D243) as a DISTINCT error class: it is the one login failure the
+ * fresh-profile-once recovery (§10.5, D267) acts on. A refused assertion BURNS
+ * the profile, so the worker that observes this poison-closes, recreates the
+ * profile directory and retries the ceremony ONCE under the lease it still
+ * holds — and nothing else a login can throw may trigger that path.
+ */
+export class DuoTerminalRefusalError extends BrowserLoginError {
+  readonly refusal = "duo-terminal-refusal" as const;
+
+  constructor(system: BrowserSystemId, detail: string, observedUrl: string, options?: ErrorOptions) {
+    super(system, "duo-clearance", detail, observedUrl, options);
+    this.name = "DuoTerminalRefusalError";
   }
 }
 
@@ -134,6 +152,13 @@ export interface SystemLoginContext extends AuthenticationVerificationContext {
    * in; a recipe never touches `process.env`.
    */
   readonly credentials: Readonly<{ userId: string; password: string }>;
+  /**
+   * The Duo ceremony lease gate for THIS acquisition (ref execution-and-sessions
+   * §10, D267). `defineVerifiedLoginRecipe` is its one caller; a recipe never
+   * touches it directly — the ceremony half of a recipe receives the minted
+   * token and every SSO helper asserts it.
+   */
+  readonly duoCeremony: DuoCeremonyGate;
 }
 
 export type SystemLoginRecipe = (context: SystemLoginContext) => Promise<LoginResult>;

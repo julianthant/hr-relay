@@ -57,6 +57,7 @@ import {
   runWorkerLoop,
   type WorkerLoopReport,
 } from "../../core/worker-loop.js";
+import { composeDuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
 import { createWriteSequencer } from "../../core/write-sequencer.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
@@ -369,6 +370,15 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     newSessionId: () => ids.uuid(),
   });
   const emitter = createSpanJsonlWriter({ stateRoot, clock });
+  // D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
+  // lease, keyed on the credential identity resolved ONCE here — an
+  // unresolvable identity refuses the whole worker at boot.
+  const duoCeremony = composeDuoCeremonyGateFactory({
+    config: resolved.config,
+    leases: database.authority.duoCeremonyLeases,
+    clock,
+    scheduler,
+  });
 
   // D162 (ref data-intake-and-edit-data §4.11): ctx.artifacts' writer, shared with the OCR adapter's
   // page reads. The artifact root is the isolation-pinned literal.
@@ -578,6 +588,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         scheduler,
         taskDeadlineMs: resolved.config.timeouts.taskMs,
         sessionAcquireMs: resolved.config.timeouts.sessionAcquireMs,
+        duoCeremony,
         heartbeatIntervalMs,
         idleRepollMs: resolved.config.daemon.idleRepollMs,
         log,

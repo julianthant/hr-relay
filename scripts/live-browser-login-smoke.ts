@@ -48,8 +48,10 @@
  * which is the registered reader, so `--env-file=.env` is still required.
  */
 import { randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
+import { composeDuoCeremonyGateFactory } from "../src/core/duo-ceremony-gate.js";
 import { WorkerSessionManager } from "../src/core/worker-sessions.js";
 import { systemClock } from "../src/domain/clock.js";
 import { resolveConfig } from "../src/domain/config/resolve.js";
@@ -66,6 +68,7 @@ import {
 } from "../src/infra/browser/browser-session-factory.js";
 import type { BrowserDeadlineScheduler } from "../src/infra/browser/browser-session-factory.js";
 import type { AuthenticatedApplicationEvidence } from "../src/infra/browser/login-contract.js";
+import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
 import { taskStoreRegistry } from "../src/stores/index.js";
 
 const SUPPORTED = new Set(["ucpath", "crm"]);
@@ -101,7 +104,10 @@ async function main(): Promise<void> {
   const system = BrowserSystemIdSchema.parse(requested);
   const config = resolveConfig({}, {}, systemClock);
   const headed = process.argv.includes("--headed");
-  const workerId = WorkerIdSchema.parse("live-smoke-worker-1");
+  // `--worker <id>` lets two smokes run side by side on distinct profiles —
+  // the D267 live two-worker cold start (ref execution-and-sessions §10.8).
+  const workerFlag = process.argv.indexOf("--worker");
+  const workerId = WorkerIdSchema.parse(workerFlag === -1 ? "live-smoke-worker-1" : process.argv[workerFlag + 1]);
   const workflowId = WorkflowIdSchema.parse("person-lookup");
   const instance = RuntimeInstanceSchema.parse("prod");
   // A synthetic but well-formed reuse identity: the smoke is one "run", and a
@@ -160,6 +166,18 @@ async function main(): Promise<void> {
     },
   });
 
+  // D267: the Duo ceremony lease lives in the REAL authority database, so two
+  // smokes (or a smoke beside a worker) serialize their ceremonies for real.
+  const stateRoot = join(process.cwd(), rebuildRuntimeIsolation.stateRoot);
+  mkdirSync(stateRoot, { recursive: true });
+  const database = AuthorityDatabase.open(
+    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "live-smoke" },
+    systemClock,
+  );
+  const duoCeremony = composeDuoCeremonyGateFactory({
+    config, leases: database.authority.duoCeremonyLeases, clock: systemClock, scheduler: realScheduler,
+  });
+
   const started = systemClock.monotonicMs();
   const sessions = new WorkerSessionManager({
     workerId,
@@ -169,6 +187,7 @@ async function main(): Promise<void> {
     clock: systemClock,
     scheduler: realScheduler,
     acquireDeadlineMs: config.timeouts.sessionAcquireMs,
+    duoCeremony,
     onEvent: (event) => {
       const detail = event.type === "browser-session:start" ? ` login=${event.login}` : "";
       write(`[session] ${event.type} ${event.system} ${event.sessionId}${detail} (+${elapsed(started)})`);
@@ -195,6 +214,7 @@ async function main(): Promise<void> {
   write(`[smoke] ${system} login + neutral reset verified in ${elapsed(started)}`);
   await sessions.closeAll("worker-stop");
   write("[smoke] every session closed with proof");
+  database.close();
 }
 
 main().catch((error: unknown) => {

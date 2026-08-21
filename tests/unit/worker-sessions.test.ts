@@ -1,3 +1,4 @@
+import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
@@ -129,6 +130,7 @@ function manager(
     clock,
     scheduler: options.scheduler ?? new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: fixtureDuoCeremonyGates(clock),
     onEvent: (event) => events.push(event),
   });
   // Stand-in for the worker loop's per-run D116 bind.
@@ -317,6 +319,7 @@ describe("worker browser sessions", () => {
       clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
       scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(),
     });
     await assert.rejects(
       sessions.withDriver(UCPATH_REUSE, "prod", SIGNAL, async () => "must not run"),
@@ -392,6 +395,7 @@ describe("worker browser sessions", () => {
       clock: manualClock(new Date("2026-08-02T18:00:00.000Z")),
       scheduler: new ManualScheduler(manualClock(new Date("2026-08-02T18:00:00.000Z"))),
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
     await assert.rejects(
@@ -506,6 +510,7 @@ describe("bounded browser-session acquisition (D125)", () => {
       clock,
       scheduler,
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
@@ -552,6 +557,7 @@ describe("bounded browser-session acquisition (D125)", () => {
       clock,
       scheduler,
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
       onEvent: (event) => events.push(event),
     });
     sessions.bindRunConfigFingerprint(RUN_FINGERPRINT);
@@ -595,6 +601,7 @@ describe("bounded browser-session acquisition (D125)", () => {
       clock,
       scheduler: new ManualScheduler(clock),
       acquireDeadlineMs: 0,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
     }));
   });
 });

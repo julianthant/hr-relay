@@ -5088,7 +5088,7 @@ export class AuthorityDatabase implements Disposable {
         );
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) {
-        throw new Error(`Duo ceremony lease ${record.credentialKey} ${mode} affected ${String(changes)} rows`);
+        throw new Error(`Duo ceremony lease generation ${String(record.generation)} ${mode} affected ${String(changes)} rows`);
       }
       return { result: undefined, changes };
     });
@@ -5140,7 +5140,7 @@ export class AuthorityDatabase implements Disposable {
           retireDuoCeremonyLeaseToken(token);
           const current = this.#readDuoCeremonyLease(token.credentialKey);
           if (current === undefined) {
-            throw new Error(`Duo ceremony lease ${token.credentialKey} has no row to release; the token names a lease authority never wrote`);
+            throw new Error(`Duo ceremony lease generation ${String(token.generation)} has no row to release; the token names a lease authority never wrote`);
           }
           if (current.generation !== token.generation || current.state !== "held") {
             return DuoCeremonyLeaseReleaseOutcomeSchema.parse({ state: "superseded", current });

@@ -3,6 +3,7 @@
  * renewal during long operations, claim-loss abort, and worker-stop session
  * closure — plus the Phase-1 `WorkerRuntimeExecutor` seam.
  */
+import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
 import { afterEach, describe, it } from "vitest";
@@ -61,6 +62,7 @@ function loopHarness(options: Readonly<{
     scheduler,
     taskDeadlineMs: 60_000,
     sessionAcquireMs: 20_000,
+    duoCeremony: fixtureDuoCeremonyGates(authority.clock),
     heartbeatIntervalMs: options.heartbeatIntervalMs ?? 500,
     idleRepollMs: 1_000,
     log: recordingLogger().log,

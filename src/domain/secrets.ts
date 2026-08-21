@@ -370,18 +370,34 @@ export function requireSecretFile(
  * The PUBLIC half of a WebAuthn credential, which is all an identity needs.
  * `credentialId` travels to the relying party in cleartext on every assertion
  * and `rpId` is the relying party's own name; the private key is never read
- * into the identity and never leaves this function.
+ * into the identity and never leaves this function. The file is Duo
+ * Autopilot's own format (`duo-autopilot/src/background.js` `isValidCredential`:
+ * one object, an array, or `{credentials: [...]}`), not one of this repo's
+ * boundaries, so the two fields are read by type guard rather than by a zod
+ * record that would have to be open to admit the secret fields beside them.
  */
-const WebauthnCredentialIdentitySchema = z.object({
-  rpId: z.string().min(1),
-  credentialId: z.string().min(1),
-});
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
 
-const WebauthnCredentialFileSchema = z.union([
-  z.array(z.unknown()),
-  z.object({ credentials: z.array(z.unknown()) }),
-  z.object({}).passthrough(),
-]);
+function webauthnCredentialEntries(parsed: unknown): readonly unknown[] | undefined {
+  if (isUnknownArray(parsed)) return parsed;
+  if (parsed === null || typeof parsed !== "object") return undefined;
+  if ("credentials" in parsed) {
+    const credentials: unknown = parsed.credentials;
+    return isUnknownArray(credentials) ? credentials : undefined;
+  }
+  return [parsed];
+}
+
+function webauthnCredentialIdentity(entry: unknown): Readonly<{ rpId: string; credentialId: string }> | undefined {
+  if (entry === null || typeof entry !== "object") return undefined;
+  if (!("rpId" in entry) || !("credentialId" in entry)) return undefined;
+  const { rpId, credentialId } = entry;
+  if (typeof rpId !== "string" || rpId.length === 0) return undefined;
+  if (typeof credentialId !== "string" || credentialId.length === 0) return undefined;
+  return { rpId, credentialId };
+}
 
 /**
  * D267 (ref execution-and-sessions §10.1): the IDENTITY of a credential file —
@@ -404,19 +420,14 @@ export function resolveSecretFileIdentity(
   } catch (error) {
     throw new SecretFileError(`${name} is not JSON, so its credential identity cannot be resolved`, { cause: error });
   }
-  const file = WebauthnCredentialFileSchema.safeParse(parsed);
-  if (!file.success) throw new SecretFileError(`${name} has no recognizable credential shape, so its identity cannot be resolved`);
-  const entries: readonly unknown[] = Array.isArray(file.data)
-    ? file.data
-    : "credentials" in file.data && Array.isArray(file.data.credentials)
-      ? file.data.credentials
-      : [file.data];
+  const entries = webauthnCredentialEntries(parsed);
+  if (entries === undefined) throw new SecretFileError(`${name} has no recognizable credential shape, so its identity cannot be resolved`);
   const identities = entries.map((entry, index) => {
-    const identity = WebauthnCredentialIdentitySchema.safeParse(entry);
-    if (!identity.success) {
+    const identity = webauthnCredentialIdentity(entry);
+    if (identity === undefined) {
       throw new SecretFileError(`${name} credential #${String(index)} carries no rpId + credentialId, so its identity cannot be resolved`);
     }
-    return { rpId: identity.data.rpId, credentialId: identity.data.credentialId };
+    return identity;
   });
   if (identities.length === 0) throw new SecretFileError(`${name} holds no credential, so its identity cannot be resolved`);
   identities.sort((a, b) => `${a.rpId}\u0000${a.credentialId}`.localeCompare(`${b.rpId}\u0000${b.credentialId}`));

@@ -26,7 +26,6 @@
  * to end, of which the Duo step was under 8s.
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
-import type { LoginResult } from "../../domain/session.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
@@ -132,10 +131,8 @@ export const verifyKualiAuthenticatedApplication: AuthenticatedApplicationVerifi
 export const kualiLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
   verify: verifyKualiAuthenticatedApplication,
-  flow: async (context, probe): Promise<LoginResult> => {
+  navigate: async (context): Promise<void> => {
     const { page, config } = context;
-    if ((await probe()).authenticated) return "already-authenticated";
-
     const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
     abortIfCancelled(SYSTEM, "navigate-login-entry", context);
     try {
@@ -157,18 +154,20 @@ export const kualiLoginRecipe = defineVerifiedLoginRecipe({
     }
 
     // legacy login.ts:662-665 / :691-694 — a warm profile lands straight on the
-    // space. Only the proof may say so; the URL alone may not.
-    if ((await probe()).authenticated) return "already-authenticated";
-
-    await waitForSsoForm(SYSTEM, context);
-    await fillSsoCredentials(SYSTEM, context);
-    await submitSsoForm(SYSTEM, context);
+    // space. Only the proof may say so; the URL alone may not — the wrapper
+    // probes again after this navigation and skips the ceremony when it holds.
+  },
+  ceremony: async (context, token): Promise<void> => {
+    const { config } = context;
+    await waitForSsoForm(SYSTEM, context, token);
+    await fillSsoCredentials(SYSTEM, context, token);
+    await submitSsoForm(SYSTEM, context, token);
     await waitForAuthenticatedLanding(
       SYSTEM,
       context,
+      token,
       isAuthenticatedKualiUrl,
       config.timeouts.duoApprovalSeconds * 1_000,
     );
-    return "logged-in";
   },
 });
