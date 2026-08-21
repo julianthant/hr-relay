@@ -859,8 +859,10 @@ one- and two-workflow exceptions.
 
 **AS-BUILT (Phase 1e, 2026-08-01) — impl binding, in both directions.**
 
-**Impl binding.** Phase 1f binds every Person Lookup contract through the workflow module's own
-exact stores; `config/pending-impl-bindings.json` is empty. `descriptor-coverage` checks module-local
+**Impl binding.** Every contract every registered descriptor names is bound through its own
+workflow module's exact stores, so `config/pending-impl-bindings.json` holds an EMPTY `tasks` array
+— and stays checked in for exactly that reason: it is the bidirectional D107 authority, so a future
+unbound contract must add an entry in the same commit and a newly bound one must remove it. `descriptor-coverage` checks module-local
 placement, the global store registry, and the build manifest in both directions. Every bound task
 has exactly one implementation fingerprint, including a workflow mini-store under its
 `workflow:<id>` namespace; browser-task fingerprints also include the concrete driver interpreter
@@ -1409,9 +1411,15 @@ both directions. `tests/scenario/` walks each path through the descriptor's own 
 `bind`, `when`, `choose`, gate `resolve`, delegation planning and joining, terminal `derive` —
 re-parsing every value through the schema that owns it, and REPORTS the coverage points it
 exercised. `scenario-coverage` audits that observed corpus against the derived points in both
-directions. Two fixture points are honestly out of a pure walk's reach and say so:
-`transaction:*/dry-run` and `transaction:*/subject-mismatch` are executor behaviours, pinned here as
-the obligation 1f must satisfy.
+directions. Two derived points are out of a pure walk's reach because they are executor behaviours
+rather than descriptor functions — `transaction:*/dry-run` and `transaction:*/subject-mismatch` —
+and they were the obligation Phase 1f had to satisfy. **It did.** Both are claimed by real executor
+scenarios: `tests/scenario/kuali-timekeeper-annotation.scenario.test.ts` runs the preview through
+`executeDryRun` and asserts nothing durable moved, and runs a mismatched displayed subject through
+the sequencer asserting zero fence and zero click. D185 additionally makes the corpus DIRECTORY
+guarded: `tests/scenario/` holds exactly two declared kinds — a graph scenario
+(`*.scenario.test.ts`) and an integration walk (`*.walk.test.ts`) — which the registered-set audits
+structurally cannot see.
 
 ### 3.1 Task-authoring rule — navigation ownership (review 02 #9)
 
@@ -2064,8 +2072,8 @@ fingerprints and the child's exact result schema, and only then expose the typed
 
 **AS-BUILT (Phase 1e/1f) — the checkpoint module, and the terminal result beside it.**
 
-**Checkpoints (§5.5–§5.7)** are `src/domain/workflow/checkpoint.ts` over authority schema v3's
-`run_checkpoints`. The loader returns `{found: true, …} | {found: false, reason}`, so `?? {}` is
+**Checkpoints (§5.5–§5.7)** are `src/domain/workflow/checkpoint.ts` over the `run_checkpoints`
+table above (created at schema v3, widened at v14). The loader returns `{found: true, …} | {found: false, reason}`, so `?? {}` is
 unspellable. Descriptor version plus contract and impl fingerprints are mandatory and a mismatch
 refuses resume unless a checked-in, factory-sealed, version-to-version migration transforms the
 payload. The D8 freshness walk computes conservative forward reachability over the static graph and
@@ -2074,7 +2082,7 @@ age, its limit, the consuming commit node, and the path between them; a derived 
 oldest contributing live capture; an override reaches only an `override:"audited"` field and only
 the attempt it was minted for. Snapshot migrations get the same treatment — a canonical snapshot
 bound to an older schema hash is transformed by a checked-in chain or refused loud, never re-derived
-from ingress. The doc's `step_id` column is `node_id`: §5.7 puts the resume grain at graph nodes.
+from ingress.
 
 A successful workflow has one durable terminal result. The executor evaluates `result.derive`
 itself from the run's stored canonical input and the exact schema-validated checkpoint outputs;
