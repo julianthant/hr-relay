@@ -22,16 +22,16 @@ property of migrating a workflow, not of any one workflow; the tiers' own normat
 - [x] order 0 · person-lookup is migrated and live-proven (D74, run `4ebf7275-0158-49af-a78f-1f37948efb27`); `src/workflows/person-lookup/descriptor.ts` is registered
 - [x] the seven-step loop, the §b questionnaire and the per-workflow exit criteria are written and have been run once, by separations (doc 03b)
 - [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 8 modules and every one is person-lookup, `kuali-timekeeper-annotation` or a separations chunk
-- [ ] the five declaration-only stores — `i9`, `old-kronos`, `onbase`, `servicenow`, `sharepoint` are `declareDriver(…, "unwired")` with `{}` tasks (7–12 lines each); orders 1, 2 and 7 build them
+- [ ] the five declaration-only stores — `i9`, `old-kronos`, `onbase`, `servicenow`, `sharepoint` are `declareDriver(…, "unwired")` with `{}` tasks (`i9` is 4 lines, the other four 9); orders 1, 2 and 7 build them
 - [ ] the legacy capability register — **47 open · 20 replaced · 7 native · 4 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-08-20); all 47 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
 - [ ] every `Dashboard · wire <workflow>` sub-task — nine of them, one per order; only `{#order-0-dash}`'s four squares are ticked
-- [ ] the T1/T2 PROOF lines on every order node — the tiers are specified (`ref guards-and-tests` §10, dc2901de) and no workflow has its pair yet
+- [ ] the T1/T2 PROOF lines on every order node — the tiers are specified (`ref guards-and-tests` §10, landed in d5b0f8f2, as of dc2901de) and no workflow has its pair yet
 > 2026-08-20 | docs-cohesion 03c | verified against `src/control/workflow-registry.ts:38-47`, `src/workflows/*/descriptor.ts` (8 files), `src/stores/*` and `config/legacy-capabilities.json` (recount 47/20/7/4 matches the tree's note); left: every order after 0, minus 8
 <!-- /roadmap-status -->
 
 **Phase 3c is the rest of the program.** Phase 3a built the dashboard every workflow inherits and
 3b takes separations — the deepest write — through the loop once. 3c runs that same loop for the
-**twelve remaining workflows**, one at a time, in the order below, until the legacy capability
+**thirteen remaining workflows**, one at a time, in the order below, until the legacy capability
 register has no open entry left and the cutover gate (doc 05) can be read.
 
 **What it reads as met before it starts.** From **03a**: the generic surfaces — run modal, queue
@@ -42,8 +42,8 @@ task libraries the entry was chosen to force into existence (`ucpath` 10 tasks, 
 `new-kronos` 2, `crm` 2, `separations` 9 service tasks), the ALWAYS-GATE identity approval, the
 typed start door (D250/D251/D261), and the wiring pattern each `Dashboard · wire` sub-task repeats.
 
-**The honest state at HEAD.** One of the ten order rows is migrated. `src/control/workflow-registry.ts`
-registers eight modules: `person-lookup` (order 0), `kuali-timekeeper-annotation` (the D135
+**The honest state at HEAD.** One of the nine order rows this phase owns is migrated.
+`src/control/workflow-registry.ts` registers eight modules: `person-lookup` (order 0), `kuali-timekeeper-annotation` (the D135
 transaction proof — not an order row), and the six separations descriptors (order 8, doc 03b).
 **Orders 1, 2, 3, 4, 5, 6, 7 and 9 are pure plans** — no descriptor, no module, no tuple entry.
 `config/pending-impl-bindings.json` is the checked-in EMPTY set, so nothing is half-bound either.
@@ -405,14 +405,14 @@ on `unverifiableByPage`, order-7 automation degrades to "operator manually confi
 <!-- roadmap: test-tiers -->
 
 <!-- roadmap-status: test-tiers -->
-- [x] DOCS the spec — `ref guards-and-tests` §10 is written as-built: the no-dry-run / dry-run split, T1a/T1b/T2/T3/T4, the subject registry, the durable result, layout, naming, the vitest project per tier and the run policy (dc2901de, R10)
+- [x] DOCS the spec — `ref guards-and-tests` §10 is written as-built: the no-dry-run / dry-run split, T1a/T1b/T2/T3/T4, the subject registry, the durable result, layout, naming, the vitest project per tier and the run policy (landed in d5b0f8f2, as of dc2901de; R10)
 - [ ] BE T1 layout — `tests/scenario/workflows/<id>/` with ONE `structural.scenario.test.ts` per workflow plus its `dry-run.scenario.ts` manifest; the pretending fixture scenarios rewritten
 - [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard/*` that are scenarios in disguise (moved, not duplicated)
 - [ ] BE T3 the first combined pair — `docs/migrations/separations.md` §9.22's hand-run double-entry as a file
 - [ ] BE the subject registry `config/test-subjects.json` + the durable `dry_run_scenario_results` row + `cli dry-run-scenario`
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded
 - [ ] BE the coverage floor at 80/80/80 global (measured 84.23 / 82.15 / 84.74 at the spec's writing)
-> 2026-08-20 | docs-cohesion 03c | the DOCS line is landed at HEAD (`ref guards-and-tests` §10.1–§10.12, dc2901de); the six code lines are 5.2b–5.2d and no workflow in this doc has a T1 pair yet — left: everything below DOCS
+> 2026-08-20 | docs-cohesion 03c | the DOCS line is landed at HEAD (`ref guards-and-tests` §10.1–§10.12, landed in d5b0f8f2, as of dc2901de); the six code lines are 5.2b–5.2d and no workflow in this doc has a T1 pair yet — left: everything below DOCS
 <!-- /roadmap-status -->
 
 `tests/` is organized by **what a test needs**, and this is what every migration below adds its
@@ -487,7 +487,7 @@ empty when the wire has not been run.
 <!-- roadmap-status: order-1 -->
 - [ ] the §b questionnaire for person-lookup Search + Match and for i9-lookup — unasked; no `docs/migrations/` doc exists for either
 - [ ] Search + Match as MODES on the existing person-lookup descriptor (D15, `ref dashboard-surfaces` §9) — nothing in `src/workflows/person-lookup/descriptor.ts` carries a mode today
-- [ ] the `i9` store — `src/stores/i9/` is 7 lines: `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`. No driver, no login recipe, **zero tasks**
+- [ ] the `i9` store — `src/stores/i9/index.ts` is 4 lines: `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`. No driver, no login recipe, **zero tasks**
 - [ ] the `i9-lookup` workflow descriptor + module + registry tuple entry
 - [ ] PROOF T1 — structural fixture scenario + dry-run manifest per workflow, and their T3 pair
 - [ ] the capability entries `legacy-workflow-i9-lookup` and `legacy-workflow-person-lookup` both close here
@@ -535,7 +535,7 @@ the subject differently per mode without minting a second workflow class.
 
 <!-- roadmap-status: order-2 -->
 - [ ] the §b questionnaire for all three workflows — unasked
-- [ ] the `sharepoint` and `old-kronos` stores — 12 lines each, `declareDriver(…, "unwired")`, zero tasks
+- [ ] the `sharepoint` and `old-kronos` stores — 9 lines each, `declareDriver(…, "unwired")`, zero tasks
 - [ ] CRM document download on the EXISTING crm driver — `src/stores/crm/tasks/` holds two read tasks and no download
 - [ ] downloads land as content-addressed immutable artifacts (`artifact-effect-boundary`, `ref guards-and-tests` §3.7)
 - [ ] the artifact-bytes route — there is **no** endpoint serving artifact bytes today; the only byte-serving route in the tree is the phone's own `GET /api/v1/capture/phone/photos/:photoId/bytes` (`legacy-route-files`, still open)
@@ -576,9 +576,11 @@ later order has to write to it.
 > 2026-08-20 | docs-cohesion 03c | seven squares: the six standard reads plus the download viewer, which is the FIRST consumer of the artifact-bytes route and therefore builds it
 <!-- /roadmap-status -->
 
-The extra square here is a real build, not a wire: the run-detail `captures` section is served by
-the BFF and placed by no panel today (03a's finding), and the bytes behind it are unrouted. This
-sub-task is where a downloaded document becomes something the operator can open.
+The extra square here is a real build, not a wire: the run-detail `captures` section is schema'd
+and DECLARED-UNSERVED today — `config/pending-wire-bindings.json` carries
+`RunDetailSectionResponseSchema#captures` as `declared-unserved` (D184), `availableSections` cannot
+return it, and the bytes behind it are unrouted (03a's finding). This sub-task is where a downloaded
+document becomes something the operator can open.
 
 ## Order 3 · the OCR pipeline workflow
 <!-- roadmap: order-3 -->
@@ -820,7 +822,7 @@ manifest all already exist from 2h; what is new is that a mapping mistake now re
 > 2026-08-20 | docs-cohesion 03c | eight squares — seven standard minus the gate, plus the constants entry; the intake workspace itself is 2i-E3 and built, so this is a wire on top of it
 <!-- /roadmap-status -->
 
-The intake workspace exists (2i-E3, `ref dashboard-surfaces` §11) and this sub-task adds the one
+The intake workspace exists (2i-E3, `ref dashboard-surfaces` §9.7.1) and this sub-task adds the one
 thing a write workflow needs from it: a CONSTANT the operator supplies once for a whole sheet — an
 effective date — rather than per row, and an unbind arm that takes it back off. `ref
 data-intake-and-edit-data` §2.8 is D172/D173's as-built union resolution behind it.
@@ -830,7 +832,7 @@ data-intake-and-edit-data` §2.8 is D172/D173's as-built union resolution behind
 
 <!-- roadmap-status: order-7 -->
 - [ ] the §b questionnaire for oath-upload and for onbase — unasked
-- [ ] the `servicenow` and `onbase` stores — 12 lines each, `declareDriver(…, "unwired")`, zero tasks, no login recipe
+- [ ] the `servicenow` and `onbase` stores — 9 lines each, `declareDriver(…, "unwired")`, zero tasks, no login recipe
 - [!] the ServiceNow `receipt` probe — **the operator must name a live probe target**; §Live probe status has carried this as ⏳ since D92
 - [!] OnBase `upload-verify` **or** an argued `unverifiableByPage` → always-park — **blocked: no probe target exists today**, and it is gated on the next real document upload
 - [ ] oath-upload's born-at-upload fence (`ref dashboard-surfaces` §4.5)
@@ -1014,14 +1016,14 @@ line's MET/open state at HEAD, then the per-workflow contract each order row is 
 | 1 | Every order row (0–9, minus 8, which is doc 03b) has been through the seven-step loop | **open** — 1 of 9. Only order 0 · person-lookup is migrated; orders 1–7 and 9 have no descriptor |
 | 2 | Every migrated workflow is marked **rebuild-ready** with its live dry run green and, for writes, its `ref write-safety` §3.2 controlled-commit proof recorded | **open** — order 0 is a read and predates the tiers; no other row has run |
 | 3 | Every order row's `Dashboard · wire <workflow>` sub-task is complete | **open** — 1 of 9, and order 0's is four squares because it needs no more |
-| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest) and every wire sub-task its **T2** dashboard scenario | **open** — the spec landed (`ref guards-and-tests` §10, dc2901de) and **no workflow in the tree has a T1 pair yet**, including the migrated one |
+| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest) and every wire sub-task its **T2** dashboard scenario | **open** — the spec landed (`ref guards-and-tests` §10, d5b0f8f2, as of dc2901de) and **no workflow in the tree has a T1 pair yet**, including the migrated one |
 | 5 | The four live probes are settled: each system produces a typed completion proof or an argued `unverifiableByPage` | **open** — 2 of 4. Kuali and UCPath are RESOLVED and BUILT; ServiceNow needs a named target and OnBase has none |
 | 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 47 of 78 open, all owned by this phase |
 | 7 | The §Cross-cutting capabilities are built or retired with evidence | **open** — none of the five is started |
 | 8 | Nothing in the legacy repository has been deleted, and every preserved path is still runnable | **MET, and standing** — it is the D89 rollback asset for the whole phase |
 
 Criterion 8 is the only one that is met, and it is met by not acting. That is the honest shape of a
-phase that has run one of its ten rows.
+phase that has run one of its nine rows.
 
 ### What "rebuild-ready" means for ONE workflow
 
@@ -1029,8 +1031,9 @@ Every order row answers all of these before its node goes `[x]`. This is the con
 seven steps produce, restated as the thing to check at the end.
 
 - §b questionnaire answered + recorded in the workflow's migration doc.
-- the rebuild repo's `typecheck` + `lint` + `test` + `test:architecture` green; the workflow's descriptor passes
-  `descriptor-coverage`; every commit contract passes `write-safety-contract` (its completion arm +
+- the rebuild repo's `typecheck` + `lint` + `test:coverage` green (D191 — `test:coverage` REPLACED
+  the earlier `test` + `test:architecture` pair as the per-commit gate); the workflow's descriptor
+  passes `descriptor-coverage`; every commit contract passes `write-safety-contract` (its completion arm +
   probe + probe-policy) and transaction pairing.
 - Workflow/task inputs, outputs, results, commands, details, and evidence parse strict; every UI id,
   scenario id, child result/policy, and subject observation resolves. No raw Page/Locator/selector

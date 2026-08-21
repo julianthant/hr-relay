@@ -67,7 +67,9 @@ hold. Only the first four hold at HEAD.
    (D132).
 4. The findings ledger is zero-or-decided: no record whose status is merely `recorded`
    (`docs/findings/README.md`, B8).
-5. Track D's D1–D5 have landed, so one fact has one derivation and the read scans are bounded.
+5. Track D's D1–D5 and D11 have landed, so one fact has one derivation, the read scans are
+   bounded, and the descriptor registry has left the browser bundle (D264 ratified D11 as planned;
+   D6–D10 stay `proposed` and are outside this gate).
 6. `ref frontend-backend-integration` §7.4's budgets carry MEASURED numbers, which then become the
    non-regression gate every later workflow is held to.
 7. The Duo ceremony lease exists, so a second workflow's worker cold-starting beside the first
@@ -91,7 +93,7 @@ disagreed, the code won and the row says so.
 | Context rail — Data · Attempts | built | `surfaces/context-rail.tsx` (D252, D253); `context-evidence` re-homes to Receipt and has no placement yet |
 | Gate ceremony | built — all three shapes, rejection, and a named refusal for a shape this build does not know | `app/identity-ceremony.ts`, `surfaces/identity-approve.tsx` (D226) |
 | Parked-write resolution | built | `surfaces/park-resolve.tsx` (D245/D246) |
-| Receipt · failure · captures | receipt and failure built; captures unplaced | `surfaces/receipt.tsx`; the `captures` wire section has no panel placement (`app/use-panel-sections.ts`) |
+| Receipt · failure · captures | receipt and failure built; captures schema'd and declared-unserved | `surfaces/receipt.tsx`; `config/pending-wire-bindings.json` lists `RunDetailSectionResponseSchema#captures` as `declared-unserved` (D184) — nothing serves it until the artifact-bytes route lands |
 | Start Run modal | built — four rows, and a typed door for separations | `surfaces/run-start.tsx`, `run-start-kit.tsx` (D250/D251, D261) |
 | Spreadsheet intake | built | `surfaces/intake.tsx`, `commands/intake-service.ts` |
 | Mobile capture | the page is built; the production byte path is NOT | `phone/**`, `surfaces/capture-start.tsx`; D189 → doc 04 `{#def-byte-path}` |
@@ -129,9 +131,12 @@ sentence implies, and both matter to whoever wires the next workflow:
 - **Review, People and captures have no producer today.** `availableSections`'s return type
   excludes all three, so the Review and People tabs cannot appear and `UnservedTab` is unreachable
   — an honest, typed deferral rather than a hole, but the surfaces are NOT built, and the sentence
-  reads as though they were. Captures likewise: the section is served by the BFF and placed by no
-  panel, and `context-evidence` is deliberately withheld from the rail (evidence QUALIFIES an
-  outcome rather than feeding the live stream) pending its re-home into Receipt.
+  reads as though they were. Captures likewise: the section is schema'd and declared-unserved
+  (D184) — `config/pending-wire-bindings.json` lists `RunDetailSectionResponseSchema#captures` as
+  `declared-unserved` and `availableSections` cannot return it, so nothing serves it until the
+  artifact-bytes route lands — and `context-evidence` is deliberately withheld from the rail
+  (evidence QUALIFIES an outcome rather than feeding the live stream) pending its re-home into
+  Receipt.
 
 ### Track B · dashboard completion
 <!-- roadmap: track-b -->
@@ -178,7 +183,7 @@ must answer.
 - [x] one pass end to end — plan, start, gate park, approve through the B1 ceremony, resume, preview terminal (`docs/migrations/separations.md` §9.22, items 1–8)
 - [x] every UI assertion paired against a direct authority read or the served wire — thirteen paired rows, all MET
 - [x] zero writes proved from authority, not from logs — `write_intents` 2 / `write_attempts` 3 / `durable_outbox` 2, byte-for-byte the 2026-08-04 controlled commit's counts
-- [x] the five defects the pass found, all fixed the same day — the ticking served clock (D256), the panel that follows its run (D257), the always-on shape hazard, the `replayed` timeline arm (D259), the archive unblocked (D258)
+- [x] the four defects the pass found (§9.22 item 3) plus the archive unblock (§9.22 item 6), all fixed the same day — the ticking served clock (D256), the panel that follows its run (D257), the always-on shape hazard, the `replayed` timeline arm (D259), the archive unblocked (D258)
 - [x] D261 the start door — `resolve-action` derives the action id from a typed document number; live run `sp-105225-1e0b`, 13 checkpoints, gate open, zero writes
 - [x] the ONE deliberate parity re-freeze — 139 references re-frozen, every drift attributed to a wave-2 decision, 151 assert-mode cases green (`81287bb1`)
 > 2026-08-20 | docs-cohesion 03a | verified against separations §9.22 and §9.24 and against the re-freeze commit; the commit's own message is the source for 139 references and 151 assert-mode cases
@@ -196,9 +201,9 @@ ceremony; every surface claim paired with an independent read of `sqlite3 .track
 or of the wire the BFF actually served. Three runs, item `c9837287`, attempts 7 · 8 · 9, the third
 reaching the preview terminal in 8 m 20 s including six minutes parked.
 
-**What it found is the argument for doing it.** Four defects, none visible to any gate, all fixed
-the same day. A REPLAYED node was indistinguishable from a node that never ran on every surface that
-folds spans, so a finished run's pipeline reported eight steps `pending` — including the identity
+**What it found is the argument for doing it.** Four defects (§9.22 item 3) plus the archive
+unblock (§9.22 item 6, D258), none visible to any gate, all fixed the same day. A REPLAYED node
+was indistinguishable from a node that never ran on every surface that folds spans, so a finished run's pipeline reported eight steps `pending` — including the identity
 category whose gate the operator had personally approved a minute earlier. Every live elapsed on the
 screen was frozen at page load, because `boot.serverClock.now` is the instant one bootstrap fetch
 happened at. The `wf <hash>` shape hazard compared a run's one-workflow fingerprint against the
@@ -262,10 +267,10 @@ the code for this rewrite rather than carried forward on the audit's say-so.
 | D11 | `WORKFLOW_DESCRIPTORS` in the browser bundle | still imported at `dashboard-app.tsx:25`, used at `:516` |
 
 **D4 and D5 are also the first measurement `ref frontend-backend-integration` §7.4 ever gets.** That
-section has always said its thresholds are "recorded from the first Person Lookup vertical slice
-rather than invented in planning" — and that slice shipped and nothing measured it. The numbers
-D4/D5 record on the local production build against a seeded 1,240-row / 108-member fixture (legacy's
-real volume: 2,093 runs over 11 active days, busiest day 1,240, largest operation 108 members) BECOME
+section's budgets have never carried a measured number — it says so itself ("Not one of these is
+measured or asserted anywhere in this repository"), and the Person Lookup vertical slice shipped
+without recording one. The numbers D4/D5 record on the local production build against a seeded
+1,240-row / 108-member fixture (legacy's real volume: 2,093 runs over 11 active days, busiest day 1,240, largest operation 108 members) BECOME
 the non-regression gates every later workflow is held to. That is why the budgets appear in this
 phase's exit criteria and not only in the cutover's.
 
@@ -640,9 +645,9 @@ stricter bar Track F carries (row 10).
 |---|---|---|---|
 | 1 | **Track B met** — every generic surface built, each as one vertical slice | **MET** | B1–B8 landed 2026-08-19 → 20 (D222–D255); every surface verified present in the table above |
 | 2 | **The findings ledger is zero-or-decided** | **MET** | `docs/findings/README.md`, B8 sweep 2026-08-20: five open records across two files, each naming the commit that closes it; zero undecided |
-| 3 | **Track C met** — the real dashboard drove a real composed run, every claim paired to authority | **MET** | `docs/migrations/separations.md` §9.22 items 1–8; three runs; five defects found and fixed same-day; §9.24's live `sp-105225-1e0b` |
+| 3 | **Track C met** — the real dashboard drove a real composed run, every claim paired to authority | **MET** | `docs/migrations/separations.md` §9.22 items 1–8; three runs; four defects plus the archive unblock (D258), all fixed same-day; §9.24's live `sp-105225-1e0b` |
 | 4 | **The reference corpus asserts over the corrected surfaces** | **MET** | `81287bb1` — 139 references re-frozen after the fixes, 151 assert-mode cases green, every drift attributed to a ratified decision |
-| 5 | **Track D's D1–D5 landed** — one fact, one derivation; the read scans bounded | **open** | all five re-verified unlanded at HEAD (see the Track D table); D6–D10 stay `proposed` behind their named trigger |
+| 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **open** | all six re-verified unlanded at HEAD (see the Track D table); D11 is ratified-and-planned (D264); D6–D10 stay `proposed` behind their named trigger and are outside this gate |
 | 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **open** | never measured; D4/D5 supply the first numbers against a seeded 1,240-row / 108-member fixture, and those numbers become the non-regression gate |
 | 7 | **The Duo ceremony lease landed** | **open** | nothing named `duo_ceremony_leases` exists in `src/`; `defineVerifiedLoginRecipe` takes no lease token |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the kernel arms exist; the supervisor refuses spawn by name and the projection serves no pool version |
