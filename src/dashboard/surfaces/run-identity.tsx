@@ -62,6 +62,7 @@ import {
 import { renameDraftProblem } from "../app/rename-draft.js";
 import type { ActionTarget } from "./actions.js";
 import { runTiming } from "./format.js";
+import { testInstanceHazardTitle, testInstanceSystems } from "./test-instance-hazard.js";
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
@@ -94,7 +95,7 @@ export function RunProvenanceBar({
    */
   servedDescriptorHash: string | undefined;
 }) {
-  const testSystems = surface.resolvedInstances.filter(({ instance }) => instance === "test");
+  const testSystems = testInstanceSystems(surface.resolvedInstances);
   const ranShape = shortFingerprint(surface.descriptorHash);
   const shape = classifyRunShape(surface.descriptorHash, servedDescriptorHash);
   const shapeMoved = shape.state !== "current";
@@ -151,7 +152,7 @@ export function RunProvenanceBar({
       )}
       {testSystems.length > 0 && (
         <span
-          title={`Ran against the TEST instance of ${testSystems.map(({ system }) => system).join(", ")} — nothing here reached production.`}
+          title={testInstanceHazardTitle(testSystems)}
           className={cn(
             dsText.meta,
             "inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-status-waiting-fg)]",

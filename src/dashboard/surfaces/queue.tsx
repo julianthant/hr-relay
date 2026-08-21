@@ -55,6 +55,7 @@ import {
   type DashboardActionHandler,
 } from "./actions.js";
 import { dayLabel, elapsedSecondsBetween, fmtClock, fmtElapsed, plural, runTiming } from "./format.js";
+import { testInstanceHazardTitle, testInstanceSystems } from "./test-instance-hazard.js";
 import { StatusBadge } from "./status.js";
 import {
   PROPOSED_STATUS,
@@ -258,11 +259,6 @@ const rowChip = (tone: RowChipTone, extra?: string): string =>
     extra,
   );
 
-/** every system this run resolved to its TEST instance, in the served order */
-function testSystemsOf(surface: QueueSurfaceWire): string[] {
-  return surface.resolvedInstances.filter(({ instance }) => instance === "test").map(({ system }) => system);
-}
-
 function HeaderChips({
   surface,
   status,
@@ -273,7 +269,7 @@ function HeaderChips({
   /** the bootstrap-calibrated instant every elapsed on this panel measures against */
   nowIso: string;
 }) {
-  const testSystems = testSystemsOf(surface);
+  const testSystems = testInstanceSystems(surface.resolvedInstances);
   /**
    * D12 — `Waiting on you · 10m`. The SERVED gate instant against the same
    * calibrated `nowIso` the row's elapsed uses, so the two clocks on one card
@@ -290,7 +286,7 @@ function HeaderChips({
           and a rehearsal says so before you read its receipt. */}
       {testSystems.length > 0 && (
         <span
-          title={`Ran against the TEST instance of ${testSystems.join(", ")} — nothing here reached production.`}
+          title={testInstanceHazardTitle(testSystems)}
           className={rowChip("info", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
         >
           test
