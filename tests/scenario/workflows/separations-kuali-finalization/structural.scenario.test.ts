@@ -17,13 +17,19 @@
  *
  * Nothing here touches a browser and nothing here saves anything: the
  * controlled real commit is chunk 5c, waiting on the operator-named canary
- * (§4f2).
+ * (§4f2). This is the T1a half of D266's first pair; the T1b half — the live
+ * rehearsal against a registered canary — is the sibling `dry-run.scenario.ts`,
+ * which no vitest project may import (ref guards-and-tests §10.4).
  *
- * Fixture values are live doc 4510's, observed read-only 2026-08-12 (§9.3) —
- * the one document in the operator's Action List that carried a complete
- * finalization, which is exactly what a finalized document should look like
- * afterwards. The starting state is live doc 4502's: blank in five controls and
- * on Kuali's `- - -` sentinel in a sixth.
+ * **Every subject value here is SYNTHETIC** (ref guards-and-tests §10.3). The
+ * EIDs are the harness's `10800000`/`10800001`, which no live system resolves;
+ * a real person's identifier is a dry-run fact and lives in the registry, read
+ * by LABEL. What remains from the live 2026-08-12 read-only pass (§9.3) is the
+ * document-scoped material — doc 4510's action id and number, its `Department*`
+ * option list, and the shape of a complete finalization — because a document
+ * number identifies a document, not a person, and the option list is exactly
+ * the live capture these folds have to survive. The starting state is doc
+ * 4502's: blank in five controls and on Kuali's `- - -` sentinel in a sixth.
  *
  * The commit arms drive the task against a `commit` stub rather than through
  * the write sequencer. That is on purpose: the capability's unforgeability is
@@ -32,55 +38,68 @@
  * the TASK's mapping of the driver's answers onto durable error codes.
  */
 import assert from "node:assert/strict";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { mintMutationCapability } from "../../src/base/mutation-capability.js";
-import { WriteParkedError } from "../../src/core/write-sequencer.js";
-import { manualClock } from "../../src/domain/clock.js";
+import { z } from "zod";
+import { mintMutationCapability } from "../../../../src/base/mutation-capability.js";
+import { workflowTerminalResultExecution } from "../../../../src/base/workflow.js";
+import { buildRunPreviewResult } from "../../../../src/core/run-result.js";
+import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
+import { manualClock } from "../../../../src/domain/clock.js";
+import type { RunRecord } from "../../../../src/domain/run/record.js";
+import { RunDryRunPreviewResultSchema } from "../../../../src/domain/run/result.js";
+import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
+import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
+import { SeparationsMatchDepartmentOption } from "../../../../src/domain/contracts/separations/match-department-option.js";
+import { SeparationsVerifyIdentityApproval } from "../../../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
-  EidSchema,
   FingerprintSchema,
   IsoInstantSchema,
   PositiveIntSchema,
-} from "../../src/domain/ids.js";
-import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";
-import type { MatchIdentityOutput } from "../../src/domain/contracts/separations/match-identity.js";
-import type { SearchPersonOrgOutput } from "../../src/domain/contracts/ucpath/search-person-org.js";
-import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
-import type { UcpathJobSummary } from "../../src/domain/ui/ucpath-job-summary.js";
-import { KUALI_RRSS_SAVE_BUTTON } from "../../src/domain/ui/kuali-rrss-document.js";
+} from "../../../../src/domain/ids.js";
+import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
+import type { MatchIdentityOutput } from "../../../../src/domain/contracts/separations/match-identity.js";
+import type { SearchPersonOrgOutput } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
+import { UcpathJobSummaryReadSchema } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import type { UcpathJobSummary } from "../../../../src/domain/ui/ucpath-job-summary.js";
+import { KUALI_RRSS_SAVE_BUTTON } from "../../../../src/domain/ui/kuali-rrss-document.js";
 import {
   KualiSaveRefusedError,
   kualiFinalizationFields,
-} from "../../src/domain/ui/kuali-separation-finalization.js";
+} from "../../../../src/domain/ui/kuali-separation-finalization.js";
 import type {
   KualiFinalizationTarget,
   KualiFinalizationVariables,
-} from "../../src/domain/ui/kuali-separation-finalization.js";
-import type { KualiRrssDocumentDriver } from "../../src/domain/ui/kuali-rrss-document.js";
+} from "../../../../src/domain/ui/kuali-separation-finalization.js";
+import type { KualiRrssDocumentDriver } from "../../../../src/domain/ui/kuali-rrss-document.js";
 import {
   KUALI_FAKE_UNFINALIZED_FIELDS,
   createDeterministicKualiDriver,
   createKualiFakeWorld,
-} from "../../src/stores/kuali/driver/fake.js";
-import type { KualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
-import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { readJobSummaryTask } from "../../src/stores/ucpath/tasks/read-job-summary.js";
-import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
-import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/verify-identity-approval.js";
-import { matchDepartmentOptionTask } from "../../src/stores/separations/tasks/match-department-option.js";
-import { matchSeparationFinalizationTask } from "../../src/stores/kuali/tasks/match-separation-finalization.js";
-import { saveSeparationFinalizationTask } from "../../src/stores/kuali/tasks/save-separation-finalization.js";
-import { stageSeparationFinalizationTask } from "../../src/stores/kuali/tasks/stage-separation-finalization.js";
-import { verifySeparationFinalizationTask } from "../../src/stores/kuali/tasks/verify-separation-finalization.js";
-import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
-import { SEPARATIONS_KUALI_FINALIZATION_CLAIMS } from "./coverage-claims.js";
-import { walkDescriptor } from "./helpers/pure-walk.js";
+} from "../../../../src/stores/kuali/driver/fake.js";
+import type { KualiFakeWorld } from "../../../../src/stores/kuali/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/stores/ucpath/driver/fake.js";
+import { deriveJobRowFromCells } from "../../../../src/stores/ucpath/driver/person-org-operation.js";
+import { readJobSummaryTask } from "../../../../src/stores/ucpath/tasks/read-job-summary.js";
+import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
+import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
+import { matchDepartmentOptionTask } from "../../../../src/stores/separations/tasks/match-department-option.js";
+import { matchSeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/match-separation-finalization.js";
+import { saveSeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/save-separation-finalization.js";
+import { stageSeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/stage-separation-finalization.js";
+import { verifySeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/verify-separation-finalization.js";
+import { separationsKualiFinalizationDescriptor } from "../../../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { SEPARATIONS_KUALI_FINALIZATION_CLAIMS } from "../../coverage-claims.js";
+import { walkDescriptor } from "../../helpers/pure-walk.js";
 import {
   FINALIZATION_DEPARTMENT_NODE,
   FINALIZATION_DEPARTMENT_OPTION,
+  FINALIZATION_EID,
   FINALIZATION_FIELDS,
+  FINALIZATION_IMPL_FINGERPRINT,
   FINALIZATION_NODE,
+  FINALIZATION_NOW,
   FINALIZATION_OTHER_EID,
   FINALIZATION_RUN_INPUT,
   FINALIZATION_SCOPE_OUTPUTS,
@@ -90,8 +109,8 @@ import {
   finalizationHarness,
   finalizationQueuedRun,
   type FinalizationHarness,
-} from "../unit/fixtures/kuali-finalization-fixtures.js";
-import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
+} from "../../../unit/fixtures/kuali-finalization-fixtures.js";
+import { noSeparationWritePlan } from "../../../../src/domain/separations/write-plan.js";
 
 const FAILURES: string[] = [];
 const taskCtx = Object.freeze({
@@ -106,7 +125,15 @@ const taskCtx = Object.freeze({
 
 const ACTION_ID = "6a7a33b2ac106d428b3217e0";
 const DOCUMENT_NUMBER = "4510";
-const EID = EidSchema.parse("10001799");
+/**
+ * Synthetic, and schema-shaped so the ingress still parses it (§10.3). This
+ * file used to hardcode a real subject's EID — the same id, with a name beside
+ * it, in `docs/migrations/separations.md` §9.3 — which is exactly the "fixture
+ * scenario that pretends" R10 exists to end: a structural walk over fake stores
+ * can never assert anything about the person that id names, so naming them buys
+ * nothing and commits a real identifier to git.
+ */
+const EID = FINALIZATION_EID;
 
 /**
  * Live doc 4510's finalization, verbatim (2026-08-12) — except the two date
@@ -270,6 +297,94 @@ async function refusalCode(run: () => Promise<unknown>): Promise<string> {
   return FAILURES[before] ?? "<no ctx.fail was called>";
 }
 
+/**
+ * The two post-gate node outputs, produced by the REAL task implementations
+ * over the shared identity fixtures — the same call chain the gate-approved
+ * walk makes, extracted so both use one source rather than two copies.
+ */
+async function graphPostGateOutputs(): Promise<Readonly<{
+  summary: UcpathJobSummary;
+  comparison: MatchIdentityOutput;
+  approval: unknown;
+  approvalOutput: unknown;
+  department: unknown;
+}>> {
+  const summary = await graphReadJobSummary();
+  const comparison = await graphComparison(summary);
+  const approval = {
+    decision: "approved" as const,
+    eid: FINALIZATION_RUN_INPUT.emplId,
+    chosenFrom: "checked" as const,
+    evidenceDigest: comparison.evidenceDigest,
+  };
+  return {
+    summary,
+    comparison,
+    approval,
+    approvalOutput: await verifyIdentityApprovalTask.impl.run({
+      input: { packet: comparison.packet, evidenceDigest: comparison.evidenceDigest, approval },
+      ctx: taskCtx,
+    }),
+    department: await matchDepartmentOptionTask.impl.run({
+      input: {
+        deptId: FINALIZATION_RUN_INPUT.ucpathDeptId,
+        department: FINALIZATION_RUN_INPUT.ucpathDepartment,
+        observedOptions: [...FINALIZATION_RUN_INPUT.observedDepartmentOptions],
+        documentNumber: FINALIZATION_RUN_INPUT.documentNumber,
+      },
+      ctx: taskCtx,
+    }),
+  };
+}
+
+/**
+ * The terminal's authenticated `dependsOn`, minus the transaction node the
+ * preview itself supplies: `approval` and `department-option`.
+ *
+ * Nothing is fabricated. Both outputs come from the REAL task implementations
+ * above and are re-parsed through their OWNING contract schemas, so a
+ * checkpoint this builds is one the real executor could have written — an
+ * invented row would have been the plausible-wrong value this tree bans. The
+ * sequencer harness starts the run AT the transaction node, so the upstream
+ * rows do not exist in authority to be read back; producing them from the real
+ * tasks is the honest substitute for reading them.
+ */
+async function previewDependencyEvidence(run: RunRecord): Promise<readonly unknown[]> {
+  const outputs = await graphPostGateOutputs();
+  const rowFor = (nodeId: string, schema: z.ZodType, value: unknown): unknown =>
+    RunCheckpointRecordSchema.parse({
+      workflowId: separationsKualiFinalizationDescriptor.id,
+      itemId: run.envelope.itemId,
+      nodeId,
+      attempt: 1,
+      runId: run.envelope.runId,
+      output: { schemaHash: deriveSchemaHash(schema, "output"), value: schema.parse(value) },
+      descriptorVersion: separationsKualiFinalizationDescriptor.version,
+      contractFingerprint: separationsKualiFinalizationDescriptor.contractFingerprint,
+      implFingerprint: FINALIZATION_IMPL_FINGERPRINT,
+      provenance: [
+        { path: "state", source: "derived", observedAt: FINALIZATION_NOW, originalObservedAt: FINALIZATION_NOW },
+      ],
+      writtenAt: FINALIZATION_NOW,
+    });
+  return [
+    {
+      state: "resolved",
+      nodeId: "approval",
+      checkpoint: rowFor("approval", SeparationsVerifyIdentityApproval.output, outputs.approvalOutput),
+    },
+    {
+      state: "resolved",
+      nodeId: FINALIZATION_DEPARTMENT_NODE,
+      checkpoint: rowFor(
+        FINALIZATION_DEPARTMENT_NODE,
+        SeparationsMatchDepartmentOption.output,
+        outputs.department,
+      ),
+    },
+  ];
+}
+
 describe("separations-kuali-finalization scenarios", () => {
   it("separations-kuali-finalization/stage-refusals — one pass stages every field, and each refusal names itself", async () => {
     // The happy pass first: ONE prepare, every field, straight from the
@@ -349,7 +464,7 @@ describe("separations-kuali-finalization scenarios", () => {
     // The wrong person's document: defence in depth ahead of the kernel's own
     // beat-③ binding, and never a reason to leave a staged value behind.
     const wrongPerson = world();
-    wrongPerson.displayedEid = "10001754";
+    wrongPerson.displayedEid = FINALIZATION_OTHER_EID;
     assert.equal(
       await refusalCode(() => stageSeparationFinalizationTask.impl.run({
         input: TARGET,
@@ -528,6 +643,39 @@ describe("separations-kuali-finalization scenarios", () => {
     assert.equal(footprint.intent, undefined, "zero write intents");
     assert.equal(footprint.checkpoint, undefined, "zero transaction checkpoints");
     assert.deepEqual(footprint.outboxes, [], "zero ledger/span outboxes");
+    assert.equal(
+      h.emitter.events().some((event) => String(event.spanPath).endsWith("/commit")),
+      false,
+      "zero commit spans",
+    );
+
+    /*
+     * D210 — and the preview is a terminal RECORD, not a value that evaporates.
+     * The sealed factory turns it into the run's `RunResultRecord` bound to the
+     * PREVIEW schema hash rather than this workflow's declared result, so a
+     * consumer demanding a finalized document sees a hash it does not expect
+     * instead of reading a rehearsal as a completed write. That is the half a
+     * `zero durable rows` assertion cannot reach, and it is the terminal the
+     * sibling `dry-run.scenario.ts` manifest declares for the live rehearsal.
+     */
+    const built = buildRunPreviewResult(
+      separationsKualiFinalizationDescriptor,
+      run,
+      preview,
+      await previewDependencyEvidence(run),
+      h.clock,
+    );
+    assert.equal(
+      built.record.resultSchemaHash,
+      deriveSchemaHash(RunDryRunPreviewResultSchema, "output"),
+    );
+    assert.notEqual(
+      built.record.resultSchemaHash,
+      workflowTerminalResultExecution(separationsKualiFinalizationDescriptor).schemaHash,
+    );
+    const settled = RunDryRunPreviewResultSchema.parse(built.record.result.value);
+    assert.equal(settled.externalCommit, "none");
+    assert.equal(settled.stoppedAtNodeId, FINALIZATION_NODE);
 
     assert.deepEqual(claimFor("separations-kuali-finalization/dry-run-preview"), [
       `transaction:${FINALIZATION_NODE}/dry-run`,
@@ -551,6 +699,7 @@ describe("separations-kuali-finalization scenarios", () => {
     const footprint = finalizationDurableFootprint(h);
     assert.equal(footprint.intent, undefined, "the fence was never reached");
     assert.equal(footprint.checkpoint, undefined);
+    assert.deepEqual(footprint.outboxes, [], "zero ledger/span outboxes");
 
     assert.deepEqual(claimFor("separations-kuali-finalization/subject-mismatch"), [
       `transaction:${FINALIZATION_NODE}/subject-mismatch`,
@@ -578,6 +727,13 @@ describe("separations-kuali-finalization scenarios", () => {
     assert.notEqual(h.world.lastCapability, undefined);
     const footprint = finalizationDurableFootprint(h);
     assert.notEqual(footprint.intent, undefined, "the fence is durable");
+    // The STATUS, not merely the row: a fenced-but-unsettled intent is exactly
+    // what the park arm below produces, so "a row exists" cannot tell them apart.
+    assert.equal(
+      Reflect.get(footprint.intent as object, "status"),
+      "committed",
+      JSON.stringify(footprint.intent),
+    );
     assert.notEqual(footprint.checkpoint, undefined, "the settlement is durable");
 
     assert.deepEqual(claimFor("separations-kuali-finalization/committed"), [
@@ -599,6 +755,19 @@ describe("separations-kuali-finalization scenarios", () => {
     assert.equal(Reflect.get(outcome as object, "disposition"), "already-present");
     assert.equal(h.world.events.some((event) => event.startsWith("commit:")), false, "zero clicks");
     assert.deepEqual(h.world.persistedFinalization, FINALIZATION_FIELDS);
+    assert.equal(
+      Reflect.get(outcome as object, "proofSource"),
+      "live-probe",
+      "the probe settled it, so the proof cites the probe",
+    );
+    assert.equal(
+      Reflect.get(
+        finalizationDurableFootprint(h).intent as object,
+        "status",
+      ),
+      "observed-present",
+      "discovering a finalization is not evidence WE filed it",
+    );
 
     assert.deepEqual(claimFor("separations-kuali-finalization/already-present"), [
       `transaction:${FINALIZATION_NODE}/already-present`,
@@ -636,34 +805,15 @@ describe("separations-kuali-finalization scenarios", () => {
   });
 
   it("separations-kuali-finalization/gate-approved — the whole graph, from two reads to one settled finalization", async () => {
-    const summary = await graphReadJobSummary();
-    const comparison = await graphComparison(summary);
-    const approval = {
-      decision: "approved" as const,
-      eid: FINALIZATION_RUN_INPUT.emplId,
-      chosenFrom: "checked" as const,
-      evidenceDigest: comparison.evidenceDigest,
-    };
-    const department = await matchDepartmentOptionTask.impl.run({
-      input: {
-        deptId: FINALIZATION_RUN_INPUT.ucpathDeptId,
-        department: FINALIZATION_RUN_INPUT.ucpathDepartment,
-        observedOptions: [...FINALIZATION_RUN_INPUT.observedDepartmentOptions],
-        documentNumber: FINALIZATION_RUN_INPUT.documentNumber,
-      },
-      ctx: taskCtx,
-    });
+    const outputs = await graphPostGateOutputs();
     const walk = walkDescriptor(separationsKualiFinalizationDescriptor, FINALIZATION_RUN_INPUT, {
       outputs: {
-        "job-summary": summary,
+        "job-summary": outputs.summary,
         "name-search": graphNameSearch(),
-        [FINALIZATION_DEPARTMENT_NODE]: department,
-        comparison,
-        "identity-approval": approval,
-        approval: await verifyIdentityApprovalTask.impl.run({
-          input: { packet: comparison.packet, evidenceDigest: comparison.evidenceDigest, approval },
-          ctx: taskCtx,
-        }),
+        [FINALIZATION_DEPARTMENT_NODE]: outputs.department,
+        comparison: outputs.comparison,
+        "identity-approval": outputs.approval,
+        approval: outputs.approvalOutput,
         [FINALIZATION_NODE]: {
           disposition: "committed",
           output: {
@@ -694,5 +844,41 @@ describe("separations-kuali-finalization scenarios", () => {
       result.finalization.proof.fields.transactionNumber,
       FINALIZATION_FIELDS.transactionNumber,
     );
+  });
+
+  /**
+   * Ref guards-and-tests §10.4's structural half, asserted where the pair lives.
+   *
+   * `dry-run.scenario.ts` is a DECLARATION: running it starts a browser and
+   * reaches live UCPath and live Kuali, so a vitest project that collected it —
+   * or a collected file that imported it and executed its side effects — would
+   * put a live rehearsal inside the per-commit gate. Two facts keep it out, and
+   * neither is self-evident from reading the manifest: it carries no `.test.`
+   * segment, and nothing vitest collects imports it.
+   */
+  it("keeps the dry-run manifest out of every vitest project", () => {
+    const testsRoot = join(import.meta.dirname, "..", "..", "..");
+    const manifest = join(import.meta.dirname, "dry-run.scenario.ts");
+    assert.ok(existsSync(manifest), "the T1b manifest is missing from this workflow's folder");
+    assert.ok(
+      !manifest.includes(".test."),
+      "a manifest named `.test.` would be collected and would start a browser",
+    );
+
+    // An actual import of a manifest, not a mention of one: this file's own
+    // pattern text cannot match itself, so it is audited like every other.
+    const manifestImport = /\bfrom\s+"[^"]*dry-run\.scenario\.js"/u;
+    const collected: string[] = [];
+    const visit = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const full = join(directory, entry.name);
+        if (entry.isDirectory()) visit(full);
+        else if (entry.isFile() && entry.name.endsWith(".test.ts")) collected.push(full);
+      }
+    };
+    visit(testsRoot);
+    assert.ok(collected.length > 0, "the test corpus scan found nothing, so it proves nothing");
+    const importers = collected.filter((file) => manifestImport.test(readFileSync(file, "utf8")));
+    assert.deepEqual(importers, [], "a vitest-collected file imports a dry-run manifest");
   });
 });

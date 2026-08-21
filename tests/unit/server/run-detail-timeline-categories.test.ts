@@ -83,19 +83,34 @@ const READ_TWO = fixtureContract("read-timeline-two", "Read two");
 function descriptorWith(
   timeline?: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[],
 ) {
+  return descriptorNamed("timeline-fixture", "tf", "first", timeline);
+}
+
+/**
+ * The same two-node graph with the FIRST node's id as a parameter, so a test
+ * can pin what the derived default key does with a node id the graph is
+ * allowed to have (D265 — `NodeIdSchema`'s slug grammar leads with a letter OR
+ * a digit).
+ */
+function descriptorNamed<First extends string>(
+  id: string,
+  code: string,
+  first: First,
+  timeline?: readonly Readonly<{ key: string; label: string; nodes: readonly string[] }>[],
+) {
   const fixtureFlow = flow(FixtureInput)
-    .step("first", READ_ONE, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
-    .step("second", READ_TWO, { dependsOn: ["first"], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
+    .step(first, READ_ONE, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
+    .step("second", READ_TWO, { dependsOn: [first], replay: "checkpoint", bind: ({ input }) => ({ name: input.name }) })
     .build({
       schema: z.strictObject({ done: z.boolean() }),
       dependsOn: ["second"],
       derive: () => ({ done: true }),
     });
   return defineWorkflowDescriptor({
-    id: "timeline-fixture",
+    id,
     version: 1,
     contractFingerprint: HASH_A,
-    code: "tf",
+    code,
     label: "Timeline fixture",
     icon: "Search",
     category: "operations",
@@ -123,6 +138,25 @@ describe("D225 — the descriptor's declared timeline", () => {
     // and a `chunk-harness.step` name, while the label stays the display string.
     assert.deepEqual(descriptorWith().timeline, [
       { key: "first", label: "Read one", nodes: [{ id: "first", label: "Read one" }] },
+      { key: "second", label: "Read two", nodes: [{ id: "second", label: "Read two" }] },
+    ]);
+  });
+
+  /**
+   * D265 — the derived default key IS the node id, so the key's grammar has to
+   * BE the node id's grammar.
+   *
+   * `NodeIdSchema` accepts a digit-leading slug (`2fa-prompt`, `9-box-review`)
+   * and refuses only a bare ordinal and a UUID. A key schema that additionally
+   * demanded a leading letter made the default derivation throw on a graph the
+   * builder had already accepted — and threw naming the KEY, so the message
+   * pointed at a field the author never wrote. A folder name is the only thing
+   * that reads a key, and a slug is already a safe folder name.
+   */
+  it("derives the default key for a node id that leads with a digit", () => {
+    const digitLed = descriptorNamed("timeline-digit-fixture", "td", "2fa-prompt");
+    assert.deepEqual(digitLed.timeline, [
+      { key: "2fa-prompt", label: "Read one", nodes: [{ id: "2fa-prompt", label: "Read one" }] },
       { key: "second", label: "Read two", nodes: [{ id: "second", label: "Read two" }] },
     ]);
   });
@@ -194,6 +228,25 @@ describe("D225 — the descriptor's declared timeline", () => {
     assert.throws(
       () => descriptorWith([{ key: "Not Kebab", label: "All", nodes: ["first", "second"] }]),
       /kebab-case/,
+    );
+  });
+
+  /**
+   * The key's grammar widened to the node id's (D265) — these two are what it
+   * did NOT widen to. A bare ordinal is a position wearing a name and a UUID is
+   * a run id wearing a step's name; both would become a folder under
+   * `src/workflows/<workflow>/`, where either one is unreadable.
+   */
+  it("REFUSES a category key that is a bare ordinal or a UUID", () => {
+    assert.throws(
+      () => descriptorWith([{ key: "3", label: "All", nodes: ["first", "second"] }]),
+      /bare ordinal/,
+    );
+    assert.throws(
+      () => descriptorWith([
+        { key: "0f1e2d3c-4b5a-4968-8776-655443332211", label: "All", nodes: ["first", "second"] },
+      ]),
+      /must not be a UUID/,
     );
   });
 });

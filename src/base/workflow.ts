@@ -269,6 +269,17 @@ export interface WorkflowDescriptor<
    */
   readonly timeline: readonly TimelineCategoryProjection[];
   /**
+   * D265 — whether the timeline above was DECLARED or DERIVED.
+   *
+   * `timeline` cannot say: the factory always produces one, so a declared
+   * category and a default keyed by a node id are the same shape. Ref
+   * workflow-model §1.2.2 rule 2 bites exactly when a timeline is declared —
+   * a workflow that declared none has no step folders, and a `chunk-harness`
+   * of it is claiming a folder that does not exist. One boolean is the whole
+   * fact the registry's audit is missing; the keys themselves are already here.
+   */
+  readonly timelineDeclared: boolean;
+  /**
    * D229 — the descriptor's own sentence about what this workflow does, and one
    * about each node. Plain data, DERIVED by the factory into an exhaustive,
    * frozen list: a partial declaration would leave some nodes silently
@@ -336,6 +347,8 @@ export interface AnyWorkflowDescriptor {
     label: string;
     nodes: readonly Readonly<{ id: string; label: string }>[];
   }>[];
+  /** D265 — DECLARED or DERIVED; the composition root's role audit is the reader. */
+  readonly timelineDeclared: boolean;
   /** D229 — the descriptor's own prose; plain data, so it rides the broad view. */
   readonly summary?: string;
   readonly nodePurposes: readonly Readonly<{ nodeId: string; purpose: string }>[];
@@ -363,7 +376,7 @@ export interface WorkflowDescriptorSpec<
 > extends Omit<
   WorkflowDescriptor<InputSchema, ResultSchema, Nodes, Completion, S, D>,
   "id" | "contractFingerprint" | "input" | "result" | "nodes" | "scenarios" | "timeline"
-  | "nodePurposes"
+  | "timelineDeclared" | "nodePurposes"
 > {
   readonly id: string;
   readonly contractFingerprint: string;
@@ -1229,6 +1242,7 @@ export function defineWorkflowDescriptor<
     nodes: spec.flow.nodes,
     scenarios: declaredScenarios,
     timeline: deriveTimeline(id, nodes, spec.timeline),
+    timelineDeclared: spec.timeline !== undefined,
     nodePurposes: deriveNodePurposes(id, nodes, spec.nodePurposes),
   });
   PROJECTIONS.set(descriptor, Object.freeze({

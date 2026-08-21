@@ -128,6 +128,12 @@ export const EXPLORER_SOURCE_ROOT = resolve(import.meta.dirname, "..", "..", "..
  * The default corpus reader: every `*.scenario.test.ts` under `tests/scenario`,
  * with its text, so a scenario id can be located by the file that names it.
  *
+ * The walk RECURSES because R10 §10.9 gives each workflow its own folder
+ * (`tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts`, D266)
+ * — a flat read would have silently stopped resolving those ids the moment the
+ * first pair moved, which is precisely the kind of quiet degradation the
+ * `unresolved` arm exists to make loud rather than to absorb.
+ *
  * An ABSENT directory is a documented precondition, not a swallowed error: the
  * listing is empty and every scenario then reports `unresolved` naming the path
  * it looked for, which the surface prints. Nothing is substituted and nothing
@@ -135,15 +141,21 @@ export const EXPLORER_SOURCE_ROOT = resolve(import.meta.dirname, "..", "..", "..
  * "unreadable" must never be indistinguishable from "empty".
  */
 export function readScenarioSources(sourceRoot: string): readonly Readonly<{ path: string; text: string }>[] {
-  const directory = join(sourceRoot, SCENARIO_DIRECTORY);
-  if (!existsSync(directory)) return [];
-  return readdirSync(directory)
-    .filter((name) => name.endsWith(".scenario.test.ts"))
-    .sort()
-    .map((name) => ({
-      path: `${SCENARIO_DIRECTORY}/${name}`,
-      text: readFileSync(join(directory, name), "utf8"),
-    }));
+  const root = join(sourceRoot, SCENARIO_DIRECTORY);
+  if (!existsSync(root)) return [];
+  const collected: { path: string; text: string }[] = [];
+  const visit = (directory: string, prefix: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name))) {
+      const relativePath = `${prefix}/${entry.name}`;
+      if (entry.isDirectory()) visit(join(directory, entry.name), relativePath);
+      else if (entry.isFile() && entry.name.endsWith(".scenario.test.ts")) {
+        collected.push({ path: relativePath, text: readFileSync(join(directory, entry.name), "utf8") });
+      }
+    }
+  };
+  visit(root, SCENARIO_DIRECTORY);
+  return collected;
 }
 
 function resolved(path: string): SourceLinkWire {

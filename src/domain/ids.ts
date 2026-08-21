@@ -18,13 +18,22 @@ const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
  * An all-digit slug likewise parses, and an id that is only digits is a
  * position wearing a name: `nodeId: "3"` says where a node sat, not which node
  * it is. `step-3` and `i9` stay legal; only the bare ordinal is refused.
+ *
+ * Exported UNBRANDED (D265) for the one identifier that is not an id yet must
+ * share this exact grammar: a timeline category key, whose derived default IS a
+ * node id (`src/domain/workflow/presentation.ts`). A second, stricter spelling
+ * there made a legal graph — one whose first node is `2fa-prompt` — throw at
+ * `build()` naming the KEY, a field the author never wrote.
  */
-function slugText<Name extends string>(description: string) {
+export function slugSchema(description: string) {
   return z.string()
     .regex(SLUG_PATTERN, description)
     .refine((value) => !UUID_PATTERN.test(value), `${description} and must not be a UUID`)
-    .refine((value) => !/^\d+$/.test(value), `${description} and must not be a bare ordinal`)
-    .brand<Name>();
+    .refine((value) => !/^\d+$/.test(value), `${description} and must not be a bare ordinal`);
+}
+
+function slugText<Name extends string>(description: string) {
+  return slugSchema(description).brand<Name>();
 }
 
 export const RunIdSchema = brandedText<"RunId">(UUID_PATTERN, "run id must be a UUID");

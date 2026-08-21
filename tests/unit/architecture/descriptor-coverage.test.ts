@@ -246,11 +246,21 @@ describe("descriptor coverage", () => {
     assert.match(unknownStep.join("\n"), /no-such-step/);
     assert.match(unknownStep.join("\n"), new RegExp(declaredKeys[0] ?? "unreachable"));
 
-    // A composition that declares NO timeline has no steps to be of: its
-    // derived default is one category per node (D225), so every one of this
-    // harness's steps is refused. `person-lookup` is the real specimen.
+    // A composition that DECLARED no timeline has no steps to be of: the
+    // factory still derives one category per node (D225), so reading the
+    // normalized timeline alone would accept any of its NODE IDS as a step —
+    // a harness claiming a folder that does not and cannot exist. The step
+    // named here is exactly that: a real node id of the target, which is what
+    // the derived default keys its categories by. `person-lookup` is the real
+    // specimen. §1.2.2 rule 2 — the rule bites when a timeline is DECLARED.
     const standalone = WORKFLOW_MODULES.find((module) => module.role.kind === "standalone");
     if (standalone === undefined) throw new Error("the role fixtures require one standalone workflow");
+    const derivedKey = standalone.descriptor.timeline[0]?.key;
+    const standaloneNodeIds = standalone.descriptor.nodes.map((node) => String(node.id));
+    assert.ok(
+      derivedKey !== undefined && standaloneNodeIds.includes(derivedKey),
+      "the no-timeline specimen's derived category keys ARE its node ids",
+    );
     const noTimeline = auditWorkflowModuleRoles([
       { descriptor: standalone.descriptor, role: defineWorkflowRole({ kind: "composition" }) },
       {
@@ -258,11 +268,11 @@ describe("descriptor coverage", () => {
         role: defineWorkflowRole({
           kind: "chunk-harness",
           of: String(standalone.descriptor.id),
-          step: declaredKeys[0] ?? "unreachable",
+          step: derivedKey,
         }),
       },
     ]);
-    assert.match(noTimeline.join("\n"), /does not declare/);
+    assert.match(noTimeline.join("\n"), /declares no timeline steps; a harness cannot be a step of it/);
 
     // And the load-time refusal is the same audit.
     assert.throws(
