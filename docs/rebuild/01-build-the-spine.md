@@ -159,7 +159,7 @@ unknown-key injection. The TABLES that store them came later (D134, schema v10) 
 and the storage half are separate landings and `ref:operator-trust` §2 now says which is which.
 
 **Two later decisions amended a 1b contract without re-opening it, and both are worth knowing
-here.** **D121/D122** removed `node:path` from `src/domain/config/schema.ts`: a browser-reachable
+here.** **D121** removed `node:path` from `src/domain/config/schema.ts`: a browser-reachable
 module may not statically import a Node built-in, so `paths` became REQUIRED in `ConfigSchema` and is
 supplied by the server-only `src/domain/config/runtime-paths.ts` through the same one resolver — an
 alias or a browser stub was refused because a stubbed `resolve()` invents a plausible-but-wrong
@@ -528,44 +528,47 @@ speed and wall-clock observations and the failure-latency root cause are the fir
 §Exit criteria below, where the plan wrote them. `ref:workflow-model` §8 is the person-lookup worked
 example and §8.1 is its as-built, recording the five deltas this run forced.
 
-## Integration amendment — Phase 1's share (master plan §7)
+## Integration amendment — Phase 1's share
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7 intro, §7.1's parity-surface bullet, §7.2's `1b`/`1c`/`1e`/`1g-spine`/`1i-spine` rows on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+`reference/frontend-backend-integration.md` is the owning companion for the composition boundary
+between the approved frontend and the backend contracts in `reference/`
+(workflow-model · dashboard-surfaces · data-intake-and-edit-data · write-safety ·
+clock-config-secrets · operator-trust). It introduces no second sequence: the rows below AMEND the
+work items above, and they are recorded here because a reader auditing Phase 1 needs to know which
+integration obligations rode on which item.
 
-`docs/rebuild/reference/frontend-backend-integration.md` is now the owning companion for the composition
-boundary between the approved rebuild frontend and refs workflow-model/dashboard-surfaces/data-intake-and-edit-data/write-safety/clock-config-secrets/operator-trust's backend contracts. It
-does **not** introduce another sequence; the delivery slices below amend the existing work items in
-this plan.
+**"Four parity surfaces" means the exact Person Lookup capability slice inside the approved full
+shell**, not four approximate legacy components. It includes the typed Start Run surface, the
+day/count/navigation shell, the Context rail, the Receipt placeholder, and the live/reconnecting
+Session Panel states needed to operate that workflow.
 
-- “Four parity surfaces” means the **exact Person Lookup capability slice inside the approved full
-  shell**, not four approximate legacy components. It includes the typed Start Run surface,
-  day/count/navigation shell, Context rail, Receipt placeholder, and live/reconnecting Session
-  Panel states needed to operate that workflow.
-
-| Existing item | Integration addition | Exit evidence |
+| Item | Integration addition | Exit evidence — as built |
 |---|---|---|
-| **1b** | strict bootstrap/day/detail/subscription/artifact primitives, schema versions, revisions, projection cursors and explicit absence/error unions | every boundary schema parses fixtures and rejects unknown/invalid combinations |
-| **1c** | durable command type shells for start, intake, worker/browser, atomic settings and version/archive targets in addition to run/gate/notification/capture arms; D95 reserves run `bump` for priority, names version actions `plan-version-bump`/`apply-version-bump`, and adds strict run `rename` | every product mutation has one idempotent actor-stamped command family before a route can exist; no discriminant means both priority and version work |
-| **1e** | one complete client descriptor projection: start methods, dry-run/instance absence reasons, panel kind/sections, actions, graph summary and capability availability | no workflow/start/panel registry exists outside the descriptor projection |
-| **1g-spine** | in-process typed dashboard BFF; bootstrap/day/run-detail queries; one transport client; resumable cursor-based SSE; Phase-1 start/run command route | snapshot + any valid patch sequence equals a fresh snapshot; gaps or schema/revision changes reset visibly |
-| **1i-spine** | port the approved tokens/primitives and exact Person Lookup shell composition; wire Start, Queue, Detail/Context/Receipt, counts and Session Panel end to end | live Person Lookup plus both-theme Playwright a11y/screenshot parity at the reference viewports |
+| **1b** | strict bootstrap / day / detail / subscription / artifact primitives, schema versions, revisions, projection cursors and explicit absence/error unions | every boundary schema parses fixtures and rejects unknown/invalid combinations (`strict-boundary-schemas`); the closed unions 1b froze are still the served ones |
+| **1c** | durable command type shells for start, intake, worker/browser, atomic settings and version/archive targets beside the run/gate/notification/capture arms; D95 reserves run `bump` for priority, names the version actions `plan-version-bump`/`apply-version-bump`, and adds a strict run `rename` | every product mutation has ONE idempotent actor-stamped command family before a route can exist — nine families, and no discriminant would have meant losing either priority or version work |
+| **1e** | one complete client descriptor projection: start methods, dry-run/instance absence reasons, panel kind and sections, actions, graph summary and capability availability | no workflow / start / panel registry exists outside the descriptor projection. **One standing exception, named:** the run modal still reads `WORKFLOW_DESCRIPTORS` from the bundle — Track D row **D11**, amending D251 |
+| **1g-spine** | the in-process typed BFF; bootstrap / day / run-detail queries; one transport client; resumable cursor-based SSE; the Phase-1 start and run command routes | a snapshot plus any valid patch sequence equals a fresh snapshot; gaps or schema/revision changes reset visibly. **As built the stream carries one producer** — `dashboard-day`; the other five topics are declared and unserved (`ref:frontend-backend-integration` §3.5) |
+| **1i-spine** | port the approved tokens and primitives and the exact Person Lookup shell composition; wire Start, Queue, Detail/Context/Receipt, counts and the Session Panel end to end | live Person Lookup plus both-theme Playwright a11y and screenshot parity at the reference viewports — with the correction that until D187 the `paper-ink` half of that corpus was photographed dark (§1i-spine above) |
 
 ## Decisions this phase ratified
 
-_Derived from `reference/decisions.md`'s round headings on 2026-08-20 (3b) — the
+_Indexed from `reference/decisions.md`'s round headings and their `_phase: 1_` markers. The
 ratification act and the normative pointer stay in the ledger; this is the phase index._
 
 | Rounds | Dates | D-range | What they settled |
 |---|---|---|---|
 | 13 | 2026-07-31 | D95 | the command-family ambiguity closure (1c's type shell) |
-| 14–16 | 2026-08-01 | D96–D107 | 1d's session/artifact/provider seams (D96–D101) and 1e's descriptor closure (D102–D107 — forward-referencing branch cases, the bundle-safe descriptor closure, `pending-impl-bindings`) |
+| 14 | 2026-08-01 | D96–D101 | 1d's session / artifact / provider seams — one `SessionNeed`, separate artifact and content identity, provider scope stopping at the seam, conjunctive verification, imported semantic ids |
+| 15–16 | 2026-08-01 | D102–D107 | 1e's descriptor closure — forward-referencing branch cases, the bundle-safe descriptor closure, `pending-impl-bindings` |
 | 17 | 2026-08-02 | D108 | the person-lookup CRM read stays source-semantic and EID-bound |
 | 18 | 2026-08-02 | D109–D118 | **1f's runtime/authority closure**: atomic start plans (D109), the minimal durable failure record (D110), beat ⑦ as one transaction (D111), the generic provider-admission core (D112), the exhaustive command kernel (D113), factory-derived terminal results (D114), the required provenance collector (D115), config-keyed session reuse (D116/D117), recovery-before-requeue (D118) |
 | 19–20 | 2026-08-03 | D119–D120 | provider budget windows; **a login is proven by CONTENT, never a URL** (D120) |
-| 21 | 2026-08-04 | D121 | browser-bundle purity — no browser-reachable module statically imports a Node built-in |
-| 23–24 | 2026-08-04 | D123–D126 | **the three presentation defects the live exit run exposed** (D123 `skipped` is its own state, D124 a terminal row's duration, D126 the accessible name is its own channel) and D125's separate session-acquisition bound |
+| 21 | 2026-08-04 | D121 | browser-bundle purity — no module the dashboard entry can value-reach may statically import a Node built-in, and a runtime-only config leaf is required in the shared schema and supplied by the server resolver |
+| 23 | 2026-08-04 | D123–D125 | the live exit run's defects — `skipped` is its own state (D123), a terminal row's duration is served not computed (D124), and session acquisition gets its own bound (D125) |
+| 24 | 2026-08-04 | D126 | the accessible name is its own channel |
 
-Rounds 22 and 25 onward belong to Phase 2 (`02-prove-writes-build-the-tails.md`).
+Round 22 (D122, the Phase-2 Kuali transaction proof) and rounds 25 onward carry `_phase: 2_` or
+later and are indexed by `02-prove-writes-build-the-tails.md`.
 
 ## Exit criteria
 
