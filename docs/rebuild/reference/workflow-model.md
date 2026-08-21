@@ -1886,115 +1886,154 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
 
 ### 5.7 The checkpoint store — and resume scope (D9)
 
-SQLite, beside the existing task store (live truth stays SQLite; JSONL stays audit). Reality
-check from the as-built schema (`src/tracker/state/schema.ts:191,243,267`): **`tasks.id` is
-`TEXT`**, and the logical-item key is **`(workflow, item_id)`** — the earlier
-`INTEGER REFERENCES tasks(id)` sketch was wrong.
+<!-- roadmap: p1-authority -->
+<!-- roadmap: sep-6b -->
+
+<!-- roadmap-status: sep-6b -->
+- [x] the durable key is `(workflow, item_id, node_id, attempt, claim_generation)` — migration **v14**, a table rebuild because a UNIQUE constraint cannot be widened in place, copying `record_key` verbatim and every pre-D214 generation as `NULL` (`src/infra/sqlite/migrations.ts:994-1016`)
+- [x] the generation is read-forward: `checkpointLookupKey` appends nothing when it is absent, so every pre-D214 row keeps a byte-identical key — while `runCheckpoints.insert` REFUSES a new record naming no generation, so no further unrecorded row can be written (D133/D214)
+- [x] the span path carries the generation too (`#<claimGeneration>.<taskAttempt>`), so a gate park and its resume are two rows on the timeline rather than one folded row (§6, `src/core/run-executor.ts:1185`)
+- [x] the attempt in the key is the ITEM's, taken from `runs.nextItemAttempt` inside the inserting transaction, and `runs.enqueue` refuses an attempt the item has already spent (D221 — nothing stored moved, no migration, no schema version)
+- [x] `latest` orders `attempt DESC, claim_generation DESC`, an unrecorded generation sorting last; cross-run replay is preserved because `latest`/`get` are keyed by `(workflow, item, node)` with no run in them
+- [x] the composed graph's first live pass is what found both defects: run `00419600` read thirteen nodes, parked, took a real approval and died one node later (D214); run `555ba4b4` retried `12a5cd3e` and died in 1.89 s (D221)
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/infra/sqlite/migrations.ts` (v3 frozen at :268-279, v14 at :994-1016), `src/domain/workflow/checkpoint.ts` and `src/core/run-executor.ts`; left: nothing — 6b's platform items are closed
+
+<!-- /roadmap-status -->
+
+SQLite, beside the run authority tables (live truth stays SQLite; JSONL stays audit). The logical
+item key is **`(workflow, item_id)`** — retries share it, rerun-with-new-input gets a fresh one —
+and the resume grain is a graph **NODE**, so the doc's earlier `step_id` column is `node_id` and the
+earlier `INTEGER REFERENCES tasks(id)` sketch was wrong on both counts.
+
+**The v3 shape, which `SQLITE_TABLE_DDL.run_checkpoints` is frozen at** (a released migration hashes
+its exact bytes, so the constant may never be edited — read v14 for the live shape):
 
 ```sql
 CREATE TABLE run_checkpoints (
-  workflow     TEXT    NOT NULL,     -- ┐ the LOGICAL item — retries share it,
-  item_id      TEXT    NOT NULL,     -- ┘ rerun-with-new-input gets a fresh one
-  step_id      TEXT    NOT NULL,     -- descriptor step id
-  attempt      INTEGER NOT NULL,
-  run_id       TEXT    NOT NULL,     -- which run attempt wrote it (audit)
-  output_json  TEXT    NOT NULL,     -- schema-parsed task output
-  schema_hash  TEXT    NOT NULL,
-  descriptor_version INTEGER NOT NULL,
-  contract_fingerprint TEXT NOT NULL,
-  impl_fingerprint TEXT NOT NULL,
-  provenance_json TEXT NOT NULL,     -- per-field source + observed/corrected timestamps
-  PRIMARY KEY (workflow, item_id, step_id, attempt)
-);
+  record_key   TEXT PRIMARY KEY,
+  workflow     TEXT NOT NULL,     -- ┐ the LOGICAL item — retries share it,
+  item_id      TEXT NOT NULL,     -- ┘ rerun-with-new-input gets a fresh one
+  node_id      TEXT NOT NULL,     -- descriptor GRAPH-NODE id (§3.1's resume grain)
+  attempt      INTEGER NOT NULL CHECK (attempt >= 1),
+  run_id       TEXT NOT NULL,     -- which run attempt wrote it (audit)
+  record_json  TEXT NOT NULL CHECK (json_valid(record_json)),
+  created_at   TEXT NOT NULL,
+  UNIQUE (workflow, item_id, node_id, attempt)
+) STRICT
 ```
 
-> **A run ATTEMPT is not one execution of its graph, so the checkpoint identity carries the CLAIM
-> GENERATION that executed the node (D214, 2026-08-14).** A gate park and its resume are two
-> executions inside ONE attempt — §4's resolution re-enqueues the run and the fresh claim is the same
-> attempt, by design — and an `always-rerun` node re-executes across that boundary, also by design
-> (§5.3). Under `(workflow, item_id, node_id, attempt)` the second execution's genuinely different
-> observation landed on the first execution's key and the immutable insert refused it by name, so a
-> graph with an `always-rerun` node upstream of a gate **could not pass its own gate**. Separations
-> chunk 6b found it live: run `00419600` read thirteen nodes, parked, took a real approval, resumed,
-> and died one node later; its sibling `6a6c6f44` survived only because a killed worker had bumped
-> the attempt, and a crash is not a recovery path.
->
-> The durable key is now `(workflow, item_id, node_id, attempt, claim_generation)`. **The generation
-> is not invented for this** — `RunRecord.claimGeneration` already advances by exactly one on every
-> claim and never resets, a resume IS a fresh claim, and the interpreter visits each node at most
-> once per claim, so it distinguishes exactly the executions that need distinguishing and nothing
-> else. The three rejected alternatives are worth naming: writing NO checkpoint for an `always-rerun`
-> node contradicts §5.3's "stored for audit" and strands D110/D114 terminal evidence and D115
-> downstream provenance; ADVANCING THE ATTEMPT on resume would rewrite an immutable envelope and
-> re-label a park as a retry; and UPDATING or deleting-and-reinserting the row is the exact
-> overwrite D144/D199 refuse.
->
-> Four properties come with it. **(1) Read forward, never back-filled (D133).** The field is optional
-> and `checkpointLookupKey` appends NOTHING when it is absent, so every row stored before D214 keeps a
-> byte-identical `record_key` and stays resolvable; writing `1` into one would fabricate a fact nobody
-> recorded, and under the old key at most one row per `(item, node, attempt)` could exist anyway.
-> A WRITER may not adopt that shape: `runCheckpoints.insert` refuses a record naming no generation,
-> which is also what keeps SQLite's distinct-NULL UNIQUE from admitting a second unrecorded row.
-> **(2) Replay is unchanged for `replay:"checkpoint"` nodes** — they still replay their one stored
-> row, and `latest` now means the latest EXECUTION (highest attempt, then highest generation; an
-> unrecorded generation sorts last, because any row that names one was written after every row that
-> could not). **(3) Terminal evidence cites the execution the run consumed**, and authority re-reads
-> that exact key before it will settle: `ResolvedTerminalDependency.checkpoint` carries the
-> generation, and the `not-run` contradiction check counts EVERY execution of the attempt rather than
-> probing one key. **(4) The span path carries it too** (§6), so the two executions are two rows on
-> the timeline instead of one.
->
-> Migration **v14** rebuilds `run_checkpoints` (a UNIQUE constraint cannot be widened in place),
-> copying `record_key` verbatim and every pre-D214 generation as `NULL`. The v3 DDL constant is
-> frozen where it is, because a released migration hashes its exact bytes.
+**The live shape, migration v14** (D214 — the rebuild is a table copy because a UNIQUE constraint
+cannot be widened in place):
 
-> **THE CHECKPOINT KEY IS ITEM-SCOPED, SO THE ATTEMPT IN IT IS THE ITEM'S ATTEMPT — NOT THE RUN'S
-> (D221, 2026-08-14).** D214 closed the collision one attempt could hold; this closes the one one
-> ITEM could. `run` / `retry` minted a NEW run for the same logical item born at attempt 1 and claim
-> generation 1, so the retry's `always-rerun` nodes re-executed against the ORIGINAL run's
-> attempt-1/generation-1 key and the immutable insert refused them by name — **a run that failed at
-> or after its first `always-rerun` node could not be retried at all**, which for the composed
-> `separations` graph means any failure at or after `timecard-search`. Separations chunk 6c found it
-> live: run `555ba4b4` retried `12a5cd3e`, replayed the whole read chain from the first run's
-> checkpoints, and died in 1.89 s with
-> `run checkpoint separations\0…\0timecard-search\0 1 \0 1 already exists with different content`
-> (`docs/migrations/separations.md` §9.17 item 8).
->
-> **The counter is not invented either.** `(workflow, item_id)` is the logical item and this table is
-> keyed by it, so every component of the key must be item-scoped; `attempt` was the only one that was
-> not. §5.6 #1 has always said what a retry is — *"failure at node k ⇒ retry = **new attempt**"* — the
-> SQL above already annotates `run_id` as *"which run attempt wrote it (audit)"*, and the write
-> sequencer already reads `envelope.attempt > 1` as **"this item has been attempted before, so probe
-> before you fence"** (ref write-safety §5), which is only a true reading of an item-scoped counter. So the
-> attempt an enqueue takes is **the item's next unspent one**, read from authority
-> (`runs.nextItemAttempt`) inside the same transaction that inserts the run, and a requeue advances
-> that same counter rather than its own `+ 1` (a sibling run of the item may already hold it).
-> `runs.enqueue` REFUSES a record whose attempt the item has already spent, naming the item and the
-> attempt: a stale read is loud at the insert instead of a checkpoint collision three nodes later. A
-> GAP is allowed — an unspent attempt can collide with nothing — and never fabricated.
->
-> D214 refused ADVANCING THE ATTEMPT and that refusal still stands where it was made: a gate resume
-> would have had to **rewrite an in-flight envelope** and would have **re-labelled a park as a
-> retry**. Neither reason reaches here. A retry mints a FRESH envelope — nothing durable is rewritten
-> — and the thing it labels a retry *is* one. The other two rejected alternatives are untouched: no
-> row for an `always-rerun` node, and UPDATE or delete-and-reinsert, are still refused.
->
-> Four properties, in D214's own order. **(1) Nothing stored moves.** The key SHAPE is unchanged, so
-> every checkpoint row keeps a byte-identical `record_key`, every run keeps its recorded attempt, and
-> there is no migration and no schema version — the read-forward rule (D133) is satisfied by having
-> nothing to read forward. **(2) Cross-run replay is preserved, which is the point.** `latest` and
-> `get` are keyed by `(workflow, item, node)` with no run in them, so a retry still replays the prior
-> run's `replay:"checkpoint"` rows — that is what item-scoped checkpoints are FOR, it is what the
-> live retry was observed doing, and `run-executor.test.ts`'s cross-run retry case has pinned it
-> since Phase 1f. Scoping the key by `runId` would have disabled it silently. **(3) Ordering becomes
-> correct rather than merely defined.** `latest` is `attempt DESC, claim_generation DESC` and the
-> retry's rows now genuinely sort above the retried run's, where two runs at attempt 1 were a tie
-> SQLite broke arbitrarily; the receipt's `pickCheckpoint` (`record.attempt <= envelope.attempt`) and
-> the D214 `not-run` contradiction count (rows AT this attempt) become statements about ONE run,
-> where a sibling run's attempt-1 rows used to leak into both. **(4) The two runs are already
-> distinguishable on the timeline** — a span path is rooted in the run's own `traceId` and the
-> projector folds by `(runId, attempt, spanPath)` — and the attempt now differs too, so the surface
-> stops reporting a retry as another attempt 1.
+```sql
+CREATE TABLE run_checkpoints (
+  record_key       TEXT PRIMARY KEY,
+  workflow         TEXT NOT NULL,
+  item_id          TEXT NOT NULL,
+  node_id          TEXT NOT NULL,
+  attempt          INTEGER NOT NULL CHECK (attempt >= 1),
+  claim_generation INTEGER CHECK (claim_generation IS NULL OR claim_generation >= 1),
+  run_id           TEXT NOT NULL,
+  record_json      TEXT NOT NULL CHECK (json_valid(record_json)),
+  created_at       TEXT NOT NULL,
+  UNIQUE (workflow, item_id, node_id, attempt, claim_generation)
+) STRICT;
+CREATE INDEX run_checkpoints_item_node_idx
+  ON run_checkpoints(workflow, item_id, node_id, attempt DESC, claim_generation DESC);
+```
+
+The row's `record_json` holds the schema-parsed node output together with its per-field provenance,
+its schema hash, and the descriptor/contract/impl fingerprints the loader re-validates on resume —
+the payload columns the earlier sketch drew separately. Payloads are system-of-record under D14:
+pruned only on logical-item deletion, never on the 7-day JSONL clock (§9 item 1).
+
+**A run ATTEMPT is not one execution of its graph, so the checkpoint identity carries the CLAIM
+GENERATION that executed the node (D214, 2026-08-14).** A gate park and its resume are two
+executions inside ONE attempt — §4's resolution re-enqueues the run and the fresh claim is the same
+attempt, by design — and an `always-rerun` node re-executes across that boundary, also by design
+(§5.3). Under `(workflow, item_id, node_id, attempt)` the second execution's genuinely different
+observation landed on the first execution's key and the immutable insert refused it by name, so a
+graph with an `always-rerun` node upstream of a gate **could not pass its own gate**. Separations
+chunk 6b found it live: run `00419600` read thirteen nodes, parked, took a real approval, resumed,
+and died one node later; its sibling `6a6c6f44` survived only because a killed worker had bumped
+the attempt, and a crash is not a recovery path.
+
+The durable key is now `(workflow, item_id, node_id, attempt, claim_generation)`. **The generation
+is not invented for this** — `RunRecord.claimGeneration` already advances by exactly one on every
+claim and never resets, a resume IS a fresh claim, and the interpreter visits each node at most
+once per claim, so it distinguishes exactly the executions that need distinguishing and nothing
+else. The three rejected alternatives are worth naming: writing NO checkpoint for an `always-rerun`
+node contradicts §5.3's "stored for audit" and strands D110/D114 terminal evidence and D115
+downstream provenance; ADVANCING THE ATTEMPT on resume would rewrite an immutable envelope and
+re-label a park as a retry; and UPDATING or deleting-and-reinserting the row is the exact
+overwrite D144/D199 refuse.
+
+Four properties come with it. **(1) Read forward, never back-filled (D133).** The field is optional
+and `checkpointLookupKey` appends NOTHING when it is absent, so every row stored before D214 keeps a
+byte-identical `record_key` and stays resolvable; writing `1` into one would fabricate a fact nobody
+recorded, and under the old key at most one row per `(item, node, attempt)` could exist anyway.
+A WRITER may not adopt that shape: `runCheckpoints.insert` refuses a record naming no generation,
+which is also what keeps SQLite's distinct-NULL UNIQUE from admitting a second unrecorded row.
+**(2) Replay is unchanged for `replay:"checkpoint"` nodes** — they still replay their one stored
+row, and `latest` now means the latest EXECUTION (highest attempt, then highest generation; an
+unrecorded generation sorts last, because any row that names one was written after every row that
+could not). **(3) Terminal evidence cites the execution the run consumed**, and authority re-reads
+that exact key before it will settle: `ResolvedTerminalDependency.checkpoint` carries the
+generation, and the `not-run` contradiction check counts EVERY execution of the attempt rather than
+probing one key. **(4) The span path carries it too** (§6), so the two executions are two rows on
+the timeline instead of one.
+
+Migration **v14** rebuilds `run_checkpoints` (a UNIQUE constraint cannot be widened in place),
+copying `record_key` verbatim and every pre-D214 generation as `NULL`. The v3 DDL constant is
+frozen where it is, because a released migration hashes its exact bytes.
+
+**THE CHECKPOINT KEY IS ITEM-SCOPED, SO THE ATTEMPT IN IT IS THE ITEM'S ATTEMPT — NOT THE RUN'S
+(D221, 2026-08-14).** D214 closed the collision one attempt could hold; this closes the one one
+ITEM could. `run` / `retry` minted a NEW run for the same logical item born at attempt 1 and claim
+generation 1, so the retry's `always-rerun` nodes re-executed against the ORIGINAL run's
+attempt-1/generation-1 key and the immutable insert refused them by name — **a run that failed at
+or after its first `always-rerun` node could not be retried at all**, which for the composed
+`separations` graph means any failure at or after `timecard-search`. Separations chunk 6c found it
+live: run `555ba4b4` retried `12a5cd3e`, replayed the whole read chain from the first run's
+checkpoints, and died in 1.89 s with
+`run checkpoint separations\0…\0timecard-search\0 1 \0 1 already exists with different content`
+(`docs/migrations/separations.md` §9.17 item 8).
+
+**The counter is not invented either.** `(workflow, item_id)` is the logical item and this table is
+keyed by it, so every component of the key must be item-scoped; `attempt` was the only one that was
+not. §5.6 #1 has always said what a retry is — *"failure at node k ⇒ retry = **new attempt**"* — the
+SQL above already annotates `run_id` as *"which run attempt wrote it (audit)"*, and the write
+sequencer already reads `envelope.attempt > 1` as **"this item has been attempted before, so probe
+before you fence"** (ref write-safety §5), which is only a true reading of an item-scoped counter. So the
+attempt an enqueue takes is **the item's next unspent one**, read from authority
+(`runs.nextItemAttempt`) inside the same transaction that inserts the run, and a requeue advances
+that same counter rather than its own `+ 1` (a sibling run of the item may already hold it).
+`runs.enqueue` REFUSES a record whose attempt the item has already spent, naming the item and the
+attempt: a stale read is loud at the insert instead of a checkpoint collision three nodes later. A
+GAP is allowed — an unspent attempt can collide with nothing — and never fabricated.
+
+D214 refused ADVANCING THE ATTEMPT and that refusal still stands where it was made: a gate resume
+would have had to **rewrite an in-flight envelope** and would have **re-labelled a park as a
+retry**. Neither reason reaches here. A retry mints a FRESH envelope — nothing durable is rewritten
+— and the thing it labels a retry *is* one. The other two rejected alternatives are untouched: no
+row for an `always-rerun` node, and UPDATE or delete-and-reinsert, are still refused.
+
+Four properties, in D214's own order. **(1) Nothing stored moves.** The key SHAPE is unchanged, so
+every checkpoint row keeps a byte-identical `record_key`, every run keeps its recorded attempt, and
+there is no migration and no schema version — the read-forward rule (D133) is satisfied by having
+nothing to read forward. **(2) Cross-run replay is preserved, which is the point.** `latest` and
+`get` are keyed by `(workflow, item, node)` with no run in them, so a retry still replays the prior
+run's `replay:"checkpoint"` rows — that is what item-scoped checkpoints are FOR, it is what the
+live retry was observed doing, and `run-executor.test.ts`'s cross-run retry case has pinned it
+since Phase 1f. Scoping the key by `runId` would have disabled it silently. **(3) Ordering becomes
+correct rather than merely defined.** `latest` is `attempt DESC, claim_generation DESC` and the
+retry's rows now genuinely sort above the retried run's, where two runs at attempt 1 were a tie
+SQLite broke arbitrarily; the receipt's `pickCheckpoint` (`record.attempt <= envelope.attempt`) and
+the D214 `not-run` contradiction count (rows AT this attempt) become statements about ONE run,
+where a sibling run's attempt-1 rows used to leak into both. **(4) The two runs are already
+distinguishable on the timeline** — a span path is rooted in the run's own `traceId` and the
+projector folds by `(runId, attempt, spanPath)` — and the attempt now differs too, so the surface
+stops reporting a retry as another attempt 1.
 
 - Latest compatible attempt wins. Any descriptor/contract/implementation fingerprint mismatch
   refuses resume unless a checked-in, version-to-version checkpoint migration parses and records
