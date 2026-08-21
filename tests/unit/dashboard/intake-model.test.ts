@@ -17,9 +17,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { FIXTURE_INTAKE_MAPPING } from "../../parity/helpers/fixture-intake.js";
+import { IntakeRowCorrectionSchema } from "../../../src/domain/intake/session.js";
 import { SuggestionSchema } from "../../../src/domain/intake/suggestions.js";
 import type { IntakeSessionWire } from "../../../src/domain/intake/wire.js";
 import {
+  correctionText,
   headerCandidateOptionLabel,
   layoutMetaItems,
   suggestionProposalText,
@@ -88,5 +90,37 @@ describe("IN8 / IN9 — the layout every decision on the screen is fenced agains
       headerFingerprint: null,
     };
     assert.deepEqual(layoutMetaItems(unsettled), []);
+  });
+});
+
+describe("IN121 — a correction is listed, and the half nothing serves is not invented", () => {
+  it("names the field the operator corrected and the value they put there", () => {
+    assert.equal(
+      correctionText(
+        IntakeRowCorrectionSchema.parse({
+          sourceRow: 7,
+          field: "emplId",
+          correctedValue: "10012345",
+          correctedAt: "2026-08-21T18:04:00.000Z",
+        }),
+        "Employee ID (EID)",
+      ),
+      "Employee ID (EID) → “10012345”",
+    );
+  });
+
+  it("never spells an ORIGINAL — `IntakeRowCorrectionSchema` carries none", () => {
+    const text = correctionText(
+      IntakeRowCorrectionSchema.parse({
+        sourceRow: 2,
+        field: "name",
+        correctedValue: "Ada Lovelace",
+        correctedAt: "2026-08-21T18:04:00.000Z",
+      }),
+      "Legal name",
+    );
+    // One arrow, one quoted value: a second quoted pair would be a claim about
+    // a cell nothing on this wire describes.
+    assert.equal(text.split("“").length - 1, 1);
   });
 });

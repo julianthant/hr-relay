@@ -20,11 +20,13 @@
  */
 import type { z } from "zod";
 import type { ServedHeaderCandidateSchema } from "../../domain/intake/header-discovery.js";
+import type { IntakeRowCorrectionSchema } from "../../domain/intake/session.js";
 import type { SuggestionSchema } from "../../domain/intake/suggestions.js";
 import type { IntakeSessionWire } from "../../domain/intake/wire.js";
 import { shortHash } from "./format.js";
 
 type ServedHeaderCandidate = z.infer<typeof ServedHeaderCandidateSchema>;
+type IntakeRowCorrection = z.infer<typeof IntakeRowCorrectionSchema>;
 type Suggestion = z.infer<typeof SuggestionSchema>;
 
 /** Why a column was proposed — ref data-intake-and-edit-data §2.5's scorer, said out loud. */
@@ -97,4 +99,19 @@ export function layoutMetaItems(session: IntakeSessionWire): string[] {
     `header row ${String(session.headerRowIndex + 1)}`,
     `fingerprint ${shortHash(session.headerFingerprint)}`,
   ];
+}
+
+/**
+ * A recorded correction, as its own line — `Employee ID (EID) → “12345”`
+ * (IN121, `DemoIntake.tsx:918-921`).
+ *
+ * The demo writes `“<original>” → “<corrected>”`. `IntakeRowCorrectionSchema`
+ * carries no `original`, so the left of the arrow is UNSERVED and the field's
+ * own label stands there instead — inventing the prior value, or leaving an
+ * empty quoted pair, would both be claims about a cell nothing on this wire
+ * describes. The arrow survives because the direction is served: this value
+ * REPLACED what the file holds, and the file is never rewritten.
+ */
+export function correctionText(correction: IntakeRowCorrection, fieldLabel: string): string {
+  return `${fieldLabel} → “${correction.correctedValue}”`;
 }

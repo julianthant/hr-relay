@@ -100,6 +100,7 @@ import { useDashboardClient } from "../state/client-context.js";
 import { CaptureStart } from "./capture-start.js";
 import { fmtClock, pluralize, shortHash } from "./format.js";
 import {
+  correctionText,
   headerCandidateOptionLabel,
   layoutMetaItems,
   sourceLabel,
@@ -673,7 +674,7 @@ function ValidationReview({
         ]}
       />
 
-      {rows.length === 0 && validation.excluded.length === 0 ? (
+      {rows.length === 0 && validation.excluded.length === 0 && session.corrections.length === 0 ? (
         <EmptyState
           icon={<CheckCircle2 aria-hidden className={dsIcon.lg} />}
           title={`All ${String(validation.validRows)} rows are runnable`}
@@ -681,22 +682,58 @@ function ValidationReview({
         />
       ) : (
         <>
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-            Every rejected row is fixed or excluded before this file can run — there is deliberately
-            no way to ignore one. An exclusion is durable and keeps the reason it was made with.
-          </span>
-          {rows.map(([sourceRow, rejects]) => (
-            <RejectedRow
-              key={sourceRow}
-              sourceRow={sourceRow}
-              rejects={rejects}
-              locked={locked}
-              pending={pending}
-              labelOf={labelOf}
-              onCorrect={onCorrect}
-              onExclude={onExclude}
-            />
-          ))}
+          {rows.length > 0 && (
+            <>
+              <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                Every rejected row is fixed or excluded before this file can run — there is
+                deliberately no way to ignore one. An exclusion is durable and keeps the reason it
+                was made with.
+              </span>
+              {rows.map(([sourceRow, rejects]) => (
+                <RejectedRow
+                  key={sourceRow}
+                  sourceRow={sourceRow}
+                  rejects={rejects}
+                  locked={locked}
+                  pending={pending}
+                  labelOf={labelOf}
+                  onCorrect={onCorrect}
+                  onExclude={onExclude}
+                />
+              ))}
+            </>
+          )}
+
+          {/*
+            * IN121 / `DemoIntake.tsx:917-922` — what the operator has already
+            * fixed, listed rather than counted.
+            *
+            * A correction MOVES a row out of the rejection list, so the
+            * previous shape hid its own successes: correct the last bad cell
+            * and every trace of the work vanished behind "all rows are
+            * runnable", while the manifest still recorded each one. It sits
+            * where the demo puts it — after the rejections, before the
+            * exclusions — and it is drawn as the exclusions' twin, because
+            * the two are the same kind of thing: a durable, dated decision
+            * this operator made about one source row.
+            */}
+          {session.corrections.length > 0 && (
+            <section aria-label="Corrected cells" className="flex flex-col gap-[var(--ds-space-tight)]">
+              <SectionLabel>Corrections</SectionLabel>
+              {session.corrections.map((correction) => (
+                <span
+                  key={`${String(correction.sourceRow)}:${correction.field}`}
+                  className="flex flex-wrap items-baseline gap-[var(--ds-space-snug)]"
+                >
+                  <Chip label="row">{String(correction.sourceRow)}</Chip>
+                  <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                    {correctionText(correction, labelOf(correction.field))}
+                  </span>
+                  <MetaLine items={[fmtClock(correction.correctedAt)]} />
+                </span>
+              ))}
+            </section>
+          )}
 
           {validation.excluded.length > 0 && (
             <section aria-label="Excluded rows" className="flex flex-col gap-[var(--ds-space-tight)]">
@@ -797,6 +834,15 @@ function RejectedRow({
           </span>
           <MetaLine
             items={[
+              /*
+               * IN106 / `DemoIntake.tsx:844` — the raw code, under the reason
+               * it names. The badge above spells the SAME code in the
+               * operator's words, and a re-worded label is not a thing anyone
+               * can quote back to us: a `Refusal` on this surface always
+               * carries its code for exactly that reason, and a rejection is
+               * the same kind of sentence one row down.
+               */
+              `code ${reject.code}`,
               "column" in reject ? `column ${reject.column.header}` : undefined,
               "field" in reject ? reject.field : undefined,
               rejectRawText(reject) === undefined ? undefined : `value ${rejectRawText(reject) ?? ""}`,
