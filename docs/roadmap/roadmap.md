@@ -25,31 +25,40 @@ status: done
 when: 2026-07-31 | seeded from legacy @5879004
 size: M
 chip: complete
-doc: 00 §Phase summary · 05 §Phase summary
+doc: 00 §Phase summary · 05 §Phase summary · ref:charter · ref:decisions
 open: no
 
 > Every reference spec reconciled through Round 12 (D1–D94); testing policy ratified; the all-at-once cutover (D89/D93) and the two-repo model ratified; the separations identity gate designed here, not at order 8 (D77).
 
 builds:
-- [x] DOCS the plan SSOT `docs/rebuild/00–13`, each doc owning its contracts
+- [x] DOCS the plan SSOT — fourteen reconciled design docs, each owning its contracts (the shelf is now `00`–`05` + `reference/`, D263)
 - [x] DOCS the decision changelog `reference/decisions` as a pointer index
 - [x] DOCS ALWAYS-GATE identity approval designed (ref write-safety §14)
 - [x] DOCS size model + MUST / SHOULD / LATER delivery tiers (D76)
 - [x] DOCS two-repo coexistence + one cutover (D88–D94)
 
+log:
+- 2026-08-21 | docs-cohesion 00 | doc 00 rewritten as-built; all three status blocks in this subtree filled. Phase 0 is DONE and every `[x]` here re-verified, but the rewrite adds two lists the phase doc had nowhere to put — **six Phase-0 contracts AMENDED** by a later decision (D150 retired legacy change accounting, D191 the gate family with D91's floors untouched, D247 and D216 the isolation names, D263 the plan's form, D193c the Phase-3 ENTRY with D84's order intact, D184 the D58 inventory guard) and **two Phase-0 promises never built** — D79's `scaffold new-task` / `scaffold new-workflow` generators (the new-workflow half owned by `def-explorer-edit`, the **new-task half UNOWNED and reported**) and D85's `cli test workflow --dry-run` + `TestTargetRegistry` (reassigned to `test-tiers` by R10)
+
 ### ALWAYS-GATE identity approval {#phase0-always-gate}
 status: done
 date: D77 · ref write-safety §14
-doc: 00 §ALWAYS-GATE identity approval · ref:write-safety §14 · ref:write-safety §14.1 · ref:write-safety §14.3
+doc: 00 §ALWAYS-GATE identity approval · ref:write-safety §14 · ref:write-safety §14.1 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §4
 
 > Manual approval on every separation, both types, no auto-approve-on-match — the control that defends against the `T002173685` wrong-person incident, pulled forward from order 8.
+
+log:
+- 2026-08-21 | docs-cohesion 00 | the design D77 wrote here is BUILT and live-proved (D202, separations chunk 3, first live gated run 2026-08-12) and four decisions have moved it since — D203 a gate row IS a dependency's evidence, D204 the receipt derives from it, D211 the packet carries the write plan so a date that moves re-opens the gate, D226 all three ceremonies exist. §14.7's two deferred values were ANSWERED at the separations questionnaire on 2026-08-12 (freshness 4 hours; the I-9 packet question out of scope) while `ref write-safety` §14.7 still reads as open — a finding for that doc's unit, not fixed here. Left: §14.4's manual-EID arm is built narrower than designed (no second live read in that chunk)
 
 ### Size model + delivery tiers {#phase0-size-model}
 status: done
 date: D76 · doc 00 §Size model + delivery tiers
-doc: 00 §Size model + delivery tiers
+doc: 00 §Size model + delivery tiers · ref:task-contract §2.7
 
 > MUST (the spine) · SHOULD (Phase-2 tails) · LATER (explorer, advisories, catalog) — what may slip without invalidating the base.
+
+log:
+- 2026-08-21 | docs-cohesion 00 | D76's model is LIVE, not history — all 24 items it sized carry the same `size:` on their node today, unchanged and never re-estimated, and the five phase-level sizes agree with §Phases at a glance. All three tiers shipped whole (MUST in phases 1–2, SHOULD in 2g/2h, LATER all five in 2i BEFORE Phase 3), so the fallback shape the tiers define has never been exercised. D79's trims all held except its last sentence: the `scaffold` generators the lightweight tier was ratified with do not exist. Five nodes minted since D76 are sized in its unit and were never in its table — `dash-defaults` `duo-lease` `parallel-runs` `observed-logs` `test-tiers`
 
 ## The SPINE {#phase-1}
 phase: Phase 1
@@ -1471,7 +1480,7 @@ under `docs/rebuild/`; the tree above is the same set of phases as nodes._
 **Reading the Size column.** These are relative build sizes, not calendar — the calendar depends
 on session cadence, which the plan does not own. The unit is *work sessions of the kind this
 program actually runs in*: **S** ≈ 1, **M** ≈ 2–4, **L** ≈ 5–10, **XL** ≈ 10+. They expose
-delivery risk and help keep a long coexistence program tractable. Per-item sizes are in `ref charter` §Size model + delivery tiers; they are estimates
+delivery risk and help keep a long coexistence program tractable. Per-item sizes are in `doc 00` §Size model + delivery tiers; they are estimates
 offered for correction, not commitments.
 
 ---
