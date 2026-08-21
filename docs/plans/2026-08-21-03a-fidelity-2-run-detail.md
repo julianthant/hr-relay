@@ -513,3 +513,65 @@ printing bytes it already holds:** D25 the observation's `taskId` + `observedAt`
 id. Plus: D8 the confidence Chip and its three sentences · D9 the scattered identity line · D11 the
 invariant Banner · D13 the dry-run Banner · D17 the commit/prepare Badge · D24 the criterion icon ·
 D29 the uncertainty icon and its two full sentences · D39 the stale placeholder comment.
+
+---
+
+## R-E — The failure record
+
+**Demo:** `DemoFailure.tsx` (398).
+**Rebuild:** `InlineFailureRecord` (`log-panel.tsx:696-777`) + `FailureDetailBody`
+(`trust.tsx:87-175`) + `FailureAdvisoryPanel` (`advisory.tsx:51`).
+
+**FIRST AUDIT** — the 08-13 wave never opened `DemoFailure.tsx`. Image-verified against
+`tests/parity/references/run-failed--paper-ink--1440x900.png` at 1440×900.
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| E1 | card geometry — `mx-cozy my-base ml-5 border p-cozy`, `dsRadius.lg`, `dsFocus`, `border-[length:--ds-border-w-rail]`, danger tint; same shape as the inline decision | `DemoFailure.tsx:169-177` | `log-panel.tsx:718-726` | exact | |
+| E2 | anchor — `tabIndex={-1}`, a `data-*` hook, an `aria-label` | `:165-168` | `:714-717` | exact | `data-demo-failure-record` → `data-panel-failure-record`; the label is `Failure record — {summary}` vs a bare `Failure record` — see E4 |
+| E3 | head `TriangleAlert` at `dsIcon.md` in danger | `:180` | `:729` | exact | |
+| E4 | the head's WORDS | `{failure.summary}` — the run's own sentence, semibold, in danger `:181` | the constant `This run failed` `:730-732`, with `summary` moved into the body's first line (`trust.tsx:107`) | divergent | **OPEN — operator call** (`summary` is served and required; the head states a category where the demo states the fact) |
+| E5 | head `code` Chip (danger) | `:182-184` | absent from the head — `code` is the first item of the body `MetaLine` (`trust.tsx:114`) | divergent | **OPEN — operator call** |
+| E6 | head permanence Chip — `transient — a later attempt may differ` / `permanent — the same input will fail again` | `:185-187` | a bare `transient` word in the body `MetaLine`, and NO permanent arm at all (`trust.tsx:115`) | divergent | **OPEN — operator call.** `transient` is a required boolean; the demo's point is that BOTH readings are stated, because "permanent" is the one that tells the operator not to press retry |
+| E7 | head `record {failureId}` Chip | (no counterpart) | `log-panel.tsx:733-737` | extra | reasonable — the record's own id; uncited |
+| E8 | **`What this run left behind`** — its own labelled, bordered block (`ml-5 border p-base rounded-md`, surface-1), with the write-state sentence in one of three tones | `:190-205` | the sentence alone, bold, in the body flow, no block, no label, no tone (`trust.tsx:108-111`) | divergent | **OPEN — operator call.** Both files argue in comments that this is the most important sentence on a failed run; only one of them gives it a frame. `WRITE_STATE_SENTENCE`'s six arms ARE ported verbatim, so this is presentation only |
+| E9 | the write-state tone arms (`none` → success, `unknown` → parked, else waiting) | `:156-161,202` | absent — one weight for all six states | divergent | **OPEN — operator call** (the served `writeState` is a closed enum; the tone is a pure port) |
+| E10 | the MIRRORED child Banner (D13) — the danger banner, the verbatim child error, `child {trace}`, the "quoted verbatim…" note, and the `Open the child run` button | `:208-232` | absent | missing | `unserved:` no producer — no descriptor declares a `child-run` node and `ChildRunExecutor` is unwired (delegation ledger row, CLOSED 2026-08-20) |
+| E11 | **`What is safe to retry`** — the section label | `:234-235` | `What to do` (`trust.tsx:143`) | divergent | **OPEN — operator call**: the demo's title is a QUESTION the operator has; "What to do" is an instruction list |
+| E12 | per-remediation SAFETY verdict — `safe` / `needs a fix first` / `blocked`, each with `Check`/`CircleAlert`/`CircleSlash` and its tone | `:54-58,237-253` | a `remediation` Chip naming the KIND (`Retry` / `Operator` / `Configuration` / `Code change` / `No safe action`), `danger` only on `no-safe-action` (`trust.tsx:98-104,146-148`) | divergent | `unserved:` `RemediationActionSchema` carries `{kind, message}` and no safety verdict (`src/domain/trust/failure.ts:37-42`). The two axes overlap only at `no-safe-action` ↔ `blocked` |
+| E13 | remediation `label` + `detail` on two lines | `:255-258` | one line: Chip + `message` | divergent | `unserved:` the wire carries one `message`, not a label/detail pair |
+| E14 | the BLOCKED options are listed with their reasons rather than hidden | `:130-133,237` | preserved — every served remediation renders | exact | the rule ports even though the vocabulary does not |
+| E15 | **the disclosure** — `Show the diagnostic record` / `Hide the diagnostic record` + a rotating `ChevronDown`, `aria-expanded`, `data-demo-failure-toggle`, and everything below it behind that press | `:266-281,284` | absent — every section renders unconditionally | divergent | **OPEN — operator call, and it is the region's loudest.** The demo's stated reason: *"always-expanding a 400px diagnostic dump into a log stream buries the lines after it."* The parity reference confirms the shape — on `run-failed` the record fills the panel and pushes `WHAT THE RUN SAID` below the fold. `LogPanel`'s `goToFailure` no longer has an `open` to set, so the two halves are consistent; the affordance simply does not exist |
+| E16 | `What had already happened when it failed` — the four-column progress `Table` (Step / State / System / What it left behind) with the `done` / `FAILED HERE` / `never ran` vocabulary | `:60-64,286-310` | absent | missing | `unserved:` `FailureDetailWireSchema` carries no progress ledger. The facts exist elsewhere (`timeline.steps` states, and `writeState` per action on the receipt) — the producer is a projection joining them, not a new observation |
+| E17 | `Classification` `KeyValueList` — `Fingerprint` | `:316` | in the Cause-chain `MetaLine`, truncated to 12 chars + `…` (`trust.tsx:166`) | divergent | ruled by nothing; the truncation is sensible and uncited — folded into E20 |
+| E18 | `Classification` — `Code` | `:317` | the body `MetaLine` (E5) | divergent | see E5 |
+| E19 | `Classification` — `Occurred {clock}` | `:318` | absent; the rebuild prints `failed {completedAt}` off the OUTCOME instead (`log-panel.tsx:743`) | divergent | **OPEN — operator call, SERVED-AND-DROPPED.** `FailureDetailWireSchema.occurredAt` is required and drawn nowhere; the run's terminal instant is a DIFFERENT moment from the failure's |
+| E20 | `Classification` — `Run: {traceId} · attempt {N}` | `:319` | absent | missing | **OPEN — SERVED-AND-DROPPED**: `traceId` and `attempt` are both required on `FailureDetailWireSchema` |
+| E21 | `Classification` — `Node` / `Task` | `:320-321` | the body `MetaLine`, as `node {id}` / `task {id}` (`trust.tsx:116-117`) | exact | same facts, one line instead of two rows |
+| E22 | `Classification` — `Subject expected` / `Subject observed` (the observed row in danger tone) | `:322-325` | a `MetaLine` pair using `displayRedacted ?? digest` (`trust.tsx:122-131`) | divergent | `ruled:` the redaction rule stated `trust.tsx:11-13` — subject identity prefers the served `displayRedacted`; the demo's danger tone on the observed row is NOT ported (**OPEN**, minor) |
+| E23 | `Classification` — `Screen` / `Page state` | `:326-327` | the `MetaLine` at `trust.tsx:135-136` | exact | |
+| E24 | `Classification` — `URL (redacted)` | `:328` | absent | missing | **OPEN — SERVED-AND-DROPPED**: `page.urlRedacted` is on the wire (`run-detail.ts`) and drawn nowhere. `page.titleRedacted` is served too and has no demo counterpart — an unconsumed field either way |
+| E25 | `Classification` — `Failed action: {operation} on {elementId} · step {N}` | `:329-338` | `during {operation}` + `step {N}`; `elementId` is dropped (`trust.tsx:137-138`) | divergent | **OPEN — SERVED-AND-DROPPED**: `action.elementId` is on the wire |
+| E26 | `subject.note` paragraph | `:341-343` | absent | missing | `unserved:` no note on the subject union; `proofRef` is served and also undrawn |
+| E27 | `Cause chain` as an ordered `<ol>` with a `w-14` caps LAYER column, the text, and a per-cause clock | `:346-359` | a `TrustSection` of `FactRow`s: `primary — {code}` / `secondary — {code}` · summary · a `transient` meta (`trust.tsx:154-163`) | divergent | `unserved:` `FailureCauseSchema` carries `{code, summary, role, transient}` — no layer, no instant. The ROLE is the rebuild's own axis and is a real improvement; the `<ol>` ordering is lost |
+| E28 | the `Diagnostic bundle {id}` BUTTON (`Package` glyph) | `:361-364` | a text fragment in the Cause-chain `MetaLine` — `diagnostic bundle {id}`, or `no diagnostic bundle — {reason}` (`trust.tsx:167-169`) | divergent | the ABSENT arm is exact and stronger than the demo's (which has no absent arm). The button is missing because there is nothing to open — see E29 |
+| E29 | `BundleDialog` — `lg`, `Diagnostic bundle {id}` title, the `Captured {clock} · {size} · content-addressed, redacted at capture time` description, the explanatory paragraph, the per-content `Check` + key + detail list, the `Redacted at capture, never at render` info Banner, `Close` + `Download the manifest` | `:66-108` | absent | missing | `unserved:` the wire serves a `bundleId` and nothing else — no `capturedAt`, no size, no contents index, no redaction list, and no download route. D137 writes all of it durably; the producer is the route that reads it back |
+| E30 | `Seen {N}× in {window} — last {trace} at {clock}. {note}` / `First time this fingerprint has been seen.` | `:365-376` | `same failure seen {N} times`, in the body `MetaLine`, drawn only when `> 1` (`trust.tsx:118`) | divergent | `ruled:` ref operator-trust D141 — `sameFingerprintSeen` renders as a COUNT, never a list of other runs, stated `trust.tsx:9`. The demo's `lastTrace` is exactly the list D141 refuses. **The `First time…` arm is a separate OPEN**: silence and "seen once" read the same |
+| E31 | `This failure happened on a member row, not on this one.` | `:379-383` | absent | missing | `unserved:` no member rows (same producer as B111) |
+| E32 | `What the run said` — the run's own `error`-level notes, clock + message, beneath the record | (no counterpart) | `log-panel.tsx:755-773` | extra | `ruled:` stated `:685-695` — 1i served the record's identity and the surrounding facts before the ref operator-trust projection landed; it stayed because the stream's own words are the evidence for the summary |
+| E33 | `FailureAdvisoryPanel` — the `AI advisory` section, its `Explain this failure` button, the availability refusal | (no counterpart) | `log-panel.tsx:747` + `advisory.tsx` | extra | `ruled: D178` — below the record's own remediation, never above it, stated `:745-746` |
+| E34 | the record's non-`available` arms (`error` → code + message; `missing`/`purged` → the reason) | (no counterpart) | `log-panel.tsx:749-753` | extra | `ruled: D184/D198` declared-absence pattern |
+
+**R-E counts — 34 elements: 7 exact · 15 divergent · 8 missing · 4 extra.**
+
+**Since 08-14:** first audit. The body itself is 2g/2i-A work (`FailureDetailBody`, D140/D142) that
+post-dates the 1i frame; nothing in this region regressed during the fidelity wave, and nothing in
+the fidelity wave audited it.
+
+**OPEN in R-E (12 questions), including four SERVED-AND-DROPPED:** E19 `occurredAt` · E20
+`traceId` + `attempt` · E24 `page.urlRedacted` (and the never-consumed `page.titleRedacted`) ·
+E25 `action.elementId`. Plus: E4 the head says a category where the demo says the fact · E5 the
+`code` Chip · E6 the missing `permanent` arm · E8 the write-state block's frame and label · E9 its
+three tones · E11 `What is safe to retry` vs `What to do` · E15 **the whole disclosure** — the
+diagnostic record is always expanded into the log stream · E22 the observed-subject danger tone ·
+E30's `First time this fingerprint has been seen.` arm.
