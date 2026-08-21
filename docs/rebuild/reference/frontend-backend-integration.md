@@ -2017,12 +2017,15 @@ Budgets are measured on the local production build with a realistic large fixtur
 - disconnected/degraded/read-only state remains navigable and evidence stays readable while
   mutation controls are visibly refused.
 
-**Not one of these is measured or asserted anywhere in this repository.** The evidence of absence,
-so the next reader does not re-run the search: no test or helper named for performance, a budget or
-a benchmark exists except doc 01's `tsc` type-inference budget; no 1,240-row or 108-member fixture
-exists; nothing in `src/dashboard` virtualizes or pages; there is no `memo` in any surface or app
-module; nothing mentions backpressure. The section has been normative and unenforced since it was
-written, and the audit that found that is what Track D exists to answer.
+**Not one of these was measured or asserted anywhere in this repository, until the instrument
+below.** The evidence of absence as the 2026-08-20 audit found it, so the next reader does not
+re-run the search: no test or helper named for performance, a budget or a benchmark existed except
+doc 01's `tsc` type-inference budget; no 1,240-row or 108-member fixture existed; nothing in
+`src/dashboard` virtualizes or pages; there is no `memo` in any surface or app module; nothing
+mentions backpressure. The section had been normative and unenforced since it was written, and the
+audit that found that is what Track D exists to answer. **What has changed since:** the measurement
+instrument and its BEFORE numbers landed 2026-08-21 (below). Everything else on that list still
+stands — the instrument measures the tree, it does not fix it.
 
 **D264 (2026-08-20) — Track D's D4/D5 supply the first numbers, and the numbers become the gates.**
 The thresholds this section defers to the first Person Lookup slice were never recorded: that slice
@@ -2041,6 +2044,85 @@ D1 → §5.1.3 (the panel's second status derivation) · D2 → §6.9 and §5.1.
 `src/dashboard/CLAUDE.md`'s D253 sentence · D3 → §5.1's D253 · D4/D5 → this section · D6 → §2 and §4
 (`state/`) · D7/D8 → §2 · D9 → this section's virtualize bullet · D10 → §3.4 (one CAS transport) ·
 D11 → §4.
+
+#### Measurement instrument + baseline (2026-08-21)
+
+**The instrument.** `npm run perf:dashboard` seeds ONE deterministic world and times the five hot
+paths the audit named, in-process, through the production functions the BFF calls — no browser, no
+HTTP, no re-implementation. It lives in `tests/perf/`: `dashboard-fixture.ts` (the seed),
+`dashboard-benchmark.ts` (the harness), `sqlite-statement-counter.ts` (the counter).
+`tests/unit/server/dashboard-perf-fixture-shape.test.ts` asserts, in the ordinary unit lane, that
+the seeded world really is the shape the numbers claim to be about — a seeder that quietly shrank
+would otherwise make a later baseline look like an improvement.
+
+**The fixture is this section's 1,240-row / 108-member fixture, and it is production machinery all
+the way down.** A `mkdtemp` state root (never `.tracker-rebuild`); a real `AuthorityDatabase` with
+its real migrations; every row moved by `runs.enqueue` / `claimNext` / `transition` and the D110/D114
+atomic terminalizations; the real span and note JSONL writers; the real `RunQueueProjection` folding
+what those writers put on disk. Nothing writes SQL and nothing hand-builds a wire payload, because a
+fixture that bypassed a schema invariant would measure a system this repository does not have.
+Volume: **1,240 rows on one day** (700 done · 180 failed · 60 cancelled · 5 running · 3 awaiting
+approval · 183 queued, plus one operation and its **108 members**), 120 rows on each of three
+neighbouring days so the day filter has something to filter, **20,800 note lines** across four files
+(5.43 MB), and 175 derived receipts — a quarter of the done runs, because D141 makes derivation an
+on-demand act, and because a quarter is what puts BOTH `#warningVerdict` arms on one wire.
+
+**The BASELINE — these are the BEFORE numbers.** Taken at commit `407d373f` (tracked tree clean),
+`npm run perf:dashboard -- --iterations 11`, on an Apple M3 Pro · 11 cores · 18 GB · node v26.1.0 ·
+darwin-arm64. Durations are the median and nearest-rank p95 of 11 samples after one discarded
+warm-up; **counts are exact** (the world is deterministic, so a count that varied would mean the
+measurement had a side effect) and were byte-identical across every run taken. The machine is a
+laptop that carries other work, so read the durations as ±15 % — three runs at this commit put the
+day wire between 156 and 188 ms — and read the counts as exact. That asymmetry is the reason the
+counters are in the table at all: they are what a later comparison can be made on without owning
+the machine.
+
+| # | Path | Audit | median ms | p95 ms | Counters |
+|---|---|---|---|---|---|
+| 1 | `buildDashboardDayWire` — the whole day snapshot | P2 / P4 | 177.15 | 249.99 | rows 1,240 · sqliteStatements 6,718 · sqliteStatementsPerRow 5.42 |
+| 2 | `applyDashboardDayPatch` — one SSE single-row patch | P1 | 22.30 | 30.12 | rowsAvailable 1,240 · dayWireSchemaParses 1 |
+| 3 | `buildRunSection(run, "logs")` — one logs GET | P3 | 49.02 | 65.28 | notesServed 13 · corpusLinesAvailable 20,800 · corpusBytesAvailable 5,691,200 · corpusFilesAvailable 4 |
+| 4 | `archiveSnapshots.snapshot(run)` — the version-bump freeze, per run | P3 | 46.64 | 67.54 | sqliteStatements 14 · projectedDayMs 57,833.6 |
+| 5 | `queueSurface` — a 108-member operation vs a single row | P2 | — | — | operationRowStatements 218 · singleRowStatements 2 · previewDeltaStatements 216 · members 108 |
+
+**What the counts confirm, and it is worth saying because the audit predicted them from reading:**
+the member preview really does cost **216 SQLite statements** to print three names (`getRun` +
+`latestCheckpoint` per member, 108 of each, before `.slice(0, 3)`) against **2** for a plain row;
+the day wire really does cost **5.42 statements per row**; and one single-row SSE patch really does
+run exactly **one** `DashboardDayWireSchema.parse` over all **1,240** rows. Row 5 carries no
+duration on purpose — its finding is a count, and `0.00 ms` in a baseline table is a number somebody
+would later compare against.
+
+**How the counters are taken, and what they do not cover.** SQLite statements are counted by
+patching `DatabaseSync.prototype.prepare` around one callback: the finding is stated in SQLite hits,
+`AuthorityDatabase` prepares at the point of use with no cache, so one `prepare()` is one statement.
+It does not count `exec()` — this tree's DDL and transaction control — which a measured READ never
+runs. The counter refuses to install if the property is not a writable, configurable data property,
+and the harness refuses to report a parse count its spy did not observe, because a counter that can
+report zero is a check that cannot fail — the harness self-checks the SQLite counter against a real
+probe before reporting anything, and separately asserts the day-wire row's own count is nonzero,
+because that is the row P2/P4 lead with. `corpusLinesAvailable` / `corpusBytesAvailable` /
+`corpusFilesAvailable` are the corpus SIZE — a fixture fact, taken independently of the timed call —
+not an in-process OBSERVATION of what `noteLinesForRun` actually read: it is not a syscall-level spy,
+because Node snapshots ESM named imports of `node:fs` and no in-process counter can honestly observe
+that read. They are named `…Available` rather than `…Scanned`/`…Read` for exactly that reason. As
+long as `noteLinesForRun` walks the corpus unscoped on every logs GET (true of this commit — read the
+source, not this counter, to re-confirm), they equal what it reads; once D5 scopes the reader they
+would print the same numbers regardless, and the millisecond column, not these counters, is what
+moves.
+
+**P5 is not on this table, and neither is a browser number.** Virtualization is a DOM property, not
+a server one; it belongs to D9, which this section's virtualize-or-page bullet already owns, and
+which re-measures after it lands. A time-to-interactive figure against the production bundle was
+scoped and deliberately NOT taken: the five findings above are all server-side, and a TTI measured
+on a contended laptop would be a number with no defensible comparison behind it. D4's `memo` work is
+the row that will owe one, and the parity lane already boots the real stack over a seeded state root
+(`tests/parity/helpers/seeded-bff.ts`), so the seam is there when it is wanted.
+
+**These numbers become the gate by being RE-RUN, not by being retyped.** Track D's D4 and D5 run the
+exact command above against the exact same seed and record the delta beneath this table. Anything
+else — a hand-edited number, a different fixture, a different machine class — is a claim, not a
+measurement.
 
 <!-- roadmap-status: track-d -->
 - [x] D1 one status/outcome derivation — `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in `src/server/dashboard/run-status.ts`, read by the queue projector AND `queries/run-detail.ts`; the unified task vocabulary keeps `cancelled` on D123's rule and `PipelineStepWireSchema.state` gains that arm (**D268**, `81bfed73`)

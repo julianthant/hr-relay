@@ -255,6 +255,18 @@ feature slice. The operator's ruling placed the track under the dashboard defaul
 (which is done, so the fold-into-Track-C alternative expired) and before the next workflow leans on
 the dashboard in anger.
 
+**The instrument exists, and the BEFORE numbers are recorded (2026-08-21).** D4 and D5 owe MEASURED
+numbers, and a measurement needs an instrument that predates the fix — otherwise the first number is
+taken by the change it is supposed to judge. `npm run perf:dashboard` (`tests/perf/`) seeds the
+1,240-row / 108-member fixture this track has always named — real authority, real writers, real
+projection, deterministic — and times the five audit paths in-process through the production
+functions the BFF calls. The baseline table, taken at `407d373f` before any Track D row landed, is
+in `ref frontend-backend-integration` §7.4 with the exact command and the machine it ran on; three
+of its counts (216 statements for a 108-member preview, 5.42 per row for the day wire, one whole-day
+parse per single-row patch) confirm what the audit predicted from reading. D4 and D5 re-run that
+command against the same seed and record the delta beneath it. The instrument touches nothing under
+`src/` — it measures the tree, it does not fix it.
+
 **The eleven rows, and their state at HEAD.** D1 landed 2026-08-21 (**D268**); the other ten are
 unlanded. Each was re-verified against the code for the 2026-08-20 rewrite rather than carried
 forward on the audit's say-so.
