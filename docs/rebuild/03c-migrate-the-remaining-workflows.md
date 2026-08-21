@@ -998,8 +998,29 @@ A round ratified by a future migration is added here in the same commit that rec
 ## Exit criteria
 
 _Origin: the dissolved master plan's §3.2 — the per-workflow criteria every migration answers,
-separations included. Re-verified and re-stated below as the PHASE's own checklist, with each line's
-MET/open state at HEAD._
+separations included. Re-verified and re-stated below as the PHASE's own checklist first, with each
+line's MET/open state at HEAD, then the per-workflow contract each order row is held to._
+
+### The phase's exit — read this to decide whether 3c is done
+
+| # | Criterion | State at HEAD (2026-08-20) |
+|---|---|---|
+| 1 | Every order row (0–9, minus 8, which is doc 03b) has been through the seven-step loop | **open** — 1 of 9. Only order 0 · person-lookup is migrated; orders 1–7 and 9 have no descriptor |
+| 2 | Every migrated workflow is marked **rebuild-ready** with its live dry run green and, for writes, its `ref write-safety` §3.2 controlled-commit proof recorded | **open** — order 0 is a read and predates the tiers; no other row has run |
+| 3 | Every order row's `Dashboard · wire <workflow>` sub-task is complete | **open** — 1 of 9, and order 0's is four squares because it needs no more |
+| 4 | Every order row carries its **T1** pair (structural fixture scenario + dry-run manifest) and every wire sub-task its **T2** dashboard scenario | **open** — the spec landed (`ref guards-and-tests` §10, dc2901de) and **no workflow in the tree has a T1 pair yet**, including the migrated one |
+| 5 | The four live probes are settled: each system produces a typed completion proof or an argued `unverifiableByPage` | **open** — 2 of 4. Kuali and UCPath are RESOLVED and BUILT; ServiceNow needs a named target and OnBase has none |
+| 6 | `config/legacy-capabilities.json` has **zero open entries** — every one advanced to `native` / `replaced` / `retired` with evidence | **open** — 47 of 78 open, all owned by this phase |
+| 7 | The §Cross-cutting capabilities are built or retired with evidence | **open** — none of the five is started |
+| 8 | Nothing in the legacy repository has been deleted, and every preserved path is still runnable | **MET, and standing** — it is the D89 rollback asset for the whole phase |
+
+Criterion 8 is the only one that is met, and it is met by not acting. That is the honest shape of a
+phase that has run one of its ten rows.
+
+### What "rebuild-ready" means for ONE workflow
+
+Every order row answers all of these before its node goes `[x]`. This is the contract the playbook's
+seven steps produce, restated as the thing to check at the end.
 
 - §b questionnaire answered + recorded in the workflow's migration doc.
 - the rebuild repo's `typecheck` + `lint` + `test` + `test:architecture` green; the workflow's descriptor passes
