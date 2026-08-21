@@ -104,6 +104,7 @@ means something beside the thing it replaced. Nothing here describes this reposi
 - [x] closed per-system route schemas, explicit prod/test instance refusal, current-fiscal-year validation, the runtime environment/dependency registries and the strict preflight report schemas are all implemented and bidirectionally audited (§3 · §4 · §5 · §6.2)
 - [ ] the `settings.json` layer of the precedence has NO producer — both composition roots call `resolveConfigWithProvenance(env, {}, clock)`, so nothing in `src/` reads a settings file (§3)
 - [ ] `SettingsOverrideSchema.browser` is accepted and then dropped by `mergeSettings` (§3) — a settings-supplied `browser.headless` is silently ignored
+- [ ] no contract or descriptor declares the secrets its tasks need, so `validateBootSecrets` / `validateDescriptorSecrets` have no production caller and a missing credential surfaces at the first task that needs one (§6)
 > 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/clock.ts`, `src/domain/config/{resolve,schema,runtime-paths,fiscal-year,instance}.ts`, `src/domain/secrets.ts` and the four guards; left: the settings producer and the dropped `browser` group, both named in §3
 <!-- /roadmap-status -->
 
@@ -801,6 +802,13 @@ to mutate `process.env`.
   dashboard from opening. `validateDescriptorSecrets(names, families)` is the per-run gate, reporting
   every missing requirement together so a selected workflow fails before spending Duo or browser
   work, not on the third of five prompts.
+- **Neither batch validator has a production caller yet, and the list they would take does not
+  exist.** `validateBootSecrets` and `validateDescriptorSecrets` are exercised only by
+  `tests/unit/secrets-redaction.test.ts`, and no task contract or descriptor declares the secrets its
+  tasks need — the `requires: SecretName[]` §9's first settled question assumes is unwritten. So the
+  discovery mechanism today is the per-call `requireSecret` backstop: a run reaches its first
+  credential-needing task and fails there, having already acquired a session. Closing it is two
+  changes in one: the declaration on the contract, and the enqueue call that reads it.
 - **Three distinct errors, and the difference is load-bearing.** `SecretMissingError` means the value
   is not configured; `SecretSourceError` means the SOURCE could not be inspected or parsed;
   `SecretFileError` wraps a named credential file's failure with the source error as its `cause`.
