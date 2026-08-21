@@ -218,12 +218,17 @@ export interface WorkflowRoleView {
  * banned.
  *
  * D265 (ref workflow-model §1.2.2 rule 3) adds the second half: `step` names
- * one of `of`'s declared timeline category keys — the step folder the harness
- * lives in. A composition that declares no timeline has no steps to be of: its
- * factory-derived default is one category per node (D225), so a harness step
- * only matches when the composition really declared that category. The
- * violation names the workflow, the step, and every key the composition does
- * declare, because "not a step" is unactionable without the list.
+ * one of `of`'s DECLARED timeline category keys — the step folder the harness
+ * lives in. The word declared is load-bearing, and `descriptor.timeline` cannot
+ * supply it: the factory hands every descriptor a timeline, so D225's per-node
+ * default (keyed by node id) is indistinguishable from a real declaration by
+ * shape alone. §1.2.2 rule 2 says the rule bites exactly when a timeline is
+ * declared, so the audit reads `timelineDeclared` and takes two different
+ * paths: a composition that declared none has NO steps to be of and every
+ * harness of it is refused by that name, while a composition that declared some
+ * is checked against those keys only. Either violation names the workflow and
+ * the step, and the second names every key the composition does declare,
+ * because "not a step" is unactionable without the list.
  */
 export function auditWorkflowModuleRoles(
   modules: readonly WorkflowRoleView[],
@@ -231,11 +236,17 @@ export function auditWorkflowModuleRoles(
   const violations: string[] = [];
   // One entry per module, so the role and the steps a harness may name can
   // never be looked up from two maps that disagree about who is registered.
-  const registered = new Map<string, { role: WorkflowModuleRole; steps: readonly string[] }>();
+  const registered = new Map<string, {
+    role: WorkflowModuleRole;
+    /** DECLARED keys only, `undefined` when the descriptor declared no timeline (D265). */
+    steps: readonly string[] | undefined;
+  }>();
   for (const module of modules) {
     registered.set(String(module.descriptor.id), {
       role: module.role,
-      steps: module.descriptor.timeline.map((category) => category.key),
+      steps: module.descriptor.timelineDeclared
+        ? module.descriptor.timeline.map((category) => category.key)
+        : undefined,
     });
   }
   for (const module of modules) {
@@ -257,6 +268,18 @@ export function auditWorkflowModuleRoles(
       continue;
     }
     const declaredSteps = registration.steps;
+    if (declaredSteps === undefined) {
+      // §1.2.2 rule 2 — the rule bites exactly when a timeline is DECLARED. The
+      // factory still hands this descriptor a timeline (D225's per-node
+      // default, keyed by node id), so checking the normalized list would
+      // accept any of its NODE IDS as a step and admit a harness of a workflow
+      // that has no step folders at all.
+      violations.push(
+        `workflow ${workflowId} declares role chunk-harness of ${target} step ${module.role.step}, `
+        + `but ${target} declares no timeline steps; a harness cannot be a step of it`,
+      );
+      continue;
+    }
     if (!declaredSteps.includes(module.role.step)) {
       violations.push(
         `workflow ${workflowId} declares role chunk-harness of ${target} step ${module.role.step}, `
