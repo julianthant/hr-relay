@@ -1827,10 +1827,12 @@ recorded result only after every binding has revalidated, and another command ca
 plan. "Plan consumed but no run" and "run created from an unconsumed or stale plan" are both invalid
 states.
 
-#### Phase 1f — what the kernel ratified (2026-08-02)
+#### Phase 1f — the authority and command ratification (2026-08-02)
 
-Phase 1f closed the authority semantics the Phase-1c storage shell deliberately left open. Four of
-them are this section's, and all four are as-built:
+Phase 1f closed the authority semantics the Phase-1c storage shell deliberately left open. This
+block was a top-level section above §0 until 2026-08-20 and is cited from code and from
+`reference/decisions.md` as *ref dashboard-surfaces §Phase-1f authority*; it now lives here, inside
+the command protocol it ratified. Four of its points are this section's, and all four are as-built:
 
 - **`failures` is a non-rebuildable authority family.** Every failed task or run writes
   `ref operator-trust`'s strict `FailureRecord` and stores its `failureId` with the failure
