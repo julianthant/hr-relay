@@ -1312,76 +1312,128 @@ task contracts impose on that builder; it deliberately does not publish a second
 
 ## 6. Auth and dry-run as contract concerns
 
+<!-- roadmap: p1-kernel -->
+<!-- roadmap-status: p1-kernel -->
+- [x] the session provider is the store's, the execution is the worker's: `SessionProvider.login(handle, options)` takes a `BrowserAuthenticationHandle`, never a page, and no store declaration imports or exports a raw Playwright object (`src/base/session.ts`, 1d/1f)
+- [x] a descriptor DERIVES its browser-system set, its scenario set, its secret set and its dry-run support from the contracts its nodes compose — there is no hand-kept `systems:` list to fall out of date (`src/base/workflow.ts:1161`, D209)
+- [x] acquisition is bounded and lazy: the interpreter takes a driver inside `WorkerSessionManager.withDriver` at the node that needs it (`src/core/run-executor.ts:1039`), under `timeouts.sessionAcquireMs` (D125)
+- [x] `executeDryRun` is a distinct sequencer arm with zero intent, zero fence and zero commit, and it PROBES before it previews (`src/core/write-sequencer.ts`, D215)
+- [ ] the eager parallel-staggered login chain and the per-workflow `auth(system: "on-first-use")` override this section described are not built and are not needed as written — see §6.1
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/base/session.ts, src/base/workflow.ts, src/core/{run-executor,write-sequencer,worker-sessions}.ts and src/infra/browser/system-bindings.ts; left: nothing this section owns — the login RECIPES for the five unbound systems are their migration orders'
+<!-- /roadmap-status -->
+
 ### 6.1 Auth: store-provided, kernel-executed, boilerplate deleted
 
 ```ts
-// src/base/session.ts
-export type LoginResult = "logged-in" | "already-authenticated";
-
-export interface SessionProvider<S extends BrowserSystemId> {
-  system: S;
-  /**
-   * THE one login signature (D15 — review #7 found three incompatible ones).
-   * Idempotent: safe to call on an authenticated page (returns
-   * "already-authenticated"); throws on failure. The DUO_LOGIN_FLOWS entry
-   * itself ports verbatim; its Promise<boolean> result is mapped by a NAMED
-   * ADAPTER WRAPPER (asLoginResult) — the wrapper is new code, not a
-   * verbatim claim.
-   */
-  login(page: Page, opts: { instance?: string; signal?: AbortSignal }): Promise<LoginResult>;
-  prepareLogin?(page: Page): Promise<void>;
-  resetUrl?: string;
-  idleRefresh?: IdleRefreshCadence;     // today's IDLE_REFRESH_SYSTEMS entry moves here
-  exclusive?: true;                     // OnBase — mirrors SessionNeed.exclusive (SQLite lease, §2.1)
+// src/base/session.ts — as built
+export interface SessionProvider<S extends BrowserSystemId, Handle = unknown> {
+  readonly system: S;
+  /** THE one login signature (D15 — review #7 found three incompatible ones).
+   *  Idempotent: safe on an already-authenticated context, returns
+   *  "already-authenticated"; throws on failure. It takes the worker-owned
+   *  AUTHENTICATION HANDLE, never a Playwright page — browser and context
+   *  creation belong to the session factory, and a store declaration that
+   *  exported a page would put Playwright in a task's import graph. */
+  readonly login: (handle: Handle, options: { instance?: string; signal?: AbortSignal })
+    => Promise<"logged-in" | "already-authenticated">;
+  readonly prepareLogin?: (handle: Handle) => Promise<void>;
+  readonly resetUrl?: string;
+  readonly idleRefresh?: { intervalMs: number };
+  readonly exclusive?: true;              // OnBase only, checked by the factory both ways
 }
+defineWorkerSessionProvider(system, options?)   // the 1f runtime provider: one bounded
+                                                // handle.authenticate(system, options) call
 ```
 
-- The kernel computes a workflow's session set as the **union of its composed tasks' `sessions`** —
-  no per-workflow `systems:` list to keep in sync with what the handler actually touches.
-- Default is today's eager parallel-staggered Duo chain. A workflow overrides per system with
-  `auth: { ucpath: "on-first-use" }` — the kernel then logs in lazily at the first task that
-  requests that page. That replaces `deferAuth: true` **and** the entire 15-line hand-rolled
-  auth-step boilerplate in 5 workflows.
-- **Park/resume (D5):** when a run parks at a gate (ref workflow-model), the kernel closes its contexts and
-  only then releases identity-exclusive leases; on resume it reacquires by calling `login` again.
-  Idempotency is what makes release-on-park safe. Duo is cleared hands-off by Duo Autopilot inside `login`
-  (§2.6, charter §9) — a login either finishes or throws; it never parks.
-- When auth must be deliberately delayed (oath-signature: UCPath only after OCR approval), the
-  descriptor uses `auth(...:"on-first-use")`; the first downstream node acquisition emits a visible
-  session/auth child span. Login is worker-owned session infrastructure, not a fake task contract
-  or checkpoint.
-- `DUO_LOGIN_FLOWS` itself becomes a projection over `stores[*].session` (key/label/run) — the
-  smoke test and live auth test keep deriving from one table, which is now the same table the
-  kernel uses.
+- **A workflow's session set is DERIVED, never declared.** `build()` folds every composed
+  contract's namespace into the descriptor's browser-system set, alongside its scenario set, its
+  required secrets and its dry-run support (`src/base/workflow.ts:1161`). There is no
+  per-workflow `systems:` list to keep in sync with what the graph actually touches, which is the
+  defect this replaced.
+- **Acquisition is lazy for every system, and there is no `auth(...)` policy to override it.** This
+  section used to promise an eager parallel-staggered Duo chain as the default with
+  `auth: { ucpath: "on-first-use" }` as the per-workflow escape. Neither exists: the interpreter
+  takes a driver inside `WorkerSessionManager.withDriver` at the node that needs one
+  (`src/core/run-executor.ts:1039`), so *everything* is on-first-use, and the deferred-auth case
+  (oath-signature: UCPath only after OCR approval) is satisfied by node ORDER rather than by
+  policy. Login remains worker-owned session infrastructure, not a fake task contract or
+  checkpoint, and each acquisition emits its own browser/session span. Whether an eager chain is
+  ever worth building is a scheduling question for the parallel-run work (`{#parallel-runs}`), not
+  a contract question — and D243/D244's shared Duo counter is an argument AGAINST unserialized
+  eager logins.
+- **Only four systems can authenticate today.** `BROWSER_SYSTEM_BINDINGS`
+  (`src/infra/browser/system-bindings.ts`) binds `ucpath`, `crm`, `kuali` and `new-kronos` — each
+  to its concrete driver, its login recipe and its authenticated-application proof. The other five
+  stores declare a provider whose `handle.authenticate` has no binding behind it, so an attempt
+  fails loud rather than producing an unauthenticated page; wiring one is part of that system's
+  migration order (§3.1).
+- **Park/resume (D5):** when a run parks at a gate (ref workflow-model), the kernel closes its
+  contexts and only then releases identity-exclusive leases; on resume it reacquires by calling
+  `login` again. Idempotency is what makes release-on-park safe. Duo is cleared hands-off by Duo
+  Autopilot inside `login` (§2.6, charter §9) — a login either finishes or throws; it never parks.
+- **`DUO_LOGIN_FLOWS` did not port as a table.** Its role — one place both the smoke test and the
+  live test derive from — is now `BROWSER_SYSTEM_BINDINGS` plus each store's own `session.ts`
+  recipe, and the login CONTRACT that makes a recipe trustworthy is
+  `defineVerifiedLoginRecipe`: every system declares a verifier proving two independent facts (a
+  server-issued session artifact and the absence of every sign-in form) and it runs on EVERY return
+  path, including `already-authenticated` (D120 — a URL is never a proof).
 
 ### 6.2 Dry-run: a graph composition, not a task flag
 
-- `dryRun` rides the **RunEnvelope** (kernel-owned, ref workflow-model — D6), never workflow input or TaskCtx.
+<!-- roadmap: sep-6b -->
+<!-- roadmap-status: sep-6b -->
+- [x] `executeDryRun` PROBES before it previews (D215, 2026-08-14): an ordinary subject with nothing pending settles `already-present` and the preview REPORTS that settlement — no checkpoint, no observed-present intent, no transition — instead of staging a page with no row to bind and refusing
+- [x] the preview's `prepare`/`subject` fields moved inside the `would-prepare` arm, so a preview that staged nothing cannot spell an empty staged page
+- [x] where the real path refuses — ambiguous, unknown, parked, mid-submit — the preview refuses too
+- [x] the composed separations graph reached its gate, took a real approval and ran on (D214's claim generation is what made the second execution of an `always-rerun` node representable)
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/core/write-sequencer.ts (`executeDryRun`, `TransactionDryRunPreview`) and src/domain/write-safety-primitives.ts; the run-level half is ref workflow-model §5.7 and §2.1
+<!-- /roadmap-status -->
+
+<!-- roadmap: track-a -->
+<!-- roadmap-status: track-a -->
+- [ ] PROOF the `would-prepare` preview arm observed on a live composed dry run of the full separations graph — the probing preview is built and pinned, and the arm that stages a page has not been walked live end to end since D215 landed
+> 2026-08-21 | docs-cohesion 5.1 task-contract | this doc owns only the dry-run CONTRACT; Track A's other rows (the three controlled commits, `probeToFenceMaxMs` per beat, the close-out) are 03b's and ref write-safety's
+<!-- /roadmap-status -->
+
+- `dryRun` rides the **RunEnvelope** (kernel-owned, ref workflow-model — D6), never workflow input
+  or TaskCtx.
 - Read nodes execute normally. A transaction node executes its `prepare` arm under a retained page
-  lease, records an honest `transaction.previewed` span, and ends the run at the node when dry-run
-  policy is `stop-after-prepare`. Its `commit` arm is absent from the executable plan.
-  **How it ends is D210, normative in ref workflow-model §2.1:** the outcome is `done` (§10.1's "stops
-  successfully", discriminated by `envelope.dryRun`, which is already the durable record of the
-  request), and the terminal result is a `RunDryRunPreviewResult` — the prepare output plus the
+  lease, records an honest `transaction.previewed` span, and ends the run at the node when the
+  node's dry-run policy is `stop-after-prepare`. Its `commit` arm is absent from the executable
+  plan.
+- **The preview probes first (D215).** `executeDryRun` runs beat ①'s idempotency probe before it
+  stages anything, because the real path does: for the ordinary separations subject — one with no
+  pending transaction — the real run settles `already-present` at the probe, and a preview that
+  skipped it staged a grid with no row to bind and refused. A rehearsal that fails where the
+  performance succeeds is a false rehearsal. So the preview REPORTS the settlement the real path
+  would reach without performing it: no checkpoint, no observed-present intent, no transition. Its
+  fourth subject verdict `not-observed` exists for exactly that case, and it is the arm that killed
+  a live worker when the wire leaf and the kernel union had forked over it (separations §9.15) —
+  both now enumerate the same four values.
+- **How a dry run ENDS is D210, normative in ref workflow-model §2.1:** the outcome is `done`
+  (§10.1's "stops successfully", discriminated by `envelope.dryRun`, which is already the durable
+  record of the request), and the terminal result is a preview result — the prepare output plus the
   beat-③ subject observation, `externalCommit: "none"` — bound to the PREVIEW schema hash rather
   than the workflow's declared result, so no consumer can read a preview as a completed write. The
   authored `derive` is never invoked and no `TransactionOutcome` is fabricated to make it fold.
 - A prepare task has no `MutationCapability`; a commit task is never invoked in a dry run. Ported
   external-write helpers accept `CommitTaskCtx["mutation"]`, so read/prepare code cannot call them.
-- `dryRun:"unsupported"` belongs on the **transaction node**, not the commit task. The executor
-  rejects such a run before launching a browser — and so does the START PLAN, because the node
-  declaration is the whole of the answer: **dry-runnability is a property of the graph** (D209, doc
-  ref workflow-model §2). A graph is previewable when every transaction node declares `stop-after-prepare`; a graph
-  with no transaction node refuses by name rather than trivially succeeding, since previewing it
-  would be indistinguishable from running it.
-- A genuine no-op established by durable history/live prewrite probe short-circuits before commit
-  and yields ref workflow-model's typed `TransactionOutcome{disposition:"already-present"}` reconstructed from
-  validated proof. The commit impl is not called and no ledger entry claims this run filed it. It is
-  not a dry-run simulation.
-- Transaction-node validation proves prepare and commit require the same browser system/context,
-  the prepare arm is `in-memory-only`, and there is no gate/checkpoint boundary between them.
-
----
+- **`dryRun: "unsupported"` belongs on the transaction NODE, and previewability is derived from the
+  graph (D209).** `deriveDryRunSupport` (`src/base/workflow.ts:422`) answers `supported` with the
+  first transaction node as its `stopsAt` only when EVERY transaction node declares
+  `stop-after-prepare`; otherwise it answers `unsupported` naming either the offending node
+  (`node-declares-unsupported`) or `no-transaction-node` — a graph with nothing to preview refuses
+  by name rather than trivially succeeding, since previewing it would be indistinguishable from
+  running it. An authored `supportsDryRun` is REFUSED rather than overwritten, because silently
+  replacing a declaration is how a descriptor comes to say one thing and mean another. The executor
+  and the START PLAN both read that one derivation.
+- A genuine no-op established by durable history or a live prewrite probe short-circuits before
+  commit and yields ref workflow-model's typed `TransactionOutcome{disposition:"already-present"}`
+  reconstructed from validated proof. The commit impl is not called and no ledger entry claims this
+  run filed it. It is not a dry-run simulation.
+- Transaction-node validation proves prepare and commit require the same browser system and
+  context, the prepare arm is `in-memory-only`, and there is no gate or checkpoint boundary between
+  them (guard `transaction-pairing`).
 
 ## 7. Alternative shapes for the core contract
 
