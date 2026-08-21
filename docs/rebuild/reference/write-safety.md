@@ -1147,26 +1147,59 @@ status is the gate. The standing deferral is doc 04's `{#def-propagation}`.
 ---
 
 ## 5. Double-submit prevention
+<!-- roadmap: sep-4 -->
+<!-- roadmap: order-9 -->
+
+<!-- roadmap-status: sep-4 -->
+- [x] the termination write exists as a transaction pair — `ucpath/stage-termination` → `ucpath/create-termination`, `save-verify` through `ucpath/verify-termination`, probe `ucpath/match-existing-termination`, key `ucpath:termination|<eid>|<effectiveDate>`
+- [x] the date-agnostic pending sweep exists as its OWN transaction pair with its own permanent key — `ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations`, key `ucpath:pending-terminations-clear|<eid>` — composed BEFORE the termination
+- [x] both are `recoveryAbsence: operator-only` and both carry their reason in the contract (§4.2)
+- [ ] neither has run its §3.2 controlled commit; the sweep's COMMITTED arm additionally has **no witness** — clearing the last pending row removed the only mapped subject that had anything to sweep, so the only honest window is re-running the sweep immediately after the termination files (doc 03b, an operator call for 08-28)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/ucpath/{create-termination,delete-pending-terminations,stage-termination,stage-pending-termination-sweep}.ts`; left: both controlled commits, and the sweep's committed-arm witness
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: order-9 -->
+- [ ] onboarding's hire probe has no contract in this tree yet — legacy's `findExistingHireTransaction` matches on name + effdt + jobCode because a pre-hire person has NO EID, and porting it widens the verdict from a fail-open boolean to `ProbeVerdict` with `ambiguous` → park
+- [ ] that widening is the safety upgrade this section exists for, and it is the one probe whose key cannot be EID-derived — so its key hygiene (§8's ban on position, index and attempt) has to be argued at the migration rather than assumed
+> 2026-08-21 | docs-cohesion write-safety | verified against the absence of any `onboarding`/hire commit contract under `src/domain/contracts/`; left: the whole order-9 write family
+<!-- /roadmap-status -->
 
 **Idempotency key from stable identity, never position.** The `key` function takes the parsed
-workflow-derived input and returns a natural business key: `${eid}|termination|${effectiveDate}`,
-`${sessionId}|${pdfHash}` (oath-upload today), `${eid}|hire|${jobCode}|${effdt}` (onboarding — note
-hires have no EID pre-hire, so the key uses name+effdt+jobCode, the same fields
-`findExistingHireTransaction` matches on). It **never** incorporates run position, attempt number,
-array index, or the OCR fan-out index — that is the doc1/doc2 (E2E-015) shared-id fallback, banned in
-the fan-out (`buildFanOutItemIdResolver`) and banned here (§8). Two runs for the same
-person+type+date derive the same key, so beat ① sees the first run's committed intent and refuses to
-double-file.
+workflow-derived input and returns a natural business key, and every key in the tree today is
+system-prefixed so two systems can never collide on one string:
 
-**Two probe kinds are distinct and both port** (separations taught us the difference):
-- The **idempotency probe** reads *processed/filed* transactions (a committed `T…` exists) —
-  `findExistingTerminationTransaction` keyed EID+effdt+"Terminatn".
-- The **date-agnostic pending sweep** (`deletePendingTransaction`, `transaction.ts:1167`) is a
-  *commit cleanup* that deletes ALL in-progress unprocessed Terminat rows for the EID regardless of
-  effdt — it catches a stale prior attempt carrying a *different* computed effdt that the date-keyed
-  probe misses. It ports as its own `ucpath/clear-pending-terminations` transaction composed BEFORE
-  termination (it has its own durable key and typed proof: deleting nothing is a validated no-op;
-  deleted row identities are its proof).
+| contract | key |
+|---|---|
+| `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` |
+| `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear\|<emplId>` |
+| `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` |
+| `kuali/save-timekeeper-annotation` | `kuali:<documentNumber>\|<actionId>\|timekeeper-name\|<emplId>\|<timekeeperName>` |
+
+A key **never** incorporates run position, attempt number, array index, or the OCR fan-out index —
+that is the doc1/doc2 (E2E-015) shared-id fallback, banned in the fan-out
+(`buildFanOutItemIdResolver`) and banned here (§8). Two runs for the same person + type + date
+derive the same key, so beat ① sees the first run's committed intent and refuses to double-file.
+The digest the row is UNIQUE on is `sha256("hrauto:permanent-write-key:v1" ‖ system ‖ key)`, and
+`WriteIntentRecordSchema` re-derives it from the row's own fields, so a stored row cannot claim a
+key it does not hold.
+
+**The timekeeper key includes the VALUE, and that is deliberate.** `…|timekeeper-name|<eid>|<value>`
+means writing a different annotation is a different transaction — which is exactly right for a
+benign restorable field, and exactly wrong as a template for a termination. §3.4 records the
+consequence: a parked intent from an earlier attempt could not be resolved, so the successful commit
+ran under a fresh key rather than reopening the old one. A key that varies with the payload trades
+dedupe for reversibility, and only a write whose repetition is harmless may make that trade.
+
+**Two probe kinds are distinct and both are built** (separations taught the difference):
+- The **idempotency probe** reads *processed / filed* transactions (a committed `T…` exists) —
+  `ucpath/match-existing-termination`, keyed EID + effdt + "Terminatn".
+- The **date-agnostic pending sweep** is a *commit cleanup* that deletes ALL in-progress unprocessed
+  Terminat rows for the EID regardless of effdt — it catches a stale prior attempt carrying a
+  *different* computed effdt that the date-keyed probe misses. It is NOT a probe and NOT a step
+  inside the termination: it is its own transaction pair
+  (`ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations`) with its own
+  permanent key, its own binding proof and its own typed proof, composed BEFORE the termination.
+  Deleting nothing is a validated no-op; the deleted row identities are its proof.
 
 > **A DRY RUN runs these probes too (D215, 2026-08-14; normative text in ref workflow-model §2.1).** `executeDryRun`
 > used to evaluate `prepare` with no probe, so it rehearsed a path the real run never takes: the
@@ -1176,7 +1209,12 @@ double-file.
 > live probe in this section's own order, REPORTS an `already-present` settlement rather than
 > performing it (zero intent, zero checkpoint, zero transition), and refuses on exactly the verdicts
 > the real path refuses on. `probePolicy` governs the preview's live probe identically; the durable
-> lookup is never skipped in either.
+> lookup is never skipped in either. The preview's own span verdict gained a fourth arm for the
+> settled case — `transaction.previewed.subject: "not-observed"`, the honest name for a preview that
+> staged nothing and therefore observed no subject. It landed in the kernel's union and NOT in the
+> JSONL leaf schema, so the first preview that ever settled killed a live worker one emit short of
+> its terminal; both schemas carry all four now and `span-events.test.ts` enumerates the VALUES
+> rather than sampling the shapes.
 
 **The per-workflow probe-policy knob (charter §b — decided at migration, NOT defaulted here).** Beat
 ① (the *pre-write* probe) is governed by a per-workflow knob; the *recovery* probe (§4) is always on
@@ -1195,10 +1233,21 @@ probeToFenceMaxMs: number;                              // REQUIRED, >0 — migr
   always probe. The trade-off is failure to notice an older external transaction absent from this
   automation's ledger, not permission to repeat one already committed here.
 
-Both fields are **required** (compile error if omitted on a transaction), which forces the §b
-migration question to answer policy and maximum preflight age per workflow. There is **no hardcoded
-default**. The Clock's monotonic time measures probe completion → fence; expiration discards the
-prepared page and restarts at preflight, never clicks on an over-age result.
+Both fields are **required** — `defineTransaction` throws on a missing or non-positive
+`probeToFenceMaxMs` (`src/base/flow.ts:584`) — which forces the §b migration question to answer
+policy and maximum preflight age per workflow. There is **no hardcoded default**. The Clock's
+MONOTONIC time measures probe completion → fence; expiration throws `StagedPageDiscardedError`,
+discards the prepared page and restarts at preflight, and never clicks on an over-age result.
+
+**What a settled preview cannot measure, and why the budgets are still guesses.** Every
+`probeToFenceMaxMs` in the tree is an authored bound, not a measured one — 45 000 ms for the two
+Kuali writes, 90 000 and 120 000 ms for the UCPath pair
+(`src/workflows/*/descriptor.ts`). Separations recorded the measurement twice as "riding on the
+preview terminal", and that was never possible: **a preview has no fence**, and a preview that
+settles `already-present` emits ONE event with no beat decomposition at all, so reaching it could
+not produce the number. The measurement rides with §3.2's controlled commits, which are the only
+runs that traverse probe → fence for real. Generalize it past this field: when a blocked measurement
+finally unblocks, re-derive what it is a measurement OF before recording that it is met.
 
 ---
 
