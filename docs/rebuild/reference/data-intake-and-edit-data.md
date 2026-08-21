@@ -914,6 +914,148 @@ Legacy's `originallyMissing` — an array of fields the model judged blank, reco
 diffing snapshots — is **superseded** by the typed absences: `blank` and `illegible` are recorded per
 field at the moment of reading, by the producer that read it.
 
+### 4.5 Phase-2h as-built — measured against the real document corpus (D154)
+
+`hr-automation/data/documents` holds the operator's real scans, and reading them corrected the form
+model twice.
+
+**The oath is one person per page, and its Employee ID box is usually blank.** Every oath in the
+corpus is a UPAY 586 with one name at the top; the multi-row sign-in sheet legacy supported is used
+by **no workflow** (operator, 2026-08-06). So `recordsPerPage` is gone and `record` is a single
+nullable value — an array of at most one is generality with no user. The corpus also shows two
+states a naive reading would get wrong: the EMPLOYEE ID box is frequently **blank** on a real oath
+(that is normal, and the DEPARTMENT number printed beside it must not be substituted), and a
+**signed-but-unwitnessed** oath — employee signature present, date and authorized-official signature
+and title and county all empty — is common and meaningful, not an OCR failure. Both are now
+`extractionNotes`.
+
+**The page-kind vocabulary comes from the corpus, not from intuition.** `i9.pdf` is decisive: its
+page 1 is a Section 2 for one person and page 2 is a Section 1 for a **different** person — loose
+sections, out of order — and both are numbered "page 7/8 of 9", so **seven of every nine pages in an
+I-9 packet carry no data at all**. The vocabulary is therefore `oath` · `emergency-contact` ·
+`i9-section1` · `i9-section2` · `boilerplate` · `unrelated` · `blank`. The last three are kept apart
+deliberately: all mean "no data here", but only `unrelated` means something is in the stack that does
+not belong (the corpus has a Kronos sick-hours report in the same folder), and only `blank` might
+mean the scanner double-fed. `pageFingerprint` folds the CLASSIFICATION as well as the answers, so
+two producers that both read "no data" while disagreeing about why have not agreed.
+
+**What this does NOT yet solve — the recommended next slice.** Pairing an I-9 Section 1 with its
+Section 2 is a **grouping** problem that sits ABOVE this gate, and the corpus proves it cannot be
+positional. The recommendation is three stages rather than one: **classify** every page in the stack
+(cheap, and the operator's first checkpoint — "44 pages → 12 oath, 3 EC, 2 §1, 3 §2, 24
+boilerplate"), then **group** classified pages into subjects by the name read off each page with an
+explicit `orphan-section2` outcome (legacy's `orphanSection2` was this problem), then **extract** per
+subject. `ocr/extract-form-page` is stage 3 and already assumes its caller knows the form type;
+stages 1 and 2 are what let a caller know it.
+
+**Not built yet:** the `i9` form, whose multi-section structure is its own slice; the production
+`ocr.extract` adapter behind the client seam (the contract and store are wired, so it is a real model
+call away); and durable storage of admitted extractions. All sit over this gate; none may add a rule
+of its own.
+
+### 4.6 Phase-2h as-built — a two-digit year is resolved, not refused (D155)
+
+The first live run of the OCR gate over real paper — `detect-test.pdf`, read page by page through
+route 2 — reported the stack correctly (4 emergency-contact pages flagged as *not this workflow*, 3
+oath pages extracted, 0 refused) and exposed one defect.
+
+Page 5's oath is dated **`11/3/21`**, and `single-oath.pdf` is dated **`4-23-26`**. Two-digit years,
+one dash-separated, and both are the normal way these forms are filled in. The coercer refused both
+— while the generated brief was simultaneously telling every producer that `M/D/YY` and `M-D-YY` are
+expected. **The instruction and the validator contradicted each other**, and on a real batch every
+oath date would have landed `unreadable` and gone to a human.
+
+`parseUsOrIsoDate` now accepts `-` as well as `/`, and resolves a two-digit year against **when the
+value was observed**: the 2000s reading unless that lands more than a year ahead of the observation,
+otherwise the 1900s. So `21`→2021, `26`→2026, `98`→1998. This is a documented rule rather than a
+guess, and it is sound for what this system reads — a signature date, hire date, date of birth or
+separation date is in the past or at most an appointment starting within the year, never seventy
+years early.
+
+The reference is the **observation instant, not `now`**, and it is carried on `CellLocation.readAt`
+rather than read from a clock inside the coercer. The intake pipeline passes the run's instant and
+the OCR gate passes the submission's own `readAt`, so re-admitting a stored submission years later
+resolves its dates exactly as the first admission did. A century that moved under a replay would be
+the silent wrong value this rule exists to avoid.
+
+### 4.7 Grouping cannot assume adjacency — measured on raw scanner output (D157)
+
+The open question was whether a person's pages arrive together in a real scan. Two genuine scans
+answer it, and they answer it **differently** — which is itself the finding.
+
+Provenance first, because it decides what counts as evidence. `detect-test.pdf` carries
+`/Creator (VersaLink B7035)` and `Xerox Scan_08052026141856.pdf` carries `/Creator (VersaLink C7020)`
+— both raw Xerox MFP output, unbroken. `multiple-oath.pdf` carries `/Producer (macOS Version 26.1)`
+and is the assembled one. So the two scans are the ground truth and the tidy file is not.
+
+- **`detect-test.pdf` (7 pages, EC + oath).** A person's pages ARE adjacent: page 1 is an
+  emergency-contact form with no partner, then three EC→oath pairs (Tran, Goiset, Provenzano), each
+  person's two forms together.
+- **`Xerox Scan_08052026141856.pdf` (44 pages, I-9).** A person's pages are NOT adjacent. The first
+  four pages are four DIFFERENT people with alternating section types — §2 Casey · §1 Cho · §2
+  Cisneros · §1 Chan — not alphabetical, not paired, and no two consecutive pages belonging to one
+  person.
+
+**So adjacency is a property of how a particular pile was assembled, not of scanning.** Grouping
+must therefore match by the NAME read off each page, across the whole stack, and may use adjacency
+only as a tiebreaker between equally good name matches — never as the rule. A design that paired
+neighbours would have produced Casey's Section 1 from Cho's page: a real I-9 verification attached
+to the wrong person, which is the worst failure this program can produce.
+
+Two properties make the name match workable, both visible in the corpus. An I-9 Section 2 carries
+*"Employee Last Name, First Name and Middle Initial from Section 1"* at the top, so both pages of a
+pair name the same person independently. And a page whose own name is unreadable — `detect-test.pdf`
+page 2 has a sticky note over it — can still be grouped from its partner, which is grouping earning
+its keep rather than merely tidying.
+
+An unmatched Section 2 is **flagged, not blocked** (operator, 2026-08-06); legacy's `orphanSection2`
+was the same decision, and it backed the row with the roster PPS EID.
+
+### 4.8 Phase-2h as-built — stages 1 and 2 of the scanner pipeline (D158)
+
+`src/domain/ocr/stack.ts` lands classification-consumption and grouping;
+`cli ocr stack <classified.json> <form-type>` is the operator surface.
+
+**Every page lands in exactly one bucket** — a subject, `unidentified`, `otherForms` or `dataless` —
+and `pagesAccounted` must equal `pagesClassified`. That total coverage is the whole point of looking
+before extracting: a page belonging to no bucket is a page nobody knows was skipped.
+
+**`personMatchKey` is exact, and deliberately narrow.** Lowercased alphabetic tokens, sorted, with
+single letters dropped. Sorted because `Clauldia, Drona A.` (an I-9 §2 header) and `Drona Clauldia` (a §1's
+separate boxes) are one person. Initials dropped because a middle initial is written inconsistently
+and its absence must not split one person in two. Below two tokens it returns **null** — a surname
+alone would group siblings — and such a page is `unidentified` rather than guessed at. There is no
+fuzzy scoring: that is exactly where this would start inventing people.
+
+Verified on both real stacks. The 44-page I-9 scan's first four pages group as four separate people;
+`detect-test.pdf` reports 3 subjects ready and 4 wrong-type pages for an oath run, and the mirror for
+an emergency-contact run, with page 2's sticky-note-covered name surfaced as unidentified rather than
+dropped.
+
+**Not built:** the sectioned-subject case (an I-9 §1 + §2 as one subject) and its orphan outcome.
+Every form that exists today is one page per person, so that arm would be unreachable and untested —
+it lands with the `i9` form, where D157's flag-never-block decision applies.
+
+### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
+
+Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
+admitted extraction survived exactly as long as the process did. Schema **v11** adds
+`intake_manifests` and `ocr_extractions`.
+
+Both carry their identifying facts as **columns** beside the record JSON, for the reason v10 gave
+`failures` a searchable fingerprint: *"has this file been run before"* and *"has this page already
+been read"* are questions an operator asks constantly, and a scan over parsed JSON is not an answer.
+
+`intake_manifests` is **immutable and undeletable** by trigger. A manifest is the rerun authority —
+it proves which file and mapping produced which items — and a run has already fanned out against it,
+so a rewrite would rewrite history somebody acted on. A rerun creates a new manifest; §5's
+`rerunDiff` is what shows the operator the difference.
+
+`ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)`: **one page, read once, for
+one form.** A second producer reading the same page with a different result is refused by name — a
+replacement is a decision a human makes, not a second row that silently doubles a person in the
+fan-out. A byte-identical re-read is idempotent, so replaying a submission is safe.
+
 ### 4.10 Phase-2h as-built — the i9 is ONE form across two loose sections (D160)
 
 The last form lands, and with it the two arms D158 deliberately left unwritten because no form
@@ -1048,148 +1190,6 @@ admission module, and every other module stays confined exactly as before. The e
 `tests/unit/run-executor-capability-wiring.test.ts`: all three refusal arms plus the wired arm,
 whose task observes the real writer round-trip and whose admission row settles in authority under
 the minted id with the run's snapshot identity.
-
-### 4.9 Phase-2h as-built — authority schema v11, the durability floor (D159)
-
-Everything the intake and OCR pipelines produced was in-memory until here: a manifest and an
-admitted extraction survived exactly as long as the process did. Schema **v11** adds
-`intake_manifests` and `ocr_extractions`.
-
-Both carry their identifying facts as **columns** beside the record JSON, for the reason v10 gave
-`failures` a searchable fingerprint: *"has this file been run before"* and *"has this page already
-been read"* are questions an operator asks constantly, and a scan over parsed JSON is not an answer.
-
-`intake_manifests` is **immutable and undeletable** by trigger. A manifest is the rerun authority —
-it proves which file and mapping produced which items — and a run has already fanned out against it,
-so a rewrite would rewrite history somebody acted on. A rerun creates a new manifest; §5's
-`rerunDiff` is what shows the operator the difference.
-
-`ocr_extractions` is UNIQUE on `(source_sha256, source_page, form_type)`: **one page, read once, for
-one form.** A second producer reading the same page with a different result is refused by name — a
-replacement is a decision a human makes, not a second row that silently doubles a person in the
-fan-out. A byte-identical re-read is idempotent, so replaying a submission is safe.
-
-### 4.8 Phase-2h as-built — stages 1 and 2 of the scanner pipeline (D158)
-
-`src/domain/ocr/stack.ts` lands classification-consumption and grouping;
-`cli ocr stack <classified.json> <form-type>` is the operator surface.
-
-**Every page lands in exactly one bucket** — a subject, `unidentified`, `otherForms` or `dataless` —
-and `pagesAccounted` must equal `pagesClassified`. That total coverage is the whole point of looking
-before extracting: a page belonging to no bucket is a page nobody knows was skipped.
-
-**`personMatchKey` is exact, and deliberately narrow.** Lowercased alphabetic tokens, sorted, with
-single letters dropped. Sorted because `Clauldia, Drona A.` (an I-9 §2 header) and `Drona Clauldia` (a §1's
-separate boxes) are one person. Initials dropped because a middle initial is written inconsistently
-and its absence must not split one person in two. Below two tokens it returns **null** — a surname
-alone would group siblings — and such a page is `unidentified` rather than guessed at. There is no
-fuzzy scoring: that is exactly where this would start inventing people.
-
-Verified on both real stacks. The 44-page I-9 scan's first four pages group as four separate people;
-`detect-test.pdf` reports 3 subjects ready and 4 wrong-type pages for an oath run, and the mirror for
-an emergency-contact run, with page 2's sticky-note-covered name surfaced as unidentified rather than
-dropped.
-
-**Not built:** the sectioned-subject case (an I-9 §1 + §2 as one subject) and its orphan outcome.
-Every form that exists today is one page per person, so that arm would be unreachable and untested —
-it lands with the `i9` form, where D157's flag-never-block decision applies.
-
-### 4.7 Grouping cannot assume adjacency — measured on raw scanner output (D157)
-
-The open question was whether a person's pages arrive together in a real scan. Two genuine scans
-answer it, and they answer it **differently** — which is itself the finding.
-
-Provenance first, because it decides what counts as evidence. `detect-test.pdf` carries
-`/Creator (VersaLink B7035)` and `Xerox Scan_08052026141856.pdf` carries `/Creator (VersaLink C7020)`
-— both raw Xerox MFP output, unbroken. `multiple-oath.pdf` carries `/Producer (macOS Version 26.1)`
-and is the assembled one. So the two scans are the ground truth and the tidy file is not.
-
-- **`detect-test.pdf` (7 pages, EC + oath).** A person's pages ARE adjacent: page 1 is an
-  emergency-contact form with no partner, then three EC→oath pairs (Tran, Goiset, Provenzano), each
-  person's two forms together.
-- **`Xerox Scan_08052026141856.pdf` (44 pages, I-9).** A person's pages are NOT adjacent. The first
-  four pages are four DIFFERENT people with alternating section types — §2 Casey · §1 Cho · §2
-  Cisneros · §1 Chan — not alphabetical, not paired, and no two consecutive pages belonging to one
-  person.
-
-**So adjacency is a property of how a particular pile was assembled, not of scanning.** Grouping
-must therefore match by the NAME read off each page, across the whole stack, and may use adjacency
-only as a tiebreaker between equally good name matches — never as the rule. A design that paired
-neighbours would have produced Casey's Section 1 from Cho's page: a real I-9 verification attached
-to the wrong person, which is the worst failure this program can produce.
-
-Two properties make the name match workable, both visible in the corpus. An I-9 Section 2 carries
-*"Employee Last Name, First Name and Middle Initial from Section 1"* at the top, so both pages of a
-pair name the same person independently. And a page whose own name is unreadable — `detect-test.pdf`
-page 2 has a sticky note over it — can still be grouped from its partner, which is grouping earning
-its keep rather than merely tidying.
-
-An unmatched Section 2 is **flagged, not blocked** (operator, 2026-08-06); legacy's `orphanSection2`
-was the same decision, and it backed the row with the roster PPS EID.
-
-### 4.6 Phase-2h as-built — a two-digit year is resolved, not refused (D155)
-
-The first live run of the OCR gate over real paper — `detect-test.pdf`, read page by page through
-route 2 — reported the stack correctly (4 emergency-contact pages flagged as *not this workflow*, 3
-oath pages extracted, 0 refused) and exposed one defect.
-
-Page 5's oath is dated **`11/3/21`**, and `single-oath.pdf` is dated **`4-23-26`**. Two-digit years,
-one dash-separated, and both are the normal way these forms are filled in. The coercer refused both
-— while the generated brief was simultaneously telling every producer that `M/D/YY` and `M-D-YY` are
-expected. **The instruction and the validator contradicted each other**, and on a real batch every
-oath date would have landed `unreadable` and gone to a human.
-
-`parseUsOrIsoDate` now accepts `-` as well as `/`, and resolves a two-digit year against **when the
-value was observed**: the 2000s reading unless that lands more than a year ahead of the observation,
-otherwise the 1900s. So `21`→2021, `26`→2026, `98`→1998. This is a documented rule rather than a
-guess, and it is sound for what this system reads — a signature date, hire date, date of birth or
-separation date is in the past or at most an appointment starting within the year, never seventy
-years early.
-
-The reference is the **observation instant, not `now`**, and it is carried on `CellLocation.readAt`
-rather than read from a clock inside the coercer. The intake pipeline passes the run's instant and
-the OCR gate passes the submission's own `readAt`, so re-admitting a stored submission years later
-resolves its dates exactly as the first admission did. A century that moved under a replay would be
-the silent wrong value this rule exists to avoid.
-
-### 4.5 Phase-2h as-built — measured against the real document corpus (D154)
-
-`hr-automation/data/documents` holds the operator's real scans, and reading them corrected the form
-model twice.
-
-**The oath is one person per page, and its Employee ID box is usually blank.** Every oath in the
-corpus is a UPAY 586 with one name at the top; the multi-row sign-in sheet legacy supported is used
-by **no workflow** (operator, 2026-08-06). So `recordsPerPage` is gone and `record` is a single
-nullable value — an array of at most one is generality with no user. The corpus also shows two
-states a naive reading would get wrong: the EMPLOYEE ID box is frequently **blank** on a real oath
-(that is normal, and the DEPARTMENT number printed beside it must not be substituted), and a
-**signed-but-unwitnessed** oath — employee signature present, date and authorized-official signature
-and title and county all empty — is common and meaningful, not an OCR failure. Both are now
-`extractionNotes`.
-
-**The page-kind vocabulary comes from the corpus, not from intuition.** `i9.pdf` is decisive: its
-page 1 is a Section 2 for one person and page 2 is a Section 1 for a **different** person — loose
-sections, out of order — and both are numbered "page 7/8 of 9", so **seven of every nine pages in an
-I-9 packet carry no data at all**. The vocabulary is therefore `oath` · `emergency-contact` ·
-`i9-section1` · `i9-section2` · `boilerplate` · `unrelated` · `blank`. The last three are kept apart
-deliberately: all mean "no data here", but only `unrelated` means something is in the stack that does
-not belong (the corpus has a Kronos sick-hours report in the same folder), and only `blank` might
-mean the scanner double-fed. `pageFingerprint` folds the CLASSIFICATION as well as the answers, so
-two producers that both read "no data" while disagreeing about why have not agreed.
-
-**What this does NOT yet solve — the recommended next slice.** Pairing an I-9 Section 1 with its
-Section 2 is a **grouping** problem that sits ABOVE this gate, and the corpus proves it cannot be
-positional. The recommendation is three stages rather than one: **classify** every page in the stack
-(cheap, and the operator's first checkpoint — "44 pages → 12 oath, 3 EC, 2 §1, 3 §2, 24
-boilerplate"), then **group** classified pages into subjects by the name read off each page with an
-explicit `orphan-section2` outcome (legacy's `orphanSection2` was this problem), then **extract** per
-subject. `ocr/extract-form-page` is stage 3 and already assumes its caller knows the form type;
-stages 1 and 2 are what let a caller know it.
-
-**Not built yet:** the `i9` form, whose multi-section structure is its own slice; the production
-`ocr.extract` adapter behind the client seam (the contract and store are wired, so it is a real model
-call away); and durable storage of admitted extractions. All sit over this gate; none may add a rule
-of its own.
 
 ## 5. Intake pipeline: mapped dataset → N inputs, with a pre-run rejection review
 
@@ -1354,119 +1354,6 @@ stays blocked and inspectable rather than reporting a no-op success.
 `rerunDiff` compares an immutable manifest against current reality across five axes — source
 artifact, mapping snapshot, intake projection, workflow contract and canonical-input schema — and a
 "rerun with existing data" must show the diff before creating a run (§7 vector #11).
-
-### 5.2 Phase-2i as-built — the enqueue: readiness, the manifest mint, the fan-out (D171)
-
-`enqueue-intake-manifest` is the sixth intake arm and the irreversible one: it turns a reviewed
-mapping into N real HR runs. It activates here (2i-E2) over D170's durable session, and everything
-below is normative.
-
-**The command targets the SESSION.** Its placeholder target named an `intakeManifestId` that cannot
-exist when the command is issued — the command is what mints it — so it is amended (D161/D167's
-rule: no producer ever sent the old shape) to `{intakeSessionId, expectedVersion}`, the same target
-its five siblings carry, plus an explicit `payload: {dryRun}`. `dryRun` is required rather than
-defaulted, exactly as `StartPlanIngressSchema` requires it: a fan-out that silently chose one is a
-fan-out that silently chose whether to touch a real system.
-
-**It is the ONE intake arm that CASes.** The five mapping arms validate current authority and retain
-the observed version for audit; this one refuses on version drift, because if anything moved since
-the operator read the reject list they are enqueueing a plan they never saw. The other gates, in
-order and each naming exactly what blocks: the session must exist; an already-`enqueued` session is
-refused naming its manifest (`a manifest fans out exactly once`); a `mapping` or `discarded` session
-is refused with §5's mandatory review named; the session must retain a source file name; the
-workflow must declare an intake projection and a registered descriptor; and `dryRun` on a workflow
-with no dry-run boundary is `policy-refused` — the same `dry-run-unsupported` rule `planStart`
-applies, evaluated through the same `supportsDryRun`.
-
-**Readiness is judged on the manifest that would be written.** `deriveIntakeEnqueuePlan`
-(`src/domain/intake/enqueue.ts`) re-runs `validateIntakeRows`, builds the manifest and returns it
-beside `enqueueReadiness(manifest)`, so there is no second count of "how many rows are still
-rejected" that could disagree with the row the operator would be handed. The pass runs against the
-session's RETAINED `readAt`, so a two-digit year resolves exactly as it did at review. A refusal
-carries the readiness `message`, its `reason`, and the unresolved source rows.
-
-**A correction's `original` is read from the source, never carried.** The session retains only the
-corrected value, so the manifest's `IntakeCorrection.original` is looked up in the bound column of
-the re-derived row and redacted through the canonical field's own declared
-`(classification, transform)`. A correction whose field is unbound, whose column is absent, or whose
-row is beyond the file THROWS: each means the session and its layout have become mutually
-inconsistent, which no command sequence can produce, and recording a plausible blank would put a lie
-in an immutable manifest.
-
-**`mappingSnapshotHash` is the identity of the DECISIONS**, where `mappingFingerprint` is the
-identity of the LAYOUT. `deriveMappingSnapshotHash` folds the workflow, sheet, settled header row,
-layout fingerprint, confirmed bindings and run constants, sorted by target field id so two sessions
-that reached the same mapping in a different order hash the same. It deliberately excludes
-`confirmedAt` (a mapping is what it maps, not when it was clicked — folding the instant would make
-`rerunDiff` report a change for a re-confirmed identical binding) and corrections/exclusions (the
-manifest records those in full in their own arrays; §7 #11 asks whether the run was planned the same
-WAY).
-
-**The manifest must name its file, so the session retains one.** `source.originalName` is required
-by the D159 schema and a content-addressed artifact has a digest, not a name — so
-`POST /api/v1/intake/files` requires a `filename` query parameter and the session retains it as
-`sourceName`. The leaf is OPTIONAL on the session record and required at the route: a row minted
-before it existed must still parse (D133 — a stored record is read forward, never back-filled), and
-enqueue refuses such a session by name rather than inventing a name the manifest would claim forever.
-
-**One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
-inserted; `start-run` and this arm reach it with different plans and identical obligations — the
-descriptor's enqueue policy is evaluated against live authority per item, `supersede-active`
-supersedes, a `reject-active` collision refuses the WHOLE command, and a proposed run id that
-already exists is a fault rather than an adoption.
-
-**What an intake run's envelope carries.** `shape: "single"` and `priority: "bulk"` are server
-stamps, not caller claims. Per row: a fresh `runId`, the row's `itemId` from the manifest, a
-`traceId` derived from the descriptor code, the descriptor's current version/fingerprint, every
-browser system resolved to `prod` through the same `resolveInstances` the planner uses,
-`ingressSchemaHash` from the descriptor's input schema, and `input.parsed` bound to
-`canonicalInputSchemaHash` after re-reading the manifest's stored `parsedInput` through the
-descriptor's CURRENT canonical schema (D62 — never its ingress parser); a value that fails that
-parse throws naming the source row and enqueues nothing. `input.raw` is the manifest's own stored
-`parsedInput`: that value IS what intake submitted, and `validRows[].inputHash` pins its bytes.
-
-**The config identity is injected and PROVED.** `start-run` copies it from the start plan and
-`retry` from the run it retries; an intake fan-out has neither, so `CommandKernelDependencies`
-carries a `configIdentity` supplied by the composition root — the same resolved fingerprint and
-stored snapshot the start-plan service uses — and the arm reads the `config_snapshots` row back and
-compares its fingerprint before stamping a single envelope. A caller-claimed identity would be an
-unverified value; an unproved one would leave a run naming a snapshot nobody can read back.
-
-**Everything commits together.** The manifest insert, every run insert, and the session CAS to
-`enqueued` (with its required `intakeManifestId`) run in the ONE outer authority transaction, so a
-refusal on the last row of a file leaves no manifest, no run, no state change and no generation
-advance. Partial fan-out is unrepresentable rather than merely avoided.
-
-**Deviation from §5's coordinator sentence, recorded.** §5 describes the fan-out as an `operation`
-coordinator plus `operation-member` children. Nothing in the runtime mints an `operation` run — the
-shape exists only in the queue projection's rendering, and doc 00 §Size model + delivery tiers assigns
-`operation-member` fan-out to the oath-signature / emergency-contact tier — so intake enqueues N
-independent `single` runs and the MANIFEST is what joins them.
-That is the artefact §5 already relies on to make "42 rows ran" checkable, and its `validRows[].itemId`
-joins to runs through `(workflow, itemId)`. Inventing a coordinator with no descriptor behind it
-would be the fabrication this program bans; the coordinator receipt §5 describes lands with the
-first workflow that genuinely needs one.
-
-**The runs reach the queue like any others.** The dashboard command service emits one `run.queued`
-span per enqueued run, joined to the manifest by `itemId` (unique in a file by
-`duplicate-identity`), titled with the workflow's OWN `presentation.title` over the manifest's
-stored `parsedInput`. A count mismatch between valid rows and reported runs throws rather than
-filing a partial fan-out.
-
-**`rerunDiff` is served, not just computable.** The session wire carries an optional `rerun`
-`{intakeManifestId, createdAt, totals, diff}` whenever the LATEST manifest for this
-`(source digest, workflow)` pair exists — on the upload response and on
-`GET /api/v1/intake/:sessionId` alike, since both render from one `buildWire`. The prior manifest is
-found BY the session's own digest, so the `source-artifact` axis is equal by construction and the
-diff reports the mapping, projection, contract and canonical-schema axes. An enqueued session serves
-its own manifest reading `same-plan`, which is the manifest view the run surface links to.
-
-**One more identity, closed.** `intakeProjectionRegistry` now refuses a module whose projection was
-built over a COPY of its descriptor's input schema rather than the schema object itself. Everything
-above rests on that identity: validation parses each assembled row through the PROJECTION's schema
-and enqueue re-reads the stored value through the DESCRIPTOR's canonical schema. It is the same
-identity-not-equivalence argument `defineIntakeProjection` already makes per target field, applied
-to the whole input.
 
 ### 5.1 Mobile photo capture is a recoverable artifact-intake source
 
@@ -1714,6 +1601,119 @@ may write `capture_sessions`, and that ONLY the finalize projector may declare a
 a violating fixture.
 
 ---
+
+### 5.2 Phase-2i as-built — the enqueue: readiness, the manifest mint, the fan-out (D171)
+
+`enqueue-intake-manifest` is the sixth intake arm and the irreversible one: it turns a reviewed
+mapping into N real HR runs. It activates here (2i-E2) over D170's durable session, and everything
+below is normative.
+
+**The command targets the SESSION.** Its placeholder target named an `intakeManifestId` that cannot
+exist when the command is issued — the command is what mints it — so it is amended (D161/D167's
+rule: no producer ever sent the old shape) to `{intakeSessionId, expectedVersion}`, the same target
+its five siblings carry, plus an explicit `payload: {dryRun}`. `dryRun` is required rather than
+defaulted, exactly as `StartPlanIngressSchema` requires it: a fan-out that silently chose one is a
+fan-out that silently chose whether to touch a real system.
+
+**It is the ONE intake arm that CASes.** The five mapping arms validate current authority and retain
+the observed version for audit; this one refuses on version drift, because if anything moved since
+the operator read the reject list they are enqueueing a plan they never saw. The other gates, in
+order and each naming exactly what blocks: the session must exist; an already-`enqueued` session is
+refused naming its manifest (`a manifest fans out exactly once`); a `mapping` or `discarded` session
+is refused with §5's mandatory review named; the session must retain a source file name; the
+workflow must declare an intake projection and a registered descriptor; and `dryRun` on a workflow
+with no dry-run boundary is `policy-refused` — the same `dry-run-unsupported` rule `planStart`
+applies, evaluated through the same `supportsDryRun`.
+
+**Readiness is judged on the manifest that would be written.** `deriveIntakeEnqueuePlan`
+(`src/domain/intake/enqueue.ts`) re-runs `validateIntakeRows`, builds the manifest and returns it
+beside `enqueueReadiness(manifest)`, so there is no second count of "how many rows are still
+rejected" that could disagree with the row the operator would be handed. The pass runs against the
+session's RETAINED `readAt`, so a two-digit year resolves exactly as it did at review. A refusal
+carries the readiness `message`, its `reason`, and the unresolved source rows.
+
+**A correction's `original` is read from the source, never carried.** The session retains only the
+corrected value, so the manifest's `IntakeCorrection.original` is looked up in the bound column of
+the re-derived row and redacted through the canonical field's own declared
+`(classification, transform)`. A correction whose field is unbound, whose column is absent, or whose
+row is beyond the file THROWS: each means the session and its layout have become mutually
+inconsistent, which no command sequence can produce, and recording a plausible blank would put a lie
+in an immutable manifest.
+
+**`mappingSnapshotHash` is the identity of the DECISIONS**, where `mappingFingerprint` is the
+identity of the LAYOUT. `deriveMappingSnapshotHash` folds the workflow, sheet, settled header row,
+layout fingerprint, confirmed bindings and run constants, sorted by target field id so two sessions
+that reached the same mapping in a different order hash the same. It deliberately excludes
+`confirmedAt` (a mapping is what it maps, not when it was clicked — folding the instant would make
+`rerunDiff` report a change for a re-confirmed identical binding) and corrections/exclusions (the
+manifest records those in full in their own arrays; §7 #11 asks whether the run was planned the same
+WAY).
+
+**The manifest must name its file, so the session retains one.** `source.originalName` is required
+by the D159 schema and a content-addressed artifact has a digest, not a name — so
+`POST /api/v1/intake/files` requires a `filename` query parameter and the session retains it as
+`sourceName`. The leaf is OPTIONAL on the session record and required at the route: a row minted
+before it existed must still parse (D133 — a stored record is read forward, never back-filled), and
+enqueue refuses such a session by name rather than inventing a name the manifest would claim forever.
+
+**One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
+inserted; `start-run` and this arm reach it with different plans and identical obligations — the
+descriptor's enqueue policy is evaluated against live authority per item, `supersede-active`
+supersedes, a `reject-active` collision refuses the WHOLE command, and a proposed run id that
+already exists is a fault rather than an adoption.
+
+**What an intake run's envelope carries.** `shape: "single"` and `priority: "bulk"` are server
+stamps, not caller claims. Per row: a fresh `runId`, the row's `itemId` from the manifest, a
+`traceId` derived from the descriptor code, the descriptor's current version/fingerprint, every
+browser system resolved to `prod` through the same `resolveInstances` the planner uses,
+`ingressSchemaHash` from the descriptor's input schema, and `input.parsed` bound to
+`canonicalInputSchemaHash` after re-reading the manifest's stored `parsedInput` through the
+descriptor's CURRENT canonical schema (D62 — never its ingress parser); a value that fails that
+parse throws naming the source row and enqueues nothing. `input.raw` is the manifest's own stored
+`parsedInput`: that value IS what intake submitted, and `validRows[].inputHash` pins its bytes.
+
+**The config identity is injected and PROVED.** `start-run` copies it from the start plan and
+`retry` from the run it retries; an intake fan-out has neither, so `CommandKernelDependencies`
+carries a `configIdentity` supplied by the composition root — the same resolved fingerprint and
+stored snapshot the start-plan service uses — and the arm reads the `config_snapshots` row back and
+compares its fingerprint before stamping a single envelope. A caller-claimed identity would be an
+unverified value; an unproved one would leave a run naming a snapshot nobody can read back.
+
+**Everything commits together.** The manifest insert, every run insert, and the session CAS to
+`enqueued` (with its required `intakeManifestId`) run in the ONE outer authority transaction, so a
+refusal on the last row of a file leaves no manifest, no run, no state change and no generation
+advance. Partial fan-out is unrepresentable rather than merely avoided.
+
+**Deviation from §5's coordinator sentence, recorded.** §5 describes the fan-out as an `operation`
+coordinator plus `operation-member` children. Nothing in the runtime mints an `operation` run — the
+shape exists only in the queue projection's rendering, and doc 00 §Size model + delivery tiers assigns
+`operation-member` fan-out to the oath-signature / emergency-contact tier — so intake enqueues N
+independent `single` runs and the MANIFEST is what joins them.
+That is the artefact §5 already relies on to make "42 rows ran" checkable, and its `validRows[].itemId`
+joins to runs through `(workflow, itemId)`. Inventing a coordinator with no descriptor behind it
+would be the fabrication this program bans; the coordinator receipt §5 describes lands with the
+first workflow that genuinely needs one.
+
+**The runs reach the queue like any others.** The dashboard command service emits one `run.queued`
+span per enqueued run, joined to the manifest by `itemId` (unique in a file by
+`duplicate-identity`), titled with the workflow's OWN `presentation.title` over the manifest's
+stored `parsedInput`. A count mismatch between valid rows and reported runs throws rather than
+filing a partial fan-out.
+
+**`rerunDiff` is served, not just computable.** The session wire carries an optional `rerun`
+`{intakeManifestId, createdAt, totals, diff}` whenever the LATEST manifest for this
+`(source digest, workflow)` pair exists — on the upload response and on
+`GET /api/v1/intake/:sessionId` alike, since both render from one `buildWire`. The prior manifest is
+found BY the session's own digest, so the `source-artifact` axis is equal by construction and the
+diff reports the mapping, projection, contract and canonical-schema axes. An enqueued session serves
+its own manifest reading `same-plan`, which is the manifest view the run surface links to.
+
+**One more identity, closed.** `intakeProjectionRegistry` now refuses a module whose projection was
+built over a COPY of its descriptor's input schema rather than the schema object itself. Everything
+above rests on that identity: validation parses each assembled row through the PROJECTION's schema
+and enqueue re-reads the stored value through the DESCRIPTOR's canonical schema. It is the same
+identity-not-equivalence argument `defineIntakeProjection` already makes per target field, applied
+to the whole input.
 
 ## 6. The Edit-Data surface (charter §12)
 
