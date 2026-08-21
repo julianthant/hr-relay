@@ -326,7 +326,6 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     );
   });
 
-
   it("still serves a note written the day AFTER the run's last durable instant", () => {
     const w = world();
     terminalDone(w, 1);
@@ -519,9 +518,9 @@ describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", ()
     assert.equal(messages.at(-1), "note 449");
   });
 
-  it("scans once per call when no cache is handed in", () => {
-    const w = world();
-    terminalDone(w, 1);
+  it("serves one run from one scan and a second run from its own", () => {
+    // The cache OBJECT's keying, which is the half `buildRunSection` cannot
+    // show: a per-run map, not a per-call one.
     const inner = createRunNoteScanCache();
     let scans = 0;
     const counting = (): readonly RunNoteScanEntry[] => {
@@ -532,5 +531,30 @@ describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", ()
     inner.read(uuidOf(1), counting);
     inner.read(uuidOf(2), counting);
     assert.equal(scans, 2);
+  });
+
+  it("re-reads the corpus on EVERY call when no cache is handed in", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const notes = createNoteJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid: 4242 });
+    const emit = (message: string): void => {
+      notes.emitNote({
+        workflow: "person-lookup",
+        address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
+        level: "step",
+        message,
+      });
+    };
+    emit("note 0");
+    const first = buildRunSection(depsOf(w), uuidOf(1), "logs");
+    assert.equal(first.section, "logs");
+    assert.deepEqual(first.payload.notes.map((note) => note.message), ["note 0"]);
+    // No cache was handed in, so a line appended between the two calls must be
+    // in the second page: a cacheless call that served the first list would be
+    // a long-lived cache nobody asked for.
+    emit("note 1");
+    const second = buildRunSection(depsOf(w), uuidOf(1), "logs");
+    assert.equal(second.section, "logs");
+    assert.deepEqual(second.payload.notes.map((note) => note.message), ["note 0", "note 1"]);
   });
 });
