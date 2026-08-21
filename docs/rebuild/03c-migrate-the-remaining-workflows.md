@@ -442,13 +442,50 @@ empty when the wire has not been run.
 <!-- roadmap: order-1 -->
 
 <!-- roadmap-status: order-1 -->
+- [ ] the §b questionnaire for person-lookup Search + Match and for i9-lookup — unasked; no `docs/migrations/` doc exists for either
+- [ ] Search + Match as MODES on the existing person-lookup descriptor (D15, `ref dashboard-surfaces` §9) — nothing in `src/workflows/person-lookup/descriptor.ts` carries a mode today
+- [ ] the `i9` store — `src/stores/i9/` is 7 lines: `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`. No driver, no login recipe, **zero tasks**
+- [ ] the `i9-lookup` workflow descriptor + module + registry tuple entry
+- [ ] PROOF T1 — structural fixture scenario + dry-run manifest per workflow, and their T3 pair
+- [ ] the capability entries `legacy-workflow-i9-lookup` and `legacy-workflow-person-lookup` both close here
+> 2026-08-20 | docs-cohesion 03c | verified against `src/stores/i9/index.ts:4` (unwired, `{}` tasks) and `src/workflows/person-lookup/descriptor.ts` (no mode); nothing is built — this row is a plan
 <!-- /roadmap-status -->
+
+**What it is.** Both HR-Tasks questions in one workflow — *search* for a person and *match* an
+existing record — plus `i9-lookup`, which answers who signed a Form I-9 section 2. All three are
+pure reads. **Systems:** UCPath (already driven), and the I-9 system (undriven).
+
+**Store tasks.** REUSE `ucpath/search-person-org` and `ucpath/read-job-summary` unchanged. BUILD the
+whole `i9` store — its driver, its `defineVerifiedLoginRecipe` (two independent content facts, never
+a URL, D120), its UI catalog, and its read tasks. `ref task-contract` §3.1 is the layout it lands in.
+
+**The specific hazard.** Two modes on ONE descriptor is the point of this row, and D15 (`ref
+dashboard-surfaces` §9) is the contract: one workflow identity, two distinct system surfaces
+preserved. The tempting shape — a second workflow id per mode — makes the queue, the archive and
+the explorer show two workflows where the operator has one, and it doubles every wire square below.
+The second hazard is the login: `i9` is the first store since 1d to need a verified login recipe
+written from scratch, and D120's lesson is that a URL predicate passes on a sign-in page.
+
+**Why it is first after 0.** It costs the least and it pays into everything: `i9` is also order 5's
+store, and Search + Match is the mode mechanism orders 3-9 reuse whenever one workflow needs two
+faces.
 
 ### Dashboard · wire Search + Match · i9-lookup
 <!-- roadmap: order-1-dash -->
 
 <!-- roadmap-status: order-1-dash -->
+- [ ] 5.1.1 run modal — typed start inputs + start plan for person-lookup's two modes and for i9-lookup (`surfaces.inputRun`)
+- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] 5.1.3 run detail — the descriptor's timeline categories, receipt, data rail (step, direction, bound)
+- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox (`ref dashboard-surfaces` §2.6)
+- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] PROOF T2 dashboard scenario for the wired surfaces
+> 2026-08-20 | docs-cohesion 03c | six squares, not seven: no gate (§5.1.4) and no intake (§5.1.7) — both workflows are reads with typed inputs. Blocked behind the workflows themselves
 <!-- /roadmap-status -->
+
+Wiring only — the surfaces exist. The one thing this sub-task must get right is the **mode**: the
+run modal has to offer Search and Match as two rows of one workflow, and the queue row has to name
+the subject differently per mode without minting a second workflow class.
 
 ## Order 2 · crm-doc-download · sharepoint-download · old-kronos-reports
 <!-- roadmap: order-2 -->
