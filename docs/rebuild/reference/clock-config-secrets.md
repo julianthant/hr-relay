@@ -1,20 +1,34 @@
-# 11 — Clock, Config & Secrets
+# Clock, Config & Secrets
 
-Status: **Phase 1c Clock/acceptance delta completed 2026-08-01; Phase 1b clock/config/secrets
-foundation implemented 2026-07-31; revised 2026-07-22 after
-the whole-plan/legacy-code review.** Configuration is now
-recursively strict/branded, diagnostic redaction is part of the secret contract, and scope is
-explicitly a loopback-only single-operator tool—no RBAC/multi-user infrastructure in the base.
-**Amended 2026-07-31 (Round 10):** legacy and rebuild config/secret worlds remain isolated.
-**Amended 2026-07-31 (Round 11 — D93):** that isolation is now two repositories (`hr-automation`
-legacy, `hr-automation-rebuild`) on **one machine**. The split makes cross-runtime imports/reads/
-proxying structurally impossible, but it does not separate the machine — so two `.env`/settings/
-secret worlds, two state/artifact roots, distinct ports, distinct process locks, and distinct
-browser profiles/sessions remain a hard REQUIREMENT of this doc. Rebuild paths below are the
-rebuild repo's own `src/`, `tests/`, and `config/`.
+**What this doc is.** The contract for the four runtime inputs every other doc depends on and none
+of them owns: the TIME a run reads, the CONFIGURATION it resolves, the immutable per-run SNAPSHOT
+that records which configuration governed it, and the CREDENTIALS it presents. Each has exactly ONE
+source module in `src/`, each source is held by a registered guard, and the guards are why "one
+source" is a property of the tree rather than a habit.
 
-Answers gap-audit (`08`) TOP GAP 3 and closes config/instance, secrets, and fiscal rollover gaps.
-Grounded in the legacy repo's `src/config.ts`, settings, queue trace-id, env, and Duo credential code.
+**Why it is foundation work.** Doc `01 §Phase summary` states the critical path in one sentence:
+building on raw `new Date()` / `process.env` "would require re-threading later; the
+`clock-single-source` and `secrets-single-source` guards must be green from the first `src` file."
+They were, and they are — both allowlists are EMPTY.
+
+**Two standing facts frame everything below.**
+
+1. **Two repositories, one machine (D93/D88).** The legacy runtime and this one share no module
+   graph, so importing, proxying or reading across is structurally impossible rather than merely
+   banned. What a repository boundary does NOT separate is the HOST: both worlds resolve env vars,
+   write state, bind ports, take process locks and open Chromium profiles on the same laptop. So
+   distinct state/artifact roots, ports, process locks and browser SESSION namespaces stay a hard
+   requirement, pinned as data in `config/runtime-isolation.json` and proved by
+   `operational-isolation.test.ts` (§4).
+2. **The rebuild is a loopback-only, single-operator tool (§6.1).** No accounts, roles, secret
+   manager or remote access. That is a scope decision, not a licence — strict schemas, declared
+   redaction, `0700`/`0600` file modes and no secret-bearing URLs are base requirements precisely
+   because the tool drives live HR systems from one desk.
+
+**Section map.** §1 the legacy baseline this replaces · §2 the Clock · §3 the config resolver ·
+§4 the per-run snapshot and instance selection, §4.1 its generation line · §5 fiscal-year dates ·
+§6 the secrets accessor, §6.1 scope, §6.2 the environment doctor · §7 the rot vectors and what
+holds each · §8 a worked example · §9 the settled questions.
 
 ## 0. Ownership header (D1)
 
@@ -26,13 +40,15 @@ Grounded in the legacy repo's `src/config.ts`, settings, queue trace-id, env, an
 | Fiscal-year date source + rollover fail-loud | **This doc** |
 | Secrets accessor (`.env` / `.auth` / Duo credential) | **This doc** |
 | Local-only network boundary and secret/PII redaction classification | **This doc** |
+| Operational isolation between the two runtimes on one machine (D88/D216/D247) | **This doc** §4; the guard is ref guards-and-tests' |
 
-Imports (never redefines): ref task-contract `CommitTaskContract.writeSafety`; ref workflow-model `RunEnvelope`, field
-provenance, and declared-DAG freshness walk—this doc supplies the clock/config snapshot; ref dashboard-surfaces span/
-event wire schema (`ts: string` on `Base` — this doc supplies the value); ref execution-and-sessions timeouts/
-backpressure knobs (narrow this doc's config, don't re-declare precedence); ref write-safety write-safety
-ledger (`write.attempting`/`write.committed` timestamps — this doc's Clock, ref write-safety's events); doc
-12 evidence/diagnostic bundles consume this doc's redaction classifications.
+Imports (never redefines): ref task-contract `CommitTaskContract.writeSafety`; ref workflow-model
+`RunEnvelope`, field provenance, and the declared-DAG freshness walk — this doc supplies the
+clock/config snapshot; ref dashboard-surfaces' span/event wire schema (`ts: string` on `Base` — this
+doc supplies the value); ref execution-and-sessions' timeouts/backpressure knobs (they narrow this
+doc's config, they do not re-declare precedence); ref write-safety's ledger
+(`write.attempting`/`write.committed` timestamps — this doc's Clock, ref write-safety's events); ref
+operator-trust's evidence/diagnostic bundles consume this doc's redaction classifications.
 
 ---
 
