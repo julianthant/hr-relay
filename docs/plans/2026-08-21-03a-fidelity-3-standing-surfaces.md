@@ -567,9 +567,102 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 
 ---
 
-## 8. The version-bump dialog — `DemoVersionBump.tsx` ↔ (rebuild target TBD)
+## 8. The version-bump dialog — `DemoVersionBump.tsx` ↔ `surfaces/archive.tsx` (the bump half)
 
-_(pending)_
+**Demo:** `DemoVersionBump.tsx` (340) · `demo-archive-wire.ts` (the plan, the labels, the refusals) ·
+**Rebuild:** the flow lives INSIDE `surfaces/archive.tsx` — `BumpChangeRecordDialog` (`:1912-2015`),
+`BumpRefusal` (`:2152-2186`), `BlockerTable` (`:2188-2217`) and the plan/apply half of `VersionsView`
+(`:2225-2495`) · **Parity:** none — no version-bump scene exists.
+_Boundary note: region 1 audits the bump's MOUNT and the Versions view around it (AR218–AR241); this
+region audits the dialog's own contents and the plan/apply flow._
+
+**The headline is that the demo's two ARMS have no behavioural counterpart in the rebuild.** In the
+demo, `kind` is the whole design: **major** moves the run's shape, so it ARCHIVES and a non-terminal
+run BLOCKS it; **minor** is presentation only, so it archives nothing, in-flight runs carry on, and
+*"there is nothing a run could be doing that would block this"* — the dialog reshapes around the
+choice (a different banner, a different blocker table with a different column head, a different
+archivable list, different field labels, different placeholders, a different primary button). In the
+rebuild, `VersionBumpChangeRecordSchema.kind` (`change-record.ts:30`) is a **pure label**: grepping
+`src/domain/archive/`, `src/server/dashboard/queries/archive.ts` and `src/core/command-kernel.ts`
+finds no arm that branches on it. So a bump recorded as `minor` archives every prior-version run and
+can be refused by a non-terminal one — the two things the demo says a minor bump must never do.
+
+Two structural divergences are RULED and read as improvements. The demo's one dialog does authoring,
+preview, refusal and apply in a single press; the rebuild splits it into **author → plan → apply**,
+which is D179's own shape (*"apply re-derives candidates AND blockers from authority inside its own
+transaction… a refused apply leaves the plan `planned`"*), and the rebuild keeps `Apply the bump`
+clickable while blockers exist for D179's stated reason. And the refusal handles the CAS `conflict`
+arm beside `rejected`, which is D253.
+
+**One divergence goes the wrong way on the demo's own stated discipline.** The demo's primary button
+is never disabled — *"pressing it returns the SERVER's refusal with the blocking runs named, and a
+greyed-out button would have hidden the one rule this flow exists to enforce"* — and an empty change
+record is a real server refusal (`change-record-incomplete`, `demo-archive-wire.ts:1847-1855`). The
+rebuild instead **disables** `Plan the bump…` until the record parses (`archive.tsx:2003`), which is
+the greyed-out button the demo argued against, in the one place the demo had a named refusal for it.
+
+**And the operator applies a bump without seeing which runs it takes.** The demo lists every
+archivable run by name in a scrolling `Well`; the rebuild's reviewed plan reports a COUNT.
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---------|------|---------|---------|--------|
+| VB1 | `kind` reshapes the whole flow — major archives and can be blocked, minor archives nothing and cannot be blocked | `DemoVersionBump.tsx:48-59`, `demo-archive-wire.ts:144-149,1832,1857` | `change-record.ts:30` (a label; nothing branches on it) | divergent | **OPEN — operator call** |
+| VB2 | one dialog does author + preview + refuse + apply → rebuild splits into author → plan → apply | `DemoVersionBump.tsx:108-297` | `archive.tsx:1912`,`2297`,`2409` | divergent | ruled: D179 — apply re-derives candidates and blockers from authority inside its own transaction |
+| VB3 | the plan is derived CLIENT-side (`deriveBumpPlan`) → rebuild plans on the server and carries `versionPlanId` / `planFingerprint` / `expectedVersion` | `DemoVersionBump.tsx:99` | `archive.tsx:2304-2307` | divergent | ruled: D179 |
+| VB4 | bump dialog mounted at the PAGE root → rebuild mounts it inside `VersionsView`'s `PanelBody` | `DemoArchive.tsx:395` | `archive.tsx:2344-2348` | divergent | **OPEN — operator call** (also AR239) |
+| VB5 | `DialogContent size="xl"` → rebuild `size="lg"` | `DemoVersionBump.tsx:109` | `archive.tsx:1952` | divergent | **OPEN — operator call** |
+| VB6 | dialog title — demo `Bump <label>` for one target, `Dashboard update — N workflows` for many; rebuild always `Bump <authoring.title>` | `DemoVersionBump.tsx:104` | `archive.tsx:1953` | divergent | **OPEN — operator call** (the multi-workflow title has no counterpart) |
+| VB7 | dialog description — demo `${BUMP_SCOPE_LABEL[scope]} · ${BUMP_SCOPE_NOTE[scope]}`, so it changes with the scope; rebuild one fixed sentence | `DemoVersionBump.tsx:109`, `demo-archive-wire.ts:166-177` | `archive.tsx:1954` | divergent | **OPEN — operator call** |
+| VB8 | the kind control — demo a `RadioGroup` labelled `What kind of change is this?` with a full `BUMP_KIND_NOTE` description under each option; rebuild a `Select` in `Field label="Kind"` with two one-line `<option>`s | `DemoVersionBump.tsx:142-154` | `archive.tsx:1957-1962` | divergent | **OPEN — operator call** |
+| VB9 | option labels — demo `Major — the run's shape changed` / `Minor — presentation only`; rebuild `major — the shape changed` / `minor — behaviour changed` | `demo-archive-wire.ts:140-141` | `archive.tsx:1959-1960` | divergent | **OPEN — operator call** |
+| VB10 | the default kind — demo opens on `major`; rebuild opens on `minor` | `DemoVersionBump.tsx:98` | `archive.tsx:1923,1930` | divergent | **OPEN — operator call** |
+| VB11 | changing the kind clears a standing result (`setResult(null)`) | `DemoVersionBump.tsx:147-148` | — | missing | **OPEN — operator call** |
+| VB12 | target `Badge`s — one per workflow, tone info, reading `<label> <from> → <to>` | `DemoVersionBump.tsx:157-163` | — | missing | **OPEN — operator call** (the registry table carries the versions, but the dialog names no target) |
+| VB13 | minor-arm `Banner tone="success"` — `Nothing can block a minor bump, because nothing is archived`, plus the in-flight sentence naming what a major bump would have blocked | `DemoVersionBump.tsx:166-178` | — | missing | **OPEN — operator call** (follows VB1) |
+| VB14 | major-arm blockers `Banner` — tone `danger` when any blocker is a parked write else `warning`, title `N run(s) must be resolved before this bump`, `TriangleAlert` at `dsIcon.lg` | `DemoVersionBump.tsx:180-196` | `archive.tsx:2321-2341` | divergent | **OPEN — operator call** (the rebuild's banner is a standing info banner on the Versions panel, not tone-varying and not counted) |
+| VB15 | the parked-write emphasis in the banner — `N is/are a parked write — a write whose outcome is unknown may never be buried in an archive` | `DemoVersionBump.tsx:187-195` | `archive.tsx:2205-2206` | divergent | **OPEN — operator call** (the rebuild says it per-row in the resolution cell, never in aggregate) |
+| VB16 | `SectionLabel` `Must be terminalized or resolved first` → rebuild `<workflowLabel> — what a bump would refuse to bury` | `DemoVersionBump.tsx:206` | `archive.tsx:2404` | divergent | **OPEN — operator call** |
+| VB17 | `BlockerTable` `TH` set — demo `Run` / `Status` / `Why` / `<resolutionHead>`; rebuild `Run` / `State` / `What has to happen` | `DemoVersionBump.tsx:313-316` | `archive.tsx:2194-2196` | divergent | **OPEN — operator call** (the `Why` column is gone) |
+| VB18 | blocker `Run` cell — demo two lines, the run title over `<panel> · <day>`; rebuild the `traceId` alone, numeric | `DemoVersionBump.tsx:322-329` | `archive.tsx:2202` | divergent | unserved: `WorkflowVersionStateWire.blockers[]` carries `runId` / `traceId` / `runState` and no title, panel or day |
+| VB19 | blocker `Status` cell — demo a `StatusPill size="sm"`; rebuild the raw `runState` word | `DemoVersionBump.tsx:331` | `archive.tsx:2203` | divergent | **OPEN — operator call** (`dsStatusOf` is available on this surface) |
+| VB20 | blocker `Why` cell (`max-w-[260px]`) | `DemoVersionBump.tsx:333` | — | missing | unserved: no `why` on `WorkflowVersionStateWire.blockers[]` |
+| VB21 | blocker resolution cell — demo prints the SERVED `requiredResolution`; rebuild derives three sentences client-side from `runState` | `DemoVersionBump.tsx:334` | `archive.tsx:2204-2210` | divergent | unserved: no `requiredResolution` on `WorkflowVersionStateWire.blockers[]` |
+| VB22 | the resolution column head is PARAMETERISED — `What has to happen` for blockers, `What a MAJOR bump would have demanded` for the minor arm's unaffected list | `DemoVersionBump.tsx:207,219` | `archive.tsx:2196` | divergent | **OPEN — operator call** (follows VB1) |
+| VB23 | minor-arm section `Still in flight — unaffected (N)`, reusing `BlockerTable` | `DemoVersionBump.tsx:211-222` | — | missing | **OPEN — operator call** (follows VB1) |
+| VB24 | `SectionLabel` `Would be archived — N run(s)` / `Would be archived — nothing` | `DemoVersionBump.tsx:226-228` | `archive.tsx:2416` | divergent | **OPEN — operator call** (the rebuild reports it as one `MetaLine` item, `N would be archived`) |
+| VB25 | the archivable LIST — a `Well max-h-[190px] overflow-y-auto` of every run, each a `StatusPill size="sm" hideIcon` + truncating title + `<workflowLabel> <versionTag>` in micro nums | `DemoVersionBump.tsx:242-254` | — | missing | **OPEN — operator call** — the operator applies a bump seeing a COUNT and never the runs it takes |
+| VB26 | minor empty-arm `Well` — `A minor bump archives no run at all. The archive is the consequence of a SHAPE change, and this is not one.` | `DemoVersionBump.tsx:229-234` | — | missing | **OPEN — operator call** (follows VB1) |
+| VB27 | major zero-archivable `Well` — `No terminal runs are listed for this scope, so this bump would move the version and archive nothing.` | `DemoVersionBump.tsx:235-240` | — | missing | **OPEN — operator call** |
+| VB28 | change-record layout — demo a two-up `grid-cols-1 min-[720px]:grid-cols-2`; rebuild four stacked `Field`s | `DemoVersionBump.tsx:259` | `archive.tsx:1956` | divergent | **OPEN — operator call** |
+| VB29 | `Field label="What changed"` with description `Recorded beside the version, in the same store as fix records.` → rebuild `What moved`, no description, a `hint` char counter and `maxLength={200}` | `DemoVersionBump.tsx:260` | `archive.tsx:1963-1969` | divergent | **OPEN — operator call** |
+| VB30 | the What placeholder is kind-dependent (two different examples) → rebuild one fixed placeholder | `DemoVersionBump.tsx:264` | `archive.tsx:1967` | divergent | **OPEN — operator call** (follows VB1) |
+| VB31 | the Why LABEL is kind-dependent — `Why the shape had to move` / `Why this is presentation only` → rebuild the fixed `Why` | `DemoVersionBump.tsx:268` | `archive.tsx:1972` | divergent | **OPEN — operator call** (follows VB1) |
+| VB32 | the Why description — `The record says which kind it was, and the archive's group header shows it.` → `The half nobody can reconstruct from a diff.` | `DemoVersionBump.tsx:269` | `archive.tsx:1974` | divergent | **OPEN — operator call** |
+| VB33 | the Why placeholder is kind-dependent → rebuild one fixed placeholder | `DemoVersionBump.tsx:276` | `archive.tsx:1981` | divergent | **OPEN — operator call** (follows VB1) |
+| VB34 | `Textarea rows={2}` → rebuild `rows={3}` with `maxLength={1000}` | `DemoVersionBump.tsx:273` | `archive.tsx:1978-1980` | divergent | **OPEN — operator call** |
+| VB35 | a `Commit` `Field`, optional, recording its own absence reason when left empty | — | `archive.tsx:1985-1995` | extra | ruled: ref dashboard-surfaces §10.2 — a fabricated hash on the record that exists to be trustworthy is worse than an honest "none" |
+| VB36 | live character-count `hint`s on What and Why | — | `archive.tsx:1963,1975` | extra | **OPEN — operator call** |
+| VB37 | `DialogFooter meta="There is no force arm. The refusal is the feature."` | `DemoVersionBump.tsx:282` | — | missing | **OPEN — operator call** |
+| VB38 | Cancel `Button` — demo `variant="secondary"` full size; rebuild `variant="ghost" size="sm"` | `DemoVersionBump.tsx:283-285` | `archive.tsx:1998` | divergent | **OPEN — operator call** |
+| VB39 | primary label — demo `Bump and archive N run(s)` / `Bump — archive nothing`; rebuild `Plan the bump…` | `DemoVersionBump.tsx:291-293` | `archive.tsx:2008` | divergent | ruled: D179 — the two-step plan/apply |
+| VB40 | the primary escalates to `variant="danger"` with a `ShieldAlert` icon when it is a major bump with blockers | `DemoVersionBump.tsx:287-288` | — | missing | **OPEN — operator call** |
+| VB41 | **the primary is NEVER disabled** — an incomplete change record is a real server refusal (`change-record-incomplete`), because a greyed-out button hides the rule the flow exists to enforce → rebuild `disabled` until the record parses | `DemoVersionBump.tsx:286-294`, `demo-archive-wire.ts:1847-1855` | `archive.tsx:2003` | divergent | **OPEN — operator call** |
+| VB42 | `Apply the bump` stays clickable while blockers exist | `DemoVersionBump.tsx:286` | `archive.tsx:2428-2430` | exact | — (D179's own rule, honoured at the apply step) |
+| VB43 | applied `Banner tone="success"` carrying the result headline and detail | `DemoVersionBump.tsx:112-125` | — | missing | **OPEN — operator call** |
+| VB44 | the applied banner's `Open the archive` action (`Archive` icon, `variant="secondary"`), shown for a major bump, flipping the view back to `runs` | `DemoVersionBump.tsx:117-121` | — | missing | **OPEN — operator call** (also AR241) |
+| VB45 | refusal `Refusal` with a kind-dependent `outcome` — `nothing was archived and no version moved` / `no version moved` | `DemoVersionBump.tsx:127-133` | `archive.tsx:2171-2174` | divergent | **OPEN — operator call** (the rebuild's outcome is one fixed sentence; follows VB1) |
+| VB46 | the refusal prints the server's own sentence verbatim rather than paraphrasing it | `DemoVersionBump.tsx:132` | `archive.tsx:2182` | exact | — |
+| VB47 | the code-less refusal arm — `Banner tone="danger"` … `the server sent no refusal code, so there is nothing here to quote in a bug report` | `DemoVersionBump.tsx:134-138` | — | missing | **OPEN — operator call** |
+| VB48 | the CAS `conflict` arm handled beside `rejected`, mapped to the code `version-conflict` | — | `archive.tsx:2157-2158` | extra | ruled: D253 — an unhandled union arm IS a fallback |
+| VB49 | the refusal carries `meta={["plan <shortHash>"]}` | — | `archive.tsx:2175` | extra | ruled: D179 |
+| VB50 | an enter transition wrapper around the refusal, so it reads as the answer to the click | — | `archive.tsx:2156,2164-2169` | extra | **OPEN — operator call** |
+| VB51 | the `Reviewed plan` `Well` — a `MetaLine` of `plan <hash>` / `N would be archived` / `N would block` / `planned <clock> by <who>`, two rules as a `BulletList`, and `Apply the bump` | — | `archive.tsx:2410-2444` | extra | ruled: D179 |
+| VB52 | the apply-time rules — *"Applying archives every prior-version run in scope. It cannot be undone"* and *"A relaunch from the archive later starts a FRESH run on the current version"* | — | `archive.tsx:2423-2424` | extra | ruled: D179 |
+| VB53 | the plan's blocker table is rendered once, under the reviewed plan, instead of once per workflow | — | `archive.tsx:2395-2408,2452` | extra | ruled: D179 |
+
+**Counts:** 53 rows — exact 2 · divergent 30 · missing 13 · extra 8 · **OPEN 39 marks** across
+**roughly 20 distinct questions** — VB13, VB22, VB23, VB26, VB30, VB31, VB33 and VB45 all follow
+VB1's arm question, and VB4–VB10 are one "what shape is the authoring step" question.
 
 ---
 
