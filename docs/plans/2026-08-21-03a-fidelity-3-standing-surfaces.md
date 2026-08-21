@@ -328,13 +328,242 @@ SE43.
 
 ## 6. Data intake — `DemoIntake.tsx` + `demo-data-intake.ts` ↔ `surfaces/intake.tsx`
 
-_(pending — this section is written by the intake pass)_
+**Demo:** `DemoIntake.tsx` (1091) + `demo-data-intake.ts` (892), launched from `DemoRunStart.tsx:1008` as a Radix dialog off the Run Modal's `spreadsheet` method · **Rebuild:** `surfaces/intake.tsx` (1361), a `Panel` workspace at `?intake=<sessionId>`
 
----
+The two surfaces share a vocabulary and almost nothing else structurally. The demo is a **six-stage wizard in a dialog** — `File › Header row › Mapping › Validate › Manifest › Rerun diff`, a `StageRail` across the top, a footer whose primary button changes verb per stage. The rebuild is a **three-band workspace with two tabs** (`Mapping` / `Review`) and a sticky outcome band, which D173 ratifies explicitly and at length. That reshaping is ruled and is not the finding. **The finding is what fell out during the reshape and was never re-homed: stages 5 and 6 have no rebuild surface at all.** The demo's `ManifestStage` — plan id, source sha, artifact id, mapping fingerprint, mapping snapshot hash, workflow contract fingerprint, created-at, the derived totals line, and the per-source-row disposition table with item id / input hash / parsed input — renders **nowhere** in the rebuild; the enqueued banner shows one bare `manifest <uuid>` in a MetaLine. And the demo's `RerunStage` added/removed item lists are unserved by `RerunDiffSchema`, which carries only five `{what, was, now}` axis digests. Second finding, smaller but reachable by ordinary use: the demo gates `Review the plan` behind an explicit *"I have read all N rejected rows"* checkbox and doc `data-intake-and-edit-data.md` §2.2 step 4 says Run is *"Enabled only when … the operator has reviewed the rejection list"* — the rebuild's `Run` is enabled the moment validation returns, with four unresolved rejections on screen (see `intake-review--paper-ink--1280x720.a11y.yml`, `button "Run 3 rows"`, not disabled), and the courtesy blocker list in `OutcomeBand` omits `unresolved-rejections` entirely. The kernel refuses it, so nothing wrong is filed — but the operator presses a live button and is answered with a refusal the band could have named before the press. Third: every per-column and per-candidate **number the demo shows is served and dropped** — header-candidate `confidence`, suggestion `score`, binding origin.
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---------|------|---------|---------|--------|
+| IN1 | Container: Radix `Dialog` + `DialogContent size="xl"` vs `Panel` workspace at `?intake=<sessionId>` | `DemoIntake.tsx:263` | `intake.tsx:1316` | divergent | ruled: D173 |
+| IN2 | Title copy: "Spreadsheet intake" vs "Import a spreadsheet" | `DemoIntake.tsx:266` | `intake.tsx:1318` | divergent | **OPEN — operator call** |
+| IN3 | Subtitle: "A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row." vs "&lt;workflowLabel&gt; — one run per row" | `DemoIntake.tsx:267` | `intake.tsx:1319` | divergent | **OPEN — operator call** |
+| IN4 | Header icon — neither surface puts one on the title | `DemoIntake.tsx:264` | `intake.tsx:1317` | exact | — |
+| IN5 | Header action "Another file" (ghost, `RotateCcw` `dsIcon.sm`) | — | `intake.tsx:1323` | extra | ruled: D173 |
+| IN6 | Back button (footer, ghost, `ArrowLeft` `dsIcon.md`, steps one stage back) | `DemoIntake.tsx:365` | — | missing | ruled: D173 |
+| IN7 | Dismiss control: footer "Cancel" (secondary) vs header "Close" (ghost, sm) | `DemoIntake.tsx:373` | `intake.tsx:1332` | divergent | **OPEN — operator call** |
+| IN8 | Footer meta echoes `header row N` | `DemoIntake.tsx:357` | — | missing | **OPEN — operator call** |
+| IN9 | Footer meta echoes `fingerprint <first 8>` | `DemoIntake.tsx:358` | — | missing | **OPEN — operator call** |
+| IN10 | Stage indicator: `<nav aria-label="Intake stages — step N of 6">` vs `TabList label="Intake stage"` with 2 tabs | `DemoRunStartKit.tsx:441` | `intake.tsx:1255` | divergent | ruled: D173 |
+| IN11 | Stage "File" | `DemoIntake.tsx:92` | — | missing | ruled: D173 |
+| IN12 | Stage "Header row" (a stage) vs a `Field` inside the source band | `DemoIntake.tsx:93` | `intake.tsx:311` | divergent | ruled: D173 |
+| IN13 | Stage "Mapping" | `DemoIntake.tsx:94` | `intake.tsx:1256` | exact | — |
+| IN14 | Stage "Validate" vs tab "Review" | `DemoIntake.tsx:95` | `intake.tsx:1263` | divergent | ruled: D173 |
+| IN15 | Stage "Manifest" | `DemoIntake.tsx:96` | — | missing | **OPEN — operator call** |
+| IN16 | Stage "Rerun diff" | `DemoIntake.tsx:97` | — | missing | **OPEN — operator call** |
+| IN17 | Stage separator glyph `›` (`dsText.meta`, muted before / faint after) | `DemoRunStartKit.tsx:455` | — | missing | ruled: D173 |
+| IN18 | Settled-stage `Check` glyph in `--ds-success-fg` vs a numeric `count` on the tab | `DemoRunStartKit.tsx:466` | `intake.tsx:1256` | divergent | ruled: D173 |
+| IN19 | Unsettled-stage ordinal numeral (`dsText.nums`, opacity 80 current / 60 other) | `DemoRunStartKit.tsx:468` | — | missing | ruled: D173 |
+| IN20 | `aria-current="step"` on the current stage vs tab `[selected]` | `DemoRunStartKit.tsx:462` | `intake-mapping…a11y.yml:44` | divergent | ruled: D173 |
+| IN21 | Enqueue-applied banner: success tone, `CheckCircle2` `dsIcon.lg`, headline + detail + created `KeyValueList` + MetaLine(clock, `requested by …`) | `DemoRunStartKit.tsx:336` | `intake.tsx:1221` | divergent | **OPEN — operator call** |
+| IN22 | Enqueued copy: demo's headline/detail pair vs "This file has been enqueued" + "Its rows are now runs in the queue. The manifest is the join…" | `DemoRunStartKit.tsx:339` | `intake.tsx:1223` | divergent | **OPEN — operator call** |
+| IN23 | Enqueued action: demo "Close" (secondary) vs "Show the runs" | `DemoRunStartKit.tsx:341` | `intake.tsx:1225` | divergent | **OPEN — operator call** |
+| IN24 | Conflict arm: warning `Banner` + `form built against contract` / `server serves contract` `KeyValueList` + "Reload the form" vs `Refusal` "This session moved while you were reading it" code `version-conflict` meta `now at version N` + "Dismiss" | `DemoRunStartKit.tsx:359` | `intake.tsx:216` | divergent | **OPEN — operator call** |
+| IN25 | Transport arm "The command did not reach the server" | — | `intake.tsx:233` | extra | ruled: D173 |
+| IN26 | Rejected arm: `Refusal` "The server refused that" / outcome "nothing changed" | — | `intake.tsx:210` | extra | ruled: D173 |
+| IN27 | Visible `SectionLabel` "Source file" vs a bare `aria-label="Source file"` region with no printed label | `DemoIntake.tsx:414` | `intake.tsx:274` | divergent | **OPEN — operator call** |
+| IN28 | Source-file picker: list of fixture sheet `Card`s (interactive, `selected`, `aria-pressed`, Enter/Space) | `DemoIntake.tsx:418` | — | missing | ruled: D173 |
+| IN29 | Sheet card glyph `FileSpreadsheet` `dsIcon.lg` shrink-0 muted | `DemoIntake.tsx:433` | `intake.tsx:276` | exact | — |
+| IN30 | Sheet card meta `<size> · N rows read · sha <8>` | `DemoIntake.tsx:437` | `intake.tsx:283` | divergent | **OPEN — operator call** |
+| IN31 | File size label (e.g. "28 KB") | `DemoIntake.tsx:437` | — | missing | unserved: `IntakeSessionWire.artifact` carries no byte size — UNBOOKED |
+| IN32 | `Chip label="target"` naming the destination workflow on the file row | `DemoIntake.tsx:440` | — | missing | **OPEN — operator call** |
+| IN33 | `Badge tone="info"` `mapping <savedMappingHint>` on the file row | `DemoIntake.tsx:441` | — | missing | unserved: no saved-mapping join on `IntakeSessionWire` — UNBOOKED |
+| IN34 | `Well`: "The parser returns detected columns and a few sample values per column — never the whole file to this surface. Row values are read again, server-side, at validation." | `DemoIntake.tsx:447` | — | missing | **OPEN — operator call** |
+| IN35 | `Dropzone` (`<label>` over a real `<input type="file">`, never filters a dropped file) | — | `intake.tsx:1193` | extra | ruled: D173 |
+| IN36 | Dropzone idle copy "Drop a spreadsheet of people for &lt;workflowLabel&gt;" | — | `intake.tsx:1194` | extra | ruled: D173 |
+| IN37 | Dropzone hint "A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects." | — | `intake.tsx:1196` | extra | ruled: D173 |
+| IN38 | Accepted types `.csv,.xlsx,.xls` as a picker HINT only | — | `intake.tsx:115` | extra | ruled: D173 |
+| IN39 | Drag-over state: accent border + `--ds-accent-quiet` fill, `Upload` glyph turns accent; depth counter not a boolean | — | `primitives-form.tsx:717` | extra | ruled: D173 |
+| IN40 | Dropzone busy state: `cursor-progress opacity-70`, label swaps to "Reading…" | — | `primitives-form.tsx:671` | extra | ruled: D173 |
+| IN41 | Upload refusal `Refusal` "That file could not be read" / outcome "no session was opened" | — | `intake.tsx:1189` | extra | ruled: D173 |
+| IN42 | `CaptureStart` mounted as a peer of the dropzone | — | `intake.tsx:1204` | extra | ruled: D175 |
+| IN43 | Loaded file name, with a fallback sentence "(this session predates file names)" | `DemoIntake.tsx:435` | `intake.tsx:279` | divergent | ruled: D133 |
+| IN44 | Digest: `sha <8>` vs `sha256 <12>…` | `DemoIntake.tsx:437` | `intake.tsx:283` | divergent | **OPEN — operator call** |
+| IN45 | Row count: "N rows read" vs "N data rows" | `DemoIntake.tsx:437` | `intake.tsx:284` | divergent | **OPEN — operator call** |
+| IN46 | Column count "N columns" | — | `intake.tsx:285` | extra | **OPEN — operator call** |
+| IN47 | "uploaded &lt;h:mm AM&gt;" | — | `intake.tsx:286` | extra | **OPEN — operator call** |
+| IN48 | Session-state `Badge` (`mapping` / `validated` / `enqueued`), success tone when enqueued | — | `intake.tsx:291` | extra | ruled: D173 |
+| IN49 | Sheet picker `Field label="Sheet"` + `Select`, shown only when `sheets.length > 1` | — | `intake.tsx:296` | extra | ruled: D173 |
+| IN50 | Header-row proposal: info `Banner` titled "The parser proposes row N" + "A proposal, with its reasoning — not a decision. Every downstream binding is keyed to the row you confirm here…" | `DemoIntake.tsx:464` | `intake.tsx:312` | divergent | ruled: D173 |
+| IN51 | Header candidates as selectable `Card`s vs `<option>`s inside one `Select` | `DemoIntake.tsx:472` | `intake.tsx:321` | divergent | ruled: D173 |
+| IN52 | `Chip label="row"` per candidate | `DemoIntake.tsx:488` | `intake.tsx:323` | divergent | ruled: D173 |
+| IN53 | Per-candidate `confidence 0.96` (2dp) | `DemoIntake.tsx:489` | — | missing | **OPEN — operator call** (`ServedHeaderCandidateSchema.confidence` IS served) |
+| IN54 | Per-candidate `why` sentence, e.g. "6 of 6 cells distinct and non-empty; 5 match known field aliases" | `DemoIntake.tsx:490` | — | missing | unserved: `ServedHeaderCandidateSchema` omits `signals` and has no prose field — UNBOOKED |
+| IN55 | Candidate row preview: ALL non-empty cells joined ` · ` vs first 6 only inside the option label | `DemoIntake.tsx:493` | `intake.tsx:323` | divergent | **OPEN — operator call** |
+| IN56 | "(empty row)" fallback for a candidate whose cells are all blank | `DemoIntake.tsx:493` | — | missing | **OPEN — operator call** |
+| IN57 | Confirm button "Use row N as the header" (primary, `Table2` `dsIcon.md`) vs applying on `change` | `DemoIntake.tsx:501` | `intake.tsx:318` | divergent | ruled: D173 |
+| IN58 | Discovery-reason sentences (4 arms: `no-rows` / `ambiguous-candidates` / no-confident / `preselected`) | — | `intake.tsx:370` | extra | ruled: D173 |
+| IN59 | Layout-change confirm: warning `Banner` "Changing the layout discards the decisions made under the old one" with the exact bound/correction/exclusion counts, "Keep this layout" + "Change it anyway" (danger) | — | `intake.tsx:332` | extra | ruled: D173 |
+| IN60 | Saved-mapping banner "Saved mapping loaded — &lt;id&gt;, saved &lt;YYYY-MM-DD&gt;" + "…shown, not applied silently — nothing runs until you look at them." | `DemoIntake.tsx:542` | — | missing | unserved: no saved-mapping join on `IntakeSessionWire` — UNBOOKED |
+| IN61 | New-layout banner "New layout — nothing is pre-filled" + "…Every field starts **unbound**; the suggestions below are proposals you accept, never guesses that are applied for you." | `DemoIntake.tsx:547` | — | missing | **OPEN — operator call** |
+| IN62 | Reverted-binding danger banner `“<field>” reverted to unmapped` + the stored-position-is-not-a-fallback paragraph + `mapping.note` | `DemoIntake.tsx:554` | — | missing | unserved: no saved-mapping join on `IntakeSessionWire` — UNBOOKED |
+| IN63 | Pending-confirmation warning banner "N reused binding needs confirming" + "…two identical headings are semantically unknowable." | `DemoIntake.tsx:564` | — | missing | unserved: `ColumnBindingSchema` has no `confirmationRequired` — UNBOOKED |
+| IN64 | Table accessible name: "Column mapping for &lt;fileName&gt;" vs "Map &lt;workflowId&gt; fields to columns of &lt;sourceName&gt;" | `DemoIntake.tsx:571` | `intake.tsx:440` | divergent | **OPEN — operator call** |
+| IN65 | Grid column count: 4 (Target field / Source column / Samples / Suggestion) vs 3 (Samples folded under Bound column) | `DemoIntake.tsx:574` | `intake.tsx:443` | divergent | ruled: D173 |
+| IN66 | `TH` "Target field" vs "Workflow field" | `DemoIntake.tsx:575` | `intake.tsx:443` | divergent | **OPEN — operator call** |
+| IN67 | `TH` "Source column" vs "Bound column" | `DemoIntake.tsx:576` | `intake.tsx:444` | divergent | ruled: D173 |
+| IN68 | `TH` "Samples" as its own column | `DemoIntake.tsx:577` | — | missing | ruled: D173 |
+| IN69 | `TH` "Suggestion" vs "Suggested" | `DemoIntake.tsx:578` | `intake.tsx:445` | divergent | **OPEN — operator call** |
+| IN70 | Required marker: aria-hidden `*` in `--ds-fg-danger`, `ml-0.5`, inline after the label vs `Badge tone="warning">required` | `DemoIntake.tsx:594` | `intake.tsx:491` | divergent | **OPEN — operator call** |
+| IN71 | Field sub-line: `<canonicalLabel> · <rule>` (e.g. "UCPath EID · 10 followed by 6 digits") vs MetaLine `<targetFieldId>` + `canonical <canonicalFieldId>` | `DemoIntake.tsx:600` | `intake.tsx:493` | divergent | unserved: `IntakeTargetSchema` has no `rule` and no `canonicalLabel` — UNBOOKED |
+| IN72 | Select accessible name "Source column for &lt;label&gt;" vs "Column bound to &lt;label&gt;" | `DemoIntake.tsx:607` | `intake.tsx:520` | divergent | **OPEN — operator call** |
+| IN73 | Empty option label "— unbound —" vs "— not bound —" | `DemoIntake.tsx:611` | `intake.tsx:532` | divergent | **OPEN — operator call** |
+| IN74 | Duplicate-heading option label `Header (#2)` vs `Header (2)` | `DemoIntake.tsx:514` | `intake.tsx:387` | divergent | **OPEN — operator call** |
+| IN75 | Blank-header option label "(blank header)" | — | `intake.tsx:386` | extra | **OPEN — operator call** |
+| IN76 | Choosing the empty option UNBINDS the field vs the empty option is inert (`if (next.length === 0) return`) | `DemoIntake.tsx:207` | `intake.tsx:528` | divergent | ruled: D173 |
+| IN77 | `Chip label="from"` printing the binding origin (`saved` / `suggestion` / `manual`) | `DemoIntake.tsx:620` | — | missing | unserved: `ColumnBindingSchema` has no `origin` — UNBOOKED |
+| IN78 | "Confirm which column" (sm, outline) on an ambiguous reused binding | `DemoIntake.tsx:622` | — | missing | unserved: `ColumnBindingSchema` has no `confirmationRequired` — UNBOOKED |
+| IN79 | Samples: dedicated `TD numeric max-w-[220px]` truncating `bound ?? suggested` samples joined ` · `, `—` when none vs a `dsText.meta dsText.nums` line under the Select, first 3 only, absent when unbound | `DemoIntake.tsx:630` | `intake.tsx:539` | divergent | ruled: D173 |
+| IN80 | Suggestion cell shape: at most ONE proposal, plain text vs N proposals, each a recessed dashed `--ds-recess-*` box | `DemoIntake.tsx:634` | `intake.tsx:579` | divergent | ruled: D173 |
+| IN81 | Accept verb: `Accept “<column label>”` / `Accepted` (disabled when already bound) vs `Use it` with `aria-label="Bind <column label>"` | `DemoIntake.tsx:645` | `intake.tsx:597` | divergent | ruled: D173 |
+| IN82 | Suggestion score printed as `(0.94)` | `DemoIntake.tsx:637` | — | missing | **OPEN — operator call** (`SuggestionSchema.score` IS served) |
+| IN83 | Suggestion reason: composed prose `“Employee Name” matches the alias “employee name”` vs a fixed 4-term vocabulary joined `", "` (`known header` / `matches the field label` / `words in common` / `its values parse`) | `DemoIntake.tsx:637` | `intake.tsx:128` | divergent | unserved: `SuggestionSchema.why` is a closed enum array, not prose — UNBOOKED |
+| IN84 | Ambiguity note "another column scores the same — check both" | — | `intake.tsx:605` | extra | ruled: D173 |
+| IN85 | "no proposal" in `dsText.meta` + `--ds-fg-faint` | `DemoIntake.tsx:649` | `intake.tsx:572` | exact | — |
+| IN86 | Duplicate-header dialog: title `Which “<header>” column means <label>?`, description, one `Card` per candidate with `Header — occurrence N`, `Badge "saved binding"`, samples, `Use this one` (primary, `Check` `dsIcon.md`), footer Cancel | `DemoIntake.tsx:682` | — | missing | unserved: no saved-mapping join / `confirmationRequired` on `IntakeSessionWire` — UNBOOKED |
+| IN87 | Mapping empty state "No header row is settled yet" + "Columns are read relative to the header row…" (`Table2` `dsIcon.lg`) | — | `intake.tsx:428` | extra | ruled: D173 |
+| IN88 | Advance verb: footer `Validate N rows` (primary, disabled when nothing is bound) vs sticky-band `Validate` / `Re-validate` (secondary) | `DemoIntake.tsx:377` | `intake.tsx:994` | divergent | ruled: D173 |
+| IN89 | Counts strip: `Chip`s rows / valid / rejected / excluded / corrected with tone flips vs `CountBadge` + "of N rows would run" + MetaLine "N rejected", "N excluded" | `DemoIntake.tsx:761` | `intake.tsx:952` | divergent | ruled: D173 |
+| IN90 | `corrected` count | `DemoIntake.tsx:769` | — | missing | unserved: `IntakeValidationWireSchema` has no `corrected` (it exists on `IntakeManifestTotalsSchema`) — UNBOOKED |
+| IN91 | "N rejection event(s) recorded" | `DemoIntake.tsx:771` | — | missing | unserved: `IntakeValidationWireSchema` has no `rejectionEvents` — UNBOOKED |
+| IN92 | Client-side block `Refusal` "This plan cannot start" + code + outcome "nothing is enqueued" + "Back to mapping" action | `DemoIntake.tsx:776` | — | missing | ruled: D173 |
+| IN93 | Block codes and their verbatim messages: `required-field-unmapped`, `duplicate-header-unconfirmed`, `no-valid-rows` | `demo-data-intake.ts:784` | — | missing | unserved: `enqueueReadiness`'s verdict is not on `IntakeSessionWire`; it is only reachable by pressing Run — UNBOOKED |
+| IN94 | Mis-map hint: warning `Banner` "This looks like the wrong column" + "Re-map it" action + "…all N rows failed &lt;kind&gt; coercion. Wrong column?" + "Every row failing the same way is a mapping problem, not N data problems" | `DemoIntake.tsx:793` | — | missing | unserved: no mis-map hint on `IntakeValidationWireSchema` — UNBOOKED |
+| IN95 | No-rejections empty state: "No rejections" / "Every source row coerced and parsed cleanly…" vs "All N rows are runnable" / "Nothing was rejected and nothing was excluded, so every row in this file would fan out." (`CheckCircle2` `dsIcon.lg`) | `DemoIntake.tsx:809` | `intake.tsx:675` | divergent | **OPEN — operator call** |
+| IN96 | Not-yet-validated empty state ("This mapping has not been validated", two-arm description, `ListChecks` `dsIcon.lg`) | — | `intake.tsx:640` | extra | ruled: D173 |
+| IN97 | MetaLine "validated &lt;clock&gt;" / "values read as of &lt;clock&gt;" | — | `intake.tsx:667` | extra | **OPEN — operator call** |
+| IN98 | Review preamble "Every rejected row is fixed or excluded before this file can run — there is deliberately no way to ignore one. An exclusion is durable and keeps the reason it was made with." | — | `intake.tsx:682` | extra | **OPEN — operator call** |
+| IN99 | Rejections layout: one `Table` row PER REJECT (Row / Kind / Field-column / Why / Resolve) vs one `<section aria-label="Source row N">` card per SOURCE ROW | `DemoIntake.tsx:816` | `intake.tsx:764` | divergent | **OPEN — operator call** |
+| IN100 | Reject kind marker: `Badge` printing the raw kind, warning for `duplicate-identity`/`cross-field` and danger otherwise vs `Badge tone="danger"` printing a re-worded code label for all six | `DemoIntake.tsx:833` | `intake.tsx:785` | divergent | **OPEN — operator call** |
+| IN101 | Reject vocabulary: raw kinds vs "unmapped field" / "cell could not be read" / "value out of shape" / "row rejected by the workflow" / "duplicate person" / "fields disagree" | `demo-data-intake.ts:523` | `intake.tsx:118` | divergent | **OPEN — operator call** |
+| IN102 | Row number: `TD numeric align="right"` vs `Chip label="row" tone="danger"` | `DemoIntake.tsx:829` | `intake.tsx:781` | divergent | **OPEN — operator call** |
+| IN103 | Offending column: `“<header>”` in `dsText.meta` muted vs MetaLine item `column <header>` | `DemoIntake.tsx:838` | `intake.tsx:798` | divergent | **OPEN — operator call** |
+| IN104 | Offending value: `raw: <value>` verbatim, `(empty)` when blank vs `value <redacted (class)>` / `<value> (<transform>)` / "(a structured value)" | `DemoIntake.tsx:839` | `intake.tsx:726` | divergent | ruled: D82 |
+| IN105 | Reason sentence: composed client-side `<workflow> intake, row N, column “X” (→ field): <reason>` vs the server's `reject.reason` verbatim in a `role="alert"` span | `demo-data-intake.ts:669` | `intake.tsx:793` | divergent | ruled: D173 |
+| IN106 | `code <code>` printed under the reason | `DemoIntake.tsx:844` | — | missing | **OPEN — operator call** (the code IS served; only its label is shown) |
+| IN107 | Fix affordance: "Fix cell" (sm outline) opening a separate editor `Card` vs an always-present inline `Input` + "Fix cell" per correctable reject | `DemoIntake.tsx:849` | `intake.tsx:808` | divergent | **OPEN — operator call** |
+| IN108 | Fix editor heading `Correct row N · <targetFieldId>` | `DemoIntake.tsx:866` | — | missing | **OPEN — operator call** |
+| IN109 | Fix `Field label="Corrected value"` + description "The source file is never rewritten. The correction is recorded in the manifest with the original beside it, and the value is re-coerced and re-parsed before it can become valid." vs a bare placeholder `corrected <label>` | `DemoIntake.tsx:869` | `intake.tsx:814` | divergent | **OPEN — operator call** |
+| IN110 | Fix commit verb "Re-coerce this cell" (primary, `Check` `dsIcon.md`, disabled when blank OR unchanged) vs "Fix cell" (sm, disabled only when blank) | `DemoIntake.tsx:879` | `intake.tsx:821` | divergent | **OPEN — operator call** |
+| IN111 | Fix "Cancel" (secondary, `X` `dsIcon.md`) | `DemoIntake.tsx:876` | — | missing | **OPEN — operator call** |
+| IN112 | Exclude affordance "Exclude…" (sm outline) opening an editor `Card` vs an always-present inline `Input` + "Exclude row" | `DemoIntake.tsx:853` | `intake.tsx:832` | divergent | **OPEN — operator call** |
+| IN113 | Exclude editor heading `Exclude row N` | `DemoIntake.tsx:888` | — | missing | **OPEN — operator call** |
+| IN114 | Exclude `Field label="Reason"` `required` + error "An exclusion without a reason is a row that vanished. Say why." + description "Recorded in the manifest with a timestamp, so the receipt can never imply every source row ran." | `DemoIntake.tsx:889` | — | missing | **OPEN — operator call** |
+| IN115 | Exclude placeholder "duplicate export line — already filed last week" vs "why this person is not in this batch" | `DemoIntake.tsx:895` | `intake.tsx:837` | divergent | **OPEN — operator call** |
+| IN116 | Exclude commit verb "Exclude with this reason" (primary, `Check` `dsIcon.md`) vs "Exclude row" (sm, secondary) | `DemoIntake.tsx:901` | `intake.tsx:848` | divergent | **OPEN — operator call** |
+| IN117 | Separator rule between a row's rejects and its resolve controls | — | `intake.tsx:806` | extra | **OPEN — operator call** |
+| IN118 | Review gate: `Checkbox` "I have read all N rejected row(s)" + "Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen." | `DemoIntake.tsx:908` | — | missing | **OPEN — operator call** |
+| IN119 | Advance gate itself: `canContinueFromValidate = !block && (rejected === 0 \|\| reviewed)` vs `Run` enabled the moment `validation.state === "validated"`, unresolved rejections and all | `DemoIntake.tsx:260` | `intake.tsx:999` | divergent | **OPEN — operator call** (doc `reference/data-intake-and-edit-data.md` §2.2 step 4 and §7 vector 4 both say Run is disabled until the reject list is reviewed) |
+| IN120 | Courtesy blocker list: no `unresolved-rejections` entry, so the band cannot say why the kernel will refuse | `demo-data-intake.ts:784` | `intake.tsx:935` | divergent | **OPEN — operator call** |
+| IN121 | Corrections `Well`: `SectionLabel "Corrections"` + `row N · <field>: “<original>” → “<corrected>”` | `DemoIntake.tsx:918` | — | missing | **OPEN — operator call** (`IntakeSessionWire.corrections` IS served and read only for the discard count) |
+| IN122 | Exclusions block: `Well` + `SectionLabel "Exclusions"` + `row N — <reason>` vs `<section aria-label="Excluded rows">` + `SectionLabel "Excluded by you"` + `Chip label="row"` + reason + MetaLine(`excludedAt`) | `DemoIntake.tsx:929` | `intake.tsx:700` | divergent | **OPEN — operator call** |
+| IN123 | The whole Manifest stage | `DemoIntake.tsx:946` | — | missing | **OPEN — operator call** |
+| IN124 | Manifest success banner "N of M source rows will run" + "Every source row below has exactly one disposition. The counts are derived from those dispositions, never summed from the rejection history…" | `DemoIntake.tsx:954` | — | missing | **OPEN — operator call** |
+| IN125 | Manifest `KeyValueList` row `plan id` | `DemoIntake.tsx:962` | — | missing | unserved: `IntakeSessionWire.intakeManifestId` is set only AFTER enqueue — UNBOOKED |
+| IN126 | Manifest row `source` = `<originalName> · sha <12>` | `DemoIntake.tsx:963` | — | missing | **OPEN — operator call** |
+| IN127 | Manifest row `artifact` = artifact id | `DemoIntake.tsx:964` | — | missing | **OPEN — operator call** (`IntakeSessionWire.artifact` IS served) |
+| IN128 | Manifest row `mapping fingerprint` | `DemoIntake.tsx:965` | — | missing | unserved: `mappingFingerprint` is not on `IntakeSessionWire` — UNBOOKED |
+| IN129 | Manifest row `mapping snapshot` hash | `DemoIntake.tsx:966` | — | missing | unserved: `mappingSnapshotHash` is not on `IntakeSessionWire` — UNBOOKED |
+| IN130 | Manifest row `workflow contract` fingerprint | `DemoIntake.tsx:967` | — | missing | unserved: `workflowContractFingerprint` is not on `IntakeSessionWire` — UNBOOKED |
+| IN131 | Manifest row `created` instant | `DemoIntake.tsx:968` | — | missing | **OPEN — operator call** (`createdAt` IS served) |
+| IN132 | Manifest row `totals` = `N rows · V valid · R rejected · E excluded · C corrected` | `DemoIntake.tsx:970` | — | missing | unserved: `IntakeValidationWireSchema` has no `corrected` (it exists on `IntakeManifestTotalsSchema`) — UNBOOKED |
+| IN133 | Source-row disposition `Table` (Row / Disposition / Item / Input hash / Parsed input) | `DemoIntake.tsx:977` | — | missing | unserved: `SourceRowDispositionSchema` and `ValidRowSchema` are not on `IntakeSessionWire` — UNBOOKED |
+| IN134 | Disposition `Badge` tones — valid=success, excluded=neutral, rejected=danger | `DemoIntake.tsx:996` | — | missing | unserved: as IN133 — UNBOOKED |
+| IN135 | Per-row `inputHash` first 10 chars | `DemoIntake.tsx:1001` | — | missing | unserved: as IN133 — UNBOOKED |
+| IN136 | Per-row parsed input rendered `key=value · key=value`, or `rejects: <ids>` when the row is not valid, or `—` | `DemoIntake.tsx:1004` | — | missing | unserved: as IN133 — UNBOOKED |
+| IN137 | "Compare with a prior intake" (outline, `GitCompare` `dsIcon.md`) | `DemoIntake.tsx:388` | — | missing | **OPEN — operator call** |
+| IN138 | Run verb: `Start N runs` (primary, `Play` `dsIcon.md`, disabled on block or already-applied) vs `Run N rows` (primary, no icon) | `DemoIntake.tsx:391` | `intake.tsx:996` | divergent | **OPEN — operator call** |
+| IN139 | Rerun stage empty state "No prior intake of this source" + "…This source has not been imported before, so there is nothing to compare it with — and nothing is invented to fill the gap." vs rendering nothing at all when `rerun` is absent | `DemoIntake.tsx:1031` | `intake.tsx:1218` | divergent | **OPEN — operator call** |
+| IN140 | Rerun header banner `Compared with <planId>, made <YYYY-MM-DD>` vs "This file has already been enqueued, with this exact plan" / "This file has run before, and the plan has changed since" | `DemoIntake.tsx:1040` | `intake.tsx:876` | divergent | ruled: D171 |
+| IN141 | Rerun verdict prose (3 arms — contract changed = "a rerun is a MIGRATION, not a replay"; mapping changed; identical) vs a per-axis `was… → now…` digest list | `demo-data-intake.ts:886` | `intake.tsx:888` | divergent | ruled: D171 |
+| IN142 | Rerun chips `unchanged` / `added` / `removed` / `mapping` / `contract` with tone flips | `DemoIntake.tsx:1045` | — | missing | unserved: `RerunDiffSchema` carries no per-item counts — UNBOOKED |
+| IN143 | Two rerun `Well`s: "In this plan, not in &lt;planId&gt;" / "In &lt;planId&gt;, not here", each listing `<itemId> — <label>` or "nothing" | `DemoIntake.tsx:1059` | — | missing | unserved: `RerunDiffSchema` has no `added`/`removed` item lists — UNBOOKED |
+| IN144 | Closing rerun banner "Reruns never relabel replayed data as newly observed" (`TriangleAlert` `dsIcon.lg`) + "…Anything it replays is marked as replayed on the receipt; only a value actually re-read from a system is recorded as observed." | `DemoIntake.tsx:1085` | — | missing | **OPEN — operator call** |
+| IN145 | Rerun axis vocabulary "the file" / "the mapping" / "the workflow's mappable fields" / "the workflow contract" / "the input schema" | — | `intake.tsx:857` | extra | ruled: D171 |
+| IN146 | Rerun meta `manifest <8>…` / `ran <clock>` / `N of M rows ran` | — | `intake.tsx:872` | extra | ruled: D171 |
+| IN147 | Sticky outcome band that never scrolls away | — | `intake.tsx:944` | extra | ruled: D173 |
+| IN148 | "Not ready — &lt;blockers joined by 'and'&gt;." sentence | — | `intake.tsx:968` | extra | ruled: D173 |
+| IN149 | "This mapping has not been validated, so nothing is known about its rows yet." | — | `intake.tsx:969` | extra | ruled: D173 |
+| IN150 | Dry-run checkbox in the outcome band, shown only when the descriptor supports it | — | `intake.tsx:977` | extra | ruled: D173 |
+| IN151 | Per-control spinner keyed to the in-flight command (`bind:<field>`, `fix:<row>:<field>`, `exclude:<row>`, `validate`, `run`) | — | `intake.tsx:1049` | extra | ruled: D173 |
+| IN152 | `Arriving` mount transition wrapper (`--ds-travel-sm`, `dsMotion.enter`) | — | `intake.tsx:186` | extra | ruled: D173 |
+| IN153 | Loading skeleton at `--ds-h-review-page-min` while the session reads | — | `intake.tsx:1173` | extra | ruled: D173 |
+| IN154 | Read-failure banner "This intake session could not be read" | — | `intake.tsx:1177` | extra | ruled: D173 |
+| IN155 | Run-wide constants rendered read-only | — | `intake.tsx:934` (count only; nothing renders them) | missing | ruled: D173 (D173's own text says "CONSTANTS RENDER READ-ONLY"; the surface renders none) |
+
+**Counts:** exact 4 · divergent 61 · missing 56 · extra 34 · OPEN 66
 
 ## 7. Phone capture — `DemoCapture.tsx` ↔ `phone/**` + `surfaces/capture-start.tsx`
 
-_(pending — this section is written by the intake pass)_
+**Demo:** `DemoCapture.tsx` (430), mounted at `DemoRunStart.tsx:740` as the Run Modal's `capture` method · **Rebuild:** `phone/capture-app.tsx` (595), `phone/capture-client.ts` (298), `phone/phone-controls.tsx` (198), `phone/photo-tile.tsx` (164), `phone/phone.css` (115), `capture.html`, `surfaces/capture-start.tsx` (164)
+
+**These two are not the same surface, and the mismatch is total.** `DemoCapture.tsx` is a **desktop panel** — its own docstring says so: *"what the desktop is served about a phone session, and every page that has landed on it."* The rebuild's `phone/**` is the **phone** — the other end of the same session — and its operator-side counterpart, `capture-start.tsx`, is one button and a QR. So the entire demo surface (the phase badge, the session MetaLine, the unreadable-page banner, the "What was recorded" facts list, the "Pages received" contact sheet and its per-page tiles, the ⓘ disclosure, the multi-session picker) has **no rebuild counterpart at all**, and every one of those rows is `missing`; conversely the whole phone bundle is `extra`, ruled by D175 at length. That is a real structural gap rather than a bookkeeping artefact: after the operator scans the QR there is **no served operator-side view of the capture at all** — `CAPTURE_PHONE_ROUTES` is a closed nine-route union, all phone-scoped, and the only operator route is `POST /api/v1/capture/sessions`, which mints. The operator gets a QR and then silence: no "waiting for phone", no page count, no expiry countdown, no unreadable-page alert, no way to see what landed. Two smaller findings: the demo's unreadable-page banner tells the operator to *"Retake it on the phone"* and the phone has no retake — `PUT /api/v1/capture/phone/photos/:photoId` exists in the route union and `CapturePhoneClient` never implements it, so the only path is Remove then re-photograph. And D174's uniform-refusal rule **is honoured** — the phone renders `resource.message` verbatim for every unresolvable token, and the server has exactly one sentence for all four failure modes (`capture-surface.ts:202`) — so unknown, malformed, expired and discarded genuinely answer identically. The demo has no token concept to compare against.
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---------|------|---------|---------|--------|
+| CP1 | Operator-side section: `aria-label="Capture session"` + visible `SectionLabel "Capture session"` vs `SectionLabel "Or photograph it"` | `DemoCapture.tsx:221` | `capture-start.tsx:106` | divergent | ruled: D175 |
+| CP2 | Multi-session `Select` (`aria-label="Open capture session"`, option `<id> · <phase label> · N pages`, width capped at `--ds-w-popover-lg`) | `DemoCapture.tsx:232` | — | missing | unserved: no operator-scoped `GET /api/v1/capture/sessions` — UNBOOKED |
+| CP3 | ⓘ `IconButton size="xs"` label "How this demo serves a capture", `aria-expanded`, `Info` `dsIcon.sm` | `DemoCapture.tsx:248` | — | missing | **OPEN — operator call** |
+| CP4 | In-place disclosure `Well` + 4-item `BulletList` explaining what the desktop is and is not served | `DemoCapture.tsx:270` | — | missing | **OPEN — operator call** |
+| CP5 | No-session `EmptyState` "No capture session is open" + "A capture starts on the phone. Until one is open there is nothing to build a plan from, and nothing here will invent one." (`Camera` `dsIcon.lg`) | `DemoCapture.tsx:201` | — | missing | **OPEN — operator call** |
+| CP6 | `SectionLabel "State"` + `Well` holding the session's own facts | `DemoCapture.tsx:294` | — | missing | unserved: no operator-scoped session read — UNBOOKED |
+| CP7 | Phase `Badge` with glyph — `awaiting-phone`/`Smartphone`, `awaiting-pages`/`Hourglass`, `receiving`/`ArrowDownToLine`, `blocked`/`CircleAlert` (warning), `ready`/`Play` — all `dsIcon.sm`, and `ready` deliberately NEUTRAL not success | `DemoCapture.tsx:78` | — | missing | unserved: no operator-scoped session read — UNBOOKED |
+| CP8 | Session MetaLine: id · deviceLabel or `pairing code <code>` · `opened <clock>` · `paired <clock>` · `last page <clock>` · `expires <clock>` | `DemoCapture.tsx:300` | — | missing | unserved: no operator-scoped session read — UNBOOKED |
+| CP9 | Unreadable-page warning `Banner`, singular `Page N could not be read` / plural `N pages could not be read`, body `<reason> Retake it on the phone — focus <score>.` or a `BulletList` per page | `DemoCapture.tsx:316` | — | missing | unserved: no `unreadable`/`focusScore` on `CapturePhotoWireSchema` — UNBOOKED |
+| CP10 | `SectionLabel "What was recorded"` + `KeyValueList` — Page N of M / Arrived (to the second) / Pixels W × H / Size / File / Type / Read (warning tone when flagged) | `DemoCapture.tsx:338` | — | missing | unserved: `CapturePhotoWireSchema` carries only `photoId`, `ordinal`, `mediaType`, `bytes`, `artifactId` — no filename, no pixel dimensions, no arrival instant — UNBOOKED |
+| CP11 | `SectionLabel "Pages received"` + `CountBadge` | `DemoCapture.tsx:372` | — | missing | unserved: no operator-scoped session read — UNBOOKED |
+| CP12 | Contact sheet: `<ul role="list" aria-label="Pages received">` on a `repeat(auto-fill,minmax(var(--ds-w-capacity-cell),1fr))` grid | `DemoCapture.tsx:405` | — | missing | unserved: no operator-scoped session read — UNBOOKED |
+| CP13 | Page tile: frame at the page's OWN served `aspectRatio`, `FileText` `dsIcon.md`, `Page N`, arrival clock, then `sizeLabel` or the word `unreadable` on a third always-drawn line | `DemoCapture.tsx:101` | — | missing | unserved: as CP10 — UNBOOKED |
+| CP14 | Page tile accessible name `Page N — arrived <h:mm:ss>, <size>, <W> by <H>[, flagged unreadable]` | `DemoCapture.tsx:104` | — | missing | unserved: as CP10 — UNBOOKED |
+| CP15 | Tile treatment rule: selection is a FILL (`--ds-surface-selected`), the unreadable flag is an EDGE (`--ds-status-waiting-*`), so inspecting a flagged page cannot repaint its warning | `DemoCapture.tsx:117` | — | missing | unserved: as CP9 — UNBOOKED |
+| CP16 | No-page `EmptyState` "No page has arrived yet" with a two-arm description (paired → "…Take the first page on &lt;device&gt;." / not paired → "The phone has not picked this session up. Enter &lt;code&gt; on it to pair.") | `DemoCapture.tsx:381` | — | missing | unserved: no operator-scoped session read — UNBOOKED |
+| CP17 | Two-column grid with a 1px divider TRACK reading `--ds-border-strong`, so both columns end level | `DemoCapture.tsx:286` | — | missing | **OPEN — operator call** |
+| CP18 | Contact sheet scrolls inside a bordered `Well` capped at `--ds-h-capture-box` | `DemoCapture.tsx:398` | — | missing | **OPEN — operator call** |
+| CP19 | Pairing mechanism: a typed `pairingCode` shown as text vs a scanned QR carrying a 32-byte token in the URL fragment | `DemoCapture.tsx:303` | `capture-start.tsx:111` | divergent | ruled: D174 |
+| CP20 | The phone link as selectable/copyable text | `DemoCapture.tsx:303` | — | missing | ruled: D174 (the raw token exists for one render and the surface offers no text form on purpose) |
+| CP21 | Operator "waiting for phone" state after the session opens | `DemoCapture.tsx:79` | — | missing | unserved: no operator-scoped session read and no poll/SSE for capture — UNBOOKED |
+| CP22 | Operator session controls (expire / discard / close from the desktop) — neither surface offers any | `DemoCapture.tsx:220` | `capture-start.tsx:104` | exact | — |
+| CP23 | "Start a phone capture" `Button` + `Smartphone` `dsIcon.md`, `loading` while minting | — | `capture-start.tsx:133` | extra | ruled: D175 |
+| CP24 | Idle line "Photograph a paper form with a phone instead of uploading a file." + `QrCode` `dsIcon.md` shrink-0 | — | `capture-start.tsx:154` | extra | ruled: D175 |
+| CP25 | QR symbol: inline `<svg role="img">` 200px, `shapeRendering="crispEdges"`, one `<path>` in `--ds-fg` on `--ds-surface-1`, accessible name "QR code opening this capture on a phone, for &lt;workflowLabel&gt;" | — | `capture-start.tsx:62` | extra | ruled: D175 |
+| CP26 | Started copy "Scan this with the phone's camera" + "The link opens a page that photographs pages and sends them here. It is good for one capture and expires on its own — this code is the only copy, so leave it on screen until the phone has opened it." | — | `capture-start.tsx:116` | extra | ruled: D175 |
+| CP27 | `ingress-not-built` refusal: `Refusal` "No phone can reach this dashboard", code "capture ingress", outcome = the server's `remediation`, body = the server's `message` | — | `capture-start.tsx:141` | extra | ruled: D174 |
+| CP28 | Transport-fault arm kept separate: "The capture could not be started" / code "request failed" / outcome "no session was opened" | — | `capture-start.tsx:150` | extra | ruled: D174 |
+| CP29 | Phone page shell: separate Vite entry `capture.html`, `<title>Photograph a form</title>` (never carries the token), `viewport-fit=cover`, no `maximum-scale` | — | `capture.html` | extra | ruled: D175 |
+| CP30 | Phone light theme: `data-demo-theme="light"` on `<html>` and `<body>`, `color-scheme: light` | — | `capture.html` | extra | ruled: D175 |
+| CP31 | Phone header: `<h1>` = `session.formType ?? "Photograph a form"` at `--ds-phone-text-lead` (18px) | — | `capture-app.tsx:496` | extra | ruled: D175 |
+| CP32 | Phone header context hint paragraph (`session.contextHint`) | — | `capture-app.tsx:500` | extra | ruled: D175 |
+| CP33 | Loading state "Opening this capture…" | — | `capture-app.tsx:238` | extra | ruled: D175 |
+| CP34 | Token-refusal arm: `role="alert"` tinted box, `AlertTriangle` size-6, "This capture is not open", then the server's ONE sentence "this capture link is not open — ask the operator for a new one" — byte-identical for unknown, malformed, expired and discarded | — | `capture-app.tsx:243` · `capture-surface.ts:202` | extra | ruled: D174 |
+| CP35 | Empty phone state "No pages yet" + "Photograph the form one page at a time. You can reorder or remove a page before you send it." | — | `capture-app.tsx:369` | extra | ruled: D175 |
+| CP36 | Camera affordance: real `<input type="file" accept="image/*" capture="environment">` inside a `<label>`, value cleared after each change | — | `phone-controls.tsx:176` | extra | ruled: D175 |
+| CP37 | Camera label swaps "Take the first page" → "Add a page"; `Camera` size-5; keeps the primary right-hand slot even after the first photograph | — | `capture-app.tsx:460` | extra | ruled: D175 |
+| CP38 | Photo tile ordinal: a real numeral at `--ds-phone-numeral` (30px), tabular, `w-[2ch]` right-aligned, `aria-hidden` | — | `photo-tile.tsx:78` | extra | ruled: D175 |
+| CP39 | Photo tile thumbnail: 112px wide at `--ds-aspect-page` (US Letter 612×792), `object-contain` letterbox, `loading="eager"`, alt `Page N of M, as photographed` | — | `photo-tile.tsx:96` | extra | ruled: D175 |
+| CP40 | Photo tile name line `Page N of M` at lead size; deliberately NO byte count | — | `photo-tile.tsx:123` | extra | ruled: D175 |
+| CP41 | Failed-preview arm: `ImageOff` size-5 in `--ds-danger` inside the frame + a `role="alert"` message beside it | — | `photo-tile.tsx:110` | extra | ruled: D175 |
+| CP42 | Reorder affordance: explicit `PhoneIconButton` ▲/▼ (`ChevronUp`/`ChevronDown` size-6), never drag, disabled at each end | — | `photo-tile.tsx:134` | extra | ruled: D175 |
+| CP43 | Reorder accessible names `Move Page N of M earlier` / `Move Page N of M later` | — | `photo-tile.tsx:135` | extra | ruled: D175 |
+| CP44 | Per-page "Remove" `PhoneButton tone="quiet"` + `Trash2` size-5 — deliberately not danger, since red is reserved for Discard | — | `photo-tile.tsx:151` | extra | ruled: D175 |
+| CP45 | Retake / replace-in-place a page (demo's unreadable banner says "Retake it on the phone") | `DemoCapture.tsx:325` | — | missing | unserved: `PUT /api/v1/capture/phone/photos/:photoId` is in `CAPTURE_PHONE_ROUTES` and `CapturePhoneClient` implements no `replacePhoto` — UNBOOKED |
+| CP46 | Review toggle: `PhoneButton tone="quiet"` + `ListOrdered` size-5, hidden at zero pages | — | `capture-app.tsx:448` | extra | ruled: D175 |
+| CP47 | "Done" quiet button leaving reorder mode | — | `capture-app.tsx:413` | extra | ruled: D175 |
+| CP48 | Send: `PhoneButton tone="primary" grow` + `Send` size-5, label `Send N page(s)` — the count line, carried by the verb | — | `capture-app.tsx:427` | extra | ruled: D175 |
+| CP49 | Sent outcome: success skin, `CheckCircle2` size-6, "N pages sent", "The bundle is in the queue. You can put the phone down." | — | `capture-app.tsx:287` | extra | ruled: D175 |
+| CP50 | Sent identities: a `<dl>` of Run + Manifest ids, `ds-nums break-all` | — | `capture-app.tsx:297` | extra | ruled: D174 |
+| CP51 | Failed outcome: danger skin, `AlertTriangle` size-6, "N pages could not be sent", the projector's `handoff.message` verbatim in `role="alert"` | — | `capture-app.tsx:322` | extra | ruled: D175 |
+| CP52 | Failed actions: "Discard" (danger, `Trash2` size-5) + "Try again" (primary, grow, `RotateCcw` size-5) | — | `capture-app.tsx:339` | extra | ruled: D175 |
+| CP53 | Discarded outcome: neutral skin, `Trash2` size-6 muted, "This capture was discarded", "Nothing was sent. Ask the operator for a new link to start again." | — | `capture-app.tsx:306` | extra | ruled: D175 |
+| CP54 | Reserved `NoticeSlot`: always in the DOM at `--ds-phone-notice-min` (two body lines), `role="alert"`, `AlertTriangle` size-5, danger-quiet fill | — | `capture-app.tsx:515` | extra | ruled: D175 |
+| CP55 | `ActionBar`: `sticky bottom-0`, negative page inset, top border, `env(safe-area-inset-bottom)` padding | — | `capture-app.tsx:541` | extra | ruled: D175 |
+| CP56 | Phone control geometry: 48px touch floor, 12px inter-control gap, 16px page inset, 16px body type | — | `phone.css:38` | extra | ruled: D175 |
+| CP57 | Press feedback `active:scale-[0.97]` instead of the console's 1px nudge | — | `phone-controls.tsx:76` | extra | ruled: D175 |
+| CP58 | Tile settle motion: `.phone-settle` opacity + `translateY(var(--ds-travel-md))` over `--ds-dur-enter`, flipped one frame after mount; no stagger | — | `phone.css:101` · `capture-app.tsx:181` | extra | ruled: D175 |
+| CP59 | Tone rule "nothing here claims a page is good — no green, no check, no 'accepted' anywhere; the only tone spent is amber, on the page that cannot be read" | `DemoCapture.tsx:51` | `capture-app.tsx:287` (success green on the sent outcome) | divergent | **OPEN — operator call** (the rebuild's green marks a durable enqueue, not a page verdict; there is no rebuild surface that shows received pages at all) |
+| CP60 | `data-parity-ready` on the phone frame, the app's own statement that every page's bytes have resolved | — | `capture-app.tsx:492` | extra | ruled: D175 |
+| CP61 | Per-control busy state (`aria-busy`, `Loader2` spins in place of the icon, only THIS control disabled) | — | `phone-controls.tsx:95` | extra | ruled: D175 |
+| CP62 | No step indicator on the phone — capture / review / settled are three states of one page | — | `capture-app.tsx:18` | extra | ruled: D175 |
+
+**Counts:** exact 1 · divergent 3 · missing 20 · extra 38 · OPEN 6
 
 ---
 
@@ -422,7 +651,7 @@ This is the highest-fidelity region in the whole audit, and it is high-fidelity 
 | UK66 | `DESIGN.md` porting header claims the barrel is `src/dashboard/ds/ui.ts`; the actual file is `ui.tsx` | — | `DESIGN.md:18` | divergent | **OPEN — operator call** |
 | UK67 | `DESIGN.md` porting header names only TWO adaptations (barrel path, guard file) — the missing specimen page is not disclosed | — | `DESIGN.md:13-22` | divergent | **OPEN — operator call** |
 | UK68 | `tailwind-palette` / `frontend-tailwind-compliance` ratchet arm — bans raw Tailwind palette classes and raw hex in string literals/JSX text, so no palette divergence *can* be introduced outside `tokens.css` | n/a | `ratchet-arms.ts:132`,`460-467` | extra | ruled: ref guards-and-tests (arm registered in `guard-inventory.json`) |
-| UK69 | Ratchet-arm port dropped 3 of legacy's 4 checks (reduced-motion coverage, z-index scale, image loading) while `DESIGN.md` still asserts two of them are "guard enforced" by name | `DESIGN.md:209`,`546`,`548-549` | `ratchet-arms.ts:441-457` | divergent | OPEN — operator call (self-declared in the arm's own comment: "a document claiming a guard that does not run is worse than no claim") |
+| UK69 | Ratchet-arm port dropped 3 of legacy's 4 checks (reduced-motion coverage, z-index scale, image loading) while `DESIGN.md` still asserts two of them are "guard enforced" by name | `DESIGN.md:209`,`546`,`548-549` | `ratchet-arms.ts:441-457` | divergent | **OPEN — operator call** (self-declared in the arm's own comment: "a document claiming a guard that does not run is worse than no claim") |
 
 ### 9.2 Primitives
 
