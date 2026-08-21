@@ -233,6 +233,12 @@ function enqueueRun(context: SeedContext, spec: RunSpec): RunRecord {
     },
     lifecycle: { state: "queued" },
     claimGeneration: 0,
+    // D179: every real enqueue stamps the build it was enqueued under
+    // (`command-kernel.ts`, `run-fan-out.ts`). Omitting it here would seed
+    // every run onto the pre-D179 "absent" arm — a state production has not
+    // produced since — and understate what the archive/version-bump reads
+    // this fixture measures actually do.
+    appVersion: APP_VERSION,
     runNumber: context.database.authority.runs.nextWorkflowRunNumber(PERF_FIXTURE_WORKFLOW),
     version: 1,
     createdAt: now,
