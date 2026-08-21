@@ -848,13 +848,64 @@ directly — a label and a derived verdict describing the same run must not be d
 <!-- roadmap: order-9 -->
 
 <!-- roadmap-status: order-9 -->
+- [ ] the §b questionnaire for onboarding — unasked; it needs a HIRE canary the operator approves, which is the hardest target in the program
+- [ ] the hire probe with the **no-EID key** — `probeVerdictSchema` today has four arms (`present` · `absent` · `ambiguous` · `unknown`, `src/domain/write-safety-primitives.ts:50`) and every permanent key in the tree is EID-derived; a hire has no EID until it lands
+- [ ] roster ingest (`ref data-intake-and-edit-data` §4; the `roster` store's `match-spreadsheet` exists, the ingest workflow does not)
+- [ ] the onboarding composition over the `ucpath` / `crm` / `kuali` / `new-kronos` stores
+- [ ] PROOF T1 + the T3 pair
+> 2026-08-20 | docs-cohesion 03c | verified against `src/domain/write-safety-primitives.ts:50-63` and `src/stores/roster/tasks/`; nothing built, and this row's canary is a `you:` line that has no cheap answer
 <!-- /roadmap-status -->
+
+**What it is.** The real hire transaction — the duplicate-person incident's workflow. Last by
+design: highest stakes, and it reuses more of everything below it than any other row.
+**Systems:** UCPath (driven), CRM (driven), Kuali (driven), New Kronos (driven by order 6's write
+family). By the time this runs, every store it needs exists.
+
+**Store tasks.** REUSE essentially everything. BUILD the hire commit contract, the no-EID probe, and
+the roster ingest workflow.
+
+**The specific hazard: the permanent key has no subject yet.** Every write this program has proven
+is keyed on a person who already exists. A hire is the opposite — the transaction CREATES the
+identity, so the idempotency key cannot be derived from an EID and the probe cannot ask *does this
+person have a pending X*. That is what "`ProbeVerdict`-widened" means, and it is a real schema
+question, not a naming one: the probe must be able to say *a hire matching this natural key is
+already pending* over a key made of the facts the hire itself supplies. Answer it in the
+questionnaire's items 1 and 3 before a contract is written; `ref write-safety` §5 is the double-
+submit contract it has to satisfy.
+
+**The second hazard: this is the duplicate-person incident.** The same argument that put an
+ALWAYS-GATE on separations applies here from the other direction, and harder. D77's gate is designed
+in Phase 0 (doc 00) precisely so it is not discovered at order 9 — a tier-triggered gate would not
+have caught the separations incident (`classifyNameSimilarity("Hernandez, Jose Santos", "Santos
+Hernandez")` returns `same`), and a duplicate hire is a wrong person created rather than a wrong
+person terminated. `ref write-safety` §14 is the gate; the packet leads with DISCONFIRMING evidence
+and the approval shape is computed server-side.
+
+**The third: a hire canary is genuinely hard.** Every other row can find a harmless target. There is
+no harmless real hire. Expect the controlled-commit proof here to need a configured test instance
+(the questionnaire's item 6, `ref clock-config-secrets` §4) rather than a canary, and expect naming
+it to be the long pole.
 
 ### Dashboard · wire onboarding
 <!-- roadmap: order-9-dash -->
 
 <!-- roadmap-status: order-9-dash -->
+- [ ] 5.1.1 run modal — typed start inputs + start plan for onboarding
+- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
+- [ ] 5.1.4 gate ceremony — the approval shape this workflow's gate demands, computed SERVER-side (`ref write-safety` §14.11)
+- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
+- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] 5.1.7 the roster-ingest surface, and the hire canary's ceremony
+- [ ] PROOF T2 dashboard scenario for the wired surfaces
+> 2026-08-20 | docs-cohesion 03c | eight squares — the full standard seven plus the roster-ingest surface; it is the only row that uses every square in the template
 <!-- /roadmap-status -->
+
+The only sub-task in the doc that fills every square, which makes it the template's own proof: if
+onboarding can be wired without a new generic surface, `{#dash-defaults}` was built right. Its gate
+ceremony is a DIFFERENT shape from separations' — a hire's disconfirming evidence is *this person
+may already exist* rather than *this may be the wrong person* — and the shape is the server's to
+compute, not the panel's to choose.
 
 ## Cross-cutting Phase 3 capabilities (no single order)
 <!-- roadmap: cross-cutting -->
