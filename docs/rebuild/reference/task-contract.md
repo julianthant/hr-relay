@@ -1208,6 +1208,21 @@ reuse cannot create a runtime module cycle.
 
 ## 4. Customization / decoration model
 
+<!-- roadmap: phase-1 -->
+<!-- roadmap-status: phase-1 -->
+- [-] `decorateTask`, `TaskHooks` and `HookCtx` are DESIGNED and not built: there is no `src/base/decorate.ts`, no builder `.decorate()` / `.instrument()`, and no per-task hook of any kind in `src/`. Nothing in Phase 1 needed one, and no descriptor asks for one today
+- [-] the automatic end-of-step and error SCREENSHOTS §4.2 promised to re-home as kernel span hooks do not exist either — the rebuild captures no screenshots at all; the only diagnostic capture is failure-time and redacted (`src/base/diagnostics.ts`, D137)
+- [x] the ONE instrumentation layer that does exist is the kernel's: the executor emits task spans keyed by `(runId, attempt, spanPath)` with the claim generation folded in (D123/D214), which is what every timeline, duration and verdict reads
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified by absence — no `decorateTask`, `TaskHooks`, `HookCtx`, `.decorate(` or `.instrument(` anywhere in src/, and no screenshot producer; §4.1–§4.3 keep the contract for whoever builds it, marked as the contract rather than as behaviour
+<!-- /roadmap-status -->
+
+**This section is a contract for a mechanism that does not exist yet.** It is kept normative — a
+decoration model that gets invented ad hoc per workflow is exactly the fork this doc was written to
+prevent — but nothing below describes shipped behaviour, and §4.2's "today's automatic screenshots"
+sentence described the LEGACY system, not this one. What to do when a workflow genuinely needs a
+pre/post side action today: put it in the driver operation (where the page is), or make it its own
+node (where the graph can see it). Do not invent a hook.
+
 ### 4.1 The invariant
 
 **A decorated task is the same task.** Decoration returns a value of the *same* type `T` — same
@@ -1216,13 +1231,13 @@ contract, same schemas, same effect, same sessions. Hooks can observe, add side 
 replace the output, or swallow the error.
 
 ```ts
-// src/base/decorate.ts
+// src/base/decorate.ts — NOT BUILT; the shape the model requires when it is
 export interface TaskHooks<C extends AnyTaskContract> {
   before?: (args: { input: TaskInput<C>; ctx: HookCtx }) => Promise<void>;
   after?:  (args: { input: TaskInput<C>; output: TaskOutput<C>; ctx: HookCtx }) => Promise<void>;
   /** Observe only. The kernel ALWAYS rethrows the base TaskError; if this
    *  hook itself throws, its failure is attached as TaskError.hookErrors —
-   *  secondary metadata, never a replacement (D15; pinned by unit test). */
+   *  secondary metadata, never a replacement (D15). */
   onError?: (args: { input: TaskInput<C>; error: TaskError; ctx: HookCtx }) => Promise<void>;
 }
 
@@ -1231,63 +1246,69 @@ export function decorateTask<T extends AnyTask>(
 ): T
 ```
 
-- `HookCtx` = `{ driver (read-only capabilities for the task's system), capture, log, signal }` — no `fail` with
-  the task's codes. A `before`/`after` hook that throws produces `code:"decorator-failed"`,
+- `HookCtx` = `{ driver (read-only capabilities for the task's system), capture, log, signal }` — no
+  `fail` with the task's codes. A `before`/`after` hook that throws produces `code:"decorator-failed"`,
   `decoratedBy: label` — a broken decoration is never attributed to the base task. An `onError`
   hook that throws does NOT produce a new error at all: the base error propagates with the hook
-  failure in `hookErrors` (§2.4).
+  failure in `hookErrors`. **Both fields are part of THIS design**; the shipped `TaskError` has
+  neither (§2.4), so building decoration means extending that class in the same commit.
 - `after` throwing = extra validation failing loud (e.g. oath-signature asserting the saved page
   shows the expected signature date). The output is still the base task's output — a workflow that
-  wants a transformed value does it in the next step's input mapping (§5), pure and typed.
+  wants a transformed value does it in the next node's input mapping (§5), pure and typed.
 - Stacking: `decorateTask(decorateTask(t, a, "x"), b, "y")` — hooks run outside-in for `before`,
-  inside-out for `after` (standard middleware order), pinned by a unit test.
+  inside-out for `after` (standard middleware order), to be pinned by a unit test.
 
 ### 4.2 Where instrumentation attaches
 
-| Layer | Mechanism | Example |
-|---|---|---|
-| One step of one workflow | `.decorate("transaction", hooks, label)` on ref workflow-model's builder | pre/post-submit form screenshots in oath-signature |
-| Every step of one workflow | `.instrument(hooks)` on ref workflow-model's builder | per-step audit screenshot policy |
-| Every task everywhere | kernel-level span hooks (ref dashboard-surfaces) | step timing, `data:point` lanes |
+| Layer | Mechanism | Example | Built? |
+|---|---|---|---|
+| One step of one workflow | `.decorate("transaction", hooks, label)` on ref workflow-model's builder | pre/post-submit form screenshots in oath-signature | **no** |
+| Every step of one workflow | `.instrument(hooks)` on ref workflow-model's builder | per-step audit screenshot policy | **no** |
+| Every task everywhere | kernel-level span hooks (ref dashboard-surfaces) | step timing, task/browser/run span kinds | **yes** — the executor's span emission |
 
-Today's automatic end-of-step screenshots and error screenshots become kernel span hooks — zero
-per-workflow code, same as now, but attached at the task boundary instead of `ctx.step`.
+The point of the three layers is that per-workflow instrumentation code is not the answer to any of
+them; when the first two are built, they attach at the task boundary rather than inside a handler.
 
 ### 4.3 Why adding a task cannot break neighbors
 
+This one IS as built, and it holds without decoration:
+
 - Tasks are **frozen values with no shared mutable state**. There is no `ctx.data` blob a new task
   could clobber (person-lookup's `startDate`-clobbering bug — active-status overwriting the CRM
-  value — is structurally impossible: each output is its own typed record).
-- The only inter-task coupling is the **explicit input mapping** (§5). Adding step N+1 adds a key
-  to the outputs record; existing mappings don't see it. Removing/renaming an output field breaks
-  the *consuming mapping* at compile time — the failure surfaces at the edit, not at runtime.
-- Decoration returns the same type, so a decorated step slots anywhere the base did; hooks can't
-  alter data flow.
+  value — is structurally impossible: each output is its own typed record, and `defineTask` freezes
+  the bound task).
+- The only inter-task coupling is the **explicit input mapping** (§5). Adding node N+1 adds a key
+  to the outputs record; existing mappings do not see it. Removing or renaming an output field
+  breaks the *consuming mapping* at compile time — the failure surfaces at the edit, not at
+  runtime.
+- Decoration, when it exists, returns the same type, so a decorated step slots anywhere the base
+  did and hooks cannot alter data flow.
 
 ---
 
 ## 5. Composition — what the contract requires of the builder
 
-**The workflow builder API itself—read/transaction/branch/fork/child/gate nodes, replay, and
-resume—is owned and specified only by ref workflow-model.** This section states the obligations task contracts
-impose on that builder; it deliberately does not publish a second API sketch.
+<!-- roadmap: p1-authority -->
 
-- **Compile-time:** every node bind must return exactly `TaskInput<T>` (`z.input`—§2.2) and can only
-  read workflow input plus declared upstream node outputs. Rename a task output field → every
-  consuming read/transaction/branch/child mapping fails `tsc`.
-  That is the charter's "a contract change on one side must fail to compile on the other."
-  Ref workflow-model's builder accumulates both exact node outputs and each node's concrete contract tuple so
-  decoration remains typed without reducing non-task graph outputs to a broad top type.
-- **Runtime:** the kernel parses the mapped value through `contract.input` before `run` (zod is
-  the second wall—this is also ref workflow-model's "start from graph node N" entry validation: replayed
-  checkpoints flow into `outputs` and any missing required data fails the parse loudly, naming the
-  task and field). `run`'s return is parsed through `contract.output` — a task cannot leak an
-  out-of-contract shape downstream (today's "stub emitted the display label `"A"` instead of the
-  enum" class of bug dies at the boundary it was born).
-- Branching/conditional steps, fan-out, gate nodes, and checkpoint/replay are ref workflow-model scope; the
-  contract here only fixes what a step IS.
+**The workflow builder API itself — read/transaction/branch/fork/child/gate nodes, replay, and
+resume — is owned and specified only by ref workflow-model.** This section states the obligations
+task contracts impose on that builder; it deliberately does not publish a second API sketch.
 
----
+- **Compile-time:** every node bind must return exactly `TaskInput<T>` (`z.input`, §2.2) and can
+  only read workflow input plus declared upstream node outputs. Rename a task output field → every
+  consuming read/transaction/branch/child mapping fails `tsc`. That is the charter's "a contract
+  change on one side must fail to compile on the other." Ref workflow-model's builder accumulates
+  both exact node outputs and each node's concrete contract tuple, so a decorated node would stay
+  typed without reducing non-task graph outputs to a broad top type.
+- **Runtime:** the kernel parses the mapped value through `contract.input` before `run`
+  (`src/core/run-executor.ts:915`) — zod is the second wall, and this is also ref workflow-model's
+  "start from graph node N" entry validation, where replayed checkpoints flow into `outputs` and
+  any missing required data fails the parse loudly, naming the task and field. `run`'s return is
+  parsed through `contract.output` (`:1053`), so a task cannot leak an out-of-contract shape
+  downstream: the class of bug where a stub emitted the display label `"A"` instead of the enum
+  dies at the boundary it was born at.
+- Branching, fan-out, gate nodes and checkpoint/replay are ref workflow-model's scope; the contract
+  here only fixes what a step IS.
 
 ## 6. Auth and dry-run as contract concerns
 
