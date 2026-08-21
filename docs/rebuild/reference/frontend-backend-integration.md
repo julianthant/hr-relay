@@ -178,7 +178,7 @@ coupling is:
 
 The rebuild must not reproduce this as cleaner folder names. The replacement boundary is one
 server-authored product model and one client that parses it. As built, that is **one** transport
-module per browser bundle, **35** command actions behind **one** POST, and **zero** handwritten wire
+module per browser bundle, **36** command actions behind **one** POST, and **zero** handwritten wire
 mirrors — the three properties §8's guards hold.
 
 ---
@@ -340,7 +340,7 @@ one named in §4**, which D264 row D11 removes.
 each workflow's own `category` id and nothing else about grouping — there is no `workflowCategories`
 projection, because the one this wire used to carry invented both of its fields (`label` was
 `id.replace(/-/g, " ")`, `order` was the registry's first-seen index), so the Workflow Panel's
-headings read `separation` in whatever order a module happened to import. Ref dashboard-surfaces §Shell is the
+headings read `separation` in whatever order a module happened to import. Ref dashboard-surfaces §9.9 is the
 owner and it is explicit: *the frontend hardcodes only the display order, membership is the
 descriptor's, an unlisted category appends, and an empty category drops.* The heading text and the
 order therefore live in `src/dashboard/surfaces/workflow-category.ts`, typed
@@ -543,7 +543,7 @@ interface CommandEnvelopeFields {
   source: CommandSourceSchema;   // where the request came from
   reason?: string;               // an operator's own words, where a family asks for them
 }
-// discriminated by a PAIR: `family` (9) × `type` (35), with a per-arm `target` and `payload`
+// discriminated by a PAIR: `family` (9) × `type` (36), with a per-arm `target` and `payload`
 type CommandResult =
   | { state: "applied" | "already-applied"; commandId: CommandId;
       affectedTargets: readonly AffectedTarget[] /* ≥1 */ }
@@ -552,7 +552,7 @@ type CommandResult =
 ```
 
 The nine families are `start · intake · worker-browser · settings · version-archive · run · gate ·
-notification · capture`, and the 35 actions under them cover: start-run; intake inspect/confirm
+notification · capture`, and the 36 actions under them cover: start-run; intake inspect/confirm
 mapping/correct row/exclude row/validate/enqueue manifest; worker plan-count/spawn/stop/pause/resume
 and browser refresh/reopen; `apply-settings`; version plan/apply/relaunch-archived-run; the run verbs
 `retry · cancel · bump · rename · edit-checkpoint · resolve-write-present · resolve-write-absent`;
@@ -638,7 +638,7 @@ gate's own ceremony table.
 
 <!-- roadmap-status: p1-kernel -->
 - [x] ONE command route + ONE journal — `POST /api/v1/commands`, `src/core/command-kernel.ts`, confined by `control-command-single-path` (D113)
-- [x] nine families / 35 actions, all dispatching but one; every arm CASes on a required `expectedVersion` (`src/domain/commands.ts`)
+- [x] nine families / 36 actions, all dispatching but one; every arm CASes on a required `expectedVersion` (`src/domain/commands.ts`)
 - [x] three result arms with TWO refusals, settled through one exhaustive fold (D253, `command-result-exhaustive`)
 - [x] the bulk vector arm — per-target outcomes, `best-effort` (D235)
 - [ ] `requestedBy` is stamped verbatim; the identity-checkpoint match this section requires is unenforced — reachable only if a second actor ever exists, and undeclared today (no D-number, no `pending-wire-bindings` entry)
@@ -856,7 +856,7 @@ surface, it is a wire nobody has run yet.
 | Receipt/Failure/Captures | immutable receipt/failure/capture refs | pending receipt becomes finalized; capture availability/purge state | remediation actions only when served | ref operator-trust evidence/failure store + ref write-safety ledger/proof | receipt and failure yes (D140/D142); **captures no** — no artifact-bytes route (§3.6) |
 | Start Run | descriptor start capability + server start plan + preflight | descriptor/config/preflight invalidation | start command referencing plan token/artifact ids | descriptor parser, config resolver, enqueue authority | typed method yes (D250/D251); upload/capture/spreadsheet/bare methods and preflight are not built |
 | Spreadsheet Intake | artifact inspection, detected headers/samples, saved exact-fingerprint mapping, validation/manifest draft | parse/validation/finalize progress | confirm mapping, correct/exclude, validate, enqueue manifest | ref data-intake-and-edit-data artifact/mapping/intake authority | yes, end to end |
-| Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox | yes — but over **eight bespoke REST routes**, not the one command route; the phone-host gate is inert (D189) |
+| Mobile Capture | capture session + ordered immutable photo refs | session/photo/finalize/handoff patches | upload/replace/reorder/delete/finalize/retry/discard | ref data-intake-and-edit-data capture authority + artifact/finalize outbox | yes — but over **nine bespoke REST routes**, not the one command route; the phone-host gate is inert (D189) |
 | Session Panel | worker cards, browser health, current run, queue/wait reasons | worker/browser/run patches | plan/spawn/stop/refresh/reopen/pause/resume | worker/session authority and browser health services | cards yes (D248); of seven commands only `stop-worker` has a control — the other six have kernel arms and no button |
 | Settings + doctor/storage | schema-driven sections, effective/default/override provenance, revision, health/backups | config/storage/preflight patches | atomic settings update; recovery actions when explicitly served | ref clock-config-secrets config/preflight + ref dashboard-surfaces authority recovery | read-only — `apply-settings` is deferred (§3.4); the storage doctor is served |
 | Archive + version bump | paged archive index, self-contained archived detail, integrity, version plan | version/archive job progress | plan/apply bump, relaunch as new run | ref dashboard-surfaces archive snapshots + descriptor/version service | yes (D179/D223) |
@@ -1246,7 +1246,7 @@ for one fact.
 approval binds covers the dates, the template and the department, not only the person.
 
 **Generic:** the mechanism — the `parked-gate` / `parked-write` lifecycles, the section as a wire
-resource, `resolve-gate` with a schema-bound `result`, the `identity-gate-dominance` guard,
+resource, `resolve-gate` with a schema-bound `result`, the `identity-gate-before-commit` guard,
 `gate_results` authority, and D204's receipt derivation over the gate row.
 **Per-workflow:** the packet itself and its ceremony are separations-shaped; a second gated workflow
 either adds its own section arm or generalises the packet. That generalisation is the square's real
@@ -1346,9 +1346,9 @@ notification service, not this surface.
 `GET /api/v1/intake/:sessionId` and the six `intake` command verbs; the fan-out emits a `run.queued`
 span per member, so the rows arrive through §5.1.2's ordinary path. Mobile capture is
 `surfaces/capture-start.tsx` plus the SECOND browser bundle under `src/dashboard/phone/**`
-(`capture.html`), over eight bespoke REST routes and the `capture` command family. Edit Data is the
+(`capture.html`), over nine bespoke REST routes and the `capture` command family. Edit Data is the
 Context rail's `run.edit-checkpoint`, gated on `capabilities.editData` — declared today by
-`person-lookup` alone — and held by the `edit-data-policy` guard.
+`person-lookup` alone — and held by the `edit-data-field-policy` guard.
 
 **Generic:** the intake pipeline and the capture session. **Per-workflow:** the intake projection
 each workflow declares, and the Edit Data field list on its descriptor.
@@ -1584,7 +1584,7 @@ decision lands in its owning doc.)*
 
 `ActivityReportWire` gains `ledger: { systems: [{ system, entries, prod, test }] }`, the demo's last
 Activity block. **It is the one field on this payload that does not come out of
-`run-queue-projection.ts`'s fold**, and ref dashboard-surfaces §10.1 owns the carve-out that permits it — read it
+`run-queue-projection.ts`'s fold**, and ref dashboard-surfaces §9.5.2 owns the carve-out that permits it — read it
 there; the normative text is not restated here. What this doc owns is the wire shape and the route:
 
 - The block rides the SAME `GET /api/v1/reports/activity?from=&to=` response, over the same window.
@@ -2081,9 +2081,7 @@ ways. A rule with no guard is listed as such rather than implied.
    queue row's `priority` against `RunPrioritySchema`, the worker card's against the lifecycle's —
    is compared member-for-member, the fourth joint and the one with no import to keep it honest. It
    is what catches an orphan arm, and the reason a declared-unserved arm is a DECLARATION with an
-   owner instead of a silence. *(`guard-inventory.json` still describes this guard as "three
-   joints"; the mirror joint makes four — an inventory-text correction `ref:guards-and-tests`
-   owns.)*
+   owner instead of a silence.
 9. **Start coverage:** every descriptor start method has both server and client interpreters;
    unsupported prod/test or dry-run combinations return a served absence/refusal. **NO GUARD.**
    With one method kind registered the rule has one case; it earns a guard with the second.

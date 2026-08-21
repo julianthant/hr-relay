@@ -411,7 +411,7 @@ survived; a per-row kind stamp did not, and nothing needed one.
 **Three of the four shapes have no producer.** Every enqueue path in `src/` stamps
 `shape: "single"` — `command-kernel.ts:1617` and `:2274`, `capture-intake-handoff.ts:242`,
 `services/start/plan.ts` — and every registered descriptor declares `surface: { shape: "single" }`.
-The kernel says so itself at `command-kernel.ts:1608-1612`: *"the coordinator/member fan-out has no
+The kernel says so itself at `command-kernel.ts:1613-1616`: *"the coordinator/member fan-out has no
 runtime yet (nothing mints an `operation` run)"*. The projection, the containment fold,
 `memberRollup`, `memberPreview`, the member well and the `run-group`/`run-member` parity references
 are all real and all fed by hand-composed fixtures. Building the presentation ahead of the workflow
@@ -1309,8 +1309,8 @@ optional `link`, and the three differences from the durable record are each deli
   force**, and an expired snooze reads as its underlying status again with nothing written back.
   Serving `snoozedUntil` as its own field would have invited the client to re-derive that comparison
   against its own clock, which is how two surfaces come to disagree about whether a row is snoozed.
-- **`dedupeKey`, `trigger`, `message` and `count` stay durable and off the wire.** The bell and inbox
-  render the title and the state; `revision` IS the durable `version`, which is what the
+- **`dedupeFingerprint`, `trigger`, `summary` and `count` stay durable and off the wire.** The bell
+  and inbox render the title and the state; `revision` IS the durable `version`, which is what the
   read/unread/snooze commands CAS against. `link` is the one field that MOVED onto the wire (D262),
   because a needs-you alert whose only affordance is "mark read" is an alert nobody can act on — and
   the line it respects is the union's own: ids and closed codes may cross to a surface, prose may
@@ -1334,9 +1334,10 @@ row still folds durably, it just does not ping.
 **Trigger arguments are closed (D138).** "Notification text uses redacted arguments" is enforced by
 having no free-text argument: every trigger-event arm is ids, closed codes, and counts, and the
 title/message are composed from those. A caller cannot hand the inbox prose, so captured form
-contents have nowhere to enter. This section's seven triggers route onto D79b's six channels in the
-table above, and that routing is `projectNotificationTrigger`'s exhaustive switch — one place, not a
-per-caller choice.
+contents have nowhere to enter. This section's seven trigger ARMS route onto D79b's six trigger KEYS
+in the table above (`NotificationTriggerSchema`, `src/domain/notifications.ts:12-19`; the durable
+`channel` field is a different axis and carries two values, `ping | inbox`), and that routing is
+`projectNotificationTrigger`'s exhaustive switch — one place, not a per-caller choice.
 
 **As-built (2026-08-18, D222) — the first wired producer is the backup-health watch, and the
 stale/missing backup moves OFF the every-view banner it had been riding.** 2g built the durable
@@ -1672,7 +1673,7 @@ In the rebuild both move onto the **launching coordinator's descriptor**, resolv
 
 A **display-only coordinator** (operation shape, no daemon task) declares
 `coordinator: "display"` — its `run.queued` carries `displayOnly: true`, no `run.claimed` ever
-follows, and completion is the members-terminal rollup (`rollupOperationStatus`, ported as a
+follows, and completion is the members-terminal rollup (legacy's `rollupOperationStatus`, ported as a
 projection rule). The as-built subtlety that dependency edges are simply *not created* when the
 parent has no task (approve.ts:1389-1429) becomes structural: display coordinators are not in the
 task store, and the dependency step of the program skips them by type, not by a missing-row probe.
@@ -1687,8 +1688,10 @@ onto the launching descriptor is expressible today. No descriptor uses either fi
 display-only half is further from built than that: there is **no `displayOnly` field on `run.queued`
 anywhere in the wire union** — the word survives only in `completion.ts:363`'s own comment — and no
 enqueue path stamps anything but `shape: "single"`, so a display coordinator cannot be minted and
-`rollupOperationStatus` has never folded a real group (§9.10 carries that whole absence, with the
-kernel's own statement of it at `command-kernel.ts:1608-1612`).
+the members-terminal rollup has never folded a real group — this tree carries no
+`rollupOperationStatus` function at all, only the `memberRollup` the projection computes inline
+(`run-queue-projection.ts:1392`) (§9.10 carries that whole absence, with the kernel's own statement
+of it at `command-kernel.ts:1613-1616`).
 
 ### 4.4 Durability: the approval manifest is part of the contract's execution, ported as-is
 
@@ -1764,7 +1767,9 @@ two of them are subscriptions — `resolvedBy: "children-terminal"` with a
 `WorkflowGateSource<AnyWorkflowRef, …>` and `resolvedBy: "external"` with an `ExternalGateSource`
 (`src/base/flow.ts:207-234`) — so the shape this subsection needs is writable today, and `build()`
 refuses a non-operator gate that declares no source (`:674-678`). What is absent is every consumer:
-`grep -rn "subscribes" src/` returns those five lines and nothing else, and the executor has ONE
+`grep -rn "subscribes" src/` returns eleven lines and every one is a declaration or its own check —
+the three type declarations at `src/domain/workflow/graph.ts:321,329,338`, the two `GateDecl` arms
+above, and `build()`'s refusal at `src/base/flow.ts:674-691` — and the executor has ONE
 gate arm — it emits `gate.opened`, closes the browser session and parks the run waiting for an
 operator command (`src/core/run-executor.ts:1363-1377`), whatever the gate declared. A
 `children-terminal` gate would therefore park forever, so the arm is a declared-but-unreachable one
@@ -2031,8 +2036,9 @@ from the durable manifest (§4.4):
 **Queue render after:** the operation surface's members render inline (flat member surfaces
 joined by `parentRunId`; the operation row itself carries only `memberRunIds` + `memberRollup` —
 1 done · 1 cancelled, cancelled a first-class bucket, no `step==="cancelled"` decoding anywhere).
-The coordinator completes to `done` when all members are terminal (`rollupOperationStatus` ported
-into the projection). The coordinator's timeline shows its own notes ⊕ each member's
+The coordinator completes to `done` when all members are terminal (the members-terminal rollup
+ported into the projection; this tree's is the inline `memberRollup`, not a ported function). The
+coordinator's timeline shows its own notes ⊕ each member's
 `run.claimed`/`span.ended` boundary events (selected by `parentRunId` — structurally, not via the
 memberRunIds SQL widening workaround). Grep debug: `grep os-141002 .tracker-rebuild/spans/*.jsonl` returns
 the operation's state history across all three files; `grep os-141002 .tracker-rebuild/notes/*.jsonl`
@@ -2083,8 +2089,9 @@ in both docs, which is why the taxonomy is shared rather than each doc's own.
 **Complete as of 2026-08-21.** §9 is the destination of the 2026-08-20 reorganization (cohesion plan
 R9 item 3; the § number map at the top of this doc), and both surface units have landed: §9.1–§9.4,
 §9.9 and §9.10 (unit 5.1c) and §9.5–§9.8 (unit 5.1d). Nothing folds into it any more, §10–§13 are
-gone, and the numbers they held redirect from the alias block at the foot of this doc until the
-tree's `doc:` refs are retargeted.
+gone, and the numbers they held no longer resolve to a heading: the transitional alias block that
+carried them was DELETED on 2026-08-21 once `docs/roadmap/roadmap.md`'s `doc:` refs were retargeted,
+and the § number map at the top of this doc is the permanent record.
 
 ### 9.1 The run modal — plan, confirm, enqueue
 
@@ -2555,8 +2562,9 @@ Two corrections the audit forced, both against prose this doc carried:
   and described a half-cut sixth row as the depth cue; there is no half-cut row. And an **in-row expand
   to 20 lines** exists (`--ds-h-member-well-open`) that the entry never mentioned. The components are
   `MemberWell` / `MemberLine`, not the `PersonWell` / `PersonLine` the prose named.
-- **D9's `rejected` containment arm is not on the wire.** `ContainmentSchema` serves two arms; the row
-  model's vocabulary says three. Nothing mints a rejected member, so nothing is wrong on screen — but
+- **D9's `rejected` containment arm is not on the wire.** `ContainmentSchema` serves
+  `root | member | linked` (`src/domain/dashboard/projection.ts:110`); the row model's `rejected` arm
+  is not on it. Nothing mints a rejected member, so nothing is wrong on screen — but
   the doc's own vocabulary and the served union disagree, and the served union is the one that is real.
 
 And one **operator call**, stated rather than resolved. D16 says cancelling a group has *"no
@@ -2585,11 +2593,11 @@ endpoint, the action-descriptor rule (§8.5) and the parity references.
 - [x] D252 — a ledger value names its step, direction and freshness bound, all from the DECLARATION, through the same functions the executor calls (§9.3.1)
 - [x] D253 — three result arms, TWO refusals, one exhaustive `settleCommandResult` fold guarded against a violating fixture (§9.3.1)
 - [!] D16's "no confirmation dialog" against the served member-counting confirm — the code confirms; an operator call (`{#operator-calls}`)
-- [!] D12's gate age is fully served and the `waiting` pill draws none of it, on a recorded operator direction — an operator call (`{#operator-calls}`)
-- [ ] D9's `rejected` containment arm is not on the wire; the row model's vocabulary says three arms and `ContainmentSchema` serves two
+- [x] D12's gate age is fully served and the `waiting` pill draws none of it — answered 2026-08-18 (the amendment above; `03b-finish-separations.md` §Smaller operator calls open): the pill carries no age, the wait renders in the row's footer meta and in the log panel
+- [ ] D9's `rejected` containment arm is not on the wire; `ContainmentSchema` serves `root | member | linked` and the row model's `rejected` arm is not on it
 - [ ] D13's `Re-upload` is not in `ActionCommandKeySchema`; the failure summary half is built and served
 - [ ] every group-row fact (D5 collapse, D11's well, D14's group-of-one, `memberPreview`, the rollup) is drawn from fixtures — no `operation` run has ever been minted (§9.10)
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/tokens.css; left: the group shape's producer and two operator calls
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/tokens.css; left: the group shape's producer and D16's operator call
 <!-- /roadmap-status -->
 
 ### 9.3 Run detail — open and follow a run
@@ -3149,7 +3157,7 @@ dialog could only report as a transport failure.
 
 **What this square still owes.** The mechanism is generic — the `parked-gate` / `parked-write`
 lifecycles, the section as a wire resource, `resolve-gate` with a schema-bound `result`, the
-`identity-gate-dominance` guard, `gate_results` authority, D204's receipt derivation over the gate
+`identity-gate-before-commit` guard, `gate_results` authority, D204's receipt derivation over the gate
 row. **The PACKET is separations-shaped**, and a second gated workflow either adds its own section arm
 or generalises it; that generalisation is this square's real remaining work and is what
 `{#order-4-dash}` and `{#order-9-dash}` will force. One contract statement is corrected rather than
@@ -4275,9 +4283,12 @@ authoritative is an operator call (`{#operator-calls}`), like D12's undrawn gate
 
 #### The workflow rail lists main workflows only (D219 → D220 → D241)
 
-`All workflows` is retired: `ALL_WORKFLOWS` is deleted, `rowsForWorkflow` always filters, and the app
-opens on a real panel (`DEFAULT_WORKFLOW`, read from the registry so a rename cannot point it at
-nothing). An operator works one workflow at a time, and a queue mixing fourteen workflows forced
+`All workflows` is retired: no all-workflows pseudo-panel is served or selectable, the queue is
+always filtered to the active panel
+(`dayWire.queueSurfaces.filter((s) => s.workflowId === activeWorkflowId)`,
+`src/dashboard/app/dashboard-app.tsx:402`), and the app opens on a real panel — the FIRST workflow of
+the SERVED bootstrap list (`workflows[0]?.id ?? ""`, `:337`), so a rename cannot point it at
+nothing. An operator works one workflow at a time, and a queue mixing fourteen workflows forced
 every row title to carry a workflow label to stay legible. Grouping comes from **each descriptor's
 own `category`**, never a frontend list: the frontend hardcodes only the display ORDER, membership is
 the descriptor's, an unlisted category appends, and an empty category drops.
@@ -4432,7 +4443,7 @@ D264's moved declaration fields) and §7 the parity lane.
 - [x] D195 — the panel region is a grid, so the no-run-open case cannot leave ~950px of empty black
 - [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — an operator call (`{#operator-calls}`)
 - [ ] re-calibration on the SSE `health` heartbeat, deferred with its trigger named (D189's exposed path)
-> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys,layout-metrics}*; left: the heartbeat instant and one vocabulary call
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys}*, src/dashboard/surfaces/layout-metrics.ts; left: the heartbeat instant and one vocabulary call
 <!-- /roadmap-status -->
 
 ### 9.10 The delegation and row model (row-model D5–D24)
@@ -4506,7 +4517,10 @@ dropped, and this table is how a citation to the old flat list resolves.
   everything. The auto-expand exists because an open group is a demand; a group with nothing left to
   demand holding the space of an open one is the same defect inverted. The row's expansion state and
   its explanatory chrome are both projections of settlement, derived in ONE place
-  (`visibleMemberIds` branches on settlement and nothing else), never authored per fixture.
+  from settlement and nothing else, never authored per fixture. *(No shipped fold implements it yet:
+  the served group row's well is operator-toggled state (`openWells`, `dashboard-app.tsx:158`, empty
+  at mount and flipped only by the row's own control), and nothing mints an `operation` run — §9.10's
+  standing absence.)*
 - **D6 — oath-upload's signers are `linked`, not `member`; shape S4 is deleted.** Oath Upload stays
   ONE Run Row for the PDF being uploaded; the signer rows live in the Oath Signature panel as their
   own rows, and the upload row carries a chip (`6 signers · 3 done ↗`) that jumps there. A signer run
@@ -4519,9 +4533,9 @@ dropped, and this table is how a citation to the old flat list resolves.
 - **D9 — rejected members never count toward done.** A packet carrying rejections is
   `Done with warnings` until every rejection is deleted or explicitly acknowledged; rejected members
   stay excluded from the rollup and counted separately (`50 people · 3 rejected`). An unrun person is
-  not a finished person. **As-built divergence:** `ContainmentSchema` serves two arms and this
-  vocabulary names three — nothing mints a rejected member, so nothing is wrong on screen, but the
-  served union is the real one (§9.2). *(This entry's original wording said the verdict requires zero
+  not a finished person. **As-built divergence:** `ContainmentSchema` serves `root | member | linked`
+  and this vocabulary's `rejected` arm is not on it — nothing mints a rejected member, so nothing is
+  wrong on screen, but the served union is the real one (§9.2). *(This entry's original wording said the verdict requires zero
   unacknowledged rejections under its pre-D22 name; the verdict is unchanged and its drawn label is
   now `Done`, §9.9.)*
 - **D11 — one member presentation at every count; the density ladder is deleted.** A group's expanded
@@ -4610,7 +4624,7 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [x] D23 — the attention edge: once, on the transition, only the two loud statuses, one implementation
 - [x] D24 — the ⓘ rule, its two exemptions and `DESIGN.md` as the binding companion
 - [ ] **nothing mints an `operation` run** — every enqueue path stamps `shape: "single"`, so D5's settle-collapse, D9's rejected arithmetic, D11's well and D14's group-of-one have never run against a real group; the whole group model is fixture-fed
-- [ ] D9's `rejected` containment arm is not on the wire (`ContainmentSchema` serves two of the vocabulary's three)
+- [ ] D9's `rejected` containment arm is not on the wire (`ContainmentSchema` serves `root | member | linked`)
 - [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
 - [!] D16's "no confirmation dialog" against the built confirm-first dialog — an operator call (`{#operator-calls}`)
 > 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
