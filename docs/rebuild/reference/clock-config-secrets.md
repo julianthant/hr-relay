@@ -52,40 +52,6 @@ operator-trust's evidence/diagnostic bundles consume this doc's redaction classi
 
 ---
 
-## Phase 1c Stage C as-built storage-health delta (2026-08-01)
-
-The registered `authority.health` preflight runner now consumes the same read-only storage doctor
-used for recovery decisions. It reports healthy only when the authority inspection is healthy and
-the newest backup is verified and current; missing, corrupt, foreign, newer-schema,
-foreign-key-invalid, invariant-invalid, missing-backup, stale-backup, and generation-gap states
-remain distinct strict health causes. Operator-facing summaries are fixed redacted text, while the
-injected `Clock` supplies report timestamps and backup-age calculations. The runner checks abort
-signals before and after inspection and does not repair storage, read environment/config directly,
-or contact any external system.
-
-This is the runner primitive, not the full operator surface. CLI/dashboard doctor presentation,
-scheduled backup wiring, command/worker/projector integration, and a complete offline recovery
-orchestrator remain Stage-D or later work; Phase 1c is not complete.
-
----
-
-## Phase 1c Stage D as-built Clock/acceptance delta (2026-08-01)
-
-The negative-settlement safety decision is now fully deterministic under the injected `Clock`:
-`decidedAt`, the post-fence propagation boundary, rejection of future observations, and exact
-read-spacing boundaries require no wall-clock read or sleeping test. The authority adapter uses its
-injected Clock for transaction metadata and accepts already schema-validated external confirmation
-instants; no new direct `Date`, environment, settings, or secret read site was introduced. The
-existing Clock single-source and manual-Clock-test-only guards remain green.
-
-Phase 1c acceptance advances the isolated runtime status to `completedThrough:"1c"` and
-`active:"1d"`. It does not create a second config/secret world, browser profile, port, state root,
-or production launcher, and it does not wire run snapshots or external systems. Those consumers
-remain with their named later spine items. Phase 1c is complete; Phase 1 and production cutover are
-not.
-
----
-
 ## 1. Grounding — what exists today, why it hurts
 
 **Every figure and path in this section is the LEGACY repository's, measured 2026-07-18 for doc 08's
@@ -996,11 +962,26 @@ also make diagnostic bundles safer to share with an AI assistant.
 
 ### 6.2 One environment doctor replaces scattered startup surprises
 
-The existing `setup`, `/api/preflight`, and `test-login` behaviors become projections of one strict
-preflight registry, not three lists that drift. Each `PreflightCheck` has a stable id, scope
-(`dashboard|executor|workflow|system|feature`), severity, pure/IO runner, timeout, redaction policy,
-and remediation template. `PreflightReportSchema` contains config/descriptor fingerprints, checked
-at/time, and a non-empty closed result tuple:
+<!-- roadmap: cross-cutting -->
+<!-- roadmap: p1-authority -->
+
+<!-- roadmap-status: cross-cutting -->
+- [x] the strict preflight REGISTRY is built and bidirectionally audited: `PreflightCheckSpec` (id, scope, severity, pure/IO runner, dependencies, capabilities, consumer, scenarios, timeout, redaction policy, remediation) and `PREFLIGHT_CHECKS` — twelve explicit checks plus generated per-feature, per-endpoint and per-provider ones (`src/domain/runtime-dependencies.ts:362-383`)
+- [x] `PreflightReportSchema` is closed and refines its own rules — a blocking check cannot be a warning, an optional check cannot fail, and the provider/feature verdicts must agree (`src/domain/preflight.ts:55-208`)
+- [x] fifteen scenario manifests cover missing browser, stale fiscal year, prod/test endpoints, low disk, corrupt DB, missing workflow secret, provider/OCR/AI exhaustion, unavailable capture ingress, busy port, runtime mismatch, invalid config and orphan processes (`src/domain/trust/preflight-scenarios.ts`)
+- [x] ONE runner is implemented — `AuthorityHealthPreflightRunner` (Phase 1c Stage C), which consumes the same read-only storage doctor the recovery decision uses
+- [ ] BE eleven-plus runners are unimplemented, and `buildPreflightReport` / `requiredPreflightChecks` / `executePreflightRunner` have only test callers — the registry is a contract nothing composes yet
+- [ ] BE `FrontendBootstrapWireSchema#preflight` is `declared-unserved` (D184, `config/pending-wire-bindings.json:30-33`), so the Top Bar's stethoscope popover never mounts — the honest absence rather than a fabricated pass verdict
+- [ ] BOTH there is no `cli doctor` verb and no `test-login`. `cli storage doctor` exists and is the closest thing, but it calls `doctorAuthorityStorage` directly (`src/server/storage/compose.ts:309-332`) rather than composing a preflight report, so the two would drift the moment a second runner lands
+> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/{preflight,runtime-dependencies}.ts`, `src/domain/trust/preflight-scenarios.ts`, `src/infra/sqlite/authority-health-runner.ts`, `src/server/storage/compose.ts` and `config/pending-wire-bindings.json`; left: the runners, the service that composes them, and the three surfaces that consume it
+<!-- /roadmap-status -->
+
+The `setup`, `/api/preflight` and `test-login` behaviours legacy grew separately become projections
+of ONE strict preflight registry, not three lists that drift. Each `PreflightCheck` has a stable id,
+a scope (`dashboard | executor | workflow | system | feature`), a severity, a pure or IO runner, the
+runtime dependencies it covers, the capabilities it blocks, its consumer, its scenario ids, a
+timeout, a redaction policy and a remediation template. `PreflightReportSchema` carries the config
+and descriptor fingerprints, the checked-at instant, and a non-empty closed result tuple:
 
 ```ts
 type PreflightResult =
@@ -1011,28 +992,57 @@ type PreflightResult =
       blocks: readonly [RuntimeCapability, ...RuntimeCapability[]]; remediation: string };
 ```
 
-Base checks cover Node/package-lock compatibility, Playwright browser/extension assets, configured
-paths and permissions, disk space, port availability, SQLite/migration/backup health, required
-workflow secrets, production/test URL completeness, current fiscal dates, optional provider-key
-availability, capture ingress dependencies, and stale orphan processes/leases. Rules:
+The report schema enforces its own rules rather than trusting its composer: a check the registry
+marks blocking may not come back as a `warning`, an optional check may not `fail`, and a feature's
+verdict must agree with the count of healthy provider checks behind it. A `fail` must name at least
+one blocked capability, and `buildPreflightReport` throws when an error-severity check resolves
+none — a refusal that blocks nothing is a refusal nobody can act on.
 
-- dashboard boot blocks only on checks required to read authority/serve safely; missing credentials
-  for an unused workflow are visible warnings, not a reason the local dashboard cannot open;
-- enqueue/daemon start runs the descriptor-derived workflow/system/feature subset and rejects before
-  launch if any required capability fails—no Duo/browser is spent on a doomed run;
-- optional AI/capture checks report the exact unavailable feature; they never masquerade as healthy
-  and never block unrelated workflows;
-- `cli doctor [--workflow <id>]`, Settings health, startup logs, and `test-login` consume the same
+Base checks cover Node and package-lock compatibility, Playwright browser and extension assets,
+configured paths and permissions, disk space, port availability, SQLite/migration/backup health,
+required workflow secrets, production and test URL completeness, current fiscal dates, optional
+provider-key availability, capture-ingress dependencies, and stale orphan processes or leases.
+Rules:
+
+- dashboard boot blocks only on checks required to read authority and serve safely; missing
+  credentials for an unused workflow are visible warnings, not a reason the local dashboard cannot
+  open;
+- enqueue and daemon start run the descriptor-derived workflow/system/feature subset and reject
+  before launch if any required capability fails — no Duo or browser work is spent on a doomed run;
+- optional AI and capture checks report the exact unavailable feature; they never masquerade as
+  healthy and never block unrelated workflows;
+- `cli doctor [--workflow <id>]`, Settings health, startup logs and `test-login` consume the SAME
   results. `test-login` adds bounded live authentication checks but cannot mutate HR data;
-- doctor never auto-installs packages, edits `.env`, changes settings, kills processes, restores a
-  DB, or opens a tunnel. It offers exact explicit commands/actions and records only redacted facts.
+- the doctor never auto-installs packages, edits `.env`, changes settings, kills processes, restores
+  a database, or opens a tunnel. It offers exact explicit commands and records only redacted facts.
 
-The registry has forward/reverse coverage: every blocking runtime prerequisite is referenced by at
-least one check, and every check has a consumer and scenario. Fixtures pin missing browser, stale
-fiscal year, bad test URL, low disk, corrupt DB, missing workflow-specific secret, optional provider
-exhaustion, unavailable ngrok, and healthy mode.
+The registry has forward and reverse coverage: every blocking runtime prerequisite is referenced by
+at least one check, and every check has a consumer and a scenario — audited by
+`runtime-dependency-coverage` and `runtime-environment-coverage` (ref guards-and-tests). Fifteen
+scenario manifests pin missing browser, stale fiscal year, bad prod/test URL, low disk, corrupt DB,
+missing workflow-specific secret, provider / OCR / AI exhaustion, unavailable capture ingress, busy
+port, runtime mismatch, invalid config, orphan processes and the healthy mode.
 
----
+**As-built: the registry is complete, and exactly one runner exists.** The
+`authority.health` runner (Phase 1c Stage C, 2026-08-01) consumes the same read-only storage doctor
+used for recovery decisions. It reports healthy only when the authority inspection is healthy AND
+the newest backup is verified and current; missing, corrupt, foreign, newer-schema,
+foreign-key-invalid, invariant-invalid, missing-backup, stale-backup and generation-gap states
+remain distinct strict health causes. Operator-facing summaries are fixed redacted text, while the
+injected `Clock` supplies report timestamps and backup-age calculations (§2). It checks the abort
+signal before and after inspection, and it does not repair storage, read environment or config
+directly, or contact any external system.
+
+Everything downstream of that runner is unbuilt, and the honest reading is that **the registry is a
+contract nothing composes yet**. `buildPreflightReport`, `requiredPreflightChecks` and
+`executePreflightRunner` are exercised only by `tests/unit/preflight-runtime-dependencies.test.ts`;
+the bootstrap's optional `preflight` field is `declared-unserved` under D184, so the Top Bar's
+stethoscope popover never mounts; there is no `cli doctor` verb and no `test-login`. The nearest
+built thing is `cli storage doctor`, which calls `doctorAuthorityStorage` directly and formats its
+own report — correct today, and exactly the drift this section exists to prevent the moment a second
+runner lands. Closing it is `{#cross-cutting}`'s Phase-3 work, and the shape it must take is the one
+above: the doctor SERVICE composes the registry, and `cli storage doctor`, Settings health and
+`test-login` become its projections rather than its siblings.
 
 ## 7. Adversarial self-review
 
