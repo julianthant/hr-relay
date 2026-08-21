@@ -183,26 +183,125 @@ global 80 is planned under `{#test-tiers}` and is not landed.
 <!-- roadmap: p1-authority -->
 
 <!-- roadmap-status: p1-authority -->
+- [x] 1c — the authority/projection table split, the exhaustive frozen registry and the once-per-transaction generation rule (`src/domain/authority.ts`, `src/infra/sqlite/authority-database.ts`)
+- [x] 1c — released migrations are IMMUTABLE: every version's ordered statement bytes pinned by a literal digest, v1 through the current v15 (`src/infra/sqlite/migrations.ts`, `migration-history-immutability`)
+- [x] 1c — permanent `(system, idempotency_key)` fencing, Clock-injected stabilized-negative settlement, and the all-or-none intent + attempt + ledger + terminal-span commit
+- [x] 1c — the nine strict command target families and the actor-stamped idempotent envelope (D95, `ref:dashboard-surfaces` §2.4)
+- [x] 1d — 406 ported selector keys with pinned commit/blob provenance, four branded semantic ids (`src/domain/ids.ts:43-46`), four per-store server-only recipe registries, and the recipe-free generated catalog as the ONE projection (D177 — it throws when stale)
+- [x] 1d — typed drivers: raw `Page`/`Locator` confined to driver and session internals by AST **plus** transitive import graph (`task-driver-boundary`); verification is conjunctive (D98/D99)
+- [x] 1e — the real-scale type proof EXISTS: `tests/types/{task-contracts,flow-graph}.typecheck.ts`, a 21-node graph plus `@ts-expect-error` controls, inside the one `tsc` program
+- [x] 1e — the bundle-safe node vocabulary and the ONE builder; the transform-free canonical-input validator with proven round-trip (D62); delegation fan-out, fingerprinted replay verification and joins; the sealed completion program; descriptor assembly with `contractFingerprint`; `run_checkpoints` (schema v3) and the D8 freshness walk
+- [x] 1e — `person-lookup` registered as the FIRST descriptor with its four contracts, and `tests/scenario/`'s executable per-branch / gate / policy corpus
+- [ ] `StepDisplayRule`, `GateProjectionDefinition` and the `ArtifactSinkId` sink registry are declared in `ref:dashboard-surfaces` §3.2 and implemented nowhere — owner `ref:dashboard-surfaces` §3.2
+- [ ] `semantic-ui-registry` never calls Kuali's own audit functions — three stores of four — owner `ref:operator-trust` §1.7
+- [ ] D71's BUDGET half is unmeasured: nothing runs `tsc --extendedDiagnostics` against the 21-node graph, so the 5 s / 1 GiB acceptance value is unenforced — owner `ref:guards-and-tests` §3.12
+- [ ] D208 rule 1 is an authoring obligation, not a machine check; its trigger is a second exception — owner `ref:operator-trust` §1.6
+> 2026-08-21 | docs-cohesion 01 | verified against src/domain/{authority,ids}.ts, src/infra/sqlite/{authority-database,migrations}.ts, src/domain/workflow/**, src/control/workflow-registry.ts, tests/types/ and the filled `p1-authority` blocks in reference/{dashboard-surfaces §2, operator-trust §1, guards-and-tests §3}; left: the four lines above, each owned in a reference doc
+
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1c, 1d and 1e) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+### 1c — authority storage, recovery, and the command/write type shell (COMPLETE 2026-08-01)
 
-| # | Work item | Owner | Key guards that must be green at this step |
-|---|---|---|---|
-| 1c | **COMPLETE 2026-08-01 — Authority storage + recovery + command/write type shell.** Landed the private native `node:sqlite` authority adapter, exact authority/projection registry and immutable v1→v2 migration chain, savepoint-correct generation accounting, self-describing verified online backup with generation follow-up, strict authority-record validation, read-only doctor/degraded boot, one-time runtime/process-generation-bound stopped-system restore proof, full D95 command families, strict proof/settlement/binding/intent/attempt/dependency/manifest/gate/notification/outbox shells, permanent `(system,idempotency_key)` fencing, Clock-injected stabilized-negative settlement, and all-or-none intent+attempt+ledger+terminal-span commit. Runtime status reports completed-through 1c / active 1d. This is the authority/type shell: workers, browser mutation, command service, sequencer/projectors, HTTP/UI, and live writes remain later items | **Refs dashboard-surfaces/write-safety/clock-config-secrets** | **MET:** exact v1 upgrade fixture, DDL/invariants and raw-`DatabaseSync` boundary; authority/projection enumeration; corrupt/foreign/newer/invariant/record-invalid boot fixtures; verified native backup + bounded follow-up; exact consumable stopped-proof restore and projection rebuild; sequential/competing-connection permanent-key dedupe; caught nested fence/commit rollback; observed-present zero attempt/write-outbox; exact Clock settlement boundaries; failure after every atomic storage step rolls back all rows and generation; no untyped command/proof/gate/notification/outcome arm; active `storage-recovery`, `permanent-key-dedupe`, `recovery-negative-proof-settlement`, and `atomic-write-outbox` guards; full gates and coverage green |
-| 1d | **COMPLETE 2026-08-01 — Semantic UI registry, typed drivers, task + provider contracts and stores/sessions.** Landed the full legacy selector port map with pinned commit/blob provenance, the server-only closed recipe registry, the recipe-free generated `ui-catalog.json` + per-system `UI-CATALOG.md` projection and its `selector:search` consumer, the typed driver boundary, sealed read/prepare/commit contract overloads with subject specs, freshness/provenance, unforgeable `MutationCapability`, the crash-recoverable content-addressed artifact writer, capability-declared provider adapters with narrowed injected clients, and all nine browser stores with matching session providers and OnBase-only exclusivity. D98/D99/D101 (conjunctive fixture+live verification, UI-owned verification scenarios, imported semantic ids) and D96/D97/D100 (one `SessionNeed`, separate artifact/content identity, provider scope stops at the seam) are ratified in their owning docs. The first `stores/common/` leaf (Kronos timecard) is ported with provenance. Login wiring, session lifecycle, mutation-token minting, and worker execution remain 1f | **Refs task-contract/execution-and-sessions/operator-trust** | **MET:** semantic-id uniqueness/dependencies/catalog; catalog omits recipes and captured values; premature commit implementations and capability forgery rejected; raw Page/Locator absent outside driver/session internals through AST plus transitive import-graph checks; remote I/O requires provider declaration and an infra adapter; effect/capability/subject/contract/impl/example/error/store/no-any/artifact/OnBase guards active; every published observation/recipe carries both a fixture and a read-only live evidence ref bound to the same port-map row |
-| 1e | **COMPLETE 2026-08-01 — Complete workflow DAG + result/delegation/completion/scenario descriptor.** The mandated real-scale type-inference proof (21-node representative graph + sixteen `@ts-expect-error` controls; `tsc --extendedDiagnostics` 0.47s / 215 MiB against the 5s / 1 GiB budget); the bundle-safe node vocabulary and the ONE builder; the transform-free canonical-input validator with proven round-trip and fail-loud snapshot re-validation (D62); delegation fan-out planning, fingerprinted replay verification, and joins; graph-level scenario coverage derived from the node tuple; ref dashboard-surfaces §4's sealed completion program with its stage chain proven against a sample; the closed run-surface ingress specs and their exhaustive interpreters; descriptor assembly with derived steps/gates/systems/requires and build-manifest `contractFingerprint`; checkpoint storage (authority schema v3 `run_checkpoints`), checkpoint and canonical-snapshot migrations, and the D8 freshness walk; person-lookup registered as the first descriptor with its four contracts; `tests/scenario/`'s executable per-branch/gate/policy corpus; and all five architecture guards active. D102–D107 ratified in their owning docs | **Refs workflow-model/dashboard-surfaces/operator-trust** | realistic graph type suite **MET**; transform-free canonical-input audit + round-trip **MET**; delegation matrix **MET**; no erased target **MET**; strict terminal/gate result **MET**; ingress→canonical round-trip over stored authority **MET**; transaction pairing **MET**; descriptor projection matrix **MET**; executable per-branch/gate/policy scenarios **MET** (`dry-run` and `subject-mismatch` are executor behaviours, pinned as 1f obligations and re-pointed at a real run there) |
+**What landed.** The private native `node:sqlite` authority adapter; the exact authority/projection
+registry and the immutable migration chain; savepoint-correct generation accounting; a
+self-describing verified online backup with generation follow-up; strict authority-record
+validation; read-only doctor and degraded boot; the one-time runtime/process-generation-bound
+stopped-system restore proof; the full D95 command families; the strict proof / settlement / binding
+/ intent / attempt / dependency / manifest / gate / notification / outbox shells; permanent
+`(system, idempotency_key)` fencing; Clock-injected stabilized-negative settlement; and the
+all-or-none intent + attempt + ledger + terminal-span commit.
 
-**Item 1e begins with a new real-scale type-inference proof.** The deleted spike covered only two
-effects and three linear steps. The replacement must compile a representative 15–25-node graph with
-read/prepare/commit, transaction pairing, output-dependent branch, fork/join, typed child runs,
-external/children gates, heterogeneous completion stages, decorations, errors, and schema changes
-that deliberately fail their consumers. No production builder or skeleton lands until the positive
-and negative controls pass under the real toolchain with no `any`/`unknown` target erasure.
-The D71 disposable 40-node simplified chain is a feasibility floor, not a substitute. The real
-suite records `tsc --extendedDiagnostics` and fails if the representative file exceeds 5 seconds or
-1 GiB on the same baseline machine; a regression outside that budget stops builder work for type-
-shape simplification rather than being normalized as editor lag.
+**This is the authority and TYPE shell, and the row said so.** Workers, browser mutation, the
+command service, the sequencer and projectors, HTTP/UI and live writes were all later items. Saying
+which half landed is what let 2j find the gap below.
+
+**The one thing 1c got wrong, and how it surfaced (D181, 2026-08-09).** The offline restore service
+has demanded a one-time `StoppedSystemProof` since this item, and `RecoveryStopProofStore` refuses
+to issue one without a recorded `RecoveryRuntimeLockSnapshot` — but **nothing in production ever
+recorded a snapshot**: `recordRuntimeState` had no caller and `.tracker-rebuild/locks` was never
+created. So `cli storage restore` was complete, tested and unreachable from its first day, and every
+gate stayed green because a precondition nothing produces makes a path unreachable without failing
+anything. FIXED in 2j: one lock file per role, written by the dashboard and worker compositions
+before the database opens and released after its handle closes, with the snapshot COMPOSED at
+observation time from both files. It is recorded here because the defect is a 1c contract's, not
+2j's.
+
+**Guards standing at this step:** the exact v1 upgrade fixture, DDL invariants and the raw
+`DatabaseSync` boundary; authority/projection enumeration; corrupt / foreign / newer /
+invariant / record-invalid boot fixtures; verified native backup with bounded follow-up; exact
+consumable stopped-proof restore and projection rebuild; sequential and competing-connection
+permanent-key dedupe; caught nested fence/commit rollback; observed-present zero-attempt
+write-outbox; exact Clock settlement boundaries; failure after every atomic storage step rolling
+back all rows and the generation; no untyped command / proof / gate / notification / outcome arm;
+and the active `storage-recovery`, `permanent-key-dedupe`, `recovery-negative-proof-settlement` and
+`atomic-write-outbox` guards.
+
+### 1d — the semantic UI registry, typed drivers, task and store contracts (COMPLETE 2026-08-01)
+
+**What landed.** The full legacy selector port map with pinned commit and blob provenance; the
+server-only closed recipe registry; the recipe-free generated `ui-catalog.json` and per-system
+`UI-CATALOG.md` projection with its `selector:search` consumer; the typed driver boundary; sealed
+read / prepare / commit contract overloads with subject specs, freshness and provenance; the
+unforgeable `MutationCapability`; the crash-recoverable content-addressed artifact writer;
+capability-declared provider adapters with narrowed injected clients; and all nine browser stores
+with matching session providers and OnBase-only exclusivity. The first `stores/common/` leaf
+(Kronos timecard) was ported with provenance. D98/D99/D101 (conjunctive fixture + live verification,
+UI-owned verification scenarios, imported semantic ids) and D96/D97/D100 (one `SessionNeed`,
+separate artifact and content identity, provider scope stops at the seam) are ratified in their
+owning reference docs.
+
+**Login wiring, session lifecycle, mutation-token minting and worker execution are 1f** — 1d built
+the shapes those consume.
+
+**Guards standing at this step:** semantic-id uniqueness, dependencies and catalog freshness;
+premature `commit` implementations and capability forgery rejected; raw `Page`/`Locator` absent
+outside driver and session internals through AST plus transitive import-graph checks; remote I/O
+requiring a provider declaration and an infra adapter; the effect / capability / subject / contract
+/ impl / example / error / store / no-any / artifact / OnBase guards; and every published
+observation or recipe carrying both a fixture and a read-only live evidence ref bound to the same
+port-map row.
+
+### 1e — the workflow DAG, delegation, completion and the descriptor (COMPLETE 2026-08-01)
+
+**It began with a real-scale type-inference proof, deliberately.** The deleted spike covered two
+effects and three linear steps. The replacement compiles a representative 15–25-node graph with
+read/prepare/commit, transaction pairing, an output-dependent branch, fork/join, typed child runs,
+external and children gates, heterogeneous completion stages, decorations, errors, and schema
+changes that deliberately fail their consumers — plus sixteen `@ts-expect-error` controls. No
+production builder or skeleton landed until the positive and negative controls passed under the real
+toolchain with no `any`/`unknown` target erasure. The measurement recorded at the time was
+`tsc --extendedDiagnostics` **0.47 s / 215 MiB** against a 5 s / 1 GiB budget. **As-built, the proof
+survives and the BUDGET does not:** `tests/types/{task-contracts,flow-graph}.typecheck.ts` is a
+21-node graph inside the one `tsc` program, and nothing re-measures it, so the acceptance value is
+unenforced (`ref:guards-and-tests` §3.12). The D71 disposable 40-node simplified chain was a
+feasibility floor, never a substitute.
+
+**What else landed.** The bundle-safe node vocabulary and the ONE builder; the transform-free
+canonical-input validator with a proven round-trip and fail-loud snapshot re-validation (D62);
+delegation fan-out planning, fingerprinted replay verification and joins; graph-level scenario
+coverage derived from the node tuple; the sealed completion program with its stage chain proven
+against a sample; the closed run-surface ingress specs and their exhaustive interpreters; descriptor
+assembly with derived steps / gates / systems / requires and a build-manifest `contractFingerprint`;
+checkpoint storage (`run_checkpoints`, schema v3), the checkpoint and canonical-snapshot migrations,
+and the D8 freshness walk. `person-lookup` was registered as the first descriptor with its four
+contracts, and `tests/scenario/` got its executable per-branch / gate / policy corpus. D102–D107 are
+ratified in their owning docs.
+
+**Three later decisions amended 1e's checkpoint identity without re-opening the contract, and each
+was found by a real run.** **D144** — a durable row's schema hash describes the BYTES IT HOLDS, so
+when a transaction node could not be a terminal dependency the READER moved rather than the writer.
+**D214** — a run ATTEMPT is not one execution of its graph: a gate park and its resume are two
+executions inside one attempt, so the checkpoint key gained the claim generation, conditionally, and
+every historical row's `record_key` stayed byte-identical. **D221** — every component of an
+ITEM-scoped key must itself be item-scoped, so the attempt counter became the item's next unspent
+attempt. All three strengthened 1e's key; none moved a stored byte.
+
+**Exit evidence for this item, as recorded:** the realistic graph type suite MET; the transform-free
+canonical-input audit and round-trip MET; the delegation matrix MET; no erased target MET; strict
+terminal/gate result MET; the ingress→canonical round-trip over stored authority MET; transaction
+pairing MET; the descriptor projection matrix MET; and the executable per-branch / gate / policy
+scenarios MET — with `dry-run` and `subject-mismatch` correctly booked as executor behaviours,
+pinned as 1f obligations and re-pointed at a real run there.
 
 ## 1f — registry, workers, commands, the write sequencer
 <!-- roadmap: p1-kernel -->
