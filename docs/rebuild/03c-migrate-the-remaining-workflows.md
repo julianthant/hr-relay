@@ -1,7 +1,12 @@
 # 03c · Phase 3c — migrate the remaining workflows
 
-This doc is the dedicated home of **Phase 3c**, tree node `{#migrations}` — the remaining twelve
-workflow migrations after separations. Phase 3 is three docs: **3a** finishes the dashboard
+This doc is the dedicated home of **Phase 3c**, tree node `{#migrations}` — the **thirteen**
+workflow migrations remaining after separations, spread over **nine order rows** (0–9, minus 8,
+which is doc 03b's). The count is recounted here rather than inherited: `config/legacy-capabilities.json`
+holds 15 `legacy-workflow-*` entries, and removing separations (order 8) and person-lookup (order 0,
+migrated — though its directory stays open until order 1) leaves 13 workflow directories this phase
+has to close. Order 1 also puts two MODES on the already-migrated person-lookup, which is a change to
+an existing workflow rather than a fourteenth. Phase 3 is three docs: **3a** finishes the dashboard
 (`03a`), **3b** finishes separations (`03b`), **3c** is this one. It holds those tasks, what is done
 and what is left, and its exit criteria; contracts it built live in `reference/`. It also hosts
 **§Testing tiers** — the shape every migration below adds its tests to — because the tiers are a
