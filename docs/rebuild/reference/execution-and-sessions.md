@@ -620,6 +620,7 @@ exercise with its own evidence, not something this criterion has already claimed
 ---
 
 ## 6. Failure isolation
+<!-- roadmap: p1-kernel -->
 
 ### 6.1 Page/subject-isolation invariant
 
@@ -629,18 +630,22 @@ exercise with its own evidence, not something this criterion has already claimed
 > an exact normalized match. Mismatch or unknown prevents commit and closes the session.
 
 One worker never shares its page with another worker. One workflow never borrows another workflow's
-authenticated context.
+authenticated context. The write half is executed by `subject-before-fence`, whose load-bearing case
+is two alternating EIDs through ONE pooled page, each binding to its own fenced digest — a single
+subject could not falsify it.
 
 ### 6.2 Failure matrix
 
 | Failure | Blast radius | Mechanism |
 |---|---|---|
-| Task throws | Its run/worker | Release clean or poisoned; apply retry policy; worker claims next eligible row |
-| Cancel during Playwright | Its page/session | Abort-racing proxy + poison-close |
-| One system session wedges | That worker's system session | health ladder → close/re-auth or structured failure |
-| Worker crashes | Its one active run | claim-generation recovery; transaction recovery before replay |
-| Retry storm | No head-of-line block | `not_before`; idle workers claim other eligible rows |
+| Task throws | Its run/worker | The lease's callback threw, so the resource poison-closes; apply retry policy; the worker claims the next eligible row |
+| Cancel during Playwright | Its page/session | The operation is raced against the run signal, then poison-closed |
+| One system session wedges | That worker's system session | Poison-close on the failing lease, and the NEXT lease for that system refuses by name until a replacement can be opened. **There is no health ladder and nothing probes a live session** — §4's D248 as-built is the same fact from the surface's side, which is why a tile reads `Not checked` |
+| Poison-close cannot be proven | That worker's system session, until a human looks | The resource is RETAINED poisoned and one `AggregateError` names both failures (§7.1 row C7) |
+| Worker crashes | Its one active run | Claim-generation recovery, plus D200's startup self-sweep for the row the dead process left under its own id; ref write-safety recovery runs before any replay |
+| Retry storm | No head-of-line block | `not_before` and `claimNext`'s `deferred` outcome; idle workers claim other eligible rows |
 | Authority DB degraded | All mutation stops | ref dashboard-surfaces storage-health gate; dashboard remains diagnostic |
+| A Duo ceremony is refused | **That PROFILE, across every later login on it** — not one run | The only remediation found is deleting the profile directory (§4.2). This row is the one whose blast radius outlives its run, and the reason §10 prevents rather than recovers |
 
 ---
 
