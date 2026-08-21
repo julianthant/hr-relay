@@ -15,6 +15,7 @@ import {
   IntakeTargetFieldIdSchema,
   IsoInstantSchema,
   NotificationIdSchema,
+  NonNegativeIntSchema,
   PositiveIntSchema,
   RunIdSchema,
   SourceColumnIdSchema,
@@ -127,6 +128,20 @@ const IntakeVersionTargetSchema = z.strictObject({
   expectedVersion: PositiveIntSchema,
 });
 
+/**
+ * D269 (ref execution-and-sessions §11.5): the worker POOL target. `expectedVersion`
+ * is the pool row's version — `worker_pools.version` — and **0 when the
+ * workflow has no row yet**: nothing seeds a pool, so 0 is the honest basis
+ * for the first plan rather than a placeholder, and the kernel answers a stale
+ * basis with `conflict` naming the current one (0 included). It is NOT a
+ * worker lease's version (`WorkerVersionTargetSchema`, one worker's row) and
+ * never `WorkerCardWire.revision` (a patch cursor).
+ */
+const WorkerPoolVersionTargetSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  expectedVersion: NonNegativeIntSchema,
+});
+
 const WorkerVersionTargetSchema = z.strictObject({
   workerId: WorkerIdSchema,
   expectedVersion: PositiveIntSchema,
@@ -178,8 +193,8 @@ export const IntakeCommandRequestSchema = z.discriminatedUnion("type", [
 ]);
 
 export const WorkerBrowserCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: z.strictObject({ workflowId: WorkflowIdSchema, expectedVersion: PositiveIntSchema }), payload: z.strictObject({ desiredWorkers: PositiveIntSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: z.strictObject({ workflowId: WorkflowIdSchema, expectedVersion: PositiveIntSchema }), payload: z.strictObject({ workerId: WorkerIdSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("plan-worker-count"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ desiredWorkers: PositiveIntSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.literal("spawn-worker"), target: WorkerPoolVersionTargetSchema, payload: z.strictObject({ workerId: WorkerIdSchema }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["stop-worker", "pause-worker", "resume-worker"]), target: WorkerVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("worker-browser"), type: z.enum(["refresh-browser", "reopen-browser"]), target: z.strictObject({ workerId: WorkerIdSchema, browserSessionId: BrowserSessionIdSchema, expectedVersion: PositiveIntSchema }) }),
 ]);
@@ -304,6 +319,8 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   }),
   z.strictObject({ family: z.literal("intake"), intakeSessionId: IntakeSessionIdSchema }),
   z.strictObject({ family: z.literal("worker-browser"), workerId: WorkerIdSchema }),
+  /** D269: the per-workflow pool row `plan-worker-count` advanced. */
+  z.strictObject({ family: z.literal("worker-pool"), workflowId: WorkflowIdSchema }),
   z.strictObject({ family: z.literal("settings"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("version-archive"), versionPlanId: VersionPlanIdSchema }),
   z.strictObject({ family: z.literal("run"), runId: RunIdSchema }),
@@ -329,7 +346,13 @@ export const CommandRejectionCodeSchema = z.enum([
 
 export const CommandResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.enum(["applied", "already-applied"]), commandId: CommandIdSchema, affectedTargets: z.array(CommandTargetReferenceSchema).min(1) }),
-  z.strictObject({ state: z.literal("conflict"), commandId: CommandIdSchema, currentVersion: PositiveIntSchema, message: z.string().min(1) }),
+  /**
+   * `currentVersion` is non-negative rather than positive since D269: the worker
+   * POOL is the one versioned target whose "no row yet" state is a legitimate
+   * CAS basis (0), so a conflict against an unplanned pool must be able to say
+   * so. Every other target is created at version 1 and never reports 0.
+   */
+  z.strictObject({ state: z.literal("conflict"), commandId: CommandIdSchema, currentVersion: NonNegativeIntSchema, message: z.string().min(1) }),
   z.strictObject({ state: z.literal("rejected"), commandId: CommandIdSchema, code: CommandRejectionCodeSchema, message: z.string().min(1) }),
 ]);
 
@@ -338,7 +361,8 @@ export const CommandAuditRecordSchema = z.strictObject({
   request: CommandRequestSchema,
   result: CommandResultSchema,
   completedAt: IsoInstantSchema,
-  versionChanges: z.array(z.strictObject({ target: CommandTargetReferenceSchema, before: PositiveIntSchema, after: PositiveIntSchema })),
+  /** `before` admits 0 for the same D269 reason `conflict.currentVersion` does: the first pool plan moves 0 → 1. */
+  versionChanges: z.array(z.strictObject({ target: CommandTargetReferenceSchema, before: NonNegativeIntSchema, after: PositiveIntSchema })),
   affectedDependencyIds: z.array(DependencyIdSchema),
 });
 
