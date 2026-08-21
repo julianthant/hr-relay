@@ -651,20 +651,32 @@ subject could not falsify it.
 
 ## 7. Mechanical guards
 
-| Risk | Required guard |
+Every row names the risk and the mechanism that executes it TODAY, with its status. Six guards in
+`docs/rebuild/guard-inventory.json` name this doc as their owner — `authentication-proof-not-url`,
+`bounded-task-deadline`, `driver-lease-boundary`, `multi-worker-overlap`, `single-flight-login`,
+`worker-teardown-soak` — plus `fresh-session-boundary`, co-owned with ref clock-config-secrets, and
+the retired `sleep-budget`. ref guards-and-tests owns the guard umbrella itself; this table is the
+risk register those guards answer.
+
+| Risk | Mechanism, and its status |
 |---|---|
-| A worker starts two items concurrently | worker-soak test asserts max active claims per worker is exactly 1 |
-| UI/config reintroduces capacity fields | unit guard rejects worker/session fixtures containing `lanes` or `budgets`; dashboard verification asserts capacity copy is absent |
-| Parallelism silently serializes | spawn test starts N workers and proves N distinct worker ids/browser owners |
-| Fresh-session request is ignored | descriptor scenario asserts close proof precedes new-session start and node execution |
-| Session boundary is inferred | descriptor projection test proves only authored `session:"fresh"` produces a boundary |
-| Config/instance drift crosses runs | session-manager test proves reuse requires exact `(worker,system,resolvedInstance,configFingerprint)` identity and closes before replacement |
-| Expired claim bypasses unfinished write recovery | claim-sweep crash fixture proves an `attempting` intent reaches recovery before any queued/claimable transition |
-| Provider exhaustion bypasses admission | deterministic budget fixtures prove zero adapter calls and no sleeping worker when capability admission is unavailable |
-| Dirty page crosses people | alternating-subject scenario proves reset-or-close + subject observation before write fence |
-| Raw page APIs bypass ownership | imports/newPage are restricted to driver/session internals |
-| Fixed sleeps return | wait-for-timeout ratchet + span sleep budget |
-| OnBase overlap | identity-lease test proves close-before-release and dead-owner takeover |
+| A worker starts two items concurrently | **Executed.** `worker-teardown-soak` (D182) drains 30 runs across 3 real loops and `multi-worker-overlap` row C1 samples the durable claim set at every span event and driver call. The bar was raised deliberately: this row named "a worker-soak test" that did not exist until D182 wrote it |
+| Parallelism silently serializes | **Executed.** `multi-worker-overlap` asserts the observed MAXIMUM of workers holding work simultaneously EQUALS the worker count — the opposite assertion to the row above, made by the same sampler so the pair cannot be satisfied by serializing everything onto one worker |
+| Fresh-session request is ignored | **Executed, one arm outstanding.** `fresh-session-boundary` proves an accepted close proof precedes the replacement's open. Its descriptor-level node-execution-ordering arm lands with the first workflow that authors a `session:"fresh"` node — none does yet |
+| Session boundary is inferred | **Executed.** `fresh-session-boundary`: the `fresh-boundary` close reason exists only in the session-ownership modules, every authored `session:` need is a string LITERAL rather than a computed value, and repeated `reuse-worker` needs mint no boundary |
+| Config/instance drift crosses runs | **Executed.** `fresh-session-boundary`'s D116 arm plus `worker-sessions.test.ts`: reuse requires the exact `(worker, system, resolvedInstance, configFingerprint)` identity and closes before replacement |
+| A login concludes from a URL | **Executed.** `authentication-proof-not-url` (D120, §4.1): every recipe built by `defineVerifiedLoginRecipe`, no `LoginResult` produced outside it, every landed binding supplying a verifier, and the neutral reset asserting through the same check |
+| Two concurrent leases double-login one system | **Executed.** `single-flight-login`: two concurrent leases for one system produce exactly one open and one authentication |
+| A task occupies a worker indefinitely | **Executed.** `bounded-task-deadline`: `taskDeadlineMs` required with no default, both invocation arms racing the controller, and a signal-ignoring task still landing terminal `failed` with its session poison-closed |
+| Expired claim bypasses unfinished write recovery | **Executed.** `claim-sweep-recovery.test.ts` proves all four D118 arms reach ref write-safety recovery before any queued/claimable transition |
+| Provider exhaustion bypasses admission | **Executed.** `provider-admission.test.ts` / `provider-pool.test.ts` / `advisory-provider-exhaustion.test.ts`: zero adapter calls and no sleeping worker when admission is unavailable |
+| Dirty page crosses people | **Executed.** `subject-before-fence` (owned by ref write-safety), whose load-bearing case is two ALTERNATING EIDs through one pooled page |
+| Raw page APIs bypass ownership | **Executed.** `task-driver-boundary` confines Playwright types and page operations to the two raw-browser owner families; `driver-lease-boundary` proves a driver exists only inside `withDriver`'s callback and that only the worker loop constructs an ownership scope |
+| Fixed sleeps return | **Executed, half retired.** The `wait-for-timeout-allowlist` ratchet arm forbids `waitForTimeout` outright over `src/stores`. The "span sleep budget" half retired with the `sleep-budget` guard (D188) — the quantity is identically zero (§5 item 4) |
+| A Duo ceremony presents a stale counter | **Executed.** `tests/unit/duo-sign-count.test.ts`, in THIS repo's gate rather than the extension's offline lane (D244), with a two-profile simulation as the load-bearing case |
+| UI/config reintroduces capacity fields | **NOT GUARDED.** No test rejects a `lanes` or `budgets` field, and nothing asserts capacity copy is absent from the dashboard. The absence is real rather than enforced: `grep` finds no `lanes` in `src/` outside test-lane vocabulary, and `capacityChip` in `src/dashboard/surfaces/shell-model.ts` is a style helper, not a capacity number. Recorded here rather than quietly dropped |
+| Two Duo ceremonies race one credential | **NOT GUARDED, and reachable today.** §4.2's arithmetic removes the counter gap; nothing serializes the ceremonies. §10 is the design |
+| OnBase overlap | **NOT BUILT.** `onbaseSession` declares `exclusive:true` and nothing else exists — no driver, no login recipe, no identity lease, no test. D15 stands unbuilt |
 
 ### 7.1 The 2j concurrency matrix — executed (D182)
 
