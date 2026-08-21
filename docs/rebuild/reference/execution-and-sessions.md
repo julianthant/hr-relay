@@ -568,35 +568,54 @@ would report D125's message instead of naming the holder.
 ---
 
 ## 5. Speed engineering
+<!-- roadmap: phase-1 -->
+
+<!-- roadmap-status: phase-1 -->
+- [x] the fixed-sleep tax is removed, not reduced: zero `sleepMs` on every task span of the exit run, and no `sleepMs` field exists in `src/` at all
+- [x] `waitForTimeout` is forbidden outright by the `wait-for-timeout-allowlist` ratchet arm over `src/stores`, executed against a violating fixture by `guard-manifest.test.ts`
+- [x] every task invocation runs under an immutable scheduler-armed abortable deadline (`bounded-task-deadline`), and a task that ignores its signal still lands terminal `failed` with its session poison-closed
+- [x] item 5's per-invocation bound is what `bounded-task-deadline`'s invariant cites as "§5.5" — this section has no §5.5; the numbered item is the reference
+- [-] item 4's span sleep budget: RETIRED with the `sleep-budget` guard (D188, 2026-08-09) — there is no authored sleep left for a budget to measure
+- [ ] the arm's roots are `src/stores`; `src/infra/browser/**` is outside its reach and contains no `waitForTimeout` today
+> 2026-08-21 | docs-cohesion execution-and-sessions | verified against tests/unit/architecture/helpers/ratchet-arms.ts:53, guard-inventory.json (sleep-budget retired) and a tree-wide grep for sleepMs, which finds none in src/
+<!-- /roadmap-status -->
 
 Removing lanes does not preserve the fixed-sleep tax:
 
 1. Replace `waitForTimeout` calls with waits on actual readiness predicates plus a bounded quiet
    window where PeopleSoft fragment refreshes require it.
 2. Live-verify each replacement and record the selector/state proof.
-3. Extend the wait-for-timeout ratchet to rebuild code with a zero allowlist for new files and a
-   shrink-only allowance for ported files.
-4. Record cumulative fixed-sleep time and real wait time on task spans.
+3. Ban `waitForTimeout` outright rather than shrinking an allowlist. **As built this is stronger
+   than the item asked for**: the `wait-for-timeout-allowlist` ratchet arm carries no allowlist at
+   all — a single call anywhere under `src/stores` fails the gate, and the arm is executed against
+   a checked-in violating fixture so a walker that resolved nothing could not report the tree clean.
+4. ~~Record cumulative fixed-sleep time and real wait time on task spans.~~ **RETIRED (D188,
+   2026-08-09) with the `sleep-budget` guard, because the quantity is identically zero.** There is
+   no `sleepMs` field in `src/` and no authored sleep for a budget to measure; the invariant lives
+   in items 3 and 5 instead — nothing may sleep, and every wait is a scheduler-armed deadline. A
+   budget measuring a quantity that cannot be non-zero is a check that cannot fail.
 5. Keep tasks and transactions under immutable, abortable deadlines. A service that ignores abort
-   cannot occupy a worker indefinitely.
+   cannot occupy a worker indefinitely. This is `bounded-task-deadline`: `taskDeadlineMs` is a
+   REQUIRED dependency with no default, both invocation arms race the deadline controller, and a
+   task that ignores its signal still lands terminal `failed` with the wedged session poison-closed.
 
 For batch speed, start more workers. A warm worker amortizes login across sequential items unless a
-workflow-authored fresh boundary or failed reset requires replacement.
+workflow-authored fresh boundary or failed reset requires replacement. (Today "start more workers"
+means starting more CLI processes — §11.)
 
 **As-built after the Phase-1 live exit run (2026-08-04) — the budget is met at zero, and wall clock
 is not the budget.** This section's quantity is **fixed sleep time**, and nothing else. On the exit
-run (`4ebf7275-0158-49af-a78f-1f37948efb27`, master plan §Phase 1) `sleepMs` was **absent from every
-task span**: the executor emitted no fixed sleeps whatsoever, so item 4's "cumulative fixed-sleep
-time" is zero and legacy's ~24s of `waitForTimeout` on the UCPath person-org read path is removed
-rather than reduced.
+run (`4ebf7275-0158-49af-a78f-1f37948efb27`) `sleepMs` was **absent from every task span**: the
+executor emitted no fixed sleeps whatsoever, so item 4's "cumulative fixed-sleep time" is zero and
+legacy's ~24 s of `waitForTimeout` on the UCPath person-org read path is removed rather than reduced.
 
-The same run's **total wall clock** for that read was **22.5s**, dominated by UCPath's own page
+The same run's **total wall clock** for that read was **22.5 s**, dominated by UCPath's own page
 loads. That figure is an observation and is deliberately **not** a threshold here: it is a total,
-the ~24s it is often set beside was legacy's sleep alone, and **22.5s is not materially below 24s**.
-Reporting it as a speed win would be comparing two different measurements, which is exactly the kind
-of plausible-but-unearned claim this program bans elsewhere. Whatever wall clock remains after the
-sleep tax is gone is real work at the far end of the network; reducing it is a separate exercise
-with its own evidence, not something this criterion has already claimed.
+the ~24 s it is often set beside was legacy's sleep alone, and **22.5 s is not materially below
+24 s**. Reporting it as a speed win would be comparing two different measurements, which is exactly
+the kind of plausible-but-unearned claim this program bans elsewhere. Whatever wall clock remains
+after the sleep tax is gone is real work at the far end of the network; reducing it is a separate
+exercise with its own evidence, not something this criterion has already claimed.
 
 ---
 
