@@ -1828,7 +1828,7 @@ fact, not a registry one); no lane dividers exist because no lane fact exists on
 the demo's `Version registry` header action is absent from the Explorer's toolbar — corrected
 2026-08-21: the surface itself is not missing, only the Explorer's DOOR to it. `archive.tsx`
 renders `<Table label="Workflow version registry">` inside the Archive's `Versions & bumps` view
-(`:2342`, D179/D223), reachable today by opening the Archive (`?archive=`) and clicking its
+(`:2350`, D179/D223), reachable today by opening the Archive (`?archive=`) and clicking its
 `Versions & bumps` tab — the view is client-side state, not its own URL param. The Explorer simply
 carries no button or link that opens it (ledger 3 EX5). The conditional-node line printed "runs when the descriptor's own when() predicate
 holds" — honest, and less than the demo's authored sentence — and the recorded fix named an authored

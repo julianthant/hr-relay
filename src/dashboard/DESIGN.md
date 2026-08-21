@@ -23,8 +23,9 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
     not in a file of their own. Precisely: legacy's arm ran four checks (reduced-motion coverage,
     the z-index scale, image loading discipline, palette/hex); this port dropped three and shipped
     only palette/hex, and this document went on asserting "guard enforced" for the reduced-motion
-    and z-index claims below (`:233`, `:570-572`) regardless (a document claiming a guard that does
-    not run is worse than no claim — `ratchet-arms.ts:441-457`). Commit `5cc035b9` (2026-08-12)
+    claim in "Motion rules → Mechanics" (~:590-592) and the z-index claim in "Size, radius,
+    elevation, focus, motion" (~:253) regardless (a document claiming a guard that does
+    not run is worse than no claim — `ratchet-arms.ts`'s `frontend-tailwind-compliance` arm). Commit `5cc035b9` (2026-08-12)
     brought the other three back: today ALL FOUR run — `motion-reduce:animate-none` pairing on the
     four `animate-*` utilities (narrower than legacy's full "reduced-motion coverage over
     animation": it checks the same-line Tailwind modifier, not every transition), `@keyframes`/raw
@@ -32,9 +33,10 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
     one anti-pattern, it does not verify `dsLayer`'s ORDER is used correctly), and image alt/loading
     discipline. So "guard enforced" below is currently TRUE, narrowly — read the arm's own comment
     for the exact scope before trusting either claim at face value again.
-  - the specimen page this document repeatedly points to (`DemoUiKit.tsx` at `:112`; the file-map
-    table's `DemoUiKit.tsx`/`kit.html`/`kit-entry.tsx` rows and the "Seeing the specimen page"
-    section at `:690-697`, including the port-3943 command) **does not exist in this tree.** No
+  - the specimen page this document repeatedly points to (`DemoUiKit.tsx` in "How to build a
+    surface" ~:132; the file-map table's `DemoUiKit.tsx`/`kit.html`/`kit-entry.tsx` rows in "Files"
+    and the "Seeing the specimen page" section, including the port-3943 command) **does not exist
+    in this tree.** No
     file under `src/dashboard/ds/` or anywhere else in this repository is a specimen page, and
     `npx vite --config vite.dashboard.config.ts --port 3943` serves nothing at the path named
     below. The deferral is real and undecided: `03a-finish-the-dashboard.md` OPEN question 3

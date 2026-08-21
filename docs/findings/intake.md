@@ -20,7 +20,7 @@ question 9
 nowhere are `Manifest` (the plan id, source sha, artifact id, the three fingerprints and the
 per-source-row disposition table) and `Rerun diff` (the added/removed item lists, the per-axis
 `was… → now…` digest already partially built at `intake.tsx:857-888` under D171). The enqueued
-banner today shows one bare `manifest <uuid>` (`intake.tsx:1221`) in place of the whole stage.
+banner today shows one bare `manifest <uuid>` (`intake.tsx:1243`) in place of the whole stage.
 
 **Demo elements.** `DemoIntake.tsx:96-97` (the two stage tabs), `:946-1091` (the Manifest body),
 `:1031-1091` (the rerun empty-state and diff body).
@@ -74,7 +74,7 @@ first would ship a page that cannot fill itself in.
 · **Owning doc:** `docs/rebuild/reference/data-intake-and-edit-data.md` §5.2
 
 **Symptom.** The demo's primary control reads `Start N runs` (`Play` icon, disabled once already
-applied); the rebuild's reads `Run N rows` (no icon) (`DemoIntake.tsx:391` vs `intake.tsx:996`).
+applied); the rebuild's reads `Run N rows` (no icon) (`DemoIntake.tsx:391` vs `intake.tsx:1006`).
 Ledger row IN138. This is a wording/iconography choice, not a wire gap — both surfaces already have
 every fact the button needs.
 

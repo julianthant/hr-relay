@@ -482,7 +482,7 @@ is what any workflow without a projection still gets.
 - [ ] saved-mapping reuse has no store, so a recurring weekly export is re-mapped on every upload — §2.3's as-built note; this square is where that writer belongs
 - [ ] the per-row `execution-option` constants entry and the unbind arm live in the DRAWN workspace, which this doc does not own — ref dashboard-surfaces §9.7.1 (2i-E3, D173)
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/commands.ts:172-177,432`, `src/domain/intake/mapping.ts`, `src/workflows/person-lookup/module.ts:43` and `src/infra/sqlite/migrations.ts:904`; left: the second projection and the mapping store
-> 2026-08-21 | track-f | ref dashboard-surfaces §9.7.1's D173 text claimed "the grid renders `constants` read-only (today always empty)" — corrected: nothing renders `session.constants` at all; `intake.tsx:934` reads only `session.constants.length` inside the `nothingBound` blocker computation (ledger 3 IN155)
+> 2026-08-21 | track-f | ref dashboard-surfaces §9.7.1's D173 text claimed "the grid renders `constants` read-only (today always empty)" — corrected: nothing renders `session.constants` at all; `intake.tsx:938` reads only `session.constants.length` inside the `nothingBound` blocker computation (ledger 3 IN155)
 <!-- /roadmap-status -->
 
 `person-lookup` is the first workflow to declare an intake projection, so this is the commit where

@@ -57,13 +57,13 @@ declared-condition shape D228 gave the node.
 ## No minor/presentation version exists anywhere in the tree
 
 **Recorded:** 2026-08-21 · **Status:** OPEN — no producer, cross-cutting (re-verified 2026-08-21:
-`grep -rn minorVersion src/domain` → 0 hits) · **Owning doc:** ref workflow-model, ref dashboard-surfaces §10.2
+`grep -rn minorVersion src/domain` → 0 hits) · **Owning doc:** ref workflow-model, ref dashboard-surfaces §9.5.1
 
 **Symptom.** Every descriptor version in this tree is a bare major integer, so every place the demo
 would print a two-part tag (`v7.2`) prints `v1`-shaped output instead. This is not an Explorer-only
 gap — it is why the Explorer's own `Version registry` table (rendered in `archive.tsx`, reachable
 once F4 wires the action, ref operator-trust §5.7) and the Archive's version chips both read one
-number short. Named here because ledger 3's roll-up (item 19) raised it while auditing the
+number short. Named here because ledger 3 §3's summary paragraph raised it while auditing the
 Explorer, and because the Explorer is the surface whose whole job is describing a workflow's exact
 shape.
 

@@ -3758,7 +3758,7 @@ last in it by design — a reference view is what the operator looks UP, so it y
 navigated to and to the work they have in progress.
 
 **Corrected 2026-08-21 — no such buttons exist.** This section used to say entry was two `ghost`
-buttons in the panel's action bar beside `Import spreadsheet`. `top-bar.tsx:1128-1130` records why:
+buttons in the panel's action bar beside `Import spreadsheet`. `top-bar.tsx:1121-1125` records why:
 the demo's keyboard-legend glyph was deliberately removed (*"we already have help in settings"*),
 and no catalog/explorer entry point replaced it — `Import spreadsheet` itself sits alone in
 `dashboard-app.tsx`'s toolbar with no `ghost` sibling. Both takeovers are reachable ONLY by typing
