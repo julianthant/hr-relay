@@ -248,7 +248,38 @@ Embed in **every** workflow's migration plan doc; answer with the operator BEFOR
 
 ## Non-workflow capability closure inventory (D58)
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.6 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**The register, recounted at HEAD (2026-08-20).** `config/legacy-capabilities.json` holds **78**
+entries: **47 open · 20 replaced · 7 native · 4 retired** (`status` projects the same split as
+`open 47 / implemented 27 / retired 4`, since `native` and `replaced` both project to
+`implemented`). **Every one of the 47 open entries names milestone `phase-3-workflow-migration`** —
+there is no open entry owned by a phase that has already shipped, which is what D184's sweep fixed
+and what the guard now refuses to let rot again. Cutover requires zero open
+(`cutoverRequiresZeroOpen: true` in the file's own header), so this table IS the phase's finish line.
+
+| Kind | Open | What closes them |
+|---|---|---|
+| `service` | 16 | 15 are `legacy-workflow-*` — one per order row below, closing at that row's migration — plus `legacy-service-llm` |
+| `route` | 14 | the byte/search/screenshot/settings/static families; several close together because they share the artifact-bytes route |
+| `dashboard` | 7 | OCR review (order 3), oath-upload (order 7), settings, navigation, capture, log panel, workflow modifier |
+| `export` | 3 | the Excel writers — order 5's retention workbook is the first |
+| `maintenance` | 3 | `clean`, `compact`, `setup` — CLI work with behavioural fixtures required before cutover |
+| `codegen` | 2 | schema export, the workflow-design data bank |
+| `cli` | 1 | `legacy-cli-main` — the rebuild CLI covers help/phase/dashboard/worker/explain/ocr/storage today |
+| `dev-tool` | 1 | `legacy-tool-debug-kronos`, a NAMED supported diagnostic in legacy |
+
+**The 15 workflow entries are the order rows.** They close one at a time as each order is migrated,
+and one of them shows why an honest `open` matters: `legacy-workflow-person-lookup` is still open
+even though order 0 shipped and ran live, because legacy's `crm-search.ts` / `match.ts` /
+`outcome.ts` have no rebuild counterpart — those are order 1's Search + Match modes. A migrated
+workflow does not automatically close its legacy directory; the DIRECTORY closes when nothing in it
+is unanswered.
+
+**Three of the open route entries are cutover blockers, not conveniences.** `legacy-route-static`
+is the sharpest: the production BFF serves no frontend bytes, so a cutover that flips the operator
+onto this runtime would hand them a runtime with no operator surface at all — and it strands the
+phone capture page, which `api.ts` allow-lists and nothing serves. `legacy-route-files` (no
+artifact-bytes endpoint) and `legacy-route-settings` (the write path exists in the command union and
+no surface issues it) are the other two. Orders 2 and 3 and the §Cross-cutting section below own them.
 
 Workflow directories are only part of the old program. The rebuild repo's
 `config/legacy-capabilities.json` is created in 1a from a legacy source inventory and maintained
