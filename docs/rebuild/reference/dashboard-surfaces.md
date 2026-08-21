@@ -509,7 +509,7 @@ flowchart LR
 Three things to read off it: a write reaches **authority in one atomic transaction** before any
 JSONL exists (so a crash between them is repairable, never a lost filing); the **ledger has exactly
 one ordered writer**, with actor-attributed entries reconciled from atomic outboxes; and **every
-count in the UI descends from one node** (D81, §10.1) — there is
+count in the UI descends from one node** (D81, §9.5.2) — there is
 no second path a badge could take.
 
 ### 2.1 On disk — JSONL-per-day stays, two streams
@@ -1269,7 +1269,7 @@ evidence/failure/run — never raw secrets or captured form contents.
 
 **The trigger union, and which arms anything actually publishes.** `NotificationTriggerEventSchema`
 (`src/domain/notification-triggers.ts`) has seven arms; `projectNotificationTrigger` maps each onto
-its D79b channel, severity and title, and that routing is implemented exactly as §10.4 describes it.
+its D79b channel, severity and title, and that routing is implemented exactly as §9.6 states it.
 Only two arms have a production publisher — `grep -rn '\.publish(' src/` returns exactly two callers:
 
 | trigger arm | routes to | publisher |
