@@ -34,6 +34,7 @@ import {
   PositiveIntSchema,
   WorkerIdSchema,
   WriteIntentIdSchema,
+  RunSessionIdSchema,
 } from "../ids.js";
 import { AppVersionSchema } from "../dashboard/primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
@@ -282,6 +283,20 @@ export const RunRecordSchema = z.strictObject({
    * the identity every log and receipt already prints.
    */
   runNumber: PositiveIntSchema.optional(),
+  /**
+   * D269 (ref execution-and-sessions §11): the dashboard-started GROUP this run
+   * belongs to. Stamped at the one fan-out transaction that enqueues the group
+   * and never rewritten; a retry inherits the retried run's (it is the same
+   * item's next attempt, D221). Membership of a session is DERIVED from this
+   * field — `run_sessions` holds no member list — so a session can never
+   * claim a run the run table does not show.
+   *
+   * **Optional because it is read forward, never back-filled (D133).** Every
+   * run enqueued before schema v17 carries none; stamping one now would invent
+   * a group nobody started. An absent value reads as "no session" with its
+   * reason on the wire, never as membership of some default group.
+   */
+  sessionId: RunSessionIdSchema.optional(),
   /** Optimistic-concurrency token every command target carries. */
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,
