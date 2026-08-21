@@ -483,14 +483,14 @@ never corrected — so the first finding of this region is that its own deferral
 | D22 | `action.detail` | `:177` | absent | missing | `unserved:` no detail on the action entry |
 | D23 | `Per-person confirmations (N)` — the four-column `Table` (Person / EID / Confirmation / Read back) with the `verified` / `none to read` / `unverified` arms, and the D17 note beneath it | `:282-330` | absent | missing | `unserved:` no `members` on the receipt, and no `operation`-shaped workflow exists — the same producer B111 and the member-roster ledger row wait on |
 | D24 | `Completion criteria` — per criterion a `Check`/`X`/`CircleAlert`, `{criterion} — {result}`, `{method} → {observed} · {clock}`, and the note | `:332-368` | `Verification` — one `FactRow`: `{obligation}` · `{verdict}` · `required` `trust.tsx:239-253` | divergent | `unserved:` `VerificationEvidenceSchema` carries `{id, obligation, mandatory, verdict, evidence[]}` — no method, observed, instant or note. The ICON, however, is a pure port over the served verdict and is simply absent — **OPEN** |
-| D25 | `What was read` — the observations `Table` (Field / Value / System / Observed) plus the per-read action rows | `:370-411` | `Observations` — a `FactsSection` of `FactRow`s printing `{field}` · `{value}` · `{source.kind}` `trust.tsx:211` | divergent | **OPEN — operator call, and this one is SERVED-AND-DROPPED.** `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry `taskId` AND `observedAt` (`evidence.ts:25-26`); `trust.tsx` prints `source.kind` alone. The demo's `System` and `Observed` columns are both derivable from the bytes already on the wire |
+| D25 | `What was read` — the observations `Table` (Field / Value / System / Observed) plus the per-read action rows | `:370-411` | `Observations` — a `FactsSection` of `FactRow`s printing `{field}` · `{value}` · `{source.kind}` `trust.tsx:211` | PORTED | `ported cf2ee74a` — was: **OPEN, SERVED-AND-DROPPED**. `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry `taskId` AND `observedAt` (`evidence.ts:25-26`); `trust.tsx` prints `source.kind` alone. The demo's `System` and `Observed` columns are both derivable from the bytes already on the wire. **Closed** by `evidenceSourceMeta` (`trust-model.ts`), a TOTAL fold over the six source arms — the facts ride the per-ENTRY fact rather than a section footer, because this tree's facts are per-entry and a footer would have to pick one to speak for the rest |
 | D26 | `What was decided, and why` — `{key}: {outcome}` + `decided by the operator \| decided by rule · {clock}` + the reason | `:413-429` | `Decisions` — `{kind} — {outcome}` · reason `trust.tsx:213-224` | divergent | `unserved:` `DecisionEvidenceSchema` has no `by` and no `at`. Derivable one hop away for a GATE — D204's `gate-result` source arm carries `resolvedBy`/`resolvedAt` and the decision cites it through `evidence[]` — which makes this a derivation, not an observation |
-| D27 | `The input this run was given` — a `KeyValueList` with `· redacted at capture`, and an `input hash {…}` `MetaLine` | `:431-439` | `Input` — a `FactsSection` printing `redacted — {classification}` for a redacted value `trust.tsx:210` | divergent | the redaction treatment is exact-equivalent (and stronger — it names the classification). **The `input hash` line is OPEN and SERVED-AND-DROPPED**: `EvidenceSourceSchema`'s `input` arm carries `inputFingerprint` (`evidence.ts:24`) |
+| D27 | `The input this run was given` — a `KeyValueList` with `· redacted at capture`, and an `input hash {…}` `MetaLine` | `:431-439` | `Input` — a `FactsSection` printing `redacted — {classification}` for a redacted value `trust.tsx:210` | divergent | the redaction treatment is exact-equivalent (and stronger — it names the classification). The `input hash` line was **OPEN, SERVED-AND-DROPPED** (`EvidenceSourceSchema`'s `input` arm carries `inputFingerprint`, `evidence.ts:24`) and is `ported cf2ee74a` — it rides the same `evidenceSourceMeta` line as D25, cut through `shortHash` |
 | D28 | `Fresh or replayed` — `{lane} — {label} · {age}` + the detail sentence | `:441-453` | `Reused evidence` — `{kind}` · `{age} old` · `limit {age}` `trust.tsx:257-268` | divergent | `unserved:` `ReuseEvidenceSchema` carries `{id, kind, source, ageMs, freshnessLimitMs}` — `kind` is the demo's `lane`; there is no label and no detail. The rebuild ADDS the limit, which the demo does not print |
 | D29 | `What remains uncertain` — `CircleAlert` + the text + the explicit "load-bearing — this is why the run cannot read as done" / "declared non-load-bearing — it cannot change the transaction or the core result" sentence | `:455-473` | `Warnings` — `{code}` · summary · a `load-bearing` meta word `trust.tsx:270-282` | divergent | **OPEN — operator call**: the icon is gone and the demo's two full sentences collapse to one word, on the section whose whole job is saying what is still uncertain |
 | D30 | the receipt `note` paragraph | `:475-477` | absent | missing | `unserved:` no `note` on the receipt |
-| D31 | the FINGERPRINT footer — `border-t pt-base`, the `Fingerprint` glyph, and `trace` / `descriptor` / `config` Chips | `:479-484` | absent | missing | **OPEN — operator call, SERVED-AND-DROPPED.** `traceId`, `descriptorFingerprint` and `configFingerprint` are all on `RunEvidenceReceiptSchema` (`evidence.ts:129,135-136`), and D199's whole argument is that the receipt's `descriptorFingerprint` is a fact about THAT RUN. The provenance bar prints two of the three; the receipt — the artifact read months later — prints none |
-| D32 | the receipt's own `failure` id | (no counterpart — the demo has none) | absent | missing | `unserved`-inverse: `RunEvidenceReceiptSchema.failure` is served and drawn nowhere. **OPEN — operator call** (a failed run's receipt does not name the failure record beside it) |
+| D31 | the FINGERPRINT footer — `border-t pt-base`, the `Fingerprint` glyph, and `trace` / `descriptor` / `config` Chips | `:479-484` | absent | PORTED | `ported cf2ee74a` — was: **OPEN, SERVED-AND-DROPPED**. `traceId`, `descriptorFingerprint` and `configFingerprint` are all on `RunEvidenceReceiptSchema` (`evidence.ts:129,135-136`), and D199's whole argument is that the receipt's `descriptorFingerprint` is a fact about THAT RUN. The provenance bar prints two of the three; the receipt — the artifact read months later — printed none. **Closed** by `ReceiptFingerprints` (`trust.tsx`), the demo's footer element for element: last, under a subtle rule, `Fingerprint` glyph, three chips. The two hashes cut through `shortHash` (the product's ONE id length) with the whole value on the chip's `title`; the trace id is legible and prints whole |
+| D32 | the receipt's own `failure` id | (no counterpart — the demo has none) | absent | PORTED | `ported cf2ee74a` — was: **OPEN**, `unserved`-inverse (`RunEvidenceReceiptSchema.failure` is served and was drawn nowhere, so a failed run's receipt did not name the failure record beside it). **Closed** on the receipt's identity `MetaLine` (`receipt.tsx`), beside `receipt {id} · run {id}` |
 | D33 | SECTION ORDER | verdict → invariant → test → dry-run → subject → writes → members → criteria → reads → decisions → input → reuse → warnings → note → fingerprints | input → observations → decisions → actions → verification → output → reuse → warnings → trailing meta | divergent | `ruled:` stated `trust.tsx:14-15` — "the receipt's schema order IS the narrative order". Note it inverts the demo's: the demo opens on the WRITE and closes on the input; this opens on the input |
 | D34 | an `Output` facts section | (no counterpart — the demo's equivalent is the writes block) | `trust.tsx:255` | extra | `ruled:` `RunEvidenceReceiptSchema.output` |
 | D35 | empty sections omitted rather than explained | throughout | `trust.tsx:16-17` | exact | D24 restraint |
@@ -500,17 +500,17 @@ never corrected — so the first finding of this region is that its own deferral
 | D39 | `receipt.tsx`'s own header comment | — | `:5-11` calls itself "the 1i Receipt PLACEHOLDER" and says the full body "lands with the trust surfaces in 2g" | — | **OPEN — operator call (a stale claim, not an element).** 2g landed; `ReceiptEvidenceBody` renders input/observations/decisions/actions/verification/output/reuse/warnings. The sentence is the same false-deferral shape D251 found on the picker and f.1 found on the park cards |
 
 **R-D counts — 39 rows: 9 exact · 15 divergent · 12 missing · 3 extra** (D39 is a comment, counted
-in none of the four).
+in none of the four). Four rows moved to PORTED on 2026-08-21, `cf2ee74a`; the counts above are the
+AUDIT's, kept as taken.
 
 **Since 08-14:** the whole region is new to the ledger. What moved at HEAD: 2g's
 `ReceiptEvidenceBody` replaced the 1i placeholder body (D5–D9, D24–D29 all describe a real body
 rather than an empty frame), and D199 put the run's OWN `descriptorFingerprint` on the receipt —
 which is what makes D31 a served-and-dropped finding rather than a wire gap.
 
-**OPEN in R-D (10 questions), and three of them are SERVED-AND-DROPPED — the receipt is not
-printing bytes it already holds:** D25 the observation's `taskId` + `observedAt` · D27 the
-`inputFingerprint` · D31 the `trace` / `descriptor` / `config` footer · D32 the receipt's `failure`
-id. Plus: D8 the confidence Chip and its three sentences · D9 the scattered identity line · D11 the
+**OPEN in R-D — 10 questions at audit; the four SERVED-AND-DROPPED ones are CLOSED (`cf2ee74a`,
+2026-08-21, unit F1): D25 the observation's `taskId` + `observedAt` · D27 the `inputFingerprint` ·
+D31 the `trace` / `descriptor` / `config` footer · D32 the receipt's `failure` id.** Still open: D8 the confidence Chip and its three sentences · D9 the scattered identity line · D11 the
 invariant Banner · D13 the dry-run Banner · D17 the commit/prepare Badge · D24 the criterion icon ·
 D29 the uncertainty icon and its two full sentences · D39 the stale placeholder comment.
 
@@ -545,13 +545,13 @@ D29 the uncertainty icon and its two full sentences · D39 the stale placeholder
 | E16 | `What had already happened when it failed` — the four-column progress `Table` (Step / State / System / What it left behind) with the `done` / `FAILED HERE` / `never ran` vocabulary | `:60-64,286-310` | absent | missing | `unserved:` `FailureDetailWireSchema` carries no progress ledger. The facts exist elsewhere (`timeline.steps` states, and `writeState` per action on the receipt) — the producer is a projection joining them, not a new observation |
 | E17 | `Classification` `KeyValueList` — `Fingerprint` | `:316` | in the Cause-chain `MetaLine`, truncated to 12 chars + `…` (`trust.tsx:166`) | divergent | ruled by nothing; the truncation is sensible and uncited — folded into E20 |
 | E18 | `Classification` — `Code` | `:317` | the body `MetaLine` (E5) | divergent | see E5 |
-| E19 | `Classification` — `Occurred {clock}` | `:318` | absent; the rebuild prints `failed {completedAt}` off the OUTCOME instead (`log-panel.tsx:743`) | divergent | **OPEN — operator call, SERVED-AND-DROPPED.** `FailureDetailWireSchema.occurredAt` is required and drawn nowhere; the run's terminal instant is a DIFFERENT moment from the failure's |
-| E20 | `Classification` — `Run: {traceId} · attempt {N}` | `:319` | absent | missing | **OPEN — SERVED-AND-DROPPED**: `traceId` and `attempt` are both required on `FailureDetailWireSchema` |
+| E19 | `Classification` — `Occurred {clock}` | `:318` | absent; the rebuild prints `failed {completedAt}` off the OUTCOME instead (`log-panel.tsx:743`) | PORTED | `ported df5ea509` — was: **OPEN, SERVED-AND-DROPPED**. `FailureDetailWireSchema.occurredAt` is required and was drawn nowhere; the run's terminal instant is a DIFFERENT moment from the failure's. **Closed** as `occurred {clock}` on the body's first `MetaLine`, in the demo's position (after `code`). The panel's `failed {completedAt}` STAYS: both are true and each is now named for what it dates |
+| E20 | `Classification` — `Run: {traceId} · attempt {N}` | `:319` | absent | PORTED | `ported df5ea509` — was: **OPEN, SERVED-AND-DROPPED** (`traceId` and `attempt` are both required on `FailureDetailWireSchema`). **Closed** as `run {traceId} · attempt {N}`, the demo's `Run` row, before `node`/`task` as the demo has it |
 | E21 | `Classification` — `Node` / `Task` | `:320-321` | the body `MetaLine`, as `node {id}` / `task {id}` (`trust.tsx:116-117`) | exact | same facts, one line instead of two rows |
 | E22 | `Classification` — `Subject expected` / `Subject observed` (the observed row in danger tone) | `:322-325` | a `MetaLine` pair using `displayRedacted ?? digest` (`trust.tsx:122-131`) | divergent | `ruled:` the redaction rule stated `trust.tsx:11-13` — subject identity prefers the served `displayRedacted`; the demo's danger tone on the observed row is NOT ported (**OPEN**, minor) |
 | E23 | `Classification` — `Screen` / `Page state` | `:326-327` | the `MetaLine` at `trust.tsx:135-136` | exact | |
-| E24 | `Classification` — `URL (redacted)` | `:328` | absent | missing | **OPEN — SERVED-AND-DROPPED**: `page.urlRedacted` is on the wire (`run-detail.ts`) and drawn nowhere. `page.titleRedacted` is served too and has no demo counterpart — an unconsumed field either way |
-| E25 | `Classification` — `Failed action: {operation} on {elementId} · step {N}` | `:329-338` | `during {operation}` + `step {N}`; `elementId` is dropped (`trust.tsx:137-138`) | divergent | **OPEN — SERVED-AND-DROPPED**: `action.elementId` is on the wire |
+| E24 | `Classification` — `URL (redacted)` | `:328` | absent | PORTED | `ported df5ea509` — was: **OPEN, SERVED-AND-DROPPED** (`page.urlRedacted` on the wire and drawn nowhere; `page.titleRedacted` served with no demo counterpart). **Closed** — BOTH halves of the served `page` block draw, as `title (redacted) {…}` / `url (redacted) {…}`. The parenthetical is the demo's own word and is load-bearing: these were redacted AT CAPTURE, so what prints is the whole of what the record holds |
+| E25 | `Classification` — `Failed action: {operation} on {elementId} · step {N}` | `:329-338` | `during {operation}` + `step {N}`; `elementId` is dropped (`trust.tsx:137-138`) | PORTED | `ported df5ea509` — was: **OPEN, SERVED-AND-DROPPED** (`action.elementId` is on the wire). **Closed** as `on {elementId}` beside `during {operation}`. The demo's `{operation ?? "action"}` fallback is NOT ported: an unserved half drops out of the line rather than being spoken for. The fixture corpus carries no `elementId`, so the arm is drawn and unphotographed |
 | E26 | `subject.note` paragraph | `:341-343` | absent | missing | `unserved:` no note on the subject union; `proofRef` is served and also undrawn |
 | E27 | `Cause chain` as an ordered `<ol>` with a `w-14` caps LAYER column, the text, and a per-cause clock | `:346-359` | a `TrustSection` of `FactRow`s: `primary — {code}` / `secondary — {code}` · summary · a `transient` meta (`trust.tsx:154-163`) | divergent | `unserved:` `FailureCauseSchema` carries `{code, summary, role, transient}` — no layer, no instant. The ROLE is the rebuild's own axis and is a real improvement; the `<ol>` ordering is lost |
 | E28 | the `Diagnostic bundle {id}` BUTTON (`Package` glyph) | `:361-364` | a text fragment in the Cause-chain `MetaLine` — `diagnostic bundle {id}`, or `no diagnostic bundle — {reason}` (`trust.tsx:167-169`) | divergent | the ABSENT arm is exact and stronger than the demo's (which has no absent arm). The button is missing because there is nothing to open — see E29 |
@@ -562,15 +562,15 @@ D29 the uncertainty icon and its two full sentences · D39 the stale placeholder
 | E33 | `FailureAdvisoryPanel` — the `AI advisory` section, its `Explain this failure` button, the availability refusal | (no counterpart) | `log-panel.tsx:747` + `advisory.tsx` | extra | `ruled: D178` — below the record's own remediation, never above it, stated `:745-746` |
 | E34 | the record's non-`available` arms (`error` → code + message; `missing`/`purged` → the reason) | (no counterpart) | `log-panel.tsx:749-753` | extra | `ruled: D184/D198` declared-absence pattern |
 
-**R-E counts — 34 elements: 7 exact · 15 divergent · 8 missing · 4 extra.**
+**R-E counts — 34 elements: 7 exact · 15 divergent · 8 missing · 4 extra.** (Four rows moved to PORTED on 2026-08-21, `df5ea509`; the counts are the AUDIT's, kept as taken.)
 
 **Since 08-14:** first audit. The body itself is 2g/2i-A work (`FailureDetailBody`, D140/D142) that
 post-dates the 1i frame; nothing in this region regressed during the fidelity wave, and nothing in
 the fidelity wave audited it.
 
-**OPEN in R-E (12 questions), including four SERVED-AND-DROPPED:** E19 `occurredAt` · E20
-`traceId` + `attempt` · E24 `page.urlRedacted` (and the never-consumed `page.titleRedacted`) ·
-E25 `action.elementId`. Plus: E4 the head says a category where the demo says the fact · E5 the
+**OPEN in R-E — 12 questions at audit; the four SERVED-AND-DROPPED ones are CLOSED (`df5ea509`,
+2026-08-21, unit F1): E19 `occurredAt` · E20 `traceId` + `attempt` · E24 `page.urlRedacted` and
+`page.titleRedacted` · E25 `action.elementId`.** Still open: E4 the head says a category where the demo says the fact · E5 the
 `code` Chip · E6 the missing `permanent` arm · E8 the write-state block's frame and label · E9 its
 three tones · E11 `What is safe to retry` vs `What to do` · E15 **the whole disclosure** — the
 diagnostic record is always expanded into the log stream · E22 the observed-subject danger tone ·
@@ -692,19 +692,20 @@ OPEN questions between them. That is the honest headline: the wave audited what 
 for, and `DemoRunIdentity.tsx`, `DemoReceipt.tsx`, `DemoEvidence.tsx` and `DemoFailure.tsx` were
 never opened.
 
-### OPEN — operator call (54)
+### OPEN — operator call (54 at audit; 46 after unit F1 closed the eight served-and-dropped rows)
 
-**Served-and-dropped (8) — the wire already carries the bytes and no pixel shows them.** These are
-the cheapest to close and the most surprising to leave:
+**Served-and-dropped (8) — ALL EIGHT CLOSED 2026-08-21, unit F1 (`cf2ee74a` the receipt four,
+`df5ea509` the failure four).** They were the cheapest to close and the most surprising to leave;
+each entry below keeps the audit's sentence and names what now draws it:
 
-1. **D25** the observation's `taskId` and `observedAt` — `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry both; the receipt prints `source.kind` alone.
-2. **D27** the `inputFingerprint` — served on the `input` source arm; the demo's `input hash` line is absent.
-3. **D31** the receipt's `traceId` / `descriptorFingerprint` / `configFingerprint` footer — all three on `RunEvidenceReceiptSchema`; the artifact read months later prints none.
-4. **D32** the receipt's `failure` id — served, drawn nowhere.
-5. **E19** the failure's `occurredAt` — required on the wire; the record prints the RUN's terminal instant instead, which is a different moment.
-6. **E20** the failure's `traceId` + `attempt` — both required, both absent.
-7. **E24** `page.urlRedacted` — served, absent (and `page.titleRedacted` is served and consumed by nobody).
-8. **E25** `action.elementId` — served, absent.
+1. ~~**D25** the observation's `taskId` and `observedAt` — `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry both; the receipt prints `source.kind` alone.~~ → `evidenceSourceMeta`, a total fold over the six source arms (`trust-model.ts`).
+2. ~~**D27** the `inputFingerprint` — served on the `input` source arm; the demo's `input hash` line is absent.~~ → the same fold's `input` arm, cut through `shortHash`.
+3. ~~**D31** the receipt's `traceId` / `descriptorFingerprint` / `configFingerprint` footer — all three on `RunEvidenceReceiptSchema`; the artifact read months later prints none.~~ → `ReceiptFingerprints`, the demo's footer element for element.
+4. ~~**D32** the receipt's `failure` id — served, drawn nowhere.~~ → the receipt's identity `MetaLine`.
+5. ~~**E19** the failure's `occurredAt` — required on the wire; the record prints the RUN's terminal instant instead, which is a different moment.~~ → `occurred {clock}`, printed BESIDE the run's `failed {clock}`; both are true and each is now named for what it dates.
+6. ~~**E20** the failure's `traceId` + `attempt` — both required, both absent.~~ → `run {trace} · attempt {N}`, in the demo's position.
+7. ~~**E24** `page.urlRedacted` — served, absent (and `page.titleRedacted` is served and consumed by nobody).~~ → both halves draw, as `title (redacted)` / `url (redacted)`.
+8. ~~**E25** `action.elementId` — served, absent.~~ → `on {elementId}`, with no `"action"` stand-in for an absent operation.
 
 **Structural / behavioural (7):**
 
