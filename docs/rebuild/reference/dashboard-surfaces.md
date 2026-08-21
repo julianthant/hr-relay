@@ -4071,10 +4071,58 @@ meanwhile (§9.3.1, `{#track-b}`).
 
 ### 9.8 Settings and the storage doctor
 
-**Stub — written by unit 5.1d.** A dashboard-only square: `ref frontend-backend-integration` §5.1
-has no counterpart. Inherits the Settings surface as 2i-D built it, read-only over the sections the
-server serves. The CONTRACT — the boot interlock, the backup cadence, the doctor, D181's restore and
-the process locks — stays in §2.5, and the `apply-settings` deferral in §2.4.
+<!-- roadmap: p2-2j -->
+<!-- roadmap: def-settings -->
+<!-- roadmap: def-retention -->
+
+A dashboard-only square: `ref frontend-backend-integration` §5.1 has no counterpart, because
+Settings issues no command. Three checklists reach it and none of them opens here — `p2-2j`'s is at
+§2.5 (the boot interlock, the backup cadence, the doctor, D181's restore and the process locks),
+`def-settings`' at §2.4 (the ONE deferred kernel arm), and `def-retention`'s at §2.1 (the sweep and
+the backup path). This section owns what the operator SEES of all that.
+
+**What it is.** The gear in the top bar, opening the sections the SERVER lists. There is exactly
+one today — `settingsSections: [{ id: "storage", label: "Storage", revision: 1 }]`
+(`src/server/dashboard/queries/bootstrap.ts:122`) — and the surface renders the server's list rather
+than its own, so a section this build cannot draw says so BY NAME instead of disappearing. A missing
+section is indistinguishable from a section nobody added, and only one of those is a defect.
+
+**Nothing here saves anything, and that is a deferral rather than an omission.** `apply-settings` is
+the one command arm the kernel declares and refuses (§2.4, `{#def-settings}`), so Storage is
+read-only health and no control on the page pretends otherwise — there are no disabled inputs
+waiting for a backend, because a disabled control still claims the act exists.
+
+**Two readings, at two costs.** The **at-rest summary** rides the bootstrap every view already has
+(`authority`, `backup`, `checkedAt`) — that is what the gear's attention dot is computed from
+(`storageNeedsAttention`: authority not healthy, OR backup not current). The **doctor** is a
+deliberate press: `buildStorageDoctor` runs the read-only inspection on demand
+(`src/server/dashboard/queries/storage.ts`) and returns authority state, pending durable work,
+byte-re-verified backup health, the restore candidates and — beside them — what the live backup
+SERVICE last did. That last field exists because the on-disk view cannot see a failure: a backup run
+that threw leaves no manifest for the doctor to find, so the process that owns the cadence has to
+say so itself (`never-run` | `ok` | `failed`, each with its reason).
+
+**The surface lists restore candidates and cannot restore.** D181's offline restore requires a
+one-time stopped-system proof derived from the runtime lock snapshot, and the dashboard is one of
+the processes that proof is about — so the act is `cli storage restore` and the page's job is to
+tell the operator which candidate is `verified-compatible`, which is `invalid` and why. A button
+here would have to either fabricate the proof or fail every time it was pressed.
+
+**D222 — the band was narrowed to the one state that stops the work.** `StorageBanner` renders on
+EVERY view (it is mounted above the takeover switch, so the queue, intake, archive, explorer,
+catalog and Activity all carry it) and it now appears for **unreachable authority only**. A stale or
+missing backup does not stop runs or writes and §2.6 has always named it a `storage` NOTIFICATION,
+so it reaches the operator as a durable inbox row plus the gear's dot instead of a band over
+everything. The authority case stays a band for a structural reason rather than a volume preference:
+**the inbox is an authority table, so an authority that cannot be written cannot record a
+notification about its own death.** When both are true the band prints both sentences, authority
+first, because that is the one that changes what happens next.
+
+**The band is a HAZARD, which is one of D24's two exemptions.** It names the state, the ONE
+consequence that changes what the operator should do next, and the route to the doctor. No third
+sentence, no disclosure list, no defence of the design — and every word of it is derived from facts
+the bootstrap actually serves, which is why the ported demo's two "what still works / what is
+blocked" lists were not ported with it.
 
 ### 9.9 The shell — top bar, worker cards, keys, theme
 
