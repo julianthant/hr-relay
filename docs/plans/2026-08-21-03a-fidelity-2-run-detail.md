@@ -117,3 +117,174 @@ fingerprint was compared against the bootstrap's whole-SET hash, so the amber ta
 **OPEN in R-A (7 questions):** A3 the `wf ` noun · A13 the `·` separator · A18 the `Config` row ·
 A19 the `Attempt` row · A35/A37/A47 the rename error affordance · A38/A41 the placeholder and
 `subject` fallbacks · A49 the live/idle dot.
+
+---
+
+## R-B — The log panel: region, header band, outcome bar, tabs, timeline, stream, inline records
+
+**Demo:** `DemoLogPanel.tsx` (2757 lines).
+**Rebuild:** `src/dashboard/surfaces/log-panel.tsx` (2051) + `log-panel-model.ts` (72).
+
+**PARTIAL re-audit.** R5 enumerated 37 elements of the HEADER BLOCK only and closed all 17 of its
+findings. The timeline, the stream, the inline records and the floating notices were assigned to a
+"log-stream region" that no region of the 08-13 wave ever claimed, so everything below R-B/B36 is a
+first audit. R5's own 17 findings are re-checked at HEAD and appear inline (B12, B15/16, B19, B20,
+B21, B23, B25, B26, B30, B32, B63, B90, B105, B111).
+
+### B-shell — `PanelRegion`
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| B1 | region wrapper: stacked scroller below the threshold, grid above, three rail-width arms (collapsed / dataExpanded / default) | `:2235-2251` | `:1736-1762` | divergent | `ruled: R5 f.16` + `ref dashboard-surfaces §Shell` — the viewport queries `min-[1280px]`/`min-[1480px]` became container queries `@min-[868px]/detail`/`@min-[1068px]/detail`; decision-cited, test-pinned, renders identically |
+| B2 | `w-full` on that wrapper | (implicit — the demo's parent is a grid cell) | `:1754` | extra | `ruled: D187` — without it the grid resolved to `2px 376px` and the whole panel was a sliver |
+| B3 | the separate `@container/detail` DECLARATION wrapper | (no counterpart) | `:1735` | extra | `ruled:` B1 — a container query cannot style its own container |
+| B4 | `Run shape` section: `min-w-0 shrink-0 border`, surface-1, `dsRadius.lg`, col-span arms, deliberately NOT `overflow-hidden` | `:2253-2272` | `:1765-1777` | exact | |
+| B5 | the gate that draws it | `steps.length > 0 \|\| sharedMemberPipeline(row)` `:2233` | `detail.timeline.events.length > 0` `:1764` | divergent | `unserved:` there is no shared member pipeline to test for (B63) |
+| B6 | `Run detail` section: `@container relative flex min-h-[24rem] min-w-0 flex-col overflow-hidden` + border/radius, `relative` for the notice anchor | `:2274-2292` | `:1779-1791` | exact | |
+| B7 | spine-or-rail branch with the same col/row placement arms | `:2294-2318` | `:2000-2024` | exact | arms remapped per B1 |
+| B8 | the MEASURED JS half deciding spine-vs-rail (`containerType` + `getBoundingClientRect`) | (demo reads `useContextRail()` alone) | `:1668-1687` | extra | `ruled:` `ref dashboard-surfaces §Shell`, stated `:1644-1667` — which component MOUNTS is not a decision CSS can make |
+
+### B-head — identity band, outcome bar, tabs
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| B9 | ONE scroller with a sticky head; `--ds-panel-head-h` published by a `ResizeObserver` on the head | `:2485-2489,2442-2451` | `:1793-1797,1586-1601` | exact | |
+| B10 | identity band: `flex flex-wrap items-center border-b` + subtle border + `gap-x-base/gap-y-tight px-cozy py-base` | `:2496-2505` | `:1815-1820` | exact | |
+| B11 | title span: `dsText.title`, `dsText.flush`, `min-w-0 max-w-full break-words font-semibold` | `:2507-2509` | `:1822-1830` | exact | |
+| B12 | NO status chip and NO `attempt N` badge on this line — the operator's "avoid redundancy" | `:2510-2526` | `:1798-1814` | exact | R5 f.1/f.2, deletion ported WITH its reason |
+| B13 | the `ml-auto` group carrying ⓘ + trace, dropping under at natural length | `:2534-2537` | `:1831-1846` | exact | |
+| B14 | `PanelKindInfo` trigger: `xs` ghost `IconButton`, `Info`, `stopPropagation`, the `data-[state=open]` pair | `:796-806` | `:1383-1392` | exact | |
+| B15 | trigger LABEL | `What kind of row and panel this is — ${variantName} in a ${panelName}` `:801` | `What kind of panel this is — ${panelName}` `:1388` | divergent | `ruled: R5 f.11` as-built — the demo's row VARIANT is the demo talking about itself |
+| B16 | popover title / description | `title={variantName}` · `Opens in a ${panelName}` `:807` | `title={panelName}` · `PANEL_KIND_EXPLANATION[panelKind]` `:1394` | divergent | `ruled: R5 f.11` as-built (the rebuild's own vocabulary, `:1340-1352`) |
+| B17 | popover `MetaLine items={[wfLabel, trace]} tone="faint"` | `:808` | `:1395` | exact | |
+| B18 | outcome band geometry: `flex flex-wrap items-center border-b` + `gap-x-base/gap-y-tight px-cozy py-snug` | `:2380-2388` | `:1857-1862` | exact | |
+| B19 | the band's TINT | 6-arm `OUTCOME_TONE[row.outcome.tone]` `:2186-2193` | 8-arm `OUTCOME_TONE[DsStatus]` `:1306-1323` | divergent | `ruled: R5 f.3` as-built + the `OutcomeWireSchema text+tone` ledger row (CLOSED 2026-08-20) — keyed off the same `DsStatus` the band's own dot renders, so dot and band physically cannot disagree |
+| B20 | the leading dot | hand-rolled `size-1.5 rounded-full` + `tone.dot` `:2389` | `StatusDot status={outcomeStatus}` `:1868` | divergent | `ruled:` DESIGN.md's two-renderers rule, stated `:1864-1867` |
+| B21 | the one-sentence "so what" | SERVED `row.outcome.text` `:2390` | DERIVED — `terminalOutcomeText` / `gate.label` / `outcome.reason` `:1622-1627`, `log-panel-model.ts:67-72` | divergent | `ruled: D238` + the same ledger row — an authored sentence is one wire field away from disagreeing with the verdict it describes, which is exactly what D237/D238 fixed |
+| B22 | `ml-auto flex min-w-max` group for the age + the action | `:2564` | `:1870` | exact | |
+| B23 | the gate age on the bar | `gateAge(row, tick)` `:2565-2569` | `decisionAge(gate.openedAt, nowIso)` behind `gate.state === "open"` `:1877-1881` | exact | R5 f.5; the clock is the SERVED one (`efab4e1` finding 2) so the queue and the panel cannot report two ages |
+| B24 | `OutcomeActionButton` with `omitKeys` | `:2570-2574` | `:1882-1887` | exact | |
+| B25 | `PANEL_OMITS_OUTCOME_ACTIONS = ["open-park"]` | `:128` | `:1287` | exact | R5 f.6's flip, with the reasoning ported |
+| B26 | the settling band (`SettlingPanel` in a `border-b px-3 py-2`) | `:2581-2585` | absent | missing | `ruled: D198` — structurally unreachable; already on the 08-13 ledger as "no action" |
+| B27 | tab bar: `role="tablist" aria-label="Run detail sections"`, `dsSize.hBar`, `dsBorder.base`, `gap-tight px-base` | `:2601-2609` | `:1892-1900` | exact | |
+| B28 | tab `Tooltip content={`${label} — press ${i+1}`} side="top"` and its "not a native `title`" reasoning | `:2632` | `:1907` | exact | |
+| B29 | tab button classes: `relative -mb-px … border-b-2 border-transparent`, `h-[--ds-h-bar] gap-snug px-base`, `dsText.ui`, `dsFocus`, `dsMotion.base`, active = accent underline + semibold | `:2633-2647` | `:1908-1922` | exact | |
+| B30 | tab words + glyphs: `People`/`Users`, `Review`/`ClipboardList`, `Logs`/`ScrollText`, `Receipt`/`Receipt` | `:2172-2177` + `demo-wire.ts:2070` | `:169-178` | exact | R5 f.9 (`Receipt`, not `ReceiptText`) |
+| B31 | tab ORDER | derived from the served `detailSurfaces`, `people` first in the map | fixed `review, people, logs, receipt` | divergent | `ruled: ref frontend-backend-integration §3.3`, stated `log-panel-model.ts:22-27` |
+| B32 | the per-tab attention DOT (`absolute right-hair top-snug size-1.5 rounded-full` waiting hue) | `:2615,2651-2656` | absent | missing | `unserved:` no producer — nothing counts unread notes or unseen receipt content per run (`GateDecisionWireSchema.kind` + tab attention counts, CLOSED 2026-08-20) |
+| B33 | NOTHING at the end of the tab bar (the second panel-kind copy, deleted) | `:2661-2667` | `:1930` | exact | deletion ported |
+| B34 | `defaultTabFor` arms | four, incl. `review` and the group's attention scan `:149-169` | three `log-panel-model.ts:42-49` | divergent | `unserved:` no `review`/`group` panel kind is produced; `#review`/`#people` are `declared-unserved` (D184) |
+| B35 | `UnservedTab` for an advertised-but-unserved section | (no counterpart — the demo serves every tab it draws) | `:1219-1228,1965` | extra | `ruled: D184/D198` declared-absence pattern |
+
+### B-timeline — `Timeline` / `StepStrip`
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| B36 | container `px-cozy py-base` + `flex items-stretch gap-hair` segment row | `:547-548` | `:426,449,326` | exact | |
+| B37 | per-segment dot `size-1.5 rounded-full` + tone + `animate-pulse motion-reduce:animate-none` on current/waiting | `:563-570` | `:336-343` / `:458-465` | exact | |
+| B38 | per-segment label `dsClip.text dsText.micro` + tone | `:571` | `:344-346` / `:466-468` | exact | |
+| B39 | SKIPPED arm: hollow ring, dashed outlined bar, `line-through decoration-1`, and `skipped, did not run: <why>` in the accessible name | (no counterpart — the demo has no `skipped` state) | `:225-229,251-265,344` | extra | `ruled: D123` |
+| B40 | REPLAYED arm: verified-done hue, hollow ring, the word `replayed` where a duration would print | (no counterpart) | `:241-248,299-311,370-371` | extra | `ruled: D259` |
+| B41 | the segment ELEMENT itself | `<button type="button" onClick={NOOP}>` with `dsFocus`, `dsMotion.base`, `hover:brightness-125` `:574-619` | a non-focusable `<span aria-label=…>` `:348-358`, `:470-480` | divergent | **OPEN — operator call.** The disclosure below it carries `group-focus-within:block` (`:385`) and the rebuild's group now has NO focusable child, so the member disclosure is unreachable by keyboard; the hover tint and the focus ring are gone with the button |
+| B42 | three bar shapes — outlined/transparent = not reached · solid = done or working · hatched = stopped on you | `:612-617` | `:354-356` + `:187-190` | exact | |
+| B43 | the hatch gradient | `repeating-linear-gradient(45deg, var(--color-warning) 0 4px, transparent 4px 8px)` `:613` | same, `var(--ds-status-waiting-mark)` `:355` | exact | the rebuild's token for the same hue |
+| B44 | `opacity-70` on an untimed non-pending segment | `:617` | absent | missing | **OPEN — operator call** (the demo dims a segment it could not measure) |
+| B45 | the number under the bar, WAITING arm | `gateAge(row, tick)` — the elapsed age `:629` | `since ${fmtClock(openedAt)}` — a wall clock `:368-369` | divergent | `ruled: D225`, stated `:313-322`. **Noted tension:** the demo's own argument (`DemoLogPanel.tsx:2557-2563`) is that the AGE, not the clock, is the number that decides which of two waiting runs you open first — the rebuild keeps the age on the outcome bar and the clock on the strip |
+| B46 | `×N` marker, gated at ≥ 2 | `s.attempts && s.attempts > 1` `:631-633` | `step.executions`, schema `min(2)` (`run-detail.ts:218`) `:376-380` | exact | the gate is in the schema rather than the JSX, which is stronger |
+| B47 | hover card: `absolute top-full z-50 mt-1 hidden w-60 … p-2.5 text-left shadow-lg group-hover:block group-focus-within:block` | `:636-641` | `:383-391` | exact | tokenised border/bg |
+| B48 | hover-card side anchor rule (`> 2 && i >= n-2` → `right-0`) | `:558,640` | `:332,389` | exact | |
+| B49 | hover-card heading (the step label, semibold) | `:643` | `:392` | exact | |
+| B50 | hover-card `Status` row | `:644-647` | absent | missing | **OPEN — operator call** (the state is in hand; the rebuild replaced the fact rows with a member list) |
+| B51 | hover-card `Waiting` / `Took` rows | `:648-660` | absent (duration appears per MEMBER only) | missing | `ruled: D225` — the card's job became disclosing the category's members; the step's own duration prints under the bar |
+| B52 | hover-card `System` row | `:661-666` | absent | missing | `unserved:` nothing serves a system on a timeline step (D252 serves it on a context-data entry's `origin`, which is a different row) |
+| B53 | hover-card `Attempts` row | `:667-672` | absent | missing | `ruled: D225` — carried by the `×N` marker and the member list |
+| B54 | hover-card `keyLines` block | `:673-679` | absent | missing | `unserved:` no per-step key lines on the wire; the stream carries the notes |
+| B55 | hover-card `Step screenshot →` | `:680` | absent | missing | `unserved:` `RunDetailSectionResponseSchema#captures` is `declared-unserved` (D184) |
+| B56 | hover-card MEMBER list (label · state · duration · replayed-from) | (no counterpart) | `:393-404` | extra | `ruled: D225` — the grouping must hide nothing |
+| B57 | the ORPHAN-GATE trailing segment (a gated run whose steps record no wait) | `:687-705` | absent | missing | **OPEN — operator call.** The demo keeps it precisely so a wait can never vanish because the shape did not line up — "the one thing this timeline may not do" |
+| B58 | axis row: `mt-1.5 border-t pt-1` micro/nums muted, start · rule · total | `:711-717` | `:429-441`, `:496-508` | exact | |
+| B59 | axis START value | `row.time` `:712` | `fmtClock(first.at)` `:438` | exact | |
+| B60 | axis TOTAL | `${fmtElapsed(active)} working` — the SUM of step durations `:714-716` | `${fmtElapsed(totalSec)} elapsed` — the first→last event SPAN `:440` | divergent | **OPEN — operator call.** Two different numbers; the demo's line deliberately names the WORKING half because the segments are equal-width and make no duration claim |
+| B61 | axis `· {gateAge} waiting on you` half | `:715` | absent | missing | **OPEN — operator call** (same line; the age is computed 1400 lines away at `:1877`) |
+| B62 | the flat EVENT strip (a second timeline for a run the projector did not categorise) | (no counterpart) | `:447-512` | extra | `ruled: D225` read-forward — `timeline.steps` is optional, so a pre-D225 run keeps the per-event strip |
+| B63 | `SharedPipelineStrip` (`Shared member pipeline`, `{n} people · identical steps`, per-segment `done/total` fill bars in four flex-grown bands) | `:736-776` | absent | missing | `unserved:` no producer — no registered workflow is `operation`-shaped (member roster/conveyor + shared member pipeline ledger row, CLOSED 2026-08-20) |
+
+### B-stream — `LogsTab`
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| B64 | stream wrapper, no scroller of its own | `pb-2 pt-1` `:1072` | `pb-base pt-tight` `:1101` | exact | |
+| B65 | **the stream is GROUPED BY STEP, with a sticky per-step heading** (`sticky top-[var(--ds-panel-head-h,0px)] … text-[11px] font-semibold` + a hairline rule) | `:1060-1065,1082-1085` | absent — one flat list | missing | **OPEN — operator call.** The rebuild publishes `--ds-panel-head-h` (`:1586-1601`) whose stated purpose is *"the log stream's step dividers … land BELOW it"*, and there are no dividers to land. Notes carry `sequence`; the timeline carries per-node steps |
+| B66 | line row `flex items-start gap-snug px-cozy pl-5 py-hair` | `:1095` | `:1119-1123` | exact | |
+| B67 | line timestamp cell (`mt-hair shrink-0` micro/nums muted) | `:1096` | `:1125-1133` | exact | |
+| B68 | line icon cell (`mt-hair w-3.5 shrink-0 text-center`) | `:1097-1099` | `:1134-1136` | exact | |
+| B69 | line ICON VOCABULARY | 9-kind `LINE_ICON` — `nav`/`search`/`read`/`write`/`ok`/`error`/`warn`/`pause`/`event`, with the `--ds-read-*` / `--ds-write-*` DIRECTION hues `:190-215` | 3-level `NOTE_ICON` — `info`/`warning`/`error` `:981-985` | divergent | `unserved:` a note carries a `level`, not a kind; nothing records nav/search/read/write/ok/pause/event on a note |
+| B70 | line TONE | partial `LINE_TONE` over ok/error/warn, default `text-secondary-foreground` `:228-232,1100` | total `NOTE_TONE` over the three levels `:975-979` | divergent | same as B69 |
+| B71 | `pause` line row tint (`bg-info/6`) | `:1095` | absent | missing | same as B69 |
+| B72 | per-line `SystemChip` | `:1101` | absent | missing | `unserved:` a note carries no system |
+| B73 | per-line read/write `Pill` chips (`ArrowDownToLine`/`ArrowUpFromLine`, `h-[--ds-h-xs]`, read/write token trio, label + `dsText.nums` value) | `:234-258,1103` | absent | missing | `unserved:` a note carries no field/value pairs |
+| B74 | per-line `attempt N` badge | `:1104-1106` | absent | missing | `unserved:` a note carries no attempt |
+| B75 | per-line duration | `:1107` | absent | missing | `unserved:` a note carries no duration |
+| B76 | search dimming `opacity-35` on a non-match | `:1092,1095` | `:1116,1122` | exact | |
+| B77 | search hit highlight | `rounded-sm bg-info/15` `:1100` | `dsRadius.xs bg-[--ds-info-bg]` `:1142` | exact | |
+| B78 | search PREDICATE | text OR any pill's `label value` `:1046-1048` | `note.message` only `:1049-1050` | divergent | same as B73 — there are no pills to match |
+| B79 | empty-stream state | (none — a fixture always has lines) | `EmptyState` "No log lines yet" `:1107-1111` | extra | **OPEN — operator call** (defensible, uncited) |
+| B80 | `More lines follow.` | (none — the demo pages nothing) | `:1156-1165` | extra | **OPEN — operator call** (the wire pages via `nextCursor`; the sentence is honest but uncited, and it is not a control) |
+| B81 | `live — streaming` pulse line | `:1137-1142` | absent | missing | `ruled:` port rule-(c) — fixture-only (`row.id === "pl-daniel"`) |
+| B82 | floor bar `sticky bottom-0 mt-auto flex items-center gap-snug border-t … px-cozy py-snug` | `:1147` | `:1171-1176` (adds `flex-wrap`) | exact | |
+| B83 | the search control | raw `<input class="w-40 …">` + an `sr-only <label htmlFor>` `:1148-1157` | the `SearchInput` DS primitive, `aria-label`, an `onClear`, `w-48` `:1178-1185` | divergent | **OPEN — operator call** (DS alignment plus a clear affordance the demo lacks; one width step wider) |
+| B84 | `plural(matchCount, "match", "matches")` behind a non-empty query | `:1158-1162` | `:1186-1190` | exact | |
+| B85 | the dead `System ▾` control, DELETED | `:1163-1175` | absent | exact | deletion ported |
+| B86 | divider + `RunProvenanceBar` on the right | `:1181-1182` | `:1195-1201` | exact | see A48 |
+| B87 | the trailing live/idle dot | `:1183` | absent | missing | **OPEN — operator call** — see A49 |
+
+### B-inline — the decision, the records, the floating notice
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| B88 | decision card geometry: `mx-cozy my-base ml-5 border p-cozy`, `dsRadius.lg`, `dsFocus`, `border-[length:--ds-border-w-rail]`, waiting tint | `:377-390` | `:545-556` | exact | |
+| B89 | decision anchor: `tabIndex={-1}`, a `data-*` hook, `aria-label="Decision — <title>"` | `:378-381` | `:547-549` | exact | `data-demo-decision` → `data-panel-decision` |
+| B90 | decision head icon ARM | `parked ? Pause : identity ? UserRoundSearch : ClipboardList` `:372` | `UserRoundSearch`, unconditional `:560` | divergent | `ruled:` the `GateDecisionWireSchema.kind` ledger row (CLOSED 2026-08-20) — `parked` is not a gate in this tree, and every registered gate is `resolvedBy: "operator"`, so a served enum would have one reachable arm |
+| B91 | decision head right-hand text | `open {age} · since {clock}` `:396-398` | `since {clock}` `:572-580` | divergent | **OPEN — operator call.** R5 f.15's as-built records `open {age}` as LANDED; the card shows only the clock while the outcome bar shows only the age, so neither surface carries the demo's pair |
+| B92 | decision `note` paragraph (`mt-tight pl-5 leading-relaxed` muted) | `:401-403` | absent | missing | `unserved:` `GateDecisionWireSchema` carries a `label`, no per-gate note |
+| B93 | the candidate grid inside the CARD (`CompareGrid rows={5} min="14rem"` + `CandidateCard`: heading / name / identifier / `matched on …` / `See this candidate` \| `No capture — this was never on a page`) | `:268-338,406-418` | absent from the card; the packet renders in `IdentityApproveDialog` | divergent | `ruled: D226` — the ceremony surface renders the packet with the one control the SERVER asked for |
+| B94 | the "run is held here" sentence | two arms, the staged one counting writes `:421-425` | the no-staged arm, verbatim `:585-587` | divergent | `unserved:` `staged` is STRUCTURAL, not a wire gap — a `prepare` contract is `checkpoint: "in-memory-only"` (D252's row) |
+| B95 | the `gate.staged` block (`ArrowUpFromLine` / `w-32` field / value / `SystemChip` / `staged`\|`unconfirmed` Badge) | `:429-453` | absent | missing | same as B94 |
+| B96 | `ParkResolutions` + `BannerActions` inside the decision card | `:455-456` | `BannerActions` only `:588-592` | divergent | `ruled:` same row as B90 — the park is its own record (`InlineParkedWrite`, `park-resolve.tsx:169`) |
+| B97 | `CaptureLightbox` opened from a candidate | `:459-467` | absent | missing | `unserved:` `#captures` is `declared-unserved` (D184) |
+| B98 | `InlineGateDecisionRecord` — the SETTLED gate's card (verdict tint, `decision` Chip, `Approved by <who>`, the instant) | (no counterpart) | `:617-683` | extra | `ruled: D237` |
+| B99 | `InlineParkedWrite` — the parked write's own in-stream record | (the demo folds `parked` into `InlineDecision`) | `park-resolve.tsx:169`, mounted `:1092-1095` | extra | `ruled: ref write-safety §4.1` + the B90 row |
+| B100 | `FailureCardView` — the in-stream failure MARKER for a retried step with no record behind it | `:472-486` | absent | missing | `unserved:` there is no `failCard` fact; an `error`-level note is what the stream carries |
+| B101 | `InlineFailureRecord` | `DemoFailure.tsx` | `:696-777` + `trust.tsx` | — | audited in full as **R-E** below |
+| B102 | notice geometry: tint on an INNER layer, `absolute bottom-cozy left-cozy`, `w-[--ds-w-popover-md]`, `dsLayer.sticky`, `dsMotion.enter` + the `data-[demo-enter=from]` pair, bottom-LEFT so it shares no coordinate with the toast stack | `:884-905` | `:857-870` | exact | the whole independence argument is ported |
+| B103 | notice two-line button: icon + truncated title, then `CornerDownRight <verb>` left and `open {age}` right | `:924-948` | `:875-911` | exact | |
+| B104 | notice dismiss `IconButton` + "…the decision stays open" | `:949-954` | `:912-917` (label parameterised) | exact | |
+| B105 | notice per-kind icon/tone | branched on `gate.kind` `:874-876` | a `tone` prop with two call sites | divergent | `ruled:` B90's row + `ref dashboard-surfaces` (both decisions are named) |
+| B106 | a SECOND notice for a parked write (`Pause`, "Go to the parked write", "…the write stays parked") | (no counterpart) | `:1985-1997` | extra | `ruled: ref write-safety §4.1`; `Pause` not `PauseCircle` is R5 f.15 |
+| B107 | notice PRECEDENCE — at most one, and the gate wins | (no counterpart) | `:1628-1642` | extra | `ruled:` DESIGN.md — two floating surfaces may not share one corner |
+| B108 | `useSeekAnchor` — callback ref, `IntersectionObserver` at `threshold: 0.3`, the no-observer "assume not visible" arm, `scrollIntoView` + `focus({preventScroll:true})` with a reduced-motion branch | `:970-1001` | `:931-969` | exact | |
+| B109 | `goToDecision` target tab | `panelKindOf(row) === "review" ? "review" : "logs"` `:2358` | always `"logs"` `:1495-1498` | divergent | `unserved:` no `review` panel kind (B34) |
+| B110 | where an inline surface HANGS | a fixture-flagged `line.card` `:1110-1122` | `anchorIndex(lines, instant)` `:996-1002` | divergent | `ruled:` stated `:987-994` — a served note page carries no marker, so the anchor is two served timestamps; a record is never dropped for want of a place |
+| B111 | member branch in the sticky head: `ConveyorHeader` + `MemberSourceBlock` | `:2069-2165,2324-2328` | absent | missing | `unserved:` no producer (member roster/conveyor ledger row, CLOSED 2026-08-20) |
+| B112 | member action bar (`Retry` / `Mark checked` \| `Checked` / `Skip`, `Kbd c` checks · `Kbd n` next attention, sticky bottom) | `:2698-2738` | absent | missing | same as B111 |
+| B113 | `ReviewTab` and `PeopleTab` bodies | `:1231-1941` | `UnservedTab` `:1965` | missing | `unserved:` `#review` / `#people` are `declared-unserved` (D184) |
+| B114 | `ParkResolveDialog` mounted at the REGION, not beside the record | `:2748-2754` | `:2040-2045` | exact | |
+| B115 | `IdentityApproveDialog` mounted at the region | (no counterpart) | `:2034-2039` | extra | `ruled: D226` |
+
+**R-B counts — 114 elements (B101 forwards to R-E): 48 exact · 24 divergent · 27 missing · 15 extra.**
+
+**Since 08-14.** R5's 17 header findings all hold at HEAD — none regressed. What CHANGED under the
+panel since the wave: D225 replaced the per-event strip with the categorical `StepStrip` (B45, B51,
+B53, B56, B62); D237 added the settled-gate record (B98); D238 rewrote the outcome sentence (B21);
+D259 added the `replayed` arm (B40); D226 moved the candidate grid into the ceremony (B93, B115);
+and `efab4e1` moved the panel's clock to the served one (B23). Five ledger rows the wave left
+"booked" were dispositioned on 2026-08-20 with named missing producers, and they are the reason
+B32, B63, B90, B111 and B112 are absences rather than defects.
+
+**OPEN in R-B (11 questions):** B41 the non-focusable timeline segment (and the dead
+`group-focus-within` behind it) · B44 the untimed-segment dim · B50 the hover card's `Status` row ·
+B57 the orphan-gate segment · B60 the axis's `working` total · B61 the axis's `waiting on you` half ·
+B65 the stream's step grouping and sticky headings · B79 the empty-stream state · B80
+`More lines follow.` · B83 the search control · B87 the live/idle dot (= A49) · B91 `open {age}` on
+the decision card. Plus one recorded TENSION, not an OPEN: B45, where D225's `since <clock>`
+contradicts the demo's own argument for the age.
