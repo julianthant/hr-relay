@@ -1627,6 +1627,18 @@ export const hasResolvedEid: NamedPredicate = definePredicate("has-resolved-eid"
    re-validates the result. The architecture guard (§6) additionally bans importing one spec
    module from another spec module (registry + shared modules only).
 
+**As-built: mechanism 2 shipped, mechanism 1 shipped under a different name and a narrower one.**
+The seal is real and guarded (§4.1's as-built). Mechanism 1's home is not: there is no
+`src/forms/shared/eligibility.ts`, no `defineFormSpec` and no `extendFormSpec` anywhere in the tree
+— the rebuild has no "form spec" object for one to reach into, because a workflow's eligibility
+rides its descriptor. What was built instead is the predicate half, and it is stronger than a naming
+convention: `definePredicate(id, test)` is the ONLY mint (`completion.ts:141-149`, freezing the
+predicate and adding it to a module-private `WeakSet`), and `proveStagedFanOut` calls
+`assertFactorySealedPredicate` on every stage's `eligible` before it runs, so a hand-built
+`{ id, test }` object literal — the exact shape a second spec's config would be fished out as — is
+refused at construction by name (`:150-154`, `:285`). The import-ban clause has nothing to govern
+yet and gains its subject with the first workflow that declares a program.
+
 ### 4.3 Intent-derived child shape and stage consumption — declarative, coordinator-owned
 
 As-built, TWO things are derived at approve time from the *launching intent*
@@ -1660,6 +1672,17 @@ task store, and the dependency step of the program skips them by type, not by a 
 
 Standalone approve stays rejected loud (approval ≡ delegation, ported rule — approve.ts:162-171).
 
+**As-built: both declarations exist and nothing declares either, and the display-only coordinator
+has no runtime at all.** `CompletionConsumptionSpecSchema` and `CoordinatorPolicySchema` are built
+(`completion.ts:353-367`), re-exported through `src/base/workflow.ts:52-59` and admitted on every
+descriptor as optional fields (`:263-264`, `:321-322`) — so the move off `data.operationWorkflow`
+onto the launching descriptor is expressible today. No descriptor uses either field. The
+display-only half is further from built than that: there is **no `displayOnly` field on `run.queued`
+anywhere in the wire union** — the word survives only in `completion.ts:363`'s own comment — and no
+enqueue path stamps anything but `shape: "single"`, so a display coordinator cannot be minted and
+`rollupOperationStatus` has never folded a real group (§9.10 carries that whole absence, with the
+kernel's own statement of it at `command-kernel.ts:1608-1612`).
+
 ### 4.4 Durability: the approval manifest is part of the contract's execution, ported as-is
 
 The `ocr_approvals` machinery (2026-07 hardening) is transport-level idempotency and orthogonal to
@@ -1673,6 +1696,37 @@ approval, not a stuck review); terminal presentation (`gate.resolved("approval",
 presentation failure can never turn enqueued children into a failed approval. Dispatch failure →
 `gate.resolved("approval","failed")` + `span.ended("failed")` (today's `approve-failed`), emitted
 with inherited identity (ISS-006 rule, now structural — identity lives on `run.queued`).
+
+**As-built: the table exists, its shape does not.** `ocr_approvals` is a released authority table
+and it is an OPAQUE json record — `jsonRecordTable("ocr_approvals")` (`migrations.ts:295`, in the
+released set at `:455`), served through `opaque("ocr_approvals")` (`authority-database.ts:3764`)
+against `OpaqueAuthorityRecordSchema` (`storage-records.ts:248`). There is no strict schema, no
+production writer, and none of the claim / lease / heartbeat / conflict / recovery machinery this
+subsection ports: `resumeRecoverableOcrApprovals` does not exist in this tree. An opaque row is the
+right holding shape for a payload nobody parses yet — the boundary rule this repository enforces is
+that a row a reader INTERPRETS must be recursively strict, and nothing reads this one — but it is
+not the ported durability, and "ported as-is" above describes the plan rather than the tree.
+
+**Durable delegation manifest (D105, 2026-08-01).** The 1c `DelegationManifestSchema` could not
+express what the 1e planner writes, and all three gaps were silent losses rather than validation:
+
+- it recorded no `policy`, so the manifest — the authority a replay verifies against — was not the
+  durable home of the policy the operator selected (D102 says one vocabulary END TO END);
+- its `join` carried only `all`/`all-settled`, making an awaited one-child edge (`join:"one"`) and
+  an un-awaited fan-out (`join:"none"`) unwritable, even though the latter's manifest reference IS
+  the node's output;
+- `children` required `min(1)`, so a zero-child fan-out — a legitimate empty upstream list that
+  `ref workflow-model` §3.2 requires to stay an explicit satisfied join — had no writable record.
+
+All three are corrected in `src/domain/dependencies.ts`, with `join`/`cardinality` agreement
+enforced. Like D102 this is a zod-validated JSON payload, so no authority migration version was
+consumed by the shape change. What that bought is the SHAPE, not a running planner: the record is a
+recursively strict schema over an immutable repository (`storage-records.ts:239`,
+`authority-database.ts:3098-3101`), and its only writer would be the same child-run delegation seam
+§4's opening says is unwired — `DelegationManifestRefSchema` is read at `run-executor.ts:1523`,
+inside the arm that refuses `capability-unavailable`. So `delegation_manifests` is a strict,
+writable table with no production row, which is the honest half-way state and is why the correction
+was worth making before the first writer rather than after it.
 
 ### 4.5 oath-upload — owner-consumes via a sibling born-at-upload task (no coordinator)
 
@@ -1698,6 +1752,29 @@ oath/ec/onbase-ec/verify/i9 — oath-upload is a fan-out *target*, not a form). 
   and submit form a transaction node. The submit idempotency window is ref write-safety's write intent. None
   of these hides in a handler side channel.
 
+**As-built: the gate DECLARATION exists, and nothing consumes it.** `GateDecl` has three arms, and
+two of them are subscriptions — `resolvedBy: "children-terminal"` with a
+`WorkflowGateSource<AnyWorkflowRef, …>` and `resolvedBy: "external"` with an `ExternalGateSource`
+(`src/base/flow.ts:207-234`) — so the shape this subsection needs is writable today, and `build()`
+refuses a non-operator gate that declares no source (`:674-678`). What is absent is every consumer:
+`grep -rn "subscribes" src/` returns those five lines and nothing else, and the executor has ONE
+gate arm — it emits `gate.opened`, closes the browser session and parks the run waiting for an
+operator command (`src/core/run-executor.ts:1363-1377`), whatever the gate declared. A
+`children-terminal` gate would therefore park forever, so the arm is a declared-but-unreachable one
+of exactly the kind D254 retired elsewhere, and it is named here rather than left to be discovered
+by the first workflow that declares it. There is also no `oath-upload` workflow, no
+`subscribeToApproval`, and no born-at-upload prepare seam: `src/workflows/` holds person-lookup,
+kuali-timekeeper-annotation and the six separations descriptors.
+
+<!-- roadmap-status: order-7 -->
+- [x] the shape is DECIDED and recorded here rather than mis-modelled as a CompletionProgram (D11) — oath-upload is a fan-out target with no form spec, and its ticket is a real `single` task
+- [x] the gate declaration surface exists: `resolvedBy: "children-terminal" | "external"` each carry a typed `subscribes` source, and `build()` refuses a non-operator gate without one (`src/base/flow.ts:207-234, 674-678`)
+- [ ] nothing CONSUMES a subscription — the executor's one gate arm parks for an operator command whatever the gate declared (`run-executor.ts:1363-1377`); a `children-terminal` gate parks forever today
+- [ ] no `oath-upload` workflow, no `subscribeToApproval`, no born-at-upload prepare seam, and no OnBase store
+- [ ] §4.4's approval durability — `ocr_approvals` is an opaque table with no writer, so the sibling subscriber has nothing to subscribe TO
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/base/flow.ts, src/core/run-executor.ts, src/workflows/, `grep -rn 'subscribeToApproval\|subscribes' src/`; left: every consumer — this node's whole build
+<!-- /roadmap-status -->
+
 ### 4.6 verify — in-run enrichment, not completion
 
 verify has **no completion contract**: no approve targets, no `completeDelegatedRun`. Its
@@ -1705,6 +1782,14 @@ fan-outs (`verify.ts:523-660`) happen during the run: ref workflow-model models 
 a first-class parallel `all-settled` node, followed by a typed join/enrichment step. Child inputs,
 results, cancellation, and joins are descriptor-visible and checkpointed. This doc still does not
 model them as completion. i9 is §4.1's post-completion enqueue; verify is mid-run enrichment.
+
+**As-built: the node kind exists and the join it needs refuses.** A `parallel` node is
+interpretable only with `join: "all"`; `all-settled` fails the node by name — *"the all-settled arm
+lands with its owning milestone (capability-unavailable)"* (`src/core/run-executor.ts:1350-1356`) —
+and the `child-run` arm refuses the same way when the delegation executor seam is unwired
+(`:1508-1515`). Both are typed seams that refuse rather than degrade, which is the correct shape for
+a capability nothing has built: a `parallel` node that quietly ran its branches sequentially would
+be a different execution than the descriptor declared.
 
 ---
 
