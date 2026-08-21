@@ -99,6 +99,12 @@ import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { CaptureStart } from "./capture-start.js";
 import { fmtClock, pluralize, shortHash } from "./format.js";
+import {
+  headerCandidateOptionLabel,
+  layoutMetaItems,
+  sourceLabel,
+  suggestionProposalText,
+} from "./intake-model.js";
 
 type DetectedColumn = z.infer<typeof DetectedColumnSchema>;
 type ColumnBinding = z.infer<typeof ColumnBindingSchema>;
@@ -123,14 +129,6 @@ const REJECT_CODE_LABEL: Record<RowReject["code"], string> = {
   "workflow-schema": "row rejected by the workflow",
   "duplicate-identity": "duplicate person",
   "cross-field": "fields disagree",
-};
-
-/** Why a column was proposed — §2.5's scorer, said out loud. */
-const SUGGESTION_WHY_LABEL: Record<Suggestion["why"][number], string> = {
-  "alias-exact": "known header",
-  "label-exact": "matches the field label",
-  "token-overlap": "words in common",
-  "samples-parse": "its values parse",
 };
 
 /* ── command plumbing ─────────────────────────────────────────────────────── */
@@ -284,7 +282,7 @@ function SourceBand({
         <FileSpreadsheet aria-hidden className={cn(dsIcon.lg, "text-[color:var(--ds-fg-muted)]")} />
         <span className="flex min-w-0 flex-col">
           <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>
-            {session.sourceName ?? "(this session predates file names)"}
+            {sourceLabel(session)}
           </span>
           <MetaLine
             items={[
@@ -328,7 +326,7 @@ function SourceBand({
             {settled === null && <option value="">Pick the row that holds the headers</option>}
             {session.headerCandidates.map((candidate) => (
               <option key={candidate.rowIndex} value={String(candidate.rowIndex)}>
-                {`row ${String(candidate.rowIndex + 1)} — ${candidate.cells.filter((cell) => cell.length > 0).slice(0, 6).join(" · ")}`}
+                {headerCandidateOptionLabel(candidate)}
               </option>
             ))}
           </Select>
@@ -605,7 +603,7 @@ function SuggestionCell({
             </span>
             <MetaLine
               items={[
-                proposal.why.map((why) => SUGGESTION_WHY_LABEL[why]).join(", "),
+                suggestionProposalText(proposal),
                 proposal.ambiguous ? "another column scores the same — check both" : undefined,
               ]}
             />
@@ -973,6 +971,14 @@ function OutcomeBand({
               : "This mapping has not been validated, so nothing is known about its rows yet."}
           </span>
         )}
+        {/*
+          * IN8 / IN9 / `DemoIntake.tsx:355-358` — the layout every decision on
+          * this screen is fenced against, echoed where the deciding buttons
+          * are. `faint` because it is a standing note about the session, not a
+          * fact about what is about to happen; `MetaLine`'s own docstring
+          * names this exact line as one of the seven it was extracted for.
+          */}
+        <MetaLine tone="faint" items={layoutMetaItems(session)} />
       </span>
 
       <span className="flex-1" />
@@ -1236,7 +1242,7 @@ export function IntakeWorkspace({
                 Its rows are now runs in the queue. The manifest is the join — every run it minted
                 references it, which is what makes &quot;all of them ran&quot; a checkable claim.
               </span>
-              <MetaLine
+<MetaLine
                 items={[
                   session.intakeManifestId === undefined
                     ? undefined
