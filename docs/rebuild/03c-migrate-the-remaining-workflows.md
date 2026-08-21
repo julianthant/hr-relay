@@ -491,13 +491,51 @@ the subject differently per mode without minting a second workflow class.
 <!-- roadmap: order-2 -->
 
 <!-- roadmap-status: order-2 -->
+- [ ] the §b questionnaire for all three workflows — unasked
+- [ ] the `sharepoint` and `old-kronos` stores — 12 lines each, `declareDriver(…, "unwired")`, zero tasks
+- [ ] CRM document download on the EXISTING crm driver — `src/stores/crm/tasks/` holds two read tasks and no download
+- [ ] downloads land as content-addressed immutable artifacts (`artifact-effect-boundary`, `ref guards-and-tests` §3.7)
+- [ ] the artifact-bytes route — there is **no** endpoint serving artifact bytes today; the only byte-serving route in the tree is the phone's own `GET /api/v1/capture/phone/photos/:photoId/bytes` (`legacy-route-files`, still open)
+- [ ] PROOF T1 per workflow + the T3 pair
+> 2026-08-20 | docs-cohesion 03c | verified against `src/stores/sharepoint/index.ts`, `src/stores/old-kronos/index.ts` (both unwired, `{}` tasks), `src/stores/crm/tasks/` (2 read tasks) and `config/legacy-capabilities.json`'s `legacy-route-files` reason; nothing built
 <!-- /roadmap-status -->
+
+**What it is.** Three single-system reads that end in a FILE: CRM iDocs PDFs, SharePoint rosters,
+and Old Kronos Time Detail PDFs. **Systems:** CRM (driven), SharePoint (undriven), Old Kronos
+(undriven).
+
+**Store tasks.** REUSE the `crm` driver and its session provider; BUILD one download task on it, and
+BUILD the `sharepoint` and `old-kronos` stores whole. Neither has a login recipe yet.
+
+**The specific hazard, and it is not the download.** This row is the first to produce BYTES an
+operator wants to see, and the byte path does not exist: `ArtifactRefWireSchema` describes artifacts
+and run detail lists them, but nothing serves them. So order 2 owns two things at once — the
+immutable content-addressed WRITE (which `artifact-effect-boundary` already enforces: a download is
+immutable, a mutable local file is a projection with a stable-keyed outbox, never a task append) and
+the READ route (`ref frontend-backend-integration` §3.6) that three later orders also need. Do the
+route here or orders 3, 5 and 7 each rediscover it.
+
+**Why it is this early.** Blast radius: nothing is written to any HR system, and standing up two
+stores at zero write risk is the cheapest way to learn each system's login and page shape before a
+later order has to write to it.
 
 ### Dashboard · wire the downloads
 <!-- roadmap: order-2-dash -->
 
 <!-- roadmap-status: order-2-dash -->
+- [ ] 5.1.1 run modal — typed start inputs + start plan for the three download workflows
+- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
+- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
+- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] the download viewer — the artifact-bytes route plus a per-run downloads tile (`ref frontend-backend-integration` §3.6)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces
+> 2026-08-20 | docs-cohesion 03c | seven squares: the six standard reads plus the download viewer, which is the FIRST consumer of the artifact-bytes route and therefore builds it
 <!-- /roadmap-status -->
+
+The extra square here is a real build, not a wire: the run-detail `captures` section is served by
+the BFF and placed by no panel today (03a's finding), and the bytes behind it are unrouted. This
+sub-task is where a downloaded document becomes something the operator can open.
 
 ## Order 3 · the OCR pipeline workflow
 <!-- roadmap: order-3 -->
