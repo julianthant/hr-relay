@@ -303,6 +303,8 @@ export interface ExternalGateNode<
   result: ResultSchema;
   resolve: (event: z.output<Source["event"]>) => z.input<ResultSchema>;
 }
+// All three arms exist in `src/domain/workflow/graph.ts:318-345`. Only `operator` has a producer:
+// every gate any registered workflow declares is `resolvedBy: "operator"` (four of them).
 export type AnyGateNode =
   | OperatorGateNode<z.ZodType>
   | ChildrenGateNode<WorkflowGateSource<AnyWorkflowRef, z.ZodType>, z.ZodType>
@@ -1230,7 +1232,9 @@ interface FlowBuilder<
   S extends Record<string, AnyNodeEntry>,
   Nodes extends readonly GraphNodeBase[],
 > {
-  meta(m: DescriptorMeta<InputSchema>): this;
+  // NOTE: there is no `.meta()` link. Meta rides the descriptor SPEC that consumes this graph
+  // (§1.1's as-built) — it contributes nothing to the S/Nodes accumulators, and threading it
+  // through would re-open the transform surface the real-scale type proof pins.
 
   step<Id extends string, C extends AnyReadContract,
     const D extends readonly (keyof S & string)[],
@@ -1281,11 +1285,8 @@ interface FlowBuilder<
   /** Instrumentation on EVERY step of this workflow. */
   instrument(hooks: TaskHooks<AnyTaskContract>, label: string): this;
 
-  /** Per-system auth override (ref task-contract §6.1's mechanism, attached HERE): default is the eager
-   *  parallel-staggered Duo chain over the DERIVED session union; "on-first-use" logs in lazily
-   *  at the first step whose contract touches that system. Replaces deferAuth + the 15-line
-   *  hand-rolled auth step in 5 workflows. Keys are constrained to the derived union. */
-  auth(overrides: Partial<Record<DerivedSystemOf<S>, "eager" | "on-first-use">>): this;
+  // NOT BUILT: `auth(overrides: Partial<Record<DerivedSystemOf<S>, "eager" | "on-first-use">>)`.
+  // See the paragraph below the block.
 
   build<ResultSchema extends z.ZodType,
     const D extends readonly (keyof S & string)[],
@@ -1330,6 +1331,18 @@ export type ChildRunBuilderResult<In extends z.ZodType, S,
     AppendChildRunNode<Nodes,In,S,Id,T,O>
   >;
 ```
+
+**Two methods this sketch used to list are not on the builder, and one of them is a real gap.**
+`.meta()` is a deliberate absence with its reason above. `.auth()` is not: the per-system override
+(`"eager"` vs `"on-first-use"`, ref task-contract §6.1's mechanism attached here, replacing legacy's
+`deferAuth` and its hand-rolled auth step in five workflows) **does not exist** — neither literal
+appears anywhere in `src/`. Every workflow today acquires each system's session at the first node
+whose contract touches it, through the worker's session provider, which is the `on-first-use`
+behaviour by default and with no way to ask for the eager parallel-staggered chain. That costs
+nothing while a graph reaches one or two systems in sequence; it is worth building when a workflow
+reaches three and would otherwise serialize three Duo ceremonies — and R12's per-credential ceremony
+lease (`{#duo-lease}`) is the prerequisite, because a parallel eager chain is exactly the
+concurrent-ceremony hazard D243/D244 found.
 
 `BranchBuilderResult`, `ParallelBuilderResult`, and `GateBuilderResult` follow this same fully
 expanded pattern in the implementation/type proof: exact output, exact conditionality, exact node
