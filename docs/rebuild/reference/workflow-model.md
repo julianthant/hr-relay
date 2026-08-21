@@ -463,6 +463,16 @@ proven by a run, and a reader deciding whether to build on one should know that.
 
 #### D260 — `inputRun` carries exactly ONE varying value per run, and `separations` needs two (2026-08-20)
 
+<!-- roadmap: track-c -->
+
+**The RULE below is current and normative; its DISPOSITION is closed by D261, immediately after.**
+Read them in order. D260 established the constraint, proved `separations` could not satisfy it,
+named two shapes and handed the operator the choice; the operator chose shape 2 the same day and it
+was built. Nothing in D260 was withdrawn — including its refusal of the tempting version ("drop
+`documentNumber` and let the page supply it") and its refusal of a plan-time derivation — so the
+paragraphs about `separations.surfaces` staying `{}` and about not spending a fingerprint read as
+the state on 2026-08-20 morning, not as the state now.
+
 **The rule, stated once so no workflow re-derives it.** `InputParserSpec` splits operator text into
 entries and each entry emits **one** input field: `EntryRule.emit` is a single `InputFieldName`, and
 `parseInputRunText` composes `[{ field: rule.emit, value: <the entry text> }, ...constants]`.
@@ -513,6 +523,19 @@ moves the fingerprint, and every checkpoint this database holds for `separations
 **Never spend a fingerprint on a change that buys no behavior.**
 
 #### D261 — the action id is a GRAPH OUTPUT, so `separations` starts from one typed number (2026-08-20)
+
+<!-- roadmap: track-c -->
+
+<!-- roadmap-status: track-c -->
+- [x] the rule itself: a workflow is `inputRun`-startable iff its input schema has exactly one required field that varies per run, and `constants[]` may carry only a value that does not (D260, `src/domain/workflow/ingress.ts`)
+- [x] `SeparationsInput` drops `actionId`; the head node `resolve-action` binds `kuali/search-separation-action` and reads the matched Action-List row's `href` (D261; `src/workflows/separations/descriptor.ts:288-307`, `src/domain/contracts/kuali/search-separation-action.ts`)
+- [x] `separations.surfaces.inputRun` exists — one `document-number` rule, no `otherwise` arm, `timekeeperName` as the one constant, and two real document numbers as `examples` (D250/D261; `src/workflows/separations/descriptor.ts:801-838`)
+- [x] the document number is now proved TWICE — against the Action-List link's anchored accessible name and against the opened document's level-1 heading (D129/D261)
+- [x] the refusals carry the value: no action held on a document refuses BY NAME printing the numbers the list did show, and two DISTINCT action ids for one number refuses rather than choosing
+- [!] `timekeeperName` is a per-OPERATOR constant baked into a bundle-safe descriptor (`"Julian Zaw"`). It satisfies the rule and is the weakest thing here; the trigger that ends it is a SECOND timekeeper, at which point it becomes D260 shape 1's typed form field
+- [ ] D260 shape 1 — a third `surfaces` arm, a typed FORM over `UploadFieldSpec` — is unbuilt and has no client renderer; the deferral is real and its trigger is the sentence above
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/workflows/separations/descriptor.ts`, `src/domain/workflow/ingress.ts` and `src/domain/contracts/kuali/search-separation-action.ts`; left: shape 1, waiting on a second timekeeper
+<!-- /roadmap-status -->
 
 **Read D260 first; this section is the operator exercising the choice it handed them.** They ruled,
 verbatim: *"document number should work. no need action id."* That is D260's **shape 2**, and the
@@ -577,6 +600,17 @@ compatibility even when its output zod schema does not, while identical source i
 gets the same hash.
 
 ### 1.1.1 The short code — ONE declaration, two consumers (D242)
+
+<!-- roadmap: track-b -->
+
+<!-- roadmap-status: track-b -->
+- [x] `WorkflowCodeSchema` is the ONE definition of the short code and the descriptor factory, the bootstrap wire and the explorer wire all bind it (`src/domain/workflow/presentation.ts:66`)
+- [x] uniqueness is refused at the COMPOSITION ROOT, in the same shape a dangling module role is, and `descriptor-coverage` runs the same audit (`src/control/workflow-registry.ts`, `auditWorkflowCodes` / `workflowCodeRegistry`)
+- [x] `TraceIdSchema` stays deliberately wider (`[a-z0-9]{2,4}`) because it READS durable stored ids, and a reader narrowed to the writer's current rule refuses history (`src/domain/ids.ts:154-163`, D133)
+- [x] the code is frozen into an archived record beside the label rather than resolved from the live registry (`ArchivedRunContent.workflowCode`, charter §25)
+- [x] B4's queue row and the archive index are its presentation consumers; identity is `deriveTraceId`'s `<code>-<HHMMSS>-<runId4>` (§5.8/§6)
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/presentation.ts`, `src/domain/ids.ts` and `src/control/workflow-registry.ts`; left: nothing in this doc's half of Track B
+<!-- /roadmap-status -->
 
 `code` is the workflow's operator-facing short handle: **two to four lowercase letters**, declared
 on the descriptor, **unique across the registry**. `WorkflowCodeSchema`
