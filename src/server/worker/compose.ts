@@ -58,6 +58,7 @@ import {
   type WorkerLoopReport,
 } from "../../core/worker-loop.js";
 import { composeDuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
+import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
 import { createWriteSequencer } from "../../core/write-sequencer.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
@@ -177,6 +178,13 @@ export interface WorkerComposeInput {
   readonly processId?: number;
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
+  /**
+   * Test seam over the Duo ceremony lease gate factory (D267); production
+   * omits it and resolves the credential identity at boot. The seam exists
+   * for the same reason `sessionFactory` does: a composition test has no
+   * credential file, and a fixture gate is still a REAL gate over authority.
+   */
+  readonly duoCeremony?: DuoCeremonyGateFactory;
   /** Test seam over SIGINT/SIGTERM; production wires the real signals. */
   readonly stopSignal?: AbortSignal;
   readonly log?: TaskLogger;
@@ -373,7 +381,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   // D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
   // lease, keyed on the credential identity resolved ONCE here — an
   // unresolvable identity refuses the whole worker at boot.
-  const duoCeremony = composeDuoCeremonyGateFactory({
+  const duoCeremony = input.duoCeremony ?? composeDuoCeremonyGateFactory({
     config: resolved.config,
     leases: database.authority.duoCeremonyLeases,
     clock,

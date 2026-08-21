@@ -920,6 +920,15 @@ describe("authority generation accounting", () => {
     { table: "provider_budget_counters", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "provider_admissions", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "leases", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
+    {
+      table: "duo_ceremony_leases",
+      mutate: (db) => {
+        db.authority.duoCeremonyLeases.acquire({
+          credentialKey: "ab".repeat(32), workerId: "worker-a", system: "ucpath",
+          now: "2026-08-21T10:00:00.000Z", ttlMs: 80_000,
+        });
+      },
+    },
     { table: "delegation_manifests", mutate: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); } },
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },
