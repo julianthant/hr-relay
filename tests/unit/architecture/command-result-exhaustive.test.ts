@@ -32,17 +32,29 @@
  * replaced — the first governs a module that HOLDS a result (a banner, a
  * refusal notice) without posting one itself.
  *
- * Every arm runs against the real tree AND against a checked-in violating
- * fixture, so the walkers prove they can see the patterns they forbid.
+ * **The second arm's own follow-up: MODULE granularity is not CALL-SITE
+ * granularity.** Checking whether a module imports the fold at all is
+ * satisfied by a module with two `.executeCommand(` dispatches that folds
+ * only one, and by a module that imports the fold's TYPE with nothing ever
+ * called. Both read as "imports the fold" and neither settles every command.
+ * The arm now counts real `ts.CallExpression` sites off the AST —
+ * `.executeCommand(` calls versus `settleCommandResult(` calls — and refuses
+ * a module whose fold count is short, which answers both holes without a
+ * special case for `import type`: a type-only import produces zero calls.
+ *
+ * Every arm runs against the real tree AND against checked-in violating
+ * fixtures, so the walkers prove they can see the patterns they forbid.
  */
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import ts from "typescript";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 
 const SCAN_ROOT = "src/dashboard";
 const FIXTURE = "tests/unit/architecture/fixtures/command-result-unhandled-conflict.ts";
 const FIXTURE_UNFOLDED = "tests/unit/architecture/fixtures/command-result-unfolded-dispatch.ts";
+const FIXTURE_PARTIAL_FOLD = "tests/unit/architecture/fixtures/command-result-partial-fold.ts";
 
 /**
  * The fold itself, and the transport that parses the wire. Neither turns a
@@ -86,23 +98,62 @@ function decidesSettlementAlone(text: string): boolean {
 }
 
 /**
- * A module POSTS a command when it calls `executeCommand` on the client. It has
- * SETTLED that command's answer when it IMPORTS the fold's module.
+ * A module POSTS a command when it calls `.executeCommand(` on the client. It
+ * has SETTLED that command's answer only to the extent it calls
+ * `settleCommandResult(` at least as many times as it posts.
  *
- * The import is what is checked, not a mention of the function's name: a
- * comment explaining why the fold matters would otherwise clear the module
- * that ignores it — which is how the negative-control fixture was written, and
- * it is the first thing this arm caught. An import that is never called is not
- * a hole either, because `eslint --max-warnings 0` refuses an unused binding.
+ * This is CALL-SITE granularity, not module granularity (Track D row D3's
+ * follow-up). The first cut of this arm checked whether the module IMPORTED
+ * `command-result.js` at all, and that check is satisfied by two things it
+ * should not be: a module with two `.executeCommand(` dispatches that folds
+ * only one of them (the import is present, the second refusal still falls
+ * through in silence), and a module that imports the fold's TYPE alone
+ * (`import type { CommandSettlement } from ".../command-result.js"` matches
+ * the import text with nothing ever called). Counting actual call sites to
+ * `settleCommandResult(` fixes both at once: a type-only import produces zero
+ * calls, and a module posting N times must settle at least N times or it is
+ * refused by name.
  *
- * The pattern is textual for the same reason the arm above is: this guard
- * governs a bundle where the only thing a type check can see is that a
- * `CommandResult` was received, never what was concluded from it.
+ * Both counts are read off the real AST (the same `typescript` compiler API
+ * `helpers/ratchet-arms.ts` already uses for this repo's other call-site
+ * walkers), not a regex over source text — so a `.executeCommand(` or
+ * `settleCommandResult(` spelled out in a comment or a string literal counts
+ * for nothing, only an actual `ts.CallExpression` does.
  */
-const IMPORTS_FOLD = /from\s+"[^"]*\/command-result\.js"/u;
+function isExecuteCommandCall(node: ts.CallExpression): boolean {
+  return ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "executeCommand";
+}
 
-function postsWithoutFolding(text: string): boolean {
-  return /\.executeCommand\s*\(/u.test(text) && !IMPORTS_FOLD.test(text);
+/**
+ * `settleCommandResult` is always a named import called directly
+ * (`settleCommandResult(result)`), but a namespace-imported call
+ * (`commandResult.settleCommandResult(result)`) settles the same command and
+ * must count too — the invariant is "was the fold called", not "was it called
+ * a particular way".
+ */
+function isSettleCommandResultCall(node: ts.CallExpression): boolean {
+  const callee = node.expression;
+  if (ts.isIdentifier(callee)) return callee.text === "settleCommandResult";
+  return ts.isPropertyAccessExpression(callee) && callee.name.text === "settleCommandResult";
+}
+
+function countCallSites(source: ts.SourceFile, isMatch: (node: ts.CallExpression) => boolean): number {
+  let count = 0;
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && isMatch(node)) count += 1;
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return count;
+}
+
+function foldsFewerCommandsThanItPosts(path: string, text: string): boolean {
+  const scriptKind = path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, scriptKind);
+  const posts = countCallSites(source, isExecuteCommandCall);
+  if (posts === 0) return false;
+  const settles = countCallSites(source, isSettleCommandResultCall);
+  return settles < posts;
 }
 
 describe("command-result-exhaustive (D253)", () => {
@@ -128,24 +179,48 @@ describe("command-result-exhaustive (D253)", () => {
     )).toBe(false);
   });
 
-  it("every dashboard module that POSTS a command settles it through the fold (D3)", () => {
+  it("every dashboard module folds at least as many commands as it posts (D3)", () => {
     const offenders = sourceFiles(SCAN_ROOT)
       .map((path) => relative(REPO_ROOT, path))
       .filter((path) => !EXEMPT.has(path))
-      .filter((path) => postsWithoutFolding(readFileSync(join(REPO_ROOT, path), "utf8")));
+      .filter((path) => foldsFewerCommandsThanItPosts(path, readFileSync(join(REPO_ROOT, path), "utf8")));
     expect(offenders, offenders.join("\n")).toEqual([]);
   });
 
-  it("the POSTS-without-folding walker sees its own violation (negative control)", () => {
-    expect(postsWithoutFolding(readFileSync(join(REPO_ROOT, FIXTURE_UNFOLDED), "utf8"))).toBe(true);
-    // A module that posts AND folds is clean, so the walker cannot be satisfied
-    // by one that answers `true` for everything.
-    expect(postsWithoutFolding(
+  it("the call-site walker sees its own violations (negative control)", () => {
+    // No import of the fold at all: every posted command falls straight
+    // through to the success path.
+    expect(foldsFewerCommandsThanItPosts(
+      FIXTURE_UNFOLDED,
+      readFileSync(join(REPO_ROOT, FIXTURE_UNFOLDED), "utf8"),
+    )).toBe(true);
+    // A REAL import of the fold, called on only ONE of two dispatches — the
+    // shape the import-only check could not see.
+    expect(foldsFewerCommandsThanItPosts(
+      FIXTURE_PARTIAL_FOLD,
+      readFileSync(join(REPO_ROOT, FIXTURE_PARTIAL_FOLD), "utf8"),
+    )).toBe(true);
+    // A `import type` of the fold, with the function's name only ever
+    // mentioned in a comment: zero calls to `settleCommandResult(`, so the
+    // one dispatch is unfolded regardless of what the import line says.
+    expect(foldsFewerCommandsThanItPosts(
+      "fixture.ts",
+      'import type { CommandSettlement } from "../app/command-result.js";\n'
+      + '// settleCommandResult(result) would settle this, but nothing calls it.\n'
+      + 'export function post(client: { executeCommand: (r: unknown) => Promise<CommandSettlement> }, r: unknown) {\n'
+      + '  void client.executeCommand(r);\n'
+      + '}\n',
+    )).toBe(true);
+    // A module that posts twice and folds both is clean, so the walker
+    // cannot be satisfied by one that answers `true` for everything.
+    expect(foldsFewerCommandsThanItPosts(
+      "fixture.ts",
       'import { settleCommandResult } from "../app/command-result.js";\n'
-      + 'client.executeCommand(request).then((r) => { if (settleCommandResult(r).kind === "refused") stop(); });',
+      + 'client.executeCommand(a).then((r) => { if (settleCommandResult(r).kind === "refused") stop(); });\n'
+      + 'client.executeCommand(b).then((r) => { settleCommandResult(r); });',
     )).toBe(false);
     // And a module that posts nothing is out of this arm's scope entirely.
-    expect(postsWithoutFolding("export const NOTHING_IS_POSTED = 1;")).toBe(false);
+    expect(foldsFewerCommandsThanItPosts("fixture.ts", "export const NOTHING_IS_POSTED = 1;")).toBe(false);
   });
 
   it("the fold's own module is the only place the arms are enumerated for a verdict", () => {
