@@ -1976,6 +1976,22 @@ edit onto a run that has moved on. (Editing a *running* task's checkpoints is fo
 <!-- roadmap: p2-2i -->
 <!-- roadmap: track-b -->
 
+<!-- roadmap-status: p2-2i -->
+- [x] 2i-C, the Edit Data rail: the `context-data` wire carries the policy, `authority.version` is the generation token, drafts re-parse into the recorded scalar's type, and all five save arms plus the three consume arms are pinned (`tests/unit/edit-data.test.ts`, `edit-data-field-policy` active)
+- [x] 2i-E, the intake surface over schema v12: the durable session, the upload route, all six command arms and the first real projection (§2.7/§2.8/§5.2, D170–D172)
+- [x] 2i-F, the token-scoped phone capture surface: the fragment token, the uniform refusal, the bundler and the derived handoff ids (§5.1, D174; `capture-durability-and-scope` active)
+- [x] the rail's CAS-conflict arm — silently reported saved until B7/D253 fixed it — is now exhaustive at the discriminant and guarded (§6.4.1)
+- [ ] the phone surface has no production delivery path: the BFF serves no frontend bytes, so `/capture.html` 404s outside the dev server (§5.1, D189)
+- [ ] no workflow can receive a capture handoff — `CAPTURE_INTAKE_BINDINGS` is empty (§5.1); and saved-mapping reuse has no store, so every intake upload re-maps (§2.3)
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/dashboard/{app/command-result.ts,surfaces/context-rail.tsx}`, `src/domain/intake/*`, `src/domain/capture*.ts` and `src/infra/sqlite/migrations.ts:904`; left: the two delivery gaps above
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: track-b -->
+- [x] B7's half of this doc is closed: the Data save's unhandled CAS `conflict` is fixed at the discriminant, not at the call site — `settleCommandResult` plus the `command-result-exhaustive` guard with a fixture carrying the exact shipped shape (D253)
+- [ ] the rest of Track B is not this doc's — ref dashboard-surfaces and ref frontend-backend-integration own the surfaces; this section owns only the Edit Data model beneath the rail
+> 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/dashboard/app/command-result.ts` and the `command-result-exhaustive` guard entry in `docs/rebuild/guard-inventory.json`
+<!-- /roadmap-status -->
+
 The operator surface over the D166 core landed; where the build deviates from the sketches above,
 the as-built shape is normative:
 
@@ -2020,6 +2036,19 @@ the as-built shape is normative:
   before any command is built, a rejection keeps the drafts and shows the kernel's sentence
   verbatim, and the per-save `reason` (required, non-empty) becomes every patch's
   `CheckpointPatch.reason`.
+- **The CAS conflict arm was UNHANDLED until D253, so §6.4's whole rule was false in the rail.**
+  `CommandResultSchema` has three arms and TWO are refusals — `rejected` and the CAS `conflict` —
+  and this rail branched on `rejected` alone, so a conflict fell through to the SUCCESS path: the
+  editor closed, the operator's drafts were discarded, and a correction the kernel had REFUSED was
+  reported saved. That is exactly the state §6.4 exists to make loud, and it was reachable by
+  ordinary use — a run's version moves whenever a worker claims it or the day stream folds a span
+  under an open panel. The fix is structural: `settleCommandResult`
+  (`src/dashboard/app/command-result.ts`) switches over the discriminant so a fourth arm is a
+  compile error, and the `command-result-exhaustive` guard refuses any dashboard module naming one
+  refusal arm without the other. The two refusals stay DISTINGUISHABLE in the sentence, because the
+  operator does different things about them: a conflict carries the server's `currentVersion` and
+  never the words "try again" — re-sending the same envelope carries the same stale
+  `expectedVersion` and would be refused identically.
 
 **Decision: the pre-first-start intake correction grid (§5) and checkpoint correction in the
 Context rail's Data section are SEPARATE surfaces that share ONE pure per-cell coercion/validation
