@@ -359,7 +359,45 @@ mechanism transfer D207 allows between two Kuali writes does not reach UCPath at
 <!-- roadmap: def-search-export -->
 
 <!-- roadmap-status: def-search-export -->
+- [x] the ONE export that ships is the Activity report's CSV, `GET /api/v1/reports/activity.csv` (`src/server/dashboard/routes/api.ts:192`, D240)
+- [x] the evidence the missing surfaces would serve is all durable already — diagnostic bundles are content-addressed with an attachment index, artifact refs and resource schemas are complete
+- [x] the per-fact half of rerun transparency exists: `retryOf` plus `reuse` rows carrying `ageMs` and the bound they were judged against (`ref operator-trust` §2.4)
+- [ ] BE the artifact-bytes route — nothing serves bytes; it also unblocks the run-detail `captures` section and the screenshot gallery
+- [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only, and there is no cross-run search endpoint at all (`legacy-route-search`)
+- [ ] BE the operator xlsx export — the sink exists (`src/infra/artifacts/xlsx-retention-sink.ts`) as a RETENTION sink and is uncomposed in production (D164)
+- [ ] the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one
+> 2026-08-20 | docs-cohesion 04 | verified against the full route table in src/server/dashboard/routes/api.ts:158-403 (no search, no artifact-bytes, one CSV) and src/infra/artifacts/xlsx-retention-sink.ts; left: all four
 <!-- /roadmap-status -->
+
+**What the deferral is.** Three legacy affordances the rebuild does not serve. You cannot **search
+runs across dates** — the Top Bar navigates and filters the day the projection served, and there is
+no cross-run query endpoint at all. You cannot **look at a screenshot**: diagnostic bundles capture
+them, index them and retain them, and no route hands the bytes to a browser. You cannot **export to
+Excel**: the one export served is the Activity report's CSV.
+
+**The decision that deferred them.** No single one — they were named OUT of the 2i operator-surface
+tail (D168–D180, rounds 38–44) as the tail was scoped, and each has a reason of its own recorded
+where its capability lives. `legacy-route-search`'s disposition says it plainly: the search family
+closes **as the migrations produce the run corpus a search surface must be shaped by.** D164 built
+the xlsx writer as a `xlsx-retention` SINK for the artifact pipeline and left it uncomposed in
+production, so what is missing is an operator-facing export, not a writer.
+
+**Its trigger: the Phase-3 cross-cutting closure**, and the shaping constraint is the interesting
+half. These three are listed under `{#cross-cutting}` — "where legacy is still ahead" — and every
+one of them is deliberately shaped **against a real run corpus** rather than invented in planning.
+A search surface built today would be filtered against two workflows' worth of runs; the field-level
+rerun diff has the same problem, which is why `ref operator-trust` §2.4 records it as waiting on the
+comparison being worth shaping rather than on any missing plumbing.
+
+**Built today.** Everything underneath. Diagnostic bundles are content-addressed with a durable
+attachment index and per-field redaction applied AT capture; artifact refs and resource schemas are
+complete; the Activity report has a second authority behind it and a served CSV (D236/D240). The
+absences are routes and surfaces over evidence that already exists — not evidence that was never
+collected.
+
+**Not built.** Four items, above. Note which way the artifact-bytes route cuts: it is one route, and
+it unblocks three things at once — the run-detail `captures` section, the screenshot gallery, and any
+future surface that wants to show a captured page rather than describe it.
 
 ## Auto-purge diagnostics on the 14/8/5 schedule · reclaim unreferenced artifact bytes
 <!-- roadmap: def-retention -->
