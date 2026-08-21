@@ -51,6 +51,7 @@ import {
 import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
 import type { CommandResult } from "../../domain/commands.js";
+import { settleCommandResult } from "../app/command-result.js";
 import type {
   DetectedColumnSchema,
   ColumnBindingSchema,
@@ -162,12 +163,19 @@ type CommandProblem =
   | { readonly kind: "conflict"; readonly currentVersion: number; readonly message: string }
   | { readonly kind: "transport"; readonly message: string };
 
+/**
+ * D253 / Track D row D3 — WHETHER the command landed is the fold's answer, not
+ * this surface's. What stays here is the PRESENTATION vocabulary: this
+ * workspace draws a rejection as a `Refusal` with a code chip and a conflict as
+ * a warning `Banner` whose meta line carries the version, so the two refusals
+ * keep their own facts and a transport failure keeps its own arm beside them.
+ */
 function problemOf(result: CommandResult): CommandProblem | undefined {
-  if (result.state === "rejected") return { kind: "rejected", code: result.code, message: result.message };
-  if (result.state === "conflict") {
-    return { kind: "conflict", currentVersion: result.currentVersion, message: result.message };
-  }
-  return undefined;
+  const settlement = settleCommandResult(result);
+  if (settlement.kind === "applied") return undefined;
+  return settlement.reason === "rejected"
+    ? { kind: "rejected", code: settlement.code, message: settlement.message }
+    : { kind: "conflict", currentVersion: settlement.currentVersion, message: settlement.message };
 }
 
 /**

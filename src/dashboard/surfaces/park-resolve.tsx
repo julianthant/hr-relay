@@ -83,6 +83,7 @@ import {
 } from "../app/proof-form.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import { parkResolutionArm } from "./park-resolve-model.js";
+import { settleCommandResult } from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { BannerActions, ParkResolutions, type DashboardActionHandler } from "./actions.js";
 import { fmtClock } from "./format.js";
@@ -634,15 +635,21 @@ export function ParkResolveDialog({
       },
       payload: request.payload,
     }).then((result) => {
-      // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4). The
-      // server's sentence is printed verbatim: a stale generation is exactly
-      // the state a second tab produces, and the server is the only party that
-      // can say which generation is live now.
-      if (result.state === "conflict" || result.state === "rejected") {
+      // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4),
+      // and the ONE fold decides which of the three arms landed (D253, Track D
+      // row D3). What the fold does NOT decide is how this dialog DRAWS a
+      // refusal: `Refusal` has a code chip, so the two arms stay
+      // distinguishable here by reading the settlement's own facts rather than
+      // by re-taking the union apart. The server's sentence is printed
+      // verbatim: a stale generation is exactly the state a second tab
+      // produces, and the server is the only party that can say which
+      // generation is live now.
+      const settlement = settleCommandResult(result);
+      if (settlement.kind === "refused") {
         refuse(
-          result.state === "rejected"
-            ? { message: result.message, code: result.code }
-            : { message: result.message },
+          settlement.reason === "rejected"
+            ? { message: settlement.message, code: settlement.code }
+            : { message: settlement.message },
         );
         return;
       }
