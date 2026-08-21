@@ -1971,6 +1971,10 @@ distinguishes the two types; the resolver schema is shared either way).
 ### 14.8 Scope — the Kuali timekeeper-annotation workflow takes NO identity-approval gate (D127)
 <!-- roadmap: p2-proof -->
 
+**RETIRED 2026-08-21 (D266).** The workflow this exemption scoped is dismantled (ref workflow-model
+§1.2.1); the exemption has no subject and is kept below as the record of why it existed. §3.4's
+proof of record and D207's measured window are history and stay cited; nothing re-runs them.
+
 **Ratified by the operator 2026-08-04.** `kuali-timekeeper-annotation` — the Phase-2 transaction
 proof (§3.3, D122) — **does not get an identity-approval gate.** Its
 wrong-person safety rests entirely on the **machine-verified subject binding**: the write sequencer

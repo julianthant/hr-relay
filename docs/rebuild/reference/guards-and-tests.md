@@ -1636,6 +1636,7 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 - [ ] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the durable `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
 - [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
+- [ ] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the dismantled `kuali-timekeeper-annotation` harness and its four real-sequencer scenarios (D266; doc 03b §The workflow tree)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
 <!-- /roadmap-status -->
 
@@ -1700,6 +1701,18 @@ week is still citable this week.
 | **T2** | per dashboard feature: a feature scenario over the real projection, plus its parity references | no | `test:coverage` / `test:parity` |
 | **T3** | a dashboard CONDITION attached to a dry-run scenario — drive the real ceremony while the run is parked, assert the timeline while it is running, read the receipt after it settles | yes | `test:combined` |
 | **T4** | the agent-operated end-to-end tier: MANY dry-run scenarios in parallel | yes | `test:e2e` |
+
+**The seed for the first pair (D266, 2026-08-21).** `kuali-timekeeper-annotation` — Phase 2's
+one-node proving workflow — is dismantled by the operator's ruling that it *is* this framework's
+business: its `kualiHarness` (a REAL write sequencer over a REAL authority database, asserting
+zero `write_intents` / `run_checkpoints` / `durable_outbox`) and its four scenarios
+(`dry-run-preview` · `subject-mismatch` · `committed` · `already-present`) become the first T1 pair,
+for the Kuali finalization step of separations (`separations-kuali-finalization`): the structural
+file keeps the sequencer walks over the real descriptor, and the `dry-run.scenario.ts` manifest
+runs the real thing live against a registered canary. The successor named by D188's retirement of
+`dry-run-composition-submit-free` (§3.1) moves with it — `separations-kuali-finalization/dry-run-preview`
+is the executable scenario that asserts durable absence from then on, and `guard-inventory.json`'s
+retired entry is re-pointed in the same commit.
 
 ### 10.3 T1a — the ONE honest structural scenario per workflow
 

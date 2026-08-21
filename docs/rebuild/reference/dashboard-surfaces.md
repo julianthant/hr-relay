@@ -4319,6 +4319,10 @@ Three dated rulings narrowed it, and they read as one rule because they land in 
   folder per rail workflow, one sub-folder per timeline step, test equipment under `proving/`; the
   `workflow-layout` guard pins the served role and the path to each other, so this filter and the
   folder view can never disagree (`ref workflow-model` §1.2.2, the owner). Nothing here re-renders.
+- **D266 (2026-08-21) — `Test equipment` is gone.** `kuali-timekeeper-annotation` is dismantled into
+  the testing framework (ref guards-and-tests §10, ref workflow-model §1.2.1), so the `proving` arm
+  has no member and leaves the union; the D241 group drops by the grouping rule's own empty-group
+  rule and the arm is removed from `groupWorkflowsByCategory` in the same code unit. Nothing else here changes.
 - **D220, the same day — the RAIL lists main workflows only.** On seeing the nesting live: *"not
   needed at all — only the main workflows should be there."* The rail drops every entry whose role is
   `chunk-harness` or `proving`, and a category whose entries all dropped goes with them rather than

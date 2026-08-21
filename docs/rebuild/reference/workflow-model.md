@@ -736,8 +736,16 @@ role:
   | { kind: "standalone" }                       // an ordinary workflow (person-lookup)
   | { kind: "composition" }                      // a graph assembled from chunk-proven tasks (separations)
   | { kind: "chunk-harness"; of: WorkflowId }    // a per-chunk proving harness for `of`'s migration
-  | { kind: "proving" }                          // proves program machinery; belongs to no composition (D220)
+  | { kind: "proving" }                          // proves program machinery; belongs to no composition (D220) — RETIRED D266, removed with kuali-timekeeper-annotation
 ```
+
+**The `proving` arm is RETIRED (D266, 2026-08-21).** Its only member, `kuali-timekeeper-annotation`,
+is dismantled: the operator's ruling is that a proving workflow *is* part of the testing framework
+(ref guards-and-tests §10) and should live there — as the T1 pair of the workflow whose write it
+rehearsed, not as a registered workflow of its own. The arm leaves the union in the same code unit
+(the union is `standalone` / `composition` / `chunk-harness` again) and D241's `Test equipment`
+group goes with it, by the grouping rule's own empty-group drop. The paragraph below is kept as the
+record of why the arm existed.
 
 **The `proving` arm (D220, 2026-08-14).** A workflow registered to prove program MACHINERY — a
 kernel capability, a driver, a write path — rather than to run daily HR work, and belonging to no
@@ -784,9 +792,11 @@ per the standing R2 D17/D18 split.
 - [x] the rule, the separations mapping and the `workflow-layout` guard's invariant are written (this section, D265, 2026-08-21)
 - [ ] `src/workflows/separations/` holds six step folders and the composition's `timeline` is one category per folder
 - [ ] the five harnesses live INSIDE the step they prove; `chunk-harness` carries `step`; ids unchanged
-- [ ] `kuali-timekeeper-annotation` lives under `src/workflows/proving/`
+- [ ] `kuali-timekeeper-annotation` DISMANTLED (D266): the workflow, its module, its four `kuali/*-timekeeper-annotation` store tasks + contracts + UI-registry entries, its scenario file and claims, the `proving` role arm and the `Test equipment` group; parity references that photographed it re-frozen
+- [ ] its harness (`tests/unit/fixtures/kuali-transaction-fixtures.ts`, the four real-sequencer scenarios) re-seeded as the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}` (ref guards-and-tests §10.3/§10.4, D266)
 - [ ] `workflow-layout` is an active guard with its `guard-inventory.json` entry; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE
 > 2026-08-21 | workflow-tree ruling | ratified from the operator's ruling on the `src/workflows/` layout; the code unit is the next session's — nothing under `src/workflows/` has moved yet
+> 2026-08-21 | workflow-tree ruling | D266 the same session: the `proving/` arm withdrawn, `kuali-timekeeper-annotation` dismantled into the Kuali finalization step's T1 pair
 <!-- /roadmap-status -->
 
 **Operator ruling (2026-08-21).** *"We will just have a separations folder for the separations
@@ -804,7 +814,7 @@ on every surface instead. **The layout now says it, and the role and the layout 
 |---|---|---|---|
 | `src/workflows/<workflow>/descriptor.ts` + `module.ts` | a workflow the RAIL lists | `standalone` · `composition` | the rail, the picker, the Explorer |
 | `src/workflows/<workflow>/<step>/` | one TIMELINE STEP of that workflow — the folder name is the step's key | (a folder, not a module) unless it carries a harness: `{ kind: "chunk-harness", of: "<workflow>", step: "<step>" }` | one segment of that workflow's timeline; the harness nests under its composition in the picker and the Explorer (D219), never the rail (D220) |
-| `src/workflows/proving/<workflow>/` | test equipment — proves program MACHINERY, belongs to no composition | `proving` | `Test equipment` in the picker and the Explorer (D241), never the rail |
+| ~~`src/workflows/proving/<workflow>/`~~ | **RETIRED the same day (D266)** — there is no test equipment: a proof of machinery is a dry-run scenario on the real workflow (ref guards-and-tests §10), never a workflow of its own | — | — |
 
 1. **A top-level folder is a rail entry.** The rail is D220's filter (`standalone` + `composition`),
    and since this ruling that filter is a READ of the tree's top level: nothing may sit at
@@ -831,12 +841,12 @@ on every surface instead. **The layout now says it, and the role and the layout 
    copy of `job-summary` / `name-search` / `comparison` / the gate / `approval` so that each can
    re-cross the ALWAYS-GATE before its write; after the move they import `identity-check/`'s, and
    the four copies become one.
-4. **Test equipment sits under `proving/`.** `kuali-timekeeper-annotation` is the type specimen
-   (§1.2.1, D220/D241): it stays registered, startable and scenario-covered — it is the only write
-   against production Kuali that is benign and restorable, which is what makes it the honest way to
-   re-prove the sequencer live after a kernel change — but it is not a rail entry and has no steps,
-   so it cannot be a top-level folder. Whether it is KEPT at all is the operator's open call,
-   recorded at doc 03b §Smaller operator calls open; this rule only says where it lives while it exists.
+4. **There is no `proving/` (D266, same day).** The first draft of this rule reserved a third arm for
+   `kuali-timekeeper-annotation`; the operator's ruling dismantled it — *"this is just a part of the
+   testing framework … it should be dismantled and could be used to create the dry run and scenario for
+   the Kuali separation workflow."* So the tree has exactly two kinds of folder, and anything that
+   proves machinery is a T1 dry-run scenario on the real workflow it rehearses (ref guards-and-tests
+   §10.4), recorded durably — not a registered graph.
 
 **What does NOT move, stated so nobody re-litigates it.** Workflow IDS are unchanged — a harness
 keeps `separations-identity-check`; the id is run identity and the path is layout, which is D170's

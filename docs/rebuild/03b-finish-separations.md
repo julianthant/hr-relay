@@ -675,11 +675,13 @@ own lane, because `duo-autopilot/` is a hard runtime dependency and a rule pinne
 - [x] D265 ratified — the rule, the separations mapping and the `workflow-layout` guard's invariant are written (`ref workflow-model` §1.2.2, 2026-08-21)
 - [ ] `src/workflows/separations/` gains six step folders — `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` — each holding its node fragments; the composition's `timeline` is one category per folder
 - [ ] the five harnesses move INTO the step they prove (`descriptor.ts` + `module.ts`, role `chunk-harness of separations, step <folder>`); ids unchanged; the three write harnesses import `identity-check/`'s fragments instead of restating them
-- [ ] `kuali-timekeeper-annotation` moves to `src/workflows/proving/`
+- [ ] `kuali-timekeeper-annotation` DISMANTLED (D266): workflow, module, four `kuali/*-timekeeper-annotation` tasks + contracts + UI-registry entries, its scenario file and claims, the `proving` role arm and the `Test equipment` group; parity references re-frozen; `guard-inventory.json`'s D188 successor re-pointed
+- [ ] the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the timekeeper `kualiHarness` and its four real-sequencer scenarios (`ref guards-and-tests` §10.3/§10.4, D266); run live once against the finalization canary, recorded
 - [ ] `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
 - [ ] the `workflow-layout` guard + its `guard-inventory.json` activation; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE
 - [ ] `npm run build:manifest` regenerated; the D191 gate green; rail, picker, Explorer and the separations timeline byte-identical (parity unchanged)
 > 2026-08-21 | workflow-tree ruling | drawn from the operator's ruling; D265 ratified in ref workflow-model §1.2.2; nothing under `src/workflows/` has moved yet — the move is the next session's code unit
+> 2026-08-21 | workflow-tree ruling | D266 the same session — `proving/` withdrawn; `kuali-timekeeper-annotation` dismantled into the Kuali finalization step's T1 pair
 <!-- /roadmap-status -->
 
 **The ruling (2026-08-21).** Eight sibling folders under `src/workflows/` — `separations` beside the
@@ -698,15 +700,21 @@ the rule; this section is what it means for separations and what the code unit d
 | `ucpath-transaction/` | UCPath transaction | `separations-ucpath-termination` |
 | `kuali-finalization/` | Kuali finalization | `separations-kuali-finalization` |
 
-**Why `kuali-timekeeper-annotation` is still there, and where it goes.** It is not a leftover and not
-a migration: it is the purpose-built one-transaction-node workflow that carried Phase 2's
-controlled-commit proof (D135) — one benign, restorable field on a real Kuali RRSS document, the
-reload read-back as the only landing proof, the propagation window MEASURED on it (doc 02) — and it
-stays registered because it is the only write against production Kuali that is harmless, which makes
-it the honest way to re-prove the sequencer live after a kernel change (`ref workflow-model` §1.2.1,
-role `proving`; D241 already groups it under `Test equipment`, off the rail). Under D265 it cannot sit
-beside the rail workflows, so it moves to `src/workflows/proving/`. Whether it is KEPT at all is the
-operator's call and is listed in the next section.
+**`kuali-timekeeper-annotation` — what it was, and the ruling that dismantles it (D266).** It was
+not a leftover and not a migration: the purpose-built one-transaction-node workflow that carried
+Phase 2's controlled-commit proof (D135) — one benign, restorable field on a real Kuali RRSS
+document, the reload read-back as the only landing proof, the propagation window measured on it
+(doc 02). The first draft of this section kept it as "test equipment" under `proving/`. The operator
+ruled otherwise the same day: *"this is just a part of the testing framework … it should be
+dismantled and could be used to create the dry run and scenario for the Kuali separation workflow."*
+So it goes — workflow, module, tasks, contracts, UI entries, scenario, the `proving` arm and the
+`Test equipment` group — and what was valuable in it is re-seeded where `ref guards-and-tests` §10
+says a proof of machinery lives: the FIRST T1 pair in the tree, for the Kuali finalization step
+(`separations-kuali-finalization`): `structural.scenario.test.ts` keeps the real-sequencer walks
+over the real descriptor (`kualiHarness`: zero `write_intents` / `run_checkpoints` / `durable_outbox`
+asserted over a real authority database), and `dry-run.scenario.ts` is the live manifest
+`cli dry-run-scenario` runs against the finalization canary. §3.4's proof of record and D207's window
+are history and stay cited; the Kuali write proof going forward is chunk 5c's own commit.
 
 **What the code unit does NOT do.** No id changes (`separations-identity-check` stays
 `separations-identity-check`; a path move re-stamps no run, receipt or checkpoint), no change to how
@@ -720,7 +728,7 @@ and it is why `build:manifest` regenerates.
 
 <!-- roadmap-status: operator-calls -->
 - [!] `clear-pending`'s COMMITTED arm has no live witness, and none of the mapped subjects can give it one. The only honest window is re-running ① immediately after ② files on 2026-08-28, before an approver clears the row — otherwise the arm ships proved by fixture and by the sequencer, never by a real deletion. **Your call on 08-28**
-- [!] keep `kuali-timekeeper-annotation` as test equipment under `src/workflows/proving/` (recommended — the only benign, restorable write against production Kuali, scenario-covered every commit, the one `stabilized` propagation measurement) or RETIRE it with its scenario — **your call**; D265 moves it either way, only you delete it (2026-08-21)
+- [x] keep or retire `kuali-timekeeper-annotation` — **ANSWERED 2026-08-21: RETIRE (D266)**, dismantled into the testing framework as the Kuali finalization step's T1 pair (§The workflow tree)
 - [x] the gate-age pill (D12 vs the later direction) — **ANSWERED 2026-08-18**: the status pill carries NO age (*"the word names the work, not the wait"*); the age renders in the row's footer meta and in the log panel. `reference/dashboard-surfaces.md` carries the amendment; `src/dashboard/surfaces/queue.tsx:281` renders it
 - [x] D192's re-disposition of `legacy-tool-ops-sanity-check-record` — **ANSWERED 2026-08-18**: no AI feature; the §14.2 packet's server-computed `comparisons` array is the sanity check, deterministically. The register entry is `retired` with the ruling's own words (`config/legacy-capabilities.json:1266`)
 - [x] A6's first live retry as evidence — delivered 2026-08-19 (§9.20)
@@ -734,12 +742,9 @@ unblocks: whether to spend the narrow window after ② files to give ①'s commi
 possible live witness, or to accept that arm as proved by the sequencer and its fixtures and say so
 in the close-out. Both are defensible; neither is a default.
 
-**A second call opened 2026-08-21, with a recommendation.** `kuali-timekeeper-annotation` exists
-to re-prove the write sequencer live without touching a real HR transaction (§The workflow tree,
-above). D265 moves it under `proving/`; whether it is kept is yours. The recommendation is KEEP: the
-alternative way to re-prove the sequencer after a kernel change is a real termination on a canary,
-which is exactly what D135 existed to avoid, and retiring it also retires the scenario that runs the
-real sequencer every commit and the only measured propagation window.
+**A second call opened and closed 2026-08-21.** Keep or retire `kuali-timekeeper-annotation`: the
+recommendation was keep; the ruling is RETIRE (D266) — it is part of the testing framework, and its
+harness seeds the Kuali finalization step's T1 pair (§The workflow tree, above).
 
 **Also settled, recorded so nobody re-opens them:** the Activity hours-saved tile is DROPPED (D239),
 archive tabs and export are closed by D223/D240, and `span.patched` is RETIRED (D254).
@@ -771,6 +776,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 77 | 2026-08-20 | D245, D246 | the parked write gets a way in and keeps its way out |
 | 84–86 | 2026-08-20 | D260–D262 | the start door refused with its trigger named (D260), then BUILT — the graph resolves its own action id (D261) — and the gate park published as the product's one needs-you moment (D262) |
 | 89 | 2026-08-21 | D265 | **the workflow tree IS the rail and the timeline** — one folder per rail workflow, one sub-folder per timeline step, test equipment under `proving/`; role ↔ path pinned by `workflow-layout` |
+| 90 | 2026-08-21 | D266 | **the crash-test dummy is dismantled** — `kuali-timekeeper-annotation` goes; its harness becomes the first T1 pair (Kuali finalization); `proving` / `Test equipment` / `proving/` / D127's exemption retire with it |
 
 **Ratified elsewhere, load-bearing here.** D77 (the ALWAYS-GATE itself, Phase 0) is what this
 migration implements; D222, D223, D225 and D230–D242 (phase 3a) are the dashboard defaults the wire

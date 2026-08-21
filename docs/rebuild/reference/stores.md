@@ -425,6 +425,9 @@ Module binds exactly `[ucpathStore, crmStore, personLookupStore]`.
 
 ### `kuali-timekeeper-annotation` (`src/workflows/kuali-timekeeper-annotation/`)
 
+> **RETIRED by D266 (2026-08-21)** — dismantled in the `workflow-tree` code unit together with the four
+> `kuali/*-timekeeper-annotation` tasks below; this section describes the tree at HEAD until that lands.
+
 Module binds exactly `[kualiStore]`. ONE transaction node, `annotate-timekeeper`, whose beats (ref write-safety
 §13) each call a `kualiStore` task:
 
