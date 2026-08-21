@@ -75,11 +75,23 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
   surfaces here — the Context rail's Data save and the notification bell — branched on
   `result.state === "rejected"` and let the CAS `conflict` arm fall through to the code that runs on
   success. The rail closed its editor, cleared the drafts and reported a correction saved that the
-  kernel refused. Every command-issuing surface in this directory now settles through
-  `app/command-result.ts`'s `settleCommandResult`, and `command-result-exhaustive.test.ts` fails any
-  module that names one refusal arm without the other (both `===` and `!==` count; `archive.tsx`'s
-  negated early return is exhaustive and clean). When you add a surface that posts a command, read
-  the result through the fold — do not re-enumerate the arms.
+  kernel refused. **All nine command-issuing surfaces in this directory now settle through
+  `app/command-result.ts`'s `settleCommandResult`** (Track D row D3, 2026-08-21 — this bullet said
+  so on the day D253 landed, while seven of the nine still enumerated the arms by hand, which is
+  exactly why the correction was BOOKED as a row rather than left to be discovered by whoever
+  believed it). `command-result-exhaustive.test.ts`
+  holds it in two arms: a module may not name one refusal arm without the other (both `===` and
+  `!==` count; `archive.tsx`'s negated early return is exhaustive and clean), AND a module that
+  calls `.executeCommand(` must import the fold — the second arm exists because a module naming
+  NEITHER arm passed the first one while landing every refusal on its success path.
+
+  **When you add a surface that posts a command, read the result through the fold — do not
+  re-enumerate the arms.** The fold answers `applied` or `refused`, and a refusal carries both the
+  composed one-slot `problem` sentence AND the server's own `message` / `code` / `currentVersion`,
+  so drawing a refusal in your own components costs you nothing and never re-decides the verdict.
+  What the fold does NOT own is COPY: `problem` adds the version sentence, `message` is the wire's
+  own, and the seven surfaces D3 converted deliberately kept `message` because the parity corpus
+  photographs one of their refusals.
 - **2026-08-20: the rail's "we cannot serve this" comments were about the checkpoint row, not the
   descriptor (D252).** `context-rail.tsx` recorded direction and system as unservable for years. The
   checkpoint row genuinely carries neither — but the node that wrote it declares a task contract

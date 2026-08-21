@@ -226,8 +226,8 @@ attributed to a ratified wave-2 decision before the operator approved it.
 
 <!-- roadmap-status: track-d -->
 - [ ] D1 one status/outcome derivation — exported `deriveRunStatus`, ONE `TASK_OUTCOME` vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row
-- [ ] D2 the hygiene commit — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified, the D253 sentence corrected
-- [ ] D3 every command settlement folds through `settleCommandResult` — 7 of 9 sites still enumerate both refusal arms by hand
+- [ ] D2 the hygiene commit — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified (the D253-sentence half landed with D3, `1b13115f`)
+- [x] D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold (`1b13115f`); the guard's second arm requires any module calling `.executeCommand(` to import it (`5c36a82d`)
 - [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; then MEASURED against a seeded 1,240-row / 108-member fixture
 - [ ] D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded
 - [?] D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate
@@ -237,6 +237,7 @@ attributed to a ratified wave-2 decision before the operator approved it.
 - [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
 - [ ] D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251)
 > 2026-08-20 | docs-cohesion 03a | every row re-verified unlanded at HEAD against src/server/dashboard and src/dashboard; D6–D10 stay proposed behind the named trigger, which has not fired
+> 2026-08-21 | track-d3 | D3 LANDED (`1b13115f`, guard `5c36a82d`) — the seven hand-enumerating sites now read `settleCommandResult`, which gained the server's own per-arm facts beside the composed sentence so a surface drawing a refusal in its own components need not re-take the union apart; ZERO operator text moved, deliberately, because the parity corpus photographs identity-approve's conflict alert
 <!-- /roadmap-status -->
 
 **Ratified 2026-08-20 as D264**, out of the same-day architecture audit
@@ -260,7 +261,7 @@ the code for this rewrite rather than carried forward on the audit's say-so.
 |---|---|---|
 | D1 | detail-panel status diverges from queue status; two task-outcome vocabularies; `panelKindOf` byte-identical twice | no exported `deriveRunStatus`; `TASK_OUTCOME_PIPELINE` (`run-queue-projection.ts:342`) and `TASK_OUTCOME_STEP` (`run-detail.ts:437`) both present; `panelKindOf` at `run-queue-projection.ts:261` AND `run-detail.ts:250` |
 | D2 | HTTP status sniffed from an error message; the inert capture phone-host gate; dead hooks and exports; small duplications | `useDashboardDaySnapshot` (`use-dashboard-day.ts:54`) and `useRunSection` (`use-run-detail.ts:158`) have no importers; `deps.capturePhoneHost` is read at `routes/api.ts:142` and supplied nowhere |
-| D3 | seven command-issuing sites enumerate both refusal arms by hand | `settleCommandResult` is imported by exactly two surfaces, `top-bar.tsx` and `context-rail.tsx` |
+| D3 | seven command-issuing sites enumerate both refusal arms by hand | ~~`settleCommandResult` is imported by exactly two surfaces, `top-bar.tsx` and `context-rail.tsx`~~ **CLOSED 2026-08-21 (`1b13115f`)** — all nine import it; the guard now refuses a module that posts through `executeCommand` without it |
 | D4 | whole-day zod re-parse and whole-tree re-render per SSE patch | zero `React.memo` anywhere under `src/dashboard` |
 | D5 | member preview, duplicate receipt reads, whole-notes-corpus reads, the archive freeze loop | unchanged in `run-queue-projection.ts` / `run-detail.ts` / `archive.ts` |
 | D6–D10 | the maintainability slice | proposed; the trigger has not fired |

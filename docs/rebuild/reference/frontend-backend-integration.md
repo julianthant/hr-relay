@@ -920,8 +920,9 @@ control the bundle knows (D226, §3.4).
 - [x] B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229) — §5.1.5
 - [x] B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D248/D249/D252/D253) — §3.2, §5.1.3
 - [x] B8 findings ledger zero-or-decided; `span.patched` retired (D254/D255)
-- [ ] the fold is called by 2 of 9 command surfaces (Track D row D3) and `src/dashboard/CLAUDE.md` claims all 9 (row D2)
+- [x] the fold is called by all 9 command surfaces and `src/dashboard/CLAUDE.md`'s claim is TRUE (Track D row D3, `1b13115f`)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/dashboard/app/command-result.ts, tests/unit/architecture/command-result-exhaustive.test.ts; left: D3's seven call sites and the CLAUDE.md sentence
+> 2026-08-21 | track-d3 | the seven call sites and the sentence both landed (`1b13115f`); nothing left on this block
 <!-- /roadmap-status -->
 
 #### D253 — a refused command that looks like a save (2026-08-20)
@@ -954,18 +955,39 @@ sentence unchanged; the fold never rewrites a refusal it did not compute. Drafts
 on both surfaces.
 
 `command-result-exhaustive.test.ts` (guard inventory) holds the rule for every module under
-`src/dashboard/**`: naming one refusal arm without the other fails. Naming both in one condition —
-including the negated early-return form `archive.tsx` uses — is exhaustive and clean. The fold and
-the client transport are exempt: the transport's job is to PARSE the union, not to act on it. A
-checked-in violating fixture carries the exact shipped shape, so a walker that resolved nothing
-cannot report the tree clean.
+`src/dashboard/**`, in two arms. **(1)** Naming one refusal arm without the other fails. Naming both
+in one condition — including the negated early-return form `archive.tsx` uses — is exhaustive and
+clean. **(2)** A module that calls `.executeCommand(` must IMPORT the fold's module. The fold and
+the client transport are exempt from both: the transport's job is to PARSE the union, not to act on
+it. Each arm carries its own checked-in violating fixture, so a walker that resolved nothing cannot
+report the tree clean.
 
-**Two of the nine command-issuing surfaces call the fold; the other seven enumerate both arms by
-hand and are correct.** That is what the guard enforces and it is enough for correctness — but it
-is not what `src/dashboard/CLAUDE.md`'s D253 lesson says ("every command-issuing surface … now
-settles through"), and it is not what this decision intends: one fold means one place to change
-when a fourth arm arrives. Folding the remaining seven is Track D row **D3**, and correcting the
-CLAUDE.md sentence is part of row **D2**.
+**Track D row D3 (2026-08-21, `1b13115f`) folded the remaining seven, so all nine command-issuing
+surfaces settle through the ONE fold** and the second guard arm above became statable. The first arm
+governed a module that HOLDS a result without posting one and could never see the worse shape: a
+module naming NEITHER arm, which posts a command, ignores the answer, and lands every refusal on the
+success path in silence.
+
+**What the fold decides, and what it deliberately does not.** It decides ONE thing — whether the
+command LANDED — and that question has one right answer per result, so it has one implementation.
+It does not decide how a refusal is DRAWN: nine surfaces draw one nine ways (a `danger` toast with a
+single description slot, a `Refusal` with its own code chip, a `Banner` whose meta line carries the
+version), and a fold that flattened all of that into one string would force six of them to take the
+union apart again to get their facts back — the hand enumeration this decision exists to delete. So
+a refused settlement carries BOTH: `problem`, the composed one-slot sentence (the `conflict` form
+above, still what `top-bar.tsx` and `context-rail.tsx` print), and the server's own facts verbatim
+and per-arm — `message`, plus `code` or `currentVersion`. On a `rejected`, `message` and `problem`
+are the same string, because there is nothing to add to a sentence that already names what was
+refused and why. Reading a FACT off the settlement is the point; re-deriving the VERDICT from
+`result.state` is what the guard refuses.
+
+**D3 moved no operator-visible text, and that was a decision rather than an accident.** Every
+adopting site prints `settlement.message` exactly where it printed `result.message`. The parity
+corpus PHOTOGRAPHS one of these refusals — `identity-approve.tsx`'s conflict alert, in
+`run-open-gate--graphite-warm--1440x900--gate-refused` — so adopting the composed `problem` sentence
+at the seven sites would have been a copy change wearing a refactor's clothes, and would have moved
+a reference nobody re-froze (D132). Whether the `currentVersion` sentence should reach those seven
+is a deliberate copy pass, and it is not this row.
 
 **What is NOT built, and is recorded rather than deferred.** The demo's per-field CAS re-offer
 (`DemoContextRail.tsx:699-749`) shows the server's current value for each patched field so the
@@ -2017,8 +2039,8 @@ D11 → §4.
 
 <!-- roadmap-status: track-d -->
 - [ ] D1 one status/outcome derivation — exported `deriveRunStatus`, ONE `TASK_OUTCOME` vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row
-- [ ] D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified, the false D253 sentence in `src/dashboard/CLAUDE.md` corrected
-- [ ] D3 every command settlement folds through `settleCommandResult` — 7 of 9 sites still enumerate both refusal arms by hand
+- [ ] D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified (the false D253 sentence in `src/dashboard/CLAUDE.md` was corrected with D3, `1b13115f`)
+- [x] D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold (`1b13115f`); the guard's second arm requires any module calling `.executeCommand(` to import it (`5c36a82d`)
 - [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against a seeded 1,240-row / 108-member fixture and recorded here as this section's first numbers
 - [ ] D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded
 - [ ] D11 the descriptor registry LEAVES the bundle — bootstrap serves `summary`, `enqueue` and `surfaces.inputRun`, and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251, §4)
@@ -2028,6 +2050,7 @@ D11 → §4.
 - [?] D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured — this section's virtualize-or-page bullet
 - [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified that NOTHING in src/ or tests/ measures or asserts any budget in this section (no perf/budget/bench test, no 1,240-row fixture, no `memo`, no virtualization, no backpressure handling) — the section is normative and unenforced, exactly as D264 records; left: all eleven rows
+> 2026-08-21 | track-d3 | D3 DONE (`1b13115f`, guard `5c36a82d`); left: ten rows. Nothing in this section's budgets moved — D3 is a settlement refactor with zero measured surface
 <!-- /roadmap-status -->
 
 ---
