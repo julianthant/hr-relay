@@ -184,6 +184,7 @@ const KUALI_SAVE_FINALIZATION = taskOutput("kuali/save-separation-finalization")
 const SEPARATIONS_INPUT = workflowInput("separations");
 const SEPARATIONS_RESULT = workflowResult("separations");
 const SEPARATIONS_GATE = gateResult("separations", "identity-approval");
+const OCR_FORM_PAGE = taskOutput("ocr/extract-form-page");
 const SEPARATION_PLAN = taskOutput("workflow:separations/read-separation-plan");
 const SEPARATION_SUBJECT = taskOutput("workflow:separations/match-separation-subject");
 const ACTIVE_EMPLOYMENT = taskOutput("workflow:separations/match-active-employment");
@@ -722,6 +723,34 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...sweepProofLeaves(SEPARATIONS_RESULT, "pendingSweep.proof"),
   ...terminationReceiptLeaves(SEPARATIONS_RESULT, "termination"),
   ...savedFinalizationLeaves(SEPARATIONS_RESULT, "finalization.proof"),
+
+  /*
+   * The executor's own fixture contracts (D270).
+   *
+   * These six paths are NOT in `AdmittedExtractionSchema`, which is what
+   * `ocr/extract-form-page` really outputs. They are the test-local shapes the
+   * executor's fixture contracts borrow that id with — and they borrow it for a
+   * structural reason rather than convenience: `interpret` resolves every task
+   * node's impl fingerprint through `resolveTaskImplFingerprint`, which fails
+   * loud on an id the generated build manifest does not carry, so a fixture
+   * that composes a real run MUST name a manifest-known task.
+   *
+   * They are DECLARED rather than exempted. D270 emits every recorded point on
+   * the span redacted by declaration and refuses an undeclared leaf by name; a
+   * fixture bypass would mean that refusal is never exercised by a composed
+   * run, and the executor's fixtures are the only composed runs the unit lane
+   * has. `subject` and `eid` are person identifiers and carry the same
+   * `last4` the rest of this table gives one, so a fixture cannot be the
+   * surface that proves a raw identifier reaches a stream.
+   *
+   * `ocr/extract-form-page`'s own output leaves are deliberately still absent:
+   * the task is wired into no descriptor, so no run can reach it, and its
+   * recordData names two fields (`pageFingerprint`, `hasRecord`) that the
+   * contract's output does not carry — declaring a shape nobody has validated
+   * would be a guess. `reference/operator-trust.md` §2.3.2 owns the list.
+   */
+  ...person(OCR_FORM_PAGE, "subject", "eid"),
+  ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();
@@ -790,7 +819,8 @@ export function classifyEvidenceLeaf(
   if (entry === undefined) {
     throw new Error(
       `no declared evidence classification for ${evidenceScopeKey(scope)} field "${path}"; `
-      + "add it to src/domain/trust/evidence-classification.ts — a receipt never drops a leaf silently",
+      + "add it to src/domain/trust/evidence-classification.ts — neither a receipt nor an "
+      + "observed log ever drops a leaf silently",
     );
   }
   return entry;
