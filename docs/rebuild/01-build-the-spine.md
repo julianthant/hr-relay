@@ -7,43 +7,85 @@ what is left, its exit criteria; contracts it built live in `reference/`.
 <!-- roadmap: phase-1 -->
 
 <!-- roadmap-status: phase-1 -->
+- [x] the spine carries ONE real workflow end to end — `person-lookup` ran LIVE against real UCPath + CRM on the new executor (D74, 2026-08-04; run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`)
+- [x] all five work-item nodes landed and are still the shape the code has: `p1-base` (07-31) · `p1-authority` (08-01) · `p1-kernel` (08-02→03) · `p1-spine` (08-04) · `p1-exit` (08-04)
+- [x] the three presentation defects the live run exposed were closed the SAME day — D123 skipped-arm, D124 terminal duration, D126 accessible-name channel
+- [x] the one liveness defect it exposed was root-caused and fixed — a dead CRM session cost 262.9 s to surface → `timeouts.sessionAcquireMs` (D125)
+- [x] every Phase-1 hard exit criterion is MET (§Exit criteria), and no later phase re-opened a Phase-1 contract — later work AMENDED spine surfaces (D144, D214, D218, D253) without moving the contracts
+- [ ] residuals that trace back to spine contracts, all owned in LATER nodes — `requestedBy` stamped and never checked (§1f, unowned) · `src/dashboard/state/` never built its cache half (Track D row D6) · five of six stream topics have no producer and the notes stream has no emitter (`{#track-c}` / `{#observed-logs}`) · `ref:dashboard-surfaces` §3.2's three declaration shapes unimplemented · D71's type BUDGET unmeasured
+> 2026-08-21 | docs-cohesion 01 | verified against src/control/workflow-registry.ts, src/core/{run-executor,worker-loop,command-kernel}.ts, src/domain/contracts/base.ts, src/infra/sqlite/{authority-database,migrations}.ts and the filled `p1-*` status blocks in reference/{guards-and-tests,operator-trust,dashboard-surfaces,frontend-backend-integration}.md; left: nothing IN this phase — every open line above is a named residual whose owner is a later node
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1 — the SPINE) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+### What Phase 1 built
 
-**Goal.** Build the minimum of the dependency graph (§1) that can carry **one real workflow end to
-end**, in the rebuild repo's `src/`, inside that repo's own tsconfig project + unit tests +
-`test:architecture` ratchets covering it from its first file (charter non-negotiable: no ungated
-tree).
+**The minimum of the base's dependency graph (`00-design-the-foundation.md` §The base's dependency
+graph) that can carry ONE real workflow end to end** — in this repository's `src/`, inside its own
+tsconfig project, with unit tests and `test:architecture` ratchets covering it from its first file.
+That last clause is a charter non-negotiable, not a preference: there is no ungated window in this
+tree's history.
 
-**What changed and why (D74, operator ACCEPTED 2026-07-23).** The prior plan built ten base work
-items — including the whole trust layer, all data services, mobile capture, Edit Data, the
-explorer, and the AI adapters — against **synthetic fixtures with no consumer**, and only then ran
-a workflow. Two problems: a live run falsifies contracts a fixture cannot, and this plan's own
-stop-loss trigger (b) — "a base contract flaw surfaces after ≥2 consumers depend on it" — is far
-cheaper to hit with six work items built than with ten. So Phase 1 is now **1a–1f plus two thin
-slices**, and its exit test is a live workflow. Everything cut from Phase 1 is *deferred, not
-deleted*: it reappears in Phase 2 §"deferred base tails", where it is built against a proven spine
-and a real consumer. **No contract in the reference specs changed — only delivery order.**
+**Why the cut is where it is (D74, operator ACCEPTED 2026-07-23).** The prior plan built ten base
+work items — the whole trust layer, all data services, mobile capture, Edit Data, the explorer, the
+AI adapters — against **synthetic fixtures with no consumer**, and only then ran a workflow. Two
+problems: a live run falsifies contracts a fixture cannot, and the program's own stop-loss trigger
+(b) — *"a base contract flaw surfaces after ≥2 consumers depend on it"* — is far cheaper to hit with
+six work items built than with ten. So Phase 1 became **1a–1f plus two thin slices**, and its exit
+test is a live workflow. Everything cut is *deferred, not deleted*: it reappears in
+`02-prove-writes-build-the-tails.md` as the four base tails, built against a proven spine and a real
+consumer. **No contract in `reference/` changed — only delivery order.** The record justifies the
+call: every defect §Exit criteria lists was found by the live run and by nothing else.
 
 | In the spine | Deferred to the Phase-2 tails |
 |---|---|
-| 1a guard plumbing · 1b strict domain/clock/config/secrets · 1c authority storage + recovery + command/write type shell · 1d semantic UI registry + drivers + task/store/session contracts · 1e workflow DAG + delegation + completion + scenarios · 1f registry + workers + command service + write sequencer, including minimal failure/result authority and generic provider admission | Phase-2 tails: 2g (rich evidence receipts, diagnostic bundles, failure/explain projections, notifications, knowledge/fix records, ledger services over the 1f failure authority) · 2h (extraction/normalization/ocr/roster stores, production provider pools/consumers, column mapping, intake manifests, durable capture, Edit Data) · 2i (explorer, AI advisories, storage-health UI, generated catalog UI) · 2j soak/restore/doc gate |
+| 1a guard plumbing · 1b strict domain/clock/config/secrets · 1c authority storage + recovery + command/write type shell · 1d semantic UI registry + drivers + task/store/session contracts · 1e workflow DAG + delegation + completion + scenarios · 1f registry + workers + command service + write sequencer, including minimal failure/result authority and generic provider admission | 2g (rich evidence receipts, diagnostic bundles, failure/explain projections, notifications, knowledge/fix records, ledger services over the 1f failure authority) · 2h (extraction/normalization/ocr/roster stores, production provider pools/consumers, column mapping, intake manifests, durable capture, Edit Data) · 2i (explorer, AI advisories, storage-health UI, generated catalog UI) · 2j soak/restore/doc gate |
 | **1g-spine** — spans/notes emission + the run/queue projection only (what the queue surface reads) | |
 | **1i-spine** — the four parity surfaces only: Queue Panel rows, Log Panel, Session Cards, Workflow Panel counts | |
 
-**Program invariant Phase 1 establishes — two isolated repositories, one production authority
+**The program invariant Phase 1 establishes — two isolated repositories, one production authority
 (D88/D90, re-mechanized by D93).** The legacy repo keeps running and may receive production
-maintenance. The rebuild repo cannot import, invoke, proxy, or read/write legacy live state — that
-is now **structural**, not guarded: two repositories share no module graph. What still has to be
-*chosen* and *proved*, because both worlds run on one machine, is operational separation:
-commands/entrypoints, state/artifact roots, ports, process locks, and browser profiles/sessions are
-distinct on both sides. Verified leaf knowledge is ported with provenance (legacy commit hash +
-path). Every legacy change maps to affected capabilities and rebuild evidence in the rebuild repo's
-`config/legacy-change-accounting.json`; legacy source/tests are preserved. The rebuild's own source
-and tests use the full fail-closed strict normal form from their first file; legacy files are held
-to the legacy repo's existing gates, whose new/touched test diagnostics cannot add debt. Phase 1
-proves only inside the rebuild repo and never changes production routing.
+maintenance. This repo cannot import, invoke, proxy, or read/write legacy live state — that is
+**structural**, not guarded: two repositories share no module graph. What still had to be *chosen*
+and *proved*, because both worlds run on one machine, is operational separation: commands/
+entrypoints, state/artifact roots, ports, process locks, and browser profiles/sessions are distinct
+on both sides (`config/runtime-isolation.json`, `operational-isolation.test.ts`). Verified leaf
+knowledge is ported with provenance (legacy commit hash + path). *As-built correction:* the
+per-change legacy accounting this invariant originally carried —
+`config/legacy-change-accounting.json` — is **RETIRED (D150, 2026-08-05)**; the risk it covered (a
+ported selector going stale after legacy fixed it) is now covered by mandatory live re-verification
+at each workflow's migration, and the frozen file is a historical record only. Phase 1 proved only
+inside this repository and never changed production routing.
+
+### The exit test, in one line
+
+`person-lookup` ran live, recovered a dead CRM session mid-run without an operator, terminalized
+`done` at attempt 2 with a correct result, and rendered all four parity surfaces from the ONE
+projection. The full record — node walk, result, recovery, the four surfaces, the speed and
+wall-clock observations, and the failure-latency root cause — is §Exit criteria; the node's own
+section is §Phase 1 exit — the live run.
+
+### The honest state at HEAD
+
+**Phase 1 is DONE and stayed done.** Every node is `[x]`, every exit criterion is MET, and the spine
+has carried every workflow built since. The contracts it froze — the task contract, the DAG builder,
+authority storage, the command kernel, the write sequencer, spans and the ONE projection — are the
+contracts the code still implements; the later rewrites verified them against the tree rather than
+against this doc.
+
+**What the later rewrites found are residuals, not regressions, and each has an owner elsewhere.**
+They are listed here because they trace back to a Phase-1 contract and an operator reading this doc
+should not have to discover them in Phase 3:
+
+| Residual | Where the contract was set | Owner |
+|---|---|---|
+| `requestedBy` is stamped verbatim on every command; the identity-checkpoint match `ref:frontend-backend-integration` §3.4 requires is unenforced | 1f, the command kernel | **unowned** — no D-number, no `pending-wire-bindings` entry; reachable only if a second actor ever exists. Reported, not filed |
+| `src/dashboard/state/` never built its cache half — six modules of resource hooks, no invalidation/generation layer, and three surfaces bypass it | 1i-spine, the transport/state split | **Track D row D6** (`{#dash-defaults}`) |
+| five of the six declared stream topics have no producer (only `dashboard-day` is emitted); `emitNote` is composed and never called, so `.tracker-rebuild/notes/` has never existed | 1g-spine, the subscription protocol | `{#track-c}` (§3.5) and `{#observed-logs}` |
+| `StepDisplayRule`, `GateProjectionDefinition` and the `ArtifactSinkId` sink registry are declared in `ref:dashboard-surfaces` §3.2 and implemented nowhere; `span.ended` carries no `verdict` | 1e/1g-spine, the descriptor's presentation declarations | `ref:dashboard-surfaces` §3.2 / §1.3 |
+| D71's type-inference proof EXISTS (`tests/types/`, a 21-node graph plus `@ts-expect-error` controls) but its 5 s / 1 GiB BUDGET is unmeasured — nothing runs `tsc --extendedDiagnostics` against it | 1e, the real-scale type proof | `ref:guards-and-tests` §3.12 |
+| two port-map invariants are held by nothing named — `cancel-mechanism` and `tracker-row-emission` | 1a, the guard inventory | `ref:guards-and-tests` §2.1 / §5.1 |
+| the artifact resource schemas have no route serving bytes | 1b/1g-spine, the wire primitives | `{#def-byte-path}` (D189, `04-close-the-deferrals.md`) |
+
+None of these blocks a phase, and none is a waiver: each names where it is owned.
 
 ## 1a · 1b — guards, baselines, the strict domain leaf
 <!-- roadmap: p1-base -->
