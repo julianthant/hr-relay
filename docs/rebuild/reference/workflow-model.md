@@ -892,6 +892,20 @@ resolves to nothing.
 
 ## 2. Workflow-constant input + the RunEnvelope
 
+<!-- roadmap: p1-kernel -->
+
+<!-- roadmap-status: p1-kernel -->
+- [x] `RunEnvelopeSchema` is a strict runtime schema and the shape printed below is field-for-field what `src/domain/run/envelope.ts:62-96` declares; `dryRun` is its ONLY home (D6) and no TaskCtx exposes it
+- [x] `attempt` is the ITEM's next unspent attempt, refused at the insert if the item has already spent it (D221, `src/domain/run/envelope.ts:85-95`)
+- [x] previewability is derived from the GRAPH by `workflowDryRunSupport(descriptor)` and both the start plan and the command kernel answer from that one derivation (D209; `src/services/start/plan.ts:115-124`, `src/base/workflow.ts`)
+- [x] the ONE builder API, `build()`'s runtime backstops and the D104 forward-reference rule (§3)
+- [x] the run-state machine's states are the durable enum — `parked-gate` and `parked-write` are states, not sentinel statuses (§4; `src/domain/run/record.ts:63-72`)
+- [x] entry validation aggregates every §5.4 problem into ONE no-node failure record before a browser launches (`src/core/run-executor.ts`)
+- [x] the executor never tracks a run version locally: every node transition re-reads authority and CASes with the constant claim token (§5.7)
+- [ ] the transaction and child-run executor arms are typed seams; the child-run arm still answers `capability-unavailable`, because no registered workflow declares a `child-run` node (§3.2)
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/run/envelope.ts`, `src/domain/run/record.ts`, `src/core/run-executor.ts` and `src/services/start/plan.ts`; left: the unexercised child-run arm
+<!-- /roadmap-status -->
+
 **The raw submission is stored immutable for audit, then validated once by `descriptor.input`; the
 schema-parsed `z.output` value (defaults/transforms already applied) is stored as the run's canonical
 input snapshot with its schema/fingerprint.** Defaults and transforms are never re-applied on resume,
@@ -987,6 +1001,18 @@ it is never serialized, dropped, or substituted into a plausible refusal.
 
 ### 2.1 How a previewed run ENDS (D210)
 
+<!-- roadmap: sep-6c -->
+
+<!-- roadmap-status: sep-6c -->
+- [x] a previewed run settles `done` with `RunDryRunPreviewResult` in the same `run_results` row, bound to the PREVIEW schema hash — no new authority table, no schema version, `RunOutcome` gains no arm (D210)
+- [x] its dependencies are the transaction node's own `dependsOn`, and `buildPreview` shares `build`'s run-identity checks and unforgeable seal while refusing a non-dry-run envelope and any node other than the graph's `stopsAt`
+- [x] the receipt reports `completion.terminal-result` as `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning, so `verified-done` is structurally unreachable and the receipt settles `partial`/`unknown` (ref operator-trust §2.3)
+- [x] the preview runs the durable permanent-key lookup and the policy-controlled live probe FIRST, in the real path's order, and only stages when the real run would fence (D215) — the fix for a rehearsal that failed where the performance succeeds
+- [x] `prepare` and `subject` live inside the `would-prepare` arm, so "no staged page" cannot be mistaken for an empty one; `transaction.previewed` carries the `not-observed` subject verdict for the same reason
+- [ ] the queue row and the timeline still have no arm for a preview: `transaction.previewed` is carried on the span stream and deliberately ignored by `run-queue-projection`, and the operator-facing truth is the evidence receipt alone. Surfacing it is a wire + UI change, named here and unbuilt
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/core/run-executor.ts`, `src/base/workflow.ts` (`buildPreview`) and `src/events/types.ts`; left: the queue/timeline preview arm
+<!-- /roadmap-status -->
+
 Ref task-contract §6.2 says what a dry run does at a transaction node — *"records an honest
 `transaction.previewed` span, and ends the run at the node"* — and §10.1 says it stops there
 **successfully**. This is the terminal half of that sentence.
@@ -1031,39 +1057,39 @@ putting staged-then-discarded values in the section an operator reads as "what t
 the confusion the whole arm exists to prevent. The staged values are not lost — they are on the
 durable terminal row.
 
-> **A preview runs beat ① FIRST, because the real path does — D210 is COMPLETED here, not amended
-> (D215, 2026-08-14).** D210 ratified how a previewed run ENDS: outcome `done`, `RunOutcome` gains no
-> arm, the terminal row is bound to the preview schema, its dependencies are the transaction node's
-> own `dependsOn`, the receipt reports `unknown` plus a load-bearing `DRY_RUN_PREVIEW` warning, and
-> `executeTransaction` still refuses a dry run by name. **Every one of those sentences still holds.**
-> What was wrong was what the preview OBSERVED before it stopped: `executeDryRun` evaluated `prepare`
-> with no probe at all, and ref write-safety §5's two probe kinds are part of the transaction's safety story,
-> not an optimization. Separations' `clear-pending` sweep made the consequence unmissable — for the
-> ORDINARY subject, one with no pending transaction, the real run's beat-① probe settles the node
-> `already-present` before a page is ever staged, while the preview staged a *Transactions in
-> Progress* grid holding no row for the subject and refused for want of one. **A rehearsal that fails
-> where the performance succeeds is a false rehearsal**, and that shape is the common case, not the
-> corner: chunk 6b hit it on its first real document (separations §9.14).
->
-> The preview now runs the DURABLE permanent-key lookup and then the policy-controlled live probe,
-> in the real path's order, and only stages when the real run would fence. Both are read-only by
-> construction — a SELECT and the same read-lease probe — and the `already-present` arm **reports**
-> the settlement the real path would reach without performing it: no checkpoint, no
-> `observed-present` intent row, no run transition. Every arm the real path refuses on refuses here
-> with the same reason (`attempting`, `parked`, ambiguous, unknown, foreign absent evidence, a
-> present read over a settled-absent durable row); there is deliberately no arm that lets a preview
-> answer where the real run stops, because that is the same defect from the other side.
->
-> `TransactionDryRunPreview` grows a `probe` observation and turns its body into an outcome union:
-> `would-prepare` carries the prepare output and the beat-③ subject, and `already-present` carries
-> the proof source. `prepare` and `subject` live INSIDE the `would-prepare` arm on purpose — a
-> preview that staged nothing has no page and read no subject, and making those fields unspellable is
-> the only shape in which "no staged page" cannot be mistaken for an empty one. The
-> `transaction.previewed` span gains the subject verdict `not-observed` for the same reason. **This
-> moves `RunDryRunPreviewResult`'s schema hash**, which is a hash move and not a lie (D144): the new
-> hash describes the new bytes, and a stored pre-D215 preview row would be refused by name rather
-> than misread — there are none, because no preview had ever settled when this landed. Still no new
-> table and no authority schema version.
+**A preview runs beat ① FIRST, because the real path does — D210 is COMPLETED here, not amended
+(D215, 2026-08-14).** D210 ratified how a previewed run ENDS: outcome `done`, `RunOutcome` gains no
+arm, the terminal row is bound to the preview schema, its dependencies are the transaction node's
+own `dependsOn`, the receipt reports `unknown` plus a load-bearing `DRY_RUN_PREVIEW` warning, and
+`executeTransaction` still refuses a dry run by name. **Every one of those sentences still holds.**
+What was wrong was what the preview OBSERVED before it stopped: `executeDryRun` evaluated `prepare`
+with no probe at all, and ref write-safety §5's two probe kinds are part of the transaction's safety story,
+not an optimization. Separations' `clear-pending` sweep made the consequence unmissable — for the
+ORDINARY subject, one with no pending transaction, the real run's beat-① probe settles the node
+`already-present` before a page is ever staged, while the preview staged a *Transactions in
+Progress* grid holding no row for the subject and refused for want of one. **A rehearsal that fails
+where the performance succeeds is a false rehearsal**, and that shape is the common case, not the
+corner: chunk 6b hit it on its first real document (separations §9.14).
+
+The preview now runs the DURABLE permanent-key lookup and then the policy-controlled live probe,
+in the real path's order, and only stages when the real run would fence. Both are read-only by
+construction — a SELECT and the same read-lease probe — and the `already-present` arm **reports**
+the settlement the real path would reach without performing it: no checkpoint, no
+`observed-present` intent row, no run transition. Every arm the real path refuses on refuses here
+with the same reason (`attempting`, `parked`, ambiguous, unknown, foreign absent evidence, a
+present read over a settled-absent durable row); there is deliberately no arm that lets a preview
+answer where the real run stops, because that is the same defect from the other side.
+
+`TransactionDryRunPreview` grows a `probe` observation and turns its body into an outcome union:
+`would-prepare` carries the prepare output and the beat-③ subject, and `already-present` carries
+the proof source. `prepare` and `subject` live INSIDE the `would-prepare` arm on purpose — a
+preview that staged nothing has no page and read no subject, and making those fields unspellable is
+the only shape in which "no staged page" cannot be mistaken for an empty one. The
+`transaction.previewed` span gains the subject verdict `not-observed` for the same reason. **This
+moves `RunDryRunPreviewResult`'s schema hash**, which is a hash move and not a lie (D144): the new
+hash describes the new bytes, and a stored pre-D215 preview row would be refused by name rather
+than misread — there are none, because no preview had ever settled when this landed. Still no new
+table and no authority schema version.
 
 **Named carry-forward.** The queue row and the timeline have no arm for a preview: their vocabulary
 is task spans and terminal outcomes, and a preview is neither. `transaction.previewed` is therefore
