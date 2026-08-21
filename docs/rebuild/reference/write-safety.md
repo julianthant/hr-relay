@@ -854,6 +854,16 @@ command that released generation 1, with the same evidence-note requirement.
 ---
 
 ## 4. Crash-window recovery (positive proof or stabilized negative proof)
+<!-- roadmap: def-propagation -->
+
+<!-- roadmap-status: def-propagation -->
+- [x] the recovery state machine is built (`src/core/write-recovery.ts`) and answers exactly four typed decisions — `backfilled`, `safe-to-retry`, `wait{notBefore, observationsNeeded}`, `parked{code, message}` over the five closed park codes
+- [x] the ONE measured window in this program is Kuali's, from D135's four cycles on doc 4490 — `minSinceFenceMs: 30_000`, 2 reads, 5 000 ms apart, same source state
+- [ ] **UCPath has no measured window and both its commits stay `operator-only`** — the negative there would authorize a SECOND real termination, so §4.2 criterion 3 fails before the other two are asked
+- [ ] **ServiceNow has no measured window and no commit contract yet** — order 7's work; its propagation is doc 03c §Live probe status
+- [ ] the deferral's trigger: a controlled commit on each system that can record a save-answer latency, a first agreeing server-side read and a first agreeing reload (doc 04 `{#def-propagation}`)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-recovery.ts`, `src/domain/contracts/ucpath/{create-termination,delete-pending-terminations}.ts` (both `operator-only`, each with its reason), `src/domain/contracts/kuali/*` (both `stabilized`); left: every non-Kuali window
+<!-- /roadmap-status -->
 
 **The guarantee, stated precisely:** for any real commit, after a crash at *any* point recovery
 selects exactly one of three outcomes and never retries from a single unproven UI miss:
@@ -883,10 +893,13 @@ selects exactly one of three outcomes and never retries from a single unproven U
    a legible message naming the key, the system, and the match count — the operator verifies in the
    target system and uses one of the typed resolutions below. Never a guess.
 
-**Recovery replay (resolves ref workflow-model §OQ2 — replaces "always park"):** on resume, the kernel first
-scans `write_intents` for the resuming `(workflow,item_id,step_id)`. If it finds a row with
-`status:"attempting"` and no `committed`, it **re-runs `idempotency.probe(key)` FIRST** (before any
-`startAt` node logic) and routes on the evidence-qualified protocol above. Only after the probe resolves does
+**Recovery replay (resolves ref workflow-model §OQ2 — replaces "always park"):** on resume, the
+kernel first looks for an unfinished intent on the resuming item. A write intent's identity is
+`(workflowId, itemId, taskId)` plus the `idempotencyKeyDigest` its row is UNIQUE on — the commit
+TASK, not a node id, because a node is a graph position and the same commit contract is what names
+the external transaction. If it finds a row with `status:"attempting"`, it **re-runs
+`idempotency.probe(key)` FIRST** (before any `startAt` node logic) and routes on the
+evidence-qualified protocol above. Only after the probe resolves does
 normal resume proceed. A read node with no fence auto-resumes as today (worst case: a repeated
 read). This reads durable state from SQLite (system-of-record), never post-crash JSONL, mirroring
 oath-upload's SQLite-fast-path recovery (`handler.ts:427-429`).
@@ -905,7 +918,24 @@ retained fingerprint, or a session host already bound to another run — throws 
 loudly and never converts into a park that reads as a probe verdict. The §4.1 typed operator
 resolutions are pure authority work and lease no driver, so no binding applies there.
 
+**The decision is a closed union, and `wait` is a first-class answer.** `recover` returns exactly
+one of `backfilled`, `safe-to-retry`, `wait { notBefore, observationsNeeded }`, or
+`parked { code, message }` over the five closed codes `unknown` · `ambiguous` ·
+`present-proof-invalid` · `binding-invalid` · `operator-required`
+(`WriteRecoveryDecisionSchema`). `wait` is what makes "no sleeping worker" structural: the kernel
+answers with the instant the next qualifying observation may be taken and how many are still
+needed, and the scheduler requeues. The park path writes the intent's `parked` row inside its own
+authority transaction, CASing on the intent's `version`, before it returns.
+
+**Pre-settlement observations are process-held, and that is the safe direction.** `recover` accepts
+`priorVerdicts` collected earlier in the SAME recovery episode. After a crash they are re-collected
+from scratch, which can only delay a retry — never fabricate authority — because D69 counts only
+observations that qualify against the fence instant, the spacing and the exact key/query/source
+state.
+
 ### 4.1 Parked-write resolution is typed and intent-scoped
+<!-- roadmap: p1-kernel -->
+<!-- roadmap: p2-proof -->
 
 A parked write does not inherit the queue's ordinary Done/Retry actions. The kernel exposes exactly
 two intent-scoped resolutions, both requiring the current intent generation and an optimistic-lock
@@ -1058,6 +1088,17 @@ than decided here. What D136 guarantees is that the parked *intent* — the dura
 authority, the thing that records whether a real HR transaction exists — always has a typed way out.
 
 ### 4.2 A measured propagation window transfers with the MECHANISM, and only under its own proof (D207, 2026-08-14)
+<!-- roadmap: sep-5 -->
+<!-- roadmap: track-a -->
+
+<!-- roadmap-status: sep-5 -->
+- [x] `kuali/save-separation-finalization` exists with its prepare arm `kuali/stage-separation-finalization`, its verifier `kuali/verify-separation-finalization` and its probe `kuali/match-separation-finalization`
+- [x] its `recoveryAbsence` is `stabilized` on D135's Kuali numbers, INHERITED under this section's three criteria rather than measured — the same `submitDocumentV2` on the same RRSS form, the same reload of the same document, and a settlement that re-saves the identical staged values
+- [x] the staged set is TWELVE fields in one pass, not ten — D217 folded legacy's step-13 date write-backs in; the graph did not move, and both new controls carry `exactly-one-visible` from a read-only pass, NOT D208's `exactly-one-editable`
+- [ ] the inheritance is PROVISIONAL: chunk 5c's controlled commit must record the save-answer latency, the first agreeing server-side read and the first agreeing reload, and either confirm the 30 s bound or move it — **the composed workflow may not rely on the stabilized arm in production until it does** (doc 03b; waits for 08-28)
+- [ ] five of the twelve staged fields have an ASSERTED payload check and five are recorded-and-named because their `formKey` model shape was never observed; the controlled commit closes them by reading the real payload
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/kuali/save-separation-finalization.ts:117-145`, `docs/migrations/separations.md` §4e/§9.10; left: the controlled commit and the five unasserted payload checks
+<!-- /roadmap-status -->
 
 D64/D69 admit `recoveryAbsence.kind:"stabilized"` **only** with a measured propagation window; the
 open question this subsection settles is what a measurement is a measurement *of*. **It is a
@@ -1086,13 +1127,22 @@ the same `submitDocumentV2` on the same RRSS form, proved by the same reload of 
 and settling a negative re-fences and re-saves the identical ten staged values.
 
 **The obligation this creates, stated as an obligation and not as a note.** A transferred window is
-**provisional until that write's OWN controlled-commit proof confirms it** (doc 03c §Phase summary step 5). The
-finalization's proof is chunk 5c: its authorized real commit must record the same three
-observations D135 recorded — the save's answer latency, the first agreeing server-side read, and
-the first agreeing browser reload — and either confirm the 30 s bound or move it. **The composed
-separations workflow may not rely on the stabilized arm in production before that confirmation
-lands.** Until then the reuse is a declared, argued inheritance carrying a named owner, which is
-exactly the difference between this and a generous placeholder.
+**provisional until that write's OWN controlled-commit proof confirms it** — §3.2's optional sixth
+part, gated by doc 03c's step 5. The finalization's proof is separations chunk 5c: its authorized
+real commit must record the same three observations D135 recorded — the save's answer latency, the
+first agreeing server-side read, and the first agreeing browser reload — and either confirm the 30 s
+bound or move it. **The composed separations workflow may not rely on the stabilized arm in
+production before that confirmation lands**, and at HEAD it has not: the commit waits for the
+operator's 08-28 window (doc 03b). Until then the reuse is a declared, argued inheritance carrying a
+named owner, which is exactly the difference between this and a generous placeholder.
+
+**What is `operator-only` today, and why each one is.** Both UCPath commits fail criterion 3 before
+the other two are asked — settling a false negative on `ucpath/create-termination` files a SECOND
+real termination, and on `ucpath/delete-pending-terminations` it re-runs a control that DELETES
+rows, which is worse in the same direction. Each contract carries that argument as its own
+`reason` string, so a reader of the code gets the same sentence as a reader of this doc. ServiceNow
+and OnBase have no commit contract yet; their windows are order 7's question and doc 03c §Live probe
+status is the gate. The standing deferral is doc 04's `{#def-propagation}`.
 
 ---
 
