@@ -1503,7 +1503,7 @@ export class RunQueueProjection {
    */
   buildActivityReportWire(from: string, to: string): ActivityReportWire {
     if (this.#health.state === "degraded") {
-      throw new Error(
+      throw new ProjectionDegradedError(
         `the run/queue projection is degraded and refuses to serve activity aggregates: ${this.#health.lastError ?? "unknown"}`,
       );
     }

@@ -55,6 +55,21 @@ describe("failureStatus", () => {
     assert.equal(degraded.body.retryable, true);
   });
 
+  it("classifies buildActivityReportWire's degraded refusal as PROJECTION_DEGRADED, not the plain-Error 500 it was", () => {
+    // Pins the exact producer: `buildActivityReportWire` (run-queue-projection.ts) used to throw a
+    // plain `Error` for this wording, so /api/v1/reports/activity and .csv answered
+    // INTERNAL_FAILURE/retryable:false during a degraded fold instead of PROJECTION_DEGRADED/
+    // retryable:true — the sibling `counts` producer was re-kinded, this one was not.
+    const activityAggregatesDegraded = failureStatus(
+      new ProjectionDegradedError(
+        "the run/queue projection is degraded and refuses to serve activity aggregates: unknown",
+      ),
+    );
+    assert.equal(activityAggregatesDegraded.status, 500);
+    assert.equal(activityAggregatesDegraded.body.code, "PROJECTION_DEGRADED");
+    assert.equal(activityAggregatesDegraded.body.retryable, true);
+  });
+
   it("answers 500 for an untyped throw even when it wears a retired marker", () => {
     // This is the whole defect, from the other side: before D2 each of these
     // was a 404/409/500-retryable decided by prose, and a caller could not
