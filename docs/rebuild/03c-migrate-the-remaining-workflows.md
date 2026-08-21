@@ -12,38 +12,42 @@ property of migrating a workflow, not of any one workflow; the tiers' own normat
 <!-- roadmap: migrations -->
 
 <!-- roadmap-status: migrations -->
+- [x] the risk-proof order is fixed and its entry point is chosen — separations (order 8) first, the table deliberately NOT re-sequenced (D84/D193)
+- [x] order 0 · person-lookup is migrated and live-proven (D74, run `4ebf7275-0158-49af-a78f-1f37948efb27`); `src/workflows/person-lookup/descriptor.ts` is registered
+- [x] the seven-step loop, the §b questionnaire and the per-workflow exit criteria are written and have been run once, by separations (doc 03b)
+- [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 8 modules and every one is person-lookup, `kuali-timekeeper-annotation` or a separations chunk
+- [ ] the five declaration-only stores — `i9`, `old-kronos`, `onbase`, `servicenow`, `sharepoint` are `declareDriver(…, "unwired")` with `{}` tasks (7–12 lines each); orders 1, 2 and 7 build them
+- [ ] the legacy capability register — **47 open · 20 replaced · 7 native · 4 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-08-20); all 47 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
+- [ ] every `Dashboard · wire <workflow>` sub-task — nine of them, one per order; only `{#order-0-dash}`'s four squares are ticked
+- [ ] the T1/T2 PROOF lines on every order node — the tiers are specified (`ref guards-and-tests` §10, dc2901de) and no workflow has its pair yet
+> 2026-08-20 | docs-cohesion 03c | verified against `src/control/workflow-registry.ts:38-47`, `src/workflows/*/descriptor.ts` (8 files), `src/stores/*` and `config/legacy-capabilities.json` (recount 47/20/7/4 matches the tree's note); left: every order after 0, minus 8
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 3+'s goal) and §3.1 (the migration loop) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**Phase 3c is the rest of the program.** Phase 3a built the dashboard every workflow inherits and
+3b takes separations — the deepest write — through the loop once. 3c runs that same loop for the
+**twelve remaining workflows**, one at a time, in the order below, until the legacy capability
+register has no open entry left and the cutover gate (doc 05) can be read.
 
-**Goal.** Migrate the remaining workflows onto the new base, **one at a time**, slowly populating the
-task stores with what each needs. Every workflow gets its own migration plan doc (a child of this
-plan) answering the §b questionnaire and recording its reuse/additions. These are rebuild
-capability milestones only; legacy source/tests remain production and rollback assets.
+**What it reads as met before it starts.** From **03a**: the generic surfaces — run modal, queue
+row, run detail + timeline, gate ceremony, notifications, archive · activity · explorer, intake and
+capture — exist and answer for a workflow they were not written for (Track C proved that once
+against a real composed run). A migration WIRES them; it never builds one. From **03b**: the store
+task libraries the entry was chosen to force into existence (`ucpath` 10 tasks, `kuali` 10,
+`new-kronos` 2, `crm` 2, `separations` 9 service tasks), the ALWAYS-GATE identity approval, the
+typed start door (D250/D251/D261), and the wiring pattern each `Dashboard · wire` sub-task repeats.
 
-1. **§b operator questionnaire** (§3.4) — asked and answered BEFORE building (charter §b: "cover
-   everything for each workflow as we migrate").
-2. **Author** — reuse store tasks (peer-to-peer, charter §1); add new tasks as reusable bases +
-   name the workflow-specific customization (charter §3/§8); reuse/add canonical UI ids and driver
-   operations first; write strict contracts + scenarios → impls → pure-logic unit tests (`fakeCtx`)
-   → descriptor/result/delegation policies (ref guards-and-tests §6 red→green order).
-3. **Safety guards fire** — strict schemas, driver boundary, scenario coverage, transaction pairing,
-   subject-before-fence, dry-run commit-free, write safety/capability, permanent-key dedupe,
-   command/delegation, provenance, graph/result typing, evidence, and stable identity all green.
-4. **Live dry-run** reads the real path and asserts prepare previews exist while commit spans,
-   write intents, and mutation helpers are absent.
-5. **Controlled commit proof for write workflows.** Exercise each new commit/probe/verify against a
-   configured test instance or a deliberately harmless, operator-approved canary. If neither exists,
-   cutover is blocked—dry-run alone cannot prove landing, recovery, or dedupe. The §b questionnaire
-   records target, cleanup/reversibility, expected proof, and stop condition before this test.
-6. **Mark rebuild-ready; do not go live (D89).** Record the workflow's native evidence and
-   capability closure, but leave production routing on `src`. There is no workflow-scoped flip,
-   legacy proxy, engine generation, or mixed-engine production. All workflows switch together only
-   after the whole-program cutover gate (§6).
-7. **Close the learning loop.** Any failure discovered produces a regression scenario + structured
-   knowledge/fix record; stale knowledge is superseded rather than appended beside the correction.
-   Update affected D58 capability entries and the legacy-change-accounting map; preserve old source
-   and tests; update the nearest CLAUDE.md + owning docs.
+**The honest state at HEAD.** One of the ten order rows is migrated. `src/control/workflow-registry.ts`
+registers eight modules: `person-lookup` (order 0), `kuali-timekeeper-annotation` (the D135
+transaction proof — not an order row), and the six separations descriptors (order 8, doc 03b).
+**Orders 1, 2, 3, 4, 5, 6, 7 and 9 are pure plans** — no descriptor, no module, no tuple entry.
+`config/pending-impl-bindings.json` is the checked-in EMPTY set, so nothing is half-bound either.
+
+**The rule every order below inherits.** A migration is not done when its workflow runs. It carries
+(1) its own `Dashboard · wire <workflow>` sub-task — the seven wire squares of
+`ref frontend-backend-integration` §5.1.1–§5.1.7 plus whatever that workflow is first to need —
+and (2) its **T1/T2 PROOF** lines: a structural fixture scenario and a live dry-run scenario for the
+workflow, and a dashboard scenario for the surfaces it wired (`ref guards-and-tests` §10.11/§10.12).
+Neither is optional and neither is 03a's job.
 
 ## Recommended migration order (by risk / complexity / reuse)
 
