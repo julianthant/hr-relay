@@ -63,6 +63,13 @@ export const INTAKE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 /**
  * What the grid edge can actually read. The zip magic still overrides a lying
  * media type downstream — this list is the declared contract, not the proof.
+ *
+ * It stays EXPORTED beside `INTAKE_UPLOAD_MAX_BYTES` with no importer in this
+ * tree on purpose (Track D row D2 kept it where it un-exported eleven other
+ * dead exports): the Dropzone's accept list and size cap are client literals
+ * today, and serving both from here is a NAMED open wire task
+ * (ref dashboard-surfaces §9.7.1, the `FE the intake Dropzone` row in
+ * `docs/roadmap/roadmap.md`). An unlanded consumer is not dead code.
  */
 export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
   "text/csv",
@@ -70,7 +77,7 @@ export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
   "application/vnd.ms-excel",
 ] as const);
 
-export const IntakeUploadRequestSchema = z.strictObject({
+const IntakeUploadRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   mediaType: z.enum(INTAKE_UPLOAD_MEDIA_TYPES),
   /**

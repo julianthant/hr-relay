@@ -266,7 +266,7 @@ export interface DashboardComposeInput {
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
 /** Ref dashboard-surfaces §2.5: a dirty store gets a coalesced verified backup at least every 15 minutes. */
-export const AUTHORITY_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
+const AUTHORITY_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
 /**
  * Three intervals — one slow or missed cycle must not flap the Settings
  * indicator, while a genuinely stalled backup lane still reads stale well
@@ -281,7 +281,7 @@ export const AUTHORITY_BACKUP_MAX_AGE_MS = 45 * 60 * 1000;
  * (legacy `provider-limits.ts` priority-1 tier-1), never a default minted
  * inside the secrets reader.
  */
-export const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
+const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
 /**
  * D218: how often the dashboard tails `spans/*.jsonl` for lines other
@@ -290,7 +290,7 @@ export const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
  * command-emitted lines don't wait for it (the command service ticks the
  * tail itself after emitting).
  */
-export const SPAN_TAIL_POLL_MS = 250;
+const SPAN_TAIL_POLL_MS = 250;
 
 /**
  * D262: how often the needs-you watch re-derives the parked-at-gate set from

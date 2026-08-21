@@ -32,7 +32,7 @@ import { planStart } from "../../../services/start/plan.js";
 import type { StartPlannerDeps } from "../../../services/start/plan.js";
 import { TargetNotFoundError } from "../../failures.js";
 
-export const StartPlanIngressSchema = z.strictObject({
+const StartPlanIngressSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   submissions: z.array(JsonValueSchema).min(1),
   dryRun: z.boolean(),
@@ -41,7 +41,7 @@ export const StartPlanIngressSchema = z.strictObject({
   requestedInstance: InstanceSelectionSchema.optional(),
 });
 
-export const StartPlanWireSchema = z.strictObject({
+const StartPlanWireSchema = z.strictObject({
   wireVersion: z.literal(1),
   startPlanId: StartPlanIdSchema,
   workflowId: WorkflowIdSchema,
