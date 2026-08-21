@@ -9,12 +9,70 @@ not power. See `README.md` for the standing rules.
 Owning doc for every record below: **ref operator-trust §5.2 / §5.7 / §5.9**
 (`reference/operator-trust.md`).
 
-## ZERO open records (2026-08-19)
+## Three open records (2026-08-21) plus five settled 2026-08-19
 
 Five records were dispositioned 2026-08-14 and deleted per the ledger rule (landed in the owning
 doc): the run overlay, the `1 file` header count, lanes, the `Version registry` action, and the
 delegation child row are all covered by ref operator-trust §5.7's exclusions and its 2026-08-14 presentation
 as-built delta.
+
+**What the 2026-08-19 sweep missed.** `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md`
+§3 (ledger 3) re-audited the Explorer against the demo live and found three real gaps the
+"ZERO open records" heading was papering over. All three are booked below.
+
+## `skippedInDryRun` has no per-node signal
+
+**Recorded:** 2026-08-21 · **Status:** OPEN — no producer (re-verified 2026-08-21:
+`ExplorerNodeWire.shape` in `src/domain/dashboard/explorer.ts` has no per-node
+`skippedInDryRun`/equivalent field) · **Owning doc:** ref operator-trust §5.2
+
+**Symptom.** The demo marks a node above the dry-run boundary that a rehearsal skips anyway with a
+`Chip tone="danger"` reading "a dry run skips this" (`skippedAboveBoundary`,
+`demo-explorer-wire.ts:185-190`); this tree draws nothing for that case on a non-transaction node.
+
+**Ledger row:** EX77.
+
+**What closes it:** a per-node `skippedInDryRun` boolean derived the same way
+`dryRunPosture`/`dryRunBoundaryNodeId` already are (`explorer-model.ts`), projected onto
+`ExplorerNodeWire.shape`.
+
+---
+
+## A field's `when` condition has no per-field line
+
+**Recorded:** 2026-08-21 · **Status:** OPEN — no producer (re-verified 2026-08-21:
+`ExplorerContractFieldWire` carries no per-field `when`) · **Owning doc:** ref operator-trust §5.9
+
+**Symptom.** The demo prints a micro-line `only when {row.when}` under a conditional field's name
+(`DemoExplorer.tsx:846-848`); the rebuild's field table has no such line, because the field's own
+condition never reaches the wire — only the NODE's `when` does (D228).
+
+**Ledger row:** EX113.
+
+**What closes it:** widening `ExplorerContractFieldWire` with the field-level `when`, the same
+declared-condition shape D228 gave the node.
+
+---
+
+## No minor/presentation version exists anywhere in the tree
+
+**Recorded:** 2026-08-21 · **Status:** OPEN — no producer, cross-cutting (re-verified 2026-08-21:
+`grep -rn minorVersion src/domain` → 0 hits) · **Owning doc:** ref workflow-model, ref dashboard-surfaces §9.5.1
+
+**Symptom.** Every descriptor version in this tree is a bare major integer, so every place the demo
+would print a two-part tag (`v7.2`) prints `v1`-shaped output instead. This is not an Explorer-only
+gap — it is why the Explorer's own `Version registry` table (rendered in `archive.tsx`, reachable
+once F4 wires the action, ref operator-trust §5.7) and the Archive's version chips both read one
+number short. Named here because ledger 3 §3's summary paragraph raised it while auditing the
+Explorer, and because the Explorer is the surface whose whole job is describing a workflow's exact
+shape.
+
+**Ledger rows this explains, elsewhere:** AR125, AR195, AR206, AR230 (all `unserved: no minor
+version`).
+
+**What closes it:** a minor/presentation version component on the descriptor identity, threaded
+through `descriptorVersion`'s every consumer — a change to the version MODEL itself, not to any one
+surface.
 
 The remaining three landed 2026-08-19 and are deleted per the same rule:
 

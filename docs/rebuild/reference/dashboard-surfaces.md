@@ -3757,9 +3757,13 @@ opens it. Which takeover wins when a link carries several is §9.5's one resolve
 last in it by design — a reference view is what the operator looks UP, so it yields to the place they
 navigated to and to the work they have in progress.
 
-Entry is two `ghost` buttons in the panel's action bar beside `Import spreadsheet`. They are
-secondary because neither is a command — neither takes an argument from the operator nor changes
-anything.
+**Corrected 2026-08-21 — no such buttons exist.** This section used to say entry was two `ghost`
+buttons in the panel's action bar beside `Import spreadsheet`. `top-bar.tsx:1121-1125` records why:
+the demo's keyboard-legend glyph was deliberately removed (*"we already have help in settings"*),
+and no catalog/explorer entry point replaced it — `Import spreadsheet` itself sits alone in
+`dashboard-app.tsx`'s toolbar with no `ghost` sibling. Both takeovers are reachable ONLY by typing
+their query param directly (`?explore=<workflowId>`, `?catalog=<term>`) — there is no click path
+into either from anywhere in this tree today.
 
 ##### As-built notes
 
@@ -4027,10 +4031,14 @@ true of them; it is a `{#track-d}` hygiene row, not a redesign.
   the first click outside it, which is the operator's very first act on a takeover. The queue's
   references keep it, because the queue is what that window is FOR.
 - **Deferred, with its reason.** There is no arm that sets a run-wide CONSTANT and none that REMOVES
-  a binding, so the grid renders `constants` read-only (today always empty) and its column control
-  offers no "unbind". Offering either would be a control that silently does nothing. person-lookup
-  does not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the
-  first workflow with a required non-column field (ref data-intake-and-edit-data §8's `effectiveDate`) will need the arm.
+  a binding. **Corrected 2026-08-21:** `intake.tsx` does not render `constants` read-only — nothing
+  renders `session.constants` at all. The one reference to it (`:934`) reads
+  `session.constants.length` inside the `nothingBound` blocker computation and nowhere else; there
+  is no grid row, no read-only cell, no visible trace of a constant on this surface (ledger 3
+  IN155). The column control's "unbind" absence stands as originally written. person-lookup does
+  not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the first
+  workflow with a required non-column field (ref data-intake-and-edit-data §8's `effectiveDate`) will need both the
+  arm and a rendering.
 
 ---
 

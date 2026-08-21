@@ -4,15 +4,19 @@
  *
  * The dashboard's whole keyboard flow, in ONE registry.
  *
- * It lives in its own module because two surfaces render it and neither may own
- * it: the Top Bar's shortcuts Popover (reachable from every view, which is what
- * makes it discoverable) and the future Help page (2i).
+ * It was designed to live in its own module because two surfaces would render it — the Top
+ * Bar's `ShortcutsPopover` (below) and a future Help page — and neither may own it. Neither
+ * exists on screen today: `ShortcutsPopover` has zero callers (the top bar dropped its keyboard
+ * glyph, see the note at its call site), and no Help page was built. The whole legend is
+ * unreachable from anywhere in this tree (`03a-finish-the-dashboard.md` OPEN question 6) — not
+ * merely a binding that is missing from it.
  *
  * **A shortcut that is not in this array is undocumented, and a binding that is
  * not here is unreachable from Help.** That is the point of the single home:
  * `DESIGN.md` binds the row context menu's keyboard route to this registry, and
  * a second hand-written legend somewhere else is exactly how a key comes to be
- * bound in one file and described in another.
+ * bound in one file and described in another. That argument still holds for
+ * whichever surface eventually renders this registry.
  *
  * 1i drop from the demo registry: `c` (mark the selected member checked) — the
  * member-checked bookkeeping has no wire state in this slice and the binding

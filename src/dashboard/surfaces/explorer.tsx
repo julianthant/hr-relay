@@ -6,8 +6,10 @@
  * Ported from the operator's rebuild demo — legacy `hr-automation`
  * @1bffbd658db34ce84a08e69484db3a40b3658d6e,
  * `src/dashboard/components/dev/rebuild-demo/DemoExplorer.tsx` (with
- * `demo-explorer-wire.ts` for `dryRunPosture`, `contractTotals`,
- * `NODE_KIND_LABEL`, `laneOf`'s connector rule and `skippedAboveBoundary`).
+ * `demo-explorer-wire.ts` for `dryRunPosture`, `contractTotals` and `NODE_KIND_LABEL` —
+ * `explorer-model.ts` exports none of `laneOf`'s connector rule or `skippedAboveBoundary`; no lane
+ * concept exists here (`Connector` draws between every consecutive pair, ledger 3 EX181) and no
+ * per-node dry-run-skip mark is drawn (ledger 3 EX77/EX180; `docs/findings/explorer.md`)).
  * Copied with provenance and adapted to THIS repository's served wire; nothing
  * here reaches the legacy repository at runtime and nothing may (D93/D94).
  *

@@ -439,18 +439,20 @@ function auditConventions(files: readonly string[], root: string): string[] {
 }
 
 /*
-  The port of this arm kept ONE of the four checks its source had.
+  The port of this arm originally kept ONE of the four checks its source had.
 
   Legacy's `frontend-tailwind-compliance.test.ts` runs four: reduced-motion
   coverage over animation, the z-index scale, image loading discipline, and the
-  palette/hex rule. Only the last came across, and DESIGN.md meanwhile asserts
-  "guard enforced" for the first two by name (`:209`, `:546`, `:548-549`). A
-  document claiming a guard that does not run is worse than no claim, because
-  the next reader believes it.
+  palette/hex rule. Only the last came across at first, and DESIGN.md asserted
+  "guard enforced" for the first two by name regardless — a document claiming a
+  guard that does not run is worse than no claim, because the next reader
+  believes it. Commit `5cc035b9` (2026-08-12) closed the gap: today ALL FOUR
+  run (narrower than legacy's originals — see below), and DESIGN.md's "guard
+  enforced" claims are now true.
 
   The tree happens to be clean on all four today. That is not the same as being
-  held to them — which is the whole argument of `DESIGN.md:56-57`, "if it is
-  true, hold it with a test".
+  held to them — which is the whole argument of DESIGN.md's own "if it is
+  true, hold it with a test" line (~:100).
 
   Palette and hex stay on the AST (a colour only means something inside a string
   literal or JSX text). The other three read raw text on purpose: the

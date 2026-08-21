@@ -18,6 +18,12 @@
  * durations are. The `--ds-w-archive-*` width tokens exist for exactly that
  * alignment; two grids cannot be made to agree by choosing better numbers.
  *
+ * This table is NOT virtualised. `@tanstack/react-virtual` is not a dependency here, there are
+ * no row/section pixel constants, no `overscan`, no spacer rows and no flat item list — each
+ * sweep gets its own `<TBody>` and the browser lays out every row of every sweep. The demo's
+ * `useVirtualizer` handles its own 800-row case; whether this table needs the same machinery at
+ * that scale is undecided (Track D row D9; `03a-finish-the-dashboard.md` OPEN question 1).
+ *
  * ## Two views, and the list keeps its detail beside it
  *
  * `Archived runs` is a table + the selected run's stored snapshot, side by
@@ -374,9 +380,11 @@ function scopeWord(scope: ArchiveSweepWire["scope"]): string {
 /**
  * The sweep's NAME, as the demo's `ec v3.1 → v4.0` reads: the identities it
  * moved every prior run onto, then the version it was applied for. The demo's
- * `major`/`minor` word has no counterpart on this wire (see
- * `docs/findings/archive.md`), so the badge carries the SCOPE, which is the
- * fact D179 does record.
+ * `major`/`minor` word DOES have a counterpart on this wire — `changeRecord.value.kind`
+ * (`ArchiveSweepWireSchema`, `src/domain/dashboard/archive.ts:116`, D223) — this label
+ * just does not draw it: the badge carries the SCOPE, which is the fact D179 records.
+ * Drawing the kind on the badge/summary/popover/card is a rendering gap, not a wire gap
+ * (ledger 3 AR77, AR78, AR91, AR129; `03a-finish-the-dashboard.md` OPEN question 2).
  */
 function sweepNameLabel(sweep: ArchiveSweepWire): string {
   const identities = sweep.appliedIdentities
