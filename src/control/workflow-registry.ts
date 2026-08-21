@@ -28,12 +28,12 @@ import type { WorkflowModuleRole } from "../domain/workflow/module-role.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
-import { separationsIdentityCheckModule } from "../workflows/separations-identity-check/module.js";
-import { separationsKronosTimecardModule } from "../workflows/separations-kronos-timecard/module.js";
-import { separationsKualiFinalizationModule } from "../workflows/separations-kuali-finalization/module.js";
-import { separationsKualiReadModule } from "../workflows/separations-kuali-read/module.js";
+import { separationsIdentityCheckModule } from "../workflows/separations/identity-check/module.js";
+import { separationsKronosTimecardModule } from "../workflows/separations/kronos-timecard/module.js";
+import { separationsKualiFinalizationModule } from "../workflows/separations/kuali-finalization/module.js";
+import { separationsKualiReadModule } from "../workflows/separations/kuali-extraction/module.js";
 import { separationsModule } from "../workflows/separations/module.js";
-import { separationsUcpathTerminationModule } from "../workflows/separations-ucpath-termination/module.js";
+import { separationsUcpathTerminationModule } from "../workflows/separations/ucpath-transaction/module.js";
 
 export const WORKFLOW_MODULES = Object.freeze([
   personLookupModule,

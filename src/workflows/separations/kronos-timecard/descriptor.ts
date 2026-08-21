@@ -33,27 +33,27 @@
  * the audited `src/base` builders.
  */
 import { z } from "zod";
-import { flow } from "../../base/flow.js";
-import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
+import { flow } from "../../../base/flow.js";
+import { defineWorkflowDescriptor, requireFact } from "../../../base/workflow.js";
 import {
   NewKronosReadSeparationTimecard,
   ReadSeparationTimecardOutputSchema,
   TimecardRangeBoundSchema,
-} from "../../domain/contracts/new-kronos/read-separation-timecard.js";
+} from "../../../domain/contracts/new-kronos/read-separation-timecard.js";
 import {
   NewKronosSearchEmployee,
   SearchEmployeeOutputSchema,
-} from "../../domain/contracts/new-kronos/search-employee.js";
-import { CANONICAL_FIELDS } from "../../domain/fields/registry.js";
-import { EidSchema, WorkflowIdSchema } from "../../domain/ids.js";
-import { TimecardDateSchema } from "../../domain/kronos/separation-timecard.js";
-import { classifyNameSimilarity, NameSimilarityTierSchema } from "../../domain/matching/name-match.js";
+} from "../../../domain/contracts/new-kronos/search-employee.js";
+import { CANONICAL_FIELDS } from "../../../domain/fields/registry.js";
+import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
+import { TimecardDateSchema } from "../../../domain/kronos/separation-timecard.js";
+import { classifyNameSimilarity, NameSimilarityTierSchema } from "../../../domain/matching/name-match.js";
 import {
   BUILD_MANIFEST,
   resolveWorkflowFingerprint,
-} from "../../domain/workflow/build-manifest.js";
-import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+} from "../../../domain/workflow/build-manifest.js";
+import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
 
 /**
  * The employee's name as the run expects it — the SAME canonical schema object

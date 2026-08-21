@@ -31,7 +31,7 @@ import {
   deriveIdentityEvidenceDigest,
 } from "../../src/domain/separations/identity-evidence.js";
 import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
-import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations-identity-check/descriptor.js";
+import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations/identity-check/descriptor.js";
 import {
   FixtureStage,
   fixtureDescriptor,

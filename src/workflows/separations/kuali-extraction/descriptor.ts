@@ -41,25 +41,25 @@
  * the audited `src/base` builders.
  */
 import { z } from "zod";
-import { flow } from "../../base/flow.js";
-import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
-import { KualiReadSeparationDocument } from "../../domain/contracts/kuali/read-separation-document.js";
+import { flow } from "../../../base/flow.js";
+import { defineWorkflowDescriptor, requireFact } from "../../../base/workflow.js";
+import { KualiReadSeparationDocument } from "../../../domain/contracts/kuali/read-separation-document.js";
 import {
   MatchTerminationTypeOutputSchema,
   SeparationsMatchTerminationType,
-} from "../../domain/contracts/separations/match-termination-type.js";
-import { WorkflowIdSchema } from "../../domain/ids.js";
+} from "../../../domain/contracts/separations/match-termination-type.js";
+import { WorkflowIdSchema } from "../../../domain/ids.js";
 import {
   KualiActionIdSchema,
   KualiDocumentNumberSchema,
-} from "../../domain/ui/kuali-document-identity.js";
-import { KualiSeparationDocumentSchema } from "../../domain/ui/kuali-separation-document.js";
+} from "../../../domain/ui/kuali-document-identity.js";
+import { KualiSeparationDocumentSchema } from "../../../domain/ui/kuali-separation-document.js";
 import {
   BUILD_MANIFEST,
   resolveWorkflowFingerprint,
-} from "../../domain/workflow/build-manifest.js";
-import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+} from "../../../domain/workflow/build-manifest.js";
+import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
 
 /**
  * The ingress schema. Both identifiers are required and neither is derivable

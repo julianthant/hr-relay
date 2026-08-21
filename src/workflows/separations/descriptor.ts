@@ -134,6 +134,12 @@ import {
 } from "../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+import { IDENTITY_CHECK_STEP } from "./identity-check/step.js";
+import { JOB_SUMMARY_STEP } from "./job-summary/step.js";
+import { KRONOS_TIMECARD_STEP } from "./kronos-timecard/step.js";
+import { KUALI_EXTRACTION_STEP } from "./kuali-extraction/step.js";
+import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
+import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
 
 /**
  * How long a New Kronos search may go without answering EITHER WAY. Chunk 1's
@@ -929,7 +935,10 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    * D225 — the operator-approved categorical timeline (2026-08-18, separations
    * §9.18): six categories over the eighteen nodes, each keyed (D265) by the
    * step folder that owns its nodes, legacy's step vocabulary
-   * kept where it fits. Legacy's `transaction-check` folds into *UCPath
+   * kept where it fits. Each key/label pair is IMPORTED from the folder that is
+   * the step (D265 §1.2.2 rule 2) — this declaration adds only the nodes, so a
+   * folder and its category cannot come to disagree about what the step is
+   * called. Legacy's `transaction-check` folds into *UCPath
    * transaction*, because here the pending check is the sweep transaction plus
    * the in-write probes, not a standalone step. The gate is a MEMBER of
    * *Identity check* — a wait is a state of a step, not a step of its own —
@@ -937,12 +946,12 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    * category's `×N` marker instead of drawing duplicate segments.
    */
   timeline: [
-    { key: "kuali-extraction", label: "Kuali extraction", nodes: [ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
-    { key: "identity-check", label: "Identity check", nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
-    { key: "job-summary", label: "Job summary", nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
-    { key: "kronos-timecard", label: "Kronos timecard", nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
-    { key: "ucpath-transaction", label: "UCPath transaction", nodes: [SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE] },
-    { key: "kuali-finalization", label: "Kuali finalization", nodes: [FINALIZE_NODE] },
+    { ...KUALI_EXTRACTION_STEP, nodes: [ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
+    { ...IDENTITY_CHECK_STEP, nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
+    { ...JOB_SUMMARY_STEP, nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
+    { ...KRONOS_TIMECARD_STEP, nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
+    { ...UCPATH_TRANSACTION_STEP, nodes: [SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE] },
+    { ...KUALI_FINALIZATION_STEP, nodes: [FINALIZE_NODE] },
   ],
   identity: {
     /**

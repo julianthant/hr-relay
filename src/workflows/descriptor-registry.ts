@@ -14,11 +14,11 @@
  */
 import { kualiTimekeeperAnnotationDescriptor } from "./kuali-timekeeper-annotation/descriptor.js";
 import { personLookupDescriptor } from "./person-lookup/descriptor.js";
-import { separationsIdentityCheckDescriptor } from "./separations-identity-check/descriptor.js";
-import { separationsKronosTimecardDescriptor } from "./separations-kronos-timecard/descriptor.js";
-import { separationsKualiFinalizationDescriptor } from "./separations-kuali-finalization/descriptor.js";
-import { separationsKualiReadDescriptor } from "./separations-kuali-read/descriptor.js";
-import { separationsUcpathTerminationDescriptor } from "./separations-ucpath-termination/descriptor.js";
+import { separationsIdentityCheckDescriptor } from "./separations/identity-check/descriptor.js";
+import { separationsKronosTimecardDescriptor } from "./separations/kronos-timecard/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "./separations/kuali-finalization/descriptor.js";
+import { separationsKualiReadDescriptor } from "./separations/kuali-extraction/descriptor.js";
+import { separationsUcpathTerminationDescriptor } from "./separations/ucpath-transaction/descriptor.js";
 import { separationsDescriptor } from "./separations/descriptor.js";
 
 export const WORKFLOW_DESCRIPTORS = Object.freeze([

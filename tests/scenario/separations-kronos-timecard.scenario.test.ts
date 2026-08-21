@@ -22,7 +22,7 @@ import { EidSchema } from "../../src/domain/ids.js";
 import { createDeterministicNewKronosTimecardDriver } from "../../src/stores/new-kronos/driver/fake.js";
 import { readSeparationTimecardTask } from "../../src/stores/new-kronos/tasks/read-separation-timecard.js";
 import { searchEmployeeTask } from "../../src/stores/new-kronos/tasks/search-employee.js";
-import { separationsKronosTimecardDescriptor } from "../../src/workflows/separations-kronos-timecard/descriptor.js";
+import { separationsKronosTimecardDescriptor } from "../../src/workflows/separations/kronos-timecard/descriptor.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
 
 /**

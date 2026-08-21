@@ -51,7 +51,7 @@ import { SECRET_SPECS } from "../../../src/domain/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { kualiTimekeeperAnnotationDescriptor } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
-import { separationsIdentityCheckDescriptor } from "../../../src/workflows/separations-identity-check/descriptor.js";
+import { separationsIdentityCheckDescriptor } from "../../../src/workflows/separations/identity-check/descriptor.js";
 import {
   GATE_RESOLVED_AT,
   GATE_RESOLVED_BY,

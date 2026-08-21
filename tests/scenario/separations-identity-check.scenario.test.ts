@@ -34,7 +34,7 @@ import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org
 import { readJobSummaryTask } from "../../src/stores/ucpath/tasks/read-job-summary.js";
 import { matchIdentityTask } from "../../src/stores/separations/tasks/match-identity.js";
 import { verifyIdentityApprovalTask } from "../../src/stores/separations/tasks/verify-identity-approval.js";
-import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations-identity-check/descriptor.js";
+import { separationsIdentityCheckDescriptor } from "../../src/workflows/separations/identity-check/descriptor.js";
 import { SEPARATIONS_IDENTITY_CHECK_CLAIMS } from "./coverage-claims.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
 import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";

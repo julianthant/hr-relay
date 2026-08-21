@@ -48,7 +48,7 @@ import { matchExistingTerminationTask } from "../../src/stores/ucpath/tasks/matc
 import { matchPendingTerminationsTask } from "../../src/stores/ucpath/tasks/match-pending-terminations.js";
 import { stageTerminationTask } from "../../src/stores/ucpath/tasks/stage-termination.js";
 import { verifyTerminationTask } from "../../src/stores/ucpath/tasks/verify-termination.js";
-import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations-ucpath-termination/descriptor.js";
+import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations/ucpath-transaction/descriptor.js";
 import { SEPARATIONS_UCPATH_TERMINATION_CLAIMS } from "./coverage-claims.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
 import {

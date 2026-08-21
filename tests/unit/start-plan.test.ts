@@ -29,8 +29,8 @@ import {
   supportsDryRun,
 } from "../../src/services/start/plan.js";
 import { kualiTimekeeperAnnotationDescriptor } from "../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
-import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations-kuali-finalization/descriptor.js";
-import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations-ucpath-termination/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
+import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations/ucpath-transaction/descriptor.js";
 import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
 import {
   PersonLookupCanonicalInput,

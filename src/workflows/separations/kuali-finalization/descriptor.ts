@@ -80,45 +80,45 @@
  * the verification legacy never did.
  */
 import { z } from "zod";
-import { flow } from "../../base/flow.js";
-import { defineWorkflowDescriptor } from "../../base/workflow.js";
-import { KualiSaveSeparationFinalization } from "../../domain/contracts/kuali/save-separation-finalization.js";
-import { KualiStageSeparationFinalization } from "../../domain/contracts/kuali/stage-separation-finalization.js";
-import { SeparationsMatchDepartmentOption } from "../../domain/contracts/separations/match-department-option.js";
-import { SeparationsMatchIdentity } from "../../domain/contracts/separations/match-identity.js";
-import { SeparationsVerifyIdentityApproval } from "../../domain/contracts/separations/verify-identity-approval.js";
-import { UcpathReadJobSummary } from "../../domain/contracts/ucpath/read-job-summary.js";
-import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
-import { EidSchema, WorkflowIdSchema } from "../../domain/ids.js";
+import { flow } from "../../../base/flow.js";
+import { defineWorkflowDescriptor } from "../../../base/workflow.js";
+import { KualiSaveSeparationFinalization } from "../../../domain/contracts/kuali/save-separation-finalization.js";
+import { KualiStageSeparationFinalization } from "../../../domain/contracts/kuali/stage-separation-finalization.js";
+import { SeparationsMatchDepartmentOption } from "../../../domain/contracts/separations/match-department-option.js";
+import { SeparationsMatchIdentity } from "../../../domain/contracts/separations/match-identity.js";
+import { SeparationsVerifyIdentityApproval } from "../../../domain/contracts/separations/verify-identity-approval.js";
+import { UcpathReadJobSummary } from "../../../domain/contracts/ucpath/read-job-summary.js";
+import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-org.js";
+import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
 import {
   ApprovedIdentitySubjectSchema,
   IdentityApprovalResultSchema,
-} from "../../domain/separations/identity-approval.js";
-import { IdentityEidSourceSchema } from "../../domain/separations/identity-evidence.js";
-import { noSeparationWritePlan } from "../../domain/separations/write-plan.js";
+} from "../../../domain/separations/identity-approval.js";
+import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
+import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
 import {
   KualiActionIdSchema,
   KualiDocumentNumberSchema,
   KualiTimekeeperNameSchema,
-} from "../../domain/ui/kuali-document-identity.js";
+} from "../../../domain/ui/kuali-document-identity.js";
 import {
   KualiEidFieldSchema,
   KualiFormDateSchema,
   KualiTransactionNumberSchema,
-} from "../../domain/ui/kuali-separation-document.js";
+} from "../../../domain/ui/kuali-separation-document.js";
 import {
   KualiFinalizationCommentsSchema,
   KualiPayrollTitleCodeSchema,
   KualiPayrollTitleSchema,
   KualiSavedFinalizationProofSchema,
-} from "../../domain/ui/kuali-separation-finalization.js";
-import { UcpathJobCellSchema } from "../../domain/ui/ucpath-job-summary.js";
+} from "../../../domain/ui/kuali-separation-finalization.js";
+import { UcpathJobCellSchema } from "../../../domain/ui/ucpath-job-summary.js";
 import {
   BUILD_MANIFEST,
   resolveWorkflowFingerprint,
-} from "../../domain/workflow/build-manifest.js";
-import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+} from "../../../domain/workflow/build-manifest.js";
+import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
 
 /**
  * The ingress: the identity-check ingress, plus exactly the staged variables no

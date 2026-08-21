@@ -56,40 +56,40 @@
  * a real, complete preparation of a real HR transaction.
  */
 import { z } from "zod";
-import { flow } from "../../base/flow.js";
-import { defineWorkflowDescriptor } from "../../base/workflow.js";
-import { SeparationsMatchIdentity } from "../../domain/contracts/separations/match-identity.js";
-import { SeparationsMatchTerminationType } from "../../domain/contracts/separations/match-termination-type.js";
-import { SeparationsVerifyIdentityApproval } from "../../domain/contracts/separations/verify-identity-approval.js";
-import { UcpathDeletePendingTerminations } from "../../domain/contracts/ucpath/delete-pending-terminations.js";
-import { UcpathCreateTermination } from "../../domain/contracts/ucpath/create-termination.js";
-import { UcpathStagePendingTerminationSweep } from "../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
-import { UcpathStageTermination } from "../../domain/contracts/ucpath/stage-termination.js";
-import { UcpathReadJobSummary } from "../../domain/contracts/ucpath/read-job-summary.js";
-import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
-import { EidSchema, WorkflowIdSchema } from "../../domain/ids.js";
+import { flow } from "../../../base/flow.js";
+import { defineWorkflowDescriptor } from "../../../base/workflow.js";
+import { SeparationsMatchIdentity } from "../../../domain/contracts/separations/match-identity.js";
+import { SeparationsMatchTerminationType } from "../../../domain/contracts/separations/match-termination-type.js";
+import { SeparationsVerifyIdentityApproval } from "../../../domain/contracts/separations/verify-identity-approval.js";
+import { UcpathDeletePendingTerminations } from "../../../domain/contracts/ucpath/delete-pending-terminations.js";
+import { UcpathCreateTermination } from "../../../domain/contracts/ucpath/create-termination.js";
+import { UcpathStagePendingTerminationSweep } from "../../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
+import { UcpathStageTermination } from "../../../domain/contracts/ucpath/stage-termination.js";
+import { UcpathReadJobSummary } from "../../../domain/contracts/ucpath/read-job-summary.js";
+import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-org.js";
+import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
 import {
   ApprovedIdentitySubjectSchema,
   IdentityApprovalResultSchema,
-} from "../../domain/separations/identity-approval.js";
-import { IdentityEidSourceSchema } from "../../domain/separations/identity-evidence.js";
-import { noSeparationWritePlan } from "../../domain/separations/write-plan.js";
-import { KualiDocumentNumberSchema } from "../../domain/ui/kuali-document-identity.js";
+} from "../../../domain/separations/identity-approval.js";
+import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
+import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
+import { KualiDocumentNumberSchema } from "../../../domain/ui/kuali-document-identity.js";
 import {
   KualiEidFieldSchema,
   KualiOptionFieldSchema,
-} from "../../domain/ui/kuali-separation-document.js";
+} from "../../../domain/ui/kuali-separation-document.js";
 import {
   UcpathPendingSweepProofSchema,
   UcpathTerminationProofSchema,
   UcpathUsDateSchema,
-} from "../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../domain/ui/ucpath-smart-hr-termination.js";
 import {
   BUILD_MANIFEST,
   resolveWorkflowFingerprint,
-} from "../../domain/workflow/build-manifest.js";
-import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+} from "../../../domain/workflow/build-manifest.js";
+import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
 
 /**
  * The ingress. It is the identity-check ingress plus exactly the facts a

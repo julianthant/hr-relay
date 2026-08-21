@@ -44,7 +44,7 @@ import {
   SeparationsUcpathTerminationCanonicalInput,
   SeparationsUcpathTerminationInput,
   separationsUcpathTerminationDescriptor,
-} from "../../../src/workflows/separations-ucpath-termination/descriptor.js";
+} from "../../../src/workflows/separations/ucpath-transaction/descriptor.js";
 import { UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,

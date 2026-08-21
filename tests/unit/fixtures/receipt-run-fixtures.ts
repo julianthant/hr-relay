@@ -52,7 +52,7 @@ import {
 import {
   SeparationsIdentityCheckCanonicalInput,
   separationsIdentityCheckDescriptor,
-} from "../../../src/workflows/separations-identity-check/descriptor.js";
+} from "../../../src/workflows/separations/identity-check/descriptor.js";
 import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
 import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";
 import { GateResultRecordSchema } from "../../../src/domain/gates.js";

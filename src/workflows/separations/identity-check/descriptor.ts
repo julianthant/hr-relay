@@ -58,28 +58,28 @@
  * the audited `src/base` builders.
  */
 import { z } from "zod";
-import { flow } from "../../base/flow.js";
-import { defineWorkflowDescriptor } from "../../base/workflow.js";
-import { SeparationsMatchIdentity } from "../../domain/contracts/separations/match-identity.js";
-import { SeparationsVerifyIdentityApproval } from "../../domain/contracts/separations/verify-identity-approval.js";
-import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
-import { UcpathReadJobSummary } from "../../domain/contracts/ucpath/read-job-summary.js";
-import { EidSchema, WorkflowIdSchema } from "../../domain/ids.js";
+import { flow } from "../../../base/flow.js";
+import { defineWorkflowDescriptor } from "../../../base/workflow.js";
+import { SeparationsMatchIdentity } from "../../../domain/contracts/separations/match-identity.js";
+import { SeparationsVerifyIdentityApproval } from "../../../domain/contracts/separations/verify-identity-approval.js";
+import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-org.js";
+import { UcpathReadJobSummary } from "../../../domain/contracts/ucpath/read-job-summary.js";
+import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
 import {
   ApprovedIdentitySubjectSchema,
   IdentityApprovalResultSchema,
-} from "../../domain/separations/identity-approval.js";
-import { IdentityEidSourceSchema } from "../../domain/separations/identity-evidence.js";
-import { noSeparationWritePlan } from "../../domain/separations/write-plan.js";
-import { JobSummaryClassificationSchema } from "../../domain/separations/job-summary-classification.js";
-import { KualiDocumentNumberSchema } from "../../domain/ui/kuali-document-identity.js";
-import { KualiEidFieldSchema } from "../../domain/ui/kuali-separation-document.js";
+} from "../../../domain/separations/identity-approval.js";
+import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
+import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
+import { JobSummaryClassificationSchema } from "../../../domain/separations/job-summary-classification.js";
+import { KualiDocumentNumberSchema } from "../../../domain/ui/kuali-document-identity.js";
+import { KualiEidFieldSchema } from "../../../domain/ui/kuali-separation-document.js";
 import {
   BUILD_MANIFEST,
   resolveWorkflowFingerprint,
-} from "../../domain/workflow/build-manifest.js";
-import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
+} from "../../../domain/workflow/build-manifest.js";
+import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
 
 /**
  * The ingress.
