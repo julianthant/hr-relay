@@ -76,18 +76,6 @@ Section numbers are load-bearing: thirteen tree nodes carry a `ref:task-contract
 §2.9 → §2.10 → §2.11 → §2.12, which is also their chronological order.
 
 ---
-## Phase 1b as-built domain foundation (2026-07-31)
-
-Work item 1b implements the task contract's shared leaf vocabulary, not the task factory/store work
-scheduled for 1d. The rebuild now has strict branded schemas for core ids and scalars, canonical
-JSON, explicit absence/uncertainty, and structured boundary failures. Semantic UI observations use
-stable dotted `ObservationId` values owned by ref operator-trust; dynamic receipt/evidence rows use the separate
-UUID-backed `EvidenceEntryId`, so a row occurrence can never masquerade as an observation recipe.
-`TraceId` accepts local `HHMMSS` hours only from `00` through `23`. Unit and strict-boundary tests
-pin the neighboring invalid shapes, recursively reject unknown object keys, and keep exported
-boundary types schema-derived. Task effects, contracts, stores, and subject-binding execution remain
-future 1d work and are not claimed complete here.
-
 ## Phase 1d ratified seam decisions (2026-08-01)
 
 Phase 1d implements one task/store/session vocabulary and imports the closed identities already
@@ -305,122 +293,158 @@ unavailable cases; it is not a direct client bypass.
 
 ## 2. The Task contract
 
+<!-- roadmap: p1-authority -->
+<!-- roadmap-status: p1-authority -->
+- [x] `defineTaskContract`'s three effect overloads validate, parse the `example`, deep-seal and register the object in a module-private WeakSet, so `defineTask` can refuse anything it did not mint (`src/domain/contracts/base.ts`; D96–D101, Phase 1d)
+- [x] `defineTask`'s four overloads bind an impl to a sealed contract and re-check effect↔access, session system, OnBase-only exclusivity, download↔content-addressed agreement, read-only retry and headless restrictions at runtime (`src/base/task.ts`)
+- [x] the three store factories and the registry's both-directions corpus match — every registered task is in the corpus, every corpus id has an implementation, every scenario/probe/verifier reference resolves (`src/base/store.ts`; guard `task-store-boundaries`)
+- [x] all nine closed browser systems have exactly one store; four carry a `semantic-ready` driver declaration and a bound login recipe (`ucpath`, `crm`, `kuali`, `new-kronos`), five are declaration-only with no `BROWSER_SYSTEM_BINDINGS` entry (`i9`, `onbase`, `old-kronos`, `servicenow`, `sharepoint`)
+- [x] 39 sealed contracts across 10 namespaces at HEAD, all bound: `config/pending-impl-bindings.json` is the checked-in empty set D107 requires
+- [ ] `decorateTask` and its hook semantics (§4) have no module in `src/` — the instrumentation the model describes is not available to a workflow today
+- [ ] the `KnownTaskId` codegen §2.5 and §8 row 2 name as the anti-stringly-dispatch guard was never built
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/contracts/base.ts, src/base/{task,store,session}.ts, src/stores/*/index.ts and src/infra/browser/system-bindings.ts; left: decoration (§4) and the two generators (§2.5, §2.7), each named where it is promised
+<!-- /roadmap-status -->
+
+§2.1–§2.7 are the platform half of the contract — the types, the split, the ctx, the errors, the
+naming, the boundary and the authoring floor. §2.8–§2.12 are the **store conventions** the order-8
+separations migration settled: how wide a read is, and what a store owes when it is built, when it
+is customized, when judgment must leave a read, and when a write family joins a read family.
+
 ### 2.1 Core types
 
+The shipped types live in `src/domain/contracts/base.ts` (bundle-safe: zod plus `src/domain/**`
+only — no Node built-in, no `src/base/**`) and `src/base/task.ts` (server-side). The sketch below
+is the contract they encode; **where it and the files differ, the files win** and the difference is
+a defect in this doc.
+
+**Every closed identity is imported, never re-declared (D101).** `src/domain/ids.ts` owns
+`BrowserSystemId`, `ServiceSystemId`, `ProviderCapabilityId`, `TaskId`, `TaskStoreId`, the semantic
+UI ids and every branded scalar; contract and store modules re-export them and never mint a second
+union. Adding a system is a one-line edit in ONE file (D2).
+
 ```ts
-// src/domain/contracts/base.ts — bundle-safe: imports zod ONLY (guard, §8)
-import { z } from "zod";
+// src/domain/ids.ts — the closed unions (D2/D101)
+BrowserSystemId  = "ucpath" | "crm" | "onbase" | "kuali" | "servicenow"
+                 | "i9" | "new-kronos" | "old-kronos" | "sharepoint";   // 9, named after the REAL
+                                                                        // systems: old-kronos = UKG,
+                                                                        // new-kronos = WFD/Dayforce
+ServiceSystemId  = "extraction" | "normalization" | "ocr" | "roster";   // system-less work (D4, §3.4)
+SystemId         = BrowserSystemId | ServiceSystemId;
+ProviderCapabilityId = "ocr.extract" | "geocode.census" | "geocode.nominatim" | "ai.advisory"; // D63
+TaskStoreId      = SystemId | `workflow:${WorkflowId}`;                  // §3.5's mini-stores
 
-/**
- * Closed union — adding a system is a deliberate one-line edit here (D2).
- * Browser systems are named after the REAL src/systems/ directories
- * (old-kronos = UKG Kronos, new-kronos = WFD/Dayforce — NOT "kronos"/"ukg").
- * Service systems (D4) host system-less work; see §3.4.
- */
-export type BrowserSystemId =
-  | "ucpath" | "crm" | "onbase" | "kuali" | "servicenow"
-  | "i9" | "new-kronos" | "old-kronos" | "sharepoint";
-export type ServiceSystemId = "extraction" | "normalization" | "ocr" | "roster";
-export type SystemId = BrowserSystemId | ServiceSystemId;
-/** Closed non-browser I/O capabilities (D63). These name operations, not vendors; provider/model
- * selection is config. Extending the union also requires an infra adapter, budgets, preflight,
- * redaction policy, and scenarios. */
-export type ProviderCapabilityId =
-  | "ocr.extract" | "geocode.census" | "geocode.nominatim" | "ai.advisory";
-/** Pure workflow-specific mini-store namespace; registry coverage validates the id against a real
- * descriptor without making domain import workflows. */
-export type WorkflowStoreId = `workflow:${string}`;
-export type TaskStoreId = SystemId | WorkflowStoreId;
-
-/** Task ids are namespaced by store: "ucpath/search-person-org" or
- * "workflow:verify/merge-enrichment" (D2 slash grammar). */
-export type TaskId<S extends TaskStoreId = TaskStoreId> = `${S}/${string}`;
-
-/** Checkpoints/outboxes cross canonical JSON. Browser objects, Date, Map, class instances, etc.
- * are contract errors, not values the persistence layer guesses how to serialize. */
-export type JsonValue = null | boolean | number | string | JsonValue[] |
-  { readonly [key: string]: JsonValue };
-type IsAny<T> = 0 extends (1 & T) ? true : false;
-export type CanonicalJsonSchema<S extends z.ZodType> =
-  IsAny<z.output<S>> extends true ? never :
-  z.output<S> extends JsonValue ? S : never;
-
-/** Opaque compile-time brands stop unrelated strings being interchangeable. Every brand has a
- * strict zod factory at runtime; these aliases are examples, not an exhaustive duplicate list. */
-export type Brand<T, Name extends string> = T & { readonly __brand: Name };
-export type RunId = Brand<string, "RunId">;
-export type ItemId = Brand<string, "ItemId">;
-export type TraceId = Brand<string, "TraceId">;
-export type IsoInstant = Brand<string, "IsoInstant">;
-export type DateOnly = Brand<string, "DateOnly">;
-export type Eid = Brand<string, "Eid">;
-export type MoneyMinorUnits = Brand<number, "MoneyMinorUnits">;
-/** Created only by the contract factory after resolving a path against the exact output schema. */
-export type ContractFieldPath = Brand<string, "ContractFieldPath">;
-
-/**
- * D8 (contract side): mandatory on EVERY read contract. How long a
- * checkpointed output of this read may age before it is allowed to feed a
- * commit task on resume. `Infinity` is legal but must be written literally
- * and justified in an adjacent comment (grep ratchet, §8). The enforcement
- * declared-dependency freshness walk is kernel behavior owned by ref workflow-model.
- */
-export interface Freshness {
-  /** Default for facts in this output; field-path overrides may narrow it. */
-  defaultMaxAgeMs: number;
-  /** Default is forbidden. `audited` must be explicit and is never legal for identity,
-   * idempotency-key, or write-proof fields. */
-  defaultOverride?: "forbidden" | "audited";
-  byField?: readonly {
-    /** Validated against the exact output schema at contract definition time. */
-    path: ContractFieldPath;
-    maxAgeMs: number;
-    override?: "forbidden" | "audited";
-  }[];
-}
-
-export interface ProvenancePolicy {
-  /** `live` means this task actually observed the authoritative source during this execution.
-   * `derived` carries all input source facts forward and uses their oldest observedAt. */
-  default: "live" | "derived";
-  byField?: readonly {
-    /** Validated against the exact output schema at contract definition time. */
-    path: ContractFieldPath;
-    source: "live" | "derived";
-  }[];
-}
-
-/**
- * `prepare` mutates only ephemeral browser state. `commit` is the sole class
- * allowed to call an external-write primitive. A prepare contract may appear
- * only as the first arm of a transaction node (ref workflow-model), never as a resumable
- * standalone step.
- */
-export type EffectClass = "read" | "prepare" | "commit";
-
-/** Bundle-safe, declarative expected↔observed subject binding. The observation itself is owned by
- * ref operator-trust's UI registry/system driver. `none` is explicit so a person-scoped task cannot omit the
- * question accidentally. */
-export type SubjectBindingSpec =
-  | { kind: "none"; reason: string }
-  | {
-      kind: "person";
-      expected: { fromInput: string; identity: "eid" | "name" | "eid-and-name" };
-      observe: ObservationId;
-      match: "normalized-exact-eid" | "normalized-exact-name" | "eid-and-name";
-      requiredAt: "before-subject-read" | "after-prepare-before-fence";
-    }
-  | {
-      /** File/document writes bind to the staged artifact, not merely the surrounding person. */
-      kind: "artifact";
-      expected: { fromInput: string; identity: "artifact-id" | "sha256" | "document-id" };
-      observe: ObservationId;
-      match: "exact";
-      requiredAt: "before-subject-read" | "after-prepare-before-fence";
-    };
+/** A BRANDED string, not a template type: one regex pins `<registered-store>/<kebab-case-operation>`
+ *  for all 13 namespaces plus `workflow:<id>`. `taskId("ucpath/search-person-org")` parses AND keeps
+ *  the literal in the type as LiteralTaskId<"ucpath/search-person-org">, which is what lets
+ *  NamespaceOf<C> resolve a store from a contract without a second declaration. */
+const id = taskId("ucpath/search-person-org");
 ```
 
+```ts
+// src/domain/contracts/base.ts — what every contract carries
+interface TaskContractBase<Id, Input, Output, Codes> {
+  readonly id: Id;                        // TaskId, parsed by the factory
+  readonly title: string;                 // the DEFAULT for the descriptor's step label (D16);
+                                          // the only override layer is operator presentation
+  readonly input: Input;                  // zod, recursively strict
+  readonly output: CanonicalJsonSchema<Output>;   // rejects `any` and non-JSON at compile time
+  readonly errorCodes: readonly [string, ...string[]];   // kebab-case, unique, non-empty
+  readonly requires?: readonly SecretName[];             // shape owned by ref clock-config-secrets
+  readonly providers?: readonly ProviderCapabilityId[];  // service-store reads ONLY (D63)
+  readonly subject: SubjectBindingSpec;   // explicit; never omitted
+  readonly scenarios: readonly ScenarioId[];             // non-empty except for a workflow: read
+  readonly example: z.input<Output>;      // mandatory canonical output value
+}
+
+// the three effect arms
+ReadTaskContract    += { effect: "read"; freshness: FreshnessPolicy; provenance: ProvenancePolicy;
+                         artifacts?: "content-addressed" }
+PrepareTaskContract += { effect: "prepare"; checkpoint: "in-memory-only" }
+CommitTaskContract  += { effect: "commit"; writeSafety: WriteSafety<Input, Output, Proof> }  // ref write-safety
+```
+
+**`effect` is the whole safety story in one field.** `read` observes; `prepare` mutates only
+ephemeral browser state and is legal only as the first arm of a transaction node (ref
+workflow-model); `commit` is the sole class whose ctx carries a `MutationCapability` and therefore
+the sole class that can reach an external-write primitive (§2.3, ref write-safety §3). The
+verb↔effect table is enforced, not advisory (§2.5).
+
+**Freshness and provenance are mandatory on every read (D8/D34), and both are field-resolvable.**
+
+```ts
+FreshnessPolicy  = { defaultMaxAgeMs: number | Infinity;
+                     defaultOverride?: "forbidden" | "audited";
+                     byField?: { path: ContractFieldPath; maxAgeMs; override? }[] }
+ProvenancePolicy = { default: "live" | "derived";
+                     byField?: { path: ContractFieldPath; source: "live" | "derived" }[] }
+```
+
+`ContractFieldPath` is a branded dot path the factory resolves against the **exact output schema**
+(`assertSchemaOwnsPath`), so a policy naming a field the output does not have fails at module load
+rather than silently applying to nothing. A duplicate or contradictory `byField` provenance rule is
+refused by the schema itself. `Infinity` is legal, must be written literally, and is the one place
+a non-finite number may appear in this system (§2.1.1). The freshness ENFORCEMENT walk — which
+checkpoint may feed which commit on resume — is kernel behaviour owned by ref workflow-model;
+`live` versus `derived` is checked per execution by the collector in §2.3.
+
+**The subject binding is declarative, and its `none` arm is two different facts.**
+
+```ts
+SubjectBindingSpec =
+  | { kind: "none"; reason?: string; reviewedReasonId?: UnscopedCommitReasonId }
+  | { kind: "person";   expected: { fromInput: ContractFieldPath;
+                                    identity: "eid" | "name" | "eid-and-name" };
+      observe: ObservationId; match: "normalized-exact-eid" | "normalized-exact-name" | "eid-and-name";
+      requiredAt: "before-subject-read" | "after-prepare-before-fence" }
+  | { kind: "artifact"; expected: { fromInput: ContractFieldPath;
+                                    identity: "artifact-id" | "sha256" | "document-id" };
+      observe: ObservationId; match: "exact"; requiredAt: … }
+```
+
+The two `none` fields are mutually exclusive and the factory decides which by EFFECT: a
+non-commit contract must give free-text `reason` and may not claim review; an **unscoped commit**
+must name a `reviewedReasonId` present in `UNSCOPED_COMMIT_REASON_REGISTRY` and may NOT give free
+text (ref write-safety). `identity` and `match` must agree for a person (`eid` ⇒
+`normalized-exact-eid`, and so on), the observation must belong to the contract's own system, and a
+person-scoped or artifact-scoped **commit** must observe `after-prepare-before-fence` — any other
+timing is refused at definition. A service or workflow contract cannot declare a browser
+observation at all.
+
+```ts
+// src/domain/session.ts — what an impl declares it needs (D96)
+SessionNeed = { system: BrowserSystemId;
+                access: "read" | "transaction";        // must agree with effect: read→read,
+                                                       // prepare/commit→transaction
+                session: "reuse-worker" | "fresh";     // a fresh boundary is explicit
+                exclusive?: true;                      // OnBase ONLY — one live app session per
+                                                       // identity, held by a cross-process SQLite
+                                                       // lease from before the context opens until
+                                                       // after it closes (D15; ported from legacy
+                                                       // src/systems/onbase/LESSONS.md)
+                acceptDownloads?: true }               // legal only on a content-addressed read
+
+RetryPolicy = { attempts: 2 | 3; backoffMs: number; retryOn: "transient" }
+```
+
+`SessionsFor<C>` computes the need TUPLE from the contract, so most of that agreement is a compile
+error rather than a runtime one: a headless contract gets `readonly []`, a browser read gets
+`access: "read"` with `acceptDownloads` admitted only when the contract declares
+`artifacts: "content-addressed"`, a prepare/commit gets `access: "transaction"` with downloads
+forbidden, and `exclusive: true` is REQUIRED on `onbase` and impossible elsewhere. `validateTaskBinding`
+re-checks every one of those at module load, because a type is not a runtime guarantee.
+`retryOn` has exactly one value: business failures are never retried, because retrying a wrong
+answer is a silent fallback in disguise. Retry is legal only on a read — the prepare/commit pair's
+recovery is ref write-safety's, never a generic re-run.
+
 ### 2.1.1 Strict schema and absence rules (D46)
+
+<!-- roadmap: p1-base -->
+<!-- roadmap-status: p1-base -->
+- [x] branded schemas for every core id and scalar, canonical JSON, explicit absence/uncertainty and structured boundary failures shipped in 1b (`src/domain/ids.ts`, `src/domain/canonical-json.ts`; 2026-07-31)
+- [x] `assertContractBoundarySchema` audits every contract input/output/proof RECURSIVELY — through arrays, unions, lazy nodes and wrappers — so `any`, `unknown`, an open nested object or a decision-bearing record fails at module load (`src/validation/contract-boundary.ts`; guard `task-contract-sealing`)
+- [x] `strict-boundary-schemas` extends the same rule to every durable, wire and config boundary in the tree, not just contracts
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/ids.ts, src/domain/canonical-json.ts and src/validation/contract-boundary.ts; the 1b as-built block that stood above §1 is folded in here; left: nothing in this section
+<!-- /roadmap-status -->
 
 - Every contract input/output/proof/example/scenario and every persisted or transported object is
   defined with `z.strictObject(...)` (or a strict discriminated union of strict objects). Plain
@@ -440,44 +464,22 @@ export type SubjectBindingSpec =
 - The kernel runs `safeParse` at ingress and persistence reads, converts the full zod issue tree
   into a typed boundary failure naming path/value/source, and never falls back to a TypeScript cast.
 
-```ts
-// src/base/task.ts — server-side (may import Playwright types)
-export interface SessionNeed<S extends BrowserSystemId = BrowserSystemId> {
-  system: S;
-  /** Must agree with the task effect: read→read; prepare/commit→transaction. */
-  access: "read" | "transaction";
-  /** Worker-session reuse is normal; a fresh boundary is explicit. */
-  session: "reuse-worker" | "fresh";
-  /**
-   * OnBase-style constraint: one live app session per identity. Enforced by a
-   * CROSS-PROCESS SQLite lease from day one (D15) — daemons are separate OS
-   * processes (src/cli-daemon.ts), so an in-process queue cannot serialize
-   * them. The kernel acquires the lease BEFORE opening the context and retains
-   * it until that authenticated context is closed. A task boundary does not
-   * release an identity-exclusive lease while the context remains alive.
-   * Ported knowledge:
-   * src/systems/onbase/LESSONS.md ("single app session per identity ...
-   * another-session contention").
-   */
-  exclusive?: true;
-  /** Playwright download capture (today's SystemConfig.acceptDownloads). */
-  acceptDownloads?: true;
-}
+**As built (1b, 2026-07-31 — the foundation these rules sit on).** The strict branded schemas for
+core ids and scalars, canonical JSON, explicit absence/uncertainty and structured boundary failures
+landed as work item 1b, ahead of the task factory itself. Two identity rules from that slice are
+still load-bearing here: semantic UI observations use stable dotted `ObservationId` values owned by
+ref operator-trust, while dynamic receipt/evidence rows use the separate UUID-backed
+`EvidenceEntryId` — so a row occurrence can never masquerade as an observation recipe — and
+`TraceId` accepts local `HHMMSS` hours only from `00` through `23`. Unit and strict-boundary tests
+pin the neighbouring invalid shapes, recursively reject unknown object keys, and keep exported
+boundary types schema-derived.
 
-export interface RetryPolicy {
-  /** Total attempts including the first. Capped by a ratchet (§8) at 3. */
-  attempts: 2 | 3;
-  backoffMs: number;
-  /**
-   * The ONLY selector is "transient": errors flagged transient by the page
-   * proxy (Playwright TimeoutError, net::ERR_*) or thrown as
-   * ctx.fail(code, ..., { transient: true }). Business failures
-   * ("eid-not-found") are NEVER retried — retrying a wrong answer is a
-   * silent fallback in disguise.
-   */
-  retryOn: "transient";
-}
-```
+**The recursion is the point.** `assertContractBoundarySchema` walks a contract schema through
+arrays, unions, lazy nodes and wrappers rather than checking its top level, because every escape
+this rule exists to close is nested: an `any` three levels down, a `z.record` inside an array, an
+open object behind an optional. `CanonicalJsonSchema<Output>` closes the compile-time half — a
+schema whose output is not JSON-representable resolves to `never`, so the contract does not type —
+and the factory's `output.parse(example)` plus `canonicalJsonStringify` is the runtime backstop.
 
 ### 2.2 The contract/impl split (D3)
 
