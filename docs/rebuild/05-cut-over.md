@@ -427,61 +427,63 @@ the decision cited. The two most likely subjects are the offline one-time import
 
 ## Exit criteria
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §6 (definition of done, whole program) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**This is the program's definition of done.** Not Phase 5's — the whole rebuild's. Every other phase
+doc's exit block asks whether that phase is finished; this one asks whether the rebuild is, and it is
+the list to open when the question is *can we switch yet*. Two halves: the eleven program criteria
+below, then the program-wide integration criteria that gate criterion 2 specifically.
 
-The rebuild is complete when **all** hold:
+**Re-verified against the code and the config on 2026-08-21.** Each row states what it would take to
+be MET, what is true now, and where to look. A row is **MET** only when nothing is left, **partly
+MET** when a named part is left, and **open** when the substantive work has not started. Two rows
+were restated rather than merely re-scored, and each says so — a criterion citing a retired mechanism
+is worse than an open one, because it can be satisfied by something that no longer exists.
 
-1. **Every workflow migrated** (§3.3 orders 0–9) and **live-verified** by a submit-free dry-run
-   against every real system it touches; every commit/probe/verification path also has the controlled
-   live evidence required by its migration exit gate.
-2. **One all-at-once cutover is ready and executed** — D58 has zero undecided entries; legacy work
-   is drained/parked/reconciled; both states are backed up; approved imports are versioned and
-   idempotent; the normal launcher is repointed at the rebuild repo atomically; the whole legacy
-   repo — source, commands, tests — and the state backup remain rollback assets. No deletion occurs.
-3. **No compat layer was built** — under D88 the lift adapter (as a live layer), the
-   golden-payload parity harness, the legacy-SPA fallback, and per-run generation authority were
-   deleted from the plan rather than built and removed (§4). The dashboard serves entirely from the
-   descriptor + span contract, all surfaces native. If a one-time historical import of old
-   `.tracker` data was run, it is a script that ran once and left no runtime surface.
-4. **All applicable guards green with isolated debt** — the rebuild repo's guard inventory covers
-   its whole `src/` and `tests/` tree; its `lint`, `typecheck`, `test`, `test:architecture`, 60/80
-   coverage, Phase-2 50/70 branch gates, operational-isolation (roots/ports/locks/browser profiles),
-   and change-accounting guards pass. In the legacy repo, `lint:tests` may retain only fingerprinted
-   pre-existing debt; no new/replaced fingerprint exists and touched legacy files add no debt.
-5. **The docs match what is built** — every owning doc updated to as-built (charter: the foundation's
-   documentation is part of the foundation), and this master plan's phase table fully checked off.
-6. **The immutable ledger is live** — every real commit writes an atomic outbox projected by one
-   serialized ordered writer into a never-pruned actor-attributed ledger; restart/reconciliation,
-   ordering, missing/duplicate outbox, and recovery checks pass. Hash chain/tail anchor is deferred.
-7. **Authority is recoverable** — current backup health is green; a restore drill has recovered the
-   as-built DB schema while preserving claims/dependencies/checkpoints/commands/write intents/
-   outboxes/capture handoffs; projection rebuild and unknown-post-backup handling pass.
-8. **Runs are explainable and trustworthy** — every terminal run has a schema-valid evidence receipt
-   with honest confidence; every failure has a structured redacted diagnostic bundle; durable
-   notifications remain visible when desktop delivery fails; `explain run` needs no tracker-blob
-   archaeology.
-9. **Workflow knowledge is canonical** — UI ids/catalog, task/workflow results, scenario corpus,
-   knowledge records, and fix records have no unresolved duplicates/orphans/stale references. Every
-   migrated production bug has a regression scenario and supersedes conflicting lessons.
-10. **Authoring tools respect their boundary** — the explorer renders the exact as-built graph and
-    source links; presentation-only changes use the strict atomic override; graph/policy edits emit
-    a reviewed patch scaffold; code-only selector/schema/subject/proof changes cannot be emitted by
-    the editor, and no workflow has dual graph authority.
-11. **Local-first scope remains true** — the operator server currently binds loopback and retains
-    the actor/auth-checkpoint/credential-set/per-actor-notification seams without dormant RBAC or
-    LAN mode. Diagnostic/backup/evidence permissions + redaction tests pass; the only remote
-    listener is a live-session-scoped mobile-capture ingress whose deny-by-default route tests pass.
+| # | Criterion | State | Evidence / what is left |
+|---|---|---|---|
+| 1 | **Every workflow migrated and live-verified** by a submit-free dry run against every real system it touches; every commit / probe / verification path also carries the controlled live evidence its migration exit gate requires | **open** | Order 0 (person-lookup) is as-built and live-proven — run `4ebf7275`, trace `pl-000619-4ebf`, D74. Order 8 (separations) is at **8 of 9** criteria. **Eight orders have not started.** Of the fifteen legacy workflow directories the register tracks, **zero are closed** |
+| 2 | **One all-at-once cutover is ready and executed** — the register has zero open entries, legacy work is drained / parked / reconciled, both states are backed up, approved imports are versioned and idempotent, the normal launcher is repointed atomically, and the whole legacy repo plus its state backup remain rollback assets. No deletion occurs | **open** | No step of the five-step procedure has been rehearsed or run. The register reads **47 open** of 78 (`cutoverRequiresZeroOpen: true`, `proxyDispositionAllowed: false`). `one-time-import-offline` is a `planned` guard with `activationMilestone: "cutover-gate"` and no subject — no import path exists in this tree |
+| 3 | **No compat layer was built** — the lift adapter as a live layer, the golden-payload parity harness, the legacy-SPA fallback and per-run generation authority were DELETED from the plan rather than built and removed (D88). The dashboard serves entirely from the descriptor + span contract, all surfaces native | **MET** | No `rebuild-demo` reference exists anywhere in this tree (`ref frontend-backend-integration` §10 criterion 10). No served route names a workflow and no `TrackerEntry` type exists (criterion 2). `proxyDispositionAllowed` is `false` in the register, so a proxy disposition is not even representable. The "if a one-time historical import was run" clause is vacuous — none has been |
+| 4 | **All applicable guards green** — the guard inventory covers this tree's whole `src/` and `tests/`, and `typecheck` / `lint` / `test:coverage` plus the coverage floors, the operational-isolation guard and the branch gates pass | **MET as restated** | `docs/rebuild/guard-inventory.json` holds 75 entries: **65 active** (matching 65 files in `tests/unit/architecture/`, checked both directions by `guard-manifest`), 8 retired each naming its deciding decision, **2 planned** with real triggers — `one-time-import-offline` (this cutover) and `preflight-coverage` (the first migration adding a preflight runner). The gate is D191's `typecheck` + `lint` + `test:coverage`; the floor moves to 80/80/80 under R10 (measured 84/82/85). **Restated:** the original wording also required the change-accounting guard to pass and constrained the LEGACY repo's `lint:tests` debt. **D150 retired the guard and decoupled the repositories** — legacy work never blocks a rebuild gate — so both clauses are void, not waived |
+| 5 | **The docs match what is built** — every owning doc updated to as-built (charter: the foundation's documentation is part of the foundation) | **active** | The master plan whose phase table this criterion originally cited was **dissolved on 2026-08-20**; the plan is now `docs/roadmap/roadmap.md` plus the phase docs `00`–`05`, bound to the tree both ways by D263's `doc:` refs, `<!-- roadmap: -->` tags and the binding guard. The docs-cohesion pass IS this criterion's work and is in flight. Left: the per-doc rewrites not yet landed, and `03c` still carries its shelf-split "Moved from" markers |
+| 6 | **The immutable ledger is live** — every real commit writes an atomic outbox projected by one serialized ordered writer into a never-pruned actor-attributed ledger; restart / reconciliation, ordering, missing-or-duplicate outbox and recovery checks pass. The hash chain / tail anchor is deferred | **open — and this is a finding, not a known gap** | The projector is **built, tested and composed by nothing**: `createLedgerProjector` (`src/infra/ledger/ledger-projector.ts:185`) is called only from `tests/`, and no production composition in `src/server/**` calls it. The read side IS composed — `createLedgerReadThrough` in both `src/server/dashboard/compose.ts:546` and `src/server/storage/compose.ts` — so the dashboard reads a corpus nothing writes. The write sequencer's beat ⑦ does write the durable outbox, so the facts exist and are recoverable; what is missing is the serialized writer that turns them into ledger lines. Same shape as D222 (the notification publisher) and D181 (the runtime-lock snapshot): complete machinery, zero producers, every gate green |
+| 7 | **Authority is recoverable** — backup health is green, and a restore drill has recovered the as-built DB schema while preserving claims / dependencies / checkpoints / commands / write intents / outboxes / capture handoffs; projection rebuild and unknown-post-backup handling pass | **partly MET** | The automated drill runs **every commit** inside `storage-recovery.test.ts` against a real-shaped copy, and reconciliation replays JSONL into projection tables ONLY, never inventing lost authority from spans. D181 made the path reachable at all — before it, `cli storage restore` could not have worked, because nothing had ever recorded the runtime-lock snapshot its stopped-system proof derives from. Left: precondition **P7**, an operational rehearsal against the real `.tracker-rebuild`, which nothing records |
+| 8 | **Runs are explainable and trustworthy** — every terminal run has a schema-valid evidence receipt with honest confidence, every failure has a structured redacted diagnostic bundle, durable notifications stay visible when desktop delivery fails, and `explain run` needs no tracker-blob archaeology | **partly MET** | The receipt is a pure function of authority, byte-identical on re-derivation, with per-field declared redaction, and it derives over gates through D204's declared arm table; D187 fixed the `unknown`-verification defect that made a `startAt`-resumed run's receipt underivable. Failures carry the D137 two-phase bundle. `explain run` reads the same derivation the dashboard does. **Honest caveat:** "visible when desktop delivery fails" is currently true the easy way — `OsNotificationDelivery` has no producer, so there is no desktop delivery to fail. The durability half is MET; the reach half is a legacy-ahead item |
+| 9 | **Workflow knowledge is canonical** — UI ids / catalog, task and workflow results, the scenario corpus, knowledge records and fix records carry no unresolved duplicates, orphans or stale references, and every migrated production bug has a regression scenario that supersedes conflicting lessons | **partly MET** | The registry / catalog / provenance half is held mechanically: the driver registry is authority, the catalog is generated, `legacy-selector-port-provenance` pins 406 keys to a FIXED legacy commit's blobs, and knowledge is insert-only with supersession expressed forward. Left: the scenario corpus is being reorganized by R10 (T1's per-workflow layout is unbuilt, and the pretending fixture scenarios are not yet rewritten), and "every migrated production bug has a regression scenario" cannot close while migrations are open |
+| 10 | **Authoring tools respect their boundary** — the explorer renders the exact as-built graph and source links, presentation-only changes use the strict atomic override, graph / policy edits emit a reviewed patch scaffold, code-only selector / schema / subject / proof changes cannot be emitted by the editor, and no workflow has dual graph authority | **partly MET — the load-bearing half by absence** | DSL / codegen remains absent (D79a) and no workflow has dual graph authority, which is the clause that protects a real HR transaction. The **read-only** explorer shipped in 2i and renders the as-built graph. The EDIT half — the override, the patch scaffold, the closed policy union — was REASSIGNED out of Phase 2 by **D186**, whose trigger is a SECOND production workflow whose policy somebody wants to change. Until then the criterion's edit clauses have no subject; `04-close-the-deferrals.md` §Edit a workflow's presentation / policy owns the deferral |
+| 11 | **Local-first scope remains true** — the operator server binds loopback and retains the actor / auth-checkpoint / credential-set / per-actor-notification seams without dormant RBAC or LAN mode; diagnostic / backup / evidence permission and redaction tests pass; the only remote listener is a live-session-scoped mobile-capture ingress whose deny-by-default route tests pass | **MET, with one clause currently untestable** | The four D75 seams are built and load-bearing with one constant `local-operator`; D193(a) reaffirmed solo / local / never-hosted; there is no RBAC, no LAN mode and no user management. The redaction surface scan is `redaction-surface-scan` (D183). D174's ingress design puts the capture credential in the URL FRAGMENT (never sent to any server) and makes every token failure answer identically. **Untestable clause:** the phone surface has no production delivery path (D189), so the one remote listener cannot currently be built — the criterion is trivially true today and becomes genuinely testable at order 3 |
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.4 (added program-wide exit criteria) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+### The program-wide integration criteria (gates criterion 2)
 
-Before definition-of-done item 2 (single cutover), all of ref frontend-backend-integration §10 must pass. In particular:
+**Before criterion 2 — the single cutover — all of `ref frontend-backend-integration` §10 must pass in
+the real built app.** That section owns the eleven-row table and its own state; this is the summary a
+reader of THIS list needs, verified against it on 2026-08-21.
 
-- production React has one typed transport client and no direct component `fetch`/`EventSource`;
-- no raw legacy tracker/session/log row crosses the rebuilt API boundary;
-- all authoritative counts and Activity aggregates come from the one run-projection family;
-- every visible action is a served command/navigation descriptor or clearly local UI state;
-- reconnect, cursor gap/reset, command conflict/idempotency and degraded read-only behavior are
-  proven in the real built app;
-- the complete reference route matrix matches the approved frontend in both themes; and
-- the preserved legacy demo/mock wires stay in the legacy repo and are unreachable from the rebuild
-  repo; removing them is not an integration or initial-cutover requirement.
+| | |
+|---|---|
+| **met (5)** | strict runtime schemas at every boundary (3) · all authoritative counts and Activity aggregates reconcile from the one projection family (5) · every visible action is a served command or clear local navigation (6) · Person Lookup and the controlled write slice passed their live gates (8) · the preserved legacy demo/mock wires stay in the legacy repo and are structurally unimportable (10) |
+| **partial (4)** | every product surface served by the matrix — Group People and OCR Review have **no surface**, Settings is read-only, the phone surface has no delivery path (1) · no workflow-specific registry in the production app — held everywhere except the ONE named registry import, D264 row D11 (2) · reconnect / gap / reset and command conflict / idempotency proven — mechanically yes, **visibly no**: no reference photographs a disconnected, degraded, read-only or conflicted state (4) · every terminal run renders an honest receipt / failure / capture state — met for receipt and failure, **capture bytes are unserved** (7) |
+| **unmet (2)** | the complete reference route matrix in both themes — Settings and the Session Panel are unreachable from the harness's routes, and keyboard and reduced-motion exist as one reference each, Paper Ink only (9) · **the cutover rehearsal** — the isolation half is proven by `operational-isolation` against `config/runtime-isolation.json`, the rehearsal itself has never run, and "every launch target repoints atomically" is contradicted while `--prod` is unparsed (11) |
+| **and the budgets** | `ref frontend-backend-integration` §7.4's performance and resilience budgets are **normative and unenforced** — no perf test, no benchmark, no seeded 1,240-row / 108-member fixture, no `memo` in any surface, no virtualization, no backpressure handling. Track D's **D4/D5** take the first numbers on the local production build and those numbers become the non-regression gates (D264). This is precondition **P5** |
+
+**Two more things must be true that no §10 row carries.** **T4**, the agent-operated parallel
+end-to-end tier, is unbuilt and cannot be scheduled before `{#parallel-runs}` and `{#duo-lease}` —
+running many parallel dry runs before the Duo ceremony lease exists is running the experiment that
+BURNS the credential (D243, `ref guards-and-tests` §10.8). And the **parity corpus** must be green
+over the states the cutover is judged in: 139 reference triples assert both halves at
+`maxDiffPixels: 0` (D132/D145), and none of them photographs a degraded or conflicted app.
+
+### What is NOT on this list, deliberately
+
+**None of the eight deferrals.** `04-close-the-deferrals.md` §Exit criteria states the reading from
+its side and it is correct: every deferral is either closed by a build or carried past the cutover
+with its trigger still standing and named. The cutover switches which repository files real HR
+transactions; a deferral is a capability the legacy system also lacks or that the operator has
+decided not to buy. The one with a runtime cost is the propagation windows — UCPath and ServiceNow
+stay `operator-only`, so a write reaching an unmeasured system parks for a human on a post-fence
+absence. That is correct behaviour, not a blocker.
+
+**Nothing from §Later, unplanned.** D193(a) fixes "production" as the D89 day this repository becomes
+the operator's daily LOCAL tool, so packaging and cooperation are not conditions of being done.
+
+**No calendar date.** Every criterion above is a state of the world, and the cutover day is the
+operator's call once they hold.
