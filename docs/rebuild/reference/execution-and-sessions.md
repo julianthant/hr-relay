@@ -511,6 +511,62 @@ workflows' workers cold-start together. §10 is the serialization that closes it
 
 ---
 
+### 4.3 Session acquisition is bounded separately from the task (D125)
+<!-- roadmap: p1-exit -->
+
+<!-- roadmap-status: p1-exit -->
+- [x] `timeouts.sessionAcquireMs` exists as its own leaf, default 60 000 ms (`src/domain/config/schema.ts:196`)
+- [x] the bound is scheduler-armed and the acquisition runs under its OWN linked signal, so a cooperative recipe cancels itself rather than only being raced (`#acquireBounded`, `src/core/worker-sessions.ts:449`)
+- [x] an acquisition that lands AFTER its bound is poison-closed, never inherited as a warm reuse (`#abandonAcquisition`)
+- [x] the refusal names both leaves and says what to raise for a hands-on Duo deployment (`src/core/worker-sessions.ts:144`)
+- [x] D243 corrected the message this bound used to be blamed for: a REFUSED Duo ceremony now refuses on content in ~9.5 s (§4.2)
+> 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/domain/config/schema.ts (60 000 / 180 000 / 15 000 / 180 / 60) and src/core/worker-sessions.ts; folded here from the dated block that stood above §0
+<!-- /roadmap-status -->
+
+**`timeouts.sessionAcquireMs` (default 60 000 ms) bounds ONE browser-session acquisition — the
+factory `open` plus that system's login recipe — and it is a different bound from
+`timeouts.taskMs` (180 000 ms).** The kernel-owned `MonotonicDeadlineScheduler` arms it, the
+acquisition runs under its own linked `AbortSignal` so a cooperative recipe cancels itself, and
+expiry FAILS the lease with a message naming both leaves. It is never converted into a retry.
+
+**Why the whole-task deadline could not do this job.** The Phase-1 live exit run
+(`4ebf7275-0158-49af-a78f-1f37948efb27`) spent **262.9 s** inside one `withDriver` when the CRM
+browser died. Every step *inside* the login recipe was already bounded — each navigation by
+`navigationMs` (15 s), the Duo window by `duoApprovalCrmSeconds` (60 s) — but **nothing bounded the
+chain**, and the only outer bound reaching that code was `taskMs`. `taskMs` must stay generous
+because it covers the real read (UCPath person-org ≈22 s; Kuali fill→save→reload→verify 8–10 s per
+cycle), so it is structurally the wrong instrument for "is this session alive?". In that run it
+never fired: the D118 claim sweep (60 s staleness on a 30 s cadence, measured on the WALL clock)
+requeued the run first, the next heartbeat reported the claim lost, and the task span closed
+`cancelled` at 4 m 23 s. Claim expiry is recovery, not a liveness bound — it is the last line, and
+it was doing first-line work.
+
+**Why 60 s is safe.** Acquisition is not the slow part of a healthy run: §4.1 authentication is
+live-verified at ~17 s (UCPath) and ~12 s (CRM) with Duo Autopilot clearing the ceremony hands-off
+(ref charter §9), so the default is >3x the measured worst case. It cannot fail a legitimately slow
+*read*, because a read happens after acquisition, under `taskMs`. A deployment that reverts to a
+HANDS-ON Duo approval must raise `sessionAcquireMs` above `duoApprovalSeconds` (180 s) — the inner
+Duo wait would otherwise outlive its own envelope — and the refusal message says exactly that.
+
+**That inequality has a consequence D243 had to fix, and it is not a reason to move either leaf.**
+At the shipped defaults the envelope (60 s) always fires before the landing bound (180 s), so on a
+Duo stall the operator receives THIS section's message naming hands-on approval — a real cause, and
+in the refused-ceremony case the wrong one. §4.2 fixes it where authentication is decided: on
+CONTENT. Both leaves keep their values.
+
+**An acquisition that outlives its bound is UNCERTAIN.** A cooperative recipe rejects on the
+acquisition signal and runs `#openAndLogin`'s own proven cleanup. A non-cooperative one may still
+land a live session afterwards; that session is poison-closed rather than inherited by the next
+lease as a warm reuse, and a close that cannot be proven leaves the system poisoned so the next
+acquisition refuses by name (§4's poison rule).
+
+**§10 changes what this bound covers, and says so there.** A worker waiting on the Duo ceremony
+lease is waiting inside its acquisition envelope, so the lease's TTL is `sessionAcquireMs` plus
+grace and a bounded waiter must refuse before the envelope does — otherwise every queued worker
+would report D125's message instead of naming the holder.
+
+---
+
 ## 5. Speed engineering
 
 Removing lanes does not preserve the fixed-sleep tax:
