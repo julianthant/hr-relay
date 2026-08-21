@@ -1,46 +1,97 @@
 # 00 · Phase 0 — design the foundation
 
-This doc is the dedicated home of **Phase 0**, tree node `{#phase-0}`: its tasks, what is done and
-what is left, its exit criteria; contracts it built live in `reference/`.
+This doc is the dedicated home of **Phase 0**, tree node `{#phase-0}`: what it designed, how it
+ended, and which of its contracts no longer bind. Phase 0 wrote no runtime code by policy — its
+product is the design every later phase implements — so the contracts themselves live in
+`reference/` and this doc is the record of the design ACT, never a second copy of them.
 
 ## Phase summary
 <!-- roadmap: phase-0 -->
 
 <!-- roadmap-status: phase-0 -->
+- [x] every reference spec reconciled through **Round 12** — D1–D94 over twelve rounds (there is no round 6), each marked `_phase: 0_` in `reference/decisions.md`
+- [x] the ownership matrix (**D1**) — one owning doc per concept, referenced and never redefined; the map is `roadmap` §Governance and it still resolves
+- [x] **D74** cut Phase 1 to a SPINE whose exit test is a LIVE workflow, deferring six work items behind that first real proof — executed exactly as designed, exit MET 2026-08-04
+- [x] the **identity-approval gate designed here rather than at order 8** (**D77**) — this phase's one priority inversion, found and corrected inside it (§ALWAYS-GATE identity approval)
+- [x] the **size model + MUST / SHOULD / LATER delivery tiers** (**D76**), which the tree's `size:` attribute still carries item for item (§Size model + delivery tiers)
+- [x] the operator ratified isolated coexistence (**D88**), **ONE all-at-once cutover** (**D89**), legacy change accounting (**D90**/**D94**), the testing policy (**D91**) and the deferred probe gates (**D92**)
+- [x] the rebuild's ADDRESS settled (**D93**): its own repository, seeded 2026-07-31 from `hr-automation@5879004`
+- [x] Phase 0 is DONE and nothing inside it is open; **six** of its contracts have since been amended and **two** of its promises are still unbuilt — both lists are below, with owners
+> 2026-08-21 | docs-cohesion 00 | verified against reference/decisions.md rounds 1–12, reference/charter.md items 1–27, reference/write-safety.md §14, src/cli.ts, vitest.config.ts:39-43, config/legacy-capabilities.json (78 entries) and every size attribute in docs/roadmap/roadmap.md; left: nothing in Phase 0 itself — the amendments and the two unbuilt promises are recorded below and every one of them is owned elsewhere
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 0 — foundation design) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+### What Phase 0 was
 
-**Goal.** Every foundational contract is designed, adversarially reviewed, and operator-approved
-before any rebuild code is built (charter §Process: nothing is built before its design part is
-approved).
+**The goal, stated as a rule rather than a milestone.** Every foundational contract is designed,
+adversarially reviewed and operator-approved **before** any rebuild code is built. That is charter
+§Process in its own words — *"Nothing in the rebuild repo gets built before its design part is
+operator-approved"* — which makes Phase 0 the only phase whose deliverable is entirely prose and
+the only one that produced no `src/`.
 
-**Status (2026-07-31).** **COMPLETE.** Every reference spec is reconciled through Round 12 (D1–D94); the
-operator ratified isolated coexistence, all-at-once cutover, the testing policy, and the later probe
-gates, then directed (D93) that the rebuild live in its own repository rather than in-tree. Phase 1
-has since completed in full: items 1a and 1b completed 2026-07-31, items 1c, 1d, and 1e completed
-2026-08-01, and items 1f, 1g-spine, and 1i-spine completed 2026-08-04 with the D74 live exit test.
+**What it produced.** The design set, the decision ledger, and the build order the next three
+phases executed without re-sequencing. Twelve reconciliation rounds (`reference/decisions.md`,
+rounds 1–12, D1–D94) folded three adversarial doc reviews, an external plan review, a whole-plan +
+legacy-code review, an executable feasibility spike and eleven operator ratification sessions into
+the docs that own each contract. The docs were fourteen numbered files then; they are the eight
+phase docs `00`–`05` plus thirteen specs under `reference/` now (**D263**, 2026-08-20) — that
+reorganization moved files and citations, never contracts.
 
-**What remains.** Nothing in Phase 0 and nothing in Phase 1. The program is at Phase 2's controlled
-transaction proof; system-specific proof questions below remain mandatory only at their named
-milestones (D92).
+**Its four load-bearing acts**, in the order a reader needs them:
 
-**Executable feasibility evidence (not implementation).** Disposable files outside the repository
-were compiled/run with the project's actual Node 26, TypeScript 5.9, and Zod 4 dependencies. The
-spike proved effect-specific contract overloads and negative type controls, provider-client
-narrowing, canonical-input transform-once/revalidate-many behavior, strict command arms, target-
-field mappings, typed child results, proof unions, a 40-node typed chain, post-write settlement,
-SQLite permanent-key/atomic-outbox behavior, and native online backup/read-only verification. The
-40-node compile completed in 0.68s at about 212 MB. This establishes feasibility only: D71 requires
-the same controls against the real API as committed Phase-1 tests. One adversarial case initially
-failed—pre-propagation negative evidence could contribute a vote—and is now closed by D69.
+1. **The ownership matrix (D1).** Every concept has exactly ONE owning doc; another doc may
+   reference that contract and may never redefine it. Everything else in this program — the ratified
+   ledger, the two-way plan binding, "a decision is not ratified until it lands in its owning doc" —
+   is machinery for keeping that one rule true. The map itself lives in `roadmap` §Governance.
+2. **The spine restructure (D74, operator ACCEPTED 2026-07-23).** The plan as first written built
+   ten base work items against synthetic fixtures with no consumer, then ran a workflow. Phase 0
+   cut it to **1a–1f plus two thin slices**, with a LIVE workflow as the exit test, and deferred the
+   rest to Phase-2 tails built against a proven spine. Nothing was deleted, only reordered — and the
+   call is retrospectively justified: every defect Phase 1's exit criteria record was found by the
+   live run and by nothing else (`01-build-the-spine.md` §Exit criteria).
+3. **The identity gate, pulled forward (D77).** See §ALWAYS-GATE identity approval — the phase found
+   that ~60 KB specified a fence that admittedly cannot prevent the wrong-PERSON incident, while the
+   control that can was one deferred line, and fixed the inversion inside the phase.
+4. **The two-repo model and the ONE cutover (D88–D94).** Legacy stays the sole production authority,
+   live and maintainable, until a single all-at-once switch; the rebuild proves capabilities and
+   flips nothing per workflow. `05-cut-over.md` owns the switch itself.
 
-**Measured existing gate baseline (2026-07-31, legacy repo).** `typecheck:all`, source lint, dashboard build,
-479 unit files / 4,619 tests, 11 serial files / 20 tests, and 23 architecture files / 129 tests all
-pass. Test lint remains red at 1,344 errors + 2 warnings. D70/ref guards-and-tests §1.1 makes this explicit: new
-rebuild source/tests are zero-warning from their first file; legacy test diagnostics are
-fingerprinted, no-new-debt coexistence debt. It may remain non-zero through initial cutover; no plan
-milestone may report `npm run lint:tests` green until it actually is.
+### How it ended
+
+**COMPLETE 2026-07-31.** Every reference spec and the build order were approved; every deferred
+question carried an owner, the evidence it needs, and the milestone that resolves it (**D92**). The
+same day, **D93** moved the rebuild out of the legacy checkout's `temp_src/` into this repository,
+seeded from `hr-automation@5879004` (branch `feature/rebuild-phase1b`, which stays in the legacy repo
+as the pre-split record).
+
+**What happened next, which is the only real test of a design phase.** Phases **1a–1e** completed
+2026-08-01, **1f / 1g-spine / 1i-spine** on 2026-08-04 with D74's live exit test, **Phase 2** on
+2026-08-09, and Phase 3 entered at separations. No phase was re-sequenced and no Phase-0 contract
+was withdrawn. What DID move is listed next, because a reader deciding whether a Phase-0 sentence
+still binds cannot be asked to diff the ledger themselves.
+
+### What no longer binds
+
+Six Phase-0 contracts have been amended by a later decision. None is a waiver and none re-opens the
+phase; each names the decision that moved it.
+
+| Phase-0 contract | Set by | What amended it |
+|---|---|---|
+| **Legacy change accounting** — every legacy maintenance commit mapped to affected capabilities, fail-closed, with a clean legacy `src`/`tests` worktree required | **D90** (round 10), mechanized by **D94** (round 12) | **RETIRED — D150 (2026-08-05).** The two repositories touch each other in neither direction; `config/legacy-change-accounting.json` is a frozen historical record and must not be extended. The risk it covered (a ported selector going stale after legacy fixed it) is covered instead by **live re-verification at each workflow's migration**, which the charter already makes mandatory and pre-authorizes. A selector checked against the live system beats one diffed against legacy's copy of it |
+| **The gate family** — `typecheck` / `lint` / `test` / `test:architecture`, the last two as the per-commit pair | **D91** (floors), **D93** (the plain names) | **D191 (2026-08-09)**: `test:coverage` REPLACES the pair as the per-commit gate — a strict superset, measured faster. D91's FLOORS are untouched and still 60 % global / 80 % safety-critical (`vitest.config.ts:39-43`); R10's raise of the global floor to 80 is owned by `{#test-tiers}` and has not landed |
+| **A command's NAME is an isolation resource** — the rebuild's launch commands carried a `rebuild:` prefix so a mistyped command could not start the wrong runtime | **D88**'s isolation list, carried forward by **D93** | **D247 (2026-08-20)**: names may coincide. A muscle-memory `npm run dashboard` in the wrong checkout starts THAT checkout's dashboard, on its own port, under its own roots and locks — which is legible and harmless. Isolation is the VALUES, not the names. **D216 (2026-08-14)** is the same correction one row down: both repos name the browser-profile root `.auth`, because a repo-relative root cannot collide and `browserSessionNamespace` is the half that actually protects browser state |
+| **One master plan, one file** | charter §One master plan (operator directive 2026-07-17) | **D263 (2026-08-20)**: the plan keeps one identity and gains a machine-readable FORM — `docs/roadmap/roadmap.md` in the roadmap notation, bound to the docs BOTH ways (`doc:` refs on every node, `<!-- roadmap: id -->` tags on every describing section, the `roadmap-doc-binding` guard refusing either that resolves to nothing). The single file itself was dissolved into the eight phase docs the same day; the prose still wins on any disagreement, and the disagreement is now CAUGHT rather than argued |
+| **Phase 3 begins at migration order 0** | **D84** (round 8) — the order optimizes total time-to-resume-all, so separations and onboarding come last | **D193(c) (2026-08-12)** moves the ENTRY to **separations (order 8)**: a big multi-system workflow forces the store task libraries into existence, so one migration mints what every later one reuses instead of trickling stores in through small reads. D84's ORDER is explicitly not re-sequenced — it stays the risk-proof ordering |
+| **The D58 capability-closure inventory gates cutover** | **D58** (round 5), mechanized by **D90** | **D184 (2026-08-09)**: the guard proved coverage and never read a DISPOSITION, so 73 of 78 entries sat `open` and 53 of those named a milestone that had already shipped — an inventory nobody could act on. The guard now refuses an entry `open` at or before the runtime's own `completedThrough`, a target that does not resolve, and evidence that only says "the legacy file still exists". At HEAD `config/legacy-capabilities.json` holds 78 entries — 20 `replaced` · 7 `native` · 4 `retired` · **47 `open`** against real later milestones |
+
+### Two Phase-0 promises are still unbuilt
+
+Both were ratified here, neither is a contract anything depends on, and each is recorded so a reader
+does not have to discover it in Phase 3.
+
+| Promise | Where it was made | State at HEAD |
+|---|---|---|
+| **`scaffold new-task` / `scaffold new-workflow` are part of the base** — contract skeleton, impl stub, example, scenario stubs and store registration, each with `TODO` markers that fail their guards until filled, because *"the declaration toil is only acceptable if the boilerplate is generated"* | **D79**'s ratified trims; normative text `ref:task-contract` §2.7 | **Not built.** No scaffold command, generator or flow exists in this tree — `src/cli.ts` registers exactly five composers (dashboard · worker · explain · ocr · storage) and there is no code-emitting path anywhere else. The **`new-workflow`** half IS owned: the operator's 2026-08-20 ruling folds the authoring path into `{#def-explorer-edit}` (`04-close-the-deferrals.md`). The **`new-task`** half has **no node owner today** — reported here, not assigned by this doc |
+| **`cli test workflow <id> --dry-run` through the real kernel, plus a typed `TestTargetRegistry`** of test employees, files and sacrificial documents with usage rules | **D85** (round 8); normative text `ref:guards-and-tests` §7 | **Half built, and not as named.** The everyday scenario corpus exists (`tests/scenario/`, audited against the graph by `scenario-coverage`), and `executeDryRun` is the kernel's real preview arm — but there is no `test` CLI subcommand and no `TestTargetRegistry` in the tree. **R10** reassigns both to `{#test-tiers}`: `config/test-subjects.json` for the subjects (sensitive values outside git, referenced by label) and `npm run cli -- dry-run-scenario <workflow> --subject <label>` for the entry point |
 
 ## The base's dependency graph
 
