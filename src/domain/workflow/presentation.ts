@@ -10,7 +10,7 @@
  */
 import { z } from "zod";
 import { ContractFieldPathSchema } from "../contracts/base.js";
-import { NodeIdSchema, TaskIdSchema } from "../ids.js";
+import { NodeIdSchema, slugSchema, TaskIdSchema } from "../ids.js";
 
 /**
  * Compile-time icon union. The dashboard's icon map is
@@ -256,9 +256,17 @@ export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecR
  * and its own field rather than a slugified label — slugifying "Kuali
  * extraction" into an anchor would make re-wording the label silently move
  * every reference to the step.
+ *
+ * Its grammar IS `NodeIdSchema`'s slug, not a stricter spelling of it: a
+ * descriptor that declares no timeline gets one category per node keyed BY the
+ * node id (`deriveTimeline`), so a key grammar narrower than the node id's
+ * would make that derivation throw on a graph `build()` had already accepted —
+ * and throw naming the key, a field the author never wrote. The only reader
+ * that constrains the shape is `workflowSourceFolder`, which spends the key as
+ * a folder name, and a slug is already a safe one; the extra "must lead with a
+ * letter" rule refused `2fa-prompt` and bought nothing.
  */
-export const TimelineCategoryKeySchema = z.string()
-  .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, "timeline category key must be kebab-case");
+export const TimelineCategoryKeySchema = slugSchema("timeline category key must be a kebab-case slug");
 export type TimelineCategoryKey = z.infer<typeof TimelineCategoryKeySchema>;
 
 /**
