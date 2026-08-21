@@ -67,6 +67,10 @@ import type { UiCatalog } from "../../../domain/ui/contracts.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../domain/workflow/generated-build-manifest.js";
 import type { RuntimeFlowNode } from "../../../domain/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
+import {
+  descriptorSourcePath,
+  moduleSourcePath,
+} from "../../../domain/workflow/source-layout.js";
 import type { IntakeProjection } from "../../../domain/intake/projection.js";
 import type { CaptureIntakeBinding } from "../../../domain/capture-intake.js";
 import type { PendingImplBindings } from "../../../control/workflow-registry.js";
@@ -706,8 +710,11 @@ function workflowWire(
   const editable = descriptor.capabilities?.editData;
   const editableFields = typeof editable === "object" ? editable.fields : [];
 
-  const descriptorPath = `src/workflows/${workflowId}/descriptor.ts`;
-  const modulePath = `src/workflows/${workflowId}/module.ts`;
+  // D265 §1.2.2 — the path comes from the ROLE, never from the id alone: a
+  // chunk harness lives inside the step it proves, so a link built from the id
+  // would point at a folder that no longer exists.
+  const descriptorPath = descriptorSourcePath(workflowId, module.role);
+  const modulePath = moduleSourcePath(workflowId, module.role);
 
   const purposeByNode = new Map(
     descriptor.nodePurposes.map((entry) => [String(entry.nodeId), entry.purpose]),

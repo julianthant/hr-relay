@@ -131,13 +131,79 @@ export function fingerprintSourceSet(
   }));
 }
 
-function descriptorEntries(repoRoot: string): readonly { readonly id: string; readonly entry: string }[] {
-  const root = join(repoRoot, "src/workflows");
+/**
+ * The workflow id a descriptor file DECLARES, read from its own source.
+ *
+ * D265 §1.2.2 detached the path from the id: a chunk harness now lives at
+ * `src/workflows/<composition>/<step>/`, where no path segment is its id
+ * (`separations/kuali-extraction/` is `separations-kuali-read`). Ids are run
+ * identity and did not move with the folders, so the manifest — which every
+ * descriptor looks its own fingerprint up in BY ID — has to read the id the
+ * descriptor actually declares rather than infer one from where it sits.
+ *
+ * Fail loud on anything but exactly one string-literal `id` in exactly one
+ * `defineWorkflowDescriptor` call: a guessed id would key a fingerprint to a
+ * workflow that does not exist, and `resolveWorkflowFingerprint`'s throw would
+ * then fire at load time for the descriptor that does.
+ */
+function declaredWorkflowId(entry: string): string {
+  const source = ts.createSourceFile(
+    entry, readFileSync(entry, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const ids: string[] = [];
+  function visit(node: ts.Node): void {
+    if (ts.isCallExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === "defineWorkflowDescriptor") {
+      const spec = node.arguments[0];
+      if (spec !== undefined && ts.isObjectLiteralExpression(spec)) {
+        for (const property of spec.properties) {
+          if (ts.isPropertyAssignment(property)
+            && ts.isIdentifier(property.name)
+            && property.name.text === "id"
+            && ts.isStringLiteral(property.initializer)) {
+            ids.push(property.initializer.text);
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(source);
+  const [only] = ids;
+  if (ids.length !== 1 || only === undefined) {
+    throw new Error(
+      `build manifest needs exactly one string-literal descriptor id in ${entry}; found ${String(ids.length)}`,
+    );
+  }
+  return only;
+}
+
+/**
+ * Every `descriptor.ts` under `src/workflows/`, at either depth D265 §1.2.2
+ * allows: `<workflow>/` for a rail workflow, `<workflow>/<step>/` for the
+ * harness that proves one of its timeline steps.
+ */
+function descriptorFiles(root: string): readonly string[] {
   if (!existsSync(root)) return [];
-  return readdirSync(root)
-    .filter((name) => statSync(join(root, name)).isDirectory())
-    .map((name) => ({ id: name, entry: join(root, name, "descriptor.ts") }))
-    .filter((candidate) => existsSync(candidate.entry))
+  const found: string[] = [];
+  for (const name of readdirSync(root)) {
+    const child = join(root, name);
+    if (!statSync(child).isDirectory()) continue;
+    const entry = join(child, "descriptor.ts");
+    if (existsSync(entry)) found.push(entry);
+    for (const nested of readdirSync(child)) {
+      const grandchild = join(child, nested);
+      if (!statSync(grandchild).isDirectory()) continue;
+      const nestedEntry = join(grandchild, "descriptor.ts");
+      if (existsSync(nestedEntry)) found.push(nestedEntry);
+    }
+  }
+  return found;
+}
+
+function descriptorEntries(repoRoot: string): readonly { readonly id: string; readonly entry: string }[] {
+  return descriptorFiles(join(repoRoot, "src/workflows"))
+    .map((entry) => ({ id: declaredWorkflowId(entry), entry }))
     .sort((left, right) => left.id < right.id ? -1 : 1);
 }
 

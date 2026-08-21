@@ -261,6 +261,23 @@ export const TimelineCategoryKeySchema = z.string()
   .regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, "timeline category key must be kebab-case");
 export type TimelineCategoryKey = z.infer<typeof TimelineCategoryKeySchema>;
 
+/**
+ * D265 §1.2.2 rule 2 — the (key, label) pair a STEP FOLDER declares once.
+ *
+ * The folder is the category, so the two facts that name it — the kebab-case
+ * anchor the folder is called and the operator-approved prose the timeline
+ * prints — are declared in the folder's own `step.ts` and read from there by
+ * everything that needs them: the composition's `timeline` entry, which adds
+ * only `nodes`, and the harness module's `chunk-harness.step`. One declaration
+ * is what keeps the folder name, the declared category and the harness's claim
+ * from being three strings that merely agree today.
+ */
+export const WorkflowStepSchema = z.strictObject({
+  key: TimelineCategoryKeySchema,
+  label: z.string().min(1),
+});
+export type WorkflowStep = z.infer<typeof WorkflowStepSchema>;
+
 export const TimelineCategorySpecSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),

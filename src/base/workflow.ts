@@ -85,6 +85,7 @@ import {
   WorkflowCapabilitiesSchema,
   WorkflowCategorySchema,
   WorkflowCodeSchema,
+  WorkflowStepSchema,
 } from "../domain/workflow/presentation.js";
 import type {
   ArtifactSinkId,
@@ -99,6 +100,7 @@ import type {
   VerdictDefinition,
   WorkflowActionPolicy,
   WorkflowCategory,
+  WorkflowStep,
 } from "../domain/workflow/presentation.js";
 import { deriveGraphCoveragePoints } from "../domain/workflow/scenario-coverage.js";
 import type { GraphCoveragePoint } from "../domain/workflow/scenario-coverage.js";
@@ -181,6 +183,25 @@ export interface InputPreset<Input> {
  */
 export interface WorkflowIdentitySpec<Input> {
   readonly matchKey: (input: Input) => string;
+}
+
+/**
+ * D265 §1.2.2 rule 2 — declare a composition's STEP from the folder that is it.
+ *
+ * A step folder under `src/workflows/<workflow>/<step>/` owns one timeline
+ * category, and `step.ts` is where the category's two naming facts are written
+ * once: the kebab-case key (the folder's own name) and the operator-approved
+ * label. The composition spreads the result into its `timeline` entry and adds
+ * `nodes`; the harness that lives in the folder reads `.key` for its
+ * `chunk-harness.step`. Parsing here is what makes a mis-typed key a load-time
+ * throw naming the offender rather than a category nothing declares.
+ *
+ * It is `src/base/` and not `src/domain/` for the same reason `flow` is: a
+ * descriptor value-imports it, so it has to sit inside the D106 bundle-safe
+ * set, beside the other builders a descriptor is allowed to reach.
+ */
+export function defineWorkflowStep(step: { readonly key: string; readonly label: string }): WorkflowStep {
+  return Object.freeze(WorkflowStepSchema.parse(step));
 }
 
 /**
