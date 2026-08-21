@@ -792,15 +792,34 @@ is no row.
 ---
 
 ## 8. Worked example — 10-person I-9 Check
+<!-- roadmap: order-5 -->
 
-Choosing **3 workers** creates three independently authenticated UCPath/I-9 session sets. Each
-worker claims one member, runs it to park/terminal, resets its sessions, and claims the next. No
-worker has a second in-flight item and no capacity counter participates.
+<!-- roadmap-status: order-5 -->
+- [x] the kernel side of this example is real: N loops over one queue, one item each, per-worker profiles and sessions (§7.1)
+- [ ] the i9 system has no landed browser binding — `src/stores/i9/session.ts` is a provider declaration and `BROWSER_SYSTEM_BINDINGS` does not name it, so a session for it refuses at open
+- [ ] no `i9-check` descriptor exists (`src/workflows/` holds person-lookup, kuali-timekeeper-annotation and the six separations graphs)
+- [ ] "choose 3 workers" is not startable from a surface — the count comes from three CLI processes today (§0 item 4, §11)
+> 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/workflows/, src/infra/browser/system-bindings.ts and src/stores/i9/session.ts; this section is the SHAPE the migration targets, and every prerequisite it is missing is named
+<!-- /roadmap-status -->
+
+This is the shape order 5 targets, not a description of a run that has happened. Read it as the
+contract the pool must satisfy.
+
+Choosing **3 workers** creates three independently authenticated UCPath/I-9 session sets — three
+worker ids, three profile directories under §1's path, three independent claim rows. Each worker
+claims one member, runs it to park/terminal, resets its sessions, and claims the next. No worker has
+a second in-flight item and no capacity counter participates. Ten members over three workers is
+ten claims and three warm login amortizations, not a scheduler decision.
 
 If a specific step needs a clean UCPath context, the I-9 Check descriptor marks that node
-`session:"fresh"`; other steps reuse their worker-local session.
+`session:"fresh"`; other steps reuse their worker-local session. That authored `fresh` node is also
+what finally executes `fresh-session-boundary`'s outstanding descriptor arm (§7).
 
----
+**Two prerequisites this example does not have yet**, both named rather than assumed: the `i9`
+system has no landed `(driver, login recipe)` binding, so a session for it refuses at open today;
+and the count of 3 is three CLI processes, because the pool and its control are §11. Neither is a
+kernel gap — §7.1 runs three real loops over one database — which is exactly why they are worth
+naming separately.
 
 ## 9. Settled defaults
 
