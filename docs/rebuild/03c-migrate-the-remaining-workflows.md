@@ -76,7 +76,10 @@ driver operations FIRST, then write strict contracts → scenarios → impls →
 (`fakeCtx`) → descriptor/result/delegation policies, in `ref guards-and-tests` §6's red→green order.
 Classify every task REUSE / CUSTOMIZE / BUILD against ref stores before writing one — the store
 catalog is the reuse ledger, and a task that already exists under another name is the single
-cheapest thing to get wrong. **Artefacts:** `src/workflows/<id>/descriptor.ts` (bundle-safe: zod,
+cheapest thing to get wrong. **Layout (D265, `ref workflow-model` §1.2.2):** a rail workflow is a top-level folder
+`src/workflows/<id>/`; each declared timeline category is a sub-folder `<id>/<step>/` holding that
+step's node fragments and, when chunk-proved, its harness; test equipment lives under
+`src/workflows/proving/`; the `workflow-layout` guard pins role ↔ path. **Artefacts:** `src/workflows/<id>/descriptor.ts` (bundle-safe: zod,
 `src/domain/**`, audited `src/base/**` only — D106) + `module.ts` (server composition) + the tuple
 entry in `src/control/workflow-registry.ts` + any new `src/stores/<system>/tasks/*.ts`; a contract
 no store implements yet goes into `config/pending-impl-bindings.json` in the SAME commit (D107,

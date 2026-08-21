@@ -2695,6 +2695,13 @@ finalization. Legacy's seventh step, `transaction-check`, folds into *UCPath tra
 standing alone, because in this tree the pending check IS the sweep transaction plus the write
 sequencer's own probes. The gate is a member of *Identity check*.
 
+
+**Since D265 (2026-08-21) the six categories ARE the six step folders under `src/workflows/separations/`**
+— `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` ·
+`kuali-finalization` — and this section's exhaustiveness holds both ways: a category without a folder
+or a folder without a category fails the `workflow-layout` guard (`ref workflow-model` §1.2.2, the
+owner). The rendering and the fold above are unchanged; what moved is where a category is DECLARED.
+
 #### A REPLAYED step is its own arm, and it is never `pending` (D259)
 
 A replayed node emits no spans, by design (`ref workflow-model` §5.3), and this timeline folds spans
@@ -4308,6 +4315,10 @@ Three dated rulings narrowed it, and they read as one rule because they land in 
   harness's own label everywhere, and archived rows' frozen labels are untouched. **Startability does
   not move**: chunks stay registered and independently runnable, and each still owes or holds its own
   §3.2 controlled-commit proof.
+- **D265 (2026-08-21) — the rail is a READ of the top level of `src/workflows/`.** One top-level
+  folder per rail workflow, one sub-folder per timeline step, test equipment under `proving/`; the
+  `workflow-layout` guard pins the served role and the path to each other, so this filter and the
+  folder view can never disagree (`ref workflow-model` §1.2.2, the owner). Nothing here re-renders.
 - **D220, the same day — the RAIL lists main workflows only.** On seeing the nesting live: *"not
   needed at all — only the main workflows should be there."* The rail drops every entry whose role is
   `chunk-harness` or `proving`, and a category whose entries all dropped goes with them rather than
