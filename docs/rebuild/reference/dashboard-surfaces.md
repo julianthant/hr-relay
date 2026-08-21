@@ -72,7 +72,7 @@ lands):**
 | `## Phase 1g/1i-spine as-built presentation deltas` (D123 · D124 · D126) | **§9.3 · §9.2 · §9.9** (landed) | 5.1c |
 | `### D225`/`#### D259` · `### D238` · `## Wave-2 connection-proof presentation deltas` (D256 · D257) | **§9.3 · §9.9** (landed) | 5.1c |
 | *Shell and layout as rebuilt* | **§9.9** (landed); its superseded 400/470 widths → `history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md` | 5.1c |
-| §9's row-model D5–D24 | §9.10 · §9.9 · §9.2 · §9.3 | 5.1c |
+| §9's row-model D5–D24 | **§9.10** (landed), with its per-entry table naming §9.1 · §9.2 · §9.3 · §9.3.1 · §9.4 · §9.9 | 5.1c |
 | §10.1 Activity · §10.2 Archive · §10.3 display names · §10.4 the notification model | §9.5 · §9.5 · §9.2 · §9.6 | 5.1d |
 | §11 the intake workspace · §12 the capture phone · §13 the two takeovers | §9.7 · §9.7 · §9.5 | 5.1d |
 
@@ -3456,488 +3456,184 @@ D264's moved declaration fields) and §7 the parity lane.
 
 ### 9.10 The delegation and row model (row-model D5–D24)
 
-**Stub — written by unit 5.1c.** The material is everything from *Row-model D5* to *Shell and layout
-as rebuilt* below this line: the operator-ratified 2026-07-25 series, its collision warning against
-`reference/decisions.md`'s own D-numbers, and the two dated amendments. Its group-row half is a
-contract for a shape nothing can mint yet (§1.3), which the rewrite says once here rather than in
-each entry.
-
----
-
-### Row-model D5–D24 — the ratified series (2026-07-25)
-
-Status: **ratified by the operator 2026-07-25.** These continue the **row-model decision series**
-ratified 2026-07-24 (`docs/rebuild/history/design-inputs/2026-07-22-second-look.md` §6.6 — D1: three row types Run/Group/Member
-with review-as-status and eight statuses; D2: a PDF upload is always a Group; D3: unrunnable items
-are typed Rejected Member Rows, delete-only; D4: a delegated OCR run keeps its own Run Row in the
-OCR panel plus a link from the parent; D5: groups default collapsed, auto-expand on a member
-`Waiting on you` or `Failed`). **This series is not the reconciliation memo's D-numbers**
-(`reference/decisions.md` D1–D144) — cite these as *row-model D6…D24*, prefix mandatory. The
-collision is real: this section's **row-model D22** shortens the status vocabulary, while the memo's
-bare **D22** is an unrelated contract-shape/guards ownership split. `reference/decisions.md` carries
-the matching warning at its top; keep both in step.
-
-D6–D17 close the twelve delegation questions in `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7;
-D18–D20 close three build-gating decisions in `docs/rebuild/history/design-inputs/2026-07-25-demo-feature-plan.md` §6. The
-vocabulary is that ledger's: **`containment`** = `member | linked | rejected` (§3), Group Row anatomy
-+ presentation ladder + rollup precedence (§4), delegation shapes S0–S7 (§5).
-
-**Amended 2026-07-27 by the demo redesign** (`?view=rebuild-demo`, commits `1d656f76`..`a380406c`):
-**D11** loses its 41+ status-matrix rung, **D19** moves Data off the tab set without changing one of
-its semantics, and **D21** is added — the step timeline is equal-width. The as-built shell and
-layout those waves settled are recorded at the end of this section; they are not separately
-numbered, because none of them re-opens a question the D-series answered.
-
-**Amended again 2026-07-28 by the redesign's later waves** (commits `d1530a1f`..`fa6c251c`):
-row-model **D5** gains a close-on-settle arm, **D11** loses the rest of its ladder (one member
-presentation at every count), **D12** is touched but not overridden, the gate banner that expressed
-**D18**'s loudness principle at run-detail level is overridden (the decision moves inline into the
-stream), **D19**(d) is re-amended (the `Edit & re-run` dialog is removed — editing happens in
-place in the rail), **D20** is reinforced structurally, **D21** is extended (the wait renders on
-the step's own bar; a queued run draws its shape), and **D22–D24** are new. Several of these
-**reverse earlier operator-directed decisions**; each entry says so and records the reason, so a
-future agent does not restore the old behaviour on principle.
-
-### Row-model D5 — amended 2026-07-28: a settled group collapses shut
-
-D5 (ratified 2026-07-24: groups default collapsed, auto-expand on a member `Waiting on you` or
-`Failed`) gains the symmetric arm: **a group that settles collapses back shut**, and a settled row
-stops re-explaining its own composition — the prose count line, the checked counter and the
-member-name preview are all dropped on terminal rows. Attention rows and live rows keep
-everything.
-
-Rationale: the auto-expand exists because an open group is a demand; a group with nothing left to
-demand holding the space of an open one is the same defect inverted. And a terminal row restating
-its member count in prose beside the count strip that already shows it is the duplication D24
-names — the row's expansion state and its explanatory chrome are both projections of settlement,
-derived in one place (`visibleMemberIds` branches on settlement and nothing else), never authored
-per fixture.
-
-### D6 — oath-upload's signers are `linked`, not `member`; shape S4 is deleted
-
-Oath Upload stays **one Run Row** for the PDF being uploaded. The signer rows live in the **Oath
-Signature panel** as their own rows; the upload row carries a chip (`6 signers · 3 done ↗`) that
-jumps there. Containment is **`linked`** — signers are never counted as members, never render nested
-under the upload row, and are never removed from their own panel.
-
-Rationale: a signer run is independently meaningful and independently viewable; the upload row's job
-is the ticket, not the roster.
-
-**Supersedes `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7 Q1, which recommended the opposite**
-(signers as `member`, delisted from the Oath Signature panel), **and deletes that ledger's §5 S4
-layout ("Packet that ends in one filing")** — oath-upload is a Run Row that waits on linked children
-and then performs its one final act. It has no Group Row anatomy, no member ladder, no member
-rollup. This restores the as-built production model recorded in the root `CLAUDE.md` and in §4.5
-here: the ticket is a real `single` daemon task born at upload that walks `OCR prep → awaiting
-approval → wait signatures → submit` as one row. §4.5's sibling-subscriber gates and §4.3's
-`completionConsumes: { memberShape: "natural", suppress: ["document"] }` are unchanged — the
-presentation now matches the contract instead of contradicting it.
-
-### D7 — a packet still at OCR review shows its extracted count
-
-The count badge reads `6 people extracted` while the delegated OCR run is open, and flips to
-`6 people` at fan-out. Rationale: "how big is this" is answerable before the members exist, and a
-blank group before approval reads as broken.
-
-### D8 — record approval exists only after the operator works through Review
-
-Neither the packet Group Row nor the OCR row's Logs gate offers `Approve N of M`. Both route the
-operator into the OCR **Review** surface, where every person is shown beside the scanned page they
-were read from. The approval action exists only on that surface and remains disabled until the
-operator has visited every record. `N of M` may still exclude records that genuinely cannot be
-submitted, but it is never a shortcut around the review. Rationale: approval is the operator's
-attestation that the extraction was checked against its source, so the source and the complete set
-must have been presented before approval becomes possible.
-
-### D9 — rejected members never count toward done
-
-A packet carrying rejections is `Done with warnings` until every rejection is deleted or explicitly
-acknowledged. Rejected members stay excluded from the rollup and counted separately
-(`50 people · 3 rejected`). Rationale: an unrun person is not a finished person. This pins the
-ledger §4 rollup rule to its ratified form — `Verified done` requires zero unacknowledged
-rejections.
-
-### D10 — depth-2 delegated lookups are visible only from the OCR review row
-
-Person-lookup / i9-lookup children of a delegated OCR run surface on that OCR row (and in their own
-panel, per row-model D4) — **never on the packet group**. From the packet, "why is this person
-blank" is answered on the **record card**, not by walking a delegation tree. Rationale: maximum real
-depth is 2; surfacing it twice buys nothing and doubles the count surface.
-
-### D11 — one member presentation at every count; the density ladder is deleted
-
-**Amended 2026-07-27, amended again 2026-07-28.** There is no ladder. A group's expanded body is
-**one rung at every member count**: count strip → compact member lines in a capped scroll well →
-`Open all N people` drill-in. The same shape at 3 people and at 50 — scale changes the container's
-**overflow** and nothing else. Member count is continuous, presentation is never a row type, and
-the drill-in is part of the one shape, not a route to a different one.
-
-**What this replaces, in two stages — both reversals of ratified, operator-directed designs.**
-The ratified-2026-07-25 D11 was a four-rung ladder (1–3 full inline Member Rows · 4–12 compact
-list · 13–40 scroll well · **41+ status matrix** with a matrix-only attention strip). The
-2026-07-27 amendment deleted the 41+ matrix: the operator saw the 50-member I-9 group render as a
-grid of status cells where the 18-person work-study group renders named lines, read the matrix as
-a *different kind of row*, and said *"we also don't need a new row type for i9 quarterly
-retention"* while pointing at that work-study group. The 2026-07-28 amendment deleted the rest:
-shown a 2-member group rendering full inline row cards beside a 6-member group rendering compact
-lines, the operator said *"why are some like this and some like that? keep the design like above.
-ditch the bottom design completely."* — so the 1–3 inline-card rung went the same way the matrix
-did, and compact/well merged into the one surviving shape. Note the earlier amendment recorded the
-operator confirming "4 is good" for the 1–3 / 4–12 boundary; **that ratification is spent** — the
-later, more general instruction supersedes it, and it must not be quoted to restore the rung.
-
-**The principle, which is why neither deletion may be undone piecemeal:** a second visual language
-for *the same thing but more of it* makes the product read as having more concepts than it has —
-the exact cost the three-row-type model exists to avoid. D14 already holds this from the other end
-(a group of one still renders as a Group Row); the matrix broke it at 41+, the inline cards broke
-it at 3. **`densityRung` / `DensityRung` / `DENSITY_RUNGS` were deleted, not reduced to a function
-that ignores its argument** — a per-count switch that currently maps every count to the same rung
-is a per-count switch waiting to grow rungs back. `PersonWell` + `PersonLine` make the one shape
-mechanical rather than a convention two call sites keep.
-
-**The two numbers behind the well.** `--ds-h-member-well` = **136px ≈ 5.67 rows**. The half-cut
-sixth row IS the depth cue, which is why it is deliberately **not** 144px / 6 whole rows — a well
-that ends on a clean row edge reads as a complete list, and the operator then has no reason to
-scroll it. Members are ordered **attention-first**, so the top of the well IS the attention list
-the 41+ rung used to draw as a separate strip.
-
-**Nothing was lost.** The per-status information the matrix carried survives as the count strip's
-status counts plus the separate waiting / rejected tallies (D9's `50 people · 3 rejected`); the
-detail an inline card carried survives on the member's own drill-in and the group's People tab;
-and `Open all N people` is still the route into the full member list at every size.
-
-**Supersedes** the original D11 ladder in full, `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §4's
-four-rung ladder and its "at 41+ the attention strip renders **above** the matrix" rule, and the
-2026-07-27 three-rung amendment this entry previously recorded.
-
-### D12 — the collapsed row shows the gate's age
-
-`Waiting on you · 10m`. Rationale: an aging gate is the most actionable fact in the queue.
-
-**Touched 2026-07-28, not overridden.** On the run detail the gate's age now renders in three
-places — the panel header's status pill (`Waiting on you · 33m 50s`), the inline decision in the
-log stream, and the corner notice that appears while the decision is scrolled out of view (see the
-D18 amendment). **The queue row's gate age is unchanged** — this entry's contract stands as
-ratified.
-
-### D13 — a failed `linked` child makes the parent `Failed`, with `Re-upload`
-
-When a linked OCR child fails, the parent goes **`Failed`**, mirrors the child's error verbatim
-(never "Unknown error"), and offers a **`Re-upload`** action. **`Waiting on you` is reserved for a
-pending decision and is never used for a breakage.** Rationale: the two states demand different
-operator actions, and a breakage disguised as a decision is a gate that will never resolve.
-
-### D14 — a group of one still renders as a Group Row
-
-Consistent with row-model D2. Rationale: a group of one that looks like a Run Row makes the next
-fan-out look like a new object.
-
-### D15 — Person Lookup carries Search and Match as modes
-
-Person Lookup owns one Workflow Panel entry and one queue surface. **Search** asks Person
-Organizational Summary for identity/employment status by EID or name; **Match** asks HR-Tasks
-Search/Match whether UCPath already knows a legal-name + DOB/SSN identity. The operator chooses
-the question at start time, like choosing an OCR form spec, rather than navigating to a second
-workflow identity for the same person-check domain.
-
-This supersedes the earlier D15 decision to keep a standalone `person-match` entry and
-`docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7 Q10's recommendation to hide that entry. The two
-UCPath surfaces remain distinct; only their workflow/panel identity is unified.
-
-### D16 — cancelling a group is tree-scoped, final, with no dialog and no undo
-
-The only scope is the **tree** — group + all members + linked children. There is **no confirmation
-dialog and no undo window**; cancel commits immediately. Recovery is re-running from the row's
-history.
-
-**Tradeoff, stated plainly: this deliberately accepts misclick risk to avoid a dialog on every
-intentional cancel.** Cancel is used deliberately and often; a confirm on each one costs more than
-the occasional re-run.
-
-**Supersedes the "with a confirm naming the casualties" half of `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md`
-§7 Q11**; the tree-scope half is ratified as recommended. Mechanically this is §2.4's `Cancel`
-semantics unchanged — full dependency tree resolved from SQLite authority, every edge's ref workflow-model
-cancel policy applied, all-or-none, visible queue roots never an authority fallback. What D16
-decides is scope and the absence of ceremony, not a new command.
-
-### D17 — per-member confirmation numbers are inline on the packet receipt
-
-Listed inline in the Receipt rollup table, not one link per member. Rationale: the Q8 acceptance
-test is "the operator completes their double-check without opening UCPath", and a link per member
-re-introduces N clicks.
-
-### D18 — Status Bar pills: `All`, a composite `Needs you`, then the individual statuses
-
-One row: an **`All`** pill, then a composite **`Needs you`** pill (= `Waiting on you` +
-`Write parked` — the two statuses that mean a human is blocking), then each individual status.
-**No status is hidden.** Rationale: the bar answers "is anything on me?" first and "what is
-everything doing?" second. Counts are the same server-side projection that feeds `wfCounts` and the
-queue rows (§2.2); the composite pill is a sum of projected buckets, never a second count path.
-
-**Amended 2026-07-28 — the gate banner this loudness principle produced is overridden.** The pill
-model above is untouched. What is overridden is the run-detail expression of "the decision is the
-loudest thing": the **tall gate banner above the tabs** (ratified as-built through D19 and pinned
-in this section's shell notes as "the gate banner … never moves into the rail") is **deleted**.
-The decision now lives **inline in the log stream at the point it was reached** (`InlineDecision` —
-title, age, note, candidates, staged writes, both park resolutions); the panel header keeps a
-**one-line state plus its action**; and a small **dismissable notice** in the panel's corner
-(`DecisionNotice`) appears only while a decision is outstanding **and not visible** (an
-IntersectionObserver on the decision's anchor; dismissal is per row+tab and re-arms on either
-change, so a dismissed reminder can never become an unreachable decision).
-
-**Why this is not a loss of loudness, stated so the banner is not restored on principle:** the
-decision was being rendered **twice** — the banner above the tabs and, at the moment it occurred,
-the same title, the same copy and the same buttons inline in the stream. Removing the banner
-removed a **duplicate**, not information. Verified on both the write-parked and identity-approval
-runs before the deletion. Two bands saying the same thing is how a dense panel teaches an operator
-to skim past both — the duplication was itself the defect.
-
-Recorded with it, because they close the same "can the record hide?" question: a **failed run now
-opens on Logs** rather than Review (`defaultTabFor` puts logs ahead of every other default), so
-the failure record cannot hide behind a tab; and the failure's **write-state sentence** ("what
-this run left behind" — the difference between a safe retry and a duplicate termination) renders
-**unconditionally in the stream, never behind a disclosure**. Only diagnosis (progress ledger,
-cause chain, fingerprint) may sit behind a disclosure.
-
-### D19 — run-detail tabs derive from panel kind; screenshot evidence lives in Receipt; Data lives in Context
-
-Ratifies the tab model **as built in the rebuild demo**:
-
-- **(a) Tabs derive from the panel kind**, not a fixed set. **Amended 2026-07-27:** the sets are
-  **Run 2 · Review 3 · Group 3 · Member 2** — `Logs · Review · Receipt`, plus `People` on a group —
-  where they were Run 3 · Review 4 · Group 4 · Member 3.
-- **(b) Screenshots is not a tab.** Captures are evidence and render inside the Receipt tab,
-  beside the outcome they qualify. This applies to both a full `RunEvidenceReceipt` and the honest
-  short receipt shown before a full receipt exists.
-- **(c) Data and Edit Data are ONE merged surface** — every value the run touched. Reads are editable
-  in place; **writes are shown but not editable**; the footer offers `Load a prior run` and
-  `Start a run from this data`.
-- **(d) Amended 2026-07-27, re-amended 2026-07-28 — Data is not a tab, and not a dialog either.**
-  It is a section of the run's **context rail**, edited **in place**. The separate `Edit & re-run`
-  Dialog that briefly carried the editing half was introduced and then **removed at operator
-  instruction** (*"we also need the edit data and data tab to be together so i can have a feel of
-  how its like to edit the data"*); the rail section **widens** while editing
-  (`--ds-w-context-rail-wide`, 520px) instead of opening a modal. `DemoTab` and `tabsFor` drop
-  `"data"` entirely, so no dead tab id is reachable. The panel tab list derives from `tabsFor`,
-  while `detailSurfaces` separately carries the `data` capability for the Context rail section.
-
-**(c) is preserved byte-for-byte by (d), through both amendments.** Reads stay editable, writes
-stay shown and never editable, staged writes still render as staged, unconfirmed still says
-unconfirmed, nothing gains success styling it has not earned, and the `Load a prior run` /
-`Start a run from this data` footer survives intact. The unlock rules (`editPolicyFor` with the
-reason always shown), the CAS on the checkpoint generation, and the audited freshness override all
-carry over into the rail section unchanged (the freshness *confirm* stays a dialog — it is a
-question with a typed answer and two mutually exclusive exits, which is what a dialog is for).
-**Only the home changed** — the ledger is read AND corrected in one place, because the operator's
-stated need was to *feel* the editing in the context of the data, not to be handed a task surface.
-Gating is still `actions[]` descriptors at the `data` placement, so a run that may not be edited
-is simply not sent a Save.
-
-**As-built (2i-C, 2026-08-08, D168) — the rail's Data section is wired end-to-end for reads.**
-`editPolicyFor` exists in `src/dashboard/surfaces/context-rail.tsx` and composes three policies,
-each carrying its own sentence onto the lock: the entry's field policy and the run-level policy
-arrive ON the `context-data` wire (ref data-intake-and-edit-data §6.4.1 owns that shape), and the live staleness signal
-is `liveLockReasonOf` over the day stream's queue-row status — there is still no per-run SSE
-client, and the queue row flipping out of `queued`/`awaiting-approval` is the same "this run was
-claimed while you were editing" fact, with the kernel's CAS as the authority either way. Editing
-enters on FOCUS of a value box; the rail widens to `--ds-w-context-rail-wide` through the log
-panel's grid (its first consumer), and Save issues one `run/edit-checkpoint` command whose applied
-result refetches the detail at the bumped `rowRevision` (which re-fetches every section through
-the same revision). A staged correction renders beside the recorded value it will supersede —
-"staged renders as staged" applied to corrections. Two (c) arms are NOT yet built and stay open:
-the `Load a prior run` / `Start a run from this data` footer, and `actions[]` gating at the
-`data` placement (the served-actions projection is still empty; the wire's `editing` union
-carries the gate until it lands).
-
-**Why the move.** Logs and Data were mutually exclusive tabs, so the operator could not watch a
-run's log stream and see what that run read and wrote at the same time. That mutual exclusion was a
-significant part of the reported clutter — the panel appeared to hold more than it did because
-half of what it held was behind the other half. The split is by **reading pattern**, not by
-importance: live state (what the run is doing, what it needs from you) stays in the centre column,
-reference data (what it read and wrote, who asked for it) moves to the rail. Screenshot evidence
-moves to Receipt, beside the outcome it qualifies. Nothing is deleted and nothing hides behind a
-hover.
-
-**(b) is now honoured by putting the proof with the verdict.** D19b said Screenshots is not a tab;
-captures first moved from a 52px strip into Context, but that still separated evidence from the
-receipt it qualifies. The Receipt tab now owns the real capture tiles — kind, label, workflow step,
-and clock — under both full and short receipt states. The failure capture keeps its red frame in the
-tile and lightbox; the filter chips and Export menu carry over unchanged.
-
-**Supersedes the "Log Panel tabs are therefore FIVE: Logs / Data / Review / Receipt / Screenshots"
-wording in `docs/rebuild/history/design-inputs/2026-07-22-second-look.md` §6.6.** Unchanged from that decision sheet: the step
-timeline is **not** a tab (persistent strip + hover detail — see D21 for its width rule), and tab
-defaults stay state-driven (`Waiting on you` / `Write parked` → Review, terminal → Receipt, running
-→ Logs; a group with a member needing attention → People).
-
-Consequence for §2.2's wire: `QueueSurfaceWire.detailSurfaces` stays server-declared and
-capability-driven — the panel kind selects from what the server declares — but `"screenshots"` no
-longer projects a tab (it projects capture evidence inside Receipt), and `"edit-data"` / `"view-data"`
-collapse into one `data` surface — which, as of (d), projects a **rail section edited in place**,
-not a tab and not a dialog, with its write fields still rendering read-only.
-
-### D20 — `Write parked` means an unknown write outcome, and nothing else
-
-`Write parked` is only for a write whose outcome is genuinely **UNKNOWN**, and it has exactly two
-typed resolutions: **confirmed-present** and **confirmed-absent** (§2.2's `resolve-write-present` /
-`resolve-write-absent` over ref write-safety's durable intent state). **A pre-submit hold is NOT parked — it
-is a gate, and its status is `Waiting on you`.**
-
-Consequence: the rebuild demo's `sep-rosa` fixture, which labels a pre-submit hold as `Write parked`
-with a "Resume & submit" action, is wrong and must be re-authored as a gate. Rationale: parked is the
-one status that means "we may have already filed something"; diluting it with holds we know the
-state of destroys the only signal that warrants a live probe.
-
-**Reinforced 2026-07-28 — a parked row is structurally sent no data-mutating command.** The prior
-action policy offered `rerun-with-existing-data` ("Start a run from this data") on a parked row —
-i.e. a fresh run seeded from a write whose outcome is unknown, which is exactly the
-duplicate-termination path this decision exists to prevent. `deriveActions` now sends a parked row
-**no** `data`-placement command at all; its only exits remain the two typed park resolutions.
-Because every control is derived from the served `actions[]`, the hazardous command is
-unreachable, not merely hidden.
-
-### D21 — every step segment on the timeline is the same width; the duration is printed
-
-**Ratified 2026-07-27.** The step timeline (D19's persistent strip, not a tab) draws **equal-width
-segments regardless of duration**. Each segment prints its duration as a label beneath it, and the
-working / waiting totals sit on the axis below. The **gate/wait segment is hatched and equal-width
-like every other**, with the **TRUE age printed as text** beside it. The `×N` retry marker and its
-hover-card row carry over, as does the dashed treatment for a step the run has not reached.
-
-**This reverses a prior operator-directed design.** The timeline was **proportional** — segment
-width ∝ elapsed time — chosen deliberately on the grounds that the width WAS the data, and later
-hardened by clamping the gate wedge to ≤1.5× the step total while printing the real age beside it.
-Both the proportional maths and the clamp are gone: `MIN_SLOT_SEC`, `slot()`, `stepTotal`,
-`gateSlot`/`gateClamped`, the per-step inline width and the wedge clamp were all removed.
-
-**Why the reversal.** A genuinely proportional 34-minute gate beside three minutes of work is a
-true 91% of the track, and at 91% the step labels crush to `3.¹2 4..`. A timeline whose labels
-cannot be read tells you nothing about where the time went either — the literal encoding destroyed
-the thing it was encoding. Equal widths make the track legible at every duration spread, including
-the ones this product actually produces (a gate is usually an order of magnitude longer than the
-work around it, so the pathological case is the common case).
-
-**Why this is NOT a no-fabrication violation, stated so a future agent does not "restore honesty".**
-Equal widths **make no claim about duration**, precisely BECAUSE the duration is printed as a
-number beside every single segment and the totals are on the axis. Nothing implies a length it does
-not also state in words. The no-fabrication rule forbids *inventing* a number or drawing a quantity
-the data does not support; it does not require that every visual dimension be a data channel. A
-bar chart that clamps a bar while printing the real value is a standard convention; inventing the
-value was the bug the clamp era fixed, and that fix (`now − gate.openedAt`, never `max(active, 90)`)
-is retained here in full.
-
-**This is an explicit legibility-over-literalism call the operator made**, verbatim: *"all the
-timeline elements should have equal sizes doesnt matter the time."* **A future agent must not
-restore proportional widths on no-fabrication grounds.** If proportionality is ever wanted again it
-needs a fresh operator decision, not a correctness argument — the correctness argument has been
-made and answered.
-
-**Extended 2026-07-28** — two further moves, superseding this entry's "gate/wait segment" and
-"dashed treatment" wording above:
-
-- **The waiting state renders on the current step's own bar** — hatched, with the true elapsed age
-  printed beneath it — rather than as a separate trailing gate segment. A wait is a **state of a
-  step**, not a step of its own: the old trailing segment meant `Your review` occupied two of six
-  slots and read as two separate things, one of them apparently finished, and deleting it gave the
-  track a sixth of its width back. "Working" and "waiting on you" are told apart by the bar's
-  fill, not by a slot count. Fail-safe kept deliberately: a gate whose run records no waiting step
-  still draws the old trailing segment — a true fact is never dropped because the shape did not
-  line up.
-- **A queued run draws every segment outlined and empty**, so the track states the run's *shape*
-  before it starts. The old dashed hairlines read as one dashed rule across the panel with labels
-  floating over it — the surface that exists to say what a run will do said nothing until it
-  started, which is an information defect, not a visual one. The outline is **continuous, not
-  dashed**: the dash is spoken for (`Write parked` is the one thing in this product that dashes,
-  and nothing else may borrow the cue).
-
-The track therefore has exactly **three legible states**: **outlined-empty** (not reached) ·
-**solid** (done, or being worked now) · **hatched** (the run is stopped here, on you).
-
-### D22 — the status vocabulary shortens: `Verified done` renders as `Done`
-
-**Ratified 2026-07-28. AMENDED 2026-08-04 (D126) — read the amendment, not the original ground.**
-The quietest status renders as a green **`Done`** with **no icon** on the pill. The qualifier was
-doing two jobs badly: it made the quietest status the longest label in the vocabulary, and beside
-`Done with warnings` it asked the operator to work out whether *that* one was verified too. The
-pill is green rather than muted (a muted `Done` beside a muted `Cancelled` is two greys).
-
-**What the amendment replaces.** As first ratified, D22 rested on two claims that a later operator
-direction and the live exit run each falsified, and both are hereby superseded:
-
-1. *"The sibling deliberately did not shorten, because the qualifier IS the difference between
-   them."* **No longer true.** The operator subsequently directed that `doneWarnings` also render
-   the bare word `Done` — `Done with warnings` shoved the run title off the row header, beside a
-   count chip that already named the warning. Both terminal dones now draw the same word, on
-   purpose, at the operator's direction.
-2. *"Safe, because the word remains: this is not colour-only encoding."* **The word can no longer
-   carry it**, so the justification is restated: the two are separated **by ICON + COLOUR**, not by
-   the visible word. `doneWarnings` draws an amber warning triangle carrying its warning count
-   beside an amber-tinted pill; `verifiedDone` draws the bare word on a solid green fill. Two
-   visible non-textual channels plus the count, not hue alone. The operator inspected this pair and
-   ratified it as-is on 2026-08-04; **the visible design is settled and is not to be relitigated.**
-
-**And a third channel that is not visible at all:** because the drawn word stopped distinguishing
-them, the two statuses must carry **distinct ACCESSIBLE names** — an assistive technology reads
-neither the tint nor the triangle. `doneWarnings` announces `Done with warnings`; `verifiedDone`
-announces `Done`. That is the mechanism (`accessibleLabel` / `dsStatusAccessibleName`) specified in
-this doc's *Phase 1g/1i-spine as-built presentation deltas*, and it is what makes the amended D22
-honest where the original relied on the word. **Never satisfy this by lengthening the drawn label.**
-
-**The guarantee is structural, not textual, and the shortening must not be read as a weakening:**
-the verdict is still reachable **only via read-back** (ref operator-trust's completion contract), and the
-receipt still shows its read-back checks — only the *label* shortens. The wire/status key stays
-`verified-done`, and `done-with-warnings` stays its own key.
-
-**Reconciliation debt, recorded rather than silently fixed:**
-`docs/rebuild/reference/operator-trust.md:284` and this doc's D9 (…"`Verified done`
-requires zero unacknowledged rejections") still use the long label. They describe the same verdict
-under its pre-D22 name and need reconciling when next touched — the semantics they state are
-unchanged.
-
-### D23 — the motion rule is narrowed on purpose
-
-**Ratified 2026-07-28.** From *never animate status changes* to **never animate ambient status
-churn; a run that starts needing you may announce itself** — once, on the edge.
-
-**The reasoning, so the narrower form is applied and not merely quoted:** a dashboard where
-everything that updates also moves is unreadable exactly when it is busiest, and this one updates
-constantly. So elapsed timers, incrementing counts, background settling and self-initiated
-re-sorts stay **still** — if all of that moved, movement would be unavailable for the one thing
-that needs it. But the two states allowed to shout (`Waiting on you`, `Failed`) mark the moment a
-run stops being background and becomes work, and that is precisely the moment the operator is
-looking somewhere else; a row that turns amber silently between glances is a row that gets found
-late.
-
-**Four constraints keep the exception from becoming a licence:** (1) **edge, never state** — it
-fires on the *transition into* an attention status; a row already waiting when scrolled to does
-nothing; (2) **never on mount** — first sight of a row is not a change; (3) **once, then still**
-(`ATTENTION_ANNOUNCE_MS`) — nothing pulses, repeats, or waits to be acknowledged; (4) **only the
-two loud statuses** — reaching for this on a third status is the drift, and the answer is no.
-Implemented once (`useAttentionAnnounce`); never re-derive it at a second call site. **The
-narrower form must not become a licence** — this entry is authority for exactly the attention edge
-and nothing more.
-
-### D24 — a professional dashboard does not explain itself
-
-**Ratified 2026-07-28.** Explanatory prose on a surface is a **defect** unless it lives inside an
-**ⓘ** (a click-to-open Popover — reachable by pointer, touch and keyboard, costing the surface
-nothing until asked for). Two exemptions, and only two, because neither is explanation: a
-**refusal**, which must state what was *not* done and why or the operator cannot act on it; and a
-genuine **hazard** about the run in front of you (a stale checkpoint, a staged write, an
-unresolved park) — those are outcomes, not teaching.
-
-**The test:** a sentence on a surface must be a fact about the RUN in front of you. A sentence
-that would be equally true of every run in the product is a rule of the product, and a rule of the
-product is not information — it is teaching, and it costs the same pixels every time it is drawn
-whether or not anyone needed it. Operator, verbatim: *"i feel like the dashboard right now is
-bloated with extra information like explanations and descriptions that we dont need."*
-
-This decision drove the removal of dozens of strings (control descriptions restating the
-control's label, captions repeating icons, the UI describing its own mechanics, the product
-asserting its own correctness) and the relocation of the rest into ⓘs. An **empty state** still
-owes three things and no more: what would be here, why it is not, and what to do — it does not owe
-a defence of the design. The full deletion criteria live in the demo's `DESIGN.md` ("The product
-does not explain itself"), which is binding on every surface built against this contract.
+<!-- roadmap: order-4 -->
+
+**What this is.** The operator-ratified presentation series that decided what a ROW is, before any
+of it was built. It is a dashboard-only square with no wire counterpart, because it is a vocabulary
+rather than a payload: three row types (Run · Group · Member), a `containment` word for how a child
+belongs to a parent, and a set of rules for what a group shows at every size.
+
+**Read the whole square with one fact in front of you: the group half is a contract for a shape
+nothing can mint.** Every enqueue path in this tree stamps `shape: "single"` — the command kernel,
+the capture handoff and the start-plan service alike — and the kernel says so itself in a comment:
+*"the coordinator/member fan-out has no runtime yet (nothing mints an `operation` run)."* The
+projection, the containment fold, `memberRollup`, `memberPreview`, the member well and the
+`run-group` / `run-member` parity references are all real and all fed by hand-composed fixtures.
+Building the presentation ahead of the workflows was correct — the shape is what the workflows will
+be authored against — and this section says once, here, that it is ahead, rather than repeating the
+caveat in each entry.
+
+#### The series, and the collision that makes the prefix mandatory
+
+Ratified by the operator **2026-07-25**, continuing the row-model series ratified 2026-07-24 (D1:
+three row types with review-as-status and eight statuses; D2: a PDF upload is always a Group; D3:
+unrunnable items are typed Rejected Member Rows, delete-only; D4: a delegated OCR run keeps its own
+Run Row in the OCR panel plus a link from the parent; D5: groups default collapsed, auto-expand on a
+member `Waiting on you` or `Failed`). D6–D17 close the twelve delegation questions in the
+2026-07-25 delegation-layouts ledger §7; D18–D20 close three build-gating decisions in the
+demo-feature-plan ledger §6. That ledger's vocabulary is the one used throughout:
+**`containment`** = `member | linked | rejected`, Group Row anatomy + presentation ladder + rollup
+precedence, and delegation shapes S0–S7.
+
+**This series is NOT `reference/decisions.md`'s D-numbers.** Cite these as *row-model D6…D24*,
+prefix mandatory. The collision is real and load-bearing: this series' **row-model D22** shortens
+the status vocabulary, while the memo's bare **D22** is an unrelated contract-shape/guards ownership
+split. `reference/decisions.md` carries the matching warning at its top; keep both in step.
+
+**Two dated amendments moved several entries after the fact, and each says so where it lands.** The
+2026-07-27 demo redesign took D11's 41+ status-matrix rung, moved Data off the tab set without
+changing one of D19's semantics, and added D21. The 2026-07-28 waves took the rest of D11's ladder,
+gave D5 a close-on-settle arm, overrode the gate banner that expressed D18's loudness principle,
+re-amended D19(d), reinforced D20 structurally, extended D21, and added D22–D24. **Several of these
+reverse earlier operator-directed decisions**, which is why each entry records the reason: a future
+agent must not restore the old behaviour on principle.
+
+#### Where each entry's normative text now lives
+
+The series was written as one list and its entries belong to four different surfaces. Each is
+folded into the square it governs, so an operator reading a surface reads its rules; nothing was
+dropped, and this table is how a citation to the old flat list resolves.
+
+| Entry | Now in | What it says there |
+|---|---|---|
+| **D5** (collapse/auto-expand, close-on-settle) · **D6** (`linked` signers) · **D9** (rejected members) · **D11** (one member presentation) · **D13** (`Re-upload`) · **D14** (a group of one) · **D16** (tree-scoped cancel) | below, this section | the group model — the half nothing can mint |
+| **D7** · **D8** · **D10** · **D17** | §9.3 (named as owed) | the OCR review and packet-receipt sections, unservable today |
+| **D12** (the gate's age) | §9.2 | served in full; the pill draws none of it — an operator call |
+| **D15** (Search and Match as modes) | §9.1 | the descriptor declares ONE graph and no mode (`{#order-1}`) |
+| **D18** (the pill row) · **D22** (the shortened vocabulary) | §9.9 | the status bar and the two `Done`s |
+| **D19** (tabs, Receipt, Data) | §9.3 + §9.3.1 | the served tab set and the Context rail |
+| **D20** (`Write parked`) | §9.4 | the two typed exits |
+| **D21** (equal-width segments) | §9.3 | the timeline |
+| **D23** · **D24** | below, this section | the two house rules the series settled for every surface |
+
+#### The group model, as decided and as unbuilt
+
+- **D5 — a settled group collapses shut.** Groups default collapsed and auto-expand on a member
+  `Waiting on you` or `Failed`; the symmetric arm is that a group that SETTLES collapses back shut,
+  and a settled row stops re-explaining its own composition — the prose count line, the checked
+  counter and the member-name preview all drop on terminal rows, while attention and live rows keep
+  everything. The auto-expand exists because an open group is a demand; a group with nothing left to
+  demand holding the space of an open one is the same defect inverted. The row's expansion state and
+  its explanatory chrome are both projections of settlement, derived in ONE place
+  (`visibleMemberIds` branches on settlement and nothing else), never authored per fixture.
+- **D6 — oath-upload's signers are `linked`, not `member`; shape S4 is deleted.** Oath Upload stays
+  ONE Run Row for the PDF being uploaded; the signer rows live in the Oath Signature panel as their
+  own rows, and the upload row carries a chip (`6 signers · 3 done ↗`) that jumps there. A signer run
+  is independently meaningful and independently viewable; the upload row's job is the ticket, not the
+  roster. This supersedes the delegation ledger's §7 Q1, which recommended the opposite, and deletes
+  its §5 **S4** layout — oath-upload has no Group Row anatomy, no member ladder and no member rollup.
+  It restores the as-built production model §4.5 describes: a real `single` task born at upload that
+  walks `OCR prep → awaiting approval → wait signatures → submit` as one row, so the presentation now
+  matches the completion contract instead of contradicting it.
+- **D9 — rejected members never count toward done.** A packet carrying rejections is
+  `Done with warnings` until every rejection is deleted or explicitly acknowledged; rejected members
+  stay excluded from the rollup and counted separately (`50 people · 3 rejected`). An unrun person is
+  not a finished person. **As-built divergence:** `ContainmentSchema` serves two arms and this
+  vocabulary names three — nothing mints a rejected member, so nothing is wrong on screen, but the
+  served union is the real one (§9.2). *(This entry's original wording said the verdict requires zero
+  unacknowledged rejections under its pre-D22 name; the verdict is unchanged and its drawn label is
+  now `Done`, §9.9.)*
+- **D11 — one member presentation at every count; the density ladder is deleted.** A group's expanded
+  body is one rung at every member count: count strip → compact member lines in a capped scroll well
+  → `Open all N people` drill-in. The same shape at 3 people and at 50 — scale changes the
+  container's **overflow** and nothing else.
+
+  This replaced a ratified four-rung ladder in two stages, both reversals of operator-directed
+  designs. 2026-07-27 deleted the **41+ status matrix**: the operator saw the 50-member I-9 group
+  render as a grid of status cells where the 18-person work-study group renders named lines, read the
+  matrix as *a different kind of row*, and said *"we also don't need a new row type for i9 quarterly
+  retention."* 2026-07-28 deleted the rest: shown a 2-member group rendering full inline row cards
+  beside a 6-member group rendering compact lines, the operator said *"why are some like this and
+  some like that? keep the design like above. ditch the bottom design completely."* An earlier
+  amendment recorded the operator confirming "4 is good" for the 1–3 / 4–12 boundary; **that
+  ratification is spent** and must not be quoted to restore the rung.
+
+  **The principle, which is why neither deletion may be undone piecemeal:** a second visual language
+  for *the same thing but more of it* makes the product read as having more concepts than it has —
+  the exact cost the three-row-type model exists to avoid. D14 holds this from the other end; the
+  matrix broke it at 41+, the inline cards at 3. `densityRung` / `DensityRung` / `DENSITY_RUNGS` were
+  **deleted, not reduced to a function that ignores its argument** — a per-count switch that maps
+  every count to one rung is a per-count switch waiting to grow rungs back. Nothing was lost: the
+  per-status information the matrix carried survives as the count strip's status counts plus the
+  waiting / rejected tallies, an inline card's detail survives on the member's drill-in and the
+  group's People tab, and `Open all N people` is still the route into the full list at every size.
+
+  **Two as-built corrections to this entry, from the 2026-08-20 audit.** The components are
+  `MemberWell` / `MemberLine`, not the `PersonWell` / `PersonLine` the prose named. And the two
+  numbers were wrong: `--ds-h-member-well` is `calc(5 × --ds-h-member-line + 4 × --ds-border-w)` =
+  **144px, five whole lines**, not "136px ≈ 5.67 rows … deliberately not 144px" — there is no half-cut
+  sixth row and no such depth cue in the built well. An **in-row expand to 20 lines**
+  (`--ds-h-member-well-open`) exists that the entry never mentioned. What survives untouched is the
+  ordering rule: members are ordered **attention-first**, so the top of the well IS the attention list
+  the 41+ rung used to draw as a separate strip.
+- **D13 — a failed `linked` child makes the parent `Failed`, with `Re-upload`.** The parent mirrors
+  the child's error **verbatim** (never "Unknown error") and offers a `Re-upload` action.
+  **`Waiting on you` is reserved for a pending decision and is never used for a breakage** — the two
+  states demand different operator actions, and a breakage disguised as a decision is a gate that will
+  never resolve. As-built: the verbatim half is served (`liveMessage`, §9.2); `Re-upload` is not in
+  `ActionCommandKeySchema`.
+- **D14 — a group of one still renders as a Group Row.** A group of one that looks like a Run Row
+  makes the next fan-out look like a new object.
+- **D16 — cancelling a group is tree-scoped and final.** The served key is `cancel-tree` and the
+  footer titles it with its blast radius (§9.2). Its "no confirmation dialog and no undo window" half
+  is contradicted by the built surface, which raises a confirm whose body counts the members; the
+  code's behaviour is the confirm, and which of the two wins is an operator call
+  (`{#operator-calls}`).
+
+#### Two house rules the series settled for every surface
+
+- **D23 — the motion rule is narrowed on purpose.** From *never animate status changes* to **never
+  animate ambient status churn; a run that starts needing you may announce itself** — once, on the
+  edge. The reasoning, so the narrower form is applied and not merely quoted: a dashboard where
+  everything that updates also moves is unreadable exactly when it is busiest, and this one updates
+  constantly, so elapsed timers, incrementing counts, background settling and self-initiated re-sorts
+  stay STILL — if all of that moved, movement would be unavailable for the one thing that needs it.
+  But the two states allowed to shout mark the moment a run stops being background and becomes work,
+  and that is precisely the moment the operator is looking somewhere else. **Four constraints keep the
+  exception from becoming a licence:** (1) **edge, never state** — it fires on the transition INTO an
+  attention status, and a row already waiting when scrolled to does nothing; (2) **never on mount** —
+  first sight of a row is not a change; (3) **once, then still** (`ATTENTION_ANNOUNCE_MS`) — nothing
+  pulses, repeats or waits to be acknowledged; (4) **only the two loud statuses** — reaching for this
+  on a third is the drift, and the answer is no. Implemented once (`useAttentionAnnounce`); never
+  re-derived at a second call site. This entry is authority for exactly the attention edge and nothing
+  more.
+- **D24 — a professional dashboard does not explain itself.** Explanatory prose on a surface is a
+  **defect** unless it lives inside an **ⓘ** (a click-to-open popover — reachable by pointer, touch
+  and keyboard, costing the surface nothing until asked for). Two exemptions, and only two, because
+  neither is explanation: a **refusal**, which must state what was not done and why or the operator
+  cannot act on it; and a genuine **hazard** about the run in front of you (a stale checkpoint, a
+  staged write, an unresolved park) — those are outcomes, not teaching. **The test:** a sentence on a
+  surface must be a fact about the RUN in front of you; a sentence equally true of every run in the
+  product is a rule of the product, and a rule of the product is teaching that costs the same pixels
+  every time it is drawn whether or not anyone needed it. Operator, verbatim: *"i feel like the
+  dashboard right now is bloated with extra information like explanations and descriptions that we
+  dont need."* This drove the removal of dozens of strings and the relocation of the rest into ⓘs. An
+  **empty state** owes three things and no more: what would be here, why it is not, and what to do —
+  it does not owe a defence of the design. The full deletion criteria live in
+  `src/dashboard/DESIGN.md`, which is binding on every surface built against this contract.
+
+<!-- roadmap-status: order-4 -->
+- [x] the three row types, the `containment` vocabulary and the group anatomy are decided, drawn and pinned by parity references
+- [x] D6 — oath-upload is one Run Row with `linked` signers; shape S4 deleted, so the presentation matches §4.5's completion contract
+- [x] D11 — one member presentation at every count; the ladder's types are deleted rather than neutered
+- [x] D23 — the attention edge: once, on the transition, only the two loud statuses, one implementation
+- [x] D24 — the ⓘ rule, its two exemptions and `DESIGN.md` as the binding companion
+- [ ] **nothing mints an `operation` run** — every enqueue path stamps `shape: "single"`, so D5's settle-collapse, D9's rejected arithmetic, D11's well and D14's group-of-one have never run against a real group; the whole group model is fixture-fed
+- [ ] D9's `rejected` containment arm is not on the wire (`ContainmentSchema` serves two of the vocabulary's three)
+- [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
+- [!] D16's "no confirmation dialog" against the built confirm-first dialog — an operator call (`{#operator-calls}`)
+> 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
+<!-- /roadmap-status -->
 
 ---
 
