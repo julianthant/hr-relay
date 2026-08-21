@@ -33,15 +33,15 @@
  *   someone took, and the live exit run rendered a `condition-false` branch as
  *   "Cancelled". A skipped row now also carries the executor's recorded
  *   `not-run` reason, or an explicit statement that none was recorded.
- *   **D266**: this mapping is no longer owned here — it is `taskStateOf` in
+ *   **D268**: this mapping is no longer owned here — it is `taskStateOf` in
  *   `../run-status.ts`, shared with the queue projector's pipeline chip, whose
  *   own copy used to answer `blocked` for the same three outcomes.
  *
  * This query derives NEITHER the run's status NOR its panel kind on its own
- * (D266). `deriveRunStatus` and `panelKindOf` come from `../run-status.ts`, the
+ * (D268). `deriveRunStatus` and `panelKindOf` come from `../run-status.ts`, the
  * same functions the queue projection's row is built from. The private
  * `statusOf` they replaced was missing the fold's `ended` and `claimedBy`
- * arms — a real gap (a re-inlined private copy is exactly what D266 closes)
+ * arms — a real gap (a re-inlined private copy is exactly what D268 closes)
  * even though the ordering that would exploit it live never occurs:
  * `run-executor.ts` settles the terminal CAS before emitting the run's
  * `span.ended`, so authority leads and the fold only ever lags. The window

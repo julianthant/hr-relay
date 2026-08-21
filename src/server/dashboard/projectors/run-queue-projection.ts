@@ -28,7 +28,7 @@
  * rebuild that itself fails leaves the projection loudly degraded (health
  * carries the exact error); it never serves a half-folded day as healthy.
  *
- * Closed vocabulary mappings, and where they live (D266). This projector no
+ * Closed vocabulary mappings, and where they live (D268). This projector no
  * longer OWNS them: `deriveRunStatus` (run → status), `taskStateOf` (task span
  * → step state) and `panelKindOf` are one implementation each in
  * `../run-status.ts`, which the run-detail query reads too — a queue row and

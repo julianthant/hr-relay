@@ -1163,7 +1163,7 @@ declaration-gated (`capabilities.editData`, declared by `person-lookup` alone).
 **Left:** `context-evidence` and `captures` (declared-unserved); the per-run subscription step 3
 replaces (§3.5); and the whole-notes-corpus read on every logs GET (Track D row D5).
 
-The panel's SECOND status/outcome derivation is CLOSED — Track D row **D1**, ratified as **D266**
+The panel's SECOND status/outcome derivation is CLOSED — Track D row **D1**, ratified as **D268**
 (2026-08-21, `81bfed73`), whose normative text is ref dashboard-surfaces §2.3. `queries/run-detail.ts`
 used to re-derive what the projector had already computed, missing the fold's `ended` and
 `claimedBy` arms, so a run whose span stream ended before authority settled read `done` in its row
@@ -2021,7 +2021,7 @@ D1 → §5.1.3 (the panel's second status derivation) · D2 → §6.9 and §5.1.
 D11 → §4.
 
 <!-- roadmap-status: track-d -->
-- [x] D1 one status/outcome derivation — `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in `src/server/dashboard/run-status.ts`, read by the queue projector AND `queries/run-detail.ts`; the unified task vocabulary keeps `cancelled` on D123's rule and `PipelineStepWireSchema.state` gains that arm (**D266**, `81bfed73`)
+- [x] D1 one status/outcome derivation — `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in `src/server/dashboard/run-status.ts`, read by the queue projector AND `queries/run-detail.ts`; the unified task vocabulary keeps `cancelled` on D123's rule and `PipelineStepWireSchema.state` gains that arm (**D268**, `81bfed73`)
 - [ ] D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified, the false D253 sentence in `src/dashboard/CLAUDE.md` corrected
 - [ ] D3 every command settlement folds through `settleCommandResult` — 7 of 9 sites still enumerate both refusal arms by hand
 - [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against a seeded 1,240-row / 108-member fixture and recorded here as this section's first numbers
@@ -2033,7 +2033,7 @@ D11 → §4.
 - [?] D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured — this section's virtualize-or-page bullet
 - [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified that NOTHING in src/ or tests/ measures or asserts any budget in this section (no perf/budget/bench test, no 1,240-row fixture, no `memo`, no virtualization, no backpressure handling) — the section is normative and unenforced, exactly as D264 records; left: all eleven rows
-> 2026-08-21 | track-d D1 | D1 landed as **D266** (`81bfed73`): one `deriveRunStatus`, one task-outcome vocabulary, one `panelKindOf`, pinned by `tests/unit/server/run-status-derivation.test.ts` asserting the queue row and the detail panel against each other; left: D2–D5, D11, and every number this section still owes
+> 2026-08-21 | track-d D1 | D1 landed as **D268** (`81bfed73`): one `deriveRunStatus`, one task-outcome vocabulary, one `panelKindOf`, pinned by `tests/unit/server/run-status-derivation.test.ts` asserting the queue row and the detail panel against each other; left: D2–D5, D11, and every number this section still owes
 <!-- /roadmap-status -->
 
 ---

@@ -51,7 +51,7 @@ const PipelineStepWireSchema = z.strictObject({
   id: z.string().regex(/^[a-z][a-z0-9-]*$/),
   label: z.string().min(1),
   /**
-   * D266 — the SAME vocabulary the run-detail timeline step carries, less its
+   * D268 — the SAME vocabulary the run-detail timeline step carries, less its
    * `replayed` arm (a replayed node emits no span, so no chip measures it).
    *
    * `cancelled` was added when the two vocabularies became one: the pipeline

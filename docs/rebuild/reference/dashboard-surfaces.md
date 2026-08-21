@@ -850,11 +850,11 @@ React seed and every frozen archived record); and making the wire's uniqueness r
 (the refinement is what caught this — a projection serving two rows under one id is the collision
 D123 exists to prevent).
 
-#### D266 — ONE run-status derivation, ONE task-outcome vocabulary (2026-08-21)
+#### D268 — ONE run-status derivation, ONE task-outcome vocabulary (2026-08-21)
 
 <!-- roadmap: track-d -->
 
-**The rule.** There is one projection (this section), and from D266 there is one DERIVATION on top
+**The rule.** There is one projection (this section), and from D268 there is one DERIVATION on top
 of it. `deriveRunStatus(row, authority)`, `taskStateOf(outcome)` and `panelKindOf(shape)` are one
 implementation each, in `src/server/dashboard/run-status.ts`; the queue projector and
 `queries/run-detail.ts` both read them, and no surface may re-derive either fact privately.
@@ -887,7 +887,7 @@ stay ranked directly under authority terminal even though the executor's own ord
 them fire ahead of it: the projector's disk tail means the fold can still be the last fact to
 settle before the next served wire, and keeping authority strictly first — rather than dropping the
 fold arms, or letting a second derivation trust the fold on its own — is what stops the fold from
-ever acting as a second authority. That is the whole point of D266: ONE derivation, and authority
+ever acting as a second authority. That is the whole point of D268: ONE derivation, and authority
 always wins when it has an opinion.
 
 **The task vocabulary, and why `cancelled` won.** `TASK_OUTCOME_PIPELINE` mapped

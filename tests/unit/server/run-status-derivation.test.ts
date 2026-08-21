@@ -1,5 +1,5 @@
 /**
- * D266 — the queue row and the run-detail panel are the SAME derivation.
+ * D268 — the queue row and the run-detail panel are the SAME derivation.
  *
  * Ref dashboard-surfaces §2.3 has always said there is one projection. There
  * were two derivations on top of it: the projector's `#status` read the span
@@ -72,7 +72,7 @@ function statusPair(w: DashboardWorld, seed: number): { row: string; panel: stri
   return { row: surface?.status ?? "<no row>", panel: detailOf(w, seed).header.status };
 }
 
-describe("D266 — one run-status derivation", () => {
+describe("D268 — one run-status derivation", () => {
   it("agrees on `done` when the run's span ended before authority settled", () => {
     // The C1 case, and the ordinary one: the worker emits `span.ended` before
     // its terminal transaction commits. The row read `done` off the fold; the
@@ -207,7 +207,7 @@ const VOCABULARY: readonly (readonly [SpanOutcomeWire, string])[] = [
   ["interrupted", "blocked"],
 ];
 
-describe("D266 — one task-outcome vocabulary", () => {
+describe("D268 — one task-outcome vocabulary", () => {
   for (const [outcome, expected] of VOCABULARY) {
     it(`reads a ${outcome} span as ${expected} on the pipeline chip AND the timeline step`, () => {
       const w = world();

@@ -6,7 +6,7 @@ disagrees with what the on-disk streams and authority actually hold.
 No open record demands work. All three records below carry a dated decision: the `span.patched`
 channel was RETIRED (D254), the span-fold duplicate was FIXED at the fold (D255) with its one
 remaining half — the write sequencer's beat-span identity — deferred against a named trigger, and
-the run-detail panel's second status derivation was FIXED by **D266**.
+the run-detail panel's second status derivation was FIXED by **D268**.
 
 _(The 2026-08-14 "`span.patched` has a declared vocabulary and no emitter" record was CLOSED
 2026-08-20 by **D254**, an operator ruling: the channel is retired rather than built. The
@@ -109,7 +109,7 @@ attempt. D214's identity fix never reached it.
 
 ## ~~The run-detail panel derives a run's status a second time, and answers a different word~~ FIXED
 
-**Recorded:** 2026-08-20 (the architecture audit, C1/C2) · **Status:** FIXED 2026-08-21 by **D266**
+**Recorded:** 2026-08-20 (the architecture audit, C1/C2) · **Status:** FIXED 2026-08-21 by **D268**
 (`81bfed73`) · **Owning doc:** ref dashboard-surfaces §2.3
 
 **Symptom.** Two surfaces, one fact, two answers. `queries/run-detail.ts`'s private `statusOf`

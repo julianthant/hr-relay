@@ -1,5 +1,5 @@
 /**
- * D266 — the ONE derivation of what a run IS, and of what one of its steps DID.
+ * D268 — the ONE derivation of what a run IS, and of what one of its steps DID.
  *
  * Ref dashboard-surfaces §2.3 says there is one projection; it did not say
  * there is one derivation, and by 2026-08-20 there were two of each. The queue
@@ -134,7 +134,7 @@ export type TaskExecutionState = "active" | "done" | "failed" | "skipped" | "can
 
 /**
  * The task-level outcome vocabulary — ONE mapping, for the pipeline chip and
- * the timeline step alike (D266).
+ * the timeline step alike (D268).
  *
  * It is the run-level map above, one level down, and deliberately so: a span
  * outcome and a run outcome are the same seven words, so answering them

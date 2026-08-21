@@ -177,7 +177,7 @@ const STEP_TONE: Record<PipelineStep["state"], string> = {
   failed: "bg-[var(--ds-danger)]",
   blocked: "bg-[var(--ds-status-waiting-mark)]",
   skipped: "bg-[var(--ds-border-subtle)]",
-  // D266 — the pipeline's own `cancelled` arm, in the same hue the run-detail
+  // D268 — the pipeline's own `cancelled` arm, in the same hue the run-detail
   // timeline draws a cancelled step: one span, one word, one colour.
   cancelled: "bg-[var(--ds-status-cancelled-mark)]",
 };

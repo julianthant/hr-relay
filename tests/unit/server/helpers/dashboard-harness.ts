@@ -413,7 +413,7 @@ export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQu
  * ONE task span, started and (optionally) ended.
  *
  * `outcome` is the WHOLE `SpanOutcomeWire` union rather than a convenient
- * three, because D266's vocabulary pin has to state each of the seven words a
+ * three, because D268's vocabulary pin has to state each of the seven words a
  * span can actually carry — a helper that could only emit three would have made
  * the four unpinnable arms exactly the ones that diverged.
  */
