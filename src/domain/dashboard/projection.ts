@@ -50,7 +50,17 @@ export const QueueStatusSchema = z.enum([
 const PipelineStepWireSchema = z.strictObject({
   id: z.string().regex(/^[a-z][a-z0-9-]*$/),
   label: z.string().min(1),
-  state: z.enum(["pending", "active", "done", "failed", "skipped", "blocked"]),
+  /**
+   * D266 — the SAME vocabulary the run-detail timeline step carries, less its
+   * `replayed` arm (a replayed node emits no span, so no chip measures it).
+   *
+   * `cancelled` was added when the two vocabularies became one: the pipeline
+   * used to map `cancelled|discarded|superseded` to `blocked` while the
+   * timeline mapped them to `cancelled`, so one span read as two different
+   * things depending on which surface drew it. `blocked` named no act; those
+   * three outcomes all name one (D123).
+   */
+  state: z.enum(["pending", "active", "done", "failed", "skipped", "blocked", "cancelled"]),
   /**
    * How long this step's spans took, summed over EVERY execution of the node.
    *
