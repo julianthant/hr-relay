@@ -19,7 +19,18 @@ import { deepFreeze } from "../immutability.js";
  * composition can falsify — the manifest row that really minted a run, the
  * receipt that really froze into an archive.
  */
-export const GRAPH_SCENARIO_FILE_PATTERN = /^tests\/scenario\/[a-z0-9-]+\.scenario\.test\.ts$/u;
+/**
+ * R10 (§10.9) moves a workflow's structural scenario into its own folder —
+ * `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` — and
+ * `separations-kuali-finalization` is the first pair in the tree (D266). Both
+ * layouts are graph scenarios and both are accepted while the corpus migrates;
+ * the folder form is exact on purpose (`structural`, one workflow folder deep),
+ * so a stray `tests/scenario/workflows/<id>/dry-run.scenario.ts` sibling still
+ * fails every check that names the two kinds. The walk pattern is deliberately
+ * untouched: a walk crosses slices and belongs to no workflow folder.
+ */
+export const GRAPH_SCENARIO_FILE_PATTERN =
+  /^tests\/scenario\/(?:[a-z0-9-]+|workflows\/[a-z0-9-]+\/structural)\.scenario\.test\.ts$/u;
 export const INTEGRATION_WALK_FILE_PATTERN = /^tests\/scenario\/[a-z0-9-]+\.walk\.test\.ts$/u;
 
 export const ExecutableScenarioSpecSchema = z.strictObject({
@@ -46,7 +57,7 @@ const SEPARATIONS_UCPATH_TERMINATION_FILE =
  * authority database; 5b's pure graph walk covers the gate.
  */
 const SEPARATIONS_KUALI_FINALIZATION_FILE =
-  "tests/scenario/separations-kuali-finalization.scenario.test.ts";
+  "tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts";
 /**
  * Chunk 6's COMPOSITION — the largest graph in the program, and one file for
  * the same three kinds of arm chunk 5 established: pure fold walks for the five
