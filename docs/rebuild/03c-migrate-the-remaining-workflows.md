@@ -608,13 +608,65 @@ building it earlier would shape a review UI against no corpus.
 <!-- roadmap: order-4 -->
 
 <!-- roadmap-status: order-4 -->
+- [ ] the §b questionnaire for oath-signature and for emergency-contact — unasked; both need a controlled-commit target the operator approves
+- [ ] the first operation FAN-OUT and its approval gates, exercised through the real OCR review UI
+- [ ] the `oath-signature` and `emergency-contact` descriptors + modules + tuple entries
+- [ ] the first non-separations controlled commits — a bounded UCPath enter/fill, under `ref write-safety` §3.2
+- [ ] PROOF T1 per workflow + the T3 pair (this row's T3 is the group/member view, which no other workflow produces)
+> 2026-08-20 | docs-cohesion 03c | nothing built; `RunShapeSchema`'s `operation` / `operation-member` arms still have no producer, so every group surface below is drawn against a shape no run has had
 <!-- /roadmap-status -->
+
+**What it is.** Oath date rows and emergency-contact fills — OCR fan-out with a light write at the
+end. **Systems:** UCPath (driven), consuming order 3's extraction output.
+
+**Store tasks.** REUSE `ucpath`'s driver, session and search tasks and order 3's extraction /
+normalization outputs. BUILD the enter/fill commit contracts, each with its prepare contract, its
+transaction lease scope, its stable idempotency key, its expected subject, its post-prepare semantic
+observation and its mismatch evidence — the §b questionnaire's item 1, answered per commit.
+
+**Why this row is where fan-out becomes real.** `ref dashboard-surfaces` §4 is the unified
+completion contract — §4.1's typed staged completion program, §4.2's refusal to let one spec borrow
+another's shape, §4.3's intent-derived child shape and stage consumption, §4.4's durable approval
+manifest. All of it is designed and none of it has ever run: the `operation` run shape has no
+producer, the Group People panel body says it is not served, and the D5/D9/D11/D14/D16 row-model
+decisions (`ref dashboard-surfaces` §9) describe rows nobody has seen. This order produces the first
+real ones.
+
+**The specific hazard: two firsts in one row.** It is simultaneously the first fan-out AND the first
+non-separations controlled commit. Those are independent proofs and they must not be collapsed — a
+green fan-out says nothing about a landed write, and the write proof is `ref write-safety` §3.2's
+full shape (dry run with zero durable rows, a forced subject mismatch refused with zero fence and
+zero click, ONE commit whose proof is a read-back plus the outbox rows plus the terminal span, an
+idempotent re-run answering `already-present`). Take them in that order: prove the fan-out with the
+write still dry, then prove the write on a single member.
+
+**The second hazard: the write is small, which makes it tempting.** A bounded enter/fill is the
+easiest real write in the program, and that is exactly the argument for running the whole §3.2
+contract over it rather than an abbreviated version — the contract is being proved here for every
+row after it.
 
 ### Dashboard · wire oath-signature · emergency-contact
 <!-- roadmap: order-4-dash -->
 
 <!-- roadmap-status: order-4-dash -->
+- [ ] 5.1.1 run modal — typed start inputs + start plan for oath-signature and emergency-contact
+- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
+- [ ] 5.1.4 gate ceremony — the approval shape this workflow's gate demands, computed SERVER-side (`ref write-safety` §14.11)
+- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
+- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] Group People — paged members, rollup and containment over REAL operation members
+- [ ] the group People panel BODY — declared in `TAB_ORDER`, never servable (03a's finding, same shape as order 3's Review tab)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces
+> 2026-08-20 | docs-cohesion 03c | nine squares — the standard seven minus intake, plus Group People and its unservable panel body; the gate square is present because this row gates
 <!-- /roadmap-status -->
+
+The gate square is not optional here and it is not separations' gate: `ref write-safety` §14.11's
+rule is that the approval SHAPE is computed by the server, never chosen by the frontend, because a
+frontend free to choose it can quietly turn every gate into one click — which is §14.6's
+rubber-stamping risk manufactured by accident. Group People is the other real build: D11 says one
+member presentation at every count, D14 says a group of one still renders as a group row, D9 says
+rejected members never count toward done, and D16 says cancelling a group is tree-scoped and final.
 
 ## Order 5 · i9-check
 <!-- roadmap: order-5 -->
