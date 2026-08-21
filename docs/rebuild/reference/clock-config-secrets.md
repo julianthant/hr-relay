@@ -71,17 +71,6 @@ values, so a missing/unreadable ngrok source blocks selected capture instead of 
 was not an environment secret. Redaction canaries and single-source guards are active. Immutable
 per-run snapshots and the consumers that use these leaves still land with their owning later items.
 
-## Phase 1c Stage A as-built config delta (2026-07-31)
-
-`src/domain/config/snapshot.ts` now defines the immutable durable snapshot shell: strict snapshot
-id/revision/fingerprint/timestamp/actor, the complete already-resolved non-secret `Config`, and the
-typed per-leaf provenance map from the one resolver. This records the exact value/source world a
-future run will bind without re-reading mutable settings. Stage A adds no snapshot repository,
-enqueue integration, settings handler, or browser-context partitioning; those consumers remain
-later spine work and Phase 1c is not complete.
-
----
-
 ## Phase 1c Stage C as-built storage-health delta (2026-08-01)
 
 The registered `authority.health` preflight runner now consumes the same read-only storage doctor
@@ -465,107 +454,164 @@ the layer has no producer — which is exactly the condition under which the bug
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
-Every run and ledger entry must say which environment/config actually governed it. The request may
-omit instance preferences (meaning production), but enqueue always resolves and stamps a complete
-snapshot; runtime tasks never re-read mutable process settings mid-run.
+<!-- roadmap: p1-base -->
+<!-- roadmap: p1-authority -->
+
+<!-- roadmap-status: p1-authority -->
+- [x] `src/domain/config/snapshot.ts` is the immutable durable snapshot: strict id/revision/fingerprint/`capturedAt`/`capturedBy`, the complete already-resolved non-secret `Config`, and the per-leaf provenance map from the one resolver (Phase 1c Stage A, 2026-07-31)
+- [x] `ConfigSnapshotWriteSchema` refuses to MINT a row missing any current-generation leaf, so §4.1's read tolerance never becomes a licence to persist a hole
+- [x] the envelope retains `configFingerprint` + `configSnapshotId`, and the executor reads the RETAINED row back by id — a missing row refuses the node rather than re-resolving current config (`src/core/run-executor.ts:1150-1156`)
+- [x] D116 reuse identity `(worker, system, resolvedInstance, configFingerprint)`, bound for the claimed run's window by `withBoundRunConfigFingerprint` (`src/core/worker-sessions.ts`), with the fingerprint in the on-disk profile path too
+- [x] the isolation contract is DATA (`config/runtime-isolation.json` v3) reaching the runtime through one exported direct-`const` `defineRuntimeIsolation` call, audited on both real checkouts by `operational-isolation.test.ts` (D88/D216/D247)
+- [ ] the snapshot is captured ONCE per dashboard process at boot (`src/server/dashboard/compose.ts:361-370`, `revision: 1`), not per enqueue — every run started by one process shares one row, and the worker process resolves its own config and inserts nothing
+- [ ] `src/domain/config/instance.ts`'s `resolveInstances` — the arm that proves a requested TEST endpoint EXISTS before the run is queued — has no production caller; enqueue uses `src/services/start/plan.ts:83-95`, which defaults every declared system to `prod` and refuses an undeclared one but performs no URL check, so a `test` request with no distinct test URL is refused at session acquisition instead
+> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/{snapshot,instance}.ts`, `src/services/start/plan.ts`, `src/core/run-executor.ts`, `src/server/{dashboard,worker}/compose.ts`, `config/runtime-isolation.json` and `tests/unit/architecture/operational-isolation.test.ts`; left: the two as-built gaps above
+<!-- /roadmap-status -->
+
+Every run and ledger entry must say which environment and configuration actually governed it. The
+request may omit instance preferences (meaning production), but a run is always stamped with a
+complete snapshot identity, and runtime tasks never re-read mutable process settings mid-run.
 
 ```ts
-// amends ref workflow-model's RunEnvelope — ref workflow-model remains the OWNER of RunEnvelope's shape; this field is
-// specified HERE because instance selection is this doc's concept (D1), same pattern as dryRun (D6)
-// living on the envelope but being fully specified in ref workflow-model.
+// amends ref workflow-model's RunEnvelope — ref workflow-model remains the OWNER of the envelope's
+// shape; these fields are specified HERE because instance selection is this doc's concept (D1),
+// the same pattern as dryRun (D6) living on the envelope and being specified in ref workflow-model.
 interface RunEnvelope {
   // … runId, workflow, itemId, traceId, parent, shape, dryRun, startAt, injected,
-  //    freshnessOverride, retryOf, attempt, enqueuedAt (ref workflow-model §2, unchanged) …
-  /**
-   * Per-system instance targeting. ABSENT (the default) means every system this run touches
-   * resolves to PRODUCTION — the loud-safe default. A system present here as `"test"` means this
-   * run's tasks against that system resolve config from the settings.json test-URL override
-   * instead of the production literal.
-   */
-  requestedInstance?: Partial<Record<BrowserSystemId, "prod" | "test">>;
-  /** Exact keys are the descriptor-derived browser systems touched by this run; no extras or
-   * omissions survive RunEnvelopeSchema validation. */
-  resolvedInstance: Partial<Record<BrowserSystemId, "prod" | "test">>;
+  //    freshnessOverride, retryOf, attempt, enqueuedAt (ref workflow-model, unchanged) …
+  /** ABSENT (the default) means every system this run touches resolves to PRODUCTION. */
+  requestedInstance?: InstanceSelection;
+  /** Exactly the descriptor-derived browser systems this run touches; no extras, no omissions. */
+  resolvedInstance: InstanceSelection;
   configFingerprint: Fingerprint;
-  configSnapshotId: ConfigSnapshotId; // immutable SQLite row containing non-secret effective values+sources
+  configSnapshotId: ConfigSnapshotId;
 }
 ```
 
-- **Loud default, never silent.** Omitting `requestedInstance` resolves
-  every system to production, matching current behavior byte-for-byte. There is no implicit "test"
-  state to fall into by omission.
-- **Fail-loud mismatch check, at resolve time.** `resolveSystemUrl(config, systemId, requested)`:
-  - `requested === "prod"` (default) → always the production literal. Cannot be silently
-    redirected to test by a stray settings.json edit — production is the code-default, not a
-    settings value that could accidentally be left pointing at a sandbox.
-  - `requested === "test"` but no distinct test URL is configured for that system (the settings
-    override is empty or equals the production literal) → **throws**: `"run <runId> requested TEST
-    instance for <system> but no test URL is configured (urls.<system> is empty/matches
-    production) — refusing to silently run against production."` This is the structural
-    impossibility the charter asks for: a run that believes it's hitting a sandbox can never
-    silently land on production.
-- **Recorded in the audit trail.** `RunQueued.resolvedInstance` (ref dashboard-surfaces's span schema) carries the resolved
-  map (even when empty/all-prod) — so every run's actual target, per system, is queryable from the
-  ledger (gap-audit gap 5), not inferred.
-- **Worker-owned context partitioning.** Each worker owns its browser contexts, keyed by
-  `(system,resolvedInstance,configFingerprint)`. Prod/test runs never share a context. A config
-  change creates new worker-owned contexts; existing runs finish against their stamped snapshot.
+`InstanceSelection` is a `z.strictObject` with one optional `"prod" | "test"` leaf per
+`BrowserSystemId` (`ucpath`, `crm`, `onbase`, `kuali`, `servicenow`, `i9`, `new-kronos`,
+`old-kronos`, `sharepoint`) — the domain's kebab-case ids, not the config's camel-case route keys.
 
-**Phase 1f reuse identity (D116, ratified 2026-08-02).** The tuple above is the runtime session
-manager's actual lookup identity, not evidence metadata added after acquisition. `reuse-worker`
-may return an existing context only when worker, system, resolved instance, and
-`configFingerprint` all match the requesting run; download/exclusivity launch requirements must
-also remain compatible. A mismatch closes the old context with proof and authenticates a new one.
-Neither equal URLs nor the same credential set permits reuse across a different fingerprint,
-because timeouts, feature flags, provider/browser policy, or another non-secret resolved leaf may
-have changed even when the route did not.
+- **Loud default, never silent.** Omitting `requestedInstance` resolves every declared system to
+  production. There is no implicit "test" state to fall into by omission, and an instance requested
+  for a system the workflow never reaches is refused by name at plan time
+  (`<workflow> never reaches <system>; it cannot resolve an instance for it`).
+- **Production is the code default, not a settings value.** `resolveSystemEntryUrl(config, system,
+  instance, context)` returns the production literal for `prod` and cannot be redirected by a
+  settings edit, because §3's override schema can only reach `urls.<system>.test`.
+- **A test request with no distinct test endpoint THROWS.** `requested === "test"` with
+  `urls.<system>.test` absent, or holding the production URL, refuses:
+  `<context> requested TEST instance for <system> but no distinct test URL is configured; refusing
+  production fallback`. This is the structural impossibility the charter asks for — a run that
+  believes it is hitting a sandbox can never silently land on production. `resolveSystemLoginUrl` is
+  the same rule for the LOGIN entry, which differs only for UCPath: the deep PeopleSoft routes are
+  not reachable unauthenticated, so authentication starts at `urls.ucpath.<instance>.login` and
+  rides the campus-discovery → Shibboleth chain (ported from
+  `legacy:src/infra/auth/login.ts`, `hr-automation@793abe1f`).
+- **As-built, that refusal lands at ACQUISITION, not at enqueue.** The plan-time resolver
+  (`src/services/start/plan.ts:83-95`) derives the systems from the descriptor's projections,
+  defaults each to `prod` and refuses an undeclared one — but it does not consult the config, so it
+  cannot see a missing test URL. The version that does (`src/domain/config/instance.ts:88-107`,
+  which calls `resolveSystemEntryUrl` per system) has only a test caller. The refusal is therefore
+  correct and late: it fires inside the session factory rather than before the run is queued.
+- **Recorded in the audit trail.** `resolvedInstance` travels on the envelope and on the queued
+  span, so every run's actual target per system is queryable rather than inferred.
+- **Worker-owned context partitioning.** Each worker owns its browser contexts keyed by
+  `(worker, system, resolvedInstance, configFingerprint)`. Prod and test runs never share a context;
+  a config change creates new contexts and existing runs finish against their stamped snapshot.
 
-**Phase 1f as-built (2026-08-03).** The worker loop binds the claimed run's `configFingerprint` on
-the session manager before any task executes and releases it when the run finishes; a driver lease
+**Phase 1f reuse identity (D116).** That tuple is the session manager's actual lookup identity, not
+metadata added after acquisition. `reuse-worker` may return an existing context only when worker,
+system, resolved instance and `configFingerprint` all match the requesting run, and download /
+exclusivity launch requirements must remain compatible; a mismatch closes the old context with
+proof and authenticates a new one. Neither equal URLs nor the same credential set permits reuse
+across a different fingerprint, because timeouts, feature flags, provider or browser policy, or
+another non-secret resolved leaf may have changed even when the route did not.
+
+**As-built (2026-08-03).** The worker loop binds the claimed run's `configFingerprint` on the
+session manager before any task executes and releases it when the run finishes; a driver lease
 without a bound fingerprint fails loud rather than defaulting to "whatever session exists". The
-concrete factory carries the fingerprint into the on-disk profile path too (ref execution-and-sessions, Phase-1f
-concrete session factory), so a config change cannot be silently inherited through a warm profile.
-The bind/execute/release window is one shared discipline (`withBoundRunConfigFingerprint`,
-`src/core/worker-sessions.ts`) so no caller re-derives it. Driver leases taken OUTSIDE a claimed
-run's worker-loop window — today only ref write-safety §4 recovery's idempotency probe — bind the TARGET
-run's retained `configFingerprint` themselves, read from that run's authority row, never recomputed
-from current config and never taken from caller claims; a missing/foreign binding there is a loud
-precondition refusal, not a silent skip (ref write-safety §4 records the park/refusal split).
+concrete factory carries the fingerprint into the on-disk profile path too, so a config change
+cannot be silently inherited through a warm profile. The bind/execute/release window is one shared
+discipline (`withBoundRunConfigFingerprint`, `src/core/worker-sessions.ts`) so no caller re-derives
+it. A lease taken OUTSIDE a claimed run's window — today only ref write-safety §4 recovery's
+idempotency probe — binds the TARGET run's retained `configFingerprint`, read from that run's
+authority row, never recomputed from current config and never taken from a caller's claim; a
+missing or foreign binding there is a loud precondition refusal, not a silent skip.
 
 Three config leaves landed with it: `browser.headless` (the runtime default is headless — Duo
 Autopilot answers the WebAuthn ceremony in-page, so there is no OS dialog to watch),
 `browser.closeProofMs` (the bound on the teardown that must PROVE page/context closure), and
 `paths.duoExtensionDir` (the unpacked extension the session factory loads). `urls.ucpath.*.login`
-joins them: the deep PeopleSoft routes are not reachable unauthenticated, so UCPath's login entry is
-its own route under this section's unchanged prod/test rule.
+joined them under §3's unchanged prod/test rule.
 
-**Every runtime path leaf is absolute, including the profile root and the Duo credential
-(2026-08-03).** `paths.browserProfileRoot` is a config leaf like its siblings, and
-`paths.duoCredential` is an `AbsolutePathSchema` leaf beneath it — neither is a relative literal
-pinned by `z.literal`. Two reasons, both load-bearing:
+### Every runtime path leaf is absolute, including the profile root and the Duo credential
 
-- **cwd-independence.** The runtime-isolation contract states its roots as repo-relative literals
-  because that is the text the operational-isolation audit compares on both sides. A *runtime* path
-  may not be that literal: `.auth/duo-webauthn.json` (the root `.auth-rebuild` before D216) resolves against `process.cwd()`, so a
-  worker or daemon started anywhere but the repo root silently looks for the Duo credential in a
-  directory that does not have it, and `requireSecretFile` then reports a missing credential that is
-  in fact present. `src/domain/config/schema.ts` resolves the isolation root exactly once and both
-  leaves derive from that single absolute value, so no consumer re-derives it.
+`paths.browserProfileRoot` is an `AbsolutePathSchema` leaf like its siblings, and
+`paths.duoCredential` is `join`ed onto it — neither is a relative literal pinned by `z.literal`. Two
+reasons, both load-bearing:
+
+- **cwd-independence.** The isolation contract states its roots as repo-relative literals because
+  that is the text the operational-isolation audit compares on both sides. A *runtime* path may not
+  be that literal: `.auth/duo-webauthn.json` resolves against `process.cwd()`, so a worker or daemon
+  started anywhere but the repo root silently looks for the Duo credential in a directory that does
+  not have it, and `requireSecretFile` then reports a missing credential that is in fact present.
+  `src/domain/config/runtime-paths.ts` resolves the isolation root exactly once per process and both
+  leaves derive from that single absolute value (§3), so no consumer re-derives it.
 - **The real credential home must be redirectable.** The profile directory is created by
   `factory.open()` (a real `mkdirSync`) and the credential is a real file read, so any caller that
-  must NOT touch the operator's `.auth/` — every unit test — has to be able to say so.
-  Before this, `tests/unit/browser-session-factory.test.ts` both created directories in the real
-  root and then `rmSync(..., { recursive: true, force: true })`'d it, deleting the Duo WebAuthn
-  credential on every `npm run test`; fresh enrollment is the one Duo ceremony Autopilot cannot
-  perform unattended, so that was silent destruction of an operator asset behind a green gate.
+  must NOT touch the operator's `.auth/` — every unit test — has to be able to say so. Before this,
+  `tests/unit/browser-session-factory.test.ts` created directories in the real root and then
+  `rmSync(…, { recursive: true, force: true })`'d it, deleting the Duo WebAuthn credential on every
+  `npm run test`; fresh enrollment is the one Duo ceremony Autopilot cannot perform unattended, so
+  that was silent destruction of an operator asset behind a green gate.
 
 The isolation contract is not weakened by this. The default still comes from
-`rebuildRuntimeIsolation.browserProfileRoot`, `define-runtime-isolation.ts` still pins the literal,
-and `workerProfileDirectory` still takes the `browserSessionNamespace` segment from the contract —
-that namespace, not the root, is what makes a rebuild profile unreachable from the legacy runtime.
-A relative `profileRoot` is refused loudly rather than resolved. `test-runtime-root-isolation.test.ts`
-(ref guards-and-tests) is the ratchet: no test may pass a real-root-derived path into a filesystem mutator, and a
-test that constructs the real session factory must bind its own profile root.
+`rebuildRuntimeIsolation.browserProfileRoot`, `define-runtime-isolation.ts` still pins the literal
+with `z.literal`, and `workerProfileDirectory` still takes the `browserSessionNamespace` segment
+from the contract — that namespace, not the root, is what makes a rebuild profile unreachable from
+the legacy runtime. A relative `profileRoot` is refused loudly rather than resolved.
+`test-runtime-root-isolation.test.ts` (ref guards-and-tests) is the ratchet: no test may pass a
+real-root-derived path into a filesystem mutator, and a test that constructs the real session
+factory must bind its own profile root.
+
+### Operational isolation: two runtimes, one machine (D88 · D216 · D247)
+
+A repository boundary does not separate two runtimes on one host. The values that must differ are
+**data** in `config/runtime-isolation.json` (schema version 3), and
+`tests/unit/architecture/operational-isolation.test.ts` audits both real checkouts against them:
+
+|                             | legacy                                           | rebuild                                          |
+| --------------------------- | ------------------------------------------------ | ------------------------------------------------ |
+| state root                  | `.tracker`                                       | `.tracker-rebuild`                               |
+| artifact root               | `.tracker`                                       | `.tracker-rebuild/artifacts`                     |
+| backend / frontend port     | 3838 / 5173                                      | 3938 / 5174                                      |
+| process locks               | `.tracker/daemons`                               | `.tracker-rebuild/locks`                         |
+| browser profile / session   | `.auth` / `hrauto-legacy`                        | `.auth` / `hrauto-rebuild`                       |
+| launch commands             | `dashboard`, `dashboard:prod`, `dashboard:watch` | `dashboard`, `dashboard:prod`, `cli`             |
+
+`DISTINCT_RESOURCE_KEYS` is `stateRoot`, `artifactRoot`, `processLockRoot`,
+`browserSessionNamespace`, plus both ports checked in their own right. **Two entries in that table
+are deliberately EQUAL, and each says why.**
+
+- **`browserProfileRoot` left the distinct list with D216** (operator decision, 2026-08-14): both
+  repositories name their profile root `.auth`, and the roots are repo-relative, so they can never
+  collide on disk. The browser-state identity that MUST stay distinct is `browserSessionNamespace`,
+  which is what keeps a session opened in the wrong checkout from reusing the other runtime's
+  authenticated state.
+- **Command NAMES are not an isolation resource (D247).** A muscle-memory `npm run dashboard` in the
+  wrong checkout starts THAT checkout's dashboard, on its own port, under its own roots and locks —
+  which the rows above make legible and harmless. What is still pinned is that each declared command
+  is **byte-exactly** the script in its own checkout's `package.json`, so a drifted or missing
+  launch command fails on either side.
+
+Isolation values reach the runtime through ONE exported direct-`const` `defineRuntimeIsolation`
+call (`src/config/runtime-isolation.ts`) whose schema is a strict object of `z.literal`s, invoked at
+top level by a composition root (`src/cli.ts` → `startRebuildRuntime({ isolation })`). The guard
+proves all four halves of that sentence against a seeded fixture repository: a drifted literal, a
+locally shadowed factory, a non-exported binding, and a composition root that merely MENTIONS the
+binding — or calls it inside a function nobody invokes, or under the wrong argument path — each
+fail by name. An identifier mention is not proof.
 
 ### 4.1 The durable snapshot is versioned by its LEAF SET, not by the migration chain (D133)
 
