@@ -3465,7 +3465,12 @@ delta is owed in this block once a real archive exists: at 2026-08-21 **no produ
 archived a run**, so every number here would be a measurement of a fixture. The measurement is
 `{#track-b}`'s to close on the first real sweep.
 
-**Where the read path is proved.** `buildArchivedRunDetail` resolves NOTHING — no descriptor, no projection, no live authority beyond the archive tables — and says so at the top of the file it shares with its opposite (`src/server/dashboard/queries/archive.ts:1-20`): `buildArchiveIndex` re-derives current identities, candidates and blockers per request, because the version STATE a bump would act on is a fact about the registry NOW and a plan goes stale the moment a run is enqueued. Two halves with opposite rules, in one file so the difference is visible.
+**Where the read path is proved.** `buildArchivedRunDetail` resolves NOTHING — no descriptor, no
+projection, no live authority beyond the archive tables — and says so at the top of the file it
+shares with its opposite (`src/server/dashboard/queries/archive.ts:1-20`): `buildArchiveIndex`
+re-derives current identities, candidates and blockers per request, because the version STATE a
+bump would act on is a fact about the registry NOW and a plan goes stale the moment a run is
+enqueued. Two halves with opposite rules, in one file so the difference is visible.
 
 #### 9.5.2 Activity — a range rendering of the ONE projection, and the one exemption (D81)
 
