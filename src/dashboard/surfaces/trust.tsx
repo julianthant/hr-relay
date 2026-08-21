@@ -114,12 +114,27 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
       <span className={cn(dsText.body, "font-semibold text-[color:var(--ds-fg)]")}>
         {WRITE_STATE_SENTENCE[detail.writeState]}
       </span>
+      {/*
+        The demo's `Classification` KeyValueList, in this tree's MetaLine idiom
+        and in the demo's order (legacy hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
+        DemoFailure.tsx:313-338): code · occurred · run · node · task.
+
+        `occurred` and `run`/`attempt` are the failure record's OWN facts and
+        were drawn nowhere. The instant matters most: the panel prints the
+        RUN's terminal instant above this body, which is a different moment —
+        a run can fail on one node and terminalize after the executor has
+        finished unwinding, so "failed 2:41 PM" and "occurred 2:39 PM" are
+        both true and only one of them says when the thing went wrong.
+      */}
       <MetaLine
         items={[
           detail.code,
           detail.transient && "transient",
-          detail.taskId !== undefined && `task ${detail.taskId}`,
+          `occurred ${fmtClock(detail.occurredAt)}`,
+          `run ${detail.traceId}`,
+          `attempt ${String(detail.attempt)}`,
           detail.nodeId !== undefined && `node ${detail.nodeId}`,
+          detail.taskId !== undefined && `task ${detail.taskId}`,
           detail.sameFingerprintSeen > 1 && `same failure seen ${String(detail.sameFingerprintSeen)} times`,
         ]}
       />
@@ -143,7 +158,14 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
             // demo's own word (DemoFailure.tsx:328) and it is load-bearing:
             // these two strings were redacted AT CAPTURE, so what prints is
             // the whole of what the record holds, not a render-time cut.
+            detail.page?.titleRedacted !== undefined && `title (redacted) ${detail.page.titleRedacted}`,
+            detail.page?.urlRedacted !== undefined && `url (redacted) ${detail.page.urlRedacted}`,
             detail.action?.operation !== undefined && `during ${detail.action.operation}`,
+            // `on {elementId}` — the demo's `Failed action: {operation} on
+            // {elementId} · step {N}` (:329-338). No `"action"` stand-in for an
+            // absent operation: an unserved half drops out of the line rather
+            // than being spoken for.
+            detail.action?.elementId !== undefined && `on ${detail.action.elementId}`,
             detail.action?.sequence !== undefined && `step ${String(detail.action.sequence)}`,
           ]}
         />
