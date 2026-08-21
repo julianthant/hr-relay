@@ -99,8 +99,32 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
   query through `RunDetailDescriptorView.dataOrigins`, composed at the root because a descriptor may
   not reach a store (D106). If a surface comment here says a fact has no producer, check the
   descriptor and the module before believing it.
+- **2026-08-21: "the bundle already carries it" is an argument about ONE source that quietly costs a
+  whole composition root — and the IMPORT is what makes the bundle a source (D264 row D11, amending
+  D251).** D251 (below) refused three run-modal wire rows because `summary`, `enqueue` and
+  `surfaces.inputRun` are plain data on `AnyWorkflowDescriptor`, and serving them would give one
+  surface two sources for one value. The two-sources rule was right and the price was never
+  measured. A descriptor's plain data does not travel alone: `WORKFLOW_DESCRIPTORS` pulls every
+  registered workflow's whole graph, node specs, task contracts and the `src/base/**` builders that
+  mint them, so the browser downloaded the composition root to render three fields — **1,114,214
+  bytes, 753,197 after the import was deleted.** The fields now ride `WorkflowStartWireSchema` on the
+  boot document, projected at the composition root from the same descriptor the daemon plans with,
+  so there is still exactly one source. Three things travel. **Serving a fact does not change where
+  its bytes came from**: the redaction audit demanded an origin for seven new free-text leaves and
+  every one is `repository-authored`, because a descriptor constant is a developer's sentence
+  whichever side of the wire it is read on — a guard asking that question at the moment a field
+  crosses onto a wire is the guard working. **The rule is held by a CLOSURE arm, not a lint on
+  import lines** (`dashboard-wire-boundary` (15)): one shared helper re-exporting a descriptor puts
+  the whole tuple back with nothing in the diff that reads like a registry import, which is arms
+  (13)/(14)'s lesson a third time. And **a served fact retires a client default**: the modal's
+  `enqueue: descriptor?.enqueue ?? "reject-active"` was a fail-closed guess standing in for a fact
+  the server always had, so `enqueue` is REQUIRED on the block and the `??` is gone. `run-start.tsx`
+  needed no edit — the composed `RunStartWorkflow` is identical field for field.
+
 - **2026-08-20: a fact the browser bundle already carries does not need a wire, and booking one as
-  "unserved" invents backend work nobody owes (D251).** Three run-modal rows sat on the detail-audit
+  "unserved" invents backend work nobody owes (D251 — see the D264 amendment above; the sentence
+  "`surfaces/run-start.tsx` composes its catalogue from `WORKFLOW_DESCRIPTORS`" is no longer true of
+  this tree, and the rest of the entry stands).** Three run-modal rows sat on the detail-audit
   ledger as wire gaps — the workflow's own sentence, its active-run policy, and the reason an
   unstartable workflow is not offered. All three were already reachable: `surfaces/run-start.tsx`
   composes its catalogue from `WORKFLOW_DESCRIPTORS`, and `summary`, `enqueue` and `surfaces.inputRun`

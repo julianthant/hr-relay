@@ -115,7 +115,7 @@ The following are settled:
    preserved wholesale as the rollback asset.
 
 <!-- roadmap-status: phase-1 -->
-- [x] 0.1 the frontend renders finished read models — every count, status, action and containment fact is projected (`src/server/dashboard/projectors/run-queue-projection.ts`), with the ONE standing exception named in §4: the run modal still reads `WORKFLOW_DESCRIPTORS` from the bundle (D264 row D11)
+- [x] 0.1 the frontend renders finished read models — every count, status, action and containment fact is projected (`src/server/dashboard/projectors/run-queue-projection.ts`). The ONE standing exception, the run modal reading `WORKFLOW_DESCRIPTORS` from the bundle, CLOSED 2026-08-21 with D264 row D11 (§4): the three fields are served on `WorkflowStartWireSchema` and `dashboard-wire-boundary` arm (15) keeps the registry out of every dashboard bundle
 - [x] 0.2 one transport owner per bundle — `src/dashboard/client/transport.ts` and `src/dashboard/phone/capture-client.ts`, enforced by `isNetworkOwner` in `provider-capability-boundary.test.ts`
 - [x] 0.3 REST snapshots + ONE resumable stream + ONE command route — `routes/api.ts`, `GET /events/v1`, `POST /api/v1/commands` (+ the bulk vector arm)
 - [x] 0.5 no optimistic authority — every surface settles through the served result and the next projection (D253, `app/command-result.ts`)
@@ -802,23 +802,43 @@ the "client-only UI state" half here: URL state is `app/url-state.ts`, preferenc
 the folder's exports (`useDashboardDaySnapshot`, `useRunSection`) have no importer at all. Track D
 row **D6** is what makes the folder match this table; **D2** deletes the dead pair.
 
-**One row of this table is violated today, deliberately and named.**
+**Every row of this table is now honoured. The one that was not is below, with what closed it.**
 
-**D264 (2026-08-20) — the descriptor registry leaves the browser bundle, amending D251.** The
-`workflow metadata/start methods/system instances` row above names `descriptor/config projection`
-as the owner and §0.1 says the frontend renders finished read models; the run modal does neither.
-`src/dashboard/app/dashboard-app.tsx:25` imports `WORKFLOW_DESCRIPTORS` and `:516` joins it by
-`descriptor.id` against the bootstrap's own workflow list for exactly three fields — `summary`,
-`enqueue` and `surfaces.inputRun` (the typed-input surface carrying D250's declared examples); the
-picker's other rows (`label`, `categoryId`, `role`, `code`) are served already. **Those three are
-therefore SERVED over `FrontendBootstrapWire` and the frontend drops the registry import** — Track D
-row D11 (`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.5). D251's reasoning, that the
-bundle already carries them so a wire would be a second source (§8 #2), is superseded on its own
-premise: the import is what makes the bundle a source, and a projection with no registry beside it
-is ONE source. D251's other findings stand. Until D11 lands the import — 49 modules, 22 % of the
-bundle's module closure, for three plain fields — is a KNOWN divergence from this table, named here
-rather than left for the next reader to discover. It is the ONE such import: `run-start.tsx` does
-not reach the registry, and the audit sentence that said it did is corrected here.
+**D264 (2026-08-20) — the descriptor registry leaves the browser bundle, amending D251. LANDED
+2026-08-21 (Track D row D11).** The `workflow metadata/start methods/system instances` row above
+names `descriptor/config projection` as the owner and §0.1 says the frontend renders finished read
+models; the run modal did neither. `src/dashboard/app/dashboard-app.tsx` imported
+`WORKFLOW_DESCRIPTORS` and joined it by `descriptor.id` against the bootstrap's own workflow list
+for exactly three fields — `summary`, `enqueue` and `surfaces.inputRun` (the typed-input surface
+carrying D250's declared examples); the picker's other rows (`label`, `categoryId`, `role`, `code`)
+were served already. D251's reasoning, that the bundle already carries them so a wire would be a
+second source (§8 #2), is superseded on its own premise: the import is what made the bundle a
+source, and a projection with no registry beside it is ONE source. D251's other findings stand.
+
+**As built.** `WorkflowStartWireSchema` (`src/domain/dashboard/bootstrap.ts`) is a strict block on
+every served workflow — `summary?`, `enqueue`, `inputRun?` — projected in
+`src/server/dashboard/queries/bootstrap.ts` from the same descriptor this process plans with.
+`enqueue` is REQUIRED, which retired the client's `?? "reject-active"`: that default stood in for a
+fact the server always had. `summary` and `inputRun` are omitted when the descriptor declares none,
+because their ABSENCE is the fact the modal renders. `uploadRun` is deliberately not on the block —
+no registered workflow declares one, and serving an arm nothing can produce is the D181/`degraded`
+shape. `run-start.tsx` did not change at all: the composed `RunStartWorkflow` is identical field for
+field, so the whole frontend delta is the deleted import and one read site.
+
+**What holds it.** `dashboard-wire-boundary` arm (15): no `*.html` entry's closure may reach
+`src/workflows/**` or `src/control/**`. A CLOSURE arm rather than an import lint, for arms (13) and
+(14)'s reason — one shared helper re-exporting a descriptor would put the whole tuple back with
+nothing in the diff that reads like a registry import. `src/domain/**` and `src/base/**` stay
+reachable on purpose: a descriptor's CONTRACTS are what keep the daemon and the dashboard one
+product, and it is the composed tuple that may not ship.
+
+**Measured, because §7.4 asks for numbers rather than adjectives.** The production bundle
+(`npm run web:build`) fell from **1,114,214 bytes to 753,197** — 32 % — and the registry's own
+strings went with it: `separations` 259 → 7 occurrences, `kuali` 327 → 62, `ucpath` 349 → 79. The
+survivors are `src/domain/**` write-safety scenario ids and redaction audit notes reached through
+the wire schemas, not descriptors. The audit's estimate of "49 modules, 22 % of the bundle's module
+closure" was conservative on bytes. It was the ONE such import: `run-start.tsx` never reached the
+registry, and the audit sentence that said it did is corrected here.
 
 Track D's checklist for every row that lands on this section — D1, D4, D6, D7, D8, D11 — is in
 §7.4's status block, so the track is ticked in one place.
@@ -2130,13 +2150,14 @@ measurement.
 - [x] D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold (`1b13115f`); the guard's second arm requires any module calling `.executeCommand(` to import it (`5c36a82d`)
 - [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against a seeded 1,240-row / 108-member fixture and recorded here as this section's first numbers
 - [ ] D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded
-- [ ] D11 the descriptor registry LEAVES the bundle — bootstrap serves `summary`, `enqueue` and `surfaces.inputRun`, and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251, §4)
+- [x] D11 the descriptor registry LEAVES the bundle — bootstrap serves `summary`, `enqueue` and `surfaces.inputRun` on `WorkflowStartWireSchema`, `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import, and `dashboard-wire-boundary` arm (15) holds the closure (amends D251, §4). Bundle 1,114,214 → 753,197 bytes
 - [?] D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what §2 says it is
 - [?] D7 split `LoadedApp` along its own seams — `useDayRoute`/`useRunDetailState`/`useBulkSelection` into `app/*-model.ts`, the five takeover layouts into `app/takeovers.tsx`
 - [?] D8 models for intake / archive / log-panel, the versioning half of `archive.tsx` split out, and ONE `foldTaskExecutions(row)` for pipeline / timeline / archive
 - [?] D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured — this section's virtualize-or-page bullet
 - [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified that NOTHING in src/ or tests/ measures or asserts any budget in this section (no perf/budget/bench test, no 1,240-row fixture, no `memo`, no virtualization, no backpressure handling) — the section is normative and unenforced, exactly as D264 records; left: all eleven rows
+> 2026-08-21 | track-d D11 | D11 LANDED (`149bc5f8` the wire + server projection + registry-wide test, `0911becd` the frontend drop + `dashboard-wire-boundary` arm 15). §4's one named divergence is closed and §7.4's exit-criterion 2 is MET. Measured: the production bundle fell 1,114,214 → 753,197 bytes (32 %). Seven free-text leaves of the new block are dispositioned `repository-authored` in the redaction audit — every one is a descriptor constant, and moving a constant onto the wire does not change where its bytes came from. Left on this section: D2–D5's numbers
 > 2026-08-21 | track-d D1 | D1 landed as **D268** (`81bfed73`): one `deriveRunStatus`, one task-outcome vocabulary, one `panelKindOf`, pinned by `tests/unit/server/run-status-derivation.test.ts` asserting the queue row and the detail panel against each other; left: D2–D5, D11, and every number this section still owes
 > 2026-08-21 | track-d3 | D3 DONE (`1b13115f`, guard `5c36a82d`); left: ten rows. Nothing in this section's budgets moved — D3 is a settlement refactor with zero measured surface
 <!-- /roadmap-status -->
@@ -2296,7 +2317,7 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 | # | Criterion | State |
 |---|---|---|
 | 1 | every production product surface in §1.1 is served by the matrix in §5 | **partial** — Group People and OCR Review have no surface; Settings is read-only; the phone surface has no production delivery path (§6.9) |
-| 2 | the production app contains no workflow-specific registry, route switch, raw tracker model, direct component transport, or client-authored command policy | **partial** — held by guards for every clause except the ONE named registry import (§4, D264 row D11); no served route names a workflow and no `TrackerEntry` type exists |
+| 2 | the production app contains no workflow-specific registry, route switch, raw tracker model, direct component transport, or client-authored command policy | **MET** 2026-08-21 — the last clause closed with D264 row D11: the registry import is gone and `dashboard-wire-boundary` arm (15) refuses any dashboard entry whose closure reaches `src/workflows/**` or `src/control/**`. No served route names a workflow and no `TrackerEntry` type exists |
 | 3 | bootstrap, snapshots, detail sections, stream envelopes, commands, and artifacts all parse strict runtime schemas | **met** — `strict-boundary-schemas`, recursively strict, unknown keys refused |
 | 4 | reconnect/gap/reset and command conflict/idempotency paths are visibly and mechanically proven | **partial** — mechanically yes (`client-transport`, `command-kernel`, `commands-authority`, `command-result-exhaustive`); **visibly no** — no reference photographs a disconnected, degraded, read-only or conflicted state (§7.1) |
 | 5 | all authoritative counts and reports reconcile from the one projection family | **met** — `one-projection-counts`, with D236's carve-out bounded by its own arm |
