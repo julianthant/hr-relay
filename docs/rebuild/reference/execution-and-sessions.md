@@ -119,35 +119,72 @@ graph branches. Those uses do not describe executor capacity and are unaffected.
 ---
 
 ## 2. Workflow session contract
+<!-- roadmap: p1-authority -->
 
-The descriptor compiler resolves every browser-backed node to an explicit policy:
+<!-- roadmap-status: p1-authority -->
+- [x] ONE imported `SessionNeed` (D96), owned by ref task-contract and never redefined here (`src/domain/session.ts:4`)
+- [x] all nine browser systems declare exactly one session provider, OnBase alone `exclusive:true`, enforced at `defineSessionProvider` and by the `task-store-boundaries` guard
+- [x] `session` is authored as a string literal or supplied by the schema default; a computed value is refused (`fresh-session-boundary`)
+- [ ] the descriptor-level node-execution-ordering arm of `fresh-session-boundary` — no workflow authors a `session:"fresh"` node yet, so the arm has nothing to execute
+- [ ] the OnBase identity lease (D15): `onbaseSession` declares `exclusive:true` and the store is a three-line stub with no driver and no login (`src/stores/onbase/session.ts`)
+> 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/domain/session.ts, src/base/session.ts, src/stores/*/session.ts and guard-inventory.json; the 1d block's "every placeholder login rejects with 'declared but unwired in Phase 1d'" is no longer true of any store — that refusal moved to the factory
+<!-- /roadmap-status -->
+
+The descriptor compiler resolves every browser-backed node to an explicit policy. The type is
+**imported from ref task-contract, never restated** (D96) — this doc owns worker/session BEHAVIOR
+and does not own the shape:
 
 ```ts
-export interface SessionNeed<S extends BrowserSystemId> {
-  system: S;
-  access: "read" | "transaction";
-  session: "reuse-worker" | "fresh";
-  exclusive?: true;
-  acceptDownloads?: true;
-}
+export const SessionNeedSchema = z.strictObject({
+  system: BrowserSystemIdSchema,
+  access: z.enum(["read", "transaction"]),
+  session: z.enum(["reuse-worker", "fresh"]),
+  exclusive: z.literal(true).optional(),
+  acceptDownloads: z.literal(true).optional(),
+});
 ```
 
 - `reuse-worker` uses the worker's current healthy authenticated session for that system, creating
   one lazily if none exists.
 - `fresh` first performs the bounded close protocol, then creates and authenticates a new session
   before the node begins.
+- Read tasks require read access; prepare/commit tasks require transaction access. A mismatch fails
+  at the task/store boundary, before an executor exists.
 - Authoring may omit `session` only where the descriptor schema supplies the literal, test-pinned
-  default `reuse-worker`. Runtime code never guesses.
+  default `reuse-worker`. Runtime code never guesses, and `fresh-session-boundary` refuses a
+  `session:` value that is a computed expression rather than a literal.
+- `exclusive:true` is legal only for OnBase, and OnBase is the only identity-exclusive provider
+  declaration. `defineSessionProvider` refuses both halves — an OnBase provider without it, and any
+  other system with it.
 - A session boundary is visible in the Explorer and worker/run spans as
   `browser_session:close` followed by `browser_session:start`, including system and reason.
 - A workflow that needs several sessions states boundaries at the exact nodes. It does not raise a
   worker-wide number or create a second item slot.
 
+**As built.** All nine browser systems declare exactly one provider through
+`defineWorkerSessionProvider` (`src/base/session.ts:144`), whose whole body is one bounded
+`handle.authenticate(system, options)` against the worker-owned handle — browser and context
+creation stay with the factory. The Phase-1d placeholder that threw *"declared but unwired in Phase
+1d"* is no longer any store's provider: `defineUnwiredSessionProvider` survives only as a
+type/behaviour fixture in `tests/`. The refusal it used to carry now lands one layer down and
+earlier, at the factory: a system with no landed `(driver, login recipe)` binding throws
+*"has no landed browser-session binding … refusing to open a browser that cannot be used"* before a
+browser exists (`bindingFor`, `src/infra/browser/browser-session-factory.ts`). Four systems are
+bound today — **ucpath, crm, kuali, new-kronos** (`src/infra/browser/system-bindings.ts`); i9,
+servicenow, old-kronos, onbase and sharepoint declare a provider and refuse at open.
+
 ### 2.1 Gates and parks
+<!-- roadmap: p1-kernel -->
 
 A parked run owns no browser resources. Before parking, the worker resets/closes active sessions
 according to the provider policy and releases identity leases. Resume is a fresh claim. An overnight
 approval holds neither a browser nor an execution slot.
+
+The teardown is ordered, not best-effort: `closeAll("parked")` and `closeAll("worker-stop")` first
+REJECT new leases, then wait behind every in-flight callback, then close every owned resource
+(`WorkerSessionManager.closeAll`, `src/core/worker-sessions.ts:379`). A second concurrent `closeAll`
+throws by name rather than racing the first, and a close whose proof fails leaves the resource
+registered and poisoned — §7.1 row C6/C7 execute both.
 
 ---
 
