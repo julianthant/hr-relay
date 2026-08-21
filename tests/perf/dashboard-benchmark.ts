@@ -34,7 +34,7 @@ import type { DashboardDayPatchSchema } from "../../src/domain/dashboard/subscri
 import { listEventStreamFiles, readEventStreamLines } from "../../src/infra/events/jsonl-streams.js";
 import { buildRunSection } from "../../src/server/dashboard/queries/run-detail.js";
 import { PERF_FIXTURE_PROFILE, seedDashboardPerfFixture, type PerfFixture } from "./dashboard-fixture.js";
-import { countSqliteStatements } from "./sqlite-statement-counter.js";
+import { assertStatementCounterObserves, countSqliteStatements } from "./sqlite-statement-counter.js";
 
 /* ── sampling ────────────────────────────────────────────────────────────── */
 
@@ -172,6 +172,24 @@ function noteCorpus(fixture: PerfFixture): { files: number; lines: number; bytes
   };
 }
 
+/* ── the self-check (finding 1) ──────────────────────────────────────────── */
+
+/**
+ * The counting window's own precondition: it must observe a statement it
+ * knows was executed, BEFORE this harness reports any count taken through it.
+ * A bypassed `DatabaseSync.prototype.prepare` patch (a future Node routing
+ * statements a different way, a runtime that freezes the prototype) would
+ * otherwise print `sqliteStatements 0` for every row below — a check that
+ * cannot fail, and exactly the kind this repository bans.
+ */
+function selfCheckStatementCounter(fixture: PerfFixture): void {
+  assertStatementCounterObserves({
+    prepareProbe: () => {
+      fixture.database.authority.runs.get(fixture.runIds.measuredRun);
+    },
+  });
+}
+
 /* ── the five measurements ───────────────────────────────────────────────── */
 
 type Patch = z.infer<typeof DashboardDayPatchSchema>;
@@ -210,6 +228,17 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
     throw new Error(
       `the day wire served ${String(wire.queueSurfaces.length)} surfaces, not the declared `
       + `${String(PERF_FIXTURE_PROFILE.dayRunCount)}; every number below would be about a different day`,
+    );
+  }
+  // The day-wire path is the one this section leads with (P2/P4) — assert its
+  // own counter directly, not only through the shared self-check probe, so a
+  // regression specific to THIS call site cannot hide behind a passing probe
+  // taken on a different query.
+  if (dayWireCount.count.statements === 0) {
+    throw new Error(
+      "the SQLite statement counter observed 0 statements while building the day wire; a bypassed "
+      + "`DatabaseSync.prototype.prepare` patch would print `sqliteStatements 0` as if every query had "
+      + "vanished — refusing to report a fabricated zero",
     );
   }
 
@@ -275,10 +304,15 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
       auditFinding: "P1",
       timing: patchTiming,
       counters: {
-        rowsRevalidated: wire.queueSurfaces.length,
+        // A fixture fact (how many rows the seeded day wire holds), not an
+        // observation of how many rows `applyDashboardDayPatch` revalidated —
+        // it would print the same 1,240 after D4 scopes the patch, unlike
+        // `dayWireSchemaParses` below, which really is counted per call.
+        rowsAvailable: wire.queueSurfaces.length,
         dayWireSchemaParses: patchParses.parses,
       },
-      note: "one row changed; the whole day is re-parsed, and React re-renders on top of this",
+      note: "one row changed; `dayWireSchemaParses` shows the whole day (`rowsAvailable` rows) is "
+        + "re-parsed in that one call, and React re-renders on top of this",
     },
     {
       id: "logs-section",
@@ -287,12 +321,22 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
       timing: logsTiming,
       counters: {
         notesServed: logsSection.payload.notes.length,
-        corpusLinesScanned: corpus.lines,
-        corpusBytesRead: corpus.bytes,
-        corpusFilesOpened: corpus.files,
+        // The corpus's SIZE (a fixture fact from `noteCorpus`, taken independently
+        // of the timed call), not an in-process OBSERVATION of what
+        // `noteLinesForRun` actually read — Node snapshots ESM named imports of
+        // `node:fs`, so there is no seam to wrap the reader through the way
+        // `countSqliteStatements` wraps `DatabaseSync.prototype.prepare`. As long
+        // as `noteLinesForRun` stays unscoped (true of this commit — read the
+        // source, not this counter, to re-confirm) these equal what it reads; once
+        // D5 scopes the reader they would print the same numbers regardless, which
+        // is exactly why they are named `…Available` and not `…Scanned`/`…Read`.
+        corpusLinesAvailable: corpus.lines,
+        corpusBytesAvailable: corpus.bytes,
+        corpusFilesAvailable: corpus.files,
       },
-      note: "`noteLinesForRun` calls `readEventStreamLines(stateRoot, \"notes\")` unscoped, so the "
-        + "whole corpus is read and parsed to serve one run's page",
+      note: "`noteLinesForRun` calls `readEventStreamLines(stateRoot, \"notes\")` unscoped as of this "
+        + "commit, so today it reads the whole corpus (`corpusLinesAvailable` etc., a fixture fact) to "
+        + "serve one run's page",
     },
     {
       id: "archive-freeze",
@@ -357,6 +401,9 @@ function main(): void {
   const fixture = seedDashboardPerfFixture();
   const seedMs = round(performance.now() - seedStarted);
   try {
+    // Finding 1: the counter must prove it can see a statement BEFORE this
+    // harness reports any count taken through it.
+    selfCheckStatementCounter(fixture);
     const corpus = noteCorpus(fixture);
     const git = gitFacts();
     const cpu = cpus();

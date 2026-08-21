@@ -2053,8 +2053,8 @@ the machine.
 | # | Path | Audit | median ms | p95 ms | Counters |
 |---|---|---|---|---|---|
 | 1 | `buildDashboardDayWire` — the whole day snapshot | P2 / P4 | 177.15 | 249.99 | rows 1,240 · sqliteStatements 6,718 · sqliteStatementsPerRow 5.42 |
-| 2 | `applyDashboardDayPatch` — one SSE single-row patch | P1 | 22.30 | 30.12 | rowsRevalidated 1,240 · dayWireSchemaParses 1 |
-| 3 | `buildRunSection(run, "logs")` — one logs GET | P3 | 49.02 | 65.28 | notesServed 13 · corpusLinesScanned 20,800 · corpusBytesRead 5,691,200 · corpusFilesOpened 4 |
+| 2 | `applyDashboardDayPatch` — one SSE single-row patch | P1 | 22.30 | 30.12 | rowsAvailable 1,240 · dayWireSchemaParses 1 |
+| 3 | `buildRunSection(run, "logs")` — one logs GET | P3 | 49.02 | 65.28 | notesServed 13 · corpusLinesAvailable 20,800 · corpusBytesAvailable 5,691,200 · corpusFilesAvailable 4 |
 | 4 | `archiveSnapshots.snapshot(run)` — the version-bump freeze, per run | P3 | 46.64 | 67.54 | sqliteStatements 14 · projectedDayMs 57,833.6 |
 | 5 | `queueSurface` — a 108-member operation vs a single row | P2 | — | — | operationRowStatements 218 · singleRowStatements 2 · previewDeltaStatements 216 · members 108 |
 
@@ -2072,11 +2072,17 @@ patching `DatabaseSync.prototype.prepare` around one callback: the finding is st
 It does not count `exec()` — this tree's DDL and transaction control — which a measured READ never
 runs. The counter refuses to install if the property is not a writable, configurable data property,
 and the harness refuses to report a parse count its spy did not observe, because a counter that can
-report zero is a check that cannot fail. `corpusLinesScanned` / `corpusBytesRead` are the corpus
-`noteLinesForRun` walks unscoped on every logs GET, read back through the same
-`readEventStreamLines` the query calls — it is not a syscall-level spy, because Node snapshots ESM
-named imports of `node:fs` and no in-process counter can honestly observe that read. Since the seed
-holds the corpus constant, the millisecond column is what moves when D5 scopes the reader.
+report zero is a check that cannot fail — the harness self-checks the SQLite counter against a real
+probe before reporting anything, and separately asserts the day-wire row's own count is nonzero,
+because that is the row P2/P4 lead with. `corpusLinesAvailable` / `corpusBytesAvailable` /
+`corpusFilesAvailable` are the corpus SIZE — a fixture fact, taken independently of the timed call —
+not an in-process OBSERVATION of what `noteLinesForRun` actually read: it is not a syscall-level spy,
+because Node snapshots ESM named imports of `node:fs` and no in-process counter can honestly observe
+that read. They are named `…Available` rather than `…Scanned`/`…Read` for exactly that reason. As
+long as `noteLinesForRun` walks the corpus unscoped on every logs GET (true of this commit — read the
+source, not this counter, to re-confirm), they equal what it reads; once D5 scopes the reader they
+would print the same numbers regardless, and the millisecond column, not these counters, is what
+moves.
 
 **P5 is not on this table, and neither is a browser number.** Virtualization is a DOM property, not
 a server one; it belongs to D9, which this section's virtualize-or-page bullet already owns, and
