@@ -46,6 +46,17 @@ specified the world they replaced.)
   edit when you make the first.
 
 ## Target architecture (the operator's vision, formalized)
+<!-- roadmap: phase-0 -->
+
+<!-- roadmap-status: phase-0 -->
+- [x] all 27 items were ratified in Phase 0 and reconciled through **Round 12** (D1–D94); the phase's own record — what it designed, how it ended — is `00-design-the-foundation.md` §Phase summary
+- [x] the items are numbered `### 1.`–`### 27.` as of 2026-08-21, so `ref:charter §12` resolves for the first time; the shape is `12.` rather than `§12 —` because that is what `scripts/roadmap/scan-docs.ts`'s section grammar parses
+- [x] **six** of these contracts have since been AMENDED by a later decision — D150 (legacy change accounting, §24 + §Non-negotiables), D191 (the gate family, §Non-negotiables), D247 with D216 beside it (command names are not an isolation resource), D263 (§One master plan's form), D193(c) (the Phase-3 entry, D84's order intact), D184 (the D58 inventory guard) — each marked in place above and tabulated in doc 00 §What no longer binds
+- [ ] **two** Phase-0 promises are still unbuilt: D79's `scaffold new-task` / `scaffold new-workflow` (the `new-workflow` half is owned by `{#def-explorer-edit}`, the `new-task` half has NO node owner) and D85's `cli test workflow --dry-run` + `TestTargetRegistry` (reassigned to `{#test-tiers}` by R10) — doc 00 §Two Phase-0 promises are still unbuilt
+- [x] nothing in Phase 0 ITSELF is open — it wrote no runtime code by policy (§Process), so every item's build state is owned by the phase that implemented it, not by this doc
+> 2026-08-21 | docs-cohesion charter | verified against `src/core/runtime-composition.ts:142-143`, `docs/rebuild/00-design-the-foundation.md` §What no longer binds + §Two Phase-0 promises are still unbuilt, and `reference/decisions.md` rounds 1–12; left: nothing in Phase 0 — the six amendments and the two unbuilt promises are each owned elsewhere
+<!-- /roadmap-status -->
+
 
 ### 1. Task stores — two levels (operator directive 2026-07-17, the core of the modular structure)
 
@@ -163,6 +174,21 @@ are editable in place and schema-validated on save; identity, input, idempotency
 provenance are read-only. There is no separate Data/Edit Data tab or dialog.
 
 ### 13. Write-safety — fenced, fail-closed real mutations
+<!-- roadmap: p2-proof -->
+
+<!-- roadmap-status: p2-proof -->
+- [x] the fenced, fail-closed kernel is BUILT and MET LIVE (**D135**, 2026-08-04): a dry run with zero durable rows, a forced subject mismatch refused at beat ② with zero fence and zero click, ONE controlled commit on real Kuali doc **4489**, and an idempotent re-run answering `already-present` in 2 ms with no browser — evidence of record in ref write-safety §3.4
+- [x] the `resolve/probe → prepare → binding proof → fence → external-commit → proof → durable-commit` sequence this item describes is `src/core/write-sequencer.ts`, the ONLY module permitted to mint a mutation capability
+- [x] the ALWAYS-GATE this item names is built and live-proved (**D202**, separations chunk 3, first live gated run 2026-08-12); **D211** put the write plan INSIDE the approved packet, so a separation date that moves after approval re-opens the gate
+- [x] four `effect: "commit"` contracts exist — `kuali/save-timekeeper-annotation`, `kuali/save-separation-finalization`, `ucpath/create-termination`, `ucpath/delete-pending-terminations`
+- [ ] the per-system list is only part built: **CRM, ServiceNow, OnBase and I-9 have no commit contract at all**, and onbase/servicenow/i9 are three-line session declarations with zero tasks — each lands at its own migration (`{#migrations}`)
+- [ ] `recoveryAbsence: stabilized` is MEASURED for `kuali/save-timekeeper-annotation` only; both UCPath contracts stay `operator-only` because no UCPath propagation window has ever been measured
+- [ ] the immutable ledger is built and guarded but its serialized writer has **no production caller** — `createLedgerProjector` is called only from `tests/`, so nothing drains the durable outbox to a file (doc 05 §Exit criteria)
+- [ ] the per-submit double-submit probe policy is decided per workflow at migration time via the §b questionnaire; **separations is the only workflow that has answered it**
+- [-] hash-chain / tail-anchor tamper evidence stays deferred to the multi-user phase (**D79**), and **D193** makes multi-user a LATER with no owner and no design
+> 2026-08-21 | docs-cohesion charter | verified against `src/core/write-sequencer.ts`, `src/domain/contracts/{kuali,ucpath}/`, `reference/write-safety.md` §3.4 and doc 05's ledger finding; left: the four systems with no commit contract, the unmeasured UCPath window, and the ledger writer nothing composes
+<!-- /roadmap-status -->
+
 
 *(Gap audit: ref foundation-gap-audit §2. Operator answers 2026-07-18. Full design: ref write-safety.)*
 
@@ -287,6 +313,17 @@ pre-migration backup, restore drills, and read-only rescue mode are part of the 
 stay disabled when authority health is unknown. Full storage owner: ref dashboard-surfaces.
 
 ### 22. Mobile photo capture is reliable intake, not an in-memory sidecar
+<!-- roadmap: def-capture-binding -->
+
+<!-- roadmap-status: def-capture-binding -->
+- [x] the capture half is BUILT (2i-F, **D174**/**D175**): durable capture sessions that survive a dashboard restart, token expiry, ordered photo digests, the QR start, the PDF bundler and one durable retryable finalization
+- [x] finalization DERIVES its identities (`deriveStableUuid` over the outbox's stable key), so a replay returns the same manifest and the same run rather than a second one — which is what makes "succeeds visibly or fails visibly" true rather than aspirational
+- [x] the loopback boundary this item names holds: the app binds loopback and the token-scoped capture ingress is the sole exception, with the credential in the URL **fragment** so no server, proxy or access log ever sees it (**D174**)
+- [ ] **no workflow can receive the handoff.** `CAPTURE_INTAKE_BINDINGS` is derived from `WORKFLOW_MODULES` and no module declares one, so the registry is empty (`src/control/workflow-registry.ts:194`) — neither current workflow can honestly derive an employee id from a photograph, and the binding comes due with the first OCR-consuming workflow (`{#order-3}`)
+- [ ] the phone page has **no production delivery path**: the BFF serves no frontend bytes and the tunnel launcher is unbuilt (**D189**, `{#def-byte-path}`)
+> 2026-08-21 | docs-cohesion charter | verified against `src/control/workflow-registry.ts:194`, `src/server/dashboard/compose.ts:752`, doc 04 §Photograph a paper form… and ref:data-intake-and-edit-data §5.1; left: the binding itself and the byte path, each owned by its own deferral node
+<!-- /roadmap-status -->
+
 
 Open sessions, token
 expiry, ordered photo digests, finalization, and OCR/intake handoff survive dashboard restarts.
@@ -320,6 +357,19 @@ tests — remains preserved afterward. Any later retirement/deletion requires a 
 authorization and its own capability/rollback proof. Master owner: the phase docs; guard owner: ref guards-and-tests.
 
 ### 25. Versioning by fingerprint; archiving by version bump; git is the archive (2026-07-24)
+<!-- roadmap: p2-2i -->
+
+<!-- roadmap-status: p2-2i -->
+- [x] BUILT in 2i-G (**D179**): schema **v13**'s `archived_runs`, `archive_relaunches` and `version_bump_applications` abort UPDATE and DELETE **in SQL** — an archive whose rows could be rewritten is a weaker record than the live row it replaced
+- [x] the zero-compat-code claim is CHECKED rather than asserted: `archive-invariants` reads a stored record back with the descriptor list **empty**, which is the only test that can settle "viewing an archived run needs no old-version code"
+- [x] the app-version stamp this item depends on was MISSING — the queue projection stamped the build serving the PAGE, so run-detail's "different app build" warning compared a value with itself; `RunRecord` now carries an `appVersion` stamped at the ONE enqueue point and read forward, never back-filled (**D133**/**D179**)
+- [x] the workflow LABEL, and since **D242** the short CODE, are FROZEN into the archived record — resolving either later would be a descriptor read on the archived path, which this item forbids
+- [x] the "cannot archive a non-terminal run" rule is enforced where it decides: `apply` re-derives candidates AND blockers from authority inside its own transaction and refuses naming every blocker, so an unresolved possible-submit is never buried
+- [x] "git is the archive" holds for the CODE — no archive folders exist anywhere in the tree; prior descriptor versions live in git history while RUN data is archived as self-contained rows
+- [ ] two criteria left Phase 2 by explicit DISPOSITION, both on 2i surfaces: the Workflow Explorer's EDIT half (**D186**, reassigned with a named trigger) and the BFF serving no frontend bytes (**D189**) — neither is a waiver and both name an owner
+> 2026-08-21 | docs-cohesion charter | verified against `src/domain/archive/model.ts`, `src/services/archive/archive-service.ts`, `src/infra/sqlite/migrations.ts` and `tests/unit/architecture/archive-invariants.test.ts`; left: nothing in 2i itself — all eight squares are `[x]` at `{#p2-2i}`; the two dispositions are recorded above
+<!-- /roadmap-status -->
+
 
 No archive folders. Descriptors carry a version + content fingerprint; guards force a bump on
 behavior change; every run permanently stamps the workflow version *and* app version it ran
@@ -356,6 +406,8 @@ post-submit confirmation screenshot, and the person identity observed at commit.
 the operator can complete their double-check without opening UCPath.** Owner: ref write-safety (proof
 content) + ref operator-trust (receipt surface).
 ## Non-negotiables
+<!-- roadmap: phase-0 -->
+
 
 - **Fail loud.** The legacy repo's root `CLAUDE.md` rule applies in full to the rebuild repo from
   its first line.
@@ -461,6 +513,8 @@ content) + ref operator-trust (receipt surface).
   never run concurrently as production authority.
 
 ## One master plan (operator directive 2026-07-17)
+<!-- roadmap: phase-0 -->
+
 
 When the design docs converge, they are consolidated into a SINGLE phased plan containing every
 piece of information needed to build — there must never be multiple competing plans that can cause
@@ -483,6 +537,26 @@ phases add new docs and/or update existing ones so the documentation always matc
 The foundation's documentation is part of the foundation.
 
 ## Migration strategy
+<!-- roadmap: migrations -->
+<!-- roadmap: cutover -->
+
+<!-- roadmap-status: migrations -->
+- [x] the strategy itself is unchanged and still governs: one workflow at a time, each with its own migration plan doc, the §b questionnaire answered BEFORE building (doc 03c §Phase summary's seven-step playbook)
+- [x] order 0 (person-lookup) is live-proven from Phase 1; **separations (order 8) is the migration in flight** — **D193(c)** moved the phase ENTRY here to force the store task libraries into existence, explicitly WITHOUT re-sequencing D84's risk-proof order
+- [ ] thirteen workflows across nine order rows remain, and **no workflow after separations is named yet**; only person-lookup and the six separations descriptors are registered, so orders 1–7 and 9 have no descriptor at all
+- [ ] store reality behind the order: only `ucpath`, `crm`, `kuali` and `new-kronos` have real drivers; `onbase`, `servicenow`, `i9`, `old-kronos` and `sharepoint` are three-line session declarations with zero tasks
+- [ ] the legacy capability register stands at **47 open** · 20 replaced · 7 native · 4 retired; every open entry names `phase-3-workflow-migration` and cutover requires zero
+> 2026-08-21 | docs-cohesion charter | verified against `{#migrations}` and doc 03c §Recommended migration order; left: every order row after separations, and the 47 open register entries that close with them
+
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: cutover -->
+- [x] the SHAPE is ratified and unchanged — one all-at-once authority switch, no per-workflow flip, no live proxy, no mixed-engine production period (**D89**, mechanics amended by **D93**), and the entire legacy repo preserved as the rollback asset
+- [ ] **nothing has started.** `{#cutover}` is `not started` and every one of its nine build items is open, including the rehearsal that has never run (doc 05 §Exit criteria)
+- [ ] closure — deletion or retirement of the legacy repo — is OUTSIDE this cutover and has no trigger, no elapsed-time rule and no automatic expiry; it needs a separate explicit operator authorization (`{#rollback-window}`)
+> 2026-08-21 | docs-cohesion charter | verified against `{#cutover}` and doc 05 §Phase summary + §Exit criteria; left: the whole of it — this section states the rule, doc 05 owns the execution
+<!-- /roadmap-status -->
+
 
 - **Phase 0 (COMPLETE 2026-07-31; `docs/rebuild/00-design-the-foundation.md`):** foundation design
   docs in `docs/rebuild/`, each reviewed part-by-part with the
