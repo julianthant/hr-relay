@@ -389,22 +389,41 @@ session declaration with **zero tasks** (`src/stores/`).
 
 ## Decisions this phase ratified
 
-_Derived from `reference/decisions.md`'s round headings on 2026-08-20 (3b) — the
-ratification act and the normative pointer stay in the ledger; this is the phase index._
+**Checked against `reference/decisions.md`'s `_phase:_` markers on 2026-08-21: the ledger carries no
+`_phase: 5_` marker, and that is correct.** Phase 5 is one act performed once; a decision belonging to
+it would be taken ON the cutover day or in the commit that builds a piece of the procedure, and
+neither has happened. The ledger's phase markers today read `0` (11) · `1` (11) · `2` (23) · `3a` (19) ·
+`3b` (20) · `platform` (4) — no `5`, and nothing mis-filed into another phase that belongs here.
 
-**Nothing has been ratified in this phase yet** — the cutover has not been designed past what Phase 0
-settled. Its binding decisions were all taken in round 10–12 (2026-07-31) and are listed under
-`00-design-the-foundation.md`:
+**What binds the cutover was therefore all ratified elsewhere**, mostly in round 10–12 (2026-07-31)
+when the two-repo model was settled. This is the inverse index — the decision, the phase it was taken
+in, and what it binds HERE — so the reasoning can be read beside the criterion it produced. The
+ratification act and the normative pointer stay in the ledger.
 
-| D | What it binds here |
-|---|---|
-| **D88** | isolated coexistence — distinct roots, ports, locks and browser profiles while both worlds run on one machine |
-| **D89** | ONE all-at-once authority switch; no workflow-scoped flip, no mixed-engine interval, no compat layer |
-| **D90 / D94** | change accounting through the split (**retired by D150**, 2026-08-05 — replaced by live re-verification at each migration) |
-| **D91** | the coverage floors and the no-legacy-test-deletion rule the cutover gate reads |
-| **D93** | the two-repository address — isolation is physical, so the guards that simulated it retired |
+| D | Phase | What it binds here |
+|---|---|---|
+| **D58** | 0 | the capability-inventory closure rule — old-code closure is inventoried, never workflow-counted; `config/legacy-capabilities.json` is its instrument and precondition **P3** reads it |
+| **D88** | 0 | isolated coexistence — distinct roots, ports, locks and browser sessions while both worlds run on one machine (§Phase summary's what-stays table) |
+| **D89** | 0 | **ONE all-at-once authority switch**; the five-step procedure; no workflow-scoped flip, no mixed-engine interval, no compat layer; the whole legacy repo preserved as the rollback asset and deletion pushed outside this cutover |
+| **D90 / D94** | 0 | change accounting through the split — **retired by D150** (phase 2); the as-written obligation is at `history/superseded/2026-08-20-05-cross-repo-accounting.md` and the invariant moved to live re-verification at each migration |
+| **D91** | 0 | the coverage floors and the no-legacy-test-deletion rule the cutover gate reads (criterion 4) |
+| **D92** | 0 | live probes are mandatory at their named later milestones — why a migration's dry run is a precondition and not a nicety (**P1**) |
+| **D93** | 0 | the two-repository ADDRESS — isolation is physical, the D88 bidirectional guard family retires, and the switch becomes a repointing rather than an in-repo flip |
+| **D150** | 2 | the retirement of D90/D94 accounting, and the replacement: mandatory live re-verification at each workflow's migration (risk 3) |
+| **D156** | 2 | the same decoupling applied to the environment inventory — the last guard that made legacy work a rebuild gate |
+| **D184** | 2 | an inventory that gates cutover must be ACTIONABLE — the register's milestones re-dispositioned against the as-built, and the guard taught to refuse an entry `open` at or before the runtime's own `completedThrough` (risk 10) |
+| **D188** | 2 | `one-time-import-offline` re-owned to the **cutover gate** — the guard that holds procedure step 3's "approved versioned one-time imports" line the day such a command is written |
+| **D191** | platform | `test:coverage` as the per-commit gate, which is the family criterion 4 names |
+| **D193** | 3b | (a) "production" means the D89 day this repo becomes the operator's daily LOCAL tool — the reading rule that keeps §Later, unplanned out of the exit criteria |
+| **D247** | platform | command NAMES are no longer an isolation resource; what survives is the ports/roots/locks/session-namespace rows and the exact-script drift check on both sides |
+| **D264** | 3a | Track D supplies §7.4's first measurements, which precondition **P5** turns into gates |
 
-A decision taken for the cutover itself lands here in the same commit that records it.
+**What ratifying something here would look like**, so the next agent recognizes it: a decision taken
+for the cutover itself lands in THIS doc in the same commit that records it — most likely in
+§Exit criteria or in §Phase summary's five-step procedure — `reference/decisions.md` gets the round
+row with a `_phase: 5_` marker, and the `{#cutover}` node's `builds:` line for that step flips with
+the decision cited. The two most likely subjects are the offline one-time importer (which activates
+`one-time-import-offline`) and the rollback bridge's verification shape.
 
 ## Exit criteria
 
