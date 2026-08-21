@@ -97,6 +97,7 @@ import type {
   StepProjection,
   SurfaceShape,
   TimelineCategoryProjection,
+  TimelineCategorySpec,
   VerdictDefinition,
   WorkflowActionPolicy,
   WorkflowCategory,
@@ -109,7 +110,7 @@ import {
   assertSchemaOffersPath,
   assertSchemaOwnsPath,
 } from "../validation/contract-boundary.js";
-import type { AnyNodeEntry, BuiltFlow, OutputsOf, WorkflowResultSpec } from "./flow.js";
+import type { AnyNodeEntry, AnyNodeFragment, BuiltFlow, OutputsOf, WorkflowResultSpec } from "./flow.js";
 
 /* ── the authored halves that stay typed over the graph ──────────────────── */
 
@@ -202,6 +203,32 @@ export interface WorkflowIdentitySpec<Input> {
  */
 export function defineWorkflowStep(step: { readonly key: string; readonly label: string }): WorkflowStep {
   return Object.freeze(WorkflowStepSchema.parse(step));
+}
+
+/**
+ * D265 §1.2.2 rule 2, the other half — the step's timeline CATEGORY, derived
+ * from the folder's own node fragments rather than declared by hand.
+ *
+ * A step folder's `nodes.ts` defines its node fragments (`defineTaskNode` and
+ * kin, `src/base/flow.ts`) and exports exactly one of these; the composition's
+ * `timeline` is the list of the six. The key and label come from the folder's
+ * `step.ts`, the member ids from the fragments' own declared ids — so a
+ * category that names a node the folder does not own, or spells the step's
+ * key differently from the folder, is not a thing anybody can write. D225's
+ * exhaustiveness (every graph node in exactly one category) is still checked
+ * by `defineWorkflowDescriptor`, which is where a fragment left OUT of its
+ * folder's list fails loud.
+ */
+export function defineWorkflowStepNodes(
+  step: WorkflowStep,
+  fragments: readonly AnyNodeFragment[],
+): TimelineCategorySpec {
+  const nodes = fragments.map((fragment) => fragment.id);
+  const repeated = nodes.find((id, index) => nodes.indexOf(id) !== index);
+  if (repeated !== undefined) {
+    throw new Error(`step "${step.key}" lists node fragment ${repeated} twice`);
+  }
+  return Object.freeze(TimelineCategorySpecSchema.parse({ key: step.key, label: step.label, nodes }));
 }
 
 /**

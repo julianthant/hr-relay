@@ -18,7 +18,7 @@
  * substitute — this file uses the REAL contract factory and the REAL builder.
  */
 import { z } from "zod";
-import { flow } from "../../src/base/flow.js";
+import { defineOperatorGateNode, defineTaskNode, defineTransactionNode, flow } from "../../src/base/flow.js";
 import type { NodeEntry, OutputsOf } from "../../src/base/flow.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
 import {
@@ -36,6 +36,9 @@ import type {
   ChildRunOutcome,
   DelegationManifestRef,
   DelegationPolicy,
+  OperatorGateNode,
+  TaskStepNode,
+  TransactionNode,
   TypedTransactionOutcome,
   WorkflowRef,
 } from "../../src/domain/workflow/graph.js";
@@ -617,3 +620,77 @@ negatives.build({
   // @ts-expect-error derive must return exactly z.input of the result schema
   derive: ({ outputs }) => ({ eid: outputs["search-person"].eid }),
 });
+
+/* ── node fragments (D265 §1.2.2 rule 2) ─────────────────────────────────── */
+
+const readContactFragment = defineTaskNode("read-contact", readCrmContact, {
+  label: "Read contact",
+  replay: "checkpoint",
+});
+const approvalFragment = defineOperatorGateNode("approval", {
+  label: "Approve",
+  result: z.object({ approved: z.boolean() }),
+});
+const terminationFragment = defineTransactionNode("terminate", {
+  label: "Terminate",
+  prepare: fillTermination,
+  commit: submitTermination,
+  dryRun: "stop-after-prepare",
+  probePolicy: "always",
+  probeToFenceMaxMs: 30_000,
+});
+
+// A fragment applied through `.pipe` keeps the builder's accumulated generics:
+// the wiring's bind sees exactly the declared upstream scope, and the nodes
+// appended after the fragment can read the fragment's own output.
+const piped = flow(WORKFLOW_INPUT)
+  .step("search-person", searchPersonOrg, {
+    dependsOn: [],
+    bind: ({ input }) => ({ eid: input.eid }),
+    replay: "checkpoint",
+  })
+  .pipe(readContactFragment.wire({
+    dependsOn: ["search-person"],
+    bind: ({ outputs }) => ({ eid: outputs["search-person"].eid }),
+  }))
+  .pipe(approvalFragment.wire({ dependsOn: ["read-contact"] }))
+  .pipe(terminationFragment.wire({
+    dependsOn: ["approval", "search-person", "read-contact"],
+    prepare: ({ outputs }) => ({
+      eid: outputs["search-person"].eid,
+      effectiveDate: outputs.approval.approved ? outputs["read-contact"].email : "never",
+    }),
+    commit: ({ outputs }) => ({
+      eid: outputs["search-person"].eid,
+      effectiveDate: outputs.approval.approved ? outputs["read-contact"].email : "never",
+    }),
+  }));
+
+const pipedNodes: readonly [
+  TaskStepNode<never, typeof searchPersonOrg>,
+  TaskStepNode<never, typeof readCrmContact>,
+  OperatorGateNode<z.ZodObject<{ approved: z.ZodBoolean }>>,
+  TransactionNode<never, typeof fillTermination, typeof submitTermination>,
+] = piped.build({
+  schema: z.object({ eid: EidSchema, email: z.string() }),
+  dependsOn: ["terminate", "read-contact"],
+  derive: ({ outputs }) => ({ eid: outputs.terminate.output.transactionId, email: outputs["read-contact"].email }),
+}).nodes;
+void pipedNodes;
+
+negatives.pipe(readContactFragment.wire({
+  dependsOn: ["search-person"],
+  // @ts-expect-error a fragment's bind may not read an output it did not declare in dependsOn
+  bind: ({ outputs }) => ({ eid: outputs["list-documents"].eid }),
+}));
+
+negatives.pipe(readContactFragment.wire({
+  dependsOn: ["search-person"],
+  // @ts-expect-error a fragment's bind must return exactly z.input of the fragment's contract
+  bind: ({ outputs }) => ({ wrong: outputs["search-person"].eid }),
+}));
+
+negatives.pipe(approvalFragment.wire({
+  // @ts-expect-error a fragment's dependsOn may only name declared upstream nodes
+  dependsOn: ["nowhere"],
+}));
