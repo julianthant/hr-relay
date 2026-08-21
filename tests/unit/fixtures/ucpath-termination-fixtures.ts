@@ -12,6 +12,7 @@
  * The identity below is synthetic on purpose. The live surface was verified
  * read-only and NOTHING was ever submitted; no real EID belongs in the tree.
  */
+import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -215,6 +216,7 @@ export function terminationHarness(options: Readonly<{
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: fixtureDuoCeremonyGates(clock),
   });
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("f");

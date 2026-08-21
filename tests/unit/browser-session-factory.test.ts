@@ -9,6 +9,7 @@
  * A live login is NOT exercised here (that is the live smoke's job); what IS
  * exercised is every arm that must fail loud before or around one.
  */
+import { fixtureDuoCeremonyGate, fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -237,6 +238,7 @@ const OPEN_INPUT = {
   acceptDownloads: false,
   exclusive: false,
   signal: new AbortController().signal,
+  duoCeremony: fixtureDuoCeremonyGate("ucpath", WORKER_ID, CLOCK),
 } as const;
 
 describe("worker browser session factory", () => {
@@ -563,6 +565,7 @@ describe("worker browser session factory", () => {
         clock: CLOCK,
         scheduler: new ManualScheduler(CLOCK),
         acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+        duoCeremony: fixtureDuoCeremonyGates(CLOCK),
       });
       manager.bindRunConfigFingerprint(FINGERPRINT);
       const previousUser = process.env.UCPATH_USER_ID;

@@ -57,10 +57,22 @@ import { FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../do
 import type { RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
 import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
 
-export const RuntimeProcessLockNameSchema = z.enum(["server", "workers"]);
+/**
+ * `server` and `workers` are the two roles the D181 restore snapshot composes
+ * (`RecoveryRuntimeLockSnapshotSchema.processLocks` is a strict `{server,
+ * workers}` object, and `RUNTIME_PROCESS_LOCK_NAMES` below is exactly those
+ * two). `live-smoke` is a THIRD role added for review finding 3
+ * (`scripts/live-browser-login-smoke.ts`, ref execution-and-sessions §10): it
+ * reuses this same acquire/release/liveness-refusal discipline so a smoke
+ * cannot open the authority database — and potentially migrate it — while
+ * another live smoke holds the role, but it is deliberately NOT added to
+ * `RUNTIME_PROCESS_LOCK_NAMES` or the snapshot schema, which stay scoped to
+ * the two long-lived server roles the stopped-system proof is about.
+ */
+export const RuntimeProcessLockNameSchema = z.enum(["server", "workers", "live-smoke"]);
 export type RuntimeProcessLockName = z.infer<typeof RuntimeProcessLockNameSchema>;
 
-/** The two roles, in the order the snapshot records them. */
+/** The two roles the D181 restore snapshot composes, in the order it records them. */
 export const RUNTIME_PROCESS_LOCK_NAMES: readonly RuntimeProcessLockName[] = Object.freeze([
   "server",
   "workers",

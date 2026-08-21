@@ -14,6 +14,7 @@
  * The park is a post-fence indeterminate state, so the arms proven here are
  * exactly the ones that must never invent a terminal outcome.
  */
+import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -148,6 +149,7 @@ function roundTrip(resolutionDescriptor: AnyWorkflowDescriptor = writeFixtureDes
       scheduler,
       taskDeadlineMs: 60_000,
       sessionAcquireMs: 20_000,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
       heartbeatIntervalMs: 600_000,
       idleRepollMs: 1_000,
       log,

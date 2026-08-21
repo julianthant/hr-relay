@@ -8,6 +8,7 @@
  * timers, span sink) replaced by recording fakes, so a test that passes here
  * pins production composition, not a parallel reimplementation.
  */
+import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -340,6 +341,7 @@ export function sessionManagerFor(
     clock,
     scheduler,
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: fixtureDuoCeremonyGates(clock),
     ...(onEvent === undefined ? {} : { onEvent }),
   });
   // D116: production binds the claimed run's fingerprint in the worker loop;

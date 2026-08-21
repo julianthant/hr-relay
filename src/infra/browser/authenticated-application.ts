@@ -24,6 +24,7 @@
  *    adding another early `return`.
  */
 import type { Page } from "playwright";
+import type { DuoCeremonyLeaseToken } from "../../base/duo-ceremony-lease.js";
 import { BrowserLoginError } from "./login-contract.js";
 import type {
   AuthenticatedApplicationEvidence,
@@ -148,27 +149,50 @@ export async function assertAuthenticatedApplication(
 }
 
 /**
- * Builds a login recipe whose verification CANNOT be skipped.
+ * Builds a login recipe whose verification CANNOT be skipped — and whose Duo
+ * ceremony cannot run outside the credential's lease (D267).
  *
- * The flow decides only the LABEL — did this call have to log in, or was the
- * session already live. Whatever it returns, the same content-level proof runs
- * before the recipe resolves. The flow is handed the same verifier as a `probe`
- * so its "are we already in?" decision is the identical two-fact check rather
- * than a cheaper URL guess.
+ * The recipe is two halves and the wrapper owns the seam between them:
+ *
+ * 1. `navigate` takes the page to the system's login entry. It runs only when
+ *    the first probe refused, and it is followed by a SECOND probe, because a
+ *    warm profile rides the entry route straight into the application and
+ *    only the two-fact check may say so.
+ * 2. `ceremony` is everything from the SSO form to the authenticated landing.
+ *    It runs ONLY inside `context.duoCeremony.withCeremony`, which acquires
+ *    the per-credential lease (bounded, refusing by name), hands over the
+ *    minted `DuoCeremonyLeaseToken` every SSO helper asserts, and releases
+ *    when the verifier returns — on success or failure — so the lease's scope
+ *    is exactly "navigate to SSO until the content verifier proves the
+ *    session" (ref execution-and-sessions §10.2). A warm profile never reaches
+ *    this half and never takes the lease.
+ *
+ * The wrapper decides the LABEL (`already-authenticated` / `logged-in`), and
+ * whatever half ran, the same content-level proof runs before it resolves.
+ * This wrapper is the ONE caller of `withCeremony` in the tree; the
+ * `duo-ceremony-lease` guard pins it.
  */
 export function defineVerifiedLoginRecipe(input: Readonly<{
   system: BrowserSystemId;
   verify: AuthenticatedApplicationVerifier;
-  flow: (
-    context: SystemLoginContext,
-    probe: () => Promise<AuthenticationProbe>,
-  ) => Promise<LoginResult>;
+  navigate: (context: SystemLoginContext) => Promise<void>;
+  ceremony: (context: SystemLoginContext, token: DuoCeremonyLeaseToken) => Promise<void>;
 }>): SystemLoginRecipe {
   return async (context: SystemLoginContext): Promise<LoginResult> => {
-    const outcome = LoginResultSchema.parse(
-      await input.flow(context, async () => input.verify(context)),
-    );
-    await assertAuthenticatedApplication(input.system, context, input.verify);
-    return outcome;
+    const probe = async (): Promise<AuthenticationProbe> => input.verify(context);
+    if ((await probe()).authenticated) {
+      await assertAuthenticatedApplication(input.system, context, input.verify);
+      return LoginResultSchema.parse("already-authenticated");
+    }
+    await input.navigate(context);
+    if ((await probe()).authenticated) {
+      await assertAuthenticatedApplication(input.system, context, input.verify);
+      return LoginResultSchema.parse("already-authenticated");
+    }
+    await context.duoCeremony.withCeremony(async (token) => {
+      await input.ceremony(context, token);
+      await assertAuthenticatedApplication(input.system, context, input.verify);
+    });
+    return LoginResultSchema.parse("logged-in");
   };
 }

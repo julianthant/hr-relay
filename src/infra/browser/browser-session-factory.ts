@@ -25,7 +25,7 @@
  *    deadline. Anything else THROWS, and the session manager then retains the
  *    resource as poisoned rather than believing an unproven cleanup.
  */
-import { mkdirSync, statSync } from "node:fs";
+import { mkdirSync, rmSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 import type { BrowserContext, Page } from "playwright";
@@ -35,6 +35,7 @@ import type {
   WorkerBrowserResource,
   WorkerBrowserSessionFactory,
 } from "../../base/session.js";
+import type { DuoCeremonyGate } from "../../base/duo-ceremony-lease.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import type { Clock } from "../../domain/clock.js";
 import { RuntimeInstanceSchema, resolveSystemEntryUrl } from "../../domain/config/instance.js";
@@ -221,6 +222,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
     acceptDownloads: boolean;
     exclusive: boolean;
     signal: AbortSignal;
+    duoCeremony: DuoCeremonyGate;
   }>): Promise<WorkerBrowserResource> {
     const { config, isolation } = this.#options;
     const workerId = WorkerIdSchema.parse(input.workerId);
@@ -290,6 +292,7 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
               signal: options.signal ?? input.signal,
               credentials: readSsoCredentials(),
               recordEvidence: this.#recordEvidence,
+              duoCeremony: input.duoCeremony,
             };
             return binding.login(loginContext);
           },
@@ -317,6 +320,39 @@ export class PlaywrightWorkerSessionFactory implements WorkerBrowserSessionFacto
       }
       throw error;
     }
+  }
+
+  /**
+   * D267 §10.5 — the fresh-profile-once recovery's one filesystem act. The
+   * SAME path is removed and recreated (§1's path is a pure function of the
+   * session identity; a disambiguating segment would leak a directory per
+   * refusal and make the path stop describing the identity). The caller has
+   * already PROVEN the context closed — a directory a context may still hold
+   * cannot be touched — and this refuses any path outside the rebuild's own
+   * profile namespace rather than deleting what it was handed.
+   */
+  async discardProfile(input: Readonly<{
+    workerId: WorkerId;
+    system: BrowserSystemId;
+    instance?: string;
+    configFingerprint: Fingerprint;
+  }>): Promise<Readonly<{ profileDirectory: string }>> {
+    const { config, isolation } = this.#options;
+    const profileDirectory = workerProfileDirectory({
+      profileRoot: config.paths.browserProfileRoot,
+      isolation,
+      workerId: input.workerId,
+      system: input.system,
+      instance: RuntimeInstanceSchema.parse(input.instance),
+      configFingerprint: input.configFingerprint,
+    });
+    const namespaceRoot = resolve(config.paths.browserProfileRoot, isolation.browserSessionNamespace);
+    if (!profileDirectory.startsWith(`${namespaceRoot}/`)) {
+      throw new Error(`refusing to discard ${profileDirectory}: it is outside the rebuild browser-profile namespace ${namespaceRoot}`);
+    }
+    rmSync(profileDirectory, { recursive: true, force: true });
+    mkdirSync(profileDirectory, { recursive: true });
+    return Object.freeze({ profileDirectory });
   }
 
   readonly #recordEvidence = (evidence: AuthenticatedApplicationEvidence): void => {

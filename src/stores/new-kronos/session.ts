@@ -36,7 +36,6 @@
  * **3.32 s** measured; whole browser-launch-to-home ≈ 33 s.
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
-import type { LoginResult } from "../../domain/session.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
@@ -168,10 +167,8 @@ export const verifyNewKronosAuthenticatedApplication: AuthenticatedApplicationVe
 export const newKronosLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
   verify: verifyNewKronosAuthenticatedApplication,
-  flow: async (context, probe): Promise<LoginResult> => {
+  navigate: async (context): Promise<void> => {
     const { page, config } = context;
-    if ((await probe()).authenticated) return "already-authenticated";
-
     const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
     abortIfCancelled(SYSTEM, "navigate-login-entry", context);
     try {
@@ -193,18 +190,20 @@ export const newKronosLoginRecipe = defineVerifiedLoginRecipe({
     }
 
     // legacy login.ts:782-785 / :806-809 — a warm profile lands straight on the
-    // WFD home. Only the proof may say so; the URL alone may not.
-    if ((await probe()).authenticated) return "already-authenticated";
-
-    await waitForSsoForm(SYSTEM, context);
-    await fillSsoCredentials(SYSTEM, context);
-    await submitSsoForm(SYSTEM, context);
+    // WFD home. Only the proof may say so; the URL alone may not — the wrapper
+    // probes again after this navigation and skips the ceremony when it holds.
+  },
+  ceremony: async (context, token): Promise<void> => {
+    const { config } = context;
+    await waitForSsoForm(SYSTEM, context, token);
+    await fillSsoCredentials(SYSTEM, context, token);
+    await submitSsoForm(SYSTEM, context, token);
     await waitForAuthenticatedLanding(
       SYSTEM,
       context,
+      token,
       isAuthenticatedNewKronosUrl,
       config.timeouts.duoApprovalSeconds * 1_000,
     );
-    return "logged-in";
   },
 });

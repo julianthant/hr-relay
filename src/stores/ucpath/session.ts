@@ -39,7 +39,6 @@
  *    every return path including the early one.
  */
 import { resolveSystemEntryUrl, resolveSystemLoginUrl } from "../../domain/config/instance.js";
-import type { LoginResult } from "../../domain/session.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
@@ -281,10 +280,8 @@ async function enterAuthenticatedApplication(context: SystemLoginContext): Promi
 export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
   verify: verifyUcpathAuthenticatedApplication,
-  flow: async (context, probe): Promise<LoginResult> => {
+  navigate: async (context): Promise<void> => {
     const { page, config } = context;
-    if ((await probe()).authenticated) return "already-authenticated";
-
     const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
     abortIfCancelled(SYSTEM, "navigate-login-entry", context);
     try {
@@ -306,9 +303,13 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
     }
 
     // A warm profile can ride an existing session straight through the portal —
-    // but only the two-fact probe may say so. The portal's own URL never can.
-    if ((await probe()).authenticated) return "already-authenticated";
-
+    // but only the two-fact probe may say so. The portal's own URL never can;
+    // the wrapper probes again after this navigation and skips the ceremony.
+  },
+  ceremony: async (context, token): Promise<void> => {
+    const { page, config } = context;
+    // The portal's login control is the first navigation that can reach the
+    // Duo ceremony, so it runs under the lease (ref execution-and-sessions §10.2).
     await clickPortalLoginControl(context);
 
     // Campus discovery only appears when the IdP has no live session; when it
@@ -317,12 +318,13 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
     if (gate === "campus-discovery") await selectUcSanDiego(context);
 
     if (gate !== "application") {
-      await waitForSsoForm(SYSTEM, context);
-      await fillSsoCredentials(SYSTEM, context);
-      await submitSsoForm(SYSTEM, context);
+      await waitForSsoForm(SYSTEM, context, token);
+      await fillSsoCredentials(SYSTEM, context, token);
+      await submitSsoForm(SYSTEM, context, token);
       await waitForAuthenticatedLanding(
         SYSTEM,
         context,
+        token,
         (url) => isUcpathPostSsoLanding(url) || url.toLowerCase().includes(CAMPUS_DISCOVERY_MARKER),
         config.timeouts.duoApprovalSeconds * 1_000,
       );
@@ -337,12 +339,12 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
       await waitForAuthenticatedLanding(
         SYSTEM,
         context,
+        token,
         isUcpathPostSsoLanding,
         config.timeouts.navigationMs,
       );
     }
 
     await enterAuthenticatedApplication(context);
-    return "logged-in";
   },
 });

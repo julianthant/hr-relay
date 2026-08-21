@@ -475,12 +475,13 @@ eight run-start); they sit on `{#dash-defaults}`, because `{#track-b}` is done a
 <!-- roadmap: duo-lease -->
 
 <!-- roadmap-status: duo-lease -->
-- [ ] BE `duo_ceremony_leases` in authority, plus the lease token `defineVerifiedLoginRecipe` requires
-- [ ] BE bounded waiters and the fresh-profile-once recovery, both failing by name
-- [ ] BE the guard — no login path without the lease, with a violating fixture
-- [ ] PROOF two workers' cold starts serialize (unit) plus a live two-worker cold start
-- [ ] DOCS the decision in `reference/execution-and-sessions.md` and `reference/decisions.md`
+- [x] BE `duo_ceremony_leases` in authority, plus the lease token `defineVerifiedLoginRecipe` requires (`bfc7d318`, `cb7f17f8`)
+- [x] BE bounded waiters and the fresh-profile-once recovery, both failing by name (`cb7f17f8`)
+- [x] BE the guard — no login path without the lease, with a violating fixture (`37e747f0`)
+- [ ] PROOF two workers' cold starts serialize (unit — DONE `1c244a40`) plus a live two-worker cold start (NOT RUN; ref execution-and-sessions §10.8 says how)
+- [x] DOCS the decision in `reference/execution-and-sessions.md` and `reference/decisions.md` (D267)
 > 2026-08-20 | docs-cohesion 03a | nothing named duo_ceremony_leases or a ceremony lease exists anywhere in src/; defineVerifiedLoginRecipe (src/infra/browser/authenticated-application.ts:159) takes system + verify + flow and no lease token
+> 2026-08-21 | duo-lease E1 | built (D267): store+token+leaf bfc7d318 · gate+wiring+recovery cb7f17f8 · guard 37e747f0 · unit proof 1c244a40; left: the live two-worker cold start
 <!-- /roadmap-status -->
 
 **The hazard is present today, which is why this is platform hardening and not a parallel-runs
@@ -665,7 +666,7 @@ stricter bar Track F carries (row 10).
 | 4 | **The reference corpus asserts over the corrected surfaces** | **MET** | `81287bb1` — 139 references re-frozen after the fixes, 151 assert-mode cases green, every drift attributed to a ratified decision |
 | 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **open** | D1 LANDED 2026-08-21 (**D268**, `81bfed73`) — one fact, one derivation, held by a test that asserts the row and the panel against each other; D2–D5 and D11 remain unlanded (see the Track D table); D6–D10 stay `proposed` behind their named trigger and are outside this gate |
 | 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **open** | never measured; D4/D5 supply the first numbers against a seeded 1,240-row / 108-member fixture, and those numbers become the non-regression gate |
-| 7 | **The Duo ceremony lease landed** | **open** | nothing named `duo_ceremony_leases` exists in `src/`; `defineVerifiedLoginRecipe` takes no lease token |
+| 7 | **The Duo ceremony lease landed** | **met (D267, bfc7d318…1c244a40)** | `duo_ceremony_leases` is schema v16; `defineVerifiedLoginRecipe` runs its `ceremony` half only under the lease token; the live two-worker cold start is still to be recorded |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the kernel arms exist; the supervisor refuses spawn by name and the projection serves no pool version |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **open** | recorded points reach no durable channel today |
 | 10 | **Demo fidelity: every region exact or ruled** — ~150 OPEN questions outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 756 exact; 37 + 54 + ~60 distinct questions await the operator (§Demo fidelity — every detail, region by region); the served-and-dropped facts, the structural ports, the vocabulary sweep and the re-freeze follow the rulings |

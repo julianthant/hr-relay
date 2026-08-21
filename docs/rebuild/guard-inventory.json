@@ -644,6 +644,15 @@
       "invariant": "PLANNED by D265 (ref workflow-model \u00a71.2.2, 2026-08-21): the `src/workflows/` tree IS the rail and the timeline, and the served role and the path are pinned to each other. (a) Every registered module's path matches its role's arm \u2014 `src/workflows/<id>/` for `standalone`/`composition` (a rail entry), `src/workflows/<of>/<step>/` for `chunk-harness` (a step of its composition), `src/workflows/proving/<id>/` for `proving` (test equipment, D220/D241) \u2014 and nothing else lives under `src/workflows/`; a stray folder is refused. (b) For every workflow that declares a D225 timeline, the declared categories and the step folders are the SAME set, both directions, each refusal naming the offender. (c) Every `chunk-harness.step` names one of `of`'s declared categories. (d) `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE, never from its id alone. Activates in the commit that moves `src/workflows/` into the D265 shape (doc 03b \u00a7The workflow tree \u2014 folders are the rail and the timeline), not before; a violating fixture per arm.",
       "replacementRequired": true,
       "activationMilestone": "phase-3b-workflow-tree"
+    },
+    {
+      "name": "duo-ceremony-lease",
+      "file": "tests/unit/architecture/duo-ceremony-lease.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/execution-and-sessions.md",
+      "invariant": "Ref execution-and-sessions \u00a710 (D267): no login path reaches the UCSD SSO form or the Duo WebAuthn assertion without presenting a DuoCeremonyLeaseToken, and one credential admits one Duo ceremony at a time. The token is minted and retired ONLY by the lease store (src/infra/sqlite/authority-database.ts, through src/base/duo-ceremony-lease.ts's module-private WeakSets); the brand is conjured by `as`/`satisfies` nowhere outside that module; defineVerifiedLoginRecipe (src/infra/browser/authenticated-application.ts) is the ONE caller of the gate's withCeremony; every store login recipe is the wrapper's {navigate, ceremony} shape rather than a single flow, and every SSO-helper call in a store presents `token`. Duo's signature counter is per CREDENTIAL while Duo Autopilot's copy is per browser PROFILE, so two ceremonies in one second present the same floored counter and Duo reads the non-advancing one as a cloned key \u2014 which BURNS the profile (D243). Each arm runs against tests/unit/architecture/fixtures/duo-lease-recipe-violation.ts, the exact pre-lease recipe shape, so a walker that resolved nothing cannot report the tree clean.",
+      "milestone": "3-workflow-migration",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {

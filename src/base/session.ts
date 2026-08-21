@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DuoCeremonyGate } from "./duo-ceremony-lease.js";
 import { BrowserSystemIdSchema } from "../domain/ids.js";
 import type {
   BrowserSessionId,
@@ -70,7 +71,28 @@ export interface WorkerBrowserSessionFactory {
     acceptDownloads: boolean;
     exclusive: boolean;
     signal: AbortSignal;
+    /**
+     * D267 (ref execution-and-sessions §10): the Duo ceremony lease gate for
+     * this acquisition. The factory hands it to the login recipe's context;
+     * the worker session manager opens one gate per acquisition and HOLDS it
+     * across the fresh-profile-once retry, which is why it is an input rather
+     * than something the factory mints.
+     */
+    duoCeremony: DuoCeremonyGate;
   }>) => Promise<WorkerBrowserResource>;
+  /**
+   * D267 §10.5: remove and recreate the SAME profile directory after Duo
+   * refused the assertion (a refused profile is burned). Optional on the
+   * port because a fixture factory has no directory; the manager REFUSES the
+   * recovery by name when a factory that observed a refusal lacks it — it
+   * never skips the retry silently.
+   */
+  readonly discardProfile?: (input: Readonly<{
+    workerId: WorkerId;
+    system: BrowserSystemId;
+    instance?: string;
+    configFingerprint: Fingerprint;
+  }>) => Promise<Readonly<{ profileDirectory: string }>>;
 }
 
 export interface SessionLoginOptions {

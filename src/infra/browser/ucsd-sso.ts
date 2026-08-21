@@ -24,9 +24,11 @@
  * appears within the Duo window, or this login fails loud".
  */
 import type { Locator, Page } from "playwright";
+import { assertDuoCeremonyLeaseToken } from "../../base/duo-ceremony-lease.js";
+import type { DuoCeremonyLeaseToken } from "../../base/duo-ceremony-lease.js";
 import { probeAbsentControl } from "./authenticated-application.js";
 import type { ObservedFact } from "./authenticated-application.js";
-import { BrowserLoginError } from "./login-contract.js";
+import { BrowserLoginError, DuoTerminalRefusalError } from "./login-contract.js";
 import type {
   AuthenticationProbe,
   BrowserLoginStep,
@@ -193,7 +195,9 @@ export async function probeSsoFormAbsent(page: Page): Promise<ObservedFact> {
 export async function waitForSsoForm(
   system: BrowserSystemId,
   context: SystemLoginContext,
+  token: DuoCeremonyLeaseToken,
 ): Promise<void> {
+  assertDuoCeremonyLeaseToken(token, { system });
   await raceCancellation(
     ssoSubmitButton(context.page)
       .waitFor({ state: "visible", timeout: context.config.timeouts.navigationMs }),
@@ -220,7 +224,9 @@ export async function waitForSsoForm(
 export async function fillSsoCredentials(
   system: BrowserSystemId,
   context: SystemLoginContext,
+  token: DuoCeremonyLeaseToken,
 ): Promise<void> {
+  assertDuoCeremonyLeaseToken(token, { system });
   const timeout = context.config.timeouts.navigationMs;
   // A chain that matches nothing must say SO, and say which chain, rather than
   // burning a navigation timeout on an ambiguous "could not be filled". This is
@@ -275,7 +281,12 @@ async function requireMatchedField(
 export async function submitSsoForm(
   system: BrowserSystemId,
   context: SystemLoginContext,
+  token: DuoCeremonyLeaseToken,
 ): Promise<void> {
+  // The click below is what starts the Duo ceremony. It is the one place in
+  // the tree the assertion is PRESENTED, so the token is asserted here even
+  // though every helper before it asserted too (ref execution-and-sessions §10.6).
+  assertDuoCeremonyLeaseToken(token, { system });
   abortIfCancelled(system, "sso-submit", context);
   try {
     await ssoSubmitButton(context.page).click({ timeout: context.config.timeouts.navigationMs });
@@ -340,9 +351,11 @@ async function observeDuoTerminalRefusal(page: Page, timeoutMs: number): Promise
 export async function waitForAuthenticatedLanding(
   system: BrowserSystemId,
   context: SystemLoginContext,
+  token: DuoCeremonyLeaseToken,
   landed: (url: string) => boolean,
   timeoutMs: number,
 ): Promise<void> {
+  assertDuoCeremonyLeaseToken(token, { system });
   try {
     const outcome = await raceCancellation(
       Promise.race<"landed" | "duo-refused">([
@@ -355,23 +368,19 @@ export async function waitForAuthenticatedLanding(
       context,
     );
     if (outcome === "duo-refused") {
-      throw new BrowserLoginError(
-        system,
-        "duo-clearance",
-        DUO_TERMINAL_REFUSAL_MESSAGE,
-        context.page.url(),
-      );
+      throw new DuoTerminalRefusalError(system, DUO_TERMINAL_REFUSAL_MESSAGE, context.page.url());
     }
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
     const observed = context.page.url();
-    throw new BrowserLoginError(
-      system,
-      "duo-clearance",
-      await describeStalledLanding(context, observed),
-      observed,
-      { cause: error },
-    );
+    const diagnosis = await describeStalledLanding(context, observed);
+    if (diagnosis === DUO_TERMINAL_REFUSAL_MESSAGE) {
+      // The landing bound expired and the page, asked afterwards, says Duo had
+      // already refused: the same observation as the raced arm, so the same
+      // class — the recovery path keys on it.
+      throw new DuoTerminalRefusalError(system, diagnosis, observed, { cause: error });
+    }
+    throw new BrowserLoginError(system, "duo-clearance", diagnosis, observed, { cause: error });
   }
 }
 

@@ -59,6 +59,7 @@ import {
   type WorkerBrowserSessionFactory,
   type WorkerSessionEvent,
 } from "./worker-sessions.js";
+import type { DuoCeremonyGateFactory } from "./duo-ceremony-gate.js";
 
 export interface WorkerLoopDependencies {
   readonly workflowId: WorkflowId;
@@ -79,6 +80,8 @@ export interface WorkerLoopDependencies {
    * whole-task deadline for session liveness.
    */
   readonly sessionAcquireMs: number;
+  /** D267 (ref execution-and-sessions §10): the per-credential Duo ceremony lease gate factory. */
+  readonly duoCeremony: DuoCeremonyGateFactory;
   readonly heartbeatIntervalMs: number;
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
@@ -205,6 +208,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     clock,
     scheduler: deps.scheduler,
     acquireDeadlineMs: deps.sessionAcquireMs,
+    duoCeremony: deps.duoCeremony,
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
       if (event.type === "browser-session:start") {

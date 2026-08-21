@@ -38,6 +38,7 @@ import {
   type SessionFactoryHarness,
 } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
+import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 
@@ -98,6 +99,7 @@ function composeInput(options: Readonly<{
     repoRoot: options.repoRoot,
     processId: 4242,
     sessionFactory: options.sessions.factory,
+    duoCeremony: fixtureDuoCeremonyGates(options.clock),
     stopSignal: options.stopSignal ?? new AbortController().signal,
     // Long enough that no scheduled beat fires during a test; the boot beat is
     // synchronous, so the lease/sweep path is still exercised.

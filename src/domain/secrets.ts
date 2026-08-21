@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import { readFileSync, statSync, type Stats } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Config } from "./config/schema.js";
+import { FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
 import {
   EnvironmentSecretNameSchema,
@@ -361,4 +364,75 @@ export function requireSecretFile(
   } catch (error) {
     throw new SecretFileError(`${name} could not be read`, { cause: error });
   }
+}
+
+/**
+ * The PUBLIC half of a WebAuthn credential, which is all an identity needs.
+ * `credentialId` travels to the relying party in cleartext on every assertion
+ * and `rpId` is the relying party's own name; the private key is never read
+ * into the identity and never leaves this function. The file is Duo
+ * Autopilot's own format (`duo-autopilot/src/background.js` `isValidCredential`:
+ * one object, an array, or `{credentials: [...]}`), not one of this repo's
+ * boundaries, so the two fields are read by type guard rather than by a zod
+ * record that would have to be open to admit the secret fields beside them.
+ */
+function isUnknownArray(value: unknown): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+function webauthnCredentialEntries(parsed: unknown): readonly unknown[] | undefined {
+  if (isUnknownArray(parsed)) return parsed;
+  if (parsed === null || typeof parsed !== "object") return undefined;
+  if ("credentials" in parsed) {
+    const credentials: unknown = parsed.credentials;
+    return isUnknownArray(credentials) ? credentials : undefined;
+  }
+  return [parsed];
+}
+
+function webauthnCredentialIdentity(entry: unknown): Readonly<{ rpId: string; credentialId: string }> | undefined {
+  if (entry === null || typeof entry !== "object") return undefined;
+  if (!("rpId" in entry) || !("credentialId" in entry)) return undefined;
+  const { rpId, credentialId } = entry;
+  if (typeof rpId !== "string" || rpId.length === 0) return undefined;
+  if (typeof credentialId !== "string" || credentialId.length === 0) return undefined;
+  return { rpId, credentialId };
+}
+
+/**
+ * D267 (ref execution-and-sessions §10.1): the IDENTITY of a credential file —
+ * a SHA-256 over the sorted `(rpId, credentialId)` pairs it holds — resolved
+ * through this module because it is the only permitted credential-file reader.
+ * It is what the Duo ceremony lease is keyed on: per CREDENTIAL, never per
+ * worker, system or profile. The digest carries no secret byte, and a file
+ * whose identity cannot be resolved THROWS; it never yields a substitute key,
+ * because a per-worker key is the unserialized behaviour wearing a lease's name.
+ */
+export function resolveSecretFileIdentity(
+  name: SecretFileName,
+  config: Config,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
+): Fingerprint {
+  const bytes = requireSecretFile(name, config, access);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    throw new SecretFileError(`${name} is not JSON, so its credential identity cannot be resolved`, { cause: error });
+  }
+  const entries = webauthnCredentialEntries(parsed);
+  if (entries === undefined) throw new SecretFileError(`${name} has no recognizable credential shape, so its identity cannot be resolved`);
+  const identities = entries.map((entry, index) => {
+    const identity = webauthnCredentialIdentity(entry);
+    if (identity === undefined) {
+      throw new SecretFileError(`${name} credential #${String(index)} carries no rpId + credentialId, so its identity cannot be resolved`);
+    }
+    return identity;
+  });
+  if (identities.length === 0) throw new SecretFileError(`${name} holds no credential, so its identity cannot be resolved`);
+  identities.sort((a, b) => `${a.rpId}\u0000${a.credentialId}`.localeCompare(`${b.rpId}\u0000${b.credentialId}`));
+  return FingerprintSchema.parse(createHash("sha256")
+    .update("hrauto:duo-credential-identity:v1\0")
+    .update(canonicalJsonStringify(identities))
+    .digest("hex"));
 }
