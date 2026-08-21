@@ -3452,6 +3452,132 @@ archived a run**, so every number here would be a measurement of a fixture. The 
 
 **Where the read path is proved.** `buildArchivedRunDetail` resolves NOTHING — no descriptor, no projection, no live authority beyond the archive tables — and says so at the top of the file it shares with its opposite (`src/server/dashboard/queries/archive.ts:1-20`): `buildArchiveIndex` re-derives current identities, candidates and blockers per request, because the version STATE a bump would act on is a fact about the registry NOW and a plan goes stale the moment a run is enqueued. Two halves with opposite rules, in one file so the difference is visible.
 
+#### 9.5.2 Activity — a range rendering of the ONE projection, and the one exemption (D81)
+
+**The recorded bug.** The operator reports that in the legacy dashboard the per-workflow badges
+"always error out" — matching the audit's bug class #7, count/badge divergence, with ≥4 separate
+fixes over the project's life. The root cause is structural, not arithmetic: badges, the status
+strip, and the queue list were each free to derive their own counts, so any two could disagree and
+each had to be fixed independently.
+
+**The contract.** There is exactly **one** server-side run/queue projection. **Workflow Panel
+badges, Status Bar pills, and Queue Panel rows are three renderings of that one payload.** A count
+is never computed a second time — not in React, not in a second endpoint, not in a "just for the
+badge" aggregate. If a surface needs a number the projection does not yet expose, the projection
+gains a field; it does not gain a sibling.
+
+Consequences that follow and must not be re-litigated per surface: **collapse rules, hidden rows,
+archived runs (§9.5.1), and delegated-member containment are applied once, inside the projection.**
+**The Activity report (D180) is a range rendering of this same payload**, built inside the
+projection for the same reason: a report that summed rows a second way could disagree with the day
+it summarises. Its contract lives in ref frontend-backend-integration §6.7. One block on it — the write ledger — is the single
+ratified exception, and it is spelled out immediately below (D236).
+A member counted in a group is not also counted at top level because there is no second place that
+could count it.
+
+##### D236 — the write-ledger carve-out (2026-08-19, operator ruling)
+
+**There is exactly ONE exemption from the sentence above, and it is named here so nothing else can
+claim to be it.** The Activity report's `Write ledger — what was actually filed` block is folded
+from the durable write ledger (`src/infra/ledger/`), **not** from this projection.
+
+**Why it cannot be derived from the projection.** §9.5.1 rule 1 already decides the half that
+matters: *the write ledger is never archived — archiving is a display lifecycle, the ledger is an
+audit one.* The ledger is append-only and is never pruned (D86), so **its entries outlive the runs
+that filed them**: a window whose runs have all left the live surfaces on a version bump can still
+hold ledger lines, and folding those lines out of the run corpus would report *"nothing was filed"*
+about real HR transactions that were. That is not a count/badge divergence — it is a different
+question over a different corpus, and D81 exists to stop two answers to ONE question, not to forbid
+a second question.
+
+**The shape of the exemption, which is what keeps it from spreading.**
+
+1. **Reported BESIDE the totals, never derived from them.** `ActivityReportWire.ledger` is its own
+   block. The wire's refinements deliberately assert **no** relationship between it and `totalRuns`,
+   the status buckets or the workflow cross-tab — a cross-check would be a claim that the two corpora
+   cover the same rows, and that claim is false. What IS checked is one level down, where both
+   numbers come from the same authority: each system row's `entries` must partition into
+   `prod` + `test`.
+2. **The seam is stated where the reader is.** The block carries it in its own subtitle, and
+   `activityReportCaveats` carries it into the panel's ⓘ and into the CSV export (D240). A second
+   authority the reader cannot see is a second authority the reader assumes is the first one.
+3. **ONE reader, reused.** The fold lives on the existing archive read-through
+   (`LedgerReadThrough.foldActivityRange`), not in a new module: two readers of an append-only audit
+   file would be two parse disciplines, and the wrong one would be wrong about what was filed into a
+   live HR system. A line it cannot read **throws by name** rather than being skipped — the pointer
+   path can answer one citation with a reason, a fold has no such column, and skipping silently
+   subtracts a filed transaction from the count of what was filed.
+4. **The window closes on the entry's own `confirmedAt`**, read through the same local-day rule this
+   projection buckets rows with. A partition FILE name is a UTC date and decides only which files are
+   opened (widened one day at each end); letting it decide membership would drop a write confirmed
+   late in the local day out of the report over a timezone.
+5. **The empty state is now honest.** "No ledger entries. Nothing in this report's reach filed
+   anything into a real HR system" is a fact the moment the axis is served, and was an *assertion*
+   before it was — which is why the ported surface omitted the block entirely rather than rendering
+   its empty state over an unserved axis.
+
+**Guard (ref guards-and-tests).** `one-projection-counts` — any count/aggregate in a surface path that does not
+originate from the projection payload fails. Backed by a fixture asserting Workflow Panel total,
+Status Bar sum, and rendered Queue Row count are equal by construction for a seeded world that
+includes archived, delegated, and rejected rows. *(The `?view=rebuild-demo` replica already
+proves this shape: one `countRows()` feeds rail badges, Status Bar, and queue — divergence is
+structurally unrepresentable there.)* **D236's exemption is bounded by the same guard, from both
+sides:** a write-ledger block may be BUILT only in `src/domain/dashboard/activity.ts` and
+`src/infra/ledger/ledger-read-through.ts`, and ASKED FOR only in that read-through and the one
+projection — exact set equality both ways, so a third counting path over the ledger fails by file
+name. The behavioural arm files real ledger lines into the seeded world and requires the block to
+move while every count stays byte-identical: *"reported beside the totals"* is a claim about what
+does not happen, so that is what is asserted.
+
+##### As-built — what the page counts, what it refuses to count, and the block that is always empty
+
+**The surface counts nothing.** `buildActivityReportWire`
+(`src/server/dashboard/projectors/run-queue-projection.ts:1538-1710`) builds every total inside the
+same projection that renders the Queue Panel, `activity.tsx` renders the payload verbatim —
+including the range's own day list, so a day with no runs is simply ABSENT rather than invented as a
+zero — and the report REFUSES to build at all while the projection is degraded (`:1539-1543`),
+because a total folded over a partial corpus is worse than no total.
+
+**D239 — hours saved is DROPPED, deliberately.** The demo's headline "hours saved" tile has no
+honest home: the number would be a per-run manual-minutes estimate nobody has measured, on the one
+artifact in this product that leaves the operator's screen and lands in front of a supervisor. The
+distinct-people bullet went with it for the same reason (`activity.tsx:54`,
+`src/domain/dashboard/activity.ts:470`). What replaced it is a headline row that carries the
+OUTSTANDING work and an error rate that states its denominator on the tile.
+
+**D240 — the CSV carries the rules, ahead of the numbers.** `GET /api/v1/reports/activity.csv`
+writes labelled blocks, and the FIRST block is `activityReportCaveats` — the same exported sentences
+the panel's ⓘ renders, read by both consumers rather than copied
+(`src/server/dashboard/queries/activity-export.ts`). A panel can afford a caveat one press away; a
+spreadsheet has no ⓘ, so an export with the numbers and without the rules is precisely the lying
+artifact this surface is built to prevent. Two smaller rules travel with it: the error rate is the
+one `activityErrorRatePercent` the tile renders, so the exported rate cannot round differently from
+the screen it was taken from; and a cell is quoted when it must be and never REWRITTEN — a leading
+`=` is left exactly as the payload spells it, because prefixing it to defuse a spreadsheet's formula
+parser would put a different string in the export than the one on screen.
+
+**The write-ledger block is served and its corpus is EMPTY, on every real machine.** The fold, the
+seam sentence and the empty state are all built and bounded by the guard above — and
+`createLedgerProjector`, the only writer of `.tracker-rebuild/ledger/`, **has no production caller**:
+`grep -rn 'createLedgerProjector' src/` finds its definition and its barrel re-export and nothing
+else, while the READ side is composed three times (`server/dashboard/compose.ts:546`,
+`server/storage/compose.ts:185`, and the archive query). So every Activity report in existence draws
+*"No ledger entries. Nothing in this report's reach filed anything into a real HR system"* — which
+is a true sentence about the FILES and a false impression about the world, since D135's controlled
+commit did file one and left both durable outbox rows behind. The gap is the outbox→ledger
+projection, not the fold; §2.1 owns the stream, and the missing composition is `{#track-d}`'s
+hygiene row.
+
+<!-- roadmap: def-search-export -->
+<!-- roadmap-status: def-search-export -->
+- [x] the Activity CSV (D240) — the one export this product serves, caveats first, from the served payload
+- [ ] BE the artifact-bytes route: the ref/resource schemas are complete and nothing serves bytes, which is also what blocks the run-detail `captures` section and any screenshot gallery
+- [ ] BOTH cross-date run search — the top bar filters the SERVED DAY only, and Activity's range is an aggregate rather than a row search (§9.9 owns the day search)
+- [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164)
+- [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (`ref operator-trust` §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/server/dashboard/queries/activity-export.ts, src/domain/dashboard/activity.ts, src/dashboard/client/queries.ts; left: every non-CSV half of this node
+<!-- /roadmap-status -->
+
 ### 9.6 Notifications — the durable inbox and its bell
 
 **Stub — written by unit 5.1d.** Inherits §10.4's routing table and the bell/inbox surface. The
@@ -3949,83 +4075,6 @@ dropped, and this table is how a citation to the old flat list resolves.
 
 Four operator ratifications from 2026-07-24 land here. Each is stated as a contract, not a
 preference, because each has a guard.
-
-### 10.1 ONE projection owns every count (D81)
-
-**The recorded bug.** The operator reports that in the legacy dashboard the per-workflow badges
-"always error out" — matching the audit's bug class #7, count/badge divergence, with ≥4 separate
-fixes over the project's life. The root cause is structural, not arithmetic: badges, the status
-strip, and the queue list were each free to derive their own counts, so any two could disagree and
-each had to be fixed independently.
-
-**The contract.** There is exactly **one** server-side run/queue projection. **Workflow Panel
-badges, Status Bar pills, and Queue Panel rows are three renderings of that one payload.** A count
-is never computed a second time — not in React, not in a second endpoint, not in a "just for the
-badge" aggregate. If a surface needs a number the projection does not yet expose, the projection
-gains a field; it does not gain a sibling.
-
-Consequences that follow and must not be re-litigated per surface: **collapse rules, hidden rows,
-archived runs (§10.2), and delegated-member containment are applied once, inside the projection.**
-**The Activity report (D180) is a range rendering of this same payload**, built inside the
-projection for the same reason: a report that summed rows a second way could disagree with the day
-it summarises. Its contract lives in ref frontend-backend-integration §6.7. One block on it — the write ledger — is the single
-ratified exception, and it is spelled out immediately below (D236).
-A member counted in a group is not also counted at top level because there is no second place that
-could count it.
-
-#### D236 — the write-ledger carve-out (2026-08-19, operator ruling)
-
-**There is exactly ONE exemption from the sentence above, and it is named here so nothing else can
-claim to be it.** The Activity report's `Write ledger — what was actually filed` block is folded
-from the durable write ledger (`src/infra/ledger/`), **not** from this projection.
-
-**Why it cannot be derived from the projection.** §10.2 rule 1 already decides the half that
-matters: *the write ledger is never archived — archiving is a display lifecycle, the ledger is an
-audit one.* The ledger is append-only and is never pruned (D86), so **its entries outlive the runs
-that filed them**: a window whose runs have all left the live surfaces on a version bump can still
-hold ledger lines, and folding those lines out of the run corpus would report *"nothing was filed"*
-about real HR transactions that were. That is not a count/badge divergence — it is a different
-question over a different corpus, and D81 exists to stop two answers to ONE question, not to forbid
-a second question.
-
-**The shape of the exemption, which is what keeps it from spreading.**
-
-1. **Reported BESIDE the totals, never derived from them.** `ActivityReportWire.ledger` is its own
-   block. The wire's refinements deliberately assert **no** relationship between it and `totalRuns`,
-   the status buckets or the workflow cross-tab — a cross-check would be a claim that the two corpora
-   cover the same rows, and that claim is false. What IS checked is one level down, where both
-   numbers come from the same authority: each system row's `entries` must partition into
-   `prod` + `test`.
-2. **The seam is stated where the reader is.** The block carries it in its own subtitle, and
-   `activityReportCaveats` carries it into the panel's ⓘ and into the CSV export (D240). A second
-   authority the reader cannot see is a second authority the reader assumes is the first one.
-3. **ONE reader, reused.** The fold lives on the existing archive read-through
-   (`LedgerReadThrough.foldActivityRange`), not in a new module: two readers of an append-only audit
-   file would be two parse disciplines, and the wrong one would be wrong about what was filed into a
-   live HR system. A line it cannot read **throws by name** rather than being skipped — the pointer
-   path can answer one citation with a reason, a fold has no such column, and skipping silently
-   subtracts a filed transaction from the count of what was filed.
-4. **The window closes on the entry's own `confirmedAt`**, read through the same local-day rule this
-   projection buckets rows with. A partition FILE name is a UTC date and decides only which files are
-   opened (widened one day at each end); letting it decide membership would drop a write confirmed
-   late in the local day out of the report over a timezone.
-5. **The empty state is now honest.** "No ledger entries. Nothing in this report's reach filed
-   anything into a real HR system" is a fact the moment the axis is served, and was an *assertion*
-   before it was — which is why the ported surface omitted the block entirely rather than rendering
-   its empty state over an unserved axis.
-
-**Guard (ref guards-and-tests).** `one-projection-counts` — any count/aggregate in a surface path that does not
-originate from the projection payload fails. Backed by a fixture asserting Workflow Panel total,
-Status Bar sum, and rendered Queue Row count are equal by construction for a seeded world that
-includes archived, delegated, and rejected rows. *(The `?view=rebuild-demo` replica already
-proves this shape: one `countRows()` feeds rail badges, Status Bar, and queue — divergence is
-structurally unrepresentable there.)* **D236's exemption is bounded by the same guard, from both
-sides:** a write-ledger block may be BUILT only in `src/domain/dashboard/activity.ts` and
-`src/infra/ledger/ledger-read-through.ts`, and ASKED FOR only in that read-through and the one
-projection — exact set equality both ways, so a third counting path over the ledger fails by file
-name. The behavioural arm files real ledger lines into the seeded world and requires the block to
-move while every count stays byte-identical: *"reported beside the totals"* is a claim about what
-does not happen, so that is what is asserted.
 
 ### 10.3 Operator-assigned run display names (D83)
 
