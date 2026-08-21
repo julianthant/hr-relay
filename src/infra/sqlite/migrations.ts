@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 15;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 16;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -432,6 +432,27 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  /**
+   * D267 (ref execution-and-sessions §10) — the Duo ceremony lease: ONE row per
+   * credential identity, UPDATED in place across generations. It is the second
+   * authority row (after notifications) that is updated rather than appended,
+   * and for a similar reason: the row IS the lock, and a lock that left a row
+   * behind per ceremony would be a ledger of ceremonies, not a lease. Every
+   * mirrored column is pinned to the record's own value by the integrity audit.
+   */
+  duo_ceremony_leases: `
+    CREATE TABLE duo_ceremony_leases (
+      record_key TEXT PRIMARY KEY,
+      generation INTEGER NOT NULL CHECK (generation >= 1),
+      holder_worker_id TEXT NOT NULL,
+      holder_system TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('held', 'released')),
+      expires_at TEXT NOT NULL,
+      version INTEGER NOT NULL CHECK (version >= 1),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -489,6 +510,7 @@ const POST_V1_TABLE_ORDER = [
   "version_bump_applications",
   "archived_runs",
   "archive_relaunches",
+  "duo_ceremony_leases",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1044,6 +1066,23 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     statements: [
       "ALTER TABLE tasks ADD COLUMN run_number INTEGER",
       "CREATE UNIQUE INDEX tasks_run_number_idx ON tasks(workflow, run_number)",
+    ],
+  },
+  {
+    /*
+     * D267 (ref execution-and-sessions §10) — the Duo ceremony lease. One row
+     * per credential identity; `generation` advances on every acquisition and
+     * `state` moves held → released → held … as ceremonies serialize. Nothing
+     * is ever deleted (a lease row that vanished would read as a free
+     * credential), so the delete trigger aborts; updates are the design.
+     */
+    version: 16,
+    statements: [
+      SQLITE_TABLE_DDL.duo_ceremony_leases,
+      "CREATE INDEX duo_ceremony_leases_state_idx ON duo_ceremony_leases(state, expires_at)",
+      `CREATE TRIGGER duo_ceremony_leases_never_deleted
+        BEFORE DELETE ON duo_ceremony_leases
+        BEGIN SELECT RAISE(ABORT, 'duo_ceremony_leases rows are never deleted'); END`,
     ],
   },
 ] as const);

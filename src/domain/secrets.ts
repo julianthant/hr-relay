@@ -1,8 +1,11 @@
+import { createHash } from "node:crypto";
 import { readFileSync, statSync, type Stats } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { canonicalJsonStringify } from "./canonical-json.js";
 import type { Config } from "./config/schema.js";
+import { FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
 import {
   EnvironmentSecretNameSchema,
@@ -361,4 +364,64 @@ export function requireSecretFile(
   } catch (error) {
     throw new SecretFileError(`${name} could not be read`, { cause: error });
   }
+}
+
+/**
+ * The PUBLIC half of a WebAuthn credential, which is all an identity needs.
+ * `credentialId` travels to the relying party in cleartext on every assertion
+ * and `rpId` is the relying party's own name; the private key is never read
+ * into the identity and never leaves this function.
+ */
+const WebauthnCredentialIdentitySchema = z.object({
+  rpId: z.string().min(1),
+  credentialId: z.string().min(1),
+});
+
+const WebauthnCredentialFileSchema = z.union([
+  z.array(z.unknown()),
+  z.object({ credentials: z.array(z.unknown()) }),
+  z.object({}).passthrough(),
+]);
+
+/**
+ * D267 (ref execution-and-sessions §10.1): the IDENTITY of a credential file —
+ * a SHA-256 over the sorted `(rpId, credentialId)` pairs it holds — resolved
+ * through this module because it is the only permitted credential-file reader.
+ * It is what the Duo ceremony lease is keyed on: per CREDENTIAL, never per
+ * worker, system or profile. The digest carries no secret byte, and a file
+ * whose identity cannot be resolved THROWS; it never yields a substitute key,
+ * because a per-worker key is the unserialized behaviour wearing a lease's name.
+ */
+export function resolveSecretFileIdentity(
+  name: SecretFileName,
+  config: Config,
+  access: SecretSourceAccess = DEFAULT_SECRET_SOURCE_ACCESS,
+): Fingerprint {
+  const bytes = requireSecretFile(name, config, access);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bytes.toString("utf8"));
+  } catch (error) {
+    throw new SecretFileError(`${name} is not JSON, so its credential identity cannot be resolved`, { cause: error });
+  }
+  const file = WebauthnCredentialFileSchema.safeParse(parsed);
+  if (!file.success) throw new SecretFileError(`${name} has no recognizable credential shape, so its identity cannot be resolved`);
+  const entries: readonly unknown[] = Array.isArray(file.data)
+    ? file.data
+    : "credentials" in file.data && Array.isArray(file.data.credentials)
+      ? file.data.credentials
+      : [file.data];
+  const identities = entries.map((entry, index) => {
+    const identity = WebauthnCredentialIdentitySchema.safeParse(entry);
+    if (!identity.success) {
+      throw new SecretFileError(`${name} credential #${String(index)} carries no rpId + credentialId, so its identity cannot be resolved`);
+    }
+    return { rpId: identity.data.rpId, credentialId: identity.data.credentialId };
+  });
+  if (identities.length === 0) throw new SecretFileError(`${name} holds no credential, so its identity cannot be resolved`);
+  identities.sort((a, b) => `${a.rpId}\u0000${a.credentialId}`.localeCompare(`${b.rpId}\u0000${b.credentialId}`));
+  return FingerprintSchema.parse(createHash("sha256")
+    .update("hrauto:duo-credential-identity:v1\0")
+    .update(canonicalJsonStringify(identities))
+    .digest("hex"));
 }

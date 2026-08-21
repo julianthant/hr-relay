@@ -90,6 +90,22 @@ import {
   type WorkerLeaseRecord,
 } from "../../domain/run/worker.js";
 import {
+  DuoCeremonyLeaseAcquireRequestSchema,
+  DuoCeremonyLeaseRecordSchema,
+  DuoCeremonyLeaseReleaseOutcomeSchema,
+  DuoCeremonyLeaseTakeoverSchema,
+  isDuoCeremonyLeaseLive,
+  type DuoCeremonyLeaseAcquireRequest,
+  type DuoCeremonyLeaseRecord,
+  type DuoCeremonyLeaseReleaseOutcome,
+} from "../../domain/duo-ceremony-lease.js";
+import {
+  isDuoCeremonyLeaseToken,
+  mintDuoCeremonyLeaseToken,
+  retireDuoCeremonyLeaseToken,
+  type DuoCeremonyLeaseToken,
+} from "../../base/duo-ceremony-lease.js";
+import {
   RunClaimOutcomeSchema,
   RunClaimRequestSchema,
   RunClaimSweepOutcomeSchema,
@@ -729,6 +745,29 @@ type OcrExtractionRepository = Readonly<{
   findByDocument(sourceSha256: string): readonly z.infer<typeof AdmittedExtractionSchema>[];
 }>;
 
+/**
+ * D267 (ref execution-and-sessions §10): the Duo ceremony lease — ONE ceremony
+ * at a time per credential. `acquire` answers `held` naming the live holder,
+ * takes over an expired row at the next generation, and is the ONLY minter of
+ * the `DuoCeremonyLeaseToken` the SSO helpers require; `release` retires that
+ * token whether or not the row still carries the token's generation, and
+ * REPORTS supersession rather than writing over a successor.
+ */
+export type DuoCeremonyLeaseAcquireOutcome =
+  | Readonly<{
+    state: "acquired";
+    lease: DuoCeremonyLeaseRecord;
+    token: DuoCeremonyLeaseToken;
+    tookOver: z.infer<typeof DuoCeremonyLeaseTakeoverSchema> | null;
+  }>
+  | Readonly<{ state: "held"; holder: DuoCeremonyLeaseRecord }>;
+
+export type DuoCeremonyLeaseRepository = Readonly<{
+  acquire(input: unknown): DuoCeremonyLeaseAcquireOutcome;
+  release(input: Readonly<{ token: unknown; now: string }>): DuoCeremonyLeaseReleaseOutcome;
+  get(credentialKey: string): DuoCeremonyLeaseRecord | undefined;
+}>;
+
 export type AuthorityRepositories = Readonly<{
   runs: RunRepository;
   terminalAuthorizations: TerminalAuthorizationRepository;
@@ -746,6 +785,7 @@ export type AuthorityRepositories = Readonly<{
   providerAdmissions: ProviderAdmissionRepository;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
+  duoCeremonyLeases: DuoCeremonyLeaseRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
   dependencies: DependencyRepository;
@@ -1103,6 +1143,10 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "provider-active-reservations-match",
     sql: "SELECT count(*) AS count FROM provider_budget_counters AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_admissions AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')",
+  },
+  {
+    name: "duo-ceremony-lease-columns-match-record",
+    sql: "SELECT count(*) AS count FROM duo_ceremony_leases WHERE record_key <> json_extract(record_json, '$.credentialKey') OR generation <> json_extract(record_json, '$.generation') OR holder_worker_id <> json_extract(record_json, '$.holder.workerId') OR holder_system <> json_extract(record_json, '$.holder.system') OR state <> json_extract(record_json, '$.state') OR expires_at <> json_extract(record_json, '$.expiresAt') OR version <> json_extract(record_json, '$.version')",
   },
   {
     name: "worker-lease-columns-match-record",
@@ -3017,6 +3061,7 @@ export class AuthorityDatabase implements Disposable {
       providerAdmissions: this.#buildProviderAdmissionRepository(),
       startPlans: this.#buildStartPlanRepository(),
       workerLeases: this.#buildWorkerLeaseRepository(),
+      duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
       commands: Object.freeze({
         insert: (input: unknown) => {
           const record = CommandRequestSchema.parse(input);
@@ -5012,6 +5057,106 @@ export class AuthorityDatabase implements Disposable {
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) throw new Error(`worker lease ${record.workerId} ${mode} affected ${String(changes)} rows`);
       return { result: undefined, changes };
+    });
+  }
+
+  #readDuoCeremonyLease(credentialKey: string): DuoCeremonyLeaseRecord | undefined {
+    return this.#readRecord("duo_ceremony_leases", credentialKey, DuoCeremonyLeaseRecordSchema);
+  }
+
+  #writeDuoCeremonyLease(record: DuoCeremonyLeaseRecord, mode: "insert" | "update"): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("duo_ceremony_leases", () => {
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO duo_ceremony_leases (
+            record_key, generation, holder_worker_id, holder_system, state, expires_at,
+            version, record_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          record.credentialKey, record.generation, record.holder.workerId, record.holder.system,
+          record.state, record.expiresAt, record.version, json, record.createdAt,
+        )
+        : this.#database.prepare(`
+          UPDATE duo_ceremony_leases SET
+            generation = ?, holder_worker_id = ?, holder_system = ?, state = ?, expires_at = ?,
+            version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `).run(
+          record.generation, record.holder.workerId, record.holder.system, record.state,
+          record.expiresAt, record.version, json, record.credentialKey, record.version - 1,
+        );
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) {
+        throw new Error(`Duo ceremony lease ${record.credentialKey} ${mode} affected ${String(changes)} rows`);
+      }
+      return { result: undefined, changes };
+    });
+  }
+
+  #buildDuoCeremonyLeaseRepository(): DuoCeremonyLeaseRepository {
+    return Object.freeze({
+      acquire: (input: unknown): DuoCeremonyLeaseAcquireOutcome => {
+        const request: DuoCeremonyLeaseAcquireRequest = DuoCeremonyLeaseAcquireRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const nowMs = Date.parse(request.now);
+          const existing = this.#readDuoCeremonyLease(request.credentialKey);
+          if (existing !== undefined && isDuoCeremonyLeaseLive(existing, nowMs)) {
+            return Object.freeze({ state: "held" as const, holder: existing });
+          }
+          const tookOver = existing !== undefined && existing.state === "held"
+            ? DuoCeremonyLeaseTakeoverSchema.parse({ generation: existing.generation, holder: existing.holder })
+            : null;
+          const lease = DuoCeremonyLeaseRecordSchema.parse({
+            credentialKey: request.credentialKey,
+            generation: (existing?.generation ?? 0) + 1,
+            holder: { workerId: request.workerId, system: request.system },
+            state: "held",
+            acquiredAt: request.now,
+            expiresAt: new Date(nowMs + request.ttlMs).toISOString(),
+            version: (existing?.version ?? 0) + 1,
+            createdAt: existing?.createdAt ?? request.now,
+            updatedAt: request.now,
+          });
+          this.#writeDuoCeremonyLease(lease, existing === undefined ? "insert" : "update");
+          const token = mintDuoCeremonyLeaseToken({
+            credentialKey: lease.credentialKey,
+            generation: lease.generation,
+            holder: lease.holder,
+            expiresAt: lease.expiresAt,
+          });
+          return Object.freeze({ state: "acquired" as const, lease, token, tookOver });
+        });
+      },
+      release: (input: Readonly<{ token: unknown; now: string }>): DuoCeremonyLeaseReleaseOutcome => {
+        if (!isDuoCeremonyLeaseToken(input.token)) {
+          throw new Error("Duo ceremony lease token was not minted by the Duo ceremony lease store; refusing to release");
+        }
+        const token = input.token;
+        const now = IsoInstantSchema.parse(input.now);
+        return this.withAuthorityTransaction(() => {
+          // Retire FIRST: a token whose release is attempted twice, or whose
+          // row has moved on, must refuse at the next helper either way.
+          retireDuoCeremonyLeaseToken(token);
+          const current = this.#readDuoCeremonyLease(token.credentialKey);
+          if (current === undefined) {
+            throw new Error(`Duo ceremony lease ${token.credentialKey} has no row to release; the token names a lease authority never wrote`);
+          }
+          if (current.generation !== token.generation || current.state !== "held") {
+            return DuoCeremonyLeaseReleaseOutcomeSchema.parse({ state: "superseded", current });
+          }
+          const released = DuoCeremonyLeaseRecordSchema.parse({
+            ...current,
+            state: "released",
+            releasedAt: now,
+            version: current.version + 1,
+            updatedAt: now,
+          });
+          this.#writeDuoCeremonyLease(released, "update");
+          return DuoCeremonyLeaseReleaseOutcomeSchema.parse({ state: "released", lease: released });
+        });
+      },
+      get: (credentialKey: string) => this.#readDuoCeremonyLease(FingerprintSchema.parse(credentialKey)),
     });
   }
 

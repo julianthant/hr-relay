@@ -194,6 +194,17 @@ export const ConfigSchema = z.strictObject({
      * who hits it knows exactly which one to move.
      */
     sessionAcquireMs: z.number().int().positive(),
+    /**
+     * D267 (ref execution-and-sessions §10.3): the Duo ceremony lease's TTL is
+     * `sessionAcquireMs` PLUS this grace. A TTL equal to the envelope would let
+     * a waiter take the lease at the instant the holder is running its proven
+     * cleanup; the grace covers that cleanup (`browser.closeProofMs`, 15 000 ms,
+     * plus margin). A waiter's budget is its remaining envelope MINUS this
+     * grace, so the lease refuses by name before the envelope fires. It is a
+     * post-baseline leaf: generation 3 in `snapshot-generations.ts`, so a
+     * stored `config_snapshots` row without it still parses (D133).
+     */
+    duoCeremonyLeaseGraceMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),
     duoApprovalSeconds: z.number().int().positive(),
     duoApprovalCrmSeconds: z.number().int().positive(),
@@ -204,6 +215,7 @@ export const ConfigSchema = z.strictObject({
     ukgNavigationMs: 60_000,
     taskMs: 180_000,
     sessionAcquireMs: 60_000,
+    duoCeremonyLeaseGraceMs: 20_000,
     transactionMs: 300_000,
     duoApprovalSeconds: 180,
     duoApprovalCrmSeconds: 60,
