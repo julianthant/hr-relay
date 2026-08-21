@@ -174,7 +174,18 @@ async function main(): Promise<void> {
   // record of itself at all, and a live smoke was invisible to `cli storage restore`'s stopped-system
   // proof. `acquireRuntimeProcessLock` refuses loudly if another live `live-smoke` process already
   // holds it — no fallback, no silent queueing.
-  const processLockRoot = join(process.cwd(), rebuildRuntimeIsolation.processLockRoot);
+  // D267's LIVE proof needs two smokes alive at once (ref execution-and-sessions
+  // §10.8), and one shared `live-smoke` lock file refuses the second by design.
+  // So the lock ROOT is scoped by worker id: every smoke still takes — and can
+  // still be refused on — its own `live-smoke` lock, so two processes under ONE
+  // worker id (one profile directory, one `--cold` clear of it) still cannot
+  // overlap, while two DIFFERENT worker ids serialize only on the Duo ceremony
+  // lease, which is the thing under proof. What that gives up is named rather
+  // than hidden: two differently-named smokes may open the authority database
+  // together, so a database that still needs migrating must be brought to the
+  // current schema by ONE smoke first — which is why §10.8's how-to runs a
+  // single cold worker before the pair.
+  const processLockRoot = join(process.cwd(), rebuildRuntimeIsolation.processLockRoot, "live-smoke", workerId);
   const processLock = acquireRuntimeProcessLock(
     { processLockRoot, name: "live-smoke", pid: process.pid },
     systemClock,
