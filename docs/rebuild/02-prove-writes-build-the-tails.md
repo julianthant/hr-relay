@@ -426,23 +426,30 @@ first migration that needs the phone in production, building both halves plus th
 `ref frontend-backend-integration` §6.9 is the normative record, and
 `config/legacy-capabilities.json`'s `legacy-route-static` stays honestly **open**.
 
-## Integration amendment — Phase 2's share (master plan §7)
+## Integration amendment — Phase 2's share
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.1's two deferral bullets and §7.2's transaction-proof / `2g` / `2h` / `2i` rows on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §7.1's two deferral bullets and §7.2's transaction-proof / `2g` / `2h` / `2i` rows on 2026-08-20 (3b); re-verified 2026-08-21 against `ref frontend-backend-integration`'s own `p2-*` status blocks._
 
-- Data-service contract/impl work and its mapping/capture/Edit Data UI are deferred to `2h` under
-  D74; only their boundary primitives and command type shells land earlier where required.
+**Why this table exists.** Every Phase-2 tail had a wire half, and the risk the amendment answers is
+protocol breakage: a surface built later against a shape the kernel had already frozen. The rule was
+that only boundary primitives and command-family type shells land early, where `1b`/`1c`/`1e` need
+them; everything else waits for its tail. Both deferrals held.
+
+- Data-service contract/impl work and its mapping / capture / Edit Data UI were deferred to `2h`
+  under D74; only their boundary primitives and command type shells landed earlier.
 - Product Settings, Archive, Explorer, Activity, rich evidence/failure projections and bundles,
-  intake/capture, and
-  progressive Review remain Phase-2 tails; their wire primitives and command-family type shells
-  land earlier only where `1b`/`1c`/`1e` need them to prevent later protocol breakage.
+  intake/capture and progressive Review were Phase-2 tails; their wire primitives and command-family
+  type shells landed earlier only where `1b`/`1c`/`1e` needed them.
 
-| Existing item | Integration addition | Exit evidence |
-|---|---|---|
-| **Phase-2 transaction proof** | wire preview, binding, fenced write, read-back, receipt/failure, write-parked resolution and command conflict through the same production client | the trust UI is backed by real intent/proof/ledger state, never fixture prose |
-| **2g** | Receipt/Failure/captures over 1f's minimal durable failure/result authority, rerun diff, notifications/search, archive snapshot generation and lazy detail resources | terminal and archived runs remain explainable without live-system or old-code access |
-| **2h** | descriptor upload/capture/spreadsheet starts, intake mapping/manifests, progressive Review records and Edit Data | complete upload→review→manifest/fan-out and correction→same-run/new-run flows |
-| **2i** | Settings/doctor/storage, Archive/version bump, Explorer overlay, Activity, worker/session controls and remaining product shell states | every product surface in ref frontend-backend-integration §5 has query/patch/command/authority coverage |
+| Item | Integration addition | Exit evidence | State at HEAD |
+|---|---|---|---|
+| **Transaction proof** | preview, binding, fenced write, read-back, receipt/failure, write-parked resolution and command conflict, all through the same production client | the trust UI is backed by real intent/proof/ledger state, never fixture prose | **MET** — `ref frontend-backend-integration` §6.4's `p2-proof` block records nothing left on the integration side |
+| **2g** | Receipt / Failure / captures over 1f's minimal durable failure/result authority, rerun diff, notifications and search, archive snapshot generation and lazy detail resources | terminal and archived runs stay explainable without live-system or old-code access | **MET, two sections unserved** — capture BYTES on the receipt and the `context-evidence` rail section, both blocked on the artifact byte route (§3.6, D184) |
+| **2h** | descriptor upload / capture / spreadsheet starts, intake mapping and manifests, progressive Review records, Edit Data | complete upload→review→manifest/fan-out and correction→same-run/new-run flows | **MET for spreadsheet + Edit Data + capture authority**; the descriptor-driven start methods and the Review surface wait on a declaring workflow (D251/D184) |
+| **2i** | Settings / doctor / storage, Archive and version bump, Explorer overlay, Activity, worker/session controls, the remaining product shell states | every product surface in `ref frontend-backend-integration` §5 has query / patch / command / authority coverage | **MET except three**: Settings is read-only (`apply-settings` deferred), six of seven worker controls have kernel arms and no control, and both Explorer halves stay out (§5, D186) |
+
+Every "state at HEAD" cell above is the summary of a `p2-*` status block in `ref
+frontend-backend-integration`; that doc is the per-contract truth, and this table is the index.
 
 ## Decisions this phase ratified
 
