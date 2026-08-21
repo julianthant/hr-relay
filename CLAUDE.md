@@ -100,9 +100,9 @@ on uncertain outcomes; production provider pools and consumers remain Phase 2h.
 - The **phase docs** under `docs/rebuild/` — tasks, what is done and what is left, exit criteria, and
   the decisions that phase ratified. `00-design-the-foundation` · `01-build-the-spine` ·
   `02-prove-writes-build-the-tails` · `03a-finish-the-dashboard` · `03b-finish-separations` ·
-  `03c-migrate-the-remaining-workflows` · `04-close-the-deferrals` · `05-cut-over` ·
-  `06-ship-the-desktop-app`. Phase 3 is three docs (3a/3b/3c); in prose **`doc NN`** means one of
-  these.
+  `03c-migrate-the-remaining-workflows` · `03d-co-operate-with-claude` · `04-close-the-deferrals` ·
+  `05-cut-over` · `06-ship-the-desktop-app`. Phase 3 is four docs (3a/3b/3c/3d); in prose
+  **`doc NN`** means one of these.
 - `docs/rebuild/reference/decisions.md` — the decision changelog (D1–D264; **D131 is a retired gap —
   never reuse it**). A **pointer index**, not a spec: it tells you which doc owns a contract. Never
   implement from it.

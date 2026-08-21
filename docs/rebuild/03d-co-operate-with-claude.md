@@ -1,0 +1,458 @@
+# 03d · Phase 3d — co-operate with Claude
+
+This doc is the dedicated home of **Phase 3d**, tree node `{#claude-operator}` — the phase that gives
+the dashboard a **second actor**. The operator's instruction (2026-08-21, plan ruling **R15**) is one
+paragraph: *"I want to duo-operate this with Claude. Claude can invoke the same things I do and
+operate the dashboard, and monitor the entire dashboard. All of this local — expose a local port for
+Claude to make API calls to both the web dashboard and the desktop app; think about what happens if
+the user has both open on their device. Claude will be running in the terminal (Claude Code) — we
+won't call Claude with an API key."* Nothing in this phase is built, and nothing in it is designed
+past the shape below.
+
+**Why the doc exists before the code does.** This phase does not add a surface — it adds an actor to
+surfaces that already exist, and almost every hard part is a constraint some earlier phase already
+settled with the words *"reachable only if a second actor ever exists"*. Those sentences come due
+here, all at once. Each is named below with the file that proves it. Contracts belong to `reference/`
+as always; this doc owns the phase, not the contracts.
+
+## Phase summary
+<!-- roadmap: claude-operator -->
+
+<!-- roadmap-status: claude-operator -->
+- [ ] a second actor on the ONE local BFF — `claude` beside `local-operator`, enforced rather than stamped
+- [ ] a loopback MCP server Claude Code reaches from the terminal, with a tool per command family and per read model
+- [ ] full parity on everything except identity gates and controlled commits, which take the **two-actor rule**
+- [ ] monitoring — the SSE stream tail, the notification inbox for the claude actor, the observed log
+- [ ] one BFF with the web dashboard and the desktop app both open, and Claude a third client of the same port
+- [ ] a Claude-driven separations dry run, every action attributed, one gate resolved by claude and confirmed by the operator
+- [ ] nothing is built at HEAD — there is no MCP server in this repository and the BFF has no actor model beyond one literal
+> 2026-08-21 | docs-cohesion R15 | phase drawn from the operator's instruction; verified UNBUILT — `grep -rn mcp package.json src` matches nothing, there is no `.mcp.json`, and `.claude/` holds only `agents/` and `skills/`; the one-actor facts read out of `src/domain/ids.ts:134-138`, `src/server/dashboard/queries/bootstrap.ts:90` and `src/server/dashboard/projectors/run-queue-projection.ts:1518`; left: all of it
+<!-- /roadmap-status -->
+
+### What Phase 3d is
+
+**A second operator, not a second product.** Claude Code — running in the operator's own terminal,
+in this checkout — reaches the dashboard's command protocol and its read models over loopback, through
+a **local MCP server** that is a CLIENT of the BFF the operator is already using. It starts runs,
+plans dry runs, retries and cancels, edits data, archives, drives intake, reads the explorer, and
+answers notifications; it watches the SSE stream, the observed log and the inbox. There is **no API
+key**: the operator's terminal session is the credential, which is also why nothing in this phase is a
+network feature.
+
+**The local port is not the new thing.** The BFF already binds loopback and refuses anything else —
+`src/server/dashboard/http-server.ts:47-48` defaults the hostname to `127.0.0.1` and throws on any
+value that is not `127.0.0.1` or `localhost`, and the port is pinned at 3938 by
+`config/runtime-isolation.json`. What is missing is not a port, and not an API: it is a client Claude
+Code can speak to, and an actor model that can tell the two clients apart once it has one.
+
+**Five task nodes, in the order they unblock each other.** `{#claude-actor}` (the actor model and the
+two-actor rule) → `{#claude-mcp}` (the MCP server and its tools) → `{#claude-monitor}` (watching) →
+`{#claude-clients}` (one BFF, several clients) → `{#claude-proof}` (a Claude-driven dry run,
+attributed). The first is first for a reason: an MCP server built before the actor model would stamp
+`local-operator` on everything Claude does, and every durable record it touched would then be a lie
+that no later fix can retract — `reference/operator-trust` §"Actor attribution" already says why
+(*"retrofitting an actor onto an existing immutable ledger and command history is impossible — the old
+rows have no honest answer"*).
+
+**It is not a hosting phase and not a multi-user phase.** One machine, one human operator, one agent
+in that human's terminal, one loopback port. D193(a)'s cooperation / multi-user mode stays exactly
+where it is — a LATER item with no owner — and this phase does not reopen it. The distinction is
+sharp: a second actor on ONE machine is an attribution problem; a second USER is an authorization and
+tenancy problem, and none of the second is designed here.
+
+### What it inherits — six things earlier phases already decided
+
+| # | Inherited from | What it means for this phase |
+|---|---|---|
+| 1 | **The ONE command protocol** (`ref frontend-backend-integration` §3.4) | Nine families × 35 actions through `POST /api/v1/commands`, one journal, one kernel. Claude does not get a second route, a second envelope or a "agent mode" flag — it composes the same `CommandEnvelope` the dashboard composes, with a different `requestedBy`. Anything Claude can do that the dashboard cannot would be a second product |
+| 2 | **CAS on every arm** (`ref frontend-backend-integration` §3.4; D253) | Every arm carries a required `expectedVersion` and the kernel revalidates the row inside its own transaction. Two operators acting on one run therefore get D253's named `conflict` carrying the server's `currentVersion` — never a silent overwrite. This is the single most important inheritance: **the protocol was designed for one actor and is already correct for two**, and what changes is that the conflict arm stops being a rare race and becomes ordinary traffic |
+| 3 | **`requestedBy` stamped and never checked** (`doc 01` §"What is LEFT on this node"; `ref frontend-backend-integration` §3.4) | The one residual in the whole spine with **no owner** — its status line reads *"reachable only if a second actor ever exists"*. This phase is that second actor, so the residual gets its owner here and stops being reported. It is item 1 of `{#claude-actor}` |
+| 4 | **D181's `server` role lock** (`src/server/dashboard/compose.ts:346-356`) | One BFF per machine, enforced before the authority database opens. That is what makes "both apps open" answerable at all: the web dashboard's BFF and the desktop app's BFF cannot both exist, so one of them is the host and everything else — the other app, the browser tab, Claude's MCP server — is a CLIENT of it. `{#claude-clients}` is the whole of that argument |
+| 5 | **The ALWAYS-GATE** (`ref write-safety` §14) | §14.6 risk 1 names rubber-stamping as the dominant risk of a gate that fires on every run, and risk 6 says *who approved* may never be lost. An agent that can approve a wrong-person gate is rubber-stamping with a machine — so the operator's ruling is a **two-actor rule**, and §14's human control survives it intact rather than being widened |
+| 6 | **`{#observed-logs}`** (`doc 03a` §Observed logs — the log carries what the page said) | Monitoring is only worth having if the log carries what the PAGE said rather than which step ran. An agent reading step names learns nothing it could not have predicted; an agent reading the recorded provenance points — field, value, system, observed-at — can tell the operator that UCPath returned four people. It is a `needs:`, not a nice-to-have |
+
+**And one thing that is not an inheritance but a coincidence worth knowing:** `claude` is already a
+legal value in a durable schema. `FixRecordSchema.requestedBy` is `z.enum(["operator", "codex",
+"claude"])` (`src/domain/trust/knowledge.ts:57`, D139) — the fix ledger has expected an agent author
+since Phase 2g. That is a precedent for the vocabulary, not for the enforcement: nothing checks it
+there either.
+
+### Where it sits in the order
+
+**Phase 3d, after 3a.** The generic surfaces and their commands must exist before a second client can
+drive them — `{#dash-defaults}` is a hard prerequisite, and `{#observed-logs}` under it is the second.
+Both are Phase 3a nodes.
+
+**Before the migrations lean on it.** R10's end-to-end tier (T4) is defined as *"an agent-operated run
+of MANY dry-run scenarios in parallel"* — the agent in that sentence is this phase's, and the tool
+surface it drives is `{#claude-mcp}`'s. `{#test-tiers}`' T4 line names this node for that reason.
+There is no circularity: T4 also needs `{#parallel-runs}` and `{#duo-lease}`, and this phase needs
+neither, so 3d can be built and proved on ONE dry run long before T4 is schedulable.
+
+**It is not a prerequisite of the cutover.** `05-cut-over.md` §Exit criteria names no part of it, and
+nothing here changes what production does when nobody is watching. If the phase is never built, the
+operator operates the dashboard alone, exactly as today.
+
+### The honest state at HEAD (2026-08-21)
+
+**There is no MCP server anywhere in this repository.** `grep -rn mcp package.json src` matches
+nothing, there is no `.mcp.json`, and `.claude/` contains only `agents/` and `skills/` — the skills
+mention `mcp__*` tool names because they describe tools Claude Code brings with it, not tools this
+repo publishes. Verified 2026-08-21.
+
+**The BFF has no actor model beyond one literal, and it is a literal in three separate places.**
+
+1. `LOCAL_OPERATOR_ACTOR_ID = ActorIdSchema.parse("local-operator")` and `LocalOperatorActorSchema`
+   pins `id: z.literal(LOCAL_OPERATOR_ACTOR_ID)` (`src/domain/ids.ts:134-138`), and the config schema's
+   `actor` leaf is that schema with that default (`src/domain/config/schema.ts:135`). **A second actor
+   is refused by the config boundary today** — which is the fail-loud behaviour working, and it is
+   also the first thing this phase has to change on purpose rather than by widening a type.
+2. `GET /api/v1/bootstrap` serves `actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: "Local operator" }`
+   (`src/server/dashboard/queries/bootstrap.ts:90`), and every dashboard surface echoes that id back
+   into the envelopes it composes (`src/dashboard/app/command-dispatch.ts:223,312`).
+3. The notification inbox is read for that one id — `authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)`
+   (`src/server/dashboard/projectors/run-queue-projection.ts:1518`) — and the rows ride the day wire
+   rather than a route of their own, so **there is no way to ask for a different actor's inbox at all.**
+
+`ActorIdSchema` itself is an open kebab-case slug, so `claude` already parses as an actor id; the
+closure is entirely in the literal above and in the bootstrap. That is the good news and the trap: the
+type will admit the value long before anything checks it, so the enforcement has to be built
+deliberately rather than discovered when a type stops complaining.
+
+**Nothing here blocks anything, and nothing here is a security control.** Loopback is the boundary
+(`ref clock-config-secrets`), the two-actor rule is an *attribution and ceremony* rule rather than an
+access rule, and anything running as the operator's user on the operator's machine can already reach
+port 3938. This phase makes what Claude does **legible and attributed**; it does not pretend to make
+the local port a trust boundary it has never been.
+
+## Actor identity and the two-actor rule
+<!-- roadmap: claude-actor -->
+
+<!-- roadmap-status: claude-actor -->
+- [ ] a closed actor union — `local-operator` and `claude` — replacing the `z.literal` in `src/domain/ids.ts:136` and the config default
+- [ ] `requestedBy` ENFORCED at the command service: the served actor comes from the request's own identity, and a mismatched body rejects (`ref frontend-backend-integration` §3.4's contract, unbuilt since 1f)
+- [ ] a per-command-family policy table — parity everywhere, two-actor for `gate/resolve-gate`, `run/resolve-write-present`, `run/resolve-write-absent` and a `start-run` with `dryRun: false`
+- [ ] the two-actor arms record a `pending-confirmation` resolution that has NO effect until a different actor confirms it, binding the same evidence digest
+- [ ] attribution everywhere an actor is already durable — the command journal, `gate_results.resolvedBy`, the ledger, the D82 evidence receipt — reading `claude` where claude acted
+- [ ] a guard: no command path may stamp an actor the request did not authenticate, and no two-actor arm may settle with one actor
+> 2026-08-21 | docs-cohesion R15 | nothing built; the enforcement gap is `doc 01` §Residuals row 1 and `ref frontend-backend-integration` §3.4's open status line, and the `pending-confirmation` state does not exist in `gate_results` at HEAD
+<!-- /roadmap-status -->
+
+**This node closes the spine's one unowned residual, and that is why it is first.** `doc 01` records
+it as *"`requestedBy` is stamped verbatim on every command; the identity-checkpoint match
+`ref frontend-backend-integration` §3.4 requires is UNENFORCED, with no D-number and no
+`pending-wire-bindings` entry — reachable only if a second actor ever exists."* R15 makes a second
+actor exist. The residual is not reported any more; it is item 2 above, and `doc 01` should be
+re-pointed to this node when the work is scheduled.
+
+**The design question this node settles: what makes an actor claim TRUE?** Today `requestedBy` is a
+field in a request body, and a body cannot authenticate itself. Two honest shapes, and the
+recommendation is the second:
+
+- **Distinguish by transport.** A second loopback listener, or a distinct path prefix, serves the
+  claude actor; the actor is a property of where the request arrived. Simple, and wrong in the way
+  that matters: it makes the actor a property of the ROUTE rather than of the caller, so anything on
+  the machine can pick its actor by choosing a port.
+- **A per-client credential the BFF mints.** The BFF writes a short-lived client token under the state
+  root when it starts (the same place D181's lock files live, and the same "a local file is the
+  credential" shape the Duo credential already uses), the MCP server reads it, and every request
+  presents it. The server derives the authoritative actor from the token, **requires `requestedBy` to
+  match, rejects on a mismatch, and stamps the derived value** — which is §3.4's contract verbatim.
+  This also gives the desktop app and the web dashboard distinguishable clients for free.
+
+Either way the rule is the same and it is the point of the node: **the durable record's actor must be
+a fact the server derived, never a claim the caller made.** That is D110/D114's settled rule about
+results applied to identity, and D202 already applied it to the gate (`resolvedBy` is
+`request.requestedBy` written by the kernel, not a payload field).
+
+**The parity table — what Claude may do, and what costs two actors.**
+
+| Family / action | Claude | Why |
+|---|---|---|
+| `start` / `start-run` with `dryRun: true` | **parity** | a dry run writes nothing durable to a live system; it is the tier every test is built on (R10) |
+| `start` / `start-run` with `dryRun: false` | **two-actor** | this is the envelope fact that authorizes a real HR write (D6); an agent may compose it, a human confirms it |
+| `run` / `retry`, `cancel`, `bump`, `rename` | **parity** | lifecycle verbs over work that already exists; each CASes, each is reversible or inert |
+| `run` / `edit-checkpoint` | **parity** (operator's ruling) | the closest call on the list: an injected value can reach a later write's `expected` side through doc 02 §5.4's `startAt` resume. It stays at parity by ruling; if the operator ever wants it moved, the trigger is a corrected checkpoint feeding a commit that was not separately gated |
+| `run` / `resolve-write-present`, `resolve-write-absent` | **two-actor** | these tell authority whether a **real HR write landed** after a fence. `ref write-safety` §4.1 makes them operator resolutions precisely because no probe could settle it; an agent asserting one is the highest-consequence sentence in the product |
+| `gate` / `resolve-gate` | **two-actor** | `ref write-safety` §14 — the wrong-PERSON control. See below |
+| `intake` / all six | **parity** | mapping, correction, exclusion, validation and enqueue of a manifest; the manifest is immutable and the enqueue's dry-run flag is itself covered by the `start` rows |
+| `worker-browser` / all | **parity** | starting, stopping and refreshing workers is operations, not authorization |
+| `notification` / read, unread, snooze | **parity**, per actor | a notification row is owned by an actor id; Claude reads its OWN inbox and may not mark the operator's rows read — see `{#claude-monitor}` |
+| `version-archive` / plan, apply, relaunch | **parity** | D179's archive refuses its own unsafe cases inside the apply transaction, and a relaunch is a new run subject to every row above |
+| `settings` / `apply-settings` | **parity**, vacuously | the kernel's one `PHASE1_DEFERRED` arm answers `capability-unavailable` for everyone (D113) |
+| `capture` / all seven | **parity** | the phone capture surface is token-scoped and already has its own ingress rules (D174) |
+| bulk `POST /api/v1/commands/bulk` | **parity**, arm by arm | family `run`, types `retry`/`cancel`/`bump` — all three are parity rows above, so the vector inherits it |
+
+**The two-actor rule, stated once.** A two-actor arm resolved by one actor is recorded as
+`pending-confirmation`: durable, attributed, and **without effect**. The run does not resume, the
+fence is not released, the envelope does not become live. It lands only when a *different* actor
+confirms it, and the durable row then carries both actors and both instants. Four properties this must
+have, each of which is an existing rule rather than a new one:
+
+1. **The confirmation binds the same evidence.** `ref write-safety` §14.5 makes an approval an
+   observation of a candidate packet, bound by `evidenceDigest` and `approvedAt`. If the candidate
+   moved between the claude resolution and the operator's confirmation, the gate **re-opens** rather
+   than landing — exactly as it already does for a stale single-actor approval. A confirmation is not
+   a second signature on a piece of paper; it is a second observation of the same fact.
+2. **The ceremony the server declared still governs.** D226 makes `approvalShape` a SERVER
+   computation, and both actors obey it. An agent proposing a resolution under a shape it does not
+   implement refuses and blocks the send, the same as a frontend must.
+3. **It is symmetric if the operator wants it.** Nothing in the shape requires the *proposer* to be
+   claude: an operator-proposed gate awaiting Claude's confirmation is the same row with the actors
+   swapped, and it is worth having for a different reason — a second reader looking at the
+   disconfirming evidence is precisely §14.6 risk 1's antidote. It is off by default because the
+   operator did not ask for it, and turning it on is a settings decision, not a schema one.
+4. **A single-actor system must still work.** With no claude actor present, every two-actor arm settles
+   in one act exactly as it does today. The rule is a property of *who proposed*, not a second step
+   bolted onto the operator's path — otherwise this phase makes the product worse for the person it
+   was built for.
+
+**What this costs in durable schema, honestly.** `gate_results` records one resolver
+(`resolvedBy`/`resolvedAt`, D202) and the write-intent resolutions record one operator
+(`src/core/write-recovery.ts:537,572`). A `pending-confirmation` state and a second actor are a
+schema version and a migration — read-forward, since every existing row is a settled single-actor
+resolution and reads as one. That is a decision with a D-number when it is built, and it belongs in
+`ref write-safety` §14 (the gate half) and `ref write-safety` §4.1 (the write-resolution half), with a
+pointer in `ref decisions`.
+
+## The local MCP server
+<!-- roadmap: claude-mcp -->
+
+<!-- roadmap-status: claude-mcp -->
+- [ ] a loopback MCP server over the BFF's `/api/v1/**`, started from the CLI and registered for Claude Code (`.mcp.json` at the repo root, or `.claude/`)
+- [ ] a write tool per command family — start plan + confirm, gate resolve, run retry/cancel/bump/rename, edit data, archive plan/apply/relaunch, settings, intake, notifications, capture, bulk
+- [ ] a read tool per read model — bootstrap, the day wire, run detail and each lazy section, the evidence receipt, archive, explorer, the activity report, the storage doctor, the UI catalog
+- [ ] a `tail` tool over the SSE stream — `Last-Event-ID` resume, `reset-required` reported rather than swallowed
+- [ ] bound to `127.0.0.1`, actor `claude`, CAS `expectedVersion` passed through from the read that produced it
+- [ ] every tool surfaces BOTH refusal arms verbatim (D253) and composes only actions the served descriptors declare
+- [ ] a refusal by NAME when no BFF is running — the MCP server never starts one
+> 2026-08-21 | docs-cohesion R15 | nothing built; the wire it would speak is `ref frontend-backend-integration` §3.4 (commands), §3.5 (the stream) and §3.6 (the route layout), all served today for the dashboard's own client
+<!-- /roadmap-status -->
+
+**The MCP server is a CLIENT, and the one rule that keeps it honest is that it reuses the client that
+already exists.** `src/dashboard/client/transport.ts` is the typed client: it speaks the SSE wire over
+`fetch` + `ReadableStream` (deliberately not `EventSource`, because the resume contract needs a
+`Last-Event-ID` header), it parses every envelope before it enters state, and it takes a `baseUrl`. An
+MCP server that re-implemented any of that would be a second implementation of one wire, which is the
+drift D252 keeps catching one surface at a time. The MCP layer's whole job is to translate MCP tool
+calls into calls on that client and to render the answers as text an agent can act on.
+
+**Tool surface, by family.** One tool per command family rather than one per action, with the action
+as a discriminated argument — the families are already the protocol's own discrimination and the
+`family × type` pair is what the kernel dispatches on. Every write tool takes the `expectedVersion` it
+was given by a read tool, and every read tool returns the version beside the data so an agent has an
+honest CAS basis. The read side is not an afterthought: `GET /api/v1/runs/:runId/:section` is where
+the failure record, the evidence receipt and the identity-gate packet live, and an agent that cannot
+read a receipt cannot check its own work.
+
+**Five rules the tools must obey, all of them restatements:**
+
+1. **Both refusal arms, verbatim.** D253's lesson is that an unhandled union arm is a fallback nobody
+   greps for, and its shipped instance closed an editor and reported a correction *saved* that the
+   kernel had refused. An agent is worse than a human here: it will summarize. A tool that returns
+   `conflict` must say `conflict`, name the server's `currentVersion`, and **not** suggest retrying the
+   same envelope — a re-send carries the same stale `expectedVersion` and is refused identically.
+2. **Server descriptors are the only source of what may be invoked.** §3.4 already says server action
+   descriptors are the only source for availability, labels, placement, confirmation copy and required
+   forms. A tool that offers an action the descriptor did not is an agent inventing an affordance.
+3. **The declared ceremony applies to an agent too.** D226's three obligations were written about a
+   frontend and are sharper for a tool: render the shape the server named, refuse an unknown shape by
+   name and block the send, and supply only what no served fact carries. There is no pre-selected
+   option, because for an agent "pre-selected" means "the default the model will accept".
+4. **No BFF, no fallback.** If the port is not answering, the tool refuses by name and says how to
+   start one. It never launches a BFF: D181 admits one `server` role holder and a second would either
+   refuse (noise) or, worse, win a race against the app the operator is looking at.
+5. **Read before write, in the same tool call chain.** An agent that caches a version across turns is
+   the D19 live-lock hazard with a longer memory. The version an envelope carries must come from a
+   read in the same chain, and the tool should say which read it came from.
+
+**Where it lives and how it is registered.** A new composition under `src/mcp/` started by a CLI verb
+(`npm run cli -- mcp`), registered for Claude Code in a project-scoped `.mcp.json` at the repo root so
+the capability travels with the checkout rather than with one machine's user settings. Two details are
+decisions rather than details: whether the server speaks stdio (Claude Code spawns it; one server per
+session; the simplest lifetime) or HTTP (one long-lived server several sessions attach to), and how it
+obtains the client credential `{#claude-actor}` mints. Both belong in `ref frontend-backend-integration`
+when they are taken.
+
+**What it deliberately does NOT get.** No tool that writes to the authority database directly, no tool
+that spawns a worker outside the `worker-browser` family, no tool that reads `.env`, and no tool that
+drives a browser — Claude already has `playwright-cli` for live verification, and mixing the two would
+put a second, unattributed path to a real HR system beside the one this whole program exists to make
+safe.
+
+## Monitoring — the stream, the inbox, the observed log
+<!-- roadmap: claude-monitor -->
+
+<!-- roadmap-status: claude-monitor -->
+- [ ] the SSE tail as a tool — cursor-resumable, `reset-required` surfaced, health transitions reported
+- [ ] a durable per-actor stream cursor, so a terminal session that ended resumes instead of re-reading the day
+- [ ] the notification inbox served PER ACTOR — the projection reads one hardcoded id today, and the rows ride the day wire with no route of their own
+- [ ] a `claude` inbox that receives the same closed triggers the operator's does, with read/snooze scoped to the actor's own rows
+- [ ] the observed log as a read tool — `{#observed-logs}`' provenance points, redacted by the declared evidence classification
+- [ ] a "what changed since <cursor>" read that answers in one call
+> 2026-08-21 | docs-cohesion R15 | nothing built; `run-queue-projection.ts:1518` reads `listNotifications(LOCAL_OPERATOR_ACTOR_ID)` and `ref operator-trust` §6.3 records that there is no notifications route and no OS delivery, so the durable row IS the alert
+<!-- /roadmap-status -->
+
+**Monitoring is a read problem this program has already mostly solved, with one hole in the middle.**
+The stream is cursor-resumable by contract (§3.5) and the projector is fed by a disk tail rather than
+an in-process hook (D218), so a second reader is free — it sees the same folded projection the
+dashboard sees, from the same bytes. What is missing is per-actor: the inbox.
+
+**The inbox is the hole, and it is a narrow one.** `ref operator-trust` §6 makes a notification a
+durable, actor-keyed row folded by `(actorId, dedupeFingerprint)` (D134), and read/unread/snooze are
+commands CASed on the row's version. But the projection asks for exactly one actor's rows
+(`run-queue-projection.ts:1518`) and there is no notifications route at all — the rows ride the day
+wire. So serving a claude inbox means the projection takes the actor, which is a small change with a
+sharp edge beside it: **a notification is not a broadcast.** Marking a row read must affect only the
+actor whose row it is, or the two actors quietly become one — and the fold key already says which
+actor owns a row, so the rule is enforceable rather than aspirational.
+
+**What Claude should be notified about is not automatically what the operator is.** §6's policy list
+is written for a human who missed a toast. An agent watching a live stream misses nothing, so the
+inbox's value for it is different: it is the durable record of things that happened while the terminal
+session was gone. That argues for the same closed trigger vocabulary and a different default
+subscription, and it is a decision for whoever builds it — not something to widen the vocabulary for.
+D138's rule holds either way: a notification carries ids, closed codes and counts, never free text,
+which is what makes it safe to hand to a model.
+
+**The observed log is what makes any of this worth reading.** Until `{#observed-logs}` lands, the log
+stream carries step names and the notes stream has no production emitter at all (`emitNote` is
+composed and never called). An agent reading that learns which node ran, which it could have derived
+from the timeline. With it, the log quotes the recorded provenance points — field, value, system,
+observed-at — redacted by the declared evidence classification, and an agent can see that a UCPath
+search returned four candidates rather than one. That is the difference between an agent that can
+report and an agent that can help.
+
+**One shape rule for the tail.** A tool that tails a stream must report `reset-required` and the
+`health` transitions rather than reconnecting silently. An agent that quietly re-snapshots on every
+gap will summarize a degraded stream as a healthy one, and the operator's whole reason for having a
+second watcher is that it tells them when watching stopped working.
+
+## One BFF, two clients
+<!-- roadmap: claude-clients -->
+
+<!-- roadmap-status: claude-clients -->
+- [ ] the D181 `server` role lock ELECTS the host — whichever process takes it is the BFF, and the other names it rather than starting a second
+- [ ] the desktop app, finding the lock held, attaches to the running BFF as a client (the Phase 6 half of this; `doc 06` §Electron shell already says it must refuse by name)
+- [ ] every actor-bearing surface renders the actor rather than assuming it — gate `resolvedBy`, `archivedBy`, `plannedBy`, the receipt, the notification row
+- [ ] a client roster the operator can see: who is attached right now, and what each one last did
+- [ ] the conflict path exercised as ORDINARY traffic — two clients on one run version, both refused by name with the server's `currentVersion`
+- [ ] the no-BFF refusal, named, from every client including the MCP server
+> 2026-08-21 | docs-cohesion R15 | nothing built; the lock is real (`src/server/dashboard/compose.ts:346-356`) and the listener is loopback-only (`http-server.ts:47-48`), so the topology is already decided — what is missing is every client behaving as though it knew that
+<!-- /roadmap-status -->
+
+**"What happens if the user has both open" has a decided answer, and it was decided by D181 before
+anyone asked.** The dashboard takes a `server` role lock before it opens the authority database,
+because two dashboards over one authority store is the collision `config/runtime-isolation.json` has
+named since D88. So there is never more than one BFF on the machine. The web dashboard's dev server
+proxies `/api` to it; the desktop app hosts it as a managed child (`doc 06` §Electron shell) *or*,
+finding the lock already held, attaches to the one that is running. Claude's MCP server is a third
+client of the same port. **One BFF, one authority database, one journal, one projection — and three
+things looking at it.**
+
+**That topology is what makes the rest of the phase safe rather than merely convenient.** Because
+every client CASes against the same rows, two actors cannot silently overwrite each other; because
+every command lands in one journal, "what did Claude do" is answerable from authority rather than from
+a transcript; and because the projection is one fold over one span stream, the operator's screen and
+Claude's tail cannot disagree about what happened.
+
+**What the operator should SEE when both are open.** The same day, the same runs, the same timeline —
+and the actor on everything that has one. Today the surfaces render actor-bearing facts as though
+there were only one possible answer, which is true and will stop being true: a gate showing
+*"approved"* must show *approved by claude, confirmed by you*, and an archive plan must say who planned
+it. This is presentation work with a real correctness edge, because an unattributed action by a second
+actor reads as an action the operator does not remember taking.
+
+**A client roster is worth building and is not free.** "Who is attached" is not currently a durable
+fact — the stream hub knows its subscribers in memory, which is honest for a process-local question and
+useless after a restart. Either it stays a live-only fact and says so, or it becomes durable and joins
+the lock files as something `cli storage restore` must reason about. The first is recommended; the
+second is a bigger claim than the feature needs.
+
+**The refusal when nothing is up.** Every client says the same thing: no BFF is answering on 3938, and
+here is how to start one. In a checkout that sentence names `npm run dashboard`; in the packaged app it
+must not, for `doc 06`'s reason — telling an operator to run npm inside an app with no terminal is
+telling them to do something they cannot do.
+
+## Proof — a Claude-driven dry run, attributed end to end
+<!-- roadmap: claude-proof -->
+
+<!-- roadmap-status: claude-proof -->
+- [ ] a Claude Code session drives a separations **dry run** end to end through the MCP tools — start, watch, gate, settle — with no dashboard click
+- [ ] every action attributed to `claude` in the command journal, the spans and the evidence receipt
+- [ ] ONE identity gate resolved by claude and confirmed by the operator, with both actors and both instants on the durable row
+- [ ] a deliberate conflict — operator and claude acting on one run version — refused by name on both sides, with neither client reporting success
+- [ ] both apps open during the run (web dashboard + desktop app or a second tab), one BFF, one journal, proved from the lock files
+- [ ] the result recorded durably the way every dry-run scenario is (R10) — an evidence row plus a dated line here
+> 2026-08-21 | docs-cohesion R15 | nothing built; the T4 runner this becomes is `{#test-tiers}`' and no workflow has a T1 pair at HEAD, so the first proof is ONE scenario rather than the parallel tier
+<!-- /roadmap-status -->
+
+**The proof is a dry run, not a demo, and it is R10's T1 shape driven from a different client.** A
+separations dry run is the right subject because it is the workflow with the deepest ceremony: it has
+the ALWAYS-GATE, so the two-actor rule is exercised on the arm it was written for, and it has a
+transaction node, so the preview path and the `already-present` settlement are both walked (D214/D215).
+Driving it from the MCP tools proves the thing a screenshot cannot: that an agent holding only the
+tools can start, read, decide-and-wait, and settle, without ever needing a human to click something the
+tools do not expose.
+
+**The gate is the centre of the proof.** Claude proposes a resolution against the packet the server
+served; the row records `pending-confirmation` with the claude actor; the run **does not move**; the
+operator confirms from the dashboard; the row records both, the digest still matches, and the run
+resumes. Three negatives belong in the same run and each one is a real hazard rather than a
+completeness box: a claude proposal the operator declines leaves the gate open; a claude proposal that
+goes stale (the candidate moves) re-opens the gate rather than landing; and a claude *self-*confirmation
+is refused, because a second approval by the same actor is one approval typed twice.
+
+**The conflict case is deliberately provoked.** Two clients on one run version, both refused with the
+server's `currentVersion`, neither reporting success — this is D253's defect rehearsed on purpose, and
+it is the arm that would otherwise be discovered by an agent quietly summarizing a refusal as a save.
+
+**This becomes T4's first journey, and it should be written that way.** R10 defines the end-to-end tier
+as an agent-operated run of many dry-run scenarios in parallel. This proof is one scenario driven by
+one agent; the parallel tier needs `{#parallel-runs}` and `{#duo-lease}` and is scheduled after them.
+Writing the single-scenario proof as a scenario file rather than as a transcript is what makes it the
+seed rather than a story about one afternoon.
+
+## Decisions this phase ratified
+
+**None, and that is correct at HEAD.** `reference/decisions.md` carries no marker for this phase,
+because it has no code and this program ratifies a decision only when its normative text lands in an
+owning doc in the same commit. **R15** is an operator RULING recorded in
+`docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md` §0 on 2026-08-21 — it authorizes the phase, the
+parity, and the two-actor rule on gates and controlled commits; it is not a D-number and does not
+pretend to be one.
+
+**What the first decisions here will be**, so the next agent recognizes them when they arrive:
+
+| Likely decision | Owning doc it must land in |
+|---|---|
+| The closed actor union and how the server DERIVES an actor rather than trusting the body — the residual `doc 01` reports and §3.4 contracts | `ref frontend-backend-integration` §3.4 (the command protocol) + this doc §Actor identity and the two-actor rule |
+| The `pending-confirmation` resolution state, its schema version, and the re-observation rule on confirmation | `ref write-safety` §14 (the gate half) + `ref write-safety` §4.1 (the write-resolution half) |
+| The per-command-family parity table as a normative table, and where the guard reads it from | `ref frontend-backend-integration` §3.4 |
+| The MCP server's transport (stdio vs a long-lived HTTP server) and how it obtains the client credential | `ref frontend-backend-integration` (the BFF's client contract) |
+| Serving the notification inbox per actor, and the rule that a read affects only the reading actor's rows | `ref operator-trust` §6 |
+| Whether the client roster is a live-only fact or a durable one | `ref dashboard-surfaces` (the projection) or `ref clock-config-secrets` (the lock files), depending which way it goes |
+
+Each lands with a one-line pointer in `reference/decisions.md` and its normative text in the owner, in
+the same commit — the standing rule, not a Phase 3d rule.
+
+## Exit criteria
+
+Phase 3d is done when the operator can hand a piece of dashboard work to Claude in the terminal, watch
+it happen on their own screen, and read afterwards exactly which of the two of them did what. The five
+criteria below are the readable form of that sentence; all five are open, because nothing is built.
+
+| # | Criterion | State | Evidence / what is left |
+|---|---|---|---|
+| 1 | **The MCP server is registered and usable from the terminal** | **open** | a project-scoped registration, a tool per command family and per read model, a stream tail — and a named refusal when no BFF is answering |
+| 2 | **The parity table is ENFORCED, not documented** | **open** | the server derives the actor, rejects a mismatched `requestedBy`, and refuses a two-actor arm settled by one actor — with a guard over both, against a violating fixture |
+| 3 | **The two-actor rule is proved on the arm it exists for** | **open** | one identity gate proposed by claude, confirmed by the operator, both actors durable on the row; plus the decline, the stale-digest re-open and the refused self-confirmation |
+| 4 | **Both apps open, one BFF, one journal** | **open** | the role lock elects the host, the other client attaches or names it, and every actor-bearing surface renders the actor rather than assuming it |
+| 5 | **Monitoring is legible** | **open** | a resumable tail that reports its own degradation, a per-actor inbox, and the observed log carrying what the page said (`{#observed-logs}`) |
+
+**What is NOT on this list, deliberately.** Any remote or multi-user access (D193(a), unchanged by
+R15); an API-key path to a hosted model (the operator's instruction rules it out — the terminal session
+is the credential); a second command route or an "agent mode" flag on the existing one; and browser
+automation through the MCP tools, which stays with `playwright-cli` and outside this surface. Adding any
+of them would be the tree inventing scope, which the plan's own rules forbid — they would be findings
+first.

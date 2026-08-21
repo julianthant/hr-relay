@@ -3,10 +3,11 @@
 Phase 3 migrates the legacy workflows one at a time, and nothing could be wired into a dashboard
 that did not exist yet. **Phase 3a is that dashboard**: the generic surfaces EVERY workflow
 inherits, built once, plus the hardening the first real connection to a running workflow exposed.
-Phase 3 is three docs — **3a** is this one (tree node `{#dash-defaults}` and everything under it),
+Phase 3 is four docs — **3a** is this one (tree node `{#dash-defaults}` and everything under it),
 **3b** finishes separations (`03b-finish-separations.md`, which also carries phase 3's own node
 `{#phase-3}`), **3c** migrates the remaining workflows
-(`03c-migrate-the-remaining-workflows.md`). Contracts this phase built or amended live in
+(`03c-migrate-the-remaining-workflows.md`), and **3d** puts Claude on the same dashboard as a second
+actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this phase built or amended live in
 `reference/`; this doc holds the work, its state, and its exit.
 
 ## Phase summary

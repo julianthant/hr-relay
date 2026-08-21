@@ -102,9 +102,9 @@ doc: 03a §2.1 · ref:write-safety §5 · 00
   beside `status:`), legal on a phase, a task or a sub-task. Its value is
   one or more refs joined by " · " (the split happens only before a doc token, so a section may contain " · "). A ref is `<doc>` or `<doc> §<section>`,
   and `<doc>` is one of exactly two things:
-    · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `04` `05` `06`,
+    · a PHASE doc number — `00` `01` `02` `03a` `03b` `03c` `03d` `04` `05` `06`,
       the actionable `docs/rebuild/NN-*.md` docs (the number IS the phase,
-      and phase 3 is three docs, so bare `03` is not one of them);
+      and phase 3 is four docs, so bare `03` is not one of them);
     · `ref:<slug>` — a spec under `docs/rebuild/reference/`, cited by name
       because it is unnumbered: `ref:write-safety`, `ref:decisions`. The
       slug is syntactically a kebab-case filename stem; whether that file
