@@ -679,6 +679,16 @@ risk register those guards answer.
 | OnBase overlap | **NOT BUILT.** `onbaseSession` declares `exclusive:true` and nothing else exists — no driver, no login recipe, no identity lease, no test. D15 stands unbuilt |
 
 ### 7.1 The 2j concurrency matrix — executed (D182)
+<!-- roadmap: p2-2j -->
+
+<!-- roadmap-status: p2-2j -->
+- [x] C1–C4, the dependency half, against real `runWorkerLoop` instances over one authority database (`tests/unit/architecture/multi-worker-overlap.test.ts`)
+- [x] C5–C8, the control half — teardown, `closeAll` re-entry, an unprovable poison-close, and the bounded fleet soak (`tests/unit/architecture/worker-teardown-soak.test.ts`)
+- [x] C9–C10, the capture/intake half (`tests/unit/concurrency-matrix.test.ts`)
+- [x] every other test this table cites resolves at HEAD: `run-authority`, `claim-sweep-recovery`, `kuali-transaction-proof`, `architecture/ledger-projector`, `worker-sessions`, `worker-composition`, `worker-loop`, `capture-durability`, `intake-session`, `intake-command-arms`
+- [ ] the standing rule's next row: §10's lease and §11's pool are each a new surface two callers can reach, so each adds its row in the commit that lands it
+> 2026-08-21 | docs-cohesion execution-and-sessions | verified every cited test file exists and that composeWorkerRuntime still derives its id from phase1WorkerId while createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:368, :379)
+<!-- /roadmap-status -->
 
 The table above names *risks*. This one names **cases**, and every row names the exact test that
 executes it. A risk table can be satisfied by a plausible-sounding sentence; a case table cannot,
