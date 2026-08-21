@@ -2879,10 +2879,90 @@ promise.
 
 ### 9.1 The run modal — plan, confirm, enqueue
 
-**Stub — written by unit 5.1c.** Inherits row-model D15 (Person Lookup's Search and Match modes,
-`{#order-1}`, unbuilt: the descriptor declares one graph), D250/D251's four rows with three read
-from the bundle, D261's one typed box, and §2.4's `supersede-active` split as it reaches the
-operator. Wire: `ref frontend-backend-integration` §5.1.1.
+<!-- roadmap: sep-dash -->
+
+**What it is.** The one start door. It is the surface that turns an operator's intent into a
+`StartPlanProposal` and then into authority rows, and it is deliberately **generic**: the modal
+knows no workflow. Everything workflow-shaped reaches it as a declaration — `surfaces.inputRun`
+(the parser spec, placeholder, constants and examples), `input`, `summary` and `enqueue`, four
+fields on the descriptor.
+
+**What it shows.** Four rows, in the demo's own order: the workflow-setup block (the descriptor's
+own `summary` sentence, drawn as prose and omitted entirely when the descriptor declares none), the
+typed box with its derived value-noun, separator phrase and parser sentence, the `Examples` row of
+buttons that fill the box with **exact** text, and *What this will create* — the proposed run(s) the
+server planned, never a client-side guess. Beside them the shared settings: queue behaviour,
+priority, dry run, destination.
+
+**What it commands.** `POST /api/v1/start-plans` to plan; the `start` command family, consuming the
+plan token idempotently, to enqueue. Nothing else. The modal never writes a run row itself and never
+collapses a `conflict` or a `rejected` into "Done".
+
+**What it refuses to show.** Three absences are drawn as absences rather than filled in:
+
+- **No method tabs.** The demo renders them at `methods.length > 1`; this tree has one method kind,
+  because `WorkflowSurfaces.uploadRun` is declared by no registered workflow and the
+  upload/capture/spreadsheet/bare bodies are 2h-deferred. A tab strip over a set of one is D186's
+  sample-of-one, and the demo-faithful rendering of one method is no tabs at all (D251).
+- **No policy control.** `descriptor.enqueue` is a DECLARATION the planner reads, and
+  `StartPlanIngress` carries no per-start override — so a `Select` would let the operator choose
+  `allow-parallel` and get `reject-active`. The declared value is drawn read-only with its reason,
+  over a label table that states what the planner DOES rather than what the arm's name suggests
+  (D251).
+- **No fabricated example.** Absent `examples[]` renders no row. Nothing invents a sample
+  identifier.
+
+**As-built (verified 2026-08-20).** `surfaces/run-start.tsx` + `run-start-kit.tsx` and their models
+draw it; the catalogue is composed in `app/dashboard-app.tsx`; the plan is
+`server/dashboard/commands/start-plan-service.ts` over `services/start/plan.ts`. Three facts are
+worth keeping in this doc rather than the wire doc, because they are about MEANING:
+
+1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
+   `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
+   legend declared beside `ENTRY_PATTERNS`, so a pattern whose regex moves has its words in the same
+   diff. Two arms are load-bearing: a spec whose only rule is `otherwise` reads **"entries"** — the
+   absence of a pattern claim, stated — and a spec with no `otherwise` rule says so, because
+   `parseInputRunText` then throws on the whole text and an operator never told that reads a correct
+   refusal as a defect (D250).
+2. **An example is PROVED typeable at build time.** `defineWorkflowDescriptor` refuses an example
+   that does not parse under this surface's own parser and whose every entry does not satisfy the
+   workflow's own input schema — the two checks the planner performs on each submission, run at
+   `build()`. A button that fills the box with a guaranteed refusal teaches the operator that the
+   modal lies about what it accepts. Two descriptors declare examples: `person-lookup` and
+   `separations` (D250).
+3. **The typed start surface takes exactly ONE varying value per run.** D260 proved the rule and
+   named the two shapes; D261 built the second — `separations` types a document number and DERIVES
+   the Kuali action id one node past the ingress parse, off the Action-List row's `href`. The modal
+   is unchanged by that; what changed is that a workflow needing two identifiers is now a graph
+   problem rather than a second box. `ref workflow-model` and `docs/migrations/separations.md` own
+   the derivation; this section owns only the consequence for the box.
+
+**One contradiction this section states rather than resolves.** `supersede-active` means two
+different things in two files. The kernel implements it — `run-fan-out.ts` terminalizes the exact
+active generation and creates the new run atomically — and the planner does not: `services/start/plan.ts`
+checks only `reject-active`. The modal therefore prints *"Declared, and not implemented — the planner
+supersedes nothing"* to the operator, which is the honest sentence for the surface and leaves the
+split intact underneath. All eight registered descriptors declare `reject-active`, so the arm is
+unexercised either way; whether it earns a planner path or leaves the enum is the owning decision of
+the first workflow that wants it. §2.4's enqueue paragraph describes the KERNEL's behaviour and is
+correct about it.
+
+**Wire.** `ref frontend-backend-integration` §5.1.1 owns the endpoints, the six-step plan/confirm
+sequence, the payload shapes and the parity references — including D264, which moves the three
+declaration fields onto the bootstrap so step 1 reads a projection rather than the client bundle.
+That changes where the declaration is READ, not what it says.
+
+<!-- roadmap-status: sep-dash -->
+- [x] D250 — the typed box describes itself: value-noun, separator phrase and parser sentence derived from the closed spec; `examples[]` proved typeable at `build()` (`src/domain/workflow/ingress.ts`, `defineWorkflowDescriptor`)
+- [x] D251 — the four modal rows, three already in the client bundle; the policy drawn read-only with its reason; the unstartable reason composed and now drawn
+- [x] D261 — the typed start surface takes ONE box; `separations` derives the Kuali action id as a graph output rather than asking for a second value
+- [x] D226 — the three identity-approval ceremonies and rejection, shape decided server-side (§9.4 carries the text)
+- [x] D237 — a settled gate's decision record renders inline at `resolvedAt`, read from the durable `gate_results` row (§9.4)
+- [!] `supersede-active` says two different things: implemented in `run-fan-out.ts`, unchecked in `services/start/plan.ts`. Two code sites disagree; the surface prints the planner's truth
+- [ ] D15 — person-lookup's Search and Match modes: `src/workflows/person-lookup/descriptor.ts` declares ONE graph and no mode (`{#order-1}`, §9.10)
+- [ ] the upload / capture / spreadsheet / bare method kinds, and with them the method tabs — no registered workflow declares `surfaces.uploadRun` (2h-deferred)
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{run-start,run-start-kit,run-start-model,identity-approve,park-resolve}*, src/domain/workflow/ingress.ts, src/services/start/plan.ts, src/core/run-fan-out.ts; left: the second method kind and D15's modes, both owned by workflows nobody has built
+<!-- /roadmap-status -->
 
 ### 9.2 The queue row — the day's work
 
