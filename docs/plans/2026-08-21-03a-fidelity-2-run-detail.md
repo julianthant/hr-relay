@@ -575,3 +575,207 @@ E25 `action.elementId`. Plus: E4 the head says a category where the demo says th
 three tones · E11 `What is safe to retry` vs `What to do` · E15 **the whole disclosure** — the
 diagnostic record is always expanded into the log stream · E22 the observed-subject danger tone ·
 E30's `First time this fingerprint has been seen.` arm.
+
+---
+
+## R-F — Park / resolve, and the gate ceremonies
+
+**Demo:** `DemoParkResolve.tsx` (375) + `DemoActions.tsx:231-280` (`ParkResolutions`, R8 f.1's oracle)
++ the gate half of `DemoLogPanel.tsx`'s `InlineDecision` (`:268-338,406-427`).
+**Rebuild:** `src/dashboard/surfaces/park-resolve.tsx` (792) + `park-resolve-model.ts` +
+`identity-approve.tsx` (606) + `identity-approve-model.ts` + `app/identity-ceremony.ts` +
+`app/proof-form.ts`; `ParkResolutions` in `actions.tsx`.
+
+**RE-AUDIT + FIRST AUDIT.** R8's park/resolve half (25 elements, findings 1–3, 13–16, 19–21) is
+re-checked at HEAD after `9847877`. The identity-approval ceremony did not exist at R8 time and is
+first-audited here. Image-verified against
+`tests/parity/references/run-parked-write--graphite-warm--1440x900--resolve-absent.png`.
+`DemoActions.tsx` as a whole belongs to another unit; only the park-resolution CARDS are audited
+here, because they render inside this region's surfaces.
+
+### F-park, in the stream
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| F1 | `InlineParkedWrite` — the parked write as its OWN in-stream record | (the demo folds `parked` into `InlineDecision`) | `park-resolve.tsx:169`, mounted `log-panel.tsx:1092-1095` | extra | `ruled: ref write-safety §4.1` + the `GateDecisionWireSchema.kind` ledger row (CLOSED 2026-08-20) — `parked` is not a gate in this tree, so an icon arm keyed on it would draw a gate over a run that has none |
+| F2 | `Bound to` — the `SubjectFacts` chips (identifier kind + display suffix, artifact, catalog key, binding digest, proof id, observed clock; or the `unscoped` arm with its reviewed reason) | the `gate.staged` block one surface over `DemoLogPanel.tsx:429-453` | `park-resolve.tsx:129-156,222` | divergent | `ruled:` same row as F1 — the demo names STAGED FIELDS, this names the FENCED SUBJECT, because those are the two different things the two models park on |
+| F3 | the kernel's own `parkedMessage`, verbatim, with no friendlier paraphrase beside it | (the demo authors its own gate copy) | stated `park-resolve.tsx:14-19` | extra | `ruled:` stated in code — ref write-safety §4's `park()` interpolates a driver error or a probe's reason, and a second sentence would be this surface guessing at a live transaction |
+| F4 | `ParkResolutions` — tinted cards, `CheckCircle2` / `CircleSlash`, the bold served label, the served `detail` in muted meta, two columns | `DemoActions.tsx:231-280` | `actions.tsx` `ParkResolutions` | exact | R8 f.1 as-built (`9847877`); the `banner`-placement PARTITION is test-pinned |
+| F5 | the cards' two-column rule | a plain two-column grid | a CONTAINER query `@min-[35rem]:grid-cols-2` | divergent | `ruled:` stated in code — these render in the detail region's centre column, whose width is a function of the rail's state; keyed to the window, two resolutions were forced side by side into a 414px column |
+
+### F-park dialog
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| F6 | `Dialog open onOpenChange` + `DialogContent size="lg"` | `DemoParkResolve.tsx:157-160` | `park-resolve.tsx:661-665` | exact | R8 f.13 |
+| F7 | dialog TITLE + DESCRIPTION | client-authored per arm (`Record the write as PRESENT` / `…ABSENT`, plus the two sentences naming the workflow and the system) `:160-165` | the SERVER's `confirm.title` / `confirm.body` `:665` | divergent | `ruled: R8 f.19` + `ref frontend-backend-integration §8.5` — on record as a deliberate deviation |
+| F8 | the fence-facts `Well` — a flex-wrap chip row | `subject` · `fenced` · `generation` · `fence clears` `:333-340` | `system` · `fenced` · `generation` · `key` + the inline `SubjectFacts` chips `:676-684` | divergent | R8 f.14 as-built (the flex-wrap `Well`, not a `ChipRow` grid). `system` and `key` are additions; `fence clears` is absent — see F17 |
+| F9 | the refusal block — `Refusal` when the server sent a code, a danger `Banner` when it did not, with "nothing was recorded · your answer below is untouched" | above the fields `:170-184` | `RefusedNotice` in a RESERVED `min-h-[--ds-h-lg]` slot BELOW the fields `:425-463,750-752` | divergent | `ruled: R8 f.2` as-built — the two arms map EXACTLY onto this wire (`rejected` has a required `code`, `conflict` has none) — plus R8 f.21's reserved-space decision, cited and kept |
+| F10 | `Which {system} record did you open?` — a `RadioGroup` over `fence.candidates`, with the `subject-key-mismatch` error and the same-name-neighbour note | `:186-198` | absent | missing | `ruled: R8 f.20` — the subject is correctly read-only: the wire serves ONE fenced subject, so a chooser would offer a choice the fence itself refuses |
+| F11 | present arm — `What is your proof?` `RadioGroup` (`I read the confirmation on the page` / `The page could not be shown — my attestation`) | `:202-219` | absent | missing | `unserved:` the served proof contract is an ordered FIELD LIST (D245) with no operator-attestation arm |
+| F12 | present arm — the proof `Field` (label from `fence.proofLabel`, the format description, the `proof-parse-failed` error, an `Input` with `spellCheck={false}` and the example placeholder) | `:220-233` | `ProofForm` — the contract's own ordered fields, per-field labels and hints, a `Select` for booleans, composed and bound to the SERVED hash `:325-397` + `app/proof-form.ts` | divergent | `ruled: D245` — a single free-text box would be the client guessing the proof's shape; where the build cannot describe it, `ProofUnavailable` prints the server's reason |
+| F13 | present arm — the attestation `Textarea` and its "same weight, signed by you" description | `:234-248` | absent | missing | `unserved:` no operator-attestation arm on the served contract (same producer as F11) |
+| F14 | absent arm — `What did you check, and what did you see?`, its description, the `Textarea` and the placeholder | `:252-264` | `:710-742` | exact | the sentence and the placeholder are the demo's, with `for this EID` in place of the fixture EID |
+| F15 | the evidence `Field` on the PRESENT arm too, with its own question (`Where did you see this, and how did you get there?`) | (present arm has none) | `:703-717` | extra | `ruled: D245` — the kernel's present payload requires a note; the proof says what the page held and this says where the operator stood |
+| F16 | absent arm — `How many times did you look?` over `OBSERVATION_OPTIONS` (`Once, just now` / `Twice, at least 10 minutes apart` / `Twice, back to back`), with the fence-clears sentence appended while uncleared, and its `FieldNote` | `:52-68,265-288` | absent | missing | `ruled:` stated `park-resolve.tsx:24-27` — ref write-safety's `recoveryAbsence` is `operator-only` for every contract but the one live-measured Kuali write, the wire serves no fence window, and a `minSinceFenceMs` invented here is exactly the banned constant |
+| F17 | `fenceCleared` / `fenceClearsAt` and the `fence clears` chip | `:121,337-339` | absent | missing | same as F16 |
+| F18 | `FieldNote` — an error REPLACES the note, `role="alert"` | `:316-325` | the DS `Field`'s own `error` slot, with a refusal suppressing it `:718-733` | divergent | `ruled: R8 f.16` as-built — widened past the port: BOTH note problems (empty and over-500) land on the Field, and a server refusal suppresses it so there are never two verdicts on one answer |
+| F19 | footer `Not yet` (secondary) | `:294-296` | `:758-760` | exact | |
+| F20 | footer primary — the ARM picks the variant and the glyph (`primary` + `CheckCircle2` / `danger` + `CircleSlash`) | `:297-304` | `:776-787` | exact | R8 f.3 |
+| F21 | footer primary LABEL | client-authored `I saw it — record present` / `I looked — record absent` `:303` | the server's `confirm.confirmLabel` `:786` | divergent | `ruled: R8 f.19`, `ref frontend-backend-integration §8.5` |
+| F22 | footer `meta` slot | (none on this dialog) | `{runId} · rev {N} · generation {N}` `:756` | extra | **OPEN — operator call** (uncited; the generation is already a fence chip four lines up) |
+| F23 | `loading` on the primary rather than a swapped label | (the demo's submit is synchronous) | `:761-763,779` | extra | `ruled:` stated in code — the label stays put so the button never changes width under a pointer mid-click |
+| F24 | the submit's disabled predicate | `canSubmit`, from the typed values `:148-154` | `blocked`, folding the note problem, the per-field proof problems and the in-flight state, plus `title={blocked}` `:778-780` | divergent | `ruled: R8 f.16` (the reason moved to the Field; the `title` is the residue) |
+| F25 | a fresh open resets the answer, but never mid-flight | `:106-117` | `:527-531` | exact | |
+| F26 | `SettlingPanel` — the info Banner, the spinner, `Still parked — settling N of M observations`, the next-probe sentence, the `fence cleared` / `waiting` / `not_before` MetaLine | `:350-374` | absent | missing | `ruled:` stated `park-resolve.tsx:28-33` + D198 — `createWriteRecovery` writes NOTHING on `wait`, so no durable row carries an observation count or a `nextProbeAt` |
+| F27 | the settling BAND under the outcome bar | `DemoLogPanel.tsx:2581-2585` | absent | missing | same as F26 (= B26) |
+
+### F-gate ceremony (D226)
+
+| # | Element | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| F28 | WHERE the gate is answered | in the stream card: the `CandidateCard` grid plus `BannerActions`, one click per served descriptor | a DIALOG the served descriptor opens (`IdentityApproveDialog`), with the packet rendered inside | divergent | `ruled: D226` + `ref write-safety §14.11` — two of the four ceremonies need a value no served fact carries (which candidate, and why a rejection), and routing them through a confirm-only path would offer a risky approval as one click, which is §14.6 risk 1 manufactured by accident |
+| F29 | `PacketSubject` — `document` · `document name` · `UCPath name` · `name tier` (warning off `same`) · `EID read` · `observed` | (no counterpart) | `identity-approve.tsx:117-130` | extra | `ruled: D226/D211` — the packet is exactly what the approval's digest binds |
+| F30 | `PacketComparisons` — `What disagrees` FIRST, then `What agrees` | (no counterpart) | `:158-200` | extra | `ruled:` the 2026-08-12 lesson — `classifyNameSimilarity` answers `same` for the very incident that motivated the gate, so the packet leads with DISCONFIRMING evidence |
+| F31 | the candidate list | `CandidateCard` on a `CompareGrid` with shared row tracks: heading · name · identifier · `matched on {reason}` · `See this candidate` \| `No capture — this was never on a page` | `PacketCandidates` — `Approvable candidates`, per option an `EID` Chip and a `from` Chip | divergent | `ruled: D226` for the move. The `matched on` REASON track and the capture button are absent — `unserved:` `#captures` is `declared-unserved` (D184), and the shared-row-track alignment argument (a card with no reason holds the space) has no counterpart here |
+| F32 | `PacketPlan` — `What this approval authorizes` | (no counterpart) | `:238-256` | extra | `ruled: D211` — a gate DEPENDENCY is not a gate PACKET; the write plan is inside the digest the approval binds |
+| F33 | `CeremonyControl` — the four SERVER-computed `approvalShape` arms: the one-candidate info Banner, `Which candidate does this separation document mean?`, `Type the employee ID this separation is about`, and `Why is this not the right person?` | (the demo has one shape: two buttons) | `:306-397` + `app/identity-ceremony.ts` | extra | `ruled: D226` + `ref write-safety §14.11` — an unrecognised shape draws a NAMED refusal and BLOCKS the send; it never falls back to the approve button |
+| F34 | ceremony dialog `size="lg"` with the server's `confirm.title` / `confirm.body` | — | `:545` | extra | `ruled:` same as F7 |
+| F35 | the ceremony's own `RefusedNotice` | — | `identity-approve.tsx:399-425`, byte-similar to `park-resolve.tsx:425-463` and differing only in "the gate is still open" vs "nothing was recorded" | extra | **OPEN — operator call** (two near-identical components on two surfaces; the house pattern is one shared atom, and R6/R8 both fought a forked copy before) |
+| F36 | `app/identity-ceremony.ts` — the ONE pure fold both the surface and `command-dispatch.ts` read | — | 227 lines | extra | `ruled: D226` |
+
+**R-F counts — 36 elements: 6 exact · 11 divergent · 7 missing · 12 extra.**
+
+**Since 08-14.** R8's park findings 1, 2, 3, 13, 14, 15, 16 and 19 all landed in `9847877` and hold
+at HEAD (F4, F6, F8, F9, F18, F20, F21). Two things moved after that: **D245** closed the
+`proof-contract-unserved` refusal — the section now serves the commit contract's proof as an ordered
+field list, `ProofForm` renders it, and the evidence note went onto BOTH arms (F12, F15) — and
+**D226** built the three identity ceremonies plus rejection against the server's `approvalShape`,
+which is the whole F-gate block and did not exist when R8 was written. R8's own verification limit
+("the rebuild's park dialog could NOT be screenshotted") is CLOSED: `run-parked-write` is in the
+corpus in four states.
+
+**OPEN in R-F (2 questions):** F22 the footer meta slot · F35 the duplicated `RefusedNotice`.
+
+---
+
+## Roll-up
+
+### Counts
+
+| Region | Elements | exact | divergent | missing | extra | OPEN |
+|---|---:|---:|---:|---:|---:|---:|
+| R-A run identity | 49 | 23 | 14 | 4 | 8 | 7 |
+| R-B log panel | 114 | 48 | 24 | 27 | 15 | 11 |
+| R-C context rail | 76 | 31 | 18 | 17 | 10 | 9 |
+| R-D receipt | 39 | 9 | 15 | 12 | 3 | 12 |
+| R-E failure record | 34 | 7 | 15 | 8 | 4 | 13 |
+| R-F park + ceremonies | 36 | 6 | 11 | 7 | 12 | 2 |
+| **total** | **348** | **124** | **97** | **75** | **52** | **54** |
+
+`exact` is 36 % of the surface. Of the 97 divergences and 75 absences, **119 carry a citation**
+(a D-number, an R-finding as-built, a named missing producer, or a stated in-code argument) and
+**53 do not** — those are the OPEN list below, plus one recorded tension (B45).
+
+### Since the 2026-08-14 wave
+
+Two regions are re-audits (R-C = R6, the park half of R-F = R8) and one is a partial re-audit
+(R-B's header = R5). **No R5, R6 or R8 finding regressed.** What changed under them is the
+2026-08-19/20 decision run: D225 (the categorical strip), D226 (the ceremonies), D232/D233
+(the rehearsal chip, the rename), D237/D238 (the settled-gate record, the derived outcome
+sentence), D245 (the served proof contract), D250–D253 (the run modal, the rail's step/direction/
+bound, the CAS conflict as a refusal), D256/D257/D259 (the served clock, the followed panel, the
+replayed arm) and the 2026-08-20 ledger sweep that dispositioned every remaining wire row.
+
+**Three regions had never been audited at all** — R-A, R-D and R-E — and they hold 32 of the 54
+OPEN questions between them. That is the honest headline: the wave audited what it had oracles
+for, and `DemoRunIdentity.tsx`, `DemoReceipt.tsx`, `DemoEvidence.tsx` and `DemoFailure.tsx` were
+never opened.
+
+### OPEN — operator call (54)
+
+**Served-and-dropped (8) — the wire already carries the bytes and no pixel shows them.** These are
+the cheapest to close and the most surprising to leave:
+
+1. **D25** the observation's `taskId` and `observedAt` — `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry both; the receipt prints `source.kind` alone.
+2. **D27** the `inputFingerprint` — served on the `input` source arm; the demo's `input hash` line is absent.
+3. **D31** the receipt's `traceId` / `descriptorFingerprint` / `configFingerprint` footer — all three on `RunEvidenceReceiptSchema`; the artifact read months later prints none.
+4. **D32** the receipt's `failure` id — served, drawn nowhere.
+5. **E19** the failure's `occurredAt` — required on the wire; the record prints the RUN's terminal instant instead, which is a different moment.
+6. **E20** the failure's `traceId` + `attempt` — both required, both absent.
+7. **E24** `page.urlRedacted` — served, absent (and `page.titleRedacted` is served and consumed by nobody).
+8. **E25** `action.elementId` — served, absent.
+
+**Structural / behavioural (7):**
+
+9. **E15** the failure record has NO disclosure — the demo hides the progress ledger, the classification, the cause chain and the bundle behind `Show the diagnostic record`, on the stated argument that a 400px dump expanded into a log stream buries the lines after it. The `run-failed` reference shows exactly that shape.
+10. **B41** the timeline segment is a non-focusable `<span>`, not the demo's `<button>` — so the member disclosure's `group-focus-within:block` can never fire, and the hover tint and focus ring are gone.
+11. **B65** the log stream is a FLAT list — the demo groups by step with a sticky heading, and the rebuild publishes `--ds-panel-head-h` whose stated purpose is to make those headings land below the head.
+12. **C4** `dataExpanded` is owned by two components; collapsing an expanded rail and re-opening it gives a wide rail whose header says `Run data` and whose control offers `Widen`.
+13. **C51** the step group lost the `Well`, the recessed band and the row dividers R6 f.1 named beside the levels.
+14. **C55 / C57** a refusal is one uncoded red span, and nothing says the operator's edits survived it.
+15. **B57** the orphan-gate timeline segment — the demo keeps it so a wait can never vanish because the shape did not line up.
+
+**Words and glyphs (24):** A3 the `wf ` noun · A13 the `·` separator · A38/A41 the placeholder and `subject` fallbacks · B44 the untimed-segment dim · B50 the hover card's `Status` row · B60 the axis's `working` total · B61 the axis's `waiting on you` half · B83 the search control's DS swap and width · B87/A49 the floor bar's live/idle dot · B91 `open {age}` on the decision card · C16 the Data section's accessible name · C21 the ⓘ bullet that now understates the surface · C32 `written` vs `write` · D8 the confidence Chip and its three sentences · D9 the scattered receipt identity line · D13 the dry-run Banner · D17 the commit/prepare Badge · D24 the criterion icon · D29 the uncertainty icon and its two sentences · E4 the head's category vs the run's own summary · E5 the `code` Chip · E6 the missing `permanent` arm · E8/E9 the write-state block's frame, label and tones · E11 `What is safe to retry` vs `What to do` · E22 the observed-subject danger tone · E30's `First time this fingerprint has been seen.` arm.
+
+**Rebuild-only additions with no citation (8):** A18 the `Config` row · A19 the `Attempt` row · A35/A37/A47 the rename error affordance · B79 the empty-stream state · B80 `More lines follow.` · C70 the duplicated blocked-reason sentence · C71 `Saving…` · F22 the park footer's meta slot · F35 the duplicated `RefusedNotice`.
+
+**Stale claims in code (2):** D11's missing invariant Banner (the schema may already make it
+unrepresentable — nobody wrote that down) · **D39** `receipt.tsx`'s header still calls itself the
+1i placeholder awaiting 2g, which landed.
+
+One recorded TENSION, not an OPEN: **B45**, where D225's `since <clock>` under a blocked segment
+contradicts the demo's own argument that the AGE is the comparable number.
+
+### Proposed `builds:` lines
+
+**`{#dash-defaults}`** — the generic surfaces every workflow inherits:
+
+```
+- [ ] FE the run-detail pure-ports the fidelity re-audit found — the failure record's disclosure and
+      write-state block (R-E E8/E9/E15), the timeline segment restored to a focusable control
+      (R-B B41), the step group's Well + recessed band + row dividers (R-C C51), and the rail's
+      one-owner `dataExpanded` (R-C C4)
+- [ ] FE the receipt prints the four facts it already holds — the observation's task and clock, the
+      input fingerprint, the trace/descriptor/config footer, and the failure id (R-D D25/D27/D31/D32)
+- [ ] FE the failure record prints the four facts it already holds — `occurredAt`, `traceId` +
+      `attempt`, `page.urlRedacted`, `action.elementId` (R-E E19/E20/E24/E25)
+- [ ] BE the receipt's action entry carries what proved the write — target, system, the written
+      values, the confirmation number and the read-back verdict beside the write it proves
+      (R-D D16-D22); today `ActionEvidenceSchema` is `{taskId, kind, writeState, occurredAt}`
+- [ ] BE a diagnostic bundle is READABLE — `capturedAt`, size, the contents index and the redaction
+      list, plus the route the `BundleDialog` opens (R-E E29); D137 writes all of it durably
+- [ ] FE the run-detail vocabulary sweep — 24 words and glyphs the re-audit found off the demo
+      (R-A/B/C/D/E "Words and glyphs"), each reverted or recorded
+```
+
+**`{#track-b}`** — the node is `done` and must not reopen; these are proposed as a **new sibling
+`Track B2 · run-detail fidelity`** under `{#dash-defaults}`, since Track B's own definition of
+"frontend done" was the findings ledger, not the demo diff:
+
+```
+- [ ] DOCS B2a the operator rules the 54 OPEN questions in
+      `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` — each becomes ported, or a recorded
+      divergence with its argument
+- [ ] FE B2b the 8 served-and-dropped facts (R-D + R-E) — no wire moves
+- [ ] FE B2c the 7 structural findings (R-E E15 · R-B B41/B65/B57 · R-C C4/C51/C55+C57)
+- [ ] FE B2d the 8 uncited rebuild-only additions — kept with a stated argument, or removed
+- [ ] DOCS B2e `receipt.tsx`'s header stops calling itself the 1i placeholder (R-D D39), and the
+      D11 invariant question is answered in the owning doc
+- [ ] PROOF B2f the corpus re-freeze covering every change, one deliberate pass
+```
+
+**`{#observed-logs}`** — the log stream carries what the page said; this re-audit sharpens the
+node's `FE` line and adds the demo's own line anatomy as the target:
+
+```
+- [ ] FE the stream is GROUPED BY STEP with a sticky heading — the demo's three-level shape, and
+      the reason `--ds-panel-head-h` is published at all (R-B B65)
+- [ ] BOTH a log line carries its own facts, not just a level — the demo's nine-kind icon
+      vocabulary with its read/write direction hues, the per-line `SystemChip`, the read/write
+      `Pill` chips, the attempt badge and the duration (R-B B69-B75); the search predicate widens
+      to match a pill's label and value with them (R-B B78)
+- [ ] FE the `pause` line's own row tint (R-B B71) and the floor bar's live/idle dot (R-B B87)
+- [ ] BE the timeline hover card's `System` row and its key lines (R-B B52/B54) — the same
+      provenance points this node emits, read one level up
+```
