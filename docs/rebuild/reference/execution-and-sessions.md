@@ -458,40 +458,16 @@ shape: every recipe is built by the wrapper, no recipe produces a `LoginResult` 
 landed binding supplies a verifier rather than an `isAuthenticatedUrl` predicate, and the factory's
 neutral reset asserts through `assertAuthenticatedApplication`.
 
-## 5. Speed engineering
-
-Removing lanes does not preserve the fixed-sleep tax:
-
-1. Replace `waitForTimeout` calls with waits on actual readiness predicates plus a bounded quiet
-   window where PeopleSoft fragment refreshes require it.
-2. Live-verify each replacement and record the selector/state proof.
-3. Extend the wait-for-timeout ratchet to rebuild code with a zero allowlist for new files and a
-   shrink-only allowance for ported files.
-4. Record cumulative fixed-sleep time and real wait time on task spans.
-5. Keep tasks and transactions under immutable, abortable deadlines. A service that ignores abort
-   cannot occupy a worker indefinitely.
-
-For batch speed, start more workers. A warm worker amortizes login across sequential items unless a
-workflow-authored fresh boundary or failed reset requires replacement.
-
-**As-built after the Phase-1 live exit run (2026-08-04) — the budget is met at zero, and wall clock
-is not the budget.** This section's quantity is **fixed sleep time**, and nothing else. On the exit
-run (`4ebf7275-0158-49af-a78f-1f37948efb27`, master plan §Phase 1) `sleepMs` was **absent from every
-task span**: the executor emitted no fixed sleeps whatsoever, so item 4's "cumulative fixed-sleep
-time" is zero and legacy's ~24s of `waitForTimeout` on the UCPath person-org read path is removed
-rather than reduced.
-
-The same run's **total wall clock** for that read was **22.5s**, dominated by UCPath's own page
-loads. That figure is an observation and is deliberately **not** a threshold here: it is a total,
-the ~24s it is often set beside was legacy's sleep alone, and **22.5s is not materially below 24s**.
-Reporting it as a speed win would be comparing two different measurements, which is exactly the kind
-of plausible-but-unearned claim this program bans elsewhere. Whatever wall clock remains after the
-sleep tax is gone is real work at the far end of the network; reducing it is a separate exercise
-with its own evidence, not something this criterion has already claimed.
-
----
-
 ### 4.2 A refused Duo ceremony is an OBSERVATION, and the counter it refuses on is SHARED (D243, 2026-08-19)
+<!-- roadmap: platform-fixes -->
+
+<!-- roadmap-status: platform-fixes -->
+- [x] the login wait races Duo's rendered terminal refusal, so a dead ceremony refuses in ~9.5 s instead of burning the envelope (`waitForAuthenticatedLanding`, `src/infra/browser/ucsd-sso.ts:340`)
+- [x] the presented counter is `max(stored + 1, nowSec)`, monotonic across every profile sharing the credential (`duo-autopilot/src/sign-count.js`)
+- [x] the rule is pinned in THIS repo's gate, not the extension's offline lane (D244; `tests/unit/duo-sign-count.test.ts`)
+- [ ] the ceremonies themselves are not serialized — the arithmetic removes the counter GAP, the lease removes the RACE (§10)
+> 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/infra/browser/ucsd-sso.ts, duo-autopilot/src/sign-count.js and src/domain/config/schema.ts (sessionAcquireMs 60 000 vs duoApprovalSeconds 180); left: §10's lease
+<!-- /roadmap-status -->
 
 **A login recipe MUST refuse on Duo's own terminal refusal, and MUST NOT wait for its landing bound
 to expire in order to learn that Duo already answered.** `waitForAuthenticatedLanding` races the
@@ -526,6 +502,45 @@ with profile deletion as the only exit. That is the whole of the "browser-profil
 separations §9.17 item 5 / §9.20 item 6 and root-caused in §9.21. The rule is pinned by
 `tests/unit/duo-sign-count.test.ts`, whose load-bearing case is the two-profile simulation rather
 than any single arithmetic example: the defect is only visible across writers.
+
+**What this section does NOT fix.** The arithmetic removes the counter GAP between a cold-stamped
+profile and a warm one. It does not remove the RACE: two profiles that begin a ceremony inside the
+same second present the same floored value, and the second assertion Duo compares does not ADVANCE.
+That is the same cloned-key signal, reached a different way, and it is reachable today whenever two
+workflows' workers cold-start together. §10 is the serialization that closes it.
+
+---
+
+## 5. Speed engineering
+
+Removing lanes does not preserve the fixed-sleep tax:
+
+1. Replace `waitForTimeout` calls with waits on actual readiness predicates plus a bounded quiet
+   window where PeopleSoft fragment refreshes require it.
+2. Live-verify each replacement and record the selector/state proof.
+3. Extend the wait-for-timeout ratchet to rebuild code with a zero allowlist for new files and a
+   shrink-only allowance for ported files.
+4. Record cumulative fixed-sleep time and real wait time on task spans.
+5. Keep tasks and transactions under immutable, abortable deadlines. A service that ignores abort
+   cannot occupy a worker indefinitely.
+
+For batch speed, start more workers. A warm worker amortizes login across sequential items unless a
+workflow-authored fresh boundary or failed reset requires replacement.
+
+**As-built after the Phase-1 live exit run (2026-08-04) — the budget is met at zero, and wall clock
+is not the budget.** This section's quantity is **fixed sleep time**, and nothing else. On the exit
+run (`4ebf7275-0158-49af-a78f-1f37948efb27`, master plan §Phase 1) `sleepMs` was **absent from every
+task span**: the executor emitted no fixed sleeps whatsoever, so item 4's "cumulative fixed-sleep
+time" is zero and legacy's ~24s of `waitForTimeout` on the UCPath person-org read path is removed
+rather than reduced.
+
+The same run's **total wall clock** for that read was **22.5s**, dominated by UCPath's own page
+loads. That figure is an observation and is deliberately **not** a threshold here: it is a total,
+the ~24s it is often set beside was legacy's sleep alone, and **22.5s is not materially below 24s**.
+Reporting it as a speed win would be comparing two different measurements, which is exactly the kind
+of plausible-but-unearned claim this program bans elsewhere. Whatever wall clock remains after the
+sleep tax is gone is real work at the far end of the network; reducing it is a separate exercise
+with its own evidence, not something this criterion has already claimed.
 
 ---
 
