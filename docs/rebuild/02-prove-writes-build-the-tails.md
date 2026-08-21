@@ -375,24 +375,56 @@ looks at records defects instead of catching them.
 <!-- roadmap: phase2-dispositions -->
 
 <!-- roadmap-status: phase2-dispositions -->
+- [x] **D186** — the Workflow Explorer's EDIT half is REASSIGNED out of Phase 2, on D79a's own argument one level down; the trigger that ends the deferral is named (`ref operator-trust` §5.3) and §5.4's apply protocol is unchanged by it
+- [x] **D189** — the production BFF **serves no frontend bytes**, so `dashboard:prod` names a mode the runtime never parsed and 2i-F's phone capture surface has no delivery path; deferred deliberately, with an owner (`ref frontend-backend-integration` §6.9)
+- [x] **D79a** — the DSL graph-authoring mode is CUT ENTIRELY, and reinstating it requires a new explicit operator architecture decision; a migration questionnaire cannot enable it
+- [x] both dispositions confirmed 2026-08-12 and carried onto the deferral shelf — `{#def-explorer-edit}` → 04 §Edit a workflow's presentation / policy without a code change, `{#def-byte-path}` → 04 §Run the dashboard without the dev server / use the phone page in production
+- [ ] neither is a waiver: each ships as a named criterion with a trigger and an owner, and `config/legacy-capabilities.json`'s `legacy-route-static` stays honestly **open**
+> 2026-08-21 | docs-cohesion 02 | verified against `reference/decisions.md` D186/D189, `ref operator-trust` §5.3, `ref frontend-backend-integration` §6.9 and 04's two deferral sections; left: nothing to decide here — both are owned on the shelf
+
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's workflow-editor scope) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**Two Phase-2 criteria left the phase by explicit disposition, not by silence.** Both are recorded
+in full in §Exit criteria below with their evidence; this section is the statement of WHY each was
+allowed to leave, and where it now lives.
 
-**Workflow editor scope (D79a — DSL mode TRIMMED).** The read-only explorer is 2i. Editing is
-limited to presentation overrides (hot-applied through their strict atomic file) plus a closed set
-of safe typed policy fields, each passing compile + scenario + diff + version-bump +
-restart-gated atomic apply + rollback. **The DSL graph-authoring mode is cut entirely** — no
-second authoring pipeline, no codegen, no exclusive source-vs-DSL mode, no synthetic workflow
-built to prove it. §b Q12's own phrasing expected everything real to stay source-authored, and no
-concrete DSL-authored workflow was ever named. Selectors, driver operations, schemas, bind
-functions, and write-proof/subject rules stay code-only; anything the closed editor cannot express
-generates a **code-change brief**, never partial config. Reinstating the mode requires a new,
-explicit operator architecture decision; a migration questionnaire cannot enable it.
+**1 · The Workflow Explorer's EDIT half — REASSIGNED (D186, 2026-08-09).** The read-only explorer
+shipped in 2i-G and its criterion is MET. Phase B — the constrained editor — is deferred on D79a's
+own argument applied one level down: **an editor exists to avoid a code change per tweak across MANY
+workflows, and this tree has one production workflow plus the one-node transaction proof.** Building
+it now would fix its closed policy union and its override schema against a sample of one, which is
+the most expensive way to get a schema wrong. The criterion is reassigned, not waived: `ref
+operator-trust` §5.3 names the trigger that ends the deferral — the **second** production workflow
+whose presentation or policy an operator wants to change without a code change — and §5.4's apply
+protocol (compile + scenario + diff + version bump + restart-gated atomic apply + rollback) is
+unchanged by the delay. `workflow-editor-compile-integrity` holds Phase A's read-only boundary today
+and its inventory entry records that it carries no Phase-B arms. **Owner:** `{#def-explorer-edit}`,
+04 §Edit a workflow's presentation / policy without a code change.
 
-**The two criteria that left Phase 2 by explicit disposition** — the explorer's EDIT half (D186)
-and the production BFF serving no frontend bytes (D189) — are recorded in full, with their triggers
-and their owners, in §Exit criteria below, where the master plan's §3 wrote them.
+**What the editor may never express, whenever it is built (D79a — DSL mode TRIMMED).** Editing is
+limited to presentation overrides, hot-applied through their strict atomic file, plus a closed set of
+safe typed policy fields. **The DSL graph-authoring mode is cut entirely** — no second authoring
+pipeline, no codegen, no exclusive source-vs-DSL mode, no synthetic workflow built to prove it. The
+questionnaire's own phrasing expected everything real to stay source-authored, and no concrete
+DSL-authored workflow was ever named. Selectors, driver operations, schemas, bind functions and
+write-proof/subject rules stay **code-only**; anything the closed editor cannot express generates a
+**code-change brief**, never partial config. Reinstating the mode requires a new, explicit operator
+architecture decision — a migration questionnaire cannot enable it.
+
+**2 · The production BFF serves no frontend bytes — NAMED GAP (D189, 2026-08-09).**
+`http-server.ts` has no static handler and `api.ts` 404s every unrouted path, so `npm run
+dashboard:prod` names a mode the runtime never parses, and **2i-F's token-scoped phone capture
+surface has no delivery path in production** — `/capture.html` is allow-listed by the Host gate and
+nothing serves it. Nothing regresses: the operator's working path has always been the Vite dev
+server on 5174 beside the BFF on 3938. It is deferred deliberately for two reasons that compound.
+Those bytes would be served on the one surface exposed to the public internet, through the capture
+ingress, behind the gate whose whole contract is *"a phone origin reaches capture routes and nothing
+else"* — so shipping them is a security change, not a build-config change. And the tunnel launcher
+(D175) is unbuilt anyway, so static bytes alone would not make the phone reachable. **Owner:** the
+first migration that needs the phone in production, building both halves plus the guard arm;
+`{#def-byte-path}`, 04 §Run the dashboard without the dev server / use the phone page in production.
+`ref frontend-backend-integration` §6.9 is the normative record, and
+`config/legacy-capabilities.json`'s `legacy-route-static` stays honestly **open**.
 
 ## Integration amendment — Phase 2's share (master plan §7)
 
