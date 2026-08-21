@@ -1064,6 +1064,9 @@ open: no
 
 > "I want to do X; the plan said build Y; Y is deferred." None is silently dropped, none is "can't ever work"; two have a decided stance instead of a trigger (D193) — they simply do not get built unless you ask.
 
+log:
+- 2026-08-20 | docs-cohesion 04 | doc 04 rewritten as-built — eight deferrals, each with its trigger; the sanity check is RETIRED, not deferred, and `def-retention`'s title corrected (no 14/8/5 constant exists)
+
 note: **Never, by design:** unverified silent fallbacks · selector `.or()` chains · per-daemon logs / bespoke polling hooks / secondary count caches · per-action mutation routes · generic retry on a parked write · DSL/codegen workflow authoring (D79a) · LAN/remote operator mode · hosting (D193) · legacy change accounting (D150).
 
 ### Photograph a paper form on your phone → it becomes an OCR-backed run {#def-capture-binding}
@@ -1075,6 +1078,9 @@ doc: 04 §Photograph a paper form on your phone → it becomes an OCR-backed run
 needs:
 - order-3
 
+log:
+- 2026-08-20 | docs-cohesion 04 | the seam, the phone pipeline and the restart drain are all composed in production; the binding is the whole absence (`CAPTURE_INTAKE_BINDINGS` is `{}`, `src/control/workflow-registry.ts:194`)
+
 ### Run the dashboard without the dev server / use the phone page in production {#def-byte-path}
 status: planned
 doc: 04 §Run the dashboard without the dev server / use the phone page in production · ref:frontend-backend-integration §6.9 · ref:frontend-backend-integration §8 · ref:dashboard-surfaces §12.6
@@ -1083,33 +1089,42 @@ doc: 04 §Run the dashboard without the dev server / use the phone page in produ
 
 builds:
 - [ ] BE the BFF static handler — port the parity fixture's traversal-checked, content-typed serveStatic; every unrouted path 404s today
-- [ ] BE `--prod` parsed by `startRebuildRuntime` — the flag is read by nothing, so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard`
+- [ ] BE `--prod` parsed by `startRebuildRuntime` — `package.json:12` passes the flag and `src/core/runtime-composition.ts:162` dispatches on `args[0]` alone, so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard`
 - [ ] BE `/capture.html` delivered, so 2i-F's token-scoped phone surface is reachable from a phone
 - [ ] BE the on-demand ngrok tunnel launcher (D175)
 - [ ] BE the guard arm — a phone-origin request may be served nothing outside the capture allow-list
-- [ ] BE wire or delete the INERT capture-ingress host gate: `deps.capturePhoneHost` is never supplied, so the middleware compiles and can never fire (also Track D row D2)
+- [ ] BE wire or delete the INERT capture-ingress host gate: `deps.capturePhoneHost` is declared and read (`src/server/dashboard/routes/api.ts:65,142`) and supplied by nothing, so the middleware compiles and can never fire (also Track D row D2)
 
 needs:
 - order-3
 
+log:
+- 2026-08-20 | docs-cohesion 04 | six build items re-verified unlanded at HEAD; two read as done and are not — `--prod` reaches nothing, and the Host gate has never evaluated a request
+
 ### Edit a workflow's presentation / policy without a code change {#def-explorer-edit}
 status: planned
-doc: 04 §Edit a workflow's presentation / policy without a code change · ref:operator-trust §5.1 · ref:operator-trust §5.3 · ref:operator-trust §5.4
+doc: 04 §Edit a workflow's presentation / policy without a code change · ref:operator-trust §5.1 · ref:operator-trust §5.3 · ref:operator-trust §5.4 · ref:operator-trust §5.5 · ref:operator-trust §5.6
 
 > The Workflow Explorer EDIT half. D186: an editor shaped by a sample of one workflow would be wrong.
 
 needs:
 - fact: a SECOND production workflow whose policy you want to change
 
-### A record-sanity-check advisory panel {#def-sanity-check}
-status: planned
-doc: 04 §A record-sanity-check advisory panel · ref:operator-trust §4.4 · ref:guards-and-tests §3.11
+log:
+- 2026-08-20 | docs-cohesion 04 | the new-workflow authoring path (`ref operator-trust` §5.5) travels with this node by the operator's ruling; Phase A proves its own boundary — the wire has nowhere to send a mutation
 
-> The one AI tool kept open (run-summary and selector-suggestion are RETIRED, D192). §9.17 flags its deferral condition as materially satisfied by the §14.2 packet's comparisons.
+### A record-sanity-check advisory panel {#def-sanity-check}
+status: never
+chip: retired 2026-08-18 (D192)
+doc: 04 §A record-sanity-check advisory panel · ref:operator-trust §4.4.2 · ref:guards-and-tests §3.11
+
+> RETIRED by the operator 2026-08-18 — no AI feature. D192's deferral condition ("renders beside the order-8 ALWAYS-GATE") was met DETERMINISTICALLY by the §14.2 packet's server-computed comparisons; the deterministic comparison IS the sanity check. Its two siblings retired with it.
 
 needs:
-- order-8
-- you: re-disposition D192 (keep open / close the inventory entry)
+- fact(met): retired by the operator 2026-08-18 (D192; `config/legacy-capabilities.json` → `legacy-tool-ops-sanity-check-record`, `kind: retired`)
+
+log:
+- 2026-08-20 | docs-cohesion 04 | status corrected from `planned` — `ref operator-trust` §4.4.2 and `config/legacy-capabilities.json` have carried the 2026-08-18 retirement since it was ruled; `AdvisorySurfaceIdSchema` stays closed at its D178 two-value shape
 
 ### Edit settings in the dashboard {#def-settings}
 status: planned
@@ -1125,18 +1140,30 @@ builds:
 needs:
 - cross-cutting
 
+log:
+- 2026-08-20 | docs-cohesion 04 | the family, target and atomic N-leaf payload are contracted; `apply-settings` is the ONE entry in `PHASE1_DEFERRED` (`src/core/command-kernel.ts:141-148`), so the executor is the absence
+
 ### Trust UCPath / ServiceNow wait-before-negative-read windows {#def-propagation}
 status: planned
 doc: 04 §Trust UCPath / ServiceNow wait-before-negative-read windows · ref:write-safety §4 · ref:write-safety §4.2 · 03c §Live probe status (the design assumptions still unproven)
 
 > Rebuild-verified propagation measurements replace ported legacy knowledge at each system's own live probe (doc 03c §Live probe status).
 
+builds:
+- [x] PROOF Kuali measured — four write/restore cycles on doc 4490, worst fence→trustworthy-negative ≈ 3.3 s; both Kuali contracts carry `stabilized` at `minSinceFenceMs: 30_000` (D135/D207)
+- [ ] PROOF UCPath's Smart HR submit → SS Smart HR search window — both termination contracts stay `operator-only` and say why in the contract text
+- [ ] PROOF ServiceNow's window — no commit contract exists for it yet
+- [ ] PROOF the separations finalization's own controlled commit, which turns D207's provisional mechanism transfer into a measurement
+
 needs:
 - order-7
 
+log:
+- 2026-08-20 | docs-cohesion 04 | per system, not global: Kuali is closed, UCPath and ServiceNow are open; the direction-of-error argument is why the transfer stops at Kuali
+
 ### Search runs across dates / view screenshots / export Excel {#def-search-export}
 status: planned
-doc: 04 §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2
+doc: 04 §Search runs across dates / view screenshots / export Excel · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §2.2 · ref:operator-trust §2.4
 
 > No search module, artifact-bytes route or export writers in the BFF yet — capability register open; shaped against a real run corpus.
 
@@ -1144,16 +1171,27 @@ builds:
 - [ ] BE the artifact-bytes route — the ref/resource schemas are complete and nothing serves bytes; it also unblocks the `captures` run-detail section and the screenshot gallery
 - [ ] BOTH the cross-date run search route + surface — the Top Bar filters the served day only (`legacy-route-search`)
 - [ ] BE the operator xlsx export — the xlsx sink is a retention sink, uncomposed in production (D164); the Activity CSV (D240) is the only export served
+- [ ] BOTH the rerun FIELD-LEVEL diff — nothing reads a prior run's receipt beside the current one (ref:operator-trust §2.4); the per-fact half (`retryOf`, `reuse` rows with `ageMs`) already exists
 
 needs:
 - cross-cutting
 
-### Auto-purge diagnostics on the 14/8/5 schedule · reclaim unreferenced artifact bytes {#def-retention}
+log:
+- 2026-08-20 | docs-cohesion 04 | the full BFF route table re-read: no search endpoint, no artifact-bytes route, one served export; the evidence underneath is all durable, so these are routes rather than uncollected data
+
+### Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes {#def-retention}
 status: never
 chip: won't build unless you ask
-doc: 04 §Auto-purge diagnostics on the 14/8/5 schedule · reclaim unreferenced artifact bytes · ref:operator-trust §2.2 · ref:dashboard-surfaces §2.1 · ref:guards-and-tests §3.7
+doc: 04 §Auto-purge diagnostics on a measured schedule · reclaim unreferenced artifact bytes · ref:operator-trust §2.2 · ref:dashboard-surfaces §2.1 · ref:guards-and-tests §3.7
 
-> Retention-sweep scheduling (the sweep itself is built and tested) and a content-store refcount — D193: disk growth on one local machine isn't worth a durable reference count.
+> Retention-sweep SCHEDULING (the sweep itself is built and tested and nothing calls it) and a content-store refcount — D193: disk growth on one local machine isn't worth a durable reference count. There is no "14/8/5" constant in this tree; the shipped number is 30 days from the bundle's own capture instant (D86's notes floor).
+
+builds:
+- [ ] BE a caller for `createDiagnosticRetentionSweep` — built and tested at `src/services/trust/diagnostic-retention.ts:45-85`, called by nothing, so no bundle has ever been purged here
+- [ ] BE the content-store reference count that would let the sweep's reported unreferenced artifact ids actually be reclaimed (D137)
+
+log:
+- 2026-08-20 | docs-cohesion 04 | title corrected — no constant implements a 14/8/5 schedule; `DIAGNOSTIC_ORDINARY_RETENTION_DAYS` is 30 (`src/domain/trust/diagnostic-capture.ts:44`). Both items stay `wont-build-unless-asked` (D193b)
 
 ## One all-at-once authority switch {#cutover}
 phase: Cutover
