@@ -1762,6 +1762,33 @@ problems (no fix-one-refresh-repeat loops).
 
 ### 5.5 Checkpoint freshness (D8 — closes the stale-read→live-write hole)
 
+<!-- roadmap: p1-authority -->
+<!-- roadmap: sep-3 -->
+
+<!-- roadmap-status: sep-3 -->
+- [x] `ucpath/read-job-summary` returns the whole grid with statuses VERBATIM and classifies nothing; the disposition is a pure unconditional fold, and the absent arms split by what a blank MEANS — empl record, HR status and business unit refuse it, the nine descriptive cells carry `{state:"absent", reason}` (D201)
+- [x] the ALWAYS-GATE dominates both sinks; `identity-gate-before-commit` audits the terminal result as well as the transaction node, and a path is gated when it reaches the gate's own ANCESTRY (D202)
+- [x] a gate's durable record is a `gate_results` row and the freshness walk reads it as evidence — `upstreamEvidence.gateResults` beside `checkpoints` (D203; `src/domain/task-provenance.ts:84-102`)
+- [x] the evidence RECEIPT reads the same row through a declared per-`(workflow, gate)` mapping rather than a field-name sniff, with its own `gate-result` redaction scope (D204, ref operator-trust §2.3)
+- [x] the freshness walk itself is conservative forward reachability over the static graph, refusing a replayed fact that can reach a commit scheduled in THIS run and naming the checkpoint, its age, its limit, the consuming commit node and the path between them (`src/domain/workflow/checkpoint.ts`)
+- [!] the incident that motivated the gate would not have tripped a tier-triggered one: `classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns `same`. That single fact is why the gate is ALWAYS, and why its packet leads with DISCONFIRMING evidence and computes `approvalShape` server-side
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/task-provenance.ts`, `src/domain/workflow/checkpoint.ts` and `src/core/evidence-receipt.ts`; left: nothing — chunk 3 is closed
+
+<!-- /roadmap-status -->
+
+**A gate's durable evidence is a `gate_results` row, and a downstream task's provenance must accept
+it as such (D203, 2026-08-12).** A task's read-completion validation resolves its declared
+`dependsOn` set against whole authority checkpoints. A gate has none and never will — its durable
+record is an operator decision, not an observation — so a task declaring a gate as a dependency was
+structurally unrunnable until the first live gated run found it. `upstreamEvidence` now carries
+`gateResults` beside `checkpoints`: a declared dependency is satisfied by either, an undeclared one
+from either side is refused by name, and a gate contributes exactly ONE `operator`-sourced fact
+dated at `resolvedAt` with no output leaves — what a gate dates is the DECISION, not a field. It
+cannot make a derived output look fresher than its live inputs, because a derived leaf takes the
+OLDEST original observation and an approval is always at least as new as the evidence it was
+granted on. Fabricating a checkpoint row for the gate was the tempting fix and is exactly what D144
+refused: a durable record must not claim a shape it does not have.
+
 The failure this kills (review 02 #2): separations attempt 1 checkpoints `ucpath-job-summary`; a
 next-day retry at `kronos-search` replays it and would proceed automatically into the
 `ucpath-transaction` write with yesterday's data. Charter-banned silent substitution.
