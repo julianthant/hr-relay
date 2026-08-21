@@ -1672,6 +1672,20 @@ no commit on an observably different open record; neither alone proves every bus
 ---
 
 ## 13. Open questions for the operator / orchestrator
+<!-- roadmap: operator-calls -->
+
+<!-- roadmap-status: operator-calls -->
+- [x] OQ1 Kuali `save-verify` reliability — RESOLVED by the 2026-07-23 live probe (D78) and then proved by a real commit (§3.4); its four design constraints are requirements on the arm, not trivia
+- [x] OQ3 ledger tamper-evidence altitude — ANSWERED by deferral (D79): hash chain and tail anchor return with the multi-user phase or a separately ratified compliance need
+- [x] OQ6 UCPath receipt readability — RESOLVED by the 2026-08-04 live probe (D130) WITHOUT spending the operator's authorization for a submit, and the arm as previously specified was wrong (§2.2)
+- [!] **OQ2 OnBase positive read-back vs always-park** — BLOCKED, not deferred: no uploadable probe document exists, so the question is gated on the next real upload. If OnBase lands on always-park, its automation degrades to "the operator manually confirms every upload", which changes the daily workload rather than the safety story. Needed before order 7
+- [!] **OQ4 probe policy + `probeToFenceMaxMs` per workflow** — asked per workflow at migration, and every budget in the tree is currently authored rather than measured (§5)
+- [!] **OQ5 is the pending sweep a standing pre-step on every UCPath create path, or only on separations?** — separations composes it as its own transaction pair, which answers the SHAPE; whether onboarding's create path takes one too is order 9's call
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/ucpath/delete-pending-terminations.ts`, `src/workflows/separations/descriptor.ts:557`, the absence of any OnBase or onboarding commit contract, and `src/workflows/*/descriptor.ts`'s four authored budgets; left: OQ2, OQ4, OQ5 — three operator calls, none blocking at HEAD
+<!-- /roadmap-status -->
+
+Three of six are answered and stay here with their answers, because each answer is a constraint on a
+built arm. Three are live operator or orchestrator calls, each with the migration that forces it.
 
 1. ~~**Kuali `save-verify` reliability**~~ — **RESOLVED 2026-07-23 by live probe (D78): BUILDABLE.**
    Run under operator authorization on Action List docs 4444/4453 (RRSS Separation Request Forms,
@@ -1706,10 +1720,16 @@ no commit on an observably different open record; neither alone proves every bus
    (safe, +1 round-trip) or `"retries-and-recovery-only"` (cannot detect a prior external write on
    an unseen key), and what justified `probeToFenceMaxMs` bounds preparation after that probe?
    Asked per workflow at migration — this doc sets the mechanism, not the values.
-5. **Pending-sweep as write-safety.** Should `ucpath/clear-pending-terminations` (the date-agnostic
-   sweep — the real duplicate guard today) be a first-class write-safety pre-step on every UCPath
-   create path, or only on separations? It mutates (deletes rows), so it needs its own fence/ledger
-   treatment — confirm the modeling.
+5. **Pending-sweep as write-safety — the SHAPE is settled, the SCOPE is not.** The date-agnostic
+   sweep mutates (it deletes rows), so it needed its own fence and ledger treatment, and separations
+   answered that by composing it as its own transaction pair
+   (`ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations`, node
+   `clear-pending`) with its own permanent key `ucpath:pending-terminations-clear|<eid>`, running
+   BEFORE the termination. What is still open is scope: should every UCPath **create** path carry
+   one, or only separations? Onboarding (order 9) is the next create path and is where the question
+   is answered. One live finding constrains it — clearing the last pending row for a mapped subject
+   removed the only witness the sweep's COMMITTED arm had, so whoever answers this also has to say
+   how that arm gets exercised (doc 03b).
 6. ~~**UCPath `receipt` readability**~~ — **RESOLVED 2026-08-04 by live probe (D130): BUILDABLE, and
    the arm as previously specified was WRONG.** Settled **read-only**, with **no transaction
    created** — the operator's authorization for one real submit was not spent, because the question
