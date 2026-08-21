@@ -34,8 +34,25 @@ export function wireError(code: string, message: string, retryable: boolean): Re
  * belongs to the protocol, and they are now two separate things.
  *
  * Anything that is neither a schema failure nor a DECLARED refusal is a 500
- * carrying its real message, exactly as before — an unclassified throw is a
- * defect in this process, not a 404 the caller can act on.
+ * carrying its real message — an unclassified throw is a defect in this
+ * process, not a 404 the caller can act on.
+ *
+ * ## The ONE class of status that moved, named rather than discovered
+ *
+ * Every route-reachable refusal that used to answer 404/409 still does, because
+ * each of its producers now throws the matching kind. What changed is the tail
+ * the substring table caught by accident: an authority-layer INVARIANT
+ * violation whose message happens to contain `"does not exist"` — a start plan
+ * row a command names, a notification row, a write intent, a worker lease
+ * (`src/infra/sqlite/authority-database.ts` and the kernel modules) — used to
+ * reach the operator as a 404 saying "the thing you asked for is not here" and
+ * now reaches them as a 500 saying "this process is broken". That is the more
+ * honest of the two: those rows are not caller-named targets on a request path
+ * (the command kernel REJECTS a command whose target is missing, and a
+ * rejection is a `CommandResult` arm, never a throw), so a 404 there was false
+ * precision minted by a phrase. If one of them is ever found to be a genuine
+ * caller-named absence, the fix is to give that producer a kind — not to put
+ * the substring table back.
  */
 export function failureStatus(
   error: unknown,
