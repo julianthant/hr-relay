@@ -3711,10 +3711,80 @@ explorer's in the panel's action bar. Neither is a command, which is why both ar
 
 ### 9.6 Notifications — the durable inbox and its bell
 
-**Stub — written by unit 5.1d.** Inherits §10.4's routing table and the bell/inbox surface. The
-durable MODEL stays in §2.6 — including the trigger table showing that five of seven arms have no
-publisher, which is the fact this square renders around. Wire:
-`ref frontend-backend-integration` §5.1.6.
+<!-- roadmap: p2-2g -->
+<!-- roadmap: platform-fixes -->
+
+The `p2-2g` checklist lives at §2.6, which owns the durable ROW — the fold, the trigger union, the
+publish-then-deliver ordering — and `platform-fixes`' at §2.3's D218 block. This section adds
+neither: it owns the SURFACE, which is what a row can say once it reaches a screen.
+`ref operator-trust` §6 owns the model's justification and its boundary against the ledger.
+
+**What it is.** One bell in the top bar carrying an unread count, opening an inbox of the durable
+rows for this actor. Nothing about it is a toast: a desktop notification is a delivery convenience
+and the row is the record, so an inbox item exists whether or not anything was ever displayed by the
+operating system.
+
+**Routing, ratified (D79b + D86).** **failed · gate-waiting · write-parked · repeating · storage** →
+**Ping**; **verified-done** → **Inbox only**. Pings are silent. The lifecycle is deliberately
+slimmed from five states (unread/read/acknowledged/snoozed/resolved plus per-attempt delivery
+records — that was multi-user incident tooling) to **read/unread plus an optional snooze**, and the
+inbox is **actor-keyed from day one** (the D75 seam) even though there is one actor today. Retention:
+notes 30d, spans 30d, **ledger forever**, artifacts and checkpoints until purge.
+
+**Unchanged and load-bearing: durability.** A notification is a durable record first and a desktop
+delivery second — **a failed OS delivery still leaves an unread inbox item.** Desktop delivery may
+never be the only alert.
+
+**What the wire carries, and what it deliberately does not.** `NotificationWireSchema` is eight
+fields: `notificationId`, `actorId`, `severity`, `title`, `state`, `occurredAt`, `revision`, and
+D262's optional `link` (`src/domain/dashboard/projection.ts:754-787`). The durable row's `summary`,
+`trigger` and `count` stay off it: they are prose and derived counts, and §2.6's line is that ids and
+closed codes may cross to a surface while prose may not. D262 moved exactly one fact across, and it
+is an id — a needs-you alert whose only affordance is "mark read" is an alert nobody can act on, so
+a row that names a run draws `Open run` (or `Open failure`), and a `storage` row, which names no run,
+draws no button rather than one that navigates nowhere.
+
+**Every action CASes the row's own revision.** `notification-read`, `notification-unread` and
+`notification-snooze` are the whole family (`src/domain/commands.ts:266-267`), each carrying
+`expectedVersion: entry.revision` — the bell holds a served row, not a guess about it — and both
+refusal arms are settled through the one exhaustive fold, because a conflict that fell through to the
+success path is D253's defect on a control whose only feedback is that the row changed. Snooze has
+no inverse on purpose: the kernel serves no `notification-unsnooze`, so the surface offers none.
+
+**The bell reads the SAME served instant every other surface does.** A notification's age is a fact
+about the server's clock, so the row ages against the one calibrated `nowIso` §9.9's D256 clock
+distributes — a browser whose wall clock is off would otherwise age an alert against a time nobody
+else believes.
+
+**As-built, and the three absences the surface is honest about.**
+
+1. **Five of the seven trigger arms have no publisher.** `grep -rn '\.publish(' src/` returns exactly
+   two production callers: `src/services/notifications/storage-health.ts:80` (`storage-degraded`,
+   D222) and `src/services/notifications/gate-park.ts:119` (`gate-opened`, D262). `run-failed`,
+   `subject-mismatch`, `write-parked`, `repeating-failure` and `verified-done` are schema-declared,
+   routed by `projectNotificationTrigger`, renderable — and unreachable. Each belongs to the slice
+   that owns the state it announces (a terminal failure, a subject verdict, a parked write, a repeat
+   fold, a verified completion), which is why they are not one build item; the routing table above is
+   therefore a contract for five arms nothing exercises, and D19 row 19's rot vector — *"OS
+   notification fails, so a critical unknown write is invisible"* — cannot yet fire from the other
+   side either.
+2. **There is no OS channel at all.** `createNotificationInbox` takes an OPTIONAL `delivery` port and
+   the dashboard composition passes none (`src/server/dashboard/compose.ts:443-448`), so every
+   publish settles `delivery: { state: "no-channel" }` — the schema's own word for *"no desktop
+   channel configured"*, chosen over an absent field precisely so it can never be read as
+   *"delivered"*. Durability is what makes that acceptable rather than a hole: the row is committed
+   before delivery is attempted, so the inbox is complete whatever the channel does.
+3. **The `Pings` and `Inbox` filter chips can never be non-zero.** They count rows that DECLARE a
+   delivery route, and `delivery` is a client-side optional extra that never crosses the wire
+   (`src/dashboard/surfaces/top-bar.tsx:517-547, 624-633`). The surface renders the routing rule it
+   cannot measure. It is an on-record deviation from the demo rather than a placeholder — the panel's
+   footer states the routing in words, and the empty state answers the filter with *"The records
+   still exist — switch the filter to see them. A count that reads zero here never means a
+   notification was deleted"* — but a chip whose count is structurally zero is still a control that
+   cannot do anything, and it is `{#track-d}`'s hygiene row to serve `delivery` or drop the chips.
+
+**Wire.** `ref frontend-backend-integration` §5.1.6 owns the bell's payload, the three commands and
+the parity references.
 
 ### 9.7 Intake, mobile capture and Edit Data
 
@@ -4215,22 +4285,6 @@ command arm (D67), is actor-attributed (D75), and never mutates identity — it 
 a stable id, exactly like the presentation-override layer (D16). Per D95, its payload is one strict
 `displayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters,
 and no unknown keys.
-
-### 10.4 Notification model (D79b + D86)
-
-**Slimmed from the five-state lifecycle** (unread/read/acknowledged/snoozed/resolved + per-attempt
-delivery records — that was multi-user incident tooling) **to read/unread + optional snooze.** The
-inbox is **actor-keyed from day one** (D75 seam) even though there is one actor today.
-
-Routing, ratified: **failed · gate-waiting · write-parked · repeating · storage** → **Ping**;
-**verified-done** → **Inbox only**. Pings are silent. Retention: notes 30d, spans 30d, **ledger
-forever**, artifacts + checkpoints until purge.
-
-Unchanged and load-bearing: durability. A notification is a durable record first and a desktop
-delivery second — **failed OS delivery still leaves an unread inbox item.** Desktop delivery may
-never be the only alert.
-
----
 
 ## 11. The intake workspace — the surface contract (2i-E3, D173)
 
