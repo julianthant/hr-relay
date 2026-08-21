@@ -1972,7 +1972,7 @@ distinguishes the two types; the resolver schema is shared either way).
 <!-- roadmap: p2-proof -->
 
 **Ratified by the operator 2026-08-04.** `kuali-timekeeper-annotation` — the Phase-2 transaction
-proof (§Phase 2 transaction-proof as-built, D122) — **does not get an identity-approval gate.** Its
+proof (§3.3, D122) — **does not get an identity-approval gate.** Its
 wrong-person safety rests entirely on the **machine-verified subject binding**: the write sequencer
 reads the EID displayed on the live document and produces **zero fence and zero click** on
 mismatch, on an unreadable EID, or on a subject that changed after `prepare`. That is a proven
