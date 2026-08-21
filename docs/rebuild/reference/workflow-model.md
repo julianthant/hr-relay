@@ -1,19 +1,27 @@
-# 02 — Workflow Model: Descriptor SSOT · Constant Input · Run-State Machine · Start-Anywhere Resume
+# Workflow model — descriptor SSOT · workflow-constant input · run-state machine · start-anywhere resume
 
-Status: **revised 2026-07-22 after the whole-plan/legacy-code review; amended 2026-07-26 (Round 8),
-2026-07-31 (Round 10 — native-only envelope and global cutover boundary), and 2026-07-31 (Round 11 —
-standalone rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild` repo at plain
-`src/`, making runtime isolation physical and retiring the same-tree guards that enforced it).**
-The abandoned Step-0 spike and skeleton were deleted. The expanded graph, typed delegation/control
-seams, and three-effect task API require a new real-scale type proof before code lands in the
-rebuild repo's `src/`. Round-8 amendments: §4 records the two graph-legality rules the
-identity-approval gate
-(ref write-safety §14, D77) imposes, and the descriptor's per-run stamp now includes the **app version**
-alongside the workflow version + fingerprint (D80 archive-on-bump, owned by ref dashboard-surfaces §10.2).
-**Amended 2026-08-14 (Round 61):** §1.2.1 — every workflow MODULE declares a required closed
-`role` (`standalone` / `composition` / `chunk-harness of <id>` / `proving`, the last per D220),
-validated at the composition root;
-presentation of the role is ref dashboard-surfaces's (D219).
+**Reference doc** (`docs/rebuild/reference/workflow-model.md`; cited as `ref workflow-model §x`, and
+`02-workflow-model.md` before the 2026-08-20 shelf split). It owns the ONE workflow descriptor, the
+ONE builder API that produces it, the `RunEnvelope`, the run-state machine including gates and
+parks, and the checkpoint/resume model. It is **normative**: where a phase doc, the tree
+(`docs/roadmap/roadmap.md`) or a migration record disagrees about any of those, this doc wins — and
+where the CODE disagrees, the doc is corrected to say what IS (D252), never left describing an
+intention.
+
+**Section numbers are load-bearing and do not move.** `§1.1`, `§1.2.1`, `§2`, `§2.1`, `§3`, `§3.2`,
+`§4`, `§5.5`, `§5.7`, `§8` and the rest are cited from the phase docs, the sibling reference docs,
+`docs/migrations/separations.md`, the tree's `doc:` attributes and from `src/` itself. A rewrite adds
+and corrects; it does not renumber.
+
+**As-built is folded in, not appended.** This doc used to carry four dated `Phase 1e` / `Phase 1f`
+as-built blocks above §0. Each has been folded into the numbered section it amends, so a section
+states the contract AND what the tree actually holds in one place. The chronology header that
+recorded *when* the doc changed is `history/superseded/2026-08-21-workflow-model-status-header.md`.
+
+**Eight workflows are registered** (`src/control/workflow-registry.ts`): `person-lookup`,
+`kuali-timekeeper-annotation`, the five `separations-*` chunk harnesses, and the composed
+`separations`. Every contract in this doc is exercised by at least one of them, and the sections
+below say which.
 
 ## Ownership (D1)
 
