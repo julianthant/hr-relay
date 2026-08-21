@@ -1,45 +1,82 @@
 # 04 · Phase 4 — close the deferrals
 
-This doc is the dedicated home of **Phase 4**, tree node `{#deferred}` — every X → Y deferral and the
-trigger that ends it. It holds those tasks, what is done and what is left, and its exit criteria;
-contracts it built live in `reference/`.
+This doc is the dedicated home of **Phase 4**, tree node `{#deferred}` — every "I want to do X; the
+plan said build Y; Y is deferred" answer, and the **trigger** that ends each one. Phase 4 is not a
+block of work with a start date: it is eight named absences, each waiting on an event somebody can
+recognize. Nothing here blocks the cutover unless `05-cut-over.md` §Exit criteria names it — and it
+names none of them. Contracts these deferrals belong to live in `reference/`.
 
 ## Phase summary
 <!-- roadmap: deferred -->
 
 <!-- roadmap-status: deferred -->
+- [x] every deferral names its trigger, and none is a silent drop — eight nodes, eight triggers or decided stances
+- [x] two have a decided STANCE instead of a trigger (D193) — the retention sweep's schedule and the content-store refcount; they are `wont-build-unless-asked`
+- [-] the record-sanity-check advisory — **retired** by the operator 2026-08-18 (D192; `config/legacy-capabilities.json`), not deferred any more
+- [ ] the five deferrals whose trigger has not fired: the capture→run binding (order 3), the production byte path (order 3), the explorer's EDIT half (a second workflow), editable settings (Phase 3 cross-cutting), search / screenshots / export (Phase 3 cross-cutting)
+- [ ] the propagation windows — measured for Kuali only (D135/D207); UCPath and ServiceNow wait on their own live probes at order 7
+- [ ] nothing has been RATIFIED in this phase: a deferral closes with the decision that ends it, and none has been written
+> 2026-08-20 | docs-cohesion 04 | verified against src/control/workflow-registry.ts:194, src/core/runtime-composition.ts:162, src/server/dashboard/routes/api.ts:141-403, src/core/command-kernel.ts:141, src/services/trust/diagnostic-retention.ts:45, src/domain/contracts/**/write-safety blocks; left: all five untriggered deferrals, plus the propagation measurements for two systems
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.5 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+### What Phase 4 is
 
-- **Service stores** (`extraction`/`normalization`/`ocr`/`roster` contract+impl) — **Phase 2h** (they need 01+11+12)
-  so they exist before consumers; the **ocr pipeline workflow** migrates at **order 3** (before its
-  OCR/roster consumers at orders 4–5, 9).
-- **Provider infrastructure + advisory AI.** The capability-neutral admission/budget core lands in
-  1f. Production model/key pools, adapters, and consumers land in 2h for OCR and normalization.
-  Operator triage/sanity/selector/summary adapters land in 2i against redacted
-  structured evidence but stay disabled for authority and cut over after Phase 2 proves the receipt/
-  failure surfaces. Provider absence is an explicit advisory-unavailable result.
-- **Column mapping + intake manifest + Edit-Data UI** (ref data-intake-and-edit-data) — land in **Phase 2h/2i** as base
-  capabilities over synthetic fixtures, even though their first production workflow consumer is
-  work-study (order 6). This avoids inventing data/rerun/edit contracts during a high-risk write
-  migration. Note **i9-check (order 5) does not exercise operator mapping**—it matches against a
-  fixed retention roster—but it does exercise the same stable artifact/outbox/evidence machinery.
-  Work-study and onboarding therefore validate an already-built mapping surface rather than owning it.
-- **Mobile capture** backend/session recovery/bundle outbox lands in **2h** and its dashboard/phone UI
-  in **2i** over synthetic handoffs. Legacy capture remains production-authoritative; rebuild
-  capture uses isolated state and hands off only within the rebuild repo. Both switch together at final cutover.
+**It is the answer sheet.** Every deferral in this program was created by a decision that said why,
+and every one of them names the event that ends the deferral. This doc collects them in one place so
+an operator asking "why can't I do X?" gets three things in one section: what the absence IS, the
+decision that made it an absence, and what has to happen before it stops being one. A deferral with
+no trigger is a silent drop, and this program does not have any.
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 0's deferred decisions — logged with the point each resolves at) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**It is not a milestone.** Nothing in Phase 4 is scheduled. Five of the eight wait on an event in
+Phase 3 (a migration order, a second workflow, the cross-cutting closure); two carry a decided
+STANCE — D193's `wont-build-unless-asked`, which is off every milestone and blocks no gate; one is
+retired outright. None of them is a waiver: a waiver has no owner, and each of these has one.
 
-**Deferred decisions (logged, resolved at the named point).** OnBase
-`upload-verify` vs `unverifiableByPage` (ref write-safety OQ2—before order 7); per-workflow prewrite
-probe policy/elapsed budget and pending-termination sweep modeling (09 OQ4/OQ5—each §b questionnaire).
-Canonical EID is now settled as `/^10\d{6}$/` with a legacy-fixture audit; roster-match freshness is
-settled at a 24h base maximum over immutable artifact observation time (ref data-intake-and-edit-data §1/§4). Checkpoint
-retention is settled by D14—logical-item deletion only, never JSONL age. Ledger altitude, config
-snapshots, one active item per worker, explicit fresh-session boundaries, and context-exclusive transactions are also settled defaults, not open
-Phase-1 dependencies.
+**It is not the cutover's blocker list.** `05-cut-over.md` §Exit criteria is where the cutover's
+conditions live, and it names none of these eight. A deferral that reached the cutover unclosed is
+carried past it deliberately, with its trigger still standing.
+
+### The eight, and what ends each one
+
+| Deferral | Node | Created by | Trigger — the event that ends it |
+|---|---|---|---|
+| Photograph a paper form → an OCR-backed run | `{#def-capture-binding}` | D174 | the first OCR-consuming workflow (**order 3**) declares a `CaptureIntakeBinding` |
+| Run the dashboard without the dev server / the phone page in production | `{#def-byte-path}` | D189 (with D174/D175) | **order 3** — the byte path is what makes the phone surface reachable at all |
+| Edit a workflow's presentation / policy without a code change | `{#def-explorer-edit}` | D79a, reassigned by **D186** | a **SECOND** production workflow whose policy you want to change |
+| A record-sanity-check advisory panel | `{#def-sanity-check}` | D192 | **none — RETIRED 2026-08-18.** The §14.2 gate packet's deterministic comparison IS the sanity check |
+| Edit settings in the dashboard | `{#def-settings}` | D169/D184, stance D193(b) | the Phase-3 **cross-cutting** closure; no single event |
+| Trust UCPath / ServiceNow wait-before-negative-read windows | `{#def-propagation}` | D128/D135 (Kuali, measured), D207 (separations) | each system's own live probe — UCPath at **order 7** |
+| Search runs across dates / view screenshots / export Excel | `{#def-search-export}` | the 2i tail (D168–D180) that named them out | the Phase-3 **cross-cutting** closure, shaped against a real run corpus |
+| Auto-purge diagnostics · reclaim unreferenced artifact bytes | `{#def-retention}` | D137, stance **D193(b)** | **none — you ask.** `wont-build-unless-asked`, off every milestone |
+
+### The honest state
+
+**Five are untriggered, and every one of them is a named absence on a surface that ships.** The
+explorer renders and refuses to edit; Settings renders and `apply-settings` answers
+`capability-unavailable`; the Top Bar filters the served day and has no cross-date search; the phone
+capture page is built, bundled and has no delivery path. In each case the surface tells the truth
+about what it cannot do — that is what distinguishes a deferral from a hole.
+
+**One is retired**, and the reason generalizes: its deferral condition was met **deterministically**
+by something else. D192 deferred the sanity check to order 8 so it could render beside the
+identity-approval gate; separations arrived and the gate packet's own server-computed `comparisons`
+array occupies exactly that slot. The operator ruled on 2026-08-18 that the deterministic comparison
+IS the sanity check, and no AI feature is built.
+
+**Two carry a stance, not a schedule.** D193(b)'s argument is worth reading where it was made
+(`reference/operator-trust.md` §2.2.1): this authority database stores records of COMPLETIONS, not
+primary records — the real record of a filed HR transaction lives in UCPath or Kuali and can be
+checked there. That is why disk growth on one local machine did not earn a durable reference count.
+
+**One is partly closed.** Propagation is measured for Kuali and only for Kuali: two commit
+contracts carry `recoveryAbsence: stabilized` with real numbers, and the two UCPath contracts carry
+`operator-only` with an explicit refusal to guess. The deferral is per system, not global.
+
+_The Phase-2h/2i scheduling narrative that used to sit here — where the service stores, the intake
+manifest, the Edit-Data UI and mobile capture slot, and the Phase-0 deferred-decision log — is
+`history/superseded/2026-08-20-master-plan-dissolved.md` §3.5 and §3. Every milestone it named has
+landed (2h closed 2026-08-08, 2i 2026-08-09), so repeating it here would be a schedule for work that
+is done. What survived it is the eight rows above._
 
 ## Photograph a paper form on your phone → it becomes an OCR-backed run
 <!-- roadmap: def-capture-binding -->
