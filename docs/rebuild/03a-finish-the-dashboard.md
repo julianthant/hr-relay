@@ -22,7 +22,9 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [ ] the three nodes drawn under this one on 2026-08-20 — the Duo ceremony lease, the worker pool and sessions, observed logs
 - [ ] `ref frontend-backend-integration` §7.4's performance budgets have never been measured; Track D's D4/D5 are the first numbers and become the non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
+- [!] demo fidelity — every region exact or ruled; ~150 OPEN questions outstanding across the three 2026-08-21 ledgers (Track F, §Demo fidelity — every detail, region by region)
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
+> 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
 <!-- /roadmap-status -->
 
 ### What this phase is, and what it is not
@@ -70,6 +72,9 @@ hold. Only the first four hold at HEAD.
    non-regression gate every later workflow is held to.
 7. The Duo ceremony lease exists, so a second workflow's worker cold-starting beside the first
    cannot burn the shared credential's counter.
+8. Every region of the dashboard is demo-exact or ruled — Track F's bar, above Track B's: Track B's
+   definition of done was the findings ledger; demo fidelity is the stricter bar, and ~150 OPEN
+   questions stand against it at HEAD (§Demo fidelity — every detail, region by region).
 
 ### The honest state at HEAD, surface by surface
 
@@ -97,6 +102,18 @@ disagreed, the code won and the row says so.
 | Activity | built, with the served CSV export | `surfaces/activity.tsx`, `queries/activity-export.ts` (D236/D239/D240) |
 | Group People | the tab exists; the body says it is not served | `log-panel.tsx:1965` renders `UnservedTab`; unreachable today because nothing advertises the section |
 | OCR Review | the tab exists; the body says it is not served | same; the projection lands with 03c `{#order-3-dash}` |
+
+**Demo fidelity per surface family, from the 2026-08-21 re-audit** (exact / elements, OPEN — the
+three ledgers' own counts; the per-region table and every question are in §Demo fidelity below):
+shell 131/178 (74 %), 10 OPEN · queue 118/196, 13 · run start 48/115 (42 %), 14 · run identity
+23/49, 7 questions · log panel 48/114, 11 · Context rail 31/76, 9 · receipt 9/39, 12 · failure
+record 7/34, 13 · park + ceremonies 6/36, 2 · archive 96/250, 71 marks · activity 57/117, 8 ·
+explorer 54/182, 31 · UI catalog 0/69 (not the same surface as the demo's), 6 · Settings + doctor
+2/72, 10 questions · intake 4/155, 66 marks · phone capture 1/62 (the demo's DESKTOP view has no
+counterpart), 6 · version-bump dialog 2/53, ~20 questions · DS primitives 119/159 (copied with
+provenance; zero tokens missing), 18. "Built" in the table above and "exact" here are different
+claims: every row above is served and drawn; 756 of 1,956 elements are drawn exactly as the demo
+draws them.
 
 **The one place the prose was contradicted.** The skeleton carried 07 §7.1's approved target verbatim
 — *"panel-kind tabs: run/member `Logs · Receipt`, review `Review · Logs · Receipt`, group
@@ -615,7 +632,9 @@ platform_` in the ledger. They are listed here only because no phase owns them.
 
 07 recorded no exit block for the dashboard-defaults half of phase 3 — it predates Tracks B, C and
 D. What binds instead is the checklist below, which is what a later migration's `Dashboard · wire`
-task is entitled to assume. Four of eight hold at HEAD.
+task is entitled to assume. Four of ten hold at HEAD. Row 1 is not rewritten by the fidelity
+re-audit: Track B's definition of done was the findings ledger, and it met it; demo fidelity is the
+stricter bar Track F carries (row 10).
 
 | # | Criterion | State at HEAD | Evidence / what is left |
 |---|---|---|---|
@@ -628,6 +647,7 @@ task is entitled to assume. Four of eight hold at HEAD.
 | 7 | **The Duo ceremony lease landed** | **open** | nothing named `duo_ceremony_leases` exists in `src/`; `defineVerifiedLoginRecipe` takes no lease token |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the kernel arms exist; the supervisor refuses spawn by name and the projection serves no pool version |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **open** | recorded points reach no durable channel today |
+| 10 | **Demo fidelity: every region exact or ruled** — ~150 OPEN questions outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 756 exact; 37 + 54 + ~60 distinct questions await the operator (§Demo fidelity — every detail, region by region); the served-and-dropped facts, the structural ports, the vocabulary sweep and the re-freeze follow the rulings |
 
 **Deliberately outside this phase, each with an owner.** The Review and People panel bodies (their
 projections belong to the OCR and group migrations in doc 03c); editable settings, the explorer's
