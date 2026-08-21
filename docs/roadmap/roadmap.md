@@ -57,7 +57,7 @@ status: done
 when: 07-31 → 08-04 | five days
 size: XL
 chip: complete 2026-08-04
-doc: 01 §Phase summary · 00 §The base's dependency graph
+doc: 01 §Phase summary · 00 §The base's dependency graph · ref:operator-trust §0 · ref:frontend-backend-integration §0
 open: no
 
 > The minimum base that carries one workflow end to end. **Exit (D74): person-lookup ran LIVE** against real UCPath + CRM on the new executor — run `4ebf7275` / trace `pl-000619-4ebf`, recovered a dead CRM session mid-run, terminal `done` at attempt 2, all four parity surfaces from the ONE projection.
@@ -65,11 +65,15 @@ open: no
 needs:
 - phase-0
 
+log:
+- 2026-08-21 | docs-cohesion 01 | doc 01 rewritten as-built and all six status blocks filled; every `[x]` in this subtree re-verified against the code and NONE had to be corrected — the phase is DONE and stayed done. What the rewrite adds is a residuals table: five findings that trace back to a spine contract and are owned in LATER nodes (`track-c`, `observed-logs`, Track D rows D6 and D11, `def-byte-path`, `test-tiers`) plus ONE with no owner — `requestedBy` is stamped on every command envelope and never checked, with no D-number and no `pending-wire-bindings` entry, reported rather than assigned
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §0
+
 ### 1a · 1b — guards, baselines, the strict domain leaf {#p1-base}
 status: done
 date: 2026-07-31
 size: L
-doc: 01 §1a · 1b — guards, baselines, the strict domain leaf · ref:guards-and-tests §2 · ref:guards-and-tests §1.1 · ref:clock-config-secrets §2 · ref:clock-config-secrets §3 · ref:clock-config-secrets §6 · ref:task-contract §2.1.1 · ref:dashboard-surfaces §5
+doc: 01 §1a · 1b — guards, baselines, the strict domain leaf · ref:guards-and-tests §2 · ref:guards-and-tests §1.1 · ref:clock-config-secrets §2 · ref:clock-config-secrets §3 · ref:clock-config-secrets §6 · ref:task-contract §2.1.1 · ref:dashboard-surfaces §5 · ref:operator-trust §2 · ref:frontend-backend-integration §3
 
 builds:
 - [x] BE guard plumbing + the reviewed guard inventory
@@ -78,11 +82,15 @@ builds:
 - [x] BE clock / config / secrets single-sourced (ref clock-config-secrets)
 - [x] BE runtime isolation pinned (`.tracker-rebuild`, 3938/5174, locks)
 
+log:
+- 2026-08-21 | docs-cohesion 01 | verified at HEAD: nine executable ratchet arms, 75 inventory entries (65 active · 8 retired · 2 planned), the coverage floor still 60/80 at `vitest.config.ts:40-41`. Two of 1a's legacy-lane pieces are RETIRED with successors named (D93 the cross-tree guard family, D150 legacy-change-accounting), and two later decisions amended a 1b contract without re-opening it (D121 moved `paths` to a server-only module, D133 made a required config leaf a read-forward generation) · left: `cancel-mechanism` and `tracker-row-emission` are named in the ratchet port map and held by nothing, and R10's raise of the global floor to 80 has not landed
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §2
+
 ### 1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG {#p1-authority}
 status: done
 date: 2026-08-01
 size: XL
-doc: 01 §1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.4 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §4 · ref:operator-trust §1 · ref:task-contract §2 · ref:task-contract §2.7 · ref:workflow-model §3
+doc: 01 §1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.4 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §4 · ref:operator-trust §1 · ref:task-contract §2 · ref:task-contract §2.7 · ref:workflow-model §3 · ref:operator-trust §1.7 · ref:dashboard-surfaces §2
 
 builds:
 - [x] BE authority SQLite + backup / doctor / degraded mode / restore interlock
@@ -94,11 +102,16 @@ builds:
 needs:
 - p1-base
 
+log:
+- 2026-08-21 | docs-cohesion 01 | verified at HEAD: migrations pinned by literal digest v1→v15, four branded semantic ids at `src/domain/ids.ts:43-46`, the 21-node type proof present in `tests/types/`. Two corrections the code forced — 1c's OFFLINE restore path was complete, tested and UNREACHABLE from its first day because nothing recorded the runtime-lock snapshot its stopped-system proof derives from (D181, found in 2j, fixed there, recorded here because it is 1c's contract); and 1e's type proof survives while its 5 s / 1 GiB BUDGET does not, so the recorded 0.47 s / 215 MiB is history and not a gate. D144, D214 and D221 amended 1e's checkpoint identity without moving a stored byte · left: §3.2's three unimplemented declaration shapes, the Kuali audit call site, D71's unmeasured budget, D208 rule 1
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §1
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2 rewritten as-built; status block filled (`632ce168`)
+
 ### 1f — registry, workers, commands, the write sequencer {#p1-kernel}
 status: done
 date: 2026-08-02 → 03
 size: XL
-doc: 01 §1f — registry, workers, commands, the write sequencer · ref:workflow-model §1.3 · ref:workflow-model §2 · ref:workflow-model §4 · ref:dashboard-surfaces §2.4 · ref:execution-and-sessions §3 · ref:execution-and-sessions §4 · ref:execution-and-sessions §4.1 · ref:write-safety §3
+doc: 01 §1f — registry, workers, commands, the write sequencer · ref:workflow-model §1.3 · ref:workflow-model §2 · ref:workflow-model §4 · ref:dashboard-surfaces §2.4 · ref:execution-and-sessions §3 · ref:execution-and-sessions §4 · ref:execution-and-sessions §4.1 · ref:write-safety §3 · ref:operator-trust §2.1 · ref:frontend-backend-integration §3.4
 
 builds:
 - [x] BE the ONE `WORKFLOW_MODULES` composition root
@@ -110,11 +123,16 @@ builds:
 needs:
 - p1-authority
 
+log:
+- 2026-08-21 | docs-cohesion 01 | verified at HEAD against `src/control/workflow-registry.ts` and `src/core/{command-kernel,run-executor,worker-loop,write-sequencer,write-recovery}.ts`; all five `[x]` stand. Folded in the two post-Phase-1 decisions that fixed the recovery half without re-opening the contract — D200 (the LEASE is the evidence: a sweep living inside a running worker cannot recover that worker) and a pointer to D218, which is 1g-spine's · left: `requestedBy` stamped and never checked (UNOWNED — no D-number, no `pending-wire-bindings` entry, reachable only with a second actor), the bulk `all-or-none` mode (D235), and `supersede-active`'s three sites giving two answers
+- 2026-08-20 | docs-cohesion operator-trust | ref operator-trust rewritten against the code (`e6fb6f37`); this node's status block filled at §2.1
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §2.4 rewritten as-built; status block filled (`632ce168`)
+
 ### 1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell {#p1-spine}
 status: done
 date: 2026-08-04
 size: M
-doc: 01 §1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.2 · ref:dashboard-surfaces §10.1 · ref:frontend-backend-integration §3 · ref:frontend-backend-integration §6.2 · ref:frontend-backend-integration §6.3 · ref:frontend-backend-integration §7.1
+doc: 01 §1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.2 · ref:dashboard-surfaces §10.1 · ref:frontend-backend-integration §3 · ref:frontend-backend-integration §6.2 · ref:frontend-backend-integration §6.3 · ref:frontend-backend-integration §7.1 · ref:dashboard-surfaces §1 · ref:frontend-backend-integration §3
 
 builds:
 - [x] BE span emission + the one run/queue projection
@@ -124,6 +142,10 @@ builds:
 
 needs:
 - p1-kernel
+
+log:
+- 2026-08-21 | docs-cohesion 01 | all four `[x]` stand, and the parity line stands only BECAUSE of two later fixes recorded in doc 01: D132 (the lane asserted the `.png` and rewrote every `.a11y.yml` unconditionally, so a re-freeze was green by construction, and it served a bundle it never rebuilt) and D187 (every `paper-ink` reference photographed dark since the corpus existed, and the run-detail panel — where the failure record and the receipt live — two pixels wide at every viewport since this item, while the a11y tree reported every word). D218 corrected how the projection is FED: the in-process `onEvent` hook was a single-process assumption, so every run enqueued after the dashboard booted served an empty timeline · left: the notes stream has no emitter, five of six topics have no producer, `span.ended` carries no `verdict`, `src/dashboard/state/` has no cache half, the artifact schemas have no route — each owned in a later node
+- 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces §1 rewritten as-built; status block filled (`632ce168`)
 
 ### Phase 1 exit — the live run {#p1-exit}
 status: done
@@ -137,6 +159,9 @@ builds:
 
 needs:
 - p1-spine
+
+log:
+- 2026-08-21 | docs-cohesion 01 | the proof stands and its full record is doc 01 §Exit criteria — run `4ebf7275-0158-49af-a78f-1f37948efb27`, EID `10873698`, terminal `done` at attempt 2, `sleepMs` absent on every task span, projection counts agreeing across all four surfaces. The node's own residual became a decision: 262.9 s to surface a dead CRM session → D125's separate `sessionAcquireMs`. A later correction worth carrying — `describeStalledLanding` is unreachable at the shipped defaults (180 s Duo bound inside a 60 s acquisition envelope), which D244 answers by refusing on Duo's own content in 9.52 s · left: nothing on this node
 
 ## Transaction proof, then the deferred base tails {#phase-2}
 phase: Phase 2
