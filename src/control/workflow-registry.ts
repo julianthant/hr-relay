@@ -229,34 +229,34 @@ export function auditWorkflowModuleRoles(
   modules: readonly WorkflowRoleView[],
 ): readonly string[] {
   const violations: string[] = [];
-  const roleById = new Map<string, WorkflowModuleRole>();
-  const timelineKeysById = new Map<string, readonly string[]>();
+  // One entry per module, so the role and the steps a harness may name can
+  // never be looked up from two maps that disagree about who is registered.
+  const registered = new Map<string, { role: WorkflowModuleRole; steps: readonly string[] }>();
   for (const module of modules) {
-    roleById.set(String(module.descriptor.id), module.role);
-    timelineKeysById.set(
-      String(module.descriptor.id),
-      module.descriptor.timeline.map((category) => category.key),
-    );
+    registered.set(String(module.descriptor.id), {
+      role: module.role,
+      steps: module.descriptor.timeline.map((category) => category.key),
+    });
   }
   for (const module of modules) {
     if (module.role.kind !== "chunk-harness") continue;
     const workflowId = String(module.descriptor.id);
     const target = String(module.role.of);
-    const targetRole = roleById.get(target);
-    if (targetRole === undefined) {
+    const registration = registered.get(target);
+    if (registration === undefined) {
       violations.push(
         `workflow ${workflowId} declares role chunk-harness of ${target}, which is not a registered workflow`,
       );
       continue;
     }
-    if (targetRole.kind !== "composition") {
+    if (registration.role.kind !== "composition") {
       violations.push(
         `workflow ${workflowId} declares role chunk-harness of ${target}, whose own role is `
-        + `${targetRole.kind} rather than composition`,
+        + `${registration.role.kind} rather than composition`,
       );
       continue;
     }
-    const declaredSteps = timelineKeysById.get(target) ?? [];
+    const declaredSteps = registration.steps;
     if (!declaredSteps.includes(module.role.step)) {
       violations.push(
         `workflow ${workflowId} declares role chunk-harness of ${target} step ${module.role.step}, `
