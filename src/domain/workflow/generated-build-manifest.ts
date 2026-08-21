@@ -307,7 +307,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "34227ebcda9c834bb75c03d81848fdb6963f4b4c989cb03d6fbdb9f6e50ab0d6",
+      "fingerprint": "2e0b961a86cde0aa98256fad742d0e7cf698b6ac1998b0d2d0dab83ec6cb8ae0",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -603,15 +603,27 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/descriptor.ts",
-          "sha256": "c37a1d95c92a799e618498088ddc26ae18238a25dbb277f48167bc8aa49d3186"
+          "sha256": "5d9a6c39a0ae32c5742af4c35e70a59f5198803dcb956295a97735ef77d6c43e"
+        },
+        {
+          "path": "src/workflows/separations/identity-check/nodes.ts",
+          "sha256": "e312a6ec8861e722e2bc48f92757d1ae7acaf91430076195cf6bd105d7c6b751"
         },
         {
           "path": "src/workflows/separations/identity-check/step.ts",
           "sha256": "17476737700f9951124af52c6d6f8bc3282b3057e5678708686562fb01cbfabd"
         },
         {
+          "path": "src/workflows/separations/job-summary/nodes.ts",
+          "sha256": "18d669a71b6b7ff8158951faedb5fae08630a0523f707ebcb72b1841b422591d"
+        },
+        {
           "path": "src/workflows/separations/job-summary/step.ts",
           "sha256": "47379e21ab52901f3496c7a41724e73fc79cbc276a7e3c9407e63344c04cfbb6"
+        },
+        {
+          "path": "src/workflows/separations/kronos-timecard/nodes.ts",
+          "sha256": "1d176dcc44999168054c2ebebb3c84782ef4fc74e17d668a27c9cfcf7d1935af"
         },
         {
           "path": "src/workflows/separations/kronos-timecard/step.ts",
@@ -637,7 +649,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "c80d408209138b596292773343e2f04d75d82fad35afe0614ec340eee517b560",
+      "fingerprint": "a47c08b9e84cdc75a3bd0b137f17cb3891655897bdd25450cc9cd2282433899f",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -656,8 +668,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
         },
         {
+          "path": "src/domain/contracts/separations/match-active-employment.ts",
+          "sha256": "bf8779778c4f66849aa8d5240d2f829090b853bb9594d716b6a7d87b603ff5af"
+        },
+        {
+          "path": "src/domain/contracts/separations/match-department-option.ts",
+          "sha256": "669f32766a8b55a71ebb50d6980f60ff4762d71a3c9fc1a5e5c3bc71566d6be5"
+        },
+        {
           "path": "src/domain/contracts/separations/match-identity.ts",
           "sha256": "5941c816d21cb9c182dc7abe6e56081306d97db227a2eae1b45849ac3879e221"
+        },
+        {
+          "path": "src/domain/contracts/separations/match-separation-subject.ts",
+          "sha256": "b6adf42a9580758d2dab8011821db3497a94b4e461b292e6adf94134797496bc"
         },
         {
           "path": "src/domain/contracts/separations/verify-identity-approval.ts",
@@ -704,6 +728,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
         },
         {
+          "path": "src/domain/separations/department-option.ts",
+          "sha256": "50bf77cd56abd53ad230eb6218d4758eaa27d7c0d9790da28af6fd72cda728aa"
+        },
+        {
+          "path": "src/domain/separations/employment-selection.ts",
+          "sha256": "040b045b731d729545091c66044cb5ecc5bbeecb2b3b5a043b02e381d4203f72"
+        },
+        {
           "path": "src/domain/separations/identity-approval.ts",
           "sha256": "c509570e15bfaaeef78597c0886dc04071bc4d1ff8f9a493707a0b7675e67e12"
         },
@@ -714,6 +746,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/separations/job-summary-classification.ts",
           "sha256": "b5f0aa03957ce1b889416ee971cf0e9d4e7e1d08657613231b33d7a62b099bf9"
+        },
+        {
+          "path": "src/domain/separations/separation-subject.ts",
+          "sha256": "37e4736d6ade04602c38dc3480162ff3f6600a725ee1f71a5434621124a63ef1"
         },
         {
           "path": "src/domain/separations/write-plan.ts",
@@ -734,6 +770,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
           "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-finalization.ts",
+          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
         },
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",
@@ -797,13 +837,29 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/identity-check/descriptor.ts",
-          "sha256": "e49b1a2ff123a812502af0f7c783165401e199d00e3ee21a432807b38a38e480"
+          "sha256": "e378826b64ca9df050377d49963886ce13f18ca1ab650860a7e1d5063a17a8c7"
+        },
+        {
+          "path": "src/workflows/separations/identity-check/nodes.ts",
+          "sha256": "e312a6ec8861e722e2bc48f92757d1ae7acaf91430076195cf6bd105d7c6b751"
+        },
+        {
+          "path": "src/workflows/separations/identity-check/step.ts",
+          "sha256": "17476737700f9951124af52c6d6f8bc3282b3057e5678708686562fb01cbfabd"
+        },
+        {
+          "path": "src/workflows/separations/job-summary/nodes.ts",
+          "sha256": "18d669a71b6b7ff8158951faedb5fae08630a0523f707ebcb72b1841b422591d"
+        },
+        {
+          "path": "src/workflows/separations/job-summary/step.ts",
+          "sha256": "47379e21ab52901f3496c7a41724e73fc79cbc276a7e3c9407e63344c04cfbb6"
         }
       ],
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "9e0c2879b0aa71a40abb4ab099ddaf7025fac62ed2bf72a509a0e1b00c180eec",
+      "fingerprint": "b9360ecdbb8df9a37911cc862ac3cc1592b9de239bb1b4c730affed2cd3bf6d6",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -832,6 +888,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/contracts/new-kronos/search-employee.ts",
           "sha256": "9d75cb50b3157edb07f11837943cc27309195629ce088b79488bb7988b872f00"
+        },
+        {
+          "path": "src/domain/contracts/separations/read-separation-dates.ts",
+          "sha256": "12a23a932e4d6e2e588916df2b6da15746622d20353b00a50b7a938a1a2817cc"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -882,6 +942,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
         },
         {
+          "path": "src/domain/separations/separation-dates.ts",
+          "sha256": "e955671db5d816d9eeda6e7e46fb354a2dded3a868fe99ce3b7865b8c5c96423"
+        },
+        {
           "path": "src/domain/session.ts",
           "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
         },
@@ -892,6 +956,14 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/timecard-period.ts",
           "sha256": "49b728a8ef90f7bb8b8c7fc394a713073736928842b89d1f236efa5b22aece82"
+        },
+        {
+          "path": "src/domain/ui/kuali-document-identity.ts",
+          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-document.ts",
+          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
         },
         {
           "path": "src/domain/ui/new-kronos-timecard.ts",
@@ -955,7 +1027,15 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/kronos-timecard/descriptor.ts",
-          "sha256": "5e7ec7ad807b4eba15e0936f82d1470124dc8be14ce1c068da1e3244d171aacf"
+          "sha256": "7e20b5c7c2e1559f1ddbe0b750d21ecc16f760a8556086db0015bcdf21ff0555"
+        },
+        {
+          "path": "src/workflows/separations/kronos-timecard/nodes.ts",
+          "sha256": "1d176dcc44999168054c2ebebb3c84782ef4fc74e17d668a27c9cfcf7d1935af"
+        },
+        {
+          "path": "src/workflows/separations/kronos-timecard/step.ts",
+          "sha256": "18dfd153e0a0b1dd62d053f955d61ae5fe1be35263e3a8cac39ced8de6ce8766"
         }
       ],
       "id": "separations-kronos-timecard"

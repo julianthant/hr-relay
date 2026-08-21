@@ -93,26 +93,13 @@ import { flow } from "../../base/flow.js";
 import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
 import { KualiSaveSeparationFinalization } from "../../domain/contracts/kuali/save-separation-finalization.js";
 import { KualiStageSeparationFinalization } from "../../domain/contracts/kuali/stage-separation-finalization.js";
-import { NewKronosReadSeparationTimecard } from "../../domain/contracts/new-kronos/read-separation-timecard.js";
-import { NewKronosSearchEmployee } from "../../domain/contracts/new-kronos/search-employee.js";
-import { SeparationsMatchActiveEmployment } from "../../domain/contracts/separations/match-active-employment.js";
-import { SeparationsMatchDepartmentOption } from "../../domain/contracts/separations/match-department-option.js";
-import { SeparationsMatchIdentity } from "../../domain/contracts/separations/match-identity.js";
-import { SeparationsMatchSeparationSubject } from "../../domain/contracts/separations/match-separation-subject.js";
-import { SeparationsReadSeparationDates } from "../../domain/contracts/separations/read-separation-dates.js";
-import { SeparationsVerifyIdentityApproval } from "../../domain/contracts/separations/verify-identity-approval.js";
 import { SeparationsVerifyTerminationReceipt } from "../../domain/contracts/separations/verify-termination-receipt.js";
 import { UcpathCreateTermination } from "../../domain/contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../../domain/contracts/ucpath/delete-pending-terminations.js";
-import { UcpathReadJobSummary } from "../../domain/contracts/ucpath/read-job-summary.js";
-import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
 import { UcpathStagePendingTerminationSweep } from "../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
 import { UcpathStageTermination } from "../../domain/contracts/ucpath/stage-termination.js";
 import { WorkflowIdSchema } from "../../domain/ids.js";
-import {
-  ApprovedIdentitySubjectSchema,
-  IdentityApprovalResultSchema,
-} from "../../domain/separations/identity-approval.js";
+import { ApprovedIdentitySubjectSchema } from "../../domain/separations/identity-approval.js";
 import {
   buildFinalizationComments,
   separationInitials,
@@ -130,9 +117,37 @@ import {
 } from "../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
-import { IDENTITY_CHECK_STEP } from "./identity-check/step.js";
-import { JOB_SUMMARY_STEP } from "./job-summary/step.js";
-import { KRONOS_TIMECARD_STEP } from "./kronos-timecard/step.js";
+import {
+  APPROVAL_NODE,
+  COMPARISON_NODE,
+  GATE_NODE,
+  IDENTITY_CHECK_STEP_NODES,
+  NAME_SEARCH_NODE,
+  SUBJECT_NODE,
+  approvalNode,
+  comparisonNode,
+  identityApprovalGate,
+  nameSearchNode,
+  subjectNode,
+} from "./identity-check/nodes.js";
+import {
+  DEPARTMENT_NODE,
+  EMPLOYMENT_NODE,
+  JOB_SUMMARY_NODE,
+  JOB_SUMMARY_STEP_NODES,
+  departmentOptionNode,
+  employmentNode,
+  jobSummaryNode,
+} from "./job-summary/nodes.js";
+import {
+  DATES_NODE,
+  KRONOS_TIMECARD_STEP_NODES,
+  TIMECARD_NODE,
+  TIMECARD_SEARCH_NODE,
+  datesNode,
+  timecardNode,
+  timecardSearchNode,
+} from "./kronos-timecard/nodes.js";
 import {
   ACTION_NODE,
   DOCUMENT_NODE,
@@ -271,17 +286,6 @@ export const SeparationsResultSchema = z.strictObject({
   }),
 });
 
-const NAME_SEARCH_NODE = "name-search";
-const SUBJECT_NODE = "subject";
-const JOB_SUMMARY_NODE = "job-summary";
-const EMPLOYMENT_NODE = "employment";
-const DEPARTMENT_NODE = "department-option";
-const TIMECARD_SEARCH_NODE = "timecard-search";
-const TIMECARD_NODE = "timecard";
-const DATES_NODE = "dates";
-const COMPARISON_NODE = "comparison";
-const GATE_NODE = "identity-approval";
-const APPROVAL_NODE = "approval";
 const RECEIPT_NODE = "receipt";
 const SWEEP_NODE = "clear-pending";
 const TERMINATION_NODE = "file-termination";
@@ -326,53 +330,38 @@ const separationsFlow = flow(SeparationsInput)
       documentNumber: input.documentNumber,
     }),
   }))
-  .step(NAME_SEARCH_NODE, SearchPersonOrg, {
-    label: "Name Search",
+  .pipe(nameSearchNode.wire({
     dependsOn: [PLAN_NODE],
-    replay: "checkpoint",
-    /**
-     * `keepNonHdh: true`, always, and UNCONDITIONALLY run — chunk 3's two
-     * sharpest choices. Legacy searches only when its name tier came back
-     * `different`, so the alternative candidate `T002173685` turned on exists
-     * only on the runs a Levenshtein threshold happened to select; and an HDH
-     * filter would hide exactly the career employee a common name matched.
-     */
+    // `keepNonHdh: true`, always, and UNCONDITIONALLY run — the fragment's own
+    // doc says why; the composition feeds it the plan's employee name.
     bind: ({ outputs }) => ({
       kind: "by-name" as const,
       name: outputs[PLAN_NODE].employeeName,
       keepNonHdh: true,
     }),
-  })
-  .step(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
-    label: "Separation Subject",
+  }))
+  .pipe(subjectNode.wire({
     dependsOn: [DOCUMENT_NODE, PLAN_NODE, NAME_SEARCH_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[PLAN_NODE].employeeName,
       documentEid: outputs[DOCUMENT_NODE].employee.eid,
       nameSelection: outputs[NAME_SEARCH_NODE].selection,
     }),
-  })
-  .step(JOB_SUMMARY_NODE, UcpathReadJobSummary, {
-    label: "Job Summary",
+  }))
+  .pipe(jobSummaryNode.wire({
     dependsOn: [SUBJECT_NODE],
-    replay: "checkpoint",
     bind: ({ outputs }) => ({ emplId: outputs[SUBJECT_NODE].emplId }),
-  })
-  .step(EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
-    label: "Employment",
+  }))
+  .pipe(employmentNode.wire({
     dependsOn: [DOCUMENT_NODE, JOB_SUMMARY_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       jobSummary: outputs[JOB_SUMMARY_NODE],
     }),
-  })
-  .step(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
-    label: "Department Option",
+  }))
+  .pipe(departmentOptionNode.wire({
     dependsOn: [DOCUMENT_NODE, EMPLOYMENT_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       deptId: outputs[EMPLOYMENT_NODE].deptId,
       department: outputs[EMPLOYMENT_NODE].department,
@@ -382,33 +371,16 @@ const separationsFlow = flow(SeparationsInput)
       observedOptions: outputs[DOCUMENT_NODE].options.department,
       documentNumber: input.documentNumber,
     }),
-  })
-  .step(TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
-    label: "Timecard Search",
+  }))
+  .pipe(timecardSearchNode.wire({
     dependsOn: [SUBJECT_NODE],
-    /**
-     * `always-rerun`, and chunk 1 paid for the rule live (`sk-124132-9beb`): the
-     * search's OUTPUT is durable but its POINT is a side effect that is not — it
-     * leaves the employee selected in the WFD panel, which is the only thing
-     * that enables Go To. **A node whose real product is BROWSER state may not
-     * be `replay: "checkpoint"`.**
-     *
-     * The composition pays a real cost for that: a gate resume re-runs this node
-     * (the timecard replays from its checkpoint, so nothing consumes the panel),
-     * which is one New Kronos session per gated run. The alternative is a
-     * checkpoint that restores a selection into a browser that never made one,
-     * and that is the failure chunk 1 already recorded.
-     */
-    replay: "always-rerun",
     bind: ({ input, outputs }) => ({
       emplId: outputs[SUBJECT_NODE].emplId,
       searchTimeoutMs: input.searchTimeoutMs,
     }),
-  })
-  .step(TIMECARD_NODE, NewKronosReadSeparationTimecard, {
-    label: "Timecard",
+  }))
+  .pipe(timecardNode.wire({
     dependsOn: [SUBJECT_NODE, PLAN_NODE, TIMECARD_SEARCH_NODE],
-    replay: "checkpoint",
     bind: ({ outputs }) => {
       // Reading the search's own match is what makes the dependency load-bearing
       // rather than decorative: Go To is disabled without the selection, and a
@@ -420,11 +392,9 @@ const separationsFlow = flow(SeparationsInput)
         rangeEnd: outputs[PLAN_NODE].timecardWindow.end,
       };
     },
-  })
-  .step(DATES_NODE, SeparationsReadSeparationDates, {
-    label: "Reconciled Dates",
+  }))
+  .pipe(datesNode.wire({
     dependsOn: [PLAN_NODE, TIMECARD_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       plan: outputs[PLAN_NODE],
       timekeeperName: input.timekeeperName,
@@ -439,9 +409,8 @@ const separationsFlow = flow(SeparationsInput)
         end: outputs[TIMECARD_NODE].range.observedEnd,
       },
     }),
-  })
-  .step(COMPARISON_NODE, SeparationsMatchIdentity, {
-    label: "Identity Comparison",
+  }))
+  .pipe(comparisonNode.wire({
     /**
      * Everything the gate must have seen depends INTO this node, which is what
      * makes `identity-gate-before-commit` pass on a graph with three transaction
@@ -452,7 +421,6 @@ const separationsFlow = flow(SeparationsInput)
       DOCUMENT_NODE, PLAN_NODE, SUBJECT_NODE, JOB_SUMMARY_NODE, NAME_SEARCH_NODE,
       TERMINATION_TYPE_NODE, DEPARTMENT_NODE, EMPLOYMENT_NODE, DATES_NODE,
     ],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       documentName: outputs[PLAN_NODE].employeeName,
@@ -502,36 +470,16 @@ const separationsFlow = flow(SeparationsInput)
         },
       },
     }),
-  })
-  .gate(GATE_NODE, {
-    label: "Identity Approval",
-    statusKey: "awaitingIdentityApproval",
-    dependsOn: [COMPARISON_NODE],
-    /**
-     * `resolvedBy: "operator"` and nothing else can resolve it (§14.4). Not a
-     * retry, not a bump, not a cascade, not AI (charter §23 / D60), and not a
-     * generic "Done" — the kernel's ONLY path into `gate_results` is the typed
-     * `resolve-gate` command, which parses this exact schema and CASes the run
-     * version.
-     */
-    resolvedBy: "operator",
-    result: IdentityApprovalResultSchema,
-  })
-  .step(APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
-    label: "Approval Check",
+  }))
+  .pipe(identityApprovalGate.wire({ dependsOn: [COMPARISON_NODE] }))
+  .pipe(approvalNode.wire({
     dependsOn: [COMPARISON_NODE, GATE_NODE],
-    /**
-     * `always-rerun`: this node's whole job is to compare a stored gate result
-     * against re-derived evidence, and a replayed checkpoint would be the
-     * previous comparison's ANSWER standing in for the comparison.
-     */
-    replay: "always-rerun",
     bind: ({ outputs }) => ({
       packet: outputs[COMPARISON_NODE].packet,
       evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
       approval: outputs[GATE_NODE],
     }),
-  })
+  }))
   .transaction(SWEEP_NODE, {
     label: "Clear Pending Terminations",
     dependsOn: [APPROVAL_NODE],
@@ -919,9 +867,9 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    */
   timeline: [
     KUALI_EXTRACTION_STEP_NODES,
-    { ...IDENTITY_CHECK_STEP, nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
-    { ...JOB_SUMMARY_STEP, nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
-    { ...KRONOS_TIMECARD_STEP, nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
+    IDENTITY_CHECK_STEP_NODES,
+    JOB_SUMMARY_STEP_NODES,
+    KRONOS_TIMECARD_STEP_NODES,
     { ...UCPATH_TRANSACTION_STEP, nodes: [SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE] },
     { ...KUALI_FINALIZATION_STEP, nodes: [FINALIZE_NODE] },
   ],
