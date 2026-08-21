@@ -543,6 +543,11 @@ function executeStartRun(
       dryRun: plan.dryRun,
       ingressSchemaHash: plan.ingressSchemaHash,
       appVersion: dependencies.appVersion,
+      // D269: the start is the session; the plan and the operator are its origin.
+      session: {
+        sessionId: dependencies.ids.uuid(),
+        origin: { kind: "start-plan", startPlanId: plan.startPlanId, actorId: request.requestedBy },
+      },
     },
     plan.planned.map((planned) => ({
       runId: planned.runId,
@@ -659,6 +664,13 @@ function executeRetry(
      * that re-used `#7` would make one footer describe two runs.
      */
     runNumber: repositories.runs.nextWorkflowRunNumber(current.envelope.workflow),
+    /*
+     * D269: a retry INHERITS the retried run's session rather than minting
+     * one. It is the same item's next attempt (D221), so the group the operator
+     * started keeps reporting the item it contains; a retry of a run no
+     * fan-out grouped (a pre-v17 row) stays ungrouped — nothing is invented.
+     */
+    ...(current.sessionId === undefined ? {} : { sessionId: current.sessionId }),
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -1626,6 +1638,16 @@ function executeIntake(
           dryRun: request.payload.dryRun,
           ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),
           appVersion: dependencies.appVersion,
+          // D269: the manifest's whole fan-out is ONE session; the manifest and
+          // the operator who enqueued it are its origin.
+          session: {
+            sessionId: dependencies.ids.uuid(),
+            origin: {
+              kind: "intake-manifest",
+              intakeManifestId: plan.manifest.manifestId,
+              actorId: request.requestedBy,
+            },
+          },
         },
         plan.manifest.validRows.map((row) => {
           const runId = dependencies.ids.uuid();
@@ -2373,6 +2395,12 @@ function executeArchivedRunRelaunch(
       dryRun: record.dryRun,
       ingressSchemaHash: record.ingressSchemaHash,
       appVersion: dependencies.appVersion,
+      // D269: a relaunch is a dashboard-started group of one, and the archived
+      // run it relaunches is the origin the session names.
+      session: {
+        sessionId: dependencies.ids.uuid(),
+        origin: { kind: "archive-relaunch", archivedRunId: archived.runId, actorId: request.requestedBy },
+      },
     },
     record.planned.map((entry) => ({
       runId: entry.runId,

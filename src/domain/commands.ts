@@ -403,7 +403,8 @@ export const BulkRunCommandOutcomeSchema = z.discriminatedUnion("outcome", [
     outcome: z.literal("conflict"),
     runId: RunIdSchema,
     commandId: CommandIdSchema,
-    currentVersion: PositiveIntSchema,
+    /** Mirrors `CommandResultSchema.conflict` — see the D269 note there. A run target never answers 0. */
+    currentVersion: NonNegativeIntSchema,
     detail: z.string().min(1),
   }),
   z.strictObject({
