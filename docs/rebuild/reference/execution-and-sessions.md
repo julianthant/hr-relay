@@ -411,6 +411,7 @@ passing one. `stop-worker` and `pause-worker` reach the lease from the panel; `s
 process (§11 owns the spawn half).
 
 ### 4.1 Authentication is a content-level observation, never a URL (D120)
+<!-- roadmap: p1-kernel -->
 
 **A session is authenticated only when the page proves it. A URL never proves it.** A URL is chosen
 by whoever served the redirect; a system's sign-in page and its application routinely share a host,
@@ -418,51 +419,44 @@ and PeopleSoft's signon renders at the same route shape as the application it gu
 system therefore declares an **authenticated-application verifier** returning a discriminated probe,
 and it must establish TWO independent facts:
 
-1. a **positive** fact — a session artifact the server issues only after a completed authentication
-   (UCPath: PeopleSoft's `PS_TOKEN` cookie; CRM: Salesforce's `sid` Communities cookie). An
-   app-only DOM marker is an acceptable positive fact where no such artifact exists; and
+1. a **positive** fact — a session artifact the server issues only after a completed authentication.
+   An app-only DOM marker is an acceptable positive fact where no such artifact exists; and
 2. a **negative** fact — no sign-in form of any kind is on the page (the shared UCSD TritON form,
    plus the system's own application-side login form).
 
+| system | positive fact | recorded strength |
+|---|---|---|
+| ucpath | PeopleSoft's `PS_TOKEN` cookie (`PS_TOKENEXPIRE` is deliberately NOT accepted — PeopleSoft writes it on the signon page too) | server-issued |
+| crm | Salesforce's `sid` Communities cookie | server-issued |
+| new-kronos | WFD's own issued session cookie, observed twice `NEW_KRONOS_SESSION_COOKIE_POLL_MS` apart after landing | server-issued |
+| kuali | rendered Kuali Build application chrome | **weaker, and said so in the code**: Kuali issues no cookie this repo has verified as an authenticated-only issuer, so the marker is paired with an explicit SSO-form absence and the weakness is recorded rather than smoothed over |
+
 A URL predicate may be a NECESSARY precondition a verifier checks first — it is never sufficient,
-and it is never the conclusion. A probe that cannot RUN reports "not authenticated" with a reason
-that says so; "I could not check" must never read as "it passed".
+and it is never the conclusion. Every verifier here refuses the URL first with its own named reason
+(new-kronos's is worth quoting: *"the ForgeRock sign-on host shares the mykronos.com domain and is
+refused here"*), and then proves the two facts. A probe that cannot RUN reports "not authenticated"
+with a reason that says so; "I could not check" must never read as "it passed" — which is why a
+timeout inside a positive probe returns `holds: false` with the timeout as its detail instead of
+throwing past the decision.
 
 **The verification is unskippable and singly defined.** A login recipe is built by
-`defineVerifiedLoginRecipe`, which runs the verifier AFTER the recipe's flow whatever the flow
-returned, so `already-authenticated` and `logged-in` are labels on the same proven state and a later
-early `return` cannot reintroduce a bypass. The clean-release neutral reset asserts through the same
-verifier — there is one definition of "authenticated", not one per call site. The evidence that
-proved it travels on a required channel so an operator surface can show WHAT was observed, and
-`browser-session:start` carries the distinct `LoginResult` so a run that never authenticated cannot
-look like one that did.
+`defineVerifiedLoginRecipe` (`src/infra/browser/authenticated-application.ts:159`), which runs the
+verifier AFTER the recipe's flow whatever the flow returned, so `already-authenticated` and
+`logged-in` are labels on the same proven state and a later early `return` cannot reintroduce a
+bypass. The flow is handed the SAME verifier as its `probe`, so its "are we already in?" decision is
+the identical two-fact check rather than a cheaper URL guess. The clean-release neutral reset
+asserts through the same verifier (§4) — there is one definition of "authenticated", not one per
+call site — and `assertAuthenticatedApplication` additionally refuses evidence produced for a
+DIFFERENT system than the one being proved. The evidence that proved it travels on a required
+channel so an operator surface can show WHAT was observed, and `browser-session:start` carries the
+distinct `LoginResult` so a run that never authenticated cannot look like one that did.
 
 This ratifies a 2026-08-03 live finding: a UCPath login smoke reported success in ~3s having never
 authenticated, because the recipe matched a host substring on the PUBLIC UCPath portal and the
-neutral reset accepted a signon page. `authentication-proof-not-url` (ref guards-and-tests) pins the shape.
-
-An individual workflow may declare internally proven parallel work, such as OCR provider page
-concurrency. That is workflow-owned behavior with its own tests, not a generic executor capacity
-model.
-
-The Session Panel shows worker phase, queued count, trace id, current step, browser health tiles,
-wait reasons, and failure state. It does not show lane or per-system capacity counters. Settings has
-no lane/budget reference page.
-
-**As-built (D248, 2026-08-20).** The panel's card is this section's lease — `workflow`, lifecycle
-phase, the operator's standing directive, the started/stopped instants, the stop reason and the row
-version — joined with the browser sessions the worker's own spans have open. Two items of the list
-above are NOT drawn, each for a producer that does not exist in this platform rather than for a
-surface that was skipped. There are no **wait reasons**: §1 partitions a browser profile per
-`(worker, system, instance, configFingerprint)`, so a second worker opens its own UCPath window
-rather than queueing behind the first, and there is no cross-worker lease to name a holder for.
-And there is no **health** on a tile: nothing probes a live session, so a tile states which system
-its session speaks to and how long it has been open, and reads `Not checked` — which is the honest
-verdict and must never be drawn as a passing one. `stop-worker` and `pause-worker` reach the lease
-from the panel; `spawn-worker` and `refresh`/`reopen-browser` do not, because their process effects
-refuse by name in the dashboard process (this section's live lane owns them).
-
----
+neutral reset accepted a signon page. `authentication-proof-not-url` (ref guards-and-tests) pins the
+shape: every recipe is built by the wrapper, no recipe produces a `LoginResult` outside it, every
+landed binding supplies a verifier rather than an `isAuthenticatedUrl` predicate, and the factory's
+neutral reset asserts through `assertAuthenticatedApplication`.
 
 ## 5. Speed engineering
 
