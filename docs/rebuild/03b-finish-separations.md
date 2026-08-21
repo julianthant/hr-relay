@@ -5,7 +5,7 @@ order 8 — chosen deliberately as the hard entry because a big multi-system wor
 task libraries into existence for every migration after it (D193). This doc carries phase 3's own
 tree node `{#phase-3}` and the whole separations subtree; Phase 3 is four docs — **3a** finished the
 dashboard (`03a-finish-the-dashboard.md`, `{#dash-defaults}`), **3b** is this one, **3c** migrates
-the remaining twelve workflows (`03c-migrate-the-remaining-workflows.md`, `{#migrations}`), and
+the remaining thirteen workflows (`03c-migrate-the-remaining-workflows.md`, `{#migrations}`), and
 **3d** puts Claude on the same dashboard as a second actor (`03d-co-operate-with-claude.md`,
 `{#claude-operator}`).
 
