@@ -20,6 +20,11 @@ import { afterEach, describe, it } from "vitest";
 import { appendEventStreamLine } from "../../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
+import {
+  assertNoteWithinRunScope,
+  runNotePartitionScope as sharedNotePartitionScope,
+  runRecordNoteScopeInstants,
+} from "../../../src/domain/run/note-scope.js";
 import type { RunCheckpointRecord } from "../../../src/domain/workflow/checkpoint.js";
 import {
   buildRunSection,
@@ -354,6 +359,91 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
       () => runNotePartitionScope(uuidOf(1), { ...row, lastEventAt: "not an instant" }, authority),
       /refuses to decide which partitions it may skip/,
     );
+  });
+
+  /* ── the producer half of the same contract ───────────────────────────── */
+
+  /** The authority record `terminalDone` seeded — what a note PRODUCER holds. */
+  function authorityOf(w: DashboardWorld): RunRecord {
+    const authority = w.authority.getRun(uuidOf(1));
+    assert.ok(authority !== undefined);
+    return authority;
+  }
+
+  it("ADMITS a note filed the day after the run's last durable instant — the margin, from the producer's side", () => {
+    const w = world();
+    terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
+    assertNoteWithinRunScope(authorityOf(w), {
+      runId: uuidOf(1),
+      workflow: "person-lookup",
+      at: new Date(AT.getTime() + DAY_MS),
+    });
+  });
+
+  it("REFUSES a note filed two days after the run's terminal instant, naming the run, its day and the bounds", () => {
+    const w = world();
+    terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
+    // The drop class this contract exists for: the writer partitions at its own
+    // `clock.now()`, the reader opens the run's own window, and nothing else
+    // binds the two. A refusal at the append is the only place it can be seen.
+    assert.throws(
+      () => assertNoteWithinRunScope(authorityOf(w), {
+        runId: uuidOf(1),
+        workflow: "person-lookup",
+        at: new Date(AT.getTime() + 2 * DAY_MS),
+      }),
+      /refusing to file a note for run 0001.*partition for 2026-08-05, outside the run's own notes scope 2026-08-03\.\.2026-08-04/s,
+    );
+  });
+
+  it("REFUSES a note filed under a workflow whose partitions this run's logs reader never opens", () => {
+    const w = world();
+    terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
+    assert.throws(
+      () => assertNoteWithinRunScope(authorityOf(w), { runId: uuidOf(1), workflow: "separations", at: AT }),
+      /the run belongs to person-lookup/,
+    );
+  });
+
+  it("REFUSES a note scoped against another run's authority record", () => {
+    const w = world();
+    terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
+    assert.throws(
+      () => assertNoteWithinRunScope(authorityOf(w), { runId: uuidOf(2), workflow: "person-lookup", at: AT }),
+      /composed from a different run's instants/,
+    );
+  });
+
+  it("scopes a producer INSIDE the window the reader opens, never outside it", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const row = w.projection.runFold(uuidOf(1));
+    assert.ok(row !== undefined);
+    const authority = authorityOf(w);
+    // The containment that makes the producer's assertion sufficient: the
+    // reader's instants are the producer's PLUS the fold's, so its min can only
+    // be smaller and its max only larger.
+    const producer = sharedNotePartitionScope({
+      runId: uuidOf(1),
+      workflow: authority.envelope.workflow,
+      instants: runRecordNoteScopeInstants(authority),
+    });
+    const reader = runNotePartitionScope(uuidOf(1), row, authority);
+    assert.ok(reader.fromDate <= producer.fromDate, `${reader.fromDate} must not start after ${producer.fromDate}`);
+    assert.ok(reader.toDate >= producer.toDate, `${reader.toDate} must not end before ${producer.toDate}`);
+  });
+
+  it("does NOT serve a note written past the scope — the reader bound the assertion exists to refuse", () => {
+    const w = world();
+    terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
+    emitNotes(w, 1, 1);
+    // Injected past the assertion, exactly as an unchecked producer would file
+    // it: the line is on disk, in this run's own workflow, and unservable.
+    w.clock.setWall(new Date(AT.getTime() + 2 * DAY_MS));
+    emitNotes(w, 1, 1, 1);
+    const section = buildRunSection(depsOf(w), uuidOf(1), "logs");
+    assert.equal(section.section, "logs");
+    assert.deepEqual(section.payload.notes.map((note) => note.message), ["note 0"]);
   });
 
   it("serves an empty page, not a throw, for a run whose workflow wrote no notes", () => {

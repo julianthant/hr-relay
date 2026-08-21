@@ -169,6 +169,29 @@ describe("note JSONL writer and schema-owned redaction", () => {
     assert.equal(bytes.includes("6789"), true); // last4 survives, nothing more
   });
 
+  it("partitions a note at its OWN clock, which is the gap the run-scope assertion closes", () => {
+    const root = stateRoot();
+    const clock = manualClock(AT);
+    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const emit = (message: string): void => {
+      writer.emitNote({
+        workflow: "person-lookup",
+        address: { runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: TRACE },
+        level: "step",
+        message,
+      });
+    };
+    emit("at the run's own day");
+    clock.setWall(new Date(AT.getTime() + 3 * 24 * 60 * 60 * 1000));
+    emit("three days later");
+    // The writer knows nothing about the run's durable instants, so BOTH lines
+    // land — the second in a partition the logs reader's scope never opens
+    // (ref dashboard-surfaces §2.1). `assertNoteWithinRunScope` in
+    // `src/domain/run/note-scope.ts` is what a producer calls to refuse
+    // it at the append instead; nothing here can, and nothing here should.
+    assert.deepEqual(listEventStreamFiles(root, "notes").map(({ date }) => date), ["2026-08-03", "2026-08-06"]);
+  });
+
   it("refuses a non-note ingress instead of writing a best guess", () => {
     const writer = createNoteJsonlWriter({ stateRoot: stateRoot(), clock: manualClock(AT), pid: 7 });
     assert.throws(() => writer.emitNote({ workflow: "person-lookup", level: "step", message: "no address" }));

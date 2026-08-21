@@ -51,6 +51,11 @@
 import { z } from "zod";
 import type { JsonValue } from "../../../domain/canonical-json.js";
 import { localDatePart } from "../../../domain/clock.js";
+import {
+  runNotePartitionScope as sharedNotePartitionScope,
+  runRecordNoteScopeInstants,
+  type RunNoteScopeInstant,
+} from "../../../domain/run/note-scope.js";
 import { MatchIdentityOutputSchema } from "../../../domain/contracts/separations/match-identity.js";
 import type { IdentityEvidencePacket } from "../../../domain/separations/identity-evidence.js";
 import {
@@ -798,44 +803,6 @@ export interface RunNoteScanEntry {
 }
 
 /**
- * The margin on each end of a run's own activity window, and it is DELIBERATELY
- * asymmetric — the two ends carry different risks.
- *
- * `notes/` is partitioned append-at-now (`localDatePart(clock.now())` at the
- * moment of the write), while the window below is composed from the run's
- * durable instants.
- *
- * **Below, none is needed.** A note is addressed to a run id, so it cannot have
- * been written before the run existed, and the window's lower end is the OLDEST
- * of the run's instants — its enqueue among them. A partition earlier than that
- * cannot hold a line about this run, so opening one would be reading for the
- * sake of it.
- *
- * **Above, one day.** A worker that writes its last note milliseconds after the
- * transition that closed the run files it on the NEXT day's partition when that
- * transition lands near midnight. One day covers that whole class; it is not a
- * guess at how long a straggler can lag, it is the width of the one boundary
- * the writer's clock and the run's last durable instant can fall either side
- * of. It stays until something durable records which partitions a run wrote —
- * a margin is the honest price of not having that fact, and the alternative is
- * a logs page that silently drops the last thing a run said.
- */
-const NOTE_PARTITION_MARGIN_DAYS_BEFORE = 0;
-const NOTE_PARTITION_MARGIN_DAYS_AFTER = 1;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function noteWindowInstant(runId: string, label: string, value: string): number {
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(
-      `run ${runId} carries an unreadable ${label} instant ${JSON.stringify(value)}; the notes reader refuses `
-      + "to decide which partitions it may skip from a timestamp it cannot read",
-    );
-  }
-  return parsed;
-}
-
-/**
  * The `notes/` partitions ONE run's log lines can be in (D5, audit P3).
  *
  * `readEventStreamLines(stateRoot, "notes")` read every byte of every workflow's
@@ -845,33 +812,31 @@ function noteWindowInstant(runId: string, label: string, value: string): number 
  * be in its own workflow's partitions inside its own activity window, so the
  * reader opens exactly those.
  *
- * The window is composed from the run's DURABLE instants — the enqueue span,
- * the fold's last observed event, authority's `updatedAt`, and both terminal
- * ends — rather than from the wall clock, because "now" is not a fact about the
- * run and would re-widen the scope for every old run an operator opens. An
- * instant that cannot be parsed fails loud: skipping a partition on the
- * strength of a timestamp nobody could read is how a run's real history gets
- * reported as absent.
+ * The window arithmetic, the margins and the fail-loud parse are NOT here: they
+ * are `runNotePartitionScope` in `domain/run/note-scope.ts`, the ONE
+ * function this reader and every note PRODUCER share (ref dashboard-surfaces
+ * §2.1). Nothing else binds an append-at-now writer to the days this reader
+ * opens, and a note outside them is a line on disk the run's own logs tab can
+ * never serve.
+ *
+ * What this function adds is the span fold's own instants, on top of the
+ * authority instants a producer asserts against. That direction is the whole
+ * safety argument and must stay this way round: the reader's instant set is a
+ * SUPERSET, so its window contains the producer's, and a note the producer's
+ * assertion admitted is a note this reader opens the partition for.
  */
 export function runNotePartitionScope(
   runId: string,
   row: RunFoldRecord,
   authority: RunRecord,
 ): EventStreamScope {
-  const instants = [
-    noteWindowInstant(runId, "run.queued span", row.queued.ts),
-    noteWindowInstant(runId, "fold lastEventAt", row.lastEventAt),
-    noteWindowInstant(runId, "authority updatedAt", authority.updatedAt),
+  const instants: RunNoteScopeInstant[] = [
+    ...runRecordNoteScopeInstants(authority),
+    { label: "run.queued span", at: row.queued.ts },
+    { label: "fold lastEventAt", at: row.lastEventAt },
   ];
-  if (row.ended !== undefined) instants.push(noteWindowInstant(runId, "fold endedAt", row.ended.endedAt));
-  if (authority.lifecycle.state === "terminal") {
-    instants.push(noteWindowInstant(runId, "authority lifecycle endedAt", authority.lifecycle.endedAt));
-  }
-  return {
-    workflow: row.queued.workflow,
-    fromDate: localDatePart(new Date(Math.min(...instants) - NOTE_PARTITION_MARGIN_DAYS_BEFORE * DAY_MS)),
-    toDate: localDatePart(new Date(Math.max(...instants) + NOTE_PARTITION_MARGIN_DAYS_AFTER * DAY_MS)),
-  };
+  if (row.ended !== undefined) instants.push({ label: "fold endedAt", at: row.ended.endedAt });
+  return sharedNotePartitionScope({ runId, workflow: row.queued.workflow, instants });
 }
 
 /**
