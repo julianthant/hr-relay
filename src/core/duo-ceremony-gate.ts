@@ -164,6 +164,10 @@ interface GateOptions {
   readonly signal: AbortSignal;
 }
 
+type Settled<Result> =
+  | Readonly<{ state: "returned"; value: Result }>
+  | Readonly<{ state: "threw"; error: unknown }>;
+
 interface Hold {
   readonly token: DuoCeremonyLeaseToken;
   readonly lease: DuoCeremonyLeaseRecord;
@@ -200,21 +204,26 @@ class Gate implements DuoCeremonyGateHandle {
     const ttl = scheduler.schedule(hold.expiresAtMonotonicMs, () => {
       cancelCeremony(new DuoCeremonyLeaseExpiredError(system, hold.token));
     });
-    let retain = false;
-    try {
-      return await run(hold.token);
-    } catch (error) {
-      if (error instanceof DuoTerminalRefusalError && this.#refusals === 0) {
-        // §10.5: the FIRST terminal refusal keeps the lease for the single
-        // fresh-profile retry. A second one falls through to the release.
-        this.#refusals = 1;
-        retain = true;
-      }
-      throw error;
-    } finally {
-      ttl.cancel();
-      if (!retain) this.#release();
+    // The ceremony's settlement is captured as DATA so the decision that
+    // follows — keep the lease for §10.5's single retry, or release it — reads
+    // as one branch, and the error is rethrown unchanged either way.
+    const settled = await run(hold.token).then(
+      (value): Settled<Result> => ({ state: "returned", value }),
+      (error: unknown): Settled<Result> => ({ state: "threw", error }),
+    );
+    ttl.cancel();
+    if (settled.state === "returned") {
+      this.#release();
+      return settled.value;
     }
+    if (settled.error instanceof DuoTerminalRefusalError && this.#refusals === 0) {
+      // §10.5: the FIRST terminal refusal keeps the lease for the single
+      // fresh-profile retry. A second one releases.
+      this.#refusals = 1;
+    } else {
+      this.#release();
+    }
+    throw settled.error;
   }
 
   retainedForRecovery(): boolean {
