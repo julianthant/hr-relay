@@ -18,9 +18,9 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [x] the notification inbox has production producers — backup health (D222) and the gate park (D262), both wired in `src/server/dashboard/compose.ts`
 - [x] the connection is proved end to end: the REAL dashboard drove a REAL composed separations dry run, every UI claim paired against authority (Track C, `docs/migrations/separations.md` §9.22)
 - [x] the reference corpus asserts green over the corrected surfaces — 139 references re-frozen, 151 assert-mode cases green (`81287bb1`)
-- [ ] Track D's D1–D5 — D1 (one status/outcome derivation) LANDED as **D268** (`81bfed73`); the hygiene commit, the settlement fold, patch-splice + `memo` and the bounded read scans are still unlanded (ratified D264)
+- [ ] Track D's D1–D5 — D1 LANDED as **D268** (`81bfed73`), D3 as `1b13115f`, D5 as `d6d6c758`/`c1fa129b`/`c74efcca`/`c547f65a`; the hygiene commit (D2) and patch-splice + `memo` (D4) are still unlanded (ratified D264)
 - [ ] the three nodes drawn under this one on 2026-08-20 — the Duo ceremony lease, the worker pool and sessions, observed logs
-- [ ] `ref frontend-backend-integration` §7.4's performance budgets have never been measured; Track D's D4/D5 are the first numbers and become the non-regression gates
+- [ ] `ref frontend-backend-integration` §7.4's performance budgets — the instrument and its BEFORE baseline landed 2026-08-21 and **D5's AFTER numbers are recorded**; D4 still owes its half, and the recorded numbers become the non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
 - [!] demo fidelity — every region exact or ruled; ~150 OPEN questions outstanding across the three 2026-08-21 ledgers (Track F, §Demo fidelity — every detail, region by region)
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
@@ -229,7 +229,7 @@ attributed to a ratified wave-2 decision before the operator approved it.
 - [ ] D2 the hygiene commit — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified (the D253-sentence half landed with D3, `1b13115f`)
 - [x] D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold (`1b13115f`); the guard's second arm requires any module calling `.executeCommand(` to import it (`5c36a82d`)
 - [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; then MEASURED against a seeded 1,240-row / 108-member fixture
-- [ ] D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded
+- [x] D5 bound the read scans — the member preview slices ids before joining and a row reads its receipt once (`d6d6c758`), the notes reader opens only its run's own `(workflow, date)` partitions (`c1fa129b`; the margin corrected to zero-below / one-day-above in `c547f65a`), the archive freeze scans once per page walk (`c74efcca`), all four pinned by their BOUND rather than a duration (`4d3247d8`) and MEASURED — day wire 6,718 → 5,568 SQLite statements, member-preview delta 216 → 6, logs scope 4 → 2 partitions (`ref frontend-backend-integration` §7.4's AFTER table)
 - [?] D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate
 - [?] D7 split `LoadedApp` along its own seams — the three hooks into `app/*-model.ts`, the five takeover layouts into `app/takeovers.tsx`
 - [?] D8 models for intake / archive / log-panel, the versioning half of `archive.tsx` split out, ONE `foldTaskExecutions(row)`
@@ -267,6 +267,17 @@ parse per single-row patch) confirm what the audit predicted from reading. D4 an
 command against the same seed and record the delta beneath it. The instrument touches nothing under
 `src/` — it measures the tree, it does not fix it.
 
+**D5's AFTER numbers are recorded (2026-08-21, `c547f65a`).** Same command, same seed, same eleven
+iterations, in §7.4's AFTER table: the day wire drops **6,718 → 5,568** SQLite statements (5.42 →
+4.49 per row, decomposing exactly into 940 saved receipt reads and 210 saved preview joins), the
+member-preview delta drops **216 → 6** and stops scaling with the member count at all, and a logs
+GET may now open **2 of the corpus's 4 partitions** instead of all of them. Two honest readings
+travel with the table. The logs row moves only 15 % in LINES because 78 % of this fixture's corpus
+sits on the measured run's own day — what changed is that the read stopped growing with the corpus,
+which is the bound audit P3 is actually about. And the archive freeze's own fix does not appear at
+all, because at 13 notes per run the freeze walks one page; its bound is pinned in the unit lane
+instead. D4 still owes its half.
+
 **The eleven rows, and their state at HEAD.** D1 landed 2026-08-21 (**D268**); the other ten are
 unlanded. Each was re-verified against the code for the 2026-08-20 rewrite rather than carried
 forward on the audit's say-so.
@@ -277,7 +288,7 @@ forward on the audit's say-so.
 | D2 | HTTP status sniffed from an error message; the inert capture phone-host gate; dead hooks and exports; small duplications | `useDashboardDaySnapshot` (`use-dashboard-day.ts:54`) and `useRunSection` (`use-run-detail.ts:158`) have no importers; `deps.capturePhoneHost` is read at `routes/api.ts:142` and supplied nowhere |
 | D3 | seven command-issuing sites enumerate both refusal arms by hand | ~~`settleCommandResult` is imported by exactly two surfaces, `top-bar.tsx` and `context-rail.tsx`~~ **CLOSED 2026-08-21 (`1b13115f`)** — all nine import it; the guard now refuses a module that posts through `executeCommand` without it |
 | D4 | whole-day zod re-parse and whole-tree re-render per SSE patch | zero `React.memo` anywhere under `src/dashboard` |
-| D5 | member preview, duplicate receipt reads, whole-notes-corpus reads, the archive freeze loop | unchanged in `run-queue-projection.ts` / `run-detail.ts` / `archive.ts` |
+| D5 | member preview, duplicate receipt reads, whole-notes-corpus reads, the archive freeze loop | ~~unchanged in `run-queue-projection.ts` / `run-detail.ts` / `archive.ts`~~ **CLOSED 2026-08-21** (`d6d6c758`, `c1fa129b`, `c74efcca`, `c547f65a`) — all four bounded, behaviour byte-identical over the §7.4 fixture, measured and recorded |
 | D6–D10 | the maintainability slice | proposed; the trigger has not fired |
 | D11 | `WORKFLOW_DESCRIPTORS` in the browser bundle | still imported at `dashboard-app.tsx:25`, used at `:516` |
 
@@ -664,7 +675,7 @@ stricter bar Track F carries (row 10).
 | 3 | **Track C met** — the real dashboard drove a real composed run, every claim paired to authority | **MET** | `docs/migrations/separations.md` §9.22 items 1–8; three runs; four defects plus the archive unblock (D258), all fixed same-day; §9.24's live `sp-105225-1e0b` |
 | 4 | **The reference corpus asserts over the corrected surfaces** | **MET** | `81287bb1` — 139 references re-frozen after the fixes, 151 assert-mode cases green, every drift attributed to a ratified decision |
 | 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **open** | D1 LANDED 2026-08-21 (**D268**, `81bfed73`) — one fact, one derivation, held by a test that asserts the row and the panel against each other; D2–D5 and D11 remain unlanded (see the Track D table); D6–D10 stay `proposed` behind their named trigger and are outside this gate |
-| 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **open** | never measured; D4/D5 supply the first numbers against a seeded 1,240-row / 108-member fixture, and those numbers become the non-regression gate |
+| 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **open** | the instrument and its BEFORE baseline landed 2026-08-21 (`407d373f`), and **D5's AFTER numbers are recorded** against the same seeded 1,240-row / 108-member fixture (`c547f65a`); D4 still owes its half, and the recorded numbers become the non-regression gate |
 | 7 | **The Duo ceremony lease landed** | **open** | nothing named `duo_ceremony_leases` exists in `src/`; `defineVerifiedLoginRecipe` takes no lease token |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the kernel arms exist; the supervisor refuses spawn by name and the projection serves no pool version |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **open** | recorded points reach no durable channel today |
