@@ -1920,7 +1920,7 @@ field-level provenance `{ source, observedAt?, correctedAt?, supersedes? }`.
 | **Parked at a gate** (approval / await-signatures / identity-approval) | **Visible; explicitly declared fields editable.** Descriptor `capabilities.editData.fields` names node+field paths. Default is read-only, never "all checkpoint JSON." |
 | **Stopped / failed** (terminal but resumable — `single`, real `operation-member`, D9) | Same explicit field policy; an accepted edit becomes `injected` on retry/resume. |
 | **Running** (actively claimed, a live task owns a page) | **READ-ONLY** — the run's checkpoints are being written by the live task; editing not-yet-written state is meaningless and racy. Show live checkpoint state read-only. |
-| **Terminal `done`** | **Read-only.** Correcting-and-rerunning a done item is the *separate* new-input path (§6.5), not Edit Data. |
+| **Terminal `done`** | **Read-only.** Correcting-and-rerunning a done item is the *separate* new-input path (§6.5 — the start-plan flow), not Edit Data. |
 | **Display-only rows** (operation coordinators, i9 display-only members) & **OCR per-page internals** | **No checkpoint Data section in Context** — D9 excludes them (nothing to resume). |
 
 ### 6.3 Editing = typed field patches; editing is not freshness
@@ -2061,6 +2061,27 @@ whose corrected node shares attempt 1 with an existing row refuses loudly at the
 insert — fail-closed pending the archive/attempt-model work. §6.5's new-input path remains the
 start-plan flow. Proof: `tests/unit/edit-data.test.ts` (applier, all five save arms, and the
 three consume arms) plus the activated `edit-data-field-policy` guard.
+
+### 6.5 The new-input path is the start plan, not Edit Data
+
+<!-- roadmap: p2-2i -->
+
+§6.2 and §6.4.1 both send a reader here and this section did not exist, so it says what the two
+call sites mean. **Editing a run's checkpoints and starting a run with different input are
+different acts, and only the first is Edit Data.** A `done` item, or any item whose ORIGINAL INPUT
+was wrong, is corrected by submitting a new start plan — `src/services/start/plan.ts`, the `start`
+command family's one arm `start-run` (`src/domain/commands.ts:461`), which retains the exact raw
+ingress JSON beside the canonical snapshot and binds both schema hashes (D109). That is the path
+identity, idempotency-key inputs and workflow input take, and §6.3 makes it structural: those paths
+are non-editable, so there is no Edit Data route to them by construction.
+
+Two neighbours of it, both named so nobody looks for a third mechanism. An intake-born item's
+equivalent is §5's **rerun against the immutable manifest**, which revalidates against the current
+workflow fingerprint and shows a diff before creating a run — the same "new run, new input, visible
+change" shape, keyed by a manifest rather than a typed form. And an ARCHIVED run's is the archive
+relaunch (ref dashboard-surfaces §10.2, D179), which mints a fresh run and records relaunch
+provenance keyed by it. None of the three mutates a terminal row, which is the invariant all of
+them exist to keep.
 
 ---
 
