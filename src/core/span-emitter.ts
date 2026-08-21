@@ -26,6 +26,7 @@ import {
   NodeIdSchema,
   PositiveIntSchema,
   RunIdSchema,
+  TaskIdSchema,
   TraceIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
@@ -38,6 +39,8 @@ import type {
   WorkerId,
   WorkflowId,
 } from "../domain/ids.js";
+import { ContractFieldPathSchema } from "../domain/contracts/base.js";
+import { RedactedFieldSchema } from "../domain/redaction.js";
 import { RequeueCauseSchema } from "../domain/run/record.js";
 
 const SpanPathSchema = z.string().min(1);
@@ -81,6 +84,38 @@ const BaseFields = {
   ts: IsoInstantSchema,
   workflow: WorkflowIdSchema,
 } as const;
+
+/**
+ * ONE recorded observation, redacted by DECLARATION (D270).
+ *
+ * `field` is the point's own recorded path — a path in the producing task's
+ * output contract, which is what `ctx.recordData` accepts and what
+ * `finalizeRead` validates every point against. `values` is that point's value
+ * broken into evidence LEAVES (an array is one leaf, an empty object is one
+ * leaf, a populated object recurses — the provenance collector's own rule) and
+ * each leaf pushed through the classification `reference/operator-trust.md`
+ * §2.3 declares for `(taskId, path)`. A scalar point therefore carries exactly
+ * one value whose key is the field itself. An UNDECLARED leaf never reaches
+ * this schema: `redactObservedDataPoints` refuses it by name, because dropping
+ * it would make the log look complete while hiding what the run read.
+ *
+ * `direction` is carried NATIVELY because `DataPoint` has always carried it —
+ * the Context rail has to DERIVE read/write from the producing node's declared
+ * task-contract `effect` (D252) precisely because the checkpoint row has no
+ * such field, so an observed point must not re-derive what it already holds.
+ *
+ * There is deliberately NO `system` field. The originating system is declared
+ * by the STORE implementing the task and reaches the wire through
+ * `RunDetailDescriptorView.dataOrigins`, composed at the root because a
+ * descriptor may not reach a store (D106). A `system` here would be a second
+ * authority over a fact the declaration already owns.
+ */
+export const ObservedDataPointSchema = z.strictObject({
+  direction: z.enum(["read", "write"]),
+  field: ContractFieldPathSchema,
+  values: z.array(RedactedFieldSchema).min(1),
+});
+export type ObservedDataPoint = z.infer<typeof ObservedDataPointSchema>;
 
 // A plain union on purpose: `span.started`/`span.ended` legitimately appear
 // for task, run, worker, and browser identities, so `t` alone cannot be a
@@ -154,6 +189,26 @@ export const ExecutorSpanEventSchema = z.union([
     node: NodeIdSchema,
     subject: z.enum(["match", "mismatch", "unscoped", "not-observed"]),
     externalCommit: z.literal("none"),
+  }),
+  /**
+   * D270 / `03a-finish-the-dashboard.md` §Observed logs — every point a task
+   * records is emitted on the span AT RECORD TIME, so the observations a task
+   * made before it threw are on the stream even though its checkpoint never
+   * was. One event per `ctx.recordData` CALL: a batch is one observation of the
+   * page, and `observedAt` is the single instant the collector stamped it with.
+   *
+   * This is an EMISSION, not a second scrape. Nothing re-reads the page: a
+   * second observation of a moving system is exactly how a surface starts
+   * disagreeing with authority.
+   */
+  z.strictObject({
+    t: z.literal("data.observed"),
+    ...BaseFields,
+    ...RunSpanIdentityFields,
+    nodeId: NodeIdSchema,
+    taskId: TaskIdSchema,
+    observedAt: IsoInstantSchema,
+    points: z.array(ObservedDataPointSchema).min(1),
   }),
   z.strictObject({
     t: z.literal("span.started"),

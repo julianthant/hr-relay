@@ -654,6 +654,20 @@ export class RunQueueProjection {
      */
     if (event.t === "transaction.previewed") return { runIds: [], workerChanged: false };
 
+    /**
+     * D270 — `data.observed`. The queue row's vocabulary is task spans and
+     * terminal outcomes; a recorded page observation is neither, and folding it
+     * into a span it is not would be D123's collapse by another route. It is
+     * therefore IGNORED HERE BY NAME rather than by falling through, so a
+     * fourth reader of this union is a compile error instead of a silently
+     * mis-folded event. The run-detail side that renders these rows is
+     * `03a-finish-the-dashboard.md` §Observed logs' FE row; this arm exists so
+     * that a stream carrying them cannot degrade `rebuildFromJsonl` /
+     * `ingestFromDisk` in the meantime — a degraded ingest schedules a rebuild
+     * and a rebuild that refused the line would report real history as corrupt.
+     */
+    if (event.t === "data.observed") return { runIds: [], workerChanged: false };
+
     // span.ended
     if (event.kind === "task") {
       const row = this.#row(event.runId, event.t);

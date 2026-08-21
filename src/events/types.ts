@@ -39,6 +39,11 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HEX64_PATTERN = /^[0-9a-f]{64}$/;
 const TRACE_PATTERN = /^[a-z0-9]{2}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/;
+/** `TaskIdSchema`'s grammar, restated (this leaf imports nothing but zod). */
+const TASK_ID_PATTERN =
+  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** `ContractFieldPathSchema`'s grammar, restated. */
+const FIELD_PATH_PATTERN = /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/;
 
 const UuidSchema = z.string().regex(UUID_PATTERN, "must be a UUID");
 const SlugSchema = z.string().regex(SLUG_PATTERN, "must be kebab-case");
@@ -46,6 +51,22 @@ const Hex64Schema = z.string().regex(HEX64_PATTERN, "must be SHA-256 hex");
 const IsoInstantSchema = z.iso.datetime({ offset: true });
 const PositiveIntSchema = z.number().int().positive();
 const SpanPathSchema = z.string().min(1);
+export const SpanTaskIdSchema = z.string().regex(TASK_ID_PATTERN, "must be <registered-store>/<kebab-case-operation>");
+export const SpanFieldPathSchema = z.string().regex(FIELD_PATH_PATTERN, "must be a dot-delimited camelCase object path");
+
+/**
+ * `JsonValueSchema`, restated — the same recursion `src/domain/canonical-json.ts`
+ * declares. It is restated rather than imported for this module's whole reason
+ * for existing: the wire leaf must not drag the server module graph behind it.
+ */
+const JsonValueWireSchema: z.ZodType<unknown> = z.lazy(() => z.union([
+  z.null(),
+  z.boolean(),
+  z.number().finite(),
+  z.string(),
+  z.array(JsonValueWireSchema),
+  z.record(z.string(), JsonValueWireSchema),
+]));
 
 /** The closed browser-system vocabulary; pinned against `src/domain/ids.ts`. */
 export const SpanBrowserSystemSchema = z.enum([
@@ -183,6 +204,61 @@ const TransactionPreviewedSchema = z.strictObject({
   externalCommit: z.literal("none"),
 });
 
+/**
+ * D270 — an observed data point's redacted value. The parity twin of
+ * `RedactedFieldSchema` (`src/domain/redaction.ts`), restated arm-for-arm; the
+ * round-trip cases in `tests/unit/events/span-events.test.ts` enumerate every
+ * classification and every transform, because the D215 lesson is that two
+ * schemas calling each other twins still fork on the arm nobody emits.
+ */
+export const SpanDataClassificationSchema = z.enum([
+  "secret", "credential-file", "direct-identifier", "sensitive-hr", "safe-diagnostic",
+]);
+const RedactedSpanValueSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    key: z.string(),
+    state: z.literal("redacted"),
+    classification: SpanDataClassificationSchema,
+    transform: z.literal("drop"),
+  }),
+  z.strictObject({
+    key: z.string(),
+    state: z.literal("transformed"),
+    classification: SpanDataClassificationSchema,
+    transform: z.enum(["digest", "last4", "basename", "count"]),
+    value: z.union([Hex64Schema, z.string(), z.number().int().nonnegative()]),
+  }),
+  z.strictObject({
+    key: z.string(),
+    state: z.literal("allowed"),
+    classification: z.literal("safe-diagnostic"),
+    transform: z.literal("allow"),
+    value: JsonValueWireSchema,
+  }),
+]);
+
+/** One recorded point; see `src/core/span-emitter.ts` for why it carries no `system`. */
+const ObservedDataPointWireSchema = z.strictObject({
+  direction: z.enum(["read", "write"]),
+  field: SpanFieldPathSchema,
+  values: z.array(RedactedSpanValueSchema).min(1),
+});
+export type ObservedDataPointWire = z.infer<typeof ObservedDataPointWireSchema>;
+
+/**
+ * D270 — the observed-log emission. Its parity twin lives in
+ * `src/core/span-emitter.ts`; that arm carries the reasoning.
+ */
+const DataObservedSchema = z.strictObject({
+  t: z.literal("data.observed"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  nodeId: SlugSchema,
+  taskId: SpanTaskIdSchema,
+  observedAt: IsoInstantSchema,
+  points: z.array(ObservedDataPointWireSchema).min(1),
+});
+
 const GateResolvedSchema = z.strictObject({
   t: z.literal("gate.resolved"),
   ...BaseFields,
@@ -251,6 +327,7 @@ export const SpanEventWireSchema = z.union([
   GateOpenedSchema,
   GateResolvedSchema,
   TransactionPreviewedSchema,
+  DataObservedSchema,
   TaskSpanEndedSchema,
   RunSpanEndedSchema,
   WorkerSpanEndedSchema,

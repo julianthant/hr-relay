@@ -139,6 +139,41 @@ describe("span JSONL writer", () => {
     const patched = readEventStreamLines(root, "spans").filter((line) => line.text.includes("span.patched"));
     assert.equal(patched.length, 0);
   });
+
+  it("writes a data.observed line, and never one carrying an unredacted value (D270)", () => {
+    const root = stateRoot();
+    const clock = manualClock(AT);
+    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    writer.emit(queuedEvent(clock));
+    const observed = (values: readonly unknown[]): Record<string, unknown> => ({
+      t: "data.observed", ts: clock.now().toISOString(), workflow: "person-lookup",
+      runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: `${TRACE}/searching#1.1`, parentSpanPath: TRACE,
+      nodeId: "searching", taskId: "ucpath/search-person-org", observedAt: clock.now().toISOString(),
+      points: [{ direction: "read", field: "selection", values }],
+    });
+    writer.emit(observed([
+      { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "resolved" },
+      { key: "selection.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "6712" },
+    ]));
+    // The point is emitted at RECORD time, so the arm must survive being
+    // written many times under one span identity — unlike an open or a close,
+    // an observation is not once-per-span.
+    writer.emit(observed([
+      { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "ambiguous" },
+    ]));
+    const lines = readEventStreamLines(root, "spans").filter((line) => line.text.includes("data.observed"));
+    assert.equal(lines.length, 2);
+    assert.match(lines[0]?.text ?? "", /"pid":1/);
+    assert.match(lines[0]?.text ?? "", /"6712"/);
+    assert.doesNotMatch(lines[0]?.text ?? "", /10456712/);
+
+    // An unclassified value is refused BEFORE any byte reaches disk: the wire
+    // leaf has no arm for a bare `{key, value}`, which is what makes "redacted
+    // by declaration" a property of the stream rather than of the emitter.
+    assert.throws(() => writer.emit(observed([{ key: "selection.eid", value: "10456712" }])));
+    const after = readEventStreamLines(root, "spans").filter((line) => line.text.includes("data.observed"));
+    assert.equal(after.length, 2);
+  });
 });
 
 describe("note JSONL writer and schema-owned redaction", () => {
