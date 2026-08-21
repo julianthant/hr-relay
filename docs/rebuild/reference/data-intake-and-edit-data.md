@@ -2142,9 +2142,12 @@ is new code and must be re-checked against real rosters, not assumed.
 
 <!-- roadmap: order-6 -->
 
-Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow.
+Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow. **This example is the
+order-6 TARGET state, not a transcript**: `work-study` is not in the tree, and step 4's saved
+mapping has no store (§2.3). Steps 1–3, 5 and 6 are each executable today against a workflow that
+declares an intake projection — `person-lookup` is the one that does.
 
-1. **Upload → parse.** `extraction/parse-csv` sniffs the header row and returns three columns:
+1. **Upload → parse.** `extraction/extract-spreadsheet` sniffs the header row and returns three columns:
    `"Employee ID#"`, `"Student Name"`, `"Dept"` (+ sample values per column). Fingerprint computed.
 2. **Map.** No saved mapping for this fingerprint (first time). The grid shows the two required
    canonical fields — `eid`, and a name field — plus optional `department`. Fuzzy suggestions
@@ -2157,8 +2160,10 @@ Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow.
    - row 31, column `"Employee ID#"` → `eid`: value `"TBD"` — not numeric.
 4. **Fix in the intake grid.** The operator corrects row 17's cell to `10456712` (re-coerces live →
    valid) and row 31 to `10998801` (valid). Now **42 valid, 0 unresolved**; the immutable manifest
-   still records two rejection events and two corrections linked to the original cells. The mapping is saved under
-   `config/column-mappings/work-study/<fingerprint>.json` for next week's identically-shaped export.
+   still records two rejection events and two corrections linked to the original cells. The mapping would be saved under
+   `config/column-mappings/work-study/<fingerprint>.json` for next week's identically-shaped export
+   — **the one step of this example nothing implements**: the reuse logic exists and no writer
+   does, so today week two re-maps from scratch (§2.3).
 5. **Run.** `Run` enables; 42 inputs fan out as an `operation` coordinator + 42 `operation-member`
    rows, each input `WorkStudyInput`-valid by construction.
 6. **A member parks / stops.** Member #12 (`emplId 10456712`) parks at a gate (or fails at a step).
@@ -2173,13 +2178,17 @@ Operator uploads `WorkStudy_July.xlsx` targeting the work-study workflow.
 
 ## 9. Settled intake defaults
 
+Cited elsewhere as **§9.1–§9.5** — the numbered items below, which are questions closed by
+decision, not headings.
+
 1. ~~Canonical EID width~~ — **resolved 2026-07-22:** adopt `/^10\d{6}$/` everywhere and audit the
    loose legacy consumers at migration. A genuinely different source identifier gets a distinct
    domain type and explicit conversion; there is no `legacyEid` escape hatch (§1).
 2. ~~Mapping storage location~~ — **resolved 2026-07-21:** versioned, schema-validated JSON at
    `config/column-mappings/<workflow>/<fingerprint>.json`, written temp+fsync+rename. It is
    operator-greppable configuration, not run authority; malformed files fail loud and never fall
-   back to a nearest mapping.
+   back to a nearest mapping. *(The decision stands and is UNBUILT — §2.3 records what exists and
+   who owns the writer. A settled question is not a shipped feature.)*
 3. ~~Roster freshness budget~~ — **resolved 2026-07-22:** 24h is the conservative base maximum and
    consumers may narrow it. File mtime is not truth (copying a file changes it); freshness is the
    observation time of the immutable content-addressed roster artifact. Crossing the budget requires
