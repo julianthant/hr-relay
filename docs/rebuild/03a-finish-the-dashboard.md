@@ -235,8 +235,9 @@ attributed to a ratified wave-2 decision before the operator approved it.
 - [?] D8 models for intake / archive / log-panel, the versioning half of `archive.tsx` split out, ONE `foldTaskExecutions(row)`
 - [?] D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured
 - [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
-- [ ] D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251)
+- [x] D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads on `WorkflowStartWireSchema`, `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import, and `dashboard-wire-boundary` arm (15) holds the closure (amends D251; `149bc5f8`, `0911becd`; bundle 1,114,214 → 753,197 bytes)
 > 2026-08-20 | docs-cohesion 03a | every row re-verified unlanded at HEAD against src/server/dashboard and src/dashboard; D6–D10 stay proposed behind the named trigger, which has not fired
+> 2026-08-21 | track-d D11 | D11 LANDED (`149bc5f8` the wire block + server projection + a test driving `buildBootstrap` over the whole registry, `0911becd` the frontend drop + `dashboard-wire-boundary` arm 15, proved to bite). `ref frontend-backend-integration` §4's one named divergence is closed and its §7.4 exit-criterion 2 is MET. Bundle 1,114,214 → 753,197 bytes; `run-start.tsx` needed no edit — the composed `RunStartWorkflow` is identical field for field. Left in this track: D2–D5
 > 2026-08-21 | track-d D1 | D1 LANDED as **D268** (`81bfed73`) — one `deriveRunStatus`, one task-outcome vocabulary (`cancelled` wins on D123's rule; `PipelineStepWireSchema.state` gains the arm), one `panelKindOf`, in a sibling module because the archive read path may not reach the projector's registry import; left: D2–D5 and D11
 > 2026-08-21 | track-d D2 | D2 LANDED — four commits by category. The status mapper stopped reading its own error MESSAGES (`f39b2e95`): three declared kinds, every reachable producer converted, and a test that a plain `Error` wearing each retired phrase is a 500 rather than the 404 the substring table gave it. The phone-host gate is WIRED rather than deleted (`47eeb44e`) — `capture.ingress: "forwarded"` is a mode an operator can set today, so the scope check now has a producer instead of waiting for the byte-path slice that would open the door in the same commit; the guard gains §2b so it cannot lose that producer in silence. `GET /api/v1/dashboard` was KEPT against the audit's reading: two tests drive it, one of them the only proof a really-composed BFF serves a day. `INTAKE_UPLOAD_MEDIA_TYPES` was kept exported for its named open wire task. One operator-visible change: the receipt's TEST banner no longer uppercases its system names
 > 2026-08-21 | track-d3 | D3 LANDED (`1b13115f`, guard `5c36a82d`) — the seven hand-enumerating sites now read `settleCommandResult`, which gained the server's own per-arm facts beside the composed sentence so a surface drawing a refusal in its own components need not re-take the union apart; ZERO operator text moved, deliberately, because the parity corpus photographs identity-approve's conflict alert
@@ -291,7 +292,7 @@ forward on the audit's say-so.
 | D4 | whole-day zod re-parse and whole-tree re-render per SSE patch | zero `React.memo` anywhere under `src/dashboard` |
 | D5 | member preview, duplicate receipt reads, whole-notes-corpus reads, the archive freeze loop | ~~unchanged in `run-queue-projection.ts` / `run-detail.ts` / `archive.ts`~~ **CLOSED 2026-08-21** (`d6d6c758`, `c1fa129b`, `c74efcca`, `c547f65a`) — all four bounded, behaviour byte-identical over the §7.4 fixture, measured and recorded |
 | D6–D10 | the maintainability slice | proposed; the trigger has not fired |
-| D11 | `WORKFLOW_DESCRIPTORS` in the browser bundle | still imported at `dashboard-app.tsx:25`, used at `:516` |
+| D11 | `WORKFLOW_DESCRIPTORS` in the browser bundle | ~~still imported at `dashboard-app.tsx:25`, used at `:516`~~ **CLOSED 2026-08-21 (`149bc5f8`, `0911becd`)** — the three fields ride `WorkflowStartWireSchema`, the import is gone, and `dashboard-wire-boundary` arm (15) refuses any dashboard entry whose closure reaches `src/workflows/**` or `src/control/**`; bundle 1,114,214 → 753,197 bytes |
 
 **D4 and D5 are also the first measurement `ref frontend-backend-integration` §7.4 ever gets.** That
 section's budgets have never carried a measured number — it says so itself ("Not one of these is
@@ -305,12 +306,23 @@ phase's exit criteria and not only in the cutover's.
 task does, and until then they stay `proposed`. Once D1–D5 land they can be dispatched as
 independent worktree units.
 
-**D11 answers the audit's one open question.** `WORKFLOW_DESCRIPTORS` drags 49 modules into the
-browser bundle to supply three plain fields. D251 had ruled that the bundle already carries them, so
-serving them over bootstrap would be a second source; the operator ruled the other way — the
-registry LEAVES the bundle, bootstrap serves `summary`, `enqueue` and `surfaces.inputRun`, and the
-frontend drops the import. Bytes are irrelevant locally; the principle is that the frontend renders
-finished read models.
+**D11 answered the audit's one open question, and LANDED 2026-08-21.** `WORKFLOW_DESCRIPTORS`
+dragged 49 modules into the browser bundle to supply three plain fields. D251 had ruled that the
+bundle already carries them, so serving them over bootstrap would be a second source; the operator
+ruled the other way — the registry LEAVES the bundle, bootstrap serves `summary`, `enqueue` and
+`surfaces.inputRun`, and the frontend drops the import. Bytes were called irrelevant locally and the
+principle — the frontend renders finished read models — was the whole argument; the bytes turned out
+to be the larger half anyway. **Measured at the change: 1,114,214 → 753,197, a 32 % production
+bundle.** The as-built lives in `ref frontend-backend-integration` §4.
+
+Two things the build is worth remembering for. **The rule is held by a CLOSURE arm, not a lint on
+import lines** (`dashboard-wire-boundary` (15)): one shared helper re-exporting a descriptor would
+put the whole tuple back with nothing in the diff that reads like a registry import, and the arm was
+proved to bite by re-adding the deleted import. And **serving a fact does not change where its bytes
+came from**: the redaction audit demanded an origin for seven new free-text leaves — the summary,
+the placeholder, the delimiters, D250's worked examples — and every one is a descriptor constant a
+developer typed into this repository, so every one is `repository-authored`. A guard asking that
+question at the moment a field crosses onto a wire is the guard working.
 
 ## Demo fidelity — every detail, region by region
 <!-- roadmap: track-f -->
@@ -677,7 +689,7 @@ stricter bar Track F carries (row 10).
 | 2 | **The findings ledger is zero-or-decided** | **MET** | `docs/findings/README.md`, B8 sweep 2026-08-20: five open records across two files, each naming the commit that closes it; zero undecided |
 | 3 | **Track C met** — the real dashboard drove a real composed run, every claim paired to authority | **MET** | `docs/migrations/separations.md` §9.22 items 1–8; three runs; four defects plus the archive unblock (D258), all fixed same-day; §9.24's live `sp-105225-1e0b` |
 | 4 | **The reference corpus asserts over the corrected surfaces** | **MET** | `81287bb1` — 139 references re-frozen after the fixes, 151 assert-mode cases green, every drift attributed to a ratified decision |
-| 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **open** | D1 LANDED 2026-08-21 (**D268**, `81bfed73`) — one fact, one derivation, held by a test that asserts the row and the panel against each other; D2–D5 and D11 remain unlanded (see the Track D table); D6–D10 stay `proposed` behind their named trigger and are outside this gate |
+| 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **open** | D1 LANDED 2026-08-21 (**D268**, `81bfed73`) — one fact, one derivation, held by a test that asserts the row and the panel against each other. D11 LANDED 2026-08-21 (`149bc5f8`, `0911becd`) — the registry is out of the browser bundle (1,114,214 → 753,197 bytes), held by `dashboard-wire-boundary` arm (15). D2–D5 remain unlanded (see the Track D table); D6–D10 stay `proposed` behind their named trigger and are outside this gate |
 | 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **open** | the instrument and its BEFORE baseline landed 2026-08-21 (`407d373f`), and **D5's AFTER numbers are recorded** against the same seeded 1,240-row / 108-member fixture (`c547f65a`); D4 still owes its half, and the recorded numbers become the non-regression gate |
 | 7 | **The Duo ceremony lease landed** | **met (D267, bfc7d318…1c244a40)** | `duo_ceremony_leases` is schema v16; `defineVerifiedLoginRecipe` runs its `ceremony` half only under the lease token; the live two-worker cold start is still to be recorded |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the kernel arms exist; the supervisor refuses spawn by name and the projection serves no pool version |

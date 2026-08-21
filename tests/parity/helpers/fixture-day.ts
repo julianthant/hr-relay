@@ -1176,6 +1176,19 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
     // D219 — the served taxonomy fact. The corpus carries one standalone
     // workflow, so nothing here nests under anything.
     role: { kind: "standalone" },
+    // D264/D11 — the Run Modal's three start facts, now SERVED rather than read
+    // off the bundled descriptor tuple. Projected from the descriptor exactly
+    // as `buildBootstrap` projects it, because a fixture that composed its own
+    // sentence here would photograph a modal no server can produce.
+    start: {
+      ...(personLookupDescriptor.summary === undefined
+        ? {}
+        : { summary: personLookupDescriptor.summary }),
+      enqueue: personLookupDescriptor.enqueue,
+      ...(personLookupDescriptor.surfaces.inputRun === undefined
+        ? {}
+        : { inputRun: personLookupDescriptor.surfaces.inputRun }),
+    },
   }],
   systemInstances: [
     { system: "ucpath", prod: "available", test: { state: "available" } },

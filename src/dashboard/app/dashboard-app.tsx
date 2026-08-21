@@ -21,8 +21,6 @@ import {
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
-import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
-import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
 import { FileSpreadsheet, PanelRight } from "lucide-react";
 import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -508,14 +506,24 @@ function LoadedApp({
     return workflows.map((entry): RunStartWorkflow => {
       const workflowId = String(entry.id);
       /**
-       * The descriptor the browser already holds. D251's three modal facts —
-       * `summary`, `enqueue` and the typed-input surface (with D250's declared
-       * examples riding on it) — are all plain data on `AnyWorkflowDescriptor`,
-       * so none of them grows a wire: serving a fact the bundle already carries
-       * would give this surface two sources for one value.
+       * D264 (amending D251) — the three modal facts, SERVED.
+       *
+       * They used to be read off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple
+       * right here, on the argument that serving a fact the bundle already
+       * carries would give this surface two sources for one value. The argument
+       * was right about the two sources and wrong about the price: holding that
+       * tuple is what put every registered workflow's whole descriptor closure
+       * in the browser bundle, for three plain-data fields. They now ride on the
+       * boot document's own workflow entry, projected at the composition root
+       * from the same descriptor the daemon plans with — one source still, and
+       * `dashboard-wire-boundary`'s registry-reach arm holds the tuple out.
+       *
+       * Nothing is re-parsed and nothing is defaulted: `parseWorkflows` already
+       * put this whole block through `WorkflowBootstrapPrimitiveSchema`, and the
+       * old `?? "reject-active"` stood in for a fact the server always had, so
+       * a served `enqueue` is now simply required.
        */
-      const descriptor = WORKFLOW_DESCRIPTORS.find((d) => d.id === workflowId);
-      const declared = descriptor?.surfaces.inputRun;
+      const start = entry.start;
       return {
         workflowId,
         label: entry.label,
@@ -524,17 +532,12 @@ function LoadedApp({
         // groups by the same rule the rail does, and neither infers it.
         role: entry.role,
         code: entry.code,
-        ...(descriptor?.summary === undefined ? {} : { summary: descriptor.summary }),
-        // A workflow the bundle cannot resolve has no declared policy to state,
-        // and `reject-active` is the fail-closed reading of "we do not know".
-        // It cannot happen — the boot list IS the registry — but a substituted
-        // `allow-parallel` would be the dangerous guess, so the safe arm is the
-        // one written down.
-        enqueue: descriptor?.enqueue ?? "reject-active",
+        ...(start.summary === undefined ? {} : { summary: start.summary }),
+        enqueue: start.enqueue,
         inputRun:
-          declared === undefined
+          start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
-            : { state: "present", surface: InputRunSurfaceSchema.parse(declared) },
+            : { state: "present", surface: start.inputRun },
         systemInstances,
       };
     });
