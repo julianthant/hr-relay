@@ -801,9 +801,9 @@ export interface TransactionNodeWiring<
   D extends readonly (keyof S & string)[],
 > {
   readonly dependsOn: D;
-  readonly prepare: (scope: ScopeFor<InputSchema, S, D>) => z.input<P["input"]>;
+  readonly prepare: Readonly<{ bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<P["input"]> }>;
   /** Never sees prepare output — the durable key is stable before page mutation. */
-  readonly commit: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]>;
+  readonly commit: Readonly<{ bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]> }>;
 }
 
 export interface GateNodeWiring<S, D extends readonly (keyof S & string)[]> {
@@ -958,8 +958,8 @@ export function defineTransactionNode<
       return (builder) => builder.transaction(id, {
         label: identity.label,
         dependsOn: wiring.dependsOn,
-        prepare: { uses: identity.prepare, bind: wiring.prepare },
-        commit: { uses: identity.commit, bind: wiring.commit },
+        prepare: { uses: identity.prepare, bind: wiring.prepare.bind },
+        commit: { uses: identity.commit, bind: wiring.commit.bind },
         dryRun: identity.dryRun,
         probePolicy: identity.probePolicy,
         probeToFenceMaxMs: identity.probeToFenceMaxMs,

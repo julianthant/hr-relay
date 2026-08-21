@@ -656,14 +656,14 @@ const piped = flow(WORKFLOW_INPUT)
   .pipe(approvalFragment.wire({ dependsOn: ["read-contact"] }))
   .pipe(terminationFragment.wire({
     dependsOn: ["approval", "search-person", "read-contact"],
-    prepare: ({ outputs }) => ({
+    prepare: { bind: ({ outputs }) => ({
       eid: outputs["search-person"].eid,
       effectiveDate: outputs.approval.approved ? outputs["read-contact"].email : "never",
-    }),
-    commit: ({ outputs }) => ({
+    }) },
+    commit: { bind: ({ outputs }) => ({
       eid: outputs["search-person"].eid,
       effectiveDate: outputs.approval.approved ? outputs["read-contact"].email : "never",
-    }),
+    }) },
   }));
 
 const pipedNodes: readonly [

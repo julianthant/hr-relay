@@ -210,18 +210,18 @@ const separationsUcpathTerminationFlow = flow(SeparationsUcpathTerminationInput)
   }))
   .pipe(clearPendingNode.wire({
     dependsOn: [APPROVAL_NODE],
-    prepare: ({ outputs }) => ({
+    prepare: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-    }),
-    commit: ({ outputs }) => ({
+    }) },
+    commit: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-    }),
+    }) },
   }))
   .pipe(fileTerminationNode.wire({
     dependsOn: [APPROVAL_NODE, TERMINATION_TYPE_NODE, SWEEP_NODE],
-    prepare: ({ input, outputs }) => ({
+    prepare: { bind: ({ input, outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: input.emplRecord,
@@ -230,8 +230,8 @@ const separationsUcpathTerminationFlow = flow(SeparationsUcpathTerminationInput)
       reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
       lastDateWorked: input.lastDateWorked,
       initiatorComments: input.initiatorComments,
-    }),
-    commit: ({ input, outputs }) => ({
+    }) },
+    commit: { bind: ({ input, outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: input.emplRecord,
@@ -240,7 +240,7 @@ const separationsUcpathTerminationFlow = flow(SeparationsUcpathTerminationInput)
       reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
       lastDateWorked: input.lastDateWorked,
       initiatorComments: input.initiatorComments,
-    }),
+    }) },
   }))
   .build({
     schema: SeparationsUcpathTerminationResultSchema,

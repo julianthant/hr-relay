@@ -479,18 +479,18 @@ const separationsFlow = flow(SeparationsInput)
   }))
   .pipe(clearPendingNode.wire({
     dependsOn: [APPROVAL_NODE],
-    prepare: ({ outputs }) => ({
+    prepare: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-    }),
-    commit: ({ outputs }) => ({
+    }) },
+    commit: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-    }),
+    }) },
   }))
   .pipe(fileTerminationNode.wire({
     dependsOn: [APPROVAL_NODE, TERMINATION_TYPE_NODE, EMPLOYMENT_NODE, DATES_NODE, SWEEP_NODE],
-    prepare: ({ outputs }) => ({
+    prepare: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
@@ -499,8 +499,8 @@ const separationsFlow = flow(SeparationsInput)
       reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
       lastDateWorked: outputs[DATES_NODE].lastDayWorked,
       initiatorComments: outputs[DATES_NODE].terminationComments,
-    }),
-    commit: ({ outputs }) => ({
+    }) },
+    commit: { bind: ({ outputs }) => ({
       emplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
       emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
@@ -509,7 +509,7 @@ const separationsFlow = flow(SeparationsInput)
       reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
       lastDateWorked: outputs[DATES_NODE].lastDayWorked,
       initiatorComments: outputs[DATES_NODE].terminationComments,
-    }),
+    }) },
   }))
   .pipe(receiptNode.wire({
     dependsOn: [APPROVAL_NODE, DATES_NODE, TERMINATION_NODE],
@@ -527,7 +527,7 @@ const separationsFlow = flow(SeparationsInput)
       APPROVAL_NODE, ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE,
       DATES_NODE, RECEIPT_NODE,
     ],
-    prepare: ({ input, outputs }) => ({
+    prepare: { bind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -556,14 +556,14 @@ const separationsFlow = flow(SeparationsInput)
         }),
         observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
       },
-    }),
+    }) },
     /**
      * The SAME target the prepare staged, bound from workflow input plus the
      * gate-approved identity and the folds — never from the prepare's own
      * output. That is what makes the permanent key stable before any page
      * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
      */
-    commit: ({ input, outputs }) => ({
+    commit: { bind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -587,7 +587,7 @@ const separationsFlow = flow(SeparationsInput)
         }),
         observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
       },
-    }),
+    }) },
   }))
   .build({
     schema: SeparationsResultSchema,

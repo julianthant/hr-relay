@@ -485,8 +485,8 @@ describe("workflow flow builder", () => {
         .pipe(approvalFragment.wire({ dependsOn: ["contact"] }))
         .pipe(terminateFragment.wire({
           dependsOn: ["approval", "search"],
-          prepare: ({ outputs }) => ({ eid: outputs.search.eid }),
-          commit: ({ outputs }) => ({ eid: outputs.search.eid }),
+          prepare: { bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
+          commit: { bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
         }))
         .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["search"], derive: ({ outputs }) => ({ eid: outputs.search.eid }) });
       const stripBinds = (nodes: readonly GraphNodeBase[]): unknown =>

@@ -271,7 +271,7 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
   }))
   .pipe(finalizeKualiNode.wire({
     dependsOn: [APPROVAL_NODE, DEPARTMENT_NODE],
-    prepare: ({ input, outputs }) => ({
+    prepare: { bind: ({ input, outputs }) => ({
       actionId: input.actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -287,8 +287,8 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
         timekeeperComments: input.timekeeperComments,
         observedExistingComments: input.observedExistingComments,
       },
-    }),
-    commit: ({ input, outputs }) => ({
+    }) },
+    commit: { bind: ({ input, outputs }) => ({
       actionId: input.actionId,
       documentNumber: input.documentNumber,
       emplId: outputs[APPROVAL_NODE].approved.emplId,
@@ -304,7 +304,7 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
         timekeeperComments: input.timekeeperComments,
         observedExistingComments: input.observedExistingComments,
       },
-    }),
+    }) },
   }))
   .build({
     schema: SeparationsKualiFinalizationResultSchema,
