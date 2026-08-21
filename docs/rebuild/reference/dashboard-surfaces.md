@@ -2327,6 +2327,10 @@ That changes where the declaration is READ, not what it says.
 - [x] D261 — the typed start surface takes ONE box; `separations` derives the Kuali action id as a graph output rather than asking for a second value
 - [x] D226 — the three identity-approval ceremonies and rejection, shape decided server-side (§9.4 carries the text)
 - [x] D237 — a settled gate's decision record renders inline at `resolvedAt`, read from the durable `gate_results` row (§9.4)
+- [x] D211 — the write plan rides INSIDE the packet, so §14.5's digest binds the dates, the template and the department; a moved date re-opens the gate (§9.4)
+- [x] D245 — the confirmed-present arm serves its proof contract, described field by field; nothing pre-filled, nothing pasted (§9.4)
+- [x] D20 — `Write parked` is an unknown outcome and has exactly two typed exits; a parked row is sent no data-mutating command at all (§9.4)
+- [ ] the gate PACKET is separations-shaped — a second gated workflow adds its own section arm or generalises it (`{#order-4-dash}`, `{#order-9-dash}`, §9.4)
 - [!] `supersede-active` says two different things: implemented in `run-fan-out.ts`, unchecked in `services/start/plan.ts`. Two code sites disagree; the surface prints the planner's truth
 - [ ] D15 — person-lookup's Search and Match modes: `src/workflows/person-lookup/descriptor.ts` declares ONE graph and no mode (`{#order-1}`, §9.10)
 - [ ] the upload / capture / spreadsheet / bare method kinds, and with them the method tabs — no registered workflow declares `surfaces.uploadRun` (2h-deferred)
@@ -3163,9 +3167,149 @@ corrected, under what freshness rule, and what a correction does to a resumed ru
 
 ### 9.4 The gate ceremony — and the parked-write resolution beside it
 
-**Stub — written by unit 5.1c.** Inherits D226's three ceremonies, D237's settled decision record,
-D211's write plan inside the packet, and row-model D20's two typed exits. Wire:
-`ref frontend-backend-integration` §5.1.4.
+<!-- roadmap: sep-dash -->
+
+The `sep-dash` checklist lives in §9.1's status block; this section adds no second one.
+
+**What it is.** The two places where the system STOPS and asks a human, rendered INLINE in the run's
+own log stream rather than as a banner or a modal. A gate is a *pre-submit* hold — the run has
+written nothing and wants a decision. A parked write is a *post-fence* hold — the run may already
+have filed something and does not know. They look adjacent and mean opposite things, and keeping
+them apart is the whole point of D20.
+
+**What it shows.** A parked run's detail advertises exactly one ceremony section — `identity-gate` or
+`parked-write` — and the section carries the packet, the SERVER-computed `approvalShape`, and the
+typed resolutions. **The surface renders exactly the shape the server named; an unknown shape refuses
+by name and blocks the send.** A frontend free to choose the control could quietly turn every gate
+into one click, which is `ref write-safety` §14.6's rubber-stamping risk manufactured by accident.
+
+**What it commands.** `resolve-gate`, `resolve-write-present`, `resolve-write-absent`, and nothing
+else. The command carries only what no served fact supplies; every other leaf is read off the
+section. The backend stores the decision and the gate result atomically and enqueues any
+descriptor-declared children in the same authority transaction; a conflict returns the fresh
+projection and the client keeps the draft for comparison.
+
+#### The three ceremonies, and the refusal that is the fourth (D226)
+
+The frontend had implemented ONE of the shapes `ref write-safety` §14.6 risk 1 requires.
+`choose-a-candidate`, `type-the-eid` and every rejection were refused by name in
+`command-dispatch.ts`, so **a separations run whose packet was anything but unambiguous had no answer
+available in the dashboard at all** — the run parked, the operator opened it, and the surface offered
+nothing. All three now exist against the server-computed shape:
+
+- **`one-click`** — the unambiguous packet, approved as one act.
+- **`choose-a-candidate`** — **no default is selected**, and the `chosenFrom` label is taken off the
+  SERVED option rather than re-composed on the client, so the record names the string the operator
+  actually read.
+- **`type-the-eid`** — the operator re-enters the identifier, which is the one ceremony that cannot
+  be completed by muscle memory.
+- Plus **reject-with-reason** on all three, and an **unrecognised shape draws a named refusal instead
+  of the approve button.** A ceremony this build cannot render must not degrade into the cheapest one.
+
+The packet leads with DISCONFIRMING evidence, and `approvalShape` is computed SERVER-side, for the
+reason the incident that motivated the gate makes plain:
+`classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns **`same`**, because the
+token alignment tolerates extra tokens on the longer side, and legacy fires its wrong-person control
+only on `different`. That single fact is the argument for an ALWAYS-GATE in one line. The parity
+corpus gained its first gated run with this decision.
+
+#### The packet carries what the WRITES will consume (D211)
+
+A gate DEPENDENCY is not a gate PACKET, and the difference is the digest an approval binds to.
+`ref write-safety` §14.5 binds an approval to the digest of the exact packet SHOWN, so a value the
+gate merely depends on is a value the approval does not cover. `SeparationWritePlanSchema` therefore
+rides INSIDE `IdentityEvidencePacketSchema`: the digest covers the template, the reason code, the
+empl record, the department option, the payroll titles, the reconciled dates and the comment text the
+writes will consume. **A date that moves after approval RE-OPENS the gate — before this, approving a
+person and approving a date were the same click.** The `not-composed` arm is REQUIRED with a stated
+reason rather than optional, because an optional block is one a composition can forget to fill while
+every gate still renders and every guard still passes.
+
+#### A settled gate names the verdict, the approver and the instant (D237)
+
+`run-detail`'s `resolved` gate arm was keyed on the span stream's `resolutionKey`, and the command
+service emits the literal `resolved` for EVERY gate — deliberately, with a comment naming the
+display-key deferral. So the approve/reject arm was **structurally unreachable**: every settled gated
+run's panel reported the gate ABSENT, in a reason that reads like a data problem, while `resolvedBy`
+had sat in authority since D202 and in the receipt since D204.
+
+The verdict now comes from `authority.gateResults.listByRun` through D204's own declared arm table,
+with `resolvedBy` / `resolvedAt` off the row the kernel wrote inside the resolving transaction — the
+SAME derivation the receipt uses, so the two surfaces an operator reads side by side cannot name two
+different humans. `resolvedBy` is REQUIRED on the arm, which is safe exactly because the arm was
+unreachable: no served wire and no archived record can hold a `resolved` gate that predates it.
+
+**Panel and receipt diverge on ONE thing, deliberately.** The receipt REFUSES to derive over an
+undeclared gate or an unlisted arm value — it is the durable artifact. The panel must still render
+the run it explains, so every such gap becomes a NAMED absence instead, including the one only the
+projection can create: a folded `gate.resolved` with no durable row beside it. Two surfaces, one
+derivation, two different things to do when it fails.
+
+The record draws in the run's own stream at its `resolvedAt`, in the same geometry as the open gate's
+decision card — verdict, approver, instant. The card's tint carries the verdict and the chip goes
+loud only for a REFUSAL, because a rejected identity is the one an operator must not read past.
+
+#### `Write parked` means an unknown write outcome, and nothing else (D20)
+
+`Write parked` is only for a write whose outcome is genuinely **UNKNOWN**, and it has exactly two
+typed resolutions: **confirmed-present** and **confirmed-absent** (`resolve-write-present` /
+`resolve-write-absent` over `ref write-safety`'s durable intent state). **A pre-submit hold is NOT
+parked — it is a gate.** Parked is the one status that means *we may have already filed something*,
+and diluting it with holds whose state we know destroys the only signal that warrants a live probe.
+(The rebuild demo's `sep-rosa` fixture, which labelled a pre-submit hold `Write parked` with a
+"Resume & submit" action, is wrong and was re-authored as a gate.)
+
+**Reinforced: a parked row is structurally sent no data-mutating command.** The prior action policy
+offered `rerun-with-existing-data` on a parked row — a fresh run seeded from a write whose outcome is
+unknown, which is exactly the duplicate-termination path this decision exists to prevent. A parked row
+is now sent **no** `data`-placement command at all; its only exits are the two typed resolutions. And
+because every control derives from the served `actions[]` (§9.2), the hazardous command is
+**unreachable, not merely hidden.**
+
+#### The confirmed-present arm serves its PROOF CONTRACT (D245)
+
+`resolvePresent` refuses any proof whose `schemaHash` is not the commit contract's own and then parses
+the value through that exact schema — and the parked-write section served **neither the hash nor the
+shape**, so no client could compose either half. The arm was drawn DISABLED on every parked run in the
+build (`proof-contract-unserved`), leaving a write that DID land exactly two exits: record it
+**absent**, which is a durable lie that authorizes a second real submit against a live HR system, or
+leave it parked forever. The copy also told the operator to *"resolve this write from the CLI"*, and
+no run-mutation CLI has ever existed — `POST /api/v1/commands` is the only mutation door.
+
+The section now carries `proofContract`: the commit task, the completion kind, the exact `schemaHash`
+a resolution must echo, and the proof schema DESCRIBED as an ordered list of typed fields
+(`src/validation/proof-shape.ts` — literals the schema pins, constrained strings with their own
+pattern, closed option lists, bounded integers, booleans, addressed by dot path through one nested
+level). Both halves are derived by the composition root beside `gateNodes`, on that view's own rule:
+the BFF queries never reach the descriptor builders, and a query that recomputed a schema hash would
+be a second copy of the contract's identity.
+
+**Nothing is guessed and nothing is pasted.** A shape this build cannot describe answers with a NAMED
+`unavailable` reason and leaves the confirmed-ABSENT arm reachable, because a free-text JSON box is a
+client authoring a durable record about a real HR transaction with only its own opinion of the shape.
+The form **PRE-FILLS NOTHING** — the run holds what it TRIED to write, and offering that back as the
+proof is §14.6's rubber-stamping shape one control over — and the operator does not assert the
+schema's literal `source`, which names which page shape the fields come from; who vouched is recorded
+where it already was, as `proofSource: "operator-attestation"` on the outcome and the ledger entry,
+with the evidence note retained in the command journal. Client-side refusal is per field and EARLY
+over the constraints a wire can carry; a leaf carrying a `.refine()` is served `serverOnlyRules: true`
+so the surface says the server checks more than the box does rather than implying its own tick is the
+verdict. A proof that does not fit is a typed `rejected` / `schema-mismatch` rather than a throw the
+dialog could only report as a transport failure.
+
+**What this square still owes.** The mechanism is generic — the `parked-gate` / `parked-write`
+lifecycles, the section as a wire resource, `resolve-gate` with a schema-bound `result`, the
+`identity-gate-dominance` guard, `gate_results` authority, D204's receipt derivation over the gate
+row. **The PACKET is separations-shaped**, and a second gated workflow either adds its own section arm
+or generalises it; that generalisation is this square's real remaining work and is what
+`{#order-4-dash}` and `{#order-9-dash}` will force. One contract statement is corrected rather than
+carried: an earlier draft described a **Review** gate — records streaming per page, per-field drafts,
+"one gate command containing the full correction set". `GateCommandRequest`'s payload is a single
+schema-bound `result` and the `review` section is declared-unserved (§9.3), so that flow describes
+machinery with no producer on either side. The OCR review gate arrives with the Review panel kind.
+
+**Wire.** `ref frontend-backend-integration` §5.1.4 owns the five-step sequence, the section payloads,
+the three commands and the parity references.
 
 ### 9.5 Archive · Activity · Explorer — the three read surfaces
 
