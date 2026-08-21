@@ -76,6 +76,7 @@ Section numbers are load-bearing: thirteen tree nodes carry a `ref:task-contract
 §2.9 → §2.10 → §2.11 → §2.12, which is also their chronological order.
 
 ---
+
 ## 1. What today's code teaches us (the problems the contract must kill)
 
 **Grounding — read, not imagined.** Every path in this block is a **legacy-repo** path
@@ -115,8 +116,8 @@ stringly re-encoding switch).
 the login (§6.1). (4) is only PARTLY dead: nothing re-encodes task ids in a switch today, but the
 `KnownTaskId` codegen §2.5 and §8 row 2 name as the mechanical guard **was never built** — what
 holds the line instead is that `TaskId` is a branded literal type minted by `taskId(...)` and every
-projection derives from the contract corpus (§3.2). (5) held: `stores/*/impl/**` carries ported
-leaves with provenance, and `legacy-selector-port-provenance` pins 406 keys to a fixed legacy
+projection derives from the contract corpus (§3.2). (5) held: each store's `driver/**` carries the ported
+leaves with provenance (there is no `impl/` directory — §3.1), and `legacy-selector-port-provenance` pins 406 keys to a fixed legacy
 commit's blobs.
 
 ## 2. The Task contract
@@ -1434,6 +1435,8 @@ defineWorkerSessionProvider(system, options?)   // the 1f runtime provider: one 
 - Transaction-node validation proves prepare and commit require the same browser system and
   context, the prepare arm is `in-memory-only`, and there is no gate or checkpoint boundary between
   them (guard `transaction-pairing`).
+
+---
 
 ## 8. Adversarial self-review — rot vectors and their guards
 
