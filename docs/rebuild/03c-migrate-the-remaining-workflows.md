@@ -672,13 +672,58 @@ rejected members never count toward done, and D16 says cancelling a group is tre
 <!-- roadmap: order-5 -->
 
 <!-- roadmap-status: order-5 -->
+- [ ] the §b questionnaire for i9-check — unasked
+- [ ] the operation coordinator AT SCALE — member enqueue, display-only rows, the join; `ref dashboard-surfaces` §7 and `ref execution-and-sessions` §8 are the same worked example from two sides
+- [x] the stable-keyed idempotent workbook SINK exists — `src/infra/artifacts/xlsx-retention-sink.ts` proves `ref data-intake-and-edit-data` §4.1's contract (duplicate key is a verified no-op, changed record is an in-place update, rows sorted by stable key, atomic replace)
+- [ ] the sink is NOT composed in production (D164) — no descriptor declares a projection, so nothing writes a workbook today
+- [ ] the operator-facing workbook layout — the sink's four columns (`stableKey`, `keyValues`, `record`, `projectedAt`) are deliberately the DURABILITY layout; the real column set belongs to this migration, which knows the real fields
+- [ ] the first Excel EXPORT writer (`legacy-export-i9-check-tracker`, open)
+- [ ] PROOF T1 + the T3 pair
+> 2026-08-20 | docs-cohesion 03c | verified against `src/infra/artifacts/xlsx-retention-sink.ts`'s own header (it names this migration as the owner of the display layout) and `config/legacy-capabilities.json`; the durability half is built, the workflow and the display half are not
 <!-- /roadmap-status -->
+
+**What it is.** Verify an I-9 packet across a group of people and maintain the master retention
+workbook. A UCPath read plus a durable roster projection — operation coordinator, member enqueue,
+display-only rows, and **no external submit**. **Systems:** UCPath (driven), `i9` (built at order 1).
+
+**Store tasks.** REUSE `ucpath/search-person-org` and `read-job-summary`, order 1's `i9` read tasks,
+`roster/match-spreadsheet`, and the xlsx retention sink. BUILD the coordinator's own service tasks
+and the export writer.
+
+**Why it is here and not earlier.** It needs order 1's `i9` store and order 4's fan-out. It is the
+first row to run the coordinator at real member counts, and it does that with no write to any HR
+system — which is the point: a scale proof and a write proof are separate, and this one is free.
+
+**The specific hazard: a mutable local file is not a task append.** The §b questionnaire's item 8
+exists for this row. A workflow that updates a mutable local file needs a stable-keyed blocking
+outbox projection, idempotent upsert semantics and an expected-version concurrent-edit policy. The
+sink already implements that and records the rule the hard way — its recorded head hash is the ONLY
+authority on what it last wrote, and a workbook whose bytes hash differently was changed by someone
+else, which is a conflict rather than something to overwrite. The migration's job is the display
+layout and the export, not a second durability model.
+
+**The second hazard: retention.** The master workbook is a retention record about real people. Its
+column set is a redaction decision as much as a layout one, and it should be answered in the
+questionnaire's item 11 (trust contract) before a column exists.
 
 ### Dashboard · wire i9-check
 <!-- roadmap: order-5-dash -->
 
 <!-- roadmap-status: order-5-dash -->
+- [ ] 5.1.1 run modal — typed start inputs + start plan for i9-check
+- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
+- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
+- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] member rows carrying retention status, and the workbook export control
+- [ ] PROOF T2 dashboard scenario for the wired surfaces
+> 2026-08-20 | docs-cohesion 03c | seven squares — six standard (no gate, no intake) plus the retention/member view; it reuses order 4's Group People rather than rebuilding it
 <!-- /roadmap-status -->
+
+This sub-task reuses order 4's group surfaces and adds two things of its own: a member row that
+shows RETENTION status (which is a fact about a document's lifecycle, not about the run), and the
+export control. D17 — per-member confirmation numbers inline on the packet receipt — is the receipt
+detail this row is the first to need.
 
 ## Order 6 · work-study · kronos-pay-rule
 <!-- roadmap: order-6 -->
