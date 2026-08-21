@@ -47,6 +47,24 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
 
 ## Lessons learned
 
+- **2026-08-21: an HTTP status decided by reading an error MESSAGE is a protocol keyed on prose, and
+  every surface that renders a refusal inherits the mistake (Track D row D2, audit C3).** The BFF's
+  `failureStatus` classified every throw by substring — four phrases meant 404, `"is not available"`
+  meant 409, `"degraded"` meant a retryable 500 — so rewording an operator-facing sentence moved its
+  status, a new producer phrasing the same refusal differently silently got a 500, and NOTHING in
+  the gate family could fail when either happened. The kind now travels with the throw
+  (`src/server/failures.ts`: `TargetNotFoundError` / `SectionUnavailableError` /
+  `ProjectionDegradedError`) and `routes/failure-status.ts` maps by `instanceof`. Two things
+  generalize past this file. **The negative control is the test that matters**: the pinned case is a
+  plain `Error` wearing each retired phrase answering 500, because the arm that used to be wrong is
+  the arm nobody would write a test for. And **a mapping worth testing is worth extracting** — the
+  function moved out of `api.ts` into its own module for no reason other than that the claim ("a
+  reworded refusal cannot move a status") is about the mapping, not about any one route, and a test
+  that has to compose a whole app to reach it would have been written against one route and left the
+  rest unpinned. The same commit's other half is the shape D181 named: a scope gate is only
+  enforcement if something SUPPLIES its precondition, so the capture phone-host gate's producer is
+  now pinned by the guard beside the gate's own behaviour, not assumed.
+
 - **2026-08-20: a fetched value is a fact about the MOMENT it was fetched, and three surfaces here
   read one as if it were standing (D256/D257 and §9.22 item 3).** The first time this dashboard was
   driven against a real composed run, all three of its defects were the same mistake: the right KIND

@@ -799,8 +799,10 @@ refetches on every dependency change and every remount, invalidation arrives as 
 prop threaded down from the app, and two components asking for the same run issue two GETs. Nor is
 the "client-only UI state" half here: URL state is `app/url-state.ts`, preferences are
 `lib/preference-storage.ts` + `ds/theme.ts`, panel geometry is `surfaces/layout-metrics.ts`. Two of
-the folder's exports (`useDashboardDaySnapshot`, `useRunSection`) have no importer at all. Track D
-row **D6** is what makes the folder match this table; **D2** deletes the dead pair.
+the folder's exports (`useDashboardDaySnapshot`, `useRunSection`) had no importer at all and were
+DELETED by Track D row **D2** on 2026-08-21 (`69102aaf`); `GET /api/v1/dashboard` and the client's
+`dashboardDay` STAY, because `compose-real-port` — the one test that proves a really-composed BFF
+serves a day — drives them. Track D row **D6** is what makes the folder match this table.
 
 **One row of this table is violated today, deliberately and named.**
 
@@ -1380,10 +1382,7 @@ Context rail's `run.edit-checkpoint`, gated on `capabilities.editData` — decla
 **Generic:** the intake pipeline and the capture session. **Per-workflow:** the intake projection
 each workflow declares, and the Edit Data field list on its descriptor.
 
-**Left:** the operator-side capture-session poll (declared `served-unconsumed`, D175); the phone-host
-gate middleware, which **compiles and never fires** because `deps.capturePhoneHost` is never supplied
-— harmless until D189's ingress exists and exactly the shape D181 warns about, so it is wired or
-deleted-with-a-note in Track D row **D2**; a model file for `intake.tsx`, whose folds are untested by
+**Left:** the operator-side capture-session poll (declared `served-unconsumed`, D175); a model file for `intake.tsx`, whose folds are untested by
 construction (row **D8**); the triple envelope parse in `intake.prepare` and the capture service
 throwing its refusals instead of returning the result union (row **D10**).
 
@@ -1742,10 +1741,19 @@ test fixtures. Four consequences, all real:
 2. **The phone capture page has no delivery path.** `api.ts` allow-lists `/capture.html` for the
    phone host gate and nothing in production serves that file, so 2i-F's token-scoped surface is
    unreachable from a phone even though every route behind it works and is tested.
-3. **The host gate itself is inert.** The `app.use("*")` capture-ingress middleware is composed and
-   `deps.capturePhoneHost` is never supplied, so the gate compiles and can never fire. It is
-   harmless until the ingress exists — and it is exactly D181's shape, a complete tested path with
-   no producer for its one precondition. Track D row **D2** wires it or deletes it with this note.
+3. **The host gate is WIRED (Track D row D2, 2026-08-21, `47eeb44e`).** It was composed with
+   `deps.capturePhoneHost` supplied nowhere, so it compiled and could never fire — exactly D181's
+   shape, a complete tested path with no producer for its one precondition. Row D2 wired it rather
+   than deleting it, because a producer exists TODAY: `capture.ingress: "forwarded"` is a shipped
+   mode naming a real HTTPS origin, so `capturePhoneHostOf` reads the host off the SAME config leaf
+   `createCaptureIngressResolver` reads, and the gate binds it. `disabled` and the unbuilt
+   `on-demand-ngrok` name no origin and supply nothing, which correctly leaves loopback unscoped; a
+   forwarded ingress whose URL yields no host THROWS rather than going unscoped. Deleting the gate
+   would have left a forwarded operator's phone origin able to reach the whole dashboard, and would
+   have moved the scope check into the very slice that opens the door. `capture-durability-and-scope`
+   §2b now pins the derivation, its two refusals, and the composition root that supplies it, so the
+   gate cannot lose its producer again in silence. The other three consequences below are unchanged
+   — this BFF still serves no bytes, so `capturePhoneAssetPaths` stays absent by design.
 4. `config/legacy-capabilities.json`'s `legacy-route-static` is therefore genuinely **open**, and
    D184 moved it to the non-workflow capability closure milestone rather than closing it.
 
@@ -1791,8 +1799,9 @@ as the charter defines it: the day this repo becomes the operator's daily local 
 - [ ] `/capture.html` delivered, so 2i-F's phone surface is reachable from a phone
 - [ ] the on-demand ngrok tunnel launcher (D175)
 - [ ] the guard arm: a phone-origin request may not be served any file outside the capture allow-list (§8)
-- [!] the inert phone-host gate — wired or deleted with a D189 note (Track D row D2); it is a precondition nothing supplies
+- [x] the phone-host gate — WIRED from `capture.ingress: "forwarded"` (Track D row D2, 2026-08-21, `47eeb44e`); the precondition has a producer and `capture-durability-and-scope` §2b refuses a composition root that stops supplying it
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/routes/api.ts:141-156 (the gate), compose.ts (no `capturePhoneHost` supplied), src/domain/capture-surface.ts (`/capture.html` is an allow-list constant only); left: all five halves — they build together at the first phone-consuming migration
+> 2026-08-21 | track-d D2 | the gate is no longer one of the halves: `capturePhoneHostOf` (src/domain/capture-surface.ts) supplies it from `capture.ingress`/`forwardedUrl` and src/server/dashboard/compose.ts passes it; left: the four byte-path halves, which still build together at the first phone-consuming migration
 <!-- /roadmap-status -->
 
 ---
