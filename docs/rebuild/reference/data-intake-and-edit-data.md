@@ -663,10 +663,10 @@ the `.xlsx` fixture is produced by `write-excel-file`, which proves a real OOXML
 two rosters), producing per-subject matches with confidence.
 
 ```ts
-// src/domain/contracts/roster/match-spreadsheet.ts   (effect: "read")
+// src/domain/contracts/roster/match-spreadsheet.ts:69-85 — as built (D163)
 export const MatchSpreadsheet = defineTaskContract({
-  id: "roster/match-spreadsheet",
-  title: "Match subjects against a roster",
+  id: taskId("roster/match-spreadsheet"),
+  title: "Matching against roster",
   effect: "read",
   provenance: { default: "derived" }, // carries subject+roster sources/oldest observedAt
   /** D8: a roster match may feed a WRITE (an OnBase upload keyed on the matched
@@ -676,22 +676,21 @@ export const MatchSpreadsheet = defineTaskContract({
   subject: { kind: "none", reason: "pure cross-source roster matching" },
   scenarios: ["roster/match/exact-eid", "roster/match/name-only", "roster/match/ambiguous",
               "roster/match/name-eid-conflict", "roster/match/no-match"],
-  input:  z.strictObject({
-    subjects: z.array(z.strictObject({ subjectId: StableItemIdSchema,
-                                 name: fields.fullName.schema.optional(),
-                                 eid:  fields.eid.schema.optional() })),
-    rosterFileRef: FileRefSchema,
-    mapping: ColumnMapping,                     // the roster is operator-mapped too (§2)
-  }),
-  output: z.array(z.strictObject({
-    subjectId:       StableItemIdSchema,
-    matchedEid:      fields.eid.schema.nullable(),
-    matchConfidence: z.number().min(0).max(1),  // 0–1 — same axis as today
-    tier:            z.enum(["high", "medium", "low"]),   // ported bucketing (below)
-    mismatch:        z.enum(["none", "name-eid-conflict", "no-match", "ambiguous"]),
-  })),
-  errorCodes: ["roster-unreadable", "no-name-column"],
-  example: { /* … */ },
+  artifacts: "content-addressed",
+  input:  MatchSpreadsheetInputSchema,   // { subjects[], rosterArtifact, mapping, sheet?, readAt }
+                                         // the roster is operator-mapped too (§2); `readAt` is
+                                         // required so a replayed coercion resolves identically
+  output: MatchSpreadsheetOutputSchema,  // { matches: [ … ] } — wrapped, so the one array leaf
+                                         //   has a named provenance path
+  //  each match:
+  //  z.strictObject({
+  //    subjectId:       ItemId | StableRecordId,
+  //    matchedEid:      fields.eid.schema.nullable(),
+  //    matchConfidence: z.number().min(0).max(1),          // 0–1 — same axis as today
+  //    tier:            z.enum(["high", "medium", "low"]), // ported bucketing (below)
+  //    mismatch:        z.enum(["none", "name-eid-conflict", "no-match", "ambiguous"]),
+  //  })
+  errorCodes: ["roster-unreadable", "no-name-column", "no-eid-column", "mapping-mismatch"],
 });
 ```
 
@@ -700,7 +699,8 @@ export const MatchSpreadsheet = defineTaskContract({
   **live-verified pure mapping** — they port **verbatim** into a domain module both the roster task
   and the dashboard badge import (no re-implementation). The *scoring* that produces the 0–1
   confidence (name/address/EID alignment) is **redesigned** onto the canonical fields and must be
-  **re-verified** at the roster migration (order 3) — flagged as redesigned, not claimed
+  **re-verified** against a real roster at the first migration that runs it — order 3, the OCR
+  pipeline, which is what matches extracted records against a roster (roster INGEST is order 9) — flagged as redesigned, not claimed
   live-verified.
 - **Mismatch surfacing.** A `name-eid-conflict` (the roster's name and EID point at different people)
   or `ambiguous` (multiple candidates) is a **first-class output field**, not a swallowed default —
