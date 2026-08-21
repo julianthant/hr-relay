@@ -37,6 +37,7 @@ import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/exp
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
+import { descriptorSourcePath, moduleSourcePath } from "../../../src/domain/workflow/source-layout.js";
 
 const PROJECTION_FILE = "src/server/dashboard/queries/explorer.ts";
 const WIRE_FILE = "src/domain/dashboard/explorer.ts";
@@ -296,8 +297,13 @@ describe("no DSL or generated-descriptor authoring artifact exists (D79a)", () =
     const tracked = new Set(gitVisibleFiles(["src/workflows"]));
     for (const module of WORKFLOW_MODULES) {
       const id = String(module.descriptor.id);
-      assert.ok(tracked.has(`src/workflows/${id}/descriptor.ts`), `${id} has no source-authored descriptor`);
-      assert.ok(tracked.has(`src/workflows/${id}/module.ts`), `${id} has no source composition module`);
+      // D265 §1.2.2: a descriptor's path is derived from its ROLE — a harness
+      // lives inside the step it proves — through the same helper
+      // `descriptor-coverage` reads, so the two guards hold one rule.
+      const descriptorPath = descriptorSourcePath(id, module.role);
+      const modulePath = moduleSourcePath(id, module.role);
+      assert.ok(tracked.has(descriptorPath), `${id} has no source-authored descriptor at ${descriptorPath}`);
+      assert.ok(tracked.has(modulePath), `${id} has no source composition module at ${modulePath}`);
     }
   });
 

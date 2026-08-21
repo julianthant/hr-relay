@@ -72,11 +72,20 @@ import {
   intakeFixtureProjection,
 } from "../../fixtures/intake-workflow-fixture.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
+import { descriptorSourcePath } from "../../../src/domain/workflow/source-layout.js";
 
 const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, fixtureDescriptor];
 
 /** Roots a descriptor module may VALUE-import. Type-only imports are exempt (§1.4 #6). */
-const BUNDLE_SAFE_ROOTS = ["src/domain/", "src/base/", "src/validation/"];
+/**
+ * `src/workflows/` joined these at D265 §1.2.2: a step folder's `step.ts` (and,
+ * from the fragment unit, its node fragments) is source a descriptor imports,
+ * and the ruling is explicit that the D106 boundary is untouched by the move —
+ * a step folder's files "value-import only what a descriptor may". The walk is
+ * transitive, so a descriptor that reached a `module.ts` and through it a store
+ * still fails on `src/stores/`, which is what the negative arm below proves.
+ */
+const BUNDLE_SAFE_ROOTS = ["src/domain/", "src/base/", "src/validation/", "src/workflows/"];
 
 function valueImportSpecifiers(path: string, content: string): readonly string[] {
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -365,8 +374,9 @@ describe("descriptor coverage", () => {
   });
 
   it("keeps every descriptor module's value-import closure bundle-safe", () => {
-    for (const descriptor of DESCRIPTORS) {
-      const entry = `src/workflows/${String(descriptor.id)}/descriptor.ts`;
+    for (const module of WORKFLOW_MODULES) {
+      // D265 §1.2.2: the path comes from the ROLE, never from the id alone.
+      const entry = descriptorSourcePath(String(module.descriptor.id), module.role);
       assert.deepEqual(bundleViolations(entry), [], entry);
     }
     // The rule is only meaningful because the executable arm catches a breach.
