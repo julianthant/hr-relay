@@ -189,38 +189,66 @@ registered and poisoned — §7.1 row C6/C7 execute both.
 ---
 
 ## 3. Worker lifecycle and claiming
+<!-- roadmap: p1-kernel -->
 
-Each worker is workflow-scoped and runs the proven claim-generation protocol:
+<!-- roadmap-status: p1-kernel -->
+- [x] the one-item worker loop: directive → claim → one awaited run → heartbeat, with every wait bounded (`runWorkerLoop`, `src/core/worker-loop.ts:190`)
+- [x] the claim protocol in authority — owner, attempt, claim generation, heartbeat renewal, fenced terminalization, dead-worker recovery (1c/1f; `run-authority.test.ts`)
+- [x] D118 — an expired claim holding an `attempting` write intent reaches ref write-safety recovery before any queued/claimable transition (`claim-sweep-recovery.test.ts`)
+- [x] D200 — the startup self-sweep, scoped by `workerId` because the won lease is the evidence (§3.0; `src/server/worker/compose.ts:472`)
+- [x] D116 — the claimed run's immutable `configFingerprint` is bound for exactly the execution window through the one shared `withBoundRunConfigFingerprint` helper (`src/core/worker-sessions.ts:245`)
+- [x] the callback-leased browser sessions, their poison rule and their proven close (§4; `src/core/worker-sessions.ts`)
+- [x] the content-level authentication proof on every return path (§4.1; `authentication-proof-not-url`)
+- [ ] more than one worker per workflow reachable from a surface — the kernel takes N loops today (§7.1), the runtime composes ONE (§0 item 4, §11)
+> 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/core/worker-loop.ts, src/core/worker-sessions.ts, src/server/worker/compose.ts and src/infra/sqlite/run-store-contracts.ts; the illustrative loop snippet that stood here named three functions that do not exist and was replaced by the real shape
+<!-- /roadmap-status -->
+
+Each worker is workflow-scoped and runs the claim-generation protocol. The shape, as built
+(`runWorkerLoop`, `src/core/worker-loop.ts`):
 
 ```ts
-export async function runWorker(config: WorkerConfig): Promise<void> {
-  const sessions = new WorkerSessions(config.workflow);
-  while (!state.shuttingDown) {
-    const run = await claimNextRun({ workflow: config.workflow });
-    if (!run) {
-      await parkUntilWakeOr(IDLE_REPOLL_MS);
-      continue;
-    }
-    await driveRunStateMachine(run, sessions); // one awaited run
-  }
+while (!stopSignal.aborted) {
+  const directive = controlPoll();                 // durable, read BETWEEN items only
+  if (directive === "stop") break;                 // the active run always settled first
+  if (directive === "pause") { await boundedWait(idleRepollMs); continue; }
+
+  const claimed = authority.runs.claimNext({ workflow, workerId, now });
+  if (claimed.state === "idle")     { await boundedWait(idleRepollMs); continue; }
+  if (claimed.state === "deferred") { await boundedWait(min(untilNextEligible, idleRepollMs)); continue; }
+
+  const heartbeat = startHeartbeat({ runId, claim, intervalMs, onLost: abortRun });
+  try {
+    // D116: the run's immutable config fingerprint is part of every driver lease's identity
+    await withBoundRunConfigFingerprint(sessions, run.envelope.configFingerprint,
+      () => executeClaimedRun({ … }, { run, claim, signal }));
+  } finally { heartbeat.stop(); }
 }
+// on every exit path, including a throw:
+await sessions.closeAll("worker-stop");
 ```
 
-- Claim authority remains SQLite with owner, attempt, claim generation, heartbeat renewal, fenced
+- Claim authority is SQLite with owner, attempt, claim generation, heartbeat renewal, fenced
   terminalization, dead-worker recovery, and bounded re-poll.
-- A worker renews exactly its one active claim.
+- A worker renews exactly its one active claim. A renewal that reports the claim LOST aborts the
+  run's signal; the loop abandons rather than terminalizing over a new owner (§7.1 row C4).
 - A gate parks the run and frees the worker to claim another item.
-- Retry backoff rides `not_before`; a worker never sleeps while owning a run merely to wait for a
-  retry time.
-- `+ Add workers` chooses a workflow and a count. Starting 5 creates 5 independently owned workers
-  and browser-session sets.
+- Retry backoff rides `not_before`: `claimNext` answers `deferred` with the next eligible instant,
+  and the loop waits the SHORTER of that and `idleRepollMs`. A worker never sleeps while owning a
+  run merely to wait for a retry time, and never sleeps unboundedly.
+- Durable worker directives (`run` | `pause` | `stop`, ref dashboard-surfaces §2.4) are read
+  BETWEEN items, never mid-run: `stop` ends the loop only after the active run settled, `pause`
+  stops claiming without ending the worker, and a directive that cannot be read throws the loop
+  loudly — an unreadable directive is never treated as `run`.
+- `+ Add workers` chooses a workflow and a count. Starting 5 would create 5 independently owned
+  workers and browser-session sets — the kernel is built for it and §7.1 proves it, but the control
+  and the pool behind it are §11.
 - An expired claim is not ordinary requeue authority. Before the claim sweeper can transition an
   interrupted run back to `queued`, it checks the authoritative write-intent set for the run's
-  workflow/item/node. Any unfinished `attempting` intent routes to ref write-safety recovery first and keeps
-  the run unclaimable for normal execution. Only a schema-valid positive recovery completion or a
-  schema-valid safe-to-retry/confirmed-absent resolution may release it to the corresponding
-  terminal/new-generation path. An unavailable or inconsistent intent lookup parks/refuses; it
-  never means “no unfinished write.”
+  workflow/item/node. Any unfinished `attempting` intent routes to ref write-safety recovery first
+  and keeps the run unclaimable for normal execution. Only a schema-valid positive recovery
+  completion or a schema-valid safe-to-retry/confirmed-absent resolution may release it to the
+  corresponding terminal/new-generation path. An unavailable or inconsistent intent lookup
+  parks/refuses; it never means “no unfinished write.”
 
 ### 3.0 A worker sweeps its OWN id before its first claim (D200)
 
