@@ -91,14 +91,93 @@ None of these blocks a phase, and none is a waiver: each names where it is owned
 <!-- roadmap: p1-base -->
 
 <!-- roadmap-status: p1-base -->
+- [x] 1a — the guard lane exists BEFORE the tree does: nine executable ratchet arms, each run over the real tree AND its own violating fixture by `guard-manifest` (`tests/unit/architecture/helpers/ratchet-arms.ts`)
+- [x] 1a — the reviewed guard inventory is the machine SSOT and matches `tests/unit/architecture/` by `deepEqual` in BOTH directions; 75 entries at HEAD (65 active · 8 retired · 2 planned)
+- [x] 1a — zero-debt from the first file: `--max-warnings 0`, no debt manifest, no per-file allowlist (`Record<file,{count,reason}>` did not travel from legacy)
+- [x] 1a — runtime isolation pinned and proved: `config/runtime-isolation.json` + `operational-isolation.test.ts` (`.tracker-rebuild`, 3938/5174, `.tracker-rebuild/locks`, `hrauto-rebuild`)
+- [x] 1b — the strict domain leaf: branded ids, canonical JSON / absence / boundary types, injectable Clock, `env > settings.json > default` config with provenance + fingerprint, typed secrets + redaction, and the base failure / evidence / scenario / knowledge schemas (2026-07-31)
+- [x] 1b — the strict wire primitives are still the served ones — `src/domain/dashboard/{bootstrap,projection,run-detail,subscription,artifacts,primitives}.ts`, recursively strict, unknown keys refused (`strict-boundary-schemas`)
+- [x] 1b — single-source enforced, not merely intended: `clock-single-source`, `manual-clock-test-only`, `secrets-single-source`, `no-secret-values-in-logs`
+- [ ] two invariants the ratchet port map NAMES are held by nothing — `cancel-mechanism` (one-mechanism cancel) and `tracker-row-emission` (no arm bans an `appendFileSync` to the event JSONL outside the emitter); owner `ref:guards-and-tests` §2.1 / §5.1
+- [ ] the coverage floor is still 60/80 (`vitest.config.ts:40-41`); R10 raises the global floor to 80 (measured 84/82/85) and that has not landed — owner `{#test-tiers}`
+> 2026-08-21 | docs-cohesion 01 | verified against tests/unit/architecture/helpers/ratchet-arms.ts, docs/rebuild/guard-inventory.json (75 entries, 65/8/2), vitest.config.ts:40-41, src/domain/dashboard/** and the filled `p1-base` blocks in reference/{guards-and-tests §2, operator-trust §2, frontend-backend-integration §3}; left: the two unheld port-map invariants and the coverage-floor raise, both owned elsewhere
+
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 1's ordered work items — 1a and 1b) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+### 1a — the guard lane lands before the source it guards (COMPLETE 2026-07-31)
 
-| # | Work item | Owner | Key guards that must be green at this step |
-|---|---|---|---|
-| 1a | **COMPLETE 2026-07-31 — Pre-tree guard plumbing + honest legacy baselines.** With no rebuild source yet, first extract shared walk/allowlist helpers as a zero-count-change commit; add the reviewed guard inventory, D58 capability baseline, and D90 legacy-change-accounting manifest, plus exact path/state-root isolation tests; generate the diagnostic-fingerprinted no-new-debt legacy-test lint manifest and zero-debt/non-vacuous rebuild lint/coverage commands. Install coverage tooling inertly; seed the baseline-plus-current legacy-test disposition inventory; do not add unmatched globs or pretend an absent tree was scanned. Acceptance hardening makes ratchet arms executable with adversarial fixtures, discovers nested guards recursively, gives coverage exclusions independent owner/status activation, and treats the rebuild repo's `tests/` root itself as the test-lane activation boundary. **D93 re-homing:** this item landed in-tree; the surviving inventories/manifests/commands move to the rebuild repo under `config/` and the plain gate names, while the bidirectional runtime-isolation guard family, the AST/call-site bridge scan, and the preservation manifest's strict-normal-form scanning of changed legacy files are retired (isolation is physical; legacy files are governed by the legacy repo's own gates) | **Docs 07/10 + ratified testing-system plan** | helper-refactor preserves architecture count; the legacy repo's `npm run lint` stays green; 1,344-error/2-warning fingerprints reproduce; touched legacy tests add/change no diagnostics; state/artifact roots, ports, locks, and browser profiles are isolated across the two repos; rebuild lint/coverage rejects warnings, empty sets, and exclusions drift; 60/80 line-statement-function floors encoded; branch report enabled; guard/capability/test inventories self-validate; no legacy path deletion |
-| 1b | **COMPLETE 2026-07-31 — First strict domain leaf + full coverage activation.** Landed closed/branded ids, canonical JSON/absence/boundary types, injectable Clock, strict config/default/settings/env resolution with provenance/fingerprint, fail-loud fiscal/instance rules, typed environment/local-source/file secrets, redaction, exhaustive runtime-dependency + environment/preflight registries, base failure/evidence/scenario/knowledge schemas, and strict bootstrap/day/detail/artifact/subscription wire primitives. `ObservationId` is stable dotted semantic identity; UUID `EvidenceEntryId` owns dynamic receipt rows. Trace hours are `00–23`; the live 60s UKG timeout is reconciled; ngrok local-source absence/unreadability is descriptor-preflight visible. Whole-`src` ratchets/layering are active and the fail-loud catch arm covers multi-statement and block-bodied Promise handlers. Runtime status reports completed-through 1b / active 1c | **Refs task-contract/guards-and-tests/clock-config-secrets/operator-trust/frontend-backend-integration** | **MET:** strict-boundary catalog + unknown-key fixtures; typecheck/lint/tests/architecture/coverage gates; clock/secrets/config/preflight/redaction canaries; defaults/env/settings provenance; bidirectional system/provider/endpoint/secret prerequisite coverage; adversarial ratchet fixtures; no open decision maps |
+**The order is the point.** With no rebuild source yet, 1a extracted the shared walk/allowlist
+helpers as a zero-count-change commit, then landed the reviewed guard inventory, the D58 capability
+baseline, exact path/state-root isolation tests, and the zero-debt lint/coverage commands — so the
+first line of `src/` was written into a tree that already refused warnings, already refused a
+missing guard, and already refused a shared state root. The charter's *no ungated tree* is a fact
+about this repository's history, not an aspiration.
+
+**Acceptance hardening is what makes the lane non-vacuous.** Ratchet arms are executable against
+adversarial fixtures (a dead arm cannot stand in for enforcement — `guard-manifest.test.ts` runs
+each arm over a checked-in violating fixture); guard discovery recurses; coverage exclusions carry
+independent owner/status activation; and every activated arm must resolve a NON-EMPTY file set, so
+an unmatched glob is a failure rather than a skip.
+
+**Two pieces of 1a were retired, both with successors named — never a silent shrink.** The
+bidirectional cross-tree runtime-isolation guard family, the AST/call-site bridge scan and the
+preservation manifest's scanning of changed legacy files retired with **D93**: isolation became
+physical when the repositories split, and legacy files are governed by the legacy repo's own gates.
+The legacy-change-accounting manifest retired with **D150 (2026-08-05)**; what replaced it is
+mandatory live re-verification at each workflow's migration. `legacy-selector-port-provenance` is
+unaffected — it pins all 406 keys to a FIXED legacy commit's blobs, so legacy moving on cannot
+invalidate it. The inventory records both retirements with their deciding decisions, which is why a
+reader can tell a retirement from an accident.
+
+**As-built at HEAD:** nine arms (fail-loud-catch-default, nullish-literal-data-fallback,
+wait-for-timeout, inline selectors, evaluate-named-fn, import cycles, layer matrix, code
+conventions, tailwind palette); 75 inventory entries, 65 active. The gate family was later
+simplified by **D191** — `npm run test:coverage` is a strict superset of the earlier
+`test` + `test:architecture` pair and measured faster — and the `*:rebuild` command names retired
+with D93, the `rebuild:` runtime prefix with D247. Those are command-name changes; the lane itself
+is 1a's.
+
+### 1b — the strict domain leaf, and full coverage activation (COMPLETE 2026-07-31)
+
+**What landed.** Closed and branded ids; canonical JSON, absence and boundary types; the injectable
+`Clock`; strict config resolution over `env > settings.json > default` with provenance and a
+fingerprint; fail-loud fiscal and instance rules; typed environment / local-source / file secrets;
+redaction; exhaustive runtime-dependency and environment/preflight registries; the base failure,
+evidence, scenario and knowledge schemas; and the strict bootstrap / day / detail / artifact /
+subscription wire primitives. `ObservationId` is a stable dotted semantic identity while UUID
+`EvidenceEntryId` owns dynamic receipt rows — two different questions, two different id kinds.
+Trace hours are `00–23`; the live 60 s UKG timeout is reconciled; ngrok local-source absence or
+unreadability is descriptor-preflight visible. Whole-`src` ratchets and the layer matrix went active
+here, and the fail-loud catch arm was widened to multi-statement and block-bodied Promise handlers.
+
+**Every closed union 1b froze is still the served one** — `RunDetailSectionSchema`, `TopicKeySchema`,
+`QueueStatus`, and the capability `{state:"present"|"absent", reason}` shape — and no frontend
+module hand-writes a mirror of any `*Wire` type (`dashboard-wire-boundary`). The evidence half is
+the same story: strict schemas for failures, redacted bundles, receipts, scenario manifests,
+preflight scenarios and knowledge/fix records all date from 1b, exercised against recursive
+unknown-key injection. The TABLES that store them came later (D134, schema v10) — the schema half
+and the storage half are separate landings and `ref:operator-trust` §2 now says which is which.
+
+**Two later decisions amended a 1b contract without re-opening it, and both are worth knowing
+here.** **D121/D122** removed `node:path` from `src/domain/config/schema.ts`: a browser-reachable
+module may not statically import a Node built-in, so `paths` became REQUIRED in `ConfigSchema` and is
+supplied by the server-only `src/domain/config/runtime-paths.ts` through the same one resolver — an
+alias or a browser stub was refused because a stubbed `resolve()` invents a plausible-but-wrong
+absolute path. **D133** then found that a required config leaf is a durable-schema change: stored
+`config_snapshots` parse strictly at database OPEN, so `src/domain/config/snapshot-generations.ts`
+pins the leaf set per generation and a stored config is read FORWARD, never back-filled. Both
+strengthened 1b's rule; neither changed it.
+
+**Guards standing at this step:** the strict-boundary catalog plus unknown-key fixtures; the
+typecheck / lint / test / architecture / coverage gates; clock, secrets, config, preflight and
+redaction canaries; defaults / env / settings provenance; bidirectional system, provider, endpoint
+and secret prerequisite coverage; adversarial ratchet fixtures; and no open decision maps.
+
+**What is LEFT on this node** is two named invariants and one number. `cancel-mechanism` and
+`tracker-row-emission` appear in the ratchet port map and no arm holds them — written down in
+`ref:guards-and-tests` §2.1 / §5.1 rather than implied. And the coverage floor in
+`vitest.config.ts:40-41` is still the 1a value (60 global / 80 safety-critical); R10's raise to a
+global 80 is planned under `{#test-tiers}` and is not landed.
 
 ## 1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG
 <!-- roadmap: p1-authority -->
