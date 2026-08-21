@@ -11,7 +11,7 @@ product is the design every later phase implements — so the contracts themselv
 <!-- roadmap-status: phase-0 -->
 - [x] every reference spec reconciled through **Round 12** — D1–D94 over twelve rounds (there is no round 6), each marked `_phase: 0_` in `reference/decisions.md`
 - [x] the ownership matrix (**D1**) — one owning doc per concept, referenced and never redefined; the map is `roadmap` §Governance and it still resolves
-- [x] **D74** cut Phase 1 to a SPINE whose exit test is a LIVE workflow, deferring six work items behind that first real proof — executed exactly as designed, exit MET 2026-08-04
+- [x] **D74** cut Phase 1 from ten base work items built against synthetic fixtures to **1a–1f plus two thin slices**, with a LIVE workflow as the exit test — executed exactly as designed, exit MET 2026-08-04
 - [x] the **identity-approval gate designed here rather than at order 8** (**D77**) — this phase's one priority inversion, found and corrected inside it (§ALWAYS-GATE identity approval)
 - [x] the **size model + MUST / SHOULD / LATER delivery tiers** (**D76**), which the tree's `size:` attribute still carries item for item (§Size model + delivery tiers)
 - [x] the operator ratified isolated coexistence (**D88**), **ONE all-at-once cutover** (**D89**), legacy change accounting (**D90**/**D94**), the testing policy (**D91**) and the deferred probe gates (**D92**)
