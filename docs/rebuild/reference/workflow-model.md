@@ -1153,6 +1153,20 @@ export const PersonLookupInput = z.union([
 
 ## 3. The ONE builder API (absorbs ref task-contract §5)
 
+<!-- roadmap: p1-authority -->
+<!-- roadmap: sep-6a -->
+
+<!-- roadmap-status: sep-6a -->
+- [x] the composed `separations` descriptor is the builder's real-scale proof in production shape: **19 nodes** — 15 `.step`, 1 `.gate`, 3 `.transaction` — assembled from the five chunk harnesses' proven tasks (`src/workflows/separations/descriptor.ts:288-700`)
+- [x] the ALWAYS-GATE dominates both sinks, decision and output: `identity-gate-before-commit` audits a terminal result as well as a transaction node, and caught the descriptor's first draft reading the document number straight off a PRE-gate node (D202)
+- [x] the gate's packet carries the WRITE PLAN — dates, template, department — so a value that moves after approval re-derives a different digest and re-opens the gate (D211, ref write-safety §14.10)
+- [x] every refusal the composition can compute lands BEFORE the gate opens, because the graph's product is a filed termination rather than an approved subject
+- [x] `resolve-action` is the head node D261 added, so the composition starts from one typed document number (§1.1's D261)
+- [x] the composition declares `role: composition` and the five chunks became `chunk-harness of separations` on the day it registered; nothing about their run identity moved (§1.2.1, D219)
+- [ ] `branch`, `parallel` and `child-run` remain unexercised by this composition and by every other registered workflow; the builder's proof for those three kinds is `tests/types/flow-graph.typecheck.ts` and `fixtureDescriptor`
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/workflows/separations/descriptor.ts` (19 builder calls counted) and `src/control/workflow-registry.ts`; left: the three unexercised node kinds
+<!-- /roadmap-status -->
+
 Ref task-contract §5's `FlowBuilder` sketch and this doc's earlier `.task({...})` shape are unified here —
 this is the single API; ref task-contract defers to it. The builder accumulates a **`Steps` generic map**
 (step id → contract) so outputs, decoration, and instrumentation are all typeable:
@@ -1401,6 +1415,8 @@ the obligation 1f must satisfy.
 
 ### 3.1 Task-authoring rule — navigation ownership (review 02 #9)
 
+<!-- roadmap: p1-authority -->
+
 **Every standalone read task owns navigation from the worker session's verified neutral state.**
 It may reuse a healthy worker-owned context only after the prior callback completed its bounded
 neutral reset; it may never inherit another task's subject page or treat current page state as an
@@ -1436,6 +1452,24 @@ cleanup resets the page”: they are separate contracts/spans but one scheduling
 
 ### 3.2 Delegation contract — one standard for every workflow
 
+<!-- roadmap: order-4 -->
+<!-- roadmap: order-5 -->
+
+<!-- roadmap-status: order-4 -->
+- [x] the delegation CONTRACT below is built and guarded end to end: `planDelegationFanOut`, `assertDelegationReplayMatches`, `joinDelegationOutcomes`, the one D102 policy vocabulary, and the `delegation-manifest` guard over edge-id uniqueness, the plan fingerprint and the complete-outcome-set join
+- [ ] **no registered workflow declares a `child-run` node**, so the first operation fan-out arrives with this migration. The executor's child-run arm is a typed seam answering `capability-unavailable` today
+- [ ] oath-signature and emergency-contact are unbuilt: no descriptor, no input schema, no store tasks. Their first non-separations controlled commits are ref write-safety §3's obligation
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/delegation.ts`, `src/core/run-executor.ts` and `ls src/workflows/`; left: the workflows themselves
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: order-5 -->
+- [x] the join policies i9-check needs are declared and typed: `all` applies the failure policy on a non-done child, `all-settled` hands the parent the complete typed outcome array and forces an explicit branch on partials, and a zero-child fan-out stays an explicit satisfied join rather than a vanished edge
+- [x] resume scope already excludes what a coordinator is: an operation coordinator is a display row with no daemon task and completes by member rollup through a `children-terminal` gate, never by resume (§5.7's D9 scope)
+- [ ] `i9-check` is unbuilt, and so are the three descriptor fields it is the first consumer of — `completion`, `completionConsumes`, `coordinator` (§1.1)
+- [ ] a `children-terminal` gate has never been exercised: all four gates any registered workflow declares are `resolvedBy: "operator"`
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/delegation.ts`, `src/domain/workflow/completion.ts` and every gate declaration under `src/workflows/`; left: the workflow itself
+<!-- /roadmap-status -->
+
 Delegation is graph composition, distinct from importing another store task. A parent may delegate
 to one or many child **workflow runs** only through a `child-run` node. The node makes every policy
 that the old dependency store had implicitly or across callers explicit:
@@ -1470,8 +1504,6 @@ The durable tables/command protocol are ref dashboard-surfaces's storage/control
 graph semantics and typed outputs. Scenario coverage is mandatory for zero/one/many fan-out,
 partial failure, cancellation, retry/resume, duplicate replay, and multiple independent edges.
 
----
-
 **RATIFIED (D102, 2026-08-01) — one delegation policy vocabulary, end to end.**
 
 **D102 — one delegation policy vocabulary, end to end.** §1.1/§3.2's
@@ -1501,6 +1533,8 @@ the parent the full typed array, `block-parent` blocking rather than failing, an
 fan-out staying an explicit satisfied join rather than a vanished edge.
 
 ### 3.3 A node's `when` is a DECLARED condition, not a closure (2026-08-19, D228)
+
+<!-- roadmap: track-b -->
 
 `when` was `(scope) => boolean`. That is the right type for a rule nothing but the executor ever
 reads, and the wrong one the moment a surface has to say *what* the rule is: ref operator-trust §5.7 correctly
