@@ -251,6 +251,7 @@ await sessions.closeAll("worker-stop");
   parks/refuses; it never means “no unfinished write.”
 
 ### 3.0 A worker sweeps its OWN id before its first claim (D200)
+<!-- roadmap: p1-kernel -->
 
 `claimNext` refuses while a worker id still owns a non-terminal run — §0.3's "one worker, one active
 item", enforced as a throw, not a typed outcome. The D118 sweep that would release such a row lives
@@ -285,6 +286,14 @@ the loop. Three properties make it safe and keep it from becoming a second recov
 
 The sweep is not a cadence question and does not change the ticker: the periodic sweep stays global
 and staleness-gated, because it knows nothing about who owns a row.
+
+**As built** (`src/server/worker/compose.ts`): the composition reclaims a stale worker LEASE, calls
+`workerLeases.start`, and only then runs `runs.sweepExpiredClaims({ workerId, now })` — in that
+order, because the lease is the evidence and it has to be held before it can be cited. The startup
+refusal for a row no sweep may release names the run and points at ref write-safety §4.1's typed
+operator resolutions. `RunClaimSweepRequestSchema` (`src/infra/sqlite/run-store-contracts.ts:171`)
+carries the exclusivity as a `superRefine`: exactly one of `staleBefore` / `workerId`, never both
+and never neither.
 
 ### 3.1 Dispatch and fairness
 
