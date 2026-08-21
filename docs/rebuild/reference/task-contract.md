@@ -1,16 +1,36 @@
-# 01 — The Task Contract & Per-System Task Stores
+# The task contract — `defineTaskContract`/`defineTask`, effects, drivers, provenance, and the per-system task stores
 
-Status: **Binding design with the Phase 1b domain foundation implemented 2026-07-31 —
-2026-07-22 whole-plan/legacy-code corrections integrated;
-amended 2026-07-26 (Round 8, §2.7 — the three-tier authoring floor + scaffold generators, D79f),
-2026-07-31 (Round 10 — isolated copy/port with legacy preservation, D88/D90), 2026-07-31
-(Round 11 — standalone rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild`
-repo at plain `src/`, so isolation is physical and the same-tree guards it required are retired),
-2026-08-12 (Round 48, §2.8 — the rich-extraction convention, one task per page visit, D194), and
-2026-08-12 (Round 49, §2.10 — the first store CUSTOMIZED under §2.8, D197).**
-Conforms to `reference/charter.md` and the binding reconciliation memo `reference/decisions.md`. The
-abandoned Step-0 spike is evidence only and has been deleted; all three effect overloads must be
-re-proved.
+**What this doc is.** The contract every unit of real work in this system is written against: what a
+task IS (§2), where its implementation lives (§3), how it is instrumented (§4), what it asks of the
+workflow builder (§5), and how authentication and dry-run reach it (§6). It is a REFERENCE spec —
+cited as `ref task-contract §N`, never actionable on its own. What is scheduled and what is left
+lives in the phase docs `docs/rebuild/00`–`05` and in `docs/roadmap/roadmap.md`.
+
+**It is as-built, not aspiration.** The contract shipped in Phase 1d (2026-08-01) and has executed
+every run since 1f. At HEAD the tree holds **39 sealed task contracts** under
+`src/domain/contracts/<store>/` — 29 in system stores (`ucpath` 10, `kuali` 10, `crm` 2,
+`new-kronos` 2, `extraction` 2, `normalization` 1, `ocr` 1, `roster` 1) and 10 in the two workflow
+mini-stores (`workflow:separations` 9, `workflow:person-lookup` 1) — bound by 16 store directories
+under `src/stores/`: nine browser stores (one per closed `BrowserSystemId`), four service stores,
+two workflow mini-stores, and `common/`, which is shared leaf code and not a store. Four guards in
+`docs/rebuild/guard-inventory.json` name this doc as an owner: `task-contract-sealing`,
+`task-store-boundaries`, `artifact-effect-boundary` and `provider-capability-boundary`.
+
+**How to read it.** §1 is the legacy grounding — the four failure shapes the contract exists to
+kill. §2 is the contract: §2.1–§2.7 the platform half (types, the contract/impl split, the ctx, the
+error taxonomy, naming, the boundary, the authoring floor), then §2.8–§2.12 the **store
+conventions the order-8 migration settled**, each pinned to the store that forced it. §3 is where
+implementations live, §4 decoration, §5 the obligations this contract imposes on `ref
+workflow-model`'s builder, §6 auth and dry-run. §8 is the rot table, §9 three worked examples, §10
+the settled questions. Where the code and an earlier sentence disagreed, the sentence was corrected
+to the code (cohesion plan R9/D252) and the correction says which file settled it.
+
+**Status blocks.** A section that describes a tree node carries `<!-- roadmap: <id> -->` and, once
+per node per doc, a `<!-- roadmap-status: <id> -->` checklist the roadmap generator renders in that
+node's drawer. Where a node's checklist lives under a different section of this doc, the section
+says so in one line rather than opening a second block.
+
+Conforms to `reference/charter.md` and the decision ledger `reference/decisions.md`.
 
 ## Ownership (D1 — this doc owns / this doc references)
 
@@ -20,10 +40,10 @@ re-proved.
 | Error taxonomy (`TaskError`, declared `errorCodes`) |
 | Effect classes + dry-run mechanics (D6/D7), `freshness` + provenance contract fields (D8/D34), and the content-addressed read-artifact boundary (D45) |
 | Strict runtime-schema rules, branded domain scalar/id policy, absence semantics, and the task-side subject-binding declaration (D46/D47) |
-| The **read-extraction width** convention — one task per page visit, one fixed strict output, consumers project downstream (§2.8, D194), plus the as-built rules the first store BUILT (§2.9, D196) and the first store CUSTOMIZED (§2.10, D197) under it settled |
+| The **read-extraction width** convention — one task per page visit, one fixed strict output, consumers project downstream (§2.8, D194), plus the as-built rules the first store BUILT (§2.9, D196), the first store CUSTOMIZED (§2.10, D197), the first store to split judgment out of a read (§2.11, D201) and the first store to gain a WRITE family beside a read family (§2.12, D206) settled |
 | Retry policy |
-| Decoration (`decorateTask`, hook semantics, error-propagation rule) |
-| Task stores—browser, service, and pure workflow mini-stores (D4/D42), session providers + the single login signature, shared leaf-code homes (`stores/common/`) |
+| Decoration (`decorateTask`, hook semantics, error-propagation rule) — **designed, not built**; §4 states the absence |
+| Task stores — browser, service, and pure workflow mini-stores (D4/D42), session providers + the single login signature, shared leaf-code homes (`stores/common/`) |
 | The task **boundary** statement — tasks are bounded; what is NOT a task (D5's task side) |
 
 | This doc **references** (owner) |
@@ -32,22 +52,30 @@ re-proved.
 | Span/event wire schema, notes stream, completion (fan-out/approval) union, storage + SSE → **ref dashboard-surfaces** |
 | `WriteSafety<In, Out, Proof>` shape attached to `CommitTaskContract` (typed proof/verify + idempotency probe + key, D22/D31) → **ref write-safety** |
 | Canonical `ElementId`/`PageStateId`/`ObservationId`, typed `SystemDriver`, scenarios, diagnostics, and knowledge records → **ref operator-trust** |
+| The store CATALOG — every store, every task, and the REUSE / CUSTOMIZE / BUILD reading a migration starts from → **`STORES.md`** (derived from code; code wins on any disagreement) |
 
-Grounding (read, not imagined) — every path in this block is a **legacy-repo** path
-(`hr-automation`); unqualified `src/` inside the design fences below is the **rebuild repo's** `src/`:
-`src/core/kernel/types.ts` (WorkflowConfig/Ctx/SystemConfig),
-`src/workflows/person-lookup/workflow.ts` (the `dataString()` untyped-blob hacks, screenshot
-sprinkling, `ctx.data.crmMatch as string`), `src/workflows/person-lookup/lookup.ts` +
-`src/systems/ucpath/person-org-summary.ts` (the real search shapes the worked example wraps),
-`src/workflows/oath-signature/workflow.ts:240-300` (the deferAuth + `loginToUCPath` + `if (!ok)
-throw` boilerplate), `src/infra/auth/duo-login-flows.ts` (the well-factored login table — the shape
-to imitate), `src/systems/ucpath/selectors.ts` (registry pattern + `// verified` stamps),
-`src/systems/onbase/LESSONS.md` (single-app-session-per-identity constraint),
-`src/workflows/ocr/orchestrator.ts:1562` (`operationTraceCode` — the cautionary stringly
-re-encoding switch).
+## § numbers, and what moved (2026-08-21)
+
+Section numbers are load-bearing: thirteen tree nodes carry a `ref:task-contract §N` ref that the
+`roadmap-doc-binding` guard resolves against a real heading (§2, §2.1.1, §2.7, §2.8, §2.9, §2.10,
+§2.11, §2.12, §3.1, §6.2, §9.1, §9.1.1, §9.2), and code comments and sibling docs cite others. So
+**no section was renumbered.** What moved is narrative, not numbering:
+
+| was | is now |
+|---|---|
+| the opening `Status:` paragraph and its six dated amendment clauses | this header, which states what the doc IS rather than when it changed |
+| the grounding paragraph of legacy paths, above §1 | inside §1, whose whole subject it is |
+| `## Phase 1b as-built domain foundation` | folded into §2.1.1 (cohesion plan R9 item 1) |
+| `## Phase 1d ratified seam decisions` + `### Phase 1d as-built — sealed task-contract core` | folded into §2.1 (D96/D101) and §2.2 (the factory as it shipped) |
+| `### Phase 1d as-built — bounded task/store/session/provider/artifact seam` | folded into §2.3 (ctx, artifacts, providers) and §3.2 (the store factories) |
+| `### Phase 1d as-built — the first `stores/common/` leaf` | folded into §3.3 (the port rules it settled) with the layout half in §3.1 |
+| `## Phase 1f executor ratification` | folded into §2.3 — provenance collection and provider admission are both ctx contracts |
+| `## 7. Alternative shapes for the core contract` + `### A/B/C` | `history/superseded/2026-08-21-task-contract-7.md`; shape B is normatively stated in §2.2 |
+
+`### 2.11` stood between §2.8 and §2.9 since 2026-08-12; the four store sections now read
+§2.9 → §2.10 → §2.11 → §2.12, which is also their chronological order.
 
 ---
-
 ## Phase 1b as-built domain foundation (2026-07-31)
 
 Work item 1b implements the task contract's shared leaf vocabulary, not the task factory/store work
@@ -196,6 +224,19 @@ capability at migration order 2 and New Kronos at order 8; this helper is the se
 
 ## 1. What today's code teaches us (the problems the contract must kill)
 
+**Grounding — read, not imagined.** Every path in this block is a **legacy-repo** path
+(`hr-automation`, the frozen production reference, D93/D94); unqualified `src/` everywhere else in
+this doc is the rebuild repo's own `src/`. `src/core/kernel/types.ts`
+(WorkflowConfig/Ctx/SystemConfig), `src/workflows/person-lookup/workflow.ts` (the `dataString()`
+untyped-blob hacks, screenshot sprinkling, `ctx.data.crmMatch as string`),
+`src/workflows/person-lookup/lookup.ts` + `src/systems/ucpath/person-org-summary.ts` (the real
+search shapes §9.1's worked example wraps), `src/workflows/oath-signature/workflow.ts:240-300` (the
+deferAuth + `loginToUCPath` + `if (!ok) throw` boilerplate), `src/infra/auth/duo-login-flows.ts`
+(the well-factored login table — the shape to imitate), `src/systems/ucpath/selectors.ts` (registry
+pattern + `// verified` stamps), `src/systems/onbase/LESSONS.md` (single-app-session-per-identity
+constraint), `src/workflows/ocr/orchestrator.ts:1562` (`operationTraceCode` — the cautionary
+stringly re-encoding switch).
+
 1. **Systems are loose function bags.** `src/systems/ucpath/person-org-summary.ts` exports raw
    `(page, args) => result` functions with hand-written TS types. Nothing declares which system
    session a function needs, whether it mutates, what it throws, or how to retry it. Callers
@@ -214,7 +255,15 @@ capability at migration order 2 and New Kronos at order 8; this helper is the se
    handling, employment-instance expansion). These **port verbatim** and get wrapped — the wrapping
    shims themselves (e.g. the login-result adapter, §6.1) are new code and are named as such.
 
----
+**What the rebuild actually did with each.** (1) and (2) are structurally dead: a task declares its
+`sessions`, `effect`, `errorCodes` and retry, and there is no `ctx.data` blob to cast out of — see
+§2.1 and §4.3. (3) is dead: nine stores declare one `SessionProvider` each and the worker executes
+the login (§6.1). (4) is only PARTLY dead: nothing re-encodes task ids in a switch today, but the
+`KnownTaskId` codegen §2.5 and §8 row 2 name as the mechanical guard **was never built** — what
+holds the line instead is that `TaskId` is a branded literal type minted by `taskId(...)` and every
+projection derives from the contract corpus (§3.2). (5) held: `stores/*/impl/**` carries ported
+leaves with provenance, and `legacy-selector-port-provenance` pins 406 keys to a fixed legacy
+commit's blobs.
 
 ## Phase 1f executor ratification (2026-08-02)
 
