@@ -478,127 +478,55 @@ question and this table must agree with them.
 
 ## Exit criteria
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's hard exit criteria, with every bullet's final disposition) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's hard exit criteria, with every bullet's final disposition) on 2026-08-20 (3b); re-verified and re-cast as a checklist on 2026-08-21._
 
-**Hard exit criteria (Phase 2) — ALL MET 2026-08-09, with ONE criterion explicitly REASSIGNED
-(the explorer's edit half, D186).** Every bullet below carries its final disposition. The one
-reassignment is not a waiver: ref operator-trust §5.3 names the trigger that ends the deferral, and §5.4's apply
-protocol is unchanged by it.
-- *(Live person-lookup, `descriptor-coverage`, surface rendering, and speed sanity all moved to
-  Phase 1's exit—see D74. The historical D13 live-lift parity gate remains rejected: D88 isolates
-  the runtimes. New surfaces are validated by strict fixtures + isolated live proof, per §4.)*
-- ~~Docs updated: ref workflow-model §8 marked as-built; any contract flaw found is fixed in the owning doc
-  first.~~ **MET 2026-08-09 (2j).** Ref workflow-model §8.1 is the as-built: the worked example ran live as
-  D74's exit test, and §8.1 records the five deltas the live run forced (D121/D122 fold identity,
-  D123 `skipped`, D124 terminal duration, D125 session-acquire bound, D172's union input) plus what
-  §8 structurally does not exercise. Every contract flaw the live runs found was fixed in its owning
-  doc first, in the same commit that recorded it — that is the D-series discipline itself.
-- ~~Transaction dry-run shows prepare preview and zero commit span/intent. Controlled write proof
-  records a fresh matching subject proof; the forced mismatch/unknown variants produce no intent or
-  click. The controlled match yields one external transaction, one committed intent, one typed
-  transaction-output checkpoint plus validated proof, one ledger entry, one terminal span; a later
-  fresh same-key run performs no second click.~~ **ALL MET live 2026-08-04 (D135).** Dry run 6.6 s
-  with zero durable rows; the forced mismatch refused at beat ② with zero fence and zero click; ONE
-  controlled commit on doc **4489** in 16.45 s producing a `committed` intent, a transaction
-  checkpoint whose proof is the verifier's reload read-back, both outbox rows and the terminal span;
-  the idempotency re-run answered `already-present` in 2 ms with no browser and no second click.
-  *(This bullet read **NOT MET (D128)** until 2026-08-09. D128 concluded the operator's documents sat
-  at a step that did not own the field; D135 withdrew that conclusion the SAME DAY — Kuali's own
-  `ActionPage` query reports the step's `sectionSettings` as `edit`, and the two real causes were
-  defects in this repository's driver: a ~700 ms gadget debounce the run fenced inside, and a
-  `commit` that returned at request time so the verifier's reload cancelled the in-flight save. The
-  exit line was simply never updated to match §3.8 and ref write-safety §Phase-2 controlled-commit as-built,
-  both of which recorded MET on 2026-08-04.)*
-- ~~Crash/outbox fixtures and context-exclusive lease tests remain green under
-  multiple workers.~~ **MET 2026-08-04, and closed out in 2j (D182).** Over the REAL Kuali store and a real authority database:
-  crash injection at every inner four-row-primitive seam and every outer beat-⑦ seam, the present /
-  absent recovery arms, browser-context cleanup on a post-fence park, and two workers on one
-  database admitting exactly one fence. ~~**The ordered LEDGER PROJECTOR fixtures are not buildable
-  yet** — beat ⑦ writes the ledger outbox row, but the serialized JSONL projector is a 2g tail and
-  does not exist, so its concurrency/tail-loss arms move to 2g with it.~~ **The projector landed in
-  2g (D145) and its arms landed with it:** `tests/unit/ledger-projector.test.ts` pins two projectors
-  racing one `(system,date)` lease with no duplicate sequence, crash catch-up with exact-byte
-  re-derivation, and the torn-tail / gap / duplicate / digest-mismatch refusals, with
-  `ledger-projector` active. 2j's soak closes the last of it: after 3 workers × 30 runs on one
-  database, `projectAll()` reports every partition `projected` and the whole-database invariant
-  sweep is `valid` (ref execution-and-sessions §7.1, D182). Recovery demonstrates that one `absent` observation cannot retry, durable
-  `not_before` scheduling occupies no worker, and only contract-qualified negative
-  settlement may increment the generation.
-- ~~Read-only explorer accurately renders the as-built person-lookup graph/task/UI/scenario/result
-  dependencies and exact source links.~~ **MET 2026-08-09 (2i-G, D176).** The projection is derived
-  from the ONE composition root and `workflow-editor-compile-integrity` asserts the round-trip over
-  the REAL registry in both directions — node identities/order/kinds/`dependsOn` equal
-  `descriptorRuntimeNodes`, rendered task ids equal `workflowProjections(...).contracts`, every UI id
-  equals the catalog's own `taskUses`, and every printed source link resolves to a git-tracked file.
-  Ref operator-trust §5.7 records the two named exclusions (the live-run overlay; scenario coverage *claims*).
-  ~~Every supported constrained edit passes compile+scenario+
-  diff+version+restart-gated atomic apply+rollback; every prohibited code/selector/proof edit
-  refuses loudly and generates a code-change brief.~~ (No DSL authoring mode exists to test — D79a.)
-  **The EDIT half is Phase B and is DEFERRED OUT OF PHASE 2 by D186 (2026-08-09)**, on D79a's own
-  argument one level down: an editor exists to avoid a code change per tweak *across many
-  workflows*, and this tree has one production workflow plus the one-node transaction proof, so
-  building it now would fix its closed policy union and override schema against a sample of one.
-  The criterion is **reassigned, not waived** — ref operator-trust §5.3 names the trigger that ends the
-  deferral (the second production workflow whose presentation/policy an operator wants to change
-  without a code change) and §5.4's apply protocol is unchanged by it. `workflow-editor-compile-
-  integrity` holds Phase A's read-only boundary today and its inventory entry records that it
-  carries no Phase-B arms.
-- **Tail criteria** (formerly Phase-1 exits, now due here) — **ALL MET; the last two closed
-  2026-08-09 in 2j.**
-  - ~~every terminal fixture emits a complete evidence receipt/confidence or a structured failure +
-    redacted diagnostic bundle, and **D82 is demonstrated on a real receipt** — the operator
-    completes a double-check from the row alone.~~ **MET 2026-08-09 (D187).** The receipt has been
-    derivable since D140–D144, but the panel that renders it was **two pixels wide** at every
-    viewport since 1i-spine — the accessibility tree reported every word while the screen showed an
-    empty column, so D82's acceptance bar was unmet ON SCREEN while passing every gate. The panel
-    now claims its width, `buildRunEvidenceReceipt` no longer refuses a run whose upstream node has
-    no checkpoint, and the corpus carries its first POPULATED receipt reference — derived from
-    authority through adapter #2, because a receipt cannot be authored (D141).
-  - ~~Failed OS notification delivery still leaves a durable unread inbox item.~~ **MET
-    2026-08-08 (D138)**; `notification-durability` is active and pins the order — the row is
-    committed before any delivery is attempted, and a delivery that throws is never written back.
-  - ~~Capture fixtures prove open/finalizing sessions survive restart and that duplicate/reordered
-    requests do not duplicate photos or handoffs; the phone origin cannot reach a non-capture
-    route.~~ **MET 2026-08-09 (2h-F D167 + 2i-F D174/D175).** Restart-with-open-session,
-    restart-mid-finalize converging to ONE artifact and ONE handoff, no duplicate photos/handoffs,
-    and failed→retry-finalize are pinned in `tests/unit/capture-durability.test.ts`; the
-    token-scoped closed union with fail-closed enumeration and the Host gate are pinned in
-    `tests/unit/server/capture-surface.test.ts`, with `capture-durability-and-scope` active. 2j's
-    C9/C10 add the two-caller kernel race and the two-projector race over one pending outbox.
-  - ~~AI-advisory fixtures prove redaction, strict output, explicit provider exhaustion, and zero
-    authority edge.~~ **MET 2026-08-09 (2i-G, D178)**, one fixture per arm plus the activated
-    `ai-advisory-no-authority` guard; ref operator-trust §4.4 is the as-built.
-  - ~~A real-shaped copied authority DB passes corruption → read-only degraded mode →
-    checksummed-backup restore → projection rebuild with claims/dependencies/checkpoints/intents/
-    outboxes/capture handoffs intact.~~ **MET 2026-08-09 (2j, D181).** Drilled twice: in fixtures
-    over a seeded real-shaped database through `composeStorageCommand`
-    (`tests/unit/storage-restore-drill.test.ts`), and ONCE live on a COPY of the standing local
-    authority database — corruption named read-only in 0.92 s, restore in 0.99 s, doctor healthy in
-    0.71 s, with 14 runs / 2 checkpoints / 2 write intents / 2 outbox rows preserved including the
-    real Kuali controlled commit's durable footprint. `cli storage restore` did not exist before
-    this slice and could not have: nothing in production had ever recorded the runtime-lock
-    snapshot its stopped-system proof is derived from. Measured numbers: ref dashboard-surfaces §2.5 D181.
-- **NAMED GAP carried out of Phase 2, not met-by-silence (2j, D189): the production BFF serves no
-  frontend bytes.** `http-server.ts` has no static handler and `api.ts` 404s every unrouted path, so
-  `npm run dashboard:prod` names a mode the runtime never parses and **2i-F's token-scoped
-  phone capture surface has no delivery path in production** — `/capture.html` is allow-listed by
-  the Host gate and nothing serves it. Nothing else regresses: the operator's working path has
-  always been the Vite dev server on 5174 beside the BFF on 3938. It is deferred deliberately —
-  those bytes would be served on the one surface exposed to the public internet through the capture
-  ingress, behind the gate whose whole contract is "a phone origin reaches capture routes and
-  nothing else", and the tunnel launcher (D175) is unbuilt anyway, so static bytes alone would not
-  make the phone reachable. Owner: the first migration that needs the phone in production, building
-  both halves plus the guard arm. Ref frontend-backend-integration §6.9 is the normative record;
-  `config/legacy-capabilities.json`'s `legacy-route-static` stays honestly **open**.
-- ~~**Archive model (D80) proven**~~ — **MET 2026-08-09 (2i-G, D179).** All five clauses are pinned
-  in `tests/unit/archive-model.test.ts` against the real authority database and the real command
-  kernel, one `it` per clause: a bump archives the prior-version run and leaves the current-version
-  one alone (and the run ROW survives — archiving is a display lifecycle, not a delete);
-  `buildArchivedRunDetail` renders a stored record with the descriptor list **empty**, which is the
-  only way "zero old-version code paths" is checkable; a ledger partition written before the bump
-  is **byte-identical** after it; relaunch mints a run carrying the CURRENT version and fingerprint,
-  is not a retry, leaves the archived record identical and refuses a stale content digest; and a
-  non-terminal prior-version run refuses the apply by name with **nothing archived at all**, not
-  even the run that was eligible. Registry drift between review and apply is a sixth fixture.
-  `archive-invariants` is active. Ref dashboard-surfaces §10.2's *D179 — the archive model as-built* is the
-  normative record.
+**The gate is CLOSED. Every hard criterion is MET as of 2026-08-09 (D181–D190), with ONE criterion
+REASSIGNED (D186) and ONE NAMED GAP carried out (D189).** Neither is a waiver — each names a
+trigger and an owner, and both are stated in full in §Left Phase 2 by explicit disposition above.
+
+| # | Criterion | State | Evidence |
+|---|---|---|---|
+| 1 | **Docs updated** — `ref workflow-model` §8 marked as-built; any contract flaw found is fixed in the owning doc first | **MET** 2026-08-09 (2j) | §8.1 is the as-built: the worked example ran live as D74's exit test and records the five deltas that run forced (D121/D122 fold identity, D123 `skipped`, D124 terminal duration, D125 session-acquire bound, D172's union input) plus what §8 structurally does not exercise. Every contract flaw the live runs found was fixed in its owning doc first, in the same commit that recorded it — the D-series discipline itself |
+| 2 | **Transaction dry-run + controlled write proof** — preview with zero commit span/intent; a fresh matching subject proof; forced mismatch/unknown produce no intent or click; the match yields ONE external transaction, one committed intent, one typed transaction-output checkpoint plus validated proof, one ledger entry, one terminal span; a later fresh same-key run performs no second click | **ALL MET LIVE** 2026-08-04 (D135) | Dry run 6.6 s with zero durable rows; mismatch refused at beat ② with zero fence and zero click; ONE commit on real doc **4489** in 16.45 s producing a `committed` intent, a transaction checkpoint proved by the verifier's reload read-back, both outbox rows and the terminal span; the idempotency re-run answered `already-present` in 2 ms with no browser. *(This line read **NOT MET (D128)** until 2026-08-09 — a bookkeeping lag, not a finding: D135 withdrew D128 the SAME DAY and both §Transaction proof and `ref write-safety` §Phase-2 controlled-commit as-built recorded MET on 08-04.)* |
+| 3 | **Crash / outbox fixtures and context-exclusive lease tests green under multiple workers** | **MET** 2026-08-04, closed out in 2j (D182) | Over the REAL Kuali store and a real authority database: crash injection at every inner four-row-primitive seam and every outer beat-⑦ seam, the present/absent recovery arms, browser-context cleanup on a post-fence park, and two workers on one database admitting exactly one fence. Recovery demonstrates that one `absent` observation cannot retry, that durable `not_before` scheduling occupies no worker, and that only contract-qualified negative settlement may increment the generation |
+| 4 | **The ordered ledger projector's concurrency / tail-loss arms** *(moved into 2g when the projector did)* | **MET** (D145, soaked D182) | `tests/unit/ledger-projector.test.ts` pins two projectors racing one `(system,date)` lease with no duplicate sequence, crash catch-up with exact-byte re-derivation, and the torn-tail / gap / duplicate / digest-mismatch refusals; `ledger-projector` active. 2j's soak closes it: after 3 workers × 30 runs on one database, `projectAll()` reports every partition `projected` and the whole-database invariant sweep is `valid` (`ref execution-and-sessions` §7.1) |
+| 5 | **Read-only explorer renders the as-built graph / task / UI / scenario / result dependencies and exact source links** | **MET** 2026-08-09 (2i-G, D176) | The projection derives from the ONE composition root and `workflow-editor-compile-integrity` asserts the round-trip over the REAL registry in both directions — node identities/order/kinds/`dependsOn` equal `descriptorRuntimeNodes`, rendered task ids equal `workflowProjections(...).contracts`, every UI id equals the catalog's own `taskUses`, and every printed source link resolves to a git-tracked file. `ref operator-trust` §5.7 records the two named exclusions |
+| 5b | *…and every supported constrained EDIT passes compile + scenario + diff + version + restart-gated atomic apply + rollback* | **REASSIGNED** by D186, not waived | No DSL authoring mode exists to test (D79a). The Phase-B editor is deferred on D79a's own argument one level down — a sample of one production workflow would fix its closed policy union and override schema. `ref operator-trust` §5.3 names the trigger (the second production workflow whose presentation/policy an operator wants to change without a code change); §5.4's apply protocol is unchanged. `workflow-editor-compile-integrity` holds Phase A's read-only boundary and its inventory entry records that it carries no Phase-B arms. Owner: `{#def-explorer-edit}` |
+| 6 | **Every terminal fixture emits a complete evidence receipt/confidence or a structured failure + redacted diagnostic bundle, and D82 is demonstrated on a REAL receipt** — the operator completes a double-check from the row alone | **MET** 2026-08-09 (D187) | Derivable since D140–D144, but unmet ON SCREEN until 2j: the panel rendering it was two pixels wide at every viewport since 1i-spine while the accessibility tree reported every word. The panel now claims its width, `buildRunEvidenceReceipt` no longer refuses a run whose upstream node has no checkpoint, and the corpus carries its first POPULATED receipt reference — derived from authority, because a receipt cannot be authored (D141) |
+| 7 | **A failed OS notification delivery still leaves a durable unread inbox item** | **MET** 2026-08-08 (D138) | `notification-durability` active and pinning the order — the row commits before any delivery is attempted, and a delivery that throws is never written back |
+| 8 | **Capture fixtures** — open/finalizing sessions survive restart; duplicate/reordered requests do not duplicate photos or handoffs; the phone origin cannot reach a non-capture route | **MET** 2026-08-09 (2h-F D167 + 2i-F D174/D175) | Restart-with-open-session, restart-mid-finalize converging to ONE artifact and ONE handoff, no duplicate photos/handoffs, and failed→retry-finalize in `tests/unit/capture-durability.test.ts`; the token-scoped closed union with fail-closed enumeration and the Host gate in `tests/unit/server/capture-surface.test.ts`, `capture-durability-and-scope` active. 2j's C9/C10 add the two-caller kernel race and the two-projector race over one pending outbox |
+| 9 | **AI-advisory fixtures** — redaction, strict output, explicit provider exhaustion, zero authority edge | **MET** 2026-08-09 (2i-G, D178) | One fixture per arm plus the activated `ai-advisory-no-authority` guard; `ref operator-trust` §4.4 is the as-built |
+| 10 | **A real-shaped copied authority DB passes corruption → read-only degraded → checksummed-backup restore → projection rebuild**, with claims / dependencies / checkpoints / intents / outboxes / capture handoffs intact | **MET** 2026-08-09 (2j, D181) | Drilled twice: in fixtures over a seeded real-shaped database through `composeStorageCommand` (`tests/unit/storage-restore-drill.test.ts`), and ONCE live on a COPY of the standing local authority database — corruption named read-only in 0.92 s, restore in 0.99 s, doctor healthy in 0.71 s, with 14 runs / 2 checkpoints / 2 write intents / 2 outbox rows preserved including the real Kuali commit's durable footprint. `cli storage restore` did not exist before this slice and could not have — nothing in production had ever recorded the runtime-lock snapshot its stopped-system proof derives from (`ref dashboard-surfaces` §2.5) |
+| 11 | **Archive model (D80) proven** | **MET** 2026-08-09 (2i-G, D179) | All five clauses pinned in `tests/unit/archive-model.test.ts` against the real authority database and the real command kernel, one `it` per clause: a bump archives the prior-version run and leaves the current-version one alone (and the run ROW survives); `buildArchivedRunDetail` renders a stored record with the descriptor list **empty**, the only way "zero old-version code paths" is checkable; a ledger partition written before the bump is byte-identical after it; relaunch mints a run carrying the CURRENT version and fingerprint, is not a retry, leaves the archived record identical and refuses a stale content digest; and a non-terminal prior-version run refuses the apply by name with **nothing archived at all**. Registry drift between review and apply is a sixth fixture; `archive-invariants` active |
+| 12 | **The production BFF serves frontend bytes** | **NAMED GAP** carried out by D189, not met-by-silence | `http-server.ts` has no static handler and `api.ts` 404s every unrouted path, so `dashboard:prod` names a mode the runtime never parses and 2i-F's phone capture surface has no delivery path. Nothing regresses — the operator's path has always been Vite on 5174 beside the BFF on 3938. Deferred deliberately: those bytes ride the one internet-exposed path behind the capture Host gate, and the tunnel launcher (D175) is unbuilt, so bytes alone would not make the phone reachable. Owner: the first migration that needs the phone in production → `{#def-byte-path}`; `ref frontend-backend-integration` §6.9 normative; `legacy-route-static` stays honestly **open** |
+
+*(Live person-lookup, `descriptor-coverage`, surface rendering and speed sanity all moved to Phase 1's
+exit under D74. The historical D13 live-lift parity gate stays rejected — D88 isolates the runtimes,
+and new surfaces are validated by strict fixtures plus isolated live proof.)*
+
+### What ships WITH the phase, and who owns it
+
+Phase 2 is complete; nine mechanisms it built have no production caller or no delivery path. None
+blocks the exit — each is listed so a later reader is not surprised, and each names its owner.
+
+| Residual | Owner |
+|---|---|
+| the notes stream has no emitter (`emitNote` composed, never called) | `{#observed-logs}` — 03a |
+| `createLedgerProjector` has no production caller (the beat-⑦ outbox row IS durable) | **unowned — reported** |
+| five of seven notification trigger arms have no publisher | `{#dash-defaults}` — 03a, and the per-workflow `*-dash` nodes |
+| the knowledge projection has no caller; `explain failure <fingerprint>` unbuilt | **unowned — reported** |
+| the retention sweep has no caller; the 14/8/5 policy and a configurable backup path | `{#def-retention}` — 04, `never` by D193 |
+| the phone capture surface has no production delivery path | `{#def-byte-path}` — 04 |
+| no workflow can receive a capture handoff (`CAPTURE_INTAKE_BINDINGS` empty); saved-mapping reuse has no store | `{#def-capture-binding}` — 04 |
+| Settings is read-only (`apply-settings` is the kernel's one deferred arm) | `{#def-settings}` — 04 |
+| six of seven worker / session controls have kernel arms and no control | **unowned — reported** |
+
+Four **test-lane** gaps left 2j the same way, all owned by `{#test-tiers}` under R10 except the
+first: `preflight-coverage` stays `planned` behind D188's trigger (the first migration that adds a
+preflight runner); there is no component render lane and the parity lane sits outside the per-commit
+gate; D91's BRANCH half is unmet at a measured 71.76 %; and D85's parts 2 and 3 — `cli test workflow
+<id> --dry-run` and `TestTargetRegistry` — never landed.
+
+**And the standing obligation Phase 2 hands forward:** the transaction kernel is proven, so
+write-heavy migration is unblocked — but **each workflow still owes its OWN controlled-commit proof
+at its own migration**, because a store's receipt and probe policy is not proven by another store's.
