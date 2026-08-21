@@ -12,17 +12,22 @@
  *   state, a transformed value renders verbatim, and subject identity
  *   prefers the served `displayRedacted` — nothing is re-derived here;
  * - the receipt's schema order IS the narrative order: input → observations
- *   → decisions → actions → verification → output → reuse → warnings;
+ *   → decisions → actions → verification → output → reuse → warnings, and it
+ *   ends on the fingerprint footer the run itself ran under (D199);
+ * - a fact names its SOURCE in full — the task and the instant it was observed
+ *   at, or the hash of the input it came from — never the source's tag alone;
  * - empty sections are omitted (D24 restraint) — a receipt does not explain
  *   itself, and "no warnings" is best said by no warnings section.
  */
+import { Fingerprint } from "lucide-react";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import { Chip, MetaLine, SectionLabel, dsText } from "../ds/ui.js";
+import { Chip, MetaLine, SectionLabel, dsIcon, dsText } from "../ds/ui.js";
 import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
-import { fmtClock } from "./format.js";
+import { fmtClock, shortHash } from "./format.js";
+import { evidenceSourceMeta } from "./trust-model.js";
 
 export type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
 export type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;
@@ -134,6 +139,10 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
           items={[
             detail.page?.screen !== undefined && `screen ${detail.page.screen}`,
             detail.page?.state !== undefined && `page state ${detail.page.state}`,
+            // Both halves of the served `page` block. The parenthetical is the
+            // demo's own word (DemoFailure.tsx:328) and it is load-bearing:
+            // these two strings were redacted AT CAPTURE, so what prints is
+            // the whole of what the record holds, not a render-time cut.
             detail.action?.operation !== undefined && `during ${detail.action.operation}`,
             detail.action?.sequence !== undefined && `step ${String(detail.action.sequence)}`,
           ]}
@@ -187,7 +196,7 @@ function FactsSection({ label, facts }: { label: string; facts: RunEvidenceRecei
               key={fact.id}
               label={fact.field}
               value={redactedText(fact.value)}
-              meta={fact.source.kind}
+              meta={evidenceSourceMeta(fact.source)}
             />
           )
           : (
@@ -290,6 +299,47 @@ export function ReceiptEvidenceBody({ receipt }: { receipt: RunEvidenceReceiptWi
           `generated ${fmtClock(receipt.generatedAt)}`,
         ]}
       />
+
+      <ReceiptFingerprints receipt={receipt} />
+    </div>
+  );
+}
+
+/**
+ * The receipt's fingerprint footer, ported from legacy
+ * hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
+ * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx:479-484 — same
+ * position (last, under a subtle rule), same glyph, same three chips, same
+ * labels.
+ *
+ * All three values are on `RunEvidenceReceiptSchema` and none of them was
+ * drawn. `descriptorFingerprint` is the one that most needed to be: D199's
+ * whole argument is that a durable record must be stamped with a fact about
+ * ITSELF, so this is the shape THIS run ran under — not the shape the process
+ * rendering the page was built from. The provenance bar prints two of the
+ * three about the LIVE row; the receipt is the artifact read months later.
+ *
+ * The two fingerprints are cut to `shortHash` — the one place this product
+ * decides how long an opaque id renders, so the receipt and the provenance bar
+ * cannot show the same fingerprint at two lengths — with the whole value on
+ * the chip's `title`. The trace id is a legible identifier and prints whole.
+ */
+function ReceiptFingerprints({ receipt }: { receipt: RunEvidenceReceiptWire }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-[var(--ds-space-snug)]",
+        "border-t border-[color:var(--ds-border-subtle)] pt-[var(--ds-space-base)]",
+      )}
+    >
+      <Fingerprint aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-faint)]")} />
+      <Chip label="trace">{receipt.traceId}</Chip>
+      <Chip label="descriptor" title={receipt.descriptorFingerprint}>
+        {shortHash(receipt.descriptorFingerprint)}
+      </Chip>
+      <Chip label="config" title={receipt.configFingerprint}>
+        {shortHash(receipt.configFingerprint)}
+      </Chip>
     </div>
   );
 }
