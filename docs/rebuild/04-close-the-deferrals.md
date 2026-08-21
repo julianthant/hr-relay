@@ -268,7 +268,44 @@ entry. **Reopening requires a fresh decision, not a build.**
 <!-- roadmap: def-settings -->
 
 <!-- roadmap-status: def-settings -->
+- [x] the Settings surface exists and is honest about it — one server-served section, `storage`, read-only health plus the on-demand doctor (`src/server/dashboard/queries/bootstrap.ts:120-122`, D169)
+- [x] the command family, its target and its atomic N-leaf payload are already contracted (`src/domain/commands.ts:60,190`); only the executor is absent
+- [x] the deferral is structural and total — `apply-settings` is the ONE entry in `PHASE1_DEFERRED` across all six families (`src/core/command-kernel.ts:141-148`), so the kernel refuses it with `rejected{code:"capability-unavailable"}` and ZERO authority side effects
+- [ ] BE `apply-settings` stops answering `capability-unavailable`
+- [ ] BE the preflight/doctor service `buildBootstrap` composes none of — `FrontendBootstrapWireSchema#preflight` is `declared-unserved` in `config/pending-wire-bindings.json:30-33` (D184), so the Top Bar's stethoscope popover never mounts
+- [ ] FE the Settings write path and the doctor-rerun command control
+> 2026-08-20 | docs-cohesion 04 | verified against src/core/command-kernel.ts:141-176, src/server/dashboard/queries/bootstrap.ts:116-122 and config/pending-wire-bindings.json:30-33; left: the executor, the preflight service, the write path
 <!-- /roadmap-status -->
+
+**What the deferral is.** The Settings gear opens, shows exactly one section — Storage — and
+**nothing there pretends to save.** There is no config editing in the dashboard: every value the
+runtime resolves comes from `env > settings.json > default` and is changed by editing the file.
+
+**The decision that deferred it: D169** (round 38, 2026-08-08), which took the doctor/backup wire
+live and explicitly left `apply-settings` deferred, reinforced by **D184** (round 45), which marked
+`FrontendBootstrapWireSchema#preflight` `declared-unserved` rather than letting the Top Bar render a
+green stethoscope over checks nobody ran. Both halves are the same rule: **an absent verdict is
+drawn as absent.**
+
+**Its trigger: the Phase-3 cross-cutting closure**, not a single event. This is the honest shape and
+the node says so — editable settings is one row of `{#cross-cutting}`'s "where legacy is still
+ahead" list, shaped against a real run corpus rather than invented in planning. There is no
+workflow whose migration forces it, which is exactly why it has a milestone instead of a trigger.
+
+**Built today.** More than the surface suggests. The command family, its target and its **atomic
+N-leaf payload** are contracted — `apply-settings` is a real member of `CommandActionSchema`, with a
+real payload schema — so what is missing is an executor, not a protocol. The refusal is worth
+reading as a design, not a stub: `apply-settings` is the ONE action in `PHASE1_DEFERRED` across all
+six command families, the partition is checked in both directions at module load (a family/action in
+neither list, or in both, throws before any command can dispatch), and the kernel computes
+`rejected{code:"capability-unavailable"}` with **zero authority side effects**. A deferred command
+cannot half-execute.
+
+**Not built.** Three things, above. The preflight one is the easy one to misread: the field is
+OPTIONAL on the bootstrap document and nothing serves it, so the popover never mounts — that is the
+honest absence, and `config/pending-wire-bindings.json` records it as a declared gap with the
+service that closes it named (the `ref clock-config-secrets` preflight/config service, which also
+serves the rerun command).
 
 ## Trust UCPath / ServiceNow wait-before-negative-read windows
 <!-- roadmap: def-propagation -->
