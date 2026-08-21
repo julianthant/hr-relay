@@ -109,6 +109,7 @@ import type {
 } from "./queries/run-detail.js";
 import { describeProofShape } from "../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
+import { capturePhoneHostOf } from "../../domain/capture-surface.js";
 
 
 /**
@@ -817,6 +818,12 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   const hub = createDashboardStreamHub({ projection });
 
+  // Ref operator-trust §7's phone-origin scope: the host the gate below binds, read from
+  // the SAME `capture` leaf `createCaptureIngressResolver` reads. It throws
+  // rather than answering `undefined` for a forwarded ingress it cannot read a
+  // host out of — an unscoped internet-facing ingress is not a degraded mode.
+  const capturePhoneHost = capturePhoneHostOf(resolved.config.capture);
+
   const app = createDashboardApp({
     bootstrap: {
       appVersion,
@@ -876,6 +883,28 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
     },
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
+    /**
+     * Ref operator-trust §7's phone-origin scope, WIRED (Track D row D2, audit C4).
+     *
+     * The gate had been composed since D174 with `capturePhoneHost` supplied
+     * nowhere, so it compiled and could never fire — D189 item 3 recorded it as
+     * exactly D181's shape and handed row D2 the choice of wiring or deleting
+     * it. Wiring is the honest half: `capture.ingress: "forwarded"` is a mode
+     * an operator can set TODAY (a tunnel or reverse proxy in front of this
+     * BFF), and the moment they do, a request arriving on that origin must be
+     * held to the closed capture route union. Deleting the gate would leave
+     * that operator's phone origin able to reach the whole dashboard, and
+     * would put the scope check in the same future commit that opens the door.
+     *
+     * The host is DERIVED from the one config leaf the ingress resolver reads,
+     * so the gate and the QR can never name two different origins. The other
+     * two modes name no origin and supply nothing — see `capturePhoneHostOf`.
+     * `capturePhoneAssetPaths` stays absent on purpose: this BFF serves no
+     * bytes at all (D189, doc 04 `{#def-byte-path}`), so the phone page's own
+     * asset closure does not exist yet and an invented set would be a scope
+     * claim about files nothing produces.
+     */
+    ...(capturePhoneHost === undefined ? {} : { capturePhoneHost }),
   });
 
   const server = await startDashboardHttpServer({ app, port: input.isolation.backendPort });
