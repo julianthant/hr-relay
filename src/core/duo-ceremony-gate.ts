@@ -77,11 +77,45 @@ export class DuoCeremonyLeaseExpiredError extends Error {
   }
 }
 
+/**
+ * Finding 1 (review, ref execution-and-sessions §10.4): the lease STORE's `release` call itself
+ * threw (a transient DB failure, never the ordinary `superseded` report) while `#release` was
+ * unwinding an earlier ceremony error — from `withCeremony`'s `threw` arm or from `dispose()` in a
+ * caller's `finally`. That earlier error must not be silently replaced by this one: it is preserved
+ * as `cause`, and its own message is folded into `releaseError` for callers that want it directly.
+ * The lease's `#hold` is deliberately left SET when this is thrown (`release` was never confirmed),
+ * so a later `dispose()`/`release` retries the UPDATE instead of stranding the row `held` for its
+ * full TTL with nothing left to retry it.
+ */
+export class DuoCeremonyReleaseFailedError extends Error {
+  readonly releaseError: unknown;
+
+  constructor(system: BrowserSystemId, releaseError: unknown, unwindingError: unknown) {
+    const detail = releaseError instanceof Error ? releaseError.message : String(releaseError);
+    super(
+      `${system} Duo ceremony lease release failed (${detail}) while unwinding an earlier ceremony `
+      + "error; the lease row is left HELD (not cleared) so a later dispose()/release retries the "
+      + "UPDATE, and the original ceremony error is preserved as this error's cause rather than "
+      + "replaced by the release failure (ref execution-and-sessions §10.4).",
+      { cause: unwindingError },
+    );
+    this.name = "DuoCeremonyReleaseFailedError";
+    this.releaseError = releaseError;
+  }
+}
+
 export interface DuoCeremonyGateHandle extends DuoCeremonyGate {
   /** True between Duo's FIRST terminal refusal and the single retry: the lease is held, not released. */
   retainedForRecovery(): boolean;
-  /** Releases any lease still held (a retained one whose recovery never ran). Idempotent. */
-  dispose(): void;
+  /**
+   * Releases any lease still held (a retained one whose recovery never ran).
+   * Idempotent. Pass `unwindingError` when this call is itself unwinding an
+   * earlier error (a `catch`/`finally` propagating a ceremony failure): if
+   * the store's `release` throws, that original error is preserved as the
+   * thrown `DuoCeremonyReleaseFailedError`'s `cause` instead of being
+   * silently replaced (finding 1, ref execution-and-sessions §10.4).
+   */
+  dispose(unwindingError?: unknown): void;
 }
 
 export interface DuoCeremonyGateFactory {
@@ -197,7 +231,7 @@ class Gate implements DuoCeremonyGateHandle {
       this.#hold = await this.#acquire();
     } else if (clock.monotonicMs() >= this.#hold.expiresAtMonotonicMs) {
       const expired = new DuoCeremonyLeaseExpiredError(system, this.#hold.token);
-      this.#release();
+      this.#release({ value: expired });
       throw expired;
     }
     const hold = this.#hold;
@@ -221,7 +255,10 @@ class Gate implements DuoCeremonyGateHandle {
       // fresh-profile retry. A second one releases.
       this.#refusals = 1;
     } else {
-      this.#release();
+      // Finding 1: this release is unwinding `settled.error`. If the store's
+      // release itself throws, that must not silently replace the ceremony's
+      // own error — see `#release`.
+      this.#release({ value: settled.error });
     }
     throw settled.error;
   }
@@ -230,17 +267,34 @@ class Gate implements DuoCeremonyGateHandle {
     return this.#hold !== undefined && this.#refusals === 1;
   }
 
-  dispose(): void {
+  dispose(unwindingError?: unknown): void {
     this.#disposed = true;
-    if (this.#hold !== undefined) this.#release();
+    if (this.#hold !== undefined) {
+      this.#release(unwindingError === undefined ? undefined : { value: unwindingError });
+    }
   }
 
-  #release(): void {
+  /**
+   * Finding 1 (ref execution-and-sessions §10.4): `#hold` is cleared only AFTER `leases.release`
+   * returns without throwing — never before. If the store's `release` call itself throws (not the
+   * ordinary `superseded` report, which IS a returned outcome), `#hold` stays set so the row is
+   * still retryable, and — when this release is unwinding an earlier ceremony error — the thrown
+   * `DuoCeremonyReleaseFailedError` carries that original error as `cause` instead of replacing it.
+   */
+  #release(unwindingError?: Readonly<{ value: unknown }>): void {
     const hold = this.#hold;
-    this.#hold = undefined;
     if (hold === undefined) return;
     const { leases, clock, system } = this.#options;
-    const outcome = leases.release({ token: hold.token, now: clock.now().toISOString() });
+    let outcome: ReturnType<DuoCeremonyLeaseRepository["release"]>;
+    try {
+      outcome = leases.release({ token: hold.token, now: clock.now().toISOString() });
+    } catch (releaseError) {
+      if (unwindingError !== undefined) {
+        throw new DuoCeremonyReleaseFailedError(system, releaseError, unwindingError.value);
+      }
+      throw releaseError;
+    }
+    this.#hold = undefined;
     if (outcome.state === "superseded") {
       throw new Error(
         `${system} Duo ceremony lease generation ${String(hold.token.generation)} was superseded by `

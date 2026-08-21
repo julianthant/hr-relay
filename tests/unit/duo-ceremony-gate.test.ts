@@ -20,8 +20,11 @@ import type {
   WorkerBrowserSessionFactory,
 } from "../../src/base/session.js";
 import {
+  createDuoCeremonyGateFactory,
+  DUO_CEREMONY_LEASE_POLL_MS,
   DuoCeremonyLeaseExpiredError,
   DuoCeremonyLeaseHeldError,
+  DuoCeremonyReleaseFailedError,
 } from "../../src/core/duo-ceremony-gate.js";
 import type { DuoCeremonyGateFactory } from "../../src/core/duo-ceremony-gate.js";
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
@@ -38,7 +41,7 @@ import type { BrowserSystemId, WorkerId } from "../../src/domain/ids.js";
 import { defineVerifiedLoginRecipe } from "../../src/infra/browser/authenticated-application.js";
 import { DuoTerminalRefusalError } from "../../src/infra/browser/login-contract.js";
 import type { SystemLoginContext } from "../../src/infra/browser/login-contract.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase, DuoCeremonyLeaseRepository } from "../../src/infra/sqlite/authority-database.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import {
   duoCeremonyGatesOver,
@@ -431,5 +434,115 @@ describe("D267 — two workers, one credential, one ceremony at a time", () => {
     assert.deepEqual(a.discards(), []);
     assert.equal(a.opens(), 1);
     assert.equal(leaseRow(database).state, "released");
+  });
+});
+
+describe("Gate#release preserves the original error when the store's release() itself throws (review finding 1, §10.4)", () => {
+  it("throws DuoCeremonyReleaseFailedError carrying the ceremony error as cause, and leaves #hold set so a later dispose() retries the UPDATE", async () => {
+    const clock = manualClock(T0);
+    const scheduler = new ManualScheduler(clock);
+    const database = sharedAuthority(clock);
+    const real = database.authority.duoCeremonyLeases;
+    const releaseError = new Error("sqlite: database is locked (fixture)");
+    let releaseCalls = 0;
+    // A store double whose `release` throws on its FIRST call (a transient store failure, never the
+    // ordinary `superseded` report — that is a returned outcome, not a throw) and delegates for
+    // every later call, so a retry can be proved to succeed.
+    const flaky: DuoCeremonyLeaseRepository = Object.freeze({
+      acquire: (input: unknown) => real.acquire(input),
+      get: (credentialKey: string) => real.get(credentialKey),
+      release: (input: Readonly<{ token: unknown; now: string }>) => {
+        releaseCalls += 1;
+        if (releaseCalls === 1) throw releaseError;
+        return real.release(input);
+      },
+    });
+    const factory = createDuoCeremonyGateFactory({
+      leases: flaky,
+      credentialKey: FIXTURE_DUO_CREDENTIAL_KEY,
+      clock,
+      scheduler,
+      sessionAcquireMs: FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
+      graceMs: FIXTURE_DUO_LEASE_GRACE_MS,
+      pollIntervalMs: DUO_CEREMONY_LEASE_POLL_MS,
+    });
+    const gate = factory.openGate({
+      workerId: WORKER_A,
+      system: SYSTEM,
+      envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
+      cancelCeremony: () => undefined,
+      signal: new AbortController().signal,
+    });
+    const ceremonyError = new Error("SSO form never rendered (fixture)");
+
+    // (a) The thrown error must expose the ceremony's ORIGINAL error via `cause` rather than
+    // silently replacing it with the release failure.
+    await assert.rejects(
+      gate.withCeremony(async () => { throw ceremonyError; }),
+      (error: unknown) => {
+        assert.ok(error instanceof DuoCeremonyReleaseFailedError);
+        assert.equal(error.cause, ceremonyError, "the ceremony's original error must survive as cause");
+        assert.equal(error.releaseError, releaseError, "the release failure itself is exposed too");
+        assert.match(error.message, /release failed/);
+        return true;
+      },
+    );
+    assert.equal(releaseCalls, 1);
+
+    // (b) #hold is still set (the store never confirmed the release), so the row is still `held` and
+    // a second dispose()/release call retries the UPDATE instead of stranding the row for its TTL.
+    assert.equal(leaseRow(database).state, "held", "the row must still be held after the failed release");
+    gate.dispose();
+    assert.equal(releaseCalls, 2, "a later dispose() retried the UPDATE rather than finding #hold already cleared");
+    assert.equal(leaseRow(database).state, "released", "the retry actually released the row");
+  });
+
+  it("dispose(unwindingError) — the shape worker-sessions.ts's #openAndLogin uses when a login error is already in flight — carries that error as cause too", async () => {
+    const clock = manualClock(T0);
+    const scheduler = new ManualScheduler(clock);
+    const database = sharedAuthority(clock);
+    const real = database.authority.duoCeremonyLeases;
+    const releaseError = new Error("sqlite: database is locked (fixture)");
+    const flaky: DuoCeremonyLeaseRepository = Object.freeze({
+      acquire: (input: unknown) => real.acquire(input),
+      get: (credentialKey: string) => real.get(credentialKey),
+      release: () => { throw releaseError; },
+    });
+    const factory = createDuoCeremonyGateFactory({
+      leases: flaky,
+      credentialKey: FIXTURE_DUO_CREDENTIAL_KEY,
+      clock,
+      scheduler,
+      sessionAcquireMs: FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
+      graceMs: FIXTURE_DUO_LEASE_GRACE_MS,
+      pollIntervalMs: DUO_CEREMONY_LEASE_POLL_MS,
+    });
+    const gate = factory.openGate({
+      workerId: WORKER_A,
+      system: SYSTEM,
+      envelopeDeadlineMonotonicMs: clock.monotonicMs() + FIXTURE_DUO_LEASE_SESSION_ACQUIRE_MS,
+      cancelCeremony: () => undefined,
+      signal: new AbortController().signal,
+    });
+    // Get a held-but-never-released gate the SAME way §10.5 recovery does: the first terminal
+    // refusal keeps #hold without ever calling leases.release — no flaky release involved yet.
+    await assert.rejects(
+      gate.withCeremony(async () => {
+        throw new DuoTerminalRefusalError(SYSTEM, "Duo REFUSED the WebAuthn assertion (fixture)", "https://app.example/");
+      }),
+      DuoTerminalRefusalError,
+    );
+    assert.ok(gate.retainedForRecovery(), "the first refusal must retain the lease");
+
+    const loginError = new Error("login recipe failed (fixture)");
+    assert.throws(
+      () => { gate.dispose(loginError); },
+      (error: unknown) => {
+        assert.ok(error instanceof DuoCeremonyReleaseFailedError);
+        assert.equal(error.cause, loginError);
+        return true;
+      },
+    );
+    assert.equal(leaseRow(database).state, "held", "still held: dispose()'s release failed and #hold was never cleared");
   });
 });

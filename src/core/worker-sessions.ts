@@ -610,9 +610,15 @@ export class WorkerSessionManager {
       cancelCeremony: envelope.cancel,
       signal,
     });
+    // Finding 1 (ref execution-and-sessions §10.4): the settlement is captured as DATA, exactly as
+    // the gate's own `withCeremony` does, rather than reached through `try { … } finally { gate.dispose() }`.
+    // A plain `finally` cannot hand `dispose()` the error it is unwinding, so a release failure there
+    // would silently REPLACE this call's own thrown error instead of preserving it as `cause`.
+    let settled: Readonly<{ state: "returned"; value: WorkerBrowserResource }> | Readonly<{ state: "threw"; error: unknown }>;
     try {
+      let value: WorkerBrowserResource;
       try {
-        return await this.#openAndLoginOnce(need, instance, configFingerprint, signal, gate);
+        value = await this.#openAndLoginOnce(need, instance, configFingerprint, signal, gate);
       } catch (error) {
         if (!(error instanceof DuoTerminalRefusalError) || !gate.retainedForRecovery()) throw error;
         const discardProfile = this.#factory.discardProfile;
@@ -631,7 +637,7 @@ export class WorkerSessionManager {
           configFingerprint,
         });
         try {
-          return await this.#openAndLoginOnce(need, instance, configFingerprint, signal, gate);
+          value = await this.#openAndLoginOnce(need, instance, configFingerprint, signal, gate);
         } catch (retryError) {
           if (retryError instanceof DuoTerminalRefusalError) {
             throw new Error(
@@ -644,9 +650,16 @@ export class WorkerSessionManager {
           throw retryError;
         }
       }
-    } finally {
-      gate.dispose();
+      settled = { state: "returned", value };
+    } catch (error) {
+      settled = { state: "threw", error };
     }
+    if (settled.state === "returned") {
+      gate.dispose();
+      return settled.value;
+    }
+    gate.dispose(settled.error);
+    throw settled.error;
   }
 
   async #openAndLoginOnce(
