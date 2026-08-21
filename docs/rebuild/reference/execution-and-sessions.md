@@ -952,3 +952,81 @@ separated in TIME still need a counter that advances across profiles.
 
 ---
 
+## 11. Sessions and the worker pool (R11)
+<!-- roadmap: parallel-runs -->
+
+<!-- roadmap-status: parallel-runs -->
+- [ ] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard
+- [ ] BE pool-indexed worker ids: `phase1WorkerId(workflowId)` derives ONE id per workflow, so two composed workers collide on the authority worker lease by design (`src/core/worker-loop.ts:368`)
+- [ ] BE the projection serves a worker-POOL version — `spawn-worker` and `plan-worker-count` target `{workflowId, expectedVersion}` while `WorkerCardWire.revision` is ONE worker's row, so the control has no honest CAS basis today
+- [ ] BE a durable session record and its grouping, membership derived from authority (B4's bulk dispatch is the seed)
+- [ ] FE the session view — worker cards show membership and what each worker is doing, read from authority
+- [ ] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit
+- [ ] needs §10 first — the pool multiplies the hazard the lease removes
+> 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
+<!-- /roadmap-status -->
+
+**DESIGNED, NOT BUILT.** This section is the owning contract for the tree's `{#parallel-runs}` node.
+It defines the SESSION unit §1 names and the pool that serves one.
+
+**1. A session is a dashboard-started group of runs.** It is not a browser session (§1), not a
+worker, and not a workflow. It is what an operator starts when they dispatch a batch — ten I-9
+members, a separations list — and it is the unit the dashboard reports progress against. A session
+is DURABLE: it has an id, a workflow, the actor who started it, its creation instant, and its
+membership. Membership is DERIVED from authority — a run row carries its session id — never held in
+a supervisor's memory, because a supervisor's memory does not survive the process and a session an
+operator can see after a restart is the entire point.
+
+**2. Every workflow follows the SAME browser-profile recipe; each worker owns its own profile
+directory.** Nothing new is needed here and nothing may be special-cased: §1's path already
+partitions by `workerId`, Chromium locks a profile directory, and D116 puts the config fingerprint
+in the path. The pool's obligation is only to give each worker a distinct id — see part 4.
+
+**3. Coordination is through AUTHORITY only, never peer messaging.** Workers learn what the others
+are doing from run claims, worker leases, write fences, the §10 ceremony lease and the invariants
+§7.1 executes. No worker sends another worker a message, and no in-process registry is consulted:
+D218's lesson is that an in-process hook feeding a cross-process fact is a single-process assumption
+wearing a cross-process contract, and D200's is that a WON LEASE — not a heartbeat age, and
+certainly not a peer's assertion — is the only statement one process may make about another's death.
+Sessions do not share information with each other either; two sessions of the same workflow are two
+groups of rows over one queue.
+
+**4. The pool's first concrete change is the worker ID.** `phase1WorkerId(workflowId)` returns
+`${workflowId}-worker-1`, and `composeWorkerRuntime` derives its id from it — which is exactly why
+§7.1 says two composed workers on one workflow collide on the authority worker LEASE by design, and
+why its N-worker rows call `runWorkerLoop` directly with distinct ids. So the pool mints
+pool-indexed ids, and the lease refusal that today blocks a second process becomes the thing that
+proves each pool member is singular. `createPhase1WorkerRuntimeExecutor`'s `desiredWorkers !== 1`
+refusal is replaced by a reconciliation against the pool's declared size; until then it must keep
+refusing, because acknowledging a count the runtime cannot produce is an acknowledgement of an
+effect that did not happen.
+
+**5. The spawn control needs a CAS basis before it needs a button.** `spawn-worker` and
+`plan-worker-count` target `{workflowId, expectedVersion}` (`src/domain/commands.ts:181`), and the
+projection serves no pool version — `WorkerCardWire.revision` is one worker's row. A frontend that
+guessed an `expectedVersion` would be inventing the exact fact the CAS exists to check, which is why
+there is no `+ Add workers` control today and why the pool version is a prerequisite of the control
+rather than a detail of it. The dashboard's supervisor keeps refusing spawn BY NAME
+(*"the dashboard process does not launch browser workers; start worker X with `npm run cli worker
+<workflowId>`"*) until a real process effect exists — a refusal, not a stub, so no acknowledgement
+can claim an effect that did not happen.
+
+**6. What the dashboard shows.** The session and its workers: membership, per-member run state, and
+what each worker is doing — every value read from authority through the ONE projection
+(ref dashboard-surfaces). The worker cards exist already (§4's D248 as-built); what they lack is a
+session to belong to. Two honesty rules carry over unchanged: a browser tile still reads
+`Not checked` because nothing probes a live session, and a wait reason is drawn only where a real
+holder can be named — which, once §10 lands, is exactly one place.
+
+**7. This does not weaken any per-run invariant.** One worker still owns one active item (§0.3);
+a parked run still owns no browser resources (§2.1); the write fence is still per permanent key
+(ref write-safety), so two members touching one external transaction still admit exactly one fence;
+and a session is a GROUPING, never a transaction — cancelling a session cancels its member runs one
+by one, through the same command arms, with the same refusals.
+
+**8. Proof.** Two separations dry-run scenarios in parallel, recorded — which is also the
+end-to-end tier's first exercise (ref guards-and-tests §test tiers) — plus a §7.1 row in the commit
+that lands the pool. It needs §10 first: the pool multiplies the hazard the ceremony lease removes,
+and shipping it in the other order would make the first parallel cold start the thing that burns a
+profile.
+
