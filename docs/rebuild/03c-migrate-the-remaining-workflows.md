@@ -786,13 +786,63 @@ data-intake-and-edit-data` §2.8 is D172/D173's as-built union resolution behind
 <!-- roadmap: order-7 -->
 
 <!-- roadmap-status: order-7 -->
+- [ ] the §b questionnaire for oath-upload and for onbase — unasked
+- [ ] the `servicenow` and `onbase` stores — 12 lines each, `declareDriver(…, "unwired")`, zero tasks, no login recipe
+- [!] the ServiceNow `receipt` probe — **the operator must name a live probe target**; §Live probe status has carried this as ⏳ since D92
+- [!] OnBase `upload-verify` **or** an argued `unverifiableByPage` → always-park — **blocked: no probe target exists today**, and it is gated on the next real document upload
+- [ ] oath-upload's born-at-upload fence (`ref dashboard-surfaces` §4.5)
+- [ ] PROOF rebuild-verified propagation windows for ServiceNow (`ref write-safety` §4.2; doc 04 `{#def-propagation}` carries the deferral)
+- [ ] PROOF T1 per workflow + the T3 pair
+> 2026-08-20 | docs-cohesion 03c | verified against `src/stores/servicenow/index.ts`, `src/stores/onbase/index.ts` (both unwired, `{}` tasks) and §Live probe status; TWO of this row's blockers need the operator, not an agent
 <!-- /roadmap-status -->
+
+**What it is.** A ServiceNow ticket with a PDF attached, and an OnBase document import. The two
+write-heavy rows that are not incidents. **Systems:** ServiceNow (undriven), OnBase (undriven).
+
+**Store tasks.** BUILD both stores whole — driver, verified login recipe, UI catalog, read tasks,
+and the write family. `ref task-contract` §9.2 is the OnBase import contract's shape.
+
+**This row is gated on the operator twice, and that is the honest state.** Two of the four systems
+in the write-safety contract still have their completion arm as an ASSUMPTION rather than a proof
+(§Live probe status). ServiceNow needs someone to name a target; OnBase has no target that exists.
+Both are `you:` lines on the tree node, and neither is something a migration agent can resolve by
+reading code. Settling them is cheap when a target exists — the Kuali probe took half a day and
+produced five design constraints that would otherwise have surfaced mid-migration.
+
+**The specific hazard: `unverifiableByPage` changes the WORKFLOW, not just the test.** If OnBase
+lands there, order 7's automation degrades to *the operator manually confirms every upload* — a
+different product, not a weaker assertion. `ref guards-and-tests` §3.5 is D22's closure of that
+escape hatch: an `unverifiableByPage` claim needs an allowlist entry AND a reason, so it cannot be
+reached by omission. Decide it BEFORE rebuild-ready, because a workflow whose completion arm is
+"a human looks" needs its park path, its notification and its receipt designed for that.
+
+**The second hazard: `linked` is not `member`.** oath-upload's signers are `linked` children (D6),
+and a failed `linked` child makes the PARENT failed (D13) — which is the opposite of a group member,
+where a rejection is a member-level outcome. Getting that backwards produces a parent that reports
+success over a signer who never signed.
+
+**The third: the born-at-upload fence.** `ref dashboard-surfaces` §4.5 — oath-upload's owner
+consumes through a sibling task born at the upload, which is how the fence gets a permanent key for
+a document that did not exist when the run started.
 
 ### Dashboard · wire oath-upload · onbase
 <!-- roadmap: order-7-dash -->
 
 <!-- roadmap-status: order-7-dash -->
+- [ ] 5.1.1 run modal — typed start inputs + start plan for oath-upload and onbase
+- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips (this row's chips are `linked` children, D6/D13), per-row actions
+- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
+- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
+- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] the ServiceNow ticket receipt and the OnBase upload-verify on the run-detail receipt (`ref operator-trust` §2.3)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces
+> 2026-08-20 | docs-cohesion 03c | seven squares — six standard (no gate, no intake) plus the two new receipt arms; if OnBase lands on `unverifiableByPage` the receipt square grows an always-park presentation instead of a verify
 <!-- /roadmap-status -->
+
+The receipt square is the one that carries this row's risk onto the screen. `ref operator-trust`
+§2.3 is the receipt contract: a `HRC0…` ticket number is a real completion proof and an unverified
+upload is not, and the panel has to say which of the two it is holding. D237/D238's rule applies
+directly — a label and a derived verdict describing the same run must not be derived twice.
 
 ## Order 9 · onboarding
 <!-- roadmap: order-9 -->
