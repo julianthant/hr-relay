@@ -3,10 +3,10 @@
 asOf: 2026-08-20
 head: bf41158
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
-source: Stems from the phase docs `docs/rebuild/00`–`05` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
+source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
 source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · the phase docs win on any disagreement
-footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is the phase docs `docs/rebuild/00`–`05`; the decision changelog `docs/rebuild/reference/decisions.md`. Sizes are relative build sizes (doc 00 §Size model + delivery tiers), not calendar.
+footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is the phase docs `docs/rebuild/00`–`06`; the decision changelog `docs/rebuild/reference/decisions.md`. Sizes are relative build sizes (doc 00 §Size model + delivery tiers), not calendar.
 > The ground-up rebuild of UCSD's UCPath HR automation, as a tree. **Phases 0–2 are complete** — the platform is built and proven; **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**; legacy stays the sole production authority until one all-at-once cutover. Every box shows what it **builds** (by layer, filled when built) and what it **needs** — select one for detail, hover to light up what it unlocks.
 
 tiles:
@@ -1369,10 +1369,147 @@ status: never
 chip: ideas, not a hosted future
 doc: 05 §Later, unplanned · ref:operator-trust §7
 
-> Package the local app ("web app → real app"); a cooperation / multi-user mode built on top of solo (D193). The LATER tier of D76's MUST / SHOULD / LATER sizing — what the stop-loss cuts FIRST — and it never blocks the cutover: doc 05 §Exit criteria names none of it.
+> A cooperation / multi-user mode built on top of solo (D193) — the tier's one remaining item; the PACKAGING half ("web app → real app") LEFT this tier on 2026-08-21, when the operator made it Phase 6 (`{#desktop-app}`, R14). The LATER tier of D76's MUST / SHOULD / LATER sizing — what the stop-loss cuts FIRST — and it never blocks the cutover: doc 05 §Exit criteria names none of it.
 
 log:
 - 2026-08-21 | docs-cohesion 05 | filled as-built — the two D193(a) items carry no owner and no design (which is what separates them from a doc 04 deferral), the four D75 seams that keep them possible are built, and hosting is a decided refusal rather than a LATER item
+- 2026-08-21 | docs-cohesion R14 | the packaging half is no longer LATER — the operator promoted it to `{#desktop-app}` / doc 06, which gives it the owner and the design a LATER item by definition lacks; the cooperation / multi-user item and the hosting refusal are untouched
+
+## Ship the desktop app {#desktop-app}
+phase: Phase 6
+status: planned
+when: after the cutover | the operator may pull it earlier
+size: L
+chip: not started
+doc: 06 §Phase summary · ref:frontend-backend-integration §6.9 · ref:execution-and-sessions
+open: no
+
+> R14, the operator 2026-08-21. The rebuild is DELIVERED as a Mac and Windows desktop app: an Electron shell hosting the BFF and the dashboard bundle in one process tree, managing the worker processes, keeping the browser automation (Playwright's full Chromium + Duo Autopilot) as child processes under app data, storing credentials in the OS keychain behind the ONE secrets reader, and packaged and signed for both operating systems. What it INHERITS: D181's `server` role lock → single instance; `runtime-isolation.json`'s roots → app-data dirs (they are repo-relative off `process.cwd()` today); D189's byte path → the desktop loads the bundle from app RESOURCES, so `{#def-byte-path}`'s phone/tunnel half stays separate; `{#parallel-runs}`' worker pool → the app's worker lifecycle; `{#duo-lease}`, because the desktop is where several workers on one machine become the ordinary case. Nothing is built: there is no Electron dependency at HEAD.
+
+needs:
+- cutover
+- parallel-runs
+- duo-lease
+
+note: The order is "at the end" — but the operator may pull this phase IN FRONT of `{#cutover}` if the cutover should run on the packaged app. Until they do, `needs: cutover` stands.
+
+log:
+- 2026-08-21 | docs-cohesion R14 | phase drawn from the operator's instruction; nothing built
+
+### Electron shell — the main process, the window, the single instance {#desk-shell}
+status: planned
+date: R14 · 2026-08-21
+size: M
+doc: 06 §Electron shell — the main process, the window, the single instance · ref:frontend-backend-integration §6.9 · ref:clock-config-secrets §3
+
+> The main process boots the BFF as a managed CHILD process (recommended over in-process: D181's role lock is per-PID and `cli storage restore` composes its stopped-system proof from those files, a BFF crash must not take the window, and `src/cli.ts` is a command entry rather than a library). The window loads `dist/dashboard` from app resources; every runtime root resolves under `app.getPath("userData")` with `runtime-isolation.json`'s NAMES unchanged; a second launch focuses the open window; the app holds a power save blocker while any run is in flight.
+
+builds:
+- [ ] BE the Electron main process boots the BFF as a managed child under the single-instance lock, and a BFF that finds D181's `server` role lock held refuses by name
+- [ ] BE every runtime root resolved under `app.getPath("userData")` instead of `process.cwd()` — `compose.ts:336-337` computes them repo-relative, and `operational-isolation` pins the names, not the resolution
+- [ ] BE the app-version stamp `RunRecord` carries (D179) read from a source that survives packaging — `compose.ts:337-340` reads `join(repoRoot, "package.json")`, which is inside the asar
+- [ ] FE the renderer loads `dist/dashboard` from app resources with an EXPLICIT API base — `src/dashboard/app/main.tsx:21` passes `window.location.origin`, which is the string `"null"` under `file://`; the transport already takes a `baseUrl`, so the fix is a decision, not a seam
+- [ ] BE an application menu and keep-awake while any run is in flight — a machine that sleeps mid-run leaves a claim to be swept and a browser on a half-staged page
+- [ ] DOCS the decision: in-process vs managed child, and how the app lock composes with the role lock
+
+needs:
+- desktop-app
+
+log:
+- 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; the child-process recommendation and the four obstacles are read out of the code at HEAD (`src/server/dashboard/compose.ts`, `src/domain/config/schema.ts:8`, `src/dashboard/app/main.tsx:21`)
+
+### Worker lifecycle — the pool the app owns {#desk-worker}
+status: planned
+date: R14 · 2026-08-21
+size: L
+doc: 06 §Worker lifecycle — the pool the app owns · ref:execution-and-sessions §1 · ref:execution-and-sessions §3
+
+> Workers become managed child processes started and stopped from the dashboard, which IS `{#parallel-runs}`' pool rather than a second scheduler. Playwright's full bundled Chromium and the vendored Duo Autopilot extension are shipped with the app or installed on first run into app data; profiles keep doc 05's `(worker, system, instance, configFingerprint)` partition with the root moved under app data; the Windows half is verified on real hardware.
+
+builds:
+- [ ] BE workers as managed child processes, started and stopped from the dashboard — `createDashboardWorkerSupervisor` refuses spawn by name today and tells the operator to run `npm run cli worker` (`src/server/dashboard/compose.ts:322-331`), which a packaged app cannot offer
+- [ ] BE Playwright's FULL bundled Chromium available to a packaged app — shipped inside the installer or installed on first run into app data (the headless shell cannot load an extension, so there is no smaller option)
+- [ ] BE the vendored `duo-autopilot/` extension placed under app data with `paths.duoExtensionDir` pointed at it — a hard runtime dependency of every authenticated login (D244)
+- [ ] BE browser profiles under app data, keeping the `(worker, system, instance, configFingerprint)` partition
+- [ ] PROOF Windows — the extension path, the profile root and the Chromium launch verified on a real Windows machine, not a VM
+- [ ] BE a worker that dies is reported with its exit reason and its claim released through D200's lease-as-evidence sweep, never by guessing
+
+needs:
+- desktop-app
+- parallel-runs
+
+log:
+- 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; this node CONSUMES `{#parallel-runs}`' pool — a second supervisor over one authority table is the shape D200 warned about
+
+### Credentials — the OS keychain behind the one reader {#desk-secrets}
+status: planned
+date: R14 · 2026-08-21
+size: M
+doc: 06 §Credentials — the OS keychain behind the one reader · ref:clock-config-secrets §3
+
+> `.env` becomes the macOS Keychain and the Windows Credential Manager, reached through `src/domain/secrets.ts` and nowhere else — the `secrets-single-source` guard does not move. The open design question is HOW a keychain (async, prompting) reaches a synchronous reader: populate each child's environment block at spawn, or give the reader a source seam. They differ in exposure, so it is a decision with a D-number. A first-run setup screen collects what is missing and names each credential it refuses without.
+
+builds:
+- [ ] BE the OS keychain as the credential source for a packaged app — macOS Keychain, Windows Credential Manager
+- [ ] BE `src/domain/secrets.ts` stays the ONLY reader; `secrets-single-source.test.ts` unchanged
+- [ ] BE the Duo credential (`paths.duoCredential`) moved into the same store, or its file placed under app data with the app's own protection — never plaintext inside the shipped bundle
+- [ ] FE a first-run setup screen that names every credential it needs and refuses a workflow start by the name of the missing one
+- [ ] BE widen `AbsolutePathSchema` for Windows paths — `src/domain/config/schema.ts:8` refuses anything not starting with `/`, and nine `paths.*` leaves use it, so a Windows build fails config resolution at the schema boundary (read-forward safe: every stored snapshot's POSIX path still parses)
+- [ ] DOCS the decision: env-block injection vs a source seam inside the one reader
+
+needs:
+- desktop-app
+
+log:
+- 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; the POSIX-only path schema is a verified blocker for the Windows half and is filed here because it is what the keychain and the extension paths both trip over
+
+### Packaging — signed installers for both operating systems {#desk-package}
+status: planned
+date: R14 · 2026-08-21
+size: M
+doc: 06 §Packaging — signed installers for both operating systems · ref:frontend-backend-integration §7.4
+
+> electron-builder, with the dashboard bundle and `duo-autopilot/` as app resources. macOS: a signed and NOTARIZED dmg — an unsigned build fights Gatekeeper at exactly the moment a live run launches its second browser. Windows: a signed nsis or msix installer. The release version is the app-version stamp `RunRecord` already carries (D179), so an archived run names the build that produced it. Auto-update is LATER, deliberately and with its reason written down.
+
+builds:
+- [ ] BE electron-builder configured, with `dist/dashboard` and `duo-autopilot/` as app resources
+- [ ] BE macOS — a signed and notarized dmg
+- [ ] BE Windows — a signed installer (nsis or msix)
+- [ ] BE the release version IS D179's app-version stamp, not a second identity
+- [ ] DOCS auto-update deferred with a named trigger — an update landing between a fence and a read-back is a hazard nobody has designed for; the trigger is a stated position on updating while a run is in flight
+- [ ] PROOF the installer builds from a clean checkout by one command, and the gate family still runs against the source tree unchanged
+
+needs:
+- desktop-app
+- desk-shell
+- desk-worker
+- desk-secrets
+
+log:
+- 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; signing is not optional on either OS because the app launches a second browser with an unpacked extension
+
+### Proof — a dry run from the packaged app on both operating systems {#desk-proof}
+status: planned
+date: R14 · 2026-08-21
+size: M
+doc: 06 §Proof — a dry run from the packaged app on both operating systems · ref:guards-and-tests §10
+
+> R10's T1 tier run from the INSTALLED app — a live `dryRun=true` workflow with its checkpoints asserted over authority — on macOS and on Windows, on real hardware. R10's T3 dashboard conditions attached, driven through the app's own window. The parity corpus re-rendered in the Electron renderer, because the operator's actual pixels are the ones the corpus exists to pin (D187). The recovery drill exercised through the app's own lock files, which are now what D181's stopped-system proof composes from.
+
+builds:
+- [ ] PROOF T1 — a full workflow dry run driven from the installed app on macOS, checkpoints asserted over authority and the result recorded durably
+- [ ] PROOF T1 — the same on Windows, on real hardware
+- [ ] PROOF T3 — a dashboard condition attached to that dry run and driven through the app's own window
+- [ ] PROOF the parity corpus rendered in the Electron renderer (D187: a corpus photographed against the wrong surface records defects instead of catching them)
+- [ ] PROOF `cli storage restore` drilled through the app's own runtime lock files (D181)
+
+needs:
+- desktop-app
+- desk-package
+- test-tiers
+
+log:
+- 2026-08-21 | docs-cohesion R14 | drawn from the operator's instruction; the tiers are `{#test-tiers}`' and no workflow has a T1 pair at HEAD, so this node cannot be scheduled before that one
 
 <!-- roadmap:end -->
 
@@ -1382,7 +1519,7 @@ log:
 
 _Lifted from the master plan's §0 on 2026-08-20 (cohesion step 3a) — verbatim except
 where a name moved: the design docs are now cited by slug under `docs/rebuild/reference/`, and the
-plan's own numbers are the phase docs `docs/rebuild/00`–`05` (the number IS the phase; phase 3 is
+plan's own numbers are the phase docs `docs/rebuild/00`–`06` (the number IS the phase; phase 3 is
 three docs, `03a`/`03b`/`03c`). The master plan itself was dissolved into those docs on the same day
 (step 3b); its as-written record, with a section-by-section table of where everything went, is
 `docs/rebuild/history/superseded/2026-08-20-master-plan-dissolved.md`._
@@ -1393,7 +1530,7 @@ Per charter §"One master plan": the owning design docs (now `reference/task-con
 `reference/workflow-model`, `reference/dashboard-surfaces`, `reference/decisions`,
 `reference/execution-and-sessions`, `reference/data-intake-and-edit-data`, and
 `reference/write-safety` through `reference/frontend-backend-integration`) are the binding detail;
-THE PLAN — this file, the tree, plus the phase docs `docs/rebuild/00`–`05` — is the authoritative
+THE PLAN — this file, the tree, plus the phase docs `docs/rebuild/00`–`06` — is the authoritative
 build order. No second plan, no per-workflow "alt plan," no execution doc that re-sequences
 phases. Per-workflow *migration plan docs* (Phase 3+) are **children** of this plan — they answer the §b questionnaire
 (`doc 03c` §The §b migration questionnaire) and record what a workflow reuses/adds; they never re-order the
