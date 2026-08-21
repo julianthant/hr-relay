@@ -469,7 +469,9 @@ again, its input carries a distinct audited correction identity that derives a N
 - [x] the interpreter reads back the exact row beat ⑦ committed and refuses if it is absent or does not project to the settlement just reported; it never mints one (`src/core/run-executor.ts`)
 - [x] `TransactionOutcomeSchema` lives in the browser-safe half so a descriptor closure can hash it without reaching `node:crypto`
 - [x] the evidence receipt derives from authority rather than being minted at settlement, and a gate contributes its own `gate_results` row as evidence (D82, D203, D204 — ref operator-trust owns the receipt)
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/write-safety-primitives.ts:88-107`, `src/core/write-sequencer.ts:512-604`, `src/core/run-executor.ts`; left: nothing — 2g's write-lane half is closed
+- [x] the ordered actor-attributed ledger projector is BUILT with its five durable facts and nine closed degraded reasons (D134; §6.1)
+- [ ] **and nothing in production calls it** — `createLedgerProjector` has only test callers, so beat ⑦'s `ledger-entry` and `write-committed-span` outbox rows stay `pending` while `createLedgerReadThrough` serves the archive and Activity surfaces over files nothing writes (§6.1)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/write-safety-primitives.ts:88-107`, `src/core/write-sequencer.ts:512-604`, `src/core/run-executor.ts`, and a tree-wide search for `createLedgerProjector`; left: a production tick that drains the ledger outbox, and a health surface for the degraded reasons
 <!-- /roadmap-status -->
 
 A transaction node may be named in a descriptor's `flow.result.dependsOn` exactly like a task node.
@@ -1253,66 +1255,81 @@ finally unblocks, re-derive what it is a measurement OF before recording that it
 
 ## 6. The immutable receipt / transaction ledger
 
-**Purpose (operator §13):** an immutable record of what real transactions were actually filed, **never
-pruned** — it outlives ref dashboard-surfaces's decided base retention (spans 30d / notes 30d, D86) and the
-`clean-tracker` sweep.
+**Purpose (ref charter §13):** an immutable record of what real transactions were actually filed,
+**never pruned** — it outlives ref dashboard-surfaces's decided base retention (spans 30 d / notes
+30 d, D86) and the `clean-tracker` sweep.
 
 ```ts
-// src/domain/ledger.ts — the append-only at-rest entry shape.
-// Beat ⑦ writes its unsequenced payload to durable_outbox; the projector adds ordered seq.
-export interface LedgerEntry {
-  outboxId: OutboxId;             // immutable DB identity; projector idempotency key
-  seq: NonNegativeInt;            // assigned transactionally by the serialized projector
-  workflow: WorkflowId;
-  itemId: ItemId;
-  system: BrowserSystemId;        // ucpath | crm | servicenow | kuali | onbase
-  idempotencyKey: IdempotencyKey; // the natural key (§5) — dedupe + audit join
-  proof: CanonicalJsonValue;      // already parsed by the referenced completion proof schema
-  proofSchemaHash: Fingerprint;
-  completionKind: "receipt" | "save-verify" | "upload-verify";
-  proofSource: "normal-output" | "recovery-probe" | "operator-attestation";
-  bindingProofDigest: Sha256;       // exact subject-match or unscoped proof stored on the intent
-  subject?: SubjectEvidenceWire;    // present only for subject/artifact-scoped commits
-  runId: RunId; traceId: TraceId; attempt: PositiveInt;
-  operator: OperatorId;           // from the config domain (ref clock-config-secrets), never fabricated
-  instance: "prod" | "test";      // resolved run snapshot (ref clock-config-secrets)
-  configFingerprint: Fingerprint;
-  dryRun: false;                  // real writes only; a dry run composes no submit, so writes NO ledger entry
-  fencedAt: IsoInstant;           // durable instant before the click
-  confirmedAt: IsoInstant;        // proof accepted; may be later after recovery/manual confirmation
-  externalOccurredAt?: IsoInstant;// only when the external proof itself supplies a trustworthy time
+// src/domain/ledger.ts — the append-only at-rest entry. Beat ⑦ writes the PAYLOAD to
+// durable_outbox; the projector adds the ordered `seq` and the outbox identity.
+LedgerEntry = { outboxId, seq, payload: LedgerEntryPayload }
+
+LedgerEntryPayload = {
+  workflowId, itemId, system,                 // ucpath | crm | servicenow | kuali | onbase
+  idempotencyKey, idempotencyKeyDigest,       // the natural key (§5) — dedupe + audit join
+  writeIntentId, intentGeneration,            // WHICH fenced generation filed it
+  proof: SchemaBoundCanonicalValue,           // the parsed proof AND its schema hash, together
+  completionKind: "receipt" | "save-verify" | "upload-verify",
+  proofSource:    "normal-output" | "recovery-probe" | "operator-attestation",
+  bindingProofDigest,                         // the exact subject-match or unscoped proof on the intent
+  subject?,                                   // present only for subject/artifact-scoped commits
+  runId, traceId, attempt,
+  operator, instance: "prod" | "test", configFingerprint,   // ref clock-config-secrets — never fabricated
+  dryRun: false,                              // real writes only; a dry run composes no submit
+  fencedAt, confirmedAt, externalOccurredAt?, // externalOccurredAt only when the proof supplies a trustworthy time
 }
 ```
 
-`LedgerEntrySchema` is a strict discriminated/runtime schema and verifies the proof again by
-`proofSchemaHash` during projection/read. The interface is shown only for readability; persisted
-code uses its inferred type. There is no unchecked cast from the generic canonical proof envelope.
+Two invariants are enforced by the schema itself rather than by a reader: `confirmedAt` may not
+precede `fencedAt` — a ledger row cannot claim it was confirmed before the fence that authorized it
+— and `idempotencyKeyDigest` is re-derived from the row's own `system` and `idempotencyKey`, so a
+stored entry cannot be joined to a key it does not name. The proof and its schema hash travel as ONE
+`SchemaBoundCanonicalValue`, so there is no arrangement of the row in which the bytes and the schema
+that parsed them can drift apart. There is no unchecked cast from the generic canonical envelope.
 
-- **Location:** `.tracker-rebuild/ledger/<system>-<YYYY-MM-DD>.jsonl` (ref dashboard-surfaces §2.1). JSONL so the
-  operator greps it; per-system+day partition so `grep 10001573 .tracker-rebuild/ledger/ucpath-*.jsonl`
-  answers "what did we file for this person?" across time.
-- **Never pruned (retention floor):** rebuild cleanup (which prunes `spans/` and `notes/` at
-  30d—D86) skips `ledger/` unconditionally—a ratchet guard fails
-  if any prune path can reach `ledger/`. This is the "immutable transaction ledger, never pruned" of
-  operator §13. The never-pruned floor sits above a *settled* number (D21), not a guessed one.
-- **Serialized ordered projection.** Executors never append the ledger file. Beat ⑦ writes a
-  unique ledger outbox row. One projector holds a SQLite lease for `(system,date)`, assigns the next
+- **Location:** `.tracker-rebuild/ledger/<system>-<YYYY-MM-DD>.jsonl` (ref dashboard-surfaces §2.1).
+  JSONL so the operator greps it; a per-system-plus-day partition so
+  `grep 10001573 .tracker-rebuild/ledger/ucpath-*.jsonl` answers "what did we file for this person?"
+  across time.
+- **Never pruned (retention floor):** cleanup (which prunes `spans/` and `notes/` at 30 d, D86)
+  skips `ledger/` unconditionally, and a ratchet fails if any prune path can reach it. This is the
+  "immutable transaction ledger, never pruned" of ref charter §13. The never-pruned floor sits above
+  a *settled* number (D21), not a guessed one.
+- **Serialized ordered projection.** Executors never append the ledger file. Beat ⑦ writes a unique
+  ledger outbox row; one projector holds an authority lease for `(system, date)`, assigns the next
   sequence, appends one canonical actor-attributed line, fsyncs, and marks that outbox projected.
-  Restart reconciles committed intents/outboxes against `outboxId` + sequence and appends only
-  missing entries; duplicate, gap, malformed-tail, or order conflicts stop projection and surface
-  degraded health rather than silently rewriting history.
-- **Hash-chain/tail-anchor deferred (D79).** `prevHash`, `ledger_heads`, and tamper-evident tail
-  verification are not initial single-operator requirements. They return only with the multi-user
-  phase or a separately ratified compliance requirement. Never-pruned retention, strict schemas,
-  atomic outboxes, one ordered projector, actor attribution, backups, and reconciliation remain.
-- **Projection is idempotent** by `outboxId`. Recovery audits committed intents against ledger and
-  terminal-span outboxes, creates only missing outboxes in SQLite, then lets projectors catch up.
-### 6.1 Phase-2g as-built — the projector exists (2026-08-04, D134)
+  §6.1 is its as-built.
+- **Hash-chain / tail-anchor deferred (D79).** `prevHash`, `ledger_heads` and tamper-evident tail
+  verification are not initial single-operator requirements; they return with the multi-user phase or
+  a separately ratified compliance need. Never-pruned retention, strict schemas, atomic outboxes, one
+  ordered projector, actor attribution, backups and reconciliation remain.
+- **Projection is idempotent** by `outboxId`. Recovery audits committed intents against the ledger
+  and terminal-span outboxes, creates only missing outboxes in authority, then lets projectors catch
+  up.
+- **One entry = one filed transaction.** The ledger is the durable superset of the `write.committed`
+  span events (gap-audit gap 5: *"receipts ARE the ledger"*). It records a confirmed automation
+  attempt, not a claim that `confirmedAt` equals the external filing instant. A preflight probe that
+  merely discovers an existing external transaction produces `write.skipped-existing` audit state and
+  **no ledger entry** — discovering a transaction is not evidence this automation filed it.
 
-Phase-1c Stage A shipped the ledger's at-rest *shape* and explicitly claimed no projector; the
-Phase-2 transaction proof then recorded the projector as NOT BUILDABLE and refused to fake it. It is
-now built, in `src/infra/ledger/ledger-projector.ts`, and it is the ONLY module that appends
-`ledger/`.
+### 6.1 As-built — the projector exists, and nothing in production runs it (D134, 2026-08-04)
+<!-- roadmap: p2-2g -->
+
+Phase-1c Stage A shipped the ledger's at-rest *shape* and explicitly claimed no projector; §3.4's
+exit-criteria table then recorded the projector as NOT BUILDABLE and refused to fake it. D134 built
+it, in `src/infra/ledger/ledger-projector.ts`, and it is the ONLY module that appends `ledger/`.
+
+**`createLedgerProjector` has no production caller.** Every reference in the tree is a test
+(`tests/unit/ledger-projector.test.ts`, `tests/unit/architecture/ledger-projector.test.ts`,
+`tests/unit/archive-model.test.ts`, `worker-teardown-soak.test.ts`); no composition root, worker
+tick or CLI command invokes it. `createLedgerReadThrough` — the archive and Activity reader — IS
+wired into both the dashboard and storage compositions, so the surfaces that READ the ledger are
+live over files nothing writes. The consequence is concrete and dated: §3.4's controlled commit left
+its `ledger-entry` and `write-committed-span` outbox rows `pending`, and they are pending still.
+This is D222's shape one lane over — machinery with zero producers, every gate green, because
+nothing checks that a durable fact REACHES the file it is supposed to reach. The repair is a
+production tick that leases and drains, plus a health surface for the degraded reasons below; it is
+code work, named here rather than implied by prose that reads as if the projector were running.
 
 **Five durable facts, in this exact order** — the order is what makes every crash window repairable:
 
@@ -1331,32 +1348,26 @@ appends nothing and only marks; `markAppended` is separately idempotent for exac
 **The partition is derived from the entry, not from now.** `<system>-<date>` uses the UTC date of the
 entry's own `confirmedAt`, so a restart hours or days later reconciles into the same file and the
 partition of a stored entry never depends on the machine's time zone (the same reason D112 fixes
-provider budget windows to UTC). Ref dashboard-surfaces §2.1's spans/notes streams keep their local append-at-now
-partitioning; only the ledger is entry-derived, because only the ledger is replayed.
+provider budget windows to UTC). Ref dashboard-surfaces §2.1's spans and notes streams keep their
+local append-at-now partitioning; only the ledger is entry-derived, because only the ledger is
+replayed.
 
 **Sequences are dense from zero inside a partition**, so `ledger_partitions.next_seq` equals both the
-row count and `max(seq)+1`. That is a boot invariant, not a convention: a gap means a lost or
+row count and `max(seq) + 1`. That is a boot invariant, not a convention: a gap means a lost or
 rewritten entry and degrades the store read-only.
 
 **Degraded is a closed, non-continuable outcome.** `duplicate-sequence`, `duplicate-outbox`,
 `sequence-gap`, `sequence-out-of-order`, `malformed-tail`, `line-digest-mismatch`, `unrecorded-line`,
-`sequence-authority-mismatch`, and `missing-outbox-payload` each stop that partition with a named
+`sequence-authority-mismatch` and `missing-outbox-payload` each stop that partition with a named
 reason and a detail string. A degraded partition projects nothing further — including entries that
 are waiting and perfectly valid — because continuing past ledger corruption is how history gets
 quietly renumbered. Health is recomputed from disk plus authority on every attempt rather than
-cached, so it cannot go stale. Wiring degraded health to the notification/storage-health surface is
-the notification slice's work.
+cached, so it cannot go stale.
 
 **Never pruned, structurally.** `pruneEventStreams` can only see `spans/` and `notes/`
-(`EVENT_STREAMS`), and the `ledger-projector` guard fails if any module outside
-`src/infra/ledger/` both names `ledger/` and calls a deletion primitive — or if the projector module
-itself ever calls one.
-
-- **One entry = one filed transaction.** The ledger is the durable superset of the `write.committed`
-  span events (gap-audit gap 5: "receipts ARE the ledger"). It records a confirmed automation
-  attempt, not a claim that `confirmedAt` equals the external filing instant. A preflight probe that
-  merely discovers an existing external transaction produces `write.skipped-existing` audit state
-  and no ledger entry.
+(`EVENT_STREAMS`), and the `ledger-projector` guard fails if any module outside `src/infra/ledger/`
+both names `ledger/` and calls a deletion primitive — or if the projector module itself ever calls
+one.
 
 ---
 
