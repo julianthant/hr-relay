@@ -1372,6 +1372,7 @@ one.
 ---
 
 ## 7. Fail-closed everywhere — every place `unknown` could leak into `done`, and its exit
+<!-- roadmap: phase-1 -->
 
 The operator's core requirement. Exhaustive:
 
@@ -1387,7 +1388,7 @@ The operator's core requirement. Exhaustive:
 | 8 | Crash mid-write, recovery probe indeterminate | `ambiguous`/`unknown`/throw/malformed absence ⇒ `PARKED`; `present` ⇒ backfill-done only after the arm's `proofSchema`; `absent` becomes retry authority only after every counted observation was captured after the propagation window and clears the repeated-observation policy, otherwise parks (D64/D69) |
 | 9 | A commit `run` returns success with no proof | kernel rejects at ⑥ ⇒ `PARKED` |
 | 10 | The mutation primitive fired without a fence (a mis-authored submit) | primitive throws (⑤) — corruption, loud |
-| 11 | dry-run: no submit composed at all (charter §1a) | write-safety never engages; nothing to make done — clean, no leak |
+| 11 | dry-run reaches a transaction node | the preview runs beat ① and may report `already-present`, but composes no fence, no capability and no submit (D215), and ends the run at the node with a `rehearsal` result that can never be `verified-done` (D210/D237) |
 | 12 | Live probe aged while the form was prepared | `probeToFenceMaxMs` expires ⇒ discard page and restart at preflight; no fence/click |
 | 13 | Operator clicks a stale/generic Done or Retry on a parked write | those actions do not exist; present proof/absent evidence endpoints require intent generation+version and fail on conflict |
 | 14 | Staged page shows another person/file, or the identity cannot be read | beat ③ returns mismatch/unknown ⇒ zero fence, zero mutation capability, poisoned/closed lease, structured failure + diagnostic bundle |
@@ -1403,48 +1404,43 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
 
 ---
 
-## 8. Mechanical guards (fail-loud ratchets, `npm run test:architecture`)
+## 8. Mechanical guards
 
-- **`write-safety-contract.test.ts`** — every `effect:"commit"` contract MUST declare write safety;
-  no allowlisted escape hatch. Every completion arm has nontrivial `proofSchema`, normal-output and
-  recovery-probe extractors, `outputFromProof`, and fixtures proving normal/recovery/preflight-
-  present paths parse the same proof and commit-output schemas and yield the correct discriminated
-  `TransactionOutcome`.
-- **Probe/verify resolution** — `idempotency.probe` and any `save-verify`/`upload-verify` `verify`
-  TaskId resolve to a real `effect:"read"` task in the **same store**, whose output is (or extends)
-  `ProbeVerdict`, whose contract declares zero-age freshness. Table-driven over the store index.
-- **Fence-before-click** — a unit fixture asserts the `write_intents` SQLite commit is observed
-  before the mutation primitive is invoked; the primitive throws when invoked with no open fence
-  or when its capability's binding-proof digest does not match the fenced intent.
-- **Subject-before-fence** — every commit contract has a strong/explicit-none subject declaration;
-  prepare/commit subjects are compatible; the driver observation resolves in the same system.
-  Ordering tests assert prepare-end < subject-observed < fence-commit < mutation-call. Registered
-  scenarios cover match, mismatch, unknown/missing element, stale proof after navigation, stale
-  proof after retry, and two EIDs alternating through one pooled page.
-- **Unscoped binding allowlist** — every commit with `subject.kind:"none"` has one reviewed reason
-  and builds the D65 unscoped proof on a registered page state; stale entries fail in reverse. A
-  fixture proves no empty/fabricated subject evidence is accepted and the mutation capability is
-  bound to the unscoped proof digest.
-- **Same-key sequential + concurrent dedupe** — fixtures cover two simultaneous starters and a
-  later fresh run after the first committed. Both reuse/block on the permanent primary-key intent;
-  neither can create a second fence/click. An unseen live `present` becomes `observed-present`,
-  produces typed output but no ledger outbox, and remains permanently click-blocking.
-- **Crash-recovery** — a fixture injects a `write_intents{status:"attempting"}` with no `committed`
-  and asserts the recovery probe runs FIRST and routes present→(schema-parse then)backfill /
-  present-with-receipt-failing-schema→park (D19) / one early absent→requeue-or-park / stabilized
-  same-key negative evidence→retry / inconsistent or malformed absence→park / operator-only→park /
-  unknown→park. Manual Clock fixtures cross the exact propagation/read-spacing boundaries without
-  sleeping.
-- **Atomic outbox + ledger integrity** — crash injection at every subpoint of beat ⑦ proves the
-  intent/checkpoint/ledger-outbox/span-outbox commit is all-or-none. Concurrent projector fixtures
-  prove one ordered stream, actor attribution, idempotence by outbox id, and loud failure on
-  sequence gaps, malformed tails, duplicates, or missing files. Hash-chain/tail-anchor tests wait
-  for the deferred multi-user upgrade.
-- **Idempotency key hygiene** — a grep/AST guard flags an `idempotency.key` body referencing
-  `attempt`, `index`, `runId`, or array position (the doc1/doc2 ban); keys must read input fields.
-- **Transaction pairing** — every prepare and commit contract is paired in a transaction node;
-  neither is legal standalone, the lease scope is transaction-wide, and a dry-run executable plan
-  contains the prepare arm but zero commit arms or mutation capabilities (ref guards-and-tests).
+Ref guards-and-tests owns the guard umbrella and `docs/rebuild/guard-inventory.json` is the
+manifest both directions are checked against. Eight ACTIVE guards name this doc as their owner, and
+two RETIRED entries name where their invariant went — a guard that simply disappears is
+indistinguishable from an accident.
+
+| guard | what it holds |
+|---|---|
+| **`write-safety-contract`** | every `effect:"commit"` contract declares complete write safety with no escape hatch — a nontrivial `proofSchema`, both extractors, `outputFromProof` reconstruction, and a same-store read probe; the completion union admits `receipt` AND `save-verify`/`upload-verify`; and §4 recovery routes probe-first with a present proof schema-validated before any backfill |
+| **`subject-before-fence`** | compatible prepare/commit subject declarations in ONE system, observed after prepare; the live sequencer's ordering prepare-end < subject-observed < fence-commit < mutation-call on one lease; mismatch, unknown or a missing observation ⇒ zero fence, zero click, poisoned page; two EIDs alternating through one pooled page bind DISTINCT digests; every minted `MutationCapability` binds the fenced generation and proof digest |
+| **`permanent-key-dedupe`** | one permanent intent per system-scoped natural key and its derived digest, across sequential and independently opened competing connections; `committed` and `observed-present` cannot be reopened; `observed-present` creates no attempt and no ledger/span outbox; any key or digest mismatch fails loud |
+| **`recovery-negative-proof-settlement`** | retry authority requires the exact configured number of schema-valid post-window observations at or beyond BOTH injected-Clock boundaries, all bound to the fenced key and the exact authoritative query/source/source-state. Early, single, malformed, future, inconsistent, wrong-boundary, ambiguous, unknown, present and operator-only evidence never becomes retryable |
+| **`atomic-write-outbox`** | beat ⑦'s intent + attempt + ledger outbox + terminal-span outbox commit in ONE outer authority transaction; injected failure after every storage step rolls back every change and leaves the authority generation unchanged |
+| **`transaction-pairing`** | a transaction pairs prepare and commit arms from one system under one lease, binds the commit key from workflow input and declared upstream outputs only, declares a positive probe-to-fence budget and a dry-run policy, carries a same-system read probe, and no commit contract is reachable as a standalone step anywhere in `src/` |
+| **`ledger-projector`** | ONE serialized actor-attributed writer, never pruned: no module outside `src/infra/ledger/` may append the ledger, and no module that can name `ledger/` may call a deletion primitive — both arms against violating fixtures, with `pruneEventStreams` structurally blind to it |
+| **`identity-gate-before-commit`** | §14.6 #2 — in a separation-class descriptor BOTH sinks (every transaction node AND the terminal result) are graph-reachable only through the operator gate's own ancestry |
+
+Two more guards carry write-lane invariants under other owners: **`task-driver-boundary`** (ref
+operator-trust) refuses a `commit` implementation outside a store driver owner that validates its
+capability, refuses any module but `src/core/write-sequencer.ts` from naming `mintMutationCapability`,
+and refuses a forged brand anywhere; **`driver-lease-boundary`** (ref execution-and-sessions) holds
+the lease discipline beats ②–⑥ run inside.
+
+**Retired, with their successors named.** `commit-routes-through-mutation` retired at **D188**:
+`task-driver-boundary` holds it, and the capability became runtime-unforgeable at D127 — a
+module-private WeakSet is a stronger statement than an import walk.
+`dry-run-composition-submit-free` retired at the same decision into `write-safety-contract` plus the
+executable scenario `kuali-timekeeper-annotation/dry-run-preview`, which runs the REAL sequencer over
+a REAL authority database and asserts DURABLE absence rather than inspecting a composition for the
+absence of a call.
+
+**One designed guard was never built, and it is worth naming rather than leaving in a list as if it
+were.** "Idempotency key hygiene" — an AST check that an `idempotency.key` body never references
+`attempt`, `index`, `runId` or an array position — has no entry in the inventory and no file. The
+ban is real (§5) and is currently held by review plus the fact that all four keys read input fields
+only. A fifth contract is where that stops being enough.
 
 ---
 
@@ -1456,14 +1452,19 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
 - **Ref task-contract §6.2 (mutation primitive).** `stores/common/mutation.ts` accepts only the commit ctx's
   capability bound to the open intent generation + `WriteBindingProof` digest; no boolean dry-run
   branch exists.
-- **Ref workflow-model §5.6/§5.7 (checkpoints/resume).** Transaction nodes checkpoint their full typed
-  `TransactionOutcome`
-  and retain the validated proof on the permanent intent; a transaction
-  whose committed/satisfied key exists reuses its validated proof+output. Beat ⑦'s transaction-output checkpoint and
-  the `write_intents` row share the `(workflow,item_id,step_id,attempt)` key, and that checkpoint is
-  terminal evidence in its own right — see §3.1 (D144). §5.6 #2 is upgraded per
-  §4. The freshness walk (D8) is orthogonal and upstream: it keeps *stale read data* out of the fill;
-  write-safety keeps duplicate writes out of commit — two different holes, two different guards.
+- **Ref workflow-model §5.6/§5.7 (checkpoints/resume).** Transaction nodes checkpoint their full
+  typed `TransactionOutcome` and retain the validated proof on the permanent intent; a transaction
+  whose committed or satisfied key exists reuses its validated proof and output. That checkpoint is
+  terminal evidence in its own right — see §3.1 (D144). **The checkpoint key is
+  `(workflow, item, node, attempt, claimGeneration?)`** (D214) and the write intent's is
+  `(workflowId, itemId, taskId)` + the key digest: they are DIFFERENT identities on purpose, because
+  a gate park and its resume are two executions inside one attempt while the external transaction
+  they surround is still one. The claim generation is conditional so every historical row keeps a
+  byte-identical `record_key`; a WRITER may not adopt that shape. §5.6 #2 is upgraded per §4.
+  The freshness walk (D8) is orthogonal and upstream — it keeps *stale read data* out of the fill,
+  write-safety keeps duplicate writes out of the commit — and since D203 a gate contributes ONE
+  `operator`-sourced fact from its `gate_results` row to that walk, because a gate has no checkpoint
+  and never will.
 - **Ref workflow-model gates (D5).** `PARKED(needs-operator)` is ref workflow-model's park state; write-safety is one of the
   producers of it. Parking closes browser contexts before releasing exclusive leases; resume reacquires and
   re-enters at the recovery probe.
@@ -1495,8 +1496,9 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
   SQLite-fast-path recovery (`handler.ts:249,273,309,388-454`) → the generalized `write_intents`
   fence + the recovery-probe replay (§4).
 - Separations `findExistingTerminationTransaction` (`steps/ucpath-transaction.ts:83-104`) → the
-  `ucpath/find-existing-termination` probe; `deletePendingTransaction` (`transaction.ts:1167`) → the
-  `ucpath/clear-pending-terminations` cleanup transaction (§5).
+  `ucpath/match-existing-termination` probe; `deletePendingTransaction` (`transaction.ts:1167`) →
+  the `ucpath/stage-pending-termination-sweep` → `ucpath/delete-pending-terminations` cleanup
+  TRANSACTION PAIR with its own permanent key (§5).
 - Onboarding `findExistingHireTransaction` + `decideHireDuplicateSkip` (`workflow.ts:488-521`) → the
   hire probe — its verdict widened from boolean fail-open to `ProbeVerdict` (its high-confidence skip
   becomes `present`; its low-confidence "fail open→submit" becomes `absent`; its genuinely-ambiguous
@@ -1505,9 +1507,12 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
 **Newly built (mostly the write-ahead layer — the gap audit's "mostly new"):**
 - The permanent-key intent table, atomic outboxes, fixed sequencer, `ProbeVerdict`, serialized
   ordered ledger projector, and recovery reconciliation.
-- **Kuali `kuali/read-saved-document`** — a positive `save-verify` read-back that does NOT exist today
-  (Kuali removed its error detection as false-positive-prone). Must be built and live-verified before
-  Kuali submit tasks can instantiate a passing `completion`.
+- **Kuali's positive `save-verify` read-back — BUILT, twice.** Kuali removed its own error detection
+  as false-positive-prone, so a reload read-back had to be built before any Kuali submit could
+  instantiate a passing `completion`. It exists as `kuali/verify-timekeeper-annotation` and
+  `kuali/verify-separation-finalization`, and the first is live-proved (§3.4). The generic
+  `kuali/read-saved-document` this row once named was never built under that name; the two verifiers
+  are per-contract, which is what the `SaveVerifyCheck.verify` reference asks for.
 - **OnBase `onbase/read-filed-document`** — a positive `upload-verify` read-back replacing today's
   negative "not an error page" (`handler.ts:208-217`). If a reliable positive read proves infeasible,
   the documented `unverifiableByPage` allowlist makes the OnBase submit **always** park for the
@@ -1548,14 +1553,15 @@ collapse #1/#3/#8 into "false ⇒ proceed"; the `ProbeVerdict` type makes that c
   scenario coverage, and identity/operator gates. The ledger makes residual wrong filings
   attributable. Exactly-once plus subject-match is still not correctness of every field.
 - **Fence bypass.** A future submit task could fire a raw click outside the mutation primitive.
-  *Guard:* tasks have no raw Page/Locator/selector access (refs task-contract/operator-trust); submit-capable driver methods
-  require the mutation capability, and that primitive validates the fence + subject digest. Per
-  **D22** ref guards-and-tests's
-  `commit-routes-through-mutation` ratchet is an import/capability check that every `effect:"commit"`
-  impl routes its submit click through `stores/common/mutation.ts` — so "fence-before-click is
-  unbypassable" is now structural, not grep-hopeful. **Residual:** a leaf that reaches a submit via a
-  novel un-wrapped helper the import walk doesn't recognize as a click — narrowed to review, not
-  wide open.
+  *Guard:* tasks have no raw Page/Locator/selector access (refs task-contract/operator-trust);
+  submit-capable driver methods require the mutation capability, and that primitive validates the
+  fence and subject digest. D22 originally answered this with the `commit-routes-through-mutation`
+  import walk; **that guard RETIRED at D188 into something stronger**, not weaker. The capability is
+  now runtime-unforgeable — a module-private WeakSet in `src/base/mutation-capability.ts`, so a
+  structurally identical literal is refused at the assert rather than at an import graph — and
+  `task-driver-boundary` refuses a `commit` implementation outside a capability-validating store
+  driver owner, against a checked-in violating fixture. **Residual:** a leaf that reaches a submit
+  through a helper that never asks for a capability at all — narrowed to review, not wide open.
 - **Probe-policy misconfig.** `"retries-and-recovery-only"` can miss a transaction created outside
   this ledger on a pristine key; it cannot bypass durable committed history. The choice remains a
   required migration decision and should default by review preference to `always`.
