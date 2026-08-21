@@ -729,13 +729,58 @@ detail this row is the first to need.
 <!-- roadmap: order-6 -->
 
 <!-- roadmap-status: order-6 -->
+- [ ] the §b questionnaire for work-study and for kronos-pay-rule — unasked; both need an approved controlled-commit target
+- [x] the `new-kronos` store exists with a driver, a session provider and two READ tasks — `read-separation-timecard`, `search-employee` (D196, `ref task-contract` §2.9); separations chunk 1 built it
+- [ ] the new-kronos WRITE family — the pay-rule commit contracts; the store has no write path today
+- [ ] the `work-study` and `kronos-pay-rule` descriptors + modules + tuple entries
+- [ ] the canonical-EID audit gate — replay real stored / fixture inputs through `EidSchema` (`src/domain/ids.ts:184`, `/^10\d{6}$/`) and surface every rejection
+- [ ] PROOF T1 per workflow + the T3 pair
+> 2026-08-20 | docs-cohesion 03c | verified against `src/stores/new-kronos/tasks/` (two read tasks, no write) and `src/domain/ids.ts:184`; the store is half-built by separations and the write half is this order
 <!-- /roadmap-status -->
+
+**What it is.** PayPath pool / comp entries and UKG pay rules — the first workflow-specific
+production commits that are not separations. Small, isolated, on a transaction kernel that has
+already been proven twice. **Systems:** UCPath PayPath (driven), New Kronos / UKG (driven for reads).
+
+**Store tasks.** REUSE the whole `new-kronos` store — separations chunk 1 built its driver, its
+session provider and its two read tasks, which is the reuse leverage the ordering was designed to
+produce. BUILD its write family: each pay-rule commit needs `ref write-safety` §2.2's per-system
+instantiation (which of the three shapes it is) and §5's double-submit prevention (the permanent key,
+the probe, the probe policy and its age budget — item 3 of the questionnaire, required, no default).
+
+**The specific hazard: the canonical-EID audit gate.** This is an EVIDENCE gate, not an open
+architecture question. `Eid` is `/^10\d{6}$/` and there is no `legacyEid`. Before either workflow
+is marked rebuild-ready, replay its real stored and fixture inputs through the canonical schema
+through `ref data-intake-and-edit-data` §1's registry and surface EVERY rejection. If the evidence
+shows a genuinely different source identifier, model it under its own domain name with an explicit
+verified conversion to `Eid` — do not widen the canonical type. Widening is the silent-wrong-value
+failure with a schema's blessing: a malformed identifier that parses is a wrong person who looks
+right.
+
+**The second hazard: a spreadsheet is the start surface.** Work-study arrives as a spreadsheet
+(`ref data-intake-and-edit-data` §8 is the end-to-end worked example), so this row is where intake
+meets a WRITE for the first time. The column mapping, the validation and the immutable intake
+manifest all already exist from 2h; what is new is that a mapping mistake now reaches UCPath.
 
 ### Dashboard · wire work-study · kronos-pay-rule
 <!-- roadmap: order-6-dash -->
 
 <!-- roadmap-status: order-6-dash -->
+- [ ] 5.1.1 run modal — typed start inputs + start plan for work-study and kronos-pay-rule
+- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
+- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
+- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] 5.1.7 intake — the work-study spreadsheet as a start source
+- [ ] the intake grid's constants entry + its unbind arm (`effectiveDate`, D172/D173)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces
+> 2026-08-20 | docs-cohesion 03c | eight squares — seven standard minus the gate, plus the constants entry; the intake workspace itself is 2i-E3 and built, so this is a wire on top of it
 <!-- /roadmap-status -->
+
+The intake workspace exists (2i-E3, `ref dashboard-surfaces` §11) and this sub-task adds the one
+thing a write workflow needs from it: a CONSTANT the operator supplies once for a whole sheet — an
+effective date — rather than per row, and an unbind arm that takes it back off. `ref
+data-intake-and-edit-data` §2.8 is D172/D173's as-built union resolution behind it.
 
 ## Order 7 · oath-upload · onbase
 <!-- roadmap: order-7 -->
