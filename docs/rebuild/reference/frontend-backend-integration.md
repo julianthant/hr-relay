@@ -1753,7 +1753,12 @@ test fixtures. Four consequences, all real:
    have moved the scope check into the very slice that opens the door. `capture-durability-and-scope`
    §2b now pins the derivation, its two refusals, and the composition root that supplies it, so the
    gate cannot lose its producer again in silence. The other three consequences below are unchanged
-   — this BFF still serves no bytes, so `capturePhoneAssetPaths` stays absent by design.
+   — this BFF still serves no bytes, so `capturePhoneAssetPaths` stays absent by design. **Caveat,
+   recorded rather than fixed here:** the gate identifies a phone request by the `Host` header
+   ALONE, so a reverse proxy that rewrites `Host` to the upstream (nginx's default
+   `proxy_set_header Host $host`) makes it inert — the byte-path slice (`{#def-byte-path}`) must
+   either preserve the phone's original Host end to end or read `X-Forwarded-Host` deliberately; see
+   the doc-comment on `capture.ingress` in `src/domain/config/schema.ts`.
 4. `config/legacy-capabilities.json`'s `legacy-route-static` is therefore genuinely **open**, and
    D184 moved it to the non-workflow capability closure milestone rather than closing it.
 

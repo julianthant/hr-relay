@@ -57,7 +57,10 @@ afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
-function harness(): Harness {
+function harness(options: {
+  readonly capturePhoneHost?: string;
+  readonly capturePhoneAssetPaths?: ReadonlySet<string>;
+} = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
   const clock = manualClock(AT);
@@ -174,6 +177,8 @@ function harness(): Harness {
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
     capture: UNWIRED_CAPTURE_SERVICE,
+    capturePhoneHost: options.capturePhoneHost,
+    capturePhoneAssetPaths: options.capturePhoneAssetPaths,
     bootstrap: {
       appVersion: "0.1.0",
       clock,
@@ -759,5 +764,63 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(replayed.map(({ outcome }) => outcome), ["applied", "conflict", "refused"]);
     assert.equal(replayed[0].replayed, true, "the applied child is answered from the journal, not re-executed");
     assert.equal(replayed[0].commandId, results[0].commandId);
+  });
+});
+
+/**
+ * The phone-host gate (ref operator-trust §7, D174) — never exercised at runtime before this case.
+ * The gate identifies a phone request by the `Host` header ALONE (see the design caveat recorded
+ * on the `capture.ingress` config leaf and ref frontend-backend-integration §6.9): a request whose Host matches
+ * `capturePhoneHost` may reach only ref data-intake-and-edit-data §5.1's closed capture-phone route union and its
+ * declared asset paths — an operator route on that same Host answers the identical `ROUTE_NOT_FOUND`
+ * body an unrouted path gets, so the ingress cannot be used to enumerate the dashboard.
+ */
+describe("the capture phone-host gate (D174, ref operator-trust §7)", () => {
+  const PHONE_HOST = "phone.example";
+  const OPERATOR_HOST = "dashboard.example";
+
+  it("blocks the SAME path byte-identically whether the gate refuses it or the path is genuinely unrouted", async () => {
+    const h = harness({ capturePhoneHost: PHONE_HOST });
+
+    // Neither request's path is in the closed capture-phone route union, so the
+    // FIRST is refused by the Host-gate middleware itself (before any route
+    // match is attempted) and the SECOND falls through to the app's own
+    // `app.notFound` for a path that genuinely does not exist. Both must be
+    // byte-identical — the whole point of D174's design is that a phone
+    // request cannot distinguish "the gate blocked me" from "nothing is here".
+    const gated = await h.app.request("/api/v1/no-such-route", { headers: { host: PHONE_HOST } });
+    const unrouted = await h.app.request("/api/v1/no-such-route", { headers: { host: OPERATOR_HOST } });
+
+    assert.equal(gated.status, 404);
+    assert.equal(unrouted.status, 404);
+    assert.deepEqual(await gated.json(), await unrouted.json());
+  });
+
+  it("blocks a REAL operator route on the phone Host with the same ROUTE_NOT_FOUND shape", async () => {
+    const h = harness({ capturePhoneHost: PHONE_HOST });
+
+    const response = await h.app.request("/api/v1/bootstrap", { headers: { host: PHONE_HOST } });
+
+    assert.equal(response.status, 404);
+    const body = await json(response);
+    assert.equal(body.code, "ROUTE_NOT_FOUND");
+  });
+
+  it("passes an operator route through when the request arrives on the operator Host", async () => {
+    const h = harness({ capturePhoneHost: PHONE_HOST });
+
+    const response = await h.app.request("/api/v1/bootstrap", { headers: { host: OPERATOR_HOST } });
+
+    assert.equal(response.status, 200);
+  });
+
+  it("passes every Host through when no capturePhoneHost is configured", async () => {
+    const h = harness();
+
+    const onPhoneWord = await h.app.request("/api/v1/bootstrap", { headers: { host: PHONE_HOST } });
+    const onOperatorWord = await h.app.request("/api/v1/bootstrap", { headers: { host: OPERATOR_HOST } });
+
+    assert.equal(onPhoneWord.status, 200);
+    assert.equal(onOperatorWord.status, 200);
   });
 });
