@@ -856,9 +856,10 @@ without a new operator decision:
 - [x] BE the fresh-profile-once recovery, holding the lease across the retry and failing by name on the second refusal (`cb7f17f8` — `WorkerSessionManager.#openAndLogin`, `PlaywrightWorkerSessionFactory.discardProfile`)
 - [x] BE the grace leaf, registered as a post-baseline optional leaf so an existing `config_snapshots` row still parses (D133) (`bfc7d318` — `timeouts.duoCeremonyLeaseGraceMs`, generation 3)
 - [x] BE the guard, with a violating fixture, registered in `guard-inventory.json` in the same commit (`37e747f0` — `duo-ceremony-lease`)
-- [ ] PROOF two workers' cold starts serialize — unit, manual clock: DONE (`1c244a40`, `tests/unit/duo-ceremony-gate.test.ts`); the live two-worker cold start is NOT yet run (how to: two `npm run cli -- … scripts/live-browser-login-smoke.ts ucpath --cold --worker <id>` processes side by side, see below)
+- [x] PROOF two workers' cold starts serialize — unit, manual clock (`1c244a40`, `tests/unit/duo-ceremony-gate.test.ts`) AND the LIVE two-worker cold start, 2026-08-21: `live-a` / `live-b`, one credential, lease generations 3 → 4, no overlap, zero waiter refusals (§Live proof below)
 - [x] DOCS the decision — this section is its normative text; `reference/decisions.md` gets the pointer line in the same commit (D267)
 > 2026-08-21 | duo-lease E1 | built as-built in five commits (bfc7d318 store+token+leaf, cb7f17f8 gate+wiring+recovery, 37e747f0 guard, 1c244a40 proof, 23231b37 compose seam + manifest); the live two-worker cold start is the one box left open and is documented below
+> 2026-08-21 | duo-lease E2 | the LIVE two-worker cold start RAN against real UCPath SSO and real Duo — both workers `logged-in`, ceremonies serialized at generations 3 → 4 with no overlap; the record, both timings and the one harness change it needed are §Live proof below
 <!-- /roadmap-status -->
 
 **AS-BUILT (D267, 2026-08-21).** This section is the owning contract for the tree's `{#duo-lease}`
@@ -963,11 +964,81 @@ ONE authority database, fake factories running the REAL wrapper, manual clock �
 strictly after A's verifier returned; the waiter refusal at exactly the budget (40 s of a 60 s
 envelope) naming A; TTL takeover at generation 2 with A's in-flight ceremony cancelled and A's late
 release thrown as superseded; the three recovery arms plus an ordinary-failure control. §7.1 carries
-the row. **The live two-worker cold start has NOT been run yet**; the equipment is in place:
-`scripts/live-browser-login-smoke.ts` now opens the real authority database and takes `--worker <id>`,
-so `npx tsx scripts/live-browser-login-smoke.ts ucpath --cold --worker live-a & npx tsx scripts/live-browser-login-smoke.ts ucpath --cold --worker live-b`
-(two processes, fresh profiles) is the proof; record the two `[session] … login=logged-in` lines,
-their `+N.Ns` timings, and that neither printed a `DuoCeremonyLeaseHeldError`.
+the row. **The LIVE two-worker cold start has now been run** — §Live proof below is its record.
+
+### Live proof (2026-08-21) — two cold workers, one credential, serialized ceremonies
+
+Two `scripts/live-browser-login-smoke.ts` PROCESSES, launched in the same second against real UCPath
+SSO and real Duo, each `--cold` (its own profile home removed first) and each under its own worker id:
+
+```
+npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --cold --worker live-a &
+npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --cold --worker live-b &
+wait
+```
+
+Every instant below is UTC and comes from one of two independent sources: each smoke's own stdout
+(timestamped per line as it was written) and a 150 ms sampler reading `duo_ceremony_leases` out of the
+one authority database both processes shared.
+
+| | `live-b` | `live-a` |
+| --- | --- | --- |
+| process start (`--cold` clear) | 20:49:35.554 | 20:49:35.553 |
+| navigate to SSO (hop 01) | 20:49:36.868 | 20:49:36.868 |
+| lease ACQUIRED | **20:49:37.401** (generation 3) | **20:49:58.261** (generation 4) |
+| Duo hop (`api-….duosecurity.com`) | 20:49:41.783 | 20:50:03.325 |
+| lease RELEASED (the verifier returned) | **20:49:58.033** | **20:50:12.451** |
+| ceremony held | **20.632 s** | **14.190 s** |
+| `[session] … login=logged-in` | +22.5 s | +36.9 s |
+| login + neutral reset verified · closed | 23.2 s · 23.3 s | 37.2 s · 37.3 s |
+
+**The serialization, stated as the thing under proof: the second ceremony began after the first
+ended.** `live-a` navigated to SSO at 20:49:36.868 and then did nothing for 21.7 s — its next
+navigation is 20:49:58.574 — because §2's scope puts everything from the SSO form to the content
+verifier inside `withCeremony`. `live-b` released at 20:49:58.033 and `live-a` acquired at
+20:49:58.261: **228 ms later, inside the 250 ms `DUO_CEREMONY_LEASE_POLL_MS` cadence, with zero
+overlap.** Neither process printed a `DuoCeremonyLeaseHeldError` — `live-a` waited ≈20.6 s against a
+budget of the 60 s envelope minus the 20 s grace, so §4's refusal was never close to firing — and both
+ended `logged-in` with both halves of §4.1's proof on the login AND on the neutral reset (a non-empty
+`PS_TOKEN` for `universityofcalifornia.edu`; the TritON and PeopleSoft signon forms absent).
+
+**The row is per CREDENTIAL and the row IS the lock.** One row throughout, under the same credential
+key for both workers (the SHA-256 over the credential file's public `(rpId, credentialId)` pairs —
+never printed here and never logged by the runtime), `version` 5 → 8 across the four transitions,
+holder `live-b` at generation 3 then `live-a` at generation 4, both `released`, nothing deleted. No
+takeover happened and none should have: each holder's `expiresAt` (acquire + 80 s) stood ~60 s past its
+own release, which is §3's "unreachable by construction at the shipped defaults", observed.
+
+**What the serialization cost, against a solo baseline taken minutes earlier.** The same smoke alone,
+cold (`live-a`, 20:47:48), reported `logged-in` at +19.1 s / 19.6 s total with its ceremony held 17.1 s
+(generation 2, 20:47:50.382 → 20:48:07.485). So the pair cost the WAITER ~17.6 s over its solo number
+and the holder nothing — the intended trade: a Duo ceremony is ~14–21 s, and one worker pays that once
+instead of both burning a profile.
+
+**Two harness facts this run established, because a proof nobody else can re-run is not one.**
+
+1. **The `live-smoke` runtime lock is per ROLE, so two smokes could not run side by side as the how-to
+   described.** `acquireRuntimeProcessLock` refuses a second LIVE holder of a name by design, and the
+   name is a closed enum. The smoke now scopes its lock ROOT by worker id
+   (`.tracker-rebuild/locks/live-smoke/<workerId>/live-smoke.lock.json`), so two processes under ONE
+   worker id — one profile directory, one `--cold` clear of it — still refuse each other, while two
+   DIFFERENT worker ids serialize only on the ceremony lease, which is the thing under proof. What that
+   gives up is named in the script beside the change: two differently-named smokes may open the
+   authority database together, so the database must already be at the current schema — run ONE cold
+   smoke first, which is also how this proof's `state.db` was created and migrated.
+2. **A fresh checkout needs the EXTENSION's packaged credential, not only the runtime one.** Duo
+   Autopilot imports `duo-autopilot/credentials/duo-webauthn.json` (gitignored) into
+   `chrome.storage.local` on a cold profile, while `config.paths.duoCredential`
+   (`.auth/duo-webauthn.json`) is the separate file the smoke's own precondition checks. With the
+   packaged file missing the ceremony gets no auto-answer, nothing refuses, and the acquisition burns
+   the whole 60 s `sessionAcquireMs` envelope — observed once at 20:46 in this worktree. That is NOT
+   §4.2's terminal refusal: no assertion was ever presented, so no profile was burned, and the lease
+   was still acquired and released correctly across the failure (generation 1, 20:46:10.282 →
+   20:47:08.214). One note for whoever re-runs this: that failure leaves `main()` through the
+   top-level catch, which is past the `processLock.release()` / `database.close()` at the end of
+   `main`, so the lock file stays marked held by a now-dead pid. Harmless — `acquireRuntimeProcessLock`
+   refuses only a LIVE pid and the next acquire advances the generation — but it is why a held-looking
+   lock file after a failed smoke is not evidence of a running smoke.
 
 **What this does not do.** It does not serialize logins (a warm reuse and any non-Duo authentication
 are untouched), it does not serialize runs or claims, and it does not make a burned profile

@@ -478,10 +478,11 @@ eight run-start); they sit on `{#dash-defaults}`, because `{#track-b}` is done a
 - [x] BE `duo_ceremony_leases` in authority, plus the lease token `defineVerifiedLoginRecipe` requires (`bfc7d318`, `cb7f17f8`)
 - [x] BE bounded waiters and the fresh-profile-once recovery, both failing by name (`cb7f17f8`)
 - [x] BE the guard — no login path without the lease, with a violating fixture (`37e747f0`)
-- [ ] PROOF two workers' cold starts serialize (unit — DONE `1c244a40`) plus a live two-worker cold start (NOT RUN; ref execution-and-sessions §10.8 says how)
+- [x] PROOF two workers' cold starts serialize — unit (`1c244a40`) plus the LIVE two-worker cold start, 2026-08-21 (`live-a` / `live-b` on one credential, ceremonies serialized at lease generations 3 → 4 with no overlap and zero waiter refusals; ref execution-and-sessions §10 §Live proof carries the numbers)
 - [x] DOCS the decision in `reference/execution-and-sessions.md` and `reference/decisions.md` (D267)
 > 2026-08-20 | docs-cohesion 03a | nothing named duo_ceremony_leases or a ceremony lease exists anywhere in src/; defineVerifiedLoginRecipe (src/infra/browser/authenticated-application.ts:159) takes system + verify + flow and no lease token
 > 2026-08-21 | duo-lease E1 | built (D267): store+token+leaf bfc7d318 · gate+wiring+recovery cb7f17f8 · guard 37e747f0 · unit proof 1c244a40; left: the live two-worker cold start
+> 2026-08-21 | duo-lease E2 | the live two-worker cold start RAN — both `logged-in` (23.2 s holder, 37.2 s waiter), the waiter's ceremony began 228 ms after the holder released; the record is ref execution-and-sessions §10 §Live proof
 <!-- /roadmap-status -->
 
 **The hazard is present today, which is why this is platform hardening and not a parallel-runs
