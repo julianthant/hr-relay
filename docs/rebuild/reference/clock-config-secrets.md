@@ -52,25 +52,6 @@ operator-trust's evidence/diagnostic bundles consume this doc's redaction classi
 
 ---
 
-## Phase 1b as-built foundation (2026-07-31)
-
-`src/domain/clock.ts` is the sole production time source and exposes wall/local/monotonic/fiscal
-operations; test-only `manualClock` is import-guarded. Config is one recursively strict schema and
-one resolver with `env > settings > default` provenance and a canonical fingerprint. Closed system
-routes, explicit prod/test instance refusal, current-fiscal-year validation, runtime environment and
-dependency registries, provider/feature prerequisites, and strict preflight report schemas are
-implemented and bidirectionally audited.
-
-The production `timeouts.ukgNavigationMs` contract is retained explicitly: rebuild default
-`60_000`, sparse settings override, optional `HRAUTO_UKG_NAVIGATION_MS` environment override, and
-per-leaf provenance all resolve through the same closed config path. Secret access covers every
-registered source kind. Environment names/families, the registered macOS local ngrok config source,
-and named credential files share typed fail-loud access; file/source I/O is injected for tests.
-Presence-only `present | missing | unknown` diagnostics feed descriptor preflight without exposing
-values, so a missing/unreadable ngrok source blocks selected capture instead of passing because it
-was not an environment secret. Redaction canaries and single-source guards are active. Immutable
-per-run snapshots and the consumers that use these leaves still land with their owning later items.
-
 ## Phase 1c Stage C as-built storage-health delta (2026-08-01)
 
 The registered `authority.health` preflight runner now consumes the same read-only storage doctor
@@ -778,117 +759,183 @@ than reading the map, or the staleness half is lost.
 
 ## 6. Secrets accessor
 
-One typed accessor is the sole rebuild home for every credential—rebuild-scoped `.env` resolution
-and a distinct rebuild auth/profile root—replacing inline reads inside the rebuild repo's `src/`.
-The legacy repo keeps its existing config/secret world unchanged. Since D93 the two runtimes live in
-separate repositories with no shared module graph, so importing each other's accessors or proxying
-requests is **structurally impossible** rather than merely forbidden. What the repo split does *not*
-do is separate the machine: both worlds resolve env vars, write state, bind ports, take process
-locks, and open browser profiles on the same host. So two distinct `.env`/settings/secret worlds and
-two distinct state/auth/profile roots stay an explicit REQUIREMENT of this doc — neither runtime may
-read the other's settings/state/auth files, and neither may reuse the other's port, lock, or browser
-profile.
+<!-- roadmap: p1-base -->
 
-**D94 cross-repo naming/accounting cross-reference.** Runtime code never reads the legacy repo;
-only the guard lane may do so. In inventories that name both repositories, `legacy:` qualifies a
-legacy path and an unprefixed path means this rebuild repo (ratified F2). Single-root legacy
-manifests remain unprefixed. Ref guards-and-tests §3.13 owns checkout resolution, commit-centred change
-accounting, the clean-tree requirement, and the closed recheck/evidence catalog; this secrets doc
-only consumes that path-ownership convention.
+`src/domain/secrets.ts` is the sole home for every credential this runtime reads, and the ONLY
+module permitted to touch `process.env` at all. It replaces legacy's `validateEnv()` +
+`getTimekeeperName()` + ~20 files of inline `process.env.*` (§1) with one surface, and its coverage
+is a registry rather than a habit: three declarative tables, each a parsed and frozen array, each
+audited from both sides.
 
-Within the rebuild repo's `src/`, the accessor covers environment variables, the registered local
-ngrok config source, and the rebuild Duo private-key file — replacing `validateEnv()` +
-`getTimekeeperName()` + ~20 files' inline
-`process.env.*` reads with one surface. No legacy-proxy secret/config class exists.
+Since D93 the two runtimes live in separate repositories with no shared module graph, so importing
+each other's accessors or proxying requests is **structurally impossible** rather than merely
+forbidden. What the repo split does *not* do is separate the machine, so two distinct `.env` /
+settings / secret worlds and two distinct state, auth and profile roots stay an explicit requirement
+(§4 pins them as data). In inventories that name both repositories, `legacy:` qualifies a legacy
+path and an unprefixed path means this repository (D94, ratified F2); single-root legacy manifests
+stay unprefixed. Ref guards-and-tests owns the guard lane's checkout resolution; this section only
+consumes the path convention.
+
+### The three registries
 
 ```ts
-// src/domain/secrets.ts
-interface SecretSpec { env?: string; envFamily?: string; source?: string; requiredAtBoot: boolean }
-
-const SECRETS = {
-  ucpathUserId:      { env: "UCPATH_USER_ID", requiredAtBoot: false },
-  ucpathPassword:     { env: "UCPATH_PASSWORD", requiredAtBoot: false },
-  timekeeperName:     { env: "TIMEKEEPER_NAME", requiredAtBoot: false }, // descriptor-scoped
-  // Provider key families are registered patterns, not ad-hoc process.env scans. The existing
-  // Gemini 1..8 pool and each provider's supported cardinality are explicit in the spec.
-  geminiApiKeys:      { envFamily: "GEMINI_API_KEY{1..8}", requiredAtBoot: false },
-  groqApiKeys:        { envFamily: "GROQ_API_KEY{n}", requiredAtBoot: false },
-  mistralApiKeys:     { envFamily: "MISTRAL_API_KEY{n}", requiredAtBoot: false },
-  openRouterApiKeys:  { envFamily: "OPEN_ROUTER_API_KEY{n}", requiredAtBoot: false },
-  sambaNovaApiKeys:   { envFamily: "SAMBANOVA_API_KEY{n}", requiredAtBoot: false },
-  ngrokCredential:    { source: "local-ngrok-config", requiredAtBoot: false },
-} as const;
-type SecretName = keyof typeof SECRETS;
-
-const SECRET_FILES = {
-  duoWebauthnCredential: { configPath: "paths.duoCredential", classification: "credential-file" },
-} as const;
-type SecretFileName = keyof typeof SECRET_FILES;
-
-/** Throws SecretMissingError naming the secret + its env var + .env.example pointer. Never `?? ""`. */
-export function requireSecret(name: SecretName): string { /* … */ }
-export function optionalSecret(name: SecretName): string | undefined { /* … */ }
-
-/**
- * `timekeeperName` and every workflow credential stays `requiredAtBoot:false` (so process
- * boot doesn't demand it for workflows that never touch Kuali) but IS on the mandatory-at-startup
- * list for any run whose descriptor reaches a Kuali fill task — the descriptor declares which
- * secrets its tasks need (a `requires: SecretName[]` on the contract, mirroring ref task-contract's session
- * needs), so "lazy" is descriptor-driven, not a second ad hoc throw site.
- */
-
-/** Boot gate covers only secrets required to read authority and serve safely. It starts empty. */
-export function validateBootSecrets(): void { /* batch-report missing requiredAtBoot entries */ }
-
-/** Enqueue/daemon preflight batch-reports the descriptor-derived secret subset before launch. */
-export function validateDescriptorSecrets(names: readonly SecretName[]): void {
-  /* resolve registered env/family/local sources; throw once with every missing/unknown requirement */
-}
-
-/** Named file secrets only—callers cannot turn this into an arbitrary path reader. */
-export function requireSecretFile(name: SecretFileName): Buffer { /* resolve configured path,
-  validate owner/mode/type/size, read or throw a named SecretFileError */ }
+// src/domain/secrets.ts — names live in ./secret-names.ts so a schema can bind one without
+// importing the reader. Every spec carries the CLASSIFICATION §6's redaction contract reads.
+export const SECRET_SPECS = […];        // 5: a discriminated union on `source`
+export const SECRET_FAMILY_SPECS = […]; // 5 provider key families
+export const SECRET_FILE_SPECS = […];   // 1: the Duo WebAuthn credential
 ```
 
-This block is the intended **registry shape**, not permission to stop at the shown entries. Phase
-1b's D68 inventory starts from `.env.example`, all current `process.env`/computed-env reads (including
-provider key/model families), `.auth`, capture tooling, and each descriptor's requirements. Every
-entry is classified as secret, non-secret config, test-only, or retired-in-target; every rebuild runtime
-read maps back to exactly one entry. Optional provider keys remain optional globally but become a
-blocking workflow/feature preflight when a required provider capability has no usable configured
-cell.
+| name | source | env / path | classification |
+|---|---|---|---|
+| `ucpathUserId` | environment | `UCPATH_USER_ID` | `direct-identifier` |
+| `ucpathPassword` | environment | `UCPATH_PASSWORD` | `secret` |
+| `timekeeperName` | environment | `TIMEKEEPER_NAME` | `direct-identifier` |
+| `sharepointOnboardingRosterUrl` | environment | `ONBOARDING_ROSTER_URL` | `secret` |
+| `ngrokCredential` | `local-ngrok-config` | `~/Library/Application Support/ngrok/ngrok.yml` | `secret` |
+| `duoWebauthnCredential` | file | `paths.duoCredential` (§4) | `credential-file` |
 
-- **Fail loud at the correct scope.** `validateBootSecrets()` runs once at daemon/dashboard boot
-  and covers only secrets required to read authority and serve safely. Enqueue/daemon preflight
-  calls `validateDescriptorSecrets()` for the selected descriptor-derived capability subset and
-  reports every missing requirement at once. An unused workflow credential never blocks dashboard
-  boot, while a selected workflow still fails before spending Duo/browser work.
-- **Local source failures stay distinguishable.** The ngrok resolver checks the one registered
-  config path as a regular `0600`-or-stricter bounded file and parses exactly one `authtoken`.
-  Descriptor preflight reports `missing` when no token is configured and `unknown` when the source
-  cannot be inspected or read; neither state includes the credential value or passes as healthy.
+**The classification is not decoration — it is the join to §6's redaction contract**, and the two
+`direct-identifier` rows are the reason it is per-entry rather than per-table: an operator's user id
+and the timekeeper's name are real identifiers that must never reach a diagnostic verbatim, but they
+are not passwords, and a receipt may legitimately carry a `last4` or a digest of one where it may
+carry nothing at all of `ucpathPassword`.
+
+Provider keys are a **registered pattern, not an ad-hoc `process.env` scan**. Each family declares
+an `envPrefix`, its `modelsEnv` chain variable, the singular `legacyModelEnv` spelling the
+operator's `.env` predates, and a `maximum` of 8. The pool is read as the bare prefix followed by
+`2..maximum` (`GEMINI_API_KEY`, `GEMINI_API_KEY2`, … `GEMINI_API_KEY8`) — the first cell has no
+suffix, which is what legacy's `.env` already holds. `providerModelChain` lives here too: model ids
+are not secrets, but this module is the only permitted environment reader, so the reader lives with
+the permission. An empty chain is returned as an empty array — a fact the composition root judges,
+never a default minted here.
+
+### The accessors
+
+```ts
+export function requireSecret(name, env?, access?): string;      // throws SecretMissingError, never `?? ""`
+export function optionalSecret(name, env?, access?): string | undefined;
+export function inspectSecret(name, env?, access?): SecretAvailability; // present | missing | unknown
+export function optionalSecretFamily(name, env?): readonly string[];
+export function requireSecretFamily(name, env?): readonly [string, ...string[]];
+export function providerModelChain(name, env?): readonly string[];
+export function validateBootSecrets(env?, access?): void;                 // batch, requiredAtBoot only
+export function validateDescriptorSecrets(names, families, env?, access?): void;  // batch, per run
+export function requireSecretFile(name, config, access?): Buffer;         // named files only
+export function configResolutionEnvironment(env?): NodeJS.ProcessEnv;     // the resolver's env, once
+```
+
+Every reader takes its environment and its filesystem access as **injected parameters defaulting to
+the real ones**, so a test exercises the production code path rather than a double, and no test needs
+to mutate `process.env`.
+
+- **Fail loud at the correct scope.** `validateBootSecrets()` covers only entries marked
+  `requiredAtBoot` and batch-reports every unresolved one at once. **Today no entry is marked, so it
+  passes vacuously** — deliberately: an unused workflow credential must never stop the local
+  dashboard from opening. `validateDescriptorSecrets(names, families)` is the per-run gate, reporting
+  every missing requirement together so a selected workflow fails before spending Duo or browser
+  work, not on the third of five prompts.
+- **Three distinct errors, and the difference is load-bearing.** `SecretMissingError` means the value
+  is not configured; `SecretSourceError` means the SOURCE could not be inspected or parsed;
+  `SecretFileError` wraps a named credential file's failure with the source error as its `cause`.
+  `inspectSecret` maps a `SecretSourceError` to `unknown` and **re-throws anything else** — so "the
+  check failed" can never be reported as "the check found nothing", which is the exact confusion the
+  charter's fail-loud rule names.
+- **`configResolutionEnvironment` is the one sanctioned production source of the environment object**
+  the resolver takes as a parameter. `resolve.ts` reads nothing itself — it reads only its
+  statically-declared `CONFIG_ENV_BINDINGS` keys off the value it is handed — so a composition root
+  obtains that value here instead of growing its own read.
+- **Named file secrets only.** `requireSecretFile("duoWebauthnCredential", config)` resolves
+  `config.paths.duoCredential` (§4's absolute leaf), then validates before reading: the path must
+  `stat` (a throw becomes a `SecretSourceError`, never a missing-file guess), it must be a regular
+  file, its mode must be `0600` or stricter (`mode & 0o077` must be zero), and its size must be
+  within the registered 64 000-byte limit. Callers cannot turn this into an arbitrary path reader,
+  and the cross-process lock and signCount logic around the Duo credential are untouched — only the
+  raw read moved.
+- **Local source failures stay distinguishable.** The ngrok resolver reads the one registered config
+  path under the same file checks, then requires **exactly one** `authtoken:` line — two is a
+  `SecretSourceError`, because choosing between them is how the wrong tunnel gets opened. A quoted
+  value must close its quote; a trailing `# comment` is stripped; an empty value resolves to
+  `missing`, not `unknown`. Neither state includes the credential value and neither passes as
+  healthy, so a missing or unreadable ngrok source blocks selected capture instead of passing because
+  it was not an environment secret.
 - **Never logged.** The accessor is the only function permitted to read a secret's raw value; every
-  other module receives it as an opaque string to hand to a login/fill call, never to `log.*`. A
-  grep-ratchet guard (below) backstops this structurally.
-- **`.auth/` and Duo credentials get one owned home.** `requireSecretFile("duoWebauthnCredential")`
-  replaces the direct `readFileSync` in `infra/auth/duo-webauthn.ts:1` — the cross-process
-  lock and signCount-reservation logic (live-verified, ported verbatim per the charter) stay
-  exactly as they are; only the raw-file-read call site changes to go through this accessor.
-- **Redaction is schema-owned.** Secret schemas and sensitive domain fields carry a classification
-  (`secret`, `credential-file`, `direct-identifier`, `sensitive-hr`, or `safe-diagnostic`) plus an
-  allowed evidence transform (`drop`, `digest`, `last4`, `basename`, `count`, or `allow`). Ref operator-trust's
-  logger/evidence/bundle writers accept classified values and transform before serialization.
-  Unknown/unclassified fields are dropped with a redaction warning, never passed through. Tests
-  seed canary passwords, cookies, storage state, SSNs, DOBs, and private keys and scan every
-  produced note/failure/screenshot metadata/bundle/notification.
+  other module receives it as an opaque string to hand to a login or fill call. Note that the
+  accessor's own refusals name the KEY and never the value — `${name} is missing from registered
+  source environment UCPATH_PASSWORD` — which is what makes the second guard below satisfiable.
 
-**The guard:** `secrets-single-source.test.ts` — bans `process.env.` outside `domain/secrets.ts`
-and `domain/config/` (the config resolver's own env-precedence reads are a distinct, permitted
-concern from secret *values*; the guard's allowlist distinguishes a config *URL* env read from a
-*credential* env read by the `SECRETS`/`ENV_KEY_MAP` table membership). `no-secret-values-in-logs.
-test.ts` — a grep-ratchet flagging `log.*`/template-literal interpolation of identifiers named
-`password`/`privateKey`/`credential`/`secret` (case-insensitive), same `Record<file,{count,reason}>`
-shape as the existing ratchets, catching an accidental `log.info(`login as ${password}`)`.
+### Redaction is schema-owned, and unclassified means drop
+
+`src/domain/redaction.ts` declares five classifications — `secret`, `credential-file`,
+`direct-identifier`, `sensitive-hr`, `safe-diagnostic` — and six transforms — `drop`, `digest`,
+`last4`, `basename`, `count`, `allow`. `ALLOWED_TRANSFORMS` maps which transform each classification
+permits, and `evidenceTransformAllowed` is checked **twice**: once when a DECLARATION is parsed (a
+receipt field that claims `allow` for a `secret` is refused at declaration time, not when a value
+first flows through it) and again inside `redactValue`, which throws rather than degrading. An
+`allow` result collapses its classification to `safe-diagnostic`, so nothing downstream can re-widen
+it. Ref operator-trust's logger, evidence and bundle writers accept classified values and transform
+before serialization; an unknown or unclassified field is dropped with a redaction warning, never
+passed through. Canary tests seed passwords, cookies, storage state, SSNs, DOBs and private keys and
+scan every produced note, failure, screenshot metadata, bundle and notification.
+
+### The two guards
+
+**`secrets-single-source.test.ts`** — MEMBERSHIP decides, not directory. `src/domain/secrets.ts` is
+the sole credential reader; `src/domain/config/**` may read the environment, because the resolver's
+precedence is a distinct concern from secret VALUES — but only for keys the config binding table
+owns. Concretely, an occurrence is a violation when it is outside both owners (any access at all:
+read, write or delete; exact, computed, destructured, aliased, imported or bulk), when the config
+owner WRITES or DELETES rather than reads, when the config owner's key is not statically resolvable
+(a computed `process.env[key]` is unreviewable), when the key belongs to `SECRET_SPECS` or a
+`SECRET_FAMILY_SPECS` pool (the exact confusion the guard exists to reject), or when the key has no
+`CONFIG_ENV_BINDINGS` entry. The ported-leaf allowlist is **empty**, so new `src` code has zero
+tolerance. Two properties make it evidence rather than decoration: a **non-vacuity** case asserts the
+scan set is non-empty AND that the owner itself is found reading the environment — if the AST walker
+stopped resolving `process.env`, an all-clean result would be a false pass — and a fixture spelling
+ten distinct violating forms is pinned at exactly 10, with the write and delete arms named.
+
+Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
+as a parameter and reads nothing, so the config owner's permission is currently unexercised.
+
+**`no-secret-values-in-logs.test.ts`** — the companion. `secrets-single-source` decides WHO may read
+a credential; this one decides WHAT may be said about it, because the moment a value is spliced into
+a string it has left the classification behind and every downstream writer copies it verbatim. It
+scans **every template-literal interpolation in `src/**`** (a thrown `Error` message is as durable as
+a log line) and **every argument to a `log.*` / `console.*` call** (so a bare `log.info(password)` is
+caught without a template). A name is sensitive when its normalized form contains one of fourteen
+roots — `password`, `passwd`, `passphrase`, `secret`, `credential`, `privatekey`, `apikey`,
+`accesskey`, `authtoken`, `bearertoken`, `sessiontoken`, `refreshtoken`, `cookie`, `storagestate`,
+`ssn`. Descriptor suffixes exempt the companions that DESCRIBE a credential (`secretName`,
+`credentialPath`, `tokenCount`, `…Spec`, `…Env`, `…Classification`), and `key`/`keys`/`state` are
+deliberately NOT on that list, because `apiKey`, `secretKey`, `privateKey` and `storageState` all
+carry the value. Its allowlist is empty too.
+
+### The planned successor: the OS keychain, behind this accessor
+
+The desktop application will move credential STORAGE from `.env` to the operating system's keychain,
+and the reason it can is this section: `requireSecret` / `optionalSecret` / `requireSecretFile` are
+already the only readers, every entry is already registered with a source kind, and
+`SecretSpecSchema` is already a discriminated union on `source` — so a `keychain` arm is an added
+variant and a resolver branch, not a re-threading of the tree. That work is tracked as
+`{#desk-secrets}`; nothing in this section changes shape for it, and the guard that makes the
+migration safe (one owner, empty allowlist) is the one already green.
+
+### Two open hygiene items
+
+- **`.env.example` in this repository is still legacy's file, unrevised.** It documents
+  `src/config.ts`, `localhost:3838`, `npm run duo:webauthn:enroll`,
+  `src/workflows/sharepoint-download/registry.ts` and `src/data/` — none of which exist here — and it
+  names `CAPTURE_PUBLIC_URL` / `CAPTURE_NGROK_URL`, which this runtime does not read, while omitting
+  most of §3's 38 bindings and every provider family. Nothing binds it: `DOCUMENTED_ENVIRONMENT_KEYS`
+  in `src/domain/runtime-environment.ts:169-178` is a hand-maintained set that mirrors what the file
+  USED to say, so the inventory's `documented` flag and the file can disagree without failing a gate.
+- **A real subject's employee id is hardcoded across seven tracked files.** Ref guards-and-tests
+  §10.3 found it in the identity-check scenarios: the same id, with a name beside it, appears in
+  `docs/migrations/separations.md` §1. It is not a credential, so no guard in this section sees it —
+  but it is a real person's identifier committed to git, which makes it a secrets-hygiene item. The
+  fix is owned by `{#test-tiers}`: the scenarios take a schema-shaped SYNTHETIC id that no live
+  system would resolve, and the real subject moves into the canary registry (ref guards-and-tests
+  §10.5) where a dry-run scenario reads it by LABEL out of the gitignored `.env`.
 
 ### 6.1 Explicit single-operator/local scope
 
