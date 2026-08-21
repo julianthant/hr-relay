@@ -43,11 +43,7 @@
 import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor, requireFact } from "../../../base/workflow.js";
-import { KualiReadSeparationDocument } from "../../../domain/contracts/kuali/read-separation-document.js";
-import {
-  MatchTerminationTypeOutputSchema,
-  SeparationsMatchTerminationType,
-} from "../../../domain/contracts/separations/match-termination-type.js";
+import { MatchTerminationTypeOutputSchema } from "../../../domain/contracts/separations/match-termination-type.js";
 import { WorkflowIdSchema } from "../../../domain/ids.js";
 import {
   KualiActionIdSchema,
@@ -60,6 +56,7 @@ import {
 } from "../../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
+import { DOCUMENT_NODE, documentNode, terminationTypeNode } from "./nodes.js";
 
 /**
  * The ingress schema. Both identifiers are required and neither is derivable
@@ -94,24 +91,15 @@ export const SeparationsKualiReadResultSchema = z.strictObject({
 });
 
 const separationsKualiReadFlow = flow(SeparationsKualiReadInput)
-  .step("document", KualiReadSeparationDocument, {
-    label: "Separation Document",
+  // This folder's own fragments (`./nodes.ts`), wired from the harness input
+  // instead of from a `resolve-action` node: the harness takes the action id
+  // as ingress because the head node it proves is the document read itself.
+  .pipe(documentNode.wire({
     dependsOn: [],
-    /**
-     * `replay: "checkpoint"`, and unlike chunk 1's search node that is safe
-     * here: this node's product is its VALUE, not browser state. Nothing
-     * downstream stands on the page it opened — the only consumer is a pure
-     * fold — so restoring the checkpoint into a fresh browser leaves nothing
-     * broken. Chunk 1's rule ("a node whose real product is BROWSER state may
-     * not be `replay:\"checkpoint\"`") is the same rule read the other way.
-     */
-    replay: "checkpoint",
     bind: ({ input }) => ({ actionId: input.actionId, documentNumber: input.documentNumber }),
-  })
-  .step("termination-type", SeparationsMatchTerminationType, {
-    label: "Termination Type",
-    dependsOn: ["document"],
-    replay: "checkpoint",
+  }))
+  .pipe(terminationTypeNode.wire({
+    dependsOn: [DOCUMENT_NODE],
     bind: ({ input, outputs }) => ({
       terminationType: outputs.document.separation.terminationType,
       // The complete option list the run ACTUALLY observed, so a republished
@@ -120,7 +108,7 @@ const separationsKualiReadFlow = flow(SeparationsKualiReadInput)
       observedOptions: outputs.document.options.terminationType,
       documentNumber: input.documentNumber,
     }),
-  })
+  }))
   .build({
     schema: SeparationsKualiReadResultSchema,
     dependsOn: ["document", "termination-type"],

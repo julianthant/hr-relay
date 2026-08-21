@@ -91,8 +91,6 @@
 import { z } from "zod";
 import { flow } from "../../base/flow.js";
 import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
-import { KualiReadSeparationDocument } from "../../domain/contracts/kuali/read-separation-document.js";
-import { KualiSearchSeparationAction } from "../../domain/contracts/kuali/search-separation-action.js";
 import { KualiSaveSeparationFinalization } from "../../domain/contracts/kuali/save-separation-finalization.js";
 import { KualiStageSeparationFinalization } from "../../domain/contracts/kuali/stage-separation-finalization.js";
 import { NewKronosReadSeparationTimecard } from "../../domain/contracts/new-kronos/read-separation-timecard.js";
@@ -101,9 +99,7 @@ import { SeparationsMatchActiveEmployment } from "../../domain/contracts/separat
 import { SeparationsMatchDepartmentOption } from "../../domain/contracts/separations/match-department-option.js";
 import { SeparationsMatchIdentity } from "../../domain/contracts/separations/match-identity.js";
 import { SeparationsMatchSeparationSubject } from "../../domain/contracts/separations/match-separation-subject.js";
-import { SeparationsMatchTerminationType } from "../../domain/contracts/separations/match-termination-type.js";
 import { SeparationsReadSeparationDates } from "../../domain/contracts/separations/read-separation-dates.js";
-import { SeparationsReadSeparationPlan } from "../../domain/contracts/separations/read-separation-plan.js";
 import { SeparationsVerifyIdentityApproval } from "../../domain/contracts/separations/verify-identity-approval.js";
 import { SeparationsVerifyTerminationReceipt } from "../../domain/contracts/separations/verify-termination-receipt.js";
 import { UcpathCreateTermination } from "../../domain/contracts/ucpath/create-termination.js";
@@ -137,7 +133,17 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js
 import { IDENTITY_CHECK_STEP } from "./identity-check/step.js";
 import { JOB_SUMMARY_STEP } from "./job-summary/step.js";
 import { KRONOS_TIMECARD_STEP } from "./kronos-timecard/step.js";
-import { KUALI_EXTRACTION_STEP } from "./kuali-extraction/step.js";
+import {
+  ACTION_NODE,
+  DOCUMENT_NODE,
+  KUALI_EXTRACTION_STEP_NODES,
+  PLAN_NODE,
+  TERMINATION_TYPE_NODE,
+  actionNode,
+  documentNode,
+  planNode,
+  terminationTypeNode,
+} from "./kuali-extraction/nodes.js";
 import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
 import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
 
@@ -265,10 +271,6 @@ export const SeparationsResultSchema = z.strictObject({
   }),
 });
 
-const ACTION_NODE = "resolve-action";
-const DOCUMENT_NODE = "document";
-const PLAN_NODE = "plan";
-const TERMINATION_TYPE_NODE = "termination-type";
 const NAME_SEARCH_NODE = "name-search";
 const SUBJECT_NODE = "subject";
 const JOB_SUMMARY_NODE = "job-summary";
@@ -291,47 +293,19 @@ function existingComments(comments: { state: "present"; value: string } | { stat
 }
 
 const separationsFlow = flow(SeparationsInput)
-  .step(ACTION_NODE, KualiSearchSeparationAction, {
-    label: "Kuali Action",
+  .pipe(actionNode.wire({
     dependsOn: [],
-    /**
-     * D261's head node. It turns the one number a human knows into the address
-     * Kuali actually answers to, by filtering the Action List's own search box
-     * and reading the matched row's `href` — no click into a document, nothing
-     * staged, nothing written.
-     *
-     * `replay: "checkpoint"` for `document`'s reason, one node earlier: the
-     * node's product is a VALUE, so restoring it into a fresh browser leaves
-     * nothing broken, and the gate releases every session on the way in. The
-     * value CAN go stale between the checkpoint and a post-gate finalization —
-     * an action id names a workflow step — and that is exactly the case
-     * `openDocument` refuses loudly on, by proving the document number off the
-     * page's own heading. A freshness bound here would replace a precise
-     * refusal with a timer, and §5A already ruled that out for this graph.
-     */
-    replay: "checkpoint",
     bind: ({ input }) => ({ documentNumber: input.documentNumber }),
-  })
-  .step(DOCUMENT_NODE, KualiReadSeparationDocument, {
-    label: "Separation Document",
+  }))
+  .pipe(documentNode.wire({
     dependsOn: [ACTION_NODE],
-    /**
-     * Chunk 2's argument verbatim: this node's product is its VALUE, not browser
-     * state, so restoring the checkpoint into a fresh browser leaves nothing
-     * broken. That matters more here than it did there — the gate parks and the
-     * executor releases every session on the way in, so every read upstream of
-     * the gate is replayed into a browser that has never seen these pages.
-     */
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
     }),
-  })
-  .step(PLAN_NODE, SeparationsReadSeparationPlan, {
-    label: "Separation Plan",
+  }))
+  .pipe(planNode.wire({
     dependsOn: [DOCUMENT_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[DOCUMENT_NODE].employee.name,
@@ -341,11 +315,9 @@ const separationsFlow = flow(SeparationsInput)
       // says what is true — *as of the moment this run read the document*.
       observedAt: outputs[DOCUMENT_NODE].observedAt,
     }),
-  })
-  .step(TERMINATION_TYPE_NODE, SeparationsMatchTerminationType, {
-    label: "Termination Type",
+  }))
+  .pipe(terminationTypeNode.wire({
     dependsOn: [DOCUMENT_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       terminationType: outputs[DOCUMENT_NODE].separation.terminationType,
       // The complete option list this run ACTUALLY observed, so a republished
@@ -353,7 +325,7 @@ const separationsFlow = flow(SeparationsInput)
       observedOptions: outputs[DOCUMENT_NODE].options.terminationType,
       documentNumber: input.documentNumber,
     }),
-  })
+  }))
   .step(NAME_SEARCH_NODE, SearchPersonOrg, {
     label: "Name Search",
     dependsOn: [PLAN_NODE],
@@ -946,7 +918,7 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    * category's `×N` marker instead of drawing duplicate segments.
    */
   timeline: [
-    { ...KUALI_EXTRACTION_STEP, nodes: [ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
+    KUALI_EXTRACTION_STEP_NODES,
     { ...IDENTITY_CHECK_STEP, nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
     { ...JOB_SUMMARY_STEP, nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
     { ...KRONOS_TIMECARD_STEP, nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
