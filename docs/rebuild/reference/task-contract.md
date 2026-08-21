@@ -669,6 +669,8 @@ the toil was acceptable, because nobody measured it.
 
 ### 2.8 The rich-extraction convention — one task per PAGE VISIT (D194, ratified 2026-08-12)
 
+<!-- roadmap: sep-1 -->
+<!-- roadmap: sep-2 -->
 §2.7 answers *how much a task owes*. This answers the neighbouring question the store libraries
 forced open at the order-8 separations migration: **how wide a read task's output should be.** The
 operator ratified the rich-extraction convention on 2026-08-12; the options it was chosen from, and
@@ -716,41 +718,23 @@ CRM **history** page is a second visit and stays its own task under this convent
 
 ---
 
-### 2.11 The third store authored under §2.8 — `ucpath/read-job-summary` (D201, 2026-08-12)
-
-Separations chunk 3 mints the UCPath side of §2.8's convention, and it settles two authoring rules the
-first two stores did not have to answer.
-
-**A page's read task reports what the page showed; the JUDGMENT is a separate fold.**
-`ucpath/read-job-summary` returns the whole *Employment Instances* grid — every row's empl record,
-verbatim HR status, business unit, effective dates, department, job code, title, FTE and class — plus
-the page-displayed person identity, the row count, and the **render context** that says whether the
-grid is complete. It classifies nothing. "All rows terminated", "two concurrent jobs" and "already
-separated" are a pure fold over that output
-(`src/domain/separations/job-summary-classification.ts`). Legacy computes those same facts as THROWS
-inside its page module, and only when the search happened to render a multi-row grid — so they exist
-only in a log, and a single-employment person who is already terminated is never checked at all (S22,
-found live on a real person). A read that refuses on the shape of its own answer cannot serve a gate
-whose whole job is to SHOW the operator that answer.
-
-**Absent arms are for genuinely-optional CELLS, and the STRUCTURAL ones refuse.** Empl record, HR
-status and business unit are required on every rendered row: a blank one means the extraction read
-something that is not an employment row. The nine descriptive cells each carry
-`{state:"absent", reason}`. The dividing line is *what a blank MEANS*, not what is convenient: a blank
-structural cell is a broken read, a blank descriptive cell is a real page state. S24's unreadable
-department is therefore data with a reason rather than a refusal — refusing there would fail an
-identity check over a cell the identity check does not use, and the consumer that NEEDS a department
-is the one that refuses.
-
-**One extraction, two parses.** `searchPersonOrg` and `readJobSummary` share the same page visit and
-the same cell read. They do not share a parse: the search keeps its exact preferred-assignment
-derivation, which refuses a blank department because a CANDIDATE without one is unusable, while the
-job-summary read gives that same cell an absent arm. Widening the search's own output instead would
-have moved a schema hash shipped run records already bind (D110/D114/D82) — which is the cost §2.8
-warned about, paid the way §2.8 said to pay it: a new contract beside the old one.
-
 ### 2.9 The first store authored under §2.8 — `new-kronos` as-built (D196, 2026-08-12)
 
+<!-- roadmap: sep-1 -->
+<!-- roadmap-status: sep-1 -->
+- [x] two tasks because two page visits — `new-kronos/search-employee` and `new-kronos/read-separation-timecard`, both live-proven (D196, 2026-08-12; `src/stores/new-kronos/tasks/`)
+- [x] the completeness INVARIANT over the virtualized grid: the scroll loop and the fold share ONE implementation, `timecardRangeCoverage`, and the loop terminates on coverage rather than on the widget (D205, 2026-08-13; `src/stores/new-kronos/driver/grid-scroll.ts:130`)
+- [x] columns bound by header NAME, read from the same container as the cells, with the counts compared (D205)
+- [x] the store is structurally read-only: no `commit` contract, no `MutationCapability` in its import graph, and the UI-registry audit refuses an `external-commit` element by name
+- [ ] the pay-rule WRITE family — order 6, below
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/new-kronos/{index.ts,declaration.ts,tasks/,driver/grid-scroll.ts} and src/domain/ui/new-kronos-timecard.ts; left: nothing in this section — the write family is `{#order-6}`'s
+<!-- /roadmap-status -->
+
+<!-- roadmap: order-6 -->
+<!-- roadmap-status: order-6 -->
+- [ ] BE the `new-kronos` store gains its pay-rule write family: a `commit` contract with `writeSafety`, a `CommitCapableSystemDriver` operation, and the `external-commit` element the registry audit refuses today — the capability is added deliberately by that slice and cannot be inherited (§2.9)
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified: `src/stores/new-kronos/` has read tasks only and its driver declares no commit operation; the rest of order 6 (the canonical-EID audit gate, work-study) is owned by 03c and ref data-intake-and-edit-data §1
+<!-- /roadmap-status -->
 Separations chunk 1 (`docs/migrations/separations.md` §3) is the first slice authored under the
 rich-extraction convention and the first new browser store since the platform was built, so what it
 settled is normative for every store slice after it.
@@ -775,10 +759,25 @@ that, rather than trusting the loop that gathered it.** §2.8's obligations (abs
 classification) are about each leaf; this one is about the SET, and it is the same class of
 obligation.
 
-**A rich read binds its columns by NAME.** Legacy addressed the grid by fixed cell index; a column
-inserted upstream would silently re-point "Pay code" at "Transfer". The task resolves the live
-header row and fails loud naming the missing or ambiguous header. A positional read is exactly the
-substitution `no-positional-identity` bans one level up.
+**As built, that invariant is also the loop's TERMINATION condition (D205, 2026-08-13).** The first
+implementation stopped scrolling when `scrollTop` refused to advance, which was a true statement
+about the wrong thing: the position was being written to ui-grid's pinned viewport, which drives no
+virtualization, so a 14-of-35-day read reported itself whole and the fold accepted it. The loop now
+continues until `timecardRangeCoverage` says every day of the applied window is present and refuses
+when it cannot get there — **the same function the fold refuses on**, shared as ONE implementation
+(`src/stores/new-kronos/driver/grid-scroll.ts`). Two corollaries came with it and generalise past
+this store: an algorithm inside a `page.evaluate` closure is untestable by construction, so the
+harvest moved behind a port a fake grid can run; and terminating on what the gathered SET must
+contain is the only form of the rule that survives a widget lying about itself.
+
+**A rich read binds its columns by NAME — read from the same container as the cells.** Legacy
+addressed the grid by fixed cell index; a column inserted upstream would silently re-point "Pay
+code" at "Transfer". The task resolves the live header row and fails loud naming the missing or
+ambiguous header. The first version of that fix was a different hardcoded offset wearing a safer
+name: it queried header names `document`-wide, catching the PINNED `Date` header, while the cells
+came from a body row that has none — nothing threw, and every column was off by one (D205). Read
+the names from the container the cells came from and compare the counts. A positional read is
+exactly the substitution `no-positional-identity` bans one level up.
 
 **The page's own subject is an OUTPUT, not an internal check.** The timecard read returns the EID and
 the display name the timecard itself showed, beside the ones the run expected. The wrong-person
@@ -811,6 +810,15 @@ adds the capability deliberately; it cannot be inherited.
 
 ### 2.10 The first store CUSTOMIZED under §2.8 — `kuali` as-built (D197, 2026-08-12)
 
+<!-- roadmap: sep-2 -->
+<!-- roadmap-status: sep-2 -->
+- [x] a fifth task extended the ONE `DriverDeclaration<KualiRrssDocumentDriver>` rather than minting a second (D197, 2026-08-12; `src/stores/kuali/declaration.ts`)
+- [x] catalog attribution splits by FACT where a read and a write share one document, and the Save button stays the commit task's alone
+- [x] the registry invariant became PER SUBJECT IDENTITY — one `eid` observation, at most one `document-number` observation — rather than being relaxed to "at least one"
+- [x] a person field's `state`/`reason` arms are transaction facts, not identifiers; only `value` carries the identifier (D140 refinement)
+- [x] the store is ten tasks at HEAD, still on the one declaration — D261's Action-List resolver (`kuali/search-separation-action`) is the latest, added 2026-08-20
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/kuali/{declaration.ts,tasks/ (10 files)} and src/domain/ui/{kuali-rrss-document,kuali-separation-document,kuali-action-list}.ts; left: nothing in this section
+<!-- /roadmap-status -->
 §2.9 settled what a store BUILT whole owes. Separations chunk 2 is the other case `STORES.md` §1
 distinguishes — a **CUSTOMIZE** of an existing semantic-ready store — and it settles five more rules
 that are normative for every store slice that extends one rather than creating one.
@@ -857,8 +865,73 @@ rebuild by name — so a classification fix strands the receipts of runs settled
 
 ---
 
+### 2.11 The third store authored under §2.8 — `ucpath/read-job-summary` (D201, 2026-08-12)
+
+<!-- roadmap: sep-3 -->
+<!-- roadmap-status: sep-3 -->
+- [x] `ucpath/read-job-summary` returns the whole Employment Instances grid verbatim and classifies nothing; the disposition is a pure fold in `src/domain/separations/job-summary-classification.ts` (D201, 2026-08-12)
+- [x] structural cells (empl record, HR status, business unit) refuse a blank; the nine descriptive cells carry `{state:"absent", reason}`
+- [x] one page visit, two parses — the search keeps its own preferred-assignment derivation rather than widening a shipped output schema
+- [x] a settle wait proves that SOME outcome rendered and a pure verdict function says which; the four-result page that broke the old three-arm `.or()` is a pinned case (D213, 2026-08-14)
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/contracts/ucpath/read-job-summary.ts, src/domain/separations/job-summary-classification.ts and src/domain/ui/ucpath-job-summary.ts; left: nothing in this section — the gate half is ref write-safety §14 and ref workflow-model §5.5
+<!-- /roadmap-status -->
+Separations chunk 3 mints the UCPath side of §2.8's convention, and it settles two authoring rules the
+first two stores did not have to answer.
+
+**A page's read task reports what the page showed; the JUDGMENT is a separate fold.**
+`ucpath/read-job-summary` returns the whole *Employment Instances* grid — every row's empl record,
+verbatim HR status, business unit, effective dates, department, job code, title, FTE and class — plus
+the page-displayed person identity, the row count, and the **render context** that says whether the
+grid is complete. It classifies nothing. "All rows terminated", "two concurrent jobs" and "already
+separated" are a pure fold over that output
+(`src/domain/separations/job-summary-classification.ts`). Legacy computes those same facts as THROWS
+inside its page module, and only when the search happened to render a multi-row grid — so they exist
+only in a log, and a single-employment person who is already terminated is never checked at all (S22,
+found live on a real person). A read that refuses on the shape of its own answer cannot serve a gate
+whose whole job is to SHOW the operator that answer.
+
+**Absent arms are for genuinely-optional CELLS, and the STRUCTURAL ones refuse.** Empl record, HR
+status and business unit are required on every rendered row: a blank one means the extraction read
+something that is not an employment row. The nine descriptive cells each carry
+`{state:"absent", reason}`. The dividing line is *what a blank MEANS*, not what is convenient: a blank
+structural cell is a broken read, a blank descriptive cell is a real page state. S24's unreadable
+department is therefore data with a reason rather than a refusal — refusing there would fail an
+identity check over a cell the identity check does not use, and the consumer that NEEDS a department
+is the one that refuses.
+
+**A settle wait proves that SOME outcome rendered; a pure function says WHICH (D213,
+2026-08-14).** UCPath's `#PTS_CRITTEXT_DISP` was modelled as a positive "no results" marker and is
+the search-CRITERIA banner, which renders on every result list stating the count. Waiting on a
+three-arm `.or()` therefore CLAIMED the arms were mutually exclusive, and the first subject whose
+name matched four people rendered banner and grid together, resolved two elements and threw — while
+the classifier behind it would have read that ordinary page as "ambiguous". The wait now asks
+whether any outcome has rendered (`.first()`) and a pure verdict function decides which, so the
+decision is testable; its load-bearing arm is the REFUSAL — a count banner with no grid beside it
+throws by name rather than answering not-found, because reading a four-result page as "nobody
+matched" is a silent wrong value about a person. Two subjects were not enough to find this: both
+earlier ones matched exactly one person, where UCPath auto-navigates to the detail page, so only one
+arm had ever matched and the mapping stayed internally consistent and externally wrong. When a
+registry LABEL asserts something the live page disproves, move the LABEL — durable catalogs and
+selector provenance bind the id.
+
+**One extraction, two parses.** `searchPersonOrg` and `readJobSummary` share the same page visit and
+the same cell read. They do not share a parse: the search keeps its exact preferred-assignment
+derivation, which refuses a blank department because a CANDIDATE without one is unusable, while the
+job-summary read gives that same cell an absent arm. Widening the search's own output instead would
+have moved a schema hash shipped run records already bind (D110/D114/D82) — which is the cost §2.8
+warned about, paid the way §2.8 said to pay it: a new contract beside the old one.
+
 ### 2.12 One store, two screen families, TWO write transactions — `ucpath`'s termination family (D206, 2026-08-14)
 
+<!-- roadmap: sep-4 -->
+<!-- roadmap-status: sep-4 -->
+- [x] two transaction nodes in one graph, and the DELETE is its own transaction with its own probe, verifier and permanent key (D206, 2026-08-14; `src/stores/ucpath/tasks/`, ten tasks)
+- [x] ONE rich page read, TWO probe folds (`src/stores/ucpath/termination-verdict.ts`)
+- [x] the subject binds UCPath's own `PERSON_NAME_NAME_DISPLAY`, kept driver-internal because legacy has no key for it — the anchor renders zero nodes until UCPath resolves a person, so the subject observation and the `emplid-not-recognized` refusal are one check
+- [x] the closed vocabulary accepts both surfaces' spellings (`TER` and `Terminatn`), neither arm fuzzy, and a value matching neither falls through
+- [ ] the controlled commit on a real subject — canary doc 4537, blocked until its separation date 2026-08-28 (`{#track-a}`)
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/ucpath/{tasks/ (10 files),termination-verdict.ts,driver-declaration.ts} and src/domain/ui/{ucpath-driver,ucpath-smart-hr-termination,ucpath-ss-smart-hr}.ts; left: the live commit, which is Track A's PROOF row
+<!-- /roadmap-status -->
 Separations chunk 4 is the first slice to add a WRITE family to a store that already had a read
 family, and the first to compose **two transaction nodes in one graph**. Five rules fall out, and
 each was forced by something live rather than chosen.
