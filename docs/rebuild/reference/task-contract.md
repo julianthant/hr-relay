@@ -76,36 +76,6 @@ Section numbers are load-bearing: thirteen tree nodes carry a `ref:task-contract
 §2.9 → §2.10 → §2.11 → §2.12, which is also their chronological order.
 
 ---
-### Phase 1d as-built — the first `stores/common/` leaf (2026-08-01)
-
-`src/stores/common/` is now populated by its first shared leaf: the Kronos timecard check, ported
-with provenance from legacy `src/services/timecard/index.ts`
-(commit `793abe1f`, blob `91c5b930`). The port splits along this doc's own boundary — pure
-Clock-injected period/date resolution lives in `src/domain/timecard-period.ts`, and the
-orchestration helper that both Kronos stores will bind lives in `src/stores/common/timecard.ts`.
-
-Four boundary changes were made in the port; each removes a silent fallback or a banned primitive
-rather than reshaping the algorithm, and each is pinned by a test:
-
-- **No raw `Page`.** Legacy `TimecardDriver` took `(page, …)` on every method. `SemanticTimecardDriver`
-  is page-free; concrete Kronos drivers own their Playwright internals (ref operator-trust §1.4).
-- **No `waitForTimeout`.** The legacy orchestration slept 3s after navigation and after a period
-  switch. Settling is a semantic page-state wait owned by the driver operation; the helper never sleeps.
-- **Navigation failure throws.** `goToTimecard(): Promise<boolean>` returning `false` made "could not
-  open the timecard" indistinguishable from "no punch entries exist" — both surfaced as `null`.
-- **The driver cannot assert its own switch.** `switchPeriod(): Promise<boolean>` becomes a typed
-  `TimecardPeriodSwitch` carrying the before/after period labels, which the helper compares (ref operator-trust
-  §1.4). "There is no previous period" is a declared named arm, never inferred from a bare `false`.
-
-The window helper also computes its bounds in calendar days rather than `n * 86_400_000` ms: the
-legacy arithmetic lands an hour off local midnight across a DST transition, which can shift a bound
-by a whole day once day-granularity rounding applies. `TimecardDateRange`, `TimecardMonthDay`, and
-`VisibleTimecardMonthDays` are strict schemas in the boundary catalog, because the month/day half of
-every timecard date is parsed from an untrusted Kronos grid. The Old Kronos adapter closes its
-capability at migration order 2 and New Kronos at order 8; this helper is the seam both bind to.
-
----
-
 ## 1. What today's code teaches us (the problems the contract must kill)
 
 **Grounding — read, not imagined.** Every path in this block is a **legacy-repo** path
@@ -989,210 +959,252 @@ fall through rather than be widened into.
 
 ### 3.1 Layout in the rebuild repo's `src/`
 
+<!-- roadmap: order-1 -->
+<!-- roadmap-status: order-1 -->
+- [ ] BE the `i9` store is a declaration only — `defineBrowserStore("i9", declareDriver("i9", "unwired"), i9Session, {})`, zero tasks, no `driver/`, no `BROWSER_SYSTEM_BINDINGS` entry; order 1 builds its driver, login recipe and tasks into exactly the layout below
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/i9/{index.ts,session.ts} and src/infra/browser/system-bindings.ts; the rest of order 1 (person-lookup's Search + Match modes) is owned by 03c and ref dashboard-surfaces §9
+<!-- /roadmap-status -->
+
+<!-- roadmap: order-2 -->
+<!-- roadmap-status: order-2 -->
+- [ ] BE the `sharepoint` and `old-kronos` stores are declarations only, same shape as `i9`; order 2 gives them drivers, login recipes and download tasks
+- [ ] BE the first content-addressed download task — `artifacts: "content-addressed"` plus `acceptDownloads: true`, which §2.1's session type admits only together; `stores/common/spreadsheet-grid.ts` is the shared leaf already waiting for the roster half
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/{sharepoint,old-kronos}/, src/stores/common/spreadsheet-grid.ts and src/base/artifacts.ts; no task in the tree declares `artifacts` today
+<!-- /roadmap-status -->
+
 ```
-src/                            # rebuild repo (hr-automation-rebuild) code root — D93
+src/                            # the rebuild repo's code root (D93)
   domain/
-    contracts/                # D3: bundle-safe contract files — zod + domain imports ONLY
-      base.ts                 # SystemId, TaskId, Freshness, contract types, defineTaskContract
-      ucpath/
-        index.ts              # contract barrel — KnownTaskId codegen + pairing guard read this
-        search-person-org.ts
-        save-oath-signature.ts
-      onbase/ …  crm/ …  extraction/ …  normalization/ …  ocr/ …  roster/ …
-      workflows/
-        verify/merge-enrichment.ts       # pure workflow-specific contract
-  base/                       # task.ts (impl types + defineTask), store.ts, errors.ts, session.ts
+    contracts/                # bundle-safe: zod + src/domain/** ONLY (guard task-contract-sealing)
+      base.ts                 # defineTaskContract, the effect arms, the seal
+      write-safety.ts         # the WriteSafety runtime schema a commit contract binds
+      index.ts                # re-exports those two — there is NO per-store barrel (§2.2)
+      ucpath/                 # one file per contract, named for the task
+        search-person-org.ts  read-job-summary.ts  stage-termination.ts  create-termination.ts …
+      crm/ …  kuali/ …  new-kronos/ …  extraction/ …  normalization/ …  ocr/ …  roster/ …
+      person-lookup/          # a workflow mini-store's contracts (ids are workflow:person-lookup/…)
+      separations/            # nine of them
+    ui/                       # the semantic driver types every store's driver implements
+  base/                       # task.ts (defineTask + the ctx types), store.ts, session.ts,
+                              # errors.ts, artifacts.ts, providers.ts, mutation-capability.ts
   stores/
+    index.ts                  # BROWSER_STORES / TASK_STORES + the two registries and their corpus
     ucpath/
-      index.ts                # defineBrowserStore("ucpath", driver, session, tasks) — THE impl registry
-      session.ts              # SessionProvider: login/prepareLogin/resetUrl/idleRefresh/exclusive
-      driver/                 # ONLY task-adjacent layer allowed raw Page/Locator access (ref operator-trust)
-        index.ts              # typed SystemDriver implementation + named complex operations
-        ui-registry.ts        # canonical elements/screens/states/observations
-        selectors.ts          # copied/ported verified recipes + provenance (§3.3)
+      index.ts                # defineBrowserStore("ucpath", ucpathDriver, ucpathSession, tasks)
+      driver-declaration.ts   # declareDriverFor<UcpathStoreDriver>()("ucpath", "semantic-ready")
+      session.ts              # the LOGIN RECIPE — a sanctioned raw-browser owner
+      session-provider.ts     # the composition-safe SessionProvider value tasks' graphs can see
+      driver/                 # the ONLY task-adjacent layer allowed raw Page/Locator access
+        interpreter.ts        # the semantic driver over a live page
+        ui-registry.ts        registry-locators.ts   catalog.ts   fake.ts
+        person-org-operation.ts  smart-hr-operation.ts    # the ported leaves live HERE
+      tasks/                  # one file per task; defineTask(driver, contract, impl)
+      termination-verdict.ts  # pure folds over a task output (§2.12)
       UI-CATALOG.md           # generated; stable ids/labels/search terms/evidence/task uses
-      impl/                   # verbatim-ported leaf drivers (person-org-summary.ts, ss-smart-hr.ts…)
-      tasks/
-        search-person-org.task.ts      # defineTask(driver, contract, impl) — binds the pair
-        save-oath-signature.task.ts
-    onbase/ …   crm/ …   kuali/ …
-    extraction/               # service store (D4, charter §11): CSV + PDF extraction — sessions: []
-    normalization/            # service store: contact/address normalization + typed change provenance
-    ocr/                      # service store (D4, charter §11): the OCR provider pipeline
-    roster/                   # service store (D4, charter §11): spreadsheet matching — sessions: []
-    workflows/
-      verify/                 # pure mini-store: effect:"read", sessions:[]; peer-reusable
-        index.ts
-        tasks/merge-enrichment.task.ts
-    common/                   # shared leaf code across stores — home of legacy src/systems/common/ (D15)
-  scenarios/                  # strict registered behavior corpus (ref operator-trust)
-  knowledge/records/          # active/superseded/retired/unverified structured guidance (ref operator-trust)
+      CLAUDE.md               # the store's own as-built notes
+    crm/ · kuali/ · new-kronos/          # the other three wired browser stores
+    i9/ · old-kronos/ · onbase/ · servicenow/ · sharepoint/   # declaration + session only
+    extraction/ · normalization/ · ocr/ · roster/             # service stores (D4, §3.4)
+    person-lookup/ · separations/                             # workflow mini-stores (§3.5)
+    common/                   # shared leaf code, NOT a store: timecard.ts, spreadsheet-grid.ts
+  workflows/<id>/             # descriptor.ts (bundle-safe) + module.ts (server composition)
+  control/workflow-registry.ts # the ONE WORKFLOW_MODULES tuple every registry derives from
 ```
 
-### 3.2 `defineStore` — one impl registry per task namespace
+Two naming corrections against what this section used to show: task impl files are
+`tasks/<verb-object>.ts`, not `*.task.ts`, and there is no per-store `impl/` directory — the
+verbatim-ported leaves live under `driver/` beside the interpreter that calls them, because they
+are the layer that touches a page and the boundary guard is drawn at `driver/**`. A workflow
+mini-store's contracts sit at `domain/contracts/<workflow-id>/`, not under a `workflows/` folder.
+
+### 3.2 The store factories — one impl registry per task namespace
+
+<!-- roadmap: p1-authority -->
 
 ```ts
-// src/base/store.ts
-export interface BrowserTaskStore<
-  S extends BrowserSystemId,
-  Driver extends { system: S },
-  T extends Record<string, AnyTaskFor<S, Driver>>,
-> {
-  namespace: S;
-  driver: DriverDeclaration<Driver>;
-  session: SessionProvider<S>;
-  tasks: T;                            // typed bag — ucpathStore.tasks.searchPersonOrg
-}
-export interface HeadlessTaskStore<N extends ServiceSystemId | WorkflowStoreId,
-  T extends Record<string, AnyReadTaskFor<N>>> {
-  namespace: N;
-  session?: never;
-  tasks: T;
-}
-
-export function defineStore<
-  S extends BrowserSystemId,
-  Driver extends { system: S },
-  T extends Record<string, AnyTaskFor<S, Driver>>,
->(
-  namespace: S, driver: DriverDeclaration<Driver>, session: SessionProvider<S>, tasks: T,
-): BrowserTaskStore<S, Driver, T>;
-export function defineStore<S extends ServiceSystemId, T extends Record<string, AnyReadTaskFor<S>>>(
-  namespace: S, tasks: T,
-): HeadlessTaskStore<S, T>;
-export function defineWorkflowStore<Id extends string,
-  T extends Record<string, AnyReadTaskFor<`workflow:${Id}`>>>(
-  workflowId: Id, tasks: T,
-): HeadlessTaskStore<`workflow:${Id}`, T>;
+// src/base/store.ts — three factories, one registry
+defineBrowserStore(namespace, driver, session, tasks) → BrowserTaskStore
+defineServiceStore(namespace, tasks)                  → HeadlessTaskStore
+defineWorkflowStore(workflowId, tasks)                → HeadlessTaskStore<`workflow:${Id}`>
+defineTaskStoreRegistry(stores, corpus)               → TaskStoreRegistry
 ```
 
-- `AnyTaskFor<S, Driver>` constrains every browser-store member's contract-id prefix, concrete
-  driver declaration, and every `SessionNeed.system` to `S`. The runtime factory additionally
-  requires declaration object identity, so two separately declared same-system drivers cannot be
-  interchanged. `AnyReadTaskFor<N>` makes service/workflow stores read-only and
-  sessionless; a workflow mini-store cannot obtain `page` or `MutationCapability`. The composition
-  root also requires every `workflow:<id>` namespace to match a real descriptor id.
-  **A store cannot contain a task that touches another store's system.**
-  Cross-system behavior (person-lookup's UCPath+CRM dance) is workflow composition, never a task.
-- Runtime validation at module load: duplicate ids, id prefix mismatch → throw.
-- The store is the ONLY impl registry; the contract barrel is the ONLY contract registry.
-  Descriptors (ref workflow-model), the dashboard task index, and the e2e stub happy paths are projections of
-  the **contracts**; the daemon resolves impls through the **store**. Coverage ratchets (all in
-  `npm run test:architecture`):
-  1. **Pairing guard** — every system or workflow contract is bound by exactly one matching
-     `stores/**/tasks/*.task.ts` `defineTask` call, and vice versa (an impl without a contract
-     or a contract without an impl fails CI).
-  2. **Reachability guard** — each `*.task.ts` export is reachable from its store's `index.ts`
-     (kills "wrote the task, forgot the registry").
-  3. **Bundle-safety guard** — the import graph of `domain/contracts/**` may reach only zod and
-     `domain/` (no Playwright, no `stores/`, no `base/task.ts`).
-  4. **Example guard** — every contract's `example` parses through its `output` schema.
-  5. **Freshness/provenance guard** — `maxAgeMs: Infinity` requires an adjacent justification
-     comment; field overrides must name real output paths; a read contract without both declarations
-     fails the factory + types, and derived transforms retain their oldest contributing observation.
-  6. **Artifact guard** — task code may reach filesystem/download materialization only through a
-     declared content-addressed writer; workflow mini-stores cannot declare artifacts, and mutable
-     append/update paths are confined to reviewed serialized projectors.
+There is no single `defineStore` with overloads; three named factories are what shipped, and the
+names are load-bearing because the three enforce different things.
+
+- **`defineBrowserStore`** parses the namespace, requires the driver declaration by OBJECT IDENTITY
+  (`assertFactoryDeclaredDriver`), requires the session provider's system to match, requires
+  `exclusive: true` on OnBase and refuses it everywhere else, and then validates every task:
+  camelCase key, factory-minted (`assertFactoryDefinedTask`), an id prefixed by this namespace, the
+  store's exact driver declaration, no duplicate id. A driver-bound task cannot be registered in a
+  headless store and vice versa.
+- **`defineServiceStore`** additionally requires every task to be a sessionless READ.
+- **`defineWorkflowStore`** requires the same and also refuses `artifacts` or `providers` — a
+  mini-store may not acquire hidden filesystem state or network reach (§3.5).
+- **`defineTaskStoreRegistry`** requires stores minted by those factories, refuses a duplicate
+  namespace or task id, and then matches the store set against the **corpus** in BOTH directions: a
+  registered task missing from the corpus fails, a corpus id with no implementation fails, an effect
+  disagreement fails, and `assertTaskContractReferences` resolves every scenario id and every
+  commit's probe/verifier against that corpus. Two registries are composed in `src/stores/index.ts`
+  — `browserStoreRegistry` (the nine browser stores, the declaration view ref
+  execution-and-sessions' coverage guard consumes) and `taskStoreRegistry` (all sixteen, the
+  executable task index).
+
+**A store cannot contain a task that touches another store's system.** Cross-system behaviour
+(person-lookup's UCPath + CRM dance) is workflow composition, never a task.
+
+**What actually guards this, by name.** The six numbered "coverage ratchets" this section used to
+promise map onto the tree like this — three exist under different names, two are the factories
+themselves, and one was never built:
+
+| the promise | what enforces it at HEAD |
+|---|---|
+| pairing — every contract bound by exactly one impl, both directions | `defineTaskStoreRegistry`'s corpus match (above) plus `descriptor-coverage`'s D107 audit of `config/pending-impl-bindings.json`, which is checked-in EMPTY and must gain an entry in the same commit as an unbound contract |
+| reachability — a task file the store forgot | structural: the corpus is projected FROM `store.tasks`, so a task no store exports does not exist as far as the registry, the descriptor and the dashboard are concerned |
+| bundle safety — a contract reaching server code | `task-contract-sealing`'s AST plus transitive import-graph audit over every `src/**/contracts/**` module (forged seals, casts and dynamic imports included), and `descriptor-coverage`'s bundle-safe value-import closure over every descriptor |
+| the `example` parses through `output` | `descriptor-coverage` re-parses every registered contract's example, and the factory parses it at definition (§2.2) |
+| freshness/provenance | the factory (both required on a read, field paths resolved against the exact output schema) and the executor's provenance collector (§2.3). **The `maxAgeMs: Infinity` justification-comment ratchet does not exist**: seven contracts declare `Infinity` today and every one carries its argument in an adjacent comment, which is a convention held by review, not by a gate |
+| artifacts | `artifact-effect-boundary` |
 
 ### 3.3 Porting selectors + knowledge (copy verified recipes; never import legacy runtime)
 
-- **Verified selector recipes are copied/ported into the rebuilt driver with provenance.**
-  The rebuild repo never imports or re-exports the legacy repo's `src/systems/**` — under D93 that is
-  **structural**, not policed: the two repos share no module graph, so a runtime import across them is
-  impossible to write. Each new registry entry records its **legacy-repo commit hash + source path/key**,
-  verification date, copied recipe/fallback chain, and rebuild fixture/live
-  verification. `ui-registry.ts` assigns stable ref operator-trust `ElementId`s; tasks call the typed driver.
-  D90 **cross-repo** change accounting maps later legacy selector maintenance to the affected rebuilt
-  ids and requires re-port/reverification where applicable — every legacy maintenance change is
-  recorded against the affected capabilities/rebuild evidence in the rebuild repo's
-  `config/legacy-change-accounting.json`, referencing legacy-repo commit hashes. The legacy repo
-  remains intact and is the sole production authority through the single cutover.
-- **Two-commit rule per store:** commit 1 is a faithful copy/port (`impl/*` with only the import-path
-  edits required inside the rebuild repo's `src/` — reviewable as zero-logic-diff against the
-  legacy-repo source at the recorded commit hash);
-  commit 2 wraps `impl` in `defineTask` shells
-  + contract files. Re-derivation is forbidden (charter): `// verified <date>` stamps, `.or()`
-  fallback chains, `getContentFrame`, employment-instance expansion, Duo two-phase factor logic
-  are copied faithfully with source provenance; the legacy originals remain in place.
+- **Verified selector recipes are copied/ported into the rebuilt driver with provenance.** The
+  rebuild repo never imports or re-exports the legacy repo's `src/systems/**` — under D93 that is
+  **structural**, not policed: the two repos share no module graph, so a runtime import across them
+  is impossible to write. Each ported module records the **legacy commit hash and source path** in
+  its header (`src/stores/ucpath/session.ts` names
+  `hr-automation@793abe1f…` and `src/infra/auth/login.ts`), and
+  `legacy-selector-port-provenance` pins all 406 registry keys to that FIXED commit's blobs, so
+  legacy moving on cannot invalidate the guard. `ui-registry.ts` assigns stable ref operator-trust
+  `ElementId`s; tasks call the typed driver.
+- **Cross-repo change accounting is RETIRED (D150, 2026-08-05).** This section required D90
+  accounting — every legacy maintenance change booked in `config/legacy-change-accounting.json`
+  against the affected rebuilt ids — and that is no longer true in either direction: nothing here
+  reads legacy's working tree, and legacy work never blocks a rebuild gate. The file remains as a
+  frozen historical record and is read by nothing. **What replaced it is stronger for the risk it
+  covered** (a ported selector going stale after legacy fixed it): mandatory **live
+  re-verification at each workflow's migration**, which the charter already makes standing and
+  pre-authorized. A selector checked against the live system beats one diffed against legacy's copy
+  of it.
+- **Two-commit rule per store:** commit 1 is a faithful copy/port (only the import-path edits the
+  rebuild's own `src/` requires — reviewable as a zero-logic diff against the legacy source at the
+  recorded commit hash); commit 2 wraps it in `defineTask` shells and contract files.
+  Re-derivation is forbidden (charter): `// verified <date>` stamps, `.or()` fallback chains,
+  `getContentFrame`, employment-instance expansion and Duo two-phase factor logic are copied
+  faithfully with source provenance, and the legacy originals stay in place.
+- **A port is allowed to change a BOUNDARY, and each change is named.** `src/stores/common/`'s
+  first shared leaf — the Kronos timecard check, ported from legacy `src/services/timecard/index.ts`
+  (commit `793abe1f`, blob `91c5b930`) — split along this doc's own boundary: pure Clock-injected
+  period/date resolution went to `src/domain/timecard-period.ts`, the orchestration both Kronos
+  stores bind went to `src/stores/common/timecard.ts`. Four boundary changes were made, each
+  removing a silent fallback or a banned primitive rather than reshaping the algorithm, and each
+  pinned by a test: **no raw `Page`** (the semantic timecard driver is page-free; concrete drivers
+  own their Playwright internals); **no `waitForTimeout`** (the legacy 3 s sleeps after navigation
+  and after a period switch become semantic page-state waits owned by the driver operation);
+  **navigation failure throws** (`goToTimecard(): Promise<boolean>` made "could not open the
+  timecard" indistinguishable from "no punch entries exist" — both surfaced as `null`); and **the
+  driver cannot assert its own switch** (`switchPeriod(): Promise<boolean>` becomes a typed
+  `TimecardPeriodSwitch` carrying before/after period labels that the helper compares, so "there is
+  no previous period" is a declared arm and never an inferred `false`). The window helper also
+  computes bounds in calendar days rather than `n * 86_400_000` ms, because the legacy arithmetic
+  lands an hour off local midnight across a DST transition and day-granularity rounding then shifts
+  a bound by a whole day. `TimecardDateRange`, `TimecardMonthDay` and `VisibleTimecardMonthDays` are
+  strict schemas in the boundary catalog, because the month/day half of every timecard date is
+  parsed from an untrusted grid.
 - Existing LESSONS do **not** move wholesale. Each referenced lesson is triaged during migration:
   active invariant → structured `KnowledgeRecord`; incident-only context → linked incident history;
   superseded/duplicate/incorrect → excluded from the generated active guide. The old LESSONS file
-  remains with the legacy repo's store through the single cutover. See ref operator-trust §4.
-- The rebuild repo's `npm run ui:catalog` generates the new catalog; its `selector:search` searches
-  canonical ids, labels, search terms, active knowledge, and recorded legacy-repo source paths. During
-  coexistence the legacy repo's own `selectors:catalog` still serves legacy source in that repo, but it
-  is not a second source for new tasks.
-- The inline-selector architecture guard is **re-implemented in the rebuild repo** over its own
-  `src/stores/*/tasks/**` and workflow code (it is not shared with the legacy repo's copy — the repos
-  share no gates). Raw `Page`/`Locator`, `page.` calls, and locator recipes are allowed only under
-  `stores/*/driver/**` and session infrastructure. Tasks receive `ctx.driver`.
+  stays with the legacy repo's store through the single cutover. See ref operator-trust §4.
+- `npm run ui:catalog` generates the per-store `UI-CATALOG.md` (four exist today: ucpath, crm,
+  kuali, new-kronos) and `npm run selector:search` searches canonical ids, labels, search terms,
+  active knowledge and recorded legacy source paths.
+- The inline-selector architecture guard runs over this repo's own `src/stores/*/tasks/**` and
+  workflow code. Raw `Page`/`Locator`, `page.` calls and locator recipes are allowed only under
+  `src/stores/*/driver/**`, a store's `session.ts`, and `src/infra/browser/**`; tasks receive
+  `ctx.driver` and may not reach any of those three transitively (guard `task-driver-boundary`).
 
 ### 3.4 Service stores — system-less work has a home (D4)
+
+<!-- roadmap: p2-2h -->
+<!-- roadmap-status: p2-2h -->
+- [x] all four service stores exist and are registered: `extraction` (2 tasks), `ocr` (1), `roster` (1), `normalization` (1) — `src/stores/{extraction,ocr,roster,normalization}/`
+- [x] each is a `defineServiceStore` whose tasks are sessionless reads by construction, and `ocr/extract-form-page` is the one contract in the tree that declares `providers`
+- [x] the provider seam behind it — admission, budgets, the reviewed adapter list — is ref execution-and-sessions' and is guarded by `provider-capability-boundary`
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/stores/{extraction,normalization,ocr,roster}/index.ts and src/domain/contracts/ocr/extract-form-page.ts; the intake/Edit-Data half of 2h is ref data-intake-and-edit-data's
+<!-- /roadmap-status -->
 
 Pure compute and non-browser pipelines get **service stores** under the same contract:
 
 - **`extraction`** — CSV + PDF extraction (onboarding's `extraction` step, filename parsing).
   Deterministic, no I/O beyond the filesystem. Its outputs land in workflow input fields via
   **operator-defined column mapping** (charter §11): the operator connects a source column title to
-  a canonical field (e.g. some spreadsheet's column → `eid`); mapped values parse through the
-  workflow's zod input schema, so ingest is validated by construction. Full design: ref data-intake-and-edit-data.
-- **`ocr`** — the OCR provider pipeline (`src/services/ocr/` ports here): model calls, fabrication
-  tiering, tolerant-field handling. External I/O, but no browser; contracts declare
-  `providers:["ocr.extract"]` and receive only the injected admitted client.
-- **`roster`** — spreadsheet matching, using the same operator-defined column mapping onto
-  canonical fields (charter §11). Full design: ref data-intake-and-edit-data.
-- **`normalization`** — reusable contact/address cleanup currently split across
-  `services/llm/normalize-contact.ts` and `services/address/`. Deterministic phone/state/ZIP rules,
-  geocoder reads, and optional model suggestions return a strict discriminated result with one
+  a canonical field, and mapped values parse through the workflow's zod input schema, so ingest is
+  validated by construction. Full design: ref data-intake-and-edit-data.
+- **`ocr`** — the OCR provider pipeline: model calls, fabrication tiering, tolerant-field handling.
+  External I/O, no browser; its contract declares `providers: ["ocr.extract"]` and receives only the
+  injected admitted client.
+- **`roster`** — spreadsheet matching over the same operator-defined column mapping onto canonical
+  fields (charter §11). Full design: ref data-intake-and-edit-data.
+- **`normalization`** — reusable contact/address cleanup. Deterministic phone/state/ZIP rules,
+  geocoder reads and optional model suggestions return a strict discriminated result with one
   provenance-labelled change per field (`rule|census|nominatim|ai`) plus explicit
-  `unchanged|ambiguous|unavailable`; provider exhaustion/error can never become “no change.” The
-  workflow decides whether an advisory enters an approval gate. Shared provider/rate-limit clients
-  live in infra and may also serve OCR; one store never imports another store's implementation.
+  `unchanged|ambiguous|unavailable`; provider exhaustion or error can never become “no change.” The
+  workflow decides whether an advisory enters an approval gate. Shared provider clients live in
+  infra and may also serve OCR; one store never imports another store's implementation.
 
 Rules:
-- Same contract types, same id grammar (`extraction/extract-pdf-fields`), same error taxonomy, same
+
+- Same contract types, same id grammar (`extraction/extract-spreadsheet`), same error taxonomy, same
   `example`/`freshness` obligations. A service read that feeds a write (roster match → OnBase
   upload) declares `freshness` like any other read.
-- `sessions: []` is legal only in **headless service/workflow stores**; browser stores stay
+- `sessions: []` is legal only in headless service/workflow stores; browser stores are
   type-constrained to exactly one need for their own system, and a browser-store task with empty or
-  cross-system sessions fails the types and factory.
-- Service-store ctx has no `page` member (type-level) and no session provider; `defineStore` for a
-  service system takes no `SessionProvider`. Remote service I/O is not ambient: direct provider SDK,
-  `fetch`, or HTTP-client imports are restricted to `infra/providers/**`. A service task declares
-  `providers`, and `ctx.providers` is narrowed to exactly those capabilities. Pure extraction/
+  cross-system sessions fails both the type and the factory.
+- A service ctx has no driver member (type-level) and no session provider; `defineServiceStore`
+  takes no `SessionProvider`. Remote I/O is not ambient: direct provider SDK, `fetch` or
+  HTTP-client imports are confined to `src/infra/providers/**`, a service task declares
+  `providers`, and `ctx.providers` is narrowed to exactly those capabilities. Pure extraction and
   roster tasks declare none and cannot call the network.
-- Provider adapters apply the immutable Clock/config snapshot, timeout, abort, retry/admission,
-  redaction, request/response schema, usage/cost, and evidence policy once. Provider failure is a
+- Provider adapters apply the immutable Clock/config snapshot, timeout, abort, admission,
+  redaction, request/response schema, usage/cost and evidence policy once. Provider failure is a
   typed unavailable/invalid outcome or a declared task error; no adapter returns an empty value
-  that can mean success. D63 budgets and scheduling are owned by ref execution-and-sessions.
-- A read that downloads or creates a local file declares `artifacts:"content-addressed"` and receives
-  the kernel `ContentAddressedArtifactWriter`; direct mutable-path writes/imports from a task fail an
-  architecture guard. A retry can therefore recreate the same cache artifact but cannot append a
-  workbook or mutate operator-owned state. Mutable local projections use stable-keyed SQLite outboxes
-  and serialized projectors (refs dashboard-surfaces/data-intake-and-edit-data), not task `run` side effects.
+  that can mean success. Budgets and scheduling are owned by ref execution-and-sessions.
+- A read that downloads or creates a local file declares `artifacts: "content-addressed"` and
+  receives the kernel writer (§2.3); direct mutable-path writes from a task fail
+  `artifact-effect-boundary`. A retry can therefore recreate the same cache artifact but cannot
+  append a workbook or mutate operator-owned state. Mutable local projections use stable-keyed
+  SQLite outboxes and serialized projectors (refs dashboard-surfaces / data-intake-and-edit-data),
+  never task `run` side effects.
 - What service stores are NOT: a home for waits. Tracker-subscription waiting (oath-upload's
-  approval park) is a **gate** (§2.6, ref workflow-model) — it must not be smuggled in as a `local` task.
+  approval park) is a **gate** (§2.6, ref workflow-model) and must not be smuggled in as a task.
 
 The old `services/timecard` is **not** another service store. Its pure calendar/range/year functions
-move to Clock-injected domain code; its current→previous orchestration becomes a semantic
-`stores/common/timecard.ts` helper over a typed timecard-driver interface. Old/New Kronos retain
-only their driver implementations. Raw `Page`, fixed sleeps, optional `new Date()` defaults, and
-`null` that conflates navigation failure with a verified no-punch result do not cross the boundary
-(D61).
+moved to Clock-injected domain code and its current→previous orchestration to
+`src/stores/common/timecard.ts` over a typed timecard-driver interface (§3.3); Old and New Kronos
+retain only their driver implementations. Raw `Page`, fixed sleeps, optional `new Date()` defaults
+and a `null` that conflates navigation failure with a verified no-punch result did not cross the
+boundary (D61).
 
 ### 3.5 Workflow mini-stores — pure specialization, never a system-policy bypass
 
-`stores/workflows/<id>/` holds only pure, sessionless `effect:"read"` tasks whose contract ids use
-`workflow:<id>/<verb-object>`. These are workflow-specific transforms/joins that are still useful to
-reuse peer-to-peer (for example verify's typed enrichment merge). If a task navigates a browser,
-stages a form, commits, or calls a system-specific external API, it belongs in that system/service
-store instead. The descriptor coverage guard proves each workflow namespace exists, and the
-headless-store overload makes prepare/commit/page access a compile error.
-Workflow mini-stores also reject `artifacts`; peer reuse is contract reuse, never a path to hidden
-filesystem state. Their contract/impl files may not import workflow descriptors or another mini-
-store's implementation, so peer imports cannot create a runtime module cycle.
+<!-- roadmap: p1-authority -->
+<!-- roadmap: sep-2 -->
 
----
+`src/stores/<workflow-id>/` holds only pure, sessionless `effect:"read"` tasks whose contract ids
+use `workflow:<id>/<verb-object>`. These are workflow-specific transforms and joins that are still
+worth reusing peer-to-peer. Two exist: `workflow:person-lookup` (one task) and
+`workflow:separations` (nine — the identity match, the employment fold, the date reconciliation,
+the department and termination-type resolutions, the plan, and the two `verify-` folds over an
+approval and a receipt). Every one of them is a fold over an earlier node's output, which is what
+§2.8 rule 3 means by "consumers project; they never re-scrape".
+
+If a task navigates a browser, stages a form, commits, or calls a system-specific external API, it
+belongs in that system or service store instead. The descriptor coverage guard proves each
+`workflow:<id>` namespace matches a real descriptor id, and `defineWorkflowStore` makes
+prepare/commit, sessions, artifacts and providers impossible — a mini-store cannot obtain a driver
+or a `MutationCapability`, so it cannot become a quiet second path to a system. Their contract and
+impl files may not import workflow descriptors or another mini-store's implementation, so peer
+reuse cannot create a runtime module cycle.
 
 ## 4. Customization / decoration model
 
