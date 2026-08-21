@@ -95,7 +95,10 @@ does not have to discover it in Phase 3.
 
 ## The base's dependency graph
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §1 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+This section is a **design artifact**, not a node: it is the picture Phase 0 drew of the build
+order, and it carries no `<!-- roadmap: -->` tag because no single tree node owns it. `{#phase-1}`
+cites it, and the map from its boxes to the tree's nodes is below. The graph is preserved as
+drawn — what has since been learned is recorded beside it rather than painted over it.
 
 The base/kernel is built along one critical path. Guard plumbing lands before the tree; the first
 real rebuild `src/` leaf and every applicable type/lint/architecture arm activate in the same commit
@@ -139,46 +142,75 @@ proofs** that falsify the design against reality — a live read, then a control
 dashed = the tails**, deferred behind the first live proof so they are built against a proven base
 and a real consumer rather than against fixtures.
 
+### The boxes, as they were built
+
+Every box was built and every edge held. The graph's eight spine boxes are **four** tree nodes
+today, because the work items landed in those groupings; three names differ from what the graph
+drew, and one edge turned out to be an ordering the program chose not to follow.
+
+| Graph box | Tree node | As built |
+|---|---|---|
+| `A` 1a · `B` 1b | `{#p1-base}` | 2026-07-31 |
+| `C` 1c · `D` 1d · `E` 1e | `{#p1-authority}` | 2026-08-01 |
+| `F` 1f | `{#p1-kernel}` | 2026-08-02 → 03. **The name moved**: the composition root is `src/control/workflow-registry.ts`, in the `control` layer — not `core/`, which the graph and the justification below both spell. `src/core/` holds the executor, the command kernel and the write sequencer; the ONE `WORKFLOW_MODULES` tuple sits above them |
+| `G` 1g-spine · `H` 1i-spine | `{#p1-spine}` | 2026-08-04 |
+| `EXIT` | `{#p1-exit}` | MET 2026-08-04 — run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf` |
+| `TX` | `{#p2-proof}` | MET live 2026-08-04 (D135) on Kuali doc **4489** — the graph draws it after the exit, and it landed the same day |
+| `T1`–`T4` 2g–2j | `{#p2-2g}` … `{#p2-2j}` | 2026-08-04 → 08-09 |
+| `M` Phase 3+, "orders 0-9" | `{#phase-3}` / `{#migrations}` | **The entry moved.** The graph draws the migration sequence starting at order 0; **D193(c)** enters Phase 3 at **separations, order 8**, because a big multi-system workflow forces the store task libraries into existence and one migration then mints what every later one reuses. D84's ORDER is unchanged — only where the program steps into it |
+
+Two labels inside the boxes are worth naming precisely, because a reader will search for them:
+1b's *"dependency registry"* is `src/domain/runtime-dependencies.ts` (D68's bidirectional registry),
+and 1d's *"semantic UI registry"* is `src/domain/ui/` plus the generated `generated/ui-catalog.json`.
+
+### Why the order is the order
+
 **Critical path: guard → strict domain/config → authority/recovery → semantic driver/task store →
 workflow graph/delegation → registry/executor/commands/events → trust services/dashboard.**
 Justification:
 
-- **11 (clock/config/secrets) is the root.** Every timestamp (spans, checkpoints, trace ids, fence),
-  every URL/timeout/fiscal date, and every credential reads through it. Building 01+ on raw
-  `new Date()`/`process.env` would require re-threading later; the `clock-single-source` and
+- **`ref:clock-config-secrets` is the root.** Every timestamp (spans, checkpoints, trace ids, fence),
+  every URL/timeout/fiscal date, and every credential reads through it. Building anything above it on
+  raw `new Date()`/`process.env` would require re-threading later; the `clock-single-source` and
   `secrets-single-source` guards must be green from the rebuild repo's first source file.
 - **Write-safety types/storage precede commit task contracts.** `CommitTaskContract` cannot refer to
   a later-owned placeholder. The dependency-free `WriteSafety`/proof types and SQLite authority/
   outbox schema land first; sequencing behavior lands with the executor later.
 - **Authority recovery precedes authority use.** Claims/checkpoints/dependencies/write intents are
   not rebuildable; creating them before backup/doctor/degraded-mode contracts would make Phase 1
-  green on a database it cannot safely recover.
+  green on a database it cannot safely recover. _(2j found the one hole this argument leaves: the
+  OFFLINE restore path was complete, tested and UNREACHABLE because nothing recorded the runtime-lock
+  snapshot its stopped-system proof derives from — D181. The ordering was right; the wiring was
+  missing, and `01-build-the-spine.md` §1c owns the record.)_
 - **Semantic UI ids and typed drivers precede browser tasks.** Tasks must be authored against one
   canonical element/page-state/observation vocabulary from their first line; raw Page/selector debt
-  is not ported into task implementations and “cleaned up later.”
-- **01 before 02** — the descriptor (02) composes task contracts; the
+  is not ported into task implementations and "cleaned up later."
+- **`ref:task-contract` before `ref:workflow-model`** — the descriptor composes task contracts; the
   builder's `Steps` type map (D15) is typed against contracts.
-- **The 02/03 completion seam lands together in 1e.** Ref dashboard-surfaces owns the bundle-safe completion-program
-  union while ref workflow-model owns the descriptor/gate graph that contains it; both domain types land in the
-  same work item. Ref dashboard-surfaces's event/storage/projection implementation waits until 1g, so neither side
-  forward-declares a later contract.
-- **Registry is above workflows.** `core/workflow-registry.ts` imports descriptors/stores; domain
-  never imports workflows. The dashboard receives generated/server projections, never workflow modules.
+- **The completion seam lands together in 1e.** `ref:dashboard-surfaces` owns the bundle-safe
+  completion-program union while `ref:workflow-model` owns the descriptor/gate graph that contains
+  it; both domain types land in the same work item. The event/storage/projection implementation
+  waits until 1g, so neither side forward-declares a later contract.
+- **Registry is above workflows.** `src/control/workflow-registry.ts` imports descriptors/stores;
+  domain never imports workflows. The dashboard receives generated/server projections, never workflow
+  modules.
 - **Executor, command service, and events co-evolve after the graph.** The executor emits events and
   owns transaction sequencing; the command service owns every queue mutation/dependency target;
   durable authority/outbox contracts already exist, so no layer forward-declares another.
 - **Trust records are base data, not dashboard decoration.** Failure/evidence/scenario/notification/
-  knowledge schemas land before the UI that projects them. The read-only Workflow Explorer and
-  closed presentation/policy editing both land only in Phase-2 tail 2i.
-- **10 is orthogonal, not sequential** — it is built alongside every step (guards land as their
-  target concepts appear), never "at the end." Its own meta-guard (`guard-manifest`) is what stops
-  the umbrella silently shrinking.
+  knowledge schemas land before the UI that projects them. The read-only Workflow Explorer landed in
+  Phase-2 tail 2i as drawn; the closed presentation/policy EDITING beside it did not — **D186**
+  reassigned that half out of Phase 2 with a named trigger (`{#def-explorer-edit}`).
+- **`ref:guards-and-tests` is orthogonal, not sequential** — it is built alongside every step (guards
+  land as their target concepts appear), never "at the end." Its own meta-guard (`guard-manifest`) is
+  what stops the umbrella silently shrinking.
 
-The **data-service stores** (ref data-intake-and-edit-data's `extraction`/`normalization`/`ocr`/`roster` contract+impl, D4)
-land in Phase-2 tail `2h`, after the live spine and controlled transaction proof. Their column
-mapping, durable mobile capture, intake manifest/rerun, progressive Review, and Edit Data surfaces
-land in the same end-to-end slice, so Phase 3 workflows consume a proven ingest contract rather
-than inventing one mid-migration.
+The **data-service stores** (`ref:data-intake-and-edit-data`'s `extraction`/`normalization`/`ocr`/
+`roster` contract+impl, D4) land in Phase-2 tail `2h`, after the live spine and controlled
+transaction proof. Their column mapping, durable mobile capture, intake manifest/rerun, progressive
+Review, and Edit Data surfaces land in the same end-to-end slice, so Phase 3 workflows consume a
+proven ingest contract rather than inventing one mid-migration. _As built: all four stores exist at
+`src/stores/{extraction,normalization,ocr,roster}/` and 2h closed 2026-08-09._
 
 ## ALWAYS-GATE identity approval
 <!-- roadmap: phase0-always-gate -->
