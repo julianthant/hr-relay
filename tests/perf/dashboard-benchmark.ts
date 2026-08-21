@@ -71,12 +71,17 @@ function round(value: number): number {
 /**
  * Counts `DashboardDayWireSchema.parse` calls while `work` runs.
  *
- * The whole P1 finding is that a SINGLE-ROW patch re-validates the WHOLE day,
- * so the number that matters is not the milliseconds alone — it is that the
- * count is 1 and the thing counted is 1,240 rows wide. The spy installs an own
- * property that shadows zod's prototype method and asserts it observed at least
- * one call, because a spy that could report zero would be a check that cannot
- * fail.
+ * The whole P1 finding was that a SINGLE-ROW patch re-validated the WHOLE day,
+ * so the number that matters is not the milliseconds alone — it is the count,
+ * and the thing counted is 1,240 rows wide. The spy installs an own property
+ * that shadows zod's prototype method.
+ *
+ * **After D4 the honest answer is ZERO**, which is exactly the answer a broken
+ * spy also gives — so this window may not assert its own result. Its liveness
+ * is proved separately by `selfCheckDayWireParseSpy`, against a parse the
+ * harness performs itself and therefore knows happened; only then is a zero
+ * from this window reportable. Asserting `parses > 0` here, as this harness did
+ * while the whole-day parse existed, would now be a check that can only fail.
  */
 function countDayWireParses<Result>(work: () => Result): { readonly value: Result; readonly parses: number } {
   const schema = DashboardDayWireSchema as unknown as { parse: (input: unknown) => unknown };
@@ -101,6 +106,25 @@ function countDayWireParses<Result>(work: () => Result): { readonly value: Resul
   } finally {
     if (ownDescriptor === undefined) delete (schema as Partial<typeof schema>).parse;
     else Object.defineProperty(schema, "parse", ownDescriptor);
+  }
+}
+
+/**
+ * The parse window's own precondition, in the same shape as
+ * `selfCheckStatementCounter`: it must observe a `DashboardDayWireSchema.parse`
+ * this harness KNOWS it performed, before any zero taken through it is
+ * reported. Without this, a spy that failed to install (a future zod defining
+ * `parse` unwritably, a frozen schema object) would print `dayWireSchemaParses
+ * 0` for the D4 row and read as the improvement rather than as a broken
+ * instrument.
+ */
+function selfCheckDayWireParseSpy(wire: DashboardDayWire): void {
+  const probe = countDayWireParses(() => DashboardDayWireSchema.parse(wire));
+  if (probe.parses !== 1) {
+    throw new Error(
+      `the day-wire parse spy observed ${String(probe.parses)} parses while this harness performed exactly `
+      + "one; it is not installed, and a zero reported for the patch row below would prove nothing",
+    );
   }
 }
 
@@ -247,10 +271,8 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
   const patchTiming = timeIt(iterations, () => {
     applyDashboardDayPatch(wire, patch);
   });
+  selfCheckDayWireParseSpy(wire);
   const patchParses = countDayWireParses(() => applyDashboardDayPatch(wire, patch));
-  if (patchParses.parses === 0) {
-    throw new Error("the day-wire parse spy observed 0 parses; it is not installed and P1 cannot be reported");
-  }
 
   /* C — one logs GET. */
   const logsTiming = timeIt(iterations, () => {
@@ -311,8 +333,9 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
         rowsAvailable: wire.queueSurfaces.length,
         dayWireSchemaParses: patchParses.parses,
       },
-      note: "one row changed; `dayWireSchemaParses` shows the whole day (`rowsAvailable` rows) is "
-        + "re-parsed in that one call, and React re-renders on top of this",
+      note: "one row changed; `dayWireSchemaParses` is how many times that ONE call re-validated the "
+        + "whole day (`rowsAvailable` rows) — 1 before D4, 0 after it, with the spy's liveness proved "
+        + "separately so a zero is a measurement and not a broken instrument",
     },
     {
       id: "logs-section",
