@@ -265,6 +265,19 @@ pass because a shared schema change is code work with its own gate.
 <!-- roadmap: order-6 -->
 <!-- roadmap: order-7 -->
 
+<!-- roadmap-status: order-6 -->
+- [ ] Kronos/PayPath has NO commit contract, no probe and no verifier — order 6 is where `new-kronos` gains its first write family, and every row of this section has to be answered for it from scratch
+- [ ] its completion arm is undecided: a Kronos pay-rule save has no receipt anyone has looked for, so the §b questionnaire has to establish whether a positive read-back exists before the shape can be chosen
+> 2026-08-21 | docs-cohesion write-safety | verified against the absence of any `kronos` contract under `src/domain/contracts/`; left: the whole order-6 write family
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: order-7 -->
+- [ ] OnBase has no commit contract and, uniquely, **no positive landing signal at all** — legacy's success test is "the import postback did not land on a recognised ASP.NET error page", which passes on `authenticated` OR `unknown`
+- [ ] it is the only candidate for `unverifiableByPage`, and that registry is EMPTY: earning an entry is a reviewed act, and the consequence — every upload parks for manual confirmation — changes the operator's daily workload rather than the safety story (§13 OQ2)
+- [ ] ServiceNow's receipt arm is the easy half of the same order (a `waitForURL` for `number=`, parsed `/^HRC\d{6,}$/`) and still has no contract; its propagation window is doc 03c §Live probe status
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/write-safety.ts`'s empty `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` and the absence of any `onbase`/`servicenow` contract; left: both write families
+<!-- /roadmap-status -->
+
 Four commit contracts exist. Every row below is read off the contract, not off the design.
 
 | contract | completion | probe | key | `recoveryAbsence` |
