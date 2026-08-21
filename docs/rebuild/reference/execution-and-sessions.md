@@ -328,17 +328,87 @@ worker. (`src/core/provider-admission.ts`; `provider-admission.test.ts`, `provid
 ---
 
 ## 4. Browser-session behavior
+<!-- roadmap: p1-kernel -->
 
-- Driver use is exclusive while held.
-- `release("clean")` navigates to the system's verified neutral reset state before reuse. The next
-  read owns navigation from that neutral state; neutral reuse is not reuse of the prior subject
-  page, and it is not a fresh context unless the authored need says `session:"fresh"`.
-- A failed reset, aborted Playwright call, subject mismatch, or `release("poisoned")` closes the page
-  and session; the next need creates a fresh one.
-- A `session:"fresh"` boundary uses the same close proof before replacing the session.
-- OnBase releases its identity lease only after every page/context close is proven.
-- Login is bounded and single-flight within that worker/system session creation. There is no
-  cross-worker login promise or shared context.
+**A browser session is a callback LEASE, not a handle a caller holds.**
+`WorkerSessionManager.withDriver(need, instance, signal, operation)` is the whole surface
+(`src/core/worker-sessions.ts:313`): it serializes use per system inside the worker, acquires or
+reuses the resource, runs the callback with the concrete driver, and decides what happens next from
+how the callback ENDED. There is no `release("clean")` call for a caller to forget.
+
+- **Driver use is exclusive while held**, serialized per `(worker, system)`.
+- **A callback that RETURNS resets.** The resource re-navigates to the system's entry route and
+  re-runs that system's full authentication proof (§4.1) before it may be reused — so "reusable" is
+  an observation, not an assumption, and a reset that lands anywhere but the authenticated
+  application refuses by name (`#resetToNeutralState`,
+  `src/infra/browser/browser-session-factory.ts:339`). The next read owns navigation from that
+  neutral state: neutral reuse is not reuse of the prior subject page, and it is not a fresh context
+  unless the authored need says `session:"fresh"`.
+- **A callback that THROWS poison-closes**, as does a failed reset, an aborted Playwright call or a
+  subject mismatch. If the poison-close itself cannot be proven, both failures are raised together
+  in one `AggregateError` and the resource is RETAINED as poisoned — the next lease for that system
+  refuses by name rather than inheriting an uncertain page.
+- **Reuse requires the COMPLETE identity** — this manager (the worker), the system, the resolved
+  instance and the run's bound `configFingerprint` (D116) — plus agreement on the two launch
+  properties, downloads and exclusivity. Any drift closes the old resource with an accepted proof
+  BEFORE a replacement is authenticated; a context configured under another run snapshot is never
+  reused, on disk or in memory (§1's profile path).
+- **A `session:"fresh"` boundary uses that same close proof** before replacing the session, and a
+  D116 identity mismatch takes the identical path — which is why `fresh-session-boundary` audits
+  both arms.
+- **A driver lease is impossible without a bound run.** `withDriver` refuses when no
+  `configFingerprint` is bound (D116) and refuses while the manager is closing for `parked` or
+  `worker-stop`.
+- **OnBase releases its identity lease only after every page/context close is proven.** Declared,
+  not landed: the OnBase store is a provider declaration with no driver and no login recipe.
+- **Login is bounded and single-flight** within that worker/system session creation
+  (`single-flight-login`): two concurrent leases for one system produce exactly one open and one
+  authentication. There is no cross-worker login promise or shared context — which is precisely why
+  the Duo ceremony needs its own cross-worker lease (§10).
+
+**The concrete factory** (`src/infra/browser/`) launches Playwright's FULL bundled Chromium
+(`channel: "chromium"`) in a persistent context with the Duo Autopilot MV3 extension loaded. All
+three are requirements rather than preferences: Chrome stable dropped `--load-extension`, the
+lightweight headless shell cannot run an extension, and an extension requires a persistent context.
+The prerequisites are proven BEFORE a browser exists — `assertDuoAutopilotReady` refuses a missing
+or unreadable `manifest.json` and reads the credential through the single secret reader — so a
+missing extension is a legible refusal rather than a login that hangs on an unanswerable prompt.
+Profiles live at §1's partitioned path.
+
+**`close()` returns a proof only after observing THREE facts** inside `browser.closeProofMs`
+(15 s): every page reports `isClosed()`, no new page appeared, and the context emitted its own
+`close` event. `await context.close()` resolving proves none of them. An unproven or timed-out close
+throws, and the manager's poison rule does the rest (`#closeWithProof`).
+
+**Where browser knowledge lives.** Login recipes stay with their stores (`stores/<system>/session.ts`),
+which — together with `src/infra/browser/**` — are the two raw-browser owner families the
+`task-driver-boundary` guard permits; task and workflow code may reach neither, transitively or
+otherwise. A system without BOTH a landed driver and a landed login recipe refuses at open rather
+than launching an unusable browser (`bindingFor`). Four are bound: ucpath, crm, kuali, new-kronos.
+
+An individual workflow may declare internally proven parallel work, such as OCR provider page
+concurrency. That is workflow-owned behavior with its own tests, not a generic executor capacity
+model.
+
+**What the Session Panel shows** (ref dashboard-surfaces owns the surface): worker phase, queued
+count, trace id, current step, browser session tiles, and failure state. It does not show lane or
+per-system capacity counters, and Settings has no lane/budget reference page.
+
+**As-built (D248, 2026-08-20).** The panel's card is this section's lease — `workflow`, lifecycle
+phase, the operator's standing directive, the started/stopped instants, the stop reason and the row
+version — joined with the browser sessions the worker's own spans have open. Two items of the list
+above are NOT drawn, each for a producer that does not exist in this platform rather than for a
+surface that was skipped. There are no **wait reasons**: §1 partitions a browser profile per worker,
+so a second worker opens its own UCPath window rather than queueing behind the first, and there is
+no cross-worker lease to name a holder for. *(§10 introduces exactly one such lease — for the Duo
+ceremony, not for the session — and a waiter blocked on it will have a holder to name. That is a
+producer this sentence gains when §10 lands, and the reason the two sections cross-reference.)*
+And there is no **health** on a tile: nothing probes a live session, so a tile states which system
+its session speaks to and how long it has been open, and reads `Not checked`
+(`src/dashboard/surfaces/shell.tsx:710`) — which is the honest verdict and must never be drawn as a
+passing one. `stop-worker` and `pause-worker` reach the lease from the panel; `spawn-worker` and
+`refresh`/`reopen-browser` do not, because their process effects refuse by name in the dashboard
+process (§11 owns the spawn half).
 
 ### 4.1 Authentication is a content-level observation, never a URL (D120)
 
