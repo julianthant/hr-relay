@@ -186,13 +186,60 @@ the same claim as an operator being able to read it.
 <!-- roadmap: p2-2h -->
 
 <!-- roadmap-status: p2-2h -->
+- [x] the **canonical field registry** is closed at 47 ids and frozen against the RECORDED D58/D68 scan, checked in both directions (D146; `src/domain/fields/registry.ts:56-110`, `config/canonical-field-inventory.json` at legacy `4deabc5a`)
+- [x] **column mapping**: mapping identity, the layout fingerprint, per-cell coercion, the suggestion scorer and `defineIntakeProjection`'s object-identity proof, all bundle-safe (D147; `ref data-intake-and-edit-data` §2.1–§2.6)
+- [x] **validation, rejection, the immutable intake manifest and the rerun diff**, on schema **v11**'s ABORT-on-rewrite authority (D148/D159; §5/§5.0/§4.9)
+- [x] the **extraction / OCR / roster / normalization stores** — the extraction store's two tasks (D149/D152), the roster store with its honest port split (D163), the normalization store including D178's `ai` arm (D165/D178)
+- [x] **OCR**: one admission gate three producers cannot bypass, the generated instruction, the form registry and the classify/group scanner (D151–D161), live-proven on the real 44-page I-9 scan
+- [x] the **i9 sectioned form** (D160/D161)
+- [x] **executor / worker provider + artifact wiring** (D162–D169), with `artifact-effect-boundary` active: the path-free content-addressed ref, temp→fsync→atomic-rename, crash-boundary recovery, byte-identical idempotency and an AST canary against direct filesystem access from a task impl
+- [x] **durable capture sessions**, photo artifacts and the finalize outbox, crash matrix slimmed per D79d (D167)
+- [x] the **Edit Data core** — `run.edit-checkpoint`, declaration-gated by `capabilities.editData`
+- [x] the retention-projection model end to end, **unwired by design** (D164; §4.1)
+- [x] **legacy change accounting RETIRED** (D150) — the two repositories stop touching each other; live re-verification at each workflow's migration replaces the diff
+- [ ] two 2h designs have no caller and both are named in place: the saved-mapping STORE (§2.3 — every intake upload re-maps) and a descriptor that DECLARES an artifact projection (§4.1); **unowned, reported**
+- [ ] descriptor-driven upload / capture / spreadsheet / bare START methods — no registered workflow declares one, so the run modal has one method kind (D251, `ref frontend-backend-integration` §5.1.1) → the first declaring workflow, `{#order-2}` (downloads) and `{#order-3}` (the OCR pipeline)
+- [ ] progressive OCR **Review** records — the store exists; the `review` panel kind and its wire section are declared-unserved (D184) → `{#order-3}`
+> 2026-08-21 | docs-cohesion 02 | verified against the `p2-2h` blocks in `reference/{data-intake-and-edit-data,frontend-backend-integration,guards-and-tests}.md` and spot-checked in `src/domain/{fields,intake,ocr}/**`, `src/stores/{extraction,roster,ocr,normalization}/**`, `src/infra/sqlite/migrations.ts:863-908`; left: the two uncalled designs and the two surfaces waiting on a declaring workflow
+
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2h) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**What 2h was.** The data-service and intake foundation: the extraction / normalization / OCR /
+roster stores; production provider pools, adapters and consumers over 1f's generic admission core;
+generic duplicate-safe column mapping; strict validation and rejection; immutable intake manifests
+plus the rerun diff; the OCR three-producer routes and the classify/group scanner stack (operator-
+added scope, D151/D157/D158); the i9 sectioned form (D160); executor and worker provider plus
+artifact wiring (D162); durable capture sessions, photo artifacts and the finalize outbox (D167);
+the Edit Data core; and the stable-keyed local artifact projector.
 
-| Tail | Content | Owner |
-|---|---|---|
-| **2h** | Data-service/intake foundation: extraction/normalization/ocr/roster stores; production provider pools/adapters/consumers over 1f's generic admission core; generic/duplicate-safe column mapping; strict validation/rejection; immutable intake manifests + rerun diff; the OCR three-producer routes + classify/group scanner stack (operator-added scope, D151/D157/D158); the i9 sectioned form (D160); executor/worker provider + artifact wiring (D162); durable capture sessions/photo artifacts/finalize outbox (crash matrix slimmed per D79d); Edit Data core; stable-keyed local artifact projector. **COMPLETE 2026-08-08 (D146–D167).** | Refs task-contract/dashboard-surfaces/data-intake-and-edit-data/operator-trust |
+**COMPLETE 2026-08-05 → 08-08 (D146–D167).** Its normative contracts are `ref
+data-intake-and-edit-data` §1–§6, with the wire half in `ref frontend-backend-integration` §6.6 —
+each carries its own `p2-2h` status block, and those blocks are the per-contract truth this section
+indexes.
+
+**The registry is closed, and closed against a RECORDED scan.** 47 canonical field ids, frozen
+against the D58/D68 scan of the legacy corpus at a FIXED legacy commit, checked in both directions
+by its guard: an id in the registry with no inventory row fails, and an inventory row with no id
+fails. This is the shape the whole tail depends on — a mapping is only as trustworthy as the
+vocabulary it maps INTO, and a vocabulary that can grow silently during a migration is a vocabulary
+that cannot be diffed against what legacy actually had.
+
+**What 2h changed about the two repositories.** D150 retired legacy change accounting: nothing here
+reads legacy's working tree and legacy work blocks no rebuild gate. The risk that retirement had to
+answer — a ported selector or page-state fact going stale after legacy fixed it — is covered by
+**live re-verification at each workflow's migration**, which the charter already makes mandatory and
+pre-authorized. A selector checked against the live system beats one diffed against legacy's copy of
+it. `config/legacy-change-accounting.json` stays as a frozen historical record and is never extended;
+`legacy-selector-port-provenance` is unaffected, because it pins all 406 keys to a FIXED legacy
+commit's blobs.
+
+**One design is unwired ON PURPOSE, and two are unwired by omission — the difference matters.** The
+retention-projection model (§4.1, D164) is complete end to end and deliberately has no caller: its
+sweep is `{#def-retention}`, ruled `never` by D193 unless the operator asks. The saved-mapping store
+(§2.3) and an artifact-projection-declaring descriptor (§4.1) are different — nothing decided against
+them, they simply have no consumer yet, which is why every intake upload re-maps from scratch today.
+Both are named in place in the owning doc rather than left to be discovered; neither has a node, and
+both are reported.
 
 ## 2i — the operator surface (A–G)
 <!-- roadmap: p2-2i -->
