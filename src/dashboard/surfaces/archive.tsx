@@ -2646,7 +2646,11 @@ export function ArchiveWorkspace({
         detail={detail.value}
         sweep={sweepOfDetail}
         busy={busy}
-        relaunched={relaunched === detail.value.runId && result?.state === "applied"}
+        relaunched={
+          relaunched === detail.value.runId
+          && result !== undefined
+          && settleCommandResult(result).kind === "applied"
+        }
         onRelaunch={() => setConfirming(true)}
         onDismiss={() => setRelaunched(undefined)}
       />
