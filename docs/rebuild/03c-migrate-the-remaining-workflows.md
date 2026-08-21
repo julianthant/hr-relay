@@ -541,13 +541,68 @@ sub-task is where a downloaded document becomes something the operator can open.
 <!-- roadmap: order-3 -->
 
 <!-- roadmap-status: order-3 -->
+- [ ] the §b questionnaire for the OCR pipeline — unasked
+- [x] the four service stores it consumes are BUILT (2h) — `extraction` (`extract-pdf-pages`, `extract-spreadsheet`), `ocr` (`extract-form-page`), `normalization` (`read-contact-advice`), `roster` (`match-spreadsheet`)
+- [ ] the OCR pipeline WORKFLOW over them — no descriptor exists; this order migrates the pipeline on top of stores that already work
+- [ ] D189's byte path — the production BFF serves **no frontend bytes**: `src/server/dashboard/http-server.ts` has no static handler and `api.ts` 404s everything unrouted, while allow-listing `/capture.html` for the phone host gate. The ngrok launcher is unbuilt and `dashboard:prod` names a mode the runtime never parsed
+- [ ] the capture → workflow binding — `CAPTURE_INTAKE_BINDINGS` is derived from `WORKFLOW_MODULES` (`src/control/workflow-registry.ts:194`) and **no module declares one**, so the registry is empty
+- [ ] PROOF T1 + the T3 pair
+> 2026-08-20 | docs-cohesion 03c | verified against `src/stores/{extraction,ocr,normalization,roster}/tasks/`, `src/control/workflow-registry.ts:194` and `config/legacy-capabilities.json`'s `legacy-route-static` reason; the stores are real, the workflow is not
 <!-- /roadmap-status -->
+
+**What it is.** PDF → extraction → review → fan-out, with no browser and no submit. It is the only
+row whose STORES already exist: 2h built them and 2j closed over them, so this order migrates the
+pipeline *workflow*, which is a different and much smaller job than the ones around it.
+
+**Why it unblocks four consumers.** Orders 4, 5, 7 and 9 all read extracted or normalized data.
+Until the pipeline workflow exists they each have to invent their own way in, which is exactly the
+reuse leverage the ordering exists to protect.
+
+**Three specific hazards, none of them OCR.**
+
+1. **The byte path is a HARD cutover blocker, and it lands here.** `legacy-route-static` records it
+   plainly: cutover flips the operator onto this runtime, and a runtime that cannot deliver its own
+   frontend has no operator surface at all. It also strands 2i-F's phone capture page — the page is
+   built, the host gate allow-lists it, and nothing serves it. Doc 04 `{#def-byte-path}` carries the
+   deferral; this order is its named trigger.
+2. **The capture binding has no honest consumer yet.** `CAPTURE_INTAKE_BINDINGS` being empty is
+   correct today — no workflow can turn a photograph into an employee id, and D174's rule is that
+   such a workflow refuses BY NAME rather than fabricating a binding. The OCR pipeline is the first
+   workflow that genuinely can consume a capture bundle, so this is where the registry gets its
+   first entry.
+3. **The `operation` run shape exists and nothing mints one.** `RunShapeSchema` and
+   `RowShapeSchema` both carry `operation` / `operation-member`, and `src/dashboard/surfaces/queue.tsx`
+   renders group rows for them — but no descriptor declares one, so the whole fan-out presentation is
+   drawn against a shape no run has ever had. Order 3 produces the first fan-out source and order 4
+   is the first to consume it; the risk is D187's shape (a surface reviewed but never seen) and the
+   answer is the T3 pair, not another read of the code.
+
+**Store tasks.** REUSE all four service stores. BUILD the pipeline descriptor, the byte route, and
+the capture binding.
 
 ### Dashboard · wire the OCR pipeline
 <!-- roadmap: order-3-dash -->
 
 <!-- roadmap-status: order-3-dash -->
+- [ ] 5.1.1 run modal — typed start inputs + start plan for the OCR pipeline
+- [ ] 5.1.2 queue row — subject title, workflow class, linked-run chips, per-row actions
+- [ ] 5.1.3 run detail — timeline categories, receipt, data rail
+- [ ] 5.1.6 notifications — park / needs-you triggers into the durable inbox
+- [ ] 5.1.5 archive, activity, explorer — ledger presentation declarations, cross-tab category, descriptor prose
+- [ ] 5.1.7 intake and capture — the capture bundle as a start source
+- [ ] the OCR review UI — the expanded page ↔ extracted-text pair, approve / reject / retry page, ONE atomic correction list (never a collapsed table; the 2026-07-24 layout ratification)
+- [ ] the review/approve commands + progressive record patches over the SSE stream
+- [ ] the run-detail **Review** panel BODY — `review` is in `TAB_ORDER` but `availableSections` can never return it, so the tab is structurally unreachable and `UnservedTab` is dead code (03a's finding)
+- [ ] PROOF T2 dashboard scenario for the wired surfaces
+> 2026-08-20 | docs-cohesion 03c | verified against `src/domain/dashboard/run-detail.ts:309-311` (`sectionsCompatible`) and 03a's surface table — the Review tab exists and its body cannot be served; this sub-task is what makes it reachable
 <!-- /roadmap-status -->
+
+The heaviest wire sub-task in the doc, and the only one that is mostly a BUILD. The OCR review
+surface is not a generic surface a migration inherits: `ref data-intake-and-edit-data` §4.3's three
+producers admit identically, and `ref dashboard-surfaces` §9's D7/D8/D10 shape the review row
+(extracted count while still at review, approval only after Review, depth-2 delegated lookups
+visible only from the review row). It lands WITH this workflow, by the ordering's own argument —
+building it earlier would shape a review UI against no corpus.
 
 ## Order 4 · oath-signature · emergency-contact
 <!-- roadmap: order-4 -->
