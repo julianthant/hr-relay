@@ -1,112 +1,60 @@
-# 09 — Write-Safety: Fenced, Fail-Closed Real HR Mutations
+# Write safety — the fence, the seven beats, recovery, and the identity gate
 
-Status: **Phase 1c write-safety authority shell completed 2026-08-01; revised 2026-07-22 after the
-whole-plan/legacy-code review; amended 2026-07-26
-(Round 8), 2026-07-31 (Round 10 — ordered actor-attributed ledger now; hash/tail tamper evidence
-deferred by D79), and 2026-07-31 (Round 11 — standalone rebuild repo, D93: every path below is
-inside the rebuild repo, so rebuild code sits at plain `src/` and the fence/authority database is
-the rebuild repo's own `state.db`), and 2026-08-02 (Round 18 — the complete Phase-1f beat-⑦
-transaction and recovery-before-requeue ordering are ratified).** Round-8 amendments: **§13 OQ1 is RESOLVED** — the 2026-07-23 live probe proved Kuali
-`save-verify` is buildable and produced four binding constraints on it — **OQ2 (OnBase) is restated
-as blocked on a real upload target**, and **§14 designs the identity-approval gate** (D77
-ALWAYS-GATE), the control that guards the wrong-**person** class this doc's fence explicitly cannot.
-The write sequence includes
-a fresh expected↔observed binding proof on the staged page before the fence, and crash recovery now
-requires stabilized typed negative evidence before another generation may submit. The guarantee is
-stated at the boundary the UI targets can actually support; this doc does not claim unconditional
-distributed exactly-once from a browser probe.
+**What this doc is.** The contract that decides whether a real, sometimes irreversible HR
+transaction — a UCPath termination, a ServiceNow ticket, a Kuali save, an OnBase filing — can be
+attempted at most once and is reported **done only when we are sure it landed**. It is the
+highest-stakes contract in the rebuild. The operator's non-negotiable (ref charter §13,
+2026-07-18): *"you have to be very sure they were completed"* — completion is **FAIL-CLOSED
+everywhere**, and an unknown or unverifiable result is **never** treated as done.
 
-This is the highest-stakes doc in the rebuild. It governs whether a real, sometimes irreversible HR
-transaction (a UCPath termination, a ServiceNow ticket, a Kuali save, an OnBase filing) is protected
-from duplicate unattended attempts and reported **done only when we are sure it landed**. The operator's non-negotiable
-(charter §13, 2026-07-18): *"you have to be very sure they were completed"* — completion is
-**FAIL-CLOSED everywhere**: an unknown or unverifiable result is **never** treated as done.
+**Status: binding contract, as-built through 2026-08-20.** The kernel write sequence is built and
+proven end to end against a real external write (§3.4, D135, 2026-08-04). Four commit contracts
+exist — two Kuali, two UCPath — and their `recoveryAbsence` policies differ on measurement, not on
+convenience (§4.2). The identity-approval gate is built, live-proved and served through all three
+of its ceremonies (§14.9, §14.11). What is NOT proven is per-workflow: **each workflow with a write
+owes its own controlled-commit proof at its own migration** (§3.2), and separations owes three of
+them (doc 03b).
+
+**The guarantee boundary is stated, not implied.** The permanent key and its CAS guarantee at most
+one unattended commit attempt per intent generation, and the kernel converges to `done` from valid
+positive proof or to a new generation from contract-valid stabilized negative proof. "Exactly once
+against every remote UI regardless of consistency" is not claimed and is not enforceable from a
+browser probe (§1).
+
+**Where the evidence lives.** Doc 02 owns the Phase-2 phase record and points here for the numbers;
+doc 03b owns separations' own three proofs and their 08-28 target; `docs/migrations/separations.md`
+is the as-built migration record. This doc owns the CONTRACT — what every write must declare, what
+the kernel does with it, and what may never be substituted for proof.
 
 ## Ownership (D1 — this doc owns / this doc references)
 
 | This doc **owns** (siblings reference, never redefine) |
 |---|
-| The **write-safety contract** — the required `WriteSafety` field on a commit task, typed proof schema for every completion kind, idempotency probe/key, and fail-closed verdict protocol |
-| The **kernel write sequence** — resolve/probe → prepare → subject bind → fence → external commit → proof → durable commit, and its ordering invariant |
-| Fresh write-binding enforcement at the write seam and the subject-match/unscoped proof retained with the intent/ledger |
-| The **crash-window fence** (`write_intents` SQLite table) and the **crash-recovery replay** (positive proof or stabilized negative-proof branching) |
-| Typed, intent-generation-locked operator resolution for parked writes (confirmed present/absent; no generic Done/Retry) |
-| **Double-submit prevention** — idempotency key derivation + the per-workflow probe-policy knob (§b) |
-| The **immutable receipt/transaction ledger** — schema, location, ordered actor-attributed projection, never-pruned guarantee, what one entry records; hash-chain/tail-anchor is deferred by D79 |
-| The **identity-approval gate** (§14) — the operator-confirmed subject selection that guards the wrong-**person** class, its resolver payload, staleness rule, and composition with the subject proof. *(Gate NODE mechanics — park/resume, subscriptions, command arm — are refs workflow-model/dashboard-surfaces's; this doc owns what this particular gate asks and what its answer authorizes.)* |
+| The **write-safety contract** — the required `WriteSafety` field on a commit task, typed proof schema for every completion kind, idempotency probe/key, and fail-closed verdict protocol (§2) |
+| The **kernel write sequence** — resolve/probe → prepare → subject bind → fence → external commit → proof → durable commit, and its ordering invariant (§3) |
+| Fresh write-binding enforcement at the write seam, and the subject-match/unscoped proof retained with the intent and the ledger (§2.1, §3 beat ③) |
+| The **crash-window fence** (`write_intents`) and the **crash-recovery replay** — positive proof or stabilized negative proof (§4) |
+| Typed, intent-generation-locked operator resolution for parked writes — confirmed present / confirmed absent, and no generic Done/Retry (§4.1) |
+| **Double-submit prevention** — idempotency-key derivation and the per-workflow probe-policy knob (ref charter §b) (§5) |
+| The **immutable receipt / transaction ledger** — schema, location, ordered actor-attributed projection, never-pruned guarantee, what one entry records; hash-chain/tail-anchor is deferred by D79 (§6) |
+| The **controlled-commit criterion** every write workflow must satisfy at its migration (§3.2) |
+| The **identity-approval gate** (§14) — the operator-confirmed subject selection that guards the wrong-**person** class, its resolver payload, its packet, its staleness rule, its three ceremonies, and its composition with the subject proof. *(Gate NODE mechanics — park/resume, subscriptions, the command arm — are refs workflow-model/dashboard-surfaces's; this doc owns what this particular gate asks and what its answer authorizes.)* |
 
 | This doc **references** (owner) |
 |---|
 | `PrepareTaskContract`/`CommitTaskContract`, transaction-scoped dry-run composition, `MutationCapability`, error taxonomy, freshness, stores → **ref task-contract** |
-| Transaction nodes, gates + `PARKED(needs-operator)`, checkpoint provenance/fingerprints, declared dependency DAG, `RunEnvelope` → **ref workflow-model** |
-| Span/note wire schema, isolated `.tracker-rebuild/` layout, SQLite system-of-record vs projection split (D14), completion fan-out union → **ref dashboard-surfaces** |
-| The injectable Clock (all timestamps), per-run test/prod instance selection, the config/secrets domain → **ref clock-config-secrets (clock/config/secrets)** |
-| The fill↔submit pairing guard + dry-run composition guard → **ref guards-and-tests (guard-architecture)** |
-| Subject declarations, semantic `ObservationId`, driver evidence/bundles → **ref task-contract and 12** |
+| Transaction nodes, gates + `PARKED(needs-operator)`, checkpoint provenance/fingerprints, the declared dependency DAG, `RunEnvelope`, the claim generation a checkpoint key carries (D214) → **ref workflow-model** |
+| Span/note wire schema, isolated `.tracker-rebuild/` layout, the SQLite system-of-record vs projection split (D14), the completion fan-out union, the command families → **ref dashboard-surfaces** |
+| The injectable Clock (all timestamps), per-run test/prod instance selection, the config/secrets domain, `configFingerprint` → **ref clock-config-secrets** |
+| The fill↔submit pairing guard, the dry-run composition guard, and every guard named in §8 → **ref guards-and-tests** |
+| Subject declarations, semantic `ObservationId`, driver evidence/bundles, the evidence receipt this doc's beat ⑦ feeds → **ref task-contract** and **ref operator-trust** |
 
 Amendments at sibling seams (each is a one-owner-per-concept addition, not a redefinition):
 - **Ref task-contract §2.2** — `CommitTaskContract` requires `writeSafety`; its shape is owned here.
-- **Ref task-contract §6.2** — the mutation primitive requires both `CommitTaskCtx.mutation` and an open fence.
-- **Ref workflow-model §5.6 #2 / §OQ2 (per D17 — ref workflow-model OWNS and adds these).** "Crash-mid-write always parks"
-  becomes **probe-then-park**, and the transaction node gains required `probePolicy` and
-  `probeToFenceMaxMs` fields.
-  Ref workflow-model owns those fields; this doc owns only the recovery-probe *mechanism* they invoke.
-- **Ref dashboard-surfaces §2.1 / §2.3 (per D21 — ref dashboard-surfaces OWNS and adds these).** The `ledger/` dir (never-pruned
-  retention floor) and the `write_intents` **system-of-record** table live in ref dashboard-surfaces's storage
-  layout; this doc owns their *shape/semantics*, not their placement in the rebuild state tree.
+- **Ref task-contract §6.2** — the mutation primitive requires both `CommitTaskCtx.mutation` and an open fence; the dry-run preview arm is owned there and its beat order here (D215).
+- **Ref workflow-model §5.6 #2 / §OQ2 (D17 — ref workflow-model OWNS and adds these).** "Crash-mid-write always parks" becomes **probe-then-park**, and the transaction node gains required `probePolicy` and `probeToFenceMaxMs` fields. Ref workflow-model owns those fields; this doc owns only the recovery-probe *mechanism* they invoke.
+- **Ref dashboard-surfaces §2.1 / §2.3 (D21 — ref dashboard-surfaces OWNS and adds these).** The `ledger/` directory (never-pruned retention floor) and the `write_intents` **system-of-record** table live in ref dashboard-surfaces's storage layout; this doc owns their *shape and semantics*, not their placement in the state tree.
 
----
-
-## Phase 1c Stage A as-built contract delta (2026-07-31)
-
-`src/domain/write-safety.ts` now implements the dependency-free strict shell described below:
-evidence-qualified `ProbeVerdict`, stabilized versus operator-only negative-settlement policy, a
-Clock-injected pure evaluator, the closed `SubjectProof | UnscopedBindingProof` union, reviewed
-unscoped-reason registry, and permanent intent/attempt record schemas. A bare `absent`, an early or
-single negative, an ambiguous/unknown/present verdict, a different key/query/source/state, or an
-operator-only policy cannot produce `safe-to-retry`.
-
-`src/domain/ledger.ts` and `src/domain/outbox.ts` add strict schema-hash-bound ledger payloads and
-the two closed atomic beat-⑦ payload arms (`ledger-entry` and `write-committed-span`). They are
-durable shapes only. Stage A includes no browser commit task, mutation capability, fence store,
-sequencer, projector, recovery service, or external HR call, and therefore does not claim the write
-sequence is implemented. Phase 1c remains in progress.
-
----
-
-## Phase 1c Stage D as-built authority-write delta (2026-08-01)
-
-Stage D implements the storage-level write-safety invariants item 1c owns. Natural idempotency keys
-are strict, system-scoped values; their SHA-256 digest is derived with a versioned domain separator
-and is revalidated anywhere an intent, ledger payload, or terminal span crosses a schema boundary.
-Binding-proof digests are derived from canonical parsed proof JSON and revalidated on both intent
-and attempt. The native authority adapter serializes unseen-key fencing with `BEGIN IMMEDIATE` and
-the durable `(system,idempotency_key)` uniqueness constraint, so later sequential starters and
-independently opened competing connections observe the original intent across `attempting`,
-`committed`, and `observed-present` states. A live `observed-present` record creates no attempt and
-no write ledger/span outbox.
-
-The Clock-injected negative-settlement evaluator now counts only distinct, schema-valid
-observations at or after `fencedAt + minSinceFenceMs`, separated by at least
-`minBetweenReadsMs`, and bound to the exact fenced digest, authoritative query, observation source,
-and source state. Early or single observations have zero retry authority. Duplicate, future,
-out-of-order, wrong-boundary, present, ambiguous, unknown, malformed, or operator-only evidence
-cannot become `safe-to-retry`; inconsistent evidence parks and malformed boundary input fails loud.
-
-The strict generic `TransactionOutcome` and atomic-commit contracts bind the accepted completion
-proof to both durable outbox arms and require the ledger and terminal-span arms to carry one trace
-identity. At commit, subject-scoped ledger evidence must exactly equal the fenced proof's expected
-subject; an explicitly unscoped proof requires an explicitly absent ledger subject. One native
-transaction updates the current intent and attempt and inserts the ledger and terminal-span outboxes. Failure injected after each storage step proves
-all-or-none rollback with no generation advance. The active `permanent-key-dedupe`,
-`recovery-negative-proof-settlement`, and `atomic-write-outbox` guards pin these properties over
-real temporary SQLite databases and manual-Clock boundaries.
-
-This completes **Phase 1c's type and authority-storage shell only**. No commit task, mutation
-capability, browser click, live probe, positive-recovery service, parked-intent command, worker,
-sequencer/projector, route, UI, or external HR transaction exists yet. The complete kernel write
-sequence remains item 1f; ordered ledger/span projection remains 1g-spine; controlled external-write
-proof remains Phase 2. Phase 1d is next, and Phase 1 is not complete.
 
 ## Phase 1f write-sequencer ratification (2026-08-02)
 
@@ -414,26 +362,6 @@ command that released generation 1, with the same evidence-note requirement.
    fabricate a bound the old runs never had (the D109 precedent invalidates such
    rows rather than inventing values), and failing at OPEN denies access to every
    unrelated row including the ledger. Neither half is decided here.
-
-### ~~What is required before this criterion can be met~~ — MET 2026-08-04 (D135)
-
-**This block described the D128 conclusion, which D135 withdrew the same day; it is kept for the
-record and is no longer in force.** It read: *"A target document at a workflow step that OWNS the
-field being written, named by the operator. … Until then Phase 2's write half is BLOCKED, and doc
-07's rule stands: write-heavy workflow migration may not begin."*
-
-D128 was wrong about the target. Kuali's own `ActionPage` query reports step `Task 1 - Kristina &
-TES` with `sectionSettings: edit` for the section holding `Timekeeper Name:*`, and the two things
-actually hiding the write were defects in THIS repository's driver: a Kuali text gadget debounces
-into the document model (~700 ms) and the run fenced and clicked inside that window, and `commit`
-returned at REQUEST time so the verifier's `page.reload()` cancelled the in-flight save. Both are
-fixed and both are proven on the wire per run. The controlled commit landed on doc **4489** and the
-propagation window was measured over four write/restore cycles on doc **4490**, which is what moved
-`recoveryAbsence` from `operator-only` to `stabilized`. The measured numbers are in
-§Phase-2 controlled-commit as-built above. **Write-heavy workflow migration is no longer blocked by
-this criterion** (each workflow still owes its own §3.2 controlled-commit proof).
-
----
 
 ## 0. Grounding — what exists today (the port inventory, real code)
 
