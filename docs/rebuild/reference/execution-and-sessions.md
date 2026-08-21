@@ -1,9 +1,27 @@
-# 05 — Execution Kernel: Workers & Browser Sessions
+# Execution and sessions — one-item workers, browser sessions, and the Duo ceremony
 
-Status: **revised 2026-08-02 through the Phase 1f worker-session runtime.** The executor-lane and
-static per-system capacity design is retired. One worker handles one item at a time; parallelism
-comes from starting more workers; workflows explicitly declare steps that require a fresh browser
-session.
+**What this doc is.** The contract for how work actually RUNS: the vocabulary (§1), the workflow
+session contract (§2), the worker's claim/heartbeat/recovery lifecycle (§3), browser-session
+ownership and the content-level authentication proof (§4), the speed contract (§5), failure
+isolation (§6), the guards and the executed concurrency matrix (§7), a worked example (§8), the
+settled defaults (§9), and the two things this doc has DESIGNED and the tree has not yet built —
+the Duo ceremony lease (§10) and sessions plus the worker pool (§11). It is a REFERENCE spec: it
+states what holds, and where the code differs the as-built is stated in the section it amends.
+
+**Status, verified against the tree 2026-08-21 (D252).** §1–§9 are BUILT and running. One worker
+owns one active run (`src/core/worker-loop.ts`), its browser sessions are callback leases keyed on
+the whole `(worker, system, instance, configFingerprint)` identity (`src/core/worker-sessions.ts`),
+the concrete factory launches Playwright's full Chromium with the Duo Autopilot extension and proves
+every close (`src/infra/browser/browser-session-factory.ts`), four systems are bound
+(`src/infra/browser/system-bindings.ts`), and D182's concurrency matrix executes the multi-worker
+cases against real `runWorkerLoop` instances over one authority database (§7.1). §10 and §11 are
+**DESIGNED, NOT BUILT** and say so in their own status blocks. The executor-lane and static
+per-system capacity design is retired and stays retired (§0).
+
+Four dated Phase-1 stage blocks (1d's seam ratification, the 1f runtime, the 1f concrete factory and
+D125's bound) stood above §0 until 2026-08-21; their contracts are folded into §2, §4, §4.1 and §4.3
+and the originals are preserved verbatim in
+`history/superseded/2026-08-21-execution-and-sessions-phase-1-stage-ratifications.md`.
 
 ## Ownership (D1)
 
@@ -14,6 +32,8 @@ session.
 | Worker spawning and queue dispatch/backpressure |
 | The speed contract: condition waits, sleep-tax removal, and bounded operations |
 | The page/subject-isolation invariant (§6.1) |
+| Authentication as a content-level observation, and the per-credential Duo ceremony (§4.1, §4.2, §10) |
+| What a SESSION is — a dashboard-started group of runs — and the worker pool that serves one (§11) |
 
 | This doc **references** (owner) |
 |---|
@@ -21,108 +41,14 @@ session.
 | Run state machine, gates/parks, checkpoints, RunEnvelope → **ref workflow-model** |
 | Worker/run/task span wire schema, Session Panel projections, notes → **ref dashboard-surfaces** |
 | Command/claim authority, degraded storage mode, notifications → **ref dashboard-surfaces** |
+| The write fence, its recovery and its typed operator resolutions → **ref write-safety** |
 | Semantic UI ids, typed drivers, action evidence, scenarios → **ref operator-trust** |
+| `timeouts.*`, `browser.*`, the config snapshot and D116's fingerprint → **ref clock-config-secrets** |
+| Every guard named in §7, and the test tiers a dry-run scenario belongs to → **ref guards-and-tests** |
 | OnBase cross-process identity lease → **D15** |
 
-Grounding: today's daemon already has one `state.activeRun` per process. The rebuild keeps that
+Grounding: legacy's daemon has one `state.activeRun` per process. The rebuild keeps that
 understandable ownership model and removes the proposed scheduler inside each process.
-
-## Phase 1d session seam ratification (2026-08-01)
-
-**D96 replaces the partial shapes in earlier drafts with one imported ref task-contract `SessionNeed`:**
-`{system, access:"read"|"transaction", session:"reuse-worker"|"fresh", exclusive?:true,
-acceptDownloads?:true}`. This doc owns worker/session behavior but does not redefine that type.
-Read tasks require read access; prepare/commit tasks require transaction access; mismatches fail at
-the task/store boundary before an executor exists. `exclusive:true` is legal only for OnBase, and
-OnBase is the only identity-exclusive provider declaration. Phase 1d may declare sessions and
-fail-loud unwired login callbacks; acquisition, close ordering, fresh-boundary execution, and
-cross-process lease behavior remain 1f runtime work.
-
-As built on 2026-08-01, each of the nine browser stores declares exactly one matching
-`SessionProvider`. Every placeholder login rejects with an explicit "declared but unwired in Phase
-1d" error; none creates a browser or claims authentication. OnBase alone declares and requires
-`exclusive:true`. The store/task boundary validates the full `SessionNeed` shape and effect/access
-agreement now, while worker-owned acquisition, reuse, close/reset, and cross-process leases remain
-absent until 1f.
-
-## Phase 1f worker-session runtime (2026-08-02)
-
-`WorkerSessionManager` now owns the callback-scoped driver lease for each
-`(worker, system, resolvedInstance, configFingerprint)` identity.
-The manager serializes use within that pair, performs a single authenticated start, and reuses the
-resource only when that complete identity plus its download and exclusivity launch properties
-match the authored need. A changed config fingerprint or resolved instance closes the old resource
-and creates a new one; it can never reuse a context authenticated/configured under another run
-snapshot. A clean callback must reset before release. A task failure, cancellation, or failed reset
-poison-closes the resource; a `fresh` need proves the old page/context (and OnBase identity lease)
-closed before the replacement emits `browser-session:start`.
-
-Parking and worker stop first reject new leases, wait behind every in-flight callback, then close
-all owned resources. A missing or failed close proof leaves the resource registered and poisoned:
-the manager refuses reuse instead of treating an uncertain close as success. The same rule covers
-failed-login cleanup, so a resource whose cleanup could not be proved cannot disappear from worker
-ownership. The nine store providers now accept the worker resource's bounded authentication handle;
-concrete browser creation remains a factory injected at the runtime composition boundary.
-
-## Phase 1f concrete session factory (2026-08-03)
-
-That injected factory is now real. `src/infra/browser/` launches Playwright's FULL bundled Chromium
-(`channel: "chromium"`) in a persistent context with the Duo Autopilot extension loaded — all three
-are requirements rather than preferences: Chrome stable dropped `--load-extension`, the lightweight
-headless shell cannot run an extension, and an extension requires a persistent context. Profiles
-live under the runtime-isolation `browserProfileRoot`/`browserSessionNamespace`, namespaced per
-`(worker, system, resolvedInstance, configFingerprint)`, so D116's no-cross-snapshot-reuse rule also
-holds for on-disk state, not just for the in-memory context.
-
-`close()` returns a proof only after observing every page closed AND the context's own close event
-inside a bounded deadline; an unproven or hung close throws, and the manager's existing poison rule
-does the rest. A clean release re-navigates to the system's entry route and re-runs the system's
-full authentication proof (§4.1), so "reusable" is an observation. Login recipes stay with their
-stores (`stores/<system>/session.ts`), which — together with `src/infra/browser/**` — are the two
-raw-browser owner families the task-driver boundary permits; task and workflow code may reach
-neither, transitively or otherwise. UCPath and CRM are bound today; a system without both a driver
-and a login recipe refuses at open rather than launching an unusable browser, and the exclusive
-OnBase identity lease is explicitly not landed here.
-
-## Session acquisition is bounded separately from the task (D125, 2026-08-04)
-
-**`timeouts.sessionAcquireMs` (default 60 000 ms) bounds ONE browser-session acquisition — the
-factory `open` plus that system's login recipe — and it is a different bound from
-`timeouts.taskMs`.** The kernel-owned `MonotonicDeadlineScheduler` arms it, the acquisition runs
-under its own linked `AbortSignal` so a cooperative recipe cancels itself, and expiry FAILS the
-lease with a message naming both leaves. It is never converted into a retry.
-
-**Why the whole-task deadline could not do this job.** The Phase-1 live exit run
-(`4ebf7275-0158-49af-a78f-1f37948efb27`, master plan §Phase 1) spent **262.9 s** inside one
-`withDriver` when the CRM browser died. Every step *inside* the login recipe was already bounded —
-each navigation by `navigationMs`, the Duo window by `duoApprovalCrmSeconds` — but **nothing bounded
-the chain**, and the only outer bound reaching that code was `taskMs`. `taskMs` must stay generous
-because it covers the real read (UCPath person-org ≈22 s; Kuali fill→save→reload→verify 8–10 s per
-cycle), so it is structurally the wrong instrument for "is this session alive?". In that run it
-never fired: the D118 claim sweep (60 s staleness on a 30 s cadence, measured on the WALL clock)
-requeued the run first, the next heartbeat reported the claim lost, and the task span closed
-`cancelled` at 4 m 23 s. Claim expiry is recovery, not a liveness bound — it is the last line, and
-it was doing first-line work.
-
-**Why 60 s is safe.** Acquisition is not the slow part of a healthy run: §4.1 authentication is
-live-verified at ~17 s (UCPath) and ~12 s (CRM) with Duo Autopilot clearing the ceremony hands-off
-(charter §9), so the default is >3x the measured worst case. It cannot fail a legitimately slow
-*read*, because a read happens after acquisition, under `taskMs`. A deployment that reverts to a
-HANDS-ON Duo approval must raise `sessionAcquireMs` above `duoApprovalSeconds` — the inner Duo wait
-would otherwise outlive its own envelope — and the refusal message says exactly that.
-
-**An acquisition that outlives its bound is UNCERTAIN.** A cooperative recipe rejects on the
-acquisition signal and runs `#openAndLogin`'s own proven cleanup. A non-cooperative one may still
-land a live session afterwards; that session is poison-closed rather than inherited by the next
-lease as a warm reuse, and a close that cannot be proven leaves the system poisoned so the next
-acquisition refuses by name (§4, ref execution-and-sessions poison rule).
-
-The `fresh-session-boundary` guard is now ACTIVE against these pieces (ref guards-and-tests §5): the boundary
-close reason exists only in the session-ownership modules, every authored `session:` need is a
-string literal rather than a computed value, repeated `reuse-worker` needs mint no boundary, and
-both an authored `fresh` need and a D116 identity mismatch close with an accepted proof before the
-replacement opens. Its one outstanding arm — descriptor-level node-execution ordering — lands with
-the first workflow that authors a fresh-boundary node.
 
 ---
 
