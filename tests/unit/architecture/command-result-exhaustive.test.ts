@@ -22,8 +22,18 @@
  * (it is the thing being enforced), and so is the client transport, whose job
  * is to PARSE the union rather than to act on it.
  *
- * Both arms run: the rule is asserted over the real tree, and a violating
- * fixture proves the walker can actually see the pattern it forbids.
+ * **Track D row D3 closed the hole the first rule could not see.** "One arm
+ * without the other" is trivially satisfied by a module that names NEITHER —
+ * it posts a command, ignores the answer entirely, and every refusal lands on
+ * the success path in silence. All nine command-issuing surfaces now call the
+ * fold, so the rule can be stated the strong way: a module that posts through
+ * `executeCommand` must settle its answer through `settleCommandResult`. That
+ * is the second arm, and it is why the first one survives rather than being
+ * replaced — the first governs a module that HOLDS a result (a banner, a
+ * refusal notice) without posting one itself.
+ *
+ * Every arm runs against the real tree AND against a checked-in violating
+ * fixture, so the walkers prove they can see the patterns they forbid.
  */
 import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -32,6 +42,7 @@ import { REPO_ROOT } from "./helpers/guard-files.js";
 
 const SCAN_ROOT = "src/dashboard";
 const FIXTURE = "tests/unit/architecture/fixtures/command-result-unhandled-conflict.ts";
+const FIXTURE_UNFOLDED = "tests/unit/architecture/fixtures/command-result-unfolded-dispatch.ts";
 
 /**
  * The fold itself, and the transport that parses the wire. Neither turns a
@@ -74,6 +85,26 @@ function decidesSettlementAlone(text: string): boolean {
   return namesRejected !== namesConflict;
 }
 
+/**
+ * A module POSTS a command when it calls `executeCommand` on the client. It has
+ * SETTLED that command's answer when it IMPORTS the fold's module.
+ *
+ * The import is what is checked, not a mention of the function's name: a
+ * comment explaining why the fold matters would otherwise clear the module
+ * that ignores it — which is how the negative-control fixture was written, and
+ * it is the first thing this arm caught. An import that is never called is not
+ * a hole either, because `eslint --max-warnings 0` refuses an unused binding.
+ *
+ * The pattern is textual for the same reason the arm above is: this guard
+ * governs a bundle where the only thing a type check can see is that a
+ * `CommandResult` was received, never what was concluded from it.
+ */
+const IMPORTS_FOLD = /from\s+"[^"]*\/command-result\.js"/u;
+
+function postsWithoutFolding(text: string): boolean {
+  return /\.executeCommand\s*\(/u.test(text) && !IMPORTS_FOLD.test(text);
+}
+
 describe("command-result-exhaustive (D253)", () => {
   it("no dashboard module tests ONE refusal arm and lets the other fall through", () => {
     const offenders = sourceFiles(SCAN_ROOT)
@@ -95,6 +126,26 @@ describe("command-result-exhaustive (D253)", () => {
     expect(decidesSettlementAlone(
       'if (result.state !== "conflict" && result.state !== "rejected") return null;',
     )).toBe(false);
+  });
+
+  it("every dashboard module that POSTS a command settles it through the fold (D3)", () => {
+    const offenders = sourceFiles(SCAN_ROOT)
+      .map((path) => relative(REPO_ROOT, path))
+      .filter((path) => !EXEMPT.has(path))
+      .filter((path) => postsWithoutFolding(readFileSync(join(REPO_ROOT, path), "utf8")));
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  it("the POSTS-without-folding walker sees its own violation (negative control)", () => {
+    expect(postsWithoutFolding(readFileSync(join(REPO_ROOT, FIXTURE_UNFOLDED), "utf8"))).toBe(true);
+    // A module that posts AND folds is clean, so the walker cannot be satisfied
+    // by one that answers `true` for everything.
+    expect(postsWithoutFolding(
+      'import { settleCommandResult } from "../app/command-result.js";\n'
+      + 'client.executeCommand(request).then((r) => { if (settleCommandResult(r).kind === "refused") stop(); });',
+    )).toBe(false);
+    // And a module that posts nothing is out of this arm's scope entirely.
+    expect(postsWithoutFolding("export const NOTHING_IS_POSTED = 1;")).toBe(false);
   });
 
   it("the fold's own module is the only place the arms are enumerated for a verdict", () => {
