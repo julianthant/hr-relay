@@ -66,8 +66,13 @@ lands):**
 
 | was | is going to | unit |
 |---|---|---|
-| the as-built delta blocks above §0 (queue-row projection, the second batch, D225/D234/D235/D238, the Wave-2 connection proof) | §9.2 · §9.3 · §9.9 | 5.1c |
-| §9's row-model D5–D24 and *Shell and layout as rebuilt* | §9.10 · §9.9 · §9.2 · §9.3 | 5.1c |
+| `## Queue-row projection as-built delta` + *The second batch* + *Drawing the second batch* + *The per-row action descriptors* + *The row title is the SUBJECT* | **§9.2** (landed) | 5.1c |
+| `### D234` runs and archived runs · `### D235` the bulk vector | **§9.2** (landed) | 5.1c |
+| *The shape hazard compares a run against ITS OWN workflow's served shape* | **§9.2** (landed) | 5.1c |
+| `## Phase 1g/1i-spine as-built presentation deltas` (D123 · D124 · D126) | **§9.3 · §9.2 · §9.9** (landed) | 5.1c |
+| `### D225`/`#### D259` · `### D238` · `## Wave-2 connection-proof presentation deltas` (D256 · D257) | **§9.3 · §9.9** (landed) | 5.1c |
+| *Shell and layout as rebuilt* | **§9.9** (landed); its superseded 400/470 widths → `history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md` | 5.1c |
+| §9's row-model D5–D24 | **§9.10** (landed), with its per-entry table naming §9.1 · §9.2 · §9.3 · §9.3.1 · §9.4 · §9.9 | 5.1c |
 | §10.1 Activity · §10.2 Archive · §10.3 display names · §10.4 the notification model | §9.5 · §9.5 · §9.2 · §9.6 | 5.1d |
 | §11 the intake workspace · §12 the capture phone · §13 the two takeovers | §9.7 · §9.7 · §9.5 | 5.1d |
 
@@ -76,817 +81,6 @@ the screen: the durable notification row stays in §2.6 (the bell and the inbox 
 backup/doctor/restore contract stays in §2.5 (the Settings section is §9.8).
 
 ---
-
-## Phase 1g/1i-spine as-built presentation deltas (2026-08-04)
-
-D74's live exit test (run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, master
-plan §Phase 1) rendered all four parity surfaces from the ONE projection and agreed on every count.
-It also surfaced four things about this doc's contracts that fixtures had passed. **All four are now
-fixed and are as-built contract** — every one of them is presentation-only, with correct durable
-authority underneath, which is why none blocked the exit. The `skipped`-arm and terminal-duration
-deltas closed on 2026-08-04 as D123/D124; the duplicate `Done` pair closed on 2026-08-04 as D126,
-once the operator ratified the visible design and named the defect as an accessible-name collision
-only.
-
-**Fixed — folding and identity are keyed by the WHOLE span identity.** §1.1's task identity is
-`(runId, attempt, spanPath)` and that has to be honoured in both the projector and the wire. A node
-that fails and re-runs under a later RUN attempt emits a second span at the same `spanPath`; the
-projector folded on `spanPath` alone and the run-detail timeline seeded its React keys with
-`<trace>/<node>#<taskAttempt>`, so the exit test's two `cross-verify` spans — a 262.9s cancellation
-and a 12.8s success — collapsed into one row. Both are real history and both must render. The
-projector now folds by `(attempt, spanPath)`; the timeline seed is `task:<attempt>:<spanPath>`.
-A folded span is a *fact about one execution*, never a per-node latest-wins slot — that is the same
-re-stamp failure §0 catalogues, in a new place.
-
-**Fixed (D123, 2026-08-04) — `skipped` is its own timeline arm and carries its closed reason.**
-`RunDetailWire`'s timeline state enum used to be `pending|active|done|failed|blocked|cancelled`, so
-`buildRunDetail` (`src/server/dashboard/queries/run-detail.ts`) mapped span outcome
-`skipped → cancelled`. In the exit run the durable result was exactly right — `crm-dates` recorded
-`state: not-run, reason: condition-false` — while its timeline row said **Cancelled**. §9 D-status
-vocabulary defines `Cancelled` as *"You stopped it. Not an alert — a deliberate act."* A branch
-whose condition was false is the opposite: nobody acted, and nothing was interrupted.
-
-As-built contract:
-
-- `TimelineEventWireSchema.state` is `pending|active|done|failed|blocked|cancelled|**skipped**`.
-  The query's closed mapping is `done→done`, `failed→failed`, `skipped→skipped`,
-  `interrupted→blocked`, `cancelled|discarded|superseded→cancelled`.
-- Every timeline event carries `notRun`, an explicit absence union. On a `skipped` event it is
-  `{ state: "present", reason }` over the **same closed vocabulary the durable result uses**
-  (`condition-false | branch-not-selected`, `TerminalNotRunReasonSchema`), or an explicit
-  `{ state: "absent", reason: "this step did not run; its span recorded no reason" }`. A non-skipped
-  event may never carry one — the schema refuses it. **A missing reason is never back-filled.**
-- The reason reaches the wire as data, not inference: the executor stamps `notRunReason` on the
-  `span.ended` task event when it skips a node by `when`, the projector folds it verbatim, and the
-  query reads it. A skip is ONE fact with one vocabulary in three places, pinned by a parity arm in
-  `tests/unit/events/span-events.test.ts`.
-- The surface renders it distinctly and NOT by hue: a skipped step draws a hollow ring and an
-  outlined dashed bar (the "nothing happened here" shape) against `cancelled`'s solid bar, and its
-  accessible name is `<label> — skipped, did not run: <why>` rather than `<label> — cancelled`.
-
-**Fixed (D124, 2026-08-04) — a terminal queue row shows its DURATION, and the wire carries the
-second instant.** `RowFooterLine` (`src/dashboard/surfaces/queue.tsx`) computed
-`fmtElapsed(elapsedSecondsBetween(surface.startedAt, nowIso))` for every status except `queued`, so
-a terminal row kept counting forever: the exit test's row displayed **2h 47m** for a run whose
-execution was ~14.5 minutes. The row was not lying about a number it invented — it was answering a
-different question than the one the operator asks of a finished run.
-
-As-built contract:
-
-- `QueueBaseFields` carries `endedAt`, an explicit presence union, in its own right. `updatedAt`
-  happens to equal `lifecycle.endedAt` on a settled run, but the wire never *said* so, and a row
-  that measured a duration from it would depend on an invariant it cannot see.
-- The projector serves `lifecycle.endedAt` when authority is terminal, the run span's `endedAt`
-  when the status came from the span stream, and an explicit reasoned absence otherwise. **An
-  in-flight row may never carry a terminal instant** — the schema refuses it, because a running run
-  that carried one would let a surface print a finished duration for live work.
-- §2.2's rule that arithmetic may stay on the client is unchanged; what changed is that the client
-  is now given both instants. `runTiming` (`src/dashboard/surfaces/format.ts`, extracted so it is
-  measured logic rather than presentation) renders: nothing for `queued`; live `now − startedAt`
-  while in flight, including the parked statuses; `took <endedAt − startedAt>` once terminal; and,
-  for a terminal row whose `endedAt` the server could not serve, an explicit **`duration unknown`**
-  carrying the server's own reason. It never substitutes `now` — "we do not know when it ended" and
-  "it ended just now" are different facts and must not render as the same number.
-
-**Fixed (D126, 2026-08-04) — the two `Done` statuses are separated by ICON + COLOUR + a distinct
-ACCESSIBLE NAME; the visible word stays short.** `verifiedDone` and `doneWarnings`
-(`src/dashboard/ds/primitives-status.tsx`) both carry `label: "Done"`, and `StatusFilters` renders
-one pill per `QueueStatus` (`done → verifiedDone`, `partial → doneWarnings`), so the filter bar
-showed two controls whose accessible names were both `"Done — n"` and the queue rows both ended
-`"— done"`. The operator, asked directly, **ratified the visible design and refused the visible
-change**: on screen the two are not colour-only — `doneWarnings` renders its amber warning triangle
-with its count beside the pill and `verifiedDone` renders the bare green word, so icon + hue + the
-count chip are three visible channels and the shorter word is the one that fits the header. The
-defect was therefore **assistive-technology only**, and only the non-visual channel is fixed.
-
-As-built contract:
-
-- `DsStatusSpec` gains an optional `accessibleLabel`. It is **never rendered**. `dsStatusText`
-  stays the visible word; `dsStatusAccessibleName` (`primitives-status.tsx`, re-exported through
-  `surfaces/status.ts` as `statusAccessibleName`) returns `accessibleLabel ?? label` and is what
-  **every** `aria-label` naming a status must use. Only `doneWarnings` sets one today:
-  `"Done with warnings"`.
-- The three collisions that existed are closed at their name sites, not by lengthening any drawn
-  string: the `StatusFilters` pill (`"Done with warnings — 2"` vs `"Done — 2"`), the queue row and
-  member line (`"<title> — done with warnings"` vs `"<title> — done"`), and `StatusDot`, whose
-  `role="img"` name is all an assistive technology gets because a dot draws no word at all.
-- **The pixels are unchanged, and that is verified rather than asserted.** Re-freezing the ref frontend-backend-integration
-  §7.1 parity corpus after the change rewrote 56 `.a11y.yml` references and **zero** `.png` files;
-  the only diffs are accessible names, with every visible text node (`Done 2`, `text: Done …`)
-  byte-identical.
-- **The rule this generalises to:** when two statuses deliberately share a visible word because a
-  non-textual channel carries the difference, that channel must have an assistive-technology
-  counterpart. Hue, a glyph, and a count chip have none. `accessibleLabel` is that counterpart, and
-  a future status that shortens its word owes one too.
-
----
-
-## Queue-row projection as-built delta (2026-08-14)
-
-Four §1.2 row facts had a CONSUMER and no PRODUCER: `queue.tsx` drew each one the moment it
-arrived and the projection served none of them. This delta records what the ONE run/queue
-projection now derives, and — because three of the four have an absent arm — where each absence
-comes from. Nothing here is a new decision; D6, D12, D13 and D22-as-amended-by-D126 all already
-said what the row should say.
-
-- **`liveMessage` on a failed row (D13).** A terminal-failed run serves its `FailureRecord.summary`
-  **verbatim** — D13's "never *Unknown error*" is the same rule stated for the substitution this
-  projector must not make. Every other status carries a reasoned absence, and there are four
-  distinct ones: an in-flight run (no producer authors a progress sentence on this wire), a
-  settled non-failed run, a run whose span reports a failure authority has not settled, and a
-  terminal-failed run whose failure record authority does not hold. That last one is NAMED rather
-  than thrown, which deliberately differs from `buildActivityReportWire`: an aggregate with a hole
-  is a wrong number, but the same hole here would degrade the ONE projection every surface renders,
-  and the queue's ⓘ popover prints the reason — which puts the missing record in front of the
-  operator instead of behind an outage. `liveMessage.value` is therefore re-dispositioned in the
-  D183 redaction audit from `repository-authored` to **`external-text`**: it now inherits
-  `durable/failure-record` `summary`'s class, because a failure summary may quote a thrown message.
-- **`dryRun` (D6).** Read from the run envelope — the flag's one home, and the same bit ref write-safety's
-  `executeDryRun`/`executeTransaction` split turns on — never from the `run.queued` span's copy.
-  There is no absent arm and there must never be one: every envelope carries it, so "we do not know
-  whether this run writes" is not a state this system can be in.
-- **`gateOpenedAt` (D12).** Present ONLY on an `awaiting-approval` row (a schema refinement in the
-  same shape as D124's `refineEndedAt` refuses it anywhere else), sourced from the gate's own
-  `gate.opened` span — exactly what the run-detail decision notice reads, so two surfaces cannot
-  date one gate two ways. Authority's `lifecycle.parkedAt` is the FALLBACK and not the preferred
-  value, which inverts `endedAt`'s ordering on purpose: the executor emits `gate.opened`, then
-  releases the browser session, THEN parks, so `parkedAt` is the later instant by however long a
-  session close takes and preferring it would shave that off every gate's age. `updatedAt` is never
-  a source — it moves on every patch, and reporting a gate as *younger* than it is remains the one
-  direction this fact may not err in.
-  **Amended by operator ruling, 2026-08-18 — where the age RENDERS.** D12's queue-row half ("an
-  aging gate is the most actionable fact in the queue") is superseded by the demo's own layout,
-  which the operator confirmed against the reference screenshot: the status pill carries NO age
-  (`StatusPill`'s `waiting`-arm suppression stands — *"the word names the work, not the wait"*);
-  the wait age renders in the row's FOOTER meta and, at full strength, in the log panel — the
-  run-detail header's right-aligned age and the timeline's hatched waiting segment with the true
-  wait printed beneath it. `gateOpenedAt` stays served exactly as specified above; only the pill
-  half of D12 is amended. This closes the findings ledger's "gate age is served and the pill
-  refuses to draw it" record.
-- **`warnings` (D22/D126).** The `△ N` chip's count is the run's evidence-receipt warning set, with
-  the first warning's own summary as the chip's title. The read is a plain lookup of an
-  ALREADY-DERIVED receipt: D141 makes derivation an on-demand act that persists a row, and a read
-  model that wrote authority as a side effect of rendering a queue would be a projection deciding
-  when a durable record exists. There is no `count: 0` present arm — absence IS zero, as it is for
-  this doc's sparse count arrays — and the absent `reason` keeps three states apart that a silent
-  zero would collapse: not settled, no receipt derived, receipt with no warning.
-
-### The second batch: ordinal, class, links and outcome (2026-08-19)
-
-Six more §1.2/§9 row facts had a consumer and no producer. **What follows is the as-built for each
-one that has a REAL source; the ones whose source does not exist are NOT served as a permanently
-absent arm** — a wire field nothing can populate is the orphan `wire-connectivity.test.ts` exists to
-catch, and they are restated in `docs/findings/queue-rows.md` with the producer each one waits on.
-Only `runNumber` and the containment vocabulary are new decisions (**D230**, **D231**); the rest is
-ref frontend-backend-integration §3.2's approved queue contract finally being filled in.
-
-- **`runNumber` (D230).** Read from `RunRecord.runNumber`, never derived. A number computed from a
-  row's position in THIS day's sorted array would be a different number tomorrow for the same run,
-  which is the one property a name may not have. The absent arm is D133 read-forward and is the
-  only one: a run enqueued before schema v15 carries no ordinal, and the footer draws the trace id
-  in that slot meanwhile — the identity every log, receipt and support conversation already uses.
-  The two are siblings once both are present, never substitutes.
-- **`priority`.** Read from the run ENVELOPE, which is D95's `bump` target — not the `run.queued`
-  span's frozen copy. `bumpPriority` rewrites the envelope and emits no span of its own, so a row
-  reading the span would keep saying `bulk` after the operator's bump had already changed the claim
-  order. No absent arm, for `dryRun`'s reason: every envelope carries one. It is a deliberate enum
-  MIRROR of `RunPrioritySchema` (ref frontend-backend-integration §8.13 keeps `src/domain/run/envelope.ts` out of the bundle's
-  reach), pinned member-for-member by `wire-connectivity.test.ts`'s mirror joint.
-- **`containment` + `linkedRuns[]` (D231).** See ref decisions's D231 row for the whole contract. Two
-  things are worth restating here because they are queue-panel behaviour: the schema refuses a
-  payload where containment, lineage and `surfaceKind` disagree, and the member/linked partitions
-  are disjoint BY CONSTRUCTION rather than by intention — the rollup counts only `operation-member`
-  children, so a child is never both counted in a group and chipped beside it.
-- **`facts[]` (§9 D7).** Read from the run's ALREADY-DERIVED evidence receipt's `output` — the same
-  plain `getReceipt` lookup `warnings` does, never `ensureReceipt`, for D141's reason. The receipt's
-  outputs ARE the flattening the Receipt tab prints, so reading them here is what keeps the chip on
-  the row and the row in the tab from being two derivations of one result. A leaf becomes a chip
-  only when its redacted value is `allowed` **and** a JSON primitive: the queue is on screen all day
-  and gets screenshotted into tickets, so it is the last surface that may print a dropped or
-  transformed value, and flattening an object into a string would author a presentation the receipt
-  never did. Both exclusions are COUNTED into the absent `reason`, which is what keeps four states
-  apart that an empty band would collapse — not settled, no receipt derived, a receipt with no
-  output, and a receipt whose every output was withheld.
-- **`pipeline[].durationSec` / `executions`.** Summed over EVERY execution of the node rather than
-  taken from the last, because a node re-executed across a gate resume (D214) genuinely spent both
-  intervals and the chip reports time spent on the step. The same refusals as the run-detail
-  timeline's `durationMs`: a step with no end, no folded start, unreadable instants, or an end
-  before its start carries NO duration — zero is a measurement, and "unmeasured" is not.
-  `executions` is present only at two or more, because one is the ordinary case.
-- **`memberPreview` (operation rows only).** Composed from the member rows' OWN titles, resolved
-  through the same subject-or-composed-title rule those rows draw, so a preview can never name
-  somebody the group does not contain or spell a subject two ways; the `+N more` count comes off the
-  same member list as the rollup. Absent when the group has fanned out to nobody yet, or when the
-  span fold has not seen the members it names — a group is a real thing before its fan-out lands,
-  and an empty string in that slot would read as a group of nobody.
-
-**Why none of this went into `config/pending-wire-bindings.json`.** That manifest's `declared-unserved`
-direction is for a schema arm a producer cannot reach — a section key, a command verb, a route. Every
-field above is SERVED: its absence is a present/absent union whose `reason` the operator reads in the
-row's ⓘ popover, which is a stronger record than a manifest line nobody sees, and its arms are pinned
-beside the present one in `run-queue-projection.test.ts`. The fields with no producer at all were not
-added to the schema, so there is no orphan arm for the manifest to declare either.
-
-### Drawing the second batch: the rehearsal hue and the rename control (2026-08-19)
-
-The batch above put six facts on the wire and drew none of them. This is the consumption half, plus
-the two decisions it could not be built without.
-
-**Where each field renders.** `#N` is the footer's SECOND segment, a sibling of the trace chip and
-never a substitute for it — the ordinal is the short number an operator says out loud, the trace id
-is the string every log and receipt is grepped by, and a row whose ordinal is absent (pre-v15) simply
-does not draw the chip. `linkedRuns[]` and the parent route share ONE `PanelRedirectChip`, because
-every redirect must look identical; the chip prints the SERVED `label · status` and routes on the
-link's own `workflowId`, so a child that ran on another day still opens. `facts[]` are the demo's
-`FactChipView` pairs, sized by its `grow` rule so a redirect beside them keeps the spare space.
-`memberPreview` sits under a counted anchor and is SUPPRESSED once the member list is open — the
-preview and the list are then the same names twice, and the preview is the copy that truncates.
-`pipeline[].durationSec`/`executions` ride the micro-steps' hover sentence, where an unmeasured step
-states its state alone rather than ` 0s`. `containment` is a sentence in the row's ⓘ (`root` gets
-none — it is the ordinary row), and three more absent reasons join it there, because a chip that is
-not drawn is the one state that cannot explain itself.
-
-**D232 — the fifth semantic hue, spent on `dry run`.** The palette budget was one accent and four
-semantic hues (info / success / warning / danger) and the rehearsal chip has no honest home in any of
-them: `info` is what the `test` chip beside it is drawn in — the one pair on the row a glance has to
-separate — and every amber token in this product means *a human is involved*, which a rehearsal is
-not. So the budget grows to five, operator-ratified, and `--ds-rehearsal-*` is a REAL light/dark pair
-rather than an alias. Two naming rules travel with it. It is named for what it MEANS, not for its
-colour: `--log-violet` was a hue name on a semantic token and was later re-derived to amber for a
-different meaning, so the name outlived the colour and now lies about it. And it has no `-solid-*`
-step, because this hue is only ever a chip and a solid violet fill would be a fifth voice in the
-loudness ladder. The demo's own tone is *named* `violet` and *bound* to the amber parked tokens; this
-binds the colour the name describes, which is the one deliberate colour deviation on the row. The
-same hue draws the same fact on the Log Panel's provenance bar — one meaning, one colour.
-
-**D233 — a rename is a descriptor-driven control, and every run verb CASes the caller's version.**
-Two halves of one seam.
-
-- **The control.** `rename` has been a kernel command since Phase 1c, and its absence from the served
-  vocabulary was recorded as *"the display-name edit is an inline field on the row, not a
-  descriptor-driven control"*. No build ever grew that field, so §10.3's operator-assigned display
-  name was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and
-  is served at `menu` on EVERY status — `executePresentation` has no state precondition, so a run
-  that has already written to UCPath can still be named, and that is precisely what makes a rename
-  safe to offer: it touches the subject, the trace and the ordinal not at all. The one narrowing is
-  row shape rather than a kernel fact: a MEMBER row loses the control, because `displayName` replaces
-  the title on the row it rides and naming a member would put free text where the group's list prints
-  the person that item is about. The dialog is intercepted from the descriptor exactly as the identity
-  ceremony is, for the same reason — it carries a value only a human can author, so the composer
-  REFUSES a rename with no name rather than posting a plausible one, and the field states
-  `RunDisplayNameSchema`'s bounds where the operator types so a refusal is never the first they hear
-  of one.
-- **The CAS.** `executePresentation` re-read the run and CASed against its OWN re-read, which is a
-  compare-and-swap that cannot fail: a stale `Rename` or `Hide` from a tab left open since yesterday
-  applied silently and was reported as recorded. It was written on a true premise — presentation
-  changes no outcome, task, checkpoint, intent or evidence — and the premise is about STATE, not about
-  version. **A name is a value the operator authored**, so applying yesterday's over today's discards
-  somebody's edit while answering success. All three presentation verbs now CAS `request.target.expectedVersion`
-  like every other run verb, and hide kept the discipline because a CAS rule with one exception is a
-  rule nobody can check. The guard that covered this arm had been asserting the hole under the heading
-  *"scopes CAS to the real race families"*; it and its registered invariant both moved. **One arm the
-  fix did not reach was `bump`** — recorded rather than fixed at the time because it sits outside the
-  presentation seam — and it has since been closed on this same rule, with no new decision number:
-  `executeBump` re-read the run and passed its OWN `current.version` to `bumpPriority`. Its blast
-  radius is genuinely smaller (a stale bump reorders a queued run's claim, and is refused outright
-  once the run has left `queued`), which is an argument for the fix being cheap rather than for
-  leaving the one exception in place. The check lands BEFORE the lifecycle precondition, matching
-  `executeCancel`: a caller holding yesterday's version does not get to learn today's lifecycle from
-  the refusal it gets. **Every run verb now CASes `request.target.expectedVersion`. There are no
-  exceptions left.**
-
-**The provenance bar takes the two facts a rename makes readable.** `Priority` lands in the ⓘ with
-the reason it matters, which is the demo's own disposition (*"`by` and `priority` are the same two
-words on every row an operator starts on their own machine, so they cost a chip each to say
-nothing"*) — a chip would spend a slot on a constant. `Named by you` states what the rename did NOT
-touch, and is drawn only for a named run, because it answers a question an unnamed run never raises.
-
-### The per-row action descriptors (2026-08-14)
-
-The fifth row fact with a consumer and no producer, and the only one where BOTH halves were
-missing: `QueueBaseFields` carried no `actions` field and no projector built one, so
-`FooterActions`, `RowContextMenu` and the confirm-first dialog were handed an empty list and every
-queue row drew no command controls in any state. Nothing here is a new decision either — §2.4 owns
-the command protocol and ref frontend-backend-integration §3.2 already lists *server-authored action descriptors with
-placement and version/audit tokens* in the approved queue contract; ref frontend-backend-integration §8.5 is the rule the gap
-violated (*interactive run controls require an `ActionDescriptorWire`; status-key-to-command
-branches fail*).
-
-`QueueBaseFields.actions: ActionDescriptorWire[]` is now served on every row, built by
-`src/server/dashboard/projectors/queue-row-actions.ts` from the descriptor's declared
-`WorkflowActionPolicy` **intersected with the kernel's own preconditions**, and every descriptor's
-`expectedVersion` is bound to the row's `rowRevision` by a schema refinement. The served set:
-
-| Queue status | Served keys | Command | Footer |
-|---|---|---|---|
-| `queued` | `bump`, `cancel`, `rename` | `bump` / `cancel` / `rename` | `bump`, `cancel` |
-| `running`, `blocked`, `awaiting-approval` | `cancel`, `rename` | `cancel` / `rename` | `cancel` |
-| `done`, `failed`, `cancelled`, `partial` | `retry`, `rename` | `retry` / `rename` | `retry` |
-
-_(`rename` joined the served set with D233 and is `menu`-only; `hide` left it with D234. Placement no
-longer varies with status, because `hide`'s footer slot was the only one that read `terminal`.)_
-
-Plus two row-shape refinements: a delegated child drops `retry` (`executeRetry` refuses one by
-name), and an operation row's cancel is keyed `cancel-tree` so the footer titles it with its blast
-radius and its confirm body counts the members. Everything served is also at the `menu` placement,
-which is what makes the right-click the row's FULL set and the footer a frequent subset of the same
-list rather than a second vocabulary. A run whose workflow has no registered descriptor in this
-build serves an EMPTY list — the policy is the workflow's own statement of what it offers, and a
-build that cannot read it must not guess a default set onto a run it cannot describe.
-
-**Some kernel-accepted verbs are deliberately not served from a row**, each with an owner rather
-than an omission. `edit-checkpoint` — 2i-C's Edit Data rail owns it, because the payload is a field
-patch set a row cannot compose. `resolve-gate` / `resolve-write-present` /
-`resolve-write-absent` — each is answered from its own run-detail SECTION, which carries the packet
-or the evidence note its payload requires; a row control could not compose either, and offering one
-irreversible answer by two roads is what `command-dispatch.ts` already refuses by name.
-
-**What a descriptor is NOT is a second authority.** The admission checks are the STABLE facts about
-a row (its lifecycle class, its lineage, what its descriptor enables), never the racy ones —
-`executeRetry`'s `reject-active` check is deliberately left to the kernel's transaction, so a run
-that goes active between the projection and the click is refused there, with the server's own
-sentence, rather than pre-filtered into invisibility. That is D179's *Apply stays clickable* rule at
-row scale.
-
-**One conflict this work surfaced and did not resolve.** D12's queue-row half is now fully served
-and is still not DRAWN. `StatusPill` (`src/dashboard/ds/primitives-status.tsx`) suppresses the age
-for the `waiting` status on a recorded operator direction — *"Was `Waiting on you · age` in solid
-amber. Operator: drop the timer … the word names the work, not the wait"* — and `awaiting-approval`
-maps to exactly that status. So the row passes a real age into a pill that renders none. The wire
-is the half this delta lands; whether D12's queue-row sentence or the later operator direction wins
-on screen is an operator call, and the visible design is not relitigated here (D126's rule).
-
-### The row title is the SUBJECT, and `displayName` is served beside it (2026-08-14)
-
-§1.2 says a queue row is a projection of the run's identity attributes, and `run.queued.title` is
-the string the descriptor's `presentation.title` composed **from the start input**. That is the only
-honest thing to say before the run has read anything, and it is also why three of six rows on a real
-separations day read `Separation 4502` / `Separation 4524`: a document number is not a person, so the
-column an operator scans distinguished nothing. Nothing here is a new decision — §1.2 already makes
-the row a projection of what the run knows, and the run knows who its subject is well before it ends.
-
-**The title now STARTS as the composed one and is REPLACED, once, when the run's own reads settle the
-subject's name.** Never blanked while it waits, never guessed. Three states keep the composed title
-and each is a real answer rather than a fallback: the workflow declares no subject leaf, the declared
-node has produced no checkpoint yet, or the declared path's union arm was not the one the run took (a
-lookup that resolved nobody, a Kuali employee-name control that was blank).
-
-**The seam is a DECLARATION, and there is deliberately no per-workflow branch and no field-name
-sniff.** A descriptor carries one optional `subjectProjection: { nodeId, fieldPath }` beside its
-`details` projections; the factory proves the node exists and the path is OFFERED by that node's real
-output schema, and `src/server/dashboard/projectors/run-subject-title.ts` reads the stored checkpoint
-at exactly that address. This is D204's rule at the one surface where a wrong answer is a wrong
-person's NAME in the place the eye trusts most: a heuristic that is right for eight workflows and
-wrong for the ninth is not a mechanism, it is a coin toss with good odds. `inputSubject` is
-unaffected and answers a different question — what KIND of thing a run is about, versus where this
-graph settles that thing's name.
-
-The read is a checkpoint and not a folded detail, for a reason worth writing down: the `span.patched`
-detail channel had a declared vocabulary and **no emitter**, so a title sourced from `row.details`
-would have been a title that never changes — and that observation is what eventually retired the
-channel outright (D254, above). The checkpoint is the record the identity chunk actually writes. It is
-also the ONE stored node output a queue row reads — everything else on the row is fold ⊕ authority.
-
-A declared leaf that resolves to a NON-STRING or a blank string **throws**, naming the workflow, the
-node, the path and what was found. It is the one arm that does not degrade gracefully, on purpose: it
-can only be an authoring defect the build could not catch (a checkpoint is canonical JSON, so nothing
-between the contract and this read re-checks the leaf's type), and the alternatives are a row titled
-`[object Object]` or a silent revert to the document number that hides a declaration wrong since the
-day it was written. This deliberately differs from `liveMessage`'s named absence: that one describes
-DATA that may legitimately be missing, this one describes a DECLARATION that is legitimately never
-wrong.
-
-What the five declaring workflows now title their rows:
-
-| Workflow | Composed from input | Replaced by |
-|---|---|---|
-| `separations` | `Separation 4502` | `job-summary.displayedName` — UCPath's record, never the Kuali form's claim |
-| `separations-identity-check` | `Battistessa, Johnnie (10873698)` | `job-summary.displayedName` — the input name is the CLAIM this chunk exists to check |
-| `separations-kuali-read` | `Document 4510` | `document.employee.name.value` |
-| `separations-kronos-timecard` | `EID 10620118` | `timecard.subject.observedDisplayName` — the S37 wrong-person control's own page, never the search panel's candidate list |
-| `person-lookup` | `EID 10873698` | `searching.selection.selected.name` |
-
-`separations-ucpath-termination`, `separations-kuali-finalization` and `kuali-timekeeper-annotation`
-declare nothing, and that is complete rather than pending: the first two already title with a person
-their input carried, and the third's subject IS its document.
-
-**`QueueBaseFields.displayName` is now served in its own right, and is no longer folded into
-`title`.** `RunRecord.displayName` is durable and authority-owned, written only by the kernel's
-`rename` run command, and the projection used to serve `authority.displayName ?? queued.title` as one
-string. That collapse is what made the demo's *"Named by you — subject is …"* tooltip unwritable:
-once the two are one field, no surface can tell an operator-authored title from a system-derived one,
-and a renamed row loses the subject it was renamed away from. The row renders `displayName ?? title`
-and carries the tooltip only when the operator has actually renamed the run. The absent arm names its
-one reason, in the same shape `subtitle` uses for the same kind of fact.
-
-`run-detail`'s header title goes through the SAME resolver — a row and the panel it opens are the
-pair an operator sees side by side, and two surfaces naming one run two ways is exactly the
-divergence §2.2's one-projection rule exists to prevent.
-
-**What this does not land.** There is still no operator-facing way to REACH `rename`: the
-wire-connectivity guard's `KERNEL_ONLY_COMMANDS` records the display-name edit as an inline row field
-rather than a descriptor-driven control, and no build has one. So `displayName` is served, drawn and
-tooltipped, and today only a CLI/API caller can set it. That is a UI gap with an owner, not a wire
-gap.
-
-### D225 — the run-detail timeline is CATEGORICAL (2026-08-18)
-
-**Operator ruling.** The composed `separations` run drew **eighteen** segments across a panel column
-— *"Separati… Separati… Terminat… Name Se…"* — plus a nineteenth for the gate and duplicate
-`Timecar…`/`Approval…` pairs from the resume. Every label was truncated to illegibility, so the
-surface that exists to say what a run is doing said nothing. The operator's direction: *"we are not
-trying to name everything… group all the tasks from task stores in a category,"* keeping legacy's own
-step vocabulary. The rendering itself is unchanged and is not re-litigated — §1.1's strip, its three
-shapes, and its rule that **a wait is a state of a step, not a step of its own** all stand. What
-changes is WHAT a segment is.
-
-**A segment is a declared CATEGORY, and a node is a member of exactly one.** A descriptor carries an
-optional `timeline: [{ label, nodes }]` beside its `details` and `subjectProjection` declarations,
-and the factory derives the frozen `WorkflowDescriptor.timeline` from it — resolving each member's
-own display label through the same `labelOf` the step projection uses, so no consumer re-derives a
-label. A descriptor that declares nothing gets **one category per node**, which is the honest and
-unchanged shape for a graph small enough to read node by node (`person-lookup` and every chunk
-harness). This is the `subjectProjection` seam's rule again: a DECLARATION, never a sniff — nothing
-infers a grouping from node-id prefixes, store namespaces or contract ids, because a grouping that is
-right for eight workflows and wrong for the ninth mis-describes a real HR transaction in the one
-place an operator watches it happen.
-
-**A declared timeline is EXHAUSTIVE, and the factory refuses one that is not.** Every node in the
-graph must appear in exactly one category; a node left out, named twice, named but undeclared, or a
-duplicate category label each throws at `build()` naming the offender. The reason is the failure mode
-rather than tidiness: a node missing from the declaration would vanish from the timeline **silently**
-— no error, no gap, just a step nobody can see — which is the same class of defect as D187's
-two-pixel panel. The check is at the factory because that is where the graph and the declaration are
-both in hand.
-
-**The fold is served, not computed by the client** (`TimelineWireSchema.steps`). A category's state
-folds its members' states loudest-first — `failed` ▸ `blocked` ▸ `active` ▸ `cancelled`, then
-all-pending ▸ `pending`, all-done/skipped ▸ `done`/`skipped` — and the mixed remainder reads `active`
-on a live run and `pending` on a terminal one, because a terminal run's unreached members genuinely
-never ran. A member's state is its LATEST execution's; its duration is the SUM of every measured
-execution, through the same `spanDuration` §1.1 already owns. **A re-execution folds into `×N`, never
-into a second segment** — a gate park and its resume are two executions inside one attempt (D214), so
-an `always-rerun` node upstream of a gate emits its span path twice, and drawing two identical
-segments is D123's "same absence seen twice" one level up. A gate node owns no task span, so it takes
-its state from the run's own gate records and never a duration: **the wait belongs to the gate, and
-the gate belongs to its category.** Every segment discloses its members — label, state, duration — on
-hover and focus, so grouping hides nothing it folded.
-
-`steps` is optional on the wire for exactly one reason (D133 read-forward): a `RunDetailWire` frozen
-into an archived record before this leaf existed must still parse, and a replayed historical workflow
-has no registered descriptor to group by. Both serve no `steps` and the client renders the per-event
-strip, which is the same picture it drew before this decision. The `events` array is **unchanged and
-still served in full** — the categorical strip is a presentation of that history, never a replacement
-for it, and §1.1's span identity remains the record.
-
-**Separations' six categories, as approved** (`docs/migrations/separations.md` §9.18): Kuali
-extraction · Identity check · Job summary · Kronos timecard · UCPath transaction · Kuali
-finalization. Legacy's seventh step, `transaction-check`, folds into *UCPath transaction* rather than
-standing alone, because in this tree the pending check IS the sweep transaction plus the write
-sequencer's own probes — it is not a separate visit. The gate is a member of *Identity check*.
-
-**What this does not land.** The parity corpus does not photograph the categorical strip: the
-run-detail parity fixture composes its `RunDetailWire` directly and serves no `steps`, so every
-reference records the per-event fallback. That is a corpus gap with an owner (D187's lesson —
-a reference nobody takes is a defect nobody catches), and it closes with Track B's fixture work and
-its one deliberate re-freeze, not with a second re-freeze here.
-
-#### D259 — a REPLAYED step is its own arm, and it is never `pending` (2026-08-20)
-
-**The defect.** A replayed node emits no spans, by design (ref workflow-model §5.3 — "replayed nodes emit no
-spans" is the executor's structural replay policy), and this timeline folds spans. So a step whose
-checkpoint the run replayed had nothing to render and came out **`pending`**. Track C's connection
-proof watched a finished run report `Kuali extraction — pending`, `Job summary — pending` and
-`Identity check — pending, took 0s` — the last one on the very category whose gate the operator had
-personally approved a minute earlier — with `GET /api/v1/runs/:id` serving `steps[0].state =
-"pending"` after the run was terminal (separations §9.22 item 3). `pending` means *this has not
-happened yet*, which is false twice over: it did happen, and its result is the one the run consumed.
-
-**The fix is D144's shape — the reader moves, and nothing fabricates a span.** `TimelineStepWire.state`
-and its members gain a `replayed` arm, and a replayed member carries `replayedFrom` — the stored
-checkpoint's own `attempt` (D221's item attempt) and, when the row names one, its `claimGeneration`
-(D214's execution). A pre-D214 row names no generation, so the wire omits it rather than fabricating
-`1`. A replayed member carries **no duration**: a replay emits no span, so nothing measured it, and
-`0` would read as "it ran instantly" — the `took 0s` this decision exists to delete. The schema
-refuses both halves of the pairing (a `replayed` member with no source, a source on any other state)
-and refuses a measured replay.
-
-**Three conditions, each closing a way the claim could be false.** A step is `replayed` when it has
-no task span AND:
-
-1. **the run is terminal `done`** — only then did the executor visit every node, so "no span" cannot
-   also mean "the run stopped before reaching it". A failed or cancelled run keeps `pending`, because
-   nodes after the stop genuinely never ran while a prior run's checkpoints sit under them;
-2. **a checkpoint exists at `(workflow, itemId, nodeId)`** — the SAME item-scoped read the executor's
-   own planner makes (ref workflow-model §5.7);
-3. **a DIFFERENT run wrote it** — a row this run wrote is evidence the node executed HERE.
-
-A category is `replayed` only when EVERY member replayed; one member that executed makes it `done`,
-and the member disclosure carries the breakdown. A settled gate is untouched: a gate never replays
-across runs (`replay-gate` reads this run's own `gate_results` row), so it still reads `done` from
-its durable record.
-
-**On screen:** the hollow ring and outlined bar `skipped` uses — nothing happened HERE — in the
-verified-done hue, because the fact is settled; the word `replayed` where a measured step prints its
-duration; and the member line names `attempt N`. Hue is never the distinguisher: shape and word are.
-
-**Two residuals, stated rather than hidden.** A node this run's branch excluded — or whose declared
-`when` was false — while an EARLIER run of the same item executed it also lands in the replayed arm,
-because the executor's replay/skip decision is durable nowhere this projection reads; the trigger
-that closes it is D114's terminal `not-run` reasons reaching this query. And a node whose checkpoint
-THIS run wrote but whose spans are gone (a pruned stream) stays `pending`; "executed, span not
-folded" is a different honest arm and this build does not claim it.
-
-**Rejected:** emitting a span for a replayed node (it would make the executor's own replay policy
-untrue, and a synthetic span is exactly the fabrication D144 refused); inferring reach from the
-declared timeline order (a declared category order is author-controlled presentation, not a
-topological one); and leaving the fold alone and explaining `pending` in a tooltip (the wrong word is
-what the operator reads at a glance).
-
----
-
-### D234 — the queue's model is runs and archived runs (2026-08-19)
-
-**Operator ruling, dated:** *"There are runs and archived runs; there should be no hidden runs."*
-The `hide`/`unhide` presentation pair is RETIRED across the whole stack. This section is the
-normative text; every earlier sentence in this doc that describes hiding is superseded by it.
-
-**What it removes.** Both kernel arms (`executePresentation` keeps `rename` alone); both keys in
-`CommandActionSchema`, `RunCommandRequestSchema` and `BulkRunCommandRequestSchema`;
-`ActionCommandKeySchema`; `CommandActionIdSchema` and `STANDARD_WORKFLOW_ACTIONS`; the client
-composer's fall-through group; the row projector's `hide` descriptor; and — the half that actually
-changes what an operator sees — the **hidden-run exclusion in the queue projection**, which had been
-applied three separate times (the patch/snapshot notifier, the day wire, the Activity report). Every
-run is now rendered. Archiving (D179/D80) is the one thing that takes a run off the queue, and that
-is what makes the count story checkable: ONE whole-run exclusion, applied once, inherited by every
-surface.
-
-**Why it is a retirement and not a deferral.** `unhide` could never have been served: a hidden run
-was filtered out of the queue projection, so no row existed to hang the verb off, and no build ever
-grew a hidden-runs surface. So the reversible half of a *"reversible presentation tombstone"* was
-unreachable from the product, and the row's own confirm copy said so out loud — *"this build serves
-no surface that lists hidden runs, so the row cannot be brought back from here."* A one-way door
-dressed as a tombstone is worse than no door: an operator who hides a run has taken an action they
-cannot see the consequences of and cannot undo. The two honest exits were "build the hidden-runs
-view" or "retire the verb", and the operator chose.
-
-**The durable field is a parse-tolerated vestige, not a deletion.** `RunRecord.hidden` becomes
-`z.boolean().optional()`, written by nothing and read by nothing. It cannot simply be dropped:
-`RunRecordSchema` is strict, `hidden` has never been a SQL column (it lives inside the row's
-`record_json`), and every row the production database already holds carries `"hidden": false` — so
-removing the key would make the authority database refuse to open on every historical row. That is
-D133's read-forward rule pointing the other way, and the same reason no migration is written:
-released migration bodies are immutable and this field never appears in one. An ABSENT value means
-nothing and must never be given a meaning. Production carried **zero** rows with the flag set when
-this landed (40+ runs, none hidden), so nothing reappears.
-
-**What replaces the count arithmetic.** Nothing had to be invented — the exclusion pass already
-existed for archived rows and member containment, and hiding was one predicate inside it. Removing
-that predicate moves counts (a formerly hidden row now counts in the day, the badge, the status
-pill, the month calendar and the Activity report at the same instant, by construction) and moves no
-structure.
-
-**Two side effects worth stating.** Row placement no longer varies with status, because `hide`'s
-footer slot was the only one that read `terminal`. And a settled delegated MEMBER row is now served
-NO control at all — `retry` is refused for a child by the kernel and `rename` by row shape — which
-is the honest answer rather than a gap: every verb the row could draw is one somebody refuses.
-
-**The guard that could not see this.** `wire-connectivity` audited kernel↔schema symmetry in both
-directions and was structurally blind to a key that is accepted, blessed, and projected by nothing.
-Its command arm gains a third direction: every serveable verb must be one some PRODUCER emits, read
-by CALLING `queueRowActions` over every status in both member and non-member shapes (the standard
-its section arm already holds itself to, and the only way to read a computed key correctly) and by
-scanning the comment-stripped descriptor literals of `queries/run-detail.ts`. Comments are stripped
-and that is load-bearing: `unhide` appeared in the projector ONLY inside the prose explaining why it
-is never served, so a scan that counted prose would have called the dead key healthy for the whole
-phase it was dead.
-
-### D235 — a bulk command is N children and one vector (2026-08-19)
-
-**Operator ruling, dated 2026-08-18:** bulk commands are BUILT, and the two batch verbs are
-`cancel` and `retry` (`bump` is schema-admitted and deliberately not offered — a claim-order change
-applied to a selection is a re-ordering nobody asked for). Every bulk action is many REAL CAS-bound
-transitions, so the surface says so BEFORE it fires and reports PER-RUN outcomes, never one
-aggregate "Done". This section is the normative text.
-
-**The server half.** `POST /api/v1/commands/bulk` is a SECOND door, not a mode of the single-command
-door: one command answers one `CommandResult`, N commands answer N of them, and folding a vector
-into the single-result union would give the collapse-into-"Done" defect a place to hide. The
-executor is the SAME command-service path a single press reaches, run once per target — never one
-transaction spanning the batch — so the refusal vocabulary cannot fork. Each child's command id is
-DERIVED (`deriveStableUuid` over `bulkCommandId` + the run id), so re-delivering one bulk envelope
-replays exactly the same N children (`replayed: true`) instead of filing N more — D174's
-idempotency lesson, one family over. The vector's arms are `applied` / `conflict` (carrying the
-server's `currentVersion`, the only number that tells an operator to refresh) / `refused` (the SAME
-`CommandRejectionCode` a single press would get) / `errored` (an untyped throw is reported verbatim
-and STOPS the pass — issuing further writes into a system that just failed to answer is the
-opposite of fail-loud, and `requestedCount` is served precisely so the untried remainder is
-legible). Whole-request refusals reach NO target and are named: an empty target set, a run named
-twice (its second child would replay the first and report a transition it never made), and the
-`all-or-none` mode — schema-recognized, unexecuted, refused by name rather than run best-effort
-under an atomicity label this kernel does not have.
-
-**The client half** (`bulk-dispatch.ts`, the strip in `queue-toolbar.tsx`). OFFERED and ELIGIBLE
-are different rules and the strip says both out loud: a verb is offered when at least one selected
-row's own served `actions[]` admits it, and its frozen target set is the INTERSECTION of the
-selection with those rows — a row outside it is SKIPPED with its count and reason stated, never
-silently dropped and never sent. Versions are frozen at composition from each row's own descriptor
-(*"targets and versions are frozen at confirmation"*), the confirm copy states the per-run
-transition and the skip count, and a plan with nothing eligible REFUSES to become an envelope so
-"nothing happened" can never be mistaken for "it worked". The result band renders the vector run by
-run — subjects frozen from the plan that was sent, because a band that printed uuids is a report
-nobody can read and re-deriving titles from the current day goes blank the moment a batch outlives
-its page.
-
-### D238 — a rehearsal's terminal outcome is never `verified-done` (2026-08-19)
-
-**The defect, observed on a real settled run.** `run-detail` mapped lifecycle `done →
-verified-done` mechanically, so the composed separations DRY RUN that reached its preview terminal
-on doc 4502 (separations §9.17, and again §9.20 on run `4ee84ac2`) rendered the label this product
-reserves for an **independently verified real completion** — while the receipt for the same run said
-`partial` / `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning, and the authority schema itself
-carries `CHECK (result <> 'verified-done' OR confidence = 'verified')`. D210 named the gap as a
-carry-forward (*"the queue row and the timeline have no arm for a preview … Surfacing it on the
-queue row is a wire + UI change"*); §9.17 item 7(b) observed it on a settled preview. This closes
-it.
-
-**The verdict is the receipt's own, and there is no new tier.** A terminal `done` run whose OWN
-envelope asked for a dry run reached a PREVIEW terminal — nothing staged durably, no write intent,
-no fence, no commit — and it takes **`partial`**, which is exactly what `buildRunEvidenceReceipt`
-derives for it (its `completion.terminal-result` obligation is `unknown`, which makes `verified-done`
-structurally unreachable there, and its preview warning is load-bearing). The wire's `result` enum is
-unchanged and the confidence vocabulary is unchanged; the outcome arm gains only `rehearsal`, a
-statement about which KIND of run produced the verdict, restating the envelope fact D6 already puts
-on the queue row. A schema refinement makes `verified-done` beside `rehearsal` **unrepresentable**,
-so the pair cannot be re-derived by a later mapping.
-
-**Why the envelope is the right authority.** `dryRun` lives on the envelope and nowhere else (D6),
-is retained at plan time, and is the same fact D210's coherence check compares against the stored
-terminal row's preview schema hash. A run whose envelope and terminal record disagreed would be an
-incoherent record the receipt already refuses to describe; the panel does not re-litigate that, it
-reads the run's own flag.
-
-**`rehearsal` is `z.literal(true).optional()`.** Absence is the only other spelling of "not a
-rehearsal", so `false` would be a second one; and optional is D133 read-forward — a `RunDetailWire`
-frozen into an archived record before the field existed still parses, and its silence is not a claim
-that the run was real. Only the `done` arm can carry it: a dry run that **failed** or was
-**cancelled** reached no preview terminal, so `failed`/`cancelled` already say what happened and
-gain nothing.
-
-**What the operator sees.** The panel's outcome bar leads with the word — `dry run · partial ·
-09:20` — because `partial` alone reads as a run that half-worked, which is the opposite of what a
-clean rehearsal means; the verdict is only readable once you know which kind of run produced it. The
-sentence is an exported pure function (`terminalOutcomeText`) so it is pinned by a test rather than
-only by the parity corpus. D22's status vocabulary is untouched: `partial` still renders with the
-Done-with-warnings treatment, and the REAL `verified-done` path is unchanged in every particular.
-
-**Beside it, D237's decision record** (ref operator-trust owns the derivation): a settled gate now draws a
-DECISION RECORD in the run's own stream at its `resolvedAt`, in the same geometry as the open gate's
-decision card — verdict, approver, instant, all off one durable `gate_results` row. The card's tint
-carries the verdict and the chip goes loud only for a REFUSAL, because a rejected identity is the
-one an operator must not read past. Before this the panel drew a gate only while it was open, so a
-settled gated run said nothing about the one step a human performed.
----
-
-## Wave-2 connection-proof presentation deltas (2026-08-20)
-
-Track C drove the REAL dashboard against a REAL composed dry run for the first time
-(`docs/migrations/separations.md` §9.22) and found four defects that every unit, architecture,
-scenario and parity gate had been green over. Three of them are this doc's, and they share one
-shape: **a surface that reads the right kind of fact from the wrong instance of it.** All three are
-fixed and are as-built contract below. (The fourth — a REPLAYED node rendering as `pending` on
-every span-folding surface — is the projection's, and is owned elsewhere.)
-
-### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
-
-**What was wrong.** `useBootstrap` fetches once, and `boot.serverClock.now` — the instant that ONE
-fetch carried — was the only value the queue row's in-flight timer, the gate-age pill, the session
-footer and the worker cards computed against. Every live elapsed on the dashboard was therefore
-frozen at page load. The proof measured it twice over: a parked run displayed **`0s` for more than
-two minutes** (the tab had loaded at 15:03:32, the run started at 15:12:17, so the difference was
-negative and `elapsedSecondsBetween`'s clamp made it a plausible zero), and a plain reload at
-15:15:15 made the same row jump to **`2m 54s`** — exactly `bootstrapInstant − startedAt` — and
-freeze again from there. A terminal row was unaffected, because D124 already made its duration two
-served instants; so this was invisible on every settled run and wrong on every run an operator is
-actually watching.
-
-As-built contract:
-
-- **The server's instant stays the authority, and the browser contributes only elapsed.**
-  Substituting the browser's wall clock is what D124 forbids, and a machine whose clock is minutes
-  off would then print a duration nobody can act on. What the browser IS authoritative about is how
-  much time has passed since that instant arrived, which it reads from the monotonic clock
-  (`systemClock.monotonicMs()`, ref clock-config-secrets's single source) — a value an NTP step or a user editing the
-  system clock cannot move.
-- **One calibration, one value, every consumer.** `src/dashboard/state/served-clock.ts` holds
-  `(servedInstant, monotonicMs at receipt)` and derives
-  `deriveServedNow = servedInstant + (monotonicNow − monotonicAtReceipt)` on a one-second tick, on
-  `visibilitychange` (a backgrounded tab's interval is throttled to about once a minute, and an
-  operator returning to it must not read a minute-old age), and on any re-render.
-  `dashboard-app.tsx` calls the hook ONCE and passes the result down every path that used to carry
-  the frozen instant, including the keyboard order's own sort key — the queue's drawn order and the
-  keyboard's traversal order must not be able to date one row two ways.
-- **No surface reads a clock of its own.** The notification bell's `systemClock.now()` — the last
-  display-time wall-clock read in the bundle — is now the same passed-down instant. A second clock
-  on one screen is how two chips come to disagree about one gate's age.
-- **A backwards elapsed is DRAWN, not clamped.** `elapsedSecondsBetween` returns the SIGNED
-  interval and `fmtElapsed` spells a negative one with its sign. The clamp is what let "the clock
-  reading this is behind the fact it is reading" wear the shape of "this happened just now", and
-  those are different facts. A sub-second skew still renders `0s` on its own, because
-  `Math.round` of a fraction of a second is zero — the signed arm appears only when something is
-  genuinely wrong.
-- **Re-calibration is deliberately NOT built, with the trigger that ends the deferral named.** The
-  BFF is a loopback singleton (`config/runtime-isolation.json` pins the port; D181's `server` role
-  lock admits one holder), so the served clock and the browser's clock are the same machine's
-  clock: there is no skew to re-converge on, only the monotonic clock's own drift, which is
-  immaterial at the seconds granularity `fmtElapsed` renders. A server instant on the SSE `health`
-  heartbeat is a wire change with a server emitter and two fixture emitters behind it, bought for a
-  skew this deployment cannot have. What buys it is ref frontend-backend-integration §6.9's deferred exposed path (D189) —
-  the day the BFF serves a browser it does not share a machine with. Add the field in that commit.
-- **The parity corpus is held by pinning the OTHER half of the clock.** A ticking elapsed dated by
-  real browser time would make `45m 0s` and `45m 1s` a coin flip between the run that froze a
-  reference and the run that asserts it. `installFrozenMonotonic`
-  (`tests/parity/helpers/app-driver.ts`) freezes `performance.now` before navigation — and nothing
-  else, so timers, rAF and CSS animation all still run — which makes the derived instant EXACTLY
-  the fixture's served instant, i.e. byte-identical to what every existing reference was captured
-  against. `assertMonotonicFrozen` proves the page adopted it by reading the clock twice across
-  real wall time: D187's rule, applied to a clock instead of a theme.
-- **Measured, not asserted (2026-08-20).** The whole assert lane was run against the corpus as it
-  stands: **139 captures fail and 12 behaviour cases pass**. Every capture was ALREADY failing
-  before this change — the corpus is stale from wave 2 itself, since each reference's stamped
-  `descriptorHash` predates D226–D255 and the queue rows now carry D230's `#N` ordinal — and that
-  re-freeze is Track B's, deliberately not performed here. What matters is what the drift is MADE
-  of: across **678 diverging lines, not one is an elapsed**. Every `18m 0s`, `21m 0s`, `45m 0s` in
-  the corpus reads back byte-identical through the ticking clock, which is the freeze doing exactly
-  what it claims — and it is the strongest evidence available until the corpus is re-frozen.
-
-### The open run-detail panel FOLLOWS its run (D257)
-
-**What was wrong.** `useRunDetail` refetched only when `runId` or `detailNonce` moved, and
-`detailNonce` was bumped ONLY by a dispatched command or an applied Data edit — never by the SSE
-day stream. So a panel left open through a run's own progress froze on the wire as of the last
-thing the operator clicked. On the proof: after the gate approval, the panel's header still read
-**`Queued` / "run is queued"** while the queue row beside it read **`Done · took 8m 20s`** and the
-BFF served `status: "done"`, and its tablist still offered only `Logs`. Because `receipt` enters
-`availableSections` only at terminal, **the evidence receipt was unreachable from a panel you had
-open** — the surface whose whole job is to explain a run did not notice the run finishing. A reload
-fixed it, and a workaround is a finding.
-
-As-built contract:
-
-- **The run's own served `rowRevision` is the follow key.** It is already on the day wire (it is
-  what every served action's CAS `expectedVersion` binds to), it is the authority version the
-  detail is read at, and it moves exactly when the run moves. The app hands the open run's row
-  revision to `useRunDetail`; nothing polls, and a run whose row this day does not hold (an
-  archived run, another day's run) serves no revision and is not followed, because it cannot move.
-- **It tracks CHANGES, never a difference.** Comparing the served revision against the loaded
-  detail's would refetch in a loop for as long as the two disagreed — and they legitimately can,
-  since one is read from authority and the other from the projection, so one is routinely a beat
-  ahead. The decision is a pure fold (`planRunDetailFollow`: `adopt` on a run switch, `settle`
-  after the window on a move, `hold` otherwise) so it is pinned by a test rather than only by a
-  live run.
-- **A burst coalesces; a switch does not wait.** A run's version moves on every heartbeat, node
-  transition and rename, and several can land inside one span-tail poll, so a moved revision is
-  adopted after a short settling window rather than per envelope. A run SWITCH adopts at once —
-  the switch already refetches, and waiting would spend a second read on a run just read.
-- **The sections follow for free, and neither half blanks.** `usePanelSections` already keys on the
-  detail's own `rowRevision`, so a followed detail re-reads every open section with it. Both keep
-  what they are showing while the next read is in flight: a panel that blanked to a spinner every
-  time its run advanced a node would be unreadable for exactly the runs worth watching. Opening a
-  DIFFERENT run still clears both, because the previous run's sections beside this run's header is
-  the wrong answer rather than a stale one.
-
-### The shape hazard compares a run against ITS OWN workflow's served shape (as-built correction)
-
-**This mints no decision.** The hazard's contract was already stated — a run whose descriptor moved
-is not comparable with a current one, and a retry would replay retired code. The code compared the
-wrong pair, so this is a defect fix ratified in place rather than a new ruling.
-
-**What was wrong.** `RunProvenanceBar` computed `shapeMoved = surface.descriptorHash !==
-currentDescriptorHash`, where `surface.descriptorHash` is the RUN's one-workflow
-`contractFingerprint` (`run-queue-projection.ts`, from `queued.contractFingerprint`) and
-`currentDescriptorHash` was the bootstrap's `descriptorHash` — the hash of the whole eight-workflow
-SET. **Two different kinds of value, so never equal.** Every run the dashboard has ever drawn wore
-the amber *"Ran under Separation shape 59830cf6; runs are served by 76a28eef now … a retry would
-replay retired code"*, including the proof's three runs whose fingerprint was byte-identical to the
-one `GET /api/v1/explorer` served for `separations` and the build manifest held. This is D179's
-`staleApp` defect inverted, and worse: a warning that could never fire is bad, and one that can
-never NOT fire trains the eye past the one chip that would announce a genuinely retired shape.
-
-As-built contract:
-
-- **The comparison is against the run's OWN workflow's served fingerprint**, which the boot document
-  has always carried per workflow (`WorkflowBootstrapPrimitive.descriptorFingerprint`, served
-  straight from that descriptor's `contractFingerprint`). **No wire grows** — this is D251's rule
-  again: check what the served document already answers before booking a row.
-- **Three verdicts, not a boolean.** `classifyRunShape` returns `current`, `moved` (carrying the
-  shape now serving, so the sentence names it) or **`unserved`** — a run whose workflow this build
-  does not register has no current shape to have moved to, and calling that "moved" would state a
-  fact nobody established. It is still drawn as a hazard, with its own sentence, because a retry
-  there has nothing to run.
-- **Both directions are pinned by a test** (`tests/unit/dashboard/run-shape-hazard.test.ts`):
-  identical → silent, moved → warns naming the served shape, unregistered → `unserved`. A hazard is
-  only as trustworthy as its negative case, and this one had never had one.
 
 ## 0. What exists today (and what specifically hurts)
 
@@ -2879,42 +2073,1068 @@ promise.
 
 ### 9.1 The run modal — plan, confirm, enqueue
 
-**Stub — written by unit 5.1c.** Inherits row-model D15 (Person Lookup's Search and Match modes,
-`{#order-1}`, unbuilt: the descriptor declares one graph), D250/D251's four rows with three read
-from the bundle, D261's one typed box, and §2.4's `supersede-active` split as it reaches the
-operator. Wire: `ref frontend-backend-integration` §5.1.1.
+<!-- roadmap: sep-dash -->
+
+**What it is.** The one start door. It is the surface that turns an operator's intent into a
+`StartPlanProposal` and then into authority rows, and it is deliberately **generic**: the modal
+knows no workflow. Everything workflow-shaped reaches it as a declaration — `surfaces.inputRun`
+(the parser spec, placeholder, constants and examples), `input`, `summary` and `enqueue`, four
+fields on the descriptor.
+
+**What it shows.** Four rows, in the demo's own order: the workflow-setup block (the descriptor's
+own `summary` sentence, drawn as prose and omitted entirely when the descriptor declares none), the
+typed box with its derived value-noun, separator phrase and parser sentence, the `Examples` row of
+buttons that fill the box with **exact** text, and *What this will create* — the proposed run(s) the
+server planned, never a client-side guess. Beside them the shared settings: queue behaviour,
+priority, dry run, destination.
+
+**What it commands.** `POST /api/v1/start-plans` to plan; the `start` command family, consuming the
+plan token idempotently, to enqueue. Nothing else. The modal never writes a run row itself and never
+collapses a `conflict` or a `rejected` into "Done".
+
+**What it refuses to show.** Three absences are drawn as absences rather than filled in:
+
+- **No method tabs.** The demo renders them at `methods.length > 1`; this tree has one method kind,
+  because `WorkflowSurfaces.uploadRun` is declared by no registered workflow and the
+  upload/capture/spreadsheet/bare bodies are 2h-deferred. A tab strip over a set of one is D186's
+  sample-of-one, and the demo-faithful rendering of one method is no tabs at all (D251).
+- **No policy control.** `descriptor.enqueue` is a DECLARATION the planner reads, and
+  `StartPlanIngress` carries no per-start override — so a `Select` would let the operator choose
+  `allow-parallel` and get `reject-active`. The declared value is drawn read-only with its reason,
+  over a label table that states what the planner DOES rather than what the arm's name suggests
+  (D251).
+- **No fabricated example.** Absent `examples[]` renders no row. Nothing invents a sample
+  identifier.
+
+**As-built (verified 2026-08-20).** `surfaces/run-start.tsx` + `run-start-kit.tsx` and their models
+draw it; the catalogue is composed in `app/dashboard-app.tsx`; the plan is
+`server/dashboard/commands/start-plan-service.ts` over `services/start/plan.ts`. Three facts are
+worth keeping in this doc rather than the wire doc, because they are about MEANING:
+
+1. **The parser sentence is derived, never authored.** `inputRunValueNoun`,
+   `inputRunSeparatorLabel` and `inputRunParserLabel` (`src/domain/workflow/ingress.ts`) read a
+   legend declared beside `ENTRY_PATTERNS`, so a pattern whose regex moves has its words in the same
+   diff. Two arms are load-bearing: a spec whose only rule is `otherwise` reads **"entries"** — the
+   absence of a pattern claim, stated — and a spec with no `otherwise` rule says so, because
+   `parseInputRunText` then throws on the whole text and an operator never told that reads a correct
+   refusal as a defect (D250).
+2. **An example is PROVED typeable at build time.** `defineWorkflowDescriptor` refuses an example
+   that does not parse under this surface's own parser and whose every entry does not satisfy the
+   workflow's own input schema — the two checks the planner performs on each submission, run at
+   `build()`. A button that fills the box with a guaranteed refusal teaches the operator that the
+   modal lies about what it accepts. Two descriptors declare examples: `person-lookup` and
+   `separations` (D250).
+3. **The typed start surface takes exactly ONE varying value per run.** D260 proved the rule and
+   named the two shapes; D261 built the second — `separations` types a document number and DERIVES
+   the Kuali action id one node past the ingress parse, off the Action-List row's `href`. The modal
+   is unchanged by that; what changed is that a workflow needing two identifiers is now a graph
+   problem rather than a second box. `ref workflow-model` and `docs/migrations/separations.md` own
+   the derivation; this section owns only the consequence for the box.
+
+**One contradiction this section states rather than resolves.** `supersede-active` means two
+different things in two files. The kernel implements it — `run-fan-out.ts` terminalizes the exact
+active generation and creates the new run atomically — and the planner does not: `services/start/plan.ts`
+checks only `reject-active`. The modal therefore prints *"Declared, and not implemented — the planner
+supersedes nothing"* to the operator, which is the honest sentence for the surface and leaves the
+split intact underneath. All eight registered descriptors declare `reject-active`, so the arm is
+unexercised either way; whether it earns a planner path or leaves the enum is the owning decision of
+the first workflow that wants it. §2.4's enqueue paragraph describes the KERNEL's behaviour and is
+correct about it.
+
+**Wire.** `ref frontend-backend-integration` §5.1.1 owns the endpoints, the six-step plan/confirm
+sequence, the payload shapes and the parity references — including D264, which moves the three
+declaration fields onto the bootstrap so step 1 reads a projection rather than the client bundle.
+That changes where the declaration is READ, not what it says.
+
+<!-- roadmap-status: sep-dash -->
+- [x] D250 — the typed box describes itself: value-noun, separator phrase and parser sentence derived from the closed spec; `examples[]` proved typeable at `build()` (`src/domain/workflow/ingress.ts`, `defineWorkflowDescriptor`)
+- [x] D251 — the four modal rows, three already in the client bundle; the policy drawn read-only with its reason; the unstartable reason composed and now drawn
+- [x] D261 — the typed start surface takes ONE box; `separations` derives the Kuali action id as a graph output rather than asking for a second value
+- [x] D226 — the three identity-approval ceremonies and rejection, shape decided server-side (§9.4 carries the text)
+- [x] D237 — a settled gate's decision record renders inline at `resolvedAt`, read from the durable `gate_results` row (§9.4)
+- [x] D211 — the write plan rides INSIDE the packet, so §14.5's digest binds the dates, the template and the department; a moved date re-opens the gate (§9.4)
+- [x] D245 — the confirmed-present arm serves its proof contract, described field by field; nothing pre-filled, nothing pasted (§9.4)
+- [x] D20 — `Write parked` is an unknown outcome and has exactly two typed exits; a parked row is sent no data-mutating command at all (§9.4)
+- [ ] the gate PACKET is separations-shaped — a second gated workflow adds its own section arm or generalises it (`{#order-4-dash}`, `{#order-9-dash}`, §9.4)
+- [!] `supersede-active` says two different things: implemented in `run-fan-out.ts`, unchecked in `services/start/plan.ts`. Two code sites disagree; the surface prints the planner's truth
+- [ ] D15 — person-lookup's Search and Match modes: `src/workflows/person-lookup/descriptor.ts` declares ONE graph and no mode (`{#order-1}`, §9.10)
+- [ ] the upload / capture / spreadsheet / bare method kinds, and with them the method tabs — no registered workflow declares `surfaces.uploadRun` (2h-deferred)
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{run-start,run-start-kit,run-start-model,identity-approve,park-resolve}*, src/domain/workflow/ingress.ts, src/services/start/plan.ts, src/core/run-fan-out.ts; left: the second method kind and D15's modes, both owned by workflows nobody has built
+<!-- /roadmap-status -->
 
 ### 9.2 The queue row — the day's work
 
 <!-- roadmap: track-b -->
 
-**Stub — written by unit 5.1c.** Inherits the queue-row projection as-built delta and its four
-subsections, D124's `endedAt`, D230–D235, D238, D83/D233's rename, D234's runs-and-archived-runs
-model, the shape hazard, and row-model D5/D6/D9/D11/D13/D14/D16 as they bear on a row. Also §10.3's
-operator-assigned display names, from unit 5.1d's half. Wire:
-`ref frontend-backend-integration` §5.1.2. The `track-b` status block belongs here.
+**What it is.** The surface an operator lives on. One row per run, folded from the ONE run/queue
+projection (§2.2, D81) — never from a per-row query — so every count on every other surface is the
+same arithmetic this row is.
+
+**What it shows.** `QueueBaseFields`, and every field on it is served rather than inferred:
+`runNumber` · `title` / `displayName` · status · `startedAt` / `endedAt` · `priority` · `dryRun` ·
+`liveMessage` · `gateOpenedAt` · `warnings` · `facts[]` · `containment` + `linkedRuns[]` ·
+`pipeline[]` · `memberPreview` · `actions[]`. Three of those need saying in words, because they are
+where the row's honesty lives.
+
+- **The title is the SUBJECT.** It starts as the descriptor's composed title — the only honest
+  string before the run has read anything — and is REPLACED exactly once, when the run's own reads
+  settle the subject's name. Never blanked while it waits, never guessed. Three states keep the
+  composed title and each is a real answer rather than a fallback: the workflow declares no subject
+  leaf, the declared node has produced no checkpoint yet, or the declared path's union arm was not
+  the one the run took (a lookup that resolved nobody, a Kuali employee-name control that was
+  blank). This matters because three of six rows on a real separations day read `Separation 4502` /
+  `Separation 4524`, and a document number is not a person — the column an operator scans
+  distinguished nothing.
+- **`displayName` is served BESIDE the title, not folded into it.** The projection used to serve
+  `authority.displayName ?? queued.title` as one string, and that collapse is what made *"Named by
+  you — subject is …"* unwritable: once the two are one field, no surface can tell an
+  operator-authored title from a system-derived one, and a renamed row loses the subject it was
+  renamed away from. The row renders `displayName ?? title` and carries the tooltip only when the
+  operator has actually renamed the run.
+- **An absence is a reason, never a blank.** `liveMessage`, `gateOpenedAt`, `warnings`, `facts[]`,
+  `runNumber` and `memberPreview` are present/absent unions whose absent arm carries its own
+  `reason`, and the row's ⓘ popover prints it. That is what keeps four states apart that an empty
+  band would collapse — not settled, no receipt derived, a receipt with no output, and a receipt
+  whose every output was withheld.
+
+**What it commands.** Only what the server served it. `QueueBaseFields.actions:
+ActionDescriptorWire[]` is built by `src/server/dashboard/projectors/queue-row-actions.ts` from the
+descriptor's declared `WorkflowActionPolicy` **intersected with the kernel's own preconditions**,
+with every descriptor's `expectedVersion` bound to the row's `rowRevision` by a schema refinement.
+A status-key-to-command branch on the client is refused by `ref frontend-backend-integration` §8.5.
+
+| Queue status | Served keys | Footer subset |
+|---|---|---|
+| `queued` | `bump`, `cancel`, `rename` | `bump`, `cancel` |
+| `running`, `blocked`, `awaiting-approval` | `cancel`, `rename` | `cancel` |
+| `done`, `failed`, `cancelled`, `partial` | `retry`, `rename` | `retry` |
+
+Plus two row-shape refinements: a delegated child drops `retry` (`executeRetry` refuses one by
+name), and an operation row's cancel is keyed `cancel-tree` so the footer titles it with its blast
+radius. Everything served is also at the `menu` placement, which is what makes the right-click the
+row's FULL set and the footer a frequent subset of the same list rather than a second vocabulary. A
+run whose workflow has no registered descriptor in this build serves an EMPTY list — the policy is
+the workflow's own statement of what it offers, and a build that cannot read it must not guess a
+default set onto a run it cannot describe.
+
+Some kernel-accepted verbs are deliberately **not** served from a row, each with an owner rather
+than an omission: `edit-checkpoint` belongs to the Context rail (§9.3.1), because the payload is a
+field patch set a row cannot compose, and `resolve-gate` / `resolve-write-present` /
+`resolve-write-absent` are each answered from their own run-detail section (§9.4), which carries the
+packet or the evidence note the payload requires. Offering one irreversible answer by two roads is
+what `command-dispatch.ts` already refuses by name.
+
+**What a descriptor is NOT is a second authority.** The admission checks are the STABLE facts about
+a row (its lifecycle class, its lineage, what its descriptor enables), never the racy ones —
+`executeRetry`'s `reject-active` check is deliberately left to the kernel's transaction, so a run
+that goes active between the projection and the click is refused there, with the server's own
+sentence, rather than pre-filtered into invisibility. That is D179's *Apply stays clickable* rule at
+row scale.
+
+#### The row model as-built — where each fact comes from, and what its absence means
+
+Nothing below was a new decision when it was built; D6, D12, D13, D22-as-amended-by-D126 and
+`ref frontend-backend-integration` §3.2's approved queue contract had all already said what the row
+should say. What was missing was a PRODUCER — every one of these facts had a consumer drawing it
+the moment it arrived and a projection serving none of them.
+
+- **`liveMessage` (D13).** A terminal-failed run serves its `FailureRecord.summary` **verbatim** —
+  D13's "never *Unknown error*" is the same rule stated for the substitution this projector must not
+  make. Four distinct reasoned absences: an in-flight run (no producer authors a progress sentence
+  on this wire), a settled non-failed run, a run whose span reports a failure authority has not
+  settled, and a terminal-failed run whose failure record authority does not hold. That last one is
+  NAMED rather than thrown, which deliberately differs from `buildActivityReportWire`: an aggregate
+  with a hole is a wrong number, but the same hole here would degrade the ONE projection every
+  surface renders, and the ⓘ popover puts the missing record in front of the operator instead of
+  behind an outage. `liveMessage.value` is therefore `external-text` in the D183 redaction audit,
+  not `repository-authored` — a failure summary may quote a thrown message.
+- **`dryRun` (D6).** Read from the run ENVELOPE — the flag's one home, and the same bit
+  `ref write-safety`'s `executeDryRun` / `executeTransaction` split turns on — never from the
+  `run.queued` span's copy. There is no absent arm and there must never be one: every envelope
+  carries it, so *"we do not know whether this run writes"* is not a state this system can be in.
+- **`priority`.** Read from the envelope too, which is D95's `bump` target. `bumpPriority` rewrites
+  the envelope and emits no span of its own, so a row reading the span would keep saying `bulk`
+  after the operator's bump had already changed the claim order. It is a deliberate enum MIRROR of
+  `RunPrioritySchema` (§8.13 keeps `src/domain/run/envelope.ts` out of the bundle's reach), pinned
+  member-for-member by `wire-connectivity.test.ts`'s mirror joint.
+- **`endedAt` (D124).** Carried in its own right as an explicit presence union. `updatedAt` happens
+  to equal `lifecycle.endedAt` on a settled run, but the wire never *said* so, and the row that
+  computed `now − startedAt` for every non-`queued` status counted a finished run forever — 2h 47m
+  printed for ~14.5 minutes of work on the D74 live exit run. The projector serves
+  `lifecycle.endedAt` when authority is terminal and the run span's `endedAt` while in flight; an
+  in-flight row is schema-refused from carrying one; and a terminal row whose `endedAt` the server
+  could not serve renders an explicit **`duration unknown`** rather than substituting `now`.
+- **`gateOpenedAt` (D12).** Present ONLY on an `awaiting-approval` row (a refinement in the same
+  shape as D124's `refineEndedAt`), sourced from the gate's own `gate.opened` span — exactly what
+  the run-detail decision notice reads, so two surfaces cannot date one gate two ways. Authority's
+  `lifecycle.parkedAt` is the FALLBACK and not the preferred value, which inverts `endedAt`'s
+  ordering on purpose: the executor emits `gate.opened`, releases the browser session, THEN parks,
+  so preferring `parkedAt` would shave a session close off every gate's age. `updatedAt` is never a
+  source — it moves on every patch, and reporting a gate as *younger* than it is remains the one
+  direction this fact may not err in.
+- **`warnings` (D22/D126).** The `△ N` chip counts the run's evidence-receipt warning set, with the
+  first warning's own summary as the chip's title. It is a plain lookup of an ALREADY-DERIVED
+  receipt (`getReceipt`, never `ensureReceipt`): D141 makes derivation an on-demand act that
+  persists a row, and a read model that wrote authority as a side effect of rendering a queue would
+  be a projection deciding when a durable record exists. There is no `count: 0` present arm —
+  absence IS zero.
+- **`runNumber` (D230).** Read from `RunRecord.runNumber`, never derived. A number computed from a
+  row's position in this day's sorted array would be a different number tomorrow for the same run,
+  which is the one property a name may not have. Its single absent arm is D133 read-forward: a run
+  enqueued before schema v15 carries no ordinal and the footer draws the trace id in that slot
+  meanwhile. The two are siblings once both are present, never substitutes — `#N` is the short
+  number an operator says out loud, the trace id is the string every log and receipt is grepped by.
+- **`containment` + `linkedRuns[]` (D231).** The schema refuses a payload where containment, lineage
+  and `surfaceKind` disagree, and the member/linked partitions are disjoint BY CONSTRUCTION rather
+  than by intention — the rollup counts only `operation-member` children, so a child is never both
+  counted in a group and chipped beside it. `linkedRuns[]` and the parent route share ONE
+  `PanelRedirectChip`, because every redirect must look identical; it prints the SERVED
+  `label · status` and routes on the link's own `workflowId`, so a child that ran on another day
+  still opens.
+- **`facts[]`.** Read from the same already-derived receipt's `output`. A leaf becomes a chip only
+  when its redacted value is `allowed` **and** a JSON primitive: the queue is on screen all day and
+  gets screenshotted into tickets, so it is the last surface that may print a dropped or transformed
+  value, and flattening an object into a string would author a presentation the receipt never did.
+  Both exclusions are COUNTED into the absent reason.
+- **`pipeline[].durationSec` / `executions`.** Summed over EVERY execution of the node rather than
+  taken from the last, because a node re-executed across a gate resume (D214) genuinely spent both
+  intervals. The same refusals as the run-detail timeline: a step with no end, no folded start,
+  unreadable instants, or an end before its start carries NO duration — zero is a measurement, and
+  "unmeasured" is not. `executions` is present only at two or more, because one is the ordinary case.
+- **`memberPreview`** (operation rows only). Composed from the member rows' OWN titles, through the
+  same subject-or-composed-title rule those rows draw, so a preview can never name somebody the
+  group does not contain or spell a subject two ways. SUPPRESSED once the member list is open — the
+  preview and the list are then the same names twice, and the preview is the copy that truncates.
+
+**Why none of this went into `config/pending-wire-bindings.json`.** That manifest's
+`declared-unserved` direction is for a schema arm a producer cannot reach — a section key, a command
+verb, a route. Every field above is SERVED, and its absence is a union whose reason the operator
+reads, which is a stronger record than a manifest line nobody sees. The facts with no producer at
+all were never added to the schema, so there is no orphan arm to declare either; they are restated
+in `docs/findings/queue-rows.md` with the producer each one waits on.
+
+#### The subject-title seam is a DECLARATION
+
+There is deliberately no per-workflow branch and no field-name sniff. A descriptor carries one
+optional `subjectProjection: { nodeId, fieldPath }` beside its `details` projections; the factory
+proves the node exists and the path is OFFERED by that node's real output schema, and
+`src/server/dashboard/projectors/run-subject-title.ts` reads the stored checkpoint at exactly that
+address. This is D204's rule at the one surface where a wrong answer is a wrong person's NAME in the
+place the eye trusts most: a heuristic that is right for eight workflows and wrong for the ninth is
+not a mechanism, it is a coin toss with good odds. `inputSubject` is unaffected and answers a
+different question — what KIND of thing a run is about, versus where this graph settles that thing's
+name.
+
+The read is a CHECKPOINT and not a folded detail, for a reason worth keeping: the `span.patched`
+detail channel had a declared vocabulary and no emitter, so a title sourced from `row.details` would
+have been a title that never changes — and that observation is what eventually retired the channel
+outright (D254, §1.1). The checkpoint is the record the identity chunk actually writes, and it is the
+ONE stored node output a queue row reads; everything else on the row is fold ⊕ authority.
+
+A declared leaf that resolves to a NON-STRING or a blank string **throws**, naming the workflow, the
+node, the path and what was found. It is the one arm that does not degrade gracefully, on purpose: it
+can only be an authoring defect the build could not catch, and the alternatives are a row titled
+`[object Object]` or a silent revert to the document number that hides a declaration wrong since the
+day it was written. This deliberately differs from `liveMessage`'s named absence — that one describes
+DATA that may legitimately be missing, this one describes a DECLARATION that is legitimately never
+wrong.
+
+| Workflow | Composed from input | Replaced by |
+|---|---|---|
+| `separations` | `Separation 4502` | `job-summary.displayedName` — UCPath's record, never the Kuali form's claim |
+| `separations-identity-check` | `Battistessa, Johnnie (10873698)` | `job-summary.displayedName` — the input name is the CLAIM this chunk exists to check |
+| `separations-kuali-read` | `Document 4510` | `document.employee.name.value` |
+| `separations-kronos-timecard` | `EID 10620118` | `timecard.subject.observedDisplayName` — the S37 wrong-person control's own page, never the search panel's candidate list |
+| `person-lookup` | `EID 10873698` | `searching.selection.selected.name` |
+
+`separations-ucpath-termination`, `separations-kuali-finalization` and `kuali-timekeeper-annotation`
+declare nothing, and that is complete rather than pending: the first two already title with a person
+their input carried, and the third's subject IS its document. `run-detail`'s header title goes
+through the SAME resolver — a row and the panel it opens are the pair an operator sees side by side,
+and two surfaces naming one run two ways is exactly the divergence §2.2's one-projection rule exists
+to prevent.
+
+#### D232 — the fifth semantic hue, spent on `dry run`
+
+The palette budget was one accent and four semantic hues (info / success / warning / danger) and the
+rehearsal chip has no honest home in any of them: `info` is what the `test` chip beside it is drawn
+in — the one pair on the row a glance has to separate — and every amber token in this product means
+*a human is involved*, which a rehearsal is not. So the budget grows to five, operator-ratified, and
+`--ds-rehearsal-*` is a REAL light/dark pair rather than an alias. Two naming rules travel with it.
+It is named for what it MEANS, not for its colour: `--log-violet` was a hue name on a semantic token
+and was later re-derived to amber for a different meaning, so the name outlived the colour and now
+lies about it. And it has no `-solid-*` step, because this hue is only ever a chip and a solid violet
+fill would be a fifth voice in the loudness ladder. The demo's own tone is *named* `violet` and
+*bound* to the amber parked tokens; this binds the colour the name describes, which is the one
+deliberate colour deviation on the row. The same hue draws the same fact on the Log Panel's
+provenance bar — one meaning, one colour.
+
+#### D233 — a rename is a descriptor-driven control, and every run verb CASes the caller's version
+
+Two halves of one seam.
+
+**The control.** `rename` has been a kernel command since Phase 1c, and its absence from the served
+vocabulary was recorded as *"the display-name edit is an inline field on the row, not a
+descriptor-driven control"*. No build ever grew that field, so §9.3's operator-assigned display name
+was writable only from a CLI this runtime does not have. It joins `ActionCommandKeySchema` and is
+served at `menu` on EVERY status — `executePresentation` has no state precondition, so a run that has
+already written to UCPath can still be named, and that is precisely what makes a rename safe to
+offer: it touches the subject, the trace and the ordinal not at all. The one narrowing is row shape
+rather than a kernel fact: a MEMBER row loses the control, because `displayName` replaces the title on
+the row it rides and naming a member would put free text where the group's list prints the person that
+item is about. The dialog is intercepted from the descriptor exactly as the identity ceremony is, for
+the same reason — it carries a value only a human can author, so the composer REFUSES a rename with no
+name rather than posting a plausible one, and the field states `RunDisplayNameSchema`'s bounds where
+the operator types so a refusal is never the first they hear of one.
+
+**The CAS.** `executePresentation` re-read the run and CASed against its OWN re-read, which is a
+compare-and-swap that cannot fail: a stale `Rename` from a tab left open since yesterday applied
+silently and was reported as recorded. It was written on a true premise — presentation changes no
+outcome, task, checkpoint, intent or evidence — and the premise is about STATE, not about version. **A
+name is a value the operator authored**, so applying yesterday's over today's discards somebody's edit
+while answering success. All presentation verbs now CAS `request.target.expectedVersion` like every
+other run verb. The guard that covered this arm had been asserting the hole under the heading *"scopes
+CAS to the real race families"*; it and its registered invariant both moved. **One arm the fix did not
+reach was `bump`** — recorded rather than fixed at the time because it sits outside the presentation
+seam — and it has since been closed on this same rule, with no new decision number: `executeBump`
+re-read the run and passed its OWN `current.version` to `bumpPriority`. The check lands BEFORE the
+lifecycle precondition, matching `executeCancel`: a caller holding yesterday's version does not get to
+learn today's lifecycle from the refusal it gets. **Every run verb now CASes
+`request.target.expectedVersion`. There are no exceptions left.**
+
+**The provenance bar takes the two facts a rename makes readable.** `Priority` lands in the ⓘ with the
+reason it matters — a chip would spend a slot on a constant (*"`by` and `priority` are the same two
+words on every row an operator starts on their own machine"*). `Named by you` states what the rename
+did NOT touch, and is drawn only for a named run, because it answers a question an unnamed run never
+raises.
+
+#### D234 — the queue's model is runs and archived runs
+
+**Operator ruling, dated 2026-08-19:** *"There are runs and archived runs; there should be no hidden
+runs."* The `hide` / `unhide` presentation pair is RETIRED across the whole stack. This subsection is
+the normative text; every earlier sentence in this doc that describes hiding is superseded by it,
+including §9.5's archive rules.
+
+**What it removes.** Both kernel arms (`executePresentation` keeps `rename` alone); both keys in
+`CommandActionSchema`, `RunCommandRequestSchema`, `BulkRunCommandRequestSchema`,
+`ActionCommandKeySchema`, `CommandActionIdSchema` and `STANDARD_WORKFLOW_ACTIONS`; the client
+composer's fall-through group; the row projector's `hide` descriptor; and — the half that actually
+changes what an operator sees — the **hidden-run exclusion in the queue projection**, which had been
+applied three separate times (the patch/snapshot notifier, the day wire, the Activity report). Every
+run is now rendered. Archiving (§9.5, D80/D179) is the one thing that takes a run off the queue, and
+that is what makes the count story checkable: ONE whole-run exclusion, applied once, inherited by
+every surface.
+
+**Why a retirement and not a deferral.** `unhide` could never have been served: a hidden run was
+filtered out of the queue projection, so no row existed to hang the verb off, and no build ever grew a
+hidden-runs surface. The row's own confirm copy said so out loud — *"this build serves no surface that
+lists hidden runs, so the row cannot be brought back from here."* A one-way door dressed as a tombstone
+is worse than no door. The two honest exits were "build the hidden-runs view" or "retire the verb", and
+the operator chose.
+
+**The durable field is a parse-tolerated vestige, not a deletion.** `RunRecord.hidden` becomes
+`z.boolean().optional()`, written by nothing and read by nothing. It cannot simply be dropped:
+`RunRecordSchema` is strict, `hidden` has never been a SQL column (it lives inside `record_json`), and
+every row the production database already holds carries `"hidden": false` — so removing the key would
+make authority refuse to open on every historical row. That is D133's read-forward rule pointing the
+other way, and the same reason no migration is written. An ABSENT value means nothing and must never be
+given a meaning. Production carried **zero** rows with the flag set when this landed (40+ runs, none
+hidden).
+
+**Two side effects worth stating.** Row placement no longer varies with status, because `hide`'s footer
+slot was the only one that read `terminal`. And a settled delegated MEMBER row is now served NO control
+at all — `retry` is refused for a child by the kernel and `rename` by row shape — which is the honest
+answer rather than a gap: every verb the row could draw is one somebody refuses.
+
+**The guard that could not see it.** `wire-connectivity` audited kernel↔schema symmetry in both
+directions and was structurally blind to a key that is accepted, blessed, and projected by nothing. Its
+command arm gains a third direction: every serveable verb must be one some PRODUCER emits, read by
+CALLING `queueRowActions` over every status in both member and non-member shapes and by scanning the
+comment-stripped descriptor literals of `queries/run-detail.ts`. Comments are stripped and that is
+load-bearing: `unhide` appeared in the projector ONLY inside the prose explaining why it is never
+served, so a scan that counted prose would have called the dead key healthy for the whole phase it was
+dead.
+
+#### D235 — a bulk command is N children and one vector
+
+**Operator ruling, dated 2026-08-18:** bulk commands are BUILT, and the two batch verbs are `cancel`
+and `retry` (`bump` is schema-admitted and deliberately not offered — a claim-order change applied to a
+selection is a re-ordering nobody asked for). Every bulk action is many REAL CAS-bound transitions, so
+the surface says so BEFORE it fires and reports PER-RUN outcomes, never one aggregate "Done".
+
+**The server half.** `POST /api/v1/commands/bulk` is a SECOND door, not a mode of the single-command
+door: one command answers one `CommandResult`, N commands answer N of them, and folding a vector into
+the single-result union would give the collapse-into-"Done" defect a place to hide. The executor is the
+SAME command-service path a single press reaches, run once per target — never one transaction spanning
+the batch — so the refusal vocabulary cannot fork. Each child's command id is DERIVED
+(`deriveStableUuid` over `bulkCommandId` + the run id), so re-delivering one bulk envelope replays
+exactly the same N children (`replayed: true`) instead of filing N more — D174's idempotency lesson,
+one family over. The vector's arms are `applied` / `conflict` (carrying the server's `currentVersion`,
+the only number that tells an operator to refresh) / `refused` (the SAME `CommandRejectionCode` a single
+press would get) / `errored` (an untyped throw is reported verbatim and STOPS the pass — issuing further
+writes into a system that just failed to answer is the opposite of fail-loud, and `requestedCount` is
+served precisely so the untried remainder is legible). Whole-request refusals reach NO target and are
+named: an empty target set, a run named twice, and the `all-or-none` mode — schema-recognized,
+unexecuted, refused by name rather than run best-effort under an atomicity label this kernel does not
+have.
+
+**The client half** (`bulk-dispatch.ts`, the strip in `queue-toolbar.tsx`). OFFERED and ELIGIBLE are
+different rules and the strip says both out loud: a verb is offered when at least one selected row's own
+served `actions[]` admits it, and its frozen target set is the INTERSECTION of the selection with those
+rows — a row outside it is SKIPPED with its count and reason stated, never silently dropped and never
+sent. Versions are frozen at composition from each row's own descriptor, the confirm copy states the
+per-run transition and the skip count, and a plan with nothing eligible REFUSES to become an envelope so
+"nothing happened" can never be mistaken for "it worked". The result band renders the vector run by run
+— subjects frozen from the plan that was sent, because a band that printed uuids is a report nobody can
+read and re-deriving titles from the current day goes blank the moment a batch outlives its page.
+
+#### The shape hazard compares a run against ITS OWN workflow's served shape
+
+**This minted no decision.** The hazard's contract was already stated — a run whose descriptor moved is
+not comparable with a current one, and a retry would replay retired code. The code compared the wrong
+pair, so this is a defect fix ratified in place.
+
+`RunProvenanceBar` computed `shapeMoved = surface.descriptorHash !== currentDescriptorHash`, where
+`surface.descriptorHash` is the RUN's one-workflow `contractFingerprint` and `currentDescriptorHash` was
+the bootstrap's `descriptorHash` — the hash of the whole eight-workflow SET. **Two different kinds of
+value, so never equal.** Every run the dashboard has ever drawn wore the amber *"Ran under Separation
+shape 59830cf6; runs are served by 76a28eef now … a retry would replay retired code"*, including the
+proof's three runs whose fingerprint was byte-identical to the one `GET /api/v1/explorer` served. This is
+D179's `staleApp` defect inverted, and worse: a warning that could never fire is bad, and one that can
+never NOT fire trains the eye past the one chip that would announce a genuinely retired shape.
+
+- The comparison is against the run's OWN workflow's served fingerprint, which the boot document has
+  always carried per workflow (`WorkflowBootstrapPrimitive.descriptorFingerprint`). **No wire grows** —
+  D251's rule again: check what the served document already answers before booking a row.
+- **Three verdicts, not a boolean.** `classifyRunShape` returns `current`, `moved` (carrying the shape
+  now serving, so the sentence names it) or **`unserved`** — a run whose workflow this build does not
+  register has no current shape to have moved to, and calling that "moved" would state a fact nobody
+  established. It is still drawn as a hazard, with its own sentence, because a retry there has nothing
+  to run.
+- **Both directions are pinned** (`tests/unit/dashboard/run-shape-hazard.test.ts`): identical → silent,
+  moved → warns naming the served shape, unregistered → `unserved`. A hazard is only as trustworthy as
+  its negative case, and this one had never had one.
+
+#### What the row model still owes, and one operator call
+
+The group half of the row model is a contract for a shape nothing can mint (§9.10): every enqueue path
+stamps `shape: "single"`, so D5's settle-collapse, D9's rejected-member arithmetic, D11's member well
+and D14's group-of-one have never run against a real group. The presentation is real and fixture-fed,
+and building it ahead of the workflows was correct; this section says it is ahead.
+
+Two corrections the audit forced, both against prose this doc carried:
+
+- **D11's two numbers were wrong.** `--ds-h-member-well` is
+  `calc(5 × --ds-h-member-line + 4 × --ds-border-w)` = 5 × 28 + 4 × 1 = **144px, five whole lines**
+  (`tokens.css`, `layout-metrics.ts`). The entry claimed *"136px ≈ 5.67 rows … deliberately not 144px"*
+  and described a half-cut sixth row as the depth cue; there is no half-cut row. And an **in-row expand
+  to 20 lines** exists (`--ds-h-member-well-open`) that the entry never mentioned. The components are
+  `MemberWell` / `MemberLine`, not the `PersonWell` / `PersonLine` the prose named.
+- **D9's `rejected` containment arm is not on the wire.** `ContainmentSchema` serves two arms; the row
+  model's vocabulary says three. Nothing mints a rejected member, so nothing is wrong on screen — but
+  the doc's own vocabulary and the served union disagree, and the served union is the one that is real.
+
+And one **operator call**, stated rather than resolved. D16 says cancelling a group has *"no
+confirmation dialog and no undo window"*; the served `cancel-tree` descriptor carries an
+`ActionConfirmWireSchema` whose body counts the members, and the row raises a confirm-first dialog. The
+code's behaviour is the confirm. Either D16's no-dialog half is superseded by the confirm-first pattern
+the whole surface now uses, or the code is wrong; that is an operator's call, and the visible design is
+not relitigated here (D126's rule). D12's queue-row half is the same shape from the other side — the age
+is fully served and the `waiting` pill draws none of it, on a recorded operator direction (*"the word
+names the work, not the wait"*), with the wait rendering in the row's FOOTER meta and, at full strength,
+in the log panel. Both sit under `{#operator-calls}`.
+
+**Wire.** `ref frontend-backend-integration` §5.1.2 owns `QueueBaseFields`' payload shape, the bulk
+endpoint, the action-descriptor rule (§8.5) and the parity references.
+
+<!-- roadmap-status: track-b -->
+- [x] D124 — `endedAt` served in its own right; an in-flight row is schema-refused from carrying one; a terminal row without one draws `duration unknown` (`projection.ts`, `format.ts`)
+- [x] D230 — `runNumber` read from authority, never from a row's position; the trace chip is its sibling, not its substitute
+- [x] D231 — `containment` + `linkedRuns[]`, disjoint by construction; one `PanelRedirectChip` for every redirect
+- [x] D232 — the fifth semantic hue, named for its meaning, chip-only, one colour on the row and the provenance bar
+- [x] D233 — `rename` served as a descriptor-driven control; every run verb CASes `expectedVersion`, `bump` included, no exceptions left
+- [x] D234 — hide/unhide retired stack-wide; ONE whole-run exclusion (archive) inherited by every count; `RunRecord.hidden` a parse-tolerated vestige
+- [x] D235 — the bulk door is N children and one vector; offered ≠ eligible; skips counted and stated
+- [x] the subject-title seam: one declared `subjectProjection`, read from the stored checkpoint, throwing on a non-string leaf (`run-subject-title.ts`)
+- [x] the shape hazard compares a run against its OWN workflow's served fingerprint; three verdicts, both directions pinned
+- [x] D252 — a ledger value names its step, direction and freshness bound, all from the DECLARATION, through the same functions the executor calls (§9.3.1)
+- [x] D253 — three result arms, TWO refusals, one exhaustive `settleCommandResult` fold guarded against a violating fixture (§9.3.1)
+- [!] D16's "no confirmation dialog" against the served member-counting confirm — the code confirms; an operator call (`{#operator-calls}`)
+- [!] D12's gate age is fully served and the `waiting` pill draws none of it, on a recorded operator direction — an operator call (`{#operator-calls}`)
+- [ ] D9's `rejected` containment arm is not on the wire; the row model's vocabulary says three arms and `ContainmentSchema` serves two
+- [ ] D13's `Re-upload` is not in `ActionCommandKeySchema`; the failure summary half is built and served
+- [ ] every group-row fact (D5 collapse, D11's well, D14's group-of-one, `memberPreview`, the rollup) is drawn from fixtures — no `operation` run has ever been minted (§9.10)
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/domain/dashboard/projection.ts, src/server/dashboard/projectors/{queue-row-actions,run-subject-title}.ts, src/domain/dashboard/actions.ts, src/dashboard/surfaces/{queue,queue-toolbar,queue-model,run-identity-model}*, src/dashboard/ds/tokens.css; left: the group shape's producer and two operator calls
+<!-- /roadmap-status -->
 
 ### 9.3 Run detail — open and follow a run
 
 <!-- roadmap: dash-defaults -->
 
-**Stub — written by unit 5.1c.** Inherits D123's `skipped` arm, D225's categorical timeline and
-D259's `replayed` step, D258's occurrence ordinal (whose derivation stays in §2.3, beside the fold
-it corrects), D257's follow, D19's served tab set, D21's equal-width segments, D187's `w-full`, and
-row-model D7/D8/D10/D17. Wire: `ref frontend-backend-integration` §5.1.3.
+**What it is.** The surface whose whole job is to explain ONE run. It is opened from a queue row
+(§9.2) and it names that run the SAME way the row does — the header title goes through the identical
+subject resolver, because a row and the panel it opens are the pair an operator sees side by side.
+
+**What it shows.** A header (title, status, timing, the provenance bar), the persistent step
+timeline, and a served set of sections rendered as tabs. Beside them, on the right, the Context rail
+(§9.3.1). Everything on it is read at ONE `rowRevision`, which is also the version every served
+action CASes against.
+
+**What it commands.** Nothing directly. The gate and park resolutions are §9.4's sections, the field
+corrections are §9.3.1's, and the row verbs stay on the row. The panel is a reader.
+
+#### The tab set is SERVED, and two declared kinds can never be
+
+D19(a) ratified that tabs derive from the panel kind rather than a fixed set, and named four sets —
+Run 2 · Review 3 · Group 3 · Member 2, over `Logs · Review · Receipt` plus `People` on a group. The
+built shape is a **served** set (`availableSections` → `tabsFor`), which is stronger than a fixed
+one, and the served set today is **`Logs` + `Receipt`**.
+
+`RunDetailSectionSchema` declares eleven arms; `availableSections` returns at most seven; and
+`review`, `people`, `captures` and `context-evidence` are never among them — `buildRunSection`
+**throws by name** for the first two, and the client draws them as `UnservedTab`. So two of D19's
+four panel kinds have no distinct set, because the runs that would have them (an OCR packet, a
+delegated group) cannot be minted (§9.10). That is a surface built ahead of its producer, said
+plainly rather than left to be discovered by an operator who clicks a tab that is not there.
+
+`context-evidence` is the odd one: the client FETCHES it whenever it is advertised and hands it to
+nothing — it is explicitly withheld from the rail and no consumer of `sections["context-evidence"]`
+exists. A fetched section with no reader is a wire round trip that cannot be observed to be wrong,
+which is worse than an unserved one.
+
+Two D19 arms carry over unchanged and are worth restating because they are about where evidence
+lives. **(b) Screenshots is not a tab** — captures are evidence and render inside Receipt, beside
+the outcome they qualify, under both the full `RunEvidenceReceipt` and the honest short receipt shown
+before a full one exists; the failure capture keeps its red frame in the tile and the lightbox.
+**(c)/(d) Data is not a tab and not a dialog** — it is a section of the Context rail, edited in
+place (§9.3.1). Tab defaults stay state-driven: a failure opens on Logs, a terminal run on Receipt,
+a running one on Logs.
+
+#### The timeline is CATEGORICAL (D225)
+
+**Operator ruling.** The composed `separations` run drew **eighteen** segments across a panel column
+— *"Separati… Separati… Terminat… Name Se…"* — plus a nineteenth for the gate and duplicate
+`Timecar…` / `Approval…` pairs from the resume. Every label was truncated to illegibility, so the
+surface that exists to say what a run is doing said nothing. The direction: *"we are not trying to
+name everything… group all the tasks from task stores in a category,"* keeping legacy's own step
+vocabulary. The RENDERING is unchanged and not re-litigated — the strip, its three shapes, and its
+rule that **a wait is a state of a step, not a step of its own** all stand. What changed is WHAT a
+segment is.
+
+**A segment is a declared CATEGORY, and a node is a member of exactly one.** A descriptor carries an
+optional `timeline: [{ label, nodes }]` beside its `details` and `subjectProjection` declarations,
+and the factory derives the frozen `WorkflowDescriptor.timeline` from it — resolving each member's
+display label through the same `labelOf` the step projection uses, so no consumer re-derives a label.
+A descriptor that declares nothing gets **one category per node**, the honest and unchanged shape for
+a graph small enough to read node by node. This is the `subjectProjection` seam's rule again: a
+DECLARATION, never a sniff — nothing infers a grouping from node-id prefixes, store namespaces or
+contract ids, because a grouping that is right for eight workflows and wrong for the ninth
+mis-describes a real HR transaction in the one place an operator watches it happen.
+
+**A declared timeline is EXHAUSTIVE and the factory refuses one that is not.** Every node must appear
+in exactly one category; a node left out, named twice, named but undeclared, or a duplicate category
+label each throws at `build()` naming the offender. The reason is the failure mode rather than
+tidiness: a node missing from the declaration would vanish from the timeline **silently** — no error,
+no gap, just a step nobody can see — which is D187's two-pixel panel one level up.
+
+**The fold is served, never computed by the client** (`TimelineWireSchema.steps`). A category's state
+folds its members' loudest-first — `failed` ▸ `blocked` ▸ `active` ▸ `cancelled`, then all-pending ▸
+`pending`, all-done/skipped ▸ `done`/`skipped` — and the mixed remainder reads `active` on a live run
+and `pending` on a terminal one, because a terminal run's unreached members genuinely never ran. A
+member's state is its LATEST execution's; its duration is the SUM of every measured execution. **A
+re-execution folds into `×N`, never a second segment** — a gate park and its resume are two
+executions inside one attempt (D214), so an `always-rerun` node upstream of a gate emits its span
+path twice, and drawing two identical segments is D123's "same absence seen twice" one level up. A
+gate node owns no task span, so it takes its state from the run's own gate records and never a
+duration: **the wait belongs to the gate, and the gate belongs to its category.** Every segment
+discloses its members — label, state, duration — on hover and focus, so grouping hides nothing it
+folded.
+
+`steps` is optional for exactly one reason (D133 read-forward): a `RunDetailWire` frozen into an
+archived record before this leaf existed must still parse, and a replayed historical workflow has no
+registered descriptor to group by. Both serve no `steps` and the client renders the per-event strip,
+which is the same picture it drew before. The `events` array is **unchanged and still served in
+full** — the categorical strip is a presentation of that history, never a replacement for it.
+
+**Separations' six categories, as approved** (`docs/migrations/separations.md` §9.18): Kuali
+extraction · Identity check · Job summary · Kronos timecard · UCPath transaction · Kuali
+finalization. Legacy's seventh step, `transaction-check`, folds into *UCPath transaction* rather than
+standing alone, because in this tree the pending check IS the sweep transaction plus the write
+sequencer's own probes. The gate is a member of *Identity check*.
+
+#### A REPLAYED step is its own arm, and it is never `pending` (D259)
+
+A replayed node emits no spans, by design (`ref workflow-model` §5.3), and this timeline folds spans
+— so a step whose checkpoint the run replayed had nothing to render and came out **`pending`**. Track
+C's connection proof watched a finished run report `Kuali extraction — pending`, `Job summary —
+pending` and `Identity check — pending, took 0s`, the last on the very category whose gate the
+operator had personally approved a minute earlier. `pending` means *this has not happened yet*, which
+is false twice over: it did happen, and its result is the one the run consumed.
+
+The fix is D144's shape — **the reader moves, and nothing fabricates a span.** `TimelineStepWire.state`
+and its members gain a `replayed` arm, and a replayed member carries `replayedFrom`: the stored
+checkpoint's own `attempt` (D221's item attempt) and, when the row names one, its `claimGeneration`
+(D214's execution). A pre-D214 row names no generation, so the wire omits it rather than fabricating
+`1`. A replayed member carries **no duration** — a replay emits no span, so nothing measured it, and
+`0` would read as "it ran instantly", the `took 0s` this decision exists to delete. The schema refuses
+both halves of the pairing and refuses a measured replay.
+
+**Three conditions, each closing a way the claim could be false.** A step is `replayed` when it has no
+task span AND: (1) the run is terminal `done` — only then did the executor visit every node, so "no
+span" cannot also mean "the run stopped before reaching it", and a failed or cancelled run keeps
+`pending`; (2) a checkpoint exists at `(workflow, itemId, nodeId)` — the SAME item-scoped read the
+executor's own planner makes; (3) a DIFFERENT run wrote it — a row this run wrote is evidence the node
+executed HERE. A category is `replayed` only when EVERY member replayed; one member that executed makes
+it `done`. A settled gate is untouched: a gate never replays across runs, so it still reads `done` from
+its durable record.
+
+On screen it is the hollow ring and outlined bar `skipped` uses — nothing happened HERE — in the
+verified-done hue, because the fact is settled; the word `replayed` where a measured step prints its
+duration; and `attempt N` on the member line. **Hue is never the distinguisher: shape and word are.**
+
+Two residuals, stated rather than hidden. A node this run's branch excluded — or whose declared `when`
+was false — while an EARLIER run of the same item executed it also lands in the replayed arm, because
+the executor's replay/skip decision is durable nowhere this projection reads; the trigger that closes
+it is D114's terminal `not-run` reasons reaching this query. And a node whose checkpoint THIS run wrote
+but whose spans are gone (a pruned stream) stays `pending` — "executed, span not folded" is a different
+honest arm and this build does not claim it. **Rejected:** emitting a span for a replayed node (it
+would make the executor's own replay policy untrue, and a synthetic span is exactly D144's
+fabrication); inferring reach from the declared timeline order (author-controlled presentation, not a
+topological fact); and leaving the fold alone and explaining `pending` in a tooltip (the wrong word is
+what the operator reads at a glance).
+
+#### `skipped` is its own arm and carries its closed reason (D123)
+
+`RunDetailWire`'s state enum used to be `pending|active|done|failed|blocked|cancelled`, so
+`buildRunDetail` mapped span outcome `skipped → cancelled`. In the D74 exit run the durable result was
+exactly right — `crm-dates` recorded `state: not-run, reason: condition-false` — while its timeline row
+said **Cancelled**, and this doc's own status vocabulary defines `Cancelled` as *"You stopped it. Not
+an alert — a deliberate act."* A branch whose condition was false is the opposite: nobody acted, and
+nothing was interrupted.
+
+- `TimelineEventWireSchema.state` is `pending|active|done|failed|blocked|cancelled|**skipped**`. The
+  query's closed mapping is `done→done`, `failed→failed`, `skipped→skipped`, `interrupted→blocked`,
+  `cancelled|discarded|superseded→cancelled`.
+- Every timeline event carries `notRun`, an explicit absence union. On a `skipped` event it is
+  `{ state: "present", reason }` over the **same closed vocabulary the durable result uses**
+  (`condition-false | branch-not-selected`), or an explicit `{ state: "absent", reason: "this step did
+  not run; its span recorded no reason" }`. A non-skipped event may never carry one — the schema
+  refuses it. **A missing reason is never back-filled.**
+- The reason reaches the wire as DATA, not inference: the executor stamps `notRunReason` on the
+  `span.ended` task event when it skips a node by `when`, the projector folds it verbatim, and the
+  query reads it. One fact, one vocabulary, three places, pinned by a parity arm in
+  `tests/unit/events/span-events.test.ts`.
+- The surface renders it distinctly and NOT by hue: a hollow ring and an outlined dashed bar against
+  `cancelled`'s solid one, with the accessible name `<label> — skipped, did not run: <why>`.
+
+#### Every step segment is the same width, and the duration is printed (D21)
+
+**Ratified 2026-07-27.** Equal-width segments regardless of duration. Each prints its duration beneath
+it, and the working / waiting totals sit on the axis below.
+
+**This reverses a prior operator-directed design.** The timeline was proportional — width ∝ elapsed —
+chosen deliberately on the grounds that the width WAS the data, and later hardened by clamping the gate
+wedge to ≤1.5× the step total while printing the real age beside it. Both the maths and the clamp are
+gone. **Why:** a genuinely proportional 34-minute gate beside three minutes of work is a true 91% of
+the track, and at 91% the step labels crush to `3.¹2 4..`. A timeline whose labels cannot be read tells
+you nothing about where the time went either — the literal encoding destroyed the thing it was
+encoding. Equal widths stay legible at every duration spread, including the ones this product actually
+produces (a gate is usually an order of magnitude longer than the work around it, so the pathological
+case is the common case).
+
+**Why this is NOT a no-fabrication violation, stated so a future agent does not "restore honesty".**
+Equal widths make no claim about duration, precisely BECAUSE the duration is printed as a number beside
+every segment and the totals are on the axis. Nothing implies a length it does not also state in words.
+The rule forbids *inventing* a number or drawing a quantity the data does not support; it does not
+require every visual dimension to be a data channel. Inventing the value was the bug the clamp era
+fixed, and that fix (`now − gate.openedAt`, never `max(active, 90)`) is retained in full. The operator
+made this call verbatim — *"all the timeline elements should have equal sizes doesnt matter the time"*
+— so **a future agent must not restore proportional widths on no-fabrication grounds.** If
+proportionality is ever wanted again it needs a fresh operator decision, not a correctness argument.
+
+Two 2026-07-28 extensions supersede the entry's original "gate/wait segment" and "dashed" wording. **A
+wait renders on the current step's OWN bar** — hatched, true elapsed age printed beneath — rather than
+as a separate trailing gate segment: a wait is a state of a step, and the old trailing segment meant
+`Your review` occupied two of six slots and read as two separate things, one apparently finished. A
+fail-safe is kept deliberately: a gate whose run records no waiting step still draws the old trailing
+segment, because a true fact is never dropped for want of a matching shape. And **a queued run draws
+every segment outlined and empty**, so the track states the run's SHAPE before it starts; the outline is
+continuous, not dashed, because the dash is spoken for (`Write parked` is the one thing in this product
+that dashes, and nothing else may borrow the cue). The track therefore has exactly **three legible
+states**: outlined-empty (not reached) · solid (done, or being worked now) · hatched (stopped here, on
+you).
+
+#### A rehearsal's terminal outcome is never `verified-done` (D238)
+
+**Observed on a real settled run.** `run-detail` mapped lifecycle `done → verified-done` mechanically,
+so the composed separations DRY RUN that reached its preview terminal on doc 4502 rendered the label
+this product reserves for an **independently verified real completion** — while the receipt for the
+same run said `partial` / `unknown` with a load-bearing `DRY_RUN_PREVIEW` warning, and the authority
+schema itself carries `CHECK (result <> 'verified-done' OR confidence = 'verified')`.
+
+**The verdict is the receipt's own, and there is no new tier.** A terminal `done` run whose OWN
+envelope asked for a dry run reached a PREVIEW terminal — nothing staged durably, no write intent, no
+fence, no commit — and it takes **`partial`**, which is exactly what `buildRunEvidenceReceipt` derives
+for it. The `result` enum and the confidence vocabulary are unchanged; the outcome arm gains only
+`rehearsal`, a statement about which KIND of run produced the verdict, restating the envelope fact D6
+already puts on the queue row. A schema refinement makes `verified-done` beside `rehearsal`
+**unrepresentable**, so the pair cannot be re-derived by a later mapping. `rehearsal` is
+`z.literal(true).optional()`: absence is the only other spelling of "not a rehearsal", so `false` would
+be a second one, and optional is D133 read-forward. Only the `done` arm can carry it — a dry run that
+failed or was cancelled reached no preview terminal.
+
+**What the operator sees:** the outcome bar leads with the word — `dry run · partial · 09:20` — because
+`partial` alone reads as a run that half-worked, which is the opposite of what a clean rehearsal means;
+the verdict is only readable once you know which kind of run produced it. The sentence is an exported
+pure function (`terminalOutcomeText`) so it is pinned by a test rather than only by the parity corpus —
+this tree renders no React in the unit lane, so an operator-facing sentence is only as pinned as the
+corpus unless you extract it. D22's status vocabulary is untouched: `partial` still renders with the
+Done-with-warnings treatment, and the REAL `verified-done` path is unchanged in every particular.
+
+**Beside it, D237's decision record** (`ref operator-trust` owns the derivation): a settled gate draws a
+DECISION RECORD in the run's own stream at its `resolvedAt`, in the same geometry as the open gate's
+decision card — verdict, approver, instant, all off one durable `gate_results` row. The card's tint
+carries the verdict and the chip goes loud only for a REFUSAL, because a rejected identity is the one an
+operator must not read past. Before this the panel drew a gate only while it was open, so a settled
+gated run said nothing about the one step a human performed.
+
+#### The open panel FOLLOWS its run (D257)
+
+**What was wrong.** `useRunDetail` refetched only when `runId` or `detailNonce` moved, and
+`detailNonce` was bumped ONLY by a dispatched command or an applied Data edit — never by the SSE day
+stream. So a panel left open through a run's own progress froze on the wire as of the last thing the
+operator clicked. On the proof: after the gate approval, the panel's header still read **`Queued` /
+"run is queued"** while the queue row beside it read **`Done · took 8m 20s`** and the BFF served
+`status: "done"`, and its tablist still offered only `Logs`. Because `receipt` enters
+`availableSections` only at terminal, **the evidence receipt was unreachable from a panel you had
+open** — the surface whose whole job is to explain a run did not notice the run finishing. A reload
+fixed it, and a workaround is a finding.
+
+- **The run's own served `rowRevision` is the follow key.** It is already on the day wire (it is what
+  every served action's CAS `expectedVersion` binds to), it is the authority version the detail is read
+  at, and it moves exactly when the run moves. Nothing polls, and a run whose row this day does not
+  hold (an archived run, another day's run) serves no revision and is not followed, because it cannot
+  move.
+- **It tracks CHANGES, never a difference.** Comparing the served revision against the loaded detail's
+  would refetch in a loop for as long as the two disagreed — and they legitimately can, since one is
+  read from authority and the other from the projection, so one is routinely a beat ahead. The decision
+  is a pure fold (`planRunDetailFollow`: `adopt` on a run switch, `settle` after the window on a move,
+  `hold` otherwise) so it is pinned by a test rather than only by a live run.
+- **A burst coalesces; a switch does not wait.** A run's version moves on every heartbeat, node
+  transition and rename, and several can land inside one span-tail poll, so a moved revision is adopted
+  after a short settling window rather than per envelope. A run SWITCH adopts at once — the switch
+  already refetches, and waiting would spend a second read on a run just read.
+- **The sections follow for free, and neither half blanks.** `usePanelSections` keys on the detail's own
+  `rowRevision`, so a followed detail re-reads every open section with it. Both keep what they are
+  showing while the next read is in flight: a panel that blanked to a spinner every time its run
+  advanced a node would be unreadable for exactly the runs worth watching. Opening a DIFFERENT run
+  still clears both, because the previous run's sections beside this run's header is the wrong answer
+  rather than a stale one.
+
+#### The panel had no width, and the accessibility tree said it did (D187)
+
+`LogPanel`'s root is a flex child that never claimed one, so it sized to content and its own
+`grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]` resolved to **`2px 376px`**: the entire run-detail
+panel — where the failure record and the evidence receipt live — was a two-pixel sliver at every
+viewport from 1i-spine until 2j, while the a11y tree reported every word of it. D82's acceptance bar
+was unmet ON SCREEN through a dozen green gates and two deliberate reference reviews. The fix is
+`w-full` on the panel root; the lesson is §2.3's and the parity lane's, and it is why the timeline's
+own reference gap below is recorded rather than shrugged at.
+
+**What this square still owes.** The parity corpus does not photograph the categorical strip: the
+run-detail parity fixture composes its `RunDetailWire` directly and serves no `steps`, so every
+reference records the per-event fallback. That is a corpus gap with an owner, and it closes with the
+fixture work and a deliberate re-freeze, not with a second re-freeze bolted onto a doc pass. The
+delegated-run halves of D7 (a packet's extracted count while OCR review is open), D8 (approval exists
+only on the Review surface, disabled until every record is visited), D10 (depth-2 lookups surface on
+the OCR row and never on the packet group) and D17 (per-member confirmation numbers inline in the
+Receipt rollup) describe sections this build cannot serve; their contracts are §9.10's and the
+producers are the OCR and group workflows nobody has built.
+
+**Wire.** `ref frontend-backend-integration` §5.1.3 owns `RunDetailWire`, the section endpoints, the
+follow key on the day wire and the parity references.
+
+<!-- roadmap-status: dash-defaults -->
+- [x] D19 — the tab set is SERVED, not fixed; captures live in Receipt; Data is a rail section edited in place
+- [x] D21 — equal-width segments with the duration printed; the wait on the step's own bar; a queued run draws its shape; three legible states
+- [x] D123 — `skipped` is its own arm and carries the durable result's own closed reason, stamped by the executor and folded verbatim
+- [x] D225 — the timeline is categorical, the fold is served, and a declared timeline is exhaustive or the factory refuses it
+- [x] D259 — a replayed step is its own arm with `replayedFrom` and no duration; three conditions, two residuals stated
+- [x] D238 — a rehearsal takes the receipt's own `partial`; `verified-done` beside `rehearsal` is unrepresentable
+- [x] D237 — a settled gate's decision record renders inline at `resolvedAt` off the durable `gate_results` row (§9.4)
+- [x] D257 — the open panel follows its run on the served `rowRevision`; changes not differences; neither half blanks
+- [x] D187 — `w-full` on the panel root; the two-pixel run-detail column is closed
+- [x] D258 — the timeline event id carries the occurrence ordinal, read forward (derivation stays in §2.3, beside the fold it corrects)
+- [ ] `review` and `people` are declared and never served — `buildRunSection` throws by name and the client draws `UnservedTab`; the runs that would carry them cannot be minted (§9.10)
+- [ ] `context-evidence` is fetched whenever advertised and handed to nothing; no consumer exists
+- [ ] no parity reference photographs the categorical strip — the run-detail fixture serves no `steps`
+- [ ] D17's per-member receipt table: `receipt.tsx` renders no member rollup
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/server/dashboard/queries/run-detail.ts, src/domain/dashboard/run-detail.ts, src/base/workflow.ts, src/dashboard/surfaces/{log-panel,log-panel-model,receipt}*, src/dashboard/state/use-run-detail.ts; left: four declared-unservable sections and the categorical strip's missing reference
+<!-- /roadmap-status -->
 
 #### 9.3.1 The Context rail — Data, Edit Data, provenance
 
-**Stub — written by unit 5.1c** (ruling 3: a sub-square of run detail, because the tree's
-`WIRE run detail` line names the data rail and the tree's `builds:` line must not have to change).
-Inherits D168/D252's Data section, D253's two refusal arms, and the two named-open arms of D19(c).
-The FLOW and the field policy stay `ref data-intake-and-edit-data` §6.4.1's.
+<!-- roadmap: track-b -->
+
+A sub-square of run detail rather than a square of its own: the tree's `WIRE run detail` line names
+the data rail, and the rail has no life apart from the run whose panel it rides. Its `track-b`
+checklist lives in §9.2's status block; this section adds no second one.
+
+**What it is.** The right-hand column of the run-detail panel, and the ONE place where a run's data
+ledger is both READ and CORRECTED. That merge is the decision: Logs and Data were mutually exclusive
+tabs, so the operator could not watch a run's log stream and see what that run read and wrote at the
+same time — a significant part of the reported clutter, because the panel appeared to hold more than
+it did while half of what it held was behind the other half. The split is by **reading pattern**, not
+importance: live state (what the run is doing, what it needs from you) stays in the centre column;
+reference data (what it read and wrote, who asked for it) moves to the rail.
+
+**Reads are editable in place; writes are shown and never editable.** The separate `Edit & re-run`
+dialog that briefly carried the editing half was introduced and then REMOVED at operator instruction
+(*"we also need the edit data and data tab to be together so i can have a feel of how its like to
+edit the data"*). The section WIDENS while editing — `--ds-w-context-rail-wide`, 520px, through the
+log panel's own grid — instead of opening a modal. `DemoTab` and `tabsFor` drop `"data"` entirely, so
+no dead tab id is reachable; `detailSurfaces` separately carries the `data` capability for the rail.
+Everything D19(c) promised survives byte-for-byte through both amendments: staged writes still render
+as staged, unconfirmed still says unconfirmed, nothing gains success styling it has not earned, the
+unlock rules (`editPolicyFor`, with the reason ALWAYS shown) and the CAS on the checkpoint generation
+carry over unchanged. The freshness *confirm* stays a dialog — it is a question with a typed answer
+and two mutually exclusive exits, which is what a dialog is for.
+
+**As-built for reads (2i-C, D168).** `editPolicyFor` composes three policies, each carrying its own
+sentence onto the lock: the entry's field policy and the run-level policy arrive ON the
+`context-data` wire, and the live staleness signal is `liveLockReasonOf` over the day stream's
+queue-row status — there is still no per-run SSE client, and the queue row flipping out of
+`queued` / `awaiting-approval` is the same "this run was claimed while you were editing" fact, with
+the kernel's CAS as the authority either way. Editing enters on FOCUS of a value box; Save issues one
+`run/edit-checkpoint` command whose applied result refetches the detail at the bumped `rowRevision`,
+which re-reads every open section through the same revision. A staged correction renders beside the
+recorded value it will supersede — *staged renders as staged*, applied to corrections.
+
+#### A ledger value names its STEP, its DIRECTION and the bound it is held under (D252)
+
+The rail served a label, a redacted value, an edit policy and an observation clock, and its own
+header comment recorded the two hardest remaining axes as unservable: *"nothing durable says whether
+a recorded field was read or written"* and *"the originating system is still absent"*. **Both
+sentences are true of the `run_checkpoints` ROW and false of the descriptor that produced it** —
+D251's false-deferral shape one surface over, a comment that tells the next reader not to look.
+`ContextDataSectionSchema.entries[]` grows two OPTIONAL blocks, read forward (D133).
+
+- **`origin`** — `{ nodeId, step, dir, system? }`. `dir` is the producing node's task **`effect`**: a
+  `task` node runs a `read` contract and a `transaction` node's sink is a `commit`, and `effect` is
+  `ref task-contract`'s own word for what a contract does to the world. It is a DECLARATION, never an
+  inference from the value — an entry with no field identity (a key recorded under an earlier
+  descriptor) draws neutral ink and **no arrow**, because defaulting to `read` would claim the run
+  changed nothing, which is the most expensive thing in this product to be wrong about. `system` is
+  the driver system of the store implementing the task; a headless store owns none and the field is
+  then absent rather than labelled.
+- **`freshness`** — `{ maxAge, override, feeds[] }`, `ref workflow-model` §5.5's reuse bound. `maxAge`
+  and `override` are resolved through **`resolveFreshnessBound`**, the function
+  `auditCheckpointFreshness` itself calls, so the sentence an operator reads and the rule the
+  executor enforces are one declaration rather than two opinions that can drift. `feeds` is
+  `reachableCommits` over the static graph. An unbounded policy travels as the WORD `unbounded`,
+  because `JSON.stringify(Infinity)` is `null` and a deliberate bound would arrive as a missing one.
+
+The schema **refuses a `freshness` block with no `origin`**: a bound is the producing step's
+declaration, and one served without a step to attribute it to is an unowned constraint on screen.
+
+Where the derivation lives is the second half. `RunDetailDescriptorView` grows `dataOrigins`,
+composed at the root beside `gateNodes` and `writeContracts` — `src/server/dashboard/queries/` never
+reaches the descriptor builders, and this view additionally needs the MODULE, because a task's system
+belongs to its store and a descriptor may not reach one (D106). Only the field paths a Data entry can
+carry are resolved (`details[].source` ∪ `capabilities.editData.fields`): a bound for a path no
+surface serves is a fact nobody reads.
+
+**What the rail draws.** Level 1 is the STEP, grouped by `origin.nodeId` and never by label — two
+steps may record a field of the same name, and merging them would attribute one step's read to
+another. The system chip rides the heading, not each row. The row rail carries the direction as a
+colour with an arrow and an `sr-only` word beside it, since colour is never the only differentiator.
+The bound prints under the value it bounds, and **only where it can bite**: `auditCheckpointFreshness`
+skips a checkpoint whose facts reach no commit, so an empty `feeds` set prints nothing rather than an
+age limit that refuses nothing.
+
+**What is still not drawn, and why none of it is a wire gap.** The demo's `refreshed` badge needs the
+superseded reading beside the current one and this wire carries one value per entry. `staged` and
+`unconfirmed` are STRUCTURAL absences: a `prepare` contract is `checkpoint: "in-memory-only"`, so a
+staged value never becomes the checkpoint a ledger row reads from, and an unconfirmed write is a
+`parked-write` run whose transaction node has no checkpoint at all — its honest surface is
+`ref write-safety` §4.1's park section (§9.4), which already serves it. A second badge in the rail
+would be a second authority for one fact.
+
+#### A refused command that looks like a save (D253)
+
+`CommandResultSchema` has three arms and **TWO of them are refusals**. The rail's Data save branched
+on `rejected` alone, so a CAS `conflict` fell through to the SUCCESS path: the rail closed its editor,
+discarded the operator's drafts and reported a correction **saved** that the kernel had refused.
+Nothing in the file looks like the banned pattern — no `catch`, no `??`, no default value — because
+the fallback is the ABSENCE of a branch, which is why a fail-loud review reading for `catch { return
+[] }` walks straight past it. It is reachable by ordinary use, not by a corner case: a run's version
+moves whenever a worker claims it or the day stream folds a span under an open panel.
+
+Every module under `src/dashboard/**` now settles through ONE exhaustive fold, `settleCommandResult`,
+whose `switch` over the discriminant makes a fourth arm a compile error, and the
+`command-result-exhaustive` guard refuses any dashboard module that names one refusal arm without the
+other — against a checked-in violating fixture carrying the exact shipped shape, so a walker
+resolving nothing cannot report the tree clean. The two refusals stay **distinguishable in the
+sentence**, because the operator does different things about them: a conflict gets the server's
+`currentVersion` and never the words "try again", since re-sending the same envelope carries the same
+stale `expectedVersion` and would be refused identically.
+
+**What this square still owes.** Two D19(c) arms are built for reads and named open: the
+`Load a prior run` / `Start a run from this data` footer, and `actions[]` gating at the `data`
+placement — the served-actions projection is still empty there, and the wire's `editing` union
+carries the gate until it lands. Beside them sits the fetched-and-unread `context-evidence` section
+(§9.3): it is explicitly withheld from the rail and has no consumer anywhere.
+
+**Wire.** `ref frontend-backend-integration` §5.1.3 owns `ContextDataSectionSchema`, the
+`edit-checkpoint` command and the parity references. The FLOW and the field policy — what may be
+corrected, under what freshness rule, and what a correction does to a resumed run — stay
+`ref data-intake-and-edit-data` §6.4.1's.
 
 ### 9.4 The gate ceremony — and the parked-write resolution beside it
 
-**Stub — written by unit 5.1c.** Inherits D226's three ceremonies, D237's settled decision record,
-D211's write plan inside the packet, and row-model D20's two typed exits. Wire:
-`ref frontend-backend-integration` §5.1.4.
+<!-- roadmap: sep-dash -->
+
+The `sep-dash` checklist lives in §9.1's status block; this section adds no second one.
+
+**What it is.** The two places where the system STOPS and asks a human, rendered INLINE in the run's
+own log stream rather than as a banner or a modal. A gate is a *pre-submit* hold — the run has
+written nothing and wants a decision. A parked write is a *post-fence* hold — the run may already
+have filed something and does not know. They look adjacent and mean opposite things, and keeping
+them apart is the whole point of D20.
+
+**What it shows.** A parked run's detail advertises exactly one ceremony section — `identity-gate` or
+`parked-write` — and the section carries the packet, the SERVER-computed `approvalShape`, and the
+typed resolutions. **The surface renders exactly the shape the server named; an unknown shape refuses
+by name and blocks the send.** A frontend free to choose the control could quietly turn every gate
+into one click, which is `ref write-safety` §14.6's rubber-stamping risk manufactured by accident.
+
+**What it commands.** `resolve-gate`, `resolve-write-present`, `resolve-write-absent`, and nothing
+else. The command carries only what no served fact supplies; every other leaf is read off the
+section. The backend stores the decision and the gate result atomically and enqueues any
+descriptor-declared children in the same authority transaction; a conflict returns the fresh
+projection and the client keeps the draft for comparison.
+
+#### The three ceremonies, and the refusal that is the fourth (D226)
+
+The frontend had implemented ONE of the shapes `ref write-safety` §14.6 risk 1 requires.
+`choose-a-candidate`, `type-the-eid` and every rejection were refused by name in
+`command-dispatch.ts`, so **a separations run whose packet was anything but unambiguous had no answer
+available in the dashboard at all** — the run parked, the operator opened it, and the surface offered
+nothing. All three now exist against the server-computed shape:
+
+- **`one-click`** — the unambiguous packet, approved as one act.
+- **`choose-a-candidate`** — **no default is selected**, and the `chosenFrom` label is taken off the
+  SERVED option rather than re-composed on the client, so the record names the string the operator
+  actually read.
+- **`type-the-eid`** — the operator re-enters the identifier, which is the one ceremony that cannot
+  be completed by muscle memory.
+- Plus **reject-with-reason** on all three, and an **unrecognised shape draws a named refusal instead
+  of the approve button.** A ceremony this build cannot render must not degrade into the cheapest one.
+
+The packet leads with DISCONFIRMING evidence, and `approvalShape` is computed SERVER-side, for the
+reason the incident that motivated the gate makes plain:
+`classifyNameSimilarity("Hernandez, Jose Santos", "Santos Hernandez")` returns **`same`**, because the
+token alignment tolerates extra tokens on the longer side, and legacy fires its wrong-person control
+only on `different`. That single fact is the argument for an ALWAYS-GATE in one line. The parity
+corpus gained its first gated run with this decision.
+
+#### The packet carries what the WRITES will consume (D211)
+
+A gate DEPENDENCY is not a gate PACKET, and the difference is the digest an approval binds to.
+`ref write-safety` §14.5 binds an approval to the digest of the exact packet SHOWN, so a value the
+gate merely depends on is a value the approval does not cover. `SeparationWritePlanSchema` therefore
+rides INSIDE `IdentityEvidencePacketSchema`: the digest covers the template, the reason code, the
+empl record, the department option, the payroll titles, the reconciled dates and the comment text the
+writes will consume. **A date that moves after approval RE-OPENS the gate — before this, approving a
+person and approving a date were the same click.** The `not-composed` arm is REQUIRED with a stated
+reason rather than optional, because an optional block is one a composition can forget to fill while
+every gate still renders and every guard still passes.
+
+#### A settled gate names the verdict, the approver and the instant (D237)
+
+`run-detail`'s `resolved` gate arm was keyed on the span stream's `resolutionKey`, and the command
+service emits the literal `resolved` for EVERY gate — deliberately, with a comment naming the
+display-key deferral. So the approve/reject arm was **structurally unreachable**: every settled gated
+run's panel reported the gate ABSENT, in a reason that reads like a data problem, while `resolvedBy`
+had sat in authority since D202 and in the receipt since D204.
+
+The verdict now comes from `authority.gateResults.listByRun` through D204's own declared arm table,
+with `resolvedBy` / `resolvedAt` off the row the kernel wrote inside the resolving transaction — the
+SAME derivation the receipt uses, so the two surfaces an operator reads side by side cannot name two
+different humans. `resolvedBy` is REQUIRED on the arm, which is safe exactly because the arm was
+unreachable: no served wire and no archived record can hold a `resolved` gate that predates it.
+
+**Panel and receipt diverge on ONE thing, deliberately.** The receipt REFUSES to derive over an
+undeclared gate or an unlisted arm value — it is the durable artifact. The panel must still render
+the run it explains, so every such gap becomes a NAMED absence instead, including the one only the
+projection can create: a folded `gate.resolved` with no durable row beside it. Two surfaces, one
+derivation, two different things to do when it fails.
+
+The record draws in the run's own stream at its `resolvedAt`, in the same geometry as the open gate's
+decision card — verdict, approver, instant. The card's tint carries the verdict and the chip goes
+loud only for a REFUSAL, because a rejected identity is the one an operator must not read past.
+
+#### `Write parked` means an unknown write outcome, and nothing else (D20)
+
+`Write parked` is only for a write whose outcome is genuinely **UNKNOWN**, and it has exactly two
+typed resolutions: **confirmed-present** and **confirmed-absent** (`resolve-write-present` /
+`resolve-write-absent` over `ref write-safety`'s durable intent state). **A pre-submit hold is NOT
+parked — it is a gate.** Parked is the one status that means *we may have already filed something*,
+and diluting it with holds whose state we know destroys the only signal that warrants a live probe.
+(The rebuild demo's `sep-rosa` fixture, which labelled a pre-submit hold `Write parked` with a
+"Resume & submit" action, is wrong and was re-authored as a gate.)
+
+**Reinforced: a parked row is structurally sent no data-mutating command.** The prior action policy
+offered `rerun-with-existing-data` on a parked row — a fresh run seeded from a write whose outcome is
+unknown, which is exactly the duplicate-termination path this decision exists to prevent. A parked row
+is now sent **no** `data`-placement command at all; its only exits are the two typed resolutions. And
+because every control derives from the served `actions[]` (§9.2), the hazardous command is
+**unreachable, not merely hidden.**
+
+#### The confirmed-present arm serves its PROOF CONTRACT (D245)
+
+`resolvePresent` refuses any proof whose `schemaHash` is not the commit contract's own and then parses
+the value through that exact schema — and the parked-write section served **neither the hash nor the
+shape**, so no client could compose either half. The arm was drawn DISABLED on every parked run in the
+build (`proof-contract-unserved`), leaving a write that DID land exactly two exits: record it
+**absent**, which is a durable lie that authorizes a second real submit against a live HR system, or
+leave it parked forever. The copy also told the operator to *"resolve this write from the CLI"*, and
+no run-mutation CLI has ever existed — `POST /api/v1/commands` is the only mutation door.
+
+The section now carries `proofContract`: the commit task, the completion kind, the exact `schemaHash`
+a resolution must echo, and the proof schema DESCRIBED as an ordered list of typed fields
+(`src/validation/proof-shape.ts` — literals the schema pins, constrained strings with their own
+pattern, closed option lists, bounded integers, booleans, addressed by dot path through one nested
+level). Both halves are derived by the composition root beside `gateNodes`, on that view's own rule:
+the BFF queries never reach the descriptor builders, and a query that recomputed a schema hash would
+be a second copy of the contract's identity.
+
+**Nothing is guessed and nothing is pasted.** A shape this build cannot describe answers with a NAMED
+`unavailable` reason and leaves the confirmed-ABSENT arm reachable, because a free-text JSON box is a
+client authoring a durable record about a real HR transaction with only its own opinion of the shape.
+The form **PRE-FILLS NOTHING** — the run holds what it TRIED to write, and offering that back as the
+proof is §14.6's rubber-stamping shape one control over — and the operator does not assert the
+schema's literal `source`, which names which page shape the fields come from; who vouched is recorded
+where it already was, as `proofSource: "operator-attestation"` on the outcome and the ledger entry,
+with the evidence note retained in the command journal. Client-side refusal is per field and EARLY
+over the constraints a wire can carry; a leaf carrying a `.refine()` is served `serverOnlyRules: true`
+so the surface says the server checks more than the box does rather than implying its own tick is the
+verdict. A proof that does not fit is a typed `rejected` / `schema-mismatch` rather than a throw the
+dialog could only report as a transport failure.
+
+**What this square still owes.** The mechanism is generic — the `parked-gate` / `parked-write`
+lifecycles, the section as a wire resource, `resolve-gate` with a schema-bound `result`, the
+`identity-gate-dominance` guard, `gate_results` authority, D204's receipt derivation over the gate
+row. **The PACKET is separations-shaped**, and a second gated workflow either adds its own section arm
+or generalises it; that generalisation is this square's real remaining work and is what
+`{#order-4-dash}` and `{#order-9-dash}` will force. One contract statement is corrected rather than
+carried: an earlier draft described a **Review** gate — records streaming per page, per-field drafts,
+"one gate command containing the full correction set". `GateCommandRequest`'s payload is a single
+schema-bound `result` and the `review` section is declared-unserved (§9.3), so that flow describes
+machinery with no producer on either side. The OCR review gate arrives with the Review panel kind.
+
+**Wire.** `ref frontend-backend-integration` §5.1.4 owns the five-step sequence, the section payloads,
+the three commands and the parity references.
 
 ### 9.5 Archive · Activity · Explorer — the three read surfaces
 
@@ -2947,684 +3167,473 @@ the process locks — stays in §2.5, and the `apply-settings` deferral in §2.4
 
 ### 9.9 The shell — top bar, worker cards, keys, theme
 
-**Stub — written by unit 5.1c.** A dashboard-only square. Inherits *Shell and layout as rebuilt*,
-D126's accessible-name channel, D256's served clock, row-model D18's pill row and D22's shortened
-vocabulary, D219/D220/D241's grouping rules and D224's action-bar island.
-
-### 9.10 The delegation and row model (row-model D5–D24)
-
-**Stub — written by unit 5.1c.** The material is everything from *Row-model D5* to *Shell and layout
-as rebuilt* below this line: the operator-ratified 2026-07-25 series, its collision warning against
-`reference/decisions.md`'s own D-numbers, and the two dated amendments. Its group-row half is a
-contract for a shape nothing can mint yet (§1.3), which the rewrite says once here rather than in
-each entry.
-
----
-
-### Row-model D5–D24 — the ratified series (2026-07-25)
-
-Status: **ratified by the operator 2026-07-25.** These continue the **row-model decision series**
-ratified 2026-07-24 (`docs/rebuild/history/design-inputs/2026-07-22-second-look.md` §6.6 — D1: three row types Run/Group/Member
-with review-as-status and eight statuses; D2: a PDF upload is always a Group; D3: unrunnable items
-are typed Rejected Member Rows, delete-only; D4: a delegated OCR run keeps its own Run Row in the
-OCR panel plus a link from the parent; D5: groups default collapsed, auto-expand on a member
-`Waiting on you` or `Failed`). **This series is not the reconciliation memo's D-numbers**
-(`reference/decisions.md` D1–D144) — cite these as *row-model D6…D24*, prefix mandatory. The
-collision is real: this section's **row-model D22** shortens the status vocabulary, while the memo's
-bare **D22** is an unrelated contract-shape/guards ownership split. `reference/decisions.md` carries
-the matching warning at its top; keep both in step.
-
-D6–D17 close the twelve delegation questions in `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7;
-D18–D20 close three build-gating decisions in `docs/rebuild/history/design-inputs/2026-07-25-demo-feature-plan.md` §6. The
-vocabulary is that ledger's: **`containment`** = `member | linked | rejected` (§3), Group Row anatomy
-+ presentation ladder + rollup precedence (§4), delegation shapes S0–S7 (§5).
-
-**Amended 2026-07-27 by the demo redesign** (`?view=rebuild-demo`, commits `1d656f76`..`a380406c`):
-**D11** loses its 41+ status-matrix rung, **D19** moves Data off the tab set without changing one of
-its semantics, and **D21** is added — the step timeline is equal-width. The as-built shell and
-layout those waves settled are recorded at the end of this section; they are not separately
-numbered, because none of them re-opens a question the D-series answered.
-
-**Amended again 2026-07-28 by the redesign's later waves** (commits `d1530a1f`..`fa6c251c`):
-row-model **D5** gains a close-on-settle arm, **D11** loses the rest of its ladder (one member
-presentation at every count), **D12** is touched but not overridden, the gate banner that expressed
-**D18**'s loudness principle at run-detail level is overridden (the decision moves inline into the
-stream), **D19**(d) is re-amended (the `Edit & re-run` dialog is removed — editing happens in
-place in the rail), **D20** is reinforced structurally, **D21** is extended (the wait renders on
-the step's own bar; a queued run draws its shape), and **D22–D24** are new. Several of these
-**reverse earlier operator-directed decisions**; each entry says so and records the reason, so a
-future agent does not restore the old behaviour on principle.
-
-### Row-model D5 — amended 2026-07-28: a settled group collapses shut
-
-D5 (ratified 2026-07-24: groups default collapsed, auto-expand on a member `Waiting on you` or
-`Failed`) gains the symmetric arm: **a group that settles collapses back shut**, and a settled row
-stops re-explaining its own composition — the prose count line, the checked counter and the
-member-name preview are all dropped on terminal rows. Attention rows and live rows keep
-everything.
-
-Rationale: the auto-expand exists because an open group is a demand; a group with nothing left to
-demand holding the space of an open one is the same defect inverted. And a terminal row restating
-its member count in prose beside the count strip that already shows it is the duplication D24
-names — the row's expansion state and its explanatory chrome are both projections of settlement,
-derived in one place (`visibleMemberIds` branches on settlement and nothing else), never authored
-per fixture.
-
-### D6 — oath-upload's signers are `linked`, not `member`; shape S4 is deleted
-
-Oath Upload stays **one Run Row** for the PDF being uploaded. The signer rows live in the **Oath
-Signature panel** as their own rows; the upload row carries a chip (`6 signers · 3 done ↗`) that
-jumps there. Containment is **`linked`** — signers are never counted as members, never render nested
-under the upload row, and are never removed from their own panel.
-
-Rationale: a signer run is independently meaningful and independently viewable; the upload row's job
-is the ticket, not the roster.
-
-**Supersedes `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7 Q1, which recommended the opposite**
-(signers as `member`, delisted from the Oath Signature panel), **and deletes that ledger's §5 S4
-layout ("Packet that ends in one filing")** — oath-upload is a Run Row that waits on linked children
-and then performs its one final act. It has no Group Row anatomy, no member ladder, no member
-rollup. This restores the as-built production model recorded in the root `CLAUDE.md` and in §4.5
-here: the ticket is a real `single` daemon task born at upload that walks `OCR prep → awaiting
-approval → wait signatures → submit` as one row. §4.5's sibling-subscriber gates and §4.3's
-`completionConsumes: { memberShape: "natural", suppress: ["document"] }` are unchanged — the
-presentation now matches the contract instead of contradicting it.
-
-### D7 — a packet still at OCR review shows its extracted count
-
-The count badge reads `6 people extracted` while the delegated OCR run is open, and flips to
-`6 people` at fan-out. Rationale: "how big is this" is answerable before the members exist, and a
-blank group before approval reads as broken.
-
-### D8 — record approval exists only after the operator works through Review
-
-Neither the packet Group Row nor the OCR row's Logs gate offers `Approve N of M`. Both route the
-operator into the OCR **Review** surface, where every person is shown beside the scanned page they
-were read from. The approval action exists only on that surface and remains disabled until the
-operator has visited every record. `N of M` may still exclude records that genuinely cannot be
-submitted, but it is never a shortcut around the review. Rationale: approval is the operator's
-attestation that the extraction was checked against its source, so the source and the complete set
-must have been presented before approval becomes possible.
-
-### D9 — rejected members never count toward done
-
-A packet carrying rejections is `Done with warnings` until every rejection is deleted or explicitly
-acknowledged. Rejected members stay excluded from the rollup and counted separately
-(`50 people · 3 rejected`). Rationale: an unrun person is not a finished person. This pins the
-ledger §4 rollup rule to its ratified form — `Verified done` requires zero unacknowledged
-rejections.
-
-### D10 — depth-2 delegated lookups are visible only from the OCR review row
-
-Person-lookup / i9-lookup children of a delegated OCR run surface on that OCR row (and in their own
-panel, per row-model D4) — **never on the packet group**. From the packet, "why is this person
-blank" is answered on the **record card**, not by walking a delegation tree. Rationale: maximum real
-depth is 2; surfacing it twice buys nothing and doubles the count surface.
-
-### D11 — one member presentation at every count; the density ladder is deleted
-
-**Amended 2026-07-27, amended again 2026-07-28.** There is no ladder. A group's expanded body is
-**one rung at every member count**: count strip → compact member lines in a capped scroll well →
-`Open all N people` drill-in. The same shape at 3 people and at 50 — scale changes the container's
-**overflow** and nothing else. Member count is continuous, presentation is never a row type, and
-the drill-in is part of the one shape, not a route to a different one.
-
-**What this replaces, in two stages — both reversals of ratified, operator-directed designs.**
-The ratified-2026-07-25 D11 was a four-rung ladder (1–3 full inline Member Rows · 4–12 compact
-list · 13–40 scroll well · **41+ status matrix** with a matrix-only attention strip). The
-2026-07-27 amendment deleted the 41+ matrix: the operator saw the 50-member I-9 group render as a
-grid of status cells where the 18-person work-study group renders named lines, read the matrix as
-a *different kind of row*, and said *"we also don't need a new row type for i9 quarterly
-retention"* while pointing at that work-study group. The 2026-07-28 amendment deleted the rest:
-shown a 2-member group rendering full inline row cards beside a 6-member group rendering compact
-lines, the operator said *"why are some like this and some like that? keep the design like above.
-ditch the bottom design completely."* — so the 1–3 inline-card rung went the same way the matrix
-did, and compact/well merged into the one surviving shape. Note the earlier amendment recorded the
-operator confirming "4 is good" for the 1–3 / 4–12 boundary; **that ratification is spent** — the
-later, more general instruction supersedes it, and it must not be quoted to restore the rung.
-
-**The principle, which is why neither deletion may be undone piecemeal:** a second visual language
-for *the same thing but more of it* makes the product read as having more concepts than it has —
-the exact cost the three-row-type model exists to avoid. D14 already holds this from the other end
-(a group of one still renders as a Group Row); the matrix broke it at 41+, the inline cards broke
-it at 3. **`densityRung` / `DensityRung` / `DENSITY_RUNGS` were deleted, not reduced to a function
-that ignores its argument** — a per-count switch that currently maps every count to the same rung
-is a per-count switch waiting to grow rungs back. `PersonWell` + `PersonLine` make the one shape
-mechanical rather than a convention two call sites keep.
-
-**The two numbers behind the well.** `--ds-h-member-well` = **136px ≈ 5.67 rows**. The half-cut
-sixth row IS the depth cue, which is why it is deliberately **not** 144px / 6 whole rows — a well
-that ends on a clean row edge reads as a complete list, and the operator then has no reason to
-scroll it. Members are ordered **attention-first**, so the top of the well IS the attention list
-the 41+ rung used to draw as a separate strip.
-
-**Nothing was lost.** The per-status information the matrix carried survives as the count strip's
-status counts plus the separate waiting / rejected tallies (D9's `50 people · 3 rejected`); the
-detail an inline card carried survives on the member's own drill-in and the group's People tab;
-and `Open all N people` is still the route into the full member list at every size.
-
-**Supersedes** the original D11 ladder in full, `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §4's
-four-rung ladder and its "at 41+ the attention strip renders **above** the matrix" rule, and the
-2026-07-27 three-rung amendment this entry previously recorded.
-
-### D12 — the collapsed row shows the gate's age
-
-`Waiting on you · 10m`. Rationale: an aging gate is the most actionable fact in the queue.
-
-**Touched 2026-07-28, not overridden.** On the run detail the gate's age now renders in three
-places — the panel header's status pill (`Waiting on you · 33m 50s`), the inline decision in the
-log stream, and the corner notice that appears while the decision is scrolled out of view (see the
-D18 amendment). **The queue row's gate age is unchanged** — this entry's contract stands as
-ratified.
-
-### D13 — a failed `linked` child makes the parent `Failed`, with `Re-upload`
-
-When a linked OCR child fails, the parent goes **`Failed`**, mirrors the child's error verbatim
-(never "Unknown error"), and offers a **`Re-upload`** action. **`Waiting on you` is reserved for a
-pending decision and is never used for a breakage.** Rationale: the two states demand different
-operator actions, and a breakage disguised as a decision is a gate that will never resolve.
-
-### D14 — a group of one still renders as a Group Row
-
-Consistent with row-model D2. Rationale: a group of one that looks like a Run Row makes the next
-fan-out look like a new object.
-
-### D15 — Person Lookup carries Search and Match as modes
-
-Person Lookup owns one Workflow Panel entry and one queue surface. **Search** asks Person
-Organizational Summary for identity/employment status by EID or name; **Match** asks HR-Tasks
-Search/Match whether UCPath already knows a legal-name + DOB/SSN identity. The operator chooses
-the question at start time, like choosing an OCR form spec, rather than navigating to a second
-workflow identity for the same person-check domain.
-
-This supersedes the earlier D15 decision to keep a standalone `person-match` entry and
-`docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md` §7 Q10's recommendation to hide that entry. The two
-UCPath surfaces remain distinct; only their workflow/panel identity is unified.
-
-### D16 — cancelling a group is tree-scoped, final, with no dialog and no undo
-
-The only scope is the **tree** — group + all members + linked children. There is **no confirmation
-dialog and no undo window**; cancel commits immediately. Recovery is re-running from the row's
-history.
-
-**Tradeoff, stated plainly: this deliberately accepts misclick risk to avoid a dialog on every
-intentional cancel.** Cancel is used deliberately and often; a confirm on each one costs more than
-the occasional re-run.
-
-**Supersedes the "with a confirm naming the casualties" half of `docs/rebuild/history/design-inputs/2026-07-25-delegation-layouts.md`
-§7 Q11**; the tree-scope half is ratified as recommended. Mechanically this is §2.4's `Cancel`
-semantics unchanged — full dependency tree resolved from SQLite authority, every edge's ref workflow-model
-cancel policy applied, all-or-none, visible queue roots never an authority fallback. What D16
-decides is scope and the absence of ceremony, not a new command.
-
-### D17 — per-member confirmation numbers are inline on the packet receipt
-
-Listed inline in the Receipt rollup table, not one link per member. Rationale: the Q8 acceptance
-test is "the operator completes their double-check without opening UCPath", and a link per member
-re-introduces N clicks.
-
-### D18 — Status Bar pills: `All`, a composite `Needs you`, then the individual statuses
-
-One row: an **`All`** pill, then a composite **`Needs you`** pill (= `Waiting on you` +
-`Write parked` — the two statuses that mean a human is blocking), then each individual status.
-**No status is hidden.** Rationale: the bar answers "is anything on me?" first and "what is
-everything doing?" second. Counts are the same server-side projection that feeds `wfCounts` and the
-queue rows (§2.2); the composite pill is a sum of projected buckets, never a second count path.
-
-**Amended 2026-07-28 — the gate banner this loudness principle produced is overridden.** The pill
-model above is untouched. What is overridden is the run-detail expression of "the decision is the
-loudest thing": the **tall gate banner above the tabs** (ratified as-built through D19 and pinned
-in this section's shell notes as "the gate banner … never moves into the rail") is **deleted**.
-The decision now lives **inline in the log stream at the point it was reached** (`InlineDecision` —
-title, age, note, candidates, staged writes, both park resolutions); the panel header keeps a
-**one-line state plus its action**; and a small **dismissable notice** in the panel's corner
-(`DecisionNotice`) appears only while a decision is outstanding **and not visible** (an
-IntersectionObserver on the decision's anchor; dismissal is per row+tab and re-arms on either
-change, so a dismissed reminder can never become an unreachable decision).
-
-**Why this is not a loss of loudness, stated so the banner is not restored on principle:** the
-decision was being rendered **twice** — the banner above the tabs and, at the moment it occurred,
-the same title, the same copy and the same buttons inline in the stream. Removing the banner
-removed a **duplicate**, not information. Verified on both the write-parked and identity-approval
-runs before the deletion. Two bands saying the same thing is how a dense panel teaches an operator
-to skim past both — the duplication was itself the defect.
-
-Recorded with it, because they close the same "can the record hide?" question: a **failed run now
-opens on Logs** rather than Review (`defaultTabFor` puts logs ahead of every other default), so
-the failure record cannot hide behind a tab; and the failure's **write-state sentence** ("what
-this run left behind" — the difference between a safe retry and a duplicate termination) renders
-**unconditionally in the stream, never behind a disclosure**. Only diagnosis (progress ledger,
-cause chain, fingerprint) may sit behind a disclosure.
-
-### D19 — run-detail tabs derive from panel kind; screenshot evidence lives in Receipt; Data lives in Context
-
-Ratifies the tab model **as built in the rebuild demo**:
-
-- **(a) Tabs derive from the panel kind**, not a fixed set. **Amended 2026-07-27:** the sets are
-  **Run 2 · Review 3 · Group 3 · Member 2** — `Logs · Review · Receipt`, plus `People` on a group —
-  where they were Run 3 · Review 4 · Group 4 · Member 3.
-- **(b) Screenshots is not a tab.** Captures are evidence and render inside the Receipt tab,
-  beside the outcome they qualify. This applies to both a full `RunEvidenceReceipt` and the honest
-  short receipt shown before a full receipt exists.
-- **(c) Data and Edit Data are ONE merged surface** — every value the run touched. Reads are editable
-  in place; **writes are shown but not editable**; the footer offers `Load a prior run` and
-  `Start a run from this data`.
-- **(d) Amended 2026-07-27, re-amended 2026-07-28 — Data is not a tab, and not a dialog either.**
-  It is a section of the run's **context rail**, edited **in place**. The separate `Edit & re-run`
-  Dialog that briefly carried the editing half was introduced and then **removed at operator
-  instruction** (*"we also need the edit data and data tab to be together so i can have a feel of
-  how its like to edit the data"*); the rail section **widens** while editing
-  (`--ds-w-context-rail-wide`, 520px) instead of opening a modal. `DemoTab` and `tabsFor` drop
-  `"data"` entirely, so no dead tab id is reachable. The panel tab list derives from `tabsFor`,
-  while `detailSurfaces` separately carries the `data` capability for the Context rail section.
-
-**(c) is preserved byte-for-byte by (d), through both amendments.** Reads stay editable, writes
-stay shown and never editable, staged writes still render as staged, unconfirmed still says
-unconfirmed, nothing gains success styling it has not earned, and the `Load a prior run` /
-`Start a run from this data` footer survives intact. The unlock rules (`editPolicyFor` with the
-reason always shown), the CAS on the checkpoint generation, and the audited freshness override all
-carry over into the rail section unchanged (the freshness *confirm* stays a dialog — it is a
-question with a typed answer and two mutually exclusive exits, which is what a dialog is for).
-**Only the home changed** — the ledger is read AND corrected in one place, because the operator's
-stated need was to *feel* the editing in the context of the data, not to be handed a task surface.
-Gating is still `actions[]` descriptors at the `data` placement, so a run that may not be edited
-is simply not sent a Save.
-
-**As-built (2i-C, 2026-08-08, D168) — the rail's Data section is wired end-to-end for reads.**
-`editPolicyFor` exists in `src/dashboard/surfaces/context-rail.tsx` and composes three policies,
-each carrying its own sentence onto the lock: the entry's field policy and the run-level policy
-arrive ON the `context-data` wire (ref data-intake-and-edit-data §6.4.1 owns that shape), and the live staleness signal
-is `liveLockReasonOf` over the day stream's queue-row status — there is still no per-run SSE
-client, and the queue row flipping out of `queued`/`awaiting-approval` is the same "this run was
-claimed while you were editing" fact, with the kernel's CAS as the authority either way. Editing
-enters on FOCUS of a value box; the rail widens to `--ds-w-context-rail-wide` through the log
-panel's grid (its first consumer), and Save issues one `run/edit-checkpoint` command whose applied
-result refetches the detail at the bumped `rowRevision` (which re-fetches every section through
-the same revision). A staged correction renders beside the recorded value it will supersede —
-"staged renders as staged" applied to corrections. Two (c) arms are NOT yet built and stay open:
-the `Load a prior run` / `Start a run from this data` footer, and `actions[]` gating at the
-`data` placement (the served-actions projection is still empty; the wire's `editing` union
-carries the gate until it lands).
-
-**Why the move.** Logs and Data were mutually exclusive tabs, so the operator could not watch a
-run's log stream and see what that run read and wrote at the same time. That mutual exclusion was a
-significant part of the reported clutter — the panel appeared to hold more than it did because
-half of what it held was behind the other half. The split is by **reading pattern**, not by
-importance: live state (what the run is doing, what it needs from you) stays in the centre column,
-reference data (what it read and wrote, who asked for it) moves to the rail. Screenshot evidence
-moves to Receipt, beside the outcome it qualifies. Nothing is deleted and nothing hides behind a
-hover.
-
-**(b) is now honoured by putting the proof with the verdict.** D19b said Screenshots is not a tab;
-captures first moved from a 52px strip into Context, but that still separated evidence from the
-receipt it qualifies. The Receipt tab now owns the real capture tiles — kind, label, workflow step,
-and clock — under both full and short receipt states. The failure capture keeps its red frame in the
-tile and lightbox; the filter chips and Export menu carry over unchanged.
-
-**Supersedes the "Log Panel tabs are therefore FIVE: Logs / Data / Review / Receipt / Screenshots"
-wording in `docs/rebuild/history/design-inputs/2026-07-22-second-look.md` §6.6.** Unchanged from that decision sheet: the step
-timeline is **not** a tab (persistent strip + hover detail — see D21 for its width rule), and tab
-defaults stay state-driven (`Waiting on you` / `Write parked` → Review, terminal → Receipt, running
-→ Logs; a group with a member needing attention → People).
-
-Consequence for §2.2's wire: `QueueSurfaceWire.detailSurfaces` stays server-declared and
-capability-driven — the panel kind selects from what the server declares — but `"screenshots"` no
-longer projects a tab (it projects capture evidence inside Receipt), and `"edit-data"` / `"view-data"`
-collapse into one `data` surface — which, as of (d), projects a **rail section edited in place**,
-not a tab and not a dialog, with its write fields still rendering read-only.
-
-### D20 — `Write parked` means an unknown write outcome, and nothing else
-
-`Write parked` is only for a write whose outcome is genuinely **UNKNOWN**, and it has exactly two
-typed resolutions: **confirmed-present** and **confirmed-absent** (§2.2's `resolve-write-present` /
-`resolve-write-absent` over ref write-safety's durable intent state). **A pre-submit hold is NOT parked — it
-is a gate, and its status is `Waiting on you`.**
-
-Consequence: the rebuild demo's `sep-rosa` fixture, which labels a pre-submit hold as `Write parked`
-with a "Resume & submit" action, is wrong and must be re-authored as a gate. Rationale: parked is the
-one status that means "we may have already filed something"; diluting it with holds we know the
-state of destroys the only signal that warrants a live probe.
-
-**Reinforced 2026-07-28 — a parked row is structurally sent no data-mutating command.** The prior
-action policy offered `rerun-with-existing-data` ("Start a run from this data") on a parked row —
-i.e. a fresh run seeded from a write whose outcome is unknown, which is exactly the
-duplicate-termination path this decision exists to prevent. `deriveActions` now sends a parked row
-**no** `data`-placement command at all; its only exits remain the two typed park resolutions.
-Because every control is derived from the served `actions[]`, the hazardous command is
-unreachable, not merely hidden.
-
-### D21 — every step segment on the timeline is the same width; the duration is printed
-
-**Ratified 2026-07-27.** The step timeline (D19's persistent strip, not a tab) draws **equal-width
-segments regardless of duration**. Each segment prints its duration as a label beneath it, and the
-working / waiting totals sit on the axis below. The **gate/wait segment is hatched and equal-width
-like every other**, with the **TRUE age printed as text** beside it. The `×N` retry marker and its
-hover-card row carry over, as does the dashed treatment for a step the run has not reached.
-
-**This reverses a prior operator-directed design.** The timeline was **proportional** — segment
-width ∝ elapsed time — chosen deliberately on the grounds that the width WAS the data, and later
-hardened by clamping the gate wedge to ≤1.5× the step total while printing the real age beside it.
-Both the proportional maths and the clamp are gone: `MIN_SLOT_SEC`, `slot()`, `stepTotal`,
-`gateSlot`/`gateClamped`, the per-step inline width and the wedge clamp were all removed.
-
-**Why the reversal.** A genuinely proportional 34-minute gate beside three minutes of work is a
-true 91% of the track, and at 91% the step labels crush to `3.¹2 4..`. A timeline whose labels
-cannot be read tells you nothing about where the time went either — the literal encoding destroyed
-the thing it was encoding. Equal widths make the track legible at every duration spread, including
-the ones this product actually produces (a gate is usually an order of magnitude longer than the
-work around it, so the pathological case is the common case).
-
-**Why this is NOT a no-fabrication violation, stated so a future agent does not "restore honesty".**
-Equal widths **make no claim about duration**, precisely BECAUSE the duration is printed as a
-number beside every single segment and the totals are on the axis. Nothing implies a length it does
-not also state in words. The no-fabrication rule forbids *inventing* a number or drawing a quantity
-the data does not support; it does not require that every visual dimension be a data channel. A
-bar chart that clamps a bar while printing the real value is a standard convention; inventing the
-value was the bug the clamp era fixed, and that fix (`now − gate.openedAt`, never `max(active, 90)`)
-is retained here in full.
-
-**This is an explicit legibility-over-literalism call the operator made**, verbatim: *"all the
-timeline elements should have equal sizes doesnt matter the time."* **A future agent must not
-restore proportional widths on no-fabrication grounds.** If proportionality is ever wanted again it
-needs a fresh operator decision, not a correctness argument — the correctness argument has been
-made and answered.
-
-**Extended 2026-07-28** — two further moves, superseding this entry's "gate/wait segment" and
-"dashed treatment" wording above:
-
-- **The waiting state renders on the current step's own bar** — hatched, with the true elapsed age
-  printed beneath it — rather than as a separate trailing gate segment. A wait is a **state of a
-  step**, not a step of its own: the old trailing segment meant `Your review` occupied two of six
-  slots and read as two separate things, one of them apparently finished, and deleting it gave the
-  track a sixth of its width back. "Working" and "waiting on you" are told apart by the bar's
-  fill, not by a slot count. Fail-safe kept deliberately: a gate whose run records no waiting step
-  still draws the old trailing segment — a true fact is never dropped because the shape did not
-  line up.
-- **A queued run draws every segment outlined and empty**, so the track states the run's *shape*
-  before it starts. The old dashed hairlines read as one dashed rule across the panel with labels
-  floating over it — the surface that exists to say what a run will do said nothing until it
-  started, which is an information defect, not a visual one. The outline is **continuous, not
-  dashed**: the dash is spoken for (`Write parked` is the one thing in this product that dashes,
-  and nothing else may borrow the cue).
-
-The track therefore has exactly **three legible states**: **outlined-empty** (not reached) ·
-**solid** (done, or being worked now) · **hatched** (the run is stopped here, on you).
-
-### D22 — the status vocabulary shortens: `Verified done` renders as `Done`
-
-**Ratified 2026-07-28. AMENDED 2026-08-04 (D126) — read the amendment, not the original ground.**
-The quietest status renders as a green **`Done`** with **no icon** on the pill. The qualifier was
-doing two jobs badly: it made the quietest status the longest label in the vocabulary, and beside
-`Done with warnings` it asked the operator to work out whether *that* one was verified too. The
-pill is green rather than muted (a muted `Done` beside a muted `Cancelled` is two greys).
-
-**What the amendment replaces.** As first ratified, D22 rested on two claims that a later operator
-direction and the live exit run each falsified, and both are hereby superseded:
-
-1. *"The sibling deliberately did not shorten, because the qualifier IS the difference between
-   them."* **No longer true.** The operator subsequently directed that `doneWarnings` also render
-   the bare word `Done` — `Done with warnings` shoved the run title off the row header, beside a
-   count chip that already named the warning. Both terminal dones now draw the same word, on
-   purpose, at the operator's direction.
-2. *"Safe, because the word remains: this is not colour-only encoding."* **The word can no longer
-   carry it**, so the justification is restated: the two are separated **by ICON + COLOUR**, not by
-   the visible word. `doneWarnings` draws an amber warning triangle carrying its warning count
-   beside an amber-tinted pill; `verifiedDone` draws the bare word on a solid green fill. Two
-   visible non-textual channels plus the count, not hue alone. The operator inspected this pair and
-   ratified it as-is on 2026-08-04; **the visible design is settled and is not to be relitigated.**
-
-**And a third channel that is not visible at all:** because the drawn word stopped distinguishing
-them, the two statuses must carry **distinct ACCESSIBLE names** — an assistive technology reads
-neither the tint nor the triangle. `doneWarnings` announces `Done with warnings`; `verifiedDone`
-announces `Done`. That is the mechanism (`accessibleLabel` / `dsStatusAccessibleName`) specified in
-this doc's *Phase 1g/1i-spine as-built presentation deltas*, and it is what makes the amended D22
-honest where the original relied on the word. **Never satisfy this by lengthening the drawn label.**
-
-**The guarantee is structural, not textual, and the shortening must not be read as a weakening:**
-the verdict is still reachable **only via read-back** (ref operator-trust's completion contract), and the
-receipt still shows its read-back checks — only the *label* shortens. The wire/status key stays
-`verified-done`, and `done-with-warnings` stays its own key.
-
-**Reconciliation debt, recorded rather than silently fixed:**
-`docs/rebuild/reference/operator-trust.md:284` and this doc's D9 (…"`Verified done`
-requires zero unacknowledged rejections") still use the long label. They describe the same verdict
-under its pre-D22 name and need reconciling when next touched — the semantics they state are
-unchanged.
-
-### D23 — the motion rule is narrowed on purpose
-
-**Ratified 2026-07-28.** From *never animate status changes* to **never animate ambient status
-churn; a run that starts needing you may announce itself** — once, on the edge.
-
-**The reasoning, so the narrower form is applied and not merely quoted:** a dashboard where
-everything that updates also moves is unreadable exactly when it is busiest, and this one updates
-constantly. So elapsed timers, incrementing counts, background settling and self-initiated
-re-sorts stay **still** — if all of that moved, movement would be unavailable for the one thing
-that needs it. But the two states allowed to shout (`Waiting on you`, `Failed`) mark the moment a
-run stops being background and becomes work, and that is precisely the moment the operator is
-looking somewhere else; a row that turns amber silently between glances is a row that gets found
-late.
-
-**Four constraints keep the exception from becoming a licence:** (1) **edge, never state** — it
-fires on the *transition into* an attention status; a row already waiting when scrolled to does
-nothing; (2) **never on mount** — first sight of a row is not a change; (3) **once, then still**
-(`ATTENTION_ANNOUNCE_MS`) — nothing pulses, repeats, or waits to be acknowledged; (4) **only the
-two loud statuses** — reaching for this on a third status is the drift, and the answer is no.
-Implemented once (`useAttentionAnnounce`); never re-derive it at a second call site. **The
-narrower form must not become a licence** — this entry is authority for exactly the attention edge
-and nothing more.
-
-### D24 — a professional dashboard does not explain itself
-
-**Ratified 2026-07-28.** Explanatory prose on a surface is a **defect** unless it lives inside an
-**ⓘ** (a click-to-open Popover — reachable by pointer, touch and keyboard, costing the surface
-nothing until asked for). Two exemptions, and only two, because neither is explanation: a
-**refusal**, which must state what was *not* done and why or the operator cannot act on it; and a
-genuine **hazard** about the run in front of you (a stale checkpoint, a staged write, an
-unresolved park) — those are outcomes, not teaching.
-
-**The test:** a sentence on a surface must be a fact about the RUN in front of you. A sentence
-that would be equally true of every run in the product is a rule of the product, and a rule of the
-product is not information — it is teaching, and it costs the same pixels every time it is drawn
-whether or not anyone needed it. Operator, verbatim: *"i feel like the dashboard right now is
-bloated with extra information like explanations and descriptions that we dont need."*
-
-This decision drove the removal of dozens of strings (control descriptions restating the
-control's label, captions repeating icons, the UI describing its own mechanics, the product
-asserting its own correctness) and the relocation of the rest into ⓘs. An **empty state** still
-owes three things and no more: what would be here, why it is not, and what to do — it does not owe
-a defence of the design. The full deletion criteria live in the demo's `DESIGN.md` ("The product
-does not explain itself"), which is binding on every surface built against this contract.
-
----
-
-### Shell and layout as rebuilt (2026-07-27, updated 2026-07-28)
-
-Not numbered — none of this re-opens a D-series question, and the D-series is for decisions that
-were *asked*. It is recorded here because the presentation decisions above (D11, D18–D21) were
-made inside this layout and read wrong outside it.
-
-**The detail region is three columns**: **queue · centre · context rail**. The rail is **348px**
-(`--ds-w-context-rail`), collapsible to a labelled spine that says what is inside it
-(`Context · 9 data · 6 captures`), with the collapsed preference applied only above the
-three-column threshold. The split is by reading pattern (§D19): **live state in the centre** — the
-run header, the timeline, the tabs and the tab body, with the log stream carrying the inline
-decision and the failure record (D18 amendment) — and **reference in the rail**: Data, Evidence,
-provenance and delegation links. **A decision and a failure never sit behind a collapse control or
-a lone tab** — `Waiting on you` and `Failed` are the only two states allowed to shout. As of
-2026-07-28 that invariant is honoured by the inline decision + one-line header state + corner
-notice (not by a banner, which is deleted — see D18), by a failed run opening on Logs, and by the
-write-state sentence rendering unconditionally in the stream.
-
-**Measured effect of the split, at 1280×720:** chrome above the panels **190px → 117px**; each
-panel **469px → 542px** tall; the tab body **123–215px → 213–335px**.
-
-**Two breakpoints, and the panel region is a GRID (D195):**
+<!-- roadmap: track-c -->
+
+A dashboard-only square: `ref frontend-backend-integration` §5.1 has no counterpart, because the
+shell issues no commands of its own. It is the frame every other square renders inside, and it owns
+four things nothing else can: the status bar, the workflow rail, the layout grid, and the ONE clock.
+
+The `p1-spine` checklist lives at §1 and the `dash-defaults` one at §9.3; this section adds neither.
+Its own block is `track-c`'s, which is the wave-2 connection proof — three of that proof's four
+defects were presentation, and two of them are here.
+
+#### The layout is a GRID, and inside the detail region a switch keys on the COLUMN
+
+The detail region is three columns: **queue · centre · context rail**. The split is by reading
+pattern (§9.3.1) — live state in the centre, reference in the rail — and **a decision and a failure
+never sit behind a collapse control or a lone tab**: `Waiting on you` and `Failed` are the only two
+states allowed to shout. The rail collapses to a labelled spine that says what is inside it
+(`Context · 9 data · 6 captures`, `--ds-w-context-spine`), with the collapsed preference applied only
+above the three-column threshold.
 
 | Width | Layout |
 |---|---|
 | **< 1180** | one scrolling stack — shape, then detail, then context. The rail degrades to a section, never to nothing. |
-| **≥ 1180** | queue **`--ds-w-side-panel` (376px)**, a fixed track, + a detail cell taking `minmax(0,1fr)`. The detail cell splits itself again into shape · detail · context at 1280. |
+| **≥ 1180** | queue `--ds-w-side-panel` (**376px**), a fixed track, + a detail cell taking `minmax(0,1fr)`. |
 
-**The queue and the context rail share ONE resting width**, and neither side panel grows
-independently at wider viewports, so the centre stays the largest column at every size. 376 is 28px
-wider than the former 348px rail and narrower than either former queue width — which is exactly what
-buys the centre back the room the 400/470 analysis was fighting over. The visual oracle moved first
-(ref frontend-backend-integration §1; the demo's own panel region, legacy
-`hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc` `RebuildDemo.tsx:747-748`) and this table
-had not followed.
+The **queue and the rail share ONE resting width** and neither side panel grows independently at
+wider viewports, so the centre stays the largest column at every size. 376 is 28px wider than the
+former 348px rail and narrower than either former queue width, which is what buys the centre back
+the room the 400/470 analysis was fighting over.
 
-**Grid, not flex, is normative here — it is what makes the empty case impossible.** The region was
+**The detail cell's own split is a CONTAINER query, not a window one** — `@min-[868px]/detail` and
+`@min-[1068px]/detail`, derived as 1280−412 and 1480−412 (`layout-metrics.ts`). The distinction is
+the whole point and this doc used to state the principle and then leave window numbers in the table:
+the same 1280px viewport gives the centre 414px with the rail open and 728px with it collapsed, so a
+viewport media query fires at the wrong moment in both directions. (Caught in the act: the two
+`Write parked` resolutions were being forced side by side into a 414px column, each a ~200px box
+holding a two-line sentence about whether a real UCPath termination exists.) Only the shell grid
+itself is a window query, at `min-[1180px]`, because the window is genuinely what it measures.
+
+**Grid, not flex, is normative — it is what makes the empty case impossible.** The region was
 authored as two `flex-1` children. `flex-1` distributes free space only among children that EXIST,
 so with no run open the second child was not rendered, nothing claimed the space, and the queue
 panel — a flex item with no width — shrank to its content. At 1440×900 that left a ~470px column of
 rows and **~950px of empty black** in the middle of the surface this product is named after, at
 every viewport since 1i-spine, through a dozen green gates and a frozen reference corpus that
 photographed it. A grid cannot fail that way: its tracks exist whether or not anything is placed in
-them. And **nothing selected is a STATE** — `No run open`, owing §9's three things and no more — not
-an absent element.
+them. And **nothing selected is a STATE** — `No run open`, owing its three things and no more — not
+an absent element. It is the same defect class as D187's two-pixel panel (§9.3), found the same way.
 
-The superseded numbers, kept because they remain the record of what was tried and why:
+*(Measured effect of the reading-pattern split at 1280×720, kept as the record: chrome above the
+panels 190px → 117px; each panel 469px → 542px tall; the tab body 123–215px → 213–335px. The
+superseded 400/470 numbers and the reasoning that produced them are in
+`history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md`.)*
 
-> **1180–1479** queue **400px**; **≥ 1480** queue **470px**, both measured rather than chosen.
-> 1480 = 470 queue + 348 rail + gaps + padding, leaving the centre ~590px — the width at which a
-> six-segment equal-width timeline still prints readable labels. 400 was the largest queue that kept
-> the review's page-beside-fields layout side by side below 1480: the review's floor is a **464px
-> centre** (label + value + provenance chip + confidence on one line) and centre = 884 − queue at
-> 1280, so 470 gave 414 and stacked it. The cost was stated rather than hidden: at 1280 no queue
-> width satisfied both — a queue that renders `Oath_Packet_Summer.pdf` whole needs ~475px, which
-> puts the centre back under the review's floor. **One shared 376px resolves that trade by refusing
-> to spend the width on either side panel.**
+#### The status bar: `All`, a composite, then every individual status (D18)
 
-**A consequence worth pinning: inside the detail region, a layout switch keys on the COLUMN, not
-the window.** The same 1280px viewport gives the centre 414px with the rail open and 728px with it
-collapsed, so a viewport media query fires at the wrong moment in both directions. Container
-queries, not `min-[Npx]:`, for anything inside the region. (Caught in the act: the two `Write
-parked` resolutions were being forced side by side into a 414px column, each a ~200px box holding a
-two-line sentence about whether a real UCPath termination exists.)
+One row: an **`All`** pill, then a composite **`Needs you`** pill (= the two statuses that mean a
+human is blocking), then each individual status. **No status is hidden.** The bar answers *is
+anything on me?* first and *what is everything doing?* second. Counts are the same server-side
+projection that feeds the queue rows (§2.2); the composite is a sum of projected buckets, **never a
+second count path**.
 
-**The Workflow Panel has three modes**, persisted, cycled with `w`: **floating** (default — a
-window over the panel region, costing no column; Escape or an outside click dismisses it to
-`icon`), **icon** (nothing drawn over the content; the launcher carries the current workflow's
-2-char code and the day's whole `Needs you` count across *every* panel), and **sidebar** (docked,
-200px, always visible). Which panel you are in stays readable in all three because the Queue Panel
-is titled by its workflow.
+A **zero-count status pill recedes**: it drops its border, its fill and its label down to an icon and
+a faint `0`, keeping its slot, its click target and its full accessible name (`Done with warnings` is
+130px of bar at rest; at zero it is 34px).
 
-**`All workflows` is retired, and rail grouping is the descriptor's own `category`.** The
-cross-panel rail entry, `ALL_WORKFLOWS`, is deleted; `rowsForWorkflow` always filters and the app
+**The gate BANNER that this loudness principle first produced is deleted, and must not be restored on
+principle.** The pill model is untouched; what was overridden is the run-detail expression of *the
+decision is the loudest thing*. The decision now lives inline in the log stream at the point it was
+reached, the panel header keeps a one-line state plus its action, and a small dismissable notice
+appears only while a decision is outstanding **and not visible** (an IntersectionObserver on the
+decision's anchor; dismissal is per row+tab and re-arms on either change, so a dismissed reminder can
+never become an unreachable decision). **Why this is not a loss of loudness:** the decision was being
+rendered TWICE — the banner above the tabs and, at the moment it occurred, the same title, copy and
+buttons inline in the stream. Removing the banner removed a duplicate, not information; verified on
+both the write-parked and identity-approval runs before the deletion. Two bands saying the same thing
+is how a dense panel teaches an operator to skim past both.
+
+Recorded with it, because they close the same *can the record hide?* question: a failed run opens on
+Logs rather than Review, so the failure record cannot hide behind a tab; and the failure's
+write-state sentence — the difference between a safe retry and a duplicate termination — renders
+unconditionally in the stream, never behind a disclosure. Only diagnosis may sit behind one.
+
+#### Two `Done`s, three visible channels, and one that is not visible at all (D22 + D126)
+
+The quietest status renders as a green **`Done`** with no icon. The qualifier was doing two jobs
+badly: it made the quietest status the longest label in the vocabulary, and beside `Done with
+warnings` it asked the operator to work out whether *that* one was verified too. Then the operator
+directed that `doneWarnings` also draw the bare word `Done` — the long label shoved the run title off
+the row header, beside a count chip that already named the warning. **Both terminal dones now draw
+the same word, on purpose, at the operator's direction, and the visible design is settled and not to
+be relitigated.**
+
+What separates them on screen is **icon + colour + the count chip**: `doneWarnings` draws an amber
+warning triangle carrying its warning count beside an amber-tinted pill, `verifiedDone` the bare word
+on a solid green fill. Two visible non-textual channels plus the count, not hue alone.
+
+**And a third channel that is not visible at all.** Because the drawn word stopped distinguishing
+them, `StatusFilters` rendered two controls whose accessible names were both `"Done — n"`, and the
+queue rows both ended `"— done"`. The defect was assistive-technology ONLY, so only the non-visual
+channel was fixed: `DsStatusSpec` gains an optional `accessibleLabel` that is **never rendered**;
+`dsStatusText` stays the visible word; `dsStatusAccessibleName` returns `accessibleLabel ?? label`
+and is what **every** `aria-label` naming a status must use. Only `doneWarnings` sets one today —
+`"Done with warnings"`. The three collisions are closed at their name sites (the filter pill, the
+queue row and member line, and `StatusDot`, whose `role="img"` name is all an assistive technology
+gets because a dot draws no word at all), never by lengthening a drawn string.
+
+**The pixels are unchanged, and that is verified rather than asserted:** re-freezing the parity
+corpus after the change rewrote 56 `.a11y.yml` references and **zero** `.png` files, with every
+visible text node byte-identical. **The rule this generalises to:** when two statuses deliberately
+share a visible word because a non-textual channel carries the difference, that channel must have an
+assistive-technology counterpart. Hue, a glyph and a count chip have none; a future status that
+shortens its word owes one too.
+
+The guarantee is structural rather than textual and the shortening is not a weakening: the verdict is
+still reachable only via read-back, the receipt still shows its read-back checks, and the wire keys
+stay `verified-done` and `done-with-warnings`. *(The reconciliation debt this entry recorded against
+`ref operator-trust` is DISCHARGED — that doc now uses only the wire key `verified-done` and never
+the drawn label. Row-model D9's long-label sentence is §9.10's to carry.)*
+
+**One correction the audit forced.** D12, D18, D22 and D23 all name the status **`Waiting on you`**;
+the drawn word is **`Review`**. `Needs you` survives only as the composite pill and the queue BAND
+label. The code's behaviour is the short word, and whether the doc's vocabulary or the drawn one is
+authoritative is an operator call (`{#operator-calls}`), like D12's undrawn gate age beside it
+(§9.2).
+
+#### The workflow rail lists main workflows only (D219 → D220 → D241)
+
+`All workflows` is retired: `ALL_WORKFLOWS` is deleted, `rowsForWorkflow` always filters, and the app
 opens on a real panel (`DEFAULT_WORKFLOW`, read from the registry so a rename cannot point it at
 nothing). An operator works one workflow at a time, and a queue mixing fourteen workflows forced
-every row title to carry a workflow label to stay legible — which is the same redundancy that made
-the per-row workflow chip worth deleting. Grouping in the panel comes from **each descriptor's own
-`category`** (the eight real categories the registry serves), never a frontend list: the frontend
-hardcodes only the display order, membership is the descriptor's, an unlisted category appends,
-and an empty category drops. §10.1's one counting path (`countRows`) is untouched by all of this.
+every row title to carry a workflow label to stay legible. Grouping comes from **each descriptor's
+own `category`**, never a frontend list: the frontend hardcodes only the display ORDER, membership is
+the descriptor's, an unlisted category appends, and an empty category drops.
 
-**A chunk harness is a step of its composition, never a peer workflow (D219, 2026-08-14).** The
-operator's ruling — *"kuali finalization is a step in the separation workflow, not another workflow
-itself"* — lands as ONE membership-aware rule in the same grouping module the category rule already
-lives in (`dashboard/surfaces/workflow-category.ts`): inside its category group, an entry whose
-served `role` is `chunk-harness` renders **nested and visually subordinate under its composition's
-entry**, marked as a proving harness, and never as a sibling. The nested entries stay **always
-visible** — a collapse-by-default disclosure would need an attention-forwarding rule so a hidden
-harness's `Needs you` could not vanish, and visible-but-subordinate hides nothing and needs no such
-rule. Every workflow-listing surface renders through the one rule — the Workflow Panel rail, the
-Run Modal picker (its startable AND its "not startable" lists alike), and the Explorer — so no two
-surfaces can disagree about what is a step and what is a workflow. Four consequences are decided
-here rather than re-litigated per surface:
+Three dated rulings narrowed it, and they read as one rule because they land in one module
+(`dashboard/surfaces/workflow-category.ts`):
 
-- **The wire serves the raw fact, display stays the frontend's** (the standing R2 D17/D18 split):
-  the bootstrap workflow primitive gains a REQUIRED closed `role`
-  (`standalone` / `composition` / `chunk-harness` + `of`), the schema refuses an `of` that does not
-  name a served composition, and the module-side fact it projects is ref workflow-model §1.2.1's.
-- **Counts do not roll up.** §10.1 already decides this: a badge beside an entry counts exactly the
-  rows that entry's panel shows, and folding harness runs into the composition's badge would make
-  the badge disagree with its own queue panel — D81's divergence class manufactured deliberately.
-  Historical harness runs (the proving days') stay under the harness's own nested entry; the day's
-  cross-panel `Needs you` total already contains every panel.
-- **Run rows keep the harness's own label** on every surface (queue, activity, notifications) — the
-  nested rail entry still names the harness, so a row titled by it stays legible — and archived
-  rows' frozen labels are untouched (D179).
-- **Startability does not move.** Chunks stay registered and independently runnable through the
-  start-plan lane (each still owes/holds its own §3.2 controlled-commit proof); no phase doc's exit
-  criterion names rail presence. Today all six separations entries declare `surfaces: {}`, so the
-  picker lists them only under "not startable" — the nesting applies to whatever list a surface
-  renders, not to what is in it.
+- **D219 — a chunk harness is a step of its composition, never a peer workflow.** *"kuali
+  finalization is a step in the separation workflow, not another workflow itself."* An entry whose
+  served `role` is `chunk-harness` renders nested and visually subordinate under its composition's
+  entry, marked as a proving harness. The WIRE serves the raw fact and display stays the frontend's:
+  the bootstrap workflow primitive gains a REQUIRED closed `role` (`standalone` / `composition` /
+  `chunk-harness` + `of`), and the schema refuses an `of` that does not name a served composition.
+  **Counts do not roll up** — a badge beside an entry counts exactly the rows that entry's panel
+  shows, and folding harness runs into the composition's badge would make the badge disagree with its
+  own queue panel, which is D81's divergence class manufactured deliberately. Run rows keep the
+  harness's own label everywhere, and archived rows' frozen labels are untouched. **Startability does
+  not move**: chunks stay registered and independently runnable, and each still owes or holds its own
+  §3.2 controlled-commit proof.
+- **D220, the same day — the RAIL lists main workflows only.** On seeing the nesting live: *"not
+  needed at all — only the main workflows should be there."* The rail drops every entry whose role is
+  `chunk-harness` or `proving`, and a category whose entries all dropped goes with them rather than
+  rendering an empty heading. D219's one-rule claim narrows to the surfaces that still list them —
+  the Run Modal picker (both lists) and the Explorer — so proving work stays startable and
+  documented. The always-visible-nesting rationale (a hidden harness's `Needs you` must not vanish)
+  is answered at the rail's level instead: attention reaches the operator through the cross-panel
+  `Needs you` total and the notification inbox, neither of which is rail-scoped.
+- **D241 — a proving workflow heads `Test equipment`, not an HR category.** D220 left
+  `kuali-timekeeper-annotation` heading the picker and the Explorer under **Operations**, beside
+  daily work (*"a crash test dummy is not a workflow … maybe it belongs in a different category,
+  perhaps in test"*). A descriptor's `category` answers *which HR area does this touch*; for a
+  workflow that exists to prove the write kernel that is the wrong question with a plausible answer,
+  and **a plausible wrong answer is worse than none.** So the one grouping rule reads the module's
+  ROLE for these entries and not their category: role `proving` groups under **`Test equipment`**,
+  appended after every listed and unlisted category, on every surface that lists it. It appears
+  exactly once — lifted out of the category pass, never duplicated into it — and the group DROPS when
+  nothing proving is served. The picker's auto-pick set narrows to the same pair on D219's own
+  argument (a dialog that opens on a step the operator did not ask for must not open on test
+  equipment either).
 
-**Amended same day (D220, 2026-08-14): the RAIL lists main workflows only.** On seeing the nested
-presentation live, the operator ruled the harnesses "not needed at all — only the main workflows
-should be there," and asked the same of `kuali-timekeeper-annotation`, which D219's model could
-only call `standalone` (it proves the kernel, not a composition — ref workflow-model §1.2.1's new `proving`
-arm is the fact that names this). So the Workflow Panel rail drops every entry whose role is
-`chunk-harness` or `proving` — nested or top-level, the cross-category `separations-kronos-timecard`
-included — and a category whose entries all dropped goes with them rather than rendering an empty
-heading (`buildWorkflowRailGroups`, `dashboard/surfaces/shell.tsx`). D219's one-rule claim narrows
-to the surfaces that still list them: the Run Modal picker (both lists) and the Explorer keep the
-nested, harness-marked presentation, so proving work stays startable and documented. The
-always-visible-nesting rationale (a hidden harness's `Needs you` must not vanish) is answered at
-the rail's level instead: attention reaches the operator through the Status Bar's cross-panel
-`Needs you` total and the notification inbox, neither of which is rail-scoped. Counts, labels,
-registration and §3.2 obligations are all unmoved from D219.
+#### The action bar is an ISLAND (D224), and row commands live in a context menu
 
-**Amended again (D241, 2026-08-19): a proving workflow heads `Test equipment`, not an HR
-category.** D220 removed the proving workflow from the rail and left it where it was everywhere
-else — so `kuali-timekeeper-annotation` still headed the Run Modal's picker and the Explorer under
-**Operations**, beside daily work, which is what the operator was asking about (*"a crash test
-dummy is not a workflow … maybe it belongs in a different category, perhaps in test"*). A
-descriptor's `category` answers *which HR area does this touch*; for a workflow that exists to
-prove the write kernel that is the wrong question with a plausible answer, and a plausible wrong
-answer is worse than none. So the ONE grouping rule reads the module's ROLE for these entries and
-not their category: an entry whose role is `proving` groups under the heading **`Test equipment`**,
-appended after every listed and unlisted category, on every surface that lists it. It appears
-exactly once — it is lifted out of the category pass, never duplicated into it — and the group
-DROPS when nothing proving is served, exactly as an empty category does. The rail is unchanged in
-behaviour: it already filters to `standalone` + `composition`, so the new group arrives empty there
-and drops. The picker's AUTO-PICK set narrows to the same pair on the same argument (D219's "a
-dialog that opens on a step the operator did not ask for" holds one level out: it must not open on
-test equipment either); the workflow stays startable from its own panel and from the picker's
-`Test equipment` group, because a proof nobody can re-run is not a standing proof. The heading
-lives in `dashboard/surfaces/workflow-category.ts` beside the category order and the nesting rule —
-a rail-side or picker-side id list is exactly the workflow-specific customization the role model
-exists to avoid.
+**One composed action bar** replaces the two stacked bars above the queue. The status filters are one
+*group* inside it, not a band of their own; the two composites are a segmented control — a different
+shape for a different kind of thing. The **collapsed launcher shows the attention count only**, with
+its scope stated in its accessible name: a rule separates the current panel's code from the count, and
+the count carries the `Needs you` composite's own eye glyph, because the number is the day's whole
+`Needs you` across *every* panel, which is the point of a control that is on screen when no
+per-workflow badge is.
 
-**One composed action bar** replaces the two stacked bars above the queue. The status filters are
-one *group* inside it, not a band of their own; the two composites (`All` / `Needs you`) are a
-segmented control — a different shape for a different kind of thing — and a **zero-count status
-pill recedes**: it drops its border, its fill and its label down to an icon and a faint `0`,
-keeping its slot, its click target and its full accessible name (`Done with warnings` is 130px of
-bar at rest; at zero it is 34px). The **collapsed launcher shows the attention count only**, with
-its scope stated in its accessible name: a rule separates the current panel's code from the count,
-and the count carries the `Needs you` composite's own eye glyph — the same one the Status Bar pill
-wears — because the number is the day's whole `Needs you` across *every* panel, which is the point
-of a control that is on screen when no per-workflow badge is.
+**D224 (operator decision).** The bar had been the one full-bleed element in a shell otherwise made of
+cards, spanning edge to edge and separated from the panels below by a bottom hairline. It now carries
+the same treatment as every panel beside it — full border, `--ds-radius-lg`, `--ds-surface-card`,
+`overflow-hidden` so the select-mode band cannot square off a rounded corner — while the SHELL supplies
+its outside edge (`mx`/`mt` at `--ds-shell-inset`), exactly as the panel region supplies its own. The
+gap above the panels therefore equals the gap between them. Two consequences, both improvements and
+neither a separate decision: the bar's inner padding becomes `--ds-space-cozy`, the same 12px
+`--ds-shell-inset` resolves to, so the leading control aligns with the queue panel's own header text
+rather than with the window edge; and the bottom hairline goes, because a bordered island already
+states where it ends. The three groups, their order, the no-wrap rule and the middle group's sideways
+scroll are unmoved.
 
-**The action bar is an ISLAND (D224, 2026-08-18, operator decision).** It had been the one
-full-bleed element in a shell otherwise made of cards, spanning edge to edge and separated from the
-panels below by a bottom hairline. It now carries the same treatment as every panel beside it —
-full border, `--ds-radius-lg`, `--ds-surface-card`, `overflow-hidden` so the select-mode band cannot
-square off a rounded corner — while the SHELL supplies its outside edge (`mx`/`mt` at
-`--ds-shell-inset`), exactly as the panel region supplies its own with `p-[var(--ds-shell-inset)]`.
-The gap above the panels therefore equals the gap between them. Two consequences, both improvements
-and neither a separate decision: the bar's inner padding becomes `--ds-space-cozy`, which is the
-same 12px `--ds-shell-inset` resolves to, so the leading control now aligns with the queue panel's
-own header text rather than with the window edge; and the bottom hairline goes, because a bordered
-island already states where it ends. The three groups, their order, the no-wrap rule and the middle
-group's sideways scroll are all unmoved.
+**Row commands moved to a right-click context menu** (`ContextMenu`, opened by the platform's Menu /
+Shift+F10 key and by `m` through `openContextMenuFor()`); the per-row `⋯` overflow button is gone — a
+control whose only job is to admit there are more controls, costing a slot on every row. The menu's
+items come from the object's served `actions[]` at the `menu` placement (§9.2), so a command the
+surface did not send is unreachable rather than hidden.
 
-**Row commands moved to a right-click context menu** (`ContextMenu`, opened by the platform's
-Menu / Shift+F10 key and by `m` through `openContextMenuFor()`); the per-row `⋯` overflow button is
-gone — a control whose only job is to admit there are more controls, costing a slot on every row.
-The menu's items come from the object's served `actions[]` at the `menu` placement, so a command
-the surface did not send is unreachable rather than hidden.
+**The Workflow Panel has three modes**, persisted and cycled with `w`: **floating** (default — a
+window over the panel region, costing no column; Escape or an outside click dismisses it to `icon`),
+**icon** (nothing drawn over the content; the launcher carries the current workflow's 2-char code and
+the day's whole `Needs you` count across every panel), and **sidebar** (docked, 200px, always
+visible). Which panel you are in stays readable in all three because the Queue Panel is titled by its
+workflow. **One scrolling region per panel**: a panel's scroll track runs its full height, and a
+header, an outcome line or a tab bar that must stay put is a *sticky* block inside that one region,
+never a band stacked outside it. Queue rows are fixed at `--ds-h-row` — no surface invents a row
+height. The row-and-panel catalog derives its per-kind tab lists from `tabsForPanelKind`, the same
+function the panel itself calls, so the catalog can never describe a tab set the panel does not
+render.
 
-**One scrolling region per panel.** A panel's scroll track runs the panel's full height; a header,
-an outcome line or a tab bar that must stay put is a *sticky* block inside the one region, never a
-band stacked outside it that leaves the track a mid-panel segment. Queue rows are fixed at
-`--ds-h-row` — no surface invents a row height.
+#### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
 
-**The catalog derives its tab lists from the panel's own source.** The row-and-panel catalog's
-per-kind tab lists are computed from `tabsForPanelKind` — the same function the panel itself
-calls — so the catalog can never again describe a tab set the panel does not render.
+**What was wrong.** `useBootstrap` fetches once, and `boot.serverClock.now` — the instant that ONE
+fetch carried — was the only value the queue row's in-flight timer, the gate-age pill, the session
+footer and the worker cards computed against. Every live elapsed on the dashboard was frozen at page
+load. The proof measured it twice over: a parked run displayed **`0s` for more than two minutes** (the
+tab had loaded at 15:03:32, the run started at 15:12:17, so the difference was negative and the clamp
+made it a plausible zero), and a plain reload at 15:15:15 made the same row jump to **`2m 54s`** —
+exactly `bootstrapInstant − startedAt` — and freeze again. A terminal row was unaffected, because
+D124 already made its duration two served instants; so this was invisible on every settled run and
+wrong on every run an operator is actually watching.
+
+- **The server's instant stays the authority, and the browser contributes only elapsed.**
+  Substituting the browser's wall clock is what D124 forbids, and a machine whose clock is minutes off
+  would print a duration nobody can act on. What the browser IS authoritative about is how much time
+  has passed since that instant arrived, which it reads from the monotonic clock
+  (`systemClock.monotonicMs()`, `ref clock-config-secrets`'s single source) — a value an NTP step or a
+  user editing the system clock cannot move.
+- **One calibration, one value, every consumer.** `src/dashboard/state/served-clock.ts` holds
+  `(servedInstant, monotonicMs at receipt)` and derives
+  `deriveServedNow = servedInstant + (monotonicNow − monotonicAtReceipt)` on a one-second tick, on
+  `visibilitychange` (a backgrounded tab's interval is throttled to about once a minute, and an
+  operator returning to it must not read a minute-old age), and on any re-render. `dashboard-app.tsx`
+  calls the hook ONCE and passes the result down every path that used to carry the frozen instant,
+  **including the keyboard order's own sort key** — the queue's drawn order and the keyboard's
+  traversal order must not be able to date one row two ways.
+- **No surface reads a clock of its own.** The notification bell's `systemClock.now()` — the last
+  display-time wall-clock read in the bundle — is now the same passed-down instant. A second clock on
+  one screen is how two chips come to disagree about one gate's age.
+- **A backwards elapsed is DRAWN, not clamped.** `elapsedSecondsBetween` returns the SIGNED interval
+  and `fmtElapsed` spells a negative one with its sign. The clamp is what let *the clock reading this
+  is behind the fact it is reading* wear the shape of *this happened just now*, and those are
+  different facts. A sub-second skew still renders `0s` on its own, because `Math.round` of a fraction
+  of a second is zero — the signed arm appears only when something is genuinely wrong.
+- **Re-calibration is deliberately NOT built, with the trigger that ends the deferral named.** The BFF
+  is a loopback singleton (`config/runtime-isolation.json` pins the port; D181's `server` role lock
+  admits one holder), so the served clock and the browser's clock are the same machine's clock: there
+  is no skew to re-converge on, only the monotonic clock's own drift, immaterial at the seconds
+  granularity `fmtElapsed` renders. A server instant on the SSE `health` heartbeat is a wire change
+  with a server emitter and two fixture emitters behind it, bought for a skew this deployment cannot
+  have. What buys it is `ref frontend-backend-integration` §6.9's deferred exposed path (D189) — the
+  day the BFF serves a browser it does not share a machine with. Add the field in that commit.
+- **The parity corpus is held by pinning the OTHER half of the clock.** A ticking elapsed dated by real
+  browser time would make `45m 0s` and `45m 1s` a coin flip between the run that froze a reference and
+  the run that asserts it. `installFrozenMonotonic` freezes `performance.now` before navigation — and
+  nothing else, so timers, rAF and CSS animation all still run — which makes the derived instant
+  EXACTLY the fixture's served instant, byte-identical to what every existing reference was captured
+  against. `assertMonotonicFrozen` proves the page adopted it by reading the clock twice across real
+  wall time: D187's rule, applied to a clock instead of a theme.
+- **Measured, and then re-measured.** When this landed, the assert lane reported 139 captures failing
+  and 12 behaviour cases passing — every capture already failing before the change, because each
+  reference's stamped `descriptorHash` predated D226–D255 and the rows had gained D230's `#N` ordinal.
+  What mattered then was what the drift was MADE of: across 678 diverging lines, **not one was an
+  elapsed**. Track C's ONE deliberate re-freeze has since landed the corpus at **151/151 assert-green**
+  over 139 references × 3 files, so the interim number is superseded and only the clock finding it
+  supported still stands.
+
+**Wire.** The shell reads the bootstrap document and the SSE day stream and issues no commands of its
+own; `ref frontend-backend-integration` §4 owns the bootstrap's shape (including D219's `role` leaf and
+D264's moved declaration fields) and §7 the parity lane.
+
+<!-- roadmap-status: track-c -->
+- [x] D256 — one served-clock calibration, monotonic elapsed, every consumer including the keyboard sort key; a backwards elapsed is drawn, not clamped
+- [x] D257 — the open run-detail panel follows its run on the served `rowRevision` (§9.3)
+- [x] the shape hazard compares a run against its OWN workflow's served fingerprint, three verdicts, both directions pinned (§9.2)
+- [x] D259 — a replayed step is its own arm and is never `pending` (§9.3)
+- [x] the parity corpus re-frozen once, deliberately: 151/151 assert-green over 139 references × 3 files
+- [x] D18 — the pill row, the composite over projected buckets, the deleted banner and the inline decision
+- [x] D22 + D126 — both terminal dones draw `Done`; icon + hue + count carry it visibly and `accessibleLabel` carries it for assistive technology, pixels unchanged
+- [x] D219/D220/D241 — role-driven grouping in ONE module: harnesses nested where listed, dropped from the rail, and `proving` heading `Test equipment`
+- [x] D224 — the action bar is an island; the gap above the panels equals the gap between them
+- [x] D195 — the panel region is a grid, so the no-run-open case cannot leave ~950px of empty black
+- [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — an operator call (`{#operator-calls}`)
+- [ ] re-calibration on the SSE `health` heartbeat, deferred with its trigger named (D189's exposed path)
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys,layout-metrics}*; left: the heartbeat instant and one vocabulary call
+<!-- /roadmap-status -->
+
+### 9.10 The delegation and row model (row-model D5–D24)
+
+<!-- roadmap: order-4 -->
+
+**What this is.** The operator-ratified presentation series that decided what a ROW is, before any
+of it was built. It is a dashboard-only square with no wire counterpart, because it is a vocabulary
+rather than a payload: three row types (Run · Group · Member), a `containment` word for how a child
+belongs to a parent, and a set of rules for what a group shows at every size.
+
+**Read the whole square with one fact in front of you: the group half is a contract for a shape
+nothing can mint.** Every enqueue path in this tree stamps `shape: "single"` — the command kernel,
+the capture handoff and the start-plan service alike — and the kernel says so itself in a comment:
+*"the coordinator/member fan-out has no runtime yet (nothing mints an `operation` run)."* The
+projection, the containment fold, `memberRollup`, `memberPreview`, the member well and the
+`run-group` / `run-member` parity references are all real and all fed by hand-composed fixtures.
+Building the presentation ahead of the workflows was correct — the shape is what the workflows will
+be authored against — and this section says once, here, that it is ahead, rather than repeating the
+caveat in each entry.
+
+#### The series, and the collision that makes the prefix mandatory
+
+Ratified by the operator **2026-07-25**, continuing the row-model series ratified 2026-07-24 (D1:
+three row types with review-as-status and eight statuses; D2: a PDF upload is always a Group; D3:
+unrunnable items are typed Rejected Member Rows, delete-only; D4: a delegated OCR run keeps its own
+Run Row in the OCR panel plus a link from the parent; D5: groups default collapsed, auto-expand on a
+member `Waiting on you` or `Failed`). D6–D17 close the twelve delegation questions in the
+2026-07-25 delegation-layouts ledger §7; D18–D20 close three build-gating decisions in the
+demo-feature-plan ledger §6. That ledger's vocabulary is the one used throughout:
+**`containment`** = `member | linked | rejected`, Group Row anatomy + presentation ladder + rollup
+precedence, and delegation shapes S0–S7.
+
+**This series is NOT `reference/decisions.md`'s D-numbers.** Cite these as *row-model D6…D24*,
+prefix mandatory. The collision is real and load-bearing: this series' **row-model D22** shortens
+the status vocabulary, while the memo's bare **D22** is an unrelated contract-shape/guards ownership
+split. `reference/decisions.md` carries the matching warning at its top; keep both in step.
+
+**Two dated amendments moved several entries after the fact, and each says so where it lands.** The
+2026-07-27 demo redesign took D11's 41+ status-matrix rung, moved Data off the tab set without
+changing one of D19's semantics, and added D21. The 2026-07-28 waves took the rest of D11's ladder,
+gave D5 a close-on-settle arm, overrode the gate banner that expressed D18's loudness principle,
+re-amended D19(d), reinforced D20 structurally, extended D21, and added D22–D24. **Several of these
+reverse earlier operator-directed decisions**, which is why each entry records the reason: a future
+agent must not restore the old behaviour on principle.
+
+#### Where each entry's normative text now lives
+
+The series was written as one list and its entries belong to four different surfaces. Each is
+folded into the square it governs, so an operator reading a surface reads its rules; nothing was
+dropped, and this table is how a citation to the old flat list resolves.
+
+| Entry | Now in | What it says there |
+|---|---|---|
+| **D5** (collapse/auto-expand, close-on-settle) · **D6** (`linked` signers) · **D9** (rejected members) · **D11** (one member presentation) · **D13** (`Re-upload`) · **D14** (a group of one) · **D16** (tree-scoped cancel) | below, this section | the group model — the half nothing can mint |
+| **D7** · **D8** · **D10** · **D17** | §9.3 (named as owed) | the OCR review and packet-receipt sections, unservable today |
+| **D12** (the gate's age) | §9.2 | served in full; the pill draws none of it — an operator call |
+| **D15** (Search and Match as modes) | §9.1 | the descriptor declares ONE graph and no mode (`{#order-1}`) |
+| **D18** (the pill row) · **D22** (the shortened vocabulary) | §9.9 | the status bar and the two `Done`s |
+| **D19** (tabs, Receipt, Data) | §9.3 + §9.3.1 | the served tab set and the Context rail |
+| **D20** (`Write parked`) | §9.4 | the two typed exits |
+| **D21** (equal-width segments) | §9.3 | the timeline |
+| **D23** · **D24** | below, this section | the two house rules the series settled for every surface |
+
+#### The group model, as decided and as unbuilt
+
+- **D5 — a settled group collapses shut.** Groups default collapsed and auto-expand on a member
+  `Waiting on you` or `Failed`; the symmetric arm is that a group that SETTLES collapses back shut,
+  and a settled row stops re-explaining its own composition — the prose count line, the checked
+  counter and the member-name preview all drop on terminal rows, while attention and live rows keep
+  everything. The auto-expand exists because an open group is a demand; a group with nothing left to
+  demand holding the space of an open one is the same defect inverted. The row's expansion state and
+  its explanatory chrome are both projections of settlement, derived in ONE place
+  (`visibleMemberIds` branches on settlement and nothing else), never authored per fixture.
+- **D6 — oath-upload's signers are `linked`, not `member`; shape S4 is deleted.** Oath Upload stays
+  ONE Run Row for the PDF being uploaded; the signer rows live in the Oath Signature panel as their
+  own rows, and the upload row carries a chip (`6 signers · 3 done ↗`) that jumps there. A signer run
+  is independently meaningful and independently viewable; the upload row's job is the ticket, not the
+  roster. This supersedes the delegation ledger's §7 Q1, which recommended the opposite, and deletes
+  its §5 **S4** layout — oath-upload has no Group Row anatomy, no member ladder and no member rollup.
+  It restores the as-built production model §4.5 describes: a real `single` task born at upload that
+  walks `OCR prep → awaiting approval → wait signatures → submit` as one row, so the presentation now
+  matches the completion contract instead of contradicting it.
+- **D9 — rejected members never count toward done.** A packet carrying rejections is
+  `Done with warnings` until every rejection is deleted or explicitly acknowledged; rejected members
+  stay excluded from the rollup and counted separately (`50 people · 3 rejected`). An unrun person is
+  not a finished person. **As-built divergence:** `ContainmentSchema` serves two arms and this
+  vocabulary names three — nothing mints a rejected member, so nothing is wrong on screen, but the
+  served union is the real one (§9.2). *(This entry's original wording said the verdict requires zero
+  unacknowledged rejections under its pre-D22 name; the verdict is unchanged and its drawn label is
+  now `Done`, §9.9.)*
+- **D11 — one member presentation at every count; the density ladder is deleted.** A group's expanded
+  body is one rung at every member count: count strip → compact member lines in a capped scroll well
+  → `Open all N people` drill-in. The same shape at 3 people and at 50 — scale changes the
+  container's **overflow** and nothing else.
+
+  This replaced a ratified four-rung ladder in two stages, both reversals of operator-directed
+  designs. 2026-07-27 deleted the **41+ status matrix**: the operator saw the 50-member I-9 group
+  render as a grid of status cells where the 18-person work-study group renders named lines, read the
+  matrix as *a different kind of row*, and said *"we also don't need a new row type for i9 quarterly
+  retention."* 2026-07-28 deleted the rest: shown a 2-member group rendering full inline row cards
+  beside a 6-member group rendering compact lines, the operator said *"why are some like this and
+  some like that? keep the design like above. ditch the bottom design completely."* An earlier
+  amendment recorded the operator confirming "4 is good" for the 1–3 / 4–12 boundary; **that
+  ratification is spent** and must not be quoted to restore the rung.
+
+  **The principle, which is why neither deletion may be undone piecemeal:** a second visual language
+  for *the same thing but more of it* makes the product read as having more concepts than it has —
+  the exact cost the three-row-type model exists to avoid. D14 holds this from the other end; the
+  matrix broke it at 41+, the inline cards at 3. `densityRung` / `DensityRung` / `DENSITY_RUNGS` were
+  **deleted, not reduced to a function that ignores its argument** — a per-count switch that maps
+  every count to one rung is a per-count switch waiting to grow rungs back. Nothing was lost: the
+  per-status information the matrix carried survives as the count strip's status counts plus the
+  waiting / rejected tallies, an inline card's detail survives on the member's drill-in and the
+  group's People tab, and `Open all N people` is still the route into the full list at every size.
+
+  **Two as-built corrections to this entry, from the 2026-08-20 audit.** The components are
+  `MemberWell` / `MemberLine`, not the `PersonWell` / `PersonLine` the prose named. And the two
+  numbers were wrong: `--ds-h-member-well` is `calc(5 × --ds-h-member-line + 4 × --ds-border-w)` =
+  **144px, five whole lines**, not "136px ≈ 5.67 rows … deliberately not 144px" — there is no half-cut
+  sixth row and no such depth cue in the built well. An **in-row expand to 20 lines**
+  (`--ds-h-member-well-open`) exists that the entry never mentioned. What survives untouched is the
+  ordering rule: members are ordered **attention-first**, so the top of the well IS the attention list
+  the 41+ rung used to draw as a separate strip.
+- **D13 — a failed `linked` child makes the parent `Failed`, with `Re-upload`.** The parent mirrors
+  the child's error **verbatim** (never "Unknown error") and offers a `Re-upload` action.
+  **`Waiting on you` is reserved for a pending decision and is never used for a breakage** — the two
+  states demand different operator actions, and a breakage disguised as a decision is a gate that will
+  never resolve. As-built: the verbatim half is served (`liveMessage`, §9.2); `Re-upload` is not in
+  `ActionCommandKeySchema`.
+- **D14 — a group of one still renders as a Group Row.** A group of one that looks like a Run Row
+  makes the next fan-out look like a new object.
+- **D16 — cancelling a group is tree-scoped and final.** The served key is `cancel-tree` and the
+  footer titles it with its blast radius (§9.2). Its "no confirmation dialog and no undo window" half
+  is contradicted by the built surface, which raises a confirm whose body counts the members; the
+  code's behaviour is the confirm, and which of the two wins is an operator call
+  (`{#operator-calls}`).
+
+#### Two house rules the series settled for every surface
+
+- **D23 — the motion rule is narrowed on purpose.** From *never animate status changes* to **never
+  animate ambient status churn; a run that starts needing you may announce itself** — once, on the
+  edge. The reasoning, so the narrower form is applied and not merely quoted: a dashboard where
+  everything that updates also moves is unreadable exactly when it is busiest, and this one updates
+  constantly, so elapsed timers, incrementing counts, background settling and self-initiated re-sorts
+  stay STILL — if all of that moved, movement would be unavailable for the one thing that needs it.
+  But the two states allowed to shout mark the moment a run stops being background and becomes work,
+  and that is precisely the moment the operator is looking somewhere else. **Four constraints keep the
+  exception from becoming a licence:** (1) **edge, never state** — it fires on the transition INTO an
+  attention status, and a row already waiting when scrolled to does nothing; (2) **never on mount** —
+  first sight of a row is not a change; (3) **once, then still** (`ATTENTION_ANNOUNCE_MS`) — nothing
+  pulses, repeats or waits to be acknowledged; (4) **only the two loud statuses** — reaching for this
+  on a third is the drift, and the answer is no. Implemented once (`useAttentionAnnounce`); never
+  re-derived at a second call site. This entry is authority for exactly the attention edge and nothing
+  more.
+- **D24 — a professional dashboard does not explain itself.** Explanatory prose on a surface is a
+  **defect** unless it lives inside an **ⓘ** (a click-to-open popover — reachable by pointer, touch
+  and keyboard, costing the surface nothing until asked for). Two exemptions, and only two, because
+  neither is explanation: a **refusal**, which must state what was not done and why or the operator
+  cannot act on it; and a genuine **hazard** about the run in front of you (a stale checkpoint, a
+  staged write, an unresolved park) — those are outcomes, not teaching. **The test:** a sentence on a
+  surface must be a fact about the RUN in front of you; a sentence equally true of every run in the
+  product is a rule of the product, and a rule of the product is teaching that costs the same pixels
+  every time it is drawn whether or not anyone needed it. Operator, verbatim: *"i feel like the
+  dashboard right now is bloated with extra information like explanations and descriptions that we
+  dont need."* This drove the removal of dozens of strings and the relocation of the rest into ⓘs. An
+  **empty state** owes three things and no more: what would be here, why it is not, and what to do —
+  it does not owe a defence of the design. The full deletion criteria live in
+  `src/dashboard/DESIGN.md`, which is binding on every surface built against this contract.
+
+<!-- roadmap-status: order-4 -->
+- [x] the three row types, the `containment` vocabulary and the group anatomy are decided, drawn and pinned by parity references
+- [x] D6 — oath-upload is one Run Row with `linked` signers; shape S4 deleted, so the presentation matches §4.5's completion contract
+- [x] D11 — one member presentation at every count; the ladder's types are deleted rather than neutered
+- [x] D23 — the attention edge: once, on the transition, only the two loud statuses, one implementation
+- [x] D24 — the ⓘ rule, its two exemptions and `DESIGN.md` as the binding companion
+- [ ] **nothing mints an `operation` run** — every enqueue path stamps `shape: "single"`, so D5's settle-collapse, D9's rejected arithmetic, D11's well and D14's group-of-one have never run against a real group; the whole group model is fixture-fed
+- [ ] D9's `rejected` containment arm is not on the wire (`ContainmentSchema` serves two of the vocabulary's three)
+- [ ] D13's `Re-upload` verb, and the OCR/packet surfaces D7/D8/D10/D17 describe (§9.3)
+- [!] D16's "no confirmation dialog" against the built confirm-first dialog — an operator call (`{#operator-calls}`)
+> 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
+<!-- /roadmap-status -->
 
 ---
 
