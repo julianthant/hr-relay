@@ -1069,6 +1069,8 @@ mismatch (a dry run wearing the verified label) enforced on `OutcomeWireSchema`,
 the dashboard wire; this one is about `result`/`confidence` on the receipt itself, enforced at
 authority and at the domain schema both.
 
+### 2.4 Rerun transparency
+
 <!-- roadmap: p2-2g -->
 <!-- roadmap: def-search-export -->
 
