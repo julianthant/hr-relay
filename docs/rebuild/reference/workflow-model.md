@@ -81,7 +81,10 @@ context** (typed data flow between tasks). Time lives in ref dashboard-surfaces'
 - [x] checkpoint replay with a REQUIRED per-node `replay` policy, the D8 freshness walk, and the item-scoped store (§5.3 · §5.5 · §5.7)
 - [x] labels resolve from exactly two layers and no third (§1.5, D16)
 - [ ] six descriptor fields have ZERO producers among the eight registered workflows and are carried on the strength of the type proof alone: `presets`, `coordinator`, `completionConsumes`, `completion`, `surfaces.uploadRun`, `artifactProjections` (verified by grep over `src/workflows/*/descriptor.ts`) — each is named in place in the section that declares it
-- [ ] three of the six node kinds have zero producers for the same reason: no registered workflow declares a `branch`, a `parallel` or a `child-run` node (37 `.step`, 7 `.transaction`, 4 `.gate`). §3.2's delegation contract is proved by the type suite and `fixtureDescriptor`, never by a run
+- [ ] three of the six node kinds have zero producers for the same reason: no registered workflow declares a `branch`, a `parallel` or a `child-run` node (37 `.step`, 7 `.transaction`, 4 `.gate`). §3.2's delegation contract is proved by the type suite and `fixtureDescriptor`, never by a run — and of the three gate arms, only `resolvedBy: "operator"` has a producer
+- [ ] the builder's `.auth()` per-system override is UNBUILT (§3): neither `"eager"` nor `"on-first-use"` appears in `src/`, so every workflow acquires each session at the first node that needs it and cannot ask for the eager chain. R12's Duo ceremony lease is its prerequisite
+- [ ] three §1.3 projections have no reader: `cli stop <workflow>` (no `stop` verb in `src/cli.ts`), the exhaustive `Record<IconName, LucideIcon>` (`IconName` is absent from `src/dashboard`), and `sessionLabel` (declared, read by nothing)
+- [ ] §1.5's layer-1 presentation override is unbuilt — no `config/workflow-presentation/` exists and nothing reads one, so every label comes from the descriptor
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/base/workflow.ts`, `src/base/flow.ts`, `src/control/workflow-registry.ts`, all eight `src/workflows/*/descriptor.ts`, `config/pending-impl-bindings.json` and `tests/unit/architecture/descriptor-coverage.test.ts`; left: the six unproduced fields and the three unproduced node kinds
 <!-- /roadmap-status -->
 
