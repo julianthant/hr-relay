@@ -66,7 +66,7 @@ status: done
 when: 07-31 → 08-04 | five days
 size: XL
 chip: complete 2026-08-04
-doc: 01 §Phase summary · 00 §The base's dependency graph · ref:operator-trust §0 · ref:frontend-backend-integration §0
+doc: 01 §Phase summary · 00 §The base's dependency graph · ref:operator-trust §0 · ref:frontend-backend-integration §0 · ref:write-safety §1 · ref:write-safety §7 · ref:clock-config-secrets §5
 open: no
 
 > The minimum base that carries one workflow end to end. **Exit (D74): person-lookup ran LIVE** against real UCPath + CRM on the new executor — run `4ebf7275` / trace `pl-000619-4ebf`, recovered a dead CRM session mid-run, terminal `done` at attempt 2, all four parity surfaces from the ONE projection.
@@ -99,7 +99,7 @@ log:
 status: done
 date: 2026-08-01
 size: XL
-doc: 01 §1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.4 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §4 · ref:operator-trust §1 · ref:task-contract §2 · ref:task-contract §2.7 · ref:workflow-model §3 · ref:operator-trust §1.7 · ref:dashboard-surfaces §2
+doc: 01 §1c · 1d · 1e — authority storage, UI registry + drivers, the workflow DAG · ref:dashboard-surfaces §2.3 · ref:dashboard-surfaces §2.4 · ref:dashboard-surfaces §2.5 · ref:dashboard-surfaces §4 · ref:operator-trust §1 · ref:task-contract §2 · ref:task-contract §2.7 · ref:workflow-model §3 · ref:operator-trust §1.7 · ref:dashboard-surfaces §2 · ref:write-safety §2 · ref:clock-config-secrets §4 · ref:clock-config-secrets §6.2
 
 builds:
 - [x] BE authority SQLite + backup / doctor / degraded mode / restore interlock
@@ -120,7 +120,7 @@ log:
 status: done
 date: 2026-08-02 → 03
 size: XL
-doc: 01 §1f — registry, workers, commands, the write sequencer · ref:workflow-model §1.3 · ref:workflow-model §2 · ref:workflow-model §4 · ref:dashboard-surfaces §2.4 · ref:execution-and-sessions §3 · ref:execution-and-sessions §4 · ref:execution-and-sessions §4.1 · ref:write-safety §3 · ref:operator-trust §2.1 · ref:frontend-backend-integration §3.4
+doc: 01 §1f — registry, workers, commands, the write sequencer · ref:workflow-model §1.3 · ref:workflow-model §2 · ref:workflow-model §4 · ref:dashboard-surfaces §2.4 · ref:execution-and-sessions §3 · ref:execution-and-sessions §4 · ref:execution-and-sessions §4.1 · ref:write-safety §3 · ref:operator-trust §2.1 · ref:frontend-backend-integration §3.4 · ref:write-safety §3.3
 
 builds:
 - [x] BE the ONE `WORKFLOW_MODULES` composition root
@@ -141,7 +141,7 @@ log:
 status: done
 date: 2026-08-04
 size: M
-doc: 01 §1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.2 · ref:dashboard-surfaces §9.5.2 · ref:frontend-backend-integration §3 · ref:frontend-backend-integration §6.2 · ref:frontend-backend-integration §6.3 · ref:frontend-backend-integration §7.1 · ref:dashboard-surfaces §1 · ref:frontend-backend-integration §3
+doc: 01 §1g-spine · 1i-spine — spans, the ONE projection, the BFF, the Person Lookup shell · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.2 · ref:dashboard-surfaces §9.5.2 · ref:frontend-backend-integration §3 · ref:frontend-backend-integration §6.2 · ref:frontend-backend-integration §6.3 · ref:frontend-backend-integration §7.1 · ref:dashboard-surfaces §1 · ref:frontend-backend-integration §3 · ref:clock-config-secrets §3
 
 builds:
 - [x] BE span emission + the one run/queue projection
@@ -178,7 +178,7 @@ status: done
 when: 08-04 → 08-09 | six days
 size: XL
 chip: complete 2026-08-09
-doc: 02 §Phase summary
+doc: 02 §Phase summary · ref:write-safety §3.4
 open: no
 
 > **The controlled commit is MET live (D135):** one real Kuali write on doc `4489` — dry run zero durable rows · forced mismatch refused pre-fence · commit 16.45 s with reload read-back proof · idempotent re-run `already-present` in 2 ms · both docs restored. Then four tails landed against a proven spine.
@@ -194,7 +194,7 @@ log:
 status: done
 date: D128–D135 · 2026-08-04
 size: L
-doc: 02 §Transaction proof — the first real write · ref:write-safety §2.1 · ref:write-safety §3 · ref:write-safety §3.1 · ref:write-safety §5 · ref:guards-and-tests §3.6 · ref:frontend-backend-integration §6.4
+doc: 02 §Transaction proof — the first real write · ref:write-safety §2.1 · ref:write-safety §3 · ref:write-safety §3.1 · ref:write-safety §5 · ref:guards-and-tests §3.6 · ref:frontend-backend-integration §6.4 · ref:write-safety §3.3 · ref:write-safety §3.4 · ref:clock-config-secrets §4.1 · ref:charter §13
 
 > Same-day withdrawal of the wrong D128 conclusion: the two real causes were driver defects in THIS tree (a ~700 ms gadget debounce, a `commit` returning at request time). Write-heavy migration unblocked.
 
@@ -215,7 +215,7 @@ log:
 status: done
 date: D134–D145
 size: L
-doc: 02 §2g — event / trust layer · ref:operator-trust §2 · ref:operator-trust §2.2 · ref:operator-trust §2.3 · ref:operator-trust §4 · ref:operator-trust §6 · ref:operator-trust §6.1 · ref:operator-trust §6.3 · ref:dashboard-surfaces §2.6 · ref:write-safety §6.1 · ref:frontend-backend-integration §6.5
+doc: 02 §2g — event / trust layer · ref:operator-trust §2 · ref:operator-trust §2.2 · ref:operator-trust §2.3 · ref:operator-trust §4 · ref:operator-trust §6 · ref:operator-trust §6.1 · ref:operator-trust §6.3 · ref:dashboard-surfaces §2.6 · ref:write-safety §6.1 · ref:frontend-backend-integration §6.5 · ref:write-safety §3.1
 
 builds:
 - [x] BE schema v10
@@ -260,7 +260,7 @@ log:
 status: done
 date: D168–D180
 size: L
-doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref:data-intake-and-edit-data §2.7 · ref:data-intake-and-edit-data §5.1 · ref:data-intake-and-edit-data §5.2 · ref:frontend-backend-integration §6.7 · ref:dashboard-surfaces §9.5.1 · ref:dashboard-surfaces §9.7.1 · ref:dashboard-surfaces §9.7.2 · ref:dashboard-surfaces §9.5.3 · ref:operator-trust §5.7 · ref:operator-trust §5.8 · ref:data-intake-and-edit-data §6.4.1
+doc: 02 §2i — the operator surface (A–G) · ref:operator-trust §1.3 · ref:data-intake-and-edit-data §2.7 · ref:data-intake-and-edit-data §5.1 · ref:data-intake-and-edit-data §5.2 · ref:frontend-backend-integration §6.7 · ref:dashboard-surfaces §9.5.1 · ref:dashboard-surfaces §9.7.1 · ref:dashboard-surfaces §9.7.2 · ref:dashboard-surfaces §9.5.3 · ref:operator-trust §5.7 · ref:operator-trust §5.8 · ref:data-intake-and-edit-data §6.4.1 · ref:charter §25
 
 builds:
 - [x] BOTH trust surfaces + notification bell over the durable inbox
@@ -362,7 +362,7 @@ log:
 #### Track B · dashboard completion {#track-b}
 status: done
 chip: B1–B8 all landed · 08-19 → 20
-doc: 03a §Track B · dashboard completion · ref:frontend-backend-integration §3.2 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.5.1 · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.3 · ref:write-safety §14.11 · ref:operator-trust §5.9
+doc: 03a §Track B · dashboard completion · ref:frontend-backend-integration §3.2 · ref:frontend-backend-integration §5.1 · ref:dashboard-surfaces §9.5.1 · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.3 · ref:write-safety §14.11 · ref:operator-trust §5.9 · ref:operator-trust §2.3.5 · ref:operator-trust §2.3.7
 
 > Separations as the forcing function; the findings ledger swept to zero-or-decided — the definition of "frontend done".
 
@@ -405,7 +405,7 @@ log:
 status: planned
 date: D264 · audit 2026-08-20
 chip: ratified 2026-08-20 (D264) · D1–D5 planned · D6–D10 proposed
-doc: 03a §Track D · dashboard hardening, pre-cutover budgets · ref:frontend-backend-integration §2 · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4
+doc: 03a §Track D · dashboard hardening, pre-cutover budgets · ref:frontend-backend-integration §2 · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4 · ref:workflow-model §1.2
 
 > From the 2026-08-20 architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of ref frontend-backend-integration §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
 
@@ -437,7 +437,7 @@ log:
 status: planned
 date: R12 · 2026-08-20
 size: S
-doc: 03a §Duo ceremony lease — one login at a time per credential · ref:execution-and-sessions §4.1 · ref:execution-and-sessions §4.2
+doc: 03a §Duo ceremony lease — one login at a time per credential · ref:execution-and-sessions §4.1 · ref:execution-and-sessions §4.2 · ref:execution-and-sessions §10
 
 > A durable per-credential lease in authority serializes EVERY Duo ceremony — from "navigate to SSO" until the content verifier proves the session — across every worker and every system. TTL is `sessionAcquireMs` + grace; waiters are bounded and refuse loud naming the holder; a refused assertion poison-closes and retries ONCE under the same lease on a FRESH profile, then fails naming the profile; `defineVerifiedLoginRecipe` takes a lease token only the lease store mints, pinned by a guard with a violating fixture. The hazard exists TODAY — two workflows' workers cold-starting together share one credential's server-side counter (D243).
 
@@ -458,7 +458,7 @@ log:
 status: planned
 date: R11 · 2026-08-20
 size: L
-doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-sessions §1 · ref:execution-and-sessions §3 · ref:execution-and-sessions §7.1
+doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-sessions §1 · ref:execution-and-sessions §3 · ref:execution-and-sessions §7.1 · ref:execution-and-sessions §11
 
 > A SESSION is a dashboard-started group of N runs. Every workflow follows the same browser-profile recipe and every worker owns its own profile INSTANCE (doc 05's `(worker, system, instance, configFingerprint)` partition); N workers per workflow, spawned and stopped from the dashboard. Sessions never share information and workers never message each other — they know what the others are doing through AUTHORITY only: run claims, session leases, write fences, the concurrency matrix. The dashboard shows the session and what each of its workers is doing.
 
@@ -653,7 +653,7 @@ log:
 status: planned
 size: XL
 chip: 8 of 9 — the three commits wait for 08-28 (S7)
-doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse)
+doc: 03b §Separations — order 8, the first migration · 03b §Exit criteria · 03c §Phase summary · 03c §Exit criteria · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §12 · ref:write-safety §14.7
 
 > write-heavy — UCPath termination + Kuali finalization. The wrong-person incident (`T002173685`); the deepest write-safety proof, entered first by your choice (D193). Built bottom-up: store tasks first, one small provable sub-workflow per system interaction, then composed — lego recomposition, never conditional branches inside one monolith (§3.1/§3.2 directives). What remains is the calendar: canary 4537 is named and mapped, and S7 admits it on 2026-08-28.
 
@@ -687,7 +687,7 @@ log:
 #### 2 · Kuali separation-document read {#sep-2}
 status: done
 date: D197 · live 08-12
-doc: 03b §2 · Kuali separation-document read · ref:task-contract §2.8 · ref:task-contract §2.10
+doc: 03b §2 · Kuali separation-document read · ref:task-contract §2.8 · ref:task-contract §2.10 · ref:operator-trust §2.3.3
 
 > Five real runs `done`, three with `verified` receipts over real documents.
 
@@ -703,7 +703,7 @@ log:
 #### 3 · UCPath employment grid + the ALWAYS-GATE {#sep-3}
 status: done
 date: D201–D203 · live 08-12
-doc: 03b §3 · UCPath employment grid + the ALWAYS-GATE · ref:task-contract §2.11 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §5.5
+doc: 03b §3 · UCPath employment grid + the ALWAYS-GATE · ref:task-contract §2.11 · ref:write-safety §14.3 · ref:write-safety §14.9 · ref:workflow-model §5.5 · ref:operator-trust §2.3.4
 
 > The first live gated run: parked, a real approval through the real command endpoint, resumed — and it found that a gate's durable record is not a checkpoint (D203).
 
@@ -719,7 +719,7 @@ log:
 #### 4 · UCPath termination WRITE {#sep-4}
 status: done
 date: D206 · prepare live 08-14
-doc: 03b §4 · UCPath termination WRITE · ref:task-contract §2.12 · ref:write-safety §3 · ref:write-safety §5
+doc: 03b §4 · UCPath termination WRITE · ref:task-contract §2.12 · ref:write-safety §3 · ref:write-safety §5 · ref:write-safety §3.2
 
 builds:
 - [x] BE two fenced transactions: the pending sweep + the filing
@@ -752,7 +752,7 @@ log:
 #### 6a · THE COMPOSITION {#sep-6a}
 status: done
 date: D211
-doc: 03b §6a · THE COMPOSITION · ref:workflow-model §3 · ref:write-safety §14.10
+doc: 03b §6a · THE COMPOSITION · ref:workflow-model §3 · ref:write-safety §14.10 · ref:write-safety §12
 
 > An approval of a person is not an approval of a date — the packet's digest covers what the approval authorises.
 
@@ -787,7 +787,7 @@ log:
 #### 6c · PREVIEW TERMINAL reached {#sep-6c}
 status: done
 date: doc 4502 · canary 4510 refused pre-gate
-doc: 03b §6c · PREVIEW TERMINAL reached · ref:workflow-model §2.1 · ref:operator-trust §2.3
+doc: 03b §6c · PREVIEW TERMINAL reached · ref:workflow-model §2.1 · ref:operator-trust §2.3 · ref:operator-trust §2.3.7
 
 > Still zero write rows beyond 2026-08-04's proof.
 
@@ -804,7 +804,7 @@ log:
 #### Track A · separations backend completion {#track-a}
 status: planned
 chip: canary 4537 named — S7 unblocks 08-28
-doc: 03b §Track A · separations backend completion · 03b §Exit criteria · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4
+doc: 03b §Track A · separations backend completion · 03b §Exit criteria · ref:write-safety §3 · ref:write-safety §4.2 · ref:write-safety §5 · 03c §Exit criteria · 03c §Non-workflow capability closure inventory (D58) · ref:operator-trust §3.2 · ref:operator-trust §4 · ref:operator-trust §4.1 · ref:operator-trust §4.3 · ref:write-safety §3.2
 
 > Separations is at **8 of 9 exit criteria**. The canary is **doc 4537** (named 08-19, mapped live in §9.19: the first subject with an active terminable employment). S7 refuses to plan until its separation date, **2026-08-28** — then ② UCPath filing, ① the pending sweep on the row ② creates, ③ Kuali finalization.
 
@@ -834,7 +834,7 @@ log:
 #### Dashboard · wire separations {#sep-dash}
 status: active
 chip: 9 of 9 wired — every square filled (D262 closed the last)
-doc: 03b §Dashboard · wire separations · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.4 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.5.2 · ref:dashboard-surfaces §9.5.1 · ref:operator-trust §5.9 · ref:write-safety §14.11
+doc: 03b §Dashboard · wire separations · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.4 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.5.2 · ref:dashboard-surfaces §9.5.1 · ref:operator-trust §5.9 · ref:write-safety §14.11 · ref:operator-trust §6.3
 
 > What the generic surfaces learned about separations, and the two separations-specific things no default covers (the ALWAYS-GATE's ceremonies, the three commit contracts' ledger lines). Built with Track B as the forcing function, so most squares are already filled; the empty ones are wires not yet run — not sloppy surfaces.
 
@@ -875,7 +875,7 @@ log:
 ### Smaller operator calls open {#operator-calls}
 status: you
 chip: needs you
-doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11
+doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9.10 · 03c §Non-workflow capability closure inventory (D58) · ref:guards-and-tests §3.11 · ref:operator-trust §10 · ref:write-safety §13
 
 > ONE call is left, and it cannot be made before the day it lands on: whether to spend the narrow window right after ② files on **2026-08-28** to give `clear-pending`'s COMMITTED arm its only possible live witness, or to accept that arm as sequencer- and fixture-proved and say so in the close-out. Both are defensible; neither is a default. (Settled, recorded so nobody re-opens them: the gate-age pill and D192's re-disposition, both answered 2026-08-18; A6's first live retry delivered 2026-08-19; the Activity hours-saved tile DROPPED by D239; archive tabs and export closed by D223/D240; `span.patched` retired by D254.)
 
@@ -898,7 +898,7 @@ phase: Phase 3 · continued
 status: planned
 when: next | undated — order, not calendar
 chip: 13 workflows · 9 order rows
-doc: 03c §Phase summary · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:guards-and-tests §10
+doc: 03c §Phase summary · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:guards-and-tests §10 · ref:charter §Migration strategy
 open: yes
 
 > Doc 03c §Recommended migration order's risk-proof ordering, kept as-is after the separations entry (order 8 is the migration in flight, under Phase 3 above): reads populate the stores, the OCR service unblocks four consumers, write-heavy lands last. **No workflow after separations is named yet.** Each owes the 12-item §b questionnaire before building, a live dry run, (for writes) a controlled commit on a target you approve — and its own **Dashboard · wire** task on top of the defaults. **Store reality:** only ucpath, crm, kuali, new-kronos have real drivers today; onbase, servicenow, i9, old-kronos, sharepoint are 3-line session declarations with zero tasks.
@@ -1029,7 +1029,7 @@ log:
 ### Order 3 · the OCR pipeline workflow {#order-3}
 status: planned
 size: M
-doc: 03c §Order 3 · the OCR pipeline workflow · ref:data-intake-and-edit-data §3 · ref:data-intake-and-edit-data §4 · ref:data-intake-and-edit-data §5 · ref:data-intake-and-edit-data §5.1 · ref:frontend-backend-integration §6.9 · ref:dashboard-surfaces §9.7.2
+doc: 03c §Order 3 · the OCR pipeline workflow · ref:data-intake-and-edit-data §3 · ref:data-intake-and-edit-data §4 · ref:data-intake-and-edit-data §5 · ref:data-intake-and-edit-data §5.1 · ref:frontend-backend-integration §6.9 · ref:dashboard-surfaces §9.7.2 · ref:data-intake-and-edit-data §4.3 · ref:data-intake-and-edit-data §4.8
 
 > service — PDF → extraction → review → fan-out. No browser, no submit; the 2h service stores are already built.
 
@@ -1073,7 +1073,7 @@ log:
 ### Order 4 · oath-signature · emergency-contact {#order-4}
 status: planned
 size: L
-doc: 03c §Order 4 · oath-signature · emergency-contact · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §4.3 · ref:write-safety §3 · ref:write-safety §14
+doc: 03c §Order 4 · oath-signature · emergency-contact · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §4.3 · ref:write-safety §3 · ref:write-safety §14 · ref:workflow-model §3.2 · ref:write-safety §3.2
 
 > OCR fan-out + light write — oath date rows; emergency-contact fill. Exercises the completion union (D11), approval gates (D5) and operation-member fan-out; the write is a bounded UCPath enter/fill.
 
@@ -1117,7 +1117,7 @@ log:
 ### Order 5 · i9-check {#order-5}
 status: planned
 size: L
-doc: 03c §Order 5 · i9-check · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §7 · ref:execution-and-sessions §8 · ref:data-intake-and-edit-data §4.1
+doc: 03c §Order 5 · i9-check · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §7 · ref:execution-and-sessions §8 · ref:data-intake-and-edit-data §4.1 · ref:data-intake-and-edit-data §4.10 · ref:workflow-model §3.2
 
 > UCPath read + durable roster projection — verify I-9 packet, the master retention workbook. Operation coordinator + member enqueue + display-only rows, no external submit.
 
@@ -1160,7 +1160,7 @@ log:
 ### Order 6 · work-study · kronos-pay-rule {#order-6}
 status: planned
 size: L
-doc: 03c §Order 6 · work-study · kronos-pay-rule · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §2.2 · ref:write-safety §5 · ref:task-contract §2.9 · ref:data-intake-and-edit-data §1
+doc: 03c §Order 6 · work-study · kronos-pay-rule · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §2.2 · ref:write-safety §5 · ref:task-contract §2.9 · ref:data-intake-and-edit-data §1 · ref:write-safety §3.2
 
 > **first real writes** — PayPath pool/comp; UKG pay rules. Small, isolated workflow-specific production commits on the proven transaction kernel.
 
@@ -1181,7 +1181,7 @@ log:
 #### Dashboard · wire work-study · kronos-pay-rule {#order-6-dash}
 status: planned
 chip: inherits the defaults — wiring only
-doc: 03c §Dashboard · wire work-study · kronos-pay-rule · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:data-intake-and-edit-data §2.8 · ref:dashboard-surfaces §9.7.1 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.5.2 · ref:dashboard-surfaces §9.5.1 · ref:operator-trust §5.9
+doc: 03c §Dashboard · wire work-study · kronos-pay-rule · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1.1 · ref:frontend-backend-integration §5.1.2 · ref:frontend-backend-integration §5.1.3 · ref:frontend-backend-integration §5.1.5 · ref:frontend-backend-integration §5.1.6 · ref:data-intake-and-edit-data §2.8 · ref:dashboard-surfaces §9.7.1 · ref:dashboard-surfaces §2.6 · ref:dashboard-surfaces §9.5.2 · ref:dashboard-surfaces §9.5.1 · ref:operator-trust §5.9 · ref:data-intake-and-edit-data §2.3
 
 > What the generic surfaces must learn about work-study and kronos-pay-rule: its typed start inputs, how a row names its subject, which timeline categories its descriptor declares, what its receipt and ledger lines say. Everything here is wiring — the surfaces exist; a missing square means the wire is not run yet, not that the surface is sloppy.
 
@@ -1203,7 +1203,7 @@ log:
 ### Order 7 · oath-upload · onbase {#order-7}
 status: planned
 size: L
-doc: 03c §Order 7 · oath-upload · onbase · 03c §Recommended migration order (by risk / complexity / reuse) · 03c §Live probe status (the design assumptions still unproven) · ref:write-safety §2.2 · ref:write-safety §4.2 · ref:dashboard-surfaces §4.5 · ref:guards-and-tests §3.5 · ref:task-contract §9.2
+doc: 03c §Order 7 · oath-upload · onbase · 03c §Recommended migration order (by risk / complexity / reuse) · 03c §Live probe status (the design assumptions still unproven) · ref:write-safety §2.2 · ref:write-safety §4.2 · ref:dashboard-surfaces §4.5 · ref:guards-and-tests §3.5 · ref:task-contract §9.2 · ref:write-safety §3.2
 
 > write-heavy — ServiceNow ticket + PDF; OnBase document import. Prove ServiceNow `receipt`; resolve OnBase OQ2 (`upload-verify` vs `unverifiableByPage`); oath-upload ports the born-at-upload fence.
 
@@ -1247,7 +1247,7 @@ log:
 ### Order 9 · onboarding {#order-9}
 status: planned
 size: XL
-doc: 03c §Order 9 · onboarding · 03c §Recommended migration order (by risk / complexity / reuse) · ref:workflow-model §3 · ref:data-intake-and-edit-data §4 · ref:write-safety §5 · ref:write-safety §14
+doc: 03c §Order 9 · onboarding · 03c §Recommended migration order (by risk / complexity / reuse) · ref:workflow-model §3 · ref:data-intake-and-edit-data §4 · ref:write-safety §5 · ref:write-safety §14 · ref:write-safety §3.2
 
 > write-heavy — the real hire transaction. The duplicate-person incident; last, highest-stakes, most reuse of everything below it.
 
@@ -1325,7 +1325,7 @@ note: **Never, by design:** unverified silent fallbacks · selector `.or()` chai
 
 ### Photograph a paper form on your phone → it becomes an OCR-backed run {#def-capture-binding}
 status: planned
-doc: 04 §Photograph a paper form on your phone → it becomes an OCR-backed run · ref:data-intake-and-edit-data §5.1 · ref:dashboard-surfaces §9.7.2
+doc: 04 §Photograph a paper form on your phone → it becomes an OCR-backed run · ref:data-intake-and-edit-data §5.1 · ref:dashboard-surfaces §9.7.2 · ref:charter §22
 
 > `CAPTURE_INTAKE_BINDINGS` is deliberately empty — neither current workflow can honestly derive an employee id from a photograph. Comes due with the first OCR-consuming workflow; "close this first": the `run.queued` span from projector-enqueued runs.
 
@@ -1453,7 +1453,7 @@ status: planned
 when: after Phase 3
 size: L
 chip: not started
-doc: 05 §Phase summary · 05 §Exit criteria · 05 §Legacy vs rebuild (as of 2026-08-21) · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §7.4 · ref:frontend-backend-integration §10
+doc: 05 §Phase summary · 05 §Exit criteria · 05 §Legacy vs rebuild (as of 2026-08-21) · ref:dashboard-surfaces §5 · ref:frontend-backend-integration §7.4 · ref:frontend-backend-integration §10 · ref:charter §Migration strategy
 open: no
 
 > D89 / D93. No workflow flips individually, no mixed-engine production, ever. The entire legacy repo is preserved as the rollback asset; nothing in it is deleted until rollback-window closure with separate explicit authorization.
@@ -1503,7 +1503,7 @@ log:
 ### Later, unplanned {#later-unplanned}
 status: never
 chip: ideas, not a hosted future
-doc: 05 §Later, unplanned · ref:operator-trust §7
+doc: 05 §Later, unplanned · ref:operator-trust §7 · ref:clock-config-secrets §6.1
 
 > A cooperation / multi-user mode built on top of solo (D193) — the tier's one remaining item; the PACKAGING half ("web app → real app") LEFT this tier on 2026-08-21, when the operator made it Phase 6 (`{#desktop-app}`, R14). The LATER tier of D76's MUST / SHOULD / LATER sizing — what the stop-loss cuts FIRST — and it never blocks the cutover: doc 05 §Exit criteria names none of it.
 
