@@ -1485,39 +1485,10 @@ step-label switches, the stub map) becomes a projection of the descriptor set wi
 
 ---
 
-## Phase 1e as-built completion + delegation-manifest delta (2026-08-01)
-
-`src/domain/workflow/completion.ts` implements §4. Three as-built points:
-
-- **`PerDocumentStage.deriveItemId` returns `ItemId`, not `string`.** §4.1's sketch types the
-  per-record stage's id as `ItemId` and the per-document stage's as a bare `string`; there is no
-  reason for two identity types on one program, and the loose one is the arm that could smuggle a
-  positional id.
-- **The program is sealed, and reveal is a named function.** §4.2's "branded opaque type whose
-  completion config is not structurally reachable" is implemented as a handle exposing `mode` and
-  `gate` only, plus `revealCompletionProgram`. `descriptor-coverage` additionally checks that no
-  workflow module calls it, so §4.2's second mechanism (no spec-to-spec reach) is mechanical too.
-- **Construction proves the chain against a mandatory sample**, including the §4.1 rule that stage
-  N+1 receives the ids stage N ACTUALLY enqueued after `eligible` filtering.
-
-**Durable delegation manifest (D105).** The 1c `DelegationManifestSchema` could not express what the
-1e planner writes, and all three gaps were silent losses rather than validation:
-
-- it recorded no `policy`, so the manifest — the authority a replay verifies against — was not the
-  durable home of the policy the operator selected (D102 says one vocabulary END TO END);
-- its `join` carried only `all`/`all-settled`, making an awaited one-child edge (`join:"one"`) and
-  an un-awaited fan-out (`join:"none"`) unwritable, even though the latter's manifest reference IS
-  the node's output;
-- `children` required `min(1)`, so a zero-child fan-out — a legitimate empty upstream list that
-  ref workflow-model §3.2 requires to stay an explicit satisfied join — had no writable record.
-
-All three are corrected in `src/domain/dependencies.ts`, with `join`/`cardinality` agreement
-enforced. Like D102 this is a zod-validated JSON payload, so no authority migration version is
-consumed by the shape change.
-
----
-
 ## 4. Unified completion contract (replaces approveTo / approveDocumentTo / completeDelegatedRun)
+
+<!-- roadmap: order-4 -->
+<!-- roadmap: order-7 -->
 
 **Re-derived from `tracker/dashboard/ocr/approve.ts` + `prepare.ts` as-built (D11), not the OCR
 happy path.** The as-built route is a *staged program with durable state*, and the contract must
@@ -1526,10 +1497,27 @@ stages (per-document consumes per-record's *actually-enqueued* itemIds), oath-up
 sibling-subscriber shape with NO coordinator, and i9's prepare-route enqueue + task-less
 display-only failed rows.
 
+**Where this stands, stated once so that no subsection below has to imply it.** The TYPED layer is
+built, sealed and mechanically proven: `src/domain/workflow/completion.ts` is §4.1's shape,
+`defineCompletionProgram` proves a program against a mandatory sample at construction, and
+`src/base/workflow.ts:237-239` admits it on a descriptor as
+`completion?: SealedCompletionProgram<Completion>`. **Nothing declares one.**
+`grep -rn "completion:" src/workflows/` returns nothing; no descriptor declares `completionConsumes`
+or `coordinator` either; and the two execution seams a running program would need — the child-run
+executor and the parallel `all-settled` join — refuse BY NAME with `capability-unavailable`
+(`src/core/run-executor.ts:1508-1515` and `:1350-1356`). So this section is a contract built AHEAD
+of its first consumer, which is the right order for a shape that decides what a fan-out may mint,
+and it is not a description of anything that runs today. The workflows that will declare it are
+`{#order-4}` (oath-signature · emergency-contact) and `{#order-7}` (oath-upload · onbase), and §7 is
+the worked example the program is read against.
+
+The `order-4` checklist lives at §9.10, which owns the group PRESENTATION this contract feeds; the
+one status block here is `order-7`'s, at §4.5.
+
 ### 4.1 The typed staged completion program
 
 ```ts
-// src/descriptor/completion.ts
+// src/domain/workflow/completion.ts — the built home; §4.1 sketched it as `src/descriptor/`
 import { z } from "zod/v4";
 import type { AnyWorkflowRef } from "./ref.js";
 // WorkflowRef<InputSchema,ResultSchema> carries both concrete schemas (refs task-contract/workflow-model).
@@ -1597,6 +1585,25 @@ export interface CompleteThenEnqueue<TTarget extends AnyWorkflowRef> {
 descriptors are inferred values and are never annotated as broad `CompletionProgram`. A type-level
 fixture renames a target input field and requires every `derive` site—including i9—to fail `tsc`.
 Broad target erasure, untyped `derive` results, or exported erased stage arrays are forbidden.
+
+**As-built (Phase 1e, 2026-08-01), three corrections the implementation forced.**
+
+- **`PerDocumentStage.deriveItemId` returns `ItemId`, not `string`.** The sketch above types the
+  per-record stage's id as `ItemId` and the per-document stage's as a bare `string`; there is no
+  reason for two identity types on one program, and the loose one is the arm that could smuggle a
+  positional id. Both are `ItemId` in `completion.ts:173-179`, and `stableItemId` calls each derive
+  TWICE and refuses a program whose id is not stable (`:259-266`) — an unstable id is how one
+  logical item becomes two durable ones.
+- **The program is sealed, and reveal is a named function.** §4.2's "branded opaque type whose
+  completion config is not structurally reachable" is a handle exposing `mode` and `gate` only, plus
+  `revealCompletionProgram` (`completion.ts:216-228, 337-347`); `descriptor-coverage` additionally
+  walks `src/workflows/**`'s whole import closure and fails any workflow module that so much as
+  names `revealCompletionProgram`, so §4.2's second mechanism is mechanical rather than a rule.
+- **Construction proves the chain against a mandatory sample**, including the §4.1 rule that stage
+  N+1 receives the ids stage N ACTUALLY enqueued after `eligible` filtering: `proveStagedFanOut`
+  parses each stage's derived input through the target's own schema and threads the enqueued ids
+  forward, resetting them to the empty list when the sample record is filtered out
+  (`completion.ts:268-298`).
 
 ### 4.2 Cross-spec borrowing becomes impossible
 
