@@ -61,9 +61,11 @@ into.
 | `## Phase 1f authority and command ratification` | §2.4's *Phase 1f — the authority and command ratification*, which is what `ref dashboard-surfaces §Phase-1f authority` still names |
 | `## 9. Ratified delegation and presentation decisions` | §9.10 — §9 is now *The operator surfaces* |
 
-**Folded into §9 — every row below has landed. The numbers in the left column still RESOLVE: the
-alias headings at the foot of this doc redirect each to its destination, and they exist only until
-`docs/roadmap/roadmap.md`'s `doc:` refs are retargeted, at which point the whole alias block goes.**
+**Folded into §9 — every row below has landed, and on 2026-08-21 `docs/roadmap/roadmap.md`'s `doc:`
+refs were retargeted to the right-hand column, so the transitional alias headings that used to sit
+at the foot of this doc are DELETED. The numbers in the left column no longer resolve to a heading:
+this table is the permanent record for the `history/`, `docs/migrations/separations.md` and code
+comments that still cite them.**
 
 | was | is now | unit |
 |---|---|---|
@@ -4614,43 +4616,3 @@ dropped, and this table is how a citation to the old flat list resolves.
 > 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
 <!-- /roadmap-status -->
 
----
-
-## § aliases — the numbers §5.1–§5.4 and §10–§13 used to hold
-
-**Transitional, and deliberately ugly so nobody mistakes one for a section.** Each heading below is
-a one-line REDIRECT. They exist because section numbers are load-bearing here — 33 tree nodes carry
-a `ref:dashboard-surfaces §N` ref the `roadmap-doc-binding` guard resolves against a real heading,
-~150 code comments cite one, and `history/` plus `docs/migrations/separations.md` cite the OLD
-numbers and are deliberately not swept (the § number map at the top of this doc is the permanent
-record for those). Unit 5.1d REPORTED the tree retargets rather than editing the tree; the
-orchestrator applies them in one sweep and **deletes this whole block in the same commit**. A
-citation that lands here is not broken — it is one sweep behind.
-
-### 5.1 The seam: one direction, one place — see §5, and `history/superseded/2026-08-21-dashboard-surfaces-coexistence.md`
-
-### 5.2 The mapping from the kernel terminal contract — see §5, and the same history file
-
-### 5.3 Source authority, immutable per run — see §5; the `(engine, cutoverGeneration)` stamp never shipped
-
-### 5.4 The flip is SCOPED, then per-workflow migration — see §5; one all-at-once switch, `doc 05`
-
-### 10. Round-8 obligations this doc owns — see §9.5.2 · §9.5.1 · §9.2 · §9.6
-
-### 10.1 ONE projection owns every count (D81) — see §9.5.2
-
-### 10.2 Versioning and archive-on-version-bump (D80) — see §9.5.1
-
-### 10.3 Operator-assigned run display names (D83) — see §9.2
-
-### 10.4 Notification model (D79b + D86) — see §9.6
-
-### 11. The intake workspace — see §9.7.1
-
-### 12. The capture phone surface — see §9.7.2
-
-### 12.6 The QR and the token — see §9.7.2, which states the TTL bound the old title implied away
-
-### 13. The two reference takeovers — see §9.5.3
-
-### 13.2 A structure rail beside a record column — see §9.5.3
