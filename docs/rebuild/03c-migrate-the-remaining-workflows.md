@@ -974,22 +974,26 @@ traceback that names each one's trigger.
 
 ## Decisions this phase ratified
 
-_Derived from `reference/decisions.md`'s round headings on 2026-08-20 (3b) — the
-ratification act and the normative pointer stay in the ledger; this is the phase index._
+**None yet, and that is the accurate answer.** `reference/decisions.md` carries **zero** rounds
+marked `_phase: 3c_` (checked at HEAD 2026-08-20; 3a has 19, 3b has 20). No migration after
+separations has started, so there is nothing for this phase to have ratified. What follows is
+therefore the **standing set the loop runs under** — decisions ratified elsewhere that bind every
+order row — not a record of work done here.
 
-**No round has been ratified for a remaining order yet** — the migrations after separations are
-unstarted, so this list is the standing set the loop runs under rather than a record of work:
-
-| D | Where it binds |
+| D | Where it binds in this doc |
 |---|---|
-| D84 (round 8, 2026-07-23 → 07-26) | the reuse-leverage ordering the §Recommended migration order table encodes |
-| D89 (round 10, 2026-07-31) | rebuild-ready is not a production flip — one all-at-once cutover, step 6 of the loop |
 | D58 (round 5, 2026-07-22) | the non-workflow capability closure inventory each migration advances |
+| D84 (round 8, 2026-07-23 → 07-26) | the reuse-leverage ordering §Recommended migration order encodes |
+| D89 (round 10, 2026-07-31) | step 6 of the playbook — rebuild-ready is not a production flip; one all-at-once cutover |
 | D92 (round 10, 2026-07-31) | the live probes are mandatory at the milestones §Live probe status names |
-| D193 (round 47, 2026-08-12) | the entry point — separations first, the table deliberately not re-sequenced |
-| D191 (round 46, 2026-08-12) | the per-commit gate every migration's step 3 runs |
+| D150 (2026-08-05) | legacy change accounting is RETIRED — step 4's live selector re-verification is what replaced it |
+| D184 (2026-08-09, 2j) | `open` carries a required reason, `status` is the disposition's projection, and a wrong `native` is worse than an honest `open` |
+| D191 (round 46, 2026-08-12) | the per-commit gate every step-3 run uses (`test:coverage`) |
+| D193 (round 47, 2026-08-12) | the entry point — separations first, the table deliberately NOT re-sequenced |
+| R10 (operator, 2026-08-20) | the testing tiers every order owes: T1 per workflow, T2 per wire sub-task, T3 pairs, the 80 % floor |
 
-A round ratified by a future migration is added here in the same commit that records it.
+A round ratified by a future migration is added here in the same commit that records it, with its
+`_phase: 3c_` marker in the ledger.
 
 ## Exit criteria
 
