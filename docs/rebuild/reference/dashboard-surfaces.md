@@ -3146,11 +3146,311 @@ the three commands and the parity references.
 
 ### 9.5 Archive · Activity · Explorer — the three read surfaces
 
-**Stub — written by unit 5.1d**, which may add §9.5.1–§9.5.3 for the three. Inherits §10.1 (D81's
-one projection, D236's write-ledger carve-out — whose corpus is empty until the ledger projector is
-wired, §2.1), §10.2 and D179/D223 (the archive), and §13 (the explorer and the UI catalog, with
-D186's EDIT half deferred under `{#def-explorer-edit}`). Wire:
-`ref frontend-backend-integration` §5.1.5.
+<!-- roadmap: p2-2i -->
+<!-- roadmap: p1-spine -->
+<!-- roadmap: track-b -->
+
+**What they are.** Three surfaces that answer a question about runs the operator is no longer
+running: what a swept run WAS (§9.5.1), what a range of days ADDS UP TO (§9.5.2), and what a
+workflow IS (§9.5.3). None of them commands a run. The Archive's one control relaunches onto the
+current version, Activity's one control exports what it already shows, and the explorer and the UI
+catalog have no mutating client method at all — which is why they can share a section: their common
+contract is that a read surface must not wear an editor's affordances.
+
+**They are TAKEOVERS, and precedence is resolved in ONE place.** Each replaces the main region
+rather than dimming it, for §9.7.1's reason — a half-visible queue behind a reference view is the
+modal it deliberately is not. A link may carry any combination of keys, so `activeTakeover`
+(`src/dashboard/app/url-state.ts:129-142`) states the winner rather than leaving it to whichever
+JSX branch is tested first: **`intake` → `archive` → `activity` → `explore` → `catalog`**. The
+operator's in-progress WORK outranks the two places they navigate to and stay, and those outrank the
+two things they look UP; the workflow-scoped reference outranks the system-scoped one. Writing any
+one key clears the other four (`dashboard-app.tsx:939-947`), so "which is open" is never ambiguous
+in the URL either. *(This paragraph read "**three** takeover keys … `intake` → `explore` →
+`catalog`" until 2026-08-21 — the sentence predates the archive and activity surfaces, which were
+added to the resolver in the right places and not to the doc.)*
+
+**Wire.** `ref frontend-backend-integration` §5.1.5 owns the endpoints, the payload shapes and the
+parity references for all three.
+
+<!-- roadmap-status: p2-2i -->
+- [x] 2i-A trust surfaces — the evidence receipt and the failure record render in the run's own panel (§9.3; `ref operator-trust` owns the artifacts)
+- [x] 2i-B the durable notification inbox and its bell (§9.6; the durable model is §2.6)
+- [x] 2i-C the Context rail and its Edit Data half (§9.3.1; the field policy is `ref data-intake-and-edit-data` §6)
+- [x] 2i-D Settings over a live backup cadence, with the read-only storage doctor (§9.8; the contract is §2.5)
+- [x] 2i-E the intake workspace over schema v12 — all seven surface decisions (D173, §9.7.1)
+- [x] 2i-F the token-scoped capture phone surface (D175, §9.7.2)
+- [x] 2i-G the archive model and the Activity report over schema v13, the read-only Workflow Explorer, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
+- [!] the bell's `Pings` / `Inbox` filter chips can never be non-zero — `delivery` is a client-side extra that never crosses the wire (§9.6)
+- [!] the intake Dropzone's accept list and size cap are client literals, not the server constants the doc claimed (§9.7.1)
+- [!] the capture token is TTL-bounded, not single-use, and `Start Capture` lives only inside the intake takeover's empty dropzone state (§9.7.2)
+- [ ] D186 — the explorer's EDIT half, deferred BY DISPOSITION with a named trigger (`{#def-explorer-edit}`, §9.5.3)
+- [ ] D189 — the production BFF serves no frontend bytes, so 2i-F's surface has no delivery path (`{#def-byte-path}`, §9.7.2)
+- [ ] the per-archived-run storage delta is unmeasured: no production database has archived a run (§9.5.1)
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/dashboard/surfaces/{archive,activity,explorer,ui-catalog,intake,settings,top-bar}*, src/dashboard/phone/**, src/dashboard/app/url-state.ts, src/server/dashboard/queries/{archive,explorer,storage}.ts, src/services/archive/archive-service.ts; left: the two deferrals and three named deviations above
+<!-- /roadmap-status -->
+
+#### 9.5.1 The Archive — a record that needs no old code to read (D80)
+
+**No archive folders, no compat shims — git is the archive.** Descriptors carry a version + content
+fingerprint; a guard forces a bump on behavior change; **every run permanently stamps the workflow
+version and the app version it ran with, at enqueue.**
+
+**On a version bump, all runs of prior versions leave the dashboard.** Active surfaces, counts, and
+filters only ever contain current-version runs; prior runs move to a read-only **Archive** (a
+browsable view + on-disk store). A **dashboard/app update bumps the effective version of every
+workflow**, because old runs may not be interpretable against new dashboard state.
+
+The rule that makes this pay for itself: **an archived run is stored as self-contained data** — its
+final projected row, its receipt, and evidence pointers — so rendering it requires **zero
+old-version code**. No compat shims, no version fallbacks, exactly one rendering path in the
+dashboard forever. That is the whole point; an archive that needed old code to read would recreate
+the coupling the rebuild exists to remove.
+
+Four hard rules:
+
+1. **The write ledger is never archived.** What was filed in a real HR system stays forever,
+   independent of run archival. Archiving is a *display* lifecycle; the ledger is an *audit* one.
+2. **Relaunch from archive starts a fresh run on the current version** from the archived immutable
+   input. It is never a resume of the old run — resume across a fingerprint change is exactly what
+   D35 forbids.
+3. **A bump cannot archive a non-terminal run.** Queued/parked runs must be terminalized first
+   (cancelled, or for a parked write RESOLVED present/absent per §parked-intent resolution), and
+   the bump flow lists them. **An unresolved possible-submit is never buried in an archive** — this
+   is the write-safety carve-out and it is not negotiable for convenience.
+4. **Archive is the ONLY whole-run exclusion.** This rule read *"Hide/Unhide still exists for
+   same-version runs (reversible presentation tombstone, D49); archive-on-bump is the automatic
+   path, Hide is the manual one"* until 2026-08-21, and it had been false since **D234** (§9.2)
+   retired the `hide`/`unhide` pair across the whole stack: `ActionCommandKeySchema` holds neither
+   key (`src/domain/dashboard/actions.ts:47-50`) and `RunRecord.hidden` is a parse-tolerated
+   vestige written by nothing (`src/domain/run/record.ts:232-244`). D234 claimed the correction and
+   nobody made it here, which is how a reader arriving from a `ref dashboard-surfaces §10.2`
+   citation met a retired control described as live. One exclusion, inherited by every count,
+   applied once inside the projection.
+
+**D95 command naming:** this lifecycle is executed only through the `version-archive` family's
+`plan-version-bump` and `apply-version-bump` actions. The run-family `bump` action in §2.4 remains
+queue priority/claim order only and can never plan, apply, or imply version/archive work.
+
+The scope of a bump is declared by whoever makes the change — single-workflow, multi-workflow, or
+dashboard — and recorded in that update's change record (same store as fix records: what, why,
+version, commit).
+
+##### D179 — the archive model as-built (2i-G, 2026-08-09)
+
+**The app version is the other half of the archive key, and it was not being kept.** The queue
+projection stamped `deps.appVersion` — the build serving the PAGE — on every row, so the run-detail
+"served by a different app build" comparison compared a value with itself and could never fire.
+`RunRecord` now carries an `appVersion` stamped at the ONE enqueue point (`fanOutQueuedRuns`, and
+the retry arm, which stamps the build it is enqueued under rather than inheriting the one it
+retries). It is **read forward, never back-filled** (D133's rule): a run from before D179 reports
+its absence with its reason, and an application-scope bump treats an unstamped run as prior-version
+— the fail-closed reading, since it demonstrably is not the current build's.
+
+**Authority schema v13** adds three tables, all insert-only in SQL rather than by convention,
+because an archive whose rows could be rewritten is a WEAKER record than the live row it replaced:
+
+| table | holds |
+|---|---|
+| `version_bump_applications` | the applied bump — charter §25's change record |
+| `archived_runs` | one self-contained record per swept run, with its content digest |
+| `archive_relaunches` | relaunch provenance, keyed by the FRESH run |
+
+`version_plans` (released in v1, zero production rows because the family was deferred) gets its
+first real shape under the same D164 precedent `artifact_outbox` set: it holds the exact
+`VersionBumpPlan` rather than an opaque payload, and it moves `planned → applied` exactly once
+under a CAS — the same discipline a start plan follows, because it is the same problem.
+
+**An archived run is the FINAL PROJECTED ROW plus its detail, receipt, failure and evidence
+POINTERS.** The kernel takes those payloads through an `ArchiveSnapshotSource` seam that the server
+implements over the same run/queue projection and run-detail query the live surfaces render, so the
+frozen bytes are the bytes the operator last saw rather than a second derivation of them. The
+workflow LABEL is frozen into the record too: resolving it at read time would be a descriptor read
+on the archived path, and falling back to the id would substitute a plausible value for one nobody
+recorded. Evidence is pointers only — the content-addressed bytes, the checkpoints and the ledger
+lines all stay exactly where they are.
+
+**The workflow's SHORT CODE is frozen beside the label (D242, generation 3).** The index row's
+leading identity token is `<code> v<N>` — `sd v1`, not `Separation Documents v1` — because at 800
+rows a full label costs the name column real width and the code costs four characters; the whole
+label moves to the row's `title`, so nothing is lost, it moves to the hover. Every argument the
+frozen label makes applies unchanged, and one more: `traceId.slice(0, indexOf("-"))` looks like a
+free derivation and is silently wrong for exactly the case a frozen field exists for — a run
+planned under a code the workflow has since changed. Both facts come from ONE registry lookup at
+sweep time, so the record refuses a half-resolved pair (a label present beside an absent code) and
+the sweep passes both from a single `resolve`. Two absences reach the wire and each keeps its own
+sentence: a record written before generation 3 holds no code at all, and a record swept after its
+workflow was unregistered says so itself. A row whose code is absent falls back to its LABEL, which
+is a real name the record holds, and puts the reason in the title — never a derived code. The
+version registry and the Activity per-workflow table print the CURRENT registry's code beside the
+label; the Activity CSV gives it its own column rather than gluing it onto the label, because a
+spreadsheet sorts and filters columns. The code itself is ref workflow-model §1.1.1's.
+
+**The three arms, and where each refusal is computed:**
+
+- `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the
+  charter's requirement is that the flow LISTS the blockers — the list is what the operator needs
+  in order to clear it. An `application`-scope plan must name the RUNNING build; a scope nobody can
+  verify could archive every run on the strength of a typo.
+- `apply-version-bump` re-derives candidates **and blockers from authority inside the applying
+  transaction**, never from the plan's copy: a run that went queued between review and apply is
+  exactly the possible-submit the refusal exists to keep out of an archive. It refuses on
+  `active-version-blockers` naming every blocking run by trace, workflow and state; on registry
+  drift; and on an app build that moved since review. A refused apply leaves the plan `planned`, so
+  the SAME reviewed plan applies once the blocker settles — a refusal is not a spent plan.
+- `relaunch-archived-run` cites the record's content digest, resolves the CURRENT descriptor, and
+  replans from the archived RAW submission through today's ingress and canonical schemas. It never
+  replays the archived canonical value — that value was validated by a schema which has, by
+  definition, since moved — and it is not a retry: the fresh run carries no `retryOf`, and neither
+  side of the link is rewritten to record it.
+
+**Archived rows leave every live read once, inside the projection**, beside hidden rows and member
+containment (§9.5.2) — so a swept run leaves the queue, the workflow badge, the status pill, the
+month calendar and the Activity report at the same instant, by construction.
+
+**The Archive surface is read-only structurally.** No retry, no cancel, no hide, no resolution —
+absent, not disabled, because a disabled control still claims the act exists. The one control is
+Relaunch, and the archived-detail query resolves the registry for exactly one thing: whether a
+current version exists to relaunch ONTO. `archive-invariants` proves the rest by reading a stored
+record back with the descriptor list empty.
+
+**D223 (operator ruling, 2026-08-18) — the archived detail is the DEMO's detail: five tabs and an
+Export control.** The operator ruled "for the archive stuff just follow how the demo looks",
+settling the two decide-first records the findings ledger had parked here. **(1) Tabs.** An
+archived run renders Summary · Logs · Data · People (where the run has members) · Evidence, like
+the demo's `ArchivedRunDetail` — which means the archive snapshot FREEZES the section payloads
+(log lines, data points with their provenance, member outcome rows) beside the projected row at
+archive time, in the same seam that already freezes the row, detail, receipt and failure. Counts
+alone are ratified insufficient: an archived run whose logs are unreadable is not "self-contained
+data". This extends the archived record (a schema-version bump on the archive tables, read-forward
+per D133: a pre-D223 record reports its tabs absent with the reason, never fabricates them), and
+`archive-invariants`' bar is unchanged — every tab renders with the descriptor list EMPTY.
+**(2) Export.** The archived detail's panel header carries the demo's Export control, writing
+`archive-<traceId>.json` composed of EXACTLY the display-redacted `ArchivedRunDetailWire` the
+surface already holds — the export inherits the display redaction and carries nothing more, so no
+new redaction surface exists. Both halves are build items owned by the separations-completion
+plan's Track B5; this ruling is the ratification the records were waiting for.
+
+##### D223 as-built — the frozen sections, Export, and the change record (Track B5, 2026-08-19)
+
+**Archive schema generation 2.** The archived record's own
+`archiveSchemaGeneration` is the version that moved — not the SQL schema, which
+did not, and no migration was written. `archived_runs` stores the record as
+JSON, the generation schema is a union of the generations this reader
+implements, the new blocks are optional, and a generation-1 row's
+`contentDigest` is byte-identical because canonical JSON omits an absent key.
+What the generation buys is the half an optional field cannot carry:
+`refineSectionGeneration` refuses a WRITER that omits the block, in both
+directions. A reader must admit a generation-1 record — those bytes are on disk
+and nothing may back-fill them — and a writer may not produce one, or "this
+build could not freeze the logs" would be recorded as "this record predates
+logs", which is a silent downgrade on the record whose whole job is to be
+complete.
+
+**What is frozen, and where each half comes from.** Four sections ride the
+existing `ArchiveSnapshotSource` seam, so the frozen bytes are the bytes the
+live surfaces last rendered rather than a second derivation: **logs** (EVERY
+note line, walked through the live section's own cursor to `end-of-page` — a
+frozen `nextCursor: present` would name a fetch the archive has no endpoint
+for, and the freeze refuses past a bound rather than truncating), **data**,
+**people** (projected from the fold's own `memberRunIds`; a member the
+projection cannot render REFUSES the archive, for the same reason an
+unrenderable row does), and **attempts**. The fifth, **captures**, is derived
+from authority beside the evidence pointers, because a diagnostic bundle is not
+a read-model fact.
+
+Every section is an explicit absence union and never an empty payload standing
+in for two facts. A run with no members and a run whose member rows could not be
+projected are different situations; so are "this run wrote no log line" and
+"this record predates frozen logs" — the wire's `sections` absence names its own
+generation and states that the payloads are not reconstructible.
+
+**The captures are DESCRIBED pointers, not copies.** D179's "evidence is
+pointers only" is about the BYTES and it stands — nothing on this path reads the
+content store. What a tile adds is what a pointer alone could never say: kind,
+media type, size, digest, sensitivity, the capture instant, the bundle's origin,
+a screenshot's pixel size, and the bundle's DECLARED retention (never an
+observation of whether the bytes are still there — that is `archiveRetention`'s
+read-time computation). `step` and `system` are joined off the bundle's ORIGIN
+failure, the only place either is recorded, and both stay named absences when
+the origin names no failure or the failure names no node; borrowing the run's
+last node would attach a capture to a step it may not belong to. `system` is
+read as the declared store half of a `TaskId` (`<registered-store>/<operation>`)
+— a component of the identifier's own grammar, not a substring somebody hopes
+means something.
+
+**The per-attempt history is a projection of an identity the fold already
+carried.** Span identity is `(runId, attempt, spanPath)` (§1.1), so grouping by
+attempt reads the key rather than inferring a boundary from instants. Attempt 1
+is emitted even when it folded no span — a run that died before its first task
+still HAD a first attempt. There is deliberately no per-attempt trace id (a
+trace belongs to the run) and no per-attempt status pill (it would have to be
+invented from the span mix); the mix is served verbatim and the surface counts
+it.
+
+**Export** writes `archive-<traceId>.json` containing EXACTLY the
+display-redacted `ArchivedRunDetailWire` the surface holds — not a
+re-derivation and not a second projection, which is why it opens no new
+redaction surface. Every new wire leaf is dispositioned in the redaction audit
+against the disposition its LIVE twin already carries; a frozen copy that
+relaxed an origin would be a downgrade nobody reviewed.
+
+**`LEDGER_PRESENTATION_DECLARATIONS` is keyed by the PROOF SCHEMA HASH.**
+`(system, completionKind)` cannot work: separations files two different UCPath
+writes — the pending-transaction sweep and the termination — and both are
+`save-verify` on `ucpath`. `proof.schemaHash` is the contract's own identity and
+is already on every line, so a declaration carries the commit contract's
+`proofSchema`, derives that hash from it, and PARSES the stored proof through it
+before reading a leaf; a line whose proof names a declared schema and does not
+satisfy it is reported by name rather than read past. Two of the three
+declarations state their confirmation column ABSENT with a reason, which is the
+point of a declaration rather than a gap in it — UCPath issues no receipt for an
+in-progress-grid delete, and Kuali's save is UI-silent (D128) and proves
+completion by reload read-back. "This write has no confirmation number" and
+"nobody has declared how to read one" are different facts and an operator
+reading a blank cell must be able to tell them apart.
+
+**Charter §25's change record now exists.** The paragraph above ("the scope of a
+bump is declared by whoever makes the change … and recorded in that update's
+change record: what, why, version, commit") had no collecting surface, so every
+sweep could say who applied it and when and nothing about why. It is authored at
+PLAN time in a dialog — the only person who can say why a version moved is the
+one moving it, and asking later means asking somebody who did not make the
+change. It rides the plan, so the fingerprint the operator's apply cites back
+covers the words as well as the run sets, and apply copies it into the
+application VERBATIM; re-authoring it there would let the recorded reason differ
+from the one the plan was reviewed under. `commit` is an explicit absence union
+rather than a required string, because a workflow bump usually has a commit and
+an application bump often does not, and demanding a hash would put a fabricated
+one on the record that exists to be trustworthy. It is read forward on the same
+terms as the sections: a pre-generation-2 sweep says "nobody was asked" rather
+than showing an empty block, which would read as "nobody had a reason".
+
+**`fromVersions` is derived from the ARCHIVED RECORDS, not from the plan.** A
+plan's `observedIdentities` are the versions the bump moves TO; "from what" is
+answered by what the swept runs were actually carrying, so the index folds the
+distinct `archivedIdentity.descriptorVersion` of the records each application
+owns. A sweep that archived nothing has no from-version and the empty list is
+that fact — there is no run to read one off.
+
+**What `archive-invariants` proves after this.** The structural bar is
+unchanged and met: the archived-run read path still value-reaches no registry
+module anywhere in its import closure, so every tab renders with the descriptor
+list EMPTY — which `archive-model.test.ts` now executes tab by tab, alongside a
+generation-1 record read forward and a run that FILED a real ledger line,
+archived and resolved back with the registry empty. Importing the three commit
+contracts into the ledger read-through is inside that bar two ways: their
+closure reaches no Node built-in (ref frontend-backend-integration §8.13 — the module lands on the
+dashboard bundle) and no descriptor module. A task contract is neither; it is
+the schema of one write, and the ledger is never archived, so interpreting its
+lines with current code is exactly right.
+
+**Storage growth — still unmeasured, and that is a fact about the corpus rather than an
+oversight.** The operator accepted the per-archived-run cost on 2026-08-18. The measured per-run
+delta is owed in this block once a real archive exists: at 2026-08-21 **no production database has
+archived a run**, so every number here would be a measurement of a fixture. The measurement is
+`{#track-b}`'s to close on the first real sweep.
+
+**Where the read path is proved.** `buildArchivedRunDetail` resolves NOTHING — no descriptor, no projection, no live authority beyond the archive tables — and says so at the top of the file it shares with its opposite (`src/server/dashboard/queries/archive.ts:1-20`): `buildArchiveIndex` re-derives current identities, candidates and blockers per request, because the version STATE a bump would act on is a fact about the registry NOW and a plan goes stale the moment a run is enqueued. Two halves with opposite rules, in one file so the difference is visible.
 
 ### 9.6 Notifications — the durable inbox and its bell
 
@@ -3726,259 +4026,6 @@ projection — exact set equality both ways, so a third counting path over the l
 name. The behavioural arm files real ledger lines into the seeded world and requires the block to
 move while every count stays byte-identical: *"reported beside the totals"* is a claim about what
 does not happen, so that is what is asserted.
-
-### 10.2 Versioning and archive-on-version-bump (D80)
-
-**No archive folders, no compat shims — git is the archive.** Descriptors carry a version + content
-fingerprint; a guard forces a bump on behavior change; **every run permanently stamps the workflow
-version and the app version it ran with, at enqueue.**
-
-**On a version bump, all runs of prior versions leave the dashboard.** Active surfaces, counts, and
-filters only ever contain current-version runs; prior runs move to a read-only **Archive** (a
-browsable view + on-disk store). A **dashboard/app update bumps the effective version of every
-workflow**, because old runs may not be interpretable against new dashboard state.
-
-The rule that makes this pay for itself: **an archived run is stored as self-contained data** — its
-final projected row, its receipt, and evidence pointers — so rendering it requires **zero
-old-version code**. No compat shims, no version fallbacks, exactly one rendering path in the
-dashboard forever. That is the whole point; an archive that needed old code to read would recreate
-the coupling the rebuild exists to remove.
-
-Four hard rules:
-
-1. **The write ledger is never archived.** What was filed in a real HR system stays forever,
-   independent of run archival. Archiving is a *display* lifecycle; the ledger is an *audit* one.
-2. **Relaunch from archive starts a fresh run on the current version** from the archived immutable
-   input. It is never a resume of the old run — resume across a fingerprint change is exactly what
-   D35 forbids.
-3. **A bump cannot archive a non-terminal run.** Queued/parked runs must be terminalized first
-   (cancelled, or for a parked write RESOLVED present/absent per §parked-intent resolution), and
-   the bump flow lists them. **An unresolved possible-submit is never buried in an archive** — this
-   is the write-safety carve-out and it is not negotiable for convenience.
-4. **Hide/Unhide still exists** for same-version runs (reversible presentation tombstone, D49).
-   Archive-on-bump is the automatic path; Hide is the manual one.
-
-**D95 command naming:** this lifecycle is executed only through the `version-archive` family's
-`plan-version-bump` and `apply-version-bump` actions. The run-family `bump` action in §2.4 remains
-queue priority/claim order only and can never plan, apply, or imply version/archive work.
-
-The scope of a bump is declared by whoever makes the change — single-workflow, multi-workflow, or
-dashboard — and recorded in that update's change record (same store as fix records: what, why,
-version, commit).
-
-#### D179 — the archive model as-built (2i-G, 2026-08-09)
-
-**The app version is the other half of the archive key, and it was not being kept.** The queue
-projection stamped `deps.appVersion` — the build serving the PAGE — on every row, so the run-detail
-"served by a different app build" comparison compared a value with itself and could never fire.
-`RunRecord` now carries an `appVersion` stamped at the ONE enqueue point (`fanOutQueuedRuns`, and
-the retry arm, which stamps the build it is enqueued under rather than inheriting the one it
-retries). It is **read forward, never back-filled** (D133's rule): a run from before D179 reports
-its absence with its reason, and an application-scope bump treats an unstamped run as prior-version
-— the fail-closed reading, since it demonstrably is not the current build's.
-
-**Authority schema v13** adds three tables, all insert-only in SQL rather than by convention,
-because an archive whose rows could be rewritten is a WEAKER record than the live row it replaced:
-
-| table | holds |
-|---|---|
-| `version_bump_applications` | the applied bump — charter §25's change record |
-| `archived_runs` | one self-contained record per swept run, with its content digest |
-| `archive_relaunches` | relaunch provenance, keyed by the FRESH run |
-
-`version_plans` (released in v1, zero production rows because the family was deferred) gets its
-first real shape under the same D164 precedent `artifact_outbox` set: it holds the exact
-`VersionBumpPlan` rather than an opaque payload, and it moves `planned → applied` exactly once
-under a CAS — the same discipline a start plan follows, because it is the same problem.
-
-**An archived run is the FINAL PROJECTED ROW plus its detail, receipt, failure and evidence
-POINTERS.** The kernel takes those payloads through an `ArchiveSnapshotSource` seam that the server
-implements over the same run/queue projection and run-detail query the live surfaces render, so the
-frozen bytes are the bytes the operator last saw rather than a second derivation of them. The
-workflow LABEL is frozen into the record too: resolving it at read time would be a descriptor read
-on the archived path, and falling back to the id would substitute a plausible value for one nobody
-recorded. Evidence is pointers only — the content-addressed bytes, the checkpoints and the ledger
-lines all stay exactly where they are.
-
-**The workflow's SHORT CODE is frozen beside the label (D242, generation 3).** The index row's
-leading identity token is `<code> v<N>` — `sd v1`, not `Separation Documents v1` — because at 800
-rows a full label costs the name column real width and the code costs four characters; the whole
-label moves to the row's `title`, so nothing is lost, it moves to the hover. Every argument the
-frozen label makes applies unchanged, and one more: `traceId.slice(0, indexOf("-"))` looks like a
-free derivation and is silently wrong for exactly the case a frozen field exists for — a run
-planned under a code the workflow has since changed. Both facts come from ONE registry lookup at
-sweep time, so the record refuses a half-resolved pair (a label present beside an absent code) and
-the sweep passes both from a single `resolve`. Two absences reach the wire and each keeps its own
-sentence: a record written before generation 3 holds no code at all, and a record swept after its
-workflow was unregistered says so itself. A row whose code is absent falls back to its LABEL, which
-is a real name the record holds, and puts the reason in the title — never a derived code. The
-version registry and the Activity per-workflow table print the CURRENT registry's code beside the
-label; the Activity CSV gives it its own column rather than gluing it onto the label, because a
-spreadsheet sorts and filters columns. The code itself is ref workflow-model §1.1.1's.
-
-**The three arms, and where each refusal is computed:**
-
-- `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the
-  charter's requirement is that the flow LISTS the blockers — the list is what the operator needs
-  in order to clear it. An `application`-scope plan must name the RUNNING build; a scope nobody can
-  verify could archive every run on the strength of a typo.
-- `apply-version-bump` re-derives candidates **and blockers from authority inside the applying
-  transaction**, never from the plan's copy: a run that went queued between review and apply is
-  exactly the possible-submit the refusal exists to keep out of an archive. It refuses on
-  `active-version-blockers` naming every blocking run by trace, workflow and state; on registry
-  drift; and on an app build that moved since review. A refused apply leaves the plan `planned`, so
-  the SAME reviewed plan applies once the blocker settles — a refusal is not a spent plan.
-- `relaunch-archived-run` cites the record's content digest, resolves the CURRENT descriptor, and
-  replans from the archived RAW submission through today's ingress and canonical schemas. It never
-  replays the archived canonical value — that value was validated by a schema which has, by
-  definition, since moved — and it is not a retry: the fresh run carries no `retryOf`, and neither
-  side of the link is rewritten to record it.
-
-**Archived rows leave every live read once, inside the projection**, beside hidden rows and member
-containment (§10.1) — so a swept run leaves the queue, the workflow badge, the status pill, the
-month calendar and the Activity report at the same instant, by construction.
-
-**The Archive surface is read-only structurally.** No retry, no cancel, no hide, no resolution —
-absent, not disabled, because a disabled control still claims the act exists. The one control is
-Relaunch, and the archived-detail query resolves the registry for exactly one thing: whether a
-current version exists to relaunch ONTO. `archive-invariants` proves the rest by reading a stored
-record back with the descriptor list empty.
-
-**D223 (operator ruling, 2026-08-18) — the archived detail is the DEMO's detail: five tabs and an
-Export control.** The operator ruled "for the archive stuff just follow how the demo looks",
-settling the two decide-first records the findings ledger had parked here. **(1) Tabs.** An
-archived run renders Summary · Logs · Data · People (where the run has members) · Evidence, like
-the demo's `ArchivedRunDetail` — which means the archive snapshot FREEZES the section payloads
-(log lines, data points with their provenance, member outcome rows) beside the projected row at
-archive time, in the same seam that already freezes the row, detail, receipt and failure. Counts
-alone are ratified insufficient: an archived run whose logs are unreadable is not "self-contained
-data". This extends the archived record (a schema-version bump on the archive tables, read-forward
-per D133: a pre-D223 record reports its tabs absent with the reason, never fabricates them), and
-`archive-invariants`' bar is unchanged — every tab renders with the descriptor list EMPTY.
-**(2) Export.** The archived detail's panel header carries the demo's Export control, writing
-`archive-<traceId>.json` composed of EXACTLY the display-redacted `ArchivedRunDetailWire` the
-surface already holds — the export inherits the display redaction and carries nothing more, so no
-new redaction surface exists. Both halves are build items owned by the separations-completion
-plan's Track B5; this ruling is the ratification the records were waiting for.
-
-#### D223 as-built — the frozen sections, Export, and the change record (Track B5, 2026-08-19)
-
-**Archive schema generation 2.** The archived record's own
-`archiveSchemaGeneration` is the version that moved — not the SQL schema, which
-did not, and no migration was written. `archived_runs` stores the record as
-JSON, the generation schema is a union of the generations this reader
-implements, the new blocks are optional, and a generation-1 row's
-`contentDigest` is byte-identical because canonical JSON omits an absent key.
-What the generation buys is the half an optional field cannot carry:
-`refineSectionGeneration` refuses a WRITER that omits the block, in both
-directions. A reader must admit a generation-1 record — those bytes are on disk
-and nothing may back-fill them — and a writer may not produce one, or "this
-build could not freeze the logs" would be recorded as "this record predates
-logs", which is a silent downgrade on the record whose whole job is to be
-complete.
-
-**What is frozen, and where each half comes from.** Four sections ride the
-existing `ArchiveSnapshotSource` seam, so the frozen bytes are the bytes the
-live surfaces last rendered rather than a second derivation: **logs** (EVERY
-note line, walked through the live section's own cursor to `end-of-page` — a
-frozen `nextCursor: present` would name a fetch the archive has no endpoint
-for, and the freeze refuses past a bound rather than truncating), **data**,
-**people** (projected from the fold's own `memberRunIds`; a member the
-projection cannot render REFUSES the archive, for the same reason an
-unrenderable row does), and **attempts**. The fifth, **captures**, is derived
-from authority beside the evidence pointers, because a diagnostic bundle is not
-a read-model fact.
-
-Every section is an explicit absence union and never an empty payload standing
-in for two facts. A run with no members and a run whose member rows could not be
-projected are different situations; so are "this run wrote no log line" and
-"this record predates frozen logs" — the wire's `sections` absence names its own
-generation and states that the payloads are not reconstructible.
-
-**The captures are DESCRIBED pointers, not copies.** D179's "evidence is
-pointers only" is about the BYTES and it stands — nothing on this path reads the
-content store. What a tile adds is what a pointer alone could never say: kind,
-media type, size, digest, sensitivity, the capture instant, the bundle's origin,
-a screenshot's pixel size, and the bundle's DECLARED retention (never an
-observation of whether the bytes are still there — that is `archiveRetention`'s
-read-time computation). `step` and `system` are joined off the bundle's ORIGIN
-failure, the only place either is recorded, and both stay named absences when
-the origin names no failure or the failure names no node; borrowing the run's
-last node would attach a capture to a step it may not belong to. `system` is
-read as the declared store half of a `TaskId` (`<registered-store>/<operation>`)
-— a component of the identifier's own grammar, not a substring somebody hopes
-means something.
-
-**The per-attempt history is a projection of an identity the fold already
-carried.** Span identity is `(runId, attempt, spanPath)` (§1.1), so grouping by
-attempt reads the key rather than inferring a boundary from instants. Attempt 1
-is emitted even when it folded no span — a run that died before its first task
-still HAD a first attempt. There is deliberately no per-attempt trace id (a
-trace belongs to the run) and no per-attempt status pill (it would have to be
-invented from the span mix); the mix is served verbatim and the surface counts
-it.
-
-**Export** writes `archive-<traceId>.json` containing EXACTLY the
-display-redacted `ArchivedRunDetailWire` the surface holds — not a
-re-derivation and not a second projection, which is why it opens no new
-redaction surface. Every new wire leaf is dispositioned in the redaction audit
-against the disposition its LIVE twin already carries; a frozen copy that
-relaxed an origin would be a downgrade nobody reviewed.
-
-**`LEDGER_PRESENTATION_DECLARATIONS` is keyed by the PROOF SCHEMA HASH.**
-`(system, completionKind)` cannot work: separations files two different UCPath
-writes — the pending-transaction sweep and the termination — and both are
-`save-verify` on `ucpath`. `proof.schemaHash` is the contract's own identity and
-is already on every line, so a declaration carries the commit contract's
-`proofSchema`, derives that hash from it, and PARSES the stored proof through it
-before reading a leaf; a line whose proof names a declared schema and does not
-satisfy it is reported by name rather than read past. Two of the three
-declarations state their confirmation column ABSENT with a reason, which is the
-point of a declaration rather than a gap in it — UCPath issues no receipt for an
-in-progress-grid delete, and Kuali's save is UI-silent (D128) and proves
-completion by reload read-back. "This write has no confirmation number" and
-"nobody has declared how to read one" are different facts and an operator
-reading a blank cell must be able to tell them apart.
-
-**Charter §25's change record now exists.** The paragraph above ("the scope of a
-bump is declared by whoever makes the change … and recorded in that update's
-change record: what, why, version, commit") had no collecting surface, so every
-sweep could say who applied it and when and nothing about why. It is authored at
-PLAN time in a dialog — the only person who can say why a version moved is the
-one moving it, and asking later means asking somebody who did not make the
-change. It rides the plan, so the fingerprint the operator's apply cites back
-covers the words as well as the run sets, and apply copies it into the
-application VERBATIM; re-authoring it there would let the recorded reason differ
-from the one the plan was reviewed under. `commit` is an explicit absence union
-rather than a required string, because a workflow bump usually has a commit and
-an application bump often does not, and demanding a hash would put a fabricated
-one on the record that exists to be trustworthy. It is read forward on the same
-terms as the sections: a pre-generation-2 sweep says "nobody was asked" rather
-than showing an empty block, which would read as "nobody had a reason".
-
-**`fromVersions` is derived from the ARCHIVED RECORDS, not from the plan.** A
-plan's `observedIdentities` are the versions the bump moves TO; "from what" is
-answered by what the swept runs were actually carrying, so the index folds the
-distinct `archivedIdentity.descriptorVersion` of the records each application
-owns. A sweep that archived nothing has no from-version and the empty list is
-that fact — there is no run to read one off.
-
-**What `archive-invariants` proves after this.** The structural bar is
-unchanged and met: the archived-run read path still value-reaches no registry
-module anywhere in its import closure, so every tab renders with the descriptor
-list EMPTY — which `archive-model.test.ts` now executes tab by tab, alongside a
-generation-1 record read forward and a run that FILED a real ledger line,
-archived and resolved back with the registry empty. Importing the three commit
-contracts into the ledger read-through is inside that bar two ways: their
-closure reaches no Node built-in (ref frontend-backend-integration §8.13 — the module lands on the
-dashboard bundle) and no descriptor module. A task contract is neither; it is
-the schema of one write, and the ledger is never archived, so interpreting its
-lines with current code is exactly right.
-
-**Storage growth.** The operator accepted the per-archived-run cost on
-2026-08-18. The measured per-run delta is owed in this block once a real archive
-exists — no production database has archived a run yet, and a number from a
-fixture would be a measurement of the fixture.
 
 ### 10.3 Operator-assigned run display names (D83)
 
