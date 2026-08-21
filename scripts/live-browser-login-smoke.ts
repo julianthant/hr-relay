@@ -69,6 +69,7 @@ import {
 import type { BrowserDeadlineScheduler } from "../src/infra/browser/browser-session-factory.js";
 import type { AuthenticatedApplicationEvidence } from "../src/infra/browser/login-contract.js";
 import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
+import { acquireRuntimeProcessLock } from "../src/infra/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../src/stores/index.js";
 
 const SUPPORTED = new Set(["ucpath", "crm"]);
@@ -166,6 +167,19 @@ async function main(): Promise<void> {
     },
   });
 
+  // Review finding 3 (ref execution-and-sessions §10): the `live-smoke` role lock, taken BEFORE the
+  // database opens and released after it closes — the same acquire/open/…/close/release discipline
+  // `src/server/worker/compose.ts` and `src/server/dashboard/compose.ts` use for `workers`/`server`.
+  // Without it this script could open (and migrate) the real authority database with no runtime-lock
+  // record of itself at all, and a live smoke was invisible to `cli storage restore`'s stopped-system
+  // proof. `acquireRuntimeProcessLock` refuses loudly if another live `live-smoke` process already
+  // holds it — no fallback, no silent queueing.
+  const processLockRoot = join(process.cwd(), rebuildRuntimeIsolation.processLockRoot);
+  const processLock = acquireRuntimeProcessLock(
+    { processLockRoot, name: "live-smoke", pid: process.pid },
+    systemClock,
+  );
+
   // D267: the Duo ceremony lease lives in the REAL authority database, so two
   // smokes (or a smoke beside a worker) serialize their ceremonies for real.
   const stateRoot = join(process.cwd(), rebuildRuntimeIsolation.stateRoot);
@@ -215,6 +229,7 @@ async function main(): Promise<void> {
   await sessions.closeAll("worker-stop");
   write("[smoke] every session closed with proof");
   database.close();
+  processLock.release();
 }
 
 main().catch((error: unknown) => {
