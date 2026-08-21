@@ -374,25 +374,97 @@ authoring._
 
 ## Decisions this phase ratified
 
-_Derived from `reference/decisions.md`'s round headings on 2026-08-20 (3b) — the
-ratification act and the normative pointer stay in the ledger; this is the phase index._
+_Indexed from `reference/decisions.md`'s round headings and their `_phase: 0_` markers. The
+ratification act and the normative pointer stay in the ledger; this is the phase index. **Every
+round 1–12 is marked `_phase: 0_`, and there is no round 6** — the numbering skips it._
 
 | Rounds | Dates | D-range | What they settled |
 |---|---|---|---|
-| 1 (the D1–D16 block) | 2026-07-17/18 | D1–D16 | the ownership matrix (D1), task identity/contract split, gates as run-state (D5), `dryRun` on the envelope (D6), checkpoint freshness (D8), the one event schema (D10), the SQLite role (D14) |
-| 2–3 | 2026-07-18 | D17–D25 | write-safety after the skeptic review: probe-then-park (D17), the same-key fence (D18), schema-validated backfill (D19) |
-| 4 | 2026-07-21 | D26–D45 | the three task effects (D26), the workflow as a typed DAG (D27), descriptor exhaustiveness (D28) |
-| 5 | 2026-07-22 | D46–D68 | the permanent-key/proof family (D48/D64), the D58 capability-closure inventory, the bidirectional dependency registry (D68) |
+| 1 (the D1–D16 block) | 2026-07-17/18 | D1–D16 | the ownership matrix (D1), task identity/contract split, gates as run-state (D5), `dryRun` on the envelope (D6), checkpoint freshness (D8), the one event schema (D10), the SQLite role (D14), the two label layers (D16) |
+| 2 | 2026-07-18 | D17–D22 | write-safety after the skeptic review: probe-then-park (D17), the same-key fence (D18), schema-validated backfill (D19) |
+| 3 | 2026-07-18 | D23–D25 | the Step-0 spike — recorded as historical and already superseded by the rounds that follow it |
+| 4 | 2026-07-21 | D26–D45 | the external plan review: the three task effects (D26), the workflow as a typed DAG (D27), descriptor exhaustiveness (D28), checkpoint-freshness amendment (D34) |
+| 5 | 2026-07-22 | D46–D68 | the whole-plan + legacy-code review: the permanent-key/proof family (D48/D64), the D58 capability-closure inventory, the typed gate result (D46/D67), the bidirectional dependency registry (D68) |
 | 7 | 2026-07-22 | D69–D72 | executable feasibility + the honest gate baseline (D70/D71); pre-propagation negative evidence closed (D69) |
-| 8 | 2026-07-23 → 07-26 | D73–D86 | **the load-bearing round for this phase**: D74 the spine + a live exit test, D76 the size model and MUST/SHOULD/LATER tiers, D77 the ALWAYS-GATE designed here rather than at order 8, D79 the trims (DSL mode cut), D80 the archive model, D81 the ONE projection, D82 the receipt's acceptance bar, D84 the reuse-leverage ordering |
-| 9 | 2026-07-30 | D87 | the worker/session model |
-| 10–12 | 2026-07-31 | D88–D94 | isolated coexistence (D88), ONE all-at-once cutover (D89), change accounting (D90/D94), the testing policy (D91), the probe gates (D92), and the two-repository address (D93) |
+| 8 | 2026-07-23 → 07-26 | D73–D86 | **the load-bearing round for this phase**: D74 the spine + a live exit test, D76 the size model and MUST/SHOULD/LATER tiers, D77 the ALWAYS-GATE designed here rather than at order 8, D79 the trims (DSL mode cut), D80 the archive model, D81 the ONE projection, D82 the receipt's acceptance bar, D84 the reuse-leverage ordering, D85 the testing standard, D86 notifications/retention/knowledge |
+| 9 | 2026-07-30 | D87 | one item per worker; parallelism IS worker count — executor lanes and cross-workflow pools retired |
+| 10 | 2026-07-31 | D88–D92 | isolated coexistence (D88), ONE all-at-once cutover (D89), legacy change accounting (D90), the testing policy (D91), the probe gates (D92) |
+| 11 | 2026-07-31 | D93 | the standalone rebuild repository — the in-tree half of D88 superseded, D89/D90 mechanics amended, only the ADDRESS moves |
+| 12 | 2026-07-31 | D94 | D93's accounting made commit-centred and fail-closed |
+
+**Six of these no longer bind as written** — D84's entry point, D88/D93's command names and profile
+root, D90/D94 entirely, D91's gate family (not its floors), and D58's inventory guard. Each is named
+with its amending decision in §What no longer binds. Everything else on this list is still the
+contract the code implements.
 
 **D131 is a retired gap — never reuse it.**
 
 ## Exit criteria
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 0's exit criteria) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**MET 2026-07-31**, on three criteria that were all satisfiable inside the phase. Each carries its
+evidence below; where a later phase found a criterion was met more narrowly than it read, the
+correction is stated inline rather than left for a reader to discover.
 
-**Exit criteria.** **MET 2026-07-31.** Every reference spec and this build order are approved; every deferred
-question has an owner, evidence needed, and resolution point.
+### 1 — Every reference spec and the build order are approved. MET
+
+Rounds 1–12 (D1–D94) reconciled the whole design set: three adversarial doc reviews, an external
+rebuild-plan review, a whole-plan + legacy-code review, an executable feasibility spike, and eleven
+operator ratification sessions, each folded into the doc that owns the contract in the same commit
+that recorded it (charter standing rule, added 2026-07-26 after the 07-23/24 ratifications sat four
+days in a review file while three docs still specified the world they replaced).
+
+_The proof this criterion was really met is what came after it, and it is not in this doc:_ Phase 1
+executed the approved order and its exit criteria are all MET (`01-build-the-spine.md`), Phase 2
+proved the write half and built the four tails (`02-prove-writes-build-the-tails.md`), and no phase
+was re-sequenced.
+
+### 2 — Every deferred question has an owner, the evidence it needs, and a resolution point. MET
+
+**D92** is the rule: live write-proof probes are mandatory at their named LATER gates and are not
+Phase-1 blockers — UCPath receipt proof before the Phase-2 controlled commit that consumes it,
+ServiceNow receipt proof and OnBase upload verification before their order-7 migration evidence.
+_As built, that rule is now a shelf rather than a sentence:_ `04-close-the-deferrals.md` holds eight
+deferrals, each with its trigger, and `03c-migrate-the-remaining-workflows.md` §Live probe status
+tracks the probes themselves. The two-item test — an owner and a trigger, never silence — is what
+D186 and D189 were later held to.
+
+### 3 — Executable feasibility, recorded as feasibility and not as implementation. MET
+
+Disposable files **outside the repository** were compiled and run against the project's actual
+Node 26, TypeScript 5.9 and Zod 4 dependencies. The spike proved effect-specific contract overloads
+and negative type controls, provider-client narrowing, canonical-input transform-once/revalidate-many
+behaviour, strict command arms, target-field mappings, typed child results, proof unions, a 40-node
+typed chain, post-write settlement, SQLite permanent-key/atomic-outbox behaviour, and native online
+backup/read-only verification. The 40-node compile completed in **0.68 s at about 212 MB**. One
+adversarial case initially failed — pre-propagation negative evidence could contribute a vote — and
+was closed by **D69**.
+
+**This establishes feasibility only**, which is why **D71** requires the same controls against the
+real API as committed Phase-1 tests. _As built:_ the committed proof exists — `tests/types/`
+(`flow-graph.typecheck.ts`, `task-contracts.typecheck.ts`), a 21-node graph inside the one `tsc`
+program with `@ts-expect-error` negative controls — but its **5 s / 1 GiB budget is unmeasured**:
+nothing runs `tsc --extendedDiagnostics` against it, so the recorded 0.47 s / 215 MiB is history and
+not a gate. Owner `ref:guards-and-tests` §3.12, tracked in `01-build-the-spine.md` §Phase summary.
+
+### The gate baseline this phase recorded, and what happened to it
+
+**Measured 2026-07-31 in the legacy repo:** `typecheck:all`, source lint, dashboard build, 479 unit
+files / 4,619 tests, 11 serial files / 20 tests, and 23 architecture files / 129 tests all passed;
+test lint was red at **1,344 errors + 2 warnings**. D70 made the asymmetry explicit — new rebuild
+source and tests are zero-warning from their first file, while legacy test diagnostics are
+fingerprinted, no-new-debt coexistence debt that may remain non-zero through initial cutover.
+
+_As built, the legacy half of this baseline is retired._ **D93** made isolation physical and **D150**
+retired legacy change accounting altogether, so no rebuild gate reads legacy's working tree and no
+plan milestone owes a `lint:tests` verdict. The rebuild half stands and is stronger than the
+baseline promised: `--max-warnings 0` with no debt manifest and no per-file allowlist, from the first
+file (`01-build-the-spine.md` §1a).
+
+### What this phase leaves open
+
+**Nothing in Phase 0's own scope.** Its three exit criteria are MET, its build order was executed
+without re-sequencing, and no Phase-0 contract has been withdrawn. What a reader still needs from
+this doc is in §Phase summary: **six** contracts amended by a later decision, and **two** promises
+ratified here that were never built — the `scaffold` generators (the `new-workflow` half owned by
+`{#def-explorer-edit}`, the `new-task` half **unowned and reported**) and D85's
+`cli test workflow --dry-run` + `TestTargetRegistry` (reassigned to `{#test-tiers}` by R10).
