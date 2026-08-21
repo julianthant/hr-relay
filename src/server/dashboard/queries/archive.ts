@@ -82,7 +82,7 @@ function archivedWorkflowCode(
   };
 }
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
-import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "./run-detail.js";
+import { buildRunDetail, buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps } from "./run-detail.js";
 
 export interface ArchiveQueryDeps {
   readonly clock: Clock;
@@ -402,7 +402,7 @@ function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): Arch
 }
 
 /**
- * EVERY note line, walked through the section's own cursor.
+ * EVERY note line, walked through the section's own cursor over ONE scan.
  *
  * The archived page reports `end-of-page` because it genuinely is the end —
  * there is no archived section endpoint to fetch a second page from, so a
@@ -412,8 +412,21 @@ function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): Arch
 function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
   const notes: FrozenNotePage["notes"][number][] = [];
   let cursor: string | undefined;
+  /**
+   * D5 (audit P3): ONE note scan for the whole page walk.
+   *
+   * Every page below is still served by the production `buildRunSection` — the
+   * freeze does not re-derive a payload the live panel would have shown
+   * differently, which is the whole reason it goes through this seam — but each
+   * call used to re-open and re-parse the same partitions to slice a different
+   * 200 lines out of the same list, up to `FROZEN_LOG_PAGE_LIMIT` times per
+   * run, once per run in a version bump. The cache lives for exactly this
+   * freeze, so nothing long-lived can serve a page from a corpus a worker has
+   * since appended to.
+   */
+  const noteScan = createRunNoteScanCache();
   for (let page = 0; page < FROZEN_LOG_PAGE_LIMIT; page += 1) {
-    const section = buildRunSection(deps, runId, "logs", cursor);
+    const section = buildRunSection(deps, runId, "logs", cursor, noteScan);
     if (section.section !== "logs") {
       throw new Error(`the logs section of run ${runId} came back as ${section.section}`);
     }
