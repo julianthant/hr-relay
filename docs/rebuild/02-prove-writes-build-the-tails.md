@@ -301,13 +301,75 @@ does — see §2j.
 <!-- roadmap: p2-2j -->
 
 <!-- roadmap-status: p2-2j -->
+- [x] the **executable scenario corpus** and `scenario-coverage`, audited in BOTH directions, plus D185's corpus-layout audit — a file of neither kind, an unregistered claim and a manifest row nothing executes all fail (`ref operator-trust` §3/§3.1, `ref guards-and-tests` §3.10)
+- [x] the **corruption → restore drill**, twice: in fixtures over a seeded real-shaped database through `composeStorageCommand`, and ONCE live on a COPY of the standing local authority database — corruption named read-only in 0.92 s, restore in 0.99 s, doctor healthy in 0.71 s, with 14 runs / 2 checkpoints / 2 write intents / 2 outbox rows preserved including the real Kuali controlled commit's durable footprint (D181; `ref dashboard-surfaces` §2.5)
+- [x] the **dependency / control / capture concurrency matrix** and the **3-worker × 30-run soak** — `projectAll()` reports every ledger partition `projected` and the whole-database invariant sweep is `valid` (D182; `ref execution-and-sessions` §7.1)
+- [x] the **redaction surface scan** — `redaction-surface-scan` is the one sweep over every egress class (D183; `ref guards-and-tests` §3.15)
+- [x] the **capability-inventory re-disposition** (D184/D188) — 27 entries closed with real targets, the rest moved to the milestone that will genuinely build them, and the guard now refuses an entry `open` at or before the runtime's own `completedThrough`, an unresolvable target, and evidence that only says "the legacy file still exists"
+- [x] **D190** closed the safety-critical coverage floor (70.08 % → 99.43 % on `run-queue-projection.ts`) and **D191** made `test:coverage` the per-commit gate
+- [x] every owning doc brought to as-built
+- [ ] `ScenarioManifest`'s preflight fault set has **no runner** and `preflight-coverage` stays `planned` with D188's real trigger — the first migration that adds one; the declaration side is held by `runtime-dependency-coverage` (`ref operator-trust` §3.1, `ref guards-and-tests`)
+- [ ] the **component layer has no test lane** — this tree renders no React outside the parity corpus, and the parity lane is OUTSIDE the per-commit gate, so a `.tsx` change is gated only by typecheck/lint/unit until someone runs `npm run test:parity` → `{#test-tiers}`
+- [ ] **D91's BRANCH half is UNMET** and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 71.76 % (`ref guards-and-tests` §3.14/§10.10) → `{#test-tiers}`
+- [ ] **D85 parts 2 and 3 never landed** — there is no `cli test workflow <id> --dry-run` and no `TestTargetRegistry` (`ref guards-and-tests` §10.5/§10.9) → `{#test-tiers}` under R10
+- [ ] the 14/8/5 retention sweep and a configurable backup path — both `wont-build-unless-asked` by D193 → `{#def-retention}`
+> 2026-08-21 | docs-cohesion 02 | verified against the `p2-2j` blocks in `reference/{operator-trust,guards-and-tests,frontend-backend-integration,dashboard-surfaces}.md`; left: the preflight runner, the component/parity lane, D91's branch half and D85's parts 2–3, all four owned by `{#test-tiers}` or D188's migration trigger
+
 <!-- /roadmap-status -->
 
-_Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3 (Phase 2's deferred-base-tails table, row 2j) on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
+**What 2j was.** The base integration / restore / soak / documentation gate: the full scenario
+corpus, the corruption→restore drill, the dependency / control / capture concurrency matrix, worker
+teardown and the multi-worker soak, the redaction scan, capability-inventory validation, and then
+every owning doc updated to as-built.
 
-| Tail | Content | Owner |
-|---|---|---|
-| **2j** | Base integration/restore/soak + documentation gate: full scenario corpus, corruption→restore drill, dependency/control/capture concurrency matrix, worker teardown/multi-worker soak, redaction scan, capability-inventory validation, then update every owning doc to as-built. **COMPLETE 2026-08-09 (D181–D186).** | Refs dashboard-surfaces/execution-and-sessions/guards-and-tests/operator-trust + this plan |
+**COMPLETE 2026-08-09 (D181–D190).** Its normative contracts are `ref operator-trust` §3 and §3.1,
+`ref execution-and-sessions` §7.1, `ref guards-and-tests` §3.11 and §3.15, and `ref
+dashboard-surfaces` §2.5, with `03c` §Non-workflow capability closure inventory holding the D58
+closure — each carries its own `p2-2j` status block.
+
+### What 2j found, because that is what a gate is for
+
+Four real defects, every one of them green on every earlier gate.
+
+1. **`cli storage restore` could not have worked.** The offline restore service has demanded a
+   one-time stopped-system proof since Phase 1c, and `RecoveryStopProofStore` refuses to issue one
+   without a recorded `RecoveryRuntimeLockSnapshot` — but **nothing in production had ever recorded a
+   snapshot**: `recordRuntimeState` had no caller and `.tracker-rebuild/locks`, pinned as a distinct
+   isolated resource since D88, was never created. The whole restore path was complete, tested and
+   unreachable from its first day (D181). The fix is one lock file per role, written before the
+   authority database opens and released after its handle closes, with the snapshot COMPOSED at
+   observation time from both files — a shared snapshot would need a read-modify-write from two
+   processes, and a lost update there would report a running server as stopped. Liveness is
+   OBSERVED (`process.kill(pid, 0)`, `EPERM` counts as alive) and the observation writes nothing: a
+   crashed holder must not brick recovery at the one moment it is needed, and rewriting another
+   process's lock file to make a restore possible would be fabricating the fact.
+2. **Every `paper-ink` parity reference had been photographed DARK** since the corpus existed. The
+   harness stamped `data-demo-theme` on `<html>`/`<body>` with a post-navigation `page.evaluate`,
+   while `LoadedApp` renders its own on the app root and `tokens.css` scopes the palette off the
+   BARE selector — so the root re-themed its subtree from inside, out of React state nothing had
+   touched. The semantic half AGREED with the pixels, so there was nothing to diff. The fix is
+   `page.addInitScript` seeding the product's own stored preference BEFORE navigation, plus an
+   `assertThemeApplied` that refuses when the three writers disagree (D187).
+3. **The run-detail panel was two pixels wide** at every viewport since 1i-spine. Its root is a flex
+   child that never claimed a width, so it sized to content and its own
+   `grid-cols-[minmax(0,1fr)_var(--ds-w-context-rail)]` resolved to `2px 376px` — the entire column
+   holding the failure record and the evidence receipt. The accessibility tree reported every word,
+   which is exactly why review after review passed over an empty column, and why **D82's acceptance
+   bar was unmet ON SCREEN through a dozen green gates and two deliberate reference reviews** (D187).
+4. **`buildRunEvidenceReceipt` answered HTTP 500 on a reachable path.** It minted a `verificationId`
+   for every node but emitted the verification row conditionally, while a downstream derived fact
+   cites its upstream nodes by that same mint — so `assertEvidenceRefsResolve` correctly refused the
+   whole receipt whenever an upstream node had no checkpoint. That is `ref workflow-model` §5.4's
+   `startAt` resume with injected context, i.e. the Edit Data path: production-reachable, not a
+   fixture corner. Every record-less node now emits `unknown`, which is the honest verdict and
+   exactly what the verification section is for (D187).
+
+**The rule the four share.** Each was invisible because something ADJACENT to the broken thing was
+working: the accessibility tree reported the panel's words, the semantic half agreed with the dark
+pixels, the restore path's own unit tests passed over a precondition production never produced, and
+the receipt derived fine for every run whose nodes all had checkpoints. **When a test asserts through
+one representation of a surface, something must assert the other** — and a reference corpus nobody
+looks at records defects instead of catching them.
 
 ## Left Phase 2 by explicit disposition
 <!-- roadmap: phase2-dispositions -->
