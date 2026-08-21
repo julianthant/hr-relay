@@ -501,9 +501,32 @@ owned: `{#observed-logs}`, `{#track-c}`, `ref:dashboard-surfaces` §1.3, **Track
 <!-- roadmap: p1-exit -->
 
 <!-- roadmap-status: p1-exit -->
+- [x] the exit test RAN and passed (D74, 2026-08-04): `person-lookup` against real UCPath + CRM on the new executor — run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, EID `10873698`, terminal `done` at attempt 2
+- [x] the result is CORRECT, not merely schema-valid — `activeStatus.state = "active"`, `hdh = true`, and `crm-dates` recorded as `not-run / condition-false`, a closed reason exactly as D114 requires
+- [x] mid-run recovery worked unprompted: the poisoned CRM session was closed, reopened, and the node re-ran under attempt 2 with no operator action
+- [x] all four parity surfaces rendered from the ONE projection, verified headless — Queue row, Workflow Panel count, Session Panel, Log Panel timeline showing BOTH Cross Verification entries
+- [x] the speed criterion — which budgets FIXED SLEEP — is met at the floor: `sleepMs` is absent on every task span of the run
+- [x] the four defects the run exposed are all closed: D123, D124, D126 the same day, D125 as a separate acquisition bound
+- [x] `ref:workflow-model` §8 / §8.1 carry the worked example and its five as-built deltas — the exit run is the source of both
+> 2026-08-21 | docs-cohesion 01 | verified against §Exit criteria below, `ref:workflow-model` §8/§8.1 and the D123/D124/D125/D126 records in `reference/decisions.md` rounds 23–24; left: nothing — this node is the proof, and its residual (failure latency) became D125
+
 <!-- /roadmap-status -->
 
-_The live exit test's full record — the run, the four parity surfaces, the speed and wall-clock observations, the failure-latency root cause — is the first bullet of §Exit criteria below, where the master plan's §3 wrote it._
+**This node IS the phase's proof, and it is a test rather than a demo.** D74's whole argument is
+that a live run falsifies contracts a fixture cannot. It did: the run found three presentation
+defects and one liveness defect, every one of them green on every gate beforehand, and each is
+recorded in §Exit criteria with the code that changed.
+
+**What it cost, stated honestly.** Discovering the dead CRM session took **262.9 s** of the run's
+~14.5 minutes — the single largest line item, and a failure-path cost, not a happy-path one. The
+lesson the program carried forward is to budget for the failure path. The fix is D125's separate,
+much shorter `timeouts.sessionAcquireMs` (60 000 ms), armed on the same kernel scheduler, failing
+loud and never retrying.
+
+**Where the full record lives.** The node walk, the result, the recovery, the four surfaces, the
+speed and wall-clock observations and the failure-latency root cause are the first bullet of
+§Exit criteria below, where the plan wrote them. `ref:workflow-model` §8 is the person-lookup worked
+example and §8.1 is its as-built, recording the five deltas this run forced.
 
 ## Integration amendment — Phase 1's share (master plan §7)
 
