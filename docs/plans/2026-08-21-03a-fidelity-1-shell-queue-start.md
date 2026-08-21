@@ -529,3 +529,205 @@ is read from source, and the four rows that would need a demo pixel to settle ar
 - **fixed** — R3 f.1 (the `attention` sort really ranks now, `queue-model.ts:139`), f.2/f.3/f.5 (empty-state arms and the `Finished` narrowing), f.4 (digest strip), f.6 partial → now three of four chip families (`linkedRuns[]`, parent, `facts[]`), f.7 (subline suppression), f.9 (rollup strip + the honest "N of M loaded"), f.10 (△ chip, and the count is served rather than derived), f.11 (dry-run chip, with a real fifth hue — D232), f.12 (`memberPreview`), f.13 (member ranks), f.16 (ⓘ always drawn), f.18 (`#N` ordinal, `showId`, the trace chip), f.19/f.21/f.22, f.25 (`displayName`); R8 f.1/f.2/f.3 (park cards with their served detail), f.4/f.4b (confirm mounted, subject drawn), f.5/f.6 (the bulk strip and the result vector now exist — D235), f.13/f.14/f.15/f.16, f.18 (vocabulary), f.22 (`Select all` no longer disabled at zero).
 - **still open** — the roster/drill-in surface and the `records[]` stream (B97, B100-B104, B130-B135); the member EID column (B75); the per-status member tally (B77) and the `Outcome` column heading (B83); the row-variant naming layer behind the ⓘ (B43-B48, B51); `reviewRunId` (B110) and `extractedCount` (B111).
 - **new (not in the baseline)** — B31 (the gate age left the row's accessible name when D124/D237 work re-pointed it at `statusAccessibleName`); B112 (the fact chip forks the ds `Chip` primitive); B141 (`Import spreadsheet` in the toolbar); B155 (the bulk strip leads with the destructive verb); B164/B165 (the result heading, and the vector's counts filtered to non-zero — the one regression against D235's own headline); B172/B173/B174 (the skipped-row disclosure and both closing sentences); B195/B196 (`CommandResultFeed` + the applied toast, whose stated deferral reason D253 has spent). B57/B80 (the operator's "checked" mark) were in the baseline as a wire gap and are re-classed here as an operator question, because the demo holds it as client state.
+
+---
+
+## Region C — RUN START (`DemoRunStart.tsx`, `DemoRunStartKit.tsx`, `demo-runstart-wire.ts` ↔ `surfaces/run-start*`)
+
+Oracle: `DemoRunStart.tsx` (1015), `DemoRunStartKit.tsx` (477), `demo-runstart-wire.ts` (shapes +
+`ENQUEUE_POLICY_LABEL`/`SYSTEM_LABEL`/`PlanRole`/`EnqueuePlan`), `demo-wire.ts` (`START_VALUE_NOUN`,
+`START_SEPARATOR`, `StartMethodWire`, `StartCapabilityWire`, `workflowVersionTag`), `DESIGN.md:305`
+(the sub-selection rule) and `demo-ui.tsx` → `ds/primitives-form.tsx:600` (`LockedValue`).
+Rebuild: `surfaces/run-start.tsx` (1093), `run-start-model.ts` (55), `run-start-kit.tsx` (453),
+`run-start-kit-model.ts` (29), composed at `app/dashboard-app.tsx:501-544,1361`; the declarations it
+reads are `src/domain/workflow/ingress.ts` (`InputRunSurfaceSchema`, `ENTRY_PATTERNS`,
+`inputRunValueNoun`/`inputRunSeparatorLabel`/`inputRunParserLabel`) and
+`src/dashboard/client/commands.ts:21-51` (`StartPlanResponseSchema`).
+
+Owning docs consulted for rulings: `ref dashboard-surfaces §9.1` (the run modal — plan, confirm,
+enqueue; and its three named refusals), `ref frontend-backend-integration §5.1.1`, D250, D251,
+D253, D219/D220/D241, D260/D261, `DESIGN.md:305`, and the R8 as-built in
+`docs/plans/2026-08-13-detail-fidelity-audit.md`.
+
+Visual check: `tests/parity/references/start-run--graphite-warm--1440x900.png` read as an image
+(the rebuild's current pixels, fixture day, `person-lookup` selected). It confirms **on screen**,
+not only in source: C36 (the hint reads `0 parsed`), C48 and C49 (two locked sub-selections showing
+`keepNonHdh` / `includeCrmDates` with no reason line), C79 and C81 (the policy as a lock with its
+reason nowhere on screen), C83 (group **02** drawn with a disabled **Dry run**), C91 (no host under
+UCPATH; CRM carries only the served unavailability reason), C96 (the footer reads `Person Lookup ·
+Type at least one value.` with no version tag) and C105 (the stage rail `1 Input › 2 Plan ›
+3 Result`). The DEMO side was not re-photographed this pass — the SHELL auditor owns the browser
+lane — so every row is a source diff plus that one rebuild image.
+
+| # | Element (what the operator sees) | Demo | Rebuild | Verdict | Reason |
+|---|---|---|---|---|---|
+| C1 | Launcher: brand toolbar button, `Play` icon, label **Start a run** | `DemoRunStart.tsx:122-138` | `run-start.tsx:185-199` | exact | — |
+| C2 | Launcher title `Start a run — any workflow, from anywhere (r)` | `DemoRunStart.tsx:135` | `run-start.tsx:195` | exact | — |
+| C3 | No `r` shortcut badge on the button face | `DemoRunStart.tsx:128-134` | `run-start.tsx:192-194` | exact | — |
+| C4 | Dialog `size="xl"` | `DemoRunStart.tsx:668-669` | `run-start.tsx:801-802` | exact | — |
+| C5 | Dialog title **Start a run** | `DemoRunStart.tsx:670` | `run-start.tsx:803` | exact | — |
+| C6 | Dialog description "Pick what to run. It declares what it takes, and the plan says exactly what will exist before anything is enqueued." | `DemoRunStart.tsx:671` | `run-start.tsx:804` | exact | — |
+| C7 | Dialog box `h-[min(88vh,760px)] max-w-[min(96vw,1320px)]` | `DemoRunStart.tsx:672` | `run-start.tsx:805` | exact | — |
+| C8 | Three columns in one `flex min-h-0 flex-1` row | `DemoRunStart.tsx:674` | `run-start.tsx:807` | exact | — |
+| C9 | Picker column `w-[204px] shrink-0`, right border | `DemoRunStart.tsx:158` | `run-start.tsx:344` | exact | — |
+| C10 | Filter row: `Search` glyph, `sr-only` "Filter workflows", placeholder **Filter**, plain borderless input | `DemoRunStart.tsx:159-181` | `run-start.tsx:345-368` | exact | — |
+| C11 | Filter matches label, code or category | `DemoRunStart.tsx:146-150` | `run-start.tsx:213-219` | exact | — |
+| C12 | `nav aria-label="Workflow"`, scrolls, `p-base` | `DemoRunStart.tsx:183` | `run-start.tsx:370` | exact | — |
+| C13 | No-match line `No workflow matches “{query}”.` (curly quotes) | `DemoRunStart.tsx:186` | `run-start.tsx:372` | exact | — |
+| C14 | Category heading `SectionLabel px-snug`, group `mb-cozy gap-hair` | `DemoRunStart.tsx:188-190` | `run-start.tsx:375-377` | exact | — |
+| C15 | Picker row: `h-row px-snug`, radius md, selected = `surface-3` + semibold + `fg.base`, unselected = hover `surface-2` + `fg.secondary` | `DemoRunStart.tsx:197-212` | `run-start.tsx:299-314` | divergent | ruled: D219/D220 — an unselected CHUNK HARNESS row draws `fg.muted` instead of `fg.secondary`, the dimmer arm the nesting rule introduces |
+| C16 | Row label `min-w-0 flex-1 truncate` | `DemoRunStart.tsx:213` | `run-start.tsx:315` | exact | — |
+| C17 | Row 2-char code, `micro`+`nums`, muted when selected else faint | `DemoRunStart.tsx:214` | `run-start.tsx:317-321` | exact | — |
+| C18 | Harness tag chip between label and code | `DemoRunStart.tsx:—` | `run-start.tsx:316` | extra | ruled: D219/D220 (`WorkflowHarnessTag`; the demo has no harness taxonomy) |
+| C19 | Nested `<ul aria-label="Proving harnesses of X">` under a composition row | `DemoRunStart.tsx:—` | `run-start.tsx:265-283` | extra | ruled: D219 (real nested list, not padding) |
+| C20 | "Not startable" footer: top border, `p-base` | `DemoRunStart.tsx:229` | `run-start.tsx:393` | exact | — |
+| C21 | Blocked disclosure is a `<dl>` of `<dt>` name / `<dd>` reason | `DemoRunStart.tsx:231-240` | `run-start.tsx:396-436` | divergent | ruled: `docs/plans/2026-08-13-detail-fidelity-audit.md` R8 as-built + D251 — a `<ul>` because the list carries D219's hierarchy; the pair still renders name-then-reason |
+| C22 | Blocked list `max-h-[11rem]` scroller, `gap-base` between entries | `DemoRunStart.tsx:231` | `run-start.tsx:397` | divergent | ruled: D219 — grouped by category with a `SectionLabel` per group and `gap-snug`, because the disclosure runs the same grouping rule as the list above it |
+| C23 | `{n} not startable` ghost button, `w-full justify-start`, `aria-expanded` | `DemoRunStart.tsx:241-249` | `run-start.tsx:438-446` | exact | — |
+| C24 | Peer-method `MethodTabs` strip (`role="tablist"`, selected pill, `dsElev.low`) | `DemoRunStart.tsx:267-312,696-705` | `run-start.tsx:—` | missing | ruled: D251 (`ref dashboard-surfaces §9.1` "No method tabs") — one method kind, so no tabs IS the demo's own rendering |
+| C25 | Per-method glyph (`Keyboard`/`Upload`/`Camera`/`FileSpreadsheet`/`Play`) | `DemoRunStart.tsx:259-265` | `run-start.tsx:—` | missing | ruled: D251 (travels with C24) |
+| C26 | `methodWire.note` sentence under the tabs | `DemoRunStart.tsx:714` | `run-start.tsx:—` | missing | ruled: D251 — with one method it restates `summary` |
+| C27 | `SectionLabel` **Workflow setup** | `DemoRunStart.tsx:697` | `run-start.tsx:829` | exact | — |
+| C28 | Workflow `h3`, `dsText.section` semibold, `min-w-0` | `DemoRunStart.tsx:691` | `run-start.tsx:832-834` | divergent | OPEN — operator call: the rebuild adds a `"No workflow"` title arm for an empty catalogue; the demo has no such state and nothing records the wording |
+| C29 | Category `Chip label="group"` | `DemoRunStart.tsx:692` | `run-start.tsx:835` | exact | — |
+| C30 | `RunFlagChips` (dry-run / test / bulk) on the setup line | `DemoRunStart.tsx:693` | `run-start.tsx:836` | exact | — |
+| C31 | `capability.note` paragraph, `dsText.body`, `max-w-[74ch]` | `DemoRunStart.tsx:703` | `run-start.tsx:838-843` | exact | ruled: D251 — it IS `descriptor.summary`; absent declaration draws no paragraph |
+| C32 | `Examples` `SectionLabel` + one `sm`/`outline` button per example, `title` = the note | `DemoRunStart.tsx:411-427` | `run-start.tsx:534-552` | exact | — |
+| C33 | Clicking an example fills the box | `DemoRunStart.tsx:419` (`values.join(sep+" ")`) | `run-start.tsx:549` (`example.text`) | divergent | ruled: D250 — the example carries the EXACT text; re-joining a value list client-side re-implements `splitEntries` outside the boundary that owns it |
+| C34 | Field label `{value noun} — {separator phrase}` | `DemoRunStart.tsx:429` | `run-start.tsx:556` | exact | ruled: D250 — same sentence, derived from the parser spec instead of authored |
+| C35 | Field description = the parser sentence | `DemoRunStart.tsx:432` | `run-start.tsx:558` | exact | ruled: D250 (derived from `ENTRY_PATTERN_PROSE`) |
+| C36 | Field hint `N valid · N refused` | `DemoRunStart.tsx:430` | `run-start.tsx:559` (`N parsed`) | divergent | ruled: `<plan>` R8 f.17 (kept-throw) — `parseInputRunText` refuses the WHOLE text, so there is no per-entry valid/refused split to count |
+| C37 | Field error `N values will not be enqueued — see below.` | `DemoRunStart.tsx:431` | `run-start.tsx:560` | divergent | ruled: `<plan>` R8 f.17 — the boundary's own refusal renders verbatim in the same slot |
+| C38 | `Textarea` re-keyed per workflow, `autoFocus`, `rows={4}`, descriptor placeholder | `DemoRunStart.tsx:433-442` | `run-start.tsx:562-570` | exact | — |
+| C39 | Per-entry danger `Banner`s: `Value {n} — {code}` + "Nothing on this value is enqueued, and nothing is guessed from it." | `DemoRunStart.tsx:444-459` | `run-start.tsx:—` | missing | ruled: `<plan>` R8 f.17 — per-entry tolerance is a change to `ingress.ts`, not to this surface |
+| C40 | Parsed-entry preview rows (ordinal · source text · field) | `DemoRunStart.tsx:—` | `run-start.tsx:574-598` | extra | ruled: `<plan>` R8 f.17 — what the boundary DID make of the text, in place of the demo's per-entry model |
+| C41 | Upload method body: `Document` label, "N picked — each file is its own run", `FileChoice` cards, `already running` badge | `DemoRunStart.tsx:320-397,720-729` | `run-start.tsx:—` | missing | ruled: D251 — `WorkflowSurfaces.uploadRun` is declared by no registered workflow |
+| C42 | Capture method body (`DemoCapturePanel`) | `DemoRunStart.tsx:731-740` | `run-start.tsx:—` | missing | ruled: D251 (same one-method argument) |
+| C43 | Spreadsheet method body: `Sheet` Select + the intake description | `DemoRunStart.tsx:742-755` | `run-start.tsx:—` | missing | ruled: D251 (same) |
+| C44 | `bare` method Well — **Nothing to fill in** + its sentence | `DemoRunStart.tsx:757-765` | `run-start.tsx:—` | missing | ruled: D251 (same) |
+| C45 | Absent-input `EmptyState` — **No typed start for this workflow** + the reason | `DemoRunStart.tsx:—` | `run-start.tsx:858-868` | extra | ruled: `<plan>` R8 f.22 (rebuild-only, kept) + D251 (the reason is the modal's own precondition) |
+| C46 | `SectionLabel` with inline `SlidersHorizontal` — **How this run is shaped** | `DemoRunStart.tsx:776-779` | `run-start.tsx:873-876` | exact | — |
+| C47 | Sub-selection grid `grid-cols-1 @min-[560px]:grid-cols-2` | `DemoRunStart.tsx:780` | `run-start.tsx:877` | exact | — |
+| C48 | Locked sub-selection: label line, `LockedValue`, **and the reason as a visible `<p>` beneath** | `DemoRunStartKit.tsx:175-183` | `run-start-kit.tsx:186-193` | divergent | OPEN — operator call: the rebuild drops the `<p>`, so the reason survives only as the `LockedValue` `title` tooltip (`ds/primitives-form.tsx:618`) — invisible on screen (confirmed in the 1440×900 reference) and unavailable to touch/keyboard. `DESIGN.md:305` says "a `LockedValue` **with its reason**" |
+| C49 | Sub-selection label is the human `choice.label` | `DemoRunStartKit.tsx:178` | `run-start-kit.tsx:188` | divergent | unserved: `SurfaceField` carries no label, so the control prints the raw field identifier — the reference shows `keepNonHdh` and `includeCrmDates` |
+| C50 | Operator-variable sub-selection: `Select` of options, per-option `— not wired`, `N not wired` hint, description tracking the chosen option | `DemoRunStartKit.tsx:185-208` | `run-start-kit.tsx:—` | missing | unserved: no descriptor start-capability projection of option lists — the only declared sub-selections are parser CONSTANTS, which are locked by definition |
+| C51 | Sub-selection visibility (`visibleWhen`, per-method) and flag defaults recomputed when a choice changes | `DemoRunStart.tsx:781-794`, `demo-wire.ts` `visibleChoices` | `run-start.tsx:—` | missing | unserved: travels with C50 — a constant has no visibility condition |
+| C52 | `SectionLabel` **What this will create** | `DemoRunStart.tsx:807` | `run-start.tsx:891` | exact | — |
+| C53 | Plan block is on screen the whole time, filling in as you type | `DemoRunStart.tsx:797-832` | `run-start.tsx:889-908` (`stage === "plan"` only) | divergent | ruled: `ref dashboard-surfaces §9.1` / `ref frontend-backend-integration §5.1.1` — the plan is the SERVER's answer to `POST /start-plans`, never a client-side guess, so it cannot exist before the operator asks for it |
+| C54 | Empty-plan `Well` + `EmptyState` (`Layers`, the plan headline as title, "Fill in the input above and this fills in with the exact rows…") | `DemoRunStart.tsx:810-822` | `run-start.tsx:893-900` | divergent | ruled: `ref dashboard-surfaces §9.1` — the description is byte-identical; the title is **No plan yet** because there is no client-derived headline to print |
+| C55 | Plan headline `1 Run Row · 2 people` etc. + `RunFlagChips` | `DemoRunStartKit.tsx:253-256` | `run-start-kit.tsx:245-250` | divergent | unserved: `StartPlanResponse` carries no headline — the rebuild counts `planned.length` (`1 run` / `N runs`) |
+| C56 | Per-row plan card fields: role `Badge`+glyph, `bornAs` `StatusPill` / "not yet created", `Chip panel`, `Chip containment`, row `note` | `DemoRunStartKit.tsx:293-319` | `run-start-kit.tsx:—` | missing | unserved: `StartPlanResponse.planned[]` serves `{runId, traceId, title, subtitle, matchKey}` only — no role, panel, containment, born-as status or note |
+| C57 | The plan's SHAPE: a list of `Card`s, one per proposed row | `DemoRunStartKit.tsx:263-269` | `run-start-kit.tsx:264-289` | divergent | OPEN — operator call: the rebuild draws a three-column `Table` (Title / Match key / Trace). The missing columns are C56's wire gap, but card-vs-table is a presentation choice nothing records |
+| C58 | `plan.warnings` as warning `Banner`s above the decisions | `DemoRunStartKit.tsx:272-274` | `run-start-kit.tsx:—` | missing | unserved: no `warnings[]` on `StartPlanResponse` |
+| C59 | **Why it is shaped this way** `Well` — `GitBranch` bullets, one per ratified decision the plan obeys | `DemoRunStartKit.tsx:276-288` | `run-start-kit.tsx:—` | missing | unserved: no `decisions[]` on `StartPlanResponse` |
+| C60 | Empty-rows Well inside the preview: "Nothing to create yet — no valid entry has been typed." | `DemoRunStartKit.tsx:258-261` | `run-start-kit.tsx:259-262` | divergent | ruled: `ref dashboard-surfaces §9.1` — the server-planned arm reads "Nothing to create — every entry was refused.", which is the state this build can actually reach |
+| C61 | Plan provenance line `plan {id} · planned by {who} · expires {ISO}` | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:291-294` | extra | OPEN — operator call: rebuild-only, and it prints `plan.expiresAt` as a RAW ISO instant in operator-facing text (`fmtClock` exists in `surfaces/format.ts`) — the same defect R6 f.10 fixed on the rail |
+| C62 | `PlanRefusals` — one `Refusal` per server-refused entry, code verbatim | `DemoRunStart.tsx:—` | `run-start-kit.tsx:304-320`, mounted `run-start.tsx:904` | extra | ruled: `<plan>` R8 f.17 + `ref dashboard-surfaces §9.1` — the served counterpart of the demo's per-entry problem banners (C39) |
+| C63 | Result banner sits at the TOP of the body, visible over whatever you are editing | `DemoRunStart.tsx:681-694` | `run-start.tsx:910-912` (`stage === "result"`) | divergent | ruled: `ref dashboard-surfaces §9.1` (plan → confirm → enqueue) for the stage split; see C71 for the part of it that is not ruled |
+| C64 | `applied` banner: served `headline` + `detail` sentence | `DemoRunStartKit.tsx:335-344` | `run-start-kit.tsx:370-377` | divergent | unserved: `CommandResult`'s applied arm carries no headline or detail — the title is client-authored (**Start applied**) |
+| C65 | `applied` `KeyValueList` of created rows (`Run Row` → `title → panel`) | `DemoRunStartKit.tsx:345-352` | `run-start-kit.tsx:376-381` | divergent | unserved: travels with C56 — the rebuild lists `affectedTargets` as `family → runId` |
+| C66 | `applied` `MetaLine` — clock + `requested by {actor}` | `DemoRunStartKit.tsx:353` | `run-start-kit.tsx:380` | divergent | unserved: no settlement clock or actor echo on `CommandResult`; the line reads `command {id}` instead |
+| C67 | `already-applied` arm (idempotent re-send) | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:369-373` | extra | ruled: D253 — `CommandResultSchema` has an arm the demo's mock does not, and every arm must be handled |
+| C68 | `conflict` banner: served headline/detail + `KeyValueList` of **form built against contract** / **server serves contract** | `DemoRunStartKit.tsx:359-377` | `run-start-kit.tsx:358-367` | divergent | unserved: the conflict arm carries `{currentVersion, message}` only — no contract-token pair to show either side of |
+| C69 | `Reload the form` primary on the conflict banner — the demo's ONE cure for a moved contract | `DemoRunStartKit.tsx:364` | `run-start-kit.tsx:—` | missing | OPEN — operator call: the rebuild offers no re-plan affordance on a conflict, and D253's own rule says a re-send of the same envelope is refused identically — so the banner names a state with no exit |
+| C70 | `rejected` → `Refusal` with the served code and `outcome="nothing is enqueued"` | `DemoRunStartKit.tsx:396-400` | `run-start-kit.tsx:348-354` | divergent | unserved: no headline on the rejected arm — the title is client-authored (**The start was refused**); the served `message` is the body |
+| C71 | "Rejected — but no refusal code was served" arm | `DemoRunStartKit.tsx:385-394` | `run-start-kit.tsx:—` | missing | ruled: `<plan>` R8 f.2 — `CommandResultSchema` makes `code` required on `rejected`, so the uncoded arm is unreachable here |
+| C72 | Dismiss control wording: **Close** on applied, **Dismiss** on rejected | `DemoRunStartKit.tsx:341,379-383` | `run-start-kit.tsx:341-345` | divergent | OPEN — operator call: the rebuild says **Dismiss** on every arm |
+| C73 | Aside `w-[300px] shrink-0`, left border, `bg-recess`, `aria-label="Run controls"` | `DemoRunStart.tsx:839-842` | `run-start.tsx:922-925` | exact | — |
+| C74 | Aside header: bordered icon square (`SlidersHorizontal`), `SHARED SETTINGS`, `Run controls`, "These options work the same way for every workflow." | `DemoRunStart.tsx:843-861` | `run-start.tsx:926-944` | exact | — |
+| C75 | Aside scroller `gap-loose p-cozy` | `DemoRunStart.tsx:863` | `run-start.tsx:946` | exact | — |
+| C76 | Handoff Well — **Set after the handoff** + "The spreadsheet intake collects queue behavior and destination after it validates the sheet." | `DemoRunStart.tsx:865-872` | `run-start.tsx:—` | missing | ruled: D251 — no spreadsheet method kind exists, so there is no handoff arm |
+| C77 | `RunControlGroup` anatomy: numbered chip, `h4` title, `p` description, `border-b … last:border-b-0` | `DemoRunStart.tsx:490-525` | `run-start.tsx:463-498` | exact | — |
+| C78 | Group **01 Queue behavior** / "Choose how this work enters the browser queue." | `DemoRunStart.tsx:874-878` | `run-start.tsx:947-951` | exact | — |
+| C79 | Active-run policy as a `Select` over the three `ENQUEUE_POLICY_LABEL` arms | `DemoRunStart.tsx:879-889` | `run-start.tsx:967-975` | divergent | ruled: D251 (`ref dashboard-surfaces §9.1` "No policy control") — drawn read-only as a `LockedValue` over `ENQUEUE_POLICY_MEANING`, because `StartPlanIngress` carries no per-start override |
+| C80 | Policy Field description — the active-run conflict note, or "Nothing is running for this subject." | `DemoRunStart.tsx:881` | `run-start.tsx:—` | missing | ruled: D251 — the check runs per submission inside `planStart`; its answer is the served `active-run-exists` refusal `PlanRefusals` draws |
+| C81 | The policy's own reason, on screen | `DemoRunStart.tsx:—` | `run-start.tsx:971-972` | divergent | OPEN — operator call: `ENQUEUE_POLICY_REASON` reaches the operator only as the `LockedValue` `title` tooltip. Same defect as C48; D251 requires the value be drawn "read-only with its reason" |
+| C82 | **Priority** Field + Select (Interactive / Bulk) + "Bulk work yields whenever interactive work needs the browser." | `DemoRunStart.tsx:891-896` | `run-start.tsx:976-988` | exact | — |
+| C83 | Group **02 Safety & mode** renders only when the workflow declares flags | `DemoRunStart.tsx:900-901` | `run-start.tsx:990-1006` | divergent | OPEN — operator call: the rebuild always draws group 02 with a DISABLED **Dry run** checkbox reading "not declared by this workflow". The demo's rule for a declaration-driven control is "a workflow that declares none shows none: no empty scaffolding" (`DESIGN.md:305`); `DESIGN.md`'s offer-disabled rule is written for an OPTION inside a control, not for the group |
+| C84 | Group numbering: Destination is `03` with flags and `02` without | `DemoRunStart.tsx:924` (`step={flags.length > 0 ? "03" : "02"}`) | `run-start.tsx:1009` (always `03`) | divergent | OPEN — operator call: travels with C83; a fixed `03` leaves a gap in the reading path the numbers exist to give |
+| C85 | Flags are the descriptor's declared list, each with its own note (`dryRun`, `duplicateCheck`, `crmCheck`) | `DemoRunStart.tsx:905-925`, `demo-wire.ts:488-510` | `run-start.tsx:998-1005` | divergent | unserved: no declared flag list — only `InputRunSurface.supportsDryRun` (itself DERIVED, D209), so one hardcoded checkbox stands for the set |
+| C86 | Dry-run flag description — the demo's sentence ("Reads everything for real and writes nothing, anywhere. The row carries a dry-run chip for its whole life…") | `demo-wire.ts:492` | `run-start.tsx:1000` | divergent | unserved: travels with C85 — the rebuild shows a description only in the NEGATIVE case ("not declared by this workflow") and none when dry run IS available |
+| C87 | `StartFlagControl` is a `Checkbox`, never a `Switch` | `DemoRunStartKit.tsx:216-226` | `run-start-kit.tsx:208-230` | exact | — |
+| C88 | Group **03 Destination** / "Confirm the systems this run is allowed to write to." | `DemoRunStart.tsx:923-927` | `run-start.tsx:1008-1012` | exact | — |
+| C89 | Instance grid `grid-cols-1 min-[420px]:grid-cols-2` | `DemoRunStartKit.tsx:72` | `run-start-kit.tsx:92` | exact | — |
+| C90 | Per-system Field label = `SYSTEM_LABEL` | `DemoRunStartKit.tsx:79` | `run-start-kit.tsx:101` | exact | — |
+| C91 | Per-system description = the resolved **HOST** (`nums`, `break-all`) + " · no test host provisioned" | `DemoRunStartKit.tsx:80-88` | `run-start-kit.tsx:102-109` | divergent | unserved: no resolved host per `(system, instance)` on `SystemInstancePrimitive` — the description carries only the served unavailability reason, and a system WITH a test instance shows nothing at all |
+| C92 | Test option hidden when no test instance exists | `DemoRunStartKit.tsx:97` | `run-start-kit.tsx:119-122` | divergent | ruled: `DESIGN.md:305` — offered DISABLED as "Test instance — not wired"; hiding it teaches the operator the product has never heard of it |
+| C93 | Test `Banner` — "Targeting the TEST instance of …" + the ledger sentence | `DemoRunStartKit.tsx:103-108` | `run-start-kit.tsx:128-133` | exact | — |
+| C94 | Zero-system Well — "This start declares no browser system." | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:84-90` | extra | OPEN — operator call: rebuild-only honest arm; the demo's fixtures always declare at least one system so it has no counterpart to compare against |
+| C95 | Footer `MetaLine tone="faint"` | `DemoRunStart.tsx:941-956` | `run-start.tsx:1026-1035` | exact | — |
+| C96 | Footer item 1 — `{workflow label} v{major}.{minor}` | `DemoRunStart.tsx:946`, `demo-wire.ts:1777-1780` | `run-start.tsx:1031` (label only) | divergent | OPEN — operator call: `descriptor.version` exists in the bundle (`person-lookup/descriptor.ts:169`) and the archive already prints `v{n}` (`archive.tsx:286`), so the modal drops a fact it holds |
+| C97 | Footer item 2 — the blocked reason, else the plan headline | `DemoRunStart.tsx:947` | `run-start.tsx:1032` | divergent | ruled: `ref dashboard-surfaces §9.1` — reads `N to create` off `planned.length` for the same reason as C55 |
+| C98 | Blocked reason **Type at least one value.** | `DemoRunStart.tsx:627` | `run-start.tsx:783` | exact | — |
+| C99 | Blocked reason **Fix or remove the refused values first.** | `DemoRunStart.tsx:629` | `run-start.tsx:781` (**Fix the refused entry first.**) | divergent | ruled: `<plan>` R8 f.17 — the whole-text parser refuses one entry at a time, so the plural is not a true statement |
+| C100 | Blocked reasons for the upload / capture / spreadsheet methods | `DemoRunStart.tsx:630-641` | `run-start.tsx:—` | missing | ruled: D251 (travels with C41–C43) |
+| C101 | Footer **Cancel** secondary | `DemoRunStart.tsx:957-959` | `run-start.tsx:1042-1044` | exact | — |
+| C102 | ONE primary: **Start run** / **Start dry run**, `Play` glyph | `DemoRunStart.tsx:968-981` | `run-start.tsx:1045-1060` | divergent | ruled: `ref dashboard-surfaces §9.1` / `ref frontend-backend-integration §5.1.1` — two presses (**Plan the run**, then **Start run**), because planning is a server round-trip that returns a single-use token |
+| C103 | Primary disabled by `blockedReason` / an applied result | `DemoRunStart.tsx:971` | `run-start.tsx:1050,1054` | divergent | ruled: same as C102 — also disabled while `busy` and when the server planned zero rows |
+| C104 | **Open the intake…** primary for a spreadsheet source | `DemoRunStart.tsx:960-972` | `run-start.tsx:—` | missing | ruled: D251 — no spreadsheet method; the intake is reached from the queue toolbar instead, a deviation recorded at `dashboard-app.tsx:1160-1172` |
+| C105 | `StageRail` inside the run modal ("1 Input › 2 Plan › 3 Result") | `DemoRunStart.tsx:—` (the demo's rail is the INTAKE's spine, `DemoRunStartKit.tsx:427-477`) | `run-start.tsx:818` | extra | ruled: `<plan>` R8 f.22 (rebuild-only, cited and kept) |
+| C106 | `StageRail` anatomy: `›` separators, settled stage swaps its number for a `Check`, `aria-current="step"` | `DemoRunStartKit.tsx:439-475` | `run-start-kit.tsx:418-451` | exact | — |
+| C107 | The typed box stays on screen while the plan is read | `DemoRunStart.tsx:709-718` (always) | `run-start.tsx:845-869` (`stage === "input"` only) | divergent | OPEN — operator call: at the Plan stage the operator cannot see what they typed, and `ref dashboard-surfaces §9.1` describes the four rows as one view. The two-step COMMAND is ruled (C102); hiding the input is not |
+| C108 | **How this run is shaped** stays on screen while the plan is read | `DemoRunStart.tsx:767-795` (always) | `run-start.tsx:871-887` (`stage === "input"` only) | divergent | OPEN — operator call: travels with C107 — the locked constants leave the screen at the moment the operator authorises the runs they shaped |
+| C109 | Changing a shared setting after a result clears the plan | `DemoRunStart.tsx:882,893` (`setResult(null)` on every control) | `run-start.tsx:981,1003,1017` (`setPlan(null)` only) | divergent | OPEN — operator call: the result banner and the `Result` stage survive a change that invalidated the plan behind them |
+| C110 | Opening lands on the panel you are standing in, keyed on `open` | `DemoRunStart.tsx:583-586` | `run-start.tsx:693-696` | exact | — |
+| C111 | The fallback default when the panel's workflow cannot be started | `DemoRunStart.tsx:478-483` (first startable) | `run-start.tsx:633-645` | divergent | ruled: D219/D241 — the auto-pick set is the rail's set, so a chunk harness or a proving workflow is never chosen for the operator; an empty set opens on nothing |
+| C112 | Switching a workflow clears the form | `DemoRunStart.tsx:556-573` | `run-start.tsx:681-689` | exact | — |
+| C113 | Closing the dialog resets the result | `DemoRunStart.tsx:667` | `run-start.tsx:759-770` | exact | — |
+| C114 | `@container` on the body (not a viewport query) | `DemoRunStart.tsx:676-679` | `run-start.tsx:813-817` | exact | — |
+| C115 | The surfaces wrapper mounts the modal beside the intake dialog | `DemoRunStart.tsx:990-1015` | `run-start.tsx:1071-1093` | divergent | ruled: D251 + `dashboard-app.tsx:1160-1172` — nothing to hand off to, so the wrapper mounts the dialog alone |
+
+**Counts:** 115 elements — 48 exact · 39 divergent · 19 missing · 9 extra.
+Of the 67 non-exact: **ruled 38** · **unserved 15** · **OPEN 14**.
+
+**OPEN (14), for the operator:** C28 · C48 · C57 · C61 · C69 · C72 · C81 · C83 · C84 · C94 · C96 ·
+C107 · C108 · C109.
+**Unserved (15), each a `builds:` line:** C49 · C50 · C51 · C55 · C56 · C58 · C59 · C64 · C65 ·
+C66 · C68 · C70 · C85 · C86 · C91.
+
+**Since 08-14:**
+
+- **Fixed** (baseline R8 findings now closed at HEAD): f.8 the aside header + three numbered
+  `RunControlGroup`s (C73–C78, C88); f.9 the `@container` regression (C114); f.10 the 220 px width
+  (C7); f.11 the category chip + `Workflow setup` / `What this will create` labels (C29, C27, C52)
+  and `capability.note`, which D251 resolved as `descriptor.summary` (C31); f.12 the picker built
+  from boot data, with the unstartable-reason disclosure now DRAWN rather than deferred (C21, C23);
+  f.17's examples row + value-noun + parser label, closed by D250 as declared-and-derived rather
+  than as a wire addition (C32–C35); f.18 the vocabulary drift (C6, C10, C13, C82, C88, C98).
+- **Still open from the baseline:** f.17's per-entry problem model (C36, C37, C39 — kept-throw, and
+  the citation still holds); the demo's unlocked sub-selection arm (C50); and every plan-preview
+  field the start-plan wire does not serve (C56, C58, C59).
+- **New — not in the baseline, and each of them is on the OPEN or unserved list above:** the two
+  invisible-reason rows (C48, C81) and the raw field name standing in for a label (C49), all three
+  now confirmed on the 1440×900 reference; the always-drawn group 02 and its frozen `03` (C83, C84);
+  the stage machine's three consequences (C107, C108, C109) — the baseline audited a modal that had
+  no stage rail to hide anything behind; the conflict arm with no re-plan exit (C69); the dropped
+  version tag (C96); the raw ISO `expiresAt` (C61); and the card→table plan shape (C57).
+
+**Proposed `builds:` lines from region C's 15 `unserved:` rows.** All eight go on
+`{#dash-defaults}` — `{#track-b}` is `status: done`, so a new line there would reopen a closed
+node — and they are written in that node's own `- [ ] TAG …` notation.
+
+- [ ] BE `StartPlanResponse.planned[]` grows the row's role, destination panel, containment,
+  born-as status and note — the demo's whole `PlanRowCard` anatomy, and the same fields the applied
+  banner's created-rows list reads (C56, C65) {#dash-defaults}
+- [ ] BE `StartPlanResponse` grows the plan's headline, its `warnings[]` and the ratified
+  `decisions[]` its shape obeys — the modal counts `planned.length` because there is nothing else
+  to print (C55, C58, C59) {#dash-defaults}
+- [ ] BOTH the descriptor start-capability projection — operator-variable sub-selections with their
+  option lists, per-option unavailability reasons and visibility conditions; today the only declared
+  sub-selection is a parser CONSTANT, which is locked by definition (C50, C51) {#dash-defaults}
+- [ ] BOTH a human label on `SurfaceField`, so a locked sub-selection names the choice instead of
+  printing the field identifier (`keepNonHdh`) at the operator (C49) {#dash-defaults}
+- [ ] BOTH a declared run-flag list on the descriptor's start surface — each flag with its label and
+  its note — beyond the single DERIVED `supportsDryRun` one hardcoded checkbox stands for (C85, C86)
+  {#dash-defaults}
+- [ ] BE `CommandResult`'s `applied` and `rejected` arms grow a served headline and detail sentence,
+  the settlement clock and the requesting actor; every title on the result banner is client-authored
+  today (C64, C66, C70) {#dash-defaults}
+- [ ] BE the command `conflict` arm grows the contract pair — what the form was built against and
+  what the server now serves — which is the fact the operator needs to know what moved (C68)
+  {#dash-defaults}
+- [ ] BE the resolved host per `(system, instance)` on `SystemInstancePrimitive`, so Destination
+  names the machine the run is about to touch instead of reassuring the operator (C91)
+  {#dash-defaults}
