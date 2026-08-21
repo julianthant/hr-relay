@@ -60,6 +60,7 @@ import { runSpanPath } from "../../../core/span-emitter.js";
 import type { SpanJsonlWriter } from "../../../infra/events/span-jsonl-writer.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { errorText } from "../support.js";
+import { TargetNotFoundError } from "../../failures.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
@@ -271,7 +272,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         }
         const original = deps.projection.runFold(request.target.runId);
         if (original === undefined) {
-          throw new Error(
+          throw new TargetNotFoundError(
             `retry of ${request.target.runId} cannot emit run.queued: the original run has no span fold to carry its title`,
           );
         }

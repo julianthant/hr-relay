@@ -19,6 +19,7 @@ import { RunIdSchema } from "../../../domain/ids.js";
 import type { FailureTriageOutcome } from "../../../domain/trust/advisory.js";
 import type { FailureRecord } from "../../../domain/trust/failure.js";
 import type { RunRecord } from "../../../domain/run/record.js";
+import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
 
 export interface AdvisoryQueryDeps {
   readonly authority: Readonly<{
@@ -41,11 +42,11 @@ export async function buildRunAdvisory(
 ): Promise<RunAdvisoryWire> {
   const runId = RunIdSchema.parse(runIdInput);
   const run = deps.authority.getRun(runId);
-  if (run === undefined) throw new Error(`run ${runId} does not exist`);
+  if (run === undefined) throw new TargetNotFoundError(`run ${runId} does not exist`);
   const failure = deps.authority.getFailureForRun(runId);
   if (failure === undefined) {
     // Not a degraded advisory — there is genuinely nothing to explain.
-    throw new Error(`run ${runId} has no failure record; the failure advisory is not available`);
+    throw new SectionUnavailableError(`run ${runId} has no failure record; the failure advisory is not available`);
   }
   const outcome = await deps.advise(run, failure);
   return RunAdvisoryWireSchema.parse({

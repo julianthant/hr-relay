@@ -51,6 +51,7 @@ import { validateIntakeRows } from "../../../domain/intake/validate.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../domain/intake/wire.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import type { PreparedIntakeParser } from "../../intake/intake-parser.js";
+import { TargetNotFoundError } from "../../failures.js";
 
 /**
  * The upload cap. A roster export is tens of kilobytes to a few megabytes;
@@ -134,7 +135,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
   const requireProjection = (workflow: string) => {
     const projection = dependencies.projections.resolve(workflow);
     if (projection === undefined) {
-      throw new Error(
+      throw new TargetNotFoundError(
         `workflow ${workflow} is not registered for spreadsheet intake; it declares no intake projection`,
       );
     }
@@ -143,7 +144,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
 
   const requireDescriptor = (workflow: string): AnyWorkflowDescriptor => {
     const descriptor = dependencies.descriptors.resolve(workflow);
-    if (descriptor === undefined) throw new Error(`workflow ${workflow} is not registered`);
+    if (descriptor === undefined) throw new TargetNotFoundError(`workflow ${workflow} is not registered`);
     return descriptor;
   };
 
@@ -310,7 +311,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
 
     async read(intakeSessionId) {
       const session = dependencies.authorityRead.getIntakeSession(intakeSessionId);
-      if (session === undefined) throw new Error(`intake session ${intakeSessionId} does not exist`);
+      if (session === undefined) throw new TargetNotFoundError(`intake session ${intakeSessionId} does not exist`);
       return buildWire(session);
     },
 

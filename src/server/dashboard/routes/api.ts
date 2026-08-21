@@ -11,7 +11,6 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { WireErrorSchema } from "../../../domain/dashboard/primitives.js";
 import type { DashboardStreamEnvelope } from "../../../domain/dashboard/subscription.js";
 import type { DashboardCommandService } from "../commands/command-service.js";
 import type { IntakeService } from "../commands/intake-service.js";
@@ -32,7 +31,8 @@ import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
-import { errorText } from "../support.js";
+import { SectionUnavailableError } from "../../failures.js";
+import { failureStatus, wireError } from "./failure-status.js";
 
 export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
@@ -65,34 +65,6 @@ export interface DashboardAppDeps {
   readonly capturePhoneHost?: string;
   /** Asset paths the phone page's own build reaches; nothing else is served. */
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
-}
-
-const NOT_FOUND_MARKERS = [
-  "is not registered",
-  "does not exist",
-  "has no span fold",
-  "not in authority",
-] as const;
-
-function wireError(code: string, message: string, retryable: boolean): Record<string, unknown> {
-  return WireErrorSchema.parse({ state: "error", code, message, retryable });
-}
-
-function failureStatus(error: unknown): { status: 400 | 404 | 409 | 500; body: Record<string, unknown> } {
-  if (error instanceof z.ZodError) {
-    return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
-  }
-  const message = errorText(error);
-  if (NOT_FOUND_MARKERS.some((marker) => message.includes(marker))) {
-    return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };
-  }
-  if (message.includes("is not available")) {
-    return { status: 409, body: wireError("SECTION_UNAVAILABLE", message, false) };
-  }
-  if (message.includes("degraded")) {
-    return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };
-  }
-  return { status: 500, body: wireError("INTERNAL_FAILURE", message, false) };
 }
 
 const DayQuerySchema = z.iso.date();
@@ -233,7 +205,9 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    */
   app.post("/api/v1/runs/:runId/advisory", async (c) => {
     if (deps.advisory === undefined) {
-      throw new Error("the failure advisory is not available: no ai.advisory provider is composed");
+      throw new SectionUnavailableError(
+        "the failure advisory is not available: no ai.advisory provider is composed",
+      );
     }
     return c.json(await buildRunAdvisory(deps.advisory, c.req.param("runId")));
   });

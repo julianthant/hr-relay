@@ -82,6 +82,7 @@ import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
 import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
+import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
 
 /**
  * The trust reads the receipt and failure sections need (D140/D142). They are
@@ -265,11 +266,11 @@ const LOGS_PAGE_SIZE = 200;
 function requireRun(deps: RunDetailQueryDeps, runId: string): { row: RunFoldRecord; authority: RunRecord } {
   const row = deps.projection.runFold(runId);
   if (row === undefined) {
-    throw new Error(`run ${runId} has no span fold; it was never enqueued through this projection`);
+    throw new TargetNotFoundError(`run ${runId} has no span fold; it was never enqueued through this projection`);
   }
   const authority = deps.authority.getRun(runId);
   if (authority === undefined) {
-    throw new Error(`run ${runId} exists in the span stream but not in authority`);
+    throw new TargetNotFoundError(`run ${runId} exists in the span stream but not in authority`);
   }
   return { row, authority };
 }
@@ -827,7 +828,7 @@ export function buildRunSection(
         },
       });
     }
-    throw new Error(`section ${section} is not available for run ${runId}; served sections are ${served.join(", ")}`);
+    throw new SectionUnavailableError(`section ${section} is not available for run ${runId}; served sections are ${served.join(", ")}`);
   }
   /** Only the two trust sections need the seam; logs and context never did. */
   const requireTrust = (): RunDetailTrustDeps => {

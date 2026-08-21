@@ -80,6 +80,7 @@ import type { ProjectionRepositories } from "../../../infra/sqlite/authority-dat
 import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../support.js";
 import { deriveRunStatus, panelKindOf, taskStateOf, type TaskExecutionState } from "../run-status.js";
+import { ProjectionDegradedError, TargetNotFoundError } from "../../failures.js";
 
 /* ── the persisted fold shape (internal, versioned by its own schema hash) ─ */
 
@@ -799,7 +800,7 @@ export class RunQueueProjection {
   #authorityRun(runId: string): RunRecord {
     const record = this.#deps.authority.getRun(runId);
     if (record === undefined) {
-      throw new Error(
+      throw new TargetNotFoundError(
         `run ${runId} exists in the span stream but not in authority; the projection refuses to render an unaccounted run`,
       );
     }
@@ -1369,7 +1370,7 @@ export class RunQueueProjection {
 
   buildDashboardDayWire(day: string): DashboardDayWire {
     if (this.#health.state === "degraded") {
-      throw new Error(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
+      throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
     }
     const parsedDay = z.iso.date().parse(day);
     const surfaces: QueueSurfaceWire[] = [];
