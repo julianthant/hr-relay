@@ -2858,7 +2858,108 @@ span identity → §2.4 the command protocol → §4 completion union → §5 bo
 
 ---
 
-## 9. Ratified delegation and presentation decisions (**row-model** D6–D24)
+## 9. The operator surfaces
+
+One numbered subsection per **wire square**, in the order and under the names
+`ref frontend-backend-integration` §5.1.1–§5.1.7 uses, then the three squares that exist only here.
+That doc owns each square's WIRE — its endpoints, payload shapes and parity references; this one
+owns what the square MEANS: what it shows, what it refuses to show, why an absence is drawn as an
+absence, and which ratified decision settled it.
+
+A `Dashboard · wire` task in `docs/roadmap/roadmap.md` names a square. It must name the same square
+in both docs, which is why the taxonomy is shared rather than each doc's own.
+
+**Being written.** §9 is the destination of the 2026-08-20 reorganization (cohesion plan R9 item 3;
+the § number map at the top of this doc). Two units fill it, and until each lands, the material it
+folds is where the map says: the as-built delta blocks above §0, and §10–§13 below. A stub says who
+is writing it and what it inherits — that is a transitional state with a named owner, not an empty
+promise.
+
+### 9.1 The run modal — plan, confirm, enqueue
+
+**Stub — written by unit 5.1c.** Inherits row-model D15 (Person Lookup's Search and Match modes,
+`{#order-1}`, unbuilt: the descriptor declares one graph), D250/D251's four rows with three read
+from the bundle, D261's one typed box, and §2.4's `supersede-active` split as it reaches the
+operator. Wire: `ref frontend-backend-integration` §5.1.1.
+
+### 9.2 The queue row — the day's work
+
+<!-- roadmap: track-b -->
+
+**Stub — written by unit 5.1c.** Inherits the queue-row projection as-built delta and its four
+subsections, D124's `endedAt`, D230–D235, D238, D83/D233's rename, D234's runs-and-archived-runs
+model, the shape hazard, and row-model D5/D6/D9/D11/D13/D14/D16 as they bear on a row. Also §10.3's
+operator-assigned display names, from unit 5.1d's half. Wire:
+`ref frontend-backend-integration` §5.1.2. The `track-b` status block belongs here.
+
+### 9.3 Run detail — open and follow a run
+
+<!-- roadmap: dash-defaults -->
+
+**Stub — written by unit 5.1c.** Inherits D123's `skipped` arm, D225's categorical timeline and
+D259's `replayed` step, D258's occurrence ordinal (whose derivation stays in §2.3, beside the fold
+it corrects), D257's follow, D19's served tab set, D21's equal-width segments, D187's `w-full`, and
+row-model D7/D8/D10/D17. Wire: `ref frontend-backend-integration` §5.1.3.
+
+#### 9.3.1 The Context rail — Data, Edit Data, provenance
+
+**Stub — written by unit 5.1c** (ruling 3: a sub-square of run detail, because the tree's
+`WIRE run detail` line names the data rail and the tree's `builds:` line must not have to change).
+Inherits D168/D252's Data section, D253's two refusal arms, and the two named-open arms of D19(c).
+The FLOW and the field policy stay `ref data-intake-and-edit-data` §6.4.1's.
+
+### 9.4 The gate ceremony — and the parked-write resolution beside it
+
+**Stub — written by unit 5.1c.** Inherits D226's three ceremonies, D237's settled decision record,
+D211's write plan inside the packet, and row-model D20's two typed exits. Wire:
+`ref frontend-backend-integration` §5.1.4.
+
+### 9.5 Archive · Activity · Explorer — the three read surfaces
+
+**Stub — written by unit 5.1d**, which may add §9.5.1–§9.5.3 for the three. Inherits §10.1 (D81's
+one projection, D236's write-ledger carve-out — whose corpus is empty until the ledger projector is
+wired, §2.1), §10.2 and D179/D223 (the archive), and §13 (the explorer and the UI catalog, with
+D186's EDIT half deferred under `{#def-explorer-edit}`). Wire:
+`ref frontend-backend-integration` §5.1.5.
+
+### 9.6 Notifications — the durable inbox and its bell
+
+**Stub — written by unit 5.1d.** Inherits §10.4's routing table and the bell/inbox surface. The
+durable MODEL stays in §2.6 — including the trigger table showing that five of seven arms have no
+publisher, which is the fact this square renders around. Wire:
+`ref frontend-backend-integration` §5.1.6.
+
+### 9.7 Intake, mobile capture and Edit Data
+
+**Stub — written by unit 5.1d**, which may add §9.7.1–§9.7.3. Inherits §11 (the intake workspace's
+seven surface decisions) and §12 (the capture phone), with the FLOW, the manifest, readiness and
+capture durability staying `ref data-intake-and-edit-data`'s. Wire:
+`ref frontend-backend-integration` §5.1.7.
+
+### 9.8 Settings and the storage doctor
+
+**Stub — written by unit 5.1d.** A dashboard-only square: `ref frontend-backend-integration` §5.1
+has no counterpart. Inherits the Settings surface as 2i-D built it, read-only over the sections the
+server serves. The CONTRACT — the boot interlock, the backup cadence, the doctor, D181's restore and
+the process locks — stays in §2.5, and the `apply-settings` deferral in §2.4.
+
+### 9.9 The shell — top bar, worker cards, keys, theme
+
+**Stub — written by unit 5.1c.** A dashboard-only square. Inherits *Shell and layout as rebuilt*,
+D126's accessible-name channel, D256's served clock, row-model D18's pill row and D22's shortened
+vocabulary, D219/D220/D241's grouping rules and D224's action-bar island.
+
+### 9.10 The delegation and row model (row-model D5–D24)
+
+**Stub — written by unit 5.1c.** The material is everything from *Row-model D5* to *Shell and layout
+as rebuilt* below this line: the operator-ratified 2026-07-25 series, its collision warning against
+`reference/decisions.md`'s own D-numbers, and the two dated amendments. Its group-row half is a
+contract for a shape nothing can mint yet (§1.3), which the rewrite says once here rather than in
+each entry.
+
+---
+
+### Row-model D5–D24 — the ratified series (2026-07-25)
 
 Status: **ratified by the operator 2026-07-25.** These continue the **row-model decision series**
 ratified 2026-07-24 (`docs/rebuild/history/design-inputs/2026-07-22-second-look.md` §6.6 — D1: three row types Run/Group/Member
