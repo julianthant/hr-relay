@@ -939,46 +939,60 @@ migration safe (one owner, empty allowlist) is the one already green.
 
 ### 6.1 Explicit single-operator/local scope
 
-The rebuilt operator dashboard binds `127.0.0.1`/`::1` only. Phase 1 does not build accounts, roles,
+<!-- roadmap: later-unplanned -->
+
+<!-- roadmap-status: later-unplanned -->
+- [x] the BFF listener is loopback-only in code: it defaults to `127.0.0.1`, admits only `127.0.0.1` or `localhost`, and refuses anything else by name — `the dashboard BFF is loopback-only; refusing to bind <hostname>` (`src/server/dashboard/http-server.ts:45-50`)
+- [x] no accounts, roles, permissions, teams, remote synchronization, high availability, secret manager, certificate management or signed audit anchoring exists, and D193(a) reaffirms that as the standing scope — not a gap
+- [x] the ONE exception is ref data-intake-and-edit-data's phone capture, and it is a NAMED configuration result in all three modes rather than a fallback (D174, below)
+- [x] the hygiene that local-only does not waive is real: `0700` directories and `0600` files on artifacts, authority backups, restore staging and recovery proofs (`src/infra/artifacts/content-addressed-artifact-writer.ts:71-73,208`, `src/infra/sqlite/{recovery-stop-proof,backup-service,offline-restore}.ts`)
+- [?] D193(a)'s two LATER items — packaging the local app, and a cooperation/multi-user mode ON TOP of solo — carry no owner and no design. The PACKAGING half now has a named successor in the desktop work (`{#desk-secrets}` moves credential storage to the OS keychain behind §6's accessor); the multi-user half does not, and the refusal below stands unchanged
+> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/server/dashboard/http-server.ts`, the four `0o700`/`0o600` writers and `src/domain/capture-surface.ts`; nothing left in this section — it describes a decided scope, and `{#later-unplanned}` is `status: never` by design
+
+<!-- /roadmap-status -->
+
+The rebuilt operator dashboard binds loopback only. Phase 1 does not build accounts, roles,
 permissions, teams, remote synchronization, high availability, a secret manager, certificate
 management, or signed audit anchoring. Legacy-only LAN configuration remains inside the preserved
-legacy repo and cannot reach the rebuild at all — separate repositories share no module graph (D93),
-so there is nothing to import or proxy. Because both servers may run on the same host, the rebuild
-binds its **own** loopback port and never reuses the legacy dashboard's. A non-loopback
-bind is rejected by the native server with a message that remote access is outside the current
-contract; adding it later requires a separate threat model and explicit operator decision.
+legacy repository and cannot reach the rebuild at all — separate repositories share no module graph
+(D93), so there is nothing to import or proxy. Because both servers may run on the same host, the
+rebuild binds its **own** loopback port and never reuses the legacy dashboard's (§4). A non-loopback
+bind is rejected by the server with a message naming the address it refused; adding remote access
+later requires a separate threat model and an explicit operator decision.
 
-Ref data-intake-and-edit-data's mobile capture is the sole explicit exception and does not turn the operator server into a
-remote app. `capture.ingress:"on-demand-ngrok"` starts a short-lived separately scoped ingress only
-after the operator creates a capture session; `forwarded` requires an explicit HTTPS URL;
-`disabled` makes Start Capture fail with a named configuration result. The ingress exposes the
-closed token-gated phone-route union only and shuts down after the last live session expires or
-finishes. Its route allowlist is generated from the same capture-route schema and deny-tests every
-operator/API catch-all. `forwardedUrl` is routing config, never authority; each capture session
-stamps the resolved ingress mode/origin digest so troubleshooting can explain which path was used.
-`ConfigSchema.superRefine` requires `forwardedUrl` exactly for `ingress:"forwarded"` and rejects it
-for the other modes, so a stale forwarded origin cannot be silently reused.
+Ref data-intake-and-edit-data's mobile capture is the sole explicit exception and does not turn the
+operator server into a remote app. `capture.ingress:"on-demand-ngrok"` starts a short-lived,
+separately scoped ingress only after the operator creates a capture session; `forwarded` requires an
+explicit HTTPS URL; `disabled` makes Start Capture fail with a named configuration result. The
+ingress exposes the closed token-gated phone-route union only and shuts down after the last live
+session expires or finishes. Its route allowlist is generated from the same capture-route schema and
+deny-tests every operator/API catch-all. `forwardedUrl` is routing config, never authority; each
+capture session stamps the resolved ingress mode and origin digest so troubleshooting can explain
+which path was used. `ConfigSchema.capture`'s `superRefine` requires `forwardedUrl` exactly for
+`ingress:"forwarded"` and rejects it for the other two modes, so a stale forwarded origin cannot be
+silently reused.
 
-**As-built (D174, 2026-08-09 — normative text in ref data-intake-and-edit-data §5.1).** All three modes resolve to an
-origin or to a NAMED configuration result, and none of them falls back. `disabled` refuses
-`ingress-disabled`; `forwarded` resolves to its explicit HTTPS URL; `on-demand-ngrok` refuses
-`ingress-credential-missing` without its credential and **`ingress-not-built` with one**, because
-the on-demand tunnel launcher does not exist in this repository yet and a QR pointing at
-`127.0.0.1` scans perfectly and then fails on the phone with a network error that explains nothing
-— the plausible-but-wrong outcome the charter forbids. The allowlist is generated from
-`CAPTURE_PHONE_ROUTES` as this section requires, and the deny test is stronger than "refuses":
-a request arriving on the ingress **Host** gets a status and body **byte-identical** to an unrouted
-path, so the ingress cannot be used to enumerate what the operator's dashboard serves. The session's
-`{mode, originDigest}` stamp is an OPTIONAL leaf (D133), so rows written before D174 still parse.
-The token that gates every one of those routes never appears in a URL the server sees: it rides the
-QR payload's URL FRAGMENT and the `X-Capture-Token` header, which is how "no secret-bearing URLs"
-above stays true of a surface whose entire purpose is to be opened from a scanned link.
+**As-built (D174, 2026-08-09 — normative text in ref data-intake-and-edit-data §5.1).** All three
+modes resolve to an origin or to a NAMED configuration result, and none of them falls back.
+`disabled` refuses `ingress-disabled`; `forwarded` resolves to its explicit HTTPS URL;
+`on-demand-ngrok` refuses `ingress-credential-missing` without its credential and
+**`ingress-not-built` with one**, because the on-demand tunnel launcher does not exist in this
+repository yet and a QR pointing at `127.0.0.1` scans perfectly and then fails on the phone with a
+network error that explains nothing — the plausible-but-wrong outcome the charter forbids. The
+allowlist is generated from `CAPTURE_PHONE_ROUTES` as this section requires, and the deny test is
+stronger than "refuses": a request arriving on the ingress **Host** gets a status and body
+**byte-identical** to an unrouted path, so the ingress cannot be used to enumerate what the
+operator's dashboard serves. The session's `{mode, originDigest}` stamp is an OPTIONAL leaf (D133),
+so rows written before D174 still parse. The token that gates every one of those routes never
+appears in a URL the server sees: it rides the QR payload's URL FRAGMENT and the `X-Capture-Token`
+header, which is how "no secret-bearing URLs" stays true of a surface whose entire purpose is to be
+opened from a scanned link.
 
 Local-only does **not** waive correctness or privacy hygiene. The tool still controls live HR
 systems and stores sensitive evidence, so strict schemas, output redaction, least-retained capture,
 file permissions (`0700` directories / `0600` authority, backup, evidence, and secret files),
-loopback Origin checks, and no secret-bearing URLs/logs remain base requirements. These measures
-also make diagnostic bundles safer to share with Codex/Claude.
+loopback Origin checks, and no secret-bearing URLs or logs remain base requirements. These measures
+also make diagnostic bundles safer to share with an AI assistant.
 
 ### 6.2 One environment doctor replaces scattered startup surprises
 
