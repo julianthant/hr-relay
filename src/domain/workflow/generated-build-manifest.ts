@@ -307,7 +307,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "2e0b961a86cde0aa98256fad742d0e7cf698b6ac1998b0d2d0dab83ec6cb8ae0",
+      "fingerprint": "5cfee951f89947d1afb1ee29bfb8617e0f75bc0322085632902aad52e2a79fda",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -603,7 +603,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/descriptor.ts",
-          "sha256": "5d9a6c39a0ae32c5742af4c35e70a59f5198803dcb956295a97735ef77d6c43e"
+          "sha256": "277f8e8351cc4af4b7dfe32b0a6c7c2ec49e9b4326b2a1b2011a03befc0ae1bb"
         },
         {
           "path": "src/workflows/separations/identity-check/nodes.ts",
@@ -638,8 +638,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "e3c3dbf33f0576db7c44d94436c8d8c41097211639cf8ccfa14ccde0708657ec"
         },
         {
+          "path": "src/workflows/separations/kuali-finalization/nodes.ts",
+          "sha256": "75db183936d485e1035a11457cc1769292ef80b7885f09856b73177b1b4825eb"
+        },
+        {
           "path": "src/workflows/separations/kuali-finalization/step.ts",
           "sha256": "d1271d8919a4b6ae5ef040686e040f9a825ff5c8138abbab560e64901db75302"
+        },
+        {
+          "path": "src/workflows/separations/ucpath-transaction/nodes.ts",
+          "sha256": "5df0cec667b6ba1c7a31b266d3b29f84dc116f16766fce7c39d54d9668e309d0"
         },
         {
           "path": "src/workflows/separations/ucpath-transaction/step.ts",
@@ -1041,7 +1049,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "3720e2d0870e294a62f64c5652f2e1cb9784e13318245f4a4b1077e758b3adee",
+      "fingerprint": "3079f1a148b1dba058687d34e7a293f570dbf1a7a1763af8da4136318f7f8659",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1072,12 +1080,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "63d1de26e2e9c0d9f0b8debb7dbafe8d93eed3230cfae39e270f755098c9965b"
         },
         {
+          "path": "src/domain/contracts/separations/match-active-employment.ts",
+          "sha256": "bf8779778c4f66849aa8d5240d2f829090b853bb9594d716b6a7d87b603ff5af"
+        },
+        {
           "path": "src/domain/contracts/separations/match-department-option.ts",
           "sha256": "669f32766a8b55a71ebb50d6980f60ff4762d71a3c9fc1a5e5c3bc71566d6be5"
         },
         {
           "path": "src/domain/contracts/separations/match-identity.ts",
           "sha256": "5941c816d21cb9c182dc7abe6e56081306d97db227a2eae1b45849ac3879e221"
+        },
+        {
+          "path": "src/domain/contracts/separations/match-separation-subject.ts",
+          "sha256": "b6adf42a9580758d2dab8011821db3497a94b4e461b292e6adf94134797496bc"
         },
         {
           "path": "src/domain/contracts/separations/verify-identity-approval.ts",
@@ -1128,6 +1144,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "50bf77cd56abd53ad230eb6218d4758eaa27d7c0d9790da28af6fd72cda728aa"
         },
         {
+          "path": "src/domain/separations/employment-selection.ts",
+          "sha256": "040b045b731d729545091c66044cb5ecc5bbeecb2b3b5a043b02e381d4203f72"
+        },
+        {
           "path": "src/domain/separations/identity-approval.ts",
           "sha256": "c509570e15bfaaeef78597c0886dc04071bc4d1ff8f9a493707a0b7675e67e12"
         },
@@ -1138,6 +1158,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/separations/job-summary-classification.ts",
           "sha256": "b5f0aa03957ce1b889416ee971cf0e9d4e7e1d08657613231b33d7a62b099bf9"
+        },
+        {
+          "path": "src/domain/separations/separation-subject.ts",
+          "sha256": "37e4736d6ade04602c38dc3480162ff3f6600a725ee1f71a5434621124a63ef1"
         },
         {
           "path": "src/domain/separations/write-plan.ts",
@@ -1236,8 +1260,32 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
         },
         {
+          "path": "src/workflows/separations/identity-check/nodes.ts",
+          "sha256": "e312a6ec8861e722e2bc48f92757d1ae7acaf91430076195cf6bd105d7c6b751"
+        },
+        {
+          "path": "src/workflows/separations/identity-check/step.ts",
+          "sha256": "17476737700f9951124af52c6d6f8bc3282b3057e5678708686562fb01cbfabd"
+        },
+        {
+          "path": "src/workflows/separations/job-summary/nodes.ts",
+          "sha256": "18d669a71b6b7ff8158951faedb5fae08630a0523f707ebcb72b1841b422591d"
+        },
+        {
+          "path": "src/workflows/separations/job-summary/step.ts",
+          "sha256": "47379e21ab52901f3496c7a41724e73fc79cbc276a7e3c9407e63344c04cfbb6"
+        },
+        {
           "path": "src/workflows/separations/kuali-finalization/descriptor.ts",
-          "sha256": "cd8e004f24014b96726814d6990da6052d51fb297663460c0ba8941ba9e4340a"
+          "sha256": "777aacd6ce552cf07c3493ed9364a006373b673fdcf11945530e9b9da1529bd3"
+        },
+        {
+          "path": "src/workflows/separations/kuali-finalization/nodes.ts",
+          "sha256": "75db183936d485e1035a11457cc1769292ef80b7885f09856b73177b1b4825eb"
+        },
+        {
+          "path": "src/workflows/separations/kuali-finalization/step.ts",
+          "sha256": "d1271d8919a4b6ae5ef040686e040f9a825ff5c8138abbab560e64901db75302"
         }
       ],
       "id": "separations-kuali-finalization"
@@ -1401,7 +1449,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "ac077dba8d2c44062a6a4e89d42154f0951834ec15bcc9ef4ffbceca44f3079b",
+      "fingerprint": "171a2aba24ba1cde09e2c352445087c8da6fef94012eb0814655213ee04dffab",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1420,16 +1468,44 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
         },
         {
+          "path": "src/domain/contracts/kuali/read-separation-document.ts",
+          "sha256": "d909b1be2c5e1f8743f4ad5dba5192b65183b54588cd625030c7de314407f98e"
+        },
+        {
+          "path": "src/domain/contracts/kuali/search-separation-action.ts",
+          "sha256": "ddf180d3b70e34ccfea12764bf2385d2522050a9e62c91fcd36f3cbd9d22465b"
+        },
+        {
+          "path": "src/domain/contracts/separations/match-active-employment.ts",
+          "sha256": "bf8779778c4f66849aa8d5240d2f829090b853bb9594d716b6a7d87b603ff5af"
+        },
+        {
+          "path": "src/domain/contracts/separations/match-department-option.ts",
+          "sha256": "669f32766a8b55a71ebb50d6980f60ff4762d71a3c9fc1a5e5c3bc71566d6be5"
+        },
+        {
           "path": "src/domain/contracts/separations/match-identity.ts",
           "sha256": "5941c816d21cb9c182dc7abe6e56081306d97db227a2eae1b45849ac3879e221"
+        },
+        {
+          "path": "src/domain/contracts/separations/match-separation-subject.ts",
+          "sha256": "b6adf42a9580758d2dab8011821db3497a94b4e461b292e6adf94134797496bc"
         },
         {
           "path": "src/domain/contracts/separations/match-termination-type.ts",
           "sha256": "db1923e232b77b505ae7b88d11c336490f719c30efb989da7e27b3cc6c8d84be"
         },
         {
+          "path": "src/domain/contracts/separations/read-separation-plan.ts",
+          "sha256": "57c85049f82a4f32715458d2bee0bae450deed7be68843e2a85212cf5708fb03"
+        },
+        {
           "path": "src/domain/contracts/separations/verify-identity-approval.ts",
           "sha256": "926a8b63f5daca1da0c1cbefcb0bf293454301c2c109410988b7eee694d20a2c"
+        },
+        {
+          "path": "src/domain/contracts/separations/verify-termination-receipt.ts",
+          "sha256": "ea8af3da5c4e89507c1f2bca65434cba2278c9ca77a4de4dc1059b038e99c94d"
         },
         {
           "path": "src/domain/contracts/ucpath/create-termination.ts",
@@ -1488,6 +1564,14 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
         },
         {
+          "path": "src/domain/separations/department-option.ts",
+          "sha256": "50bf77cd56abd53ad230eb6218d4758eaa27d7c0d9790da28af6fd72cda728aa"
+        },
+        {
+          "path": "src/domain/separations/employment-selection.ts",
+          "sha256": "040b045b731d729545091c66044cb5ecc5bbeecb2b3b5a043b02e381d4203f72"
+        },
+        {
           "path": "src/domain/separations/identity-approval.ts",
           "sha256": "c509570e15bfaaeef78597c0886dc04071bc4d1ff8f9a493707a0b7675e67e12"
         },
@@ -1498,6 +1582,18 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/separations/job-summary-classification.ts",
           "sha256": "b5f0aa03957ce1b889416ee971cf0e9d4e7e1d08657613231b33d7a62b099bf9"
+        },
+        {
+          "path": "src/domain/separations/separation-dates.ts",
+          "sha256": "e955671db5d816d9eeda6e7e46fb354a2dded3a868fe99ce3b7865b8c5c96423"
+        },
+        {
+          "path": "src/domain/separations/separation-subject.ts",
+          "sha256": "37e4736d6ade04602c38dc3480162ff3f6600a725ee1f71a5434621124a63ef1"
+        },
+        {
+          "path": "src/domain/separations/termination-receipt.ts",
+          "sha256": "7dbaa32ee4d0b53d46e51ee42a8953043ace2ecee2205198191765c0cf0c31cc"
         },
         {
           "path": "src/domain/separations/termination-type.ts",
@@ -1520,12 +1616,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
         },
         {
+          "path": "src/domain/ui/kuali-action-list.ts",
+          "sha256": "4c16a8711133cc12b29a7e7bccba089e499692124d9925a6cfca7cd9c1633ebe"
+        },
+        {
           "path": "src/domain/ui/kuali-document-identity.ts",
           "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
           "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
+        },
+        {
+          "path": "src/domain/ui/kuali-separation-finalization.ts",
+          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
         },
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",
@@ -1596,8 +1700,40 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
         },
         {
+          "path": "src/workflows/separations/identity-check/nodes.ts",
+          "sha256": "e312a6ec8861e722e2bc48f92757d1ae7acaf91430076195cf6bd105d7c6b751"
+        },
+        {
+          "path": "src/workflows/separations/identity-check/step.ts",
+          "sha256": "17476737700f9951124af52c6d6f8bc3282b3057e5678708686562fb01cbfabd"
+        },
+        {
+          "path": "src/workflows/separations/job-summary/nodes.ts",
+          "sha256": "18d669a71b6b7ff8158951faedb5fae08630a0523f707ebcb72b1841b422591d"
+        },
+        {
+          "path": "src/workflows/separations/job-summary/step.ts",
+          "sha256": "47379e21ab52901f3496c7a41724e73fc79cbc276a7e3c9407e63344c04cfbb6"
+        },
+        {
+          "path": "src/workflows/separations/kuali-extraction/nodes.ts",
+          "sha256": "87fd96d68a0dc2adfde272c47d6b00769dab1785cabcdc090edc277c164df754"
+        },
+        {
+          "path": "src/workflows/separations/kuali-extraction/step.ts",
+          "sha256": "e3c3dbf33f0576db7c44d94436c8d8c41097211639cf8ccfa14ccde0708657ec"
+        },
+        {
           "path": "src/workflows/separations/ucpath-transaction/descriptor.ts",
-          "sha256": "3cc300ee3cdb516fa670e26861b609528e587cb5663b40ebfded3527c0b51e24"
+          "sha256": "1a0a69c5b367d699251cde1603679bc74c6ea21f82b2b38e039f339115c1b308"
+        },
+        {
+          "path": "src/workflows/separations/ucpath-transaction/nodes.ts",
+          "sha256": "5df0cec667b6ba1c7a31b266d3b29f84dc116f16766fce7c39d54d9668e309d0"
+        },
+        {
+          "path": "src/workflows/separations/ucpath-transaction/step.ts",
+          "sha256": "d87840f4fa594d28f524491a17a108cd351fc664966c34848c8820639f97e067"
         }
       ],
       "id": "separations-ucpath-termination"
