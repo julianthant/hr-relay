@@ -145,8 +145,13 @@ export function fingerprintSourceSet(
  * `defineWorkflowDescriptor` call: a guessed id would key a fingerprint to a
  * workflow that does not exist, and `resolveWorkflowFingerprint`'s throw would
  * then fire at load time for the descriptor that does.
+ *
+ * Exported because `workflow-layout` (D265 arm (a)) asks the same question of
+ * the same files — "which workflow does the descriptor at this path declare?" —
+ * and a second reader of the same syntax is a second opinion that can drift the
+ * moment either one learns about a new spelling.
  */
-function declaredWorkflowId(entry: string): string {
+export function declaredWorkflowId(entry: string): string {
   const source = ts.createSourceFile(
     entry, readFileSync(entry, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const ids: string[] = [];
