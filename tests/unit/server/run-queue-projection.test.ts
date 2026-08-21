@@ -390,6 +390,58 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(crossVerify.map((event) => event.state), ["cancelled", "done"]);
   });
 
+  it("stays live over a data.observed line and rebuilds identically from it (D270)", () => {
+    // The observed-log arm is IGNORED BY NAME, not folded into a span it is
+    // not. What must be true either way is that a stream carrying it cannot
+    // degrade the projection: a degraded ingest schedules the guarded rebuild,
+    // and the rebuild would then refuse the same line by name (D218).
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    const base = {
+      workflow: "person-lookup" as const,
+      runId: uuidOf(1),
+      traceId: traceOf(1),
+      spanPath: `${traceOf(1)}/searching#1.1`,
+      parentSpanPath: traceOf(1),
+      attempt: 1,
+    };
+    const ts = (): string => w.clock.now().toISOString();
+    w.writer.emit({ ...base, t: "span.started", kind: "task", ts: ts(), name: "searching" });
+    w.writer.emit({
+      ...base, t: "data.observed", ts: ts(), observedAt: ts(),
+      nodeId: "searching", taskId: "ucpath/search-person-org",
+      points: [{
+        direction: "read",
+        field: "selection",
+        values: [
+          { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "resolved" },
+          { key: "selection.selected.emplId", state: "transformed", classification: "direct-identifier", transform: "last4", value: "6712" },
+        ],
+      }],
+    });
+    w.writer.emit({ ...base, t: "span.ended", kind: "task", ts: ts(), outcome: "done" });
+    assert.equal(w.projection.health().state, "live");
+
+    const before = w.projection.buildDashboardDayWire(DAY);
+    const fresh = createRunQueueProjection({
+      stateRoot: w.stateRoot,
+      clock: w.clock,
+      appVersion: APP_VERSION,
+      descriptorSetHash: DESCRIPTOR_SET_HASH,
+      ledger: createLedgerReadThrough(w.stateRoot),
+      authority: w.authority,
+      descriptors: { resolve: () => undefined },
+      projectionStore: w.store,
+    });
+    fresh.rebuildFromJsonl();
+    assert.equal(fresh.health().state, "live");
+    assert.deepEqual(
+      { ...fresh.buildDashboardDayWire(DAY), projectionGeneration: 0, snapshotCursor: "pc:1" },
+      { ...before, projectionGeneration: 0, snapshotCursor: "pc:1" },
+    );
+  });
+
   it("persists every folded row to the rebuildable runs_view table", () => {
     const w = world();
     seedWorld(w);
