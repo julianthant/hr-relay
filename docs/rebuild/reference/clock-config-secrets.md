@@ -116,41 +116,6 @@ not.
 
 ---
 
-## Phase 1i-spine as-built config-path delta (2026-08-04, D121)
-
-**A path default is a RUNTIME value, so it cannot live in the browser-reachable config schema.**
-`src/domain/commands.ts` imports `SettingsOverrideSchema` from `src/domain/config/schema.ts`, and
-the dashboard bundle imports commands — so `schema.ts` is evaluated in the browser. Its
-`node:path`-derived defaults made that fatal: Vite's dev server replaces an externalized built-in
-with a proxy that throws on the first property read, so the named-import **binding alone** killed
-the bundle at module-evaluation time, before any default could be materialized. Making the defaults
-lazy is therefore not sufficient — the import itself has to be gone (ref frontend-backend-integration §8.13 owns the general
-rule and its guard).
-
-**As-built, the resolver keeps its `env > settings.json > default` precedence unchanged, and the
-split is on WHERE a default comes from, not on how it is chosen:**
-
-- `src/domain/config/schema.ts` stays a pure, browser-reachable contract. Every leaf whose default
-  can only be produced by resolving a repo-relative literal against a process working directory —
-  `reportsDir`, `downloadsDir`, `onboardingDocsDir`, `i9CheckTrackerPath`, `stateRoot`,
-  `artifactRoot`, `browserProfileRoot`, `duoCredential`, `duoExtensionDir` — is **REQUIRED** there
-  rather than defaulted, so a caller that omits it gets a loud zod error naming the exact leaf.
-- `src/domain/config/runtime-paths.ts` is server-only and owns those defaults. It resolves each to
-  an absolute path (memoizing the profile root, which every consumer and the Duo credential path
-  derive from) and **parses** the result through `ConfigPathsSchema`, so a default that failed to
-  resolve absolute fails loud at its source. The values are byte-identical to what the runtime
-  resolved before the split. `src/domain/config/resolve.ts` is its only caller.
-- A repo-relative literal is never a runtime path. A worker or daemon started from another working
-  directory would otherwise resolve a different, empty profile root and silently re-authenticate,
-  or write a second credential home.
-
-**A browser stub, bundler alias, or polyfill for `node:path` is explicitly rejected.** A stubbed
-`resolve()` invents a plausible-but-wrong absolute path, which would point Duo credential reads and
-artifact writes at the wrong location — the silent-wrong-value failure this program exists to
-prevent. The browser is not entitled to a filesystem default; it is entitled to a loud error.
-
----
-
 ## 1. Grounding — what exists today, why it hurts
 
 **Every figure and path in this section is the LEGACY repository's, measured 2026-07-18 for doc 08's
@@ -294,143 +259,209 @@ span and freshness check would be wrong in the same way, all at once, with no cr
 
 ## 3. Config resolver
 
-**One resolver function implements `env > settings.json > default` exactly once.** Every current
-read site's inline `process.env.X ?? SETTINGS.y.z ?? literal` expression is replaced by a call into
-this resolver; the precedence logic itself is never repeated.
+<!-- roadmap: p1-base -->
+<!-- roadmap: p1-spine -->
+<!-- roadmap: def-settings -->
+<!-- roadmap: cross-cutting -->
+
+<!-- roadmap-status: p1-spine -->
+- [x] a path default is a RUNTIME value, so it cannot live in the browser-reachable contract — `ConfigPathsSchema`'s nine leaves are REQUIRED with no `.default()`, and the server-only `src/domain/config/runtime-paths.ts` supplies them (D121, 2026-08-04)
+- [x] the memoized absolute profile root and the `duoCredential` path derived from it live in `runtime-paths.ts:41-61`, parsed through `ConfigPathsSchema` rather than asserted — a default that failed to resolve absolute fails at its source
+- [x] `src/domain/config/resolve.ts:348` is the only caller, and the general rule + its walker live in ref frontend-backend-integration §8.13 (`dashboard-wire-boundary`)
+> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/schema.ts:105-131,212-214` and `runtime-paths.ts`; the D121 as-built block folded into this section, and the claim that `schema.ts` resolves the isolation root was corrected — it is `runtime-paths.ts` that does
+<!-- /roadmap-status -->
+
+<!-- roadmap-status: def-settings -->
+- [x] the resolver's SETTINGS layer is fully contracted — `SettingsOverrideSchema` (`src/domain/config/schema.ts:316-357`), the per-group merge (`resolve.ts:291-320`) and a `"settings"` provenance value every leaf can carry
+- [x] `apply-settings` is schema-recognized and refused: the kernel answers `rejected{code:"capability-unavailable"}` with no journal row, no audit row and no generation advance (`src/core/command-kernel.ts:143,2467-2477`), and Settings serves ONE section, `storage`, read-only (D169/D184)
+- [ ] BE nothing in `src/` reads a settings FILE — both composition roots pass a literal `{}` (`src/server/dashboard/compose.ts:343`, `src/server/worker/compose.ts:344`), so the settings layer has no producer and `config/settings.json` does not exist in this repository
+- [ ] BE `mergeSettings` never applies `override.browser`, so a settings-supplied `browser.headless` / `browser.closeProofMs` parses and is then dropped — the one group the merge forgets
+- [ ] BE `apply-settings` stops answering `capability-unavailable`; the family, its `expectedRevision` target and its atomic `{settingsSchemaHash, patchFingerprint, patch}` payload are already contracted (`src/domain/commands.ts:186-197`)
+> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/{schema,resolve}.ts`, `src/domain/commands.ts`, `src/core/command-kernel.ts` and both composition roots; left: the settings producer, the dropped `browser` group, and the write path 04 §Edit settings in the dashboard tracks
+<!-- /roadmap-status -->
+
+**One resolver implements `env > settings.json > default` exactly once**
+(`src/domain/config/resolve.ts`). No read site repeats the precedence, and the defaults live in
+exactly one place — the zod schema's `.default()`s — so the legacy duplication between `config.ts`
+and `DEFAULT_OPERATOR_SETTINGS` (§1) cannot recur by construction.
+
+### The schema is closed, per system and per group
+
+`src/domain/config/schema.ts` is a `z.strictObject` of 16 groups: `actor`, `urls`, `timeouts`,
+`paths`, `annualDates`, `operator`, `display`, `performance`, `ocr`, `capture`, `browserHealth`,
+`browser`, `concurrency`, `daemon`, `features`, `providers`. Every group but `paths` carries a
+complete `.default(...)`; `paths` is required (see D121 below).
 
 ```ts
-// src/domain/config/schema.ts — the ONE place defaults live (kills the config.ts ↔
-// DEFAULT_OPERATOR_SETTINGS duplication the gap audit flagged at types.ts:226)
-const UcpathRoutesSchema = z.strictObject({ entry: UrlSchema, personOrg: UrlSchema,
-                                            smartHr: UrlSchema, transactions: UrlSchema });
-const CrmRoutesSchema = z.strictObject({ entry: UrlSchema, onboarding: UrlSchema,
-                                         contacts: UrlSchema });
-// Each system owns an equally closed route object. Adding a route is a schema change; misspelling
-// one is an unknown-key error. There is no open Record<string,url> on runtime decision data.
-const systemEndpoints = <R extends z.ZodType>(routes: R) => z.strictObject({
-  prod: routes,
-  test: routes.optional(),
-});
-
-export const ConfigSchema = z.strictObject({
-  urls: z.strictObject({
-    kuali: systemEndpoints(KualiRoutesSchema), newKronos: systemEndpoints(NewKronosRoutesSchema),
-    crm: systemEndpoints(CrmRoutesSchema), onbase: systemEndpoints(OnBaseRoutesSchema),
-    ucpath: systemEndpoints(UcpathRoutesSchema), i9: systemEndpoints(I9RoutesSchema),
-    oldKronos: systemEndpoints(OldKronosRoutesSchema),
-    servicenow: systemEndpoints(ServiceNowRoutesSchema),
-    sharepoint: systemEndpoints(SharePointRoutesSchema),
-  }).default({
-    // Full parent defaults—not `.default({})`. Each `prod` map is ported from the current
-    // constants, including all CRM subroutes; `test` is absent until explicitly configured.
-    kuali: { prod: KUALI_PROD_ENDPOINTS }, newKronos: { prod: NEW_KRONOS_PROD_ENDPOINTS },
-    crm: { prod: CRM_PROD_ENDPOINTS }, onbase: { prod: ONBASE_PROD_ENDPOINTS },
-    ucpath: { prod: UCPATH_PROD_ENDPOINTS }, i9: { prod: I9_PROD_ENDPOINTS },
-    oldKronos: { prod: OLD_KRONOS_PROD_ENDPOINTS },
-    servicenow: { prod: SERVICENOW_PROD_ENDPOINTS },
-    sharepoint: { prod: SHAREPOINT_PROD_ENDPOINTS },
-  }),
-  timeouts: z.strictObject({
-    navigationMs: z.number().int().positive(),
-    longNavigationMs: z.number().int().positive(),
-    ukgNavigationMs: z.number().int().positive(),
-    taskMs: z.number().int().positive(),
-    /** D125 — bounds ONE session acquisition (open + login); see ref execution-and-sessions. */
-    sessionAcquireMs: z.number().int().positive(),
-    transactionMs: z.number().int().positive(),
-    /* … */
-  }).default({ navigationMs: 15_000, longNavigationMs: 30_000,
-                        ukgNavigationMs: 60_000, taskMs: 180_000,
-                        sessionAcquireMs: 60_000,
-                        transactionMs: 300_000, /* every required sibling */ }),
-  paths: z.strictObject({ reportsDir: AbsolutePathSchema, stateBackupDir: AbsolutePathSchema,
-                          /* … */ }).default({ /* full user-agnostic defaults */ }),
-  /** Keyed by fiscal year ("FY2027"), NOT a flat literal — see §5. */
-  annualDates: z.record(FiscalYearKeySchema, AnnualDateEntrySchema).default({}),
-  operator: z.strictObject({ timekeeperName: z.string() }).default({ timekeeperName: "" }),
-  capture: z.strictObject({
-    ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]),
-    forwardedUrl: HttpsUrlSchema.optional(),
-    preConnectTtlMs: z.number().int().positive(),
-    activeIdleTtlMs: z.number().int().positive(),
-    maxPhotoBytes: z.number().int().positive(),
-    maxPhotos: z.number().int().positive(),
-  }).default({ ingress: "on-demand-ngrok", preConnectTtlMs: 15 * 60_000,
-               activeIdleTtlMs: 60 * 60_000, maxPhotoBytes: 20_000_000, maxPhotos: 100 }),
-  providers: ProviderBudgetConfigSchema, // every D63 capability: models, timeout, concurrency/rate/cost
-  // … browserHealth / concurrency / daemon / ocr / features: ported 1:1 from
-  // domain/settings/types.ts, now zod-typed instead of a hand-written interface.
-});
-export type Config = z.infer<typeof ConfigSchema>;
+// each system owns an equally CLOSED route object — adding a route is a schema change,
+// misspelling one is an unknown-key error, and there is no open Record<string, url> anywhere
+function endpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape>) {
+  return z.strictObject({ prod: routes, test: routes.partial().optional() });
+}
 ```
 
-**Provider budget windows (D119, ratified 2026-08-03).** Provider admission uses fixed UTC
-calendar windows, never a worker-relative rolling approximation: `requestsPerMinute` resets at the
-next UTC minute boundary; `dailyRequestLimit` and `costLimitUsdMicros` reset at the next UTC day
-boundary. `costLimitUsdMicros` is the capability's daily maximum cost in integer USD micros. A
-literal `0` is a hard zero-cost cap: only a request whose adapter supplies a conservative maximum
-estimate of exactly zero may be admitted. It never means unlimited. Counters are shared globally by
-capability across config fingerprints, while each admission decision retains and applies the exact
-immutable run snapshot's budget.
+The route sets are exhaustive over ref task-contract's `BrowserSystemId` and are exactly what the
+drivers navigate, not a sample: `kuali`/`newKronos`/`onbase`/`oldKronos`/`servicenow`/`sharepoint`
+declare `entry`; `i9` declares `entry` + `app`; `crm` declares `entry`, `onboardingSearch`,
+`ucPathEntrySheet`, `onboardingHistory`, `idocsViewer`; `ucpath` declares `login`, `smartHr`,
+`jobSummary`, `personalData`, `personProfile`. `CONFIG_ROUTE_SCHEMAS` / `CONFIG_ROUTE_KEYS` expose
+the same set as data so D68's coverage audit can check it both ways. Naming follows the domain ids
+one-for-one (`old-kronos` → `oldKronos`; never a parallel `ukg` key).
 
-The route entries above are deliberately exhaustive over ref task-contract's current `BrowserSystemId`, not a
-sample of the most common systems. D68 coverage fails if a browser system lacks its closed endpoint
-schema/defaults or if an endpoint schema has no driver consumer. Naming follows the domain ids:
-`old-kronos` is represented by `oldKronos`, never an ambiguous parallel `ukg` key.
+**`test` is a PARTIAL of the production route object, and optional.** That is deliberate: a sandbox
+usually exposes one or two of a system's routes, so demanding a complete mirror would make the test
+map unusable and push someone to copy production URLs into it — which is exactly the state §4's
+instance check refuses to run against. It also means `test` is a genuinely sparse override, never a
+second production map.
+
+`timeouts` carries the D125 leaf `sessionAcquireMs` (60 000 ms) beside `navigationMs` (15 000),
+`longNavigationMs` (30 000), `ukgNavigationMs` (60 000), `taskMs` (180 000), `transactionMs`
+(300 000), `duoApprovalSeconds` (180), `duoApprovalCrmSeconds` (60) and `retryDelayMs` (5 000).
+`sessionAcquireMs` bounds ONE acquisition — launching or attaching the context plus that system's
+login recipe — and exists because `taskMs` must stay generous for the real read while a login is a
+CHAIN of individually-bounded steps that nothing bounded: a dead CRM session on the live exit run
+burned 262.9 s inside `withDriver` before anything noticed. 60 s is more than 3× the live-verified
+~17 s (UCPath) / ~12 s (CRM) logins. The leaf's own comment records the one deployment that must
+raise it — a hands-on Duo approval, where the inner `duoApprovalSeconds` wait would otherwise
+outlive its envelope; ref execution-and-sessions owns that interaction.
+
+`providers` is `ProviderBudgetConfigSchema` over the four registered capabilities (`ocr.extract`,
+`geocode.census`, `geocode.nominatim`, `ai.advisory`), each with `timeoutMs`, `concurrency`,
+`requestsPerMinute`, `dailyRequestLimit` and `costLimitUsdMicros`. **Provider budget windows are
+fixed UTC calendar windows (D119)**, never a worker-relative rolling approximation:
+`requestsPerMinute` resets at the next UTC minute, `dailyRequestLimit` and `costLimitUsdMicros` at
+the next UTC day. `costLimitUsdMicros: 0` is a hard zero-cost cap — only a request whose adapter
+supplies a conservative maximum estimate of exactly zero may be admitted — and never means
+unlimited. Counters are shared globally by capability across config fingerprints, while each
+admission decision retains and applies the exact immutable run snapshot's budget.
+
+### A path default is a runtime value, not a contract value (D121, 2026-08-04)
+
+`src/domain/commands.ts` imports `SettingsOverrideSchema` from `schema.ts`, and the dashboard bundle
+imports commands — so `schema.ts` is evaluated **in the browser**. Its `node:path`-derived defaults
+made that fatal: Vite's dev server replaces an externalized built-in with a proxy that throws on the
+first property read, so the named-import **binding alone** killed the bundle at module-evaluation
+time, before any default could be materialized. Making the defaults lazy was therefore not
+sufficient — the import itself had to go.
+
+The precedence did not change; the split is on WHERE a default comes from:
+
+- `schema.ts` stays a pure, browser-reachable contract. `ConfigPathsSchema`'s nine leaves —
+  `reportsDir`, `downloadsDir`, `onboardingDocsDir`, `i9CheckTrackerPath`, `stateRoot`,
+  `artifactRoot`, `browserProfileRoot`, `duoCredential`, `duoExtensionDir` — are `AbsolutePathSchema`
+  and **REQUIRED**, so a caller that omits `paths` gets a loud zod error naming the exact leaf.
+- `src/domain/config/runtime-paths.ts` is server-only and owns those defaults. It resolves each
+  against the process working directory, memoizes the profile root (which `duoCredential` is
+  `join`ed onto), and **parses** the result through `ConfigPathsSchema` — a default that failed to
+  resolve absolute fails loud at its source rather than downstream. `resolve.ts:348` is its only
+  caller.
+- A repo-relative literal is never a runtime path. A worker or daemon started from another working
+  directory would otherwise resolve a different, empty profile root and silently re-authenticate,
+  or write a second credential home.
+
+**A browser stub, bundler alias, or polyfill for `node:path` is explicitly rejected.** A stubbed
+`resolve()` invents a plausible-but-wrong absolute path, which would point Duo credential reads and
+artifact writes at the wrong location — the silent-wrong-value failure this program exists to
+prevent. The browser is not entitled to a filesystem default; it is entitled to a loud error. The
+general rule and its walker are ref frontend-backend-integration §8.13's.
+
+### The environment layer is a validated binding registry, not a path→name map
 
 ```ts
-// src/domain/config/resolve.ts
-/** One declarative table replaces every scattered `process.env.X ?? …` read site. */
-const ENV_KEY_MAP = {
-  "urls.kuali.test.entry": "KUALI_SPACE_URL_OVERRIDE",
-  "annualDates.*.jobEndDate": "ANNUAL_DATES_END",     // resolved against the CURRENT fiscal year only
-  "annualDates.*.kronosDefaultEndDate": "KRONOS_DEFAULT_END_DATE",
-  "annualDates.*.kronosDefaultStartDate": "KRONOS_DEFAULT_START_DATE",
-  "operator.timekeeperName": "TIMEKEEPER_NAME",
-  "timeouts.ukgNavigationMs": "HRAUTO_UKG_NAVIGATION_MS",
-  "ocr.secondOpinionMax": "OCR_SECOND_OPINION_MAX",
-  // … every OperatorSettingsOverride ↔ env-var pair from applyOperatorSettingsEnv, ported verbatim
-} as const satisfies Partial<Record<EnvBackedConfigLeafPath, EnvVarName>>;
-
-// SettingsOverrideSchema migrates today's sparse "System URLs" values into `urls.<system>.test`.
-// It can never replace `prod`; selecting the test endpoint is an explicit RunEnvelope decision.
-
-// The sparse override schema itself accepts absent input and defaults it to one empty strict object;
-// callers do not improvise `?? {}` fallbacks.
-const SettingsOverrideInputSchema = SettingsOverrideSchema.optional().default({});
-export function resolveConfig(env: NodeJS.ProcessEnv, settingsOverride: unknown): Config {
-  const withDefaults = ConfigSchema.parse({});                 // zod .default() fills every leaf — ONE source
-  const withSettings = deepMergeNonEmpty(withDefaults, SettingsOverrideInputSchema.parse(settingsOverride));
-  const withEnv = applyEnvPrecedence(withSettings, ENV_KEY_MAP, env);  // explicit env wins, treats "" as unset
-  return ConfigSchema.parse(withEnv);                           // final validation — a bad env/settings value throws here
-}
-
-export interface ResolvedConfig {
-  config: Config; // plain values consumed by runtime code
-  provenance: Readonly<Record<ConfigLeafPath, "env"|"settings"|"default">>;
-  fingerprint: string;
-}
-export function resolveConfigWithProvenance(env: NodeJS.ProcessEnv, settings: unknown): ResolvedConfig;
+// src/domain/config/resolve.ts — one declarative table replaces every scattered `process.env.X ?? …`
+export const ConfigEnvBindingSchema = z.strictObject({
+  env: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
+  path: ConfigLeafPathSchema,
+  /** applies the raw string to a config, parsing it — the binding owns its own coercion */
+  apply: z.custom<(config: Config, raw: string, fiscalYear: string) => Config>(…),
+});
+export const CONFIG_ENV_BINDINGS = deepFreeze(ConfigEnvBindingRegistrySchema.parse([ … ]));
 ```
 
-- **"Empty settings = today's behavior" invariant, structurally guaranteed, not hand-maintained.**
-  Because the defaults live in exactly one place (the zod schema's `.default()`s), there is no
-  second literal to drift out of sync — the duplication `types.ts:226`'s comment currently warns
-  about cannot recur. `resolveConfig(process.env, {})` reproduces the schema defaults by
-  construction. A `config-schema-snapshot.test.ts` still pins the literal default *values*
-  themselves (so an accidental edit to a default URL/timeout is caught in review, same spirit as
-  today's mirrored-literal safety net, but with one source instead of two).
-- **Workflow/system configs narrow, they never redeclare.** `src/stores/ucpath/config.ts`
-  calls `resolveSystemEndpoints(snapshot, "ucpath")`—a thin selector over the run's resolved
-  `prod`/`test` endpoint map, never its own `env > settings > default` expression. Production and
-  sparse test endpoints are distinct fields, so a settings override cannot silently retarget a prod
-  run. This directly closes gap #4's "precedence re-implemented per read-site" finding.
-- **Effective value + source, surfaced.** `resolveConfig` returns plain `Config` exactly as typed.
-  `resolveConfigWithProvenance` returns `{config, provenance, fingerprint}` so Settings can show the
-  read-only transparency the old dashboard already has (`.env` Credentials panel) — this is what
-  closes the "precedence-shadowing" risk (§7).
+A binding carries its own **apply** function rather than a type tag, so `HRAUTO_DEFAULT_WORKERS`
+parses through a positive-integer text schema, `DEBUG_SCREENSHOTS` through a `"0"|"1"` flag, and a
+URL through `z.url()` — a malformed value throws at resolve time naming the leaf, and there is no
+generic coercion to be wrong in one place for everything. The registry's `superRefine` requires
+`env` names AND `path`s to be unique, so a copy-pasted binding cannot shadow the leaf it was cloned
+from.
 
----
+**38 bindings are registered today.** Eight are per-system test-entry overrides
+(`HRAUTO_KUALI_TEST_URL`, `HRAUTO_NEW_KRONOS_TEST_URL`, `HRAUTO_CRM_TEST_URL`,
+`HRAUTO_ONBASE_TEST_URL`, `HRAUTO_I9_TEST_URL`, `HRAUTO_OLD_KRONOS_TEST_URL`,
+`HRAUTO_SERVICENOW_TEST_URL`, `HRAUTO_SHAREPOINT_TEST_URL`), a ninth is `HRAUTO_UCPATH_TEST_URL` →
+`urls.ucpath.test.smartHr` (UCPath's task route, not its login portal). The rest are
+`TIMEKEEPER_NAME`, the three `annualDates` variables, `HRAUTO_NAVIGATION_RETRIES`,
+`HRAUTO_UKG_NAVIGATION_MS`, `HRAUTO_SEPARATION_TERMINATION_WINDOW_DAYS`, nine `OCR_*`, five
+`HRAUTO_CAPTURE_*`, three `HRAUTO_HEALTH_MONITOR_*`, `HRAUTO_DEFAULT_WORKERS`, two
+`HRAUTO_DAEMON_IDLE*`, `DEBUG_SCREENSHOTS` and `HR_AUTOMATION_DUO_WEBAUTHN`. **Every binding writes
+into `urls.<system>.test` or into a non-URL leaf — no environment variable can move a production
+endpoint**, which is what makes §4's "production is the code default" true rather than customary.
+
+The three annual-date variables are treated as a GROUP. If any of them is set while the current
+fiscal year has no configured entry, all three must be set or resolution throws
+`environment overrides for FY<n> are incomplete` — a half-configured year would otherwise produce an
+entry that passes the schema and lies about two of its three dates. Each value re-parses through
+`UsDateSchema`.
+
+An environment value is **trimmed, and an empty string is UNSET**. That is the honest reading of a
+`.env` line someone commented out by deleting its value, and it means `KEY=` cannot blank a
+configured default by accident.
+
+### Resolution, provenance, and the fingerprint
+
+```ts
+export function resolveConfig(env: NodeJS.ProcessEnv, settingsInput: unknown, clock?: Clock): Config;
+export function resolveConfigWithProvenance(env, settingsInput, clock?): ResolvedConfig;
+
+export const ResolvedConfigSchema = z.strictObject({
+  config: ConfigSchema,
+  /** Provenance is explanatory metadata, never runtime decision input. */
+  provenance: z.record(ConfigLeafPathSchema, ConfigProvenanceSchema), // "env" | "settings" | "default"
+  fingerprint: FingerprintSchema,                                     // sha256 over canonical config bytes
+});
+```
+
+The `clock` parameter is not decoration: the annual-date bindings are keyed by the CURRENT fiscal
+year, so resolution needs a time source, and taking it as a parameter (defaulting to `systemClock`)
+keeps §2's single-source rule intact and makes the whole resolver testable at a fixed date.
+
+Three properties are enforced rather than intended:
+
+- **"Empty settings = the defaults", structurally.** `ConfigSchema.parse({ paths: … })` fills every
+  other leaf from its own `.default()`, so `resolveConfig(env, {})` reproduces the schema defaults
+  by construction. There is no second literal to drift.
+- **Provenance is bidirectionally complete.** It is computed over every POPULATED leaf of the
+  resolved config, and the resolver throws `config provenance is not bidirectionally complete` if
+  the two key sets differ — a leaf with no provenance entry, or an entry naming a leaf that is not
+  there, is a resolver bug rather than a rendering gap. This is also what §4.1's generation line
+  measures, since a populated leaf is exactly what a stored snapshot contains.
+- **The fingerprint is a SHA-256 over `canonicalJsonStringify(config)`** — the exact bytes, so §4's
+  reuse identity and §4.1's snapshot binding hash the same thing the row stores.
+
+Consumers **narrow, they never redeclare**: a store selects `resolveSystemEntryUrl(config, system,
+instance, context)` (§4) rather than writing its own `env > settings > default` expression. That is
+what closes §1's "precedence re-implemented per read site".
+
+### What the settings layer does not yet have: a producer
+
+`SettingsOverrideSchema` is real and complete — a sparse partial of every group, with `urls`
+narrowed so an override can reach `test` and **never** `prod` — and `mergeSettings` applies it group
+by group. But **no module in `src/` reads a settings file.** Both composition roots call
+`resolveConfigWithProvenance(env, {}, clock)` with a literal empty object
+(`src/server/dashboard/compose.ts:343`, `src/server/worker/compose.ts:344`), there is no
+`config/settings.json` in this repository, and the `"settings"` provenance value is therefore
+reachable only from a test. That is the resolver-side face of the `apply-settings` deferral: the
+command family is schema-recognized and the kernel answers
+`rejected{code:"capability-unavailable"}` with zero authority side effects
+(`src/core/command-kernel.ts:143`), Settings serves one read-only `storage` section, and 04 §Edit
+settings in the dashboard owns closing it. Whoever builds the write path builds the READ path in the
+same change, or the operator's saved value will round-trip through a file nothing loads.
+
+**One group is worse than absent, and it is a defect rather than a deferral.** `mergeSettings`
+enumerates its groups explicitly and omits `browser`, so a settings override carrying
+`browser.headless` or `browser.closeProofMs` parses cleanly, contributes nothing, and reports
+`default` provenance. Nothing fails; the value simply disappears. It is invisible today only because
+the layer has no producer — which is exactly the condition under which the bug would ship.
 
 ## 4. Immutable per-run config and instance snapshot — required in Phase 1
 
