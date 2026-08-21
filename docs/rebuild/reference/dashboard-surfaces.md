@@ -69,9 +69,10 @@ lands):**
 | `## Queue-row projection as-built delta` + *The second batch* + *Drawing the second batch* + *The per-row action descriptors* + *The row title is the SUBJECT* | **§9.2** (landed) | 5.1c |
 | `### D234` runs and archived runs · `### D235` the bulk vector | **§9.2** (landed) | 5.1c |
 | *The shape hazard compares a run against ITS OWN workflow's served shape* | **§9.2** (landed) | 5.1c |
-| `## Phase 1g/1i-spine as-built presentation deltas` (D123 · D124 · D126) | §9.3 · §9.2 · §9.9 | 5.1c |
-| `### D225`/`#### D259` · `### D238` · *A live elapsed TICKS (D256)* · *The open run-detail panel FOLLOWS its run (D257)* | §9.3 · §9.9 | 5.1c |
-| §9's row-model D5–D24 and *Shell and layout as rebuilt* | §9.10 · §9.9 · §9.2 · §9.3 | 5.1c |
+| `## Phase 1g/1i-spine as-built presentation deltas` (D123 · D124 · D126) | **§9.3 · §9.2 · §9.9** (landed) | 5.1c |
+| `### D225`/`#### D259` · `### D238` · `## Wave-2 connection-proof presentation deltas` (D256 · D257) | **§9.3 · §9.9** (landed) | 5.1c |
+| *Shell and layout as rebuilt* | **§9.9** (landed); its superseded 400/470 widths → `history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md` | 5.1c |
+| §9's row-model D5–D24 | §9.10 · §9.9 · §9.2 · §9.3 | 5.1c |
 | §10.1 Activity · §10.2 Archive · §10.3 display names · §10.4 the notification model | §9.5 · §9.5 · §9.2 · §9.6 | 5.1d |
 | §11 the intake workspace · §12 the capture phone · §13 the two takeovers | §9.7 · §9.7 · §9.5 | 5.1d |
 
@@ -80,182 +81,6 @@ the screen: the durable notification row stays in §2.6 (the bell and the inbox 
 backup/doctor/restore contract stays in §2.5 (the Settings section is §9.8).
 
 ---
-
-## Phase 1g/1i-spine as-built presentation deltas (2026-08-04)
-
-D74's live exit test (run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, master
-plan §Phase 1) rendered all four parity surfaces from the ONE projection and agreed on every count.
-It also surfaced four things about this doc's contracts that fixtures had passed. **All four are now
-fixed and are as-built contract** — every one of them is presentation-only, with correct durable
-authority underneath, which is why none blocked the exit. The `skipped`-arm and terminal-duration
-deltas closed on 2026-08-04 as D123/D124; the duplicate `Done` pair closed on 2026-08-04 as D126,
-once the operator ratified the visible design and named the defect as an accessible-name collision
-only.
-
-**Fixed — folding and identity are keyed by the WHOLE span identity.** §1.1's task identity is
-`(runId, attempt, spanPath)` and that has to be honoured in both the projector and the wire. A node
-that fails and re-runs under a later RUN attempt emits a second span at the same `spanPath`; the
-projector folded on `spanPath` alone and the run-detail timeline seeded its React keys with
-`<trace>/<node>#<taskAttempt>`, so the exit test's two `cross-verify` spans — a 262.9s cancellation
-and a 12.8s success — collapsed into one row. Both are real history and both must render. The
-projector now folds by `(attempt, spanPath)`; the timeline seed is `task:<attempt>:<spanPath>`.
-A folded span is a *fact about one execution*, never a per-node latest-wins slot — that is the same
-re-stamp failure §0 catalogues, in a new place.
-
-**Fixed (D123, 2026-08-04) — `skipped` is its own timeline arm and carries its closed reason.**
-`RunDetailWire`'s timeline state enum used to be `pending|active|done|failed|blocked|cancelled`, so
-`buildRunDetail` (`src/server/dashboard/queries/run-detail.ts`) mapped span outcome
-`skipped → cancelled`. In the exit run the durable result was exactly right — `crm-dates` recorded
-`state: not-run, reason: condition-false` — while its timeline row said **Cancelled**. §9 D-status
-vocabulary defines `Cancelled` as *"You stopped it. Not an alert — a deliberate act."* A branch
-whose condition was false is the opposite: nobody acted, and nothing was interrupted.
-
-As-built contract:
-
-- `TimelineEventWireSchema.state` is `pending|active|done|failed|blocked|cancelled|**skipped**`.
-  The query's closed mapping is `done→done`, `failed→failed`, `skipped→skipped`,
-  `interrupted→blocked`, `cancelled|discarded|superseded→cancelled`.
-- Every timeline event carries `notRun`, an explicit absence union. On a `skipped` event it is
-  `{ state: "present", reason }` over the **same closed vocabulary the durable result uses**
-  (`condition-false | branch-not-selected`, `TerminalNotRunReasonSchema`), or an explicit
-  `{ state: "absent", reason: "this step did not run; its span recorded no reason" }`. A non-skipped
-  event may never carry one — the schema refuses it. **A missing reason is never back-filled.**
-- The reason reaches the wire as data, not inference: the executor stamps `notRunReason` on the
-  `span.ended` task event when it skips a node by `when`, the projector folds it verbatim, and the
-  query reads it. A skip is ONE fact with one vocabulary in three places, pinned by a parity arm in
-  `tests/unit/events/span-events.test.ts`.
-- The surface renders it distinctly and NOT by hue: a skipped step draws a hollow ring and an
-  outlined dashed bar (the "nothing happened here" shape) against `cancelled`'s solid bar, and its
-  accessible name is `<label> — skipped, did not run: <why>` rather than `<label> — cancelled`.
-
-**Fixed (D124, 2026-08-04) — a terminal queue row shows its DURATION, and the wire carries the
-second instant.** `RowFooterLine` (`src/dashboard/surfaces/queue.tsx`) computed
-`fmtElapsed(elapsedSecondsBetween(surface.startedAt, nowIso))` for every status except `queued`, so
-a terminal row kept counting forever: the exit test's row displayed **2h 47m** for a run whose
-execution was ~14.5 minutes. The row was not lying about a number it invented — it was answering a
-different question than the one the operator asks of a finished run.
-
-As-built contract:
-
-- `QueueBaseFields` carries `endedAt`, an explicit presence union, in its own right. `updatedAt`
-  happens to equal `lifecycle.endedAt` on a settled run, but the wire never *said* so, and a row
-  that measured a duration from it would depend on an invariant it cannot see.
-- The projector serves `lifecycle.endedAt` when authority is terminal, the run span's `endedAt`
-  when the status came from the span stream, and an explicit reasoned absence otherwise. **An
-  in-flight row may never carry a terminal instant** — the schema refuses it, because a running run
-  that carried one would let a surface print a finished duration for live work.
-- §2.2's rule that arithmetic may stay on the client is unchanged; what changed is that the client
-  is now given both instants. `runTiming` (`src/dashboard/surfaces/format.ts`, extracted so it is
-  measured logic rather than presentation) renders: nothing for `queued`; live `now − startedAt`
-  while in flight, including the parked statuses; `took <endedAt − startedAt>` once terminal; and,
-  for a terminal row whose `endedAt` the server could not serve, an explicit **`duration unknown`**
-  carrying the server's own reason. It never substitutes `now` — "we do not know when it ended" and
-  "it ended just now" are different facts and must not render as the same number.
-
-**Fixed (D126, 2026-08-04) — the two `Done` statuses are separated by ICON + COLOUR + a distinct
-ACCESSIBLE NAME; the visible word stays short.** `verifiedDone` and `doneWarnings`
-(`src/dashboard/ds/primitives-status.tsx`) both carry `label: "Done"`, and `StatusFilters` renders
-one pill per `QueueStatus` (`done → verifiedDone`, `partial → doneWarnings`), so the filter bar
-showed two controls whose accessible names were both `"Done — n"` and the queue rows both ended
-`"— done"`. The operator, asked directly, **ratified the visible design and refused the visible
-change**: on screen the two are not colour-only — `doneWarnings` renders its amber warning triangle
-with its count beside the pill and `verifiedDone` renders the bare green word, so icon + hue + the
-count chip are three visible channels and the shorter word is the one that fits the header. The
-defect was therefore **assistive-technology only**, and only the non-visual channel is fixed.
-
-As-built contract:
-
-- `DsStatusSpec` gains an optional `accessibleLabel`. It is **never rendered**. `dsStatusText`
-  stays the visible word; `dsStatusAccessibleName` (`primitives-status.tsx`, re-exported through
-  `surfaces/status.ts` as `statusAccessibleName`) returns `accessibleLabel ?? label` and is what
-  **every** `aria-label` naming a status must use. Only `doneWarnings` sets one today:
-  `"Done with warnings"`.
-- The three collisions that existed are closed at their name sites, not by lengthening any drawn
-  string: the `StatusFilters` pill (`"Done with warnings — 2"` vs `"Done — 2"`), the queue row and
-  member line (`"<title> — done with warnings"` vs `"<title> — done"`), and `StatusDot`, whose
-  `role="img"` name is all an assistive technology gets because a dot draws no word at all.
-- **The pixels are unchanged, and that is verified rather than asserted.** Re-freezing the ref frontend-backend-integration
-  §7.1 parity corpus after the change rewrote 56 `.a11y.yml` references and **zero** `.png` files;
-  the only diffs are accessible names, with every visible text node (`Done 2`, `text: Done …`)
-  byte-identical.
-- **The rule this generalises to:** when two statuses deliberately share a visible word because a
-  non-textual channel carries the difference, that channel must have an assistive-technology
-  counterpart. Hue, a glyph, and a count chip have none. `accessibleLabel` is that counterpart, and
-  a future status that shortens its word owes one too.
-
----
-
-## Wave-2 connection-proof presentation deltas (2026-08-20)
-
-Track C drove the REAL dashboard against a REAL composed dry run for the first time
-(`docs/migrations/separations.md` §9.22) and found four defects that every unit, architecture,
-scenario and parity gate had been green over. Three of them are this doc's, and they share one
-shape: **a surface that reads the right kind of fact from the wrong instance of it.** All three are
-fixed and are as-built contract below. (The fourth — a REPLAYED node rendering as `pending` on
-every span-folding surface — is the projection's, and is owned elsewhere.)
-
-### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
-
-**What was wrong.** `useBootstrap` fetches once, and `boot.serverClock.now` — the instant that ONE
-fetch carried — was the only value the queue row's in-flight timer, the gate-age pill, the session
-footer and the worker cards computed against. Every live elapsed on the dashboard was therefore
-frozen at page load. The proof measured it twice over: a parked run displayed **`0s` for more than
-two minutes** (the tab had loaded at 15:03:32, the run started at 15:12:17, so the difference was
-negative and `elapsedSecondsBetween`'s clamp made it a plausible zero), and a plain reload at
-15:15:15 made the same row jump to **`2m 54s`** — exactly `bootstrapInstant − startedAt` — and
-freeze again from there. A terminal row was unaffected, because D124 already made its duration two
-served instants; so this was invisible on every settled run and wrong on every run an operator is
-actually watching.
-
-As-built contract:
-
-- **The server's instant stays the authority, and the browser contributes only elapsed.**
-  Substituting the browser's wall clock is what D124 forbids, and a machine whose clock is minutes
-  off would then print a duration nobody can act on. What the browser IS authoritative about is how
-  much time has passed since that instant arrived, which it reads from the monotonic clock
-  (`systemClock.monotonicMs()`, ref clock-config-secrets's single source) — a value an NTP step or a user editing the
-  system clock cannot move.
-- **One calibration, one value, every consumer.** `src/dashboard/state/served-clock.ts` holds
-  `(servedInstant, monotonicMs at receipt)` and derives
-  `deriveServedNow = servedInstant + (monotonicNow − monotonicAtReceipt)` on a one-second tick, on
-  `visibilitychange` (a backgrounded tab's interval is throttled to about once a minute, and an
-  operator returning to it must not read a minute-old age), and on any re-render.
-  `dashboard-app.tsx` calls the hook ONCE and passes the result down every path that used to carry
-  the frozen instant, including the keyboard order's own sort key — the queue's drawn order and the
-  keyboard's traversal order must not be able to date one row two ways.
-- **No surface reads a clock of its own.** The notification bell's `systemClock.now()` — the last
-  display-time wall-clock read in the bundle — is now the same passed-down instant. A second clock
-  on one screen is how two chips come to disagree about one gate's age.
-- **A backwards elapsed is DRAWN, not clamped.** `elapsedSecondsBetween` returns the SIGNED
-  interval and `fmtElapsed` spells a negative one with its sign. The clamp is what let "the clock
-  reading this is behind the fact it is reading" wear the shape of "this happened just now", and
-  those are different facts. A sub-second skew still renders `0s` on its own, because
-  `Math.round` of a fraction of a second is zero — the signed arm appears only when something is
-  genuinely wrong.
-- **Re-calibration is deliberately NOT built, with the trigger that ends the deferral named.** The
-  BFF is a loopback singleton (`config/runtime-isolation.json` pins the port; D181's `server` role
-  lock admits one holder), so the served clock and the browser's clock are the same machine's
-  clock: there is no skew to re-converge on, only the monotonic clock's own drift, which is
-  immaterial at the seconds granularity `fmtElapsed` renders. A server instant on the SSE `health`
-  heartbeat is a wire change with a server emitter and two fixture emitters behind it, bought for a
-  skew this deployment cannot have. What buys it is ref frontend-backend-integration §6.9's deferred exposed path (D189) —
-  the day the BFF serves a browser it does not share a machine with. Add the field in that commit.
-- **The parity corpus is held by pinning the OTHER half of the clock.** A ticking elapsed dated by
-  real browser time would make `45m 0s` and `45m 1s` a coin flip between the run that froze a
-  reference and the run that asserts it. `installFrozenMonotonic`
-  (`tests/parity/helpers/app-driver.ts`) freezes `performance.now` before navigation — and nothing
-  else, so timers, rAF and CSS animation all still run — which makes the derived instant EXACTLY
-  the fixture's served instant, i.e. byte-identical to what every existing reference was captured
-  against. `assertMonotonicFrozen` proves the page adopted it by reading the clock twice across
-  real wall time: D187's rule, applied to a clock instead of a theme.
-- **Measured, not asserted (2026-08-20).** The whole assert lane was run against the corpus as it
-  stands: **139 captures fail and 12 behaviour cases pass**. Every capture was ALREADY failing
-  before this change — the corpus is stale from wave 2 itself, since each reference's stamped
-  `descriptorHash` predates D226–D255 and the queue rows now carry D230's `#N` ordinal — and that
-  re-freeze is Track B's, deliberately not performed here. What matters is what the drift is MADE
-  of: across **678 diverging lines, not one is an elapsed**. Every `18m 0s`, `21m 0s`, `45m 0s` in
-  the corpus reads back byte-identical through the ticking clock, which is the freeze doing exactly
-  what it claims — and it is the strongest evidence available until the corpus is re-frozen.
 
 ## 0. What exists today (and what specifically hurts)
 
@@ -3342,9 +3167,292 @@ the process locks — stays in §2.5, and the `apply-settings` deferral in §2.4
 
 ### 9.9 The shell — top bar, worker cards, keys, theme
 
-**Stub — written by unit 5.1c.** A dashboard-only square. Inherits *Shell and layout as rebuilt*,
-D126's accessible-name channel, D256's served clock, row-model D18's pill row and D22's shortened
-vocabulary, D219/D220/D241's grouping rules and D224's action-bar island.
+<!-- roadmap: track-c -->
+
+A dashboard-only square: `ref frontend-backend-integration` §5.1 has no counterpart, because the
+shell issues no commands of its own. It is the frame every other square renders inside, and it owns
+four things nothing else can: the status bar, the workflow rail, the layout grid, and the ONE clock.
+
+The `p1-spine` checklist lives at §1 and the `dash-defaults` one at §9.3; this section adds neither.
+Its own block is `track-c`'s, which is the wave-2 connection proof — three of that proof's four
+defects were presentation, and two of them are here.
+
+#### The layout is a GRID, and inside the detail region a switch keys on the COLUMN
+
+The detail region is three columns: **queue · centre · context rail**. The split is by reading
+pattern (§9.3.1) — live state in the centre, reference in the rail — and **a decision and a failure
+never sit behind a collapse control or a lone tab**: `Waiting on you` and `Failed` are the only two
+states allowed to shout. The rail collapses to a labelled spine that says what is inside it
+(`Context · 9 data · 6 captures`, `--ds-w-context-spine`), with the collapsed preference applied only
+above the three-column threshold.
+
+| Width | Layout |
+|---|---|
+| **< 1180** | one scrolling stack — shape, then detail, then context. The rail degrades to a section, never to nothing. |
+| **≥ 1180** | queue `--ds-w-side-panel` (**376px**), a fixed track, + a detail cell taking `minmax(0,1fr)`. |
+
+The **queue and the rail share ONE resting width** and neither side panel grows independently at
+wider viewports, so the centre stays the largest column at every size. 376 is 28px wider than the
+former 348px rail and narrower than either former queue width, which is what buys the centre back
+the room the 400/470 analysis was fighting over.
+
+**The detail cell's own split is a CONTAINER query, not a window one** — `@min-[868px]/detail` and
+`@min-[1068px]/detail`, derived as 1280−412 and 1480−412 (`layout-metrics.ts`). The distinction is
+the whole point and this doc used to state the principle and then leave window numbers in the table:
+the same 1280px viewport gives the centre 414px with the rail open and 728px with it collapsed, so a
+viewport media query fires at the wrong moment in both directions. (Caught in the act: the two
+`Write parked` resolutions were being forced side by side into a 414px column, each a ~200px box
+holding a two-line sentence about whether a real UCPath termination exists.) Only the shell grid
+itself is a window query, at `min-[1180px]`, because the window is genuinely what it measures.
+
+**Grid, not flex, is normative — it is what makes the empty case impossible.** The region was
+authored as two `flex-1` children. `flex-1` distributes free space only among children that EXIST,
+so with no run open the second child was not rendered, nothing claimed the space, and the queue
+panel — a flex item with no width — shrank to its content. At 1440×900 that left a ~470px column of
+rows and **~950px of empty black** in the middle of the surface this product is named after, at
+every viewport since 1i-spine, through a dozen green gates and a frozen reference corpus that
+photographed it. A grid cannot fail that way: its tracks exist whether or not anything is placed in
+them. And **nothing selected is a STATE** — `No run open`, owing its three things and no more — not
+an absent element. It is the same defect class as D187's two-pixel panel (§9.3), found the same way.
+
+*(Measured effect of the reading-pattern split at 1280×720, kept as the record: chrome above the
+panels 190px → 117px; each panel 469px → 542px tall; the tab body 123–215px → 213–335px. The
+superseded 400/470 numbers and the reasoning that produced them are in
+`history/superseded/2026-08-20-dashboard-surfaces-shell-widths.md`.)*
+
+#### The status bar: `All`, a composite, then every individual status (D18)
+
+One row: an **`All`** pill, then a composite **`Needs you`** pill (= the two statuses that mean a
+human is blocking), then each individual status. **No status is hidden.** The bar answers *is
+anything on me?* first and *what is everything doing?* second. Counts are the same server-side
+projection that feeds the queue rows (§2.2); the composite is a sum of projected buckets, **never a
+second count path**.
+
+A **zero-count status pill recedes**: it drops its border, its fill and its label down to an icon and
+a faint `0`, keeping its slot, its click target and its full accessible name (`Done with warnings` is
+130px of bar at rest; at zero it is 34px).
+
+**The gate BANNER that this loudness principle first produced is deleted, and must not be restored on
+principle.** The pill model is untouched; what was overridden is the run-detail expression of *the
+decision is the loudest thing*. The decision now lives inline in the log stream at the point it was
+reached, the panel header keeps a one-line state plus its action, and a small dismissable notice
+appears only while a decision is outstanding **and not visible** (an IntersectionObserver on the
+decision's anchor; dismissal is per row+tab and re-arms on either change, so a dismissed reminder can
+never become an unreachable decision). **Why this is not a loss of loudness:** the decision was being
+rendered TWICE — the banner above the tabs and, at the moment it occurred, the same title, copy and
+buttons inline in the stream. Removing the banner removed a duplicate, not information; verified on
+both the write-parked and identity-approval runs before the deletion. Two bands saying the same thing
+is how a dense panel teaches an operator to skim past both.
+
+Recorded with it, because they close the same *can the record hide?* question: a failed run opens on
+Logs rather than Review, so the failure record cannot hide behind a tab; and the failure's
+write-state sentence — the difference between a safe retry and a duplicate termination — renders
+unconditionally in the stream, never behind a disclosure. Only diagnosis may sit behind one.
+
+#### Two `Done`s, three visible channels, and one that is not visible at all (D22 + D126)
+
+The quietest status renders as a green **`Done`** with no icon. The qualifier was doing two jobs
+badly: it made the quietest status the longest label in the vocabulary, and beside `Done with
+warnings` it asked the operator to work out whether *that* one was verified too. Then the operator
+directed that `doneWarnings` also draw the bare word `Done` — the long label shoved the run title off
+the row header, beside a count chip that already named the warning. **Both terminal dones now draw
+the same word, on purpose, at the operator's direction, and the visible design is settled and not to
+be relitigated.**
+
+What separates them on screen is **icon + colour + the count chip**: `doneWarnings` draws an amber
+warning triangle carrying its warning count beside an amber-tinted pill, `verifiedDone` the bare word
+on a solid green fill. Two visible non-textual channels plus the count, not hue alone.
+
+**And a third channel that is not visible at all.** Because the drawn word stopped distinguishing
+them, `StatusFilters` rendered two controls whose accessible names were both `"Done — n"`, and the
+queue rows both ended `"— done"`. The defect was assistive-technology ONLY, so only the non-visual
+channel was fixed: `DsStatusSpec` gains an optional `accessibleLabel` that is **never rendered**;
+`dsStatusText` stays the visible word; `dsStatusAccessibleName` returns `accessibleLabel ?? label`
+and is what **every** `aria-label` naming a status must use. Only `doneWarnings` sets one today —
+`"Done with warnings"`. The three collisions are closed at their name sites (the filter pill, the
+queue row and member line, and `StatusDot`, whose `role="img"` name is all an assistive technology
+gets because a dot draws no word at all), never by lengthening a drawn string.
+
+**The pixels are unchanged, and that is verified rather than asserted:** re-freezing the parity
+corpus after the change rewrote 56 `.a11y.yml` references and **zero** `.png` files, with every
+visible text node byte-identical. **The rule this generalises to:** when two statuses deliberately
+share a visible word because a non-textual channel carries the difference, that channel must have an
+assistive-technology counterpart. Hue, a glyph and a count chip have none; a future status that
+shortens its word owes one too.
+
+The guarantee is structural rather than textual and the shortening is not a weakening: the verdict is
+still reachable only via read-back, the receipt still shows its read-back checks, and the wire keys
+stay `verified-done` and `done-with-warnings`. *(The reconciliation debt this entry recorded against
+`ref operator-trust` is DISCHARGED — that doc now uses only the wire key `verified-done` and never
+the drawn label. Row-model D9's long-label sentence is §9.10's to carry.)*
+
+**One correction the audit forced.** D12, D18, D22 and D23 all name the status **`Waiting on you`**;
+the drawn word is **`Review`**. `Needs you` survives only as the composite pill and the queue BAND
+label. The code's behaviour is the short word, and whether the doc's vocabulary or the drawn one is
+authoritative is an operator call (`{#operator-calls}`), like D12's undrawn gate age beside it
+(§9.2).
+
+#### The workflow rail lists main workflows only (D219 → D220 → D241)
+
+`All workflows` is retired: `ALL_WORKFLOWS` is deleted, `rowsForWorkflow` always filters, and the app
+opens on a real panel (`DEFAULT_WORKFLOW`, read from the registry so a rename cannot point it at
+nothing). An operator works one workflow at a time, and a queue mixing fourteen workflows forced
+every row title to carry a workflow label to stay legible. Grouping comes from **each descriptor's
+own `category`**, never a frontend list: the frontend hardcodes only the display ORDER, membership is
+the descriptor's, an unlisted category appends, and an empty category drops.
+
+Three dated rulings narrowed it, and they read as one rule because they land in one module
+(`dashboard/surfaces/workflow-category.ts`):
+
+- **D219 — a chunk harness is a step of its composition, never a peer workflow.** *"kuali
+  finalization is a step in the separation workflow, not another workflow itself."* An entry whose
+  served `role` is `chunk-harness` renders nested and visually subordinate under its composition's
+  entry, marked as a proving harness. The WIRE serves the raw fact and display stays the frontend's:
+  the bootstrap workflow primitive gains a REQUIRED closed `role` (`standalone` / `composition` /
+  `chunk-harness` + `of`), and the schema refuses an `of` that does not name a served composition.
+  **Counts do not roll up** — a badge beside an entry counts exactly the rows that entry's panel
+  shows, and folding harness runs into the composition's badge would make the badge disagree with its
+  own queue panel, which is D81's divergence class manufactured deliberately. Run rows keep the
+  harness's own label everywhere, and archived rows' frozen labels are untouched. **Startability does
+  not move**: chunks stay registered and independently runnable, and each still owes or holds its own
+  §3.2 controlled-commit proof.
+- **D220, the same day — the RAIL lists main workflows only.** On seeing the nesting live: *"not
+  needed at all — only the main workflows should be there."* The rail drops every entry whose role is
+  `chunk-harness` or `proving`, and a category whose entries all dropped goes with them rather than
+  rendering an empty heading. D219's one-rule claim narrows to the surfaces that still list them —
+  the Run Modal picker (both lists) and the Explorer — so proving work stays startable and
+  documented. The always-visible-nesting rationale (a hidden harness's `Needs you` must not vanish)
+  is answered at the rail's level instead: attention reaches the operator through the cross-panel
+  `Needs you` total and the notification inbox, neither of which is rail-scoped.
+- **D241 — a proving workflow heads `Test equipment`, not an HR category.** D220 left
+  `kuali-timekeeper-annotation` heading the picker and the Explorer under **Operations**, beside
+  daily work (*"a crash test dummy is not a workflow … maybe it belongs in a different category,
+  perhaps in test"*). A descriptor's `category` answers *which HR area does this touch*; for a
+  workflow that exists to prove the write kernel that is the wrong question with a plausible answer,
+  and **a plausible wrong answer is worse than none.** So the one grouping rule reads the module's
+  ROLE for these entries and not their category: role `proving` groups under **`Test equipment`**,
+  appended after every listed and unlisted category, on every surface that lists it. It appears
+  exactly once — lifted out of the category pass, never duplicated into it — and the group DROPS when
+  nothing proving is served. The picker's auto-pick set narrows to the same pair on D219's own
+  argument (a dialog that opens on a step the operator did not ask for must not open on test
+  equipment either).
+
+#### The action bar is an ISLAND (D224), and row commands live in a context menu
+
+**One composed action bar** replaces the two stacked bars above the queue. The status filters are one
+*group* inside it, not a band of their own; the two composites are a segmented control — a different
+shape for a different kind of thing. The **collapsed launcher shows the attention count only**, with
+its scope stated in its accessible name: a rule separates the current panel's code from the count, and
+the count carries the `Needs you` composite's own eye glyph, because the number is the day's whole
+`Needs you` across *every* panel, which is the point of a control that is on screen when no
+per-workflow badge is.
+
+**D224 (operator decision).** The bar had been the one full-bleed element in a shell otherwise made of
+cards, spanning edge to edge and separated from the panels below by a bottom hairline. It now carries
+the same treatment as every panel beside it — full border, `--ds-radius-lg`, `--ds-surface-card`,
+`overflow-hidden` so the select-mode band cannot square off a rounded corner — while the SHELL supplies
+its outside edge (`mx`/`mt` at `--ds-shell-inset`), exactly as the panel region supplies its own. The
+gap above the panels therefore equals the gap between them. Two consequences, both improvements and
+neither a separate decision: the bar's inner padding becomes `--ds-space-cozy`, the same 12px
+`--ds-shell-inset` resolves to, so the leading control aligns with the queue panel's own header text
+rather than with the window edge; and the bottom hairline goes, because a bordered island already
+states where it ends. The three groups, their order, the no-wrap rule and the middle group's sideways
+scroll are unmoved.
+
+**Row commands moved to a right-click context menu** (`ContextMenu`, opened by the platform's Menu /
+Shift+F10 key and by `m` through `openContextMenuFor()`); the per-row `⋯` overflow button is gone — a
+control whose only job is to admit there are more controls, costing a slot on every row. The menu's
+items come from the object's served `actions[]` at the `menu` placement (§9.2), so a command the
+surface did not send is unreachable rather than hidden.
+
+**The Workflow Panel has three modes**, persisted and cycled with `w`: **floating** (default — a
+window over the panel region, costing no column; Escape or an outside click dismisses it to `icon`),
+**icon** (nothing drawn over the content; the launcher carries the current workflow's 2-char code and
+the day's whole `Needs you` count across every panel), and **sidebar** (docked, 200px, always
+visible). Which panel you are in stays readable in all three because the Queue Panel is titled by its
+workflow. **One scrolling region per panel**: a panel's scroll track runs its full height, and a
+header, an outcome line or a tab bar that must stay put is a *sticky* block inside that one region,
+never a band stacked outside it. Queue rows are fixed at `--ds-h-row` — no surface invents a row
+height. The row-and-panel catalog derives its per-kind tab lists from `tabsForPanelKind`, the same
+function the panel itself calls, so the catalog can never describe a tab set the panel does not
+render.
+
+#### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
+
+**What was wrong.** `useBootstrap` fetches once, and `boot.serverClock.now` — the instant that ONE
+fetch carried — was the only value the queue row's in-flight timer, the gate-age pill, the session
+footer and the worker cards computed against. Every live elapsed on the dashboard was frozen at page
+load. The proof measured it twice over: a parked run displayed **`0s` for more than two minutes** (the
+tab had loaded at 15:03:32, the run started at 15:12:17, so the difference was negative and the clamp
+made it a plausible zero), and a plain reload at 15:15:15 made the same row jump to **`2m 54s`** —
+exactly `bootstrapInstant − startedAt` — and freeze again. A terminal row was unaffected, because
+D124 already made its duration two served instants; so this was invisible on every settled run and
+wrong on every run an operator is actually watching.
+
+- **The server's instant stays the authority, and the browser contributes only elapsed.**
+  Substituting the browser's wall clock is what D124 forbids, and a machine whose clock is minutes off
+  would print a duration nobody can act on. What the browser IS authoritative about is how much time
+  has passed since that instant arrived, which it reads from the monotonic clock
+  (`systemClock.monotonicMs()`, `ref clock-config-secrets`'s single source) — a value an NTP step or a
+  user editing the system clock cannot move.
+- **One calibration, one value, every consumer.** `src/dashboard/state/served-clock.ts` holds
+  `(servedInstant, monotonicMs at receipt)` and derives
+  `deriveServedNow = servedInstant + (monotonicNow − monotonicAtReceipt)` on a one-second tick, on
+  `visibilitychange` (a backgrounded tab's interval is throttled to about once a minute, and an
+  operator returning to it must not read a minute-old age), and on any re-render. `dashboard-app.tsx`
+  calls the hook ONCE and passes the result down every path that used to carry the frozen instant,
+  **including the keyboard order's own sort key** — the queue's drawn order and the keyboard's
+  traversal order must not be able to date one row two ways.
+- **No surface reads a clock of its own.** The notification bell's `systemClock.now()` — the last
+  display-time wall-clock read in the bundle — is now the same passed-down instant. A second clock on
+  one screen is how two chips come to disagree about one gate's age.
+- **A backwards elapsed is DRAWN, not clamped.** `elapsedSecondsBetween` returns the SIGNED interval
+  and `fmtElapsed` spells a negative one with its sign. The clamp is what let *the clock reading this
+  is behind the fact it is reading* wear the shape of *this happened just now*, and those are
+  different facts. A sub-second skew still renders `0s` on its own, because `Math.round` of a fraction
+  of a second is zero — the signed arm appears only when something is genuinely wrong.
+- **Re-calibration is deliberately NOT built, with the trigger that ends the deferral named.** The BFF
+  is a loopback singleton (`config/runtime-isolation.json` pins the port; D181's `server` role lock
+  admits one holder), so the served clock and the browser's clock are the same machine's clock: there
+  is no skew to re-converge on, only the monotonic clock's own drift, immaterial at the seconds
+  granularity `fmtElapsed` renders. A server instant on the SSE `health` heartbeat is a wire change
+  with a server emitter and two fixture emitters behind it, bought for a skew this deployment cannot
+  have. What buys it is `ref frontend-backend-integration` §6.9's deferred exposed path (D189) — the
+  day the BFF serves a browser it does not share a machine with. Add the field in that commit.
+- **The parity corpus is held by pinning the OTHER half of the clock.** A ticking elapsed dated by real
+  browser time would make `45m 0s` and `45m 1s` a coin flip between the run that froze a reference and
+  the run that asserts it. `installFrozenMonotonic` freezes `performance.now` before navigation — and
+  nothing else, so timers, rAF and CSS animation all still run — which makes the derived instant
+  EXACTLY the fixture's served instant, byte-identical to what every existing reference was captured
+  against. `assertMonotonicFrozen` proves the page adopted it by reading the clock twice across real
+  wall time: D187's rule, applied to a clock instead of a theme.
+- **Measured, and then re-measured.** When this landed, the assert lane reported 139 captures failing
+  and 12 behaviour cases passing — every capture already failing before the change, because each
+  reference's stamped `descriptorHash` predated D226–D255 and the rows had gained D230's `#N` ordinal.
+  What mattered then was what the drift was MADE of: across 678 diverging lines, **not one was an
+  elapsed**. Track C's ONE deliberate re-freeze has since landed the corpus at **151/151 assert-green**
+  over 139 references × 3 files, so the interim number is superseded and only the clock finding it
+  supported still stands.
+
+**Wire.** The shell reads the bootstrap document and the SSE day stream and issues no commands of its
+own; `ref frontend-backend-integration` §4 owns the bootstrap's shape (including D219's `role` leaf and
+D264's moved declaration fields) and §7 the parity lane.
+
+<!-- roadmap-status: track-c -->
+- [x] D256 — one served-clock calibration, monotonic elapsed, every consumer including the keyboard sort key; a backwards elapsed is drawn, not clamped
+- [x] D257 — the open run-detail panel follows its run on the served `rowRevision` (§9.3)
+- [x] the shape hazard compares a run against its OWN workflow's served fingerprint, three verdicts, both directions pinned (§9.2)
+- [x] D259 — a replayed step is its own arm and is never `pending` (§9.3)
+- [x] the parity corpus re-frozen once, deliberately: 151/151 assert-green over 139 references × 3 files
+- [x] D18 — the pill row, the composite over projected buckets, the deleted banner and the inline decision
+- [x] D22 + D126 — both terminal dones draw `Done`; icon + hue + count carry it visibly and `accessibleLabel` carries it for assistive technology, pixels unchanged
+- [x] D219/D220/D241 — role-driven grouping in ONE module: harnesses nested where listed, dropped from the rail, and `proving` heading `Test equipment`
+- [x] D224 — the action bar is an island; the gap above the panels equals the gap between them
+- [x] D195 — the panel region is a grid, so the no-run-open case cannot leave ~950px of empty black
+- [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — an operator call (`{#operator-calls}`)
+- [ ] re-calibration on the SSE `health` heartbeat, deferred with its trigger named (D189's exposed path)
+> 2026-08-20 | docs-dash-surfaces 5.1c | verified against src/dashboard/surfaces/{shell,shell-model,workflow-category,status}*, src/dashboard/ds/{primitives-status.tsx,tokens.css}, src/dashboard/state/served-clock.ts, src/dashboard/app/{dashboard-app,global-keys,layout-metrics}*; left: the heartbeat instant and one vocabulary call
+<!-- /roadmap-status -->
 
 ### 9.10 The delegation and row model (row-model D5–D24)
 
@@ -3830,196 +3938,6 @@ asserting its own correctness) and the relocation of the rest into ⓘs. An **em
 owes three things and no more: what would be here, why it is not, and what to do — it does not owe
 a defence of the design. The full deletion criteria live in the demo's `DESIGN.md` ("The product
 does not explain itself"), which is binding on every surface built against this contract.
-
----
-
-### Shell and layout as rebuilt (2026-07-27, updated 2026-07-28)
-
-Not numbered — none of this re-opens a D-series question, and the D-series is for decisions that
-were *asked*. It is recorded here because the presentation decisions above (D11, D18–D21) were
-made inside this layout and read wrong outside it.
-
-**The detail region is three columns**: **queue · centre · context rail**. The rail is **348px**
-(`--ds-w-context-rail`), collapsible to a labelled spine that says what is inside it
-(`Context · 9 data · 6 captures`), with the collapsed preference applied only above the
-three-column threshold. The split is by reading pattern (§D19): **live state in the centre** — the
-run header, the timeline, the tabs and the tab body, with the log stream carrying the inline
-decision and the failure record (D18 amendment) — and **reference in the rail**: Data, Evidence,
-provenance and delegation links. **A decision and a failure never sit behind a collapse control or
-a lone tab** — `Waiting on you` and `Failed` are the only two states allowed to shout. As of
-2026-07-28 that invariant is honoured by the inline decision + one-line header state + corner
-notice (not by a banner, which is deleted — see D18), by a failed run opening on Logs, and by the
-write-state sentence rendering unconditionally in the stream.
-
-**Measured effect of the split, at 1280×720:** chrome above the panels **190px → 117px**; each
-panel **469px → 542px** tall; the tab body **123–215px → 213–335px**.
-
-**Two breakpoints, and the panel region is a GRID (D195):**
-
-| Width | Layout |
-|---|---|
-| **< 1180** | one scrolling stack — shape, then detail, then context. The rail degrades to a section, never to nothing. |
-| **≥ 1180** | queue **`--ds-w-side-panel` (376px)**, a fixed track, + a detail cell taking `minmax(0,1fr)`. The detail cell splits itself again into shape · detail · context at 1280. |
-
-**The queue and the context rail share ONE resting width**, and neither side panel grows
-independently at wider viewports, so the centre stays the largest column at every size. 376 is 28px
-wider than the former 348px rail and narrower than either former queue width — which is exactly what
-buys the centre back the room the 400/470 analysis was fighting over. The visual oracle moved first
-(ref frontend-backend-integration §1; the demo's own panel region, legacy
-`hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc` `RebuildDemo.tsx:747-748`) and this table
-had not followed.
-
-**Grid, not flex, is normative here — it is what makes the empty case impossible.** The region was
-authored as two `flex-1` children. `flex-1` distributes free space only among children that EXIST,
-so with no run open the second child was not rendered, nothing claimed the space, and the queue
-panel — a flex item with no width — shrank to its content. At 1440×900 that left a ~470px column of
-rows and **~950px of empty black** in the middle of the surface this product is named after, at
-every viewport since 1i-spine, through a dozen green gates and a frozen reference corpus that
-photographed it. A grid cannot fail that way: its tracks exist whether or not anything is placed in
-them. And **nothing selected is a STATE** — `No run open`, owing §9's three things and no more — not
-an absent element.
-
-The superseded numbers, kept because they remain the record of what was tried and why:
-
-> **1180–1479** queue **400px**; **≥ 1480** queue **470px**, both measured rather than chosen.
-> 1480 = 470 queue + 348 rail + gaps + padding, leaving the centre ~590px — the width at which a
-> six-segment equal-width timeline still prints readable labels. 400 was the largest queue that kept
-> the review's page-beside-fields layout side by side below 1480: the review's floor is a **464px
-> centre** (label + value + provenance chip + confidence on one line) and centre = 884 − queue at
-> 1280, so 470 gave 414 and stacked it. The cost was stated rather than hidden: at 1280 no queue
-> width satisfied both — a queue that renders `Oath_Packet_Summer.pdf` whole needs ~475px, which
-> puts the centre back under the review's floor. **One shared 376px resolves that trade by refusing
-> to spend the width on either side panel.**
-
-**A consequence worth pinning: inside the detail region, a layout switch keys on the COLUMN, not
-the window.** The same 1280px viewport gives the centre 414px with the rail open and 728px with it
-collapsed, so a viewport media query fires at the wrong moment in both directions. Container
-queries, not `min-[Npx]:`, for anything inside the region. (Caught in the act: the two `Write
-parked` resolutions were being forced side by side into a 414px column, each a ~200px box holding a
-two-line sentence about whether a real UCPath termination exists.)
-
-**The Workflow Panel has three modes**, persisted, cycled with `w`: **floating** (default — a
-window over the panel region, costing no column; Escape or an outside click dismisses it to
-`icon`), **icon** (nothing drawn over the content; the launcher carries the current workflow's
-2-char code and the day's whole `Needs you` count across *every* panel), and **sidebar** (docked,
-200px, always visible). Which panel you are in stays readable in all three because the Queue Panel
-is titled by its workflow.
-
-**`All workflows` is retired, and rail grouping is the descriptor's own `category`.** The
-cross-panel rail entry, `ALL_WORKFLOWS`, is deleted; `rowsForWorkflow` always filters and the app
-opens on a real panel (`DEFAULT_WORKFLOW`, read from the registry so a rename cannot point it at
-nothing). An operator works one workflow at a time, and a queue mixing fourteen workflows forced
-every row title to carry a workflow label to stay legible — which is the same redundancy that made
-the per-row workflow chip worth deleting. Grouping in the panel comes from **each descriptor's own
-`category`** (the eight real categories the registry serves), never a frontend list: the frontend
-hardcodes only the display order, membership is the descriptor's, an unlisted category appends,
-and an empty category drops. §10.1's one counting path (`countRows`) is untouched by all of this.
-
-**A chunk harness is a step of its composition, never a peer workflow (D219, 2026-08-14).** The
-operator's ruling — *"kuali finalization is a step in the separation workflow, not another workflow
-itself"* — lands as ONE membership-aware rule in the same grouping module the category rule already
-lives in (`dashboard/surfaces/workflow-category.ts`): inside its category group, an entry whose
-served `role` is `chunk-harness` renders **nested and visually subordinate under its composition's
-entry**, marked as a proving harness, and never as a sibling. The nested entries stay **always
-visible** — a collapse-by-default disclosure would need an attention-forwarding rule so a hidden
-harness's `Needs you` could not vanish, and visible-but-subordinate hides nothing and needs no such
-rule. Every workflow-listing surface renders through the one rule — the Workflow Panel rail, the
-Run Modal picker (its startable AND its "not startable" lists alike), and the Explorer — so no two
-surfaces can disagree about what is a step and what is a workflow. Four consequences are decided
-here rather than re-litigated per surface:
-
-- **The wire serves the raw fact, display stays the frontend's** (the standing R2 D17/D18 split):
-  the bootstrap workflow primitive gains a REQUIRED closed `role`
-  (`standalone` / `composition` / `chunk-harness` + `of`), the schema refuses an `of` that does not
-  name a served composition, and the module-side fact it projects is ref workflow-model §1.2.1's.
-- **Counts do not roll up.** §10.1 already decides this: a badge beside an entry counts exactly the
-  rows that entry's panel shows, and folding harness runs into the composition's badge would make
-  the badge disagree with its own queue panel — D81's divergence class manufactured deliberately.
-  Historical harness runs (the proving days') stay under the harness's own nested entry; the day's
-  cross-panel `Needs you` total already contains every panel.
-- **Run rows keep the harness's own label** on every surface (queue, activity, notifications) — the
-  nested rail entry still names the harness, so a row titled by it stays legible — and archived
-  rows' frozen labels are untouched (D179).
-- **Startability does not move.** Chunks stay registered and independently runnable through the
-  start-plan lane (each still owes/holds its own §3.2 controlled-commit proof); no phase doc's exit
-  criterion names rail presence. Today all six separations entries declare `surfaces: {}`, so the
-  picker lists them only under "not startable" — the nesting applies to whatever list a surface
-  renders, not to what is in it.
-
-**Amended same day (D220, 2026-08-14): the RAIL lists main workflows only.** On seeing the nested
-presentation live, the operator ruled the harnesses "not needed at all — only the main workflows
-should be there," and asked the same of `kuali-timekeeper-annotation`, which D219's model could
-only call `standalone` (it proves the kernel, not a composition — ref workflow-model §1.2.1's new `proving`
-arm is the fact that names this). So the Workflow Panel rail drops every entry whose role is
-`chunk-harness` or `proving` — nested or top-level, the cross-category `separations-kronos-timecard`
-included — and a category whose entries all dropped goes with them rather than rendering an empty
-heading (`buildWorkflowRailGroups`, `dashboard/surfaces/shell.tsx`). D219's one-rule claim narrows
-to the surfaces that still list them: the Run Modal picker (both lists) and the Explorer keep the
-nested, harness-marked presentation, so proving work stays startable and documented. The
-always-visible-nesting rationale (a hidden harness's `Needs you` must not vanish) is answered at
-the rail's level instead: attention reaches the operator through the Status Bar's cross-panel
-`Needs you` total and the notification inbox, neither of which is rail-scoped. Counts, labels,
-registration and §3.2 obligations are all unmoved from D219.
-
-**Amended again (D241, 2026-08-19): a proving workflow heads `Test equipment`, not an HR
-category.** D220 removed the proving workflow from the rail and left it where it was everywhere
-else — so `kuali-timekeeper-annotation` still headed the Run Modal's picker and the Explorer under
-**Operations**, beside daily work, which is what the operator was asking about (*"a crash test
-dummy is not a workflow … maybe it belongs in a different category, perhaps in test"*). A
-descriptor's `category` answers *which HR area does this touch*; for a workflow that exists to
-prove the write kernel that is the wrong question with a plausible answer, and a plausible wrong
-answer is worse than none. So the ONE grouping rule reads the module's ROLE for these entries and
-not their category: an entry whose role is `proving` groups under the heading **`Test equipment`**,
-appended after every listed and unlisted category, on every surface that lists it. It appears
-exactly once — it is lifted out of the category pass, never duplicated into it — and the group
-DROPS when nothing proving is served, exactly as an empty category does. The rail is unchanged in
-behaviour: it already filters to `standalone` + `composition`, so the new group arrives empty there
-and drops. The picker's AUTO-PICK set narrows to the same pair on the same argument (D219's "a
-dialog that opens on a step the operator did not ask for" holds one level out: it must not open on
-test equipment either); the workflow stays startable from its own panel and from the picker's
-`Test equipment` group, because a proof nobody can re-run is not a standing proof. The heading
-lives in `dashboard/surfaces/workflow-category.ts` beside the category order and the nesting rule —
-a rail-side or picker-side id list is exactly the workflow-specific customization the role model
-exists to avoid.
-
-**One composed action bar** replaces the two stacked bars above the queue. The status filters are
-one *group* inside it, not a band of their own; the two composites (`All` / `Needs you`) are a
-segmented control — a different shape for a different kind of thing — and a **zero-count status
-pill recedes**: it drops its border, its fill and its label down to an icon and a faint `0`,
-keeping its slot, its click target and its full accessible name (`Done with warnings` is 130px of
-bar at rest; at zero it is 34px). The **collapsed launcher shows the attention count only**, with
-its scope stated in its accessible name: a rule separates the current panel's code from the count,
-and the count carries the `Needs you` composite's own eye glyph — the same one the Status Bar pill
-wears — because the number is the day's whole `Needs you` across *every* panel, which is the point
-of a control that is on screen when no per-workflow badge is.
-
-**The action bar is an ISLAND (D224, 2026-08-18, operator decision).** It had been the one
-full-bleed element in a shell otherwise made of cards, spanning edge to edge and separated from the
-panels below by a bottom hairline. It now carries the same treatment as every panel beside it —
-full border, `--ds-radius-lg`, `--ds-surface-card`, `overflow-hidden` so the select-mode band cannot
-square off a rounded corner — while the SHELL supplies its outside edge (`mx`/`mt` at
-`--ds-shell-inset`), exactly as the panel region supplies its own with `p-[var(--ds-shell-inset)]`.
-The gap above the panels therefore equals the gap between them. Two consequences, both improvements
-and neither a separate decision: the bar's inner padding becomes `--ds-space-cozy`, which is the
-same 12px `--ds-shell-inset` resolves to, so the leading control now aligns with the queue panel's
-own header text rather than with the window edge; and the bottom hairline goes, because a bordered
-island already states where it ends. The three groups, their order, the no-wrap rule and the middle
-group's sideways scroll are all unmoved.
-
-**Row commands moved to a right-click context menu** (`ContextMenu`, opened by the platform's
-Menu / Shift+F10 key and by `m` through `openContextMenuFor()`); the per-row `⋯` overflow button is
-gone — a control whose only job is to admit there are more controls, costing a slot on every row.
-The menu's items come from the object's served `actions[]` at the `menu` placement, so a command
-the surface did not send is unreachable rather than hidden.
-
-**One scrolling region per panel.** A panel's scroll track runs the panel's full height; a header,
-an outcome line or a tab bar that must stay put is a *sticky* block inside the one region, never a
-band stacked outside it that leaves the track a mid-panel segment. Queue rows are fixed at
-`--ds-h-row` — no surface invents a row height.
-
-**The catalog derives its tab lists from the panel's own source.** The row-and-panel catalog's
-per-kind tab lists are computed from `tabsForPanelKind` — the same function the panel itself
-calls — so the catalog can never again describe a tab set the panel does not render.
 
 ---
 
