@@ -33,6 +33,20 @@
  *   someone took, and the live exit run rendered a `condition-false` branch as
  *   "Cancelled". A skipped row now also carries the executor's recorded
  *   `not-run` reason, or an explicit statement that none was recorded.
+ *   **D268**: this mapping is no longer owned here — it is `taskStateOf` in
+ *   `../run-status.ts`, shared with the queue projector's pipeline chip, whose
+ *   own copy used to answer `blocked` for the same three outcomes.
+ *
+ * This query derives NEITHER the run's status NOR its panel kind on its own
+ * (D268). `deriveRunStatus` and `panelKindOf` come from `../run-status.ts`, the
+ * same functions the queue projection's row is built from. The private
+ * `statusOf` they replaced was missing the fold's `ended` and `claimedBy`
+ * arms — a real gap (a re-inlined private copy is exactly what D268 closes)
+ * even though the ordering that would exploit it live never occurs:
+ * `run-executor.ts` settles the terminal CAS before emitting the run's
+ * `span.ended`, so authority leads and the fold only ever lags. The window
+ * those arms cover is one the test harness can construct by writing spans
+ * directly to the stream, not one the executor's own path produces.
  */
 import { z } from "zod";
 import type { JsonValue } from "../../../domain/canonical-json.js";
@@ -67,6 +81,7 @@ import { NoteWireSchema as NoteAtRestSchema } from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
+import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
 
 /**
  * The trust reads the receipt and failure sections need (D140/D142). They are
@@ -247,24 +262,6 @@ export interface RunDetailQueryDeps {
 
 const LOGS_PAGE_SIZE = 200;
 
-function panelKindOf(shape: RunFoldRecord["queued"]["shape"]): "run" | "member" | "group" {
-  if (shape === "operation") return "group";
-  if (shape === "operation-member") return "member";
-  return "run";
-}
-
-function statusOf(row: RunFoldRecord, authority: RunRecord): "queued" | "running" | "blocked" | "awaiting-approval" | "done" | "failed" | "cancelled" | "partial" {
-  const { lifecycle } = authority;
-  if (lifecycle.state === "terminal") {
-    const map = { done: "done", failed: "failed", cancelled: "cancelled", discarded: "cancelled", superseded: "cancelled", interrupted: "blocked" } as const;
-    return map[lifecycle.outcome];
-  }
-  if (lifecycle.state === "parked-write") return "blocked";
-  if (lifecycle.state === "parked-gate" || row.openGates.length > 0) return "awaiting-approval";
-  if (lifecycle.state === "claimed" || lifecycle.state === "validating" || lifecycle.state === "running") return "running";
-  return "queued";
-}
-
 function requireRun(deps: RunDetailQueryDeps, runId: string): { row: RunFoldRecord; authority: RunRecord } {
   const row = deps.projection.runFold(runId);
   if (row === undefined) {
@@ -433,12 +430,6 @@ function spanDuration(span: Readonly<{ startedAt?: string; endedAt?: string }>):
 
 type TimelineStepState = TimelineStepWire["state"];
 
-/** Same closed mapping the per-event fold uses; one vocabulary, two shapes. */
-const TASK_OUTCOME_STEP = {
-  done: "done", failed: "failed", cancelled: "cancelled", discarded: "cancelled",
-  skipped: "skipped", interrupted: "blocked", superseded: "cancelled",
-} as const;
-
 /**
  * Fold the member node states into ONE category state. Precedence tells the
  * truth loudest-first: a failure anywhere in the category is the category's
@@ -567,9 +558,7 @@ function buildTimelineSteps(
     const ordered = [...executions].sort((a, b) =>
       (a.startedAt ?? a.endedAt ?? "").localeCompare(b.startedAt ?? b.endedAt ?? ""));
     const latest = ordered[ordered.length - 1];
-    const state: TimelineStepState = latest?.outcome === undefined
-      ? "active"
-      : TASK_OUTCOME_STEP[latest.outcome];
+    const state: TimelineStepState = taskStateOf(latest?.outcome);
     let ms = 0;
     let measured = false;
     for (const span of executions) {
@@ -604,7 +593,7 @@ function buildTimelineSteps(
 
 export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDetailWire {
   const { row, authority } = requireRun(deps, runId);
-  const status = statusOf(row, authority);
+  const status = deriveRunStatus(row, authority);
   const descriptorView = deps.descriptors.resolve(row.queued.workflow);
 
   const timelineEvents: {
@@ -626,9 +615,7 @@ export function buildRunDetail(deps: RunDetailQueryDeps, runId: string): RunDeta
     reason: "a gate is not a task span; the executor measures no duration for it",
   } as const;
   for (const span of row.taskSpans) {
-    const state = span.outcome === undefined
-      ? "active"
-      : ({ done: "done", failed: "failed", cancelled: "cancelled", discarded: "cancelled", skipped: "skipped", interrupted: "blocked", superseded: "cancelled" } as const)[span.outcome];
+    const state = taskStateOf(span.outcome);
     // A skip is not a cancellation, and a skip WITHOUT a recorded reason is
     // not a skip with a guessed one. Both absences stay named.
     const notRun = state !== "skipped"

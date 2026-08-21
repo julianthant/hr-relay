@@ -28,16 +28,14 @@
  * rebuild that itself fails leaves the projection loudly degraded (health
  * carries the exact error); it never serves a half-folded day as healthy.
  *
- * Closed vocabulary mappings this projector owns (noted, not silent):
- * - run outcome → queue status: `done→done`, `failed→failed`,
- *   `cancelled|discarded|superseded→cancelled`; `interrupted` maps to
- *   `blocked` (the run stopped without a settled verdict — ref write-safety recovery
- *   will requeue or settle it; calling it cancelled or failed would claim a
- *   verdict nobody reached).
- * - task outcome → pipeline state: `done→done`, `failed→failed`,
- *   `skipped→skipped`, `cancelled→blocked` (the landed 1b pipeline enum has
- *   no `cancelled`; `blocked` is "stopped incomplete", the nearest state that
- *   does not claim success or failure).
+ * Closed vocabulary mappings, and where they live (D268). This projector no
+ * longer OWNS them: `deriveRunStatus` (run → status), `taskStateOf` (task span
+ * → step state) and `panelKindOf` are one implementation each in
+ * `../run-status.ts`, which the run-detail query reads too — a queue row and
+ * the panel that opens from it cannot report a run differently, because there
+ * is one function. The task map changed shape when it moved: a
+ * `cancelled|discarded|superseded` span now reads `cancelled` on the chip as
+ * well as on the timeline step, where the pipeline used to say `blocked`.
  */
 import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
@@ -81,6 +79,7 @@ import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
 import type { ProjectionRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../support.js";
+import { deriveRunStatus, panelKindOf, taskStateOf, type TaskExecutionState } from "../run-status.js";
 
 /* ── the persisted fold shape (internal, versioned by its own schema hash) ─ */
 
@@ -258,21 +257,6 @@ function surfaceKindOf(shape: RunQueuedWire["shape"]): "single" | "preview" | "o
   return shape;
 }
 
-function panelKindOf(shape: RunQueuedWire["shape"]): "run" | "member" | "group" {
-  if (shape === "operation") return "group";
-  if (shape === "operation-member") return "member";
-  return "run";
-}
-
-const RUN_OUTCOME_STATUS = {
-  done: "done",
-  failed: "failed",
-  cancelled: "cancelled",
-  discarded: "cancelled",
-  superseded: "cancelled",
-  interrupted: "blocked",
-} as const;
-
 /**
  * What the run's evidence receipt says about its warnings, before either
  * consumer renders it (D22/D126). `unread` is a run with NO derived receipt —
@@ -338,16 +322,6 @@ interface LinkedRunView {
   readonly panelKind: "run" | "member" | "group";
   readonly status: string;
 }
-
-const TASK_OUTCOME_PIPELINE = {
-  done: "done",
-  failed: "failed",
-  skipped: "skipped",
-  cancelled: "blocked",
-  discarded: "blocked",
-  interrupted: "blocked",
-  superseded: "blocked",
-} as const;
 
 /* ── the projection ──────────────────────────────────────────────────────── */
 
@@ -833,14 +807,7 @@ export class RunQueueProjection {
   }
 
   #status(row: RunFoldRecord, authority: RunRecord): z.infer<typeof QueueSurfaceWireSchema>["status"] {
-    const { lifecycle } = authority;
-    if (lifecycle.state === "terminal") return RUN_OUTCOME_STATUS[lifecycle.outcome];
-    if (row.ended !== undefined) return RUN_OUTCOME_STATUS[row.ended.outcome];
-    if (lifecycle.state === "parked-write") return "blocked";
-    if (lifecycle.state === "parked-gate" || row.openGates.length > 0) return "awaiting-approval";
-    if (lifecycle.state === "claimed" || lifecycle.state === "validating" || lifecycle.state === "running") return "running";
-    if (row.claimedBy !== undefined) return "running";
-    return "queued";
+    return deriveRunStatus(row, authority);
   }
 
   /**
@@ -1043,11 +1010,9 @@ export class RunQueueProjection {
       if (bucket === undefined) executionsByNode.set(key, [span]);
       else bucket.push(span);
     }
-    const stepState = (span: z.infer<typeof TaskSpanFoldSchema> | undefined): "pending" | "active" | "done" | "failed" | "skipped" | "blocked" => {
-      if (span === undefined) return "pending";
-      if (span.outcome === undefined) return "active";
-      return TASK_OUTCOME_PIPELINE[span.outcome];
-    };
+    const stepState = (
+      span: z.infer<typeof TaskSpanFoldSchema> | undefined,
+    ): "pending" | TaskExecutionState => (span === undefined ? "pending" : taskStateOf(span.outcome));
     /**
      * The measured half of a step, in the same shape the run-detail timeline
      * computes it (`spanDuration` there) — and with the same refusals. A span

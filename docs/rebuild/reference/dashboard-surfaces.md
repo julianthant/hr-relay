@@ -850,6 +850,75 @@ React seed and every frozen archived record); and making the wire's uniqueness r
 (the refinement is what caught this — a projection serving two rows under one id is the collision
 D123 exists to prevent).
 
+#### D268 — ONE run-status derivation, ONE task-outcome vocabulary (2026-08-21)
+
+<!-- roadmap: track-d -->
+
+**The rule.** There is one projection (this section), and from D268 there is one DERIVATION on top
+of it. `deriveRunStatus(row, authority)`, `taskStateOf(outcome)` and `panelKindOf(shape)` are one
+implementation each, in `src/server/dashboard/run-status.ts`; the queue projector and
+`queries/run-detail.ts` both read them, and no surface may re-derive either fact privately.
+
+**What it was.** The projector's `#status` had two arms the panel's private `statusOf` did not —
+the fold's own `ended`, and `claimedBy`. Neither arm exists because a span lands before the
+transaction it describes commits; in production it is the other way round. `run-executor.ts`
+settles the terminal CAS (`terminalizeFailure`/`terminalizeSuccess`) and only then emits the run's
+`span.ended` (`:517-529`, `:618-624`); `worker-loop.ts` claims the run — the CAS inside
+`claimNext` — and only then emits `run.claimed` (`:258` before `:286`). Authority leads; the fold
+lags behind it by however long the projector's disk tail takes to ingest the line. The window this
+section used to describe — a fold reading `ended`/`claimedBy` while authority still answers
+non-terminal or unclaimed — is not a live race; it is representable only through the test harness,
+which writes span events straight to the stream and can order them however a case needs
+(`tests/unit/server/helpers/dashboard-harness.ts`'s `runEndedEventOf`/`claimEventOf`). What the
+live system actually got wrong sat one level down and needed no timing at all:
+`TASK_OUTCOME_PIPELINE` mapped `cancelled|discarded|superseded` to `blocked` while
+`TASK_OUTCOME_STEP` mapped them to `cancelled`, for every folded span, unconditionally. The audit
+recorded the run-status half as C1 (`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.2);
+it names a correct requirement on the derivation even though the executor's real ordering never
+exercises it.
+
+**Precedence, stated once.** Authority terminal outranks everything (the terminal lifecycle is
+written inside the transaction that settles the run); then the fold's `ended`; then `parked-write`
+→ `blocked`; then `parked-gate` or any open gate span → `awaiting-approval`; then a
+claimed/validating/running lifecycle or a folded `claimedBy` → `running`; otherwise `queued`.
+`partial` stays unreachable from a lifecycle: it is a RESULT verdict (D238's receipt), and deriving
+it here would be a second opinion about a run's completeness. The fold's `ended`/`claimedBy` arms
+stay ranked directly under authority terminal even though the executor's own ordering never lets
+them fire ahead of it: the projector's disk tail means the fold can still be the last fact to
+settle before the next served wire, and keeping authority strictly first — rather than dropping the
+fold arms, or letting a second derivation trust the fold on its own — is what stops the fold from
+ever acting as a second authority. That is the whole point of D268: ONE derivation, and authority
+always wins when it has an opinion.
+
+**The task vocabulary, and why `cancelled` won.** `TASK_OUTCOME_PIPELINE` mapped
+`cancelled|discarded|superseded` to `blocked` and `TASK_OUTCOME_STEP` mapped them to `cancelled`
+(C2), so one folded span read as two different things depending on which surface drew it. The one
+vocabulary is the run-level map one level down — `done→done`, `failed→failed`, `skipped→skipped`,
+`cancelled|discarded|superseded→cancelled`, `interrupted→blocked` — because a span outcome and a run
+outcome are the same seven words and answering them differently was never defensible. **D123 decides
+the arm:** a word names what happened, and all three of those outcomes name an act somebody took (an
+operator cancelled, a plan discarded, a later run superseded), while `blocked` named no act and
+collided with `interrupted`, whose whole point is that nobody reached a verdict. `skipped` stays its
+own arm, per D123. `PipelineStepWireSchema.state` therefore gains `cancelled`; the chip draws it in
+the hue the run-detail timeline already used, and a step with no span at all is still `pending` and
+a replayed one still `replayed` (D259) — those are questions about the ABSENCE of a span, which this
+mapping is never asked.
+
+**Where the module lives, and why not in the projector.** `queries/archive.ts` value-imports
+`queries/run-detail.ts`, and `run-queue-projection.ts` value-imports `src/base/workflow.ts` for its
+descriptor helpers — so exporting these three from the projector would drag the workflow registry
+into the archived-run read path, which `archive-invariants` refuses on D179's own argument (an
+archived run renders with the originating descriptor absent). It is the same reasoning that put
+`nodeIdOfTaskSpanPath` in `support.ts`: pure derivations, one home, no layer inversion. The shared
+module type-imports nothing from either caller; both pass their own fold record structurally.
+
+**Pinned by** `tests/unit/server/run-status-derivation.test.ts`, which asserts the two surfaces
+AGAINST EACH OTHER for a row with `ended` set, with `claimedBy` set, with an open gate, and with a
+fold that disagrees with a terminal lifecycle — the defect was never "the panel says the wrong
+word", it was "the panel says a DIFFERENT word from the row it opened from", and only a comparison
+can catch that. Each case also asserts the literal, so a change that made both surfaces wrong in the
+same way still fails.
+
 ### 2.4 One command protocol with strict target families
 
 <!-- roadmap: p1-kernel -->

@@ -21,7 +21,7 @@ import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/
 import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/domain/gates.js";
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
-import type { RunQueuedWire } from "../../../../src/events/types.js";
+import type { RunQueuedWire, SpanOutcomeWire } from "../../../../src/events/types.js";
 import { createSpanJsonlWriter, type SpanJsonlWriter } from "../../../../src/infra/events/span-jsonl-writer.js";
 import { createLedgerReadThrough } from "../../../../src/infra/ledger/ledger-read-through.js";
 import type { ProjectionRepositories } from "../../../../src/infra/sqlite/authority-database.js";
@@ -409,11 +409,19 @@ export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQu
   return event as unknown as RunQueuedWire;
 }
 
+/**
+ * ONE task span, started and (optionally) ended.
+ *
+ * `outcome` is the WHOLE `SpanOutcomeWire` union rather than a convenient
+ * three, because D268's vocabulary pin has to state each of the seven words a
+ * span can actually carry — a helper that could only emit three would have made
+ * the four unpinnable arms exactly the ones that diverged.
+ */
 export function taskEventsOf(
   world: DashboardWorld,
   seed: number,
   node: string,
-  outcome?: "done" | "failed" | "skipped",
+  outcome?: SpanOutcomeWire,
   notRunReason?: "condition-false" | "branch-not-selected",
 ): void {
   const base = {
@@ -432,7 +440,11 @@ export function taskEventsOf(
   }
 }
 
-/** The run's own `span.ended` — the settlement the fold sees before authority. */
+/**
+ * The run's own `span.ended`, written straight to the stream — the harness's
+ * way to put the fold ahead of authority, an order the real executor never
+ * produces (it settles the terminal CAS before it emits).
+ */
 export function runEndedEventOf(
   world: DashboardWorld,
   seed: number,
