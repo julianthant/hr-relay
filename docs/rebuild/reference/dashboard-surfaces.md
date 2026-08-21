@@ -3788,10 +3788,286 @@ the parity references.
 
 ### 9.7 Intake, mobile capture and Edit Data
 
-**Stub — written by unit 5.1d**, which may add §9.7.1–§9.7.3. Inherits §11 (the intake workspace's
-seven surface decisions) and §12 (the capture phone), with the FLOW, the manifest, readiness and
-capture durability staying `ref data-intake-and-edit-data`'s. Wire:
-`ref frontend-backend-integration` §5.1.7.
+<!-- roadmap: p2-2i -->
+<!-- roadmap: order-6-dash -->
+
+The `p2-2i` checklist lives at §9.5; this square's two deferral blocks are `{#def-byte-path}` and
+`{#def-capture-binding}`, both in §9.7.2.
+
+**What they are.** The three ways data that did not come from a person typing into the run modal
+reaches a run: a spreadsheet (§9.7.1), a photograph (§9.7.2), and a correction to a run's own
+recorded facts (§9.7.3). `ref data-intake-and-edit-data` owns all three FLOWS — the upload → map →
+validate → run sequence (§2.2), the invariant that makes it safe (§2.5), the manifest and readiness
+(§5.2), capture's durable record (§5.1) and Edit Data's field policy (§6). This doc owns what each
+one LOOKS like and what it refuses to draw.
+
+**Wire.** `ref frontend-backend-integration` §5.1.7 owns the endpoints, the manifest handoff and the
+parity references for all three.
+
+#### 9.7.1 The intake workspace (2i-E3, D173)
+
+Ref data-intake-and-edit-data §2.2 owns the FLOW (upload → map → validate → run) and ref data-intake-and-edit-data §2.5 owns the invariant that
+makes it safe. This section owns how that flow is presented, because three of its decisions are
+surface decisions with consequences and one of them is the reason the surface exists at all.
+
+##### Proposed against decided is a PLACE, not a colour
+
+`ref data-intake-and-edit-data` §2.5 forbids a suggestion ever being pre-applied, and the mechanism already exists — only
+`confirm-intake-mapping` mints a binding, reachable from nothing but a press. The surface's job is
+to make the same fact legible, and it spends its whole visual budget on it:
+
+- a **decided** binding is a solid control in the row's own `Bound column` cell, carrying the
+  file's real sample values beneath it — so the operator confirms what a column HOLDS rather than
+  what it is called, which is the only defence against a correctly-named column of wrong data;
+- a **proposal** is recessed and dashed, lives in a **different column** (`Suggested`), and always
+  carries an explicit verb (`Use it`) plus the scorer's own reasons in words. An `ambiguous`
+  proposal states its ambiguity and receives no visual preference, because picking one of two
+  indistinguishable columns for the operator is the silent guess in miniature.
+
+Two states that are never in the same place cannot be confused for one another. A tone would have
+had to be learned; a position does not.
+
+##### The grid's rows are the WORKFLOW's fields, never the file's columns
+
+One row per declared intake target (ref data-intake-and-edit-data §2.2 step 2 in as many words). The workflow's
+requirements are the fixed axis and the spreadsheet is the variable — turn it around and the grid's
+shape depends on the export, and an operator can finish it without ever seeing a field the workflow
+wanted. Unmapped required targets are therefore visible by construction rather than by a check.
+
+##### It is a workspace at `?intake=<sessionId>`, not a dialog
+
+The session is a durable row (D170). It survives reload, and mapping a dozen columns then reviewing
+four hundred rejections takes minutes during which the operator will want to look at the queue.
+Trapping a task whose whole state is already safe on the server is what a modal is for and this is
+not that, so the workspace takes over the main region beside the existing queue/panel pair and is
+abandonable at any moment; `?intake=new` opens it at the dropzone and the upload response replaces
+that with the session's own id. The takeover HIDES the queue rather than dimming it — a
+half-visible queue behind a takeover is the modal it deliberately is not.
+
+Three bands, and the outcome band is `sticky bottom-0` on purpose: an operator scrolling a long
+grid must always be able to read WHY Run is disabled, and a disabled button whose explanation is
+off-screen is how a person concludes the product is broken.
+
+##### Readiness is DERIVED for courtesy and JUDGED by the kernel
+
+The band names the blockers it can see on the served wire — no header row settled, nothing bound,
+an unvalidated mapping. That is a courtesy, never the authority: `enqueueReadiness` judges the
+manifest the arm would actually write (ref data-intake-and-edit-data §5.2), and its refusal renders verbatim. A surface
+that decided readiness itself would eventually disagree with the server about what is about to
+happen, which on this product means disagreeing about whether real HR runs were filed.
+
+Staleness needs no client arithmetic either. Every mapping arm sets `validation: {state:"none"}`,
+so "the review you are looking at describes the current mapping" is a served fact.
+
+##### The destructive act names its cost before it happens
+
+Changing the sheet or the header row discards every binding, correction and exclusion (D170 — they
+all named rows and columns under the old layout). The surface confirms first, with the counts, and
+the confirmation ARRIVES rather than blinking in. Discovering it afterwards would be the definition
+of a surprise.
+
+##### Which control is in flight, not merely that one is
+
+Every intake command is a round trip. Locking the surface while showing a spinner nowhere means the
+operator presses `Use it` and the interface appears to do nothing, so the workspace tracks the
+in-flight command's KEY and that control alone carries the spinner. Everything else disables.
+
+**As-built: five of the seven command keys carry a spinning control, and two do not.** `bind:`,
+`fix:`, `exclude:`, `validate` and `run` each own a keyed `Button` that spins. `inspect` — the sheet
+and header-row `Select`s — and `upload` do not: the selects merely `disabled` themselves
+(`intake.tsx:299, 317`) and the `Dropzone` takes a `busy` flag (`:1198`). Both are the same class of
+round trip and both change the whole grid underneath, so the rule this subsection states is not yet
+true of them; it is a `{#track-d}` hygiene row, not a redesign.
+
+##### As-built notes
+
+- **`Dropzone` is a new DS primitive** (`primitives-form.tsx`): a real `<input type="file">` inside
+  a `<label>`, so the drop target and the browse control are one control that the keyboard, the
+  screen reader and touch all reach for free. It **never filters a dropped file** — `accept` is a
+  picker hint, and
+  a file the server would refuse is handed over so the server can refuse it BY NAME. Drag state is
+  a counter, not a boolean, because `dragleave` fires when the pointer crosses into a child.
+  **What it states about itself is NOT the server's constants**, though this note claimed so until
+  2026-08-21: `INTAKE_ACCEPT` (`intake.tsx:115`) and the hint *"A .csv or .xlsx, up to 25 MB"*
+  (`:1196`) are hardcoded client literals, while `INTAKE_UPLOAD_MAX_BYTES` and
+  `INTAKE_UPLOAD_MEDIA_TYPES` sit unimported at `src/server/dashboard/commands/intake-service.ts:60,
+  66-70`. Two of them can drift apart silently, and the printed figure is already imprecise —
+  25 × 1024 × 1024 is 25 MiB. Importing the constants is the fix and is a `{#track-d}` hygiene row;
+  the refusal path is unaffected either way, because the server is what refuses.
+- **The transport grew `requestJsonResponse`.** The intake upload is the one route whose STATUS is
+  the answer: `201` created a session for these bytes, `200` joined the open one they already have.
+  Any other status throws — falling through to "refused" would report a server defect as the
+  operator's bad file.
+- **`Banner` forwards no unknown props**, so `data-demo-enter` spread onto it type-checks (a spread
+  skips excess-property checking) and is silently dropped at runtime. Arriving surfaces wrap
+  instead. Generalize the shape: a spread onto a component with explicit props is not a compile-time
+  guarantee that the prop arrives.
+- **The parity lane dismisses the floating workflow window for the intake states only.** The window
+  covers the workspace's left edge — its target-field column and its stage tabs — and dismisses on
+  the first click outside it, which is the operator's very first act on a takeover. The queue's
+  references keep it, because the queue is what that window is FOR.
+- **Deferred, with its reason.** There is no arm that sets a run-wide CONSTANT and none that REMOVES
+  a binding, so the grid renders `constants` read-only (today always empty) and its column control
+  offers no "unbind". Offering either would be a control that silently does nothing. person-lookup
+  does not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the
+  first workflow with a required non-column field (ref data-intake-and-edit-data §8's `effectiveDate`) will need the arm.
+
+---
+
+#### 9.7.2 The capture phone surface (2i-F, D175)
+
+Ref data-intake-and-edit-data §5.1 owns what capture DURABLY records and which routes exist; this section owns what the
+person holding the phone sees. It is the only surface in this program rendered on a device the
+operator does not sit at, and every decision below comes from that.
+
+##### The use scene picks the theme, not the category
+
+The operator dashboard is dark because it lives on a desk. The phone surface is **light**, because
+its use scene is somebody standing at a filing cabinet or a front desk with a paper form in one
+hand, often under a window. A dark UI at whatever brightness the phone happens to be on is the most
+common way a capture flow becomes unreadable at the exact moment it is being used. Nothing is
+restyled to achieve this: `tokens.css` already ships both themes behind `data-demo-theme`, so the
+phone selects the light theme and spends no new colour. The palette budget, the `--ds-*` layer, and
+the tailwind ratchet are unchanged, and no operator surface moves. **Two vocabularies, one fact:**
+the attribute VALUE is `light` — stamped on both `<html>` and `<body>` of `capture.html:2, 22`, with
+`<meta name="color-scheme" content="light">` beside it — and `Paper Ink` is that palette's product
+NAME (`DEMO_THEME_LABEL`, `src/dashboard/ds/theme.ts:45-48`, and the word the parity references
+carry). A reader who greps for `paper-ink` in the phone entry finds nothing and should not conclude
+the theme is unset.
+
+##### It is ONE page whose bottom bar changes verb
+
+Capture → review/reorder → finalize are three states of one page, not three pages and not a wizard.
+The task is short, the durable session means a reload lands exactly where the operator was, and a
+step indicator would spend the top of a small screen narrating a sequence the bottom bar already
+states. The action bar is pinned in the thumb zone and is the only place a primary action ever
+appears; what changes between states is its verb, not its position.
+
+##### Order is meaning, so it is a numeral and a button — never a drag
+
+Every photograph tile carries its page number as a large real numeral, because the durable record
+enforces contiguous ordinals and the bundle IS the order. Reordering is explicit ▲/▼ controls, not
+drag: a drag target inside a scrolling list on a touch screen is the classic failure mode, it
+cannot be half-performed with a keyboard, and it announces nothing to a screen reader. Buttons are
+reachable, announceable, and each one is a complete act.
+
+##### The camera is the platform's, not ours
+
+Photographs are taken through a real `<input type="file" accept="image/*" capture="environment">`
+inside a `<label>` — the same real-input-in-a-label pattern the `Dropzone` primitive established
+(D173). Building a viewfinder would mean re-implementing focus, exposure and orientation worse than
+the phone already does, on the one surface where a bad photograph is the whole failure.
+
+##### A failure is the server's own sentence, in reserved space
+
+The error region is always in the DOM with its height reserved, so a refusal never jumps the layout
+under a thumb that is already moving. It is a `role="alert"` and it renders the server's message
+VERBATIM — the kernel's refusal, the projector's failure, the named upload rejection. The phone
+composes no prose of its own and swallows no catch: the operator holding the phone is the person who
+has to choose between Retry Finalize and Discard, and "something went wrong" decides nothing for
+them. Colour is never the only carrier.
+
+##### The QR is the operator's half, and the token is minted once and bounded by TTL
+
+Start Capture is a small control inside the existing dashboard. It calls the loopback-only session
+route and renders the returned `phoneUrl` as an inline-SVG QR built by `src/domain/qr-code.ts` — a
+pure encoder rather than a dependency, so the payload never leaves the process. The raw token is
+MINTED once and rendered once: the durable row holds only its digest, and the URL carries the token
+in the FRAGMENT, which no server sees. A refused ingress renders its `message` and `remediation` in
+place of the QR, because "capture is unavailable" without the reason is a dead end an operator
+cannot act on.
+
+**Minted once is not USED once, and the difference matters to whoever holds the phone.** This
+subsection read *"the token exists once"* until 2026-08-21 and was being read as single-use. The
+phone presents the token on EVERY request and the server resolves it fresh each time —
+`resolveToken` digests it, finds the session, expires it if overdue and stamps the active budget on
+first touch (`src/server/dashboard/commands/capture-service.ts:221-259`). What bounds it is TIME:
+`preConnectTtlMs` (15 min by default) from creation, then `activeIdleTtlMs` (1 h) from the phone's
+first connect (`src/domain/config/schema.ts:265-266`). Every way a token can fail to name a live
+session — unknown, malformed, expired, discarded — answers identically, because a difference there
+is an enumeration oracle on a public origin (D174).
+
+**Where the control actually lives.** *"A small control inside the existing dashboard"* is as-built
+only inside the intake takeover's empty or refused dropzone state (`intake.tsx:1182-1206`), and it
+VANISHES once a session loads. So the phone path is reachable exactly when the operator has already
+opened intake and has no file — which is the right moment, and is narrower than this paragraph
+reads. A second entry point is a surface decision nobody has made; it is recorded here rather than
+implied away.
+
+##### As-built notes (2026-08-09)
+
+- **The phone is a SEPARATE Vite entry**, `capture.html` over `src/dashboard/phone/`, not a route in
+  the operator SPA. Serving the operator bundle over a public tunnel would ship the whole operator
+  UI to the phone origin, and no route filter can un-send bytes. `build.manifest` is emitted so the
+  ingress allowlist is generated from the phone entry's own asset closure rather than hand-listed.
+  `dashboard-wire-boundary` now walks **every** `*.html` entry under `src/dashboard`, not just
+  `index.html` — otherwise a second entry would silently escape D120's Node-built-in check — and a
+  new arm proves the phone closure reaches no operator surface, client, or app module.
+- **One transport owner per bundle.** `provider-capability-boundary` pinned `fetch` to
+  `src/dashboard/client/**`; the phone legitimately needs its own, so
+  `src/dashboard/phone/capture-client.ts` is named as the phone bundle's single transport owner
+  rather than the rule being relaxed. Its error path returns a `CapturePhoneError` that names why a
+  body was unreadable — the `fail-loud-catch-default` ratchet caught a `.catch(() => undefined)`
+  there and was right to.
+- **The camera stays the primary control even after the first photograph**, and Review is the quiet
+  one on the left. Promoting Review was a hazard, not a taste question: Review and Send would then
+  both be "primary, on the right", so a second tap from a thumb already travelling would finalize
+  the bundle.
+- **Motion is the house language, not a phone dialect.** The one authored moment — a photograph
+  settling into the list — uses `--ds-dur-enter` and `--ds-travel-md`. An invented
+  `--ds-phone-*` pair differing by 30ms and 2px would have been a second motion language that also
+  needed its own `prefers-reduced-motion` block to stay honest; the house tokens already collapse.
+  Press feedback is `active:scale-[0.97]`, not a 1px translate: a finger COVERS a 48px control, so
+  the only visible feedback is at its edges.
+- **Red is reserved for Discard.** Per-tile Remove was `danger`-toned, which put three red controls
+  down the reorder list — louder than Send, inverting the attention ladder the token file is
+  explicit about.
+- **Parity: 15 references added** (five states × pixel/a11y/provenance) at one phone viewport in
+  their own block, so the operator corpus is not multiplied. **12 moved, none silently**: the
+  `intake-upload` triples, because the QR start control lives on that surface; the a11y diff is
+  exactly the three lines it adds.
+- **Pre-existing defect found and NOT fixed here:** the intake takeover renders a dark shell under
+  the light theme, leaving the dropzone heading near-invisible. It is identical in the committed
+  baseline and is a sibling of the `paper-ink`-renders-dark residual already deferred to 2j's corpus
+  work; fixing it here would re-freeze references for a reason unrelated to capture.
+
+---
+
+##### The two deferrals this surface waits on
+
+<!-- roadmap: def-byte-path -->
+<!-- roadmap-status: def-byte-path -->
+- [x] the phone surface itself is built, parity-photographed and reachable in DEV through the vite entry — the deferral is the delivery path, not the page
+- [ ] BE the BFF static handler: every unrouted path 404s today, so `/capture.html` is not served by the production process at all (D189 — the production BFF serves no frontend bytes)
+- [ ] BE `--prod` parsed by the runtime: `package.json` passes the flag and `src/core/runtime-composition.ts` dispatches on `args[0]` alone, so `npm run dashboard:prod` is byte-identical to `npm run cli -- dashboard` — a name the runtime never parsed
+- [ ] BE the on-demand tunnel launcher (D175), unbuilt — which is why the deferral costs nothing today: there is no origin for a phone to reach
+- [ ] BE the guard arm: a phone-origin request may be served nothing outside the capture allow-list
+- [ ] BE wire or delete the INERT Host gate — `deps.capturePhoneHost` is declared and read (`src/server/dashboard/routes/api.ts:65, 142`) and supplied by nothing, so the middleware compiles and can never fire
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/server/dashboard/routes/api.ts, src/core/runtime-composition.ts, src/dashboard/capture.html, vite.dashboard.config.ts; left: every byte-serving half — this is a deferral with a named owner, not a waiver (D189)
+<!-- /roadmap-status -->
+
+<!-- roadmap: def-capture-binding -->
+<!-- roadmap-status: def-capture-binding -->
+- [x] the whole pipeline is composed in production: the session routes, the phone client, the finalize outbox, the restart drain and the intake handoff (D174's derived identities, so a replay returns the SAME manifest and run ids rather than a second run)
+- [ ] `CAPTURE_INTAKE_BINDINGS` is `{}` (`src/control/workflow-registry.ts:194`) — the registry is derived from the workflow modules and NEITHER registered workflow can honestly turn a photograph into an employee id, so the binding is the whole absence
+- [ ] the trigger is the first OCR-consuming workflow (`{#order-3}`); until then a capture that cannot bind refuses BY NAME into durable `failed` rather than inventing one (D174)
+> 2026-08-21 | docs-dash-surfaces 5.1d | verified against src/control/workflow-registry.ts, src/core/capture-intake-handoff.ts, src/server/dashboard/commands/capture-service.ts; left: the binding, which waits on a workflow that can consume a photograph
+<!-- /roadmap-status -->
+
+#### 9.7.3 Edit Data — the rail is the place, the policy is elsewhere
+
+Edit Data has no takeover and no surface of its own, deliberately: a correction is made where the
+value is READ, which is the run's own Context rail (§9.3.1). That is the whole surface decision, and
+the two halves it implies are recorded where they belong — the rail's ledger presentation, its
+direction and freshness bound (D252) and its two refusal arms (D253) are §9.3.1's; the field policy,
+the checkpoint-edit command, the concurrency rule and what is editable at all are
+`ref data-intake-and-edit-data` §6's, and `editPolicyFor`'s composition stays with the rail because
+it is presentation over that policy rather than a second copy of it.
+
+What is NOT built is named there too and not re-argued here: the rail's `Load a prior run` /
+`Start a run from this data` footer, and `actions[]` gating at the `data` placement — the served
+actions projection for that placement is empty today and the wire's `editing` union carries the gate
+meanwhile (§9.3.1, `{#track-b}`).
 
 ### 9.8 Settings and the storage doctor
 
@@ -4285,196 +4561,3 @@ command arm (D67), is actor-attributed (D75), and never mutates identity — it 
 a stable id, exactly like the presentation-override layer (D16). Per D95, its payload is one strict
 `displayName`: NFC-normalized, already trimmed, 1–120 Unicode code points, no control characters,
 and no unknown keys.
-
-## 11. The intake workspace — the surface contract (2i-E3, D173)
-
-Ref data-intake-and-edit-data §2.2 owns the FLOW (upload → map → validate → run) and ref data-intake-and-edit-data §2.5 owns the invariant that
-makes it safe. This section owns how that flow is presented, because three of its decisions are
-surface decisions with consequences and one of them is the reason the surface exists at all.
-
-### 11.1 Proposed against decided is a PLACE, not a colour
-
-§2.5 forbids a suggestion ever being pre-applied, and the mechanism already exists — only
-`confirm-intake-mapping` mints a binding, reachable from nothing but a press. The surface's job is
-to make the same fact legible, and it spends its whole visual budget on it:
-
-- a **decided** binding is a solid control in the row's own `Bound column` cell, carrying the
-  file's real sample values beneath it — so the operator confirms what a column HOLDS rather than
-  what it is called, which is the only defence against a correctly-named column of wrong data;
-- a **proposal** is recessed and dashed, lives in a **different column** (`Suggested`), and always
-  carries an explicit verb (`Use it`) plus the scorer's own reasons in words. An `ambiguous`
-  proposal states its ambiguity and receives no visual preference, because picking one of two
-  indistinguishable columns for the operator is the silent guess in miniature.
-
-Two states that are never in the same place cannot be confused for one another. A tone would have
-had to be learned; a position does not.
-
-### 11.2 The grid's rows are the WORKFLOW's fields, never the file's columns
-
-One row per declared intake target (ref data-intake-and-edit-data §2.2 step 2 in as many words). The workflow's
-requirements are the fixed axis and the spreadsheet is the variable — turn it around and the grid's
-shape depends on the export, and an operator can finish it without ever seeing a field the workflow
-wanted. Unmapped required targets are therefore visible by construction rather than by a check.
-
-### 11.3 It is a workspace at `?intake=<sessionId>`, not a dialog
-
-The session is a durable row (D170). It survives reload, and mapping a dozen columns then reviewing
-four hundred rejections takes minutes during which the operator will want to look at the queue.
-Trapping a task whose whole state is already safe on the server is what a modal is for and this is
-not that, so the workspace takes over the main region beside the existing queue/panel pair and is
-abandonable at any moment; `?intake=new` opens it at the dropzone and the upload response replaces
-that with the session's own id. The takeover HIDES the queue rather than dimming it — a
-half-visible queue behind a takeover is the modal it deliberately is not.
-
-Three bands, and the outcome band is `sticky bottom-0` on purpose: an operator scrolling a long
-grid must always be able to read WHY Run is disabled, and a disabled button whose explanation is
-off-screen is how a person concludes the product is broken.
-
-### 11.4 Readiness is DERIVED for courtesy and JUDGED by the kernel
-
-The band names the blockers it can see on the served wire — no header row settled, nothing bound,
-an unvalidated mapping. That is a courtesy, never the authority: `enqueueReadiness` judges the
-manifest the arm would actually write (ref data-intake-and-edit-data §5.2), and its refusal renders verbatim. A surface
-that decided readiness itself would eventually disagree with the server about what is about to
-happen, which on this product means disagreeing about whether real HR runs were filed.
-
-Staleness needs no client arithmetic either. Every mapping arm sets `validation: {state:"none"}`,
-so "the review you are looking at describes the current mapping" is a served fact.
-
-### 11.5 The destructive act names its cost before it happens
-
-Changing the sheet or the header row discards every binding, correction and exclusion (D170 — they
-all named rows and columns under the old layout). The surface confirms first, with the counts, and
-the confirmation ARRIVES rather than blinking in. Discovering it afterwards would be the definition
-of a surprise.
-
-### 11.6 Which control is in flight, not merely that one is
-
-Every intake command is a round trip. Locking the surface while showing a spinner nowhere means the
-operator presses `Use it` and the interface appears to do nothing, so the workspace tracks the
-in-flight command's KEY and that control alone carries the spinner. Everything else disables.
-
-### 11.7 As-built notes
-
-- **`Dropzone` is a new DS primitive** (`primitives-form.tsx`): a real `<input type="file">` inside
-  a `<label>`, so the drop target and the browse control are one control that the keyboard, the
-  screen reader and touch all reach for free. It states what it takes and its size cap from the
-  server's own constants, and it **never filters a dropped file** — `accept` is a picker hint, and
-  a file the server would refuse is handed over so the server can refuse it BY NAME. Drag state is
-  a counter, not a boolean, because `dragleave` fires when the pointer crosses into a child.
-- **The transport grew `requestJsonResponse`.** The intake upload is the one route whose STATUS is
-  the answer: `201` created a session for these bytes, `200` joined the open one they already have.
-  Any other status throws — falling through to "refused" would report a server defect as the
-  operator's bad file.
-- **`Banner` forwards no unknown props**, so `data-demo-enter` spread onto it type-checks (a spread
-  skips excess-property checking) and is silently dropped at runtime. Arriving surfaces wrap
-  instead. Generalize the shape: a spread onto a component with explicit props is not a compile-time
-  guarantee that the prop arrives.
-- **The parity lane dismisses the floating workflow window for the intake states only.** The window
-  covers the workspace's left edge — its target-field column and its stage tabs — and dismisses on
-  the first click outside it, which is the operator's very first act on a takeover. The queue's
-  references keep it, because the queue is what that window is FOR.
-- **Deferred, with its reason.** There is no arm that sets a run-wide CONSTANT and none that REMOVES
-  a binding, so the grid renders `constants` read-only (today always empty) and its column control
-  offers no "unbind". Offering either would be a control that silently does nothing. person-lookup
-  does not need a constant — `keepNonHdh` and `includeCrmDates` carry schema defaults — but the
-  first workflow with a required non-column field (ref data-intake-and-edit-data §8's `effectiveDate`) will need the arm.
-
----
-
-## 12. The capture phone surface — the surface contract (2i-F, D175)
-
-Ref data-intake-and-edit-data §5.1 owns what capture DURABLY records and which routes exist; this section owns what the
-person holding the phone sees. It is the only surface in this program rendered on a device the
-operator does not sit at, and every decision below comes from that.
-
-### 12.1 The use scene picks the theme, not the category
-
-The operator dashboard is dark because it lives on a desk. The phone surface is **light**, because
-its use scene is somebody standing at a filing cabinet or a front desk with a paper form in one
-hand, often under a window. A dark UI at whatever brightness the phone happens to be on is the most
-common way a capture flow becomes unreadable at the exact moment it is being used. Nothing is
-restyled to achieve this: `tokens.css` already ships both themes behind `data-demo-theme`, so the
-phone selects `paper-ink` and spends no new colour. The palette budget, the `--ds-*` layer, and the
-tailwind ratchet are unchanged, and no operator surface moves.
-
-### 12.2 It is ONE page whose bottom bar changes verb
-
-Capture → review/reorder → finalize are three states of one page, not three pages and not a wizard.
-The task is short, the durable session means a reload lands exactly where the operator was, and a
-step indicator would spend the top of a small screen narrating a sequence the bottom bar already
-states. The action bar is pinned in the thumb zone and is the only place a primary action ever
-appears; what changes between states is its verb, not its position.
-
-### 12.3 Order is meaning, so it is a numeral and a button — never a drag
-
-Every photograph tile carries its page number as a large real numeral, because the durable record
-enforces contiguous ordinals and the bundle IS the order. Reordering is explicit ▲/▼ controls, not
-drag: a drag target inside a scrolling list on a touch screen is the classic failure mode, it
-cannot be half-performed with a keyboard, and it announces nothing to a screen reader. Buttons are
-reachable, announceable, and each one is a complete act.
-
-### 12.4 The camera is the platform's, not ours
-
-Photographs are taken through a real `<input type="file" accept="image/*" capture="environment">`
-inside a `<label>` — the same real-input-in-a-label pattern the `Dropzone` primitive established
-(D173). Building a viewfinder would mean re-implementing focus, exposure and orientation worse than
-the phone already does, on the one surface where a bad photograph is the whole failure.
-
-### 12.5 A failure is the server's own sentence, in reserved space
-
-The error region is always in the DOM with its height reserved, so a refusal never jumps the layout
-under a thumb that is already moving. It is a `role="alert"` and it renders the server's message
-VERBATIM — the kernel's refusal, the projector's failure, the named upload rejection. The phone
-composes no prose of its own and swallows no catch: the operator holding the phone is the person who
-has to choose between Retry Finalize and Discard, and "something went wrong" decides nothing for
-them. Colour is never the only carrier.
-
-### 12.6 The QR is the operator's half, and the token exists once
-
-Start Capture is a small control inside the existing dashboard. It calls the loopback-only session
-route and renders the returned `phoneUrl` as an inline-SVG QR built by `src/domain/qr-code.ts` — a
-pure encoder rather than a dependency, so the payload never leaves the process. The raw token exists
-in exactly that one response and is rendered, never stored: the durable row has only its digest, and
-the URL carries it in the FRAGMENT, which no server sees. A refused ingress renders its `message`
-and `remediation` in place of the QR, because "capture is unavailable" without the reason is a dead
-end an operator cannot act on.
-
-### 12.7 As-built notes (2026-08-09)
-
-- **The phone is a SEPARATE Vite entry**, `capture.html` over `src/dashboard/phone/`, not a route in
-  the operator SPA. Serving the operator bundle over a public tunnel would ship the whole operator
-  UI to the phone origin, and no route filter can un-send bytes. `build.manifest` is emitted so the
-  ingress allowlist is generated from the phone entry's own asset closure rather than hand-listed.
-  `dashboard-wire-boundary` now walks **every** `*.html` entry under `src/dashboard`, not just
-  `index.html` — otherwise a second entry would silently escape D120's Node-built-in check — and a
-  new arm proves the phone closure reaches no operator surface, client, or app module.
-- **One transport owner per bundle.** `provider-capability-boundary` pinned `fetch` to
-  `src/dashboard/client/**`; the phone legitimately needs its own, so
-  `src/dashboard/phone/capture-client.ts` is named as the phone bundle's single transport owner
-  rather than the rule being relaxed. Its error path returns a `CapturePhoneError` that names why a
-  body was unreadable — the `fail-loud-catch-default` ratchet caught a `.catch(() => undefined)`
-  there and was right to.
-- **The camera stays the primary control even after the first photograph**, and Review is the quiet
-  one on the left. Promoting Review was a hazard, not a taste question: Review and Send would then
-  both be "primary, on the right", so a second tap from a thumb already travelling would finalize
-  the bundle.
-- **Motion is the house language, not a phone dialect.** The one authored moment — a photograph
-  settling into the list — uses `--ds-dur-enter` and `--ds-travel-md`. An invented
-  `--ds-phone-*` pair differing by 30ms and 2px would have been a second motion language that also
-  needed its own `prefers-reduced-motion` block to stay honest; the house tokens already collapse.
-  Press feedback is `active:scale-[0.97]`, not a 1px translate: a finger COVERS a 48px control, so
-  the only visible feedback is at its edges.
-- **Red is reserved for Discard.** Per-tile Remove was `danger`-toned, which put three red controls
-  down the reorder list — louder than Send, inverting the attention ladder the token file is
-  explicit about.
-- **Parity: 15 references added** (five states × pixel/a11y/provenance) at one phone viewport in
-  their own block, so the operator corpus is not multiplied. **12 moved, none silently**: the
-  `intake-upload` triples, because the QR start control lives on that surface; the a11y diff is
-  exactly the three lines it adds.
-- **Pre-existing defect found and NOT fixed here:** the intake takeover renders a dark shell under
-  the light theme, leaving the dropzone heading near-invisible. It is identical in the committed
-  baseline and is a sibling of the `paper-ink`-renders-dark residual already deferred to 2j's corpus
-  work; fixing it here would re-freeze references for a reason unrelated to capture.
-
----
