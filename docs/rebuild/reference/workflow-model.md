@@ -608,7 +608,7 @@ gets the same hash.
 - [x] uniqueness is refused at the COMPOSITION ROOT, in the same shape a dangling module role is, and `descriptor-coverage` runs the same audit (`src/control/workflow-registry.ts`, `auditWorkflowCodes` / `workflowCodeRegistry`)
 - [x] `TraceIdSchema` stays deliberately wider (`[a-z0-9]{2,4}`) because it READS durable stored ids, and a reader narrowed to the writer's current rule refuses history (`src/domain/ids.ts:154-163`, D133)
 - [x] the code is frozen into an archived record beside the label rather than resolved from the live registry (`ArchivedRunContent.workflowCode`, charter §25)
-- [x] B4's queue row and the archive index are its presentation consumers; identity is `deriveTraceId`'s `<code>-<HHMMSS>-<runId4>` (§5.8/§6)
+- [x] B4's queue row and the archive index are its presentation consumers; identity is `deriveTraceId`'s `<code>-<HHMMSS>-<runId4>` (§6)
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/domain/workflow/presentation.ts`, `src/domain/ids.ts` and `src/control/workflow-registry.ts`; left: nothing in this doc's half of Track B
 <!-- /roadmap-status -->
 
@@ -633,7 +633,7 @@ work it is; neither failure throws anything, so neither is discoverable after th
 
 **The two consumers, stated so a third one does not mint a second code.**
 
-1. **Identity** — `deriveTraceId` composes `<code>-<HHMMSS>-<runId4>` (§5.8), so the code is already
+1. **Identity** — `deriveTraceId` composes `<code>-<HHMMSS>-<runId4>` (§6, `src/domain/identifiers.ts:30`), so the code is already
    stamped on every run, span, note line and ledger entry this program has ever written.
 2. **Presentation** — the archive index row, the Activity per-workflow table and the version
    registry print it beside the label (ref dashboard-surfaces §10.2, ref dashboard-surfaces §10.3). At 800 rows
@@ -2116,13 +2116,16 @@ parallel joins, child-run manifests, and gate results are durable run-state.
 
 ## 6. Trace + spans — what this doc owns (D10: schema lives in ref dashboard-surfaces)
 
+<!-- roadmap: phase-1 -->
+
 **Ref dashboard-surfaces's discriminated-union event stream is THE wire contract** — event shapes, notes stream,
-storage, SSE. This section keeps only the engine-side semantics that ref workflow-model owns:
+storage, SSE. This section keeps only the engine-side semantics THIS doc owns:
 
 - **Span identity + path grammar.** The proven trace id is kept byte-for-byte
   (`<code>-<HHMMSS>-<runId4>`, frozen once, root-prefix propagation, retry inherits it). Span
   identity is `(runId, attempt, spanPath)` with readable path-style ids — `pl-104233-9f3e`
-  (run) → `pl-104233-9f3e/searching#1.2` (task, `#<claimGeneration>.<taskAttempt>`). `/` never
+  (run) → `pl-104233-9f3e/searching#1.2` (task, `#<claimGeneration>.<taskAttempt>` —
+  `taskSpanPath`, `src/core/span-emitter.ts:205-213`). `/` never
   appears in trace ids, so everything stays greppable. **The claim generation is part of the path
   (D214)**: two executions of one node inside one run attempt — a gate park and its resume — used to
   emit the same path, so the queue projection's `(runId, attempt, spanPath)` fold and the timeline's
@@ -2151,7 +2154,7 @@ storage, SSE. This section keeps only the engine-side semantics that ref workflo
 |---|---|
 | A new hand-list keyed by workflow ids appears in a component | explicit projection coverage matrix catches every known surface; the ≥3-id grep remains only a smell detector and does not claim completeness |
 | Labels drift — a third label layer sneaks in beside §1.5's two | guard asserts every step of every descriptor resolves a label from contract-title/step-label alone; `formatStepName` fallback `console.warn`s in dev; e2e stub run asserts zero fallback hits |
-| Resume silently substitutes data (`?? {}` on checkpoint load) | loader returns discriminated `{found}` union (no defaultable shape) + the `fail-loud-catch-default` ratchet re-implemented in the rebuild repo over its own `src/` from day one |
+| Resume silently substitutes data (`?? {}` on checkpoint load) | loader returns discriminated `{found}` union (no defaultable shape) + the `fail-loud-catch-default` ratchet, which runs against a checked-in violating fixture so a dead arm cannot stand in for enforcement |
 | Stale checkpoint rides into a live write | read freshness metadata + per-field provenance + declared DAG reachability; no proxy-discovered dependency; overrides are field-scoped, single-resume, audited |
 | Checkpoint semantics drift while schema stays equal | descriptor/contract/impl fingerprints are mandatory; only a checked-in version migration can transform a checkpoint |
 | Stored parsed input is trusted blindly—or resume reapplies an ingress transform | raw input parses once; every stored canonical snapshot parses on read through the separate validation-only `canonicalInput` schema; round-trip/type tests reject non-canonical ingress output and changed semantics require a migration |
@@ -2162,7 +2165,7 @@ storage, SSE. This section keeps only the engine-side semantics that ref workflo
 | Crash-mid-write auto-resumes straight into a duplicate submit | transaction recovery runs the commit contract's probe first; there is no independently schedulable commit node and the durable intent key covers committed and attempting states |
 | Actions bypass the wrapped helpers (attribution goes dark) | inline-selector + raw-page-API ban re-implemented in the rebuild repo over its own `src/`; `Page`/`Locator` imports and `page.` members are allowlisted only inside system driver/session internals, never task implementations |
 | Span step-id typos | engine accepts only the descriptor-derived step-id union (compile-time); emit-time assert for dynamic paths |
-| Stub lane quietly narrows to happy-path only | derived examples cover the minimum happy path; all other behavior comes from ref operator-trust's checked-in `ScenarioManifest` corpus, and deleting a descriptor-referenced scenario fails the coverage guard |
+| Stub lane quietly narrows to happy-path only | **the stub lane was never ported** — no `maybeWrapE2EStub`, no `StepDataFn`, no runtime reader of a contract's `.example` exists in this tree (`history/superseded/2026-08-20-guards-and-tests-stub-lane.md`). What guards this rot vector instead is `scenario-coverage` over `tests/scenario/`'s two declared kinds, plus R10's dry-run scenario tier (ref guards-and-tests §10) |
 | A workflow claims the right transaction after acting on the wrong open person/page | every write task declares a ref task-contract subject binding; the kernel records a fresh driver observation after prepare and refuses before the fence on mismatch or unknown identity |
 | Delegated fan-out changes across replay or one failed child disappears from the join | atomic immutable delegation manifests, stable edge/item ids, typed child results, and registered zero/one/many/partial/cancel/retry/replay scenarios |
 | Runtime isolation or cutover interlock drifts | The cross-runtime **import** guard is **retired by D93** — the two repos share no module graph, build, or process, so cross-runtime import/invocation/proxying is structurally impossible. Still gated because both worlds run on ONE machine: distinct commands/entrypoints, state/artifact roots, ports, process locks, and browser profiles/sessions; the rebuild repo accepts only its own native runs; the single global cutover (D89) stops legacy enqueues, reconciles all active/uncertain work, verifies backups, and atomically points the normal production launcher at the rebuild repo so exactly one production authority can start — with the legacy repo preserved wholesale as the rollback asset |
@@ -2170,6 +2173,18 @@ storage, SSE. This section keeps only the engine-side semantics that ref workflo
 ---
 
 ## 8. Worked example — person-lookup (the Phase-1 exit vertical slice)
+
+<!-- roadmap: order-0 -->
+<!-- roadmap: p1-exit -->
+
+<!-- roadmap-status: order-0 -->
+- [x] `person-lookup` is migrated, registered and live-proved: four nodes, `role: standalone`, `code: "pl"` (`src/workflows/person-lookup/descriptor.ts`)
+- [x] its start surface is the canonical `inputRun`: an `eid` pattern rule with an `otherwise` arm emitting `name`, which is exactly the ONE-varying-value shape D260 states (`:212-213`)
+- [x] the `always-rerun` `active-status` node and the `when`-gated `crm-dates` node are the tree's only live examples of either policy
+- [x] the result `derive` reads exactly its declared terminal dependencies and refuses a missing conditional output by name through `requireFact`
+- [ ] the listing in this section is a SKETCH in four places the shipped module spells differently — enumerated immediately below it, and left as a sketch on purpose because it is the shape an author reads
+> 2026-08-21 | docs-cohesion workflow-model | verified line-by-line against `src/workflows/person-lookup/descriptor.ts:111-162`; left: nothing — order 0 is closed
+<!-- /roadmap-status -->
 
 The first step **imports ref task-contract §9.1's `ucpath/search-person-org` contract verbatim** (D16 — one
 definition, this doc consumes it): input is the `by-name`/`by-eid` discriminated union, output is
@@ -2229,6 +2244,25 @@ export const personLookupDescriptor = workflow("person-lookup", PersonLookupInpu
 // Derived, not declared: systems = ["ucpath", "crm"] (contract id prefixes; service systems excluded).
 ```
 
+**Four places the listing above spells differently from the shipped module.** It is kept as a
+sketch because it is the shape an author reads — a fluent chain reads better than a spec object —
+but a reader copying from it should know these four:
+
+1. **The chain does not carry `.meta()`.** The shipped module is `flow(Input).step(…).build({result})`
+   producing a graph, which `defineWorkflowDescriptor({ id, version, contractFingerprint, code, … })`
+   then takes as a spec object. Meta rides the SPEC, not a builder link: it contributes nothing to
+   the `S`/`Nodes` accumulators, and threading it through would re-open the transform surface the
+   real-scale type proof pins (§1.1's as-built).
+2. **`cross-verify` binds `crm/read-onboarding-record`**, not `crm/find-onboarding-record`
+   (`CrmReadOnboardingRecord`).
+3. **`active-status` is a WORKFLOW MINI-STORE task, not a service-store one.** Its contract id is
+   `workflow:person-lookup/read-active-status` (`src/domain/contracts/person-lookup/read-active-status.ts:45`)
+   — the `workflow:<descriptor-id>` namespace §3's last bullet describes, which contributes no
+   browser session — where the listing's comment says `extraction/derive-active-check-outcome`.
+4. **The fail-loud helper is `requireFact`**, exported from `src/base/workflow.ts`, and the result's
+   conditional arm is `{state:"included", dates}` / `{state:"not-requested"}` rather than a bare
+   `{disposition}`.
+
 Projections that exist with **zero further edits**: rail entry + icon + category, input-run panel
 with the parser, session-card label "Person Lookup", pipeline chips Searching → Cross
 Verification → Active Status (→ CRM Dates when flagged), verdict-driven `Not found`/`Inactive`
@@ -2267,7 +2301,21 @@ Nothing launched, no Duo spent, no partial run row.
 
 ### 8.1 AS-BUILT — the worked example is the shipped workflow (2j, 2026-08-09)
 
-**Doc 02 §Exit criteria's "ref workflow-model §8 marked as-built" is MET here.** The exercise above
+<!-- roadmap: order-0 -->
+<!-- roadmap: p1-exit -->
+
+<!-- roadmap-status: p1-exit -->
+- [x] the live exit test passed: run `4ebf7275-0158-49af-a78f-1f37948efb27`, trace `pl-000619-4ebf`, against real UCPath and real CRM on the new executor — recovered a dead CRM session mid-run, terminalized `done` at attempt 2 with a correct result, and rendered all four parity surfaces from the ONE projection (D74, 2026-08-04)
+- [x] the three presentation defects it exposed were fixed the same day: the `skipped` arm and its closed `notRun` reason (D123), the terminal row's own `endedAt` (D124), the accessible-name collision (D126)
+- [x] the two identity defects it exposed are closed at the identity rather than at a store: a span folds by `(runId, attempt, spanPath)` (D121/D122), and the bundle-crossing defect that made the app render nothing became `dashboard-wire-boundary` (D120's sibling)
+- [x] session acquisition gained its own bound, `timeouts.sessionAcquireMs`, because every step inside a login recipe was bounded and nothing bounded the CHAIN (D125)
+- [x] §8 is marked as-built here, which is doc 02 §Exit criteria's own criterion
+- [ ] what this slice cannot exercise, by construction: `person-lookup` declares no branch, gate, delegation or transaction, so it derives ZERO graph coverage points and §5.5's freshness walk passes trivially. The write half is proved by `kuali-timekeeper-annotation` instead
+> 2026-08-21 | docs-cohesion workflow-model | verified against `src/workflows/person-lookup/descriptor.ts` and the D74 run record; left: nothing — Phase 1's exit is closed
+<!-- /roadmap-status -->
+
+**Doc 02 (`02-prove-writes-build-the-tails.md`) §Exit criteria's "ref workflow-model §8 marked
+as-built" is MET here.** The exercise above
 was written as a design sketch before any of it ran. It has since run **live**, twice over, and
 this section records where the sketch and the shipped system differ. Everything not listed below
 shipped as written.
@@ -2310,15 +2358,22 @@ is no transaction commit to be a freshness sink. The write half of the model is 
 
 ---
 
-## 9. Open questions for the operator / orchestrator
+## 9. Settled questions — nothing here is open
+
+All five are closed and each names where it landed. The section keeps its number and its answers
+because a reader arriving at "checkpoint retention" or "write-task crash disambiguation" needs the
+ruling, not a search; it is no longer a queue.
 
 1. **Checkpoint retention — RESOLVED (D14), consistent with the SQLite role.** Checkpoints are
    pruned **only on logical-item deletion, never on the 7-day JSONL clock**: D14 makes checkpoint
    payloads system-of-record (NOT rebuildable/deletable), so the tracker's 7-day JSONL policy — which
    governs the display/audit spans+notes — must not reach them. Resume across days needs
    item-lifetime retention, and freshness (§5.5) makes an old checkpoint safe-but-refusable rather
-   than dangerous, so nothing forces an earlier prune. (Logged to the master-plan deferred-OQ list
-   for the operator's confirmation.)
+   than dangerous, so nothing forces an earlier prune. The rule is enforced structurally rather than
+   by policy: `pruneEventStreams` can only see `spans`/`notes`, and the `run_checkpoints` DDL is
+   annotated with D14 at `src/infra/sqlite/migrations.ts:258-262`. (The master plan this was once
+   logged against no longer exists; diagnostic-BUNDLE retention is a different question and is the
+   tree's `{#def-retention}`.)
 2. **Write-task crash disambiguation — RESOLVED.** Every commit contract ships
    a paired idempotency `probe` (ref write-safety's `writeSafety.idempotency.probe`), and crash recovery runs
    it FIRST (§5.6 #2): `present`→validate proof + reconstruct typed output + backfill `done`;
@@ -2326,9 +2381,9 @@ is no transaction commit to be a freshness sink. The write half of the model is 
    authoritative observations whose every timestamp is after the contract-specific propagation
    window; `ambiguous`/`unknown`/
    throw or unsettled negative evidence→park. The earlier "always park `needs-operator`" default is
-   retired, but a single negative read never authorizes another click. The remaining §b migration decision is the
-   per-workflow *pre-write* `probePolicy` knob (ref write-safety §5, on the transaction node), not this
-   question.
+   retired, but a single negative read never authorizes another click. The remaining per-migration
+   decision is the *pre-write* `probePolicy` knob (ref write-safety §5, on the transaction node), not
+   this question.
 3. ~~Injected-data surface scope~~ — **resolved 2026-07-21:** engine + explicitly allowlisted
    Edit-Data fields land in Phase 2h; arbitrary checkpoint JSON and internal transaction arms are
    never editable/start targets.
