@@ -21,6 +21,16 @@ import {
   type PerfFixture,
 } from "../../perf/dashboard-fixture.js";
 
+// The fixture buckets rows by `localDatePart`, which reads the HOST timezone
+// (`Date#getFullYear`/`getMonth`/`getDate`). Its instants are minted at
+// `09:00-07:00` on `PERF_FIXTURE_PROFILE.day`, so a host west of roughly
+// UTC-9 or east of UTC+7 would land some seeded rows on the neighbouring
+// calendar date and this suite's exact row counts would fail on that
+// machine alone. Pin the same `TZ=UTC` the `perf:dashboard` script pins, so
+// the day boundary this test asserts is a property of the fixture, not of
+// whoever's laptop runs it.
+process.env.TZ = "UTC";
+
 let fixture: PerfFixture;
 
 beforeAll(() => {

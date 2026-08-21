@@ -27,7 +27,7 @@
     "test:architecture": "vitest run tests/unit/architecture --reporter=dot",
     "test:coverage": "vitest run --coverage --reporter=dot && tsx scripts/suite-size.ts",
     "test:watch": "vitest",
-    "perf:dashboard": "tsx tests/perf/dashboard-benchmark.ts"
+    "perf:dashboard": "TZ=UTC tsx tests/perf/dashboard-benchmark.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
