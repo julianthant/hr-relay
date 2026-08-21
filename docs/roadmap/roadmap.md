@@ -454,6 +454,7 @@ needs:
 
 log:
 - 2026-08-20 | docs-cohesion ref guards-and-tests | §10 written as-built against vitest.config.ts, run-executor/write-sequencer, tests/scenario, tests/parity and separations §9.22 (dc2901de); §7's stub lane verified NEVER PORTED → history; measured 84.23/82.15/84.74/71.76 · left: 5.2b–5.2d
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Testing tiers filled against §10: the DOCS line ticks (dc2901de), the six code lines stay open. Confirmed NO workflow in the tree has a T1 pair yet — `tests/scenario/workflows/` does not exist, including for the migrated person-lookup
 
 ### Separations — order 8, the first migration {#order-8}
 status: planned
@@ -654,7 +655,7 @@ doc: 03b §Smaller operator calls open · ref:dashboard-surfaces §9 · 03c §No
 phase: Phase 3 · continued
 status: planned
 when: next | undated — order, not calendar
-chip: 12 workflows · order by risk / reuse
+chip: 13 workflows · 9 order rows
 doc: 03c §Phase summary · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:guards-and-tests §10
 open: yes
 
@@ -664,15 +665,21 @@ needs:
 - phase-3
 
 note: **Legacy capability register:** 47 open · 20 replaced · 7 native · 4 retired — cutover requires zero open. Every entry advances to native / replaced / retired at its order's migration.
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c written as-built: the seven-step playbook, all nine order rows, the recounted closure inventory. Chip corrected 12 → 13 workflows (15 `legacy-workflow-*` entries minus separations and person-lookup); the register recount CONFIRMS 47/20/7/4 and every open entry names `phase-3-workflow-migration`. Registry reality re-verified — only person-lookup and the six separations descriptors are registered, so orders 1-7 and 9 have no descriptor at all
 ### Order 0 · person-lookup {#order-0}
 status: done
 size: M
 chip: live-proven (Phase 1)
-doc: 03c §Recommended migration order (by risk / complexity / reuse) · ref:workflow-model §8 · ref:workflow-model §8.1 · ref:task-contract §9.1 · ref:task-contract §9.1.1
+doc: 03c §Order 0 · person-lookup · 03c §Recommended migration order (by risk / complexity / reuse) · ref:workflow-model §8 · ref:workflow-model §8.1 · ref:task-contract §9.1 · ref:task-contract §9.1.1
 
 builds:
 - [x] BOTH resolve a person by name / EID against real UCPath + CRM
 - [ ] PROOF T1 scenario tests for person-lookup (structural fixture + dry-run scenario) and its T3 pair (R10)
+
+log:
+- 2026-08-20 | docs-cohesion 03c | verified as-built: `src/workflows/person-lookup/descriptor.ts` + `module.ts` registered at `src/control/workflow-registry.ts:39`, live-proven by D74. Its `legacy-workflow-person-lookup` capability entry stays OPEN correctly — legacy's crm-search/match/outcome are order 1. No T1 pair exists
 
 #### Dashboard · wire person-lookup {#order-0-dash}
 status: done
@@ -691,10 +698,13 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | verified: four squares, and four is right — person-lookup does not gate, raises no park notification and consumes no intake, so §5.1.4/§5.1.6/§5.1.7 have nothing to declare. Left: the T2 scenario
+
 ### Order 1 · person-lookup Search + Match · i9-lookup {#order-1}
 status: planned
 size: M
-doc: 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §9 · ref:task-contract §3.1
+doc: 03c §Order 1 · person-lookup Search + Match · i9-lookup · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §9 · ref:task-contract §3.1
 
 > read — HR-Tasks Search/Match; who signed I-9 §2. Two modes prove one descriptor can preserve distinct system surfaces.
 
@@ -707,6 +717,9 @@ builds:
 needs:
 - phase-2
 - you: §b questionnaire (12 answers) for each workflow
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 1 written: `src/stores/i9/` is a 7-line `declareDriver("i9", "unwired")` with `{}` tasks, and `person-lookup/descriptor.ts` carries no mode. The row's hazard is one descriptor with two modes (D15) plus the first login recipe written from scratch since 1d (D120)
 
 #### Dashboard · wire Search + Match · i9-lookup {#order-1-dash}
 status: planned
@@ -726,10 +739,13 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | six squares, not seven — no gate and no intake; both workflows are reads with typed inputs
+
 ### Order 2 · crm-doc-download · sharepoint-download · old-kronos-reports {#order-2}
 status: planned
 size: M
-doc: 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:task-contract §3.1 · ref:guards-and-tests §3.7 · ref:frontend-backend-integration §3.6
+doc: 03c §Order 2 · crm-doc-download · sharepoint-download · old-kronos-reports · 03c §Recommended migration order (by risk / complexity / reuse) · 04 §Phase summary · ref:task-contract §3.1 · ref:guards-and-tests §3.7 · ref:frontend-backend-integration §3.6
 
 > read / download — iDocs PDFs; rosters; Time Detail PDFs. Single-system reads and downloads at low risk.
 
@@ -742,6 +758,9 @@ builds:
 needs:
 - phase-2
 - you: §b questionnaire for each workflow
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 2 written: `sharepoint` and `old-kronos` are 12-line unwired declarations with zero tasks; `crm` has two read tasks and no download. This row also owns the artifact-bytes ROUTE, which does not exist (`legacy-route-files`) and which orders 3, 5 and 7 also need
 
 #### Dashboard · wire the downloads {#order-2-dash}
 status: planned
@@ -762,6 +781,9 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | seven squares — the download viewer is this order's extra and it is a BUILD, not a wire: run detail's `captures` section is served by the BFF and placed by no panel
+
 ### Order 3 · the OCR pipeline workflow {#order-3}
 status: planned
 size: M
@@ -778,6 +800,9 @@ builds:
 needs:
 - p2-2h
 - you: §b questionnaire
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 3 written: the four 2h service stores are REAL (`extraction` 2 tasks, `ocr` 1, `normalization` 1, `roster` 1) and the pipeline workflow is not. Three hazards recorded — D189's byte path as a HARD cutover blocker, `CAPTURE_INTAKE_BINDINGS` empty because no module declares one (`workflow-registry.ts:194`), and `RunShapeSchema`'s `operation` arm that nothing mints
 
 #### Dashboard · wire the OCR pipeline {#order-3-dash}
 status: planned
@@ -800,10 +825,13 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | the heaviest wire sub-task and mostly a BUILD; `review` is in TAB_ORDER and `sectionsCompatible` (`domain/dashboard/run-detail.ts:309`) means `availableSections` can never return it, so the tab is structurally unreachable today
+
 ### Order 4 · oath-signature · emergency-contact {#order-4}
 status: planned
 size: L
-doc: 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §4.3 · ref:write-safety §3 · ref:write-safety §14
+doc: 03c §Order 4 · oath-signature · emergency-contact · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §4.3 · ref:write-safety §3 · ref:write-safety §14
 
 > OCR fan-out + light write — oath date rows; emergency-contact fill. Exercises the completion union (D11), approval gates (D5) and operation-member fan-out; the write is a bounded UCPath enter/fill.
 
@@ -816,6 +844,9 @@ builds:
 needs:
 - order-3
 - you: §b questionnaire; controlled-commit target approval
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 4 written: two independent firsts in one row — the first operation fan-out and the first non-separations controlled commit. The doc says not to collapse them: prove the fan-out with the write still dry, then prove the write on one member under ref write-safety §3.2's full contract
 
 #### Dashboard · wire oath-signature · emergency-contact {#order-4-dash}
 status: planned
@@ -838,10 +869,13 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | nine squares — the standard seven minus intake, plus Group People and its unservable panel body; the gate square carries §14.11's server-computed shape
+
 ### Order 5 · i9-check {#order-5}
 status: planned
 size: L
-doc: 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §7 · ref:execution-and-sessions §8 · ref:data-intake-and-edit-data §4.1
+doc: 03c §Order 5 · i9-check · 03c §Recommended migration order (by risk / complexity / reuse) · ref:dashboard-surfaces §4 · ref:dashboard-surfaces §7 · ref:execution-and-sessions §8 · ref:data-intake-and-edit-data §4.1
 
 > UCPath read + durable roster projection — verify I-9 packet, the master retention workbook. Operation coordinator + member enqueue + display-only rows, no external submit.
 
@@ -855,6 +889,9 @@ needs:
 - order-1
 - order-4
 - you: §b questionnaire
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 5 written: `src/infra/artifacts/xlsx-retention-sink.ts` already proves ref data-intake-and-edit-data §4.1's contract, D164 leaves it uncomposed, and its own header names THIS migration as the owner of the operator-facing column layout. A scale proof with no external submit
 
 #### Dashboard · wire i9-check {#order-5-dash}
 status: planned
@@ -875,10 +912,13 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | seven squares — six standard (no gate, no intake) plus retention status and the export control; it reuses order 4's Group People rather than rebuilding it
+
 ### Order 6 · work-study · kronos-pay-rule {#order-6}
 status: planned
 size: L
-doc: 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §2.2 · ref:write-safety §5 · ref:task-contract §2.9 · ref:data-intake-and-edit-data §1
+doc: 03c §Order 6 · work-study · kronos-pay-rule · 03c §Recommended migration order (by risk / complexity / reuse) · ref:write-safety §2.2 · ref:write-safety §5 · ref:task-contract §2.9 · ref:data-intake-and-edit-data §1
 
 > **first real writes** — PayPath pool/comp; UKG pay rules. Small, isolated workflow-specific production commits on the proven transaction kernel.
 
@@ -892,6 +932,9 @@ needs:
 - sep-1
 - p2-proof
 - you: §b questionnaire; controlled-commit target approval
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 6 written: `new-kronos` has a driver, a session provider and two READ tasks from separations chunk 1 (D196) and no write path. The canonical-EID gate is EVIDENCE — `EidSchema` is `/^10\d{6}$/` at `src/domain/ids.ts:184` and widening it is a wrong person who looks right
 
 #### Dashboard · wire work-study · kronos-pay-rule {#order-6-dash}
 status: planned
@@ -912,10 +955,13 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | eight squares — seven standard minus the gate, plus the intake grid's constants entry and unbind arm (D172/D173); the intake workspace itself is 2i-E3 and built
+
 ### Order 7 · oath-upload · onbase {#order-7}
 status: planned
 size: L
-doc: 03c §Recommended migration order (by risk / complexity / reuse) · 03c §Live probe status (the design assumptions still unproven) · ref:write-safety §2.2 · ref:write-safety §4.2 · ref:dashboard-surfaces §4.5 · ref:guards-and-tests §3.5 · ref:task-contract §9.2
+doc: 03c §Order 7 · oath-upload · onbase · 03c §Recommended migration order (by risk / complexity / reuse) · 03c §Live probe status (the design assumptions still unproven) · ref:write-safety §2.2 · ref:write-safety §4.2 · ref:dashboard-surfaces §4.5 · ref:guards-and-tests §3.5 · ref:task-contract §9.2
 
 > write-heavy — ServiceNow ticket + PDF; OnBase document import. Prove ServiceNow `receipt`; resolve OnBase OQ2 (`upload-verify` vs `unverifiableByPage`); oath-upload ports the born-at-upload fence.
 
@@ -930,6 +976,9 @@ needs:
 - order-6
 - you: name a ServiceNow live-probe target
 - you: name an OnBase probe target (none exists today)
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 7 written: `servicenow` and `onbase` are 12-line unwired declarations with zero tasks, and TWO of this row's blockers need the operator, not an agent. `unverifiableByPage` would change the WORKFLOW (the operator confirms every upload), not just the assertion
 
 #### Dashboard · wire oath-upload · onbase {#order-7-dash}
 status: planned
@@ -950,10 +999,13 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | seven squares — six standard plus the two new receipt arms; if OnBase lands on `unverifiableByPage` the receipt square grows an always-park presentation instead of a verify
+
 ### Order 9 · onboarding {#order-9}
 status: planned
 size: XL
-doc: 03c §Recommended migration order (by risk / complexity / reuse) · ref:workflow-model §3 · ref:data-intake-and-edit-data §4 · ref:write-safety §5 · ref:write-safety §14
+doc: 03c §Order 9 · onboarding · 03c §Recommended migration order (by risk / complexity / reuse) · ref:workflow-model §3 · ref:data-intake-and-edit-data §4 · ref:write-safety §5 · ref:write-safety §14
 
 > write-heavy — the real hire transaction. The duplicate-person incident; last, highest-stakes, most reuse of everything below it.
 
@@ -967,6 +1019,9 @@ needs:
 - order-8
 - order-5
 - you: §b questionnaire; a hire canary you approve
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Order 9 written: `probeVerdictSchema` has four arms at `src/domain/write-safety-primitives.ts:50` and every permanent key in the tree is EID-derived — a hire CREATES the identity, so the widening is a real schema question, not a naming one. Its canary is the hardest target in the program
 
 #### Dashboard · wire onboarding {#order-9-dash}
 status: planned
@@ -988,6 +1043,9 @@ builds:
 needs:
 - dash-defaults
 
+log:
+- 2026-08-20 | docs-cohesion 03c | eight squares — the only sub-task that fills every square in the template, which makes it `{#dash-defaults}`'s own proof
+
 ### Cross-cutting Phase 3 capabilities (no single order) {#cross-cutting}
 status: planned
 doc: 03c §Cross-cutting Phase 3 capabilities (no single order) · 03c §Non-workflow capability closure inventory (D58) · ref:clock-config-secrets §3 · ref:clock-config-secrets §6.2 · ref:frontend-backend-integration §3.4 · ref:frontend-backend-integration §3.6 · ref:data-intake-and-edit-data §4.1 · ref:operator-trust §8
@@ -1003,6 +1061,10 @@ builds:
 
 needs:
 - phase-3
+
+log:
+- 2026-08-20 | docs-cohesion 03c | doc 03c §Cross-cutting written against the code and the five capability reasons: `settings.tsx` is read-only while the command union already carries `apply-settings`; no `/api/search` (deliberate — two runs is not a corpus); no screenshots routes and no artifact-bytes route; three legacy Excel writers and zero here; no setup script. None of the five is started
+
 ## The X → Y traceback {#deferred}
 phase: Deferred
 status: planned
