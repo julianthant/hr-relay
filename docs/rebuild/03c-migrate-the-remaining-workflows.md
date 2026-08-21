@@ -49,6 +49,94 @@ and (2) its **T1/T2 PROOF** lines: a structural fixture scenario and a live dry-
 workflow, and a dashboard scenario for the surfaces it wired (`ref guards-and-tests` §10.11/§10.12).
 Neither is optional and neither is 03a's job.
 
+## The seven-step migration playbook
+
+This is the loop, written as the checklist an agent follows for ONE workflow. It is the same loop
+separations ran (doc 03b) and every order section below points back here rather than restating it.
+Steps run in order; each names the artefact it produces and the gate that proves it. A step whose
+gate is red is not a step you pass with a note.
+
+**1 · The §b questionnaire — asked and answered BEFORE any code.** Charter §b: *cover everything
+for each workflow as we migrate*. Create `docs/migrations/<workflow>.md`, embed the 12-item
+template (§The §b migration questionnaire below) and answer it WITH the operator.
+`docs/migrations/separations.md` §1 is the worked shape: every question answered in prose, each
+answer carrying the decision it forces and the thing it refuses. Unanswerable questions become
+`you:` lines on the workflow's tree node, not assumptions. **Artefact:** the migration doc's §1.
+**Gate:** the operator's answers, recorded — a `you:` line stays open until they give one.
+
+**2 · Author.** Reuse store tasks peer-to-peer (charter §1); add new ones as reusable bases and
+name the workflow-specific customization (charter §3/§8); reuse or add canonical UI ids and typed
+driver operations FIRST, then write strict contracts → scenarios → impls → pure-logic unit tests
+(`fakeCtx`) → descriptor/result/delegation policies, in `ref guards-and-tests` §6's red→green order.
+Classify every task REUSE / CUSTOMIZE / BUILD against `STORES.md` before writing one — the store
+catalog is the reuse ledger, and a task that already exists under another name is the single
+cheapest thing to get wrong. **Artefacts:** `src/workflows/<id>/descriptor.ts` (bundle-safe: zod,
+`src/domain/**`, audited `src/base/**` only — D106) + `module.ts` (server composition) + the tuple
+entry in `src/control/workflow-registry.ts` + any new `src/stores/<system>/tasks/*.ts`; a contract
+no store implements yet goes into `config/pending-impl-bindings.json` in the SAME commit (D107,
+checked both directions). **Gate:** `npm run build:manifest` then `descriptor-coverage`.
+
+**3 · The guards fire.** Strict boundary schemas, the task/driver boundary, scenario coverage,
+transaction pairing, subject-before-fence, dry-run-commit-free, write safety + mutation capability,
+permanent-key dedupe, command/delegation, provenance, graph/result typing, evidence, stable
+identity. **Gate:** `npm run typecheck && npm run lint && npm run test:coverage` (D191 — the
+per-commit gate; `test:coverage` is a strict superset of the old `test` + `test:architecture` pair).
+`ref guards-and-tests` §9 is the worked example of adding one submit-bearing workflow through this
+guard set.
+
+**4 · Live selector re-verification, then the live dry run.** Live access is pre-authorized and
+always available (CLAUDE.md's standing authorization) — never ask. Legacy change accounting is
+RETIRED (D150): the protection against a stale ported selector is re-verifying it against the LIVE
+page at this migration, not diffing legacy's copy. Then run the workflow with `dryRun=true` against
+every real system it touches and assert that prepare previews exist while commit spans, write
+intents and mutation helpers are ABSENT. Write the dry run down as a scenario rather than typing it
+again: `tests/scenario/workflows/<id>/dry-run.scenario.ts` is the checkpoint manifest
+(`ref guards-and-tests` §10.4) — nodes reached and nodes excluded, the `run_checkpoints` rows keyed
+`(workflow, item, node, attempt, claimGeneration?)` (D214/D221), the `gate_results` row if it gates,
+`write_intents` / `write_attempts` / `durable_outbox` deltas of **zero**, the receipt shape, the
+preview terminal. Register its canary subjects by LABEL in `config/test-subjects.json`
+(`ref guards-and-tests` §10.5) — sensitive values stay in `.env` behind `src/domain/secrets.ts`, and
+a missing subject reports `blocked: needs <label>`, never `failed`, because a canary decays
+(separations §9.16: doc 4524's action was completed between two passes and the read that made it a
+candidate stopped working). **Gate:** the dry run green, its manifest committed, its result recorded.
+
+**5 · The controlled-commit proof — write workflows only.** Exercise each new commit / probe /
+verify against a configured test instance or a deliberately harmless, operator-approved canary,
+under `ref write-safety` §3.2's contract: dry run with zero durable rows, a forced subject mismatch
+refused with zero fence and zero click, ONE controlled commit whose proof is a reload read-back plus
+the outbox rows plus the terminal span, and an idempotent re-run answering `already-present` with no
+browser. **If no safe target exists, rebuild-ready is BLOCKED** — dry run alone cannot prove
+landing, recovery or dedupe, and converting a green dry run into a write-safety claim is the one
+substitution this program forbids. The §b questionnaire recorded the target, the cleanup /
+reversibility, the expected proof and the stop condition before this step ran. **Gate:** the
+recorded proof in the migration doc, with the real document / transaction ids and the restore.
+
+**6 · Mark rebuild-ready — do NOT go live (D89).** Record the workflow's native evidence and its
+capability closure; leave production routing on legacy `src`. There is no workflow-scoped flip, no
+legacy proxy, no engine generation and no mixed-engine production: all workflows switch together at
+the single cutover gate (doc 05). **Artefacts:** the order node's `builds:` squares ticked with
+commits cited; the affected `config/legacy-capabilities.json` entries advanced from `open` to
+`native` / `replaced` / `retired` **with evidence** (a wrong `native` is worse than an honest
+`open` — D184). **Gate:** `legacy-capability-disposition`.
+
+**7 · Wire the dashboard, then close the loop.** The `Dashboard · wire <workflow>` sub-task is part
+of the migration, not a follow-up. Its squares are the seven from `ref frontend-backend-integration`
+§5.1.1–§5.1.7 — **run modal** (§5.1.1: the descriptor's `surfaces.inputRun`, its declared examples,
+the start plan), **queue row** (§5.1.2: subject title, workflow class, linked-run chips, per-row
+actions), **run detail** (§5.1.3: the descriptor's timeline categories, the receipt, the Context
+rail's step · direction · bound), **gate ceremony** (§5.1.4, only if it gates: the approval shape
+the SERVER computes, plus the parked-write panel beside it), **archive · activity · explorer**
+(§5.1.5: ledger presentation declarations for its commits, its cross-tab category, its descriptor
+prose), **notifications** (§5.1.6: park / needs-you triggers into the durable inbox), **intake and
+capture** (§5.1.7, only where it consumes a spreadsheet or a photograph) — plus the workflow's own
+extra square where it is the first to need one, and **`- [ ] PROOF T2` a dashboard scenario for the
+wired surfaces** (`ref guards-and-tests` §10.12). Then close out: any failure discovered becomes a
+regression scenario plus a structured knowledge/fix record (stale knowledge is SUPERSEDED, never
+appended beside the correction); the status blocks in this doc are ticked with commits cited; a
+`log:` line lands on the tree node; the dated line goes into `docs/migrations/<workflow>.md` — and
+that line, not a green suite, is what a `PROOF` tick on the tree is allowed to cite
+(`ref guards-and-tests` §10.6). Update the nearest `CLAUDE.md` and the owning reference doc.
+
 ## Recommended migration order (by risk / complexity / reuse)
 
 _Moved from `history/superseded/2026-08-20-master-plan-dissolved.md` §3.3 — its order-8 prerequisite block moved to `00-design-the-foundation.md` §ALWAYS-GATE identity approval, because D77 pulled that design into Phase 0 on 2026-08-20 (3b); this is the as-written record, the step-5 rewrite re-verifies it._
