@@ -528,53 +528,85 @@ OS reports that PID absent, never because an age threshold elapsed (guard
 ### 2.4 Error taxonomy
 
 ```ts
-export class TaskError extends Error {
-  readonly taskId: string;
-  readonly code: string;          // ∈ the task's declared errorCodes, or "unhandled"
-  readonly subject?: string;      // the offending value: EID, doc id, filename, selector intent
-  readonly transient: boolean;    // retry eligibility — false unless proven transient
-  readonly decoratedBy?: string;  // set when a before/after hook (§4) threw
-  /** Secondary failures from onError hooks — NEVER replaces the base error (D15). */
-  readonly hookErrors?: readonly { hook: string; error: unknown }[];
+// src/base/errors.ts — as built
+export class TaskError<Code extends string = string> extends Error {
+  readonly taskId: TaskId;
+  readonly code: Code;                  // ∈ the task's declared errorCodes, or "unhandled"
+  readonly subject: string | undefined; // the offending value: EID, doc id, filename, intent
+  readonly transient: boolean;          // retry eligibility — false unless the throw site proves it
 }
+export function wrapUnhandledTaskError(taskId, error): TaskError<"unhandled">;
 ```
 
-- The kernel wraps any non-`TaskError` escaping `run` as `code:"unhandled"`, `transient:false`,
-  preserving `cause`. Nothing escapes without a task name attached — a trace line alone identifies
-  the broken task (charter target #1).
+- The message form is `[<taskId>] <code>: <message>`, composed in the constructor and pinned by
+  unit test. Nothing escapes a task without a task name attached — a trace line alone identifies the
+  broken task (charter target #1).
+- `wrapUnhandledTaskError` wraps anything non-`TaskError` escaping `run` as `code: "unhandled"`,
+  `transient: false`, preserving `cause`, and preserving the message when the thrown value was an
+  `Error` (a non-`Error` throw becomes "task threw a non-Error value", which is itself the
+  diagnosis).
 - `instanceof`/`code` branching replaces today's ad-hoc `WorkflowError` subclasses; the two real
   branching cases (`EmplIdNotRecognizedError`, `RetryPageError`) become declared codes.
-- Message contract is pinned by a unit test: `[<taskId>] <code>: <message>`.
-- **The base TaskError always propagates.** A failing `onError` hook attaches to `hookErrors`;
-  it can never replace `"submit-failed"` with `"decorator-failed"` (§4.1, pinned by test).
+- `taskFailer(contract)` produces the `ctx.fail` bound to that contract's literal code tuple, which
+  is what makes an undeclared code a compile error.
+- **The `decoratedBy` and `hookErrors` fields this section described until 2026-08-21 do not
+  exist.** They belong to §4's decoration model, which has no module in `src/` — see §4. The rule
+  they encode (a hook failure never replaces the base error) is still the right rule and is stated
+  where it will be built, not here as though it shipped.
 
 ### 2.5 Identity & naming scheme
 
-- `id = "<system>/<verb-object>"`, kebab-case (D2): `ucpath/search-person-org`,
-  `onbase/upload-document`, `crm/read-onboarding-record`,
-  `extraction/extract-pdf-fields`, `ocr/read-form-pages`, `roster/match-spreadsheet`.
-- Verb prefixes are meaningful: `read-`/`search-`/`list-`/`extract-` ⇒ `effect:"read"`;
-  `fill-`/`stage-` ⇒ `effect:"prepare"`; `save-`/`submit-`/`upload-`/`create-`/`update-`/`delete-`
-  ⇒ `effect:"commit"`. `fill-and-submit-` is forbidden: it must become a transaction pair.
-  A ratchet test (§8) enforces verb↔effect agreement so a misdeclared effect can't hide.
-- A codegen'd `KnownTaskId` union — derived from the **contract barrels**
-  (`domain/contracts/*/index.ts`) at build time, like `schemas:export` — gives descriptor
-  projections and the dashboard a closed type to key on. Bundle-safe by construction: it is
-  generated from files that themselves import only zod.
+- `id = "<store>/<verb-object>"`, kebab-case (D2): `ucpath/search-person-org`,
+  `crm/read-onboarding-record`, `extraction/extract-spreadsheet`, `roster/match-spreadsheet`,
+  `workflow:separations/match-identity`. ONE regex in `src/domain/ids.ts` pins the whole grammar
+  for all thirteen system namespaces plus `workflow:<id>`, and `taskId(...)` parses it while
+  keeping the literal in the type.
+- **Verb prefixes are enforced, and the read list is wider than a first reading suggests.**
+  `EFFECT_VERBS` (`src/domain/contracts/base.ts`) is the whole table:
+
+  | effect | verbs |
+  |---|---|
+  | `read` | `read-` `search-` `list-` `extract-` `match-` `verify-` |
+  | `prepare` | `fill-` `stage-` |
+  | `commit` | `save-` `submit-` `upload-` `create-` `update-` `delete-` |
+
+  `match-` and `verify-` are READ verbs on purpose: a matcher is a pure fold over an earlier read
+  (`workflow:separations/match-identity`), and a write's **verifier** is a read of the page after
+  the fact (`ucpath/verify-termination`) — ref write-safety's completion arm requires exactly that,
+  and `assertReadTaskReference` refuses a probe or verifier whose verb is not on the read line.
+  `fill-and-submit-` is impossible: it is not a verb, and a task cannot carry two effects.
+- **`KnownTaskId` codegen was never built.** §8 row 2 and the old text here promised a generated
+  union derived from contract barrels; there are no barrels (§2.2) and no generator. What holds the
+  line instead is structural: `TaskId` is branded, `taskId(...)` is the only mint, `LiteralTaskId`
+  keeps the literal so `NamespaceOf<C>` resolves a store from a contract, and every projection
+  (descriptor, dashboard index, corpus) is derived from the registered stores rather than a
+  hand-kept list. What is genuinely missing is the ratchet that would forbid a task-id STRING
+  LITERAL outside contracts/stores/descriptors; nothing in the tree carries one today, and nothing
+  would fail if one appeared.
 
 ### 2.6 The task boundary — tasks are bounded; waits are not tasks (D5)
 
 **A task is a run-to-completion Promise with bounded duration** (minutes, not hours). The executor
-races every task against the immutable run snapshot's `timeouts.taskMs` and the run AbortSignal;
-transactions additionally have `timeouts.transactionMs`. Browser timeout poisons/releases the
-lease; service SDK/file operations must honor the same signal. A timeout before a fence may restart
-preflight; after a fence it enters ref write-safety recovery and is never a generic retry. The things
-today's code does that do NOT fit that shape are explicitly **not tasks**:
+races every task invocation against an injected monotonic deadline and the run AbortSignal:
+`taskDeadlineMs` is a REQUIRED dependency of the worker loop with no default, composed from the
+run's immutable config snapshot (`timeouts.taskMs`, 180 s by default —
+`src/server/worker/compose.ts`), and both invocation arms race the same deadline controller so a
+driver that ignores its signal still lands terminal `failed` with its session poison-closed (guard
+`bounded-task-deadline`, ref execution-and-sessions §5.5). Acquiring the driver has its own,
+shorter bound — `timeouts.sessionAcquireMs`, 60 s (D125). `timeouts.transactionMs` (300 s) is
+declared in the config schema and **read by nothing**: a transaction's beats are bounded by the
+per-task deadline and by the node's own `probeToFenceMaxMs`, so the leaf is either an unwired
+intention or dead config, and it is recorded here rather than described as enforcement.
+
+A timeout before a fence may restart preflight; after a fence it enters ref write-safety recovery
+and is never a generic retry. The things today's code does that do NOT fit the bounded shape are
+explicitly **not tasks**:
 
 - **Long waits — OCR approval, child-signature watching, external signals** (oath-upload's
   `subscribeToApproval` park + hours-long wait-signatures watch) are **gate nodes** declared in the
-  descriptor and owned by **ref workflow-model's run-state machine**; their wire form is ref dashboard-surfaces's
-  `gate.opened`/`gate.resolved` events. A task never contains an unbounded poll.
+  descriptor and owned by **ref workflow-model's run-state machine**; their wire form is ref
+  dashboard-surfaces's `gate.opened`/`gate.resolved` events. A task never contains an unbounded
+  poll.
 - **Session policy at a park (kernel rule, stated here because stores implement it):** a parked
   run **RELEASES its browser sessions** — holding a Duo'd UCPath page across an overnight approval
   wastes a browser and rots the session anyway. On resume the kernel reacquires via the store's
@@ -585,16 +617,27 @@ today's code does that do NOT fit that shape are explicitly **not tasks**:
   ceremony hands-off inside the session provider's `login`, for ALL runs — production included.
   There is no phone-approval poll anywhere in the new design; `login` ends by succeeding or
   throwing within seconds and never parks the run. (`duo-poll.ts` and its manual-approval wait do
-  not port.)
+  not port.) The one thing that DOES serialize across workers is the Duo ceremony itself — one
+  credential, one server-side signature counter (D243/D244) — which is why the parallel-run work
+  carries a durable per-credential ceremony lease (`{#duo-lease}`, owner ref
+  execution-and-sessions). That is a session concern, not a task one: no task waits on it.
 
 ---
 
 ### 2.7 The authoring floor — three declaration tiers (D79f, 2026-07-24)
 
-**The problem this solves.** As written across the reference specs, every task owes roughly ten artifacts:
-input/output schemas, `errorCodes`, freshness, provenance classification, subject spec, a mandatory
-`example`, a non-empty scenario tuple, naming compliance — and a commit adds `writeSafety` plus
-crash/subject scenarios. For a UCPath commit that is exactly right. For a pure transform in a
+<!-- roadmap: phase0-size-model -->
+<!-- roadmap-status: phase0-size-model -->
+- [x] the tier is DERIVED, never declared: `assertCommon` requires a non-empty `scenarios` list for every non-`workflow:` namespace, and the effect decides everything else — a light task cannot opt into a cheaper floor because nothing declares a floor (`src/domain/contracts/base.ts`)
+- [x] the floor held through 39 contracts across 10 namespaces without a per-task exemption
+- [ ] `scaffold new-task` / `scaffold new-workflow` — ratified as part of the base with D79f and never built; there is no generator in `scripts/` and no `scaffold` script in `package.json`
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified against src/domain/contracts/base.ts (the tier derivation) and package.json/scripts (no generator); the missing generators are the same absence `{#phase0-size-model}`'s own log records
+<!-- /roadmap-status -->
+
+**The problem this solves.** As written across the reference specs, every task owes roughly ten
+artifacts: input/output schemas, `errorCodes`, freshness, provenance classification, subject spec, a
+mandatory `example`, a non-empty scenario tuple, naming compliance — and a commit adds `writeSafety`
+plus crash/subject scenarios. For a UCPath commit that is exactly right. For a pure transform in a
 workflow mini-store — a date-window calculation, a roster row projection — it is ceremony that
 makes workflows #2–#10 unpleasant to write, and unpleasant-to-write is how a codebase acquires
 copy-paste.
@@ -607,19 +650,22 @@ copy-paste.
 | **Standard** | browser `read` tasks | Light + freshness/provenance classification + subject spec + `errorCodes` + a happy scenario and its no-match/empty sibling | — |
 | **Full** | every `prepare`/`commit` (i.e. every task that can touch a real HR system) | Standard + `writeSafety` (completion arm + proof schema + idempotency) + probe policy + subject matcher + crash/mismatch/proof-unknown scenarios | nothing — a commit pays full fare, always |
 
-The tier is **derived, never declared**: it follows from `effect` + store kind, so a task cannot
-opt itself into a cheaper tier. A guard asserts the derivation rather than trusting an author.
+The tier is **derived, never declared**: it follows from `effect` + store kind, so a task cannot opt
+itself into a cheaper tier. **As built, the derivation is the factory's own refusals rather than a
+separate audit** — `assertCommon` requires scenarios for every namespace except `workflow:`, reads
+require `freshness` and `provenance` in the type AND at runtime, commits require the whole
+`writeSafety` round trip, and `defineTask` refuses a headless task that is not a sessionless read.
 Promoting a light task later (a second workflow wants it, so it moves to a system store) raises its
 tier automatically and fails the build until the additional artifacts exist — which is the correct
 moment to pay, not before.
 
-**`scaffold new-task` / `scaffold new-workflow` are part of the base.** Nothing in the reference specs
-previously promised a generator, and the read-only explorer (D55) does not emit code. The
-declaration toil is only acceptable if the boilerplate is *generated* — contract skeleton, impl
-stub, example, scenario stubs, and store registration, each with `TODO` markers that fail their
-guards until filled. This is the concrete answer to "will workflows #2–#10 be pleasant to write."
-
----
+**The scaffold generators D79f ratified with it were never built.** `scaffold new-task` and
+`scaffold new-workflow` — contract skeleton, impl stub, example, scenario stubs and store
+registration, each with `TODO` markers failing their guards until filled — do not exist in
+`scripts/` and have no `package.json` script. The declaration toil is therefore still paid by hand,
+which is a live cost against "will workflows #2–#10 be pleasant to write" and belongs on whoever
+schedules the next store. Nine stores' worth of evidence says the floor itself held; nothing says
+the toil was acceptable, because nobody measured it.
 
 ### 2.8 The rich-extraction convention — one task per PAGE VISIT (D194, ratified 2026-08-12)
 
