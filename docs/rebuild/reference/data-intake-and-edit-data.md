@@ -518,36 +518,46 @@ satisfy the very schema the workflow validates with. The descriptor's source clo
 `src/domain/contracts/extraction/`; impls in `src/stores/extraction/tasks/` (ref task-contract §3.4).
 
 ```ts
-// src/domain/contracts/extraction/parse-csv.ts   (effect: "read")
-export const ParseCsv = defineTaskContract({
-  id: "extraction/parse-csv",
-  title: "Parse CSV/XLSX into rows + detected columns",
+// src/domain/contracts/extraction/extract-spreadsheet.ts:70-90 — as built (D149)
+export const ExtractSpreadsheet = defineTaskContract({
+  id: taskId("extraction/extract-spreadsheet"),
+  title: "Parsing spreadsheet",
   effect: "read",
-  provenance: { default: "live" }, // observes these content-addressed bytes now
-  freshness: { defaultMaxAgeMs: Infinity }, // content-addressed bytes do not age;
-                                       // justified: re-parsing the same bytes is deterministic (grep ratchet).
-  subject: { kind: "none", reason: "deterministic local artifact parsing" },
-  scenarios: ["intake/csv/happy", "intake/csv/no-header", "intake/csv/duplicate-headers",
-              "intake/csv/unreadable"],
-  input:  z.strictObject({ fileRef: FileRefSchema, sheet: z.string().min(1).optional() }),
-  output: z.strictObject({
-    headerRowIndex: z.number().int().nullable(), // null means operator selection required
-    headerCandidates: z.array(z.strictObject({ rowIndex:z.number().int(), cells:z.array(z.string()),
-                                               confidence:z.number().min(0).max(1) })),
-    columns: z.array(z.strictObject({ header: z.string(), index: z.number().int(),
-                                      samples: z.array(z.string()) })), // sample values for the grid
-    rows:    z.array(z.array(z.string())),                          // raw cell matrix, header-relative
-  }),
-  errorCodes: ["unreadable-file", "empty-sheet", "invalid-header-selection"],
-  example: { /* … */ },
+  provenance: { default: "live" },   // observes these content-addressed bytes now
+  freshness: {
+    defaultMaxAgeMs: Number.POSITIVE_INFINITY,  // the artifact id IS its digest
+    defaultOverride: "forbidden",               // so an override could only lie
+  },
+  artifacts: "content-addressed",
+  subject: { kind: "none", reason: "deterministic local artifact parsing resolves no person" },
+  scenarios: ["intake/spreadsheet/happy", "intake/spreadsheet/no-header",
+              "intake/spreadsheet/duplicate-headers", "intake/spreadsheet/unreadable"],
+  input:  ExtractSpreadsheetInputSchema,   // { artifact, sheet?, headerRowIndex? }
+  output: ExtractSpreadsheetOutputSchema,  // {
+    //   sheets, sheet,                       every sheet the workbook holds, and the one read
+    //   headerRowIndex: … .nullable(),       null ⇒ operator selection required
+    //   headerCandidates: ServedHeaderCandidate[],
+    //   columns: DetectedColumn[],           STABLE ids, not positions (§2.1) — [] while null
+    //   rows: string[][],                    header-relative — [] while null
+    //   skippedRows,                         the preamble above the header, so the grid can show it
+    // }
+  errorCodes: ["unreadable-file", "empty-sheet", "unknown-sheet", "invalid-header-selection"],
 });
-// parse-pdf-fields: same shape for a fielded PDF (onboarding's extraction step ports here).
 ```
 
-- **Header discovery does not require a known alias.** The first 20 rows are ranked using generic
+Two deltas from the design sketch this section was drafted as, both recorded where they were
+decided. The task is `extraction/extract-spreadsheet`, not `parse-csv`; and its sibling is
+`extraction/extract-pdf-pages` — a page RASTERIZER — not `parse-pdf-fields`, because no legacy code
+reads an AcroForm anywhere (§3.2, D152). `columns` carries `DetectedColumn`, so the grid receives
+`sourceColumnId` from the extraction itself and never binds by position.
+
+- **Header discovery does not require a known alias.** The first `HEADER_SCAN_DEPTH` = 20 rows
+  (`src/domain/intake/header-discovery.ts:85`) are ranked using generic
   structure (non-empty cell density, mostly-string cells, uniqueness, data rows beneath). Existing
-  recognizable-header logic contributes confidence but is not a precondition. High confidence may
-  preselect visibly; otherwise `headerRowIndex:null` and the operator chooses from candidate rows.
+  recognizable-header logic contributes confidence but is not a precondition. A candidate
+  preselects visibly only when it clears `HEADER_PRESELECT_FLOOR` = 0.7 AND beats the runner-up by
+  `HEADER_PRESELECT_MARGIN` = 0.1 (`:87-91`) — two indistinguishable candidates are not a
+  preselection; otherwise `headerRowIndex:null` and the operator chooses from candidate rows.
   The chosen row is re-parsed and validated before mapping.
 - **Fail-loud stays.** Empty/unreadable sheets throw. If no plausible row exists, the UI requires an
   explicit row selection or rejects it; novel headings never abort before the mapping grid.
