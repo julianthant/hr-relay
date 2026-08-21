@@ -191,76 +191,106 @@ means something beside the thing it replaced. Nothing here describes this reposi
 
 ## 2. The Clock
 
-**One injectable interface is the sole permitted site of `new Date()`/`Date.now()` in the rebuild
-repo's `src/`.**
-Every timestamp in the rebuilt system—span `ts`, checkpoint fact `observedAt`/`correctedAt`, trace-id time-of-day,
-write-safety ledger events (ref write-safety), fiscal-year lookups — reads through it.
+<!-- roadmap: p1-base -->
+<!-- roadmap: p1-authority -->
+
+<!-- roadmap-status: p1-base -->
+- [x] `src/domain/clock.ts` is the sole time source and the sole permitted site of `new Date()` / `Date.now()` / `performance.now()` — 66 lines, `systemClock` frozen at module load, reached by 71 modules under `src/`
+- [x] `clock-single-source` is an AST walk with an EMPTY allowlist, so new `src` code has zero tolerance and an alias, a destructure, a `globalThis.` hop or a `node:perf_hooks` import cannot slip past a grep (`tests/unit/architecture/clock-single-source.test.ts`)
+- [x] `manual-clock-test-only` bans the IDENTIFIER `manualClock` anywhere in `src/**` but `clock.ts` — import, call, re-export and dynamic property access all fail
+- [x] one resolver implements `env > settings.json > default` exactly once, with per-leaf provenance and a canonical fingerprint (§3; `src/domain/config/resolve.ts`)
+- [x] one secrets accessor covers environment secrets, registered key FAMILIES, the local ngrok source and the Duo credential file; `secrets-single-source` and `no-secret-values-in-logs` both carry EMPTY allowlists (§6)
+- [x] closed per-system route schemas, explicit prod/test instance refusal, current-fiscal-year validation, the runtime environment/dependency registries and the strict preflight report schemas are all implemented and bidirectionally audited (§3 · §4 · §5 · §6.2)
+- [ ] the `settings.json` layer of the precedence has NO producer — both composition roots call `resolveConfigWithProvenance(env, {}, clock)`, so nothing in `src/` reads a settings file (§3)
+- [ ] `SettingsOverrideSchema.browser` is accepted and then dropped by `mergeSettings` (§3) — a settings-supplied `browser.headless` is silently ignored
+> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/clock.ts`, `src/domain/config/{resolve,schema,runtime-paths,fiscal-year,instance}.ts`, `src/domain/secrets.ts` and the four guards; left: the settings producer and the dropped `browser` group, both named in §3
+<!-- /roadmap-status -->
+
+**One injectable interface is the sole permitted site of `new Date()` / `Date.now()` /
+`performance.now()` in `src/`.** Every timestamp the system produces — span `ts`, checkpoint fact
+`observedAt`/`correctedAt`, trace-id time-of-day, write-safety ledger events, fiscal-year lookups —
+reads through it.
 
 ```ts
-// src/domain/clock.ts — the ONLY file in the rebuild repo allowed to call new Date()/Date.now()
+// src/domain/clock.ts — the ONLY file in this repository allowed to read the host clock
 export interface Clock {
-  /** Current wall-clock instant; every calendar/serialized-time helper derives from this. */
   now(): Date;
   nowMs(): number;
   /** Process-monotonic milliseconds for elapsed budgets/durations; never serialized as an instant. */
   monotonicMs(): number;
-  /** Local calendar day, YYYY-MM-DD — tracker partitioning, one impl (replaces 4 ad-hoc copies). */
+  /** Local calendar day, YYYY-MM-DD — tracker partitioning, one impl. */
   todayLocal(): string;
-  /** HHMMSS local time-of-day — feeds buildTraceId(at); ported verbatim from queue-trace-id.ts. */
+  /** HHMMSS local time-of-day — feeds buildTraceId(at). */
   timeOfDayCode(at?: Date): string;
-  /**
-   * UC fiscal year containing `at` (default now()). UC's fiscal year runs Jul 1–Jun 30 and is
-   * NAMED by its ending calendar year — Jul 1 2026–Jun 30 2027 is "FY2027". Pure arithmetic:
-   * `at.getMonth() >= 6 /* Jul */ ? at.getFullYear() + 1 : at.getFullYear()`.
-   */
+  /** UC fiscal year containing `at`: Jul 1–Jun 30, NAMED by its ending calendar year. */
   fiscalYear(at?: Date): number;
 }
 
-/** Production Clock — reads the OS. The only place `new Date()`/`Date.now()` actually execute. */
-export const systemClock: Clock = {
-  now: () => new Date(),
-  nowMs: () => Date.now(),
-  monotonicMs: () => performance.now(),
-  todayLocal() { return localDatePart(this.now()); },
-  timeOfDayCode(at = this.now()) { return formatTraceTimestamp(at); },  // ported from queue-trace-id.ts
-  fiscalYear(at = this.now()) { return at.getMonth() >= 6 ? at.getFullYear() + 1 : at.getFullYear(); },
-};
+export interface TestClock extends Clock {
+  advanceWall(ms: number): void;
+  advanceMonotonic(ms: number): void;
+  setWall(at: Date): void;
+}
 
-/** Deterministic test Clock — wall and monotonic values are independently advanceable so skew and
- * elapsed-budget behavior can be tested without sleeping. */
-export function manualClock(at: Date, monotonicMs = 0): TestClock { /* advanceWall/advanceMonotonic */ }
+export const systemClock: Clock = Object.freeze({ /* new Date() / Date.now() / performance.now() */ });
+export function manualClock(at: Date, initialMonotonicMs = 0): TestClock { /* … */ }
 ```
 
-**Composition with existing contracts (nothing else changes shape — only the `now` input):**
+Three shape choices are load-bearing. `systemClock` is **frozen at module load**, so a test cannot
+monkey-patch the production clock in place and leave it patched for the next file. `TestClock`
+advances wall and monotonic time **independently**, which is what makes skew and elapsed-budget
+behaviour testable without sleeping. And `localDatePart` / `formatTraceTimestamp` are exported pure
+functions taking a `Date`, so the two implementations (`systemClock` and `manualClock`) share one
+formatter rather than agreeing by coincidence.
 
-- **Ref workflow-model §5.5 freshness walk.** `now − fact.observedAt > fieldLimit` reads `clock.now()`. This
-  makes the freshness *safety* computation unit-testable for the first time — a `manualClock` test
-  can assert the exact boundary (`maxAgeMs` exactly exceeded vs. not) without waiting real time.
-- **Ref dashboard-surfaces spans.** The executor holds one `Clock` instance; every `SpanEvent.ts` (`Base.ts: string`
-  in ref dashboard-surfaces §2) is `clock.now().toISOString()`, stamped once at emission, never re-derived.
-- **Trace ids.** `buildTraceId({ code, runId, at: clock.now() })` — the function itself
-  (`queue-trace-id.ts`) ports verbatim (it was already pure); only the caller changes from
-  `at: new Date()` to `at: clock.now()`.
-- **Ref write-safety write-safety ledger.** `write.attempting`/`write.committed` timestamps and the crash-
-  window fence read `clock.now()` — same executor-held instance as spans, so a fence and its span
-  are never timestamped by two different clock reads.
-- **Ref write-safety prewrite age.** `probeToFenceMaxMs` uses `clock.monotonicMs()` at probe completion and
-  immediately before the fence. Wall-clock correction cannot make an over-age probe look fresh;
-  expiration discards staged page state and restarts preflight.
-- **Checkpoint provenance timestamps**—live observations and operator corrections use the Clock;
-  an operator correction does not replace the original observation time.
+**Composition with the other contracts (nothing else changes shape — only the `now` input):**
 
-**The guard (registered in ref guards-and-tests's guard-of-guards manifest):**
-`clock-single-source.test.ts` (the rebuild repo's `tests/unit/architecture/`) — bans
-`new Date(` / `Date.now(` / `performance.now(` / direct `process.hrtime` anywhere in
-`src/**` **except** `src/domain/clock.ts`, using the same `Record<file,{count,reason}>`
-shrink-only-allowlist mechanism as `wait-for-timeout-allowlist.test.ts`: a **ported leaf** (e.g. a
-verbatim-ported selector helper with an inline timestamp) may carry a shrinking allowlist entry;
-**new rebuild `src/` code gets zero tolerance.** A second guard, `manual-clock-test-only.test.ts`, bans
-importing `manualClock` outside `*.test.ts` / `tests/**` — a `manualClock` import in production code
-is a symptom of accidentally wiring the test double into a real executor.
+- **Ref workflow-model's freshness walk.** `now − fact.observedAt > fieldLimit` reads `clock.now()`,
+  so a `manualClock` test can assert the exact boundary (`maxAgeMs` exactly exceeded vs. not).
+- **Ref dashboard-surfaces' spans.** The executor holds ONE `Clock`; every `SpanEvent.ts` is
+  `clock.now().toISOString()`, stamped once at emission and never re-derived.
+- **Trace ids.** `buildTraceId({ code, runId, at: clock.now() })` — the builder was already pure, so
+  only the caller changed.
+- **Ref write-safety's ledger.** `write.attempting` / `write.committed` timestamps and the
+  crash-window fence read the same executor-held instance, so a fence and its span are never
+  timestamped by two different reads.
+- **Prewrite age.** `probeToFenceMaxMs` compares `clock.monotonicMs()` at probe completion against
+  the value immediately before the fence, so a wall-clock correction cannot make an over-age probe
+  look fresh.
+- **Checkpoint provenance.** Live observations and operator corrections both stamp through the
+  Clock; a correction does not replace the original observation time.
+- **The negative-settlement decision is fully deterministic under the injected Clock** (Phase 1c
+  Stage D, 2026-08-01). `evaluateNegativeSettlement` stamps `decidedAt` from `clock.now()`
+  (`src/domain/write-safety.ts:203-207`), the post-fence propagation boundary is
+  `Date.parse(fencedAt) + policy.minSinceFenceMs` (line 252), and the read-spacing and
+  future-observation rules are arithmetic over stored instants. No wall-clock read and no sleeping
+  test appears anywhere on that path, and the authority adapter's transaction metadata uses its own
+  injected Clock while accepting already schema-validated external confirmation instants.
 
----
+**The two guards** (both registered in `docs/rebuild/guard-inventory.json`, owner this doc):
+
+`clock-single-source.test.ts` is a **TypeScript AST walk, not a grep**, and its allowlist is
+**empty**. It scans every git-visible `src/**` source file except `src/domain/clock.ts` and reports
+`file:line:column` for a call or construction that reaches the host clock through ANY spelling it
+can resolve: `new Date()`, `Date.now()`, `performance.now()`, `process.hrtime()` /
+`process.hrtime.bigint()`, the same through `globalThis.`, through a namespace or named import of
+`node:perf_hooks` / `node:process`, through an alias (`const D = globalThis.Date`), and through a
+destructure (`const { now } = Date`). Aliases are resolved to a fixed point per scope, and a
+binding that a local declaration, function parameter or import SHADOWS is cleared — so
+`function f(Date: { now(): number })` is not a violation. Two negative controls run against
+synthetic sources through the same exported function: a fixture spelling eight distinct forms must
+report exactly 8, and a shadowing/comment fixture must report 0.
+
+What the guard deliberately does NOT ban is a **deterministic** `Date`: `new Date("2026-01-01…")`
+and `Date.parse(storedInstant)` convert a value that already exists rather than reading the host,
+and banning them would push callers toward re-deriving instants by hand. The rule is about the
+SOURCE of time, not about the `Date` type.
+
+`manual-clock-test-only.test.ts` bans the **identifier** `manualClock` anywhere under `src/**`
+except `clock.ts` — an import, a call, a re-export and a dynamic `module["manualClock"]` all fail,
+while the same characters inside a comment or a string do not. A `manualClock` reference in
+production code is the symptom of a test double wired into a real executor, where every trace id,
+span and freshness check would be wrong in the same way, all at once, with no crash.
 
 ## 3. Config resolver
 
