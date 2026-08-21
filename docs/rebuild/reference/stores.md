@@ -1,4 +1,4 @@
-# Store Catalog — Reuse Reference
+# Store catalog — reuse reference (derived)
 
 > **This is a derived convenience view, not a source of truth.** The plan SSOT is
 > the phase docs `docs/rebuild/00`–`05` (migration order, exit criteria) and the owning
