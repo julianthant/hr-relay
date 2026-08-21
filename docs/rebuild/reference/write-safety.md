@@ -391,234 +391,225 @@ Every row below is live-verified leaf knowledge the charter forbids re-deriving.
 ---
 
 ## 1. The one-sentence thesis + the fail-closed guarantee boundary
+<!-- roadmap: phase-1 -->
+
+<!-- roadmap-status: phase-1 -->
+- [x] the four-state `ProbeVerdict` is the mechanism, and it is structural — `present` carries proof, `absent` carries typed evidence, `ambiguous` carries a count and its evidence refs, `unknown` carries a reason and an instant (`src/domain/write-safety-primitives.ts:50-62`)
+- [x] the guarantee boundary is STATED rather than implied — at most one unattended attempt per intent generation, never "exactly once against every remote UI" (D64)
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/write-safety-primitives.ts` (`probeVerdictSchema`, `NegativeSettlementPolicySchema`); left: nothing — the thesis is the standing rule, and every later section is an instance of it
+<!-- /roadmap-status -->
 
 > **Every `effect:"commit"` task declares typed proof-of-landing (a receipt, saved-state proof, or
-> uploaded-artifact proof)
-> and an idempotency probe; the kernel drives a fixed resolve/probe → prepare → **binding proof** →
-> fence → external commit → proof → durable-commit
-> sequence around it; and every "is it done / is it already there?" question is answered by a
-> FOUR-state verdict where both positive and negative claims carry evidence and `unknown` blocks —
-> never a boolean that lets uncertainty read as success.**
+> uploaded-artifact proof) and an idempotency probe; the kernel drives a fixed resolve/probe →
+> prepare → **binding proof** → fence → external commit → proof → durable-commit sequence around it;
+> and every "is it done / is it already there?" question is answered by a FOUR-state verdict where
+> both positive and negative claims carry evidence and `unknown` blocks — never a boolean that lets
+> uncertainty read as success.**
 
 The single mechanism that makes fail-closed structural is the **`ProbeVerdict`**: a probe or verify
-read cannot return `true/false`. It returns `present | absent | ambiguous | unknown`. `present`
-requires landing proof; `absent` requires typed observation evidence. `unknown` and `ambiguous`
-route to `PARKED(needs-operator)` — never to a submit and never to a "done." After a fence, even an
-evidenced `absent` must satisfy §4's propagation/consistency policy before retry authority exists. This
-directly dissolves today's fail-open dichotomy (onboarding: *"skip and never hire" vs "blind
-double-submit"*): the third answer is **park and let the operator decide**, which is strictly safer
-than both.
+read cannot return `true/false`. It returns `present | absent | ambiguous | unknown`, and every arm
+carries what a later reader needs to re-check it:
 
-**Guarantee boundary (D64).** The permanent key/CAS guarantees at most one unattended commit
-attempt per intent generation. The kernel automatically converges to done from valid positive proof
-or to a new generation from contract-valid stabilized negative proof. If the external UI cannot
+```ts
+// src/domain/write-safety-primitives.ts — the browser-safe half (D144); write-safety.ts re-exports it
+present   { proof }                                              // the completion arm's own proofSchema
+absent    { evidence: AbsentEvidence }                           // key digest, source, source state, observedAt, query digest, evidence ref
+ambiguous { matches ≥ 2, observedAt, queryDigest, evidence[≥2] } // WHICH matches, not just how many
+unknown   { reason, observedAt }
+```
+
+`unknown` and `ambiguous` route to `PARKED(needs-operator)` — never to a submit and never to a
+"done." After a fence, even an evidenced `absent` must satisfy §4's propagation/consistency policy
+before retry authority exists. This directly dissolves legacy's fail-open dichotomy (onboarding:
+*"skip and never hire"* vs *"blind double-submit"*): the third answer is **park and let the operator
+decide**, which is strictly safer than both.
+
+**The `ambiguous` and `unknown` arms carry evidence because a park is a message to a human.** A bare
+`matches: 4` tells the operator a number and nothing to look at; the arm therefore also retains the
+instant, the digest of the query that produced it, and at least two evidence refs — so the park's
+sentence can name what the probe saw. This is the same reason `absent` was never allowed to be a
+bare boolean.
+
+**Guarantee boundary (D64).** The permanent key/CAS guarantees at most one unattended commit attempt
+per intent generation. The kernel automatically converges to done from valid positive proof, or to a
+new generation from contract-valid stabilized negative proof. If the external UI cannot
 authoritatively prove absence after its propagation window, recovery parks for operator resolution.
-That is enforceable. “Exactly once against every remote UI regardless of consistency” is not.
+That is enforceable. "Exactly once against every remote UI regardless of consistency" is not.
 
 ---
 
 ## 2. The write-safety contract
+<!-- roadmap: p1-authority -->
+
+<!-- roadmap-status: p1-authority -->
+- [x] `WriteSafety` is REQUIRED on every `effect:"commit"` contract with no escape hatch, and `defineTaskContract` parses it at definition time (`src/domain/contracts/base.ts:377-404`, `write-safety-contract` guard)
+- [x] the closed `SubjectProof | UnscopedBindingProof` union, the reviewed unscoped-reason registry, the Clock-injected negative-settlement evaluator and the permanent intent/attempt schemas all exist (`src/domain/write-safety.ts`)
+- [x] the browser-safe half — `SubjectEvidence`, `AbsentEvidence`, `probeVerdictSchema`, `NegativeSettlementPolicy`, `TransactionOutcome`, `TransactionDryRunPreview` — lives in `src/domain/write-safety-primitives.ts` so a descriptor closure can hash it (D144); `write-safety.ts` imports `node:crypto` and re-exports every name, so no address moved
+- [x] the authority storage invariants are built and pinned over real temporary SQLite databases — `BEGIN IMMEDIATE` unseen-key fencing, the durable `(system, idempotency_key)` uniqueness constraint, the four-row atomic commit primitive (`permanent-key-dedupe`, `recovery-negative-proof-settlement`, `atomic-write-outbox`)
+- [ ] `TransactionDryRunPreviewSchema`'s `subject: { state: "mismatch" }` arm has NO producer and NO consumer — see §2.1's *An arm nothing can reach*
+> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/write-safety.ts`, `src/domain/write-safety.ts`, `src/domain/write-safety-primitives.ts`, `src/domain/contracts/base.ts`; left: the unreachable preview arm, which is a schema decision rather than a build
+<!-- /roadmap-status -->
 
 ### 2.1 The `WriteSafety` field (owned here; attached to ref task-contract's `CommitTaskContract`)
+<!-- roadmap: p2-proof -->
+
+The field is built and is the shape below. Two things differ from the Phase-0 design and both
+tightened it: a probe or verifier is a **`ReadTaskReference`** (`{ taskId, effect: "read" }`) rather
+than a bare `TaskId`, so "this must resolve to a read task" is carried by the value instead of only
+by a guard; and `unverifiableByPage` carries a required `policy: "always-park"` literal beside its
+reason, so the escape hatch cannot be spelled without naming what it does.
 
 ```ts
-// src/domain/contracts/write-safety.ts — bundle-safe: imports zod + TaskId ONLY (D3 guard)
-import { z } from "zod";
-import type { TaskId } from "./base.js";
-
-/** Fail-closed verdict factory. `present` cannot exist without proof of the exact schema
- * required by the commit's completion arm; `absent` cannot exist without typed evidence of the
- * exact key/query/state observed. There is deliberately no untyped/boolean form. */
-export const AbsentEvidenceSchema = z.strictObject({
-  idempotencyKeyDigest: Sha256Schema,
-  source: ObservationIdSchema,
-  sourceState: PageStateIdSchema,
-  observedAt: IsoInstantSchema,
-  queryDigest: Sha256Schema,
-  evidenceRef: EvidenceRefSchema,
+// src/domain/contracts/write-safety.ts — bundle-safe: imports zod + TaskId + the primitives ONLY
+export const ReadTaskReferenceSchema = z.strictObject({
+  taskId: TaskIdSchema,
+  effect: z.literal("read"),
 });
-export function probeVerdictSchema<Proof extends z.ZodType>(proofSchema: Proof) {
-  return z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("present"), proof: proofSchema }),
-    z.strictObject({ state: z.literal("absent"), evidence: AbsentEvidenceSchema }),
-    z.strictObject({ state: z.literal("ambiguous"), matches: z.number().int().min(2) }),
-    z.strictObject({ state: z.literal("unknown"), reason: z.string().min(1) }),
-  ]);
-}
-export type ProbeVerdict<Proof extends z.ZodType> =
-  z.output<ReturnType<typeof probeVerdictSchema<Proof>>>;
 
 interface ProofCheck<Out extends z.ZodType, Proof extends z.ZodType> {
   /** The same parser validates normal commit output and recovery-probe backfill. */
   proofSchema: CanonicalJsonSchema<Proof>;
   proofFromOutput: (output: z.output<Out>) => z.input<Proof>;
-  proofFromPresentProbe: (
-    verdict: Extract<ProbeVerdict<Proof>, { state:"present" }>,
-  ) => z.input<Proof>;
-  /** Recovery/preflight-present must reconstruct the transaction node's full typed output; proof
-   * alone is not a substitute for fields downstream nodes consume. Both schemas are parsed. */
+  proofFromPresentProbe: (verdict: Extract<ProbeVerdict<Proof>, { state: "present" }>) => z.input<Proof>;
+  /** Recovery / preflight-present must reconstruct the node's full typed output; proof alone is
+   *  not a substitute for fields downstream nodes consume. Both schemas are parsed. */
   outputFromProof: (proof: z.output<Proof>) => z.input<Out>;
 }
 
-/** UCPath / CRM / ServiceNow — irreversible submits capture a verifiable receipt. */
-export interface ReceiptCheck<Out extends z.ZodType, Proof extends z.ZodType>
-  extends ProofCheck<Out, Proof> {
-  kind: "receipt";
-}
-/** Kuali — typed saved-state proof, not merely a boolean/present verdict. */
-export interface SaveVerifyCheck<Out extends z.ZodType, Proof extends z.ZodType>
-  extends ProofCheck<Out, Proof> {
-  kind: "save-verify"; verify: TaskId;
-}
+/** UCPath / CRM / ServiceNow — an irreversible submit captures a verifiable receipt. */
+interface ReceiptCheck      extends ProofCheck { kind: "receipt" }
+/** Kuali — typed saved-state proof, read back by a declared verifier. */
+interface SaveVerifyCheck   extends ProofCheck { kind: "save-verify";   verify: ReadTaskReference }
 /** OnBase — typed artifact proof from a positive read-back. */
-export interface UploadVerifyCheck<Out extends z.ZodType, Proof extends z.ZodType>
-  extends ProofCheck<Out, Proof> {
-  kind: "upload-verify"; verify: TaskId;
-  /** Escape hatch (allowlisted + argued in ref guards-and-tests): the page genuinely cannot prove landing. Then the
-   *  submit ALWAYS parks needs-operator for manual confirmation — it never auto-reports done. */
-  unverifiableByPage?: {
-    reason: string;
-    /** Must parse through proofSchema and exercise its operator-attestation discriminant. The
-     * runtime replaces example values with the authenticated operator/Clock/evidence form. */
-    operatorAttestationExample: z.input<Proof>;
-  };
-}
-export type CompletionCheck<Out extends z.ZodType, Proof extends z.ZodType> =
-  | ReceiptCheck<Out, Proof>
-  | SaveVerifyCheck<Out, Proof>
-  | UploadVerifyCheck<Out, Proof>;
+interface UploadVerifyCheck extends ProofCheck { kind: "upload-verify"; verify: ReadTaskReference;
+  /** Escape hatch (allowlisted + argued): the page genuinely cannot prove landing. The submit then
+   *  ALWAYS parks needs-operator for manual confirmation — it never auto-reports done. */
+  unverifiableByPage?: { policy: "always-park"; reason: string;
+    operatorAttestationExample: z.input<Proof> } }
 
 export interface Idempotency<In extends z.ZodType> {
   /** A read task answering "is THIS exact transaction already present?" → ProbeVerdict. Runs
-   *  pre-write AND on crash recovery. Declared with zero-age freshness (always live, never a stale
-   *  checkpoint). Must resolve to a real effect:"read" task in the SAME store (guard §8). */
-  probe: TaskId;
+   *  pre-write AND on crash recovery AND inside a dry-run preview (D215). Declared with zero-age
+   *  freshness — always live, never a stale checkpoint. */
+  probe: ReadTaskReference;
   /** The natural idempotency KEY — derived from STABLE business identity, NEVER row/position/index
-   *  (the doc1/doc2 fix, §5). e.g. `${eid}|termination|${effectiveDate}`. Pure. */
+   *  (the doc1/doc2 fix, §5). Pure. */
   key: (input: z.output<In>) => string;
-  /** What may turn a post-fence absence into retry authority (D64). Waiting is scheduler requeue,
-   * never a sleeping task/worker. `operator-only` is mandatory when the target has no trustworthy
-   * negative read or bounded propagation behavior. */
+  /** What may turn a post-fence absence into retry authority (D64/D69/D207). Waiting is a scheduler
+   *  requeue, never a sleeping task or worker. */
   recoveryAbsence:
-    | { kind: "stabilized"; minSinceFenceMs: number;
-        consistentReads: 2 | 3; minBetweenReadsMs: number;
-        requireSameSourceState: true }
+    | { kind: "stabilized"; minSinceFenceMs: number; consistentReads: 2 | 3;
+        minBetweenReadsMs: number; requireSameSourceState: true }
     | { kind: "operator-only"; reason: string };
 }
 
-export interface WriteSafety<
-  In extends z.ZodType,
-  Out extends z.ZodType,
-  Proof extends z.ZodType,
-> {
+export interface WriteSafety<In, Out, Proof> {
   completion: CompletionCheck<Out, Proof>;
   idempotency: Idempotency<In>;
 }
 ```
 
-`CommitTaskContract<Id, In, Out, Proof, Codes>` requires
-**`writeSafety: WriteSafety<In, Out, Proof>`**. There is
-no optional escape hatch: even a naturally idempotent external write must declare its key, proof,
-and probe. All three completion arms carry a nontrivial `proofSchema`; recovery and normal commit
-use the same parser, and `outputFromProof` must reconstruct a value accepted by the commit output
-schema for preflight-present/recovery paths. The kernel then wraps it in ref workflow-model's discriminated
-`TransactionOutcome`, so downstream code sees whether this run committed or found prior work.
-Probe/verify tasks are separate reads in the same store. An
-`unverifiableByPage` proof schema is a discriminated union with an `operator-attestation` arm
-containing operator, confirmedAt, exact artifact/business identity, and a non-empty evidence note;
-its example is guard-parsed. It may never be a bare boolean or generic “mark done.”
+`CommitTaskContract` requires **`writeSafety`**, and there is no optional escape hatch: even a
+naturally idempotent external write must declare its key, its proof and its probe. All three
+completion arms carry a nontrivial `proofSchema`; recovery and normal commit use the same parser;
+and `outputFromProof` must reconstruct a value the commit output schema accepts, because the
+preflight-present and recovery paths have no other way to produce the node's typed output. The
+kernel then wraps the result in the discriminated `TransactionOutcome`, so downstream code sees
+whether **this** run committed or found prior work.
 
-Every prepare/commit pair must also carry compatible ref task-contract `SubjectBindingSpec`s. The kernel
-materializes the following strict proof; raw sensitive identifiers are not duplicated into event
-or ledger files—the normalized comparison happens in memory and evidence keeps a digest plus the
-minimum display-safe suffix/name needed to diagnose a mismatch.
+**The always-park allowlist is a registry, and it is EMPTY.**
+`REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` (`src/domain/contracts/write-safety.ts`) is the reviewed list
+of contracts permitted to declare `unverifiableByPage`, and it currently holds zero entries — no
+contract in this tree has earned one. An `unverifiableByPage` proof schema must be a discriminated
+union with an `operator-attestation` arm carrying operator, `confirmedAt`, the exact
+artifact/business identity and a non-empty evidence note; its example is guard-parsed. It may never
+be a bare boolean or a generic "mark done." OnBase is the candidate and the reason the arm exists
+(§13 OQ2).
+
+**The binding proof, as built.** Every prepare/commit pair carries compatible ref task-contract
+`SubjectBindingSpec`s, and the kernel materializes one of two strict proofs. Both gained a `version`
+and a `proofId` over the Phase-0 draft, and `SubjectProofSchema` gained a `superRefine` that refuses
+a "match" whose `expected` and `observed` are not canonically identical — the one invariant a
+`match: "match"` literal could otherwise assert without holding:
 
 ```ts
-export const SubjectProofSchema = z.strictObject({
-  kind: z.literal("subject-match"),
-  version: z.literal(1),
-  runId: RunIdSchema,
-  attempt: PositiveIntSchema,
-  leaseId: LeaseIdSchema,
-  taskId: TaskIdSchema,
-  observationId: ObservationIdSchema,
-  pageStateId: PageStateIdSchema,
-  expected: SubjectEvidenceSchema,
-  observed: SubjectEvidenceSchema,
-  match: z.literal("match"),
-  observedAt: IsoInstantSchema,
-  afterPrepareSpanPath: SpanPathSchema,
-});
-export type SubjectProof = z.output<typeof SubjectProofSchema>;
-
-/** D65: a commit with an explicitly reviewed `subject.kind:"none"` does not fabricate a subject
- * match. It still proves the exact staged page/lease and reviewed contract reason. */
-export const UnscopedBindingProofSchema = z.strictObject({
-  kind: z.literal("unscoped"),
-  runId: RunIdSchema,
-  attempt: PositiveIntSchema,
-  leaseId: LeaseIdSchema,
-  taskId: TaskIdSchema,
-  pageStateId: PageStateIdSchema,
-  reviewedReasonId: UnscopedCommitReasonIdSchema,
-  observedAt: IsoInstantSchema,
-  afterPrepareSpanPath: SpanPathSchema,
-});
-export const WriteBindingProofSchema = z.discriminatedUnion("kind", [
-  SubjectProofSchema,
-  UnscopedBindingProofSchema,
-]);
-export type WriteBindingProof = z.output<typeof WriteBindingProofSchema>;
+SubjectProof        { kind:"subject-match", version:1, proofId, runId, attempt, leaseId, taskId,
+                      observationId, pageStateId, expected, observed, match:"match", observedAt,
+                      afterPrepareSpanPath }   // + superRefine: canonical(expected) === canonical(observed)
+UnscopedBindingProof{ kind:"unscoped",      version:1, proofId, runId, attempt, leaseId, taskId,
+                      pageStateId, reviewedReasonId, observedAt, afterPrepareSpanPath }   // D65
 ```
 
-The proof is valid only for the same run, attempt, lease, task, and prepared page state, and only
-until the configured probe-to-fence budget. It cannot be reused after navigation, page reset,
-retry, or lease transfer. A file write binds the artifact digest/document id; a person write binds
-the system's displayed EID or another contract-declared strong identifier; a catalog/global write
+`SubjectEvidence` is itself closed — `person` (with `identifierKind: "eid" | "kuali-id" | "email"`, a
+binding digest and a 2–32 character display suffix), `artifact`, or `catalog`. Raw sensitive
+identifiers are never duplicated into event or ledger files: the normalized comparison happens in
+memory and the evidence keeps the digest plus the minimum display-safe suffix a human needs to
+diagnose a mismatch. Both digests carry versioned domain separators
+(`hrauto:permanent-write-key:v1`, `hrauto:write-binding-proof:v1`), so a key digest and a proof
+digest can never collide across purposes.
+
+The proof is valid only for the same run, attempt, lease, task and prepared page state, and only
+until the configured probe-to-fence budget. It cannot be reused after navigation, page reset, retry
+or lease transfer. A file write binds the artifact digest or document id; a person write binds the
+system's displayed EID or another contract-declared strong identifier; a catalog or global write
 must explicitly declare `subject.kind:"none"` with a reviewed, allowlisted reason and produces the
-unscoped arm above. Name-only identity is not a
-strong write binding unless that system truly exposes no stronger value, in which case the task
-requires an operator gate and a dedicated scenario.
+unscoped arm. Name-only identity is not a strong write binding unless the system truly exposes no
+stronger value — and UCPath's termination commit is exactly that case, which is why it also sits
+behind §14's gate (§2.2).
+
+**An arm nothing can reach.** `TransactionDryRunPreviewSchema`'s `outcome.would-prepare.subject`
+union declares three arms — `match`, `mismatch`, `unscoped` — and **`mismatch` has no producer and
+no consumer** (`src/domain/write-safety-primitives.ts:169-177`). `executeDryRun` builds the binding
+proof inside a `try` and re-**throws** on any failure with *"the real write would refuse to fence"*
+(`src/core/write-sequencer.ts:1865-1878`), so a preview never emits the arm; nothing in `src/` or
+`tests/` reads it. The refusal is the right behaviour — a rehearsal that answered where the
+performance stops is the defect D215 fixed from the other side — so the honest repair is to DELETE
+the arm rather than to build a producer for it. It is recorded here rather than removed in a docs
+pass because a shared schema change is code work with its own gate.
 
 ### 2.2 Per-system instantiation (three shapes, one mechanism)
+<!-- roadmap: sep-5 -->
+<!-- roadmap: order-6 -->
+<!-- roadmap: order-7 -->
 
-```ts
-// UCPath termination — receipt-bearing (ports transaction.ts:919-985 into ucpath/read-transaction-number)
-writeSafety: {
-  completion: { kind: "receipt",
-    proofFromOutput: (o) => o.receipt,
-    proofFromPresentProbe: (v) => v.proof,
-    outputFromProof: (p) => ({ receipt: p }),
-    // The PAIR, never the number alone — settled by the 2026-08-04 live probe (§13.6).
-    // A Denied UCPath transaction carries a perfectly well-formed `T…`, so the
-    // earlier number-only schema accepted a REFUSED write as proof of landing.
-    proofSchema: z.strictObject({
-      transactionNumber: z.string().regex(/^T\d{6,}$/),
-      approvalStatus: z.enum([
-        "Approved", "Denied", "Error", "Manually Processed", "Pending", "Pushed Back",
-      ]) }) },
-  idempotency: {
-    probe: "ucpath/find-existing-termination",                 // by EID + effdt + "Terminatn"
-    key:   (i) => `${i.emplId}|termination|${i.effectiveDate}`,
-    // Worked-example values only; migration must live-justify the real UCPath propagation policy.
-    recoveryAbsence: { kind:"stabilized", minSinceFenceMs:30_000,
-      consistentReads:2, minBetweenReadsMs:5_000, requireSameSourceState:true } },
-}
-// ServiceNow ticket — receipt-bearing (ports fill-form.ts:140-173)
-completion: { kind: "receipt", proofFromOutput: (o) => o.ticketNumber,
-  proofFromPresentProbe: (v) => v.proof, outputFromProof,
-  proofSchema: z.string().regex(/^HRC\d{6,}$/) }
-// Kuali save — save-verify, NO receipt (operator §13)
-completion: { kind: "save-verify", verify: "kuali/read-saved-document",
-  proofFromOutput, proofFromPresentProbe, outputFromProof, proofSchema: KualiSavedStateProof }
-// OnBase upload — upload-verify, positive read-back OR allowlisted unverifiable→always-park
-completion: { kind: "upload-verify", verify: "onbase/read-filed-document",
-  proofFromOutput, proofFromPresentProbe, outputFromProof, proofSchema: OnBaseArtifactProof }
-```
+Four commit contracts exist. Every row below is read off the contract, not off the design.
 
-Kuali and OnBase are the one place the port is a **genuine addition** (§10): their submit tasks
-cannot instantiate a passing `completion` without a new post-write read-back, because today they have
-none. That is by design — the contract *forces* proof to exist.
+| contract | completion | probe | key | `recoveryAbsence` |
+|---|---|---|---|---|
+| `kuali/save-timekeeper-annotation` | `save-verify` → `kuali/verify-timekeeper-annotation` | `kuali/read-timekeeper-annotation` | `kuali:<doc>\|<actionId>\|timekeeper-name\|<eid>\|<value>` | **`stabilized`** 30 000 ms / 2 reads / 5 000 ms (D135, measured) |
+| `kuali/save-separation-finalization` | `save-verify` → `kuali/verify-separation-finalization` | `kuali/match-separation-finalization` | `kuali:<doc>\|finalization\|<T-number>` | **`stabilized`**, the same numbers, INHERITED under §4.2's mechanism rule (D207) |
+| `ucpath/create-termination` | `save-verify` → `ucpath/verify-termination` | `ucpath/match-existing-termination` | `ucpath:termination\|<eid>\|<effectiveDate>` | **`operator-only`** — no UCPath window has ever been measured |
+| `ucpath/delete-pending-terminations` | `save-verify` → `ucpath/verify-pending-terminations-cleared` | `ucpath/match-pending-terminations` | `ucpath:pending-terminations-clear\|<eid>` | **`operator-only`** — worse than its sibling: this control DELETES rows |
+
+**UCPath's termination is `save-verify`, not `receipt`, and that is a correction the live probe
+forced.** The Phase-0 design drew it as `receipt` on the strength of legacy's `T…` scrape. D130's
+2026-08-04 live probe proved a **Denied** transaction carries a perfectly well-formed `T…`, so a
+number alone accepts a REFUSED write as proof of landing (§13 OQ6 has the six constraints). The
+proof is therefore the pair — `transactionId` **plus** `approvalStatus`, read back from the SS Smart
+HR detail page by a declared verifier — which is a `save-verify` shape wearing a receipt's name.
+`UcpathTerminationProof` also carries `emplId`, `effectiveDate`, `displayedName` and its `source`
+literal, so the read-back is bound to the person it is about.
+
+**Its subject binds on NAME, and that is the weakest binding in the tree.** `create-termination`
+declares `subject.match: "normalized-exact-name"` against UCPath's displayed person name, because
+the Smart HR wizard page the write is staged on displays no EID. §14's ALWAYS-GATE is what carries
+the wrong-person control for that write; the binding proof carries only "the page still shows the
+person the gate approved." Neither substitutes for the other (§14.1), and this row is the clearest
+case of why.
+
+**Kuali and OnBase are where the contract FORCES proof to exist.** Kuali's legacy save is a click
+plus a sleep with its error detection deliberately removed as false-positive-prone (§0), so a
+`save-verify` read-back had to be built before any Kuali commit could instantiate a passing
+`completion` — it now exists twice, and its reload read-back is the only landing proof either Kuali
+contract has. OnBase has no positive "filed" signal at all and no contract yet; it is order 7's
+work, and §13 OQ2 is the open question it answers.
+
+**Two shapes have no contract yet, and the doc says so rather than drawing one.** ServiceNow's
+receipt arm (a `waitForURL` for `number=` parsed as `/^HRC\d{6,}$/`) and OnBase's upload-verify arm
+port at orders 7; Kronos/PayPath gains its first write family at order 6. Until each exists, the
+per-system row above is the honest inventory: a designed example that no contract instantiates is
+indistinguishable from a built one at a glance, and §0's port inventory already records what legacy
+does today.
 
 ---
 
