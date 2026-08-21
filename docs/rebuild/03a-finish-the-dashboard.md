@@ -18,7 +18,7 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [x] the notification inbox has production producers — backup health (D222) and the gate park (D262), both wired in `src/server/dashboard/compose.ts`
 - [x] the connection is proved end to end: the REAL dashboard drove a REAL composed separations dry run, every UI claim paired against authority (Track C, `docs/migrations/separations.md` §9.22)
 - [x] the reference corpus asserts green over the corrected surfaces — 139 references re-frozen, 151 assert-mode cases green (`81287bb1`)
-- [ ] Track D's D1–D5 — one status/outcome derivation, the hygiene commit, the settlement fold, patch-splice + `memo`, bounded read scans (ratified D264; every row still unlanded at HEAD)
+- [ ] Track D's D1–D5 — D1 (one status/outcome derivation) LANDED as **D266** (`81bfed73`); the hygiene commit, the settlement fold, patch-splice + `memo` and the bounded read scans are still unlanded (ratified D264)
 - [ ] the three nodes drawn under this one on 2026-08-20 — the Duo ceremony lease, the worker pool and sessions, observed logs
 - [ ] `ref frontend-backend-integration` §7.4's performance budgets have never been measured; Track D's D4/D5 are the first numbers and become the non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
@@ -225,7 +225,7 @@ attributed to a ratified wave-2 decision before the operator approved it.
 <!-- roadmap: track-d -->
 
 <!-- roadmap-status: track-d -->
-- [ ] D1 one status/outcome derivation — exported `deriveRunStatus`, ONE `TASK_OUTCOME` vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row
+- [x] D1 one status/outcome derivation — `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in `src/server/dashboard/run-status.ts`, read by the queue projector AND the run-detail query; the detail panel can no longer disagree with the queue row (**D266**, `81bfed73`)
 - [ ] D2 the hygiene commit — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified, the D253 sentence corrected
 - [ ] D3 every command settlement folds through `settleCommandResult` — 7 of 9 sites still enumerate both refusal arms by hand
 - [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; then MEASURED against a seeded 1,240-row / 108-member fixture
@@ -237,6 +237,7 @@ attributed to a ratified wave-2 decision before the operator approved it.
 - [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
 - [ ] D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251)
 > 2026-08-20 | docs-cohesion 03a | every row re-verified unlanded at HEAD against src/server/dashboard and src/dashboard; D6–D10 stay proposed behind the named trigger, which has not fired
+> 2026-08-21 | track-d D1 | D1 LANDED as **D266** (`81bfed73`) — one `deriveRunStatus`, one task-outcome vocabulary (`cancelled` wins on D123's rule; `PipelineStepWireSchema.state` gains the arm), one `panelKindOf`, in a sibling module because the archive read path may not reach the projector's registry import; left: D2–D5 and D11
 <!-- /roadmap-status -->
 
 **Ratified 2026-08-20 as D264**, out of the same-day architecture audit
@@ -253,12 +254,13 @@ feature slice. The operator's ruling placed the track under the dashboard defaul
 (which is done, so the fold-into-Track-C alternative expired) and before the next workflow leans on
 the dashboard in anger.
 
-**The eleven rows, and their state at HEAD.** All eleven are unlanded; each was re-verified against
-the code for this rewrite rather than carried forward on the audit's say-so.
+**The eleven rows, and their state at HEAD.** D1 landed 2026-08-21 (**D266**); the other ten are
+unlanded. Each was re-verified against the code for the 2026-08-20 rewrite rather than carried
+forward on the audit's say-so.
 
 | Row | What it closes | Verified at HEAD (2026-08-20) |
 |---|---|---|
-| D1 | detail-panel status diverges from queue status; two task-outcome vocabularies; `panelKindOf` byte-identical twice | no exported `deriveRunStatus`; `TASK_OUTCOME_PIPELINE` (`run-queue-projection.ts:342`) and `TASK_OUTCOME_STEP` (`run-detail.ts:437`) both present; `panelKindOf` at `run-queue-projection.ts:261` AND `run-detail.ts:250` |
+| D1 | detail-panel status diverges from queue status; two task-outcome vocabularies; `panelKindOf` byte-identical twice | **LANDED 2026-08-21 as D266** (`81bfed73`) — `src/server/dashboard/run-status.ts` exports `deriveRunStatus` / `taskStateOf` / `panelKindOf`; both vocabularies are one and `cancelled` is the word (D123); pinned by `tests/unit/server/run-status-derivation.test.ts` |
 | D2 | HTTP status sniffed from an error message; the inert capture phone-host gate; dead hooks and exports; small duplications | `useDashboardDaySnapshot` (`use-dashboard-day.ts:54`) and `useRunSection` (`use-run-detail.ts:158`) have no importers; `deps.capturePhoneHost` is read at `routes/api.ts:142` and supplied nowhere |
 | D3 | seven command-issuing sites enumerate both refusal arms by hand | `settleCommandResult` is imported by exactly two surfaces, `top-bar.tsx` and `context-rail.tsx` |
 | D4 | whole-day zod re-parse and whole-tree re-render per SSE patch | zero `React.memo` anywhere under `src/dashboard` |
@@ -620,6 +622,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 76 | 2026-08-19 | D237–D238 | the two honesty gaps on the run panel — the unreachable `resolved` arm, and `done → verified-done` |
 | 78–83 | 2026-08-20 | D248–D259 | the Session Panel stops guessing (D248/D249), the run modal (D250/D251), the Data ledger and the unhandled `conflict` arm (D252/D253), the dead channel and the findings ledger (D254/D255), the dashboard's clock (D256/D257), the projection stops claiming history it cannot see (D258/D259) |
 | 87 | 2026-08-20 | D264 | **Track D is ratified** — dashboard hardening before the second migration, and the descriptor registry leaves the bundle |
+| 90 | 2026-08-21 | D266 | **Track D row D1** — ONE `deriveRunStatus`, ONE task-outcome vocabulary, ONE `panelKindOf`; the detail panel can no longer disagree with the queue row |
 
 **Ratified elsewhere, load-bearing here.** Four rounds the ledger assigns to phase 3b are what
 Track B and Track C were built on, and nothing about their phase is re-litigated by saying so:
@@ -647,7 +650,7 @@ stricter bar Track F carries (row 10).
 | 2 | **The findings ledger is zero-or-decided** | **MET** | `docs/findings/README.md`, B8 sweep 2026-08-20: five open records across two files, each naming the commit that closes it; zero undecided |
 | 3 | **Track C met** — the real dashboard drove a real composed run, every claim paired to authority | **MET** | `docs/migrations/separations.md` §9.22 items 1–8; three runs; four defects plus the archive unblock (D258), all fixed same-day; §9.24's live `sp-105225-1e0b` |
 | 4 | **The reference corpus asserts over the corrected surfaces** | **MET** | `81287bb1` — 139 references re-frozen after the fixes, 151 assert-mode cases green, every drift attributed to a ratified decision |
-| 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **open** | all six re-verified unlanded at HEAD (see the Track D table); D11 is ratified-and-planned (D264); D6–D10 stay `proposed` behind their named trigger and are outside this gate |
+| 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **open** | D1 LANDED 2026-08-21 (**D266**, `81bfed73`) — one fact, one derivation, held by a test that asserts the row and the panel against each other; D2–D5 and D11 remain unlanded (see the Track D table); D6–D10 stay `proposed` behind their named trigger and are outside this gate |
 | 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **open** | never measured; D4/D5 supply the first numbers against a seeded 1,240-row / 108-member fixture, and those numbers become the non-regression gate |
 | 7 | **The Duo ceremony lease landed** | **open** | nothing named `duo_ceremony_leases` exists in `src/`; `defineVerifiedLoginRecipe` takes no lease token |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the kernel arms exist; the supervisor refuses spawn by name and the projection serves no pool version |
