@@ -731,3 +731,176 @@ node — and they are written in that node's own `- [ ] TAG …` notation.
 - [ ] BE the resolved host per `(system, instance)` on `SystemInstancePrimitive`, so Destination
   names the machine the run is about to touch instead of reassuring the operator (C91)
   {#dash-defaults}
+
+---
+
+# Roll-up — group 1 (shell · queue · run start)
+
+## Counts
+
+| Region | Elements | exact | divergent | missing | extra | ruled | unserved | **OPEN** |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| A — SHELL | 178 | 131 | 34 | 12 | 8 | 34 | 3 | **10** |
+| B — QUEUE | 196 | 118 | 40 | 27 | 11 | 40 | 25 | **13** |
+| C — RUN START | 115 | 48 | 39 | 19 | 9 | 38 | 15 | **14** |
+| **Total** | **489** | **297** | **113** | **58** | **28** | **112** | **43** | **37** |
+
+**297 of 489 elements (61%) are byte-exact ports.** Of the 192 that are not, 112 carry a ruling and
+43 name a wire gap; **37 are OPEN and need the operator.** Region A is the closest to the demo (74%
+exact) and Region C the furthest (42%) — the run modal is where the most decisions were made and the
+most reasons ended up in a tooltip instead of on the page.
+
+## The OPEN list — every unexplained divergence, for the operator
+
+Nothing below is dismissed, waved through or "modified". Each needs a ruling; none has one.
+
+### Honesty of what the operator is TOLD (the ones with a cost)
+
+1. **B165 — the bulk result vector prints only its non-zero buckets.** A clean batch renders the bare
+   phrase `2 applied`. The demo prints `applied · conflict · rejected` always, and its own comment
+   says why: *"the whole vector, always. '2 applied' alone is the lie this surface exists to
+   prevent."* This is a regression against **D235's own headline** ("never one aggregate done").
+2. **B173 / B174 — both closing sentences are gone.** The partial arm ("Nothing was applied for the
+   conflicted or rejected rows … a conflict means the row changed under you") and the clean arm
+   ("Every selected row that offered retry accepted it"). Nothing retires them.
+3. **B172 — the skipped-row report lost its shape.** A `<details>` disclosure over a scrolling dotted
+   list became one wrapping sentence comma-joining every title — unreadable at the scale the
+   disclosure was built for.
+4. **B164 — the result heading is the wire's lowercase verb** (`retry — result per run`) where the
+   demo names the command and the verdict (`Retry — partial result`).
+5. **C69 — the conflict banner names a state with no exit.** The demo's ONE cure is a `Reload the
+   form` primary; the rebuild offers no re-plan, and D253's own rule says re-sending the same
+   envelope is refused identically.
+6. **C48 / C81 — a reason that exists but is not on screen.** A locked sub-selection's reason and the
+   enqueue policy's reason each survive only as a `LockedValue` `title` tooltip — invisible to touch
+   and keyboard, and confirmed absent in the 1440×900 reference. `DESIGN.md:305` and D251 both say
+   the value is drawn read-only **with its reason**.
+7. **B31 — the gate age left the row's accessible name.** `{title} — review` where the demo says
+   `{title} — waiting on you · 18m`. `gateOpenedAt` is served, the pill already prints the age, and
+   `statusAccessibleName(status, age?)` takes the argument and is not given one. R3 f.17 named this
+   loss and the wire gap it blamed is now closed.
+8. **A122 — "1 worker need attention".** Subject/verb disagreement at a count of one, visible in the
+   parity reference. The demo's chip is always plural, so the port inherited a sentence that only
+   works above one.
+9. **C61 — a raw ISO instant in operator-facing text** (`expires {ISO}` on the plan-provenance line).
+   `fmtClock` is imported two files over; the same defect R6 f.10 fixed on the rail.
+10. **A126 — `app 0.1.0` under a tooltip that explains only MAJOR and MINOR.** The demo's tag is
+    two-part; the schema here is semver, so the drawn string has a component its own sentence never
+    mentions.
+
+### Layout and delivery
+
+11. **A169 + A168 — the toast floor, and the nesting that makes it possible.** The shell never sets
+    `--ds-toast-inset-bottom`, so the viewport falls back to the plain gutter and every toast sits
+    over the Session bar; and the theme root is INSIDE both providers, so setting the variable there
+    would not reach the viewport anyway. The demo records both halves as load-bearing and describes
+    this exact state as *"visible the moment the page was booted, and invisible to typecheck."* One
+    defect, two edits.
+12. **A170 — the app root drops `min-w-0` and `overflow-hidden`** and adds `min-h-0`. No citation.
+13. **A65 — the gear opens a `Dialog`; the demo opens a full-page takeover** with its own
+    `PageHeader` and Back. Ref dashboard-surfaces §9.8 says only "the gear in the top bar, opening the
+    sections the SERVER lists" — takeover-vs-dialog is undecided in writing.
+14. **C107 / C108 — the typed box and the shape block leave the screen at the Plan stage**, so the
+    operator authorises runs without seeing what they typed or the constants they were shaped by. The
+    two-step COMMAND is ruled (D251); hiding the input is not.
+15. **C83 / C84 — group 02 always draws, with a disabled control inside it.** The demo's rule for a
+    declaration-driven control is "a workflow that declares none shows none: no empty scaffolding",
+    and the numbering travels with it (Destination is `03` with flags and `02` without; a fixed `03`
+    leaves a gap in the reading path the numbers exist to give).
+16. **C57 — the plan is a `Table`, not the demo's list of `Card`s.** The missing columns are a wire
+    gap; card-vs-table is a presentation choice nothing records.
+17. **A81 / A82 — two unrecorded rail-entry spacing changes**: a `gap-snug` added to the label span
+    and a `pl-base` added to the count cluster.
+
+### Controls and vocabulary
+
+18. **B155 — the bulk strip leads with the destructive verb** (`Cancel` then `Retry`); the demo puts
+    the irreversible one last, and the product's own rule sits one file over (`actions.tsx:378`).
+19. **B195 / B196 — `CommandResultFeed` and the applied-result toast are absent.** `actions.tsx:16-21`
+    defers them until "the app's real `CommandResult` wiring" — a reason **D253 has spent**: both
+    refusal arms are served and folded by `settleCommandResult` today.
+20. **B57 / B80 — the operator's "checked" mark, at all three of its sites** (row glyph + `sr-only`,
+    well tally `✓ 3/12`, the drill-in check). The demo holds `checkedIds` as pure client state, so it
+    is portable today with no wire. **The question is whether a check survives a reload** — durable
+    and per-actor, or not at all.
+21. **B112 — the fact chip forks the ds `Chip` primitive** it could call
+    (`ds/primitives-core.tsx:393` exports the same component with the same `label` prop). Visible
+    deltas: chip height, padding, and label ink `--ds-fg-faint` vs the primitive's `--ds-fg-muted`.
+22. **A174 / B141 — the `Import spreadsheet` button in the toolbar's left group** (one element, seen
+    from both regions). A real reason is stated in code — the demo reaches intake from inside the Run
+    Modal and this tree serves no such handoff, so deleting it would strand the intake workspace —
+    but no D-number, plan section or dated operator call rules on it.
+23. **C72 — the dismiss control says `Dismiss` on every arm**; the demo says `Close` on applied and
+    `Dismiss` on rejected.
+24. **C96 — the modal drops the workflow VERSION** (`{label} v{major}.{minor}`), a fact the bundle
+    already holds (`person-lookup/descriptor.ts:169`) and the archive already prints
+    (`archive.tsx:286`).
+25. **C109 — changing a shared setting after a result leaves the result banner and the `Result` stage
+    standing** over a plan the change invalidated.
+
+### Rebuild-only additions with no demo counterpart (keep, or cut — the operator decides)
+
+26. **A16** — first `Escape` clears a non-empty search query, second closes the dialog.
+27. **C28** — a `"No workflow"` title arm for an empty catalogue; the demo has no such state and
+    nothing records the wording.
+28. **C94** — a zero-system Well ("This start declares no browser system."); the demo's fixtures
+    always declare at least one, so there is nothing to compare against.
+
+## Proposed `builds:` lines
+
+**Every line lands on `{#dash-defaults}`, and the layer choice is itself a finding.** `{#track-b}`
+and `{#track-c}` are both `status: done`; adding a line to either would reopen a closed node, which
+is the one thing the roadmap's own governance forbids. `{#dash-defaults}` is `status: active` and its
+`>` line already says it is the node a migration only WIRES. If the fold unit prefers, these are also
+a coherent sub-node of their own (a demo-fidelity closure task) hanging off `{#dash-defaults}`.
+
+### From Region A (the shell) — 2 lines
+
+```
+- [ ] BE the preflight/doctor summary and its rerun command — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184) and the whole popover is built behind it, so the stethoscope is absent from the bar entirely (A39, A42) {#dash-defaults}
+- [ ] BE a backfill-gap notification trigger — the one record that says WE DO NOT KNOW what you missed; ref dashboard-surfaces §2.6's trigger union carries no gap arm, so the bell's pinned Refusal block has nothing to draw (A46) {#dash-defaults}
+```
+
+### From Region B (the queue) — 10 lines
+
+```
+- [ ] BOTH member-outcome vocabulary on the member wire — the typed outcome word and the Outcome/Detail column-heading switch (B83, B89) {#dash-defaults}
+- [ ] BE per-status member counts on `memberRollup` — the well's six-status tally and a group's △ N fold (B56, B77) {#dash-defaults}
+- [ ] BOTH a declared `identifierProjection` so a member line can carry its EID column (B75, B82) {#dash-defaults}
+- [ ] BOTH the row-variant naming layer — per-row `doing` / `why` / `constraint` sentences and the row-type word behind the ⓘ (B43–B48, B51) {#dash-defaults}
+- [ ] BE `facts[]` gains `arrowTo`, `warn` and `fullRow` so a fact chip can show direction, hazard and a full-width line (B114–B116) {#dash-defaults}
+- [ ] BOTH the served roster / People section — `View full list`, the workflow-specific `View all signers` label, and the whole drill-in triage table (B97, B98, B130–B135) {#dash-defaults}
+- [ ] BE the `records[]` extraction stream on the queue wire — the record well, `N of M read`, `N blocked`, per-record glyphs and the arriving line (B100–B104) {#dash-defaults}
+- [ ] BE `reviewRunId` so a packet can chip `OCR Review · {status} ↗` (B110) {#dash-defaults}
+- [ ] BE `extractedCount` so a row can chip `N people` (B111) {#dash-defaults}
+- [ ] BE `groupNoun` so the member-preview line reads as a counted anchor (B68) {#dash-defaults}
+```
+
+Six of these ten wait on the SAME producer — the first multi-person / OCR-review workflow — so they
+cluster rather than landing one at a time. Each traces to a row the 2026-08-20 ledger sweep already
+dispositioned as *recorded, no producer, named trigger*; what is new here is that their consuming UI
+is enumerated element by element.
+
+### From Region C (the run start) — 8 lines
+
+```
+- [ ] BE `StartPlanResponse.planned[]` grows the row's role, destination panel, containment, born-as status and note — the demo's whole `PlanRowCard` anatomy, and the same fields the applied banner's created-rows list reads (C56, C65) {#dash-defaults}
+- [ ] BE `StartPlanResponse` grows the plan's headline, its `warnings[]` and the ratified `decisions[]` its shape obeys — the modal counts `planned.length` because there is nothing else to print (C55, C58, C59) {#dash-defaults}
+- [ ] BOTH the descriptor start-capability projection — operator-variable sub-selections with their option lists, per-option unavailability reasons and visibility conditions; today the only declared sub-selection is a parser CONSTANT, which is locked by definition (C50, C51) {#dash-defaults}
+- [ ] BOTH a human label on `SurfaceField`, so a locked sub-selection names the choice instead of printing the field identifier (`keepNonHdh`) at the operator (C49) {#dash-defaults}
+- [ ] BOTH a declared run-flag list on the descriptor's start surface — each flag with its label and its note — beyond the single DERIVED `supportsDryRun` one hardcoded checkbox stands for (C85, C86) {#dash-defaults}
+- [ ] BE `CommandResult`'s `applied` and `rejected` arms grow a served headline and detail sentence, the settlement clock and the requesting actor; every title on the result banner is client-authored today (C64, C66, C70) {#dash-defaults}
+- [ ] BE the command `conflict` arm grows the contract pair — what the form was built against and what the server now serves — which is the fact the operator needs to know what moved (C68) {#dash-defaults}
+- [ ] BE the resolved host per `(system, instance)` on `SystemInstancePrimitive`, so Destination names the machine the run is about to touch instead of reassuring the operator (C91) {#dash-defaults}
+```
+
+## What this pass did NOT do
+
+- **No demo pixels were re-photographed.** The demo dev server was not started; every demo verdict is
+  read from SOURCE, and the rebuild's side is read from `tests/parity/references/*.png` as images.
+  Rows that would need a demo pixel to settle say so in place.
+- **Nothing was edited.** No doc, no source, no roadmap — this file is the whole deliverable, and a
+  fold unit applies it to `docs/rebuild/03a-finish-the-dashboard.md` and the plan.
+- **The three regions of group 1 only.** The context rail, the run-detail panel, the log stream, the
+  archive, the activity report, the explorer, intake/capture, Settings and the ds kit belong to
+  groups 2 and 3.
