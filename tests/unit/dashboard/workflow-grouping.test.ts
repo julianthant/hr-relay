@@ -33,7 +33,13 @@ interface Entry {
 
 const STANDALONE = defineWorkflowRole({ kind: "standalone" });
 const COMPOSITION = defineWorkflowRole({ kind: "composition" });
-const harnessOf = (of: string): WorkflowModuleRole => defineWorkflowRole({ kind: "chunk-harness", of });
+/**
+ * Grouping keys on `of` alone — a harness nests under the composition it names
+ * — so these fixtures carry one arbitrary well-formed `step` (D265). A test
+ * that varied it would be asserting nothing this surface reads.
+ */
+const harnessOf = (of: string, step = "a-step"): WorkflowModuleRole =>
+  defineWorkflowRole({ kind: "chunk-harness", of, step });
 const PROVING = defineWorkflowRole({ kind: "proving" });
 
 function entry(id: string, categoryId: string, role: WorkflowModuleRole, label = id): Entry {

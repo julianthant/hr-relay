@@ -13,5 +13,5 @@ export const separationsKualiReadModule = Object.freeze({
   descriptor: separationsKualiReadDescriptor,
   stores: Object.freeze([kualiStore, separationsStore]),
   // A proving harness for one step of `separations`, never a peer workflow (D219).
-  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations" }),
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: "kuali-extraction" }),
 });

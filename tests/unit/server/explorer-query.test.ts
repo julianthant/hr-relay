@@ -140,7 +140,10 @@ describe("the workflow explorer projection", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     const roles = new Map(wire.workflows.map((workflow) => [String(workflow.id), workflow.role]));
     assert.deepEqual(roles.get("separations"), { kind: "composition" });
-    assert.deepEqual(roles.get("separations-kuali-read"), { kind: "chunk-harness", of: "separations" });
+    assert.deepEqual(
+      roles.get("separations-kuali-read"),
+      { kind: "chunk-harness", of: "separations", step: "kuali-extraction" },
+    );
     assert.deepEqual(roles.get("person-lookup"), { kind: "standalone" });
 
     // Drop the composition and the harnesses point at nothing this document

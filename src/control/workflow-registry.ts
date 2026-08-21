@@ -207,7 +207,8 @@ export interface WorkflowRoleView {
 }
 
 /**
- * Every `chunk-harness` names a registered COMPOSITION.
+ * Every `chunk-harness` names a registered COMPOSITION, and a step that
+ * composition declares.
  *
  * A dangling `of`, or an `of` pointing at a standalone workflow or at another
  * harness, is a membership claim nothing can render — and the surfaces that
@@ -215,13 +216,28 @@ export interface WorkflowRoleView {
  * which is how three surfaces come to disagree about what is a step and what is
  * a workflow. Refusing it here makes both states unrepresentable rather than
  * banned.
+ *
+ * D265 (ref workflow-model §1.2.2 rule 3) adds the second half: `step` names
+ * one of `of`'s declared timeline category keys — the step folder the harness
+ * lives in. A composition that declares no timeline has no steps to be of: its
+ * factory-derived default is one category per node (D225), so a harness step
+ * only matches when the composition really declared that category. The
+ * violation names the workflow, the step, and every key the composition does
+ * declare, because "not a step" is unactionable without the list.
  */
 export function auditWorkflowModuleRoles(
   modules: readonly WorkflowRoleView[],
 ): readonly string[] {
   const violations: string[] = [];
   const roleById = new Map<string, WorkflowModuleRole>();
-  for (const module of modules) roleById.set(String(module.descriptor.id), module.role);
+  const timelineKeysById = new Map<string, readonly string[]>();
+  for (const module of modules) {
+    roleById.set(String(module.descriptor.id), module.role);
+    timelineKeysById.set(
+      String(module.descriptor.id),
+      module.descriptor.timeline.map((category) => category.key),
+    );
+  }
   for (const module of modules) {
     if (module.role.kind !== "chunk-harness") continue;
     const workflowId = String(module.descriptor.id);
@@ -237,6 +253,15 @@ export function auditWorkflowModuleRoles(
       violations.push(
         `workflow ${workflowId} declares role chunk-harness of ${target}, whose own role is `
         + `${targetRole.kind} rather than composition`,
+      );
+      continue;
+    }
+    const declaredSteps = timelineKeysById.get(target) ?? [];
+    if (!declaredSteps.includes(module.role.step)) {
+      violations.push(
+        `workflow ${workflowId} declares role chunk-harness of ${target} step ${module.role.step}, `
+        + `which ${target} does not declare as a timeline category — it declares: `
+        + `${declaredSteps.join(", ")}`,
       );
     }
   }

@@ -1,6 +1,6 @@
 /**
  * A registered workflow's TAXONOMY, as its server module declares it
- * (ref workflow-model §1.2.1, D219).
+ * (ref workflow-model §1.2.1, D219; the harness's `step` is §1.2.2's, D265).
  *
  * Three things a registered workflow can be to the program, and the MODULE —
  * never the descriptor — states which. The argument is D170's, verbatim:
@@ -36,6 +36,7 @@
  */
 import { z } from "zod";
 import { WorkflowIdSchema } from "../ids.js";
+import { TimelineCategoryKeySchema } from "./presentation.js";
 
 export const WorkflowModuleRoleSchema = z.discriminatedUnion("kind", [
   /** An ordinary workflow that stands on its own (person-lookup). */
@@ -49,8 +50,21 @@ export const WorkflowModuleRoleSchema = z.discriminatedUnion("kind", [
    * refuses an `of` that does not resolve to a registered module whose own role
    * is `composition`, which makes a dangling target and a
    * harness-of-a-harness chain unrepresentable rather than merely banned.
+   *
+   * `step` says WHICH step (D265, ref workflow-model §1.2.2 rule 3): it is one
+   * of `of`'s declared timeline category keys — the same string as the step
+   * folder the harness lives in — and the composition root refuses a step the
+   * composition does not declare, exactly as it refuses a dangling `of`. It is
+   * REQUIRED for D219's own reason one field over: an optional step is one a
+   * new harness forgets to fill while every surface still renders, and there is
+   * no honest default — "somewhere in the composition" is the claim D219 spent
+   * this union to stop making.
    */
-  z.strictObject({ kind: z.literal("chunk-harness"), of: WorkflowIdSchema }),
+  z.strictObject({
+    kind: z.literal("chunk-harness"),
+    of: WorkflowIdSchema,
+    step: TimelineCategoryKeySchema,
+  }),
   /**
    * A workflow registered to prove PROGRAM MACHINERY — a kernel capability, a
    * driver, a write path — rather than to run daily HR work, and belonging to
@@ -69,7 +83,8 @@ export type WorkflowModuleRole = z.infer<typeof WorkflowModuleRoleSchema>;
  * The one way a module states its role.
  *
  * It parses through the schema (so `of` is the branded workflow id every
- * registry keys by, rather than a bare string that agrees today) and freezes
+ * registry keys by, and `step` a kebab-case category key, rather than bare
+ * strings that agree today) and freezes
  * the result, matching how every other registry value in this tree is exported.
  */
 export function defineWorkflowRole(

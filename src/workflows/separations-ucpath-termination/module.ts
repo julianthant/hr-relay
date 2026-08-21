@@ -13,5 +13,5 @@ export const separationsUcpathTerminationModule = Object.freeze({
   descriptor: separationsUcpathTerminationDescriptor,
   stores: Object.freeze([ucpathStore, separationsStore]),
   // A proving harness for one step of `separations`, never a peer workflow (D219).
-  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations" }),
+  role: defineWorkflowRole({ kind: "chunk-harness", of: "separations", step: "ucpath-transaction" }),
 });

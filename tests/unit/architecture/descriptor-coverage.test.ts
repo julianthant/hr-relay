@@ -194,6 +194,81 @@ describe("descriptor coverage", () => {
   });
 
   /**
+   * §1.2.2 rule 3 (D265, 2026-08-21): a harness is a STEP of its composition,
+   * and the step is a name the composition declares.
+   *
+   * `of` alone said which composition a harness belongs to; `step` says WHERE
+   * in it. The registry refuses a step the composition does not declare as a
+   * timeline category for the same reason it refuses a dangling `of`: a
+   * membership claim nothing can render is one every surface would have to
+   * invent a fallback for, and three surfaces inventing three fallbacks is how
+   * they come to disagree about what a step is.
+   */
+  it("refuses a chunk harness whose step its composition does not declare (D265)", () => {
+    const harness = WORKFLOW_MODULES.find((module) => module.role.kind === "chunk-harness");
+    const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
+    if (harness === undefined || composition === undefined) {
+      throw new Error("the role fixtures require one registered chunk harness and one composition");
+    }
+    const compositionId = String(composition.descriptor.id);
+    const declaredKeys = composition.descriptor.timeline.map((category) => category.key);
+
+    // The real tuple is clean, and every harness names a key its composition
+    // actually declares.
+    assert.deepEqual(auditWorkflowModuleRoles(WORKFLOW_MODULES), []);
+    for (const module of WORKFLOW_MODULES) {
+      if (module.role.kind !== "chunk-harness") continue;
+      assert.ok(
+        declaredKeys.includes(module.role.step),
+        `${String(module.descriptor.id)} must name a step ${compositionId} declares`,
+      );
+    }
+
+    // An unknown step: the violation names the workflow, the step, and what
+    // the composition does declare.
+    const unknownStep = auditWorkflowModuleRoles(WORKFLOW_MODULES.map((module) =>
+      module === harness
+        ? {
+          descriptor: module.descriptor,
+          role: defineWorkflowRole({ kind: "chunk-harness", of: compositionId, step: "no-such-step" }),
+        }
+        : module));
+    assert.match(unknownStep.join("\n"), new RegExp(String(harness.descriptor.id)));
+    assert.match(unknownStep.join("\n"), /no-such-step/);
+    assert.match(unknownStep.join("\n"), new RegExp(declaredKeys[0] ?? "unreachable"));
+
+    // A composition that declares NO timeline has no steps to be of: its
+    // derived default is one category per node (D225), so every one of this
+    // harness's steps is refused. `person-lookup` is the real specimen.
+    const standalone = WORKFLOW_MODULES.find((module) => module.role.kind === "standalone");
+    if (standalone === undefined) throw new Error("the role fixtures require one standalone workflow");
+    const noTimeline = auditWorkflowModuleRoles([
+      { descriptor: standalone.descriptor, role: defineWorkflowRole({ kind: "composition" }) },
+      {
+        descriptor: harness.descriptor,
+        role: defineWorkflowRole({
+          kind: "chunk-harness",
+          of: String(standalone.descriptor.id),
+          step: declaredKeys[0] ?? "unreachable",
+        }),
+      },
+    ]);
+    assert.match(noTimeline.join("\n"), /does not declare/);
+
+    // And the load-time refusal is the same audit.
+    assert.throws(
+      () => workflowRoleRegistry(WORKFLOW_MODULES.map((module) =>
+        module === harness
+          ? {
+            descriptor: module.descriptor,
+            role: defineWorkflowRole({ kind: "chunk-harness", of: compositionId, step: "no-such-step" }),
+          }
+          : module)),
+      /no-such-step/,
+    );
+  });
+
+  /**
    * The SHORT CODE, and the one cross-descriptor fact about it (ref workflow-model §1.1,
    * D242). Well-formedness is the factory's — it refuses a bad code where the
    * code is authored — so what is left here is uniqueness, which no descriptor

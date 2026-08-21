@@ -274,7 +274,7 @@ describe("dashboard wire primitives", () => {
       id: "separations-kuali-read",
       code: "sk",
       label: "Separations — Kuali read",
-      role: { kind: "chunk-harness", of: "separations" },
+      role: { kind: "chunk-harness", of: "separations", step: "kuali-extraction" },
     };
     // Both served: the harness's parent is right there, so it parses.
     assert.equal(
