@@ -1054,75 +1054,93 @@ above: the doctor SERVICE composes the registry, and `cli storage doctor`, Setti
 
 ## 7. Adversarial self-review
 
-| Vector | Risk | Guard |
-|---|---|---|
-| A config default masks a genuinely missing value (empty URL silently = production) | An operator who *meant* to set a test URL, typo'd it empty, unknowingly runs against production | This is the charter's "verified + genuinely valid" exception, not a masked failure: empty-URL-means-production is a **documented, verified** default (every URL's production literal is the live-verified value already in `config.ts` today) — not a guess. What closes the *dangerous* half (test intended, prod delivered) is §4's fail-loud instance-selection check, which is orthogonal to and stricter than the plain config default |
-| Stale fiscal-date fallback | A rollover is missed; last year's date silently reused | §5: missing-FY throws; existing-but-past-due entry ALSO throws (`assertNotPast`) — closes both the "nobody rolled it over" and "somebody rolled it over wrong" cases |
-| Clock skew (host OS clock is wrong) | Freshness comparisons and trace-id time-of-day become wrong in lockstep | constant skew cancels in `now-observedAt`; changing skew remains residual; compare monotonic vs wall clock and warn/park on a large backward jump |
-| `manualClock` (test double) leaks into a production executor | A daemon silently runs with a frozen clock — every trace id, span, and freshness check wrong in the same way, all at once, no crash | `manual-clock-test-only.test.ts` — import-site guard, `manualClock` only importable from `*.test.ts`/`tests/**` |
-| `ENV_KEY_MAP` typo (env var name misspelled, or a schema leaf added without a matching env entry) | An operator sets an env var that silently does nothing (the resolver never looks for it) | `config-env-map-coverage.test.ts` — asserts every schema leaf marked `envBacked` in a leaf-level annotation has exactly one `ENV_KEY_MAP` entry, and every `ENV_KEY_MAP` entry resolves to a real schema path (bidirectional coverage, same shape as the existing registry-parity guards) |
-| Runtime re-reads config after enqueue | one run changes target/timeouts mid-flight or ledger mislabels instance | immutable snapshot/fingerprint on envelope; contexts partitioned by snapshot; guard bans config resolution from task impls |
-| Resolver return type drifts | consumers expect plain values but receive provenance wrappers | type test pins `resolveConfig():Config` and `resolveConfigWithProvenance():ResolvedConfig` separately |
-| A route name typo is accepted by an open endpoint map | driver navigates to missing/wrong route and a fallback hides it | per-system strict route schemas; unknown/missing route keys fail config parse and every driver route reference is coverage-checked |
-| Diagnostic bundle copies sensitive state because a new field lacks a classifier | credentials/HR data leak into debugging artifacts | unclassified means drop, never allow; canary redaction test scans all serializers and attachments |
-| A “temporary” LAN bind turns the local tool into a multi-user surface | unaudited remote control of live HR automation | operator server rejects non-loopback addresses; architecture/config test pins no LAN-password/RBAC path and separately proves the temporary capture ingress exposes only its closed phone-route union |
+Each row names a way this contract could rot, and what holds it. **A ✅ row is held by something
+that RUNS; a 🔶 row is held by a design decision whose enforcement is not built** — the distinction
+matters more than the table, because a design nobody executes is a promise.
 
----
+| ✓ | Vector | Risk | What holds it |
+|---|---|---|---|
+| ✅ | A config default masks a genuinely missing value (empty URL silently = production) | An operator who *meant* to set a test URL, typo'd it empty, unknowingly runs against production | This is the charter's "verified + genuinely valid" exception, not a masked failure: empty-URL-means-production is a documented, live-verified default. What closes the *dangerous* half (test intended, prod delivered) is §4's fail-loud instance check, which is orthogonal to and stricter than the plain default — though as-built it fires at session acquisition, not at enqueue |
+| ✅ | Stale fiscal-date fallback | A rollover is missed; last year's date silently reused | §5: a missing FY throws, and an existing-but-past `jobEndDate` ALSO throws (`assertNotPast`) — both the "nobody rolled it over" and the "somebody rolled it over wrong" cases |
+| 🔶 | Clock skew (the host OS clock is wrong) | Freshness comparisons and trace-id time-of-day become wrong in lockstep | Constant skew cancels in `now − observedAt`; changing skew is residual. Durations already use `monotonicMs`, which is the half that matters for budgets. **The detector is not built** — nothing in `src/` compares wall against monotonic or warns on a backward jump, so §9's second settled question records a decision, not a mechanism |
+| ✅ | `manualClock` leaks into a production executor | A daemon silently runs with a frozen clock — every trace id, span and freshness check wrong in the same way, all at once, no crash | `manual-clock-test-only.test.ts` bans the identifier anywhere in `src/**` but `clock.ts` (§2) |
+| 🔶 | A config leaf that SHOULD be environment-overridable has no binding | An operator sets a variable that silently does nothing, because the resolver never looks for it | Half is held and half is not. **Held:** `ConfigEnvBindingRegistrySchema` refuses duplicate `env` names and duplicate `path`s; `tests/unit/config.test.ts` proves every registered binding's path resolves to a real leaf AND comes back `env`-provenanced; `runtime-environment-coverage` proves every binding key is a registered ACTIVE environment spec on the config channel. **Not held:** the reverse direction. There is no `envBacked` leaf annotation to compare against, so a leaf that ought to be overridable and has no binding is invisible. `config-env-map-coverage.test.ts` does not exist |
+| ✅ | Runtime re-reads config after enqueue | One run changes target or timeouts mid-flight, or the ledger mislabels the instance | The immutable snapshot + fingerprint on the envelope (§4); contexts partitioned by that fingerprint (D116); the executor reads the RETAINED snapshot by id and refuses the node when it is absent, rather than re-resolving current config |
+| ✅ | Resolver return type drifts | Consumers expect plain values and receive provenance wrappers | `ResolvedConfigSchema` is a strict object and the two exported signatures are separate: `resolveConfig(): Config`, `resolveConfigWithProvenance(): ResolvedConfig` |
+| ✅ | A route-name typo is accepted by an open endpoint map | A driver navigates to a missing or wrong route and a fallback hides it | Per-system `z.strictObject` route schemas — an unknown key fails config parse — and `CONFIG_ROUTE_KEYS` is audited against the endpoint specs in both directions (`src/domain/runtime-dependencies.ts:467-481`, `runtime-dependency-coverage`) |
+| ✅ | A diagnostic bundle copies sensitive state because a new field lacks a classifier | Credentials or HR data leak into debugging artifacts | Unclassified means DROP, never allow; the (classification, transform) pair is refused at declaration time and again at application time (§6); `redaction-surface-scan` plus canary tests scan every serializer and attachment |
+| ✅ | A "temporary" LAN bind turns the local tool into a multi-user surface | Unaudited remote control of live HR automation | The listener refuses any hostname but `127.0.0.1`/`localhost` by name (§6.1), and `capture-durability-and-scope` separately proves the temporary capture ingress exposes only its closed phone-route union, with an ingress-Host request answered byte-identically to an unrouted path |
+| 🔶 | A settings value is accepted and dropped | An operator sets something in a file, sees it parse, and gets the default | Real today for the `browser` group (§3), and unobservable only because the settings layer has no producer. Whoever wires `apply-settings` must make the merge exhaustive over `ConfigSchema`'s groups in a way the compiler checks |
 
 ## 8. Worked example
 
-**A live onboarding hire-date fill against production, everything resolved from its one source:**
+**Illustrative, not as-built.** The workflow shown (onboarding) is unmigrated and the two batch
+secret gates have no caller yet (§6), so this is what a run's inputs are SUPPOSED to look like when
+they all come from their one source. Every signature below is the real one.
 
 ```ts
-const clock = systemClock;
-const config = resolveConfig(process.env, readOperatorSettingsOverride());
-const onboardingDescriptor = getWorkflowDescriptor("onboarding");
-validateBootSecrets();                                        // no unused workflow credential gate
-validateDescriptorSecrets(onboardingDescriptor.requiredSecrets); // reports UCPath requirements together
+const clock = systemClock;                                       // §2 — the only time source
+const { config, provenance, fingerprint } =
+  resolveConfigWithProvenance(configResolutionEnvironment(), settingsOverride, clock);  // §3
 
-const runId = crypto.randomUUID();
-const traceId = buildTraceId({ code: "ou", runId, at: clock.now() });   // §2 — Clock supplies `at`
+validateBootSecrets();                                           // §6 — no unused workflow credential gate
+validateDescriptorSecrets(descriptor.requiredSecrets, descriptor.requiredSecretFamilies);  // §6 — not yet declared
 
-const ucpathUrl = resolveSystemUrl(config, "ucpath", envelope.resolvedInstance.ucpath);
+const traceId = buildTraceId({ code: "ou", runId, at: clock.now() });                // §2
+const resolvedInstance = resolveInstances(descriptor, request.requestedInstance);     // §4
+const ucpathUrl = resolveSystemEntryUrl(config, "ucpath", resolvedInstance.ucpath ?? "prod", runId);
 
-const annualDates = requireAnnualDates(config, clock);         // §5 — FY2027 entry, not past-due; else throws
-const ucpathPassword = requireSecret("ucpathPassword");        // §6 — throws loud if unset, never logged
+const annualDates = requireAnnualDates(config, clock);           // §5 — FY2027, not past-due; else throws
+const ucpathPassword = requireSecret("ucpathPassword");          // §6 — throws loud if unset, never logged
 
-// … task runs, checkpoint facts record observedAt from clock; configSnapshotId stays fixed …
-// span.ended(run, "done") — all-prod resolved map + config fingerprint recorded
+// … tasks run; checkpoint facts stamp observedAt from the same clock; configSnapshotId stays fixed …
+// span.ended(run, "done") — the resolved instance map and the config fingerprint are on the record
 ```
 
 **The same run one fiscal year later, nobody rolled the dates over:**
 
 ```ts
 const annualDates = requireAnnualDates(config, clock);
-// throws:
-// FiscalDateNotConfiguredError: no ANNUAL_DATES configured for FY2028 (today 2027-07-03 falls in
-// FY2028, Jul 1 2027 – Jun 30 2028). Add config/settings.json → annualDates.FY2028 = { jobEndDate,
-// kronosDefaultEndDate, kronosDefaultStartDate }, or set ANNUAL_DATES_END / KRONOS_DEFAULT_END_DATE
-// / KRONOS_DEFAULT_START_DATE for this year.
+// throws FiscalDateNotConfiguredError:
+// no ANNUAL_DATES configured for FY2028 (today 2027-07-03 falls in FY2028, Jul 1 2027 – Jun 30 2028);
+// configure annualDates.FY2028
 ```
 
-The run parks before touching UCPath — no hire-date fill is ever attempted with a stale or absent
-fiscal literal.
+The run fails before touching UCPath — no hire-date fill is ever attempted with a stale or absent
+fiscal literal. And had the operator rolled FY2028 forward by copying last year's row, the second
+check catches it instead:
 
----
+```
+FY2028.jobEndDate=06/30/2027 is stale for today 2027-07-03
+```
 
 ## 9. Settled design questions
 
 1. ~~Secret requirement timing~~ — **resolved 2026-07-21:** descriptors derive `requires` from task
    contracts; enqueue checks the complete set before creating a run. Per-task `requireSecret()`
    remains a fail-loud defense-in-depth backstop, not the primary discovery mechanism.
+   **As-built:** the ANSWER stands and the BUILD does not — no contract declares `requires`, so the
+   backstop is currently the only mechanism (§6). The decision is what to implement, not what to
+   re-litigate.
 2. ~~Clock-skew detection~~ — **resolved:** durations use monotonic time; the executor compares wall
-   vs monotonic deltas and emits a loud health warning/pauses new commits on material backward wall
-   jumps until the operator acknowledges. Existing runs never rewrite timestamps.
+   against monotonic deltas and emits a loud health warning, pausing new commits on a material
+   backward wall jump until the operator acknowledges. Existing runs never rewrite timestamps.
+   **As-built:** the monotonic half is real and load-bearing (`Clock.monotonicMs`, §2's prewrite
+   age); the comparison and the warning are **not built** — nothing in `src/` mentions skew. §7
+   carries it as an open 🔶 row rather than as a closed question, because a settled answer with no
+   implementation is a design, not a guard.
 3. ~~`ENV_KEY_MAP` for URLs~~ — **resolved:** only intentionally supported leaves appear in the
-   explicit map. No reflection/uniform "every leaf" override. Production endpoint maps remain code
-   defaults; settings and named URL env vars populate sparse test maps only.
-4. ~~Fiscal-year entry authoring UI~~ — **resolved:** schema/file authoring works in Phase 1;
-   operator UI lands with native Settings in Phase 2 tail 2i. Until then, the validated JSON entry
-   is the supported rebuild-config path (the rebuild repo's own `config/settings.json`); legacy
-   Settings continues independently in the legacy repo and cannot be proxied into the rebuild
-   repo (D93).
-5. ~~Per-run config snapshot timing~~ — **resolved 2026-07-21:** required in Phase 1 because every
-   write ledger record needs trustworthy instance/config provenance even when all runs are prod.
+   explicit registry. No reflection, no uniform "every leaf" override. Production endpoint maps
+   remain code defaults; settings and named URL environment variables populate sparse test maps
+   only. **As-built: held exactly** — all 38 bindings write into `urls.<system>.test` or a non-URL
+   leaf (§3).
+4. ~~Fiscal-year entry authoring UI~~ — **resolved:** schema and file authoring work in Phase 1;
+   operator UI lands with native Settings. **As-built: neither half is reachable yet.** Settings
+   ships read-only with one `storage` section and `apply-settings` answers `capability-unavailable`,
+   AND no module reads a settings file, so the "validated JSON entry" path is unread too (§3). Until
+   `{#def-settings}` lands, the only working channel is the three environment variables, set as a
+   complete group.
+5. ~~Per-run config snapshot timing~~ — **resolved 2026-07-21:** required in Phase 1, because every
+   write-ledger record needs trustworthy instance and config provenance even when all runs are
+   prod. **As-built: held, at process granularity** — the snapshot row is captured once per
+   dashboard process and every run that process starts binds its id and fingerprint (§4).
