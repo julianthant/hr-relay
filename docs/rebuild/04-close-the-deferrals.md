@@ -457,28 +457,63 @@ this: a restricted bundle is local, and it is not short-lived.
 
 ## Decisions this phase ratified
 
-_Derived from `reference/decisions.md`'s round headings on 2026-08-20 (3b) — the
-ratification act and the normative pointer stay in the ledger; this is the phase index._
-
-**Nothing has been ratified in this phase yet** — a deferral is closed by the decision that ends it,
-and none has been written. What is listed here is the decision that CREATED each deferral, so the
-trigger can be read beside the reasoning that deferred it:
+Checked against `reference/decisions.md`'s `_phase:_` markers on 2026-08-21: **the ledger carries no
+`_phase: 4_` marker, and that is correct.** A deferral is closed by the decision that ENDS it, and
+none has been written. What follows is therefore the inverse index — the decision that CREATED each
+deferral — so a trigger can be read beside the reasoning that deferred it. The ratification act and
+the normative pointer stay in the ledger; this is the phase index.
 
 | Deferral | Created by | Round · date |
 |---|---|---|
-| the explorer's EDIT half | D79a (the DSL mode cut) then **D186** (reassigned out of Phase 2 on D79a's own argument) | rounds 8 · 2026-07-23 and 45 · 2026-08-09 |
-| the production frontend byte path / the phone in production | **D189** (a named gap, not a waiver) with D174/D175's capture ingress | rounds 41 · 2026-08-09 and 45 · 2026-08-09 |
-| the capture → OCR-backed run binding | **D174** (the handoff seam's idempotent identities) | round 41 · 2026-08-09 |
-| the record-sanity-check advisory | **D192** (retire run-summary and selector-suggest; sanity check stays open, deferred to order-8) | round 46 · 2026-08-12 |
-| editable settings | **D193**'s storage clause (done until asked) | round 47 · 2026-08-12 |
-| UCPath / ServiceNow propagation windows | **D207** (separations' provisional `stabilized` window, confirmable only by a controlled commit) and D128/D135's measured Kuali window | rounds 52 · 2026-08-14 and 30 · 2026-08-04 |
-| cross-date search · screenshots · Excel export | the Phase-2 tail scope (D168–D180) that named them out | round 44 · 2026-08-09 |
-| diagnostic auto-purge · unreferenced artifact bytes | **D137** (retention purges the row and its index, never the shared content-addressed bytes) | round 32 · 2026-08-04 |
+| the capture → OCR-backed run binding | **D174** — the handoff seam ships with an EMPTY registry and idempotent derived identities | 41 · 2026-08-09 |
+| the production frontend byte path / the phone in production | **D189** (a named gap, not a waiver) with **D175**'s on-demand ingress; **D193(a)** fixes "production" as LOCAL | 45 · 2026-08-09, 41 · 2026-08-09, 47 · 2026-08-12 |
+| the explorer's EDIT half + the new-workflow authoring path | **D79a** (the DSL mode cut) then **D186** (reassigned out of Phase 2 on D79a's own argument) | 8 · 2026-07-23 and 45 · 2026-08-09 |
+| the record-sanity-check advisory | **D192** deferred it to order 8; the operator RETIRED it 2026-08-18 | 46 · 2026-08-12 (retired 2026-08-18) |
+| editable settings | **D169**'s deferred `apply-settings` family, with **D184**'s `declared-unserved` preflight | 38 · 2026-08-08 and 45 · 2026-08-09 |
+| UCPath / ServiceNow propagation windows | **D128** (the controlled commit that measured nothing, so `operator-only` stands), **D135** (Kuali measured), **D207** (the mechanism-transfer rule, provisional) | 26 · 2026-08-04, 30 · 2026-08-04, 53 · 2026-08-14 |
+| cross-date search · screenshots · Excel export | named out of the 2i operator-surface tail (**D168–D180**); the xlsx sink is **D164**'s retention sink and the one served export is **D240**'s Activity CSV | 38–44 · 2026-08-08 → 09, 38 · 2026-08-08, 72 · 2026-08-19 |
+| diagnostic auto-purge · unreferenced artifact bytes | **D137** (retention purges the row and its index, never the shared content-addressed bytes) with **D193(b)**'s `wont-build-unless-asked` stance | 32 · 2026-08-04 and 47 · 2026-08-12 |
+
+**What ratifying anything here would look like**, so the next agent recognizes it: a decision that
+closes a deferral lands in the OWNING reference doc in the same commit that records it (`ref
+frontend-backend-integration` §6.9 for the byte path, `ref operator-trust` §5.3/§5.5 for the
+explorer, `ref clock-config-secrets` §3 for settings, `ref write-safety` §4.2 for a propagation
+window, `ref operator-trust` §2.2 for retention), `reference/decisions.md` gets the round row with a
+`_phase: 4_` marker, and this table gains the closing decision beside the creating one.
 
 ## Exit criteria
 
-07 records no exit block for the deferrals — by construction: a deferral closes when
-its own trigger fires, and each trigger is named in that deferral's section above (and normatively
-in its owning `reference/` doc). Two of them are Phase-2's explicit dispositions and carry their
-owners in `02-prove-writes-build-the-tails.md` §Exit criteria: the explorer's EDIT half (D186) and
-the production BFF's frontend bytes (D189).
+**There is no exit block to inherit, and that is structural rather than an omission.** A phase with
+a start and an end has exit criteria; Phase 4 is a set of standing answers, and each one ends when
+its own trigger fires. What binds instead is the line below: **every deferral is either closed by a
+build, or carried past the cutover with its trigger still standing and named.** Neither state is a
+waiver. What is forbidden is a third state — a deferral nobody can find the trigger for.
+
+| # | Criterion | State | Evidence / what is left |
+|---|---|---|---|
+| 1 | **Every deferral names a trigger or a decided stance** | **MET** | eight nodes: five triggers (orders 3 ×2, a second workflow, cross-cutting ×2, order 7), two D193 stances, one retirement |
+| 2 | **No deferral is silently dropped** | **MET** | each has a node in `{#deferred}`, a section here, and a decision in the ledger that created it |
+| 3 | **The record-sanity-check advisory is dispositioned** | **MET** | RETIRED by the operator 2026-08-18 (D192); `config/legacy-capabilities.json` carries `kind: "retired"` and `AdvisorySurfaceIdSchema` stays closed at two values |
+| 4 | **The storage remainders are dispositioned** | **MET** | D193(b): scheduling the sweep and the content-store refcount are `wont-build-unless-asked`, off every milestone |
+| 5 | **The capture → run binding** | **open** | trigger unfired — order 3 declares the first `CaptureIntakeBinding`; `CAPTURE_INTAKE_BINDINGS` is `{}` at HEAD |
+| 6 | **The production byte path + the phone page delivered** | **open** | trigger unfired — order 3; six build items, including `--prod` reaching the runtime and the INERT Host gate being wired or deleted |
+| 7 | **The explorer's EDIT half + the authoring path** | **open** | trigger unfired — it needs a SECOND production workflow whose policy somebody wants to change; `02-prove-writes-build-the-tails.md` §Exit criteria carries the reassignment |
+| 8 | **Editable settings** | **open** | trigger unfired — the Phase-3 cross-cutting closure; `apply-settings` answers `capability-unavailable` at HEAD |
+| 9 | **Cross-date search · screenshots · Excel export** | **open** | trigger unfired — the Phase-3 cross-cutting closure, shaped against a real run corpus |
+| 10 | **Propagation windows, per system** | **partly MET** | Kuali measured and closed (D135), transferred provisionally to the separations finalization (D207); **UCPath open** (order 7, both contracts `operator-only`), **ServiceNow open** (no commit contract yet) |
+
+**Nothing here blocks the cutover.** `05-cut-over.md` §Exit criteria names none of these eight, and
+that is a deliberate reading rather than an accident of drafting: the cutover switches which
+repository files real HR transactions, and every deferral above is a capability the LEGACY system
+also lacks or that the operator has decided not to buy. The one to watch is criterion 10 — a
+propagation window is not a convenience, and a workflow whose write reaches an unmeasured system
+parks for a human on a post-fence absence. That is correct behaviour, not a blocker, but it is the
+one row whose "open" has a runtime cost.
+
+**Where each deferral's normative text lives**, because this doc is the index and not the contract:
+`ref data-intake-and-edit-data` §5.1 (capture binding) · `ref frontend-backend-integration` §6.9 and
+§8 (byte path, the guard arm) · `ref operator-trust` §5.3–§5.6 (explorer edit, authoring) ·
+`ref operator-trust` §4.4.2 (the retired advisory) · `ref clock-config-secrets` §3 and
+`ref frontend-backend-integration` §3.4 (settings) · `ref write-safety` §4 and §4.2 (propagation) ·
+`ref frontend-backend-integration` §3.6 and `ref operator-trust` §2.2/§2.4 (search, screenshots,
+export) · `ref operator-trust` §2.2 and `ref dashboard-surfaces` §2.1 (retention).
