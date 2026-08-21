@@ -1583,76 +1583,69 @@ unchanged — conditionality is still a key-presence fact at the type level.
 
 ## 4. The run-state machine (gates are run-state, not task internals — D5)
 
-> **A gate's durable evidence is a `gate_results` row, and a downstream task's provenance must accept
-> it as such (D203, 2026-08-12).** A task's read-completion validation resolves its declared
-> `dependsOn` set against whole authority checkpoints. A gate has none and never will — its durable
-> record is an operator decision, not an observation — so a task declaring a gate as a dependency was
-> structurally unrunnable until the first live gated run found it. `upstreamEvidence` now carries
-> `gateResults` beside `checkpoints`: a declared dependency is satisfied by either, an undeclared one
-> from either side is refused by name, and a gate contributes exactly ONE `operator`-sourced fact
-> dated at `resolvedAt` with no output leaves — what a gate dates is the DECISION, not a field. It
-> cannot make a derived output look fresher than its live inputs, because a derived leaf takes the
-> OLDEST original observation and an approval is always at least as new as the evidence it was
-> granted on. Fabricating a checkpoint row for the gate was the tempting fix and is exactly what D144
-> refused: a durable record must not claim a shape it does not have.
-
+<!-- roadmap: p1-kernel -->
+<!-- roadmap: platform-fixes -->
 
 Tasks stay run-to-completion with bounded duration (ref task-contract's retry/timeout policy). Long waits —
 OCR approval, oath-upload's child-signature watching, external signals — are **gate nodes** in the
 descriptor sequence, owned by this state machine. Ref dashboard-surfaces's `gate.opened`/`gate.resolved` events
 are their wire form; this doc defines the semantics, ref dashboard-surfaces the encoding.
 
-> **The identity-approval gate is designed in ref write-safety §14 (D77, 2026-07-26).** It is a gate node in
-> every respect this section defines — park, session release, typed result, resume — so nothing
-> here is special-cased for it. What ref write-safety owns is *what that particular gate asks and what its
-> answer authorizes*: the decision packet, the ALWAYS-GATE policy, the staleness rule that re-opens
-> a gate when the approved candidate has changed, and the binding of its result to the commit's
-> expected subject. Two placement rules from that design constrain this graph and are restated
-> here because this doc owns graph legality: **(1)** a gate node may never sit *inside* a
-> `transaction` node — D26 forbids any park between `prepare` and `commit`, and a staged wizard
-> page cannot survive an operator wait; **(2)** for a descriptor whose commit consumes an
-> operator-approved subject, the commit must be graph-reachable **only** through that gate, which
-> ref guards-and-tests's `identity-gate-before-separation-commit` guard asserts statically.
+**The identity-approval gate is designed in ref write-safety §14 (D77, 2026-07-26).** It is a gate node in
+every respect this section defines — park, session release, typed result, resume — so nothing
+here is special-cased for it. What ref write-safety owns is *what that particular gate asks and what its
+answer authorizes*: the decision packet, the ALWAYS-GATE policy, the staleness rule that re-opens
+a gate when the approved candidate has changed, and the binding of its result to the commit's
+expected subject. Two placement rules from that design constrain this graph and are restated
+here because this doc owns graph legality: **(1)** a gate node may never sit *inside* a
+`transaction` node — D26 forbids any park between `prepare` and `commit`, and a staged wizard
+page cannot survive an operator wait; **(2)** for a descriptor whose commit consumes an
+operator-approved subject, the commit must be graph-reachable **only** through that gate, which
+ref guards-and-tests' `identity-gate-before-commit` guard asserts statically — widened by
+D202 to audit the terminal RESULT as well as the transaction node, because a gate that dominates
+the decision must also dominate the output.
+
+**The states are a durable enum, and so are the outcomes.** `RunStateSchema`
+(`src/domain/run/record.ts:63-72`) is the `tasks.state` column's domain — `queued`, `claimed`,
+`validating`, `running`, `parked-gate`, `parked-write`, `terminal` — and `RunOutcomeSchema`
+(`:48-56`) is what a `terminal` row settled as: **`done`, `failed`, `cancelled`, `discarded`,
+`interrupted`, `superseded`**. A park is a STATE; failure is an OUTCOME of the one terminal state.
+The two must not be read as one list: `failed` is not somewhere a run sits.
 
 ```
-queued → claimed → validating → running(node i) ──────────────→ terminal
-  ▲                    │            │        outcomes (ref dashboard-surfaces union): done | failed |
-  │                    │            │          cancelled | discarded | interrupted
-  │  gate resolved     │            ├─ gate node reached → PARKED(gate)
-  ├────────────────────┼────────────┘
-  │                    └─ entry validation fails → failed (§5.4 — before any browser)
-  └─ requeue (bump / reassign / recovery)          crash-mid-write → recovery probe → done|retry|PARK (§5.6)
+queued → claimed → validating → running(node i) ─────────────→ terminal
+  ▲                    │            │        outcomes: done | failed | cancelled |
+  │                    │            │                  discarded | interrupted | superseded
+  │                    │            ├─ gate node reached ──────→ parked-gate
+  │  gate resolved     │            └─ crash mid-write / unprovable → parked-write
+  ├────────────────────┴──────────────────────────────────────────────┘
+  │  (a resolution RE-ENQUEUES; a parked run holds no worker, so it never resumes in place)
+  └─ requeue (bump / reassign / recovery / a terminal row re-enqueued as a fresh attempt)
 ```
 
-The same machine as a state diagram — parks are first-class states, not sentinel statuses:
+The same machine as a state diagram — parks are first-class states, not sentinel statuses, and
+every edge below is one `RUN_STATE_TRANSITIONS` admits:
 
 ```mermaid
 stateDiagram-v2
   [*] --> queued
   queued --> claimed : worker claims
   claimed --> validating
-  validating --> failed : entry validation fails<br/>(before any browser)
+  validating --> terminal : entry validation fails → failed<br/>(before any browser)
   validating --> running
 
   running --> parked_gate : gate node reached
-  parked_gate --> running : gate resolved<br/>(typed result, D67)
-  parked_gate --> cancelled : operator cancels
+  parked_gate --> queued : gate resolved (typed result, D67)<br/>re-enqueued with startAt = the node after
+  parked_gate --> terminal : operator cancels
 
   running --> parked_write : crash mid-write<br/>or unprovable outcome
-  parked_write --> running : proof attached / confirmed-absent<br/>(generation-locked, D44)
-  parked_write --> done : confirmed-present proof<br/>parses + atomic commit
+  parked_write --> queued : proof attached / confirmed-absent<br/>(generation-locked, D44)
+  parked_write --> terminal : confirmed-present proof parses<br/>+ atomic commit → done
 
-  running --> done
-  running --> failed
-  running --> cancelled
-  running --> discarded
-  running --> interrupted
-  interrupted --> queued : requeue<br/>(bump / reassign / recovery)
+  running --> queued : requeue (bump / reassign / recovery)
+  running --> terminal : done | failed | cancelled | discarded<br/>| interrupted | superseded
 
-  done --> [*]
-  failed --> [*]
-  cancelled --> [*]
-  discarded --> [*]
+  terminal --> queued : a retry is a NEW run at the item's<br/>next unspent attempt (D221)
 
   note right of parked_gate
     Holds NO browser session,
@@ -1664,6 +1657,12 @@ stateDiagram-v2
     Only typed resolutions.
   end note
 ```
+
+**Why no `parked-* → running` edge.** The earlier drawing of this machine had one, and it is the
+edge the durable table refuses: `["parked-gate", ["parked-gate", "queued", "terminal"]]`. A parked
+run released every session and its worker on the way in (below), so there is nothing to resume INTO
+— the resolution re-enqueues and a FRESH claim reacquires. Drawing the shortcut hid the one fact
+that makes parking for days free.
 
 **Park semantics.** Reaching a gate node, the engine:
 
