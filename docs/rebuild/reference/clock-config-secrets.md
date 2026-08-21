@@ -707,52 +707,74 @@ half loud.
 
 ## 5. Fiscal-year dates — fail-loud, not silently stale
 
-Today's `ANNUAL_DATES` is a flat, single-year literal that has no rollover mechanism and is already
-past due (`jobEndDate: "06/30/2026"`, today 2026-07-18). The rebuild makes staleness a **loud
-failure at the point of use**, not a silently-wrong fill.
+<!-- roadmap: phase-1 -->
 
-- **Keyed by fiscal year, not flat.** `Config.annualDates: Record<"FY${number}", AnnualDateEntry>`
-  (§3's schema). There is no single "the" `jobEndDate` — there is `annualDates["FY2027"]
-  .jobEndDate`, looked up by the Clock.
+<!-- roadmap-status: phase-1 -->
+- [x] `Config.annualDates` is keyed by fiscal year (`z.record(FiscalYearKeySchema, AnnualDateEntrySchema)`), not a flat literal, and every key and value parses strictly (`src/domain/config/schema.ts:9,72-76,215`)
+- [x] `requireAnnualDates(config, clock)` is the one lookup and it throws by name for a missing year AND for an existing-but-past `jobEndDate` (`src/domain/config/fiscal-year.ts:45-63`)
+- [x] the comparison is pure calendar arithmetic — a strict `M/D/YYYY` parse with leap-year validation, compared as an integer date code against `clock.todayLocal()` — so it needs no `Date` parsing, no timezone and no sleeping test
+- [ ] `annualDates` defaults to `{}` and NO production module calls `requireAnnualDates`: the only caller in the tree is `tests/unit/config.test.ts`. The consumers §1 named (onboarding hire-date fill, Kronos report range) are unmigrated workflows, so the contract is built and unexercised
+- [ ] the `fiscal.current` preflight check is registered as a blocking `workflow`-scope check for `workflow.kuali-fill` (`src/domain/runtime-dependencies.ts:369`) and has no runner — see §6.2
+> 2026-08-21 | docs-cohesion clock-config-secrets | verified against `src/domain/config/fiscal-year.ts` and `schema.ts`, and by grepping the tree for callers; left: the first migrated workflow that fills a fiscal date is what exercises this
+<!-- /roadmap-status -->
+
+Legacy's `ANNUAL_DATES` is a flat, single-year literal with no rollover mechanism, and it was already
+past due when the audit ran (§1). The rebuild makes staleness a **loud failure at the point of use**,
+not a silently-wrong fill.
+
+- **Keyed by fiscal year, not flat.** `Config.annualDates: Record<"FY${number}", AnnualDateEntry>`.
+  There is no single "the" `jobEndDate` — there is `annualDates["FY2027"].jobEndDate`, looked up by
+  the Clock. UC's fiscal year runs Jul 1 – Jun 30 and is NAMED by its ending calendar year, which is
+  `Clock.fiscalYear`'s one line of arithmetic (§2).
 - **Intentional dynamic-map exception.** Fiscal years are unbounded configuration keys rather than
   domain field names, so this constrained `z.record(FiscalYearKeySchema, AnnualDateEntrySchema)` is
-  allowed. The strict config parser validates every key and every value; no task reads it directly,
-  and `requireAnnualDates` returns exactly one typed current-year entry or throws.
-- **`requireAnnualDates(config, clock)`** — the one call site every consumer (onboarding hire-date
-  fill, Kronos report range fill) goes through:
+  allowed where an open record would not be. `FiscalYearKeySchema` is `/^FY\d{4}$/`, every entry is
+  a strict `{jobEndDate, kronosDefaultEndDate, kronosDefaultStartDate}` of `UsDateSchema` values, and
+  no task reads the map directly.
 
 ```ts
+// src/domain/config/fiscal-year.ts — the one call site every consumer goes through
 export function requireAnnualDates(config: Config, clock: Clock): AnnualDateEntry {
-  const fy = `FY${clock.fiscalYear()}`;
-  const entry = config.annualDates[fy];
-  if (!entry) {
+  const fiscalYear = clock.fiscalYear();
+  const key = `FY${String(fiscalYear)}`;
+  const entry = config.annualDates[key];
+  if (entry === undefined) {
     throw new FiscalDateNotConfiguredError(
-      `no ANNUAL_DATES configured for ${fy} (today ${clock.todayLocal()} falls in ${fy}, ` +
-      `Jul 1 ${clock.fiscalYear() - 1} – Jun 30 ${clock.fiscalYear()}). Add config/settings.json ` +
-      `→ annualDates.${fy} = { jobEndDate, kronosDefaultEndDate, kronosDefaultStartDate }, or set ` +
-      `ANNUAL_DATES_END / KRONOS_DEFAULT_END_DATE / KRONOS_DEFAULT_START_DATE for this year.`
+      `no ANNUAL_DATES configured for ${key} (today ${clock.todayLocal()} falls in ${key}, `
+      + `Jul 1 ${String(fiscalYear - 1)} – Jun 30 ${String(fiscalYear)}); configure annualDates.${key}`,
     );
   }
-  assertNotPast(entry.jobEndDate, clock);   // see below — an ENTRY existing is not enough
+  assertNotPast(entry.jobEndDate, `${key}.jobEndDate`, clock);   // an ENTRY existing is not enough
   return entry;
 }
 ```
 
-- **A second, narrower check: an existing-but-stale entry is also loud, not just a missing one.**
-  A copy-pasted-forward entry (this year's key holding last year's date by operator mistake) would
-  pass the lookup above but still be wrong. `assertNotPast(entry.jobEndDate, clock)` parses the
-  date and throws if it is chronologically before `clock.now()` — this is the exact "already stale"
-  failure mode gap-audit gap 7 names, closed structurally rather than by operator vigilance.
-- **This is the charter's fail-loud rule, applied verbatim** (root `CLAUDE.md` §"Fail loud"): a
-  fiscal date is "an expected value" whose absence/staleness is not a "genuinely valid, expected
-  state" (a hire-date fill genuinely needs a *current* fiscal year's date) — so it fails loud
-  instead of substituting the nearest available literal.
-- **Rollover is then a config edit, not a code deploy.** Adding `annualDates.FY2028` to
-  `config/settings.json` (or the equivalent env vars) each June is the entire rollover procedure —
-  same operator action as today, but now a missed rollover is caught at the first onboarding/
-  separation run that needs it, not discovered months later.
+- **A second, narrower check: an existing-but-stale entry is also loud.** A copy-pasted-forward
+  entry (this year's key holding last year's date by operator mistake) passes the lookup and is
+  still wrong. `assertNotPast(value, field, clock)` parses the value as a strict `M/D/YYYY` calendar
+  date — validating the month, the day-of-month and leap years, so `2/30/2027` is refused as a
+  malformed date rather than silently normalized — converts both it and `clock.todayLocal()` to an
+  integer date code, and throws `<field>=<value> is stale for today <YYYY-MM-DD>` when the value is
+  strictly BEFORE today. Today itself is not stale. Nothing here parses a `Date` or reasons about a
+  timezone: the comparison is arithmetic over two calendar triples, which is why it is exact at the
+  boundary and testable without a clock that moves.
+- **Only `jobEndDate` is staleness-checked, and that is deliberate.** The two Kronos values are the
+  ENDS of a reporting range whose start is expected to be years in the past (legacy's default was
+  `1/1/2017`), so refusing a past `kronosDefaultStartDate` would refuse every correct
+  configuration. They are still schema-validated as dates.
+- **This is the charter's fail-loud rule applied verbatim.** A fiscal date is an expected value whose
+  absence or staleness is not a genuinely valid state — a hire-date fill needs a *current* fiscal
+  year's date — so it fails loud instead of substituting the nearest available literal.
+- **Rollover is then a config edit, not a code deploy.** Adding `annualDates.FY2028` (or setting the
+  three environment variables as a complete group, §3) each June is the entire rollover procedure,
+  and a missed rollover is caught at the first run that needs it rather than discovered months later.
 
----
+**As-built: built, guarded, and not yet exercised.** `annualDates` defaults to `{}`, so
+`requireAnnualDates` currently throws for every fiscal year on a default resolve — which is the
+correct behaviour and also means the contract has no production caller. The consumers §1 named live
+in workflows that are not migrated yet; the first migrated workflow that fills a fiscal date is what
+turns this section from a contract into a running check, and it must call `requireAnnualDates` rather
+than reading the map, or the staleness half is lost.
 
 ## 6. Secrets accessor
 
