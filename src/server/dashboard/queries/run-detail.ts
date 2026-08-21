@@ -74,8 +74,9 @@ import type { FailureRecord } from "../../../domain/trust/failure.js";
 import { runClaim, type RunRecord } from "../../../domain/run/record.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import {
-  readEventStreamLines,
+  readScopedEventStreamLines,
   type EventStreamLine,
+  type EventStreamScope,
 } from "../../../infra/events/jsonl-streams.js";
 import { NoteWireSchema as NoteAtRestSchema } from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
@@ -790,14 +791,125 @@ const SectionNameSchema = z.enum([
 
 const LEVEL_MAP = { error: "error", warn: "warning", waiting: "warning", step: "info", success: "info", debug: "info" } as const;
 
-function noteLinesForRun(deps: RunDetailQueryDeps, workflow: string, runId: string): readonly { line: EventStreamLine; note: z.infer<typeof NoteAtRestSchema> }[] {
-  const matches: { line: EventStreamLine; note: z.infer<typeof NoteAtRestSchema> }[] = [];
-  for (const line of readEventStreamLines(deps.stateRoot, "notes")) {
-    if (line.file.workflow !== workflow) continue;
-    const note = NoteAtRestSchema.parse(JSON.parse(line.text));
-    if ("runId" in note && note.runId === runId) matches.push({ line, note });
+/** One note line this run owns, in the order the corpus holds it. */
+export interface RunNoteScanEntry {
+  readonly line: EventStreamLine;
+  readonly note: z.infer<typeof NoteAtRestSchema>;
+}
+
+/**
+ * How many days either side of a run's OWN activity window the notes reader
+ * still opens.
+ *
+ * `notes/` is partitioned append-at-now (`localDatePart(clock.now())` at the
+ * moment of the write), while the window below is composed from the run's
+ * durable instants. Those two agree to the second in every ordinary case and
+ * can disagree across ONE midnight: a worker that writes its last note
+ * milliseconds after the transition that closed the run files it on the next
+ * day's partition. One day of margin covers that whole class; it is not a
+ * guess at how far a note can drift, it is the width of the only boundary the
+ * two clocks can fall on either side of.
+ */
+const NOTE_PARTITION_DAY_MARGIN = 1;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function noteWindowInstant(runId: string, label: string, value: string): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(
+      `run ${runId} carries an unreadable ${label} instant ${JSON.stringify(value)}; the notes reader refuses `
+      + "to decide which partitions it may skip from a timestamp it cannot read",
+    );
   }
-  return matches;
+  return parsed;
+}
+
+/**
+ * The `notes/` partitions ONE run's log lines can be in (D5, audit P3).
+ *
+ * `readEventStreamLines(stateRoot, "notes")` read every byte of every workflow's
+ * every day on EVERY logs GET — 20,800 lines and 5.4 MB in the §7.4 fixture, to
+ * serve thirteen — and it grows for as long as the tool runs. The corpus is
+ * partitioned by `(workflow, date)` in the file name, and a run's lines can only
+ * be in its own workflow's partitions inside its own activity window, so the
+ * reader opens exactly those.
+ *
+ * The window is composed from the run's DURABLE instants — the enqueue span,
+ * the fold's last observed event, authority's `updatedAt`, and both terminal
+ * ends — rather than from the wall clock, because "now" is not a fact about the
+ * run and would re-widen the scope for every old run an operator opens. An
+ * instant that cannot be parsed fails loud: skipping a partition on the
+ * strength of a timestamp nobody could read is how a run's real history gets
+ * reported as absent.
+ */
+export function runNotePartitionScope(
+  runId: string,
+  row: RunFoldRecord,
+  authority: RunRecord,
+): EventStreamScope {
+  const instants = [
+    noteWindowInstant(runId, "run.queued span", row.queued.ts),
+    noteWindowInstant(runId, "fold lastEventAt", row.lastEventAt),
+    noteWindowInstant(runId, "authority updatedAt", authority.updatedAt),
+  ];
+  if (row.ended !== undefined) instants.push(noteWindowInstant(runId, "fold endedAt", row.ended.endedAt));
+  if (authority.lifecycle.state === "terminal") {
+    instants.push(noteWindowInstant(runId, "authority lifecycle endedAt", authority.lifecycle.endedAt));
+  }
+  const margin = NOTE_PARTITION_DAY_MARGIN * DAY_MS;
+  return {
+    workflow: row.queued.workflow,
+    fromDate: localDatePart(new Date(Math.min(...instants) - margin)),
+    toDate: localDatePart(new Date(Math.max(...instants) + margin)),
+  };
+}
+
+/**
+ * ONE note scan per run, for a caller that pages the same run to the end.
+ *
+ * The archive's version-bump freeze walks `buildRunSection(run, "logs")` page by
+ * page (`FROZEN_LOG_PAGE_LIMIT` of them), and each call re-read and re-parsed
+ * the same partitions to slice a different 200 lines out of the same list. The
+ * cache lives for exactly one freeze and is handed in explicitly, so nothing
+ * long-lived can serve a page from a corpus a worker has since appended to.
+ */
+export interface RunNoteScanCache {
+  read(runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[];
+}
+
+export function createRunNoteScanCache(): RunNoteScanCache {
+  const byRun = new Map<string, readonly RunNoteScanEntry[]>();
+  return Object.freeze({
+    read(runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[] {
+      const held = byRun.get(runId);
+      if (held !== undefined) return held;
+      const scanned = scan();
+      byRun.set(runId, scanned);
+      return scanned;
+    },
+  });
+}
+
+function noteLinesForRun(
+  deps: RunDetailQueryDeps,
+  row: RunFoldRecord,
+  authority: RunRecord,
+  runId: string,
+  cache: RunNoteScanCache | undefined,
+): readonly RunNoteScanEntry[] {
+  const scan = (): readonly RunNoteScanEntry[] => {
+    const matches: RunNoteScanEntry[] = [];
+    // The scope already selected this workflow's partitions, so the old
+    // per-line `line.file.workflow !== workflow` skip can no longer be true —
+    // the same lines reach the parse, and an unparsable one still throws by
+    // name rather than being read around (D218).
+    for (const line of readScopedEventStreamLines(deps.stateRoot, "notes", runNotePartitionScope(runId, row, authority))) {
+      const note = NoteAtRestSchema.parse(JSON.parse(line.text));
+      if ("runId" in note && note.runId === runId) matches.push({ line, note });
+    }
+    return matches;
+  };
+  return cache === undefined ? scan() : cache.read(runId, scan);
 }
 
 export function buildRunSection(
@@ -805,6 +917,8 @@ export function buildRunSection(
   runId: string,
   sectionInput: string,
   cursorInput?: string,
+  /** D5: one note scan across a caller's whole page walk — see `createRunNoteScanCache`. */
+  noteScanCache?: RunNoteScanCache,
 ): RunDetailSectionResponse {
   const section = SectionNameSchema.parse(sectionInput);
   const { row, authority } = requireRun(deps, runId);
@@ -848,7 +962,7 @@ export function buildRunSection(
     const offset = cursorInput === undefined
       ? 0
       : Number(z.string().regex(/^pc:[1-9]\d*$/).parse(cursorInput).slice(3)) - 1;
-    const all = noteLinesForRun(deps, row.queued.workflow, runId);
+    const all = noteLinesForRun(deps, row, authority, runId, noteScanCache);
     const page = all.slice(offset, offset + LOGS_PAGE_SIZE);
     return RunDetailSectionResponseSchema.parse({
       section,
