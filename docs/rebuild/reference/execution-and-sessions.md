@@ -688,7 +688,7 @@ risk register those guards answer.
 - [x] every other test this table cites resolves at HEAD: `run-authority`, `claim-sweep-recovery`, `kuali-transaction-proof`, `architecture/ledger-projector`, `worker-sessions`, `worker-composition`, `worker-loop`, `capture-durability`, `intake-session`, `intake-command-arms`
 - [x] C11, the Duo ceremony lease — two real `runWorkerLoop`-equivalent `WorkerSessionManager`s over ONE authority database, the second's ceremony beginning after the first's verifier returned, plus the waiter refusal and the TTL takeover (`tests/unit/duo-ceremony-gate.test.ts`, `1c244a40`)
 - [ ] the standing rule's next row: §11's pool is a new surface two callers can reach, so it adds its row in the commit that lands it
-> 2026-08-21 | docs-cohesion execution-and-sessions | verified every cited test file exists and that composeWorkerRuntime still derives its id from phase1WorkerId while createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:368, :379)
+> 2026-08-25 | parallel-runs P3 follow-up | `composeWorkerRuntime` now requires a pool index and derives a distinct stable worker id; concurrent process admission is per worker process and duplicate identity reaches the authority lease. `createPhase1WorkerRuntimeExecutor` remains the explicitly one-worker compatibility arm
 <!-- /roadmap-status -->
 
 The table above names *risks*. This one names **cases**, and every row names the exact test that
@@ -714,11 +714,11 @@ Three rules decide what belongs here and how it is written.
    sampler that caps per-worker ownership at 1 also records the maximum number of workers holding
    work at once, and the soak asserts that maximum **equals the worker count**.
 
-`composeWorkerRuntime` cannot host these rows: it derives its id from `phase1WorkerId(workflowId)`,
-so two composed workers on one workflow collide on the authority worker LEASE by design, and
-`createPhase1WorkerRuntimeExecutor` refuses `desiredWorkers !== 1`. N-worker overlap is
-`runWorkerLoop` called N times with distinct `workerId`s against one shared database — which is
-exactly the shape §2 says a later phase spawns as processes.
+`composeWorkerRuntime` now accepts an explicit pool index and can host distinct worker identities;
+its process records coexist and aggregate into D181's restore observation. The matrix still drives
+`runWorkerLoop` directly because the dashboard process supervisor is unbuilt.
+`createPhase1WorkerRuntimeExecutor` continues to refuse `desiredWorkers !== 1` on its separately
+explicit compatibility path.
 
 **Dependency — claim, heartbeat, sweep, terminal authority**
 
@@ -1061,6 +1061,7 @@ advances across profiles.
 > 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
 > 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
 > 2026-08-25 | parallel-runs P3 | pool-indexed identity is built: `worker <workflow> --pool-index N` validates positive N, derives the stable id and starts authority under that lease identity. The dashboard process supervisor, FE session view and parallel proof remain unbuilt
+> 2026-08-25 | parallel-runs P3 review | worker processes now use per-start durable records aggregated into D181's unchanged restore arm; distinct indices coexist, duplicate identity reaches authority, old root locks read forward, and any live or malformed record refuses restore. Offline restore atomically claims exclusive admission before observing and consuming its proof, holds it through swap, and every runtime acquisition checks on both sides of its record write and unwinds if restore won; malformed ownership refuses and crashed ownership is archived forward. Pool supervision, FE and parallel proof remain unbuilt
 <!-- /roadmap-status -->
 
 **AUTHORITY HALF AS-BUILT (D269, 2026-08-21); POOL-INDEXED IDENTITY AS-BUILT (2026-08-25); the
@@ -1120,15 +1121,13 @@ certainly not a peer's assertion — is the only statement one process may make 
 Sessions do not share information with each other either; two sessions of the same workflow are two
 groups of rows over one queue.
 
-**4. The pool's first concrete change is the worker ID.** `phase1WorkerId(workflowId)` returns
-`${workflowId}-worker-1`, and `composeWorkerRuntime` derives its id from it — which is exactly why
-§7.1 says two composed workers on one workflow collide on the authority worker LEASE by design, and
-why its N-worker rows call `runWorkerLoop` directly with distinct ids. So the pool mints
-pool-indexed ids, and the lease refusal that today blocks a second process becomes the thing that
-proves each pool member is singular. `createPhase1WorkerRuntimeExecutor`'s `desiredWorkers !== 1`
-refusal is replaced by a reconciliation against the pool's declared size; until then it must keep
-refusing, because acknowledging a count the runtime cannot produce is an acknowledgement of an
-effect that did not happen.
+**4. The pool's first concrete change is the worker ID.** The pool mints pool-indexed ids, and the
+authority lease refusal proves each pool member is singular. D181's process-lock layer must not
+preempt that identity check: each worker start has its own durable process record, while observation
+strictly aggregates all records (plus the old root-level `workers.lock.json`) into the existing
+single `processLocks.workers` restore arm. Any live worker blocks restore; malformed records refuse;
+every start/restart advances the aggregate generation. `createPhase1WorkerRuntimeExecutor` keeps
+refusing `desiredWorkers !== 1` until the unbuilt supervisor reconciles the declared pool size.
 
 _As-built (2026-08-25):_ `poolWorkerId(workflowId, poolIndex)` derives
 `${workflowId}-worker-${poolIndex}` from a branded `PositiveInt`. The CLI requires

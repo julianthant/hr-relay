@@ -132,15 +132,7 @@ export class RecoveryStopProofStore {
     if (canonicalJsonStringify(issued) !== canonicalJsonStringify(proof)) {
       throw new Error(`stopped-system proof ${proof.proofId} does not match its issued one-time record`);
     }
-    const state = this.#readCurrentState();
-    this.#assertCurrentAndStopped(state, proof.sourceDatabaseIdentity);
-    if (proof.runtimeNamespace !== state.runtimeNamespace
-      || proof.runtimeGeneration !== state.runtimeGeneration
-      || proof.processLockGenerations.server !== state.processLocks.server.generation
-      || proof.processLockGenerations.workers !== state.processLocks.workers.generation
-      || proof.runtimeStateFingerprint !== stateFingerprint(state)) {
-      throw new Error(`stopped-system proof ${proof.proofId} does not match current runtime and process-lock generations`);
-    }
+    this.#assertProofCurrent(proof);
     try {
       linkSync(pendingPath, consumedPath);
     } catch (error) {
@@ -150,6 +142,23 @@ export class RecoveryStopProofStore {
     fsyncPath(pendingDirectory);
     fsyncPath(consumedDirectory);
     return proof;
+  }
+
+  #assertProofCurrent(proof: StoppedSystemProof): void {
+    const ageMs = this.#clock.nowMs() - Date.parse(proof.observedAt);
+    if (ageMs < 0) throw new Error(`stopped-system proof ${proof.proofId} was observed in the future`);
+    if (ageMs > this.#maxProofAgeMs) {
+      throw new Error(`stopped-system proof ${proof.proofId} is stale at ${String(ageMs)}ms old`);
+    }
+    const state = this.#readCurrentState();
+    this.#assertCurrentAndStopped(state, proof.sourceDatabaseIdentity);
+    if (proof.runtimeNamespace !== state.runtimeNamespace
+      || proof.runtimeGeneration !== state.runtimeGeneration
+      || proof.processLockGenerations.server !== state.processLocks.server.generation
+      || proof.processLockGenerations.workers !== state.processLocks.workers.generation
+      || proof.runtimeStateFingerprint !== stateFingerprint(state)) {
+      throw new Error(`stopped-system proof ${proof.proofId} does not match current runtime and process-lock generations`);
+    }
   }
 
   #readCurrentState(): RecoveryRuntimeLockSnapshot {

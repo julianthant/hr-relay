@@ -43,6 +43,10 @@ import {
   verifyBackupManifestAtPath,
 } from "../../../src/infra/sqlite/index.js";
 import {
+  acquireRuntimeProcessLock,
+  observeRuntimeLockSnapshot,
+} from "../../../src/infra/sqlite/runtime-process-locks.js";
+import {
   ATOMIC_WRITE_COMMIT,
   COMMAND_FIXTURES,
   HASH_A,
@@ -352,17 +356,10 @@ function stoppedProof(root: string, authorityPath: string, clock = CLOCK) {
     processLockRoot: join(root, "locks"),
     maxProofAgeMs: 60_000,
   }, clock);
-  store.recordRuntimeState({
-    schemaVersion: 1,
-    runtimeNamespace: "hrauto-rebuild",
-    runtimeGeneration: 7,
+  store.recordRuntimeState(observeRuntimeLockSnapshot({
+    processLockRoot: join(root, "locks"),
     sourceDatabaseIdentity,
-    recordedAt: clock.now().toISOString(),
-    processLocks: {
-      server: { state: "stopped", generation: 11 },
-      workers: { state: "stopped", generation: 13 },
-    },
-  });
+  }, clock));
   return store.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
 }
 
@@ -1147,6 +1144,67 @@ describe("offline exact-backup restore", () => {
     assert.equal(existsSync(suspects), false);
   });
 
+  it("refuses when a worker starts after the stopped proof was issued", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const suspects = join(root, "suspects");
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    const proof = stoppedProof(root, authorityPath);
+    const worker = acquireRuntimeProcessLock({
+      processLockRoot: join(root, "locks"),
+      name: "workers",
+      workerId: "person-lookup-worker-2",
+      pid: process.pid,
+    }, CLOCK);
+    try {
+      const restore = new OfflineAuthorityRestoreService(
+        restoreOptions(root, authorityPath, suspects),
+        async () => undefined,
+        CLOCK,
+      );
+      await assert.rejects(
+        restore.restore({ manifestPath, stoppedSystemProof: proof }),
+        /workers process lock generation .* is active for pid/u,
+      );
+      assert.equal(existsSync(suspects), false);
+      assert.equal(AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration, 0);
+    } finally {
+      worker.release();
+    }
+  });
+
+  it("holds exclusive admission through verification and authority replacement", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const suspects = join(root, "suspects");
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    const proof = stoppedProof(root, authorityPath);
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath, suspects),
+      async () => {
+        const worker = acquireRuntimeProcessLock({
+          processLockRoot: join(root, "locks"),
+          name: "workers",
+          workerId: "person-lookup-worker-2",
+          pid: process.pid,
+        }, CLOCK);
+        worker.release();
+      },
+      CLOCK,
+    );
+    await assert.rejects(
+      restore.restore({ manifestPath, stoppedSystemProof: proof }),
+      /restore admission .* is held by live pid/u,
+    );
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration, 0);
+  });
+
   it("does not fall back when the exact newest manifest is bad", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
@@ -1245,18 +1303,13 @@ describe("offline exact-backup restore", () => {
     assert.equal(existsSync(suspects), false);
 
     const currentProof = stoppedProof(root, authorityPath);
-    const store = new RecoveryStopProofStore({ processLockRoot: join(root, "locks"), maxProofAgeMs: 60_000 }, CLOCK);
-    store.recordRuntimeState({
-      schemaVersion: 1,
-      runtimeNamespace: "hrauto-rebuild",
-      runtimeGeneration: currentProof.runtimeGeneration + 1,
-      sourceDatabaseIdentity: currentProof.sourceDatabaseIdentity,
-      recordedAt: NOW,
-      processLocks: {
-        server: { state: "stopped", generation: currentProof.processLockGenerations.server },
-        workers: { state: "stopped", generation: currentProof.processLockGenerations.workers },
-      },
-    });
+    const startedAndStopped = acquireRuntimeProcessLock({
+      processLockRoot: join(root, "locks"),
+      name: "workers",
+      workerId: "person-lookup-worker-1",
+      pid: process.pid,
+    }, CLOCK);
+    startedAndStopped.release();
     const mismatchedRestore = new OfflineAuthorityRestoreService(
       restoreOptions(root, authorityPath, suspects),
       async () => undefined,
@@ -1269,26 +1322,24 @@ describe("offline exact-backup restore", () => {
     assert.equal(existsSync(suspects), false);
 
     const activeProof = stoppedProof(root, authorityPath);
-    store.recordRuntimeState({
-      schemaVersion: 1,
-      runtimeNamespace: "hrauto-rebuild",
-      runtimeGeneration: activeProof.runtimeGeneration,
-      sourceDatabaseIdentity: activeProof.sourceDatabaseIdentity,
-      recordedAt: NOW,
-      processLocks: {
-        server: { state: "active", generation: activeProof.processLockGenerations.server, pid: process.pid },
-        workers: { state: "stopped", generation: activeProof.processLockGenerations.workers },
-      },
-    });
+    const activeServer = acquireRuntimeProcessLock({
+      processLockRoot: join(root, "locks"),
+      name: "server",
+      pid: process.pid,
+    }, CLOCK);
     const activeRestore = new OfflineAuthorityRestoreService(
       restoreOptions(root, authorityPath, suspects),
       async () => undefined,
       CLOCK,
     );
-    await assert.rejects(
-      activeRestore.restore({ manifestPath, stoppedSystemProof: activeProof }),
-      /server process lock generation .* is active for pid/,
-    );
+    try {
+      await assert.rejects(
+        activeRestore.restore({ manifestPath, stoppedSystemProof: activeProof }),
+        /server process lock generation .* is active for pid/,
+      );
+    } finally {
+      activeServer.release();
+    }
     assert.equal(existsSync(suspects), false);
 
     const replayProof = stoppedProof(root, authorityPath);

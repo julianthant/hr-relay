@@ -22,6 +22,7 @@ import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
 import { createDashboardWorkerSupervisor } from "../../src/server/dashboard/compose.js";
 import {
   composeWorkerRuntime,
@@ -90,6 +91,7 @@ function composeInput(options: Readonly<{
   clock: TestClock;
   sessions: SessionFactoryHarness;
   poolIndex: PositiveInt;
+  processId?: number;
   args?: readonly string[];
   stopSignal?: AbortSignal;
   lines?: string[];
@@ -101,7 +103,7 @@ function composeInput(options: Readonly<{
     clock: options.clock,
     ids: sequentialIdFactory("c"),
     repoRoot: options.repoRoot,
-    processId: 4242,
+    processId: options.processId ?? 4242,
     sessionFactory: options.sessions.factory,
     duoCeremony: fixtureDuoCeremonyGates(options.clock),
     stopSignal: options.stopSignal ?? new AbortController().signal,
@@ -138,6 +140,11 @@ describe("worker CLI argument parsing", () => {
       () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "1", "--pool-index", "2"]),
       /duplicate worker flag: --pool-index/,
     );
+    const oversized = "999999999999999999999999999999";
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", oversized]),
+      new RegExp(`--pool-index.*${oversized}`, "u"),
+    );
   });
 
   it("refuses missing values, duplicate drain flags, and unknown flags by name", () => {
@@ -159,6 +166,59 @@ describe("worker CLI argument parsing", () => {
 });
 
 describe("composed worker runtime", () => {
+  it("releases its process record when authority open fails without masking that error", async () => {
+    const { repoRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    const openFailure = new Error("injected authority open failure");
+    await assert.rejects(
+      composeWorkerRuntime({
+        ...composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: POOL_INDEX_1,
+          processId: process.pid,
+        }),
+        openDatabase: () => {
+          throw openFailure;
+        },
+      }),
+      (error: unknown) => error === openFailure,
+    );
+    const snapshot = observeRuntimeLockSnapshot({
+      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
+      sourceDatabaseIdentity: "a".repeat(64),
+    }, clock);
+    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+  });
+
+  it("releases its process record even when database close fails", async () => {
+    const { repoRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    const closeFailure = new Error("injected database close failure");
+    await assert.rejects(
+      composeWorkerRuntime({
+        ...composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: POOL_INDEX_1,
+          processId: process.pid,
+        }),
+        closeDatabase: (database) => {
+          database.close();
+          throw closeFailure;
+        },
+      }),
+      (error: unknown) => error === closeFailure,
+    );
+    const snapshot = observeRuntimeLockSnapshot({
+      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
+      sourceDatabaseIdentity: "a".repeat(64),
+    }, clock);
+    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+  });
+
   it("builds the whole dependency graph and drains a queued run to done", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));

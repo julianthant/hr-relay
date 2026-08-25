@@ -250,6 +250,13 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
   shared by the loop, browser-profile partition and authority lease. Never infer an index from
   current pool or lease rows.
+- **2026-08-25 — worker process locks observe a fleet; they do not own identity.** Every worker
+  start appends its own durable lock record, including restarts. D181 aggregates all records and the
+  legacy root lock into one strict restore arm; any live or malformed record refuses restore. Never
+  serialize the fleet with a singleton role lock or preempt the authority lease collision. Offline
+  restore owns exclusive admission through the authority swap; every runtime acquisition checks
+  before and after writing its record and unwinds if restore won. A persisted recovery snapshot is
+  evidence, not current liveness or exclusion.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`

@@ -38,8 +38,8 @@ import { CaptureSessionSchema } from "../../src/domain/capture.js";
 import { AuthorityBackupService, AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import {
   acquireRuntimeProcessLock,
+  acquireRuntimeRestoreAdmission,
   observeRuntimeLockSnapshot,
-  readRuntimeProcessLock,
 } from "../../src/infra/sqlite/runtime-process-locks.js";
 import { composeStorageCommand } from "../../src/server/storage/compose.js";
 import {
@@ -299,6 +299,232 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.equal(after.exitCode, 0, after.output);
   });
 
+  it("admits concurrent worker processes under one aggregate restore lock", () => {
+    const paths = drillPaths();
+    const first = acquireRuntimeProcessLock(
+      {
+        processLockRoot: paths.processLockRoot,
+        name: "workers",
+        workerId: "person-lookup-worker-1",
+        pid: process.pid,
+      },
+      CLOCK,
+    );
+    const second = acquireRuntimeProcessLock(
+      {
+        processLockRoot: paths.processLockRoot,
+        name: "workers",
+        workerId: "person-lookup-worker-2",
+        pid: process.pid,
+      },
+      CLOCK,
+    );
+    try {
+      const snapshot = observeRuntimeLockSnapshot(
+        {
+          processLockRoot: paths.processLockRoot,
+          sourceDatabaseIdentity: "a".repeat(64),
+        },
+        CLOCK,
+      );
+      assert.deepEqual(snapshot.processLocks.workers, {
+        state: "active",
+        generation: 3,
+        pid: process.pid,
+      });
+    } finally {
+      second.release();
+      first.release();
+    }
+  });
+
+  it("unwinds a worker that loses the check/write race to restore admission", () => {
+    const paths = drillPaths();
+    let restoreAdmission: ReturnType<typeof acquireRuntimeRestoreAdmission> | undefined;
+    assert.throws(
+      () => acquireRuntimeProcessLock({
+        processLockRoot: paths.processLockRoot,
+        name: "workers",
+        workerId: "person-lookup-worker-2",
+        pid: process.pid,
+      }, CLOCK, {
+        afterInitialAdmissionCheck: () => {
+          restoreAdmission = acquireRuntimeRestoreAdmission({
+            processLockRoot: paths.processLockRoot,
+            pid: process.pid,
+          }, CLOCK);
+        },
+      }),
+      /restore admission .* is held by live pid/u,
+    );
+    try {
+      const snapshot = observeRuntimeLockSnapshot(
+        { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
+        CLOCK,
+      );
+      assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+    } finally {
+      restoreAdmission?.release();
+    }
+  });
+
+  it("refuses malformed restore admission and archives crashed ownership", () => {
+    const malformedPaths = drillPaths();
+    mkdirSync(malformedPaths.processLockRoot, { recursive: true });
+    writeFileSync(join(malformedPaths.processLockRoot, "restore-admission.lock.json"), "{}\n");
+    assert.throws(
+      () => acquireRuntimeProcessLock({
+        processLockRoot: malformedPaths.processLockRoot,
+        name: "workers",
+        workerId: "person-lookup-worker-1",
+        pid: process.pid,
+      }, CLOCK),
+      /restore admission record .* is malformed/u,
+    );
+
+    const stalePaths = drillPaths();
+    acquireRuntimeRestoreAdmission({
+      processLockRoot: stalePaths.processLockRoot,
+      pid: deadPid(),
+    }, CLOCK);
+    const replacement = acquireRuntimeRestoreAdmission({
+      processLockRoot: stalePaths.processLockRoot,
+      pid: process.pid,
+    }, CLOCK);
+    assert.equal(
+      readdirSync(join(stalePaths.processLockRoot, "restore-admission-history")).length,
+      1,
+    );
+    replacement.release();
+    assert.equal(
+      readdirSync(join(stalePaths.processLockRoot, "restore-admission-history")).length,
+      2,
+    );
+  });
+
+  it("advances the aggregate generation whenever a worker starts or restarts", () => {
+    const paths = drillPaths();
+    const observe = () => observeRuntimeLockSnapshot(
+      { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
+      CLOCK,
+    ).processLocks.workers.generation;
+    assert.equal(observe(), 1);
+    const first = acquireRuntimeProcessLock({
+      processLockRoot: paths.processLockRoot,
+      name: "workers",
+      workerId: "person-lookup-worker-1",
+      pid: deadPid(),
+    }, CLOCK);
+    assert.equal(observe(), 2);
+    first.release();
+    const restarted = acquireRuntimeProcessLock({
+      processLockRoot: paths.processLockRoot,
+      name: "workers",
+      workerId: "person-lookup-worker-1",
+      pid: deadPid(),
+    }, CLOCK);
+    assert.equal(observe(), 3);
+    restarted.release();
+  });
+
+  it("retries release after its first durable write attempt fails", () => {
+    const paths = drillPaths();
+    let nowCalls = 0;
+    const failFirstReleaseClock = {
+      ...CLOCK,
+      now: (): Date => {
+        nowCalls += 1;
+        return nowCalls === 2 ? new Date(Number.NaN) : new Date(NOW);
+      },
+    };
+    const held = acquireRuntimeProcessLock({
+      processLockRoot: paths.processLockRoot,
+      name: "workers",
+      workerId: "person-lookup-worker-1",
+      pid: process.pid,
+    }, failFirstReleaseClock);
+    assert.throws(() => held.release(), /Invalid time value/u);
+    assert.doesNotThrow(() => held.release());
+    const snapshot = observeRuntimeLockSnapshot(
+      { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
+      CLOCK,
+    );
+    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+  });
+
+  it("reads the old root-level workers lock forward into the aggregate", () => {
+    const paths = drillPaths();
+    mkdirSync(paths.processLockRoot, { recursive: true });
+    writeFileSync(join(paths.processLockRoot, "workers.lock.json"), `${JSON.stringify({
+      schemaVersion: 1,
+      name: "workers",
+      pid: process.pid,
+      generation: 7,
+      acquiredAt: NOW,
+      releasedAt: null,
+    })}\n`);
+    const snapshot = observeRuntimeLockSnapshot(
+      { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
+      CLOCK,
+    );
+    assert.deepEqual(snapshot.processLocks.workers, {
+      state: "active",
+      generation: 7,
+      pid: process.pid,
+    });
+    assert.equal(existsSync(join(paths.processLockRoot, "workers.lock.json")), true);
+  });
+
+  it("refuses restore while any worker process is alive", async () => {
+    const paths = drillPaths();
+    const database = open(paths);
+    seedRealShapedAuthority(database);
+    const manifestPath = await takeBackup(database, paths);
+    database.close();
+    corrupt(paths);
+    const corrupted = readFileSync(paths.authorityPath);
+    const held = acquireRuntimeProcessLock({
+      processLockRoot: paths.processLockRoot,
+      name: "workers",
+      workerId: "person-lookup-worker-2",
+      pid: process.pid,
+    }, CLOCK);
+    try {
+      const refused = await composeStorageCommand(
+        rebuildRuntimeIsolation,
+        ["restore", "--from", manifestPath],
+        CLOCK,
+        paths.repoRoot,
+      );
+      assert.equal(refused.exitCode, 1);
+      assert.match(refused.output, new RegExp(
+        `workers process lock generation 2 is active for pid ${String(process.pid)}`,
+        "u",
+      ));
+      assert.equal(readFileSync(paths.authorityPath).equals(corrupted), true);
+    } finally {
+      held.release();
+    }
+  });
+
+  it("fails loud on a malformed worker process-lock record", () => {
+    const paths = drillPaths();
+    const workersRoot = join(paths.processLockRoot, "workers");
+    mkdirSync(workersRoot, { recursive: true });
+    writeFileSync(join(workersRoot, "broken.lock.json"), "{}\n");
+
+    assert.throws(
+      () => observeRuntimeLockSnapshot(
+        {
+          processLockRoot: paths.processLockRoot,
+          sourceDatabaseIdentity: "a".repeat(64),
+        },
+        CLOCK,
+      ),
+      /worker process-lock record broken\.lock\.json is malformed/u,
+    );
+  });
+
   it("observes a crashed holder as stopped rather than bricking recovery", async () => {
     const paths = drillPaths();
     const database = open(paths);
@@ -310,7 +536,12 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     // A worker that died without releasing: the file still says `held`, but
     // the pid is gone. Refusing here forever would make a crash unrecoverable.
     acquireRuntimeProcessLock(
-      { processLockRoot: paths.processLockRoot, name: "workers", pid: deadPid() },
+      {
+        processLockRoot: paths.processLockRoot,
+        name: "workers",
+        workerId: "person-lookup-worker-1",
+        pid: deadPid(),
+      },
       CLOCK,
     );
     const snapshot = observeRuntimeLockSnapshot(
@@ -320,7 +551,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.equal(snapshot.processLocks.workers.state, "stopped");
     // The lock FILE is untouched by the observation — nothing rewrites another
     // process's record to make a restore possible.
-    assert.equal(readRuntimeProcessLock(paths.processLockRoot, "workers")?.releasedAt, null);
+    assert.equal(readdirSync(join(paths.processLockRoot, "workers")).length, 1);
 
     const restored = await composeStorageCommand(
       rebuildRuntimeIsolation,

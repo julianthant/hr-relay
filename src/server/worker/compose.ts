@@ -176,7 +176,11 @@ export function parseWorkerArguments(args: readonly string[]): WorkerCliArgument
       if (!/^[1-9]\d*$/u.test(raw)) {
         throw new Error(`worker --pool-index must be a positive integer; received ${raw}`);
       }
-      poolIndex = PositiveIntSchema.parse(Number(raw));
+      const numeric = Number(raw);
+      if (!Number.isSafeInteger(numeric)) {
+        throw new Error(`worker --pool-index must be a positive safe integer; received ${raw}`);
+      }
+      poolIndex = PositiveIntSchema.parse(numeric);
       index += 1;
       continue;
     }
@@ -198,6 +202,13 @@ export interface WorkerComposeInput {
   /** Where the isolation state root resolves from; defaults to `process.cwd()`. */
   readonly repoRoot?: string;
   readonly processId?: number;
+  /** Test seam for proving process-record cleanup when authority open fails. */
+  readonly openDatabase?: (
+    options: Readonly<{ path: string; busyTimeoutMs: number; migrationOwner: string }>,
+    clock: Clock,
+  ) => AuthorityDatabase;
+  /** Test seam for proving process-record cleanup when database close fails. */
+  readonly closeDatabase?: (database: AuthorityDatabase) => void;
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
   /**
@@ -383,13 +394,35 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
    * moment when the authority database may be unreadable.
    */
   const processLock = acquireRuntimeProcessLock(
-    { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "workers", pid: input.processId ?? process.pid },
+    {
+      processLockRoot: join(repoRoot, input.isolation.processLockRoot),
+      name: "workers",
+      workerId,
+      pid: input.processId ?? process.pid,
+    },
     clock,
   );
-  const database = AuthorityDatabase.open(
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" },
-    clock,
-  );
+  let database: AuthorityDatabase;
+  let runtimeError: unknown;
+  let runtimeReport: WorkerLoopReport | undefined;
+  try {
+    database = (input.openDatabase ?? ((options, openClock) =>
+      AuthorityDatabase.open(options, openClock)))(
+      { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" },
+      clock,
+    );
+  } catch (openError) {
+    try {
+      processLock.release();
+    } catch (releaseError) {
+      throw new AggregateError(
+        [openError, releaseError],
+        `worker ${workerId} authority open failed and its process record could not release`,
+        { cause: releaseError },
+      );
+    }
+    throw openError;
+  }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({
@@ -664,14 +697,39 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       undefined,
       log,
     );
-    return report;
+    runtimeReport = report;
+  } catch (error) {
+    runtimeError = error;
   } finally {
     if (externalStop !== undefined) externalStop.removeEventListener("abort", onExternalStop);
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
-    database.close();
-    processLock.release();
   }
+  const cleanupErrors: unknown[] = [];
+  try {
+    (input.closeDatabase ?? ((opened) => opened.close()))(database);
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  try {
+    processLock.release();
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  if (cleanupErrors.length === 1 && runtimeError === undefined) throw cleanupErrors[0];
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(
+      runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors],
+      `worker ${workerId} failed while releasing composed resources`,
+      { cause: cleanupErrors.at(-1) },
+    );
+  }
+  if (runtimeError !== undefined) {
+    if (runtimeError instanceof Error) throw runtimeError;
+    throw new Error(`worker ${workerId} failed with a non-Error value`, { cause: runtimeError });
+  }
+  if (runtimeReport === undefined) throw new Error(`worker ${workerId} produced no report`);
+  return runtimeReport;
 }
 
 /**

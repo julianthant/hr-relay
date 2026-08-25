@@ -23,6 +23,10 @@ import {
   type OfflineRestoreReport,
 } from "./recovery-contracts.js";
 import { RecoveryStopProofStore } from "./recovery-stop-proof.js";
+import {
+  acquireRuntimeRestoreAdmission,
+  observeRuntimeLockSnapshot,
+} from "./runtime-process-locks.js";
 
 export const OfflineRestoreOptionsSchema = z.strictObject({
   authorityPath: z.string().min(1),
@@ -69,6 +73,7 @@ export class OfflineAuthorityRestoreService {
   #clock: Clock;
   #fileOperations: OfflineRestoreFileOperations;
   #stopProofStore: RecoveryStopProofStore;
+  #processLockRoot: string;
 
   constructor(
     input: unknown,
@@ -83,6 +88,7 @@ export class OfflineAuthorityRestoreService {
     this.#projectionRebuild = projectionRebuild;
     this.#clock = clock;
     this.#fileOperations = fileOperations;
+    this.#processLockRoot = resolve(options.processLockRoot);
     this.#stopProofStore = new RecoveryStopProofStore({
       processLockRoot: options.processLockRoot,
       maxProofAgeMs: options.stoppedProofMaxAgeMs,
@@ -97,23 +103,35 @@ export class OfflineAuthorityRestoreService {
     }
 
     const verified = await verifyBackupManifestAtPath(request.manifestPath, sourceDatabaseIdentity);
-    this.#stopProofStore.consume(request.stoppedSystemProof);
-
-    mkdirSync(this.#suspectDirectory, { recursive: true, mode: 0o700 });
-    const token = randomUUID();
-    const compactTime = this.#clock.now().toISOString().replaceAll(/[^0-9]/g, "");
-    const suspectFileName = `suspect-${compactTime}-${token}.sqlite`;
-    const suspectPath = join(this.#suspectDirectory, suspectFileName);
-    copyAndSync(this.#authorityPath, suspectPath, this.#fileOperations);
-    for (const suffix of ["-wal", "-shm"] as const) {
-      const companion = `${this.#authorityPath}${suffix}`;
-      if (existsSync(companion)) copyAndSync(companion, `${suspectPath}${suffix}`, this.#fileOperations);
-    }
-    fsyncPath(this.#suspectDirectory);
-
-    const authorityDirectory = dirname(this.#authorityPath);
-    const stagedPath = join(authorityDirectory, `.restore-${token}.sqlite.tmp`);
+    const restoreAdmission = acquireRuntimeRestoreAdmission({
+      processLockRoot: this.#processLockRoot,
+      pid: process.pid,
+    }, this.#clock);
+    let restoreReport: OfflineRestoreReport | undefined;
+    let restoreError: unknown;
     try {
+      restoreReport = await (async (): Promise<OfflineRestoreReport> => {
+        this.#stopProofStore.recordRuntimeState(observeRuntimeLockSnapshot({
+          processLockRoot: this.#processLockRoot,
+          sourceDatabaseIdentity,
+        }, this.#clock));
+        this.#stopProofStore.consume(request.stoppedSystemProof);
+
+        mkdirSync(this.#suspectDirectory, { recursive: true, mode: 0o700 });
+        const token = randomUUID();
+        const compactTime = this.#clock.now().toISOString().replaceAll(/[^0-9]/g, "");
+        const suspectFileName = `suspect-${compactTime}-${token}.sqlite`;
+        const suspectPath = join(this.#suspectDirectory, suspectFileName);
+        copyAndSync(this.#authorityPath, suspectPath, this.#fileOperations);
+        for (const suffix of ["-wal", "-shm"] as const) {
+          const companion = `${this.#authorityPath}${suffix}`;
+          if (existsSync(companion)) copyAndSync(companion, `${suspectPath}${suffix}`, this.#fileOperations);
+        }
+        fsyncPath(this.#suspectDirectory);
+
+        const authorityDirectory = dirname(this.#authorityPath);
+        const stagedPath = join(authorityDirectory, `.restore-${token}.sqlite.tmp`);
+        try {
       copyAndSync(verified.backupPath, stagedPath, this.#fileOperations);
       const beforeProjection = AuthorityDatabase.inspectExistingReadOnly(stagedPath, this.#busyTimeoutMs);
       if (beforeProjection.authorityContentFingerprint !== verified.manifest.authorityContentFingerprint
@@ -163,10 +181,32 @@ export class OfflineAuthorityRestoreService {
         projectionRebuilt: true,
         authorityPreservedAcrossProjectionRebuild: true,
       });
-    } finally {
-      for (const path of [stagedPath, `${stagedPath}-wal`, `${stagedPath}-shm`]) {
-        if (existsSync(path)) rmSync(path);
-      }
+        } finally {
+          for (const path of [stagedPath, `${stagedPath}-wal`, `${stagedPath}-shm`]) {
+            if (existsSync(path)) rmSync(path);
+          }
+        }
+      })();
+    } catch (error) {
+      restoreError = error;
     }
+    try {
+      restoreAdmission.release();
+    } catch (releaseError) {
+      if (restoreError !== undefined) {
+        throw new AggregateError(
+          [restoreError, releaseError],
+          "offline authority restore failed and its exclusive admission could not release",
+          { cause: releaseError },
+        );
+      }
+      throw releaseError;
+    }
+    if (restoreError !== undefined) {
+      if (restoreError instanceof Error) throw restoreError;
+      throw new Error("offline authority restore failed with a non-Error value", { cause: restoreError });
+    }
+    if (restoreReport === undefined) throw new Error("offline authority restore produced no report");
+    return restoreReport;
   }
 }
