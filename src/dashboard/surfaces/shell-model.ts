@@ -23,8 +23,10 @@ import {
 } from "../ds/ui.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../domain/dashboard/bootstrap.js";
 import type {
+  QueueSurfaceWireSchema,
   StatusCountWireSchema,
   WorkerCardWireSchema,
+  WorkerPoolWireSchema,
   WorkflowCountWireSchema,
 } from "../../domain/dashboard/projection.js";
 import type { SubscriptionState } from "../client/index.js";
@@ -40,6 +42,10 @@ export type WorkflowCountWire = z.infer<typeof WorkflowCountWireSchema>;
 export type StatusCountWire = z.infer<typeof StatusCountWireSchema>;
 
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
+
+export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
+
+export type WorkerPoolWire = z.infer<typeof WorkerPoolWireSchema>;
 
 export type WorkflowBootstrapPrimitive = z.infer<typeof WorkflowBootstrapPrimitiveSchema>;
 
@@ -291,6 +297,328 @@ export function needsYouCount(counts: readonly StatusCountWire[]): number {
 }
 
 /* ── Session Panel ───────────────────────────────────────────────────────── */
+
+/** One membership row, with only authority worker cards that claim this exact run. */
+export interface SessionMemberView {
+  readonly row: QueueSurfaceWire;
+  readonly workers: readonly WorkerCardWire[];
+}
+
+/** A session is the ordered set of queue rows that serve one exact session id. */
+export interface SessionGroupView {
+  readonly sessionId: Extract<QueueSurfaceWire["session"], { readonly state: "present" }>["sessionId"];
+  readonly members: readonly SessionMemberView[];
+  /** A session's rows may name one workflow; retain the keyed proof rather than assuming it in JSX. */
+  readonly pools: readonly SessionPoolView[];
+}
+
+export interface SessionPoolView {
+  readonly workflowId: string;
+  readonly facts: WorkerPoolFacts;
+}
+
+/** A row whose authority record deliberately names no session. */
+export interface AbsentSessionMemberView {
+  readonly row: QueueSurfaceWire;
+  readonly reason: string;
+}
+
+export interface SessionView {
+  readonly sessions: readonly SessionGroupView[];
+  readonly absentMembers: readonly AbsentSessionMemberView[];
+}
+
+/**
+ * The membership panel has a one-second parent tick, while the performance
+ * fixture has 1,240 rows. Fixed-height rows make the viewport math exact and
+ * keep the DOM bounded without dropping an authority record. Long opaque
+ * values remain available through each row's detail trigger in the renderer.
+ */
+export const SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT = 512;
+const SESSION_LIST_OVERSCAN_PX = 72;
+const SESSION_LIST_HEADER_HEIGHT = 48;
+const SESSION_LIST_MEMBER_HEIGHT = 72;
+
+export type SessionListItem =
+  | Readonly<{ kind: "session-header"; session: SessionGroupView }>
+  | Readonly<{
+    kind: "session-member";
+    sessionId: SessionGroupView["sessionId"];
+    member: SessionMemberView;
+  }>
+  | Readonly<{ kind: "absent-header" }>
+  | Readonly<{ kind: "absent-member"; member: AbsentSessionMemberView }>;
+
+export interface SessionListLayoutRow {
+  readonly index: number;
+  readonly key: string;
+  readonly top: number;
+  readonly height: number;
+  readonly item: SessionListItem;
+}
+
+export interface SessionListLayout {
+  readonly rows: readonly SessionListLayoutRow[];
+  readonly totalHeight: number;
+}
+
+export interface SessionListWindow {
+  readonly rows: readonly SessionListLayoutRow[];
+  readonly totalHeight: number;
+}
+
+export interface SessionPoolDisplay {
+  readonly summary?: string;
+  readonly facts: readonly Readonly<{ label: string; value: string }>[];
+}
+
+/** Dense resting copy plus the complete authority values opened from it. */
+export function sessionPoolDisplay(session: SessionGroupView): SessionPoolDisplay {
+  const summaries = session.pools.map(({ facts }) => facts.state === "declared"
+    ? `${String(facts.desiredWorkers)} declared · ${String(facts.activeWorkers)} active`
+    : `No pool declaration · ${String(facts.activeWorkers)} active`);
+  const first = summaries[0];
+  return {
+    summary: first === undefined
+      ? undefined
+      : summaries.length === 1
+        ? first
+        : `${first} · +${String(summaries.length - 1)} workflows`,
+    facts: session.pools.map(({ workflowId, facts }) => ({
+      label: `Workflow ${workflowId}`,
+      value: facts.state === "declared"
+        ? `${String(facts.desiredWorkers)} declared at pool version ${String(facts.version)} · ${String(facts.activeWorkers)} active authority worker cards`
+        : `No worker-pool declaration · ${String(facts.activeWorkers)} active authority worker cards`,
+    })),
+  };
+}
+
+/** Flatten grouped authority data into one addressable layout, without filtering. */
+export function buildSessionListLayout(sessionView: SessionView): SessionListLayout {
+  const rows: SessionListLayoutRow[] = [];
+  let top = 0;
+  const push = (key: string, height: number, item: SessionListItem): void => {
+    rows.push({ index: rows.length, key, top, height, item });
+    top += height;
+  };
+
+  for (const session of sessionView.sessions) {
+    const sessionId = String(session.sessionId);
+    push(`session:${sessionId}`, SESSION_LIST_HEADER_HEIGHT, { kind: "session-header", session });
+    for (const member of session.members) {
+      push(`session:${sessionId}:run:${String(member.row.runId)}`, SESSION_LIST_MEMBER_HEIGHT, {
+        kind: "session-member",
+        sessionId: session.sessionId,
+        member,
+      });
+    }
+  }
+  if (sessionView.absentMembers.length > 0) {
+    push("absent:header", SESSION_LIST_HEADER_HEIGHT, { kind: "absent-header" });
+    for (const member of sessionView.absentMembers) {
+      push(`absent:run:${String(member.row.runId)}`, SESSION_LIST_MEMBER_HEIGHT, {
+        kind: "absent-member",
+        member,
+      });
+    }
+  }
+
+  return { rows, totalHeight: top };
+}
+
+/** Binary-search the first layout row whose bottom crosses the requested top. */
+function firstSessionListRowAfter(layout: SessionListLayout, top: number): number {
+  let low = 0;
+  let high = layout.rows.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    const row = layout.rows[middle];
+    if (row === undefined || row.top + row.height > top) high = middle;
+    else low = middle + 1;
+  }
+  return low;
+}
+
+/** The retained row intersecting the viewport's leading edge. */
+export function sessionListVisibleIndex(layout: SessionListLayout, scrollTop: number): number {
+  if (layout.rows.length === 0) return 0;
+  return Math.min(firstSessionListRowAfter(layout, Math.max(0, scrollTop)), layout.rows.length - 1);
+}
+
+/** The only rows the renderer mounts for one scroll position. */
+export function sessionListWindow(
+  layout: SessionListLayout,
+  scrollTop: number,
+  viewportHeight: number,
+): SessionListWindow {
+  const safeViewportHeight = Math.max(1, viewportHeight);
+  const overscanTop = Math.max(0, scrollTop - SESSION_LIST_OVERSCAN_PX);
+  const overscanBottom = Math.min(
+    layout.totalHeight,
+    Math.max(0, scrollTop) + safeViewportHeight + SESSION_LIST_OVERSCAN_PX,
+  );
+  const first = firstSessionListRowAfter(layout, overscanTop);
+  let last = first;
+  while (last < layout.rows.length && (layout.rows[last]?.top ?? layout.totalHeight) < overscanBottom) last += 1;
+  return { rows: layout.rows.slice(first, last), totalHeight: layout.totalHeight };
+}
+
+/** A keyboard/scroll target that makes any retained row visible. */
+export function sessionListScrollTopForIndex(
+  layout: SessionListLayout,
+  index: number,
+  viewportHeight: number,
+): number {
+  const row = layout.rows[index];
+  if (row === undefined) throw new Error(`Session membership row ${String(index)} is outside the served layout`);
+  return Math.max(0, Math.min(row.top, layout.totalHeight - Math.max(1, viewportHeight)));
+}
+
+/** Resolve one list-row keyboard move without changing the retained authority layout. */
+export function sessionListNavigationTarget(
+  activeIndex: number,
+  key: string,
+  totalRows: number,
+  viewportHeight: number,
+): number | undefined {
+  if (totalRows === 0) return undefined;
+  const pageRows = Math.max(1, Math.floor(Math.max(1, viewportHeight) / SESSION_LIST_MEMBER_HEIGHT));
+  const target = key === "ArrowDown" ? activeIndex + 1
+    : key === "ArrowUp" ? activeIndex - 1
+      : key === "PageDown" ? activeIndex + pageRows
+        : key === "PageUp" ? activeIndex - pageRows
+          : key === "Home" ? 0
+            : key === "End" ? totalRows - 1
+              : undefined;
+  return target === undefined ? undefined : Math.max(0, Math.min(target, totalRows - 1));
+}
+
+/**
+ * How a particular worker relates to the selected day's session rows.
+ *
+ * This is deliberately not a worker state: an idle worker has no claimed run,
+ * and a run outside this day's projection has no session row for this view to
+ * describe. Neither absence is permission to call it an absent session.
+ */
+export type WorkerSessionMembership =
+  | Readonly<{ state: "unassigned"; reason: string }>
+  | Readonly<{
+    state: "present";
+    sessionId: Extract<QueueSurfaceWire["session"], { readonly state: "present" }>["sessionId"];
+    row: QueueSurfaceWire;
+  }>
+  | Readonly<{ state: "absent"; reason: string }>
+  | Readonly<{ state: "not-served"; runId: Extract<WorkerCardWire["currentRun"], { readonly state: "present" }>["runId"] }>;
+
+/**
+ * A pool's desired count is an operator declaration; worker cards are the
+ * authority facts about workers this snapshot actually serves. `activeWorkers`
+ * is deliberately non-terminal: a stopped/failed card remains on the panel as
+ * a retained record, but is not a live worker and must not inflate a declared
+ * pool-size comparison. Keeping the two union arms distinct makes a missing
+ * pool row visibly different from a fictional declaration of one worker at
+ * version zero.
+ */
+export type WorkerPoolFacts =
+  | Readonly<{ state: "declared"; desiredWorkers: number; version: number; activeWorkers: number }>
+  | Readonly<{ state: "absent"; activeWorkers: number }>;
+
+/** The exact current-run-to-queue-row join the worker card may render. */
+export function sessionMembershipForWorker(
+  worker: WorkerCardWire,
+  queueSurfaces: readonly QueueSurfaceWire[],
+): WorkerSessionMembership {
+  const currentRun = worker.currentRun;
+  if (currentRun.state === "absent") {
+    return { state: "unassigned", reason: currentRun.reason };
+  }
+  const row = queueSurfaces.find((surface) => String(surface.runId) === String(currentRun.runId));
+  if (row === undefined) return { state: "not-served", runId: currentRun.runId };
+  return row.session.state === "present"
+    ? { state: "present", sessionId: row.session.sessionId, row }
+    : { state: "absent", reason: row.session.reason };
+}
+
+/** Session membership is every queue row that names the same authority session id. */
+export function buildSessionView(
+  queueSurfaces: readonly QueueSurfaceWire[],
+  workerCards: readonly WorkerCardWire[],
+  workerPools: readonly WorkerPoolWire[],
+): SessionView {
+  const workersByRunId = new Map<string, WorkerCardWire[]>();
+  for (const worker of workerCards) {
+    if (worker.currentRun.state !== "present") continue;
+    const runId = String(worker.currentRun.runId);
+    const workers = workersByRunId.get(runId);
+    if (workers === undefined) workersByRunId.set(runId, [worker]);
+    else workers.push(worker);
+  }
+
+  const sessionsById = new Map<string, SessionMemberView[]>();
+  const sessionIds: SessionGroupView["sessionId"][] = [];
+  const absentMembers: AbsentSessionMemberView[] = [];
+  for (const row of queueSurfaces) {
+    if (row.session.state === "absent") {
+      absentMembers.push({ row, reason: row.session.reason });
+      continue;
+    }
+    const sessionId = String(row.session.sessionId);
+    const members = sessionsById.get(sessionId);
+    const member = { row, workers: workersByRunId.get(String(row.runId)) ?? [] };
+    if (members === undefined) {
+      sessionsById.set(sessionId, [member]);
+      sessionIds.push(row.session.sessionId);
+    } else {
+      members.push(member);
+    }
+  }
+
+  return {
+    sessions: sessionIds.map((sessionId) => ({
+      sessionId,
+      members: sessionsById.get(String(sessionId)) ?? [],
+      pools: [...new Set((sessionsById.get(String(sessionId)) ?? []).map((member) => String(member.row.workflowId)))].map(
+        (workflowId) => ({ workflowId, facts: poolFactsForWorkflow(workflowId, workerCards, workerPools) }),
+      ),
+    })),
+    absentMembers,
+  };
+}
+
+/** The complete presentation fold for the Session Panel, all from the day wire. */
+export function buildSessionPanelView(
+  queueSurfaces: readonly QueueSurfaceWire[],
+  workerCards: readonly WorkerCardWire[],
+  workerPools: readonly WorkerPoolWire[],
+): Readonly<{
+  sessionView: SessionView;
+  workers: readonly Readonly<{ card: WorkerCardWire; membership: WorkerSessionMembership }>[];
+}> {
+  return {
+    sessionView: buildSessionView(queueSurfaces, workerCards, workerPools),
+    workers: workerCards.map((card) => ({ card, membership: sessionMembershipForWorker(card, queueSurfaces) })),
+  };
+}
+
+/** Read a pool row whole; its omission is no declaration, never an implicit one. */
+export function poolFactsForWorkflow(
+  workflowId: string,
+  workerCards: readonly WorkerCardWire[],
+  workerPools: readonly WorkerPoolWire[],
+): WorkerPoolFacts {
+  const activeWorkers = workerCards.filter(
+    (card) => String(card.workflowId) === workflowId && card.state !== "stopped" && card.state !== "failed",
+  ).length;
+  const pool = workerPools.find((entry) => String(entry.workflowId) === workflowId);
+  return pool === undefined
+    ? { state: "absent", activeWorkers }
+    : {
+      state: "declared",
+      desiredWorkers: pool.desiredWorkers,
+      version: pool.version,
+      activeWorkers,
+    };
+}
 
 export type WorkerState = WorkerCardWire["state"];
 

@@ -28,6 +28,7 @@ import {
   FIXTURE_SECTIONS,
   FIXTURE_START_PLAN,
 } from "./fixture-day.js";
+import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
 import { FIXTURE_EXPLORER_WIRE, FIXTURE_UI_CATALOG_WIRE } from "./fixture-explorer.js";
 import {
@@ -64,12 +65,12 @@ export function fixtureHelloEnvelope(): DashboardStreamEnvelope {
   });
 }
 
-export function fixtureSnapshotEnvelope(): DashboardStreamEnvelope {
+export function fixtureSnapshotEnvelope(dayWire: DashboardDayWire = FIXTURE_DAY_WIRE): DashboardStreamEnvelope {
   return DashboardStreamEnvelopeSchema.parse({
     type: "snapshot",
     topic: "dashboard-day",
     cursor: "pc:1",
-    payload: FIXTURE_DAY_WIRE,
+    payload: dayWire,
   });
 }
 
@@ -96,7 +97,7 @@ const CaptureOrderProbeSchema = z.looseObject({
   orderedPhotoIds: z.array(z.string().min(1)).min(1),
 });
 
-export function createFixtureBff(): { app: Hono } {
+export function createFixtureBff(dayWire: DashboardDayWire = FIXTURE_DAY_WIRE): { app: Hono } {
   const app = new Hono();
 
   app.get("/api/v1/bootstrap", (c) => c.json(FIXTURE_BOOTSTRAP as unknown));
@@ -106,7 +107,7 @@ export function createFixtureBff(): { app: Hono } {
     if (day !== FIXTURE_DAY) {
       return c.json(wireError("TARGET_NOT_FOUND", `the fixture corpus serves only day ${FIXTURE_DAY}`), 404);
     }
-    return c.json(FIXTURE_DAY_WIRE as unknown);
+    return c.json(dayWire as unknown);
   });
 
   app.get("/api/v1/runs/:runId", (c) => {
@@ -313,14 +314,14 @@ async function serveStatic(distDir: string, pathname: string, res: ServerRespons
   }
 }
 
-function serveSse(res: ServerResponse, open: Set<ServerResponse>): void {
+function serveSse(res: ServerResponse, open: Set<ServerResponse>, dayWire: DashboardDayWire): void {
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     connection: "keep-alive",
   });
   res.write(sseSerialize(fixtureHelloEnvelope()));
-  res.write(sseSerialize(fixtureSnapshotEnvelope()));
+  res.write(sseSerialize(fixtureSnapshotEnvelope(dayWire)));
   res.write(sseSerialize(fixtureHealthEnvelope()));
   const heartbeat = setInterval(() => {
     res.write(": ping\n\n");
@@ -345,20 +346,21 @@ export interface FixtureServer {
 }
 
 export async function startFixtureServer(
-  input: Readonly<{ distDir: string; bundle: ParityBundleProof }>,
+  input: Readonly<{ distDir: string; bundle: ParityBundleProof; dayWire?: DashboardDayWire }>,
 ): Promise<FixtureServer> {
   // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
   // Asserted BEFORE a port is bound, so a stale `dist/dashboard` can never be
   // reached over HTTP — and never leaks a listening socket on refusal.
   assertServedBundle(input.distDir, input.bundle);
-  const { app } = createFixtureBff();
+  const dayWire = input.dayWire ?? FIXTURE_DAY_WIRE;
+  const { app } = createFixtureBff(dayWire);
   const openStreams = new Set<ServerResponse>();
 
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (url.pathname === "/events/v1") {
-        serveSse(res, openStreams);
+        serveSse(res, openStreams, dayWire);
         return;
       }
       if (url.pathname.startsWith("/api/")) {
