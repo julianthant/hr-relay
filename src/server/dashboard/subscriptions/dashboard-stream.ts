@@ -22,6 +22,7 @@ import {
   type DashboardStreamEnvelope,
 } from "../../../domain/dashboard/subscription.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../projectors/run-queue-projection.js";
+import type { BackfillGapNotifier } from "../../../services/notifications/backfill-gap.js";
 
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
 
@@ -35,6 +36,7 @@ export interface DashboardStreamConnection {
 
 export interface DashboardStreamHubDeps {
   readonly projection: RunQueueProjection;
+  readonly backfillGaps: Pick<BackfillGapNotifier, "detected">;
   /** Retained envelope count for cursor resume. */
   readonly retention?: number;
   /** Per-subscriber pending bound before a loud reset. */
@@ -69,6 +71,7 @@ export class DashboardStreamHub {
   readonly #projection: RunQueueProjection;
   readonly #retention: number;
   readonly #maxPending: number;
+  readonly #backfillGaps: Pick<BackfillGapNotifier, "detected">;
   readonly #subscribers = new Set<Subscriber>();
   #retained: RetainedEntry[] = [];
   #disposeProjection: () => void;
@@ -77,6 +80,7 @@ export class DashboardStreamHub {
     this.#projection = deps.projection;
     this.#retention = z.number().int().positive().parse(deps.retention ?? 256);
     this.#maxPending = z.number().int().positive().parse(deps.maxPending ?? 64);
+    this.#backfillGaps = deps.backfillGaps;
     this.#disposeProjection = deps.projection.onChange((change) => this.#onProjectionChange(change));
   }
 
@@ -86,13 +90,13 @@ export class DashboardStreamHub {
     this.#subscribers.clear();
   }
 
-  #hello(): DashboardStreamEnvelope {
+  #hello(input?: Readonly<{ generation: number; cursor: string; descriptorHash: string }>): DashboardStreamEnvelope {
     return DashboardStreamEnvelopeSchema.parse({
       type: "hello",
       wireVersion: 1,
-      descriptorHash: this.#projection.descriptorSetHash(),
-      projectionGeneration: this.#projection.generation(),
-      cursor: this.#projection.cursor(),
+      descriptorHash: input?.descriptorHash ?? this.#projection.descriptorSetHash(),
+      projectionGeneration: input?.generation ?? this.#projection.generation(),
+      cursor: input?.cursor ?? this.#projection.cursor(),
     });
   }
 
@@ -167,26 +171,44 @@ export class DashboardStreamHub {
     }
   }
 
-  connect(input: Readonly<{ day: string; lastEventId?: string }>): DashboardStreamConnection {
+  async connect(input: Readonly<{
+    day: string;
+    lastEventId?: string;
+    lastProjectionGeneration?: number;
+  }>): Promise<DashboardStreamConnection> {
     const day = z.iso.date().parse(input.day);
     const subscriber: Subscriber = { day, queue: [], closed: false, resetPending: false };
-    const initial: DashboardStreamEnvelope[] = [this.#hello()];
+    const live = this.#projection.health().state !== "degraded";
+    const capturedSnapshot = live ? this.#projection.buildDashboardDayWire(day) : undefined;
+    const capturedGeneration = capturedSnapshot?.projectionGeneration ?? this.#projection.generation();
+    const capturedCursor = capturedSnapshot?.snapshotCursor ?? this.#projection.cursor();
+    const initial: DashboardStreamEnvelope[] = [this.#hello({
+      generation: capturedGeneration,
+      cursor: capturedCursor,
+      descriptorHash: capturedSnapshot?.descriptorHash ?? this.#projection.descriptorSetHash(),
+    })];
 
-    if (this.#projection.health().state === "degraded") {
+    if (!live) {
       initial.push(DashboardStreamEnvelopeSchema.parse({ type: "health", state: "degraded" }));
     } else {
       const resumeFrom = input.lastEventId === undefined ? undefined : cursorNumber(input.lastEventId);
-      const generation = this.#projection.generation();
+      const generation = capturedGeneration;
+      const generationMatches = input.lastProjectionGeneration !== undefined
+        && input.lastProjectionGeneration === generation;
       const oldest = this.#retained[0];
       // Resumable only when the retained window provably covers everything
       // after the presented cursor, in the current generation.
-      const current = cursorNumber(this.#projection.cursor());
-      const resumable = resumeFrom !== undefined
+      const current = cursorNumber(capturedCursor);
+      const atHead = generationMatches
+        && resumeFrom !== undefined && current !== undefined && resumeFrom === current;
+      const retainedWindowCovers = generationMatches
+        && resumeFrom !== undefined
         && oldest !== undefined
         && resumeFrom >= oldest.cursorNumber - 1
         && current !== undefined
-        && resumeFrom <= current // a cursor from the future is foreign, not resumable
+        && resumeFrom < current
         && this.#retained.every((entry) => entry.generation === generation);
+      const resumable = atHead || retainedWindowCovers;
       const window = resumable
         ? this.#retained.filter((entry) => entry.cursorNumber > resumeFrom)
         : undefined;
@@ -195,9 +217,46 @@ export class DashboardStreamHub {
           if (entry.day === day) initial.push(entry.envelope);
         }
       } else {
+        let handshakeRestarted = false;
+        const isHistoricalCursor = generationMatches
+          && resumeFrom !== undefined
+          && current !== undefined
+          && resumeFrom < current;
+        if (isHistoricalCursor) {
+          await this.#backfillGaps.detected({
+            kind: "backfill-gap",
+            detector: "server-resume",
+            reason: window === undefined ? "cursor-expired" : "snapshot-boundary",
+            topic: "dashboard-day",
+            requestedCursor: input.lastEventId,
+            currentCursor: capturedCursor,
+            projectionGeneration: generation,
+          });
+          const refreshed = this.#projection.buildDashboardDayWire(day);
+          initial.splice(0, initial.length,
+            this.#hello({
+              generation: refreshed.projectionGeneration,
+              cursor: refreshed.snapshotCursor,
+              descriptorHash: refreshed.descriptorHash,
+            }),
+            DashboardStreamEnvelopeSchema.parse({
+              type: "snapshot",
+              topic: "dashboard-day",
+              cursor: refreshed.snapshotCursor,
+              payload: refreshed,
+            }));
+          handshakeRestarted = true;
+        }
         // Not resumable, or a count-bearing snapshot marker sits inside the
         // window: a fresh snapshot supersedes whatever the client held.
-        initial.push(this.#snapshot(day));
+        if (!handshakeRestarted) {
+          initial.push(DashboardStreamEnvelopeSchema.parse({
+            type: "snapshot",
+            topic: "dashboard-day",
+            cursor: capturedCursor,
+            payload: capturedSnapshot,
+          }));
+        }
       }
       initial.push(DashboardStreamEnvelopeSchema.parse({ type: "health", state: "live" }));
     }

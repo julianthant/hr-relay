@@ -54,7 +54,11 @@ export interface DashboardTransport {
   resolveUrl(path: string): string;
   openStream(
     path: string,
-    options: Readonly<{ lastEventId?: string; onMessage: (message: SseMessage) => void }>,
+    options: Readonly<{
+      lastEventId?: string;
+      lastProjectionGeneration?: number;
+      onMessage: (message: SseMessage) => void;
+    }>,
   ): StreamHandle;
 }
 
@@ -101,7 +105,11 @@ export function createDashboardTransport(input: Readonly<{
 
     openStream(
       path: string,
-      options: Readonly<{ lastEventId?: string; onMessage: (message: SseMessage) => void }>,
+      options: Readonly<{
+        lastEventId?: string;
+        lastProjectionGeneration?: number;
+        onMessage: (message: SseMessage) => void;
+      }>,
     ): StreamHandle {
       const controller = new AbortController();
       const done = (async (): Promise<void> => {
@@ -111,6 +119,9 @@ export function createDashboardTransport(input: Readonly<{
             headers: {
               accept: "text/event-stream",
               ...(options.lastEventId === undefined ? {} : { "last-event-id": options.lastEventId }),
+              ...(options.lastProjectionGeneration === undefined
+                ? {}
+                : { "dashboard-projection-generation": String(options.lastProjectionGeneration) }),
             },
             signal: controller.signal,
           });

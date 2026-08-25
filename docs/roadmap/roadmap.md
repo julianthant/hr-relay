@@ -240,7 +240,7 @@ doc: 02 §2g — event / trust layer · ref:operator-trust §2 · ref:operator-t
 builds:
 - [x] BE schema v10
 - [x] BE automatic redacted diagnostic capture
-- [x] BE durable actor-keyed notification inbox (row commits before any OS delivery) — 2 of the 7 trigger arms have publishers (D222/D262); five do not
+- [x] BE durable actor-keyed notification inbox (row commits before any OS delivery) — 3 of the 8 trigger arms have publishers (D222/D262/A46); five do not
 - [x] BE knowledge / fix admission — admission is durable and audited; the PROJECTION has no caller, so no `KNOWLEDGE.md` exists
 - [x] BE ordered fsync'd ledger projector — unit-proven and guarded; `createLedgerProjector` has NO production caller, so nothing drains the durable outbox to a file
 - [x] BE D82's evidence receipt DERIVED from authority
@@ -378,7 +378,7 @@ builds:
 - [ ] BE producers for the five declared notification triggers that have none — run-failed · subject-mismatch · write-parked · repeating-failure · verified-done (audit C4)
 - [ ] BE the `operation` run shape is minted by SOME enqueue path — today every path stamps `single`, so §9's group model (member well, rollup, containment) is presentation over fixtures (audit C2)
 - [ ] PROOF T2 dashboard feature scenarios over the DEFAULT surfaces (R10)
-- [ ] BE a backfill-gap notification trigger — the one record that says WE DO NOT KNOW what you missed; ref dashboard-surfaces §2.6's trigger union carries no gap arm, so the bell's pinned Refusal block has nothing to draw (fidelity-1 A46)
+- [x] BOTH a backfill-gap notification trigger — the one record that says WE DO NOT KNOW what you missed; an unreplayable historical SSE cursor commits it before replacement snapshot, and the pinned Refusal cannot be filtered/read/snoozed/dismissed (`68dea43a`, fidelity-1 A46)
 - [ ] BOTH member-outcome vocabulary on the member wire — the typed outcome word and the Outcome / Detail column-heading switch (fidelity-1 B83, B89)
 - [ ] BE per-status member counts on `memberRollup` — the well's six-status tally and a group's `△ N` fold (fidelity-1 B56, B77)
 - [ ] BOTH a declared `identifierProjection` so a member line can carry its EID column (fidelity-1 B75, B82)
@@ -407,6 +407,7 @@ log:
 - 2026-08-20 | docs-cohesion frontend-backend-integration | ref frontend-backend-integration rewritten as-built; §5.1 split into seven wire squares (5.1.1 run modal … 5.1.7 intake/capture/Edit Data), each separately citable and tagged; §1.1 and §5 gained a Built column · left: the per-run stream topics, the Review and People panel kinds, six Session-Panel controls
 - 2026-08-20 | docs-cohesion dashboard-surfaces audit | 109 sections classified (49 done · 32 needs-attention · 15 to-build · 8 superseded · 5 reference); C1–C4 booked as builds: lines; rewrite split into 5.1b/c/d
 - 2026-08-21 | docs-cohesion 03a fidelity fold | Track F drawn under this node (the demo-fidelity bar; ~150 OPEN questions as you-lines) and the nineteen `unserved:` wire gaps ledger 1 named booked here as `builds:` lines (A46; B43–B48, B51, B56, B68, B75, B77, B82, B83, B89, B97, B98, B100–B104, B110, B111, B114–B116, B130–B135; C49–C51, C55, C56, C58, C59, C64–C66, C68, C70, C85, C86, C91) — the preflight/doctor pair (A39/A42) already sits on `{#def-settings}`; ledger 3's dash-defaults proposals are all subsumed by Track F's lines · left: the rulings, then the builds
+- 2026-08-25 | track-f A46 | `68dea43a` closes fidelity-1 A46: the historical-cursor replay seam commits one deduped backfill-gap row before replacement snapshot; its strict pinned wire arm is filter-immune and command-refused, and reconnect/resnapshot never falsely clears it · left: any future resolved state requires Track F to ratify independent reconciliation evidence
 
 #### Track B · dashboard completion {#track-b}
 status: done
@@ -513,7 +514,7 @@ size: L
 chip: 52 decision lines — needs you
 doc: 03a §Demo fidelity — every detail, region by region
 
-> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24 and Explorer EX5 gives 774 exact rows. The consolidated phase list has 52 current numbered decision lines; ledger 3 has 238 OPEN row marks mapped to 30 unresolved numbered groups.
+> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. The consolidated phase list has 52 current numbered decision lines; ledger 3 has 238 OPEN row marks mapped to 30 unresolved numbered groups.
 
 builds:
 - [!] DOCS the operator rules the 37 shell / queue / run-start OPEN questions (ledger 1 §Roll-up)
@@ -523,6 +524,7 @@ builds:
 - [ ] FE the structural run-detail ports — the failure-record disclosure + write-state block, the focusable timeline segment, the step-group Well, one-owner `dataExpanded`, the grouped log stream
 - [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
 - [x] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
+- [x] BOTH A46's exact-generation unreplayable-history trigger, stable no-churn permanent fact, authority-immutable Refusal and reachable 6+ pin mobile lane (`68dea43a`, `e108ff3f`, `a2d2a8e8`; fidelity ledger 1 A46)
 - [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
 - [x] BOTH a diagnostic bundle is readable — exact-id D137 readback plus `BundleDialog` and server manifest download (ledger 2 E28/E29)
 - [ ] BOTH the intake manifest + rerun-diff surface (ledger 3 IN15/IN16)
@@ -537,6 +539,7 @@ log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | node drawn from the three 2026-08-21 ledgers; doc 03a §Demo fidelity carries the per-region table, every OPEN question as one line, the served-and-dropped list and the stale-claims table · left: the operator's rulings, then every FE / BE / BOTH / PROOF line above
 - 2026-08-25 | track-f archive UI + Activity AC24 | `3d461962` served frozen list warnings/rehearsal state; `d1f87916` drew those and the already-served archive identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared wire→display status fold. Ledger 3 remains 346/1,119 exact with 248 OPEN marks. Before/after screenshots were taken without `PARITY_UPDATE` · left in this unit: Explorer EX5 and every other non-archive served-and-dropped fact
 - 2026-08-25 | track-f Explorer EX5 | `4e09fb49` restores the demo's ghost `Version registry` action with its `Eye` icon; it clears the Explorer takeover and opens Archive's actual `Versions & bumps` view through `?archive=&archiveView=versions`. The browser test proves the exact search state, direct deep-link and Back/Forward restoration against the pressed view and real `Workflow version registry` table; no parity reference was re-frozen. A mechanical recount of ledger 3's current rows gives 353/1,119 exact with 238 OPEN marks · left: every non-archive served-and-dropped fact
+- 2026-08-25 | track-f A46 adversarial correction | `e108ff3f` separates cross-generation restart/rebuild from real missed history, stabilises interval identity across reason aging/head movement and process restart, single-flights concurrent clients, refuses every authority mutation/fold, and restarts an atomically captured handshake if publication moves the projection; `a2d2a8e8` keeps 6+ pins, ordinary rows and fixed filters reachable at 390×844 with truthful Pings counts and a 44px bell. A46 stays exact, so ledger 1 remains 132/178 and the three-ledger total remains 775/1,956 exact. Production-bundle mobile proof passed; no parity reference was re-frozen.
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: planned

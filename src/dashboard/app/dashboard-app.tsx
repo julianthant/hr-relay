@@ -81,8 +81,13 @@ import {
   type WorkerCardWire,
 } from "../surfaces/shell-model.js";
 import { StorageBanner } from "../surfaces/settings.js";
-import { TopBar, type NavControls, type NotificationRowWire } from "../surfaces/top-bar.js";
-import { serverLocalDay, type DayCountWire, type ShellView } from "../surfaces/top-bar-model.js";
+import { TopBar, type NavControls } from "../surfaces/top-bar.js";
+import {
+  serverLocalDay,
+  type DayCountWire,
+  type NotificationRowWire,
+  type ShellView,
+} from "../surfaces/top-bar-model.js";
 import { usePanelSections } from "./use-panel-sections.js";
 import {
   canGoBack,

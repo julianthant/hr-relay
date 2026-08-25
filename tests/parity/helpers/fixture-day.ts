@@ -549,6 +549,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
   ],
   notifications: [
     {
+      kind: "notification",
       notificationId: uuidOf(801),
       actorId: "local-operator",
       severity: "warning",
@@ -558,6 +559,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       revision: 1,
     },
     {
+      kind: "notification",
       notificationId: uuidOf(802),
       actorId: "local-operator",
       severity: "info",
@@ -566,6 +568,28 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       occurredAt: at(18),
       revision: 1,
     },
+  ],
+});
+
+/**
+ * A46's deterministic browser-proof profile. It is deliberately separate
+ * from the ordinary queue corpus, so adding the pinned safety state cannot
+ * redraw unrelated references. The strict parse proves the production wire
+ * accepts exactly the closed arm the browser receives.
+ */
+export const BACKFILL_GAP_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
+  ...FIXTURE_DAY_WIRE,
+  notifications: [
+    ...[803, 804, 805, 806, 807, 808].map((seed, index) => ({
+      kind: "backfill-gap",
+      notificationId: uuidOf(seed),
+      actorId: "local-operator",
+      severity: "error",
+      title: "Notification history is incomplete",
+      state: "pinned",
+      occurredAt: at(47 + index),
+    } as const)),
+    ...FIXTURE_DAY_WIRE.notifications,
   ],
 });
 

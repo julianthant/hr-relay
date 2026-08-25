@@ -210,6 +210,8 @@ describe("gate-park notifier: the durable row it actually writes", () => {
     assert.ok(parked);
 
     const wire = notificationWireOf(parked, clock.nowMs());
+    assert.equal(wire.kind, "notification");
+    if (wire.kind !== "notification") assert.fail("gate-park must project an ordinary notification");
     assert.deepEqual(wire.link, { kind: "run", runId: PARK_A.runId });
     assert.equal(wire.severity, "warning");
     assert.equal(wire.state, "unread");
@@ -220,6 +222,9 @@ describe("gate-park notifier: the durable row it actually writes", () => {
       state: "degraded",
       diagnosticFingerprint: "ab".repeat(32),
     });
-    assert.equal(notificationWireOf(storage.notification, clock.nowMs()).link, undefined);
+    const storageWire = notificationWireOf(storage.notification, clock.nowMs());
+    assert.equal(storageWire.kind, "notification");
+    if (storageWire.kind !== "notification") assert.fail("storage degradation must project an ordinary notification");
+    assert.equal(storageWire.link, undefined);
   });
 });

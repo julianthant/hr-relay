@@ -36,7 +36,6 @@ import {
   Sun,
   TriangleAlert,
 } from "lucide-react";
-import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
   Badge,
@@ -52,6 +51,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Refusal,
   Tooltip,
   dsBorder,
   dsFocus,
@@ -63,8 +63,6 @@ import {
   dsText,
   type DemoTheme,
 } from "../ds/ui.js";
-import type { NotificationWireSchema } from "../../domain/dashboard/projection.js";
-
 
 import { systemClock } from "../../domain/clock.js";
 import { settleCommandResult } from "../app/command-result.js";
@@ -83,6 +81,10 @@ import { SettingsControl, type SettingsSection } from "./settings.js";
 import { type StorageHealthSummary } from "./settings-model.js";
 import {
   type DayCountWire,
+  NOTIFICATION_FILTERS,
+  type NotificationFilterKey,
+  type NotificationRowWire,
+  type OrdinaryNotificationRowWire,
   type PreflightCheckWire,
   type PreflightVerdict,
   SHELL_VIEWS,
@@ -93,6 +95,7 @@ import {
   monthLabel,
   monthOfDay,
   moveCalendarFocus,
+  notificationInboxView,
   preflightVerdict,
   servedDays,
   shiftMonth,
@@ -516,8 +519,6 @@ function PreflightPopover({
 
 /* ── notifications ───────────────────────────────────────────────────────── */
 
-type NotificationWire = z.infer<typeof NotificationWireSchema>;
-
 /**
  * The row facts ref dashboard-surfaces §2.6 deliberately keeps OFF the notification wire.
  *
@@ -538,14 +539,6 @@ type NotificationWire = z.infer<typeof NotificationWireSchema>;
  * needs-you alert whose only affordance is "mark read" is an alert nobody can
  * act on.
  */
-export interface NotificationRowExtras {
-  readonly body?: string;
-  readonly triggerLabel?: string;
-  readonly delivery?: "ping" | "inbox";
-  readonly count?: number;
-  readonly desktopDelivered?: boolean;
-}
-
 /**
  * The button's word, per link kind. It lives here rather than on the wire
  * because it is UI copy about a destination this surface owns; the SERVER says
@@ -556,31 +549,19 @@ const NOTIFICATION_LINK_LABEL: Record<"run" | "failure", string> = {
   failure: "Open failure",
 };
 
-export type NotificationRowWire = NotificationWire & NotificationRowExtras;
-
 /**
  * Severity's PAIR — the badge tone and the glyph — off one table, so a row can
  * never carry a red siren beside a neutral badge. The wire's three arms line up
  * with the demo's three: `error` is its `critical`, `warning` its `attention`.
  */
 const SEVERITY_TONE: Record<
-  NotificationWire["severity"],
+  OrdinaryNotificationRowWire["severity"],
   { badge: "danger" | "warning" | "neutral"; icon: typeof Siren }
 > = {
   error: { badge: "danger", icon: Siren },
   warning: { badge: "warning", icon: TriangleAlert },
   info: { badge: "neutral", icon: Inbox },
 };
-
-const NOTIFICATION_FILTERS = [
-  { key: "all", label: "All" },
-  { key: "unread", label: "Unread" },
-  { key: "ping", label: "Pings" },
-  { key: "inbox", label: "Inbox" },
-  { key: "snoozed", label: "Snoozed" },
-] as const;
-
-type NotificationFilterKey = (typeof NOTIFICATION_FILTERS)[number]["key"];
 
 /**
  * 2i-B: the inbox bell over ref dashboard-surfaces §2.6's durable rows, in the demo's own
@@ -614,35 +595,11 @@ export function NotificationBell({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<NotificationFilterKey>("all");
   const [commandError, setCommandError] = useState<string | null>(null);
-
-  const unread = notifications.filter((entry) => entry.state === "unread").length;
-  const critical = notifications.some((entry) => entry.state === "unread" && entry.severity === "error");
-
-  /**
-   * Counted over EVERY served record, so the bell's badge and these chips can
-   * never disagree about how many exist. `Pings` and `Inbox` count the rows
-   * that DECLARE a delivery route — none do yet (see `NotificationRowExtras`),
-   * so both read zero and their filter answers the EmptyState below, which says
-   * in as many words that a zero here never means a record was deleted.
-   */
-  const counts: Record<NotificationFilterKey, number> = {
-    all: notifications.length,
-    unread,
-    ping: notifications.filter((entry) => entry.delivery === "ping").length,
-    inbox: notifications.filter((entry) => entry.delivery === "inbox").length,
-    snoozed: notifications.filter((entry) => entry.state === "snoozed").length,
-  };
-
-  const shown = notifications.filter((entry) => {
-    if (filter === "all") return true;
-    if (filter === "unread") return entry.state === "unread";
-    if (filter === "snoozed") return entry.state === "snoozed";
-    return entry.delivery === filter;
-  });
+  const { pinned, shown, counts, empty, unread, critical } = notificationInboxView(notifications, filter);
 
   const issue = (
     type: "notification-read" | "notification-unread" | "notification-snooze",
-    entry: NotificationRowWire,
+    entry: OrdinaryNotificationRowWire,
   ): void => {
     setCommandError(null);
     client.executeCommand({
@@ -675,7 +632,7 @@ export function NotificationBell({
         aria-label={`Notifications — ${unread} unread`}
         onClick={() => setOpen(true)}
         className={cn(
-          "relative rounded-[var(--ds-radius-md)] p-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]",
+          "relative flex touch-manipulation items-center justify-center rounded-[var(--ds-radius-md)] p-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)] max-sm:min-h-11 max-sm:min-w-11 max-sm:p-0",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
           dsFocus,
           dsMotion.base,
@@ -722,21 +679,57 @@ export function NotificationBell({
               </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
+            <div
+              data-notification-filters
+              className="flex shrink-0 flex-wrap items-center gap-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] bg-[var(--ds-surface-overlay)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]"
+            >
               {NOTIFICATION_FILTERS.map((entry) => (
                 <Chip
                   key={entry.key}
                   selected={filter === entry.key}
                   onSelect={() => setFilter(entry.key)}
                   tone="neutral"
+                  className="touch-manipulation max-sm:min-h-11"
                 >
                   {`${entry.label} ${counts[entry.key]}`}
                 </Chip>
               ))}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {shown.length === 0 ? (
+            <div data-notification-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {/* Permanent safety rows share the bounded content scroller with
+                  ordinary rows. Six gaps cannot push the filters or the rest
+                  of the inbox beyond the viewport; every row remains reachable. */}
+              {pinned.length > 0 && (
+                <section aria-label="Pinned safety notices">
+                  {pinned.map((entry) => (
+                    <div
+                      key={entry.notificationId}
+                      data-backfill-gap="pinned"
+                      className="border-b border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]"
+                    >
+                      <Refusal
+                        title={entry.title}
+                        code="event-stream-history-gap"
+                        meta={[`${fmtElapsed(elapsedSecondsBetween(entry.occurredAt, nowIso))} ago`, "pinned"]}
+                      >
+                        <span className="flex flex-col gap-[var(--ds-space-tight)]">
+                          <span>
+                            The dashboard could not backfill part of the event stream. Resnapshot and reconcile the
+                            affected work before relying on dashboard history.
+                          </span>
+                          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                            This safety record cannot be filtered, marked read, snoozed or dismissed. A reconnect does
+                            not clear it.
+                          </span>
+                        </span>
+                      </Refusal>
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {empty ? (
                 <EmptyState
                   icon={<Inbox aria-hidden className={dsIcon.lg} />}
                   title="Nothing under this filter"
@@ -785,7 +778,7 @@ function NotificationRow({
   onSnooze,
   onOpen,
 }: {
-  entry: NotificationRowWire;
+  entry: OrdinaryNotificationRowWire;
   nowIso: string;
   onRead: () => void;
   onSnooze: () => void;
@@ -1078,12 +1071,13 @@ export const TopBar = memo(function TopBar({
         dsSize.hTopbar,
         dsBorder.base,
         dsSurface.card,
-        "gap-[var(--ds-space-cozy)] px-[var(--ds-shell-inset)]",
+        "gap-[var(--ds-space-cozy)] px-[var(--ds-shell-inset)] max-sm:gap-[var(--ds-space-tight)] max-sm:px-[var(--ds-space-base)]",
+        "max-sm:overflow-x-auto max-sm:overscroll-contain",
       )}
     >
       {/* The app's name is the page's ONE h1. It reads at `dsText.ui` like the
           chrome it is — heading LEVEL is the document outline, not a type size. */}
-      <div className="flex shrink-0 items-center gap-[var(--ds-space-base)]">
+      <div className="flex shrink-0 items-center gap-[var(--ds-space-base)] max-sm:order-1">
         <span
           aria-hidden
           className={cn("flex items-center justify-center", dsRadius.md, "size-[var(--ds-h-sm)] bg-[var(--ds-accent-quiet)]")}
@@ -1095,23 +1089,31 @@ export const TopBar = memo(function TopBar({
 
       {/* Product navigation sits beside the history pair: both are ways of
           changing WHERE YOU ARE, and the switcher is the deliberate one. */}
-      <NavHistoryControls nav={nav} />
+      <span className="max-sm:order-3 max-sm:flex sm:contents">
+        <NavHistoryControls nav={nav} />
+      </span>
 
-      <ShellViewSwitcher view={view} onView={onView} />
+      <span className="max-sm:order-4 max-sm:flex sm:contents">
+        <ShellViewSwitcher view={view} onView={onView} />
+      </span>
 
       {/* Search takes the bar's slack (`ml-auto flex-1`, capped at 240px), which
           is what pins the date navigator and the icon cluster to the right edge
           without a spacer div. The date here IS the day the queue reads. */}
-      <DaySearchControl
-        surfaces={daySurfaces}
-        day={day}
-        workflowLabelOf={workflowLabelOf}
-        onOpenRun={onOpenRun}
-      />
+      <span className="max-sm:order-5 max-sm:flex sm:contents">
+        <DaySearchControl
+          surfaces={daySurfaces}
+          day={day}
+          workflowLabelOf={workflowLabelOf}
+          onOpenRun={onOpenRun}
+        />
+      </span>
 
-      <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} />
+      <span className="max-sm:order-6 max-sm:flex sm:contents">
+        <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} />
+      </span>
 
-      <span className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
+      <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-hair)] max-sm:order-2">
         {/* Preflight, on screen at all times rather than three clicks inside a
             page of preferences. Its glyph carries the worst verdict — and it is
             absent entirely while nothing serves the checks, because an

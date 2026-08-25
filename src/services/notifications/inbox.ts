@@ -48,13 +48,14 @@ export const NotificationDeliveryOutcomeSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("delivered") }),
   z.strictObject({ state: z.literal("suppressed-snoozed"), until: IsoInstantSchema }),
   z.strictObject({ state: z.literal("no-channel") }),
+  z.strictObject({ state: z.literal("not-requested-existing") }),
   z.strictObject({ state: z.literal("failed"), detail: z.string().min(1) }),
 ]);
 
 export const NotificationPublishReportSchema = z.strictObject({
   /** Always present: the durable row exists whatever delivery did. */
   notification: NotificationRecordSchema,
-  durable: z.enum(["created", "folded"]),
+  durable: z.enum(["created", "folded", "existing"]),
   delivery: NotificationDeliveryOutcomeSchema,
 });
 export type NotificationPublishReport = z.infer<typeof NotificationPublishReportSchema>;
@@ -145,6 +146,9 @@ export function createNotificationInbox(
           }));
           return { durable: "created" as const, notification: created.record };
         }
+        if (projection.trigger === "backfill-gap") {
+          return { durable: "existing" as const, notification: existing };
+        }
         const folded = notifications.fold({
           actorId,
           dedupeFingerprint: projection.dedupeFingerprint,
@@ -156,6 +160,14 @@ export function createNotificationInbox(
       });
       const notification = settled.notification;
       const durable = settled.durable;
+
+      if (durable === "existing") {
+        return NotificationPublishReportSchema.parse({
+          notification,
+          durable,
+          delivery: { state: "not-requested-existing" },
+        });
+      }
 
       /* ── phase 2: best-effort delivery, over an already-committed row ──── */
       const deliverability = NotificationDeliverabilitySchema.parse(

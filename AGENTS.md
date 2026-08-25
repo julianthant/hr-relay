@@ -323,6 +323,16 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   artifact before it serves facts or a manifest. A client-side reconstruction would have made a damaged
   record look download-ready.
 
+- **2026-08-25 — reconnect is not recovery from an unknown event-stream interval.** Bind resume
+  evidence to both cursor and projection generation: a cursor from an earlier generation proves
+  restart/rebuild, not missed history, and must resnapshot without publishing. Only a same-generation
+  historical cursor that retained history cannot replay creates the permanent fact. Its identity is
+  the requested cursor plus generation, never the aging reason or moving head; duplicate observation
+  leaves the durable row byte-for-byte unchanged. Capture hello and snapshot from one projection
+  instant, restart the handshake if publication moves it, and enforce immutability in authority so
+  no service, command or direct same-state write can hide or version-bump the fact. All pinned rows
+  share the drawer's bounded scroll region with ordinary rows while filters remain reachable.
+
 - **2026-08-25 — exact visual geometry and a usable touch target are separate boxes.** A demo-exact
   `Button ghost sm` may keep its 24px painted box while a transparent pseudo-element on the same
   semantic button supplies the 44px hit region. Prove the outer points hit that button and that its
@@ -330,9 +340,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   silently change every header's fidelity instead.
 - **Lesson 2026-08-25 — an observed row's system is a composition fact, never a log fallback.** A
   span supplies its exact `(nodeId, taskId)` and redacted page point; the module/store binding supplies
-  the system. The Logs query resolves exactly one root-composed data origin for that pair and refuses
-  missing, headless, or ambiguous origins by file and line. Defaulting to `read` or a plausible system
-  turns a trustworthy observation into an attributed lie. Observed/fenced span rows are indexed by the
+  a browser system only when that exact origin declares one. The Logs query resolves exactly one
+  root-composed data origin for the pair and refuses missing or ambiguous origins by file and line;
+  one service origin with no browser system stays absent on wire and screen. Defaulting to `read` or
+  a plausible system turns a trustworthy observation into an attributed lie. Observed/fenced span rows are indexed by the
   disk-tail projector at append time; the GET never re-derives their partitions from record-time run
   instants. A continuation cursor binds an immutable combined snapshot, so a later backdated append is
   visible on a fresh first page and cannot duplicate or displace rows in an existing page walk.

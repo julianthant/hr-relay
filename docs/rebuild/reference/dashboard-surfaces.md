@@ -1397,8 +1397,9 @@ the restore interlock are safety floor and remain mandatory.
 - [x] D138 — the trigger union is ids, closed codes and counts, with no free-text argument, so captured form contents have nowhere to enter
 - [x] D222 — the first production publisher: the backup-health watch, on state TRANSITIONS only
 - [x] D262 — the second: the open-operator-gate watch over `runs.listParkedAtGate()`, with `link` moved onto the wire
-- [ ] FIVE of the seven trigger arms have no publisher — `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done` (below); each belongs to the surface or slice that owns the state it announces
-> 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/domain/notification-triggers.ts, src/services/notifications/{inbox,storage-health,gate-park}.ts, src/domain/dashboard/projection.ts and `grep -rn '\.publish(' src/`; left: the five unpublished arms
+- [x] A46 — the third: an unreplayable historical SSE cursor commits one durable, permanently pinned backfill-gap Refusal before the replacement snapshot is served (`68dea43a`)
+- [ ] FIVE of the eight trigger arms have no publisher — `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done` (below); each belongs to the surface or slice that owns the state it announces
+> 2026-08-25 | track-f A46 | verified against src/domain/notification-triggers.ts, src/services/notifications/{inbox,storage-health,gate-park,backfill-gap}.ts, src/server/dashboard/subscriptions/dashboard-stream.ts and src/domain/dashboard/projection.ts; left: the five unpublished arms
 <!-- /roadmap-status -->
 
 <!-- roadmap: platform-fixes -->
@@ -1417,21 +1418,22 @@ expiry without changing read state. Notification text uses redacted arguments an
 evidence/failure/run — never raw secrets or captured form contents.
 
 **The trigger union, and which arms anything actually publishes.** `NotificationTriggerEventSchema`
-(`src/domain/notification-triggers.ts`) has seven arms; `projectNotificationTrigger` maps each onto
+(`src/domain/notification-triggers.ts`) has eight arms; `projectNotificationTrigger` maps each onto
 its D79b channel, severity and title, and that routing is implemented exactly as §9.6 states it.
-Only two arms have a production publisher — `grep -rn '\.publish(' src/` returns exactly two callers:
+Three arms have a production publisher:
 
 | trigger arm | routes to | publisher |
 |---|---|---|
 | `storage-degraded` | `storage` · warning | `src/services/notifications/storage-health.ts` (D222) |
 | `gate-opened` | `gate-waiting` · warning | `src/services/notifications/gate-park.ts` (D262) |
+| `backfill-gap` | `backfill-gap` · error · permanently pinned | `src/services/notifications/backfill-gap.ts`, called only by the SSE replay boundary (A46) |
 | `run-failed` | `failed` · error | **none** |
 | `subject-mismatch` | `failed` · error | **none** |
 | `write-parked` | `write-parked` · error | **none** |
 | `repeating-failure` | `repeating` · warning | **none** |
 | `verified-done` | `verified-done` · info | **none** |
 
-Five of seven is the honest number and this section had never stated it. Each of the five is
+Five of eight is the honest number. Each of the five is
 schema-declared, routed, rendered by the bell, and unreachable — D222's finding and D262's, still
 standing for the rest of the vocabulary. They are not one gap: each announces a state a different
 slice owns (a terminal failure, a beat-③ subject refusal, a post-fence park, a repeat threshold
@@ -1440,16 +1442,19 @@ holds that state, and the shape to copy is D222's — publish on a TRANSITION, a
 after the durable row commits, and never invent a "recovered" arm.
 
 **The wire is not the durable row** (`NotificationWireSchema`, `src/domain/dashboard/projection.ts`).
-It serves `notificationId`, `actorId`, `severity`, `title`, `state`, `occurredAt`, `revision` and an
-optional `link`, and the three differences from the durable record are each deliberate:
+It is a strict discriminated union. The ordinary `kind: "notification"` arm serves
+`notificationId`, `actorId`, `severity`, `title`, `state`, `occurredAt`, `revision` and `link`. The
+closed `kind: "backfill-gap"` arm serves only its id, actor, fixed error severity/title,
+`state: "pinned"` and occurrence time: it has no revision to CAS and no invented run/failure link.
+The differences from the durable record are deliberate:
 
 - **Severity is three values, not four.** There is no `critical`: severity is DERIVED from the
-  trigger by what the operator must DO, and the seven arms map onto three outcomes —
+  trigger by what the operator must DO, and the ordinary arms map onto three outcomes —
   `failed`/`write-parked` → `error`, `verified-done` → `info`, and the waiting/storage family
   (`gate-waiting`, `repeating`, `storage`) → `warning`. A fourth level would need a trigger meaning
   "worse than error", and none does; adding one is a decision about the trigger vocabulary, not
   about the wire.
-- **`state` is a single three-value axis `unread | read | snoozed`.** The DURABLE model keeps
+- **Ordinary `state` is a three-value axis `unread | read | snoozed`; the gap arm is `pinned`.** The DURABLE model keeps
   read-state and snooze as two independent axes exactly as D138 requires — `NotificationRecord`
   carries `status` and `snooze` separately, and snoozing never changes read state. The WIRE folds
   them because the inbox renders one row state: `snoozed` wins **only while the snooze is still in
@@ -1457,34 +1462,71 @@ optional `link`, and the three differences from the durable record are each deli
   Serving `snoozedUntil` as its own field would have invited the client to re-derive that comparison
   against its own clock, which is how two surfaces come to disagree about whether a row is snoozed.
 - **`dedupeFingerprint`, `trigger`, `summary` and `count` stay durable and off the wire.** The bell
-  and inbox render the title and the state; `revision` IS the durable `version`, which is what the
+  and inbox render the title and the state; ordinary `revision` IS the durable `version`, which is what the
   read/unread/snooze commands CAS against. `link` is the one field that MOVED onto the wire (D262),
   because a needs-you alert whose only affordance is "mark read" is an alert nobody can act on — and
   the line it respects is the union's own: ids and closed codes may cross to a surface, prose may
-  not. It names a `run` or a `failure`; a `storage` row names none and draws no button, because an
+  not. It names a `run` or a `failure`; `storage` and `backfill-gap` name none and draw no button, because an
   affordance that navigated nowhere would be worse than none.
 
-**Durable representation (D134).** "Repeated identical triggers update count/lastSeen" is stored as
-**one row per `(actorId, dedupeFingerprint)`, updated in place** — schema v10 adds that unique index
-plus triggers freezing identity and creation and requiring a strictly advancing `version`. The
-durable `NotificationRecord` therefore carries `count` and `lastSeenAt` beside `version`. Ref operator-trust
-§6.1 owns the justification and the boundary against the ledger's true immutability.
+**Durable representation (D134).** Ordinary repeated identical triggers update one row per
+`(actorId, dedupeFingerprint)` in place — schema v10 adds that unique index plus triggers freezing
+identity and creation and requiring a strictly advancing `version`. The durable
+`NotificationRecord` therefore carries `count` and `lastSeenAt` beside `version`. A46 is the narrow
+exception: once its permanent fact exists, re-observing that identity returns the existing row with
+no count, timestamp or version churn. Ref operator-trust §6.1 owns the justification and the
+boundary against the ledger's true immutability.
 
 **Publish ordering (D138).** "A failed toast never loses the unread inbox item" is an ORDER, not an
-aspiration. `publish` settles create-or-fold in one authority transaction and only then attempts OS
-delivery; the delivery call is made after that transaction returns, over a row authority can already
-read. A delivery that throws is reported to the caller and **never written back** — status, `count`,
-and `version` are untouched — and no per-attempt delivery state is stored at all. A missing desktop
+aspiration. `publish` settles create-or-fold (or A46's unchanged existing fact) in one authority
+transaction and only then attempts OS delivery; the delivery call is made after that transaction
+returns, over a row authority can already read. A delivery that throws is reported to the caller and
+**never written back** — status, `count`, and `version` are untouched — and no per-attempt delivery
+state is stored at all. A missing desktop
 channel reports `no-channel`, never success. Snooze is evaluated at delivery time only: a snoozed
-row still folds durably, it just does not ping.
+ordinary row still folds durably, it just does not ping. Re-observing an existing A46 fact requests no
+second OS delivery.
 
 **Trigger arguments are closed (D138).** "Notification text uses redacted arguments" is enforced by
 having no free-text argument: every trigger-event arm is ids, closed codes, and counts, and the
 title/message are composed from those. A caller cannot hand the inbox prose, so captured form
-contents have nowhere to enter. This section's seven trigger ARMS route onto D79b's six trigger KEYS
+contents have nowhere to enter. This section's eight trigger ARMS route onto seven trigger KEYS
 in the table above (`NotificationTriggerSchema`, `src/domain/notifications.ts:12-19`; the durable
 `channel` field is a different axis and carries two values, `ping | inbox`), and that routing is
 `projectNotificationTrigger`'s exhaustive switch — one place, not a per-caller choice.
+
+**As-built (2026-08-25, Track F A46) — a backfill gap means an UNKNOWN interval, not a weak
+connection.** Only the server replay seam may publish it: the client presents an exact
+`(projectionGeneration, requestedCursor)` pair and the hub proves that historical cursor cannot be
+replayed from retained history in that same generation, either because it expired or because a
+snapshot boundary displaced it. A cursor from another generation is restart/rebuild evidence, not
+missed-history evidence, and resnapshots without publication. Current and future cursors, missing
+generation evidence, reconnects, disconnects, timeouts, overflow and malformed requests do not
+qualify.
+
+The identity is detector + topic + requested cursor + requested projection generation. It excludes
+both mutable observations: current head and detection reason. If one actual interval ages from
+`snapshot-boundary` to `cursor-expired`, it remains the same fact. An in-process identity-keyed
+single-flight lets simultaneous clients perform one publication, and authority's unique identity is
+the cross-process/restart arbiter: re-observation returns the existing row unchanged, without count,
+last-seen, updated-at, version or OS-delivery churn. A failed first publication remains retryable.
+The closed event contains only cursors, generation and enums — no caller-authored prose or person/run
+data.
+
+The hub captures hello and snapshot from one complete day-wire instant and awaits durable
+publication before exposing them. If publication moves generation or cursor, it discards the pair
+and captures a new handshake, so no response can pair hello N with snapshot N+1.
+
+The durable row is permanently pinned. Projection gives it a closed wire arm with no ordinary
+lifecycle controls, and one authority-level guard refuses update and fold for that trigger before
+CAS/version logic. That covers mark-read, mark-unread, snooze, clear-snooze, command-kernel calls,
+direct repository calls and same-state writes. The UI partitions the pinned arm before ordinary
+filtering, so no present or future filter branch receives it. Reconnect and even a complete
+replacement snapshot establish a new baseline but cannot establish what happened inside the missed
+interval, so neither clears the historical warning.
+If Track F later wants a resolved state, its final decision brief must name independent evidence that
+proves reconciliation and add a separate closed state/transition; reconnect alone is forbidden as
+that evidence.
 
 **As-built (2026-08-18, D222) — the first wired producer is the backup-health watch, and the
 stale/missing backup moves OFF the every-view banner it had been riding.** 2g built the durable
@@ -3359,7 +3401,7 @@ parity references for all three.
 - [x] 2i-E the intake workspace over schema v12 — all seven surface decisions (D173, §9.7.1)
 - [x] 2i-F the token-scoped capture phone surface (D175, §9.7.2)
 - [x] 2i-G the archive model and the Activity report over schema v13, the read-only Workflow Explorer, the UI catalog and the AI advisories (D176–D180, §9.5.1 · §9.5.2 · §9.5.3)
-- [!] the bell's `Pings` / `Inbox` filter chips can never be non-zero — `delivery` is a client-side extra that never crosses the wire (§9.6)
+- [!] the bell cannot measure ordinary `Ping`/`Inbox` routing because `delivery` stays off the wire; A46's closed pinned kind now makes `Pings` non-zero for a backfill gap, while `Inbox` remains structurally zero (§9.6)
 - [!] the intake Dropzone's accept list and size cap are client literals, not the server constants the doc claimed (§9.7.1)
 - [!] the capture token is TTL-bounded, not single-use, and `Start Capture` lives only inside the intake takeover's empty dropzone state (§9.7.2)
 - [ ] D186 — the explorer's EDIT half, deferred BY DISPOSITION with a named trigger (`{#def-explorer-edit}`, §9.5.3)
@@ -3927,8 +3969,9 @@ rows for this actor. Nothing about it is a toast: a desktop notification is a de
 and the row is the record, so an inbox item exists whether or not anything was ever displayed by the
 operating system.
 
-**Routing, ratified (D79b + D86).** **failed · gate-waiting · write-parked · repeating · storage** →
-**Ping**; **verified-done** → **Inbox only**. Pings are silent. The lifecycle is deliberately
+**Routing, ratified (D79b + D86), plus A46's safety arm.** **failed · gate-waiting · write-parked ·
+repeating · storage · backfill-gap** → **Ping**; **verified-done** → **Inbox only**. The backfill gap
+also enters the permanently pinned safety lane. Pings are silent. The ordinary lifecycle is deliberately
 slimmed from five states (unread/read/acknowledged/snoozed/resolved plus per-attempt delivery
 records — that was multi-user incident tooling) to **read/unread plus an optional snooze**, and the
 inbox is **actor-keyed from day one** (the D75 seam) even though there is one actor today. Retention:
@@ -3938,21 +3981,32 @@ notes 30d, spans 30d, **ledger forever**, artifacts and checkpoints until purge.
 delivery second — **a failed OS delivery still leaves an unread inbox item.** Desktop delivery may
 never be the only alert.
 
-**What the wire carries, and what it deliberately does not.** `NotificationWireSchema` is eight
-fields: `notificationId`, `actorId`, `severity`, `title`, `state`, `occurredAt`, `revision`, and
-D262's optional `link` (`src/domain/dashboard/projection.ts:754-787`). The durable row's `summary`,
-`trigger` and `count` stay off it: they are prose and derived counts, and §2.6's line is that ids and
-closed codes may cross to a surface while prose may not. D262 moved exactly one fact across, and it
-is an id — a needs-you alert whose only affordance is "mark read" is an alert nobody can act on, so
-a row that names a run draws `Open run` (or `Open failure`), and a `storage` row, which names no run,
-draws no button rather than one that navigates nowhere.
+**What the wire carries, and what it deliberately does not.** `NotificationWireSchema` is a closed
+discriminated union. Ordinary rows carry `kind: "notification"`, id, actor, severity, title, state,
+occurrence time, revision and D262's link. The safety row carries `kind: "backfill-gap"`, id, actor,
+fixed error severity/title, `state: "pinned"` and occurrence time — no revision and no link. The
+durable row's `summary`, `trigger` and `count` stay off both arms: they are prose and derived counts,
+and §2.6's line is that ids and closed codes may cross while prose may not. A row that names a run
+draws `Open run` (or `Open failure`); `storage` and `backfill-gap` draw no invented destination.
 
-**Every action CASes the row's own revision.** `notification-read`, `notification-unread` and
+**Every ordinary action CASes the row's own revision.** `notification-read`, `notification-unread` and
 `notification-snooze` are the whole family (`src/domain/commands.ts:266-267`), each carrying
 `expectedVersion: entry.revision` — the bell holds a served row, not a guess about it — and both
 refusal arms are settled through the one exhaustive fold, because a conflict that fell through to the
 success path is D253's defect on a control whose only feedback is that the row changed. Snooze has
 no inverse on purpose: the kernel serves no `notification-unsnooze`, so the surface offers none.
+The pinned arm exposes no lifecycle control or revision. The authority itself refuses every fold or
+state update for that trigger — read, unread, snooze, clear-snooze and direct same-state writes — so
+hiding or version-bumping it is impossible through any service/repository path, not merely the
+surface or command kernel.
+
+**One reachable lane at every size.** Pinned Refusals are immune to the selected ordinary filter but
+still belong to the filter vocabulary: each contributes to All, Unread and Pings, and a selected
+Pings body therefore never says empty while one is visible. Filters stay above one bounded scroll
+region containing every pinned and ordinary row; six or more permanent facts cannot consume a fixed
+non-scrolling lane and strand later pins or ordinary records. At 390×844 the bell is a 44px touch
+target and keyboard focus, every pin, every filter and an ordinary row remain reachable without
+horizontal overflow.
 
 **The bell reads the SAME served instant every other surface does.** A notification's age is a fact
 about the server's clock, so the row ages against the one calibrated `nowIso` §9.9's D256 clock
@@ -3961,9 +4015,9 @@ else believes.
 
 **As-built, and the three absences the surface is honest about.**
 
-1. **Five of the seven trigger arms have no publisher.** `grep -rn '\.publish(' src/` returns exactly
-   two production callers: `src/services/notifications/storage-health.ts:80` (`storage-degraded`,
-   D222) and `src/services/notifications/gate-park.ts:119` (`gate-opened`, D262). `run-failed`,
+1. **Five of the eight trigger arms have no publisher.** Three production paths publish:
+   `storage-health.ts` (`storage-degraded`, D222), `gate-park.ts` (`gate-opened`, D262), and the
+   stream replay boundary through `backfill-gap.ts` (A46). `run-failed`,
    `subject-mismatch`, `write-parked`, `repeating-failure` and `verified-done` are schema-declared,
    routed by `projectNotificationTrigger`, renderable — and unreachable. Each belongs to the slice
    that owns the state it announces (a terminal failure, a subject verdict, a parked write, a repeat
@@ -3977,14 +4031,14 @@ else believes.
    channel configured"*, chosen over an absent field precisely so it can never be read as
    *"delivered"*. Durability is what makes that acceptable rather than a hole: the row is committed
    before delivery is attempted, so the inbox is complete whatever the channel does.
-3. **The `Pings` and `Inbox` filter chips can never be non-zero.** They count rows that DECLARE a
-   delivery route, and `delivery` is a client-side optional extra that never crosses the wire
-   (`src/dashboard/surfaces/top-bar.tsx:517-547, 624-633`). The surface renders the routing rule it
-   cannot measure. It is an on-record deviation from the demo rather than a placeholder — the panel's
+3. **`Inbox` still cannot be non-zero; `Pings` now counts the pinned safety arm.** Ordinary rows do
+   not declare a delivery route on the wire, so the surface still cannot measure their routing. A46
+   is different because its one closed wire kind is itself sufficient to route it into pinned Ping.
+   It is an on-record deviation from the demo rather than a placeholder — the panel's
    footer states the routing in words, and the empty state answers the filter with *"The records
    still exist — switch the filter to see them. A count that reads zero here never means a
-   notification was deleted"* — but a chip whose count is structurally zero is still a control that
-   cannot do anything, and it is `{#track-d}`'s hygiene row to serve `delivery` or drop the chips.
+   notification was deleted"* — but `Inbox` is still a structurally zero control, and it is
+   `{#track-d}`'s hygiene row to serve ordinary `delivery` or drop that chip.
 
 **Wire.** `ref frontend-backend-integration` §5.1.6 owns the bell's payload, the three commands and
 the parity references.

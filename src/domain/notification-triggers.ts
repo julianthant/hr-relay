@@ -8,8 +8,8 @@
  *     mismatch, open operator gate, unknown write outcome, storage
  *     degradation, stalled lease/outbox, failed backup, and ref operator-trust §6 adds the
  *     repeat-threshold and the verified-done receipt. D79b routes all of them
- *     onto the six `NotificationTrigger` keys; this module owns that routing so
- *     no caller invents a seventh.
+ *     onto seven `NotificationTrigger` keys; A46 adds the closed backfill-gap
+ *     safety arm. This module owns that routing so no caller invents an eighth.
  *  2. **A notification message carries no free text.** Every event arm is ids,
  *     closed codes, and counts; the title/summary are composed from those.
  *     There is deliberately no `message: string` channel, because ref dashboard-surfaces §2.6
@@ -30,6 +30,7 @@ import {
   GateIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
+  ProjectionCursorSchema,
   RunIdSchema,
   WorkflowIdSchema,
   WriteIntentIdSchema,
@@ -50,6 +51,26 @@ export const StorageHealthConcernSchema = z.enum([
   "outbox-stalled",
   "lease-stalled",
 ]);
+
+export const BackfillGapTriggerEventSchema = z.strictObject({
+  kind: z.literal("backfill-gap"),
+  detector: z.literal("server-resume"),
+  reason: z.enum(["cursor-expired", "snapshot-boundary"]),
+  topic: z.literal("dashboard-day"),
+  requestedCursor: ProjectionCursorSchema,
+  currentCursor: ProjectionCursorSchema,
+  projectionGeneration: PositiveIntSchema,
+}).superRefine((gap, context) => {
+  const requested = Number(gap.requestedCursor.slice(3));
+  const current = Number(gap.currentCursor.slice(3));
+  if (requested >= current) {
+    context.addIssue({
+      code: "custom",
+      path: ["requestedCursor"],
+      message: "a backfill gap requires a historical requested cursor before the current cursor",
+    });
+  }
+});
 
 export const NotificationTriggerEventSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -99,6 +120,7 @@ export const NotificationTriggerEventSchema = z.discriminatedUnion("kind", [
     runId: RunIdSchema,
     workflowId: WorkflowIdSchema,
   }),
+  BackfillGapTriggerEventSchema,
 ]);
 export type NotificationTriggerEvent = z.infer<typeof NotificationTriggerEventSchema>;
 
@@ -136,6 +158,14 @@ export function deriveNotificationDedupeFingerprint(input: unknown): string {
         return { kind: event.kind, concern: event.concern, diagnosticFingerprint: event.diagnosticFingerprint };
       case "verified-done":
         return { kind: event.kind, runId: event.runId };
+      case "backfill-gap":
+        return {
+          kind: event.kind,
+          detector: event.detector,
+          topic: event.topic,
+          requestedCursor: event.requestedCursor,
+          projectionGeneration: String(event.projectionGeneration),
+        };
     }
   })();
   return FingerprintSchema.parse(sha256Hex(
@@ -207,6 +237,14 @@ export function projectNotificationTrigger(input: unknown): NotificationProjecti
           title: `Done — ${event.workflowId}`,
           summary: `${event.workflowId} run ${event.runId} completed with every declared completion criterion evidenced.`,
           links: [{ kind: "run", runId: event.runId }],
+        };
+      case "backfill-gap":
+        return {
+          trigger: "backfill-gap",
+          channel: "ping",
+          title: "Notification history is incomplete",
+          summary: "The dashboard could not backfill part of the event stream. Resnapshot and reconcile the affected work before relying on dashboard history.",
+          links: [],
         };
     }
   })();

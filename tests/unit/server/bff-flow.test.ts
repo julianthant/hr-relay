@@ -45,6 +45,7 @@ import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 
 interface Harness {
   readonly app: Hono;
@@ -182,7 +183,7 @@ function harness(options: {
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
   });
-  const hub = createDashboardStreamHub({ projection });
+  const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
 
 
@@ -420,7 +421,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(payload.nextCursor.state, "absent");
 
     // The SSE hub serves the same snapshot the query returned.
-    const connection = h.hub.connect({ day: DAY });
+    const connection = await h.hub.connect({ day: DAY });
     const snapshot = connection.initial[1];
     if (snapshot.type !== "snapshot" || snapshot.topic !== "dashboard-day") assert.fail("expected a dashboard-day snapshot");
     expect(snapshot.payload).toEqual(day);
@@ -540,6 +541,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(unknownRoute)).code, "ROUTE_NOT_FOUND");
 
     const badTopics = await h.app.request("/events/v1?topics=everything");
+    const badCursor = await h.app.request(`/events/v1?topics=dashboard-day:${DAY}`, {
+      headers: { "last-event-id": "not-a-projection-cursor" },
+    });
+    assert.equal(badCursor.status, 400);
+    const unboundGeneration = await h.app.request(`/events/v1?topics=dashboard-day:${DAY}`, {
+      headers: { "dashboard-projection-generation": "7" },
+    });
+    assert.equal(unboundGeneration.status, 400);
     assert.equal(badTopics.status, 400);
   });
 
