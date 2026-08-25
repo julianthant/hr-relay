@@ -28,9 +28,9 @@ describe("dataOriginViewsOf (D252)", () => {
   });
 
   it("reads a TRANSACTION node's commit contract as `write` — the arm a read-only tree would leave unreachable", () => {
-    const origins = dataOriginViewsOf(moduleFor("kuali-timekeeper-annotation"));
+    const origins = dataOriginViewsOf(moduleFor("separations-kuali-finalization"));
     const write = origins.find((origin) => origin.dir === "write");
-    assert.ok(write, "kuali-timekeeper-annotation declares a transaction node and must produce a write origin");
+    assert.ok(write, "separations-kuali-finalization declares a transaction node and must produce a write origin");
     assert.equal(write.system, "kuali");
     // A commit contract declares no freshness policy — a write is not a fact
     // anyone reuses, so there is no bound to state.

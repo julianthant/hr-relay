@@ -172,7 +172,7 @@ describe("the graph panel's derivations", () => {
 
   it("counts a commit arm's INPUT fields as writes, and never its prepare twin's", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
-    const workflow = wire.workflows.find((one) => String(one.id) === "kuali-timekeeper-annotation");
+    const workflow = wire.workflows.find((one) => String(one.id) === "separations-kuali-finalization");
     assert.ok(workflow !== undefined);
     const totals = explorerGraphTotals(workflow);
     const commit = workflow.nodes

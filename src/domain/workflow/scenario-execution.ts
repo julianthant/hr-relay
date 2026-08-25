@@ -142,22 +142,6 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
   },
   { scenarioId: "intake/spreadsheet/unreadable", file: "tests/scenario/intake-extraction.scenario.test.ts" },
   {
-    scenarioId: "kuali-timekeeper-annotation/dry-run-preview",
-    file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
-  },
-  {
-    scenarioId: "kuali-timekeeper-annotation/subject-mismatch",
-    file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
-  },
-  {
-    scenarioId: "kuali-timekeeper-annotation/committed",
-    file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
-  },
-  {
-    scenarioId: "kuali-timekeeper-annotation/already-present",
-    file: "tests/scenario/kuali-timekeeper-annotation.scenario.test.ts",
-  },
-  {
     scenarioId: "separations-kronos-timecard/reads-a-real-timecard",
     file: "tests/scenario/separations-kronos-timecard.scenario.test.ts",
   },

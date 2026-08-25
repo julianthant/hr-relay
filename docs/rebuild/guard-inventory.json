@@ -282,7 +282,7 @@
       "file": "tests/unit/architecture/dry-run-composition-submit-free.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/write-safety.md",
-      "invariant": "RETIRED by D188 (2j, 2026-08-09): held by `write-safety-contract` plus the executable scenario `kuali-timekeeper-annotation/dry-run-preview`, which runs the REAL write sequencer over a REAL authority database and asserts DURABLE absence \u2014 zero `write_intents`, zero `run_checkpoints`, zero `durable_outbox` rows \u2014 rather than inspecting a composition for the absence of a call. WHERE THE INVARIANT WENT: `executeDryRun` is a separate arm and `executeTransaction` with `dryRun` refuses loudly, so a submit-free dry run is a property of the kernel's shape, and the scenario is what proves it on rows.",
+      "invariant": "RETIRED by D188 (2j, 2026-08-09): held by `write-safety-contract` plus the executable scenario `separations-kuali-finalization/dry-run-preview`, which runs the REAL write sequencer over a REAL authority database and asserts zero write-authority/output deltas \u2014 zero `write_intents`, zero `write_attempts`, and zero `durable_outbox` rows \u2014 rather than inspecting a composition for the absence of a call. Ordinary upstream task `run_checkpoints` still exist in a dry run and are required to reach the preview boundary; they are not write evidence. WHERE THE INVARIANT WENT: `executeDryRun` is a separate arm and `executeTransaction` with `dryRun` refuses loudly, so a submit-free dry run is a property of the kernel's shape, and the scenario is what proves it on rows.",
       "replacementRequired": true,
       "retiredBy": "D188",
       "replacedBy": "write-safety-contract"

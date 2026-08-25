@@ -33,7 +33,7 @@ import {
   type ReceiptWriteEvidence,
 } from "../../src/core/evidence-receipt.js";
 import { diffReceipts } from "../../src/core/receipt-derivation-binding.js";
-import { kualiTimekeeperAnnotationDescriptor } from "../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { kualiReceiptEvidence, seedPersonLookupExitRun } from "./fixtures/receipt-run-fixtures.js";
 
@@ -44,7 +44,7 @@ import { kualiReceiptEvidence, seedPersonLookupExitRun } from "./fixtures/receip
  */
 const MOVED_CLOSURE = "9".repeat(64);
 
-const descriptor = kualiTimekeeperAnnotationDescriptor;
+const descriptor = separationsKualiFinalizationDescriptor;
 
 /** The fixture run, retaining a closure this build no longer carries. */
 function runUnderMovedClosure(patch: Readonly<{

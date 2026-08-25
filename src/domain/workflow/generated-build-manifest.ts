@@ -15,156 +15,6 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "b942fb870a862c3a3833b288f8cc34dbd14a34f50a5e5ce0ac704227064a5153",
-      "sources": [
-        {
-          "path": "src/base/flow.ts",
-          "sha256": "89ead4f6a7ad083ddecbcfb6008a7a04c480355001b030f1e3fa838d4bd0e073"
-        },
-        {
-          "path": "src/base/workflow.ts",
-          "sha256": "be8ca9de4dd16b4578336e8d03b5e065e7c3ada38ac9fd55a2dc98e3f3829fba"
-        },
-        {
-          "path": "src/domain/canonical-json.ts",
-          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
-        },
-        {
-          "path": "src/domain/contracts/base.ts",
-          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
-        },
-        {
-          "path": "src/domain/contracts/kuali/fill-timekeeper-annotation.ts",
-          "sha256": "b7b4b1d7ab066d46230df3df20420ad340a99c6581000e7c3536ff2da5c0c5ce"
-        },
-        {
-          "path": "src/domain/contracts/kuali/read-timekeeper-annotation.ts",
-          "sha256": "68912b87031068969ddebe4673b1283d60a7688a0cf047e9b205f5d2a7623037"
-        },
-        {
-          "path": "src/domain/contracts/kuali/save-timekeeper-annotation.ts",
-          "sha256": "fa293f8aa6d8761b66ea992565e4222a9dce2db15816dac1c56405b00f0a9453"
-        },
-        {
-          "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
-        },
-        {
-          "path": "src/domain/ids.ts",
-          "sha256": "a6d833a4c4d5b7090a213db1978903bf68e09be706fa7048a347440f60553340"
-        },
-        {
-          "path": "src/domain/immutability.ts",
-          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
-        },
-        {
-          "path": "src/domain/run/result.ts",
-          "sha256": "c7110fbfc922eda03b2fd73b89b869baa6d691c583c1e654535abb7108138b90"
-        },
-        {
-          "path": "src/domain/schema-bound-value.ts",
-          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
-        },
-        {
-          "path": "src/domain/secret-names.ts",
-          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
-        },
-        {
-          "path": "src/domain/session.ts",
-          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
-        },
-        {
-          "path": "src/domain/sha256.ts",
-          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
-        },
-        {
-          "path": "src/domain/ui/driver.ts",
-          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
-        },
-        {
-          "path": "src/domain/ui/kuali-action-list.ts",
-          "sha256": "4c16a8711133cc12b29a7e7bccba089e499692124d9925a6cfca7cd9c1633ebe"
-        },
-        {
-          "path": "src/domain/ui/kuali-document-identity.ts",
-          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
-        },
-        {
-          "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-document.ts",
-          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
-        },
-        {
-          "path": "src/domain/unscoped-commit.ts",
-          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
-        },
-        {
-          "path": "src/domain/workflow/build-manifest.ts",
-          "sha256": "92469ad2a164322adc2ba9315fb49b9db76834fede1c958d78c75b35d5a45418"
-        },
-        {
-          "path": "src/domain/workflow/canonical-input.ts",
-          "sha256": "af5ec5480b764409e75b3f6cc249f75e689e2030f04bf9a244e0f68915009279"
-        },
-        {
-          "path": "src/domain/workflow/checkpoint.ts",
-          "sha256": "96806d132e796d82fbec88a4ecd6570a0595cfb166b5719eeab18ca986031942"
-        },
-        {
-          "path": "src/domain/workflow/completion.ts",
-          "sha256": "e247c8d94aabc266766e10627c2bc9ded6161d3f62d865060df63d2d0ff5ca30"
-        },
-        {
-          "path": "src/domain/workflow/delegation-policy.ts",
-          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
-        },
-        {
-          "path": "src/domain/workflow/graph.ts",
-          "sha256": "e79a7178781fa1a519f3667aeb1dac259de6bc85abdeb57421ba7f1ba58259c6"
-        },
-        {
-          "path": "src/domain/workflow/ingress.ts",
-          "sha256": "2d62f6af877bed5baf39aeccfca6af97813d4d9b9354c5030ea949d9ef529319"
-        },
-        {
-          "path": "src/domain/workflow/node-condition.ts",
-          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
-        },
-        {
-          "path": "src/domain/workflow/presentation.ts",
-          "sha256": "f8d4ed50ddac53c066f5c2089a8d005e12d6a65b77d060822fde014405b1b385"
-        },
-        {
-          "path": "src/domain/workflow/scenario-coverage.ts",
-          "sha256": "38955a88e1011bc911fb150c7963bbb6f817239153c4e543afb62bc81a47a504"
-        },
-        {
-          "path": "src/domain/write-safety-primitives.ts",
-          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
-        },
-        {
-          "path": "src/validation/canonical-input-schema.ts",
-          "sha256": "de6647236fff16461b900633852d98bd6ea39fe9214769761ba872862a620944"
-        },
-        {
-          "path": "src/validation/contract-boundary.ts",
-          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
-        },
-        {
-          "path": "src/workflows/kuali-timekeeper-annotation/descriptor.ts",
-          "sha256": "0b8c8c8c98b374fb6b89eb0b63267dbbe15f8f1cee2c586a770fe015668213c8"
-        }
-      ],
-      "id": "kuali-timekeeper-annotation"
-    },
-    {
       "fingerprint": "8d0ef0eff81addf757e68992290e6d246ec41f865bc5d6add25551ab8c9dd584",
       "sources": [
         {
@@ -307,7 +157,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "cfc401fa26aee93363d4566a52adace52b8674e689c2edab2f75d4e31bcaa369",
+      "fingerprint": "008838d0b8c9c58142dd1ad4e1e7f576e00c9b1e989edbb7286639e40d85252c",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -339,7 +189,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "4fcd5a396de42254dc5edc4b1d97b35349ce52d2027a2119c43a5d9a124b0f15"
+          "sha256": "fae33a72d2258a6d5f171af4789049c3ee37b7a6c75ee3aacccbb9f2e25f99e5"
         },
         {
           "path": "src/domain/contracts/kuali/search-separation-action.ts",
@@ -519,7 +369,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
+          "sha256": "a49a456be6a6383d0a79a0444968d74874cfcd30b1bb67a16e304af0f975bb14"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
@@ -527,7 +377,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/ui/new-kronos-timecard.ts",
@@ -657,7 +507,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "1a32b7bc05bad7ae71b8389e2b6ba8c82e4174611539fec7ac3f81fd7a2afcb3",
+      "fingerprint": "7a2885692f8d09cfbaf23431e0bc3442e6724b2f34f1935ecc7a5effa7f4827a",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -781,7 +631,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",
@@ -1049,7 +899,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "e17073178bc716a98edd50913db3e1380765fa869540cb363478f919e4fc9405",
+      "fingerprint": "81eb6330d39a063388b262d2fb075bc4a16265931bcd85ab7ab340df9ae0ec4e",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1073,7 +923,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "4fcd5a396de42254dc5edc4b1d97b35349ce52d2027a2119c43a5d9a124b0f15"
+          "sha256": "fae33a72d2258a6d5f171af4789049c3ee37b7a6c75ee3aacccbb9f2e25f99e5"
         },
         {
           "path": "src/domain/contracts/kuali/stage-separation-finalization.ts",
@@ -1189,7 +1039,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
+          "sha256": "a49a456be6a6383d0a79a0444968d74874cfcd30b1bb67a16e304af0f975bb14"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
@@ -1197,7 +1047,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",
@@ -1449,7 +1299,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "1660ccfb6ecceace1f831e78bc31e3d8c4a3aaf566ec9700e635edf4b3d28e49",
+      "fingerprint": "4cd920a947dc0550e638344abf045c6c4646cecbbce65e1de160cafbc0c06d44",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1629,7 +1479,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",
@@ -2341,189 +2191,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "ed257ddcacb7e88908ec9fbc9485c4a4e6422aff349d7e7abe4c50227c34cbf4",
-      "sources": [
-        {
-          "path": "src/base/artifacts.ts",
-          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
-        },
-        {
-          "path": "src/base/errors.ts",
-          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
-        },
-        {
-          "path": "src/base/mutation-capability.ts",
-          "sha256": "b6ea76a857a3ac9be50bfa6388773b22b3a52b988bf56dd62816faf77187074e"
-        },
-        {
-          "path": "src/base/providers.ts",
-          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
-        },
-        {
-          "path": "src/base/session.ts",
-          "sha256": "867d1df804295b7adedf9cb1355872a2f3988c7464dc3899d69df375e94c647b"
-        },
-        {
-          "path": "src/base/store.ts",
-          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
-        },
-        {
-          "path": "src/base/task.ts",
-          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
-        },
-        {
-          "path": "src/domain/artifacts.ts",
-          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
-        },
-        {
-          "path": "src/domain/canonical-json.ts",
-          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
-        },
-        {
-          "path": "src/domain/clock.ts",
-          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
-        },
-        {
-          "path": "src/domain/config/schema.ts",
-          "sha256": "1d17f88ced3d63b56a1e7157411db16c3c1713d13fc0a15a40d9570d8abc0488"
-        },
-        {
-          "path": "src/domain/contracts/base.ts",
-          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
-        },
-        {
-          "path": "src/domain/contracts/kuali/fill-timekeeper-annotation.ts",
-          "sha256": "b7b4b1d7ab066d46230df3df20420ad340a99c6581000e7c3536ff2da5c0c5ce"
-        },
-        {
-          "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
-        },
-        {
-          "path": "src/domain/gates.ts",
-          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
-        },
-        {
-          "path": "src/domain/ids.ts",
-          "sha256": "a6d833a4c4d5b7090a213db1978903bf68e09be706fa7048a347440f60553340"
-        },
-        {
-          "path": "src/domain/immutability.ts",
-          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
-        },
-        {
-          "path": "src/domain/provider-admission.ts",
-          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
-        },
-        {
-          "path": "src/domain/providers.ts",
-          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
-        },
-        {
-          "path": "src/domain/schema-bound-value.ts",
-          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
-        },
-        {
-          "path": "src/domain/secret-names.ts",
-          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
-        },
-        {
-          "path": "src/domain/session.ts",
-          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
-        },
-        {
-          "path": "src/domain/sha256.ts",
-          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
-        },
-        {
-          "path": "src/domain/task-provenance.ts",
-          "sha256": "db61bac2e435b5a8c97a5481103c1578cbf7fbedb3fa69f11c27cb0b7c77c57f"
-        },
-        {
-          "path": "src/domain/trust/preflight-scenarios.ts",
-          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
-        },
-        {
-          "path": "src/domain/trust/scenario.ts",
-          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
-        },
-        {
-          "path": "src/domain/ui/contracts.ts",
-          "sha256": "c584d8d1e21e9075b5f37285ec3cea0318f11994de804a5c3e3cafef55ffc725"
-        },
-        {
-          "path": "src/domain/ui/driver.ts",
-          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
-        },
-        {
-          "path": "src/domain/ui/kuali-action-list.ts",
-          "sha256": "4c16a8711133cc12b29a7e7bccba089e499692124d9925a6cfca7cd9c1633ebe"
-        },
-        {
-          "path": "src/domain/ui/kuali-document-identity.ts",
-          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
-        },
-        {
-          "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-document.ts",
-          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
-        },
-        {
-          "path": "src/domain/unscoped-commit.ts",
-          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
-        },
-        {
-          "path": "src/domain/workflow/checkpoint.ts",
-          "sha256": "96806d132e796d82fbec88a4ecd6570a0595cfb166b5719eeab18ca986031942"
-        },
-        {
-          "path": "src/domain/workflow/delegation-policy.ts",
-          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
-        },
-        {
-          "path": "src/domain/workflow/graph.ts",
-          "sha256": "e79a7178781fa1a519f3667aeb1dac259de6bc85abdeb57421ba7f1ba58259c6"
-        },
-        {
-          "path": "src/domain/workflow/node-condition.ts",
-          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
-        },
-        {
-          "path": "src/domain/write-safety-primitives.ts",
-          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
-        },
-        {
-          "path": "src/stores/kuali/declaration.ts",
-          "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
-        },
-        {
-          "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
-        },
-        {
-          "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
-        },
-        {
-          "path": "src/stores/kuali/tasks/fill-timekeeper-annotation.ts",
-          "sha256": "248fc3a6c706b68d9ac2d14c4f0994cae5c5ebe716e2bf9e64b65b418103f1ec"
-        },
-        {
-          "path": "src/validation/contract-boundary.ts",
-          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
-        }
-      ],
-      "id": "kuali/fill-timekeeper-annotation"
-    },
-    {
-      "fingerprint": "a32756438a354946b34c15e9743d3b841971dac279ebf74c6e296264847cab4e",
+      "fingerprint": "798128fa560a327669b5e5e9778a5522e3bfc08f3c128bfe1878b97ede01244a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2579,7 +2247,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "4fcd5a396de42254dc5edc4b1d97b35349ce52d2027a2119c43a5d9a124b0f15"
+          "sha256": "fae33a72d2258a6d5f171af4789049c3ee37b7a6c75ee3aacccbb9f2e25f99e5"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -2651,7 +2319,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
+          "sha256": "a49a456be6a6383d0a79a0444968d74874cfcd30b1bb67a16e304af0f975bb14"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
@@ -2659,7 +2327,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -2695,11 +2363,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
+          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
+          "sha256": "41b3debdad81890b91dd03ad77cf1d6af6850d136196668efeb5ac89948828ab"
         },
         {
           "path": "src/stores/kuali/finalization-verdict.ts",
@@ -2717,7 +2385,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/match-separation-finalization"
     },
     {
-      "fingerprint": "d7bd19550a9cd8042d7dea5c825c560349240d369cd41545c36ae48c18fd8e2e",
+      "fingerprint": "632100cd8f3e84b3252cc185880875f316596189fcf126fa4ab341860650c857",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2841,7 +2509,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
+          "sha256": "a49a456be6a6383d0a79a0444968d74874cfcd30b1bb67a16e304af0f975bb14"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
@@ -2849,7 +2517,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -2881,11 +2549,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
+          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
+          "sha256": "41b3debdad81890b91dd03ad77cf1d6af6850d136196668efeb5ac89948828ab"
         },
         {
           "path": "src/stores/kuali/tasks/read-separation-document.ts",
@@ -2899,201 +2567,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-separation-document"
     },
     {
-      "fingerprint": "3db26a0302e697500388124f27f70c08cc76d528e49ed9bf62710bbba522a4db",
-      "sources": [
-        {
-          "path": "src/base/artifacts.ts",
-          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
-        },
-        {
-          "path": "src/base/errors.ts",
-          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
-        },
-        {
-          "path": "src/base/mutation-capability.ts",
-          "sha256": "b6ea76a857a3ac9be50bfa6388773b22b3a52b988bf56dd62816faf77187074e"
-        },
-        {
-          "path": "src/base/providers.ts",
-          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
-        },
-        {
-          "path": "src/base/session.ts",
-          "sha256": "867d1df804295b7adedf9cb1355872a2f3988c7464dc3899d69df375e94c647b"
-        },
-        {
-          "path": "src/base/store.ts",
-          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
-        },
-        {
-          "path": "src/base/task.ts",
-          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
-        },
-        {
-          "path": "src/domain/artifacts.ts",
-          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
-        },
-        {
-          "path": "src/domain/canonical-json.ts",
-          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
-        },
-        {
-          "path": "src/domain/clock.ts",
-          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
-        },
-        {
-          "path": "src/domain/config/schema.ts",
-          "sha256": "1d17f88ced3d63b56a1e7157411db16c3c1713d13fc0a15a40d9570d8abc0488"
-        },
-        {
-          "path": "src/domain/contracts/base.ts",
-          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
-        },
-        {
-          "path": "src/domain/contracts/kuali/read-timekeeper-annotation.ts",
-          "sha256": "68912b87031068969ddebe4673b1283d60a7688a0cf047e9b205f5d2a7623037"
-        },
-        {
-          "path": "src/domain/contracts/kuali/save-timekeeper-annotation.ts",
-          "sha256": "fa293f8aa6d8761b66ea992565e4222a9dce2db15816dac1c56405b00f0a9453"
-        },
-        {
-          "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
-        },
-        {
-          "path": "src/domain/gates.ts",
-          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
-        },
-        {
-          "path": "src/domain/ids.ts",
-          "sha256": "a6d833a4c4d5b7090a213db1978903bf68e09be706fa7048a347440f60553340"
-        },
-        {
-          "path": "src/domain/immutability.ts",
-          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
-        },
-        {
-          "path": "src/domain/provider-admission.ts",
-          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
-        },
-        {
-          "path": "src/domain/providers.ts",
-          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
-        },
-        {
-          "path": "src/domain/schema-bound-value.ts",
-          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
-        },
-        {
-          "path": "src/domain/secret-names.ts",
-          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
-        },
-        {
-          "path": "src/domain/session.ts",
-          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
-        },
-        {
-          "path": "src/domain/sha256.ts",
-          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
-        },
-        {
-          "path": "src/domain/task-provenance.ts",
-          "sha256": "db61bac2e435b5a8c97a5481103c1578cbf7fbedb3fa69f11c27cb0b7c77c57f"
-        },
-        {
-          "path": "src/domain/trust/preflight-scenarios.ts",
-          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
-        },
-        {
-          "path": "src/domain/trust/scenario.ts",
-          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
-        },
-        {
-          "path": "src/domain/ui/contracts.ts",
-          "sha256": "c584d8d1e21e9075b5f37285ec3cea0318f11994de804a5c3e3cafef55ffc725"
-        },
-        {
-          "path": "src/domain/ui/driver.ts",
-          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
-        },
-        {
-          "path": "src/domain/ui/kuali-action-list.ts",
-          "sha256": "4c16a8711133cc12b29a7e7bccba089e499692124d9925a6cfca7cd9c1633ebe"
-        },
-        {
-          "path": "src/domain/ui/kuali-document-identity.ts",
-          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
-        },
-        {
-          "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-document.ts",
-          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
-        },
-        {
-          "path": "src/domain/unscoped-commit.ts",
-          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
-        },
-        {
-          "path": "src/domain/workflow/checkpoint.ts",
-          "sha256": "96806d132e796d82fbec88a4ecd6570a0595cfb166b5719eeab18ca986031942"
-        },
-        {
-          "path": "src/domain/workflow/delegation-policy.ts",
-          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
-        },
-        {
-          "path": "src/domain/workflow/graph.ts",
-          "sha256": "e79a7178781fa1a519f3667aeb1dac259de6bc85abdeb57421ba7f1ba58259c6"
-        },
-        {
-          "path": "src/domain/workflow/node-condition.ts",
-          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
-        },
-        {
-          "path": "src/domain/write-safety-primitives.ts",
-          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
-        },
-        {
-          "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
-        },
-        {
-          "path": "src/stores/kuali/declaration.ts",
-          "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
-        },
-        {
-          "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
-        },
-        {
-          "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
-        },
-        {
-          "path": "src/stores/kuali/tasks/read-timekeeper-annotation.ts",
-          "sha256": "2d877acdbbb0800bfb018cdda060f06c9862cb91ee5db7565abb6a25e0d1e0f8"
-        },
-        {
-          "path": "src/stores/kuali/timekeeper-verdict.ts",
-          "sha256": "a0be7b11f336c1b459d0cea53079229d1615d68cd4f84ad1c46f8b62f4a60abc"
-        },
-        {
-          "path": "src/validation/contract-boundary.ts",
-          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
-        }
-      ],
-      "id": "kuali/read-timekeeper-annotation"
-    },
-    {
-      "fingerprint": "85c6445a1802caf1ebe4f7a20471309f9de192214232625a201abf2ca75162f5",
+      "fingerprint": "c5125b01b9b4a55ad9f7eb20051a57bf496883d25ad0f999b87d1a6c432cc2ef",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3149,7 +2623,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "4fcd5a396de42254dc5edc4b1d97b35349ce52d2027a2119c43a5d9a124b0f15"
+          "sha256": "fae33a72d2258a6d5f171af4789049c3ee37b7a6c75ee3aacccbb9f2e25f99e5"
         },
         {
           "path": "src/domain/contracts/write-safety.ts",
@@ -3221,7 +2695,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
+          "sha256": "a49a456be6a6383d0a79a0444968d74874cfcd30b1bb67a16e304af0f975bb14"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
@@ -3229,7 +2703,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -3261,11 +2735,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
+          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
+          "sha256": "41b3debdad81890b91dd03ad77cf1d6af6850d136196668efeb5ac89948828ab"
         },
         {
           "path": "src/stores/kuali/tasks/save-separation-finalization.ts",
@@ -3279,193 +2753,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-separation-finalization"
     },
     {
-      "fingerprint": "5a3e92e254cace048d6f1b142f2290f4e851cddf685d1152d0e08eb7243d63f4",
-      "sources": [
-        {
-          "path": "src/base/artifacts.ts",
-          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
-        },
-        {
-          "path": "src/base/errors.ts",
-          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
-        },
-        {
-          "path": "src/base/mutation-capability.ts",
-          "sha256": "b6ea76a857a3ac9be50bfa6388773b22b3a52b988bf56dd62816faf77187074e"
-        },
-        {
-          "path": "src/base/providers.ts",
-          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
-        },
-        {
-          "path": "src/base/session.ts",
-          "sha256": "867d1df804295b7adedf9cb1355872a2f3988c7464dc3899d69df375e94c647b"
-        },
-        {
-          "path": "src/base/store.ts",
-          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
-        },
-        {
-          "path": "src/base/task.ts",
-          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
-        },
-        {
-          "path": "src/domain/artifacts.ts",
-          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
-        },
-        {
-          "path": "src/domain/canonical-json.ts",
-          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
-        },
-        {
-          "path": "src/domain/clock.ts",
-          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
-        },
-        {
-          "path": "src/domain/config/schema.ts",
-          "sha256": "1d17f88ced3d63b56a1e7157411db16c3c1713d13fc0a15a40d9570d8abc0488"
-        },
-        {
-          "path": "src/domain/contracts/base.ts",
-          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
-        },
-        {
-          "path": "src/domain/contracts/kuali/read-timekeeper-annotation.ts",
-          "sha256": "68912b87031068969ddebe4673b1283d60a7688a0cf047e9b205f5d2a7623037"
-        },
-        {
-          "path": "src/domain/contracts/kuali/save-timekeeper-annotation.ts",
-          "sha256": "fa293f8aa6d8761b66ea992565e4222a9dce2db15816dac1c56405b00f0a9453"
-        },
-        {
-          "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
-        },
-        {
-          "path": "src/domain/gates.ts",
-          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
-        },
-        {
-          "path": "src/domain/ids.ts",
-          "sha256": "a6d833a4c4d5b7090a213db1978903bf68e09be706fa7048a347440f60553340"
-        },
-        {
-          "path": "src/domain/immutability.ts",
-          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
-        },
-        {
-          "path": "src/domain/provider-admission.ts",
-          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
-        },
-        {
-          "path": "src/domain/providers.ts",
-          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
-        },
-        {
-          "path": "src/domain/schema-bound-value.ts",
-          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
-        },
-        {
-          "path": "src/domain/secret-names.ts",
-          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
-        },
-        {
-          "path": "src/domain/session.ts",
-          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
-        },
-        {
-          "path": "src/domain/sha256.ts",
-          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
-        },
-        {
-          "path": "src/domain/task-provenance.ts",
-          "sha256": "db61bac2e435b5a8c97a5481103c1578cbf7fbedb3fa69f11c27cb0b7c77c57f"
-        },
-        {
-          "path": "src/domain/trust/preflight-scenarios.ts",
-          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
-        },
-        {
-          "path": "src/domain/trust/scenario.ts",
-          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
-        },
-        {
-          "path": "src/domain/ui/contracts.ts",
-          "sha256": "c584d8d1e21e9075b5f37285ec3cea0318f11994de804a5c3e3cafef55ffc725"
-        },
-        {
-          "path": "src/domain/ui/driver.ts",
-          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
-        },
-        {
-          "path": "src/domain/ui/kuali-action-list.ts",
-          "sha256": "4c16a8711133cc12b29a7e7bccba089e499692124d9925a6cfca7cd9c1633ebe"
-        },
-        {
-          "path": "src/domain/ui/kuali-document-identity.ts",
-          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
-        },
-        {
-          "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-document.ts",
-          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
-        },
-        {
-          "path": "src/domain/unscoped-commit.ts",
-          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
-        },
-        {
-          "path": "src/domain/workflow/checkpoint.ts",
-          "sha256": "96806d132e796d82fbec88a4ecd6570a0595cfb166b5719eeab18ca986031942"
-        },
-        {
-          "path": "src/domain/workflow/delegation-policy.ts",
-          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
-        },
-        {
-          "path": "src/domain/workflow/graph.ts",
-          "sha256": "e79a7178781fa1a519f3667aeb1dac259de6bc85abdeb57421ba7f1ba58259c6"
-        },
-        {
-          "path": "src/domain/workflow/node-condition.ts",
-          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
-        },
-        {
-          "path": "src/domain/write-safety-primitives.ts",
-          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
-        },
-        {
-          "path": "src/stores/kuali/declaration.ts",
-          "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
-        },
-        {
-          "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
-        },
-        {
-          "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
-        },
-        {
-          "path": "src/stores/kuali/tasks/save-timekeeper-annotation.ts",
-          "sha256": "bd1e17010f59e4c1ff363324e6624ed9f66aebc0359c3c4caa8eff04df8c209e"
-        },
-        {
-          "path": "src/validation/contract-boundary.ts",
-          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
-        }
-      ],
-      "id": "kuali/save-timekeeper-annotation"
-    },
-    {
-      "fingerprint": "8e24ea28d2e2048b0d56e08426e91771eec78ced9ee8cd1432a497658cde6880",
+      "fingerprint": "c8d08035e41105515a1018123785d0d0c15c8de6c84e9d78525a71c5b48ae3e9",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3589,7 +2877,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
+          "sha256": "a49a456be6a6383d0a79a0444968d74874cfcd30b1bb67a16e304af0f975bb14"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
@@ -3597,7 +2885,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -3629,11 +2917,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
+          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
+          "sha256": "41b3debdad81890b91dd03ad77cf1d6af6850d136196668efeb5ac89948828ab"
         },
         {
           "path": "src/stores/kuali/tasks/search-separation-action.ts",
@@ -3647,7 +2935,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/search-separation-action"
     },
     {
-      "fingerprint": "fcbc06cd3a3af464352f85b72effe97d8c320527143660c3d5ec8ad8259b7fd8",
+      "fingerprint": "d92a535468c15bd3bb14a51b78b9daebfb4f5c8d85ac0f95efbcc82adaf366c8",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3775,7 +3063,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
+          "sha256": "a49a456be6a6383d0a79a0444968d74874cfcd30b1bb67a16e304af0f975bb14"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
@@ -3783,7 +3071,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -3815,11 +3103,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
+          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
+          "sha256": "41b3debdad81890b91dd03ad77cf1d6af6850d136196668efeb5ac89948828ab"
         },
         {
           "path": "src/stores/kuali/tasks/stage-separation-finalization.ts",
@@ -3833,7 +3121,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "6950ca6ddb2fa1ad78006b930acefef0abbe9d5ffbb202bb9950cc476dd3a619",
+      "fingerprint": "d8d1c19fad8f60e480987110b0e7b0a509e3c08a8fc810592fef07f298186420",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3889,7 +3177,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/contracts/kuali/save-separation-finalization.ts",
-          "sha256": "4fcd5a396de42254dc5edc4b1d97b35349ce52d2027a2119c43a5d9a124b0f15"
+          "sha256": "fae33a72d2258a6d5f171af4789049c3ee37b7a6c75ee3aacccbb9f2e25f99e5"
         },
         {
           "path": "src/domain/contracts/kuali/verify-separation-finalization.ts",
@@ -3965,7 +3253,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
+          "sha256": "a49a456be6a6383d0a79a0444968d74874cfcd30b1bb67a16e304af0f975bb14"
         },
         {
           "path": "src/domain/ui/kuali-separation-document.ts",
@@ -3973,7 +3261,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/unscoped-commit.ts",
@@ -4009,11 +3297,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
+          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
+          "sha256": "41b3debdad81890b91dd03ad77cf1d6af6850d136196668efeb5ac89948828ab"
         },
         {
           "path": "src/stores/kuali/finalization-verdict.ts",
@@ -4029,204 +3317,6 @@ export const GENERATED_BUILD_MANIFEST = {
         }
       ],
       "id": "kuali/verify-separation-finalization"
-    },
-    {
-      "fingerprint": "1f8055d190204d37f678f8d12e5305dd950cf7e230fb9358e5a11b58e04d362b",
-      "sources": [
-        {
-          "path": "src/base/artifacts.ts",
-          "sha256": "3ab98962effb0f9c0a2d3070b78f3d8bfe1dcf1cad266750b0f45a2b08dcdb7d"
-        },
-        {
-          "path": "src/base/errors.ts",
-          "sha256": "d37463c6bfda7181c29d764275b99d553fc4dfa124846cdb29dec7ce853b2802"
-        },
-        {
-          "path": "src/base/mutation-capability.ts",
-          "sha256": "b6ea76a857a3ac9be50bfa6388773b22b3a52b988bf56dd62816faf77187074e"
-        },
-        {
-          "path": "src/base/providers.ts",
-          "sha256": "acd9e09a3e75476c9f372c45d168153025da085932bcc86381110c3f92dc6043"
-        },
-        {
-          "path": "src/base/session.ts",
-          "sha256": "867d1df804295b7adedf9cb1355872a2f3988c7464dc3899d69df375e94c647b"
-        },
-        {
-          "path": "src/base/store.ts",
-          "sha256": "e8aa4c0f6b4ffc32e3b8b85d404dc25fbba6ea9369401fac0fc20d54a05f296c"
-        },
-        {
-          "path": "src/base/task.ts",
-          "sha256": "eccf6455d192541e66dfebcd9b22b678370e58fa59df8062ffe7cc6ff3c876e2"
-        },
-        {
-          "path": "src/domain/artifacts.ts",
-          "sha256": "5c16b212bcfccb56b6eb9a4be9e2037adb9af155e627c82915a2f2c8e898fabb"
-        },
-        {
-          "path": "src/domain/canonical-json.ts",
-          "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
-        },
-        {
-          "path": "src/domain/clock.ts",
-          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
-        },
-        {
-          "path": "src/domain/config/schema.ts",
-          "sha256": "1d17f88ced3d63b56a1e7157411db16c3c1713d13fc0a15a40d9570d8abc0488"
-        },
-        {
-          "path": "src/domain/contracts/base.ts",
-          "sha256": "ae14ada27eb39b2cbf7dc4a482b0e54548d6770d98f903d47c4dad448f9865a4"
-        },
-        {
-          "path": "src/domain/contracts/kuali/read-timekeeper-annotation.ts",
-          "sha256": "68912b87031068969ddebe4673b1283d60a7688a0cf047e9b205f5d2a7623037"
-        },
-        {
-          "path": "src/domain/contracts/kuali/save-timekeeper-annotation.ts",
-          "sha256": "fa293f8aa6d8761b66ea992565e4222a9dce2db15816dac1c56405b00f0a9453"
-        },
-        {
-          "path": "src/domain/contracts/kuali/verify-timekeeper-annotation.ts",
-          "sha256": "61027a238f20d41c5612851216018801b5e40fcb48602722644a961f52772926"
-        },
-        {
-          "path": "src/domain/contracts/write-safety.ts",
-          "sha256": "4907bf4ff548cb93ca3e25857d62dff555c5090b7dbb631dc5793076cb453172"
-        },
-        {
-          "path": "src/domain/gates.ts",
-          "sha256": "5b3d8d134fdce07bb68b0e4e5935fa66d277290da9a7ba4ba426c3eab59b7d8b"
-        },
-        {
-          "path": "src/domain/ids.ts",
-          "sha256": "a6d833a4c4d5b7090a213db1978903bf68e09be706fa7048a347440f60553340"
-        },
-        {
-          "path": "src/domain/immutability.ts",
-          "sha256": "b7934027c276d50ad650825958e3cbc8cf8b5ef333b0d6a7a4eafbf97587d52a"
-        },
-        {
-          "path": "src/domain/provider-admission.ts",
-          "sha256": "4a96c13fea16706f037219d938ba9eea721e3734545ebccd1d27524ef25e2ece"
-        },
-        {
-          "path": "src/domain/providers.ts",
-          "sha256": "b56a84b984d86a72e1fc46a801fb3690151a0ca5ddb3cf970abcdae88056445a"
-        },
-        {
-          "path": "src/domain/schema-bound-value.ts",
-          "sha256": "e2aac9cd9d217716d729a5fce2729a7cb1618d586cdce6b9612b9e42782798d8"
-        },
-        {
-          "path": "src/domain/secret-names.ts",
-          "sha256": "39f481fde372cac95ca154c4a56396e5d8f35e3a1611ccc7ecf55e98faabbdb7"
-        },
-        {
-          "path": "src/domain/session.ts",
-          "sha256": "0c9a7ec1c680518b49c6de6e03975f03932aece4eb8c12f304928e5c72f6499b"
-        },
-        {
-          "path": "src/domain/sha256.ts",
-          "sha256": "4ee01a46db47f96ee659eff34e9508833092c588d4ddd2877667bc34171093f0"
-        },
-        {
-          "path": "src/domain/task-provenance.ts",
-          "sha256": "db61bac2e435b5a8c97a5481103c1578cbf7fbedb3fa69f11c27cb0b7c77c57f"
-        },
-        {
-          "path": "src/domain/trust/preflight-scenarios.ts",
-          "sha256": "e4530dd4dc762142c560e10bb8fc70b3a60b8506d621056ea91b851769a78d60"
-        },
-        {
-          "path": "src/domain/trust/scenario.ts",
-          "sha256": "5f28df5c75a872b247cb193c8c3c0db29f71f6209dab3d94ca8174946fff4c2a"
-        },
-        {
-          "path": "src/domain/ui/contracts.ts",
-          "sha256": "c584d8d1e21e9075b5f37285ec3cea0318f11994de804a5c3e3cafef55ffc725"
-        },
-        {
-          "path": "src/domain/ui/driver.ts",
-          "sha256": "1e6462b5d4120e9be3cdb780696f7ce42c967769163c286fda73ca32f01b0043"
-        },
-        {
-          "path": "src/domain/ui/kuali-action-list.ts",
-          "sha256": "4c16a8711133cc12b29a7e7bccba089e499692124d9925a6cfca7cd9c1633ebe"
-        },
-        {
-          "path": "src/domain/ui/kuali-document-identity.ts",
-          "sha256": "ec9c603820afd8c5bb98f4c633afba66e04e8c46dc5ae9f91da9446f2fa0d266"
-        },
-        {
-          "path": "src/domain/ui/kuali-rrss-document.ts",
-          "sha256": "9414fecc4f3a723ddd4868d16d52e51b6145aef14c9e9259881d65dd27a4f304"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-document.ts",
-          "sha256": "64d495c361d3853b38255e23ee7605fbddc12b3d06e8394b84e07551fad1d2dd"
-        },
-        {
-          "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
-        },
-        {
-          "path": "src/domain/unscoped-commit.ts",
-          "sha256": "062f37eb72e18dd23865903a91f4713c1ded17bd3d8ed010a438548e3269d9fb"
-        },
-        {
-          "path": "src/domain/workflow/checkpoint.ts",
-          "sha256": "96806d132e796d82fbec88a4ecd6570a0595cfb166b5719eeab18ca986031942"
-        },
-        {
-          "path": "src/domain/workflow/delegation-policy.ts",
-          "sha256": "e034aeb57fd3f97dff1872023c736de320f115760d47c5ae0e623dc77de8eb45"
-        },
-        {
-          "path": "src/domain/workflow/graph.ts",
-          "sha256": "e79a7178781fa1a519f3667aeb1dac259de6bc85abdeb57421ba7f1ba58259c6"
-        },
-        {
-          "path": "src/domain/workflow/node-condition.ts",
-          "sha256": "f1c529d5de2edd37b73a006871890504891556c22d2f14fc85c6138bdf2566c5"
-        },
-        {
-          "path": "src/domain/write-safety-primitives.ts",
-          "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
-        },
-        {
-          "path": "src/domain/write-safety.ts",
-          "sha256": "e26f5c1d6bc02220670c80444714a7fa6239ef5a2498f66dc3e2f1e19c78ee36"
-        },
-        {
-          "path": "src/stores/kuali/declaration.ts",
-          "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
-        },
-        {
-          "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "614c4052e073a20e3d516f4a34c8592dd44a82d5ea9639551b6d4f026fb623d4"
-        },
-        {
-          "path": "src/stores/kuali/driver/ui-registry.ts",
-          "sha256": "7a843ae7f626ccb19dd2c1f213d6273cd887a1a541f9a0e7863ac48c15440631"
-        },
-        {
-          "path": "src/stores/kuali/tasks/verify-timekeeper-annotation.ts",
-          "sha256": "8f580324dd8e62dc7ebea3e7fe934c51a7d9759522091562a91618f71c9148b4"
-        },
-        {
-          "path": "src/stores/kuali/timekeeper-verdict.ts",
-          "sha256": "a0be7b11f336c1b459d0cea53079229d1615d68cd4f84ad1c46f8b62f4a60abc"
-        },
-        {
-          "path": "src/validation/contract-boundary.ts",
-          "sha256": "f91c6f3705a7e645e9f16c608e2416ccbc70aa8629c9c425f59199bd2d8cfc8c"
-        }
-      ],
-      "id": "kuali/verify-timekeeper-annotation"
     },
     {
       "fingerprint": "c40d55417de5f9a5dc655f5b8976ae6bac05b2cf00d0fda2e44db3d50fed1535",
@@ -7317,7 +6407,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:person-lookup/read-active-status"
     },
     {
-      "fingerprint": "ff750dc11fbf62b46dfd4cb7b0fc426397613da8824461b170a43fde8ec6a739",
+      "fingerprint": "5006c633704bd96dc7c36eb53ec66518278da0fcfb47190551a81bfa516ded15",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7421,7 +6511,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",
@@ -7463,7 +6553,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-active-employment"
     },
     {
-      "fingerprint": "4d366207a4e138e9af353deff60600affd1997ac0d44224f531ac99471c83e49",
+      "fingerprint": "73be2b6070bb1f2c742280719ed6c94b829f560bcd75be1a7706e76a5b8be7fc",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7563,7 +6653,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/ui/kuali-separation-finalization.ts",
-          "sha256": "9f35acaf16f7a50600e2c41a852986145a25d669e98328a8c92d9057f8d18abe"
+          "sha256": "b9a889be1d09efb8cdcdb51e8d90a1fa76a203fb64ea8c3f2873db6a1a44322c"
         },
         {
           "path": "src/domain/ui/ucpath-job-summary.ts",

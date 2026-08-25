@@ -110,7 +110,10 @@ describe("semantic UI registry", () => {
     // **D261 added SIX**: the Action-List screen, its search box, its GO button,
     // its anchored document link, the list's ready state, and the matched
     // document-number observation the resolve read binds its subject to.
-    assert.equal(catalog.entries.length, 120);
+    // D266 retires the annotation-only staged page state and displayed
+    // timekeeper observation. The timekeeper field itself remains because the
+    // real separation-finalization task stages it as one of twelve fields.
+    assert.equal(catalog.entries.length, 118);
     assert.doesNotMatch(
       serialized,
       /#main_target_win0|PERSON_NPC_VW_EMPLID|Empl ID|legacyKey|locator|selector|capturedValue|valueType|timeoutMs/,

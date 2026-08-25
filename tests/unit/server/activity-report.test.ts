@@ -19,7 +19,7 @@ import { ActivityReportWireSchema, type ActivityReportWire } from "../../../src/
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { ledgerDirectory, ledgerFilePath } from "../../../src/infra/ledger/ledger-projector.js";
 import { IDEMPOTENCY_KEY, LEDGER_PAYLOAD } from "../fixtures/phase1c-contract-fixtures.js";
-import { kualiTimekeeperAnnotationDescriptor } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
 import {
@@ -51,14 +51,13 @@ afterEach(() => {
 });
 
 /**
- * Two REAL descriptors plus the graph fixture. Two of the three share the
- * `operations` category on purpose: a category total that only ever saw one
- * workflow would never prove it accumulates across them.
+ * Two REAL descriptors plus the graph fixture, spanning search, separation,
+ * and generic operations categories.
  */
 const REGISTRY = {
   resolve: (workflowId: string): AnyWorkflowDescriptor | undefined => {
     if (workflowId === "person-lookup") return personLookupDescriptor;
-    if (workflowId === "kuali-timekeeper-annotation") return kualiTimekeeperAnnotationDescriptor;
+    if (workflowId === "separations-kuali-finalization") return separationsKualiFinalizationDescriptor;
     if (workflowId === fixtureDescriptor.id) return fixtureDescriptor;
     return undefined;
   },
@@ -110,7 +109,7 @@ function seedActivityWorld(w: DashboardWorld): void {
   queuedEventOf(w, { seed: 3 });
 
   atDayOffset(w, 1);
-  const kuali = "kuali-timekeeper-annotation";
+  const kuali = "separations-kuali-finalization";
   for (const [seed, code, transient, ms] of [
     [4, "STALE_SESSION", true, 60_000],
     [5, "SUBJECT_MISMATCH", false, 10_000],
@@ -206,13 +205,6 @@ describe("the Activity report (D180)", () => {
         failed: 0, cancelled: 0, partial: 0, open: 1,
       },
       {
-        workflowId: "kuali-timekeeper-annotation",
-        registration: { state: "registered", label: "Kuali Timekeeper Annotation", code: "kt", categoryId: "operations" },
-        runs: 2,
-        completion: clean,
-        failed: 2, cancelled: 0, partial: 0, open: 0,
-      },
-      {
         workflowId: "person-lookup",
         registration: { state: "registered", label: "Person Lookup", code: "pl", categoryId: "search" },
         runs: 4,
@@ -236,15 +228,22 @@ describe("the Activity report (D180)", () => {
         // two axes are different questions and the report keeps them apart.
         failed: 0, cancelled: 0, partial: 0, open: 1,
       },
+      {
+        workflowId: "separations-kuali-finalization",
+        registration: { state: "registered", label: "Kuali Finalization", code: "sf", categoryId: "separation" },
+        runs: 2,
+        completion: clean,
+        failed: 2, cancelled: 0, partial: 0, open: 0,
+      },
     ]);
     assert.deepEqual(report.completion, { readBack: 0, warnings: 0, warningsUnknown: 1 });
 
-    // The two `operations` workflows fold into ONE category row, and the
-    // retired workflow's run lands in the explicitly-unregistered bucket
-    // rather than borrowing a category or vanishing from the total.
+    // Registered workflows fold into their declared categories, and the
+    // retired workflow's run lands in the explicitly-unregistered bucket.
     assert.deepEqual(report.categories, [
-      { category: { state: "registered", categoryId: "operations" }, runs: 3 },
+      { category: { state: "registered", categoryId: "operations" }, runs: 1 },
       { category: { state: "registered", categoryId: "search" }, runs: 4 },
+      { category: { state: "registered", categoryId: "separation" }, runs: 2 },
       {
         category: {
           state: "unregistered",

@@ -33,9 +33,9 @@
  *
  * The commit arms drive the task against a `commit` stub rather than through
  * the write sequencer. That is on purpose: the capability's unforgeability is
- * the DRIVER's invariant and is already pinned by
- * `tests/unit/kuali-transaction-proof.test.ts`, while what these arms falsify is
- * the TASK's mapping of the driver's answers onto durable error codes.
+ * the DRIVER's invariant and is pinned by the sequencer-driven cases below,
+ * while what these arms falsify is the TASK's mapping of the driver's answers
+ * onto durable error codes.
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";

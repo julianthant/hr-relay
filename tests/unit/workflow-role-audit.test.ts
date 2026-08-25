@@ -28,7 +28,10 @@ import { auditWorkflowModuleRoles, type WorkflowRoleView } from "../../src/contr
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import { ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
-import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
+import {
+  WorkflowModuleRoleSchema,
+  defineWorkflowRole,
+} from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { HASH_A } from "./fixtures/phase1c-contract-fixtures.js";
 
@@ -101,6 +104,12 @@ function descriptorNamed(
 }
 
 const HARNESS = descriptorNamed("role-fixture-harness", "rfh");
+
+describe("WorkflowModuleRoleSchema — D266 retirement", () => {
+  it("rejects the retired proving role", () => {
+    assert.equal(WorkflowModuleRoleSchema.safeParse({ kind: "proving" }).success, false);
+  });
+});
 
 function views(compositionId: string, step: string, composition: WorkflowRoleView["descriptor"]): WorkflowRoleView[] {
   return [

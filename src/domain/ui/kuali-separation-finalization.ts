@@ -112,8 +112,7 @@ import type { KualiFinalPayChoice } from "./kuali-separation-document.js";
 /**
  * The document with every finalization field staged and nothing saved.
  *
- * Structural only, exactly like `kuali.rrss-document.timekeeper-staged`: that
- * the controls hold the STAGED values is proved by the prepare's own read-back,
+ * Structural only: that the controls hold the STAGED values is proved by the prepare's own read-back,
  * not by a page-state rule — a value-dependent state id would be a different
  * state per run and could not be registered at all.
  */

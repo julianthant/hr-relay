@@ -224,13 +224,10 @@ export type WorkflowRailGroup = WorkflowCategoryGroup<WorkflowBootstrapPrimitive
  * records and not bare primitives — the rail cannot flatten a step back into a
  * workflow without saying so.
  *
- * THE RAIL THEN DROPS EVERY PROVING WORKFLOW (operator call, 2026-08-14,
- * amending D219's first rail presentation; the `proving` arm is D220): the
- * panel lists MAIN workflows only — compositions and standalones — so a chunk
- * harness renders nowhere here, nested or top-level (the cross-category
- * `separations-kronos-timecard` included), and a `proving` workflow
- * (`kuali-timekeeper-annotation`) drops with them. All of them stay startable
- * through the Run Modal's picker and documented in the Explorer; their runs'
+ * The panel lists MAIN workflows only — compositions and standalones — so a
+ * chunk harness renders nowhere here, nested or top-level (the cross-category
+ * `separations-kronos-timecard` included). Harnesses stay startable through the
+ * Run Modal's nested picker and documented in the Explorer; their runs'
  * attention still reaches the operator through the Status Bar's global
  * `Needs you` and the notification inbox, neither of which is rail-scoped. A
  * category whose entries all dropped goes with them rather than rendering as

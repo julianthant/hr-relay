@@ -9,13 +9,13 @@
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { FailureDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import type { RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
-import { kualiTimekeeperAnnotationDescriptor } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { kualiReceiptEvidence } from "./receipt-run-fixtures.js";
 
 export function receiptWireFixture(): RunEvidenceReceipt {
   const evidence = kualiReceiptEvidence();
   return buildRunEvidenceReceipt({
-    descriptor: kualiTimekeeperAnnotationDescriptor,
+    descriptor: separationsKualiFinalizationDescriptor,
     run: evidence.run,
     result: evidence.result,
     checkpoints: evidence.checkpoints,

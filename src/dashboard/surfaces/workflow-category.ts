@@ -64,29 +64,6 @@ const WORKFLOW_CATEGORY_DISPLAY: Record<WorkflowCategory, CategoryDisplay> = {
 /** what a category this build has no heading for is worth in the sort */
 const UNLISTED_ORDER = Number.MAX_SAFE_INTEGER;
 
-/**
- * The heading a PROVING workflow renders under, on every surface that lists
- * one (ref dashboard-surfaces §Shell, D241).
- *
- * D220 dropped proving workflows from the rail and left them where they were
- * everywhere else — which meant `kuali-timekeeper-annotation` still headed the
- * Run Modal's picker and the Explorer under **Operations**, beside the daily HR
- * work it is not. The operator's words were *"a crash test dummy is not a
- * workflow … maybe it belongs in a different category, perhaps in test."*
- *
- * A descriptor's `category` answers *which HR area does this touch* — and for
- * a workflow that exists to prove the write kernel, that is the wrong question
- * with a plausible answer, which is the worst combination: `operations` is not
- * false, it just does not say the thing the operator needs to know before
- * starting a run. The MODULE's role answers the right one, so the role decides
- * the heading here and the category is not consulted. That keeps the fact where
- * D219 put it — no rail-side or picker-side id list, which is the
- * workflow-specific customization the role model exists to avoid.
- *
- * It sorts LAST, after every unlisted category, because equipment is not work.
- */
-const PROVING_GROUP_LABEL = "Test equipment";
-
 function displayOf(categoryId: string): CategoryDisplay | undefined {
   return Object.hasOwn(WORKFLOW_CATEGORY_DISPLAY, categoryId)
     ? WORKFLOW_CATEGORY_DISPLAY[categoryId as WorkflowCategory]
@@ -202,9 +179,7 @@ function markingFor(
  * lists, so no two surfaces can drift into two orders or disagree about what
  * is a step and what is a workflow (ref dashboard-surfaces §Shell, D219).
  *
- *  - membership is the entry's `categoryId`, with ONE exception: an entry whose
- *    role is `proving` is grouped by its ROLE under `Test equipment`, appended
- *    last, and never under the HR category its descriptor declares (D241);
+ *  - membership is the entry's `categoryId`;
  *  - listed categories come first in display order, then any unlisted category
  *    in first-seen order;
  *  - a category with no entries is DROPPED rather than rendered as an empty
@@ -240,15 +215,9 @@ export function groupWorkflowsByCategory<Entry extends WorkflowGroupingFacts>(
   const labelById = new Map<string, string>();
   for (const workflow of workflows) labelById.set(workflow.id, workflow.label);
 
-  // A proving workflow's HEADING comes from its role, not its category
-  // (D241) — see `PROVING_GROUP_LABEL`. It is lifted out before the category
-  // pass so it cannot also appear under the HR area its descriptor files
-  // itself under; one entry, one group.
-  const proving = workflows.filter((workflow) => workflow.role.kind === "proving");
   const byCategory = new Map<string, Entry[]>();
   const seenOrder: string[] = [];
   for (const workflow of workflows) {
-    if (workflow.role.kind === "proving") continue;
     let bin = byCategory.get(workflow.categoryId);
     if (bin === undefined) {
       bin = [];
@@ -257,19 +226,13 @@ export function groupWorkflowsByCategory<Entry extends WorkflowGroupingFacts>(
     }
     bin.push(workflow);
   }
-  const groups = seenOrder
+  return seenOrder
     .map((categoryId, seen) => ({ categoryId, seen, display: displayOf(categoryId) }))
     .sort((a, b) => (a.display?.order ?? UNLISTED_ORDER) - (b.display?.order ?? UNLISTED_ORDER) || a.seen - b.seen)
     .map(({ categoryId, display }) => ({
       label: display?.label ?? categoryId,
       entries: nestHarnesses(byCategory.get(categoryId) ?? [], labelById),
     }));
-  // Appended, never inserted: equipment sorts after work, and an empty
-  // equipment group DROPS exactly as an empty category does.
-  if (proving.length > 0) {
-    groups.push({ label: PROVING_GROUP_LABEL, entries: nestHarnesses(proving, labelById) });
-  }
-  return groups;
 }
 
 /** ONE category's entries, with each harness moved under its composition. */

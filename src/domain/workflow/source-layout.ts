@@ -34,11 +34,6 @@ export function workflowSourceFolder(id: string, role: WorkflowModuleRole): stri
     case "chunk-harness":
       // §1.2.2 rule 3 — the harness lives INSIDE the step it proves.
       return `src/workflows/${String(role.of)}/${role.step}`;
-    case "proving":
-      // D266 withdrew §1.2.2's third arm the day it was drafted: there is no
-      // `src/workflows/proving/`, and the one specimen still carrying this role
-      // sits at the top level until the unit that dismantles it lands.
-      return `src/workflows/${id}`;
   }
 }
 

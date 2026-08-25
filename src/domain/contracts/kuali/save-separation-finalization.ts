@@ -56,8 +56,8 @@
  * On 2026-08-04 four operator-authorized write/restore cycles on real document
  * 4490 recorded the save answering in ~2.5–3.0 s, Kuali's own document query
  * agreeing on the first sample ~270 ms later, and a full browser reload agreeing
- * within ~3 s: worst observed fence→trustworthy-negative ≈ 3.3 s (the table is
- * in `kuali/save-timekeeper-annotation.ts` and ref write-safety's Phase-2 as-built).
+ * within ~3 s: worst observed fence→trustworthy-negative ≈ 3.3 s (the measured
+ * proof is retained in ref write-safety's Phase-2 as-built record).
  *
  * What transfers is the MECHANISM, not the field: `submitDocumentV2` serializes
  * the whole current-step section in one request either way, and the negative

@@ -1539,11 +1539,11 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization",
+        "kuali/save-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "screen",
@@ -1565,11 +1565,7 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/search-separation-action"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "screen",
@@ -1591,11 +1587,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1616,14 +1611,14 @@
         "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
         "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
         "scenarios": [
-          "ui/kuali-rrss-timekeeper-write-surface"
+          "ui/kuali-rrss-shared-finalization-controls"
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1644,11 +1639,11 @@
         "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
         "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
         "scenarios": [
-          "ui/kuali-rrss-timekeeper-write-surface"
+          "ui/kuali-rrss-shared-finalization-controls"
         ]
       },
       "taskUses": [
-        "kuali/save-timekeeper-annotation"
+        "kuali/save-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1673,11 +1668,7 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/search-separation-action"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1702,11 +1693,7 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/search-separation-action"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1731,11 +1718,7 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/search-separation-action"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1785,7 +1768,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1810,7 +1796,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1885,7 +1874,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1910,7 +1902,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1935,7 +1930,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1960,7 +1958,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -1985,7 +1986,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -2010,7 +2014,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -2035,7 +2042,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -2060,7 +2070,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -2085,7 +2098,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
@@ -2110,11 +2126,7 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/search-separation-action"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "page-state",
@@ -2137,39 +2149,14 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "page-state",
       "id": "kuali.rrss-document.ready",
-      "screen": "kuali.rrss-document"
-    },
-    {
-      "system": "kuali",
-      "label": "RRSS document with an unsaved staged timekeeper value",
-      "searchTerms": [
-        "kuali rrss document timekeeper staged state"
-      ],
-      "sensitivity": "restricted",
-      "verification": {
-        "verifiedAt": "2026-08-04",
-        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
-        "scenarios": [
-          "ui/kuali-rrss-timekeeper-write-surface"
-        ]
-      },
-      "taskUses": [
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation"
-      ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
-      "kind": "page-state",
-      "id": "kuali.rrss-document.timekeeper-staged",
       "screen": "kuali.rrss-document"
     },
     {
@@ -2211,11 +2198,8 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/stage-separation-finalization",
+        "kuali/save-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "page-state",
@@ -2238,11 +2222,7 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/search-separation-action"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
@@ -2268,11 +2248,10 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/read-separation-document",
+        "kuali/match-separation-finalization",
+        "kuali/stage-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
@@ -2280,35 +2259,6 @@
       "screen": "kuali.rrss-document",
       "authoritativeFor": [
         "subject"
-      ]
-    },
-    {
-      "system": "kuali",
-      "label": "Displayed RRSS document timekeeper name",
-      "searchTerms": [
-        "authoritative kuali rrss displayed timekeeper name"
-      ],
-      "sensitivity": "hr",
-      "verification": {
-        "verifiedAt": "2026-08-04",
-        "fixtureEvidenceRef": "evidence/ui/kuali/rrss-document.fixture.json",
-        "liveReadOnlyEvidenceRef": "evidence/ui/kuali/rrss-document.live.json",
-        "scenarios": [
-          "ui/kuali-rrss-timekeeper-write-surface"
-        ]
-      },
-      "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/read-separation-document"
-      ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
-      "kind": "observation",
-      "id": "kuali.rrss-document.displayed-timekeeper",
-      "screen": "kuali.rrss-document",
-      "authoritativeFor": [
-        "completion"
       ]
     },
     {
@@ -2379,11 +2329,8 @@
         ]
       },
       "taskUses": [
-        "kuali/read-timekeeper-annotation",
-        "kuali/verify-timekeeper-annotation",
-        "kuali/fill-timekeeper-annotation",
-        "kuali/save-timekeeper-annotation",
-        "kuali/read-separation-document"
+        "kuali/match-separation-finalization",
+        "kuali/verify-separation-finalization"
       ],
       "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",

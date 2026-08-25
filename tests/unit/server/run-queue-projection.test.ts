@@ -926,7 +926,7 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     const w = world();
     atDayOffset(w, 0);
     queuedEventOf(w, { seed: 1 });
-    queuedEventOf(w, { seed: 2, workflow: "kuali-timekeeper-annotation" });
+    queuedEventOf(w, { seed: 2, workflow: "separations-kuali-finalization" });
     atDayOffset(w, 1);
     queuedEventOf(w, { seed: 3 });
     atDayOffset(w, 0);
@@ -948,8 +948,8 @@ describe("the fold arms a moving run reaches (ref dashboard-surfaces §2.2)", ()
     // (R2 D5-D12): the Workflow Panel's `active | all` column and the
     // workflow-scoped Status Bar both read these entries.
     assert.deepEqual(day.workflowCounts, [
-      { workflowId: "kuali-timekeeper-annotation", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
       { workflowId: "person-lookup", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
+      { workflowId: "separations-kuali-finalization", count: 1, statusCounts: [{ status: "queued", count: 1 }] },
     ]);
     assert.deepEqual(day.notifications.map(({ title }) => title), ["earlier id", "later id", "oldest"]);
     assert.equal(day.notifications[0].severity, "error");

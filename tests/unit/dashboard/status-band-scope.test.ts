@@ -66,7 +66,7 @@ describe("workflowStatusCounts — the band's scope selector", () => {
    * The band must still draw its eight slots rather than vanish.
    */
   it("answers an unserved workflow with an empty array, so every pill reads zero", () => {
-    const none = workflowStatusCounts(WORKFLOW_COUNTS, "kuali-timekeeper-annotation");
+    const none = workflowStatusCounts(WORKFLOW_COUNTS, "workflow-with-no-row");
     expect(none).toEqual([]);
     expect(totalCount(none)).toBe(0);
     expect(activeCount(none)).toBe(0);

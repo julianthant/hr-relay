@@ -22,14 +22,16 @@ import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import type { RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
 import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
-import { kualiTimekeeperAnnotationDescriptor } from "../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import {
   EXIT_CRM_RECORD_ID,
   EXIT_RUN_ID,
   EXIT_TRACE_ID,
+  KUALI_CONFIRMED_AT,
   KUALI_DOCUMENT_NUMBER,
   KUALI_INTENT_ID,
   KUALI_RUN_ID,
+  KUALI_VALUE,
   kualiReceiptEvidence,
   seedPersonLookupExitRun,
 } from "./fixtures/receipt-run-fixtures.js";
@@ -221,13 +223,13 @@ describe("D82 — the live person-lookup exit run explains itself", () => {
   });
 });
 
-/* ── run 2: the controlled Kuali timekeeper commit ───────────────────────── */
+/* ── run 2: the Kuali separation finalization ────────────────────────────── */
 
-describe("D82 — the controlled Kuali write explains itself", () => {
+describe("D82 — the Kuali finalization write explains itself", () => {
   it("answers the write double-check from the receipt alone", () => {
     const evidence = kualiReceiptEvidence();
     const receipt = buildRunEvidenceReceipt({
-      descriptor: kualiTimekeeperAnnotationDescriptor,
+      descriptor: separationsKualiFinalizationDescriptor,
       run: evidence.run,
       result: evidence.result,
       checkpoints: evidence.checkpoints,
@@ -249,7 +251,7 @@ describe("D82 — the controlled Kuali write explains itself", () => {
         : undefined,
       "the filed binding proof is referenced by id",
     );
-    assert.equal(commit.occurredAt, "2026-08-04T17:08:54.867Z");
+    assert.equal(commit.occurredAt, KUALI_CONFIRMED_AT);
     assert.ok(
       receipt.actions.some((action) => action.kind === "prepare" && action.writeState === "prepared"),
       "the staged prepare is on the receipt beside the commit it preceded",
@@ -264,27 +266,28 @@ describe("D82 — the controlled Kuali write explains itself", () => {
     //    source that matched it, both on the receipt.
     const identityDecision = decisionOf(receipt, "identity", "binding digest");
     assert.equal(identityDecision.outcome, "approved");
-    assert.match(identityDecision.reason, /eid ending "5513"/);
-    assert.match(identityDecision.reason, /kuali\.rrss-document\.timekeeper-staged/);
+    assert.match(identityDecision.reason, /eid ending "0000"/);
+    assert.match(identityDecision.reason, /kuali\.rrss-document\.finalization-staged/);
     assert.match(identityDecision.reason, /matched the expected subject exactly/);
     assert.equal(verdictOf(receipt, "identity.eid-agrees-across-sources").verdict, "verified");
 
     // ── "is the value on the document the value I asked for?" ────────────
-    assert.equal(verdictOf(receipt, "write.value-matches-request").verdict, "verified");
+    assert.equal(verdictOf(receipt, "write.timekeeper-matches-request").verdict, "verified");
+    assert.equal(verdictOf(receipt, "write.transaction-matches-request").verdict, "verified");
     assert.equal(verdictOf(receipt, "write.document-matches-request").verdict, "verified");
     assert.equal(
-      shownScalar(receipt, "output", "saved.documentNumber"),
+      shownScalar(receipt, "output", "finalization.proof.documentNumber"),
       KUALI_DOCUMENT_NUMBER,
     );
-    assert.deepEqual(shownValue(receipt, "output", "saved.timekeeperName"), {
-      state: "transformed", key: "saved.timekeeperName", classification: "direct-identifier",
-      transform: "last4", value: "0804",
+    assert.deepEqual(shownValue(receipt, "output", "finalization.proof.fields.timekeeperName"), {
+      state: "transformed", key: "finalization.proof.fields.timekeeperName", classification: "direct-identifier",
+      transform: "last4", value: KUALI_VALUE.slice(-4),
     });
-    assert.equal(shownScalar(receipt, "output", "disposition"), "committed");
+    assert.equal(shownScalar(receipt, "output", "finalization.disposition"), "committed");
 
     // ── "how do you KNOW it saved?" ──────────────────────────────────────
     assert.equal(verdictOf(receipt, "write.proof-is-a-read-back").verdict, "verified");
-    assert.equal(shownScalar(receipt, "output", "saved.source"), "reload-read-back");
+    assert.equal(shownScalar(receipt, "output", "finalization.proof.source"), "reload-read-back");
 
     // ── "did it leave anything unsettled behind?" ────────────────────────
     assert.deepEqual(receipt.warnings, [], "no residual write intent, so no warning");
@@ -310,7 +313,7 @@ describe("D82 — the controlled Kuali write explains itself", () => {
       message: "the save response never arrived; the document was not read back",
     });
     const receipt = buildRunEvidenceReceipt({
-      descriptor: kualiTimekeeperAnnotationDescriptor,
+      descriptor: separationsKualiFinalizationDescriptor,
       run: evidence.run,
       result: evidence.result,
       checkpoints: evidence.checkpoints,
@@ -328,4 +331,4 @@ describe("D82 — the controlled Kuali write explains itself", () => {
 
 // D144 closed it: a transaction node IS a terminal dependency, this fixture's
 // terminal record comes from the real `buildRunResult`, and the whole path is
-// driven end to end by `tests/unit/transaction-terminal-dependency.test.ts`.
+// covered by the finalization structural scenario's gate-approved graph walk.

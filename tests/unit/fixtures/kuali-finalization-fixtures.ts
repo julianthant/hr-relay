@@ -25,6 +25,8 @@ import {
 } from "../../../src/core/write-sequencer.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { kualiFinalizationIdempotencyKey } from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
+import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
   EidSchema,
   FingerprintSchema,
@@ -33,6 +35,7 @@ import {
 } from "../../../src/domain/ids.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
+import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import {
   kualiFinalizationFields,
   type KualiFinalizationFields,
@@ -151,7 +154,23 @@ export const FINALIZATION_SCOPE_OUTPUTS = Object.freeze({
       nameTier: "same" as const,
       approvalShape: "one-click" as const,
     },
-    jobs: { disposition: "single-active-job" as const, rows: [], activeRows: [] },
+    jobs: {
+      disposition: "single-active-job" as const,
+      rowCount: 1,
+      activeRowCount: 1,
+      inactiveRowCount: 0,
+      unknownRowCount: 0,
+      rows: [{
+        rowIndex: 0,
+        emplRecord: "0",
+        hrStatus: "Active",
+        tier: "active" as const,
+        department: "Housing/Dining/Hospitality",
+        jobTitle: "STDT 2",
+        effectiveDate: "06/01/2026",
+      }],
+      unreadableCells: [],
+    },
   },
   [FINALIZATION_DEPARTMENT_NODE]: {
     option: FINALIZATION_DEPARTMENT_OPTION,
@@ -349,6 +368,45 @@ export function finalizationContext(
     dryRun,
     signal: new AbortController().signal,
   };
+}
+
+/** Authenticated upstream checkpoint evidence required to seal a preview. */
+export function finalizationPreviewDependencies(run: RunRecord): readonly unknown[] {
+  const rowFor = (nodeId: string, schema: Parameters<typeof deriveSchemaHash>[0], value: unknown) =>
+    RunCheckpointRecordSchema.parse({
+      workflowId: FINALIZATION_WORKFLOW_ID,
+      itemId: run.envelope.itemId,
+      nodeId,
+      attempt: run.envelope.attempt,
+      claimGeneration: run.claimGeneration,
+      runId: run.envelope.runId,
+      output: { schemaHash: deriveSchemaHash(schema, "output"), value: schema.parse(value) },
+      descriptorVersion: separationsKualiFinalizationDescriptor.version,
+      contractFingerprint: separationsKualiFinalizationDescriptor.contractFingerprint,
+      implFingerprint: FINALIZATION_IMPL_FINGERPRINT,
+      provenance: [],
+      writtenAt: FINALIZATION_NOW,
+    });
+  return [
+    {
+      state: "resolved",
+      nodeId: "approval",
+      checkpoint: rowFor(
+        "approval",
+        SeparationsVerifyIdentityApproval.output,
+        FINALIZATION_SCOPE_OUTPUTS.approval,
+      ),
+    },
+    {
+      state: "resolved",
+      nodeId: FINALIZATION_DEPARTMENT_NODE,
+      checkpoint: rowFor(
+        FINALIZATION_DEPARTMENT_NODE,
+        SeparationsMatchDepartmentOption.output,
+        FINALIZATION_SCOPE_OUTPUTS[FINALIZATION_DEPARTMENT_NODE],
+      ),
+    },
+  ];
 }
 
 /**
