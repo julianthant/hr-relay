@@ -14,9 +14,10 @@ the whole `(worker, system, instance, configFingerprint)` identity (`src/core/wo
 the concrete factory launches Playwright's full Chromium with the Duo Autopilot extension and proves
 every close (`src/infra/browser/browser-session-factory.ts`), four systems are bound
 (`src/infra/browser/system-bindings.ts`), and D182's concurrency matrix executes the multi-worker
-cases against real `runWorkerLoop` instances over one authority database (§7.1). §10 and §11 are
-**DESIGNED, NOT BUILT** and say so in their own status blocks. The executor-lane and static
-per-system capacity design is retired and stays retired (§0).
+cases against real `runWorkerLoop` instances over one authority database (§7.1). §10 remains
+**DESIGNED, NOT BUILT**; §11's authority records and dashboard read view are built, while its pool
+process and parallel proof remain designed. The executor-lane and static per-system capacity design
+is retired and stays retired (§0).
 
 Four dated Phase-1 stage blocks (1d's seam ratification, the 1f runtime, the 1f concrete factory and
 D125's bound) stood above §0 until 2026-08-21; their contracts are folded into §2, §4, §4.1 and §4.3
@@ -111,10 +112,10 @@ graph branches. Those uses do not describe executor capacity and are unaffected.
   browser session. A transaction may retain it across prepare → fence → commit → proof.
 - **Fresh-session boundary** — an authored workflow instruction that closes the current session for
   a named system before the next node and authenticates a new one.
-- **Session** (§11, designed, not built) — a dashboard-started GROUP of runs, and the only unit in
-  this list that names more than one run. It is not a browser session and not a worker; it is what
-  an operator starts when they dispatch a batch, and the thing a worker pool serves. Today the word
-  appears in this doc only as "browser session"; §11 is where the group sense is specified.
+- **Session** (§11) — a dashboard-started GROUP of runs, and the only unit in this list that names
+  more than one run. It is not a browser session and not a worker; D269 persists the authority
+  grouping and P4 renders its day-wire membership, while the process pool that serves it remains
+  unbuilt.
 
 ---
 
@@ -1055,17 +1056,19 @@ advances across profiles.
 - [ ] BE pool-indexed worker ids: `phase1WorkerId(workflowId)` derives ONE id per workflow, so two composed workers collide on the authority worker lease by design (`src/core/worker-loop.ts:368`)
 - [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis: `plan-worker-count` and `spawn-worker` target `{workflowId, expectedVersion}` where `expectedVersion` is the POOL row's version (0 for an unplanned workflow), the kernel refuses a stale one with `conflict` naming the current version BEFORE the runtime seam, and the day wire serves `workerPools[]` (`93b7b18e` store · `b4f30ea0` kernel · `24b04dfa` wire — D269)
 - [x] BE a durable session record and its grouping, membership derived from authority — `run_sessions` (schema v17, insert-only, member-less) written by `fanOutQueuedRuns` BEFORE its first member; every run row carries `sessionId` (`tasks.session_id`, read forward) and `runs.listBySession` IS the membership; a retry inherits its session; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa` — D269)
-- [ ] FE the session view — worker cards show membership and what each worker is doing, read from authority
+- [x] FE the session view — worker cards show authority membership and what each worker is doing; groups exact queue-row session ids, joins the claiming card by exact `runId`, preserves absent reasons and distinguishes declared pool size from non-terminal authority worker cards (`97a55b07`)
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit
 - [x] needs §10 first — the pool multiplies the hazard the lease removes (§10 landed, D267)
 > 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
 > 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
+> 2026-08-25 | parallel-runs P4 | the FE session view reads only the D269 day wire (`97a55b07`): `QueueSurface.session.sessionId` groups membership, `WorkerCard.currentRun.runId` joins a claiming worker, and the absent session arm retains its served reason. Pool declaration and non-terminal authority worker cards remain separate facts; no process command is exposed
 <!-- /roadmap-status -->
 
-**AUTHORITY HALF AS-BUILT (D269, 2026-08-21); the pool PROCESS and the FE view are DESIGNED, NOT
-BUILT.** This section is the owning contract for the tree's `{#parallel-runs}` node and the normative
-text of D269. It defines the SESSION unit §1 names and the pool that serves one. Points 1 and 5 are
-built exactly as written below, at the cited commits; points 2, 4, 6 and 8 remain design.
+**AUTHORITY HALF AND FE VIEW AS-BUILT (D269, 2026-08-21; P4, 2026-08-25); the pool PROCESS and
+parallel PROOF remain DESIGNED, NOT BUILT.** This section is the owning contract for the tree's
+`{#parallel-runs}` node and the normative text of D269. It defines the SESSION unit §1 names and the
+pool that serves one. Points 1, 5 and 6 are built exactly as written below, at the cited commits;
+points 2, 4 and 8 remain design.
 
 **1. A session is a dashboard-started group of runs.** It is not a browser session (§1), not a
 worker, and not a workflow. It is what an operator starts when they dispatch a batch — ten I-9
@@ -1162,12 +1165,16 @@ for the reason the lease separates `control` from `lifecycle`.
 
 **6. What the dashboard shows.** The session and its workers: membership, per-member run state, and
 what each worker is doing — every value read from authority through the ONE projection
-(ref dashboard-surfaces). The worker cards exist already (§4's D248 as-built); what they lack is a
-session to belong to. _Since D269 the wire carries the facts the view needs and no view reads them
-yet:_ each queue row's `session` (`{present, sessionId} | {absent, reason}`, the row's own field —
-membership across the day IS the rows that name one session) and the day's `workerPools[]`. Two honesty rules carry over unchanged: a browser tile still reads
-`Not checked` because nothing probes a live session, and a wait reason is drawn only where a real
-holder can be named — which, once §10 lands, is exactly one place.
+(ref dashboard-surfaces). _As-built (P4, `97a55b07`):_ the Session Panel groups every day
+`QueueSurface` whose `session` is `{present, sessionId}` by that exact id, retaining row order and
+its served run status. A worker is shown on that member only where its authority
+`WorkerCard.currentRun.runId` exactly equals the row's `runId`; an absent session arm remains outside
+the group with its served `reason`, never a guessed session. A pool row is a declaration only:
+`desiredWorkers` is shown alongside non-terminal authority worker-card facts, and a missing
+`workerPools[]` row reads as no declaration rather than version 0 or a target of one. The two
+honesty rules carry over unchanged: a browser tile still reads `Not checked` because nothing probes
+a live session, and a wait reason is drawn only where a real holder can be named — which, once §10
+lands, is exactly one place.
 
 **7. This does not weaken any per-run invariant.** One worker still owns one active item (§0.3);
 a parked run still owns no browser resources (§2.1); the write fence is still per permanent key

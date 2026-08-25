@@ -234,6 +234,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
   (`dashboard-refresh-boundary`, ref frontend-backend-integration §8.14, `src/dashboard/AGENTS.md`).
+- **2026-08-25 — dashboard session joins stay authority-shaped (P4).** Group `QueueSurface` rows
+  only by their present `session.sessionId`, join a worker only by exact `currentRun.runId`, and retain an
+  absent arm's served reason. A pool's declared `desiredWorkers` is distinct from non-terminal
+  authority worker-card facts; a missing pool row is no declaration, never a target of one.
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
