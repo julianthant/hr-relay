@@ -77,6 +77,7 @@ import {
   CapturePointerWireSchema,
 } from "../../../../src/domain/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../../src/domain/dashboard/bootstrap.js";
+import { DiagnosticBundleWireSchema } from "../../../../src/domain/dashboard/diagnostic-bundle.js";
 import {
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
@@ -575,6 +576,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/dashboard-day", egress: "operator-loopback", module: "src/domain/dashboard/projection.ts", schema: DashboardDayWireSchema },
   { id: "wire/stream-envelope", egress: "operator-loopback", module: "src/domain/dashboard/subscription.ts", schema: DashboardStreamEnvelopeSchema },
   { id: "wire/bootstrap", egress: "operator-loopback", module: "src/domain/dashboard/bootstrap.ts", schema: FrontendBootstrapWireSchema },
+  { id: "wire/diagnostic-bundle", egress: "operator-loopback", module: "src/domain/dashboard/diagnostic-bundle.ts", schema: DiagnosticBundleWireSchema },
   { id: "wire/activity-report", egress: "operator-loopback", module: "src/domain/dashboard/activity.ts", schema: ActivityReportWireSchema },
   { id: "wire/run-advisory", egress: "operator-loopback", module: "src/domain/dashboard/advisory.ts", schema: RunAdvisoryWireSchema },
   { id: "wire/action-descriptor", egress: "operator-loopback", module: "src/domain/dashboard/actions.ts", schema: ActionDescriptorWireSchema },
@@ -1253,6 +1255,15 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/capture-session", path: "formType", origin: "captured-hr-value" },
   { surface: "wire/capture-session", path: "handoff.message", origin: "repository-authored" },
 
+  // E29 derives the display key/detail around a closed attachment kind, its
+  // stored metadata and a verified digest; neither is captured page text.
+  // Media types are driver declarations, and D137 warnings are emitted by the
+  // capture-time classifier rather than copied from an inspected page.
+  { surface: "wire/diagnostic-bundle", path: "contents[].key", origin: "repository-authored" },
+  { surface: "wire/diagnostic-bundle", path: "contents[].detail", origin: "repository-authored" },
+  { surface: "wire/diagnostic-bundle", path: "contents[].mediaType", origin: "repository-authored" },
+  { surface: "wire/diagnostic-bundle", path: "redaction.warnings[]", origin: "repository-authored" },
+
   { surface: "durable/failure-record", path: "causeChain[].summary", origin: "external-text",
     exception: "each cause's own thrown message, same reason as `summary` and dropped by the same advisory declaration." },
   { surface: "durable/failure-record", path: "page.titleRedacted", origin: "declared-redacted" },
@@ -1299,6 +1310,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/archive.ts", state: "audited", reason: "the archive index and archived run detail re-serve retired runs" },
     { module: "src/domain/dashboard/artifacts.ts", state: "audited", reason: "artifact resources point at downloadable run output" },
     { module: "src/domain/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
+    { module: "src/domain/dashboard/diagnostic-bundle.ts", state: "audited", reason: "D137 readback carries only verified attachment metadata and capture-time redaction facts" },
     { module: "src/domain/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and the UI catalog" },
     { module: "src/domain/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },

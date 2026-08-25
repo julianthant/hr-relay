@@ -11,6 +11,7 @@
 import { z } from "zod";
 import { WireErrorSchema } from "../../../domain/dashboard/primitives.js";
 import {
+  DiagnosticBundleCorruptError,
   ProjectionDegradedError,
   SectionUnavailableError,
   TargetNotFoundError,
@@ -69,6 +70,9 @@ export function failureStatus(
   }
   if (error instanceof ProjectionDegradedError) {
     return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };
+  }
+  if (error instanceof DiagnosticBundleCorruptError) {
+    return { status: 500, body: wireError("DIAGNOSTIC_BUNDLE_CORRUPT", message, false) };
   }
   return { status: 500, body: wireError("INTERNAL_FAILURE", message, false) };
 }

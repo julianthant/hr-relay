@@ -848,6 +848,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     },
     projection,
     runDetail: runDetailDeps,
+    diagnosticBundles: {
+      authority: database.authority.diagnosticBundles,
+      artifacts,
+    },
     archive: archiveDeps,
     commands,
     startPlans,
