@@ -1075,9 +1075,10 @@ rule still catches it. D184's rot check is intact.
 ##### What is recorded and still NOT classified
 
 Every one of the eighteen task nodes across the five registered descriptors was already declared, so
-the emission added no production declaration. Thirteen `recordData` call sites remain unclassified,
-and they are listed rather than guessed at, because each belongs to a channel this ratification did
-not build:
+the emission added no production declaration. Thirteen `recordData` call sites remain unclassified:
+four idempotency probes, four post-fence verifies, four descriptor-less data-service tasks, and one
+descriptor-less OCR task. They are listed rather than guessed at, because each belongs to a channel
+this ratification did not build:
 
 | Task | Why it is not declared here |
 |---|---|
