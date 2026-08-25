@@ -439,6 +439,12 @@ function firstSessionListRowAfter(layout: SessionListLayout, top: number): numbe
   return low;
 }
 
+/** The retained row intersecting the viewport's leading edge. */
+export function sessionListVisibleIndex(layout: SessionListLayout, scrollTop: number): number {
+  if (layout.rows.length === 0) return 0;
+  return Math.min(firstSessionListRowAfter(layout, Math.max(0, scrollTop)), layout.rows.length - 1);
+}
+
 /** The only rows the renderer mounts for one scroll position. */
 export function sessionListWindow(
   layout: SessionListLayout,

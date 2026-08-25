@@ -92,6 +92,7 @@ import {
   sessionPoolDisplay,
   sessionListNavigationTarget,
   sessionListScrollTopForIndex,
+  sessionListVisibleIndex,
   sessionListWindow,
   statusCount,
   toolbarControl,
@@ -1012,6 +1013,7 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
   const scrollerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const pendingFocusIndexRef = useRef<number | undefined>(undefined);
+  const scrollFocusedRowIndexRef = useRef<number | undefined>(undefined);
   const scrollFrameRef = useRef<number | undefined>(undefined);
   const pendingScrollTopRef = useRef(0);
   const [scrollTop, setScrollTop] = useState(0);
@@ -1024,7 +1026,7 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
   );
   const rovingIndex = windowed.rows.some((row) => row.index === activeIndex)
     ? activeIndex
-    : (windowed.rows[0]?.index ?? 0);
+    : sessionListVisibleIndex(layout, scrollTop);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -1042,14 +1044,36 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
 
   useLayoutEffect(() => {
     const pendingIndex = pendingFocusIndexRef.current;
-    if (pendingIndex === undefined) return;
-    const row = rowRefs.current.get(pendingIndex);
+    if (pendingIndex !== undefined) {
+      const row = rowRefs.current.get(pendingIndex);
+      if (row === undefined) return;
+      pendingFocusIndexRef.current = undefined;
+      scrollFocusedRowIndexRef.current = pendingIndex;
+      row.focus({ preventScroll: true });
+      return;
+    }
+
+    const focusedBeforeScroll = scrollFocusedRowIndexRef.current;
+    if (focusedBeforeScroll === undefined || rowRefs.current.has(focusedBeforeScroll)) return;
+    const activeElement = document.activeElement;
+    if (activeElement !== null && activeElement !== document.body) {
+      scrollFocusedRowIndexRef.current = undefined;
+      return;
+    }
+    const row = rowRefs.current.get(rovingIndex);
     if (row === undefined) return;
-    pendingFocusIndexRef.current = undefined;
+    scrollFocusedRowIndexRef.current = rovingIndex;
     row.focus({ preventScroll: true });
-  }, [windowed.rows]);
+  }, [rovingIndex, windowed.rows]);
 
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>): void => {
+    scrollFocusedRowIndexRef.current = undefined;
+    for (const [index, row] of rowRefs.current) {
+      if (row === document.activeElement) {
+        scrollFocusedRowIndexRef.current = index;
+        break;
+      }
+    }
     pendingScrollTopRef.current = event.currentTarget.scrollTop;
     if (scrollFrameRef.current !== undefined) return;
     scrollFrameRef.current = requestAnimationFrame(() => {
@@ -1074,6 +1098,10 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
     if (target === undefined) return;
     event.preventDefault();
     event.stopPropagation();
+    if (target === index) {
+      pendingFocusIndexRef.current = undefined;
+      return;
+    }
     focusIndex(target);
   }, [focusIndex, layout.rows.length, viewportHeight]);
 

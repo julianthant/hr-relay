@@ -16,6 +16,7 @@ import {
   poolFactsForWorkflow,
   sessionListNavigationTarget,
   sessionListScrollTopForIndex,
+  sessionListVisibleIndex,
   sessionListWindow,
   sessionMembershipForWorker,
 } from "../../../src/dashboard/surfaces/shell-model.js";
@@ -184,6 +185,16 @@ describe("P4 — Session Panel authority joins", () => {
     assert.equal(sessionListNavigationTarget(1240, "ArrowDown", layout.rows.length, 512), 1240);
     assert.equal(sessionListNavigationTarget(0, "ArrowUp", layout.rows.length, 512), 0);
     assert.equal(sessionListNavigationTarget(4, "Enter", layout.rows.length, 512), undefined);
+  });
+
+  it("chooses the row intersecting the visible leading edge instead of an overscan row", () => {
+    const hostile = hostileSessionDay();
+    const view = buildSessionView(hostile.queueSurfaces, hostile.workerCards, hostile.workerPools);
+    const layout = buildSessionListLayout(view);
+
+    assert.equal(sessionListVisibleIndex(layout, 0), 0);
+    assert.equal(sessionListVisibleIndex(layout, 150), 2);
+    assert.equal(sessionListVisibleIndex(layout, layout.totalHeight), 1240);
   });
 
   it("mounts only the initial virtual window for the hostile session", () => {
