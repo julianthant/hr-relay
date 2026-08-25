@@ -126,6 +126,41 @@ describe("E29 diagnostic bundle readback", () => {
     }, bundle.bundleId));
   });
 
+  it("rejects a foreign durable bundle identity before serving its wire or manifest", async () => {
+    const { artifacts, service } = fixture();
+    const bundle = await service.capture({
+      trigger: "operator-request",
+      runId: RUN_ID,
+      requestedBy: "local-operator",
+      configFingerprint: HASH_A,
+      descriptorFingerprint: HASH_B,
+      fields: [],
+      attachments: [],
+    });
+    const requestedBundleId = "00000000-0000-4000-8000-000000000904";
+    const foreignBundleId = "00000000-0000-4000-8000-000000000999";
+
+    await assert.rejects(
+      () => readDiagnosticBundle({
+        artifacts,
+        authority: {
+          get: () => DiagnosticBundleSchema.parse({ ...bundle, bundleId: foreignBundleId }),
+          listAttachments: () => {
+            throw new Error("attachment index must not be read for a foreign authority row");
+          },
+        },
+      }, requestedBundleId),
+      (error: unknown) => {
+        assert.ok(error instanceof DiagnosticBundleCorruptError);
+        assert.match(error.message, new RegExp(requestedBundleId, "u"));
+        assert.match(error.message, /durable authority identity mismatch/u);
+        assert.doesNotMatch(error.message, new RegExp(foreignBundleId, "u"));
+        assert.doesNotMatch(error.message, /attachment index must not be read/u);
+        return true;
+      },
+    );
+  });
+
   it("rejects a bad bundle digest", async () => {
     const { artifacts, service } = fixture();
     const bundle = await service.capture({

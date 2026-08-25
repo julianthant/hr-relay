@@ -8,7 +8,7 @@
  * leaves typed.
  */
 import assert from "node:assert/strict";
-import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -19,6 +19,7 @@ import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.j
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
@@ -27,13 +28,16 @@ import { createStartPlanService } from "../../../src/server/dashboard/commands/s
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
 import { createDashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../architecture/helpers/descriptor-fixtures.js";
 import { HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
-import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
+import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
@@ -49,6 +53,7 @@ interface Harness {
   readonly noteWriter: ReturnType<typeof createNoteJsonlWriter>;
   readonly hub: DashboardStreamHub;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
+  readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
 }
 
 const cleanups: (() => void)[] = [];
@@ -60,6 +65,7 @@ afterEach(() => {
 function harness(options: {
   readonly capturePhoneHost?: string;
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
+  readonly diagnosticBundles?: (real: DiagnosticBundleQueryDeps) => DiagnosticBundleQueryDeps;
 } = {}): Harness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-bff-"));
   const stateRoot = join(root, ".tracker-rebuild");
@@ -69,6 +75,10 @@ function harness(options: {
     { path: join(root, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
     clock,
   );
+  const artifacts = createContentAddressedArtifactWriter({
+    workspaceRoot: root,
+    artifactRoot: ".tracker-rebuild/artifacts",
+  });
   cleanups.push(() => {
     database.close();
     rmSync(root, { recursive: true, force: true });
@@ -198,6 +208,13 @@ function harness(options: {
       }),
     },
     projection,
+    diagnosticBundles: options.diagnosticBundles?.({
+      authority: database.authority.diagnosticBundles,
+      artifacts,
+    }) ?? {
+      authority: database.authority.diagnosticBundles,
+      artifacts,
+    },
     runDetail: runDetailDeps,
     archive: archiveQueryDeps({ database, clock, appVersion: "0.1.0", descriptors: [fixtureDescriptor] }),
     commands,
@@ -220,7 +237,30 @@ function harness(options: {
     explorer: explorerQueryDeps(clock, descriptorSetHash([fixtureDescriptor.contractFingerprint])),
     uiCatalog: uiCatalogQueryDeps(),
   });
-  return { app, database, stateRoot, clock, noteWriter, hub, projection };
+  return { app, database, stateRoot, clock, noteWriter, hub, projection, artifacts };
+}
+
+async function captureDiagnosticBundle(h: Harness) {
+  h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: RUN_ID }));
+  return createDiagnosticCaptureService({
+    authority: h.database.authority,
+    artifacts: h.artifacts,
+    clock: h.clock,
+    ids: sequentialIdFactory("d"),
+  }).capture({
+    trigger: "operator-request",
+    runId: RUN_ID,
+    requestedBy: "local-operator",
+    configFingerprint: HASH_B,
+    descriptorFingerprint: fixtureDescriptor.contractFingerprint,
+    fields: [],
+    attachments: [{
+      kind: "console-summary",
+      mediaType: "application/json",
+      bytes: new TextEncoder().encode("[]"),
+      sensitivity: "redacted",
+    }],
+  });
 }
 
 async function json(response: Response): Promise<Record<string, unknown>> {
@@ -228,6 +268,59 @@ async function json(response: Response): Promise<Record<string, unknown>> {
 }
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it.each([
+    ["mutated", false],
+    ["missing", true],
+  ] as const)("returns typed path-free corruption when a real diagnostic artifact is %s", async (_case, removeArtifact) => {
+    const h = harness();
+    const bundle = await captureDiagnosticBundle(h);
+    const attachment = bundle.attachments[0];
+    if (attachment === undefined) throw new Error("the diagnostic fixture did not write its attachment");
+    const artifactPath = join(h.stateRoot, "artifacts", `${attachment.digest}.artifact`);
+    if (removeArtifact) rmSync(artifactPath);
+    else writeFileSync(artifactPath, "{\"mutated\":true}", "utf8");
+
+    const suffix = removeArtifact ? "/manifest" : "";
+    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}${suffix}`);
+    const body = await json(response);
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.retryable, false);
+    assert.match(String(body.message), new RegExp(bundle.bundleId, "u"));
+    assert.match(String(body.message), new RegExp(attachment.artifactId, "u"));
+    assert.match(String(body.message), new RegExp(attachment.kind, "u"));
+    assert.doesNotMatch(String(body.message), new RegExp(h.stateRoot, "u"));
+    assert.doesNotMatch(String(body.message), /(?:\/private\/|\/var\/folders\/)/u);
+  });
+
+  it("returns typed corruption when the diagnostic repository returns a foreign bundle id", async () => {
+    const foreignBundleId = "00000000-0000-4000-8000-000000000999";
+    const h = harness({
+      diagnosticBundles: (real) => ({
+        ...real,
+        authority: {
+          get: (bundleId) => {
+            const stored = real.authority.get(bundleId);
+            return stored === undefined
+              ? undefined
+              : { ...stored, bundleId: foreignBundleId };
+          },
+          listAttachments: real.authority.listAttachments,
+        },
+      }),
+    });
+    const bundle = await captureDiagnosticBundle(h);
+    const response = await h.app.request(`/api/v1/diagnostic-bundles/${bundle.bundleId}`);
+    const body = await json(response);
+
+    assert.equal(response.status, 500);
+    assert.equal(body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(body.retryable, false);
+    assert.match(String(body.message), /durable authority identity mismatch/u);
+    assert.match(String(body.message), new RegExp(bundle.bundleId, "u"));
+    assert.doesNotMatch(String(body.message), new RegExp(foreignBundleId, "u"));
+  });
+
   it("plans, starts, projects, and serves the run through the one payload", async () => {
     const h = harness();
 

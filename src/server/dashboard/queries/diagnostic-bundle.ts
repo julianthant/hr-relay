@@ -54,6 +54,7 @@ async function verifyArtifact(
   attachment: DiagnosticBundle["attachments"][number],
   artifacts: Pick<ContentAddressedArtifactWriter, "open">,
 ): Promise<void> {
+  const attachmentLabel = `attachment ${attachment.artifactId} (${attachment.kind})`;
   try {
     const ref = ArtifactRefSchema.parse({
       id: attachment.artifactId,
@@ -65,20 +66,20 @@ async function verifyArtifact(
     const digest = createHash("sha256");
     let byteLength = 0;
     for await (const chunk of stream) {
-      if (!(chunk instanceof Uint8Array)) corrupt(bundleId, `attachment ${attachment.artifactId} emitted a non-byte chunk`);
+      if (!(chunk instanceof Uint8Array)) corrupt(bundleId, `${attachmentLabel} emitted a non-byte chunk`);
       byteLength += chunk.byteLength;
-      if (!Number.isSafeInteger(byteLength)) corrupt(bundleId, `attachment ${attachment.artifactId} exceeds safe byte accounting`);
+      if (!Number.isSafeInteger(byteLength)) corrupt(bundleId, `${attachmentLabel} exceeds safe byte accounting`);
       digest.update(chunk);
     }
     if (byteLength !== attachment.byteLength) {
-      corrupt(bundleId, `attachment ${attachment.artifactId} has a byte-size mismatch`);
+      corrupt(bundleId, `${attachmentLabel} has a byte-size mismatch`);
     }
     const actualDigest = digest.digest("hex");
     if (actualDigest !== attachment.digest) {
-      corrupt(bundleId, `attachment ${attachment.artifactId} has a digest mismatch`);
+      corrupt(bundleId, `${attachmentLabel} has a digest mismatch`);
     }
   } catch (error: unknown) {
-    normalizeCorruption(bundleId, `attachment ${attachment.artifactId} could not be verified`, error);
+    normalizeCorruption(bundleId, `${attachmentLabel} could not be verified`, error);
   }
 }
 
@@ -131,6 +132,9 @@ export async function readDiagnosticBundle(
     bundle = DiagnosticBundleSchema.parse(stored);
   } catch (error: unknown) {
     normalizeCorruption(bundleId, "the durable authority record is invalid", error);
+  }
+  if (bundle.bundleId !== bundleId) {
+    corrupt(bundleId, "durable authority identity mismatch");
   }
   let expectedDigest: string;
   try {
