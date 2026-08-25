@@ -283,6 +283,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 - Dry-run write-safety counts are queried by run through
   `writeIntents.countDryRunEvidenceByRun`: attempts and durable outbox rows join through THIS run's
   intent ids. Never compare global table counts or attribute another run's write to the rehearsal.
+- Dry-run reached-node evidence maps task span labels back through the registered descriptor; a
+  label is not a node id. A transaction that fails before `transaction.previewed` is reached by its
+  durable node-bound `FailureRecord`, and failed terminal expectations compare its exact safe
+  `(code, nodeId, fingerprint)` tuple. Failure summaries, receipt warnings, spans and worker logs
+  must never carry full or suffix person identifiers.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
@@ -294,6 +299,14 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
 
 ### Dated lessons
+
+- **2026-08-25 — a preview has to be asserted in the receipt's real vocabulary.** A dry-run
+  transaction stores no transaction checkpoint, so Kuali finalization receipts derive four
+  cross-source obligations as `unknown` and the literal reload-read-back obligation as `absent`;
+  inventing one aggregate obligation or claiming partial confidence makes the manifest impossible.
+  Likewise, `replay: "always-rerun"` forbids reuse but still writes the current claim generation's
+  checkpoint, and a failed transaction can be reached only from its durable failure before a
+  `transaction.previewed` event exists.
 
 - **2026-08-25 — retiring a proof workflow does not retire the real workflow's vocabulary.** The
   timekeeper annotation staging/read-back schemas and tasks belonged only to D266's dismantled test
