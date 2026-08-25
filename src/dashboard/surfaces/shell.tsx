@@ -33,6 +33,7 @@ import { cn } from "../lib/utils.js";
 import {
   Button,
   IconButton,
+  StatusDot,
   Tooltip,
   dsBorder,
   dsElev,
@@ -64,12 +65,18 @@ import {
   WORKER_TONE,
   WORKFLOW_PANEL_MODE_LABEL,
   type WorkerCardWire,
+  type WorkerPoolWire,
+  type SessionMemberView,
+  type SessionView,
+  type WorkerSessionMembership,
   type WorkerState,
   type WorkflowBootstrapPrimitive,
   type WorkflowCountWire,
+  type QueueSurfaceWire,
   type WorkflowPanelMode,
   activeCount,
   buildWorkflowRailGroups,
+  buildSessionPanelView,
   canStopWorker,
   capacityChip,
   connectionTone,
@@ -712,6 +719,141 @@ function BrowserTile({
   );
 }
 
+/** The current worker's session membership, read from its claimed run's row. */
+function WorkerSessionLine({ membership }: { membership: WorkerSessionMembership }) {
+  if (membership.state === "unassigned") return null;
+  if (membership.state === "present") {
+    return (
+      <div
+        title={`Session ${String(membership.sessionId)} · ${membership.row.title}`}
+        className={cn(
+          "flex min-w-0 items-center border-t",
+          dsBorder.subtle,
+          "gap-[var(--ds-space-tight)] pt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]",
+        )}
+      >
+        <span className={cn(dsText.caps, "shrink-0")}>Session</span>
+        <span
+          aria-label={`Session ${String(membership.sessionId)}, member ${membership.row.title}`}
+          className={cn(dsText.micro, dsText.nums, "min-w-0 flex-1 truncate")}
+        >
+          {String(membership.sessionId)}
+        </span>
+        <StatusDot status={dsStatusOf(membership.row.status)} className="shrink-0" />
+      </div>
+    );
+  }
+  if (membership.state === "absent") {
+    return (
+      <div className={cn("min-w-0 border-t pt-[var(--ds-space-snug)]", dsBorder.subtle)}>
+        <span className={cn(dsText.caps, "block text-[color:var(--ds-fg-muted)]")}>No session recorded</span>
+        <span title={membership.reason} className={cn(dsText.micro, "block truncate text-[color:var(--ds-fg-muted)]")}>
+          {membership.reason}
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className={cn("min-w-0 border-t pt-[var(--ds-space-snug)]", dsBorder.subtle)}>
+      <span className={cn(dsText.caps, "block text-[color:var(--ds-fg-muted)]")}>Session row not served</span>
+      <span title={`Run ${String(membership.runId)} is not in this day’s session rows`} className={cn(dsText.micro, dsText.nums, "block truncate text-[color:var(--ds-fg-muted)]")}>
+        {String(membership.runId)}
+      </span>
+    </div>
+  );
+}
+
+/** One row of a session's authority membership list; it remains a compact divider, not a nested card. */
+function SessionMemberRow({ member }: { member: SessionMemberView }) {
+  const status = dsStatusOf(member.row.status);
+  return (
+    <div className={cn("grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-[var(--ds-space-snug)] py-[var(--ds-space-snug)]")}>
+      <StatusDot status={status} className="mt-px" />
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
+          <span title={member.row.title} className={cn(dsText.meta, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
+            {member.row.title}
+          </span>
+          <span className={cn(dsText.micro, "shrink-0 text-[color:var(--ds-fg-muted)]")}>{PROPOSED_STATUS[status].label}</span>
+        </div>
+        <div className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] min-w-0 truncate text-[color:var(--ds-fg-muted)]")} title={`Run ${String(member.row.runId)}`}>
+          {String(member.row.runId)}
+        </div>
+        {member.workers.length === 0 ? (
+          <span className={cn(dsText.micro, "block mt-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
+            No current worker card claims this run
+          </span>
+        ) : (
+          <span className={cn(dsText.micro, "block mt-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
+            {member.workers.map((worker) => (
+              <span key={String(worker.workerId)} title={`Worker ${String(worker.workerId)} · ${WORKER_TONE[worker.state].label}`} className="mr-[var(--ds-space-snug)] inline-block">
+                {WORKER_TONE[worker.state].label} · {String(worker.workerId)}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** All session membership in the selected day, grouped only by the served session id. */
+function SessionMembershipList({ sessionView }: { sessionView: SessionView }) {
+  if (sessionView.sessions.length === 0 && sessionView.absentMembers.length === 0) {
+    return <p className={cn(dsText.meta, "px-[var(--ds-shell-inset)] py-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>No run rows on this day.</p>;
+  }
+  return (
+    <div
+      tabIndex={0}
+      aria-label="Session membership"
+      className={cn("max-h-[min(48dvh,32rem)] overflow-y-auto border-t border-[color:var(--ds-border-subtle)]", dsFocus)}
+    >
+      {sessionView.sessions.map((session) => (
+        <section key={String(session.sessionId)} aria-label={`Session ${String(session.sessionId)}`} className="border-b border-[color:var(--ds-border-subtle)]">
+          <header className="flex min-w-0 flex-wrap items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]">
+            <span className={cn(dsText.caps, "shrink-0 text-[color:var(--ds-fg-muted)]")}>Session</span>
+            <span title={`Session ${String(session.sessionId)}`} className={cn(dsText.micro, dsText.nums, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>
+              {String(session.sessionId)}
+            </span>
+            {session.pools.map(({ workflowId, facts }) => (
+              <span
+                key={workflowId}
+                title={facts.state === "declared"
+                  ? `${workflowId}: ${String(facts.desiredWorkers)} declared at pool version ${String(facts.version)}; ${String(facts.activeWorkers)} active authority worker cards`
+                  : `${workflowId}: no worker-pool declaration; ${String(facts.activeWorkers)} active authority worker cards`}
+                className={cn(dsText.micro, "shrink-0 text-[color:var(--ds-fg-muted)]")}
+              >
+                {facts.state === "declared"
+                  ? `${String(facts.desiredWorkers)} declared · ${String(facts.activeWorkers)} active`
+                  : `No pool declaration · ${String(facts.activeWorkers)} active`}
+              </span>
+            ))}
+          </header>
+          <div className="divide-y divide-[color:var(--ds-border-subtle)] px-[var(--ds-shell-inset)]">
+            {session.members.map((member) => <SessionMemberRow key={String(member.row.runId)} member={member} />)}
+          </div>
+        </section>
+      ))}
+      {sessionView.absentMembers.length > 0 && (
+        <section aria-label="Runs without a recorded session" className="border-b border-[color:var(--ds-border-subtle)]">
+          <header className="px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]">
+            <span className={cn(dsText.caps, "text-[color:var(--ds-fg-muted)]")}>No session recorded</span>
+          </header>
+          <div className="divide-y divide-[color:var(--ds-border-subtle)] px-[var(--ds-shell-inset)]">
+            {sessionView.absentMembers.map(({ row, reason }) => (
+              <div key={String(row.runId)} className="min-w-0 py-[var(--ds-space-snug)]">
+                <span title={row.title} className={cn(dsText.meta, "block truncate text-[color:var(--ds-fg)]")}>{row.title}</span>
+                <span title={reason} className={cn(dsText.micro, "block truncate text-[color:var(--ds-fg-muted)]")}>{reason}</span>
+                <span title={`Run ${String(row.runId)}`} className={cn(dsText.micro, dsText.nums, "block truncate text-[color:var(--ds-fg-muted)]")}>{String(row.runId)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
+
 /**
  * One worker card — the authority lease, drawn (D248/D249).
  *
@@ -733,12 +875,14 @@ function WorkerCard({
   workflowLabel,
   queued,
   nowIso,
+  membership,
   onStop,
 }: {
   card: WorkerCardWire;
   workflowLabel: string;
   queued: number;
   nowIso: string;
+  membership: WorkerSessionMembership;
   onStop?: (card: WorkerCardWire) => void;
 }) {
   const tone = WORKER_TONE[card.state];
@@ -824,6 +968,8 @@ function WorkerCard({
       >
         {card.currentRun.state === "present" ? String(card.currentRun.traceId) : card.currentRun.reason}
       </span>
+
+      <WorkerSessionLine membership={membership} />
 
       {/* The operator's standing directive, beside the state and never as it —
           a worker asked to pause finishes its item first. */}
@@ -913,6 +1059,8 @@ function WorkerCard({
  */
 export function SessionPanel({
   workerCards,
+  queueSurfaces,
+  workerPools,
   workflows,
   counts,
   nowIso,
@@ -921,6 +1069,8 @@ export function SessionPanel({
   onStopWorker,
 }: {
   workerCards: readonly WorkerCardWire[];
+  queueSurfaces: readonly QueueSurfaceWire[];
+  workerPools: readonly WorkerPoolWire[];
   /**
    * The bootstrap's own workflow list — the SAME vocabulary the Workflow Panel
    * and the Run Modal draw from. The card names a workflow by joining this
@@ -936,6 +1086,10 @@ export function SessionPanel({
   onStopWorker?: (card: WorkerCardWire) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const sessionPanelView = useMemo(
+    () => buildSessionPanelView(queueSurfaces, workerCards, workerPools),
+    [queueSurfaces, workerCards, workerPools],
+  );
   const tallies = useMemo(() => {
     const byState = new Map<WorkerState, number>();
     for (const card of workerCards) byState.set(card.state, (byState.get(card.state) ?? 0) + 1);
@@ -1032,15 +1186,13 @@ export function SessionPanel({
         </button>
         <span className="flex shrink-0 items-center gap-[var(--ds-space-snug)]">
           {/*
-            THE DEMO'S `+` (Add workers) IS ABSENT, and the reason is a CAS
-            basis nobody serves. `spawn-worker` and `plan-worker-count` are real
-            composed kernel commands, but both target
-            `{workflowId, expectedVersion}` and the projection serves no version
-            for a workflow's worker pool — `WorkerCardWire.revision` is one
-            worker's row, not the pool's. A button that guessed an
-            `expectedVersion` would be inventing the exact fact the CAS exists
-            to check. It lands when the projection serves the pool version, and
-            not by a client picking one.
+            THE DEMO'S `+` (Add workers) IS ABSENT even though D269 now serves
+            the worker pool's exact CAS version in `workerPools[]`.
+            `spawn-worker` and `plan-worker-count` are real composed kernel
+            commands, but the dashboard supervisor still refuses their process
+            effect by name. A control may not acknowledge workers it cannot
+            launch; it lands with the supervisor, not by turning the served CAS
+            fact into a promise the process cannot keep.
           */}
           {/* The full sentence, ported from legacy
               hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -1079,18 +1231,20 @@ export function SessionPanel({
             "gap-[var(--ds-space-base)] px-[var(--ds-shell-inset)] py-[var(--ds-space-cozy)]",
           )}
         >
-          {workerCards.map((card) => (
+          {sessionPanelView.workers.map(({ card, membership }) => (
             <WorkerCard
               key={String(card.workerId)}
               card={card}
               workflowLabel={labelOf(card)}
               queued={statusCount(workflowStatusCounts(counts, String(card.workflowId)), "queued")}
               nowIso={nowIso}
+              membership={membership}
               {...(onStopWorker === undefined ? {} : { onStop: onStopWorker })}
             />
           ))}
         </div>
       )}
+      {open && <SessionMembershipList sessionView={sessionPanelView.sessionView} />}
     </section>
   );
 }

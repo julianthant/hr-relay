@@ -1461,6 +1461,8 @@ function LoadedApp({
 
       <SessionPanel
         workerCards={dayWire?.workerCards ?? []}
+        queueSurfaces={dayWire?.queueSurfaces ?? []}
+        workerPools={dayWire?.workerPools ?? []}
         workflows={workflows}
         counts={dayWire?.workflowCounts ?? []}
         nowIso={nowIso}

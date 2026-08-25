@@ -23,8 +23,10 @@ import {
 } from "../ds/ui.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../domain/dashboard/bootstrap.js";
 import type {
+  QueueSurfaceWireSchema,
   StatusCountWireSchema,
   WorkerCardWireSchema,
+  WorkerPoolWireSchema,
   WorkflowCountWireSchema,
 } from "../../domain/dashboard/projection.js";
 import type { SubscriptionState } from "../client/index.js";
@@ -40,6 +42,10 @@ export type WorkflowCountWire = z.infer<typeof WorkflowCountWireSchema>;
 export type StatusCountWire = z.infer<typeof StatusCountWireSchema>;
 
 export type WorkerCardWire = z.infer<typeof WorkerCardWireSchema>;
+
+export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
+
+export type WorkerPoolWire = z.infer<typeof WorkerPoolWireSchema>;
 
 export type WorkflowBootstrapPrimitive = z.infer<typeof WorkflowBootstrapPrimitiveSchema>;
 
@@ -291,6 +297,163 @@ export function needsYouCount(counts: readonly StatusCountWire[]): number {
 }
 
 /* ── Session Panel ───────────────────────────────────────────────────────── */
+
+/** One membership row, with only authority worker cards that claim this exact run. */
+export interface SessionMemberView {
+  readonly row: QueueSurfaceWire;
+  readonly workers: readonly WorkerCardWire[];
+}
+
+/** A session is the ordered set of queue rows that serve one exact session id. */
+export interface SessionGroupView {
+  readonly sessionId: Extract<QueueSurfaceWire["session"], { readonly state: "present" }>["sessionId"];
+  readonly members: readonly SessionMemberView[];
+  /** A session's rows may name one workflow; retain the keyed proof rather than assuming it in JSX. */
+  readonly pools: readonly SessionPoolView[];
+}
+
+export interface SessionPoolView {
+  readonly workflowId: string;
+  readonly facts: WorkerPoolFacts;
+}
+
+/** A row whose authority record deliberately names no session. */
+export interface AbsentSessionMemberView {
+  readonly row: QueueSurfaceWire;
+  readonly reason: string;
+}
+
+export interface SessionView {
+  readonly sessions: readonly SessionGroupView[];
+  readonly absentMembers: readonly AbsentSessionMemberView[];
+}
+
+/**
+ * How a particular worker relates to the selected day's session rows.
+ *
+ * This is deliberately not a worker state: an idle worker has no claimed run,
+ * and a run outside this day's projection has no session row for this view to
+ * describe. Neither absence is permission to call it an absent session.
+ */
+export type WorkerSessionMembership =
+  | Readonly<{ state: "unassigned"; reason: string }>
+  | Readonly<{
+    state: "present";
+    sessionId: Extract<QueueSurfaceWire["session"], { readonly state: "present" }>["sessionId"];
+    row: QueueSurfaceWire;
+  }>
+  | Readonly<{ state: "absent"; reason: string }>
+  | Readonly<{ state: "not-served"; runId: Extract<WorkerCardWire["currentRun"], { readonly state: "present" }>["runId"] }>;
+
+/**
+ * A pool's desired count is an operator declaration; worker cards are the
+ * authority facts about workers this snapshot actually serves. `activeWorkers`
+ * is deliberately non-terminal: a stopped/failed card remains on the panel as
+ * a retained record, but is not a live worker and must not inflate a declared
+ * pool-size comparison. Keeping the two union arms distinct makes a missing
+ * pool row visibly different from a fictional declaration of one worker at
+ * version zero.
+ */
+export type WorkerPoolFacts =
+  | Readonly<{ state: "declared"; desiredWorkers: number; version: number; activeWorkers: number }>
+  | Readonly<{ state: "absent"; activeWorkers: number }>;
+
+/** The exact current-run-to-queue-row join the worker card may render. */
+export function sessionMembershipForWorker(
+  worker: WorkerCardWire,
+  queueSurfaces: readonly QueueSurfaceWire[],
+): WorkerSessionMembership {
+  const currentRun = worker.currentRun;
+  if (currentRun.state === "absent") {
+    return { state: "unassigned", reason: currentRun.reason };
+  }
+  const row = queueSurfaces.find((surface) => String(surface.runId) === String(currentRun.runId));
+  if (row === undefined) return { state: "not-served", runId: currentRun.runId };
+  return row.session.state === "present"
+    ? { state: "present", sessionId: row.session.sessionId, row }
+    : { state: "absent", reason: row.session.reason };
+}
+
+/** Session membership is every queue row that names the same authority session id. */
+export function buildSessionView(
+  queueSurfaces: readonly QueueSurfaceWire[],
+  workerCards: readonly WorkerCardWire[],
+  workerPools: readonly WorkerPoolWire[],
+): SessionView {
+  const workersByRunId = new Map<string, WorkerCardWire[]>();
+  for (const worker of workerCards) {
+    if (worker.currentRun.state !== "present") continue;
+    const runId = String(worker.currentRun.runId);
+    const workers = workersByRunId.get(runId);
+    if (workers === undefined) workersByRunId.set(runId, [worker]);
+    else workers.push(worker);
+  }
+
+  const sessionsById = new Map<string, SessionMemberView[]>();
+  const sessionIds: SessionGroupView["sessionId"][] = [];
+  const absentMembers: AbsentSessionMemberView[] = [];
+  for (const row of queueSurfaces) {
+    if (row.session.state === "absent") {
+      absentMembers.push({ row, reason: row.session.reason });
+      continue;
+    }
+    const sessionId = String(row.session.sessionId);
+    const members = sessionsById.get(sessionId);
+    const member = { row, workers: workersByRunId.get(String(row.runId)) ?? [] };
+    if (members === undefined) {
+      sessionsById.set(sessionId, [member]);
+      sessionIds.push(row.session.sessionId);
+    } else {
+      members.push(member);
+    }
+  }
+
+  return {
+    sessions: sessionIds.map((sessionId) => ({
+      sessionId,
+      members: sessionsById.get(String(sessionId)) ?? [],
+      pools: [...new Set((sessionsById.get(String(sessionId)) ?? []).map((member) => String(member.row.workflowId)))].map(
+        (workflowId) => ({ workflowId, facts: poolFactsForWorkflow(workflowId, workerCards, workerPools) }),
+      ),
+    })),
+    absentMembers,
+  };
+}
+
+/** The complete presentation fold for the Session Panel, all from the day wire. */
+export function buildSessionPanelView(
+  queueSurfaces: readonly QueueSurfaceWire[],
+  workerCards: readonly WorkerCardWire[],
+  workerPools: readonly WorkerPoolWire[],
+): Readonly<{
+  sessionView: SessionView;
+  workers: readonly Readonly<{ card: WorkerCardWire; membership: WorkerSessionMembership }>[];
+}> {
+  return {
+    sessionView: buildSessionView(queueSurfaces, workerCards, workerPools),
+    workers: workerCards.map((card) => ({ card, membership: sessionMembershipForWorker(card, queueSurfaces) })),
+  };
+}
+
+/** Read a pool row whole; its omission is no declaration, never an implicit one. */
+export function poolFactsForWorkflow(
+  workflowId: string,
+  workerCards: readonly WorkerCardWire[],
+  workerPools: readonly WorkerPoolWire[],
+): WorkerPoolFacts {
+  const activeWorkers = workerCards.filter(
+    (card) => String(card.workflowId) === workflowId && card.state !== "stopped" && card.state !== "failed",
+  ).length;
+  const pool = workerPools.find((entry) => String(entry.workflowId) === workflowId);
+  return pool === undefined
+    ? { state: "absent", activeWorkers }
+    : {
+      state: "declared",
+      desiredWorkers: pool.desiredWorkers,
+      version: pool.version,
+      activeWorkers,
+    };
+}
 
 export type WorkerState = WorkerCardWire["state"];
 
