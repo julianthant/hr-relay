@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "targets": [
+    {
+      "label": "finalization-canary",
+      "workflow": "separations-kuali-finalization",
+      "kind": "ordinary",
+      "availability": {
+        "state": "unknown",
+        "lastObserved": "2026-08-19",
+        "reason": "Doc 4537 was open when observed, but its UCPath termination cannot be filed before 2026-08-28 and no real finalization transaction number exists yet."
+      },
+      "provenance": {
+        "document": "docs/rebuild/03b-finish-separations.md",
+        "section": "The canary registry — doc 4537; docs/migrations/separations.md §9.19"
+      },
+      "usagePolicy": "read-only",
+      "cleanupObligation": "Do not save or finalize the Kuali document; a dry-run rehearsal must leave its form unchanged.",
+      "owner": "HR automation operator",
+      "publicInput": {
+        "actionId": "6a8336ee44b521eae41895dc",
+        "documentNumber": "4537",
+        "employeeName": "Bragado, Alyssa",
+        "emplIdSource": "document-eid",
+        "ucpathDeptId": {
+          "state": "present",
+          "value": "000412"
+        },
+        "ucpathDepartment": {
+          "state": "present",
+          "value": "HOUSING/DINING/HOSPITALITY"
+        },
+        "observedDepartmentOptions": [
+          "- - -",
+          "000141 - Early Childhood Education Center",
+          "000412 - Housing/Dining/Hospitality",
+          "000414 - Bookstore",
+          "000422 - Triton Print & Digital Media",
+          "000719 -  Supply Chain Services"
+        ],
+        "payrollTitleCode": "004920",
+        "payrollTitle": "STDT 3",
+        "timekeeperName": "Juan Ramirez",
+        "lastDayWorked": "08/28/2026",
+        "separationDate": "08/28/2026",
+        "terminationEffectiveDate": "08/29/2026",
+        "observedExistingComments": ""
+      },
+      "secretInput": {
+        "emplId": {
+          "name": "separationsKualiFinalizationCanaryEid",
+          "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"
+        },
+        "documentEid": {
+          "state": "present",
+          "eid": {
+            "name": "separationsKualiFinalizationCanaryEid",
+            "env": "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"
+          }
+        }
+      }
+    },
+    {
+      "label": "finalization-already-finalized",
+      "workflow": "separations-kuali-finalization",
+      "kind": "already-present",
+      "availability": {
+        "state": "gone",
+        "lastObserved": "2026-08-19",
+        "reason": "Doc 4510 was completed after the 2026-08-14 pass; ActionPage now returns document null."
+      },
+      "provenance": {
+        "document": "docs/migrations/separations.md",
+        "section": "§9.19 item 7"
+      },
+      "usagePolicy": "read-only",
+      "cleanupObligation": "None; the completed document must not be used as a live target.",
+      "owner": "HR automation operator",
+      "publicInput": {
+        "actionId": "6a7a33b2ac106d428b3217e0",
+        "documentNumber": "4510",
+        "employeeName": "Clauckia, Drose",
+        "emplIdSource": "document-eid",
+        "ucpathDeptId": {
+          "state": "present",
+          "value": "000412"
+        },
+        "ucpathDepartment": {
+          "state": "present",
+          "value": "HOUSING/DINING/HOSPITALITY"
+        },
+        "observedDepartmentOptions": [
+          "- - -",
+          "000141 - Early Childhood Education Center",
+          "000412 - Housing/Dining/Hospitality",
+          "000414 - Bookstore",
+          "000422 - Triton Print & Digital Media",
+          "000719 -  Supply Chain Services"
+        ],
+        "payrollTitleCode": "004921",
+        "payrollTitle": "STDT 2",
+        "timekeeperName": "Julian Zaw",
+        "lastDayWorked": "06/10/2026",
+        "separationDate": "06/10/2026",
+        "terminationEffectiveDate": "06/11/2026",
+        "transactionNumber": "T002209631",
+        "observedExistingComments": ""
+      }
+    },
+    {
+      "label": "finalization-no-active-job",
+      "workflow": "separations-kuali-finalization",
+      "kind": "no-active-job",
+      "availability": {
+        "state": "gone",
+        "lastObserved": "2026-08-19",
+        "reason": "Doc 4510 supplied the recorded no-active-job witness, but its action is completed and its form is gone."
+      },
+      "provenance": {
+        "document": "docs/migrations/separations.md",
+        "section": "§9.16 item 2 and §9.19 item 7"
+      },
+      "usagePolicy": "read-only",
+      "cleanupObligation": "None; the completed document must not be used as a live target.",
+      "owner": "HR automation operator",
+      "publicInput": {
+        "actionId": "6a7a33b2ac106d428b3217e0",
+        "documentNumber": "4510",
+        "employeeName": "Clauckia, Drose",
+        "emplIdSource": "document-eid",
+        "ucpathDeptId": {
+          "state": "present",
+          "value": "000412"
+        },
+        "ucpathDepartment": {
+          "state": "present",
+          "value": "HOUSING/DINING/HOSPITALITY"
+        },
+        "observedDepartmentOptions": [
+          "- - -",
+          "000141 - Early Childhood Education Center",
+          "000412 - Housing/Dining/Hospitality",
+          "000414 - Bookstore",
+          "000422 - Triton Print & Digital Media",
+          "000719 -  Supply Chain Services"
+        ],
+        "payrollTitleCode": "004921",
+        "payrollTitle": "STDT 2",
+        "timekeeperName": "Julian Zaw",
+        "lastDayWorked": "06/10/2026",
+        "separationDate": "06/10/2026",
+        "terminationEffectiveDate": "06/11/2026",
+        "transactionNumber": "T002209631",
+        "observedExistingComments": ""
+      }
+    },
+    {
+      "label": "finalization-subject-mismatch",
+      "workflow": "separations-kuali-finalization",
+      "kind": "subject-mismatch",
+      "availability": {
+        "state": "unknown",
+        "lastObserved": "2026-08-20",
+        "reason": "The scenario declares the mismatch arm, but no live subject for it has been mapped or observed."
+      },
+      "provenance": {
+        "document": "docs/rebuild/reference/guards-and-tests.md",
+        "section": "§10.4 as-built subject-mismatch case"
+      },
+      "usagePolicy": "read-only",
+      "cleanupObligation": "None until an operator-approved read-only mismatch witness is mapped.",
+      "owner": "HR automation operator",
+      "publicInput": {}
+    }
+  ]
+}

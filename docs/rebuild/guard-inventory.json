@@ -170,6 +170,14 @@
       "replacementRequired": true
     },
     {
+      "name": "test-target-registry",
+      "file": "tests/unit/architecture/test-target-registry.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/guards-and-tests.md",
+      "invariant": "Ref guards-and-tests §10.5: every T1b manifest label has exactly one strict registry entry with matching workflow and subject kind; the checked-in export is recursively frozen, real EIDs cannot enter publicInput, and the ordinary finalization canary remains unavailable until dated evidence makes it complete.",
+      "replacementRequired": true
+    },
+    {
       "name": "ai-advisory-no-authority",
       "file": "tests/unit/architecture/ai-advisory-no-authority.test.ts",
       "status": "active",

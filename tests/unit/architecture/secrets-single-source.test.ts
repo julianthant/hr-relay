@@ -3,7 +3,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import { CONFIG_ENV_BINDINGS } from "../../../src/domain/config/resolve.js";
-import { SECRET_FAMILY_SPECS, SECRET_SPECS } from "../../../src/domain/secrets.js";
+import {
+  SECRET_FAMILY_SPECS,
+  SECRET_SPECS,
+  TEST_TARGET_EID_SECRET_SPECS,
+} from "../../../src/domain/secrets.js";
 import {
   ENVIRONMENT_SOURCE_EXTENSIONS,
   inventoryEnvironmentAccesses,
@@ -55,7 +59,10 @@ const CONFIG_OWNER_PREFIX = "src/domain/config/";
 const ALLOWLIST: CountAllowlist = {};
 
 const CREDENTIAL_KEYS: ReadonlySet<string> = new Set(
-  SECRET_SPECS.filter((spec) => spec.source === "environment").map((spec) => spec.env),
+  [
+    ...SECRET_SPECS.filter((spec) => spec.source === "environment").map((spec) => spec.env),
+    ...TEST_TARGET_EID_SECRET_SPECS.map((spec) => spec.env),
+  ],
 );
 const CREDENTIAL_FAMILIES: readonly { readonly prefix: string; readonly maximum: number }[] =
   SECRET_FAMILY_SPECS.map(({ envPrefix, maximum }) => ({ prefix: envPrefix, maximum }));

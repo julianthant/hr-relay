@@ -228,6 +228,19 @@ once; `src/domain/secrets.ts` is the **only** module permitted to read a credent
 `process.env` (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated
 into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
+Dry-run subjects live in the strict, recursively frozen `config/test-subjects.json` registry. A
+scenario asks for a label; the loader requires that label's workflow and kind to match its manifest.
+`gone` / `unknown` / `consumed` labels resolve `blocked` before any browser starts. An `available`
+entry that cannot form the workflow's exact canonical input is a registry defect and throws with the
+label and `lastObserved` date. Commit every known non-sensitive input field; real EIDs stay in `.env`
+behind the closed EID references read only by `src/domain/secrets.ts`.
+
+> 2026-08-25 — A named canary looked like reusable fixture data, but two earlier Kuali actions had
+> already disappeared between live passes and the current finalization canary still lacked a real
+> transaction number before 2026-08-28. Availability without a dated observation turns normal live
+> subject decay into misleading test red; availability with incomplete input is instead a named
+> registry defect.
+
 ## Conventions
 
 - `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
