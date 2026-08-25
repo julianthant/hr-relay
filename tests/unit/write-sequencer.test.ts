@@ -138,6 +138,7 @@ interface Harness {
   readonly clock: TestClock;
   readonly manager: WorkerSessionManager;
   readonly sessions: ReturnType<typeof writeFixtureSessions>;
+  readonly scheduler: ManualScheduler;
   readonly emitter: ReturnType<typeof recordingEmitter>;
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly sequencer: ProductionWriteSequencer;
@@ -186,6 +187,7 @@ function harness(options: Readonly<{
     },
   };
   const ids = sequentialIdFactory("c");
+  const scheduler = new ManualScheduler(clock);
   const sequencer = createWriteSequencer({
     stores: registry,
     authority: database,
@@ -193,7 +195,7 @@ function harness(options: Readonly<{
     emitter: spanSink,
     clock,
     ids,
-    scheduler: new ManualScheduler(clock),
+    scheduler,
     taskDeadlineMs: 60_000,
     operator: "local-operator",
     log: recordingLogger().log,
@@ -212,7 +214,7 @@ function harness(options: Readonly<{
       context.run.envelope.configFingerprint,
       () => sequencer.executeDryRun(context),
     );
-  return { world, database, clock, manager, sessions, emitter, ids, sequencer, execute, executeDryRun };
+  return { world, database, clock, manager, sessions, scheduler, emitter, ids, sequencer, execute, executeDryRun };
 }
 
 function claimRunning(
@@ -689,6 +691,46 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
 });
 
 describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, never silent)", () => {
+  it("keeps the commit lane and session owned until a deadline-ignoring callback actually settles", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    let releaseCallback = (): void => undefined;
+    const callbackMaySettle = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let reportCallbackInFlight = (): void => undefined;
+    const callbackInFlight = new Promise<void>((resolve) => {
+      reportCallbackInFlight = resolve;
+    });
+    h.world.afterCommitClickBeforeTaskSettlement = async () => {
+      reportCallbackInFlight();
+      await callbackMaySettle;
+    };
+
+    const execution = h.execute(contextFor(run, claim));
+    await callbackInFlight;
+    const [commitDeadline] = h.scheduler.pending();
+    assert.ok(commitDeadline, "the in-flight commit owns its immutable task deadline");
+    commitDeadline.fire();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(
+      h.emitter.events()
+        .filter((event) => event.spanPath.endsWith("/commit"))
+        .map((event) => event.t),
+      ["span.started"],
+      "deadline alone cannot flush the fenced commit lane before callback settlement",
+    );
+    assert.equal(intentByKey(h.database)?.status, "attempting", "the unsettled write remains recovery-visible");
+    assert.deepEqual(h.sessions.closeReasons(), [], "the callback's transaction session remains open");
+
+    releaseCallback();
+    await assert.rejects(execution, /exceeded its immutable 60000ms task deadline/u);
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
+  });
+
   it("invokes the external commit before a fence-event writer failure when recordData runs pre-click", async () => {
     const h = harness({ emitterThrowsOn: "transaction.fenced" });
     const { run, claim } = claimRunning(h.database, h.clock);

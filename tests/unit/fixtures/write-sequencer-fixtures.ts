@@ -275,6 +275,8 @@ export interface WriteFixtureWorld {
   commitRecordsBeforeClick: boolean;
   /** Called between the fence and the click (the fence-before-click witness). */
   onCommitClick?: () => void;
+  /** Optional non-cooperative tail: the commit callback ignores abort until this promise settles. */
+  afterCommitClickBeforeTaskSettlement?: () => Promise<void>;
   /** Called when the staged page's subject observation is read (beat ③). */
   onSubjectRead?: () => void;
   /** The exact capability the last commit click received (beat ⑤ witness). */
@@ -380,6 +382,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
         ctx.recordData({ direction: "read", field: "preClickPageState", value: "ready-to-submit" });
       }
       await ctx.driver.commit("ucpath.write-fixture.save-submit", ctx.mutation);
+      await world.afterCommitClickBeforeTaskSettlement?.();
       const proof = WriteFixtureProofSchema.parse(world.commitOutput);
       ctx.recordData({ direction: "write", field: "transactionId", value: proof.transactionId });
       if (world.recordUndeclaredCommitField) {
@@ -396,6 +399,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
         ctx.recordData({ direction: "read", field: "preClickPageState", value: "ready-to-submit" });
       }
       await ctx.driver.commit("ucpath.write-fixture.save", ctx.mutation);
+      await world.afterCommitClickBeforeTaskSettlement?.();
       const proof = WriteFixtureProofSchema.parse(world.commitOutput);
       ctx.recordData({ direction: "write", field: "transactionId", value: proof.transactionId });
       if (world.recordUndeclaredCommitField) {

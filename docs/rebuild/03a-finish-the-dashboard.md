@@ -665,6 +665,10 @@ declaration redaction wait until the commit callback settles; then the sequencer
 record-time evidence — `observedAt` is never restamped — but not record-time delivery. The delay is
 required because a legal commit task may record a staged/page fact BEFORE invoking its driver; a
 fallible span writer in that callback would otherwise win the durable fence and prevent the click.
+"Settles" means the callback itself, not merely its deadline race: abort is requested at the bound,
+but no commit-lane event, park, or transaction-session close may run while a signal-ignoring callback
+remains in flight. An indefinitely unsettled callback therefore leaves the durable intent
+`attempting` under the live owner; process-loss recovery, not detached instrumentation, takes it over.
 If the callback later throws, its buffered batches are still flushed before the write is parked.
 When both the task and that terminal emission fail, the task error remains first and as the cause of
 an `AggregateError`; the writer error is retained second. Parking carries that aggregate as its

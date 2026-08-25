@@ -367,8 +367,23 @@ export interface BoundedTaskRecordBatch {
   readonly points: readonly DataPoint[];
 }
 
-/** Every task invocation races a mandatory injected monotonic deadline (ref execution-and-sessions §5.5). */
-export async function invokeBoundedTask(
+interface BoundedTaskResult {
+  readonly raw: unknown;
+  readonly recorded: readonly DataPoint[];
+}
+
+type BoundedTaskSettlement =
+  | Readonly<{ state: "fulfilled"; result: BoundedTaskResult }>
+  | Readonly<{ state: "rejected"; error: unknown }>;
+
+interface BoundedTaskInvocation {
+  /** The ordinary deadline/cancellation race used by non-fenced task lanes. */
+  readonly bounded: Promise<BoundedTaskResult>;
+  /** The callback itself, including a non-cooperative tail that ignores abort. */
+  readonly settlement: Promise<BoundedTaskSettlement>;
+}
+
+function beginBoundedTask(
   deps: BoundedTaskDeps,
   taskId: TaskId,
   signal: AbortSignal,
@@ -377,7 +392,7 @@ export async function invokeBoundedTask(
     recordData: (point: DataPoint | readonly DataPoint[]) => void,
   ) => Promise<unknown>,
   onRecord?: (batch: BoundedTaskRecordBatch) => void,
-): Promise<{ raw: unknown; recorded: readonly DataPoint[] }> {
+): BoundedTaskInvocation {
   z.number().int().positive().parse(deps.taskDeadlineMs);
   const recorded: DataPoint[] = [];
   const recordData = (pointInput: DataPoint | readonly DataPoint[]): void => {
@@ -406,17 +421,45 @@ export async function invokeBoundedTask(
       ));
     },
   );
-  try {
-    const raw = await raceAbortable(
-      Promise.resolve().then(() => run(controller.signal, recordData)),
-      controller.signal,
-      taskId,
-    );
-    return { raw, recorded };
-  } finally {
-    deadline.cancel();
-    signal.removeEventListener("abort", forwardAbort);
-  }
+  const operation = Promise.resolve().then(() => run(controller.signal, recordData));
+  const settlement: Promise<BoundedTaskSettlement> = operation.then(
+    (raw) => ({ state: "fulfilled", result: { raw, recorded } }),
+    (error: unknown) => ({ state: "rejected", error }),
+  );
+  const bounded = (async (): Promise<BoundedTaskResult> => {
+    try {
+      const raw = await raceAbortable(
+        operation,
+        controller.signal,
+        taskId,
+      );
+      return { raw, recorded };
+    } finally {
+      deadline.cancel();
+      signal.removeEventListener("abort", forwardAbort);
+    }
+  })();
+  return { bounded, settlement };
+}
+
+/** Every task invocation races a mandatory injected monotonic deadline (ref execution-and-sessions §5.5). */
+export async function invokeBoundedTask(
+  deps: BoundedTaskDeps,
+  taskId: TaskId,
+  signal: AbortSignal,
+  run: (
+    innerSignal: AbortSignal,
+    recordData: (point: DataPoint | readonly DataPoint[]) => void,
+  ) => Promise<unknown>,
+  onRecord?: (batch: BoundedTaskRecordBatch) => void,
+): Promise<BoundedTaskResult> {
+  return await beginBoundedTask(
+    deps,
+    taskId,
+    signal,
+    run,
+    onRecord,
+  ).bounded;
 }
 
 function taskCtx(
@@ -1778,23 +1821,38 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         let commitSettlement:
           | Readonly<{ state: "done"; raw: unknown }>
           | Readonly<{ state: "failed"; error: unknown }>;
+        const commitInvocation = beginBoundedTask(
+          deps,
+          commitContract.id,
+          context.signal,
+          (innerSignal, recordData) => {
+            const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
+            return runImpl({
+              input: commitInput,
+              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData), driver, mutation: capability },
+            });
+          },
+          (batch) => bufferedCommitObservations.push(batch),
+        );
         try {
-          const { raw } = await invokeBoundedTask(
-            deps,
-            commitContract.id,
-            context.signal,
-            (innerSignal, recordData) => {
-              const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
-              return runImpl({
-                input: commitInput,
-                ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData), driver, mutation: capability },
-              });
-            },
-            (batch) => bufferedCommitObservations.push(batch),
-          );
+          const { raw } = await commitInvocation.bounded;
           commitSettlement = { state: "done", raw };
-        } catch (error) {
-          commitSettlement = { state: "failed", error };
+        } catch (boundedFailure) {
+          // A deadline requests cancellation but cannot prove that an external
+          // callback obeyed it. Keep the fenced intent and transaction lease
+          // owned until the callback itself settles. If it never does, this
+          // process never emits, parks, or closes; crash recovery owns the
+          // durable `attempting` intent instead of racing detached I/O.
+          const operationSettlement = await commitInvocation.settlement;
+          const failure = operationSettlement.state === "rejected"
+            && operationSettlement.error !== boundedFailure
+            ? aggregateSecondaryFailure(
+              operationSettlement.error,
+              boundedFailure,
+              `${commitContract.id} task failed after its bounded invocation also failed`,
+            )
+            : boundedFailure;
+          commitSettlement = { state: "failed", error: failure };
         }
 
         let emissionFailure: Readonly<{ error: unknown }> | undefined;
