@@ -45,6 +45,7 @@ import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-serv
 import { planStart } from "../../src/services/start/plan.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "./fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
+import { WriteFixtureCommit, WriteFixturePrepare } from "./fixtures/write-sequencer-fixtures.js";
 import {
   ARCHIVED_RUN,
   ARCHIVED_RUN_WITH_SECTIONS,
@@ -103,9 +104,21 @@ function descriptorAt(version: number, fingerprint: string): AnyWorkflowDescript
         replay: "checkpoint",
         bind: ({ input }) => ({ eid: input.eid }),
       })
+      // The archive fixture must be capable of producing a REAL rehearsal
+      // envelope. Dry-run support is derived from transaction nodes (D209), so
+      // a read-only graph would correctly refuse the start before this suite
+      // could prove that Archive preserves `dryRun:true`.
+      .transaction("previewable-write", {
+        dependsOn: ["probe"],
+        prepare: { uses: WriteFixturePrepare, bind: ({ input }) => ({ eid: input.eid }) },
+        commit: { uses: WriteFixtureCommit, bind: ({ input }) => ({ eid: input.eid }) },
+        dryRun: "stop-after-prepare",
+        probePolicy: "always",
+        probeToFenceMaxMs: 30_000,
+      })
       .build({
         schema: z.strictObject({ eid: EidSchema }),
-        dependsOn: ["probe"],
+        dependsOn: ["probe", "previewable-write"],
         derive: ({ outputs }) => ({ eid: outputs.probe.eid }),
       }),
   });
@@ -127,6 +140,14 @@ interface World {
    * INDEX entry, which is the only place it was previously unavailable.
    */
   resolvedInstances: readonly { system: string; instance: "prod" | "test" }[];
+  /**
+   * What the frozen row will claim this run WARNED about. Mutable for the same
+   * reason `resolvedInstances` is: the index entry copies the row's own field,
+   * and the only way to prove a copy is to move the thing being copied.
+   */
+  warnings:
+    | { state: "present"; count: number; first: string }
+    | { state: "absent"; reason: string };
 }
 
 /**
@@ -138,6 +159,9 @@ interface World {
 function snapshotSource(world: {
   database: AuthorityDatabase;
   resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
+  warnings?:
+    | { state: "present"; count: number; first: string }
+    | { state: "absent"; reason: string };
 }) {
   return {
     snapshot(runId: string): ArchiveRunSnapshot {
@@ -184,7 +208,8 @@ function snapshotSource(world: {
           subtitle: { state: "absent", reason: "the start plan proposed no subtitle" },
           status,
           liveMessage: { state: "absent", reason: "an archived run has no live message" },
-          warnings: { state: "absent", reason: "this run's evidence receipt records no warning" },
+          warnings: world.warnings
+            ?? { state: "absent", reason: "this run's evidence receipt records no warning" },
           pipeline: [],
           panelKind: "run",
           availableSections: ["logs"],
@@ -284,6 +309,7 @@ function createWorld(): World {
     registry: V1,
     ids,
     resolvedInstances: [],
+    warnings: { state: "absent", reason: "this run's evidence receipt records no warning" },
     kernel: undefined as unknown as CommandKernel,
   };
   world.kernel = createCommandKernel({
@@ -323,13 +349,13 @@ function envelope(): { commandId: string; requestedAt: string; requestedBy: stri
 }
 
 /** Enqueues one run against the registry's CURRENT descriptor and settles it. */
-function startRun(world: World, eid: string, terminal: boolean): string {
+function startRun(world: World, eid: string, terminal: boolean, dryRun = false): string {
   const plan = planStart(
     { authority: world.database, clock: manualClock(new Date(NOW)), ids: world.ids, planTtlMs: 600_000 },
     {
       descriptor: world.registry,
       submissions: [{ eid }],
-      dryRun: false,
+      dryRun,
       priority: "bulk",
       shape: "single",
       configFingerprint: HASH_B,
@@ -773,6 +799,65 @@ describe("the D80 archive model", () => {
       [...buildArchivedRunDetail(deps, archived).row.resolvedInstances],
       [...entry.resolvedInstances],
     );
+  });
+
+  it("carries the frozen row's dry-run flag and warning count onto the INDEX entry", () => {
+    const world = createWorld();
+    world.warnings = { state: "present", count: 3, first: "CRM returned a stale session on attempt 1" };
+    // A REHEARSAL. Until the index carried the flag, the only way to tell this
+    // row apart from a real filing was to open it — which is the hazard, not
+    // the inconvenience: a dry run and a submitted transaction rendered
+    // identically in the one list an operator scans before acting.
+    const archived = startRun(world, "10873698", true, true);
+    world.registry = V2;
+    assert.equal(apply(world, plan(world)).state, "applied");
+
+    const deps = {
+      clock: manualClock(new Date(NOW)),
+      appVersion: "0.1.0",
+      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+      descriptors: { list: () => [] },
+      ledger: createLedgerReadThrough(world.stateRoot),
+    } as unknown as Parameters<typeof buildArchiveIndex>[0];
+
+    const entry = buildArchiveIndex(deps).entries[0];
+    assert.equal(entry.dryRun, true);
+    assert.deepEqual({ ...entry.warnings }, {
+      state: "present",
+      count: 3,
+      first: "CRM returned a stale session on attempt 1",
+    });
+
+    // Both are COPIES of the frozen row, not second derivations — so the list
+    // and the run's own page can never disagree about whether it wrote.
+    const detail = buildArchivedRunDetail(deps, archived);
+    assert.equal(entry.dryRun, detail.row.dryRun);
+    assert.deepEqual({ ...entry.warnings }, { ...detail.row.warnings });
+  });
+
+  it("keeps the two absences apart: a real filing that recorded no warning", () => {
+    const world = createWorld();
+    const archived = startRun(world, "10873698", true);
+    world.registry = V2;
+    assert.equal(apply(world, plan(world)).state, "applied");
+
+    const deps = {
+      clock: manualClock(new Date(NOW)),
+      appVersion: "0.1.0",
+      authority: { withAuthorityTransaction: (work: never) => world.database.withAuthorityTransaction(work) },
+      descriptors: { list: () => [] },
+      ledger: createLedgerReadThrough(world.stateRoot),
+    } as unknown as Parameters<typeof buildArchiveIndex>[0];
+
+    const entry = buildArchiveIndex(deps).entries.find((candidate) => candidate.runId === archived);
+    assert.equal(entry?.dryRun, false);
+    // NOT a silent zero: the absent arm states WHY there is no count, which is
+    // what separates "this run recorded no warning" from "nothing has derived
+    // this run's warnings yet". A chip drawn from a zero could not tell them
+    // apart, and the surface draws no chip for either.
+    assert.equal(entry?.warnings.state, "absent");
+    if (entry?.warnings.state !== "absent") return;
+    assert.match(entry.warnings.reason, /no warning/);
   });
 
   it("serves an EMPTY instance list for a run that resolved no system", () => {
