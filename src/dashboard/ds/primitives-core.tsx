@@ -4,6 +4,7 @@
  */
 import {
   forwardRef,
+  type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
   type HTMLAttributes,
   type ReactNode,
@@ -156,6 +157,35 @@ export const Button = forwardRef<HTMLButtonElement, DsButtonProps>(
         {children}
         {iconAfter}
       </button>
+    );
+  },
+);
+
+export interface DsButtonLinkProps
+  extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "color">,
+    VariantProps<typeof buttonVariants> {
+  /** icon before the label — 14px, never a bare emoji */
+  icon?: ReactNode;
+  /** icon after the label (chevrons, external-link) */
+  iconAfter?: ReactNode;
+}
+
+/** Button treatment with native link/navigation and download semantics. */
+export const ButtonLink = forwardRef<HTMLAnchorElement, DsButtonLinkProps>(
+  function ButtonLink(
+    { className, variant, size, block, icon, iconAfter, children, ...props },
+    ref,
+  ) {
+    return (
+      <a
+        ref={ref}
+        className={cn(buttonVariants({ variant, size, block }), className)}
+        {...props}
+      >
+        {icon}
+        {children}
+        {iconAfter}
+      </a>
     );
   },
 );

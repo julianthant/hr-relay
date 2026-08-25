@@ -53,6 +53,7 @@ export type { DemoTheme } from "./theme.js";
 
 export {
   Button,
+  ButtonLink,
   IconButton,
   Badge,
   CountBadge,
@@ -65,6 +66,7 @@ export {
 } from "./primitives-core.js";
 export type {
   DsButtonProps,
+  DsButtonLinkProps,
   DsButtonVariant,
   DsIconButtonProps,
   DsBadgeProps,

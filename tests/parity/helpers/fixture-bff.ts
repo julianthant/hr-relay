@@ -12,6 +12,7 @@ import { extname, join, normalize } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
@@ -23,6 +24,7 @@ import {
   FIXTURE_DAY,
   FIXTURE_DAY_WIRE,
   FIXTURE_DIAGNOSTIC_BUNDLE,
+  FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_IDS,
   FIXTURE_RUN_DETAILS,
@@ -141,7 +143,7 @@ export function createFixtureBff(): { app: Hono } {
     if (c.req.param("bundleId") !== FIXTURE_DIAGNOSTIC_BUNDLE.bundleId) {
       return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);
     }
-    return new Response(JSON.stringify(FIXTURE_DIAGNOSTIC_BUNDLE), {
+    return new Response(canonicalJsonStringify(FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST), {
       status: 200,
       headers: {
         "content-type": "application/json; charset=utf-8",

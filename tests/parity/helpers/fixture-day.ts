@@ -34,6 +34,8 @@ import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
 } from "../../../src/domain/dashboard/diagnostic-bundle.js";
+import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
+import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
 import {
   StartPlanResponseSchema,
@@ -66,41 +68,76 @@ const WORKFLOW_ID = personLookupDescriptor.id;
 const at = (minute: number, second = 0): string =>
   `2026-08-03T09:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}.000-07:00`;
 
-/** E29's deterministic populated D137 readback, used only by the production-fixture BFF. */
-export const FIXTURE_DIAGNOSTIC_BUNDLE: DiagnosticBundleWire = DiagnosticBundleWireSchema.parse({
-  bundleId: uuidOf(904),
-  capturedAt: at(35),
-  byteSize: 328,
-  contentDigest: "f".repeat(64),
-  redaction: {
-    fields: [
-      { key: "employeeName", state: "transformed", classification: "sensitive-hr", transform: "digest", value: "a".repeat(64) },
-      { key: "ucpathPassword", state: "redacted", classification: "secret", transform: "drop" },
-    ],
-    warnings: ["unclassified diagnostic field at index 3 dropped"],
+const FIXTURE_DIAGNOSTIC_REDACTION = {
+  fields: [
+    { key: "employeeName", state: "transformed", classification: "sensitive-hr", transform: "digest", value: "a".repeat(64) },
+    { key: "ucpathPassword", state: "redacted", classification: "secret", transform: "drop" },
+  ],
+  warnings: ["unclassified diagnostic field at index 3 dropped"],
+} as const;
+
+const FIXTURE_DIAGNOSTIC_ATTACHMENTS = [
+  {
+    kind: "screenshot",
+    artifactId: uuidOf(905),
+    mediaType: "image/png",
+    byteLength: 200,
+    digest: "1".repeat(64),
+    sensitivity: "redacted",
+    width: 1280,
+    height: 720,
   },
+  {
+    kind: "accessibility-excerpt",
+    artifactId: uuidOf(906),
+    mediaType: "text/yaml",
+    byteLength: 128,
+    digest: "2".repeat(64),
+    sensitivity: "redacted",
+  },
+] as const;
+
+const FIXTURE_DIAGNOSTIC_IDENTITY = {
+  runId: uuidOf(4),
+  origin: { kind: "operator-request", requestedBy: "local-operator" },
+  capturedAt: at(35),
+  configFingerprint: CONFIG_FINGERPRINT,
+  descriptorFingerprint: CONTRACT_FINGERPRINT,
+  redaction: FIXTURE_DIAGNOSTIC_REDACTION,
+  attachments: FIXTURE_DIAGNOSTIC_ATTACHMENTS,
+} as const;
+
+/** E29's deterministic durable D137 row. The manifest route serves this canonical value exactly. */
+export const FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST: DiagnosticBundle = DiagnosticBundleSchema.parse({
+  bundleId: uuidOf(904),
+  runId: FIXTURE_DIAGNOSTIC_IDENTITY.runId,
+  origin: FIXTURE_DIAGNOSTIC_IDENTITY.origin,
+  createdAt: FIXTURE_DIAGNOSTIC_IDENTITY.capturedAt,
+  contentDigest: deriveDiagnosticContentDigest(FIXTURE_DIAGNOSTIC_IDENTITY),
+  configFingerprint: FIXTURE_DIAGNOSTIC_IDENTITY.configFingerprint,
+  descriptorFingerprint: FIXTURE_DIAGNOSTIC_IDENTITY.descriptorFingerprint,
+  redaction: FIXTURE_DIAGNOSTIC_IDENTITY.redaction,
+  attachments: FIXTURE_DIAGNOSTIC_IDENTITY.attachments,
+  retention: { kind: "pinned", reason: "fix" },
+});
+
+/** E29's strict browser projection of the durable row. */
+export const FIXTURE_DIAGNOSTIC_BUNDLE: DiagnosticBundleWire = DiagnosticBundleWireSchema.parse({
+  bundleId: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.bundleId,
+  capturedAt: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.createdAt,
+  byteSize: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments.reduce((total, attachment) => total + attachment.byteLength, 0),
+  contentDigest: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.contentDigest,
+  redaction: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.redaction,
   contents: [
     {
-      kind: "screenshot",
+      ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments[0],
       key: "Screenshot",
       detail: "image/png · 200 bytes · 1280 × 720 px · redacted",
-      artifactId: uuidOf(905),
-      mediaType: "image/png",
-      byteLength: 200,
-      digest: "1".repeat(64),
-      sensitivity: "redacted",
-      width: 1280,
-      height: 720,
     },
     {
-      kind: "accessibility-excerpt",
+      ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments[1],
       key: "Accessibility excerpt",
       detail: "text/yaml · 128 bytes · redacted",
-      artifactId: uuidOf(906),
-      mediaType: "text/yaml",
-      byteLength: 128,
-      digest: "2".repeat(64),
-      sensitivity: "redacted",
     },
   ],
 });

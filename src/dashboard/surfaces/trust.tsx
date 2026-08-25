@@ -27,6 +27,7 @@ import {
   Chip,
   Banner,
   Button,
+  ButtonLink,
   Dialog,
   DialogBody,
   DialogContent,
@@ -135,22 +136,33 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
   const client = useDashboardClient();
   const [bundleDialog, setBundleDialog] = useState<BundleDialogState>({ state: "closed" });
   const bundleTriggerRef = useRef<HTMLButtonElement>(null);
+  const bundleRequestRevision = useRef(0);
   const openBundle = (): void => {
     if (detail.diagnosticBundle.state !== "present") return;
     const bundleId = detail.diagnosticBundle.bundleId;
+    const requestRevision = ++bundleRequestRevision.current;
     setBundleDialog({ state: "loading", bundleId });
     client.diagnosticBundle(bundleId).then(
-      (bundle) => setBundleDialog({ state: "ready", bundle }),
-      (error: unknown) => setBundleDialog({
-        state: "error",
-        bundleId,
-        message: error instanceof DashboardClientError || error instanceof Error
-          ? error.message
-          : "the diagnostic bundle readback failed",
-      }),
+      (bundle) => {
+        if (bundleRequestRevision.current === requestRevision) {
+          setBundleDialog({ state: "ready", bundle });
+        }
+      },
+      (error: unknown) => {
+        if (bundleRequestRevision.current === requestRevision) {
+          setBundleDialog({
+            state: "error",
+            bundleId,
+            message: error instanceof DashboardClientError || error instanceof Error
+              ? error.message
+              : "the diagnostic bundle readback failed",
+          });
+        }
+      },
     );
   };
   const closeBundle = (): void => {
+    bundleRequestRevision.current += 1;
     setBundleDialog({ state: "closed" });
     requestAnimationFrame(() => bundleTriggerRef.current?.focus());
   };
@@ -321,12 +333,18 @@ function DiagnosticBundleDialog({
               </p>
               <div className="flex flex-col gap-[var(--ds-space-snug)]">
                 {state.bundle.contents.map((content) => (
-                  <div key={content.artifactId} className="flex min-w-0 items-baseline gap-[var(--ds-space-base)]">
+                  <div
+                    key={content.artifactId}
+                    className={cn(
+                      "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
+                      "sm:grid-cols-[auto_minmax(0,16rem)_minmax(0,1fr)] sm:items-baseline",
+                    )}
+                  >
                     <Check aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-success-fg)]")} />
-                    <span className={cn(dsText.body, "min-w-0 basis-64 shrink-0 break-words text-[color:var(--ds-fg)]")}>
+                    <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
                       {content.key}
                     </span>
-                    <span className={cn(dsText.meta, "min-w-0 flex-1 break-words text-[color:var(--ds-fg-muted)]")}>
+                    <span className={cn(dsText.meta, "col-start-2 min-w-0 break-words text-[color:var(--ds-fg-muted)] sm:col-start-3")}>
                       {content.detail} · {content.digest}
                     </span>
                   </div>
@@ -341,14 +359,15 @@ function DiagnosticBundleDialog({
         <DialogFooter>
           <Button variant="secondary" className="min-h-11" onClick={onClose}>Close</Button>
           {state.state === "ready" && manifestUrl !== undefined && (
-            <Button
+            <ButtonLink
               variant="primary"
               className="min-h-11"
               icon={<Download aria-hidden className={dsIcon.md} />}
-              onClick={() => window.location.assign(manifestUrl)}
+              href={manifestUrl}
+              download={`${bundleId}.json`}
             >
               Download the manifest
-            </Button>
+            </ButtonLink>
           )}
         </DialogFooter>
       </DialogContent>
