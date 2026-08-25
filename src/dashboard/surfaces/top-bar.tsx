@@ -595,7 +595,7 @@ export function NotificationBell({
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<NotificationFilterKey>("all");
   const [commandError, setCommandError] = useState<string | null>(null);
-  const { pinned, shown, counts, unread, critical } = notificationInboxView(notifications, filter);
+  const { pinned, shown, counts, empty, unread, critical } = notificationInboxView(notifications, filter);
 
   const issue = (
     type: "notification-read" | "notification-unread" | "notification-snooze",
@@ -632,7 +632,7 @@ export function NotificationBell({
         aria-label={`Notifications — ${unread} unread`}
         onClick={() => setOpen(true)}
         className={cn(
-          "relative rounded-[var(--ds-radius-md)] p-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]",
+          "relative flex touch-manipulation items-center justify-center rounded-[var(--ds-radius-md)] p-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)] max-sm:min-h-11 max-sm:min-w-11 max-sm:p-0",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
           dsFocus,
           dsMotion.base,
@@ -668,34 +668,6 @@ export function NotificationBell({
           size="480px"
         >
           <div className="flex min-h-0 flex-1 flex-col">
-            {/* The gap is outside every ordinary-filter branch. It reports an
-                UNKNOWN interval, not a repaired stream, so it has no lifecycle
-                control and reconnecting cannot make it leave this lane. */}
-            {pinned.map((entry) => (
-              <div
-                key={entry.notificationId}
-                data-backfill-gap="pinned"
-                className="border-b border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]"
-              >
-                <Refusal
-                  title={entry.title}
-                  code="event-stream-history-gap"
-                  meta={[`${fmtElapsed(elapsedSecondsBetween(entry.occurredAt, nowIso))} ago`, "pinned"]}
-                >
-                  <span className="flex flex-col gap-[var(--ds-space-tight)]">
-                    <span>
-                      The dashboard could not backfill part of the event stream. Resnapshot and reconcile the affected
-                      work before relying on dashboard history.
-                    </span>
-                    <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-                      This safety record cannot be filtered, marked read, snoozed or dismissed. A reconnect does not
-                      clear it.
-                    </span>
-                  </span>
-                </Refusal>
-              </div>
-            ))}
-
             {/* A refused command is SAID, never dropped: the demo has no server
                 to refuse one, and a silently failed Mark read would leave the
                 operator believing they had cleared something they had not. */}
@@ -707,7 +679,10 @@ export function NotificationBell({
               </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
+            <div
+              data-notification-filters
+              className="flex shrink-0 flex-wrap items-center gap-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] bg-[var(--ds-surface-overlay)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]"
+            >
               {NOTIFICATION_FILTERS.map((entry) => (
                 <Chip
                   key={entry.key}
@@ -721,8 +696,40 @@ export function NotificationBell({
               ))}
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-              {shown.length === 0 ? (
+            <div data-notification-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              {/* Permanent safety rows share the bounded content scroller with
+                  ordinary rows. Six gaps cannot push the filters or the rest
+                  of the inbox beyond the viewport; every row remains reachable. */}
+              {pinned.length > 0 && (
+                <section aria-label="Pinned safety notices">
+                  {pinned.map((entry) => (
+                    <div
+                      key={entry.notificationId}
+                      data-backfill-gap="pinned"
+                      className="border-b border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]"
+                    >
+                      <Refusal
+                        title={entry.title}
+                        code="event-stream-history-gap"
+                        meta={[`${fmtElapsed(elapsedSecondsBetween(entry.occurredAt, nowIso))} ago`, "pinned"]}
+                      >
+                        <span className="flex flex-col gap-[var(--ds-space-tight)]">
+                          <span>
+                            The dashboard could not backfill part of the event stream. Resnapshot and reconcile the
+                            affected work before relying on dashboard history.
+                          </span>
+                          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                            This safety record cannot be filtered, marked read, snoozed or dismissed. A reconnect does
+                            not clear it.
+                          </span>
+                        </span>
+                      </Refusal>
+                    </div>
+                  ))}
+                </section>
+              )}
+
+              {empty ? (
                 <EmptyState
                   icon={<Inbox aria-hidden className={dsIcon.lg} />}
                   title="Nothing under this filter"
@@ -1064,12 +1071,13 @@ export const TopBar = memo(function TopBar({
         dsSize.hTopbar,
         dsBorder.base,
         dsSurface.card,
-        "gap-[var(--ds-space-cozy)] px-[var(--ds-shell-inset)]",
+        "gap-[var(--ds-space-cozy)] px-[var(--ds-shell-inset)] max-sm:gap-[var(--ds-space-tight)] max-sm:px-[var(--ds-space-base)]",
+        "max-sm:overflow-x-auto max-sm:overscroll-contain",
       )}
     >
       {/* The app's name is the page's ONE h1. It reads at `dsText.ui` like the
           chrome it is — heading LEVEL is the document outline, not a type size. */}
-      <div className="flex shrink-0 items-center gap-[var(--ds-space-base)]">
+      <div className="flex shrink-0 items-center gap-[var(--ds-space-base)] max-sm:order-1">
         <span
           aria-hidden
           className={cn("flex items-center justify-center", dsRadius.md, "size-[var(--ds-h-sm)] bg-[var(--ds-accent-quiet)]")}
@@ -1081,23 +1089,31 @@ export const TopBar = memo(function TopBar({
 
       {/* Product navigation sits beside the history pair: both are ways of
           changing WHERE YOU ARE, and the switcher is the deliberate one. */}
-      <NavHistoryControls nav={nav} />
+      <span className="max-sm:order-3 max-sm:flex sm:contents">
+        <NavHistoryControls nav={nav} />
+      </span>
 
-      <ShellViewSwitcher view={view} onView={onView} />
+      <span className="max-sm:order-4 max-sm:flex sm:contents">
+        <ShellViewSwitcher view={view} onView={onView} />
+      </span>
 
       {/* Search takes the bar's slack (`ml-auto flex-1`, capped at 240px), which
           is what pins the date navigator and the icon cluster to the right edge
           without a spacer div. The date here IS the day the queue reads. */}
-      <DaySearchControl
-        surfaces={daySurfaces}
-        day={day}
-        workflowLabelOf={workflowLabelOf}
-        onOpenRun={onOpenRun}
-      />
+      <span className="max-sm:order-5 max-sm:flex sm:contents">
+        <DaySearchControl
+          surfaces={daySurfaces}
+          day={day}
+          workflowLabelOf={workflowLabelOf}
+          onOpenRun={onOpenRun}
+        />
+      </span>
 
-      <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} />
+      <span className="max-sm:order-6 max-sm:flex sm:contents">
+        <DateNav day={day} today={today} monthCounts={monthCounts} onDay={onDay} />
+      </span>
 
-      <span className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
+      <span className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-hair)] max-sm:order-2">
         {/* Preflight, on screen at all times rather than three clicks inside a
             page of preferences. Its glyph carries the worst verdict — and it is
             absent entirely while nothing serves the checks, because an

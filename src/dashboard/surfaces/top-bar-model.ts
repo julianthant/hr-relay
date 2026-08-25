@@ -54,6 +54,8 @@ export interface NotificationInboxView {
   readonly pinned: readonly PinnedNotificationRowWire[];
   readonly shown: readonly OrdinaryNotificationRowWire[];
   readonly counts: Readonly<Record<NotificationFilterKey, number>>;
+  readonly visibleCount: number;
+  readonly empty: boolean;
   readonly unread: number;
   readonly critical: boolean;
 }
@@ -91,6 +93,8 @@ export function notificationInboxView(
     pinned: Object.freeze(pinned),
     shown: Object.freeze(shown),
     counts: Object.freeze(counts),
+    visibleCount: pinned.length + shown.length,
+    empty: pinned.length + shown.length === 0,
     unread: pinned.length + ordinaryUnread,
     critical: pinned.length > 0
       || listed.some((entry) => entry.state === "unread" && entry.severity === "error"),

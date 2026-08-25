@@ -43,4 +43,12 @@ describe("notification inbox model", () => {
       assert.equal(view.critical, true);
     }
   });
+
+  it("counts a pinned ping as visible content under the Pings filter", () => {
+    const view = notificationInboxView([PINNED], "ping");
+
+    assert.equal(view.counts.ping, 1);
+    assert.equal(view.visibleCount, 1);
+    assert.equal(view.empty, false);
+  });
 });

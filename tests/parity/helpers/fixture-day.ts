@@ -500,15 +500,15 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
 export const BACKFILL_GAP_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
   ...FIXTURE_DAY_WIRE,
   notifications: [
-    {
+    ...[803, 804, 805, 806, 807, 808].map((seed, index) => ({
       kind: "backfill-gap",
-      notificationId: uuidOf(803),
+      notificationId: uuidOf(seed),
       actorId: "local-operator",
       severity: "error",
       title: "Notification history is incomplete",
       state: "pinned",
-      occurredAt: at(47),
-    },
+      occurredAt: at(47 + index),
+    } as const)),
     ...FIXTURE_DAY_WIRE.notifications,
   ],
 });
