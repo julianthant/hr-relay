@@ -426,6 +426,7 @@ function ArchiveWarningCount({ warnings }: { warnings: ArchiveEntryWire["warning
   if (chip.state === "absent") return null;
   return (
     <span
+      aria-label={plural(chip.count, "warning")}
       title={chip.title}
       className={cn(
         "inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[var(--ds-space-tight)] rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]",
