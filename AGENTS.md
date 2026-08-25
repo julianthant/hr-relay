@@ -263,3 +263,7 @@ directions. Retiring a guard requires an explicit `retired` entry naming the dec
 where the invariant went; a guard that simply disappears is indistinguishable from an accident.
 
 Never push to any remote without explicit instruction.
+
+### Dated lessons
+
+- **2026-08-25 — operator prose containing a closed wire enum must use the same display fold as pills.** Keep the pill's exact label available, then apply a total, tested sentence-case fold for prose; never print the transport spelling beside a display label.

@@ -22,10 +22,10 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [ ] the three nodes drawn under this one on 2026-08-20 — the Duo ceremony lease, the worker pool and sessions, observed logs
 - [ ] `ref frontend-backend-integration` §7.4's performance budgets — the instrument and its BEFORE baseline landed 2026-08-21 and **D5's AFTER numbers are recorded**; D4 still owes its half, and the recorded numbers become the non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
-- [!] demo fidelity — every region exact or ruled; ~149 OPEN questions remain across the three 2026-08-21 ledgers after the archive UI slice closed 14 ledger marks (Track F, §Demo fidelity — every detail, region by region)
+- [!] demo fidelity — every region exact or ruled; ~148 OPEN questions remain across the three 2026-08-21 ledgers after the archive UI slice and Activity AC24 closed 15 ledger marks (Track F, §Demo fidelity — every detail, region by region)
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
 > 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
-> 2026-08-25 | track-f archive UI | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; ledger 3 is now 346/1,119 exact with 249 OPEN marks; left in this unit: every non-archive served-and-dropped fact, including Activity's `AC24` enum sentence
+> 2026-08-25 | track-f archive UI + Activity AC24 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; ledger 3 remains 346/1,119 exact with 248 OPEN marks; left in this unit: Explorer `EX5` and every other non-archive served-and-dropped fact
 <!-- /roadmap-status -->
 
 ### What this phase is, and what it is not
@@ -76,7 +76,7 @@ hold. Only the first four hold at HEAD.
 7. The Duo ceremony lease exists, so a second workflow's worker cold-starting beside the first
    cannot burn the shared credential's counter.
 8. Every region of the dashboard is demo-exact or ruled — Track F's bar, above Track B's: Track B's
-   definition of done was the findings ledger; demo fidelity is the stricter bar, and ~149 OPEN
+   definition of done was the findings ledger; demo fidelity is the stricter bar, and ~148 OPEN
    questions stand against it at HEAD (§Demo fidelity — every detail, region by region).
 
 ### The honest state at HEAD, surface by surface
@@ -331,8 +331,8 @@ question at the moment a field crosses onto a wire is the guard working.
 <!-- roadmap-status: track-f -->
 - [!] the operator rules the 37 shell · queue · run-start OPEN questions — ledger 1, `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` §Roll-up (28 numbered questions over 37 rows)
 - [!] the operator rules the 54 run-detail OPEN questions — ledger 2, `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §Roll-up (8 served-and-dropped · 7 structural · 24 words-and-glyphs · 8 rebuild-only · 2 stale claims, plus the B45 tension)
-- [!] the operator rules the ~58 standing-surface OPEN questions, the twelve structural ones first — ledger 3, `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §Roll-up (249 marks collapsing to ~58 questions)
-- [ ] the served-and-dropped facts drawn — pure FE, no ruling needed; receipt/failure, intake, archive, the queue gate age and the run-modal descriptor version are complete, leaving Activity AC24 and Explorer EX5 (§Served-and-dropped below)
+- [!] the operator rules the ~58 standing-surface OPEN questions, the twelve structural ones first — ledger 3, `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §Roll-up (248 marks collapsing to ~58 questions)
+- [ ] the served-and-dropped facts drawn — pure FE, no ruling needed; receipt/failure, intake, archive, the queue gate age, the run-modal descriptor version and Activity AC24 are complete, leaving only Explorer EX5 (§Served-and-dropped below)
 - [ ] the structural run-detail ports — the failure record's disclosure and write-state block, the focusable timeline segment, the step group's Well + band + dividers, one owner for `dataExpanded`, the grouped log stream
 - [x] the stale claims in code and docs corrected (§Stale and false claims below) — `5cb9a307`, `33e140f9`, `06041db1`, `5b13ec0e`, `155b1048`
 - [ ] the vocabulary sweep — every word and glyph off the demo across the three ledgers reverted, or recorded with its ruling
@@ -343,7 +343,7 @@ question at the moment a field crosses onto a wire is the guard working.
 - [ ] wire: the OPERATOR half of phone capture — session state, pages received, the unreadable-page alert, the contact sheet (ledger 3 CP2–CP21)
 > 2026-08-21 | docs-cohesion 03a fidelity fold | folded from the three 2026-08-21 ledgers — 1,956 elements/rows audited (489 + 348 + 1,119), 756 exact, ~150 distinct OPEN questions (37 + 54 + ~60; 260 marks in ledger 3); nothing is ticked because nothing here is a ruling yet; left: every line above, in the order the operator rules them
 > 2026-08-21 | track-f | the 14 rows in §Stale and false claims resolved — 12 record fixes (comments/docs, no behaviour change) plus 2 book-a-gap rows (`intake.md`/`capture.md` created, `explorer.md` reopened with 3 real gaps, `queue-rows.md` corrected); one light-code exception permitted by the unit's brief was not needed — every row resolved as a docs/comments fix. Commits: `5cb9a307` (5 surface header comments), `33e140f9` (DESIGN.md), `06041db1` (queue-rows.md), `5b13ec0e` (intake.md + capture.md + explorer.md + README.md), `155b1048` (operator-trust.md, dashboard-surfaces.md x2, data-intake-and-edit-data.md)
-> 2026-08-25 | track-f archive UI | archive ledger rows AR27, AR62, AR67, AR77, AR78, AR91, AR95, AR96, AR105, AR121, AR123, AR129, AR212 and VB19 disposed by `3d461962` + `d1f87916`; the list/detail/sweep/relaunch/blocker output was photographed before and after without `PARITY_UPDATE`; left: Activity AC24 and every non-archive item on the open served-and-dropped line
+> 2026-08-25 | track-f archive UI + Activity AC24 | archive ledger rows AR27, AR62, AR67, AR77, AR78, AR91, AR95, AR96, AR105, AR121, AR123, AR129, AR212 and VB19 disposed by `3d461962` + `d1f87916`; `4da19fd7` closes Activity AC24 with the shared wire→display fold and sentence-case prose; left: Explorer EX5 and every non-archive item on the open served-and-dropped line
 <!-- /roadmap-status -->
 
 **The standard, in the operator's words.** *"Finish the dashboard, dive deeper, looking back at the
@@ -377,7 +377,7 @@ images. "Cited" is the ledger's own `ruled:` + `unserved:` count where it split 
 | Failure record — head, write-state, remediation, disclosure, classification, bundle | 34 | 7 | 14 (cited) | — | 13 (4 served-and-dropped — CLOSED `df5ea509`) | ledger 2 §R-E |
 | Park / ceremonies — the parked write, the park dialog, the D226 gate ceremony | 36 | 6 | 28 (cited) | — | 2 | ledger 2 §R-F |
 | Archive — ledger, sweeps, detail tabs, relaunch, Versions view | 250 | 106 | 83 (cited) | — | 61 marks | ledger 3 §1 |
-| Activity report | 117 | 57 | 52 (cited) | — | 8 | ledger 3 §2 |
+| Activity report | 117 | 57 | 52 (cited) | — | 7 | ledger 3 §2 |
 | Explorer | 182 | 54 | 97 (cited) | — | 31 | ledger 3 §3 |
 | UI catalog — the demo's row-and-panel catalog vs the selector catalog (not the same surface) | 69 | 0 | 63 (cited) | — | 6 | ledger 3 §4 |
 | Settings + storage doctor | 72 | 2 | 55 (cited) | — | 15 marks / 10 questions | ledger 3 §5 |
@@ -385,7 +385,7 @@ images. "Cited" is the ledger's own `ruled:` + `unserved:` count where it split 
 | Phone capture — the demo's DESKTOP view vs the rebuild's phone | 62 | 1 | 55 (cited) | — | 6 | ledger 3 §7 |
 | Version-bump dialog | 53 | 3 | 12 (cited) | — | 38 marks / ~20 questions | ledger 3 §8 |
 | DS primitives — tokens, barrel, the specimen page | 159 | 119 | 22 (cited) | — | 18 | ledger 3 §9 |
-| **Total** | **1,956** | **767** | | | **~149 distinct questions** | |
+| **Total** | **1,956** | **767** | | | **~148 distinct questions** | |
 
 Two readings worth having before the list. The design system is 75 % exact because it was COPIED
 with provenance rather than re-implemented (231 demo tokens, zero missing, zero values divergent);
@@ -437,7 +437,7 @@ operator call turns a line into a ruled divergence or a port; nothing below is d
 33. **The version-bump authoring step — what shape is it?** Mounted inside `VersionsView`'s body rather than at the page root, `lg` rather than `xl`, a `Select` for the kind rather than a described `RadioGroup`, opens on `minor` rather than `major`, a fixed title and description, four stacked fields rather than a two-up grid, a disabled primary where the demo argued a never-disabled one (*"a greyed-out button hides the one rule this flow exists to enforce"*), no applied banner and no `Open the archive` (`DemoVersionBump.tsx:98-297` vs `archive.tsx:1912-2015, 2003`). → VB4–VB12, VB14–VB17, VB27–VB29, VB32, VB34, VB36–VB38, VB40, VB41, VB43, VB44, VB47, VB50; AR239, AR241
 34. **Intake's reshaped shapes** — the rejection list became cards per source row, the fix and exclude editors collapsed into always-present inline inputs, the exclusions `Well` became a chip section, the enqueue-result banner family changed arms (`DemoIntake.tsx:816-935`, `DemoRunStartKit.tsx:336-400` vs `intake.tsx:216-233, 700-848, 1221-1225`). → IN21–IN24, IN30, IN32, IN34, IN46, IN47, IN55, IN56, IN61, IN70, IN75, IN97–IN100, IN102, IN103, IN107–IN109, IN111–IN114, IN117, IN122
 35. **The Explorer's pencil moved out of the field cell** into two `FactRow`s below the table, reversing the demo's argument that *"editability is a property of a FIELD"* (`DemoExplorer.tsx:839-844` vs `explorer.tsx:1108-1117, 1134-1139`), and the rebuild prints a second name per row plus `contracts` and `re-runs on every attempt` lines §5.2 does not list (`explorer.tsx:526-530, 548-555, 1100-1124, 1173-1187, 1374-1376`). → EX114, EX125, EX66, EX87, EX88, EX127, EX133, EX165
-36. **Four cross-region conventions to rule ONCE.** Every takeover wraps the demo's bare `div` in a `Panel` with an enter transition (`activity.tsx:1095`, `archive.tsx:2684-2692`, `explorer.tsx:1467-1477`; AC12, AR9); tables get `overflow-x-auto` wrappers the demo leaves bare (AC62, AC77, AR225); `Skeleton` / `Refusal` async panes the demo never needed (AR244, AR245); and raw wire enums where the demo prints a label — the archive filter and rows, the bump blocker table, the Activity caveats print `awaiting-approval` / `blocked` / `partial`, and `status-model.ts:73` maps `blocked → parked`, so the caveat contradicts every pill on its own page (AC24, AR27, VB19).
+36. **Four cross-region conventions to rule ONCE.** Every takeover wraps the demo's bare `div` in a `Panel` with an enter transition (`activity.tsx:1095`, `archive.tsx:2684-2692`, `explorer.tsx:1467-1477`; AC12, AR9); tables get `overflow-x-auto` wrappers the demo leaves bare (AC62, AC77, AR225); `Skeleton` / `Refusal` async panes the demo never needed (AR244, AR245); and closed wire enums where the demo prints a label — the archive filter and rows, the bump blocker table and the Activity caveat now use the shared wire→display fold, with sentence-case prose at Activity (AC24, AR27, VB19).
 
 **Words and glyphs — each is a revert or a ruling**
 
@@ -483,7 +483,8 @@ the wire (or in the bundle) and simply not drawn.
 - ~~**Failure record (ledger 2 E19, E20, E24, E25):** `occurredAt` · `traceId` + `attempt` · `page.urlRedacted` (and `page.titleRedacted`) · `action.elementId`.~~ **LANDED `df5ea509`** — all four in the demo's `Classification` order, in this tree's `MetaLine` idiom. `occurred {clock}` now prints BESIDE the run's `failed {clock}`, each named for what it dates, which is the whole of E19's point.
 - ~~**Intake (ledger 3 IN8, IN9, IN53, IN82, IN106, IN121, IN126, IN127, IN131):** the footer's header-row and fingerprint echo · per-candidate `confidence` (`ServedHeaderCandidateSchema.confidence`) · suggestion `score` (`SuggestionSchema.score`) · the reject `code` · the corrections list · the manifest's source sha, artifact id and createdAt.~~ **LANDED `80967ce5`…`ce4ba649`.**
 - **Archive — LANDED 2026-08-25 (`3d461962`, `d1f87916`; ledger 3 AR62, AR67, AR95, AR96, AR121, AR123; AR77, AR78, AR91, AR129; AR105, AR212):** the list draws frozen warning/rehearsal facts; the detail draws `displayName`, `subtitle`, `priority` and `dryRun`; every sweep location folds kind and source-version absence; the relaunch banner/cautions derive from the available arm and frozen row. Every absence stays named and no default is invented.
-- **Elsewhere:** the gate age in the queue row's accessible name (B31 — `statusAccessibleName(status, age?)` takes the argument and is not given one) · the run modal's `{label} v{major}.{minor}` (C96 — `person-lookup/descriptor.ts:169`; the archive prints it at `archive.tsx:286`) · the Explorer's `Version registry` action (EX5 — the recorded reason for dropping it is false, `archive.tsx:2350` renders the registry) · closed-enum status through its ds label: AR27 and VB19 LANDED in `d1f87916`; Activity AC24 remains.
+- **Activity AC24 — LANDED 2026-08-25 (`4da19fd7`):** the caveat derives all eight closed wire-status arms through the shared fold; prose is sentence-case (`write parked`) while the pill preserves the exact `Write parked` label, and raw `blocked` is absent.
+- **Elsewhere:** the gate age in the queue row's accessible name (B31 — `statusAccessibleName(status, age?)` takes the argument and is not given one) · the run modal's `{label} v{major}.{minor}` (C96 — `person-lookup/descriptor.ts:169`; the archive prints it at `archive.tsx:286`) · the Explorer's `Version registry` action (EX5 — the recorded reason for dropping it is false, `archive.tsx:2350` renders the registry) · closed-enum status through its ds label: AR27 and VB19 LANDED in `d1f87916`; Activity AC24 LANDED in `4da19fd7` and leaves EX5.
 
 ### Stale and false claims in code and docs — fix the record or fix the code
 
@@ -766,7 +767,7 @@ stricter bar Track F carries (row 10).
 | 7 | **The Duo ceremony lease landed** | **met (D267, bfc7d318…1c244a40)** | `duo_ceremony_leases` is schema v16; `defineVerifiedLoginRecipe` runs its `ceremony` half only under the lease token; the live two-worker cold start is still to be recorded |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the kernel arms exist; the supervisor refuses spawn by name and the projection serves no pool version |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **open** | recorded points reach no durable channel today |
-| 10 | **Demo fidelity: every region exact or ruled** — ~149 OPEN questions outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 767 exact; 37 + 54 + ~58 distinct questions await the operator (§Demo fidelity — every detail, region by region); archive served-and-dropped facts are complete, while the other facts, structural ports, vocabulary sweep and re-freeze remain |
+| 10 | **Demo fidelity: every region exact or ruled** — ~148 OPEN questions outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 767 exact; 37 + 54 + ~57 distinct questions await the operator (§Demo fidelity — every detail, region by region); archive and Activity served-and-dropped facts are complete, while the other facts, structural ports, vocabulary sweep and re-freeze remain |
 
 **Deliberately outside this phase, each with an owner.** The Review and People panel bodies (their
 projections belong to the OCR and group migrations in doc 03c); editable settings, the explorer's

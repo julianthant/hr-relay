@@ -363,7 +363,7 @@ the person axis, which `docs/findings/activity.md` has held open since 2026-08-1
 | AC21 | `PopoverContent` title `How this report is counted`, `width="lg"`, `align="end"` | `DemoActivityReport.tsx:123` | `activity.tsx:1154` | exact | — |
 | AC22 | caveat — "Hours saved is an ESTIMATE — …" | `demo-report-wire.ts:267` | — | missing | ruled: D239 (ref frontend-backend-integration §6.7) — the number it qualifies was dropped |
 | AC23 | caveat — the named window (`covers runs that started between … Both bounds were named`) | — | `activity.ts:477-478` | extra | ruled: D180 |
-| AC24 | caveat — error rate counts only terminal runs. **Demo says "…waiting on you or parked…"; rebuild says "…waiting on you or blocked…"** while every pill on the page renders `blocked` as **Parked** (`status-model.ts:73`) | `demo-report-wire.ts:268` | `activity.ts:479-481` | divergent | **OPEN — operator call** |
+| AC24 | caveat — error rate counts only terminal runs. **Demo says "…waiting on you or parked…"; rebuild now says "…waiting on you or write parked…"** through the shared closed-status vocabulary, while the exact pill label remains **Write parked** (`status-model.ts` → `status-vocabulary.ts`) | `demo-report-wire.ts:268` | `activity.ts:479-483` | divergent | **LANDED `4da19fd7`**; ruled: ref frontend-backend-integration §8 — closed wire enums may use the approved display vocabulary; the prose fold keeps the established sentence case and the pill's exact parked words |
 | AC25 | caveat — "N run(s) still outstanding … not represented in hours saved" → rebuild "…represented in no total on this page except its own" | `demo-report-wire.ts:269` | `activity.ts:482` | divergent | ruled: D239 — the clause named a total that no longer exists |
 | AC26 | caveat — people counted by EID across members | `demo-report-wire.ts:270` | — | missing | unserved: `people.distinct` (`docs/findings/activity.md`) |
 | AC27 | caveat — ledger entries are what was filed, never pruned, never archived | `demo-report-wire.ts:271` | `activity.ts:493-496` | divergent | ruled: D236 — the rebuild's sentence adds the second-authority seam the carve-out requires |
@@ -1377,7 +1377,7 @@ This is the highest-fidelity region in the whole audit, and it is high-fidelity 
 | # | Region | Rows | exact | divergent | missing | extra | OPEN marks |
 |---|--------|-----:|------:|----------:|--------:|------:|-----------:|
 | 1 | Archive | 250 | 106 | 94 | 20 | 30 | 61 |
-| 2 | Activity report | 117 | 57 | 21 | 12 | 27 | 8 |
+| 2 | Activity report | 117 | 57 | 21 | 12 | 27 | 7 |
 | 3 | Workflow Explorer | 182 | 54 | 42 | 34 | 52 | 31 |
 | 4 | UI catalog | 69 | 0 | 0 | 39 | 30 | 6 |
 | 5 | Settings + storage doctor | 72 | 2 | 8 | 48 | 14 | 15 |
@@ -1385,12 +1385,12 @@ This is the highest-fidelity region in the whole audit, and it is high-fidelity 
 | 7 | Phone capture | 62 | 1 | 3 | 20 | 38 | 6 |
 | 8 | Version-bump dialog | 53 | 3 | 29 | 13 | 8 | 38 |
 | 9 | Design-system primitives | 159 | 119 | 13 | 12 | 15 | 18 |
-| | **Total** | **1119** | **346** | **271** | **254** | **248** | **249** |
+| | **Total** | **1119** | **346** | **271** | **254** | **248** | **248** |
 
 **How to read the spread.** The two ends are the interesting part. The design system is 75% `exact`
 because it was COPIED rather than re-implemented; the UI catalog is 0% `exact` because the two files
 paired under that name are not the same surface at all. Everything between is a port whose
-divergences are mostly ruled — the 249 OPEN marks collapse to **roughly 58 distinct questions**,
+divergences are mostly ruled — the 248 OPEN marks collapse to **roughly 58 distinct questions**,
 because a single decision (the bump's arms, the specimen page, the Settings container) drags a
 dozen rows behind it.
 
@@ -1486,9 +1486,10 @@ Each entry is one question for the operator, with every row it settles. `→` na
     `archive.tsx:2168`, `explorer.tsx:1475`). Consistent, and nowhere ruled. → AC12, AR9
 21. **`overflow-x-auto` wrappers.** The rebuild wraps tables the demo leaves bare. → AC62, AC77, AR225
 22. **Raw wire enums where the demo prints a label — archive arms resolved 2026-08-25
-    (`d1f87916`).** The archive filter and bump blocker table now use the shared status vocabulary.
-    The Activity caveat still prints `blocked` where its pills say `Parked`; that non-archive arm
-    remains OPEN. → AC24 (**OPEN**), AR27 (**resolved**), VB19 (**resolved**)
+    (`d1f87916`), Activity resolved in this unit (`4da19fd7`).** The archive filter, bump blocker table and
+    Activity caveat now use the shared status vocabulary. The Activity prose keeps `waiting on you`
+    and renders the parked arm as `write parked`, while the pill remains `Write parked`. → AC24
+    (**resolved**), AR27 (**resolved**), VB19 (**resolved**)
 23. **Async states the demo has no counterpart for** — `Skeleton` panes and `Refusal` panes on the
     archive and Activity. Honest additions; nowhere ruled as a convention. → AR244, AR245
 24. **Two names per row in the Explorer** — the rebuild prints the node LABEL beside the id, and adds
@@ -1552,7 +1553,7 @@ Notation per `.claude/skills/custom-update-plan/SKILL.md` §Notation — `FE` / 
 - [ ] FE the archive index is VIRTUALISED — `@tanstack/react-virtual` is not a dependency of this repo, the row/section pixel constants, the spacer rows and the one flat item list are all absent, and each sweep still gets its own `<TBody>`, while `archive.tsx:12-19` argues the demo's 800-row case (fidelity-3 AR32–AR35, AR51)
 - [ ] FE the archive index draws the facts its own detail already holds — `dryRun`, `warnings`, `displayName`, `subtitle` and `priority` are served on `detail.row` and read by nothing (fidelity-3 AR62, AR67, AR95, AR96, AR121, AR123)
 - [ ] FE the sweep head prints the bump KIND — `changeRecord.value.kind` has ridden `ArchiveSweepWire` since D223 (fidelity-3 AR77, AR78, AR91, AR129)
-- [ ] FE every closed-enum status renders through its ds label — the archive filter and rows, the bump blocker table and the Activity caveats print raw wire enums, and `status-model.ts:73` maps `blocked → parked` so the caveat contradicts its own page's pills (fidelity-3 AC24, AR27, VB19)
+- [x] FE every closed-enum status renders through its ds label — the archive filter and rows, the bump blocker table and the Activity caveat all use the shared wire→display fold; the Activity prose renders `waiting on you or write parked` and the pill's exact label remains `Write parked` (fidelity-3 AC24, AR27, VB19)
 - [ ] FE the intake review gate — `Run` is live beside unresolved rejections, which `ref data-intake-and-edit-data` §2.2 step 4 and §7 vector 4 both say it is not, and the courtesy blocker list never names `unresolved-rejections` (fidelity-3 IN118–IN120)
 - [ ] FE the version bump's MAJOR/MINOR arms behave, or the field stops claiming they do — nothing branches on `VersionBumpChangeRecordSchema.kind`, so a `minor` bump archives every prior-version run (fidelity-3 VB1)
 - [ ] FE the reviewed bump plan names the runs it would archive, not their count (fidelity-3 VB25)
