@@ -226,6 +226,7 @@ export function dataOriginViewsOf(module: {
     return [{
       nodeId: String(node.id),
       step: runtimeNodeLabel(node),
+      taskId: String(contract.id),
       dir: contract.effect === "read" ? "read" as const : "write" as const,
       ...(systemByTaskId.has(String(contract.id))
         ? { system: systemByTaskId.get(String(contract.id)) }

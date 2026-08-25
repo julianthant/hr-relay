@@ -14,7 +14,7 @@
  * a line, would be a cheaper read of the wrong thing.
  */
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { appendEventStreamLine } from "../../../src/infra/events/jsonl-streams.js";
@@ -462,6 +462,192 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     const section = buildRunSection(depsOf(w), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.deepEqual(section.payload.notes, []);
+  });
+
+  /* ── L3 · the combined span + note log ───────────────────────────────── */
+
+  function observedDepsOf(
+    w: DashboardWorld,
+    dataOrigins: readonly Readonly<{
+      nodeId: string;
+      step: string;
+      taskId: string;
+      system?: string;
+    }>[],
+  ): RunDetailQueryDeps {
+    return {
+      stateRoot: w.stateRoot,
+      projection: w.projection,
+      authority: w.authority,
+      descriptors: {
+        resolve: () => ({
+          dataOrigins: dataOrigins.map((origin) => ({ ...origin, dir: "read" as const, feeds: [] })),
+        }),
+      },
+    };
+  }
+
+  const SEARCH_ORIGIN = {
+    nodeId: "searching",
+    step: "Search person",
+    taskId: "ucpath/search-person-org",
+    system: "ucpath",
+  } as const;
+
+  function observedEvent(
+    w: DashboardWorld,
+    input: Readonly<{ seed?: number; attempt?: number; at?: string; nodeId?: string; taskId?: string }> = {},
+  ): void {
+    const seed = input.seed ?? 1;
+    const at = input.at ?? w.clock.now().toISOString();
+    w.writer.emit({
+      t: "data.observed",
+      ts: at,
+      workflow: "person-lookup",
+      runId: uuidOf(seed),
+      attempt: input.attempt ?? 1,
+      traceId: traceOf(seed),
+      spanPath: `${traceOf(seed)}/searching#1.${String(input.attempt ?? 1)}`,
+      nodeId: input.nodeId ?? "searching",
+      taskId: input.taskId ?? "ucpath/search-person-org",
+      observedAt: at,
+      points: [{
+        direction: "read",
+        field: "selection.status",
+        values: [{
+          key: "selection.status",
+          state: "allowed",
+          classification: "safe-diagnostic",
+          transform: "allow",
+          value: "resolved",
+        }],
+      }],
+    });
+  }
+
+  function fencedEvent(w: DashboardWorld, at: string): void {
+    w.writer.emit({
+      t: "transaction.fenced",
+      ts: at,
+      workflow: "person-lookup",
+      runId: uuidOf(1),
+      attempt: 1,
+      traceId: traceOf(1),
+      spanPath: `${traceOf(1)}/searching#1.1`,
+      node: "searching",
+      taskId: "ucpath/search-person-org",
+    });
+  }
+
+  it("combines redacted observations and the durable fence with notes in one ordered, addressable page", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const first = instantOffsetOf(0, 10);
+    const fence = instantOffsetOf(0, 20);
+    const last = instantOffsetOf(0, 30);
+    observedEvent(w, { at: first });
+    fencedEvent(w, fence);
+    observedEvent(w, { at: last });
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(section.section, "logs");
+    assert.ok(section.payload.rows !== undefined);
+    assert.deepEqual(section.payload.rows.map((row) => row.kind), ["observed", "transaction-fenced", "observed"]);
+    const observed = section.payload.rows[0];
+    assert.ok(observed !== undefined && observed.kind === "observed");
+    assert.equal(observed.at, first);
+    assert.equal(observed.attempt, 1);
+    assert.equal(observed.spanPath, `${traceOf(1)}/searching#1.1`);
+    assert.deepEqual(observed.producer, SEARCH_ORIGIN);
+    assert.equal(observed.points[0]?.direction, "read");
+    assert.equal(observed.points[0]?.values[0]?.transform, "allow");
+    const fenced = section.payload.rows[1];
+    assert.ok(fenced !== undefined && fenced.kind === "transaction-fenced");
+    assert.equal(fenced.at, fence);
+    assert.deepEqual(fenced.producer, SEARCH_ORIGIN);
+    assert.equal("points" in fenced, false, "a durable fence is not fabricated page data");
+  });
+
+  it("refuses an observed row whose system is missing or ambiguous instead of defaulting it", () => {
+    const w = world();
+    terminalDone(w, 1);
+    observedEvent(w);
+    assert.throws(
+      () => buildRunSection(observedDepsOf(w, [{ ...SEARCH_ORIGIN, system: undefined }]), uuidOf(1), "logs"),
+      /declares no browser system/,
+    );
+    assert.throws(
+      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN, { ...SEARCH_ORIGIN, system: "crm" }]), uuidOf(1), "logs"),
+      /has 2 matching data origins/,
+    );
+  });
+
+  it("parses every in-scope span line, excludes another run, and preserves retry attempts", () => {
+    const w = world();
+    terminalDone(w, 1);
+    observedEvent(w, { seed: 2, at: instantOffsetOf(0, 5) });
+    observedEvent(w, { seed: 1, attempt: 1, at: instantOffsetOf(0, 10) });
+    observedEvent(w, { seed: 1, attempt: 2, at: instantOffsetOf(0, 20) });
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(section.section, "logs");
+    assert.ok(section.payload.rows !== undefined);
+    const observations = section.payload.rows.filter((row) => row.kind === "observed");
+    assert.deepEqual(observations.map((row) => row.attempt), [1, 2]);
+    assert.deepEqual(observations.map((row) => row.at), [instantOffsetOf(0, 10), instantOffsetOf(0, 20)]);
+  });
+
+  it("orders equal-clock rows by their durable stream location and pages the combined list without a second scan", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const tie = instantOffsetOf(0, 10);
+    for (let index = 0; index < 201; index += 1) observedEvent(w, { at: tie });
+    const inner = createRunNoteScanCache();
+    let scans = 0;
+    const cache = {
+      read: (runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[] =>
+        inner.read(runId, () => {
+          scans += 1;
+          return scan();
+        }),
+    };
+    const first = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs", undefined, cache);
+    assert.equal(first.section, "logs");
+    assert.ok(first.payload.rows !== undefined);
+    assert.equal(first.payload.rows.length, 200);
+    assert.equal(first.payload.nextCursor.state, "present");
+    if (first.payload.nextCursor.state !== "present") throw new Error("first combined page must continue");
+    const second = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs", first.payload.nextCursor.value, cache);
+    assert.equal(second.section, "logs");
+    assert.ok(second.payload.rows !== undefined);
+    assert.equal(second.payload.rows.length, 1);
+    assert.equal(second.payload.nextCursor.state, "absent");
+    assert.equal(scans, 1);
+    assert.deepEqual(
+      [...first.payload.rows, ...second.payload.rows].map((row) => row.sequence),
+      Array.from({ length: 201 }, (_, index) => index),
+    );
+  });
+
+  it("refuses malformed in-scope spans by file and line, while a missing span partition remains an honest no-observation page", () => {
+    const w = world();
+    terminalDone(w, 1);
+    rmSync(join(w.stateRoot, "spans"), { recursive: true, force: true });
+    const noSpans = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(noSpans.section, "logs");
+    assert.deepEqual(noSpans.payload.rows, []);
+    appendEventStreamLine(w.stateRoot, "spans", "person-lookup", "2026-08-03", "{ not json at all");
+    assert.throws(
+      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      new RegExp(`spans line ${join(w.stateRoot, "spans", "person-lookup-2026-08-03.jsonl").replaceAll(/[.\\/]/g, "\\$&")}:1 is not a readable span event`),
+    );
+  });
+
+  it("does not open another workflow's span partition even when it is malformed", () => {
+    const w = world();
+    terminalDone(w, 1);
+    appendEventStreamLine(w.stateRoot, "spans", "separations", "2026-08-03", "{ not json at all");
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    assert.equal(section.section, "logs");
+    assert.deepEqual(section.payload.rows, []);
   });
 });
 

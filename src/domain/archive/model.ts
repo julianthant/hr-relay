@@ -68,6 +68,7 @@ export const ArchiveSchemaGenerationSchema = z.union([
   z.literal(2),
   z.literal(3),
   z.literal(4),
+  z.literal(5),
 ]);
 export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSchema>;
 
@@ -102,8 +103,12 @@ export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSche
  * Readers add an honest absence only when the stored row omits it, never
  * changing the stored record or its digest. A generation-4 writer must freeze
  * the live row's required arm.
+ *
+ * Generation 5 is L3: frozen logs carry the combined row vocabulary. Earlier
+ * archives retain their note-only page exactly as it was written; no reader
+ * invents observations that were never frozen.
  */
-export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 4;
+export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 5;
 
 /** What "the current version of this workflow" means, as a value. */
 export const WorkflowVersionIdentitySchema = z.strictObject({
@@ -466,6 +471,23 @@ function refineSessionGeneration(
   }
 }
 
+/** L3 requires current archive writes to freeze the combined log rows. */
+function refineObservedLogGeneration(
+  record: Readonly<{ archiveSchemaGeneration: number; sections?: unknown }>,
+  context: z.RefinementCtx,
+): void {
+  if (record.archiveSchemaGeneration < 5 || record.sections === undefined) return;
+  const sections = ArchivedRunSectionsSchema.safeParse(record.sections);
+  if (!sections.success || sections.data.logs.state !== "present") return;
+  if (sections.data.logs.value.rows === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["sections", "logs", "value", "rows"],
+      message: "an archive record at generation 5 or later must freeze combined observed-log rows; an absent key means it predates L3",
+    });
+  }
+}
+
 function refineArchivedIdentity(
   record: Readonly<{
     runId: string;
@@ -482,6 +504,7 @@ function refineArchivedIdentity(
   refineSectionGeneration(record, context);
   refineCodeGeneration(record, context);
   refineSessionGeneration(record, context);
+  refineObservedLogGeneration(record, context);
   if (record.row.runId !== record.runId) {
     context.addIssue({ code: "custom", path: ["row", "runId"], message: "archived row identity must match the record" });
   }

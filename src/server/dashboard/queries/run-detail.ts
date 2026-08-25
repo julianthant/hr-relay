@@ -61,6 +61,7 @@ import type { IdentityEvidencePacket } from "../../../domain/separations/identit
 import {
   FailureDetailWireSchema,
   IdentityGateDetailWireSchema,
+  LogRowWireSchema,
   ParkedWriteDetailWireSchema,
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
@@ -83,7 +84,11 @@ import {
   type EventStreamLine,
   type EventStreamScope,
 } from "../../../infra/events/jsonl-streams.js";
-import { NoteWireSchema as NoteAtRestSchema } from "../../../events/types.js";
+import {
+  NoteWireSchema as NoteAtRestSchema,
+  SpanEventWireSchema,
+  type SpanEventWire,
+} from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
@@ -167,6 +172,8 @@ export interface RunDetailWriteContractView {
 export interface RunDetailDataOriginView {
   readonly nodeId: string;
   readonly step: string;
+  /** The producing task contract; node id alone is not an observed-log address. */
+  readonly taskId: string;
   readonly dir: "read" | "write";
   readonly system?: string;
   readonly freshness?: readonly Readonly<{
@@ -797,11 +804,23 @@ const SectionNameSchema = z.enum([
 
 const LEVEL_MAP = { error: "error", warn: "warning", waiting: "warning", step: "info", success: "info", debug: "info" } as const;
 
-/** One note line this run owns, in the order the corpus holds it. */
-export interface RunNoteScanEntry {
-  readonly line: EventStreamLine;
-  readonly note: z.infer<typeof NoteAtRestSchema>;
-}
+/** One parseable line that the selected run owns, before the query assigns page sequence. */
+type RunAtRestNote = Readonly<{
+  runId: string;
+  ts: string;
+  level: "error" | "warn" | "waiting" | "step" | "success" | "debug";
+  message: string;
+}>;
+
+type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system: string }>;
+
+export type RunLogScanEntry =
+  | Readonly<{ kind: "note"; line: EventStreamLine; note: RunAtRestNote }>
+  | Readonly<{ kind: "observed"; line: EventStreamLine; event: Extract<SpanEventWire, { t: "data.observed" }>; producer: RunLogProducer }>
+  | Readonly<{ kind: "transaction-fenced"; line: EventStreamLine; event: Extract<SpanEventWire, { t: "transaction.fenced" }>; producer: RunLogProducer }>;
+
+/** @deprecated The cache now holds the combined notes + span-observation log. */
+export type RunNoteScanEntry = RunLogScanEntry;
 
 /**
  * The `notes/` partitions ONE run's log lines can be in (D5, audit P3).
@@ -850,13 +869,13 @@ export function runNotePartitionScope(
  * long-lived can serve a page from a corpus a worker has since appended to.
  */
 export interface RunNoteScanCache {
-  read(runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[];
+  read(runId: string, scan: () => readonly RunLogScanEntry[]): readonly RunLogScanEntry[];
 }
 
 export function createRunNoteScanCache(): RunNoteScanCache {
-  const byRun = new Map<string, readonly RunNoteScanEntry[]>();
+  const byRun = new Map<string, readonly RunLogScanEntry[]>();
   return Object.freeze({
-    read(runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[] {
+    read(runId: string, scan: () => readonly RunLogScanEntry[]): readonly RunLogScanEntry[] {
       const held = byRun.get(runId);
       if (held !== undefined) return held;
       const scanned = scan();
@@ -888,26 +907,161 @@ function parseNoteLine(line: EventStreamLine): z.infer<typeof NoteAtRestSchema> 
   }
 }
 
-function noteLinesForRun(
+/** Every scoped span line must parse, even when it belongs to another run. */
+function parseSpanLine(line: EventStreamLine): SpanEventWire {
+  try {
+    return SpanEventWireSchema.parse(JSON.parse(line.text));
+  } catch (cause) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} is not a readable span event `
+      + `(${cause instanceof Error ? cause.message : String(cause)}); the logs reader refuses to read around a line `
+      + "the corpus holds, because a skipped line reports real history as absent (D218)",
+      { cause },
+    );
+  }
+}
+
+function assertScopedSpanWorkflow(
+  event: Extract<SpanEventWire, { runId: string }>,
+  line: EventStreamLine,
+  workflow: string,
+): void {
+  if (event.workflow !== workflow) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} is in ${workflow}'s bounded partition but names `
+      + `workflow ${event.workflow}; refusing a cross-workflow span that this run's log could otherwise silently exclude`,
+    );
+  }
+}
+
+function producerOf(
+  descriptor: RunDetailDescriptorView | undefined,
+  event: Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>,
+  line: EventStreamLine,
+): RunLogProducer {
+  if (descriptor === undefined) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve system for ${event.t} node ${event.t === "data.observed" ? event.nodeId : event.node} `
+      + `task ${event.taskId}: workflow ${event.workflow} has no descriptor view`,
+    );
+  }
+  const nodeId = event.t === "data.observed" ? event.nodeId : event.node;
+  const matches = (descriptor.dataOrigins ?? []).filter((origin) =>
+    origin.nodeId === nodeId && origin.taskId === event.taskId);
+  if (matches.length !== 1) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve one system for ${event.t} node ${nodeId} `
+      + `task ${event.taskId}: descriptor has ${String(matches.length)} matching data origins`,
+    );
+  }
+  const origin = matches[0];
+  if (origin === undefined || origin.system === undefined) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve system for ${event.t} node ${nodeId} `
+      + `task ${event.taskId}: its one descriptor data origin declares no browser system`,
+    );
+  }
+  return { nodeId: origin.nodeId, step: origin.step, taskId: origin.taskId, system: origin.system };
+}
+
+function logLinesForRun(
   deps: RunDetailQueryDeps,
   row: RunFoldRecord,
   authority: RunRecord,
   runId: string,
   cache: RunNoteScanCache | undefined,
-): readonly RunNoteScanEntry[] {
-  const scan = (): readonly RunNoteScanEntry[] => {
-    const matches: RunNoteScanEntry[] = [];
+): readonly RunLogScanEntry[] {
+  const scan = (): readonly RunLogScanEntry[] => {
+    const matches: RunLogScanEntry[] = [];
     // The scope already selected this workflow's partitions, so the old
     // per-line `line.file.workflow !== workflow` skip can no longer be true —
     // the same lines reach the parse, and an unparsable one throws by name
     // rather than being read around (D218).
     for (const line of readScopedEventStreamLines(deps.stateRoot, "notes", runNotePartitionScope(runId, row, authority))) {
       const note = parseNoteLine(line);
-      if ("runId" in note && note.runId === runId) matches.push({ line, note });
+      if ("runId" in note && note.runId === runId) {
+        matches.push({
+          kind: "note",
+          line,
+          note: { runId: note.runId, ts: note.ts, level: note.level, message: note.message },
+        });
+      }
     }
-    return matches;
+    const scope = runNotePartitionScope(runId, row, authority);
+    const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
+    for (const line of readScopedEventStreamLines(deps.stateRoot, "spans", scope)) {
+      const event = parseSpanLine(line);
+      if (!("runId" in event)) continue;
+      assertScopedSpanWorkflow(event, line, authority.envelope.workflow);
+      if (event.runId !== runId) continue;
+      if (event.t === "data.observed") {
+        matches.push({ kind: "observed", line, event, producer: producerOf(descriptor, event, line) });
+      }
+      if (event.t === "transaction.fenced") {
+        matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line) });
+      }
+    }
+    return matches.sort((left, right) =>
+      logInstantOf(left).localeCompare(logInstantOf(right))
+      || left.line.file.stream.localeCompare(right.line.file.stream)
+      || left.line.file.path.localeCompare(right.line.file.path)
+      || left.line.lineNumber - right.line.lineNumber);
   };
   return cache === undefined ? scan() : cache.read(runId, scan);
+}
+
+function logInstantOf(entry: RunLogScanEntry): string {
+  if (entry.kind === "note") return entry.note.ts;
+  return entry.kind === "observed" ? entry.event.observedAt : entry.event.ts;
+}
+
+function logIdOf(entry: RunLogScanEntry): string {
+  return deterministicUuid(`log:${entry.line.file.path}:${String(entry.line.lineNumber)}`);
+}
+
+function logRowOf(
+  entry: RunLogScanEntry,
+  sequence: number,
+): unknown {
+  const logId = logIdOf(entry);
+  if (entry.kind === "note") {
+    return {
+      kind: "note",
+      logId,
+      sequence,
+      note: {
+        noteId: logId,
+        runId: entry.note.runId,
+        sequence,
+        at: entry.note.ts,
+        level: LEVEL_MAP[entry.note.level],
+        message: entry.note.message,
+      },
+    };
+  }
+  if (entry.kind === "observed") {
+    return {
+      kind: "observed",
+      logId,
+      sequence,
+      at: entry.event.observedAt,
+      attempt: entry.event.attempt,
+      traceId: entry.event.traceId,
+      spanPath: entry.event.spanPath,
+      producer: entry.producer,
+      points: entry.event.points,
+    };
+  }
+  return {
+    kind: "transaction-fenced",
+    logId,
+    sequence,
+    at: entry.event.ts,
+    attempt: entry.event.attempt,
+    traceId: entry.event.traceId,
+    spanPath: entry.event.spanPath,
+    producer: entry.producer,
+  };
 }
 
 export function buildRunSection(
@@ -960,20 +1114,18 @@ export function buildRunSection(
     const offset = cursorInput === undefined
       ? 0
       : Number(z.string().regex(/^pc:[1-9]\d*$/).parse(cursorInput).slice(3)) - 1;
-    const all = noteLinesForRun(deps, row, authority, runId, noteScanCache);
+    const all = logLinesForRun(deps, row, authority, runId, noteScanCache);
     const page = all.slice(offset, offset + LOGS_PAGE_SIZE);
+    const rows = page.map((entry, index) => LogRowWireSchema.parse(logRowOf(
+      entry,
+      offset + index,
+    )));
     return RunDetailSectionResponseSchema.parse({
       section,
       payload: {
         runId,
-        notes: page.map(({ line, note }, index) => ({
-          noteId: deterministicUuid(`note:${line.file.path}:${String(line.lineNumber)}`),
-          runId,
-          sequence: offset + index,
-          at: note.ts,
-          level: LEVEL_MAP[note.level],
-          message: note.message,
-        })),
+        rows,
+        notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
         nextCursor: offset + LOGS_PAGE_SIZE < all.length
           ? { state: "present", value: `pc:${String(offset + LOGS_PAGE_SIZE + 1)}` }
           : { state: "absent", reason: "end-of-page" },

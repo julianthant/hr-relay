@@ -250,6 +250,19 @@ function snapshotSource(world: {
             state: "present",
             value: {
               runId: run.envelope.runId,
+              rows: [{
+                kind: "note",
+                logId: "dddddddd-0001-4000-8000-dddddddd0001",
+                sequence: 0,
+                note: {
+                  noteId: "dddddddd-0001-4000-8000-dddddddd0001",
+                  runId: run.envelope.runId,
+                  sequence: 0,
+                  at: NOW,
+                  level: "info",
+                  message: "frozen log line",
+                },
+              }],
               notes: [{
                 noteId: "dddddddd-0001-4000-8000-dddddddd0001",
                 runId: run.envelope.runId,
@@ -623,8 +636,22 @@ describe("the D80 archive model", () => {
       },
     };
 
-    assert.equal(CURRENT_ARCHIVE_SCHEMA_GENERATION, 4);
+    assert.equal(CURRENT_ARCHIVE_SCHEMA_GENERATION, 5);
     assert.equal(ArchivedRunRecordSchema.safeParse(generation4).success, true);
+
+    const sections = generation4.sections;
+    if (sections === undefined) throw new Error("archive fixture must hold frozen sections");
+    const { rows: _rows, ...noteOnlyLog } = sections.logs.state === "present"
+      ? sections.logs.value
+      : (() => { throw new Error("archive fixture must hold frozen logs"); })();
+    assert.equal(
+      ArchivedRunRecordSchema.safeParse({
+        ...generation4,
+        sections: { ...sections, logs: { state: "present", value: noteOnlyLog } },
+      }).success,
+      true,
+      "a pre-L3 archive keeps its note-only log page readable without invented observed rows",
+    );
 
     const { session: _session, ...sessionlessRow } = generation4.row;
     const refusedCurrent = ArchivedRunRecordSchema.safeParse({ ...generation4, row: sessionlessRow });

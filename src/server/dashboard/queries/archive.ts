@@ -418,7 +418,7 @@ function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): Arch
 }
 
 /**
- * EVERY note line, walked through the section's own cursor over ONE scan.
+ * EVERY combined log row, walked through the section's own cursor over ONE scan.
  *
  * The archived page reports `end-of-page` because it genuinely is the end —
  * there is no archived section endpoint to fetch a second page from, so a
@@ -427,6 +427,7 @@ function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): Arch
  */
 function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
   const notes: FrozenNotePage["notes"][number][] = [];
+  const rows: NonNullable<FrozenNotePage["rows"]> = [];
   let cursor: string | undefined;
   /**
    * D5 (audit P3): ONE note scan for the whole page walk.
@@ -447,9 +448,14 @@ function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
       throw new Error(`the logs section of run ${runId} came back as ${section.section}`);
     }
     notes.push(...section.payload.notes);
+    if (section.payload.rows === undefined) {
+      throw new Error(`live logs for run ${runId} omitted combined rows; this build refuses to archive a pre-L3 shape`);
+    }
+    rows.push(...section.payload.rows);
     if (section.payload.nextCursor.state === "absent") {
       return NotePageSchema.parse({
         runId,
+        rows,
         notes,
         nextCursor: { state: "absent", reason: "end-of-page" },
       });
