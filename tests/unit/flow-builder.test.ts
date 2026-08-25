@@ -440,6 +440,13 @@ describe("workflow flow builder", () => {
     assert.equal(Object.isFrozen(node.branches), true);
   });
   describe("node fragments (D265 §1.2.2 rule 2)", () => {
+    it("refuses a step whose folder key is not a kebab-case slug", () => {
+      assert.throws(
+        () => defineWorkflowStep({ key: "Not Kebab", label: "Invalid folder" }),
+        /timeline category key must be a kebab-case slug/,
+      );
+    });
+
     const fragmentStep = defineWorkflowStep({ key: "identity-check", label: "Identity check" });
     const contactFragment = defineTaskNode(fragmentStep, "contact", readTwo, { label: "Contact", replay: "always-rerun" });
     const approvalFragment = defineOperatorGateNode(fragmentStep, "approval", {
@@ -537,6 +544,15 @@ describe("workflow flow builder", () => {
       assert.throws(
         () => defineWorkflowStepNodes(otherStep, [contactFragment as never]),
         /step "job-summary" claims node fragment contact, which belongs to step "identity-check"/,
+      );
+    });
+
+    it("refuses a node fragment claimed by a different step object with the same key", () => {
+      const separatelyDeclaredStep = defineWorkflowStep({ key: "identity-check", label: "Secondary identity check" });
+
+      assert.throws(
+        () => defineWorkflowStepNodes(separatelyDeclaredStep, [contactFragment]),
+        /same key but distinct step objects: "Secondary identity check" and "Identity check"/,
       );
     });
   });

@@ -260,6 +260,9 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
   (D104).
+- 2026-08-25 (D265 review): a workflow-step key's literal type never replaces its category-key
+  schema, and a node fragment belongs to the exact frozen step object that created it — equal keys
+  are not equal ownership at runtime.
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
 

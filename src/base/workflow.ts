@@ -220,8 +220,8 @@ export function defineWorkflowStep<const Key extends string>(
  * OWNERSHIP is checked here, not assumed: every fragment carries the step that
  * owns it, so a category claiming ANOTHER folder's fragment is a type error
  * (`NodeFragmentOf<Key>` is branded by the step's literal key) and, where that
- * literal is gone, the load-time refusal below names the fragment and both step
- * keys. Before it was structural, `defineWorkflowStepNodes(KUALI_EXTRACTION_STEP,
+ * literal is gone, the load-time refusal below requires the exact step object
+ * and names the fragment and both step keys. Before it was structural, `defineWorkflowStepNodes(KUALI_EXTRACTION_STEP,
  * [actionNode, receiptNode])` compiled: the only downstream check is
  * `deriveTimeline`'s coverage/uniqueness pass, which knows nothing about which
  * folder a node belongs to, so the mis-filed node would have shipped under the
@@ -234,9 +234,12 @@ export function defineWorkflowStepNodes<const Key extends string>(
   fragments: readonly NodeFragmentOf<NoInfer<Key>>[],
 ): TimelineCategorySpec {
   for (const fragment of fragments) {
-    if (fragment.step.key !== step.key) {
+    if (fragment.step !== step) {
+      const sameKeyDifferentObject = fragment.step.key === step.key
+        ? `; same key but distinct step objects: "${step.label}" and "${fragment.step.label}"`
+        : "";
       throw new Error(
-        `step "${step.key}" claims node fragment ${fragment.id}, which belongs to step "${fragment.step.key}"`,
+        `step "${step.key}" claims node fragment ${fragment.id}, which belongs to step "${fragment.step.key}"${sameKeyDifferentObject}`,
       );
     }
   }
