@@ -13,6 +13,7 @@ import { FIXTURE_ARCHIVE_INDEX } from "./helpers/fixture-archive.js";
 import { FIXTURE_DAY } from "./helpers/fixture-day.js";
 
 const FIRST_WARNING = "CRM returned a stale session on attempt 1";
+const PARTIAL_RUN_ID = "00000000-0000-4000-8000-000000000099";
 
 let server: FixtureServer;
 
@@ -28,21 +29,46 @@ test.afterAll(async () => {
   await server.close();
 });
 
-test("archive warning count has an explicit accessible name", async ({ page }) => {
+for (const warning of [
+  { count: 1, accessibleName: "1 warning" },
+  { count: 3, accessibleName: "3 warnings" },
+] as const) {
+  test(`archive warning count names ${warning.accessibleName}`, async ({ page }) => {
+    const entry = FIXTURE_ARCHIVE_INDEX.entries[0];
+    if (entry === undefined) throw new Error("the archive accessibility fixture has no archived row");
+    const warningIndex = ArchiveIndexWireSchema.parse({
+      ...FIXTURE_ARCHIVE_INDEX,
+      entries: [{
+        ...entry,
+        warnings: { state: "present", count: warning.count, first: FIRST_WARNING },
+      }],
+    });
+    await page.route("**/api/v1/archive", async (route) => {
+      await route.fulfill({ json: warningIndex });
+    });
+
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "" });
+
+    await expect(page.getByTitle(FIRST_WARNING)).toHaveAccessibleName(warning.accessibleName);
+  });
+}
+
+test("archive status filter distinguishes done from done with warnings", async ({ page }) => {
   const entry = FIXTURE_ARCHIVE_INDEX.entries[0];
   if (entry === undefined) throw new Error("the archive accessibility fixture has no archived row");
-  const warningIndex = ArchiveIndexWireSchema.parse({
+  const statusIndex = ArchiveIndexWireSchema.parse({
     ...FIXTURE_ARCHIVE_INDEX,
-    entries: [{
-      ...entry,
-      warnings: { state: "present", count: 3, first: FIRST_WARNING },
-    }],
+    entries: [
+      entry,
+      { ...entry, runId: PARTIAL_RUN_ID, status: "partial" },
+    ],
   });
   await page.route("**/api/v1/archive", async (route) => {
-    await route.fulfill({ json: warningIndex });
+    await route.fulfill({ json: statusIndex });
   });
 
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "" });
 
-  await expect(page.getByTitle(FIRST_WARNING)).toHaveAccessibleName("3 warnings");
+  await expect(page.getByRole("combobox", { name: "Final status" }).getByRole("option"))
+    .toHaveText(["Any outcome", "Done", "Done with warnings"]);
 });

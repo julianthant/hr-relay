@@ -74,9 +74,14 @@ export function archivePriorityTone(
   }
 }
 
-/** A queue status is never printed as its transport spelling. */
+/**
+ * A queue status is never printed as its transport spelling. The archive's
+ * native select has no status hue, icon or warning-count chip, so its options
+ * use the DS's unambiguous name rather than the deliberately shortened word a
+ * status pill draws.
+ */
 export function archiveStatusLabel(status: QueueStatus): string {
-  return PROPOSED_STATUS[dsStatusOf(status)].label;
+  return PROPOSED_STATUS[dsStatusOf(status)].accessibleLabel;
 }
 
 type VersionBumpBlocker = WorkflowVersionStateWire["blockers"][number];

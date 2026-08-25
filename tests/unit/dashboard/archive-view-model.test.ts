@@ -61,8 +61,15 @@ describe("archive index facts", () => {
       done: "Done",
       failed: "Failed",
       cancelled: "Cancelled",
-      partial: "Done",
+      partial: "Done with warnings",
     });
+  });
+
+  it("keeps the done and partial filter labels visibly distinct", () => {
+    expect([
+      archiveStatusLabel("done"),
+      archiveStatusLabel("partial"),
+    ]).toEqual(["Done", "Done with warnings"]);
   });
 });
 
