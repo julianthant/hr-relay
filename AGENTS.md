@@ -285,6 +285,12 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-25 — a parity fixture must contain the state it claims to prove.** The ordinary Start
+  Run fixture truthfully covered Person Lookup's input/plan flow, but that meant it could not see the
+  Separations picker hierarchy at all. Keep that focused fixture, and add a separate strict bootstrap
+  profile for the registry shape under review; a broad fixture that redraws unrelated references hides
+  the reason the new reference exists.
+
 - **2026-08-25 — a harness's HR category is not its dashboard placement.** The Kronos timecard
   harness truthfully remains `timekeeping`, but its role address says it is a step of `separations`.
   Fold harnesses by `role.of` before partitioning categories; once nested, the composition's category

@@ -16,6 +16,8 @@ import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
 } from "../../../src/domain/dashboard/subscription.js";
+import type { FrontendBootstrapWire } from "../../../src/domain/dashboard/bootstrap.js";
+import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
 import {
   FIXTURE_BOOTSTRAP,
@@ -54,22 +56,36 @@ import {
 
 /* ── SSE envelopes ───────────────────────────────────────────────────────── */
 
-export function fixtureHelloEnvelope(): DashboardStreamEnvelope {
+export interface FixtureDashboardProfile {
+  /** Every bootstrap fact the browser reads before it selects a route. */
+  readonly bootstrap: FrontendBootstrapWire;
+  /** The corresponding day snapshot, including the same descriptor-set hash. */
+  readonly day: DashboardDayWire;
+  readonly descriptorHash: string;
+}
+
+const DEFAULT_DASHBOARD_PROFILE: FixtureDashboardProfile = Object.freeze({
+  bootstrap: FIXTURE_BOOTSTRAP,
+  day: FIXTURE_DAY_WIRE,
+  descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+});
+
+export function fixtureHelloEnvelope(profile: FixtureDashboardProfile = DEFAULT_DASHBOARD_PROFILE): DashboardStreamEnvelope {
   return DashboardStreamEnvelopeSchema.parse({
     type: "hello",
     wireVersion: 1,
-    descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+    descriptorHash: profile.descriptorHash,
     projectionGeneration: 1,
     cursor: "pc:1",
   });
 }
 
-export function fixtureSnapshotEnvelope(): DashboardStreamEnvelope {
+export function fixtureSnapshotEnvelope(profile: FixtureDashboardProfile = DEFAULT_DASHBOARD_PROFILE): DashboardStreamEnvelope {
   return DashboardStreamEnvelopeSchema.parse({
     type: "snapshot",
     topic: "dashboard-day",
     cursor: "pc:1",
-    payload: FIXTURE_DAY_WIRE,
+    payload: profile.day,
   });
 }
 
@@ -96,17 +112,20 @@ const CaptureOrderProbeSchema = z.looseObject({
   orderedPhotoIds: z.array(z.string().min(1)).min(1),
 });
 
-export function createFixtureBff(): { app: Hono } {
+export function createFixtureBff(
+  input: Readonly<{ profile?: FixtureDashboardProfile }> = {},
+): { app: Hono } {
   const app = new Hono();
+  const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
 
-  app.get("/api/v1/bootstrap", (c) => c.json(FIXTURE_BOOTSTRAP as unknown));
+  app.get("/api/v1/bootstrap", (c) => c.json(profile.bootstrap as unknown));
 
   app.get("/api/v1/dashboard", (c) => {
     const day = c.req.query("day");
     if (day !== FIXTURE_DAY) {
       return c.json(wireError("TARGET_NOT_FOUND", `the fixture corpus serves only day ${FIXTURE_DAY}`), 404);
     }
-    return c.json(FIXTURE_DAY_WIRE as unknown);
+    return c.json(profile.day as unknown);
   });
 
   app.get("/api/v1/runs/:runId", (c) => {
@@ -313,14 +332,14 @@ async function serveStatic(distDir: string, pathname: string, res: ServerRespons
   }
 }
 
-function serveSse(res: ServerResponse, open: Set<ServerResponse>): void {
+function serveSse(res: ServerResponse, open: Set<ServerResponse>, profile: FixtureDashboardProfile): void {
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     connection: "keep-alive",
   });
-  res.write(sseSerialize(fixtureHelloEnvelope()));
-  res.write(sseSerialize(fixtureSnapshotEnvelope()));
+  res.write(sseSerialize(fixtureHelloEnvelope(profile)));
+  res.write(sseSerialize(fixtureSnapshotEnvelope(profile)));
   res.write(sseSerialize(fixtureHealthEnvelope()));
   const heartbeat = setInterval(() => {
     res.write(": ping\n\n");
@@ -345,20 +364,21 @@ export interface FixtureServer {
 }
 
 export async function startFixtureServer(
-  input: Readonly<{ distDir: string; bundle: ParityBundleProof }>,
+  input: Readonly<{ distDir: string; bundle: ParityBundleProof; profile?: FixtureDashboardProfile }>,
 ): Promise<FixtureServer> {
   // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
   // Asserted BEFORE a port is bound, so a stale `dist/dashboard` can never be
   // reached over HTTP — and never leaks a listening socket on refusal.
   assertServedBundle(input.distDir, input.bundle);
-  const { app } = createFixtureBff();
+  const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
+  const { app } = createFixtureBff({ profile });
   const openStreams = new Set<ServerResponse>();
 
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (url.pathname === "/events/v1") {
-        serveSse(res, openStreams);
+        serveSse(res, openStreams, profile);
         return;
       }
       if (url.pathname.startsWith("/api/")) {

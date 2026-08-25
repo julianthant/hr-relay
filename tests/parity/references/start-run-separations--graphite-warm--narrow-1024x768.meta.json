@@ -1,0 +1,11 @@
+{
+  "stateId": "start-run-separations",
+  "viewport": "narrow-1024x768",
+  "theme": "graphite-warm",
+  "adapter": "fixture",
+  "fixtureId": "start-run-separations",
+  "descriptorHash": "a7d4624ee48d4008d7796a5db65c5e6511d0be9a21c58ebe6ffac49f8d5f8df8",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}
