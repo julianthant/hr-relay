@@ -240,8 +240,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   authority worker-card facts; a missing pool row is no declaration, never a target of one.
 - **2026-08-25 — virtual session rows preserve authority across dashboard ticks (P4).** Flatten every
   served member into a fixed layout, mount only the viewport plus bounded overscan, and memoize that
-  renderer away from the one-second elapsed-time tick. Keep clipped titles and opaque ids keyboard-
-  and touch-reachable through the design-system detail popover; visual truncation never drops data.
+  renderer away from the one-second elapsed-time tick. Give one mounted `listitem` the roving tab stop;
+  keyboard moves mount and then focus the designated row, so AT receives the row rather than a scroll
+  side effect. Keep clipped values reachable through a detail popover whose invisible 44px hit area is
+  proven not to overlap another trigger; visual truncation never drops data.
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a

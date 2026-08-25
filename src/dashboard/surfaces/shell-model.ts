@@ -468,6 +468,25 @@ export function sessionListScrollTopForIndex(
   return Math.max(0, Math.min(row.top, layout.totalHeight - Math.max(1, viewportHeight)));
 }
 
+/** Resolve one list-row keyboard move without changing the retained authority layout. */
+export function sessionListNavigationTarget(
+  activeIndex: number,
+  key: string,
+  totalRows: number,
+  viewportHeight: number,
+): number | undefined {
+  if (totalRows === 0) return undefined;
+  const pageRows = Math.max(1, Math.floor(Math.max(1, viewportHeight) / SESSION_LIST_MEMBER_HEIGHT));
+  const target = key === "ArrowDown" ? activeIndex + 1
+    : key === "ArrowUp" ? activeIndex - 1
+      : key === "PageDown" ? activeIndex + pageRows
+        : key === "PageUp" ? activeIndex - pageRows
+          : key === "Home" ? 0
+            : key === "End" ? totalRows - 1
+              : undefined;
+  return target === undefined ? undefined : Math.max(0, Math.min(target, totalRows - 1));
+}
+
 /**
  * How a particular worker relates to the selected day's session rows.
  *

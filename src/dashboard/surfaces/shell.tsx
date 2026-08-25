@@ -15,7 +15,7 @@
  * every one of them folded a row array, which is precisely the second path this
  * projection exists to delete.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type ReactElement, type SVGProps, type UIEvent } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type ReactElement, type SVGProps, type UIEvent } from "react";
 import {
   AlertTriangle,
   ChevronDown,
@@ -72,6 +72,7 @@ import {
   type SessionMemberView,
   type SessionGroupView,
   type SessionListItem,
+  type SessionListLayoutRow,
   type SessionView,
   type WorkerSessionMembership,
   type WorkerState,
@@ -89,6 +90,7 @@ import {
   needsYouCount,
   SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT,
   sessionPoolDisplay,
+  sessionListNavigationTarget,
   sessionListScrollTopForIndex,
   sessionListWindow,
   statusCount,
@@ -742,15 +744,39 @@ function AuthorityDetails({
   label,
   title,
   facts,
+  touchAlign = "center",
 }: {
   label: string;
   title: string;
   facts: readonly Readonly<{ label: string; value: string }>[];
+  touchAlign?: "center" | "up" | "down";
 }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <IconButton size="xs" label={label} icon={<Eye aria-hidden className={dsIcon.sm} />} />
+        <IconButton
+          size="xs"
+          label={label}
+          icon={(
+            <span
+              aria-hidden
+              className={cn(
+                "inline-flex size-[var(--ds-h-xs)] translate-x-3 items-center justify-center",
+                dsRadius.md,
+                "group-hover:bg-[var(--ds-surface-3)]",
+                touchAlign === "up" && "translate-y-3",
+                touchAlign === "down" && "-translate-y-3",
+              )}
+            >
+              <Eye className={dsIcon.sm} />
+            </span>
+          )}
+          data-authority-touch-target="44"
+          className={cn(
+            "group relative z-10 size-11 -ml-6 rounded-none touch-manipulation hover:bg-transparent active:translate-y-0",
+            touchAlign === "up" ? "-mt-6 mb-0" : touchAlign === "down" ? "mt-0 -mb-6" : "-my-3",
+          )}
+        />
       </PopoverTrigger>
       <PopoverContent title={title} width="lg" align="start">
         <dl className="flex min-w-0 flex-col gap-[var(--ds-space-base)]">
@@ -834,7 +860,7 @@ function SessionMemberRow({ member, sessionId }: { member: SessionMemberView; se
     ? "No current worker card claims this run"
     : member.workers.map((worker) => `${WORKER_TONE[worker.state].label} · ${String(worker.workerId)}`).join(" · ");
   return (
-    <div className={cn("grid h-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-[var(--ds-space-snug)] overflow-hidden px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]")}>
+    <div className={cn("grid h-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-[var(--ds-space-snug)] px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]")}>
       <StatusDot status={status} className="mt-px" />
       <div className="min-w-0">
         <div className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
@@ -852,6 +878,7 @@ function SessionMemberRow({ member, sessionId }: { member: SessionMemberView; se
               { label: "Run state", value: PROPOSED_STATUS[status].label },
               { label: "Current worker cards", value: workerDetails },
             ]}
+            touchAlign="down"
           />
         </div>
         <div className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] min-w-0 truncate text-[color:var(--ds-fg-muted)]")}>
@@ -899,7 +926,7 @@ function SessionHeaderRow({ session }: { session: SessionGroupView }) {
 
 function AbsentSessionMemberRow({ member }: { member: Extract<SessionListItem, { kind: "absent-member" }>["member"] }) {
   return (
-    <div className="h-full min-w-0 overflow-hidden px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]">
+    <div className="h-full min-w-0 px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]">
       <div className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
         <span className={cn(dsText.meta, "min-w-0 flex-1 truncate text-[color:var(--ds-fg)]")}>{member.row.title}</span>
         <AuthorityDetails
@@ -910,6 +937,7 @@ function AbsentSessionMemberRow({ member }: { member: Extract<SessionListItem, {
             { label: "Run ID", value: String(member.row.runId) },
             { label: "Served reason", value: member.reason },
           ]}
+          touchAlign="down"
         />
       </div>
       <span className={cn(dsText.micro, "block truncate text-[color:var(--ds-fg-muted)]")}>{member.reason}</span>
@@ -918,7 +946,21 @@ function AbsentSessionMemberRow({ member }: { member: Extract<SessionListItem, {
   );
 }
 
-function SessionVirtualRow({ row, totalRows }: { row: ReturnType<typeof sessionListWindow>["rows"][number]; totalRows: number }) {
+function SessionVirtualRow({
+  row,
+  totalRows,
+  active,
+  rowRef,
+  onFocus,
+  onKeyDown,
+}: {
+  row: SessionListLayoutRow;
+  totalRows: number;
+  active: boolean;
+  rowRef: (node: HTMLDivElement | null) => void;
+  onFocus: () => void;
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+}) {
   const item = row.item;
   const ariaLabel = item.kind === "session-header"
     ? `Session ${String(item.session.sessionId)}`
@@ -934,10 +976,19 @@ function SessionVirtualRow({ row, totalRows }: { row: ReturnType<typeof sessionL
       aria-label={ariaLabel}
       aria-posinset={row.index + 1}
       aria-setsize={totalRows}
+      tabIndex={active ? 0 : -1}
+      ref={rowRef}
+      onFocus={onFocus}
+      onKeyDown={onKeyDown}
       data-session-virtual-row
+      data-session-active={active ? "true" : undefined}
       data-session-row-index={row.index}
       data-session-run-id={item.kind === "session-member" || item.kind === "absent-member" ? String(item.member.row.runId) : undefined}
-      className="absolute inset-x-0 border-b border-[color:var(--ds-border-subtle)]"
+      className={cn(
+        "absolute inset-x-0 border-b border-[color:var(--ds-border-subtle)]",
+        dsFocus,
+        active && "bg-[var(--ds-surface-2)]",
+      )}
       style={{ top: row.top, height: row.height }}
     >
       {item.kind === "session-header" && <SessionHeaderRow session={item.session} />}
@@ -959,6 +1010,8 @@ function SessionVirtualRow({ row, totalRows }: { row: ReturnType<typeof sessionL
  */
 export const SessionMembershipList = memo(function SessionMembershipList({ sessionView }: { sessionView: SessionView }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef(new Map<number, HTMLDivElement>());
+  const pendingFocusIndexRef = useRef<number | undefined>(undefined);
   const scrollFrameRef = useRef<number | undefined>(undefined);
   const pendingScrollTopRef = useRef(0);
   const [scrollTop, setScrollTop] = useState(0);
@@ -969,6 +1022,9 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
     () => sessionListWindow(layout, scrollTop, viewportHeight),
     [layout, scrollTop, viewportHeight],
   );
+  const rovingIndex = windowed.rows.some((row) => row.index === activeIndex)
+    ? activeIndex
+    : (windowed.rows[0]?.index ?? 0);
 
   useEffect(() => {
     const scroller = scrollerRef.current;
@@ -984,6 +1040,15 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
     if (scrollFrameRef.current !== undefined) cancelAnimationFrame(scrollFrameRef.current);
   }, []);
 
+  useLayoutEffect(() => {
+    const pendingIndex = pendingFocusIndexRef.current;
+    if (pendingIndex === undefined) return;
+    const row = rowRefs.current.get(pendingIndex);
+    if (row === undefined) return;
+    pendingFocusIndexRef.current = undefined;
+    row.focus({ preventScroll: true });
+  }, [windowed.rows]);
+
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>): void => {
     pendingScrollTopRef.current = event.currentTarget.scrollTop;
     if (scrollFrameRef.current !== undefined) return;
@@ -993,48 +1058,52 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
     });
   }, []);
 
-  const scrollToIndex = useCallback((index: number): void => {
+  const focusIndex = useCallback((index: number): void => {
     const target = Math.max(0, Math.min(index, layout.rows.length - 1));
     const nextScrollTop = sessionListScrollTopForIndex(layout, target, viewportHeight);
+    pendingFocusIndexRef.current = target;
     if (scrollerRef.current !== null) scrollerRef.current.scrollTop = nextScrollTop;
     pendingScrollTopRef.current = nextScrollTop;
     setScrollTop(nextScrollTop);
     setActiveIndex(target);
   }, [layout, viewportHeight]);
 
-  const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.target !== event.currentTarget || layout.rows.length === 0) return;
-    const pageRows = Math.max(1, Math.floor(viewportHeight / 72));
-    const target = event.key === "ArrowDown" ? activeIndex + 1
-      : event.key === "ArrowUp" ? activeIndex - 1
-        : event.key === "PageDown" ? activeIndex + pageRows
-          : event.key === "PageUp" ? activeIndex - pageRows
-            : event.key === "Home" ? 0
-              : event.key === "End" ? layout.rows.length - 1
-                : undefined;
+  const onRowKeyDown = useCallback((index: number, event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.target !== event.currentTarget) return;
+    const target = sessionListNavigationTarget(index, event.key, layout.rows.length, viewportHeight);
     if (target === undefined) return;
     event.preventDefault();
-    scrollToIndex(target);
-  }, [activeIndex, layout.rows.length, scrollToIndex, viewportHeight]);
+    event.stopPropagation();
+    focusIndex(target);
+  }, [focusIndex, layout.rows.length, viewportHeight]);
 
   if (sessionView.sessions.length === 0 && sessionView.absentMembers.length === 0) {
     return <p className={cn(dsText.meta, "px-[var(--ds-shell-inset)] py-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>No run rows on this day.</p>;
   }
-  const activeRowIsMounted = windowed.rows.some((row) => row.index === activeIndex);
   return (
     <div
       ref={scrollerRef}
-      tabIndex={0}
       role="list"
-      aria-label={`Session membership, ${String(layout.rows.length)} rows. Use arrow, page, Home, or End keys to move through all rows.`}
-      aria-activedescendant={activeRowIsMounted ? `session-membership-row-${String(activeIndex)}` : undefined}
+      aria-label={`Session membership, ${String(layout.rows.length)} rows. Focus a row, then use arrow, page, Home, or End keys to move through all rows.`}
       onScroll={onScroll}
-      onKeyDown={onKeyDown}
       data-session-membership
-      className={cn("max-h-[min(48dvh,32rem)] overflow-y-auto border-t border-[color:var(--ds-border-subtle)]", dsFocus)}
+      className="max-h-[min(48dvh,32rem)] overflow-y-auto border-t border-[color:var(--ds-border-subtle)]"
     >
       <div className="relative min-w-0" style={{ height: windowed.totalHeight }}>
-        {windowed.rows.map((row) => <SessionVirtualRow key={row.key} row={row} totalRows={layout.rows.length} />)}
+        {windowed.rows.map((row) => (
+          <SessionVirtualRow
+            key={row.key}
+            row={row}
+            totalRows={layout.rows.length}
+            active={row.index === rovingIndex}
+            rowRef={(node) => {
+              if (node === null) rowRefs.current.delete(row.index);
+              else rowRefs.current.set(row.index, node);
+            }}
+            onFocus={() => setActiveIndex(row.index)}
+            onKeyDown={(event) => onRowKeyDown(row.index, event)}
+          />
+        ))}
       </div>
     </div>
   );
@@ -1162,6 +1231,7 @@ function WorkerCard({
               { label: "Run ID", value: String(card.currentRun.runId) },
               { label: "Trace ID", value: String(card.currentRun.traceId) },
             ]}
+            touchAlign="up"
           />
         )}
       </span>

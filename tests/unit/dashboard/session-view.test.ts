@@ -14,6 +14,7 @@ import {
   buildSessionListLayout,
   buildSessionView,
   poolFactsForWorkflow,
+  sessionListNavigationTarget,
   sessionListScrollTopForIndex,
   sessionListWindow,
   sessionMembershipForWorker,
@@ -169,6 +170,22 @@ describe("P4 — Session Panel authority joins", () => {
     }
   });
 
+  it("targets the designated row for arrow, page, Home, and End navigation", () => {
+    const hostile = hostileSessionDay();
+    const view = buildSessionView(hostile.queueSurfaces, hostile.workerCards, hostile.workerPools);
+    const layout = buildSessionListLayout(view);
+
+    assert.equal(sessionListNavigationTarget(0, "ArrowDown", layout.rows.length, 512), 1);
+    assert.equal(sessionListNavigationTarget(1, "ArrowUp", layout.rows.length, 512), 0);
+    assert.equal(sessionListNavigationTarget(0, "PageDown", layout.rows.length, 512), 7);
+    assert.equal(sessionListNavigationTarget(7, "PageUp", layout.rows.length, 512), 0);
+    assert.equal(sessionListNavigationTarget(700, "Home", layout.rows.length, 512), 0);
+    assert.equal(sessionListNavigationTarget(700, "End", layout.rows.length, 512), 1240);
+    assert.equal(sessionListNavigationTarget(1240, "ArrowDown", layout.rows.length, 512), 1240);
+    assert.equal(sessionListNavigationTarget(0, "ArrowUp", layout.rows.length, 512), 0);
+    assert.equal(sessionListNavigationTarget(4, "Enter", layout.rows.length, 512), undefined);
+  });
+
   it("mounts only the initial virtual window for the hostile session", () => {
     const hostile = hostileSessionDay();
     const view = buildSessionView(hostile.queueSurfaces, hostile.workerCards, hostile.workerPools);
@@ -178,5 +195,31 @@ describe("P4 — Session Panel authority joins", () => {
     assert.ok(mountedRows.length > 0);
     assert.ok(mountedRows.length <= 16, `initial render mounted ${String(mountedRows.length)} rows`);
     assert.doesNotMatch(markup, /Long session subject 1239/, "offscreen member is not mounted initially");
+  });
+
+  it("renders one real roving listitem without aria-activedescendant", () => {
+    const hostile = hostileSessionDay();
+    const view = buildSessionView(hostile.queueSurfaces, hostile.workerCards, hostile.workerPools);
+
+    const markup = renderToStaticMarkup(createElement(SessionMembershipList, { sessionView: view }));
+    const rovingRows = markup.match(/role="listitem"[^>]*tabindex="0"/g) ?? [];
+
+    assert.doesNotMatch(markup, /aria-activedescendant/);
+    assert.equal(rovingRows.length, 1);
+    assert.match(markup, /role="listitem"[^>]*aria-posinset="1"[^>]*aria-setsize="1241"[^>]*data-session-active="true"/);
+  });
+
+  it("gives every mounted authority-details trigger a 44px invisible touch reach", () => {
+    const hostile = hostileSessionDay();
+    const view = buildSessionView(hostile.queueSurfaces, hostile.workerCards, hostile.workerPools);
+
+    const markup = renderToStaticMarkup(createElement(SessionMembershipList, { sessionView: view }));
+    const detailTriggers = markup.match(/aria-haspopup="dialog"/g) ?? [];
+    const touchTargets = markup.match(/data-authority-touch-target="44"/g) ?? [];
+
+    assert.ok(detailTriggers.length > 0);
+    assert.equal(touchTargets.length, detailTriggers.length);
+    assert.match(markup, /size-11/);
+    assert.match(markup, /-ml-6/);
   });
 });
