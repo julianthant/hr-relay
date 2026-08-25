@@ -1840,8 +1840,10 @@ session must retain its reserved manifest identity; the workflow must declare an
 and a registered descriptor; and `dryRun` on a workflow with no dry-run boundary is
 `policy-refused` — the same `dry-run-unsupported` rule `planStart` applies, evaluated through the
 same `supportsDryRun`. A pre-reservation row remains readable but enqueue refuses it naming the
-session; a fresh UUID fallback would make the inspected plan and committed manifest different
-identities.
+session; a fresh UUID fallback would make the session wire's reserved identity and committed
+manifest different identities. This authority/API work is only the prerequisite for fidelity
+finding IN125: IN125 remains OPEN until the Manifest UI renders `reservedManifestId`, so this commit
+does not claim the operator can inspect that identity yet.
 
 **Readiness is judged on the manifest that would be written.** `deriveIntakeEnqueuePlan`
 (`src/domain/intake/enqueue.ts`) re-runs `validateIntakeRows`, builds the manifest and returns it
@@ -1876,10 +1878,12 @@ enqueue refuses such a session by name rather than inventing a name the manifest
 
 **The manifest identity is reserved at upload, not enqueue.** A new session stores
 `reservedManifestId` in the same authority write that creates its immutable source binding, and the
-session wire serves it before any mapping decision or run exists. `IntakeSessionSchema` keeps
-terminal `intakeManifestId` exclusive to `enqueued` and additionally requires it to equal the
-reservation whenever the latter is present. This preserves read-forward for older rows while making
-a changed identity unrepresentable on every new row. Enqueue passes the reservation into
+session wire serves it before any mapping decision or run exists. That makes the identity available
+to the API; the Manifest UI does not render it yet, so IN125 remains open. `IntakeSessionSchema`
+keeps terminal `intakeManifestId` exclusive to `enqueued` and additionally requires it to equal the
+reservation whenever the latter is present. The repository requires the reservation on create and
+holds its exact optional value immutable on update: an older absent row can read and advance as
+absent, but ordinary update cannot back-fill it. Enqueue passes the reservation into
 `deriveIntakeEnqueuePlan`; `dependencies.ids.uuid()` is not an alternative path.
 
 **One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
