@@ -337,7 +337,7 @@ question at the moment a field crosses onto a wire is the guard working.
 - [x] the stale claims in code and docs corrected (§Stale and false claims below) — `5cb9a307`, `33e140f9`, `06041db1`, `5b13ec0e`, `155b1048`
 - [ ] the vocabulary sweep — every word and glyph off the demo across the three ledgers reverted, or recorded with its ruling
 - [ ] the parity corpus re-frozen ONCE over every change, with the three scenes it has never photographed — Settings, the version-bump dialog, a DS specimen page
-- [ ] wire: a diagnostic bundle is READABLE — `capturedAt`, size, the contents index, the redaction list and the route the `BundleDialog` opens (ledger 2 E29; D137 writes all of it durably)
+- [x] BOTH: a diagnostic bundle is READABLE — exact-id D137 readback serves captured clock, recorded attachment-byte size, content digest, contents/redaction facts and the manifest route behind the `BundleDialog` (ledger 2 E28/E29)
 - [ ] wire: the receipt's action entry carries what proved the write — target, system, the written values, the confirmation number and the read-back verdict beside the write it proves (ledger 2 D16–D22)
 - [ ] wire: the intake MANIFEST stage and the rerun diff — plan id, source sha, artifact id, the three fingerprints, the totals line, the per-source-row disposition table, the added/removed item lists (ledger 3 IN15/IN16, IN123–IN143)
 - [ ] wire: the OPERATOR half of phone capture — session state, pages received, the unreadable-page alert, the contact sheet (ledger 3 CP2–CP21)

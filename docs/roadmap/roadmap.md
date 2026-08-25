@@ -524,7 +524,7 @@ builds:
 - [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
 - [x] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
 - [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
-- [ ] BE a diagnostic bundle is readable (ledger 2 E29)
+- [x] BOTH a diagnostic bundle is readable — exact-id D137 readback plus `BundleDialog` and server manifest download (ledger 2 E28/E29)
 - [ ] BOTH the intake manifest + rerun-diff surface (ledger 3 IN15/IN16)
 - [ ] BOTH the operator half of phone capture (ledger 3 CP3–CP5)
 - [ ] PROOF the parity corpus re-frozen once over every change, with the three missing scenes (Settings · the version-bump dialog · a DS specimen page)

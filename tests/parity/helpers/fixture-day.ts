@@ -30,6 +30,10 @@ import {
   type RunDetailSectionResponse,
   type RunDetailWire,
 } from "../../../src/domain/dashboard/run-detail.js";
+import {
+  DiagnosticBundleWireSchema,
+  type DiagnosticBundleWire,
+} from "../../../src/domain/dashboard/diagnostic-bundle.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
 import {
   StartPlanResponseSchema,
@@ -61,6 +65,45 @@ const WORKFLOW_ID = personLookupDescriptor.id;
 
 const at = (minute: number, second = 0): string =>
   `2026-08-03T09:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}.000-07:00`;
+
+/** E29's deterministic populated D137 readback, used only by the production-fixture BFF. */
+export const FIXTURE_DIAGNOSTIC_BUNDLE: DiagnosticBundleWire = DiagnosticBundleWireSchema.parse({
+  bundleId: uuidOf(904),
+  capturedAt: at(35),
+  byteSize: 328,
+  contentDigest: "f".repeat(64),
+  redaction: {
+    fields: [
+      { key: "employeeName", state: "transformed", classification: "sensitive-hr", transform: "digest", value: "a".repeat(64) },
+      { key: "ucpathPassword", state: "redacted", classification: "secret", transform: "drop" },
+    ],
+    warnings: ["unclassified diagnostic field at index 3 dropped"],
+  },
+  contents: [
+    {
+      kind: "screenshot",
+      key: "Screenshot",
+      detail: "image/png · 200 bytes · 1280 × 720 px · redacted",
+      artifactId: uuidOf(905),
+      mediaType: "image/png",
+      byteLength: 200,
+      digest: "1".repeat(64),
+      sensitivity: "redacted",
+      width: 1280,
+      height: 720,
+    },
+    {
+      kind: "accessibility-excerpt",
+      key: "Accessibility excerpt",
+      detail: "text/yaml · 128 bytes · redacted",
+      artifactId: uuidOf(906),
+      mediaType: "text/yaml",
+      byteLength: 128,
+      digest: "2".repeat(64),
+      sensitivity: "redacted",
+    },
+  ],
+});
 
 /* ── queue surfaces ──────────────────────────────────────────────────────── */
 
@@ -775,8 +818,8 @@ function failureDetail(runId: string, failureId: string, seed: number) {
     }],
     sameFingerprintSeen: 1,
     diagnosticBundle: {
-      state: "absent",
-      reason: "no diagnostic bundle was captured; automatic capture is a separate 2g slice",
+      state: "present",
+      bundleId: FIXTURE_DIAGNOSTIC_BUNDLE.bundleId,
     },
     occurredAt: at(35),
   };

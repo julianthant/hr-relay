@@ -271,6 +271,12 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ### Dated lessons
 
+- **2026-08-25 — a content-addressed diagnostic row is not evidence of readable bytes.** The D137
+  bundle row and attachment index can agree while an artifact has been lost or corrupted; E29 therefore
+  re-derives the bundle digest, compares the exact indexed attachments, and drains each content-addressed
+  artifact before it serves facts or a manifest. A client-side reconstruction would have made a damaged
+  record look download-ready.
+
 - **2026-08-25 — exact visual geometry and a usable touch target are separate boxes.** A demo-exact
   `Button ghost sm` may keep its 24px painted box while a transparent pseudo-element on the same
   semantic button supplies the 44px hit region. Prove the outer points hit that button and that its
