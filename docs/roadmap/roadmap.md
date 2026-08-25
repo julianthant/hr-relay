@@ -519,7 +519,7 @@ builds:
 - [!] DOCS the operator rules the 37 shell / queue / run-start OPEN questions (ledger 1 §Roll-up)
 - [!] DOCS the operator rules the 54 run-detail OPEN questions (ledger 2 §Roll-up)
 - [!] DOCS the operator rules the ~60 standing-surface OPEN questions, the twelve structural ones first — the virtualised archive · the bump's MAJOR/MINOR arms · a DS specimen page · the row-and-panel vocabulary surface · Settings as a takeover · the keyboard legend · intake stages 5–6 · the intake review gate · the archived-capture lightbox · the bump plan naming its runs · the operator capture half · the two Settings sections already served (ledger 3 §Roll-up)
-- [ ] FE the served-and-dropped facts — 8 in run detail (the receipt footer, the failure's occurredAt / traceId / attempt, `page.urlRedacted`, `action.elementId`) + the standing-surface ones the ledger 3 roll-up lists (doc 03a §Served-and-dropped)
+- [ ] FE the remaining served-and-dropped facts — intake's 9 are complete (IN8/IN9/IN53/IN82/IN106/IN121/IN126/IN127/IN131; F2 a–c); 8 remain in run detail (the receipt footer, the failure's occurredAt / traceId / attempt, `page.urlRedacted`, `action.elementId`) plus the archive, bump, activity, explorer and shell facts (doc 03a §Served-and-dropped)
 - [ ] FE the structural run-detail ports — the failure-record disclosure + write-state block, the focusable timeline segment, the step-group Well, one-owner `dataExpanded`, the grouped log stream
 - [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
 - [ ] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)

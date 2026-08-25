@@ -111,7 +111,7 @@ shell 131/178 (74 %), 10 OPEN · queue 118/196, 13 · run start 48/115 (42 %), 1
 23/49, 7 questions · log panel 48/114, 11 · Context rail 31/76, 9 · receipt 9/39, 12 · failure
 record 7/34, 13 · park + ceremonies 6/36, 2 · archive 96/250, 71 marks · activity 57/117, 8 ·
 explorer 54/182, 31 · UI catalog 0/69 (not the same surface as the demo's), 6 · Settings + doctor
-2/72, 10 questions · intake 4/155, 66 marks · phone capture 1/62 (the demo's DESKTOP view has no
+2/72, 10 questions · intake 10/155, 57 marks · phone capture 1/62 (the demo's DESKTOP view has no
 counterpart), 6 · version-bump dialog 2/53, ~20 questions · DS primitives 119/159 (copied with
 provenance; zero tokens missing), 18. "Built" in the table above and "exact" here are different
 claims: every row above is served and drawn; 756 of 1,956 elements are drawn exactly as the demo
@@ -331,7 +331,7 @@ question at the moment a field crosses onto a wire is the guard working.
 - [!] the operator rules the 37 shell · queue · run-start OPEN questions — ledger 1, `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` §Roll-up (28 numbered questions over 37 rows)
 - [!] the operator rules the 54 run-detail OPEN questions — ledger 2, `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §Roll-up (8 served-and-dropped · 7 structural · 24 words-and-glyphs · 8 rebuild-only · 2 stale claims, plus the B45 tension)
 - [!] the operator rules the ~60 standing-surface OPEN questions, the twelve structural ones first — ledger 3, `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §Roll-up (260 marks collapsing to ~60 questions)
-- [ ] the served-and-dropped facts drawn — pure FE, no ruling needed (§Served-and-dropped below: 8 run-detail · 9 intake · the archive, bump, activity, explorer and shell ones)
+- [ ] the remaining served-and-dropped facts drawn — intake's 9 are complete (IN8/IN9/IN53/IN82/IN106/IN121/IN126/IN127/IN131; F2 a–c), leaving 8 run-detail plus the archive, bump, activity, explorer and shell facts (§Served-and-dropped below)
 - [ ] the structural run-detail ports — the failure record's disclosure and write-state block, the focusable timeline segment, the step group's Well + band + dividers, one owner for `dataExpanded`, the grouped log stream
 - [ ] the stale claims in code and docs corrected (§Stale and false claims below)
 - [ ] the vocabulary sweep — every word and glyph off the demo across the three ledgers reverted, or recorded with its ruling
