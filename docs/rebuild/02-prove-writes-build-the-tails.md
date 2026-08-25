@@ -311,9 +311,9 @@ does — see §2j.
 - [ ] `ScenarioManifest`'s preflight fault set has **no runner** and `preflight-coverage` stays `planned` with D188's real trigger — the first migration that adds one; the declaration side is held by `runtime-dependency-coverage` (`ref operator-trust` §3.1, `ref guards-and-tests`)
 - [ ] the **component layer has no test lane** — this tree renders no React outside the parity corpus, and the parity lane is OUTSIDE the per-commit gate, so a `.tsx` change is gated only by typecheck/lint/unit until someone runs `npm run test:parity` → `{#test-tiers}`
 - [ ] **D91's BRANCH half is UNMET** and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 71.76 % (`ref guards-and-tests` §3.14/§10.10) → `{#test-tiers}`
-- [ ] **D85 parts 2 and 3 never landed** — there is no `cli test workflow <id> --dry-run` and no `TestTargetRegistry` (`ref guards-and-tests` §10.5/§10.9) → `{#test-tiers}` under R10
+- [x] **D85 parts 2 and 3 did not land in Phase 2, then closed under R10** — `cli dry-run-scenario <workflow> --subject <label>`, `config/test-subjects.json` and insert-only result evidence (`ref guards-and-tests` §10.5/§10.6) → `{#test-tiers}`
 - [ ] the 14/8/5 retention sweep and a configurable backup path — both `wont-build-unless-asked` by D193 → `{#def-retention}`
-> 2026-08-21 | docs-cohesion 02 | verified against the `p2-2j` blocks in `reference/{operator-trust,guards-and-tests,frontend-backend-integration,dashboard-surfaces}.md`; left: the preflight runner, the component/parity lane, D91's branch half and D85's parts 2–3, all four owned by `{#test-tiers}` or D188's migration trigger
+> 2026-08-25 | test-tiers | D85's deferred subject/runner/result machinery is now built; this Phase-2 record still leaves the preflight runner, component/parity lane and D91 branch floor with their existing owners
 
 <!-- /roadmap-status -->
 
@@ -521,11 +521,11 @@ blocks the exit — each is listed so a later reader is not surprised, and each 
 | Settings is read-only (`apply-settings` is the kernel's one deferred arm) | `{#def-settings}` — 04 |
 | six of seven worker / session controls have kernel arms and no control | **unowned — reported** |
 
-Four **test-lane** gaps left 2j the same way, all owned by `{#test-tiers}` under R10 except the
+At Phase 2 exit, four **test-lane** gaps left 2j the same way, all owned by `{#test-tiers}` under R10 except the
 first: `preflight-coverage` stays `planned` behind D188's trigger (the first migration that adds a
 preflight runner); there is no component render lane and the parity lane sits outside the per-commit
-gate; D91's BRANCH half is unmet at a measured 71.76 %; and D85's parts 2 and 3 — `cli test workflow
-<id> --dry-run` and `TestTargetRegistry` — never landed.
+gate; D91's BRANCH half is unmet at a measured 71.76 %. D85's parts 2 and 3 did not land in Phase 2;
+R10 later built them as `cli dry-run-scenario`, `config/test-subjects.json` and durable result rows.
 
 **And the standing obligation Phase 2 hands forward:** the transaction kernel is proven, so
 write-heavy migration is unblocked — but **each workflow still owes its OWN controlled-commit proof

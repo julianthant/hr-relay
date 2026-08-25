@@ -677,13 +677,13 @@ own lane, because `duo-autopilot/` is a hard runtime dependency and a rule pinne
 - [x] the five harnesses move INTO the step they prove (`descriptor.ts` + `module.ts`, role `chunk-harness of separations, step <folder>`); ids unchanged; the three write harnesses import `identity-check/`'s fragments instead of restating them
 - [x] `kuali-timekeeper-annotation` DISMANTLED (D266): workflow, module, four `kuali/*-timekeeper-annotation` tasks + contracts + UI-registry entries, its scenario file and claims, the `proving` role arm and the `Test equipment` group; parity references re-frozen; `guard-inventory.json`'s D188 successor re-pointed
 - [x] the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid real-sequencer proof shape (`ref guards-and-tests` §10.3/§10.4, D266)
-- [ ] run the T1b manifest live against the finalization canary and record it — blocked on §10.5–§10.6's unbuilt `config/test-subjects.json`, `dry_run_scenario_results`, and `cli dry-run-scenario`
+- [ ] run the T1b manifest live against the finalization canary and record `met` — registry, insert-only result authority and CLI runner are built; the honest target is unavailable until 2026-08-28. The 2026-08-25 production CLI execution recorded immutable result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` as `blocked`/`not-started`, with `run_id = null` and `trace_id = null`, before browser composition; that refusal is evidence for the blocker, not a green T1b result
 - [x] `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
 - [x] the `workflow-layout` guard + its `guard-inventory.json` activation; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE
 - [x] `npm run build:manifest` regenerated; the D191 gate green; rendered rail/picker/Explorer inspected and intentional D266 visible changes re-frozen/asserted by parity
 > 2026-08-21 | workflow-tree ruling | drawn from the operator's ruling; D265 ratified in ref workflow-model §1.2.2; nothing under `src/workflows/` has moved yet — the move is the next session's code unit
 > 2026-08-21 | workflow-tree ruling | D266 the same session — `proving/` withdrawn; `kuali-timekeeper-annotation` dismantled into the Kuali finalization step's T1 pair
-> 2026-08-25 | D266 | source/test retirement complete; the rail has only main workflows, picker/Explorer preserve nested marked harnesses, and 151 parity cases assert the intentional group/registry change; live T1b remains blocked only by the separately planned runner/registry/table
+> 2026-08-25 | test-tiers | source/test retirement and runner machinery complete; the rail has only main workflows, picker/Explorer nest all five marked harnesses, and the unavailable finalization canary produced durable blocked result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` (`not-started`, no run/trace). The only remaining T1b step is the date-gated live green on 2026-08-28
 <!-- /roadmap-status -->
 
 **The ruling (2026-08-21).** Eight sibling folders under `src/workflows/` — `separations` beside the
@@ -712,19 +712,21 @@ dismantled and could be used to create the dry run and scenario for the Kuali se
 So it goes — workflow, module, tasks, contracts, UI entries, scenario, the `proving` arm and the
 `Test equipment` group — and what was valuable in it is re-seeded where `ref guards-and-tests` §10
 says a proof of machinery lives: the FIRST T1 pair in the tree, for the Kuali finalization step
-(`separations-kuali-finalization`): `structural.scenario.test.ts` keeps the real-sequencer walks
-over the real descriptor (`kualiHarness`: zero `write_intents` / `write_attempts` /
-`durable_outbox` deltas asserted over a real authority database, with the ordinary upstream task
-`run_checkpoints` required), and `dry-run.scenario.ts` is the live manifest
+(`separations-kuali-finalization`): `structural.scenario.test.ts` keeps the valid real-sequencer
+proof shape over the current descriptor (zero write-intent, transaction-checkpoint and outbox rows
+for preview/refusal arms, with the ordinary upstream task checkpoints allowed), and
+`dry-run.scenario.ts` is the live manifest
 `cli dry-run-scenario` runs against the finalization canary. §3.4's proof of record and D207's window
 are history and stay cited; the Kuali write proof going forward is chunk 5c's own commit.
 
 **What the code unit does NOT do.** No id changes (`separations-identity-check` stays
 `separations-identity-check`; a path move re-stamps no run, receipt or checkpoint), no change to how
-any surface renders (every surface reads the ROLE; the guard pins role ↔ path), no change to
-startability or to the §3.2 proofs each harness holds. The three write harnesses stop carrying their
-own copy of the identity-gate nodes and import `identity-check/`'s — the one functional simplification,
-and it is why `build:manifest` regenerates.
+the rail filters main workflows, no change to startability or to the §3.2 proofs each harness holds.
+The intentional picker/Explorer hierarchy delta is that ALL five harnesses now nest under
+Separations, including the Kronos harness whose own HR category remains `timekeeping`; grouping by
+`role.of` happens before category partitioning. The three write harnesses stop carrying their own
+copy of the identity-gate nodes and import `identity-check/`'s — the functional simplification that
+required `build:manifest` regeneration.
 
 ## Smaller operator calls open
 <!-- roadmap: operator-calls -->

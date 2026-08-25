@@ -4307,7 +4307,8 @@ Three dated rulings narrowed it, and they read as one rule because they land in 
   served `role` is `chunk-harness` renders nested and visually subordinate under its composition's
   entry, marked as a proving harness. The WIRE serves the raw fact and display stays the frontend's:
   the bootstrap workflow primitive gains a REQUIRED closed `role` (`standalone` / `composition` /
-  `chunk-harness` + `of`), and the schema refuses an `of` that does not name a served composition.
+  `chunk-harness` + `of` + `step`), and the registry refuses an `of` that does not name a served
+  composition or a `step` that composition did not declare.
   **Counts do not roll up** — a badge beside an entry counts exactly the rows that entry's panel
   shows, and folding harness runs into the composition's badge would make the badge disagree with its
   own queue panel, which is D81's divergence class manufactured deliberately. Run rows keep the
@@ -4318,11 +4319,16 @@ Three dated rulings narrowed it, and they read as one rule because they land in 
   folder per rail workflow and one sub-folder per timeline step; D266 withdrew the draft
   `proving/` arm. The
   `workflow-layout` guard pins the served role and the path to each other, so this filter and the
-  folder view can never disagree (`ref workflow-model` §1.2.2, the owner). Nothing here re-renders.
+  folder view can never disagree (`ref workflow-model` §1.2.2, the owner). Grouping nests a harness
+  by `role.of` BEFORE category partitioning, so the Kronos harness truthfully keeps its
+  `timekeeping` HR category while rendering under the Separations composition with the other four
+  step harnesses.
 - **D266 (2026-08-21) — `Test equipment` is gone.** `kuali-timekeeper-annotation` is dismantled into
   the testing framework (ref guards-and-tests §10, ref workflow-model §1.2.1), so the `proving` arm
   has no member and leaves the union; the D241 group drops by the grouping rule's own empty-group
-  rule and the arm is removed from `groupWorkflowsByCategory` in the same code unit. Nothing else here changes.
+  rule and the arm is removed from `groupWorkflowsByCategory` in the same code unit. The only other
+  intended hierarchy delta is the D265 correction above: all five harnesses now sit under
+  Separations in the picker and Explorer.
 - **D220, the same day — the RAIL lists main workflows only.** On seeing the nesting live: *"not
   needed at all — only the main workflows should be there."* The rail drops every `chunk-harness`,
   and a category whose entries all dropped goes with them rather than rendering an empty heading.

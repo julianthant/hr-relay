@@ -5871,3 +5871,28 @@ rule needs to admit a fact verified under two assertions before the audits can b
 NAMED here rather than half-fixed. The Kuali registry is not unguarded in the meantime: the UI
 catalog freshness guard covers its published content byte-for-byte, and
 `legacy-selector-port-provenance` covers every ported key.
+
+### 9.25 The first T1b production invocation — correctly BLOCKED before start (2026-08-25)
+
+D266 dismantled `kuali-timekeeper-annotation` into the Kuali finalization step's T1 pair rather than
+keeping a second proof workflow. The production command
+`npm run cli -- dry-run-scenario separations-kuali-finalization --subject finalization-canary`
+exercised that pair's registry, manifest boundary and insert-only result authority from `master`.
+It exited non-zero with the expected blocker because §9.19's approved canary is not available until
+Pacific calendar day 2026-08-28; no browser runtime or workflow run was fabricated.
+
+| Durable fact | Recorded value |
+|---|---|
+| result | `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` |
+| scenario / workflow | `separations-kuali-finalization/dry-run` / `separations-kuali-finalization` |
+| subject label | `finalization-canary` |
+| verdict / execution | `blocked` / `not-started` |
+| blocker | `subject-unavailable` |
+| run / trace | `null` / `null` |
+| manifest digest | `a93cf93fce5163af06f1fcabe3ed72d061e5739493afd2284bc7b1b7771d8ac7` |
+| wall time | 3 ms |
+
+This row proves the fail-loud pre-browser behavior and the durable blocked arm. It does **not** tick
+the live T1b proof: that requires a second result with verdict `met` against the real canary on or
+after 2026-08-28, after the runner starts, drains, takes the real gate command, drains again and
+asserts authority, receipts and the zero-write dry-run fence.
