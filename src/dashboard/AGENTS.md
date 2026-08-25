@@ -11,9 +11,20 @@ directions and redacted value facts; `transaction-fenced` is an authority beat a
 of those observation fields. Keep server `sequence` order, append only immutable cursor pages, and group
 only contiguous rows by their real producer. Notes stay notes.
 
+Continuation ownership is the exact `(runId, cursor, initial snapshot)` that launched the request.
+A refresh or run switch supersedes that owner: its stale response changes neither rows, loading nor
+error for the current snapshot. The live panel requires `rows`; notes-only pages belong to frozen
+archive readers and must fail here with the run and cursor.
+
 ### Dated lessons
 
 - **2026-08-25 — a fence is not a page observation.** A producer's task system resolves the origin of
   an observed row, but a durable `transaction.fenced` beat is not an observed read or write. Rendering
   its producer system, a direction arrow, or a placeholder pill would turn authority timing into false
   page evidence; leave those details absent. (D270 / observed-logs)
+
+- **2026-08-25 — a bounded log page is not the D9 virtualization primitive.** The live query serves at
+  most 200 rows per page. This surface proves that exact bound renders one-for-one, remains searchable,
+  and never fetches a continuation eagerly; its contiguous grouping fold is linear. Queue/log/archive
+  virtualization remains D9's shared `ds/` primitive behind D9's trigger, and this unit claims none of
+  it.
