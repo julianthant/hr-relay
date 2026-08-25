@@ -252,6 +252,12 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   (D104).
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
+- **Lesson 2026-08-25 — fenced-write instrumentation:** a commit task may call `ctx.recordData`
+  before `ctx.driver.commit`. Capture and clock that batch at the call, then deliver commit-role
+  span events only after the callback settles; the durable fence→external-click window admits no
+  fallible emitter. If task and terminal-span delivery both fail, preserve them primary-first in an
+  `AggregateError` and carry it through any parked-write cause. See ref write-safety §3 and doc 03a
+  §Observed logs.
 
 ## After changes
 

@@ -332,6 +332,7 @@ does today.
 - [x] beats ②–⑥ run inside ONE `sessions.withDriver` exclusive transaction lease, so a navigating probe can never destroy a staged form (`write-sequencer.ts:1492-1514`)
 - [x] beat ④'s fence is `writeIntents.fenceAttempt` for an unseen key and `refenceRetryable({expectedVersion, …})` for a retryable one — an optimistic-lock CAS, never a blind update (`write-sequencer.ts:1596-1607`)
 - [x] beat ⑤'s `MutationCapability` is minted by this module and nothing else, over a module-private WeakSet, and a driver asserts it before resolving a locator (`src/base/mutation-capability.ts`)
+- [x] observed probe/prepare/commit/verify beats use explicit task roles; commit `recordData` is stamped at call time but its fallible emission waits until the callback settles, outside fence→external-click
 - [x] beat ⑦ is ONE outer authority transaction over claim revalidation, the four-row primitive, the `TransactionOutcome` checkpoint, both outboxes and the run transition (`executeSequencedWriteCommit`, `write-sequencer.ts:512`)
 - [x] the post-fence park raises `WriteParkedError` and the interpreter has its typed arm; recovery has scheduling priority over claim expiry, and D200's lease-as-evidence sweep releases a claim no live process answers for
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-sequencer.ts`, `src/core/write-recovery.ts`, `src/base/mutation-capability.ts`, `src/infra/sqlite/migrations.ts:300-327`; left: nothing in the kernel — what remains is per-workflow (§3.2)
@@ -427,6 +428,22 @@ stores that proof and happens-before the click; the click happens-before landing
 proof validation happens-before the single ⑦ transaction. The ledger and span JSONL files are
 projections of durable outboxes, not additional commit beats. This generalizes oath-upload's
 "marker durable before the POST" (`handler.ts:306-309`) into the kernel.
+
+**Instrumentation does not occupy ④→⑤.** Probe, prepare and verify observations emit synchronously
+at `ctx.recordData`. Commit is different because a legal task may record a staged/page fact before
+calling `driver.commit`. The collector validates and freezes that batch and reads the Clock once at
+the call, but buffers delivery until the whole commit callback settles. Only then does it emit the
+prebuilt `transaction.fenced` event, redact and emit commit batches in call order, and end the
+commit span. Thus a throwing span writer can park an already-fenced attempt after the external call,
+but cannot prevent that call. The event's `observedAt` remains the record instant; the delay is
+delivery-only and is the explicit D270 exception. Dry-run executes only probe + prepare and emits no
+fence, commit or verifier beat.
+
+A terminal span failure is always secondary to the task failure it was trying to report. The
+sequencer retains both in a primary-first `AggregateError` whose cause is the original task error;
+a post-fence `WriteParkedError` carries the `PostFenceWriteFailure` and that aggregate through its
+cause chain. This keeps parking fail-loud without rewriting a real browser/task failure as an
+instrumentation failure.
 
 **The durable shape, as built.** The three tables are JSON-record tables, not the wide-column sketch
 Phase 0 drew (`src/infra/sqlite/migrations.ts:300-327`). What carries the invariants is the schema

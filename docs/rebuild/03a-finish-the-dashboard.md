@@ -616,12 +616,13 @@ what `{#test-tiers}` reads as its parallel case. It needs the Duo lease first.
 <!-- roadmap: observed-logs -->
 
 <!-- roadmap-status: observed-logs -->
-- [x] BE provenance points emitted on the span at record time, redacted by declaration — an unclassified leaf fails loud (D270)
-- [ ] BE a transaction node's beats stream their observations (probe → stage → fence → click → read-back)
+- [x] BE provenance points captured at record time and redacted by declaration; probe/prepare/verify emit synchronously, commit flushes after callback settlement — an unclassified leaf fails loud (D270 + fence→click safety exception)
+- [x] BE a transaction node's beats stream their observations (probe → stage → fence → click → read-back)
 - [ ] FE the log panel renders observed rows per step, in the Context rail's vocabulary
 - [ ] PROOF a separations dry run reads as a ledger of page facts
 > 2026-08-20 | docs-cohesion 03a | recorded points exist in memory at record time and reach no durable channel — finalizeRead validates them and the executor stores only provenance plus the parsed output (src/core/task-provenance.ts:264, src/core/run-executor.ts:1052)
 > 2026-08-21 | D270 | the emission half landed: `data.observed` on the SPAN stream, one event per `ctx.recordData` call, redacted by the declared classification (`ef090ea4` the arm + its wire twin, `68954117` the declarations, `4d074886` the executor, `aabd46f4` the projector). Left: the transaction beats (L2) and the FE rows (L3)
+> 2026-08-25 | observed-logs L2 | the transaction lane now opens explicit probe/prepare/commit/verify spans, emits every executed role's declared observations, and carries the kernel's durable fence as strict `transaction.fenced` rather than fabricated page data. Commit-role calls are stamped and frozen at call time but flushed fence-first only after the callback settles, so a writer failure cannot strand a won fence before the external click. Dry-run emits only probe + prepare. Left: the FE rows and proof
 <!-- /roadmap-status -->
 
 **The log should quote what the page said.** Every task already records its observations through
@@ -632,12 +633,13 @@ are used to VALIDATE the output and then discarded. `finalizeRead` returns point
 and only `provenance` plus the parsed `output` reach the checkpoint row. The log stream beside them
 carries prose messages, which is a description of a step rather than the step's evidence.
 
-**So the build is an emission, not a second scrape.** A point is emitted on the span at record time,
-redacted by the DECLARED evidence classification (`reference/operator-trust.md` §2.3) — an
-unclassified leaf fails loud, because dropping it silently would make a log look complete while
-hiding what the run read. Nothing re-reads the page: a second scrape would be a second observation
-of a moving system, and two observations of one fact is exactly how a surface starts disagreeing
-with authority.
+**So the build is an emission, not a second scrape.** A point is captured on its task span with its
+record-time instant and redacted by the DECLARED evidence classification
+(`reference/operator-trust.md` §2.3) — an unclassified leaf fails loud, because dropping it
+silently would make a log look complete while hiding what the run read. Probe/prepare/verify
+deliver at that call; commit uses the critical-window delay below. Nothing re-reads the page: a
+second scrape would be a second observation of a moving system, and two observations of one fact
+is exactly how a surface starts disagreeing with authority.
 
 **As built (D270, 2026-08-21).** The emission is a new span arm, `data.observed`, in both halves of
 the parity pair — `ExecutorSpanEventSchema` (`src/core/span-emitter.ts`) and `SpanEventWireSchema`
@@ -653,13 +655,20 @@ there would have published into a directory nothing reads; and `NoteFieldWire`'s
 one thing the rail cannot derive for itself. `assertNoteWithinRunScope` is therefore not on this
 path at all — no note is written.
 
-**One event per `ctx.recordData` CALL, at record time.** A batch is one observation of the page, so
-the collector reads the clock ONCE per call and every point in the batch shares the instant the
-event carries as `observedAt`. Record time rather than finalization is the load-bearing half: a task
-that throws after reading the page has still read the page, and a failed run's observations are
-exactly what an operator opens the panel for. The failed attempt of a retried node therefore
-publishes nothing if it threw before recording, and the successful attempt publishes on its own span
-path — D123/D214's rule, unchanged.
+**One event per `ctx.recordData` CALL, with one record-time instant.** A batch is one observation of
+the page, so the collector reads the clock ONCE per call and every point in the batch shares the
+instant the event carries as `observedAt`. Probe, prepare and verify publish synchronously: a task
+that throws later has still read the page. Commit is the deliberate write-safety exception. Its
+call validates and freezes the points and owns the same one Clock instant, but emission and
+declaration redaction wait until the commit callback settles; then the sequencer flushes
+`transaction.fenced`, each commit batch in call order, and the terminal commit span. This is still
+record-time evidence — `observedAt` is never restamped — but not record-time delivery. The delay is
+required because a legal commit task may record a staged/page fact BEFORE invoking its driver; a
+fallible span writer in that callback would otherwise win the durable fence and prevent the click.
+If the callback later throws, its buffered batches are still flushed before the write is parked.
+When both the task and that terminal emission fail, the task error remains first and as the cause of
+an `AggregateError`; the writer error is retained second. Parking carries that aggregate as its
+cause, so instrumentation can neither replace the business failure nor disappear silently.
 
 **A point is redacted per LEAF, through the receipt's own function.** `redactObservedDataPoints`
 (`src/core/observed-data.ts`) splits a point's value by the provenance collector's leaf rule (an
@@ -670,21 +679,25 @@ value the receipt would have dropped is the same defect from a different surface
 `selection` point carries one redacted value per leaf, keyed by the full dotted path a
 `FactProvenance` row is written under.
 
-**An undeclared leaf fails the task, by name.** The refusal happens inside `ctx.recordData`, so it
-names the task and the field at the point of authorship rather than at a finalization the failing
-task may never reach. Every one of the eighteen task nodes across the five registered descriptors
-was already declared, which the scenario lane now proves by running them. The only declarations this
-added are the six paths the executor's own fixture contracts record; they are DECLARED rather than
-exempted, because a fixture bypass would mean the refusal is never exercised by a composed run.
+**An undeclared leaf fails the task, by name.** Probe, prepare and verify refuse inside
+`ctx.recordData`; commit refuses during its post-callback flush and therefore parks the already
+fenced write. Both paths name the producing task and exact leaf rather than silently dropping it.
+The transaction lane explicitly declares all four production probe roles and all four post-fence
+verify roles. The executor's transaction fixture is DECLARED rather than exempted, because a
+fixture bypass would mean the refusal is never exercised by a composed run.
 
 **The queue projection ignores the arm BY NAME** (`run-queue-projection.ts`). Folding a page
 observation into a task span it is not would be D123's collapse again, and a stream carrying an
 unfoldable line degrades the projection and schedules the guarded rebuild (D218) — so "ignored" had
 to be written down, not left to a fall-through. Rendering these rows is this node's FE row.
 
-**A transaction node streams its beats.** `ref write-safety` §5's sequence — probe → stage → fence →
-click → read-back — is the one place the operator most needs to watch the page rather than a
-spinner, and each beat already has an observation to publish.
+**A transaction node streams its beats.** `ref write-safety`'s sequence is represented by explicit
+`probe`, `prepare`, `commit` and `verify` task spans. Their declared page points use
+`data.observed`; the kernel's durable fence uses the strict `transaction.fenced` parity arm because
+authority state is not page data. The sequencer flushes the commit group as fence → commit points,
+then opens verify for the read-back, preserving probe → stage → fence → click → read-back order.
+Prepare/commit emission is preserved. A receipt completion has no verify role and emits none. A dry
+run executes and reports only probe and prepare: it fabricates no fence, click or read-back beat.
 
 **Two constraints the code imposes on the design, both worth stating before anyone builds it.**
 `DataPoint` carries `direction` natively (`read` or `write`), which the Context rail has to DERIVE
