@@ -1,7 +1,7 @@
 # explorer-graph--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: 704f6829221352c9de72e090961a12a1550501de22991ea03fbf7f277d1927f5
+# descriptorHash: 15ba37aacfe4d4c8e6ef52a58be81ed29fd54ac5c323c6be0b5edc940f8b2ea0
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -32,6 +32,8 @@
           - button "Separation 19"
           - list "Proving harnesses of Separation":
             - listitem:
+              - button "Separation Timecard a proving harness of Separation 2"
+            - listitem:
               - button "Separation Document a proving harness of Separation 2"
             - listitem:
               - button "Identity Check a proving harness of Separation 5"
@@ -39,10 +41,6 @@
               - button "UCPath Termination a proving harness of Separation 8"
             - listitem:
               - button "Kuali Finalization a proving harness of Separation 7"
-      - text: Timekeeping
-      - list:
-        - listitem:
-          - button "Separation Timecard a proving harness of Separation 2"
       - text: Search
       - list:
         - listitem:
