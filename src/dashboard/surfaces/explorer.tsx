@@ -1504,6 +1504,10 @@ export function WorkflowExplorer({
           <Button
             variant="ghost"
             size="sm"
+            className={cn(
+              "relative touch-manipulation",
+              "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
+            )}
             icon={<Eye aria-hidden className={dsIcon.md} />}
             onClick={onVersionRegistry}
           >

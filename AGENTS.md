@@ -256,6 +256,14 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
 
+### Dated lessons
+
+- **2026-08-25 — exact visual geometry and a usable touch target are separate boxes.** A demo-exact
+  `Button ghost sm` may keep its 24px painted box while a transparent pseudo-element on the same
+  semantic button supplies the 44px hit region. Prove the outer points hit that button and that its
+  effective rectangle intersects no neighboring control; increasing the shared button size would
+  silently change every header's fidelity instead.
+
 ## After changes
 
 Run `npm run typecheck && npm run lint && npm run test:coverage` before committing (D191 —

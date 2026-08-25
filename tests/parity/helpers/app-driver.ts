@@ -29,6 +29,8 @@ export interface AppRoute {
   readonly catalog?: string;
   /** `""` is the archive ledger; a run id opens that archived run (2i-G). */
   readonly archive?: string;
+  /** The Archive-owned view restored by a deep link. */
+  readonly archiveView?: "runs" | "versions";
   /** `from..to`; `""` opens the report on its default range (2i-G). */
   readonly activity?: string;
 }
@@ -41,6 +43,7 @@ export function routeUrl(baseUrl: string, route: AppRoute): string {
   if (route.start === true) url.searchParams.set("start", "1");
   if (route.intake !== undefined) url.searchParams.set("intake", route.intake);
   if (route.archive !== undefined) url.searchParams.set("archive", route.archive);
+  if (route.archiveView !== undefined) url.searchParams.set("archiveView", route.archiveView);
   if (route.activity !== undefined) url.searchParams.set("activity", route.activity);
   if (route.explore !== undefined) url.searchParams.set("explore", route.explore);
   if (route.catalog !== undefined) url.searchParams.set("catalog", route.catalog);
