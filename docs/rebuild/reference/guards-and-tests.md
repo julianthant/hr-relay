@@ -1003,8 +1003,8 @@ explicit replacement in the guard inventory, not a silent shrink.
 - [x] D190 closed the safety-critical floor (70.08 % → 99.43 % on `run-queue-projection.ts`) and D191 made `test:coverage` the per-commit gate
 - [x] `redaction-surface-scan` (D183) and the D188 inventory re-disposition landed — six placeholder `planned` guards became four retirements with successors and two kept with real triggers
 - [ ] D91's BRANCH half is UNMET and its Phase-2-exit trigger has passed: `coverage.thresholds` configures lines/statements/functions only, so branches are report-only at a measured 71.76 % global (§3.14 as-built, §10.10)
-- [ ] D85's parts 2 and 3 never landed — there is no `cli test workflow <id> --dry-run` and no `TestTargetRegistry`; §10.5 and §10.9 are where they get built
-> 2026-08-20 | docs-cohesion ref guards-and-tests | measured at HEAD: 84.23 % lines / 82.15 % statements / 84.74 % functions / 71.76 % branches; verified against `vitest.config.ts` and `src/cli.ts`
+- [x] D85's parts 2 and 3 landed later under R10's names: `config/test-subjects.json`, insert-only `dry_run_scenario_results`, and `cli dry-run-scenario <workflow> --subject <label>` (§10.5–§10.6)
+> 2026-08-25 | test-tiers | the first finalization case exercised the unavailable-subject path: durable `blocked`/`not-started`, no run or trace id, and no browser runtime composed; the honest live green waits for the 2026-08-28 canary
 <!-- /roadmap-status -->
 
 The operator asked for a better standard than the `custom-hr-e2e-test` skill ritual. The ratified
@@ -1026,16 +1026,15 @@ Three habits from the old ritual are kept and promoted into kernel behavior: **"
 finding"** (a step that needed manual help is recorded, not smoothed over), **double-entry ground
 truth** (a UI assertion is paired with an independent source), and the **append-only issue ledger**.
 
-**AS-BUILT 2026-08-20 — two of D85's four parts landed, one landed under a different name, and one
-never existed. R10's §10 is where the gap closes, so the state is recorded here rather than left to
-be discovered.**
+**AS-BUILT 2026-08-25 — all four D85 mechanisms exist; R10 supplied the final names and the durable
+evidence boundary.**
 
 | D85 part | as-built |
 |---|---|
 | 1 · the scenario corpus is the everyday lane | **LANDED.** 16 files under `tests/scenario/`, audited three ways by `scenario-coverage` (§3.10) — claims vs. graph, references vs. executions, and D185's corpus-directory layout. |
-| 2 · structural dry-run through the real kernel | **LANDED as a mechanism, NOT as `cli test workflow <id> --dry-run`.** `src/cli.ts` has no run-starting subcommand at all; the only production entry point that can set `envelope.dryRun` is the dashboard's `Dry run` checkbox (`src/dashboard/surfaces/run-start.tsx:996`) through `submitStartPlan`, refused by `src/services/start/plan.ts:168` as `dry-run-unsupported` when the descriptor does not support it. Everything else that sets the flag is a test fixture. §10.9 specifies the missing CLI. |
-| 3 · a typed `TestTargetRegistry` | **NEVER BUILT.** No registry of test employees, fixture files or authorized sacrificial documents exists in `src/` or `config/`. Every live proof this program has run named its subject in a session transcript or a migration record — exactly what D85 said not to do; `docs/migrations/separations.md` §9.16 records a canary (doc 4524) that had disappeared by the next pass, which is the failure mode. §10.5 is this part, built as `config/test-subjects.json`. |
-| 4 · positive no-write proof from an empty write-intent ledger | **LANDED and used.** `docs/migrations/separations.md` §9.22 asserts the row counts against authority after a composed live dry run — `write_intents` 2, `write_attempts` 3, `durable_outbox` 2, byte-for-byte the pre-pass counts, and zero `run_checkpoints` for any transaction-side node. §10.4 makes that assertion the standing shape rather than a hand-run pass. |
+| 2 · structural dry-run through the real kernel | **LANDED under R10's entry point.** `cli dry-run-scenario <workflow> --subject <label>` creates a real start plan with `dryRun:true`, executes the start command, drains the production worker, resolves the declared gate through the command kernel, drains again and judges authority/receipt evidence. |
+| 3 · a typed `TestTargetRegistry` | **LANDED.** `config/test-subjects.json` carries strict labels, kinds, availability/date, public fields and usage rules; sensitive EIDs resolve only through `src/domain/secrets.ts`. Gone/unknown subjects record `blocked` before runtime/browser composition, while a target marked available but incomplete fails as a registry defect. |
+| 4 · positive no-write proof from an empty write-intent ledger | **LANDED and used.** The runner reads per-run counts for `write_intents`, `write_attempts` and `durable_outbox`, joining the latter two through that run's intents; its manifest requires zero deltas while allowing the checkpoints, gate and terminal rows a dry run truthfully writes. |
 
 The three kept habits are the topology R10's T4 tier formalises (§10.8).
 
@@ -1564,14 +1563,14 @@ the parity corpus (§10.1).
 
 <!-- roadmap-status: order-8 -->
 - [x] the worked example is as-built for the guard half — every RED it names is a guard that exists at HEAD
-- [ ] step 6 now has its first concrete pair (`separations-kuali-finalization`); step 7 still needs the unbuilt subject registry, durable result table and CLI runner
-> 2026-08-20 | docs-cohesion ref guards-and-tests | §9 rewritten to name the test steps a migration owes; left: the code units behind §10
+- [x] steps 6–7 have their first concrete implementation: the `separations-kuali-finalization` pair, typed subject registry, durable result table and production CLI runner; its first green live canary remains date-blocked until 2026-08-28
+> 2026-08-25 | test-tiers | blocked execution persisted the no-browser result; the migration node's PROOF stays open because blocked is evidence that the test did not run, not a green result
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: migrations -->
 - [x] the per-workflow guard loop is unchanged and every guard it fires is active
-- [ ] the per-workflow TEST loop (§10.11's seven steps) has its first T1 pair, but no `config/test-subjects.json`, `dry_run_scenario_results` table or `cli dry-run-scenario`
-> 2026-08-20 | docs-cohesion ref guards-and-tests | §10.11 is written for the agent doing a migration and 03c's 7-step loop cites it; left: the four code units
+- [x] the per-workflow TEST loop (§10.11's seven steps) has its first T1 pair and the shared registry/result/CLI machinery; later migrations repeat it per workflow
+> 2026-08-25 | test-tiers | first blocked authority result proves the unavailable-subject branch; left for this first pair: the date-gated live green and migration-record line
 <!-- /roadmap-status -->
 
 Scenario: a new `badge-reissue` workflow that fills and submits a UCPath form. Red→green, and what
@@ -1635,12 +1634,12 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 - [ ] BE T1 layout — `tests/scenario/workflows/<workflow-id>/` with ONE structural scenario per workflow and its `dry-run.scenario.ts` manifest; the pretending scenarios rewritten (§10.3, §10.4)
 - [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard` (§10.12)
 - [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file (§10.7)
-- [ ] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the durable `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
+- [x] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the insert-only `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
 - [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
 - [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; doc 03b §The workflow tree)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
-> 2026-08-25 | D266 | the first T1 pair is built and structural coverage is collected; its sibling live manifest remains deliberately unexecuted until §10.5–§10.6's subject registry, authority row and CLI runner exist
+> 2026-08-25 | test-tiers | registry, authority row and CLI runner built; the finalization canary now records `blocked`/`not-started` before browser composition because its honest subject is unavailable until 2026-08-28. The T1 PROOF remains open until that manifest records `met`
 <!-- /roadmap-status -->
 
 This section is normative and it is the one an agent writing tests reads first. **R10's rule:

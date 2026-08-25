@@ -464,7 +464,7 @@ file (`01-build-the-spine.md` §1a).
 
 **Nothing in Phase 0's own scope.** Its three exit criteria are MET, its build order was executed
 without re-sequencing, and no Phase-0 contract has been withdrawn. What a reader still needs from
-this doc is in §Phase summary: **six** contracts amended by a later decision, and **two** promises
-ratified here that were never built — the `scaffold` generators (the `new-workflow` half owned by
-`{#def-explorer-edit}`, the `new-task` half **unowned and reported**) and D85's
-`cli test workflow --dry-run` + `TestTargetRegistry` (reassigned to `{#test-tiers}` by R10).
+this doc is in §Phase summary: **six** contracts amended by a later decision, and **one** promise
+ratified here that is still unbuilt — the `scaffold` generators (the `new-workflow` half owned by
+`{#def-explorer-edit}`, the `new-task` half **unowned and reported**). D85's dry-run command and
+test-target registry later landed under R10's names (`{#test-tiers}`).
