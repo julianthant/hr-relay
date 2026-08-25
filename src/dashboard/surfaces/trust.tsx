@@ -12,17 +12,32 @@
  *   state, a transformed value renders verbatim, and subject identity
  *   prefers the served `displayRedacted` — nothing is re-derived here;
  * - the receipt's schema order IS the narrative order: input → observations
- *   → decisions → actions → verification → output → reuse → warnings;
+ *   → decisions → actions → verification → output → reuse → warnings, and it
+ *   ends on the fingerprint footer the run itself ran under (D199);
+ * - a fact names its SOURCE in full — the task and the instant it was observed
+ *   at, or the hash of the input it came from — never the source's tag alone;
  * - empty sections are omitted (D24 restraint) — a receipt does not explain
  *   itself, and "no warnings" is best said by no warnings section.
  */
+import { Fingerprint } from "lucide-react";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import { Chip, MetaLine, SectionLabel, dsText } from "../ds/ui.js";
+import {
+  Chip,
+  IconButton,
+  MetaLine,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  SectionLabel,
+  dsIcon,
+  dsText,
+} from "../ds/ui.js";
 import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
-import { fmtClock } from "./format.js";
+import { fmtClock, shortHash } from "./format.js";
+import { evidenceSourceMeta, inputHashFooter } from "./trust-model.js";
 
 export type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
 export type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;
@@ -109,12 +124,27 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
       <span className={cn(dsText.body, "font-semibold text-[color:var(--ds-fg)]")}>
         {WRITE_STATE_SENTENCE[detail.writeState]}
       </span>
+      {/*
+        The demo's `Classification` KeyValueList, in this tree's MetaLine idiom
+        and in the demo's order (legacy hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
+        DemoFailure.tsx:313-338): code · occurred · run · node · task.
+
+        `occurred` and `run`/`attempt` are the failure record's OWN facts and
+        were drawn nowhere. The instant matters most: the panel prints the
+        RUN's terminal instant above this body, which is a different moment —
+        a run can fail on one node and terminalize after the executor has
+        finished unwinding, so "failed 2:41 PM" and "occurred 2:39 PM" are
+        both true and only one of them says when the thing went wrong.
+      */}
       <MetaLine
         items={[
           detail.code,
           detail.transient && "transient",
-          detail.taskId !== undefined && `task ${detail.taskId}`,
+          `occurred ${fmtClock(detail.occurredAt)}`,
+          `run ${detail.traceId}`,
+          `attempt ${String(detail.attempt)}`,
           detail.nodeId !== undefined && `node ${detail.nodeId}`,
+          detail.taskId !== undefined && `task ${detail.taskId}`,
           detail.sameFingerprintSeen > 1 && `same failure seen ${String(detail.sameFingerprintSeen)} times`,
         ]}
       />
@@ -134,7 +164,24 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
           items={[
             detail.page?.screen !== undefined && `screen ${detail.page.screen}`,
             detail.page?.state !== undefined && `page state ${detail.page.state}`,
+            // Both halves of the served `page` block. The parenthetical is the
+            // demo's own word (DemoFailure.tsx:328) and it is load-bearing:
+            // these two strings were redacted AT CAPTURE, so what prints is
+            // the whole of what the record holds, not a render-time cut.
+            //
+            // ORDER (B fix): the demo's Classification list has no title row
+            // at all — only `URL (redacted)` (DemoFailure.tsx:328) — so url
+            // leads and title trails it here, kept because this wire genuinely
+            // serves `page.titleRedacted` and dropping a served fact is its
+            // own defect.
+            detail.page?.urlRedacted !== undefined && `url (redacted) ${detail.page.urlRedacted}`,
+            detail.page?.titleRedacted !== undefined && `title (redacted) ${detail.page.titleRedacted}`,
             detail.action?.operation !== undefined && `during ${detail.action.operation}`,
+            // `on {elementId}` — the demo's `Failed action: {operation} on
+            // {elementId} · step {N}` (:329-338). No `"action"` stand-in for an
+            // absent operation: an unserved half drops out of the line rather
+            // than being spoken for.
+            detail.action?.elementId !== undefined && `on ${detail.action.elementId}`,
             detail.action?.sequence !== undefined && `step ${String(detail.action.sequence)}`,
           ]}
         />
@@ -176,7 +223,16 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
 
 /* ── the receipt body (ref operator-trust §2.3, D140/D141) ───────────────────────────── */
 
-function FactsSection({ label, facts }: { label: string; facts: RunEvidenceReceiptWire["input"] }) {
+function FactsSection({
+  label,
+  facts,
+  footer,
+}: {
+  label: string;
+  facts: RunEvidenceReceiptWire["input"];
+  /** A section-wide fact drawn once below every row (the input-hash footer). */
+  footer?: ReactNode;
+}) {
   if (facts.length === 0) return null;
   return (
     <TrustSection label={label}>
@@ -187,7 +243,10 @@ function FactsSection({ label, facts }: { label: string; facts: RunEvidenceRecei
               key={fact.id}
               label={fact.field}
               value={redactedText(fact.value)}
-              meta={fact.source.kind}
+              // An `input` source's `inputFingerprint` is ONE value per RUN,
+              // not per field — `inputHashFooter` draws it once for the
+              // whole section instead of repeating it on every row (A1+A2).
+              meta={fact.source.kind === "input" ? undefined : evidenceSourceMeta(fact.source)}
             />
           )
           : (
@@ -200,14 +259,47 @@ function FactsSection({ label, facts }: { label: string; facts: RunEvidenceRecei
             />
           )
       ))}
+      {footer}
     </TrustSection>
   );
 }
 
+/**
+ * The input fingerprint is one fact of this run, despite riding each
+ * input-sourced entry. Its compact footer keeps the Input section dense; the
+ * Popover is the keyboard- and touch-reachable route to all 64 characters,
+ * rather than a title-only hover affordance.
+ */
+function InputHashFooter({ inputHash }: { inputHash: string }) {
+  const shortInputHash = shortHash(inputHash);
+  return (
+    <div className="flex items-center gap-[var(--ds-space-tight)]">
+      <MetaLine items={[`input hash ${shortInputHash}`]} />
+      <Popover>
+        <PopoverTrigger asChild>
+          <IconButton
+            size="xs"
+            label={`Show full input hash ${shortInputHash}`}
+            icon={<Fingerprint aria-hidden className={dsIcon.sm} />}
+          />
+        </PopoverTrigger>
+        <PopoverContent title="Input hash" description={shortInputHash} width="lg" side="bottom" align="start">
+          <span className={cn(dsText.meta, dsText.nums, "break-all text-[color:var(--ds-fg)]")}>{inputHash}</span>
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
 export function ReceiptEvidenceBody({ receipt }: { receipt: RunEvidenceReceiptWire }) {
+  const inputHash = inputHashFooter(receipt.input);
   return (
     <div className="flex flex-col gap-[var(--ds-space-loose)]">
-      <FactsSection label="Input" facts={receipt.input} />
+      <FactsSection
+        label="Input"
+        facts={receipt.input}
+        footer={inputHash !== undefined && <InputHashFooter inputHash={inputHash} />}
+      />
       <FactsSection label="Observations" facts={receipt.observations} />
 
       {receipt.decisions.length > 0 && (
@@ -290,6 +382,47 @@ export function ReceiptEvidenceBody({ receipt }: { receipt: RunEvidenceReceiptWi
           `generated ${fmtClock(receipt.generatedAt)}`,
         ]}
       />
+
+      <ReceiptFingerprints receipt={receipt} />
+    </div>
+  );
+}
+
+/**
+ * The receipt's fingerprint footer, ported from legacy
+ * hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
+ * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx:479-484 — same
+ * position (last, under a subtle rule), same glyph, same three chips, same
+ * labels.
+ *
+ * All three values are on `RunEvidenceReceiptSchema` and none of them was
+ * drawn. `descriptorFingerprint` is the one that most needed to be: D199's
+ * whole argument is that a durable record must be stamped with a fact about
+ * ITSELF, so this is the shape THIS run ran under — not the shape the process
+ * rendering the page was built from. The provenance bar prints two of the
+ * three about the LIVE row; the receipt is the artifact read months later.
+ *
+ * The two fingerprints are cut to `shortHash` — the one place this product
+ * decides how long an opaque id renders, so the receipt and the provenance bar
+ * cannot show the same fingerprint at two lengths — with the whole value on
+ * the chip's `title`. The trace id is a legible identifier and prints whole.
+ */
+function ReceiptFingerprints({ receipt }: { receipt: RunEvidenceReceiptWire }) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-[var(--ds-space-snug)]",
+        "border-t border-[color:var(--ds-border-subtle)] pt-[var(--ds-space-base)]",
+      )}
+    >
+      <Fingerprint aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-faint)]")} />
+      <Chip label="trace">{receipt.traceId}</Chip>
+      <Chip label="descriptor" title={receipt.descriptorFingerprint}>
+        {shortHash(receipt.descriptorFingerprint)}
+      </Chip>
+      <Chip label="config" title={receipt.configFingerprint}>
+        {shortHash(receipt.configFingerprint)}
+      </Chip>
     </div>
   );
 }

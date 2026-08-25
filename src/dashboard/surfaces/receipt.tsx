@@ -82,7 +82,18 @@ export function ReceiptView({
 
       {receipt.state === "available" && (
         <ReceiptSection label="Receipt">
-          <MetaLine items={[`receipt ${receipt.value.receiptId}`, `run ${receipt.value.runId}`]} />
+          {/* The receipt's own `failure` id: a failed run's receipt names the
+              failure record beside it rather than leaving the operator to
+              find it. It is served (`RunEvidenceReceiptSchema.failure`) and
+              was drawn nowhere; the demo has no counterpart because the
+              demo's receipts never fail. */}
+          <MetaLine
+            items={[
+              `receipt ${receipt.value.receiptId}`,
+              `run ${receipt.value.runId}`,
+              receipt.value.failure.state === "present" && `failure ${receipt.value.failure.value}`,
+            ]}
+          />
           <ReceiptEvidenceBody receipt={receipt.value} />
         </ReceiptSection>
       )}
