@@ -368,7 +368,7 @@ chip: B+C done · D ratified (D264)
 size: L
 doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C is proving the connection against a real run; Track D hardens the stack before cutover; **Track F is the fidelity bar above all three** — every region demo-exact or ruled, with ~150 OPEN questions waiting on the operator. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
+> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C is proving the connection against a real run; Track D hardens the stack before cutover; **Track F is the fidelity bar above all three** — every region demo-exact or ruled, with ~149 OPEN questions waiting on the operator. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -510,16 +510,16 @@ log:
 status: you
 date: fidelity re-audit 2026-08-21
 size: L
-chip: ~150 OPEN questions — needs you
+chip: ~149 OPEN questions — needs you
 doc: 03a §Demo fidelity — every detail, region by region
 
-> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119; 756 exact; ~150 distinct OPEN questions), and this node carries them until each is ported or recorded with its argument.
+> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); the archive UI slice brings the live disposition to 767 exact and ~149 distinct OPEN questions, and this node carries the remainder until each is ported or recorded with its argument.
 
 builds:
 - [!] DOCS the operator rules the 37 shell / queue / run-start OPEN questions (ledger 1 §Roll-up)
 - [!] DOCS the operator rules the 54 run-detail OPEN questions (ledger 2 §Roll-up)
-- [!] DOCS the operator rules the ~60 standing-surface OPEN questions, the twelve structural ones first — the virtualised archive · the bump's MAJOR/MINOR arms · a DS specimen page · the row-and-panel vocabulary surface · Settings as a takeover · the keyboard legend · intake stages 5–6 · the intake review gate · the archived-capture lightbox · the bump plan naming its runs · the operator capture half · the two Settings sections already served (ledger 3 §Roll-up)
-- [ ] FE the served-and-dropped facts — 8 in run detail (the receipt footer, the failure's occurredAt / traceId / attempt, `page.urlRedacted`, `action.elementId`) + the standing-surface ones the ledger 3 roll-up lists (doc 03a §Served-and-dropped)
+- [!] DOCS the operator rules the ~58 standing-surface OPEN questions, the twelve structural ones first — the virtualised archive · the bump's MAJOR/MINOR arms · a DS specimen page · the row-and-panel vocabulary surface · Settings as a takeover · the keyboard legend · intake stages 5–6 · the intake review gate · the archived-capture lightbox · the bump plan naming its runs · the operator capture half · the two Settings sections already served (ledger 3 §Roll-up)
+- [ ] FE the served-and-dropped facts — archive complete (`3d461962`, `d1f87916`); left: 8 in run detail (the receipt footer, the failure's occurredAt / traceId / attempt, `page.urlRedacted`, `action.elementId`) plus intake, Activity, Explorer and shell facts (doc 03a §Served-and-dropped)
 - [ ] FE the structural run-detail ports — the failure-record disclosure + write-state block, the focusable timeline segment, the step-group Well, one-owner `dataExpanded`, the grouped log stream
 - [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
 - [ ] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
@@ -531,10 +531,11 @@ builds:
 
 needs:
 - track-b
-- you: rule the ~150 OPEN questions in the three ledgers — each becomes ported, or a recorded divergence with its argument
+- you: rule the ~149 OPEN questions in the three ledgers — each becomes ported, or a recorded divergence with its argument
 
 log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | node drawn from the three 2026-08-21 ledgers; doc 03a §Demo fidelity carries the per-region table, every OPEN question as one line, the served-and-dropped list and the stale-claims table · left: the operator's rulings, then every FE / BE / BOTH / PROOF line above
+- 2026-08-25 | track-f archive UI | `3d461962` served frozen list warnings/rehearsal state; `d1f87916` drew those and the already-served archive identity, priority, bump-kind, relaunch and enum facts through total folds. Ledger 3: archive 106/250 exact, 61 OPEN marks; bump dialog 3/53 exact, 38 OPEN marks. Before/after screenshots were taken without `PARITY_UPDATE` · left in this unit: Activity AC24 and every non-archive served-and-dropped fact
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: planned

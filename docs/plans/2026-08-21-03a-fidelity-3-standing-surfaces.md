@@ -86,7 +86,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR24 | `Select aria-label="Workflow"` + `className="w-auto shrink-0"` + `<option value="all">Every workflow</option>` | `DemoArchive.tsx:306-312` | `archive.tsx:833-839` | exact | — |
 | AR25 | Workflow options derived from the corpus (`workflowId → workflowLabel`) | `DemoArchive.tsx:313-317` | `archive.tsx:840-842` | exact | — |
 | AR26 | `Select aria-label="Final status"` + `<option value="all">Any outcome</option>` | `DemoArchive.tsx:319-325` | `archive.tsx:844-850` | exact | — |
-| AR27 | Status option LABELS — demo prints `PROPOSED_STATUS[status].label` (`Done`, `Review`, `Write parked`…); rebuild prints the raw wire enum (`awaiting-approval`, `blocked`, `partial`) | `DemoArchive.tsx:326-330` | `archive.tsx:851-853` | divergent | OPEN — operator call (`DS_STATUS[dsStatusOf(s)].label` is already imported-adjacent; this is not a wire gap) |
+| AR27 | Status option LABELS — demo prints `PROPOSED_STATUS[status].label` (`Done`, `Review`, `Write parked`…); rebuild prints those same labels through the shared status model | `DemoArchive.tsx:326-330` | `archive.tsx:914`, `archive-model.ts:78` | exact | — |
 | AR28 | `Select aria-label="Instance"` + options `Any instance` / `Production only` / `Touched a test instance` | `DemoArchive.tsx:332-341` | `archive.tsx:862-874` | exact | — |
 | AR29 | `Clear` button — `size="sm" variant="ghost" className="shrink-0"`, rendered only when `filtered` | `DemoArchive.tsx:342-346` | `archive.tsx:875-879` | exact | — |
 | AR30 | `queryIsFiltered` predicate (text trimmed ≠ "" \|\| workflow ≠ all \|\| status ≠ all \|\| instance ≠ all) | `demo-archive-wire.ts:1498-1502` | `archive.tsx:236-241` | exact | — |
@@ -121,12 +121,12 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR59 | `data-demo-row-id={entry.runId}` attribute on the run `TR` | — | `archive.tsx:427` | extra | OPEN — operator call (parity-harness hook; the demo has none) |
 | AR60 | `ArchiveStatusLead` — fixed-width `dsIcon.sm` well, `aria-hidden` when empty, so pills and section badges share an x | `DemoArchive.tsx:588-597` | `archive.tsx:404-413` | exact | — |
 | AR61 | Status cell `StatusPill status size="sm" hideIcon` | `DemoArchive.tsx:607` | `archive.tsx:431` | exact | — |
-| AR62 | Warning-count chip beside the pill — `h-[var(--ds-h-xs)] … rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]`, `border-[color:var(--ds-status-done-warnings-border)] bg-[var(--ds-status-done-warnings-bg)] text-[color:var(--ds-status-done-warnings-fg)]`, `dsText.meta/nums/flush`, `TriangleAlert` + count, `title={warnings.first ?? "Finished with warnings"}` | `DemoArchive.tsx:608-622` | — | missing | `unserved: ArchiveEntryWire has no warnings field` (it IS on `detail.row.warnings` — `projection.ts:339-346` — but not on the index entry) |
+| AR62 | Warning-count chip beside the pill — `h-[var(--ds-h-xs)] … rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]`, warning tokens, `dsText.meta/nums/flush`, `TriangleAlert` + count, `title={warnings.first}` | `DemoArchive.tsx:608-622` | `archive.tsx:424-442,479` | exact | — |
 | AR63 | Name-cell button — `stopPropagation` + `onSelect`, `min-w-0 flex-1 truncate text-left text-[color:var(--ds-fg)]` + `dsFocus` | `DemoArchive.tsx:627-633` | `archive.tsx:441-447` | exact | — |
 | AR64 | Name-button `title` — demo `${displayName ?? title} · ${workflowCode} ${archivedVersionTag}`; rebuild swaps the code for the full label AND appends a clause the demo has no counterpart for: `${title} · ${workflowLabel} v${N}[ — no short code: reason] — archived because ${driftWords}` | `DemoArchive.tsx:634` | `archive.tsx:448`, `285-290` | divergent | `ruled: D242` (the whole label moves to the hover) |
 | AR65 | Row NAME text — demo `run.displayName ?? run.title`; rebuild `entry.title` only | `DemoArchive.tsx:636` | `archive.tsx:450` | divergent | `unserved: ArchiveEntryWire has no displayName` (served on `detail.row.displayName`, `projection.ts:309`, but not on the index entry) |
 | AR66 | Name meta suffix — demo ` · ${workflowCode} ${archivedVersionTag}` (`· ec v3.1`) vs rebuild ` · ${workflowToken} v${descriptorVersion}` (`· sd v1`), same `dsText.meta dsText.nums text-[color:var(--ds-fg-muted)]` | `DemoArchive.tsx:637-640` | `archive.tsx:451-454` | divergent | `unserved: WorkflowVersionIdentity.descriptorVersion is a single positive int — no minor half exists on the descriptor or any wire` |
-| AR67 | Dry-run chip on the LIST row — `FlaskConical` + copy `dry run`, `border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]`, `title="Dry run — this rehearsal reads the systems and writes nothing."` | `DemoArchive.tsx:642-655` | — | missing | `unserved: ArchiveEntryWire has no dryRun field` (it IS on `detail.row.dryRun`, `projection.ts:172` — see AR100) |
+| AR67 | Dry-run chip on the LIST row — `FlaskConical` + copy `dry run`, info tokens, `title="Dry run — this rehearsal reads the systems and writes nothing."` | `DemoArchive.tsx:642-655` | `archive.tsx:445-462,516` | exact | — |
 | AR68 | Test-instance hazard `TriangleAlert` at `dsIcon.sm` + `text-[color:var(--ds-status-waiting-fg)]`; `aria-label` demo `touched a test instance` vs rebuild `touched a test instance of ${systems}` | `DemoArchive.tsx:656-661` | `archive.tsx:476-481` | divergent | OPEN — operator call (a strictly richer label; still a divergence from the demo's exact string) |
 | AR69 | App-build-unrecorded hazard `TriangleAlert` with `aria-label="app build unrecorded"` on the name cell | — | `archive.tsx:462-467` | extra | `ruled: D179` (an unstamped `appVersion` is read forward and treated as prior-version) |
 | AR70 | Trace cell `TD numeric className="truncate text-[color:var(--ds-fg-muted)]"` printing `traceId` | `DemoArchive.tsx:664-666` | `archive.tsx:484-486` | exact | — |
@@ -136,8 +136,8 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR74 | Sweep-head cell background `bg-[var(--ds-surface-2)] border-b border-[color:var(--ds-border)]` on all five `TD`s | `DemoArchive.tsx:732` | `archive.tsx:524` | exact | — |
 | AR75 | Chevron choice `collapsed ? ChevronRight : ChevronDown`, `dsIcon.sm shrink-0 text-[color:var(--ds-fg-muted)]` inside `ArchiveStatusLead` | `DemoArchive.tsx:731`, `754-756` | `archive.tsx:523`, `546-548` | exact | — |
 | AR76 | Disclosure `<button aria-expanded={!collapsed}>` with `stopPropagation` and `flex min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)] text-left` + `dsFocus` + `dsRadius.sm` | `DemoArchive.tsx:740-752` | `archive.tsx:532-544` | exact | — |
-| AR77 | `sr-only` summary — demo `${fromVersion} to ${toVersion}, ${kind} bump — ${target.text}, ${plural(count,"run")}` / `${bumpId} — change record missing, ${plural(count,"run")}` vs rebuild `${sweepNameLabel}, ${scopeWord} scope, ${plural(count,"run")}` / `${applicationId} — the index carries no sweep record, ${plural(count,"run")}` | `DemoArchive.tsx:733-735` | `archive.tsx:525-527` | divergent | OPEN — operator call (`changeRecord.value.kind` IS on the wire — `change-record.ts:30` — so the `major`/`minor` word is available) |
-| AR78 | Sweep-head BADGE — demo carries the bump KIND (`major`/`minor`), `tone={kind==="major"?"warning":"neutral"}`, `title={BUMP_KIND_LABEL[kind]}`; rebuild carries the SCOPE word (`app` / `N workflows`), `tone={scope.kind==="application"?"warning":"neutral"}`, no `title` | `DemoArchive.tsx:758-761` | `archive.tsx:550-556` | divergent | OPEN — operator call (`archive.tsx:386-388`'s comment claims *"the demo's `major`/`minor` word has no counterpart on this wire"*; that was true before D223 and is now false — `ArchiveSweepWire.changeRecord.value.kind` exists) |
+| AR77 | `sr-only` summary — the rebuild's frozen sweep identity and scope sentence differs from the demo's synthetic target sentence, but now includes the served `${kind} bump`; the absent change-record arm names its reason | `DemoArchive.tsx:733-735` | `archive.tsx:575-584` | divergent | ruled: D179/D223 — archive summary names authority sweep identity/scope; kind omission ported in `d1f87916` |
+| AR78 | Sweep-head BADGE — carries bump KIND (`major`/`minor`), warning/neutral tone and `title={BUMP_KIND_LABEL[kind]}` | `DemoArchive.tsx:758-761` | `archive.tsx:609` | exact | — |
 | AR79 | `no record` danger arm in the badge slot — `aria-hidden`, `dsText.meta text-[color:var(--ds-danger)]`, copy `no record` | `DemoArchive.tsx:762-766` | `archive.tsx:551` | exact | — |
 | AR80 | Sweep NAME cell text — demo `bumpNameLabel(record)` = `${codes.join("+")} ${from} → ${to}` (`ec v3.1 → v4.0`), app bumps keep the bare `app 2.4 → app 3.0`; rebuild `sweepNameLabel(sweep)` = `${workflowId} v${N}, … → ${targetVersion}` (full ids, semver target) | `demo-archive-wire.ts:301-307` | `archive.tsx:390-395` | divergent | OPEN — operator call (`WorkflowVersionStateWire.workflowCode` exists, and D242 froze the code onto the archived record — the sweep head prints the raw `workflowId` anyway) |
 | AR81 | Sweep NAME cell classes `dsText.meta dsText.nums block min-w-0 truncate font-semibold text-[color:var(--ds-fg)]` | `DemoArchive.tsx:774` | `archive.tsx:568` | exact | — |
@@ -150,12 +150,12 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR88 | Sweep ⓘ `label` — `About this bump — ${nameLabel}` / `About ${id}` (arms swapped in source order, same strings) | `DemoArchive.tsx:805` | `archive.tsx:595` | exact | — |
 | AR89 | Sweep ⓘ `PopoverContent width="lg" align="end"` | `DemoArchive.tsx:813-814` | `archive.tsx:603-604` | exact | — |
 | AR90 | Sweep ⓘ popover `title` — `bumpNameLabel(record)` vs `sweepNameLabel(sweep)`; missing arm `Change record missing` vs `Sweep record missing` | `DemoArchive.tsx:811` | `archive.tsx:601` | divergent | OPEN — operator call (inherits AR80/AR83) |
-| AR91 | Sweep ⓘ popover `description` — demo `BUMP_KIND_LABEL[kind]` (`Major — the run's shape changed`) vs rebuild `${scopeWord} scope` (`app scope`) | `DemoArchive.tsx:812` | `archive.tsx:602` | divergent | OPEN — operator call (`changeRecord.value.kind` is on the wire) |
+| AR91 | Sweep ⓘ popover `description` — `BUMP_KIND_LABEL[kind]`; the minor arm says the current contract's `behaviour inside the same shape`, not the demo's narrower presentation-only claim | `DemoArchive.tsx:812` | `archive.tsx:664`, `archive-model.ts:108-111` | divergent | ruled: `VersionBumpChangeRecordSchema.kind` contract; served kind ported in `d1f87916` |
 | AR92 | Sweep ⓘ body — demo three paragraphs `record.what` (fg) / `record.why` (fg-muted) / `target.full` (meta, fg-muted); rebuild one scope paragraph then `<ChangeRecordBody>` (kind badge + what + why + commit) | `DemoArchive.tsx:816-822` | `archive.tsx:612-625`, `1875-1891` | divergent | `ruled: D223` (the change record is authored at plan time and read forward; a pre-generation-2 sweep prints its reason instead of a blank) |
 | AR93 | Sweep ⓘ `MetaLine` — demo four items `[by, commit, at, "${n} runs archived"]` vs rebuild six `[appliedBy, "plan <hash8>", "app <ver>", <clock>, "${n} runs archived", "v… → target" \| "archived nothing, so no from-version"]` | `DemoArchive.tsx:821` | `archive.tsx:626-637` | divergent | `ruled: D179` (`fromVersions` is derived from the archived records, and `versionPlanId` / `appliedAppVersion` are D179 facts the demo had no equivalent for) |
 | AR94 | Sweep ⓘ missing-record paragraph — demo `Swept by <id>, which the change-record store does not hold. The runs are intact; what is missing is why they were archived.` vs rebuild `Swept by <id>, which this index does not carry. …` | `DemoArchive.tsx:824-827` | `archive.tsx:607-610` | divergent | **OPEN — operator call** |
-| AR95 | Detail `PanelHeader title` — demo `run.displayName ?? run.title`; rebuild `detail.detail.header.title` | `DemoArchive.tsx:877` | `archive.tsx:1164` | divergent | OPEN — operator call (`detail.row.displayName` IS served, `projection.ts:309`, and is not read) |
-| AR96 | Detail header `subtitle` — demo `${run.subtitle} · archived ${archivedAt} by ${archivedBy}`; rebuild `${workflowLabel} · code ${code} · archived ${fmtClock(archivedAt)} by ${archivedBy}` | `DemoArchive.tsx:878` | `archive.tsx:1165-1167` | divergent | OPEN — operator call (`detail.row.subtitle` IS served, `projection.ts:313`, and is replaced by the workflow label + code) |
+| AR95 | Detail `PanelHeader title` — `run.displayName` when present, otherwise the row contract's composed `run.title` | `DemoArchive.tsx:877` | `archive.tsx:1237`, `archive-model.ts:57-69` | exact | — |
+| AR96 | Detail header `subtitle` — `${run.subtitle} · archived ${archivedAt} by ${archivedBy}` when present; the absence arm draws archive provenance alone | `DemoArchive.tsx:878` | `archive.tsx:1238-1240`, `archive-model.ts:57-69` | exact | — |
 | AR97 | Detail header `icon={<FileClock … dsIcon.lg/>}` | — | `archive.tsx:1168` | extra | OPEN — operator call (the demo's detail header carries no icon) |
 | AR98 | Detail header `meta={<StatusPill status size="sm"/>}` (with icon) | `DemoArchive.tsx:879` | `archive.tsx:1169` | exact | — |
 | AR99 | Detail header action `Button size="sm" variant="ghost"` + `Download` at `dsIcon.md` + label `Export` | `DemoArchive.tsx:881-883` | `archive.tsx:1170-1179` | exact | — |
@@ -164,7 +164,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR102 | Export TOAST — demo `{tone:"success", title:"Archived run exported", description:"archive-<trace>.json"}`; rebuild `{tone:"success", title:"archive-<trace>.json", description:"Exactly what this page holds — the display-redacted archived record, nothing re-derived."}` (title/description swapped) | `DemoArchive.tsx:871` | `archive.tsx:1118-1122` | divergent | **OPEN — operator call** |
 | AR103 | Detail `Panel aria-label={`Archived run ${title}`}` | — | `archive.tsx:1162` | extra | **OPEN — operator call** |
 | AR104 | Relaunch banner mount — above the tab set, in `div.px-[var(--ds-space-cozy)].pt-[var(--ds-space-cozy)]`, `Banner tone="success"` | `DemoArchive.tsx:891-893` | `archive.tsx:1187-1191` | exact | — |
-| AR105 | Relaunch banner TITLE — demo `New ${workflowLabel} run enqueued on ${versionTag}`; rebuild the fixed `A fresh run was enqueued on the current version` | `demo-archive-wire.ts:1965` | `archive.tsx:1191` | divergent | OPEN — operator call (both label and version are in hand: `detail.workflowLabel`, `detail.relaunch.current.descriptorVersion`) |
+| AR105 | Relaunch banner TITLE — `New ${workflowLabel} run enqueued on ${versionTag}` from the available relaunch arm; the impossible unavailable arm fails loud | `demo-archive-wire.ts:1965` | `archive.tsx:1264`, `archive-model.ts:184-194` | exact | — |
 | AR106 | Relaunch banner BODY — demo three sentences naming the replayed input labels, the archived trace, the archived version and the fingerprint rule; rebuild two sentences about the fresh trace id and the `Relaunched as` list | `demo-archive-wire.ts:1966-1969` | `archive.tsx:1194-1197` | divergent | **OPEN — operator call** |
 | AR107 | Relaunch banner `MetaLine items={["new run ${traceId}", "lands in ${panel}"]}` | `DemoArchive.tsx:914` | — | missing | `unserved: the relaunch CommandResult carries no created runId/traceId back to the surface` (rebuild re-reads the index by nonce instead) |
 | AR108 | Relaunch banner action `Button size="sm" variant="secondary"` + `ArrowUpRight` at `dsIcon.md` labelled `Open {panel}`, wired to `onOpenWorkflow` | `DemoArchive.tsx:898-905` | — | missing | `unserved: no created-run identity on the relaunch result` (see AR107) |
@@ -180,15 +180,15 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR118 | Summary `app` chip — demo a plain `Chip label="app"`; rebuild adds `tone="warning"` + `title={reason}` + the literal `unrecorded` on the absent arm | `DemoArchive.tsx:943` | `archive.tsx:1226-1232` | divergent | `ruled: D179` (`appVersion` is read forward and never back-filled) |
 | AR119 | Summary `trace` chip | `DemoArchive.tsx:944` | `archive.tsx:1233` | exact | — |
 | AR120 | Summary `by` chip — demo `run.requestedBy`, rebuild `row.actorId` | `DemoArchive.tsx:945` | `archive.tsx:1234` | exact | — |
-| AR121 | Summary `priority` chip — `Chip label="priority" tone={priority==="bulk"?"neutral":"info"}` | `DemoArchive.tsx:946-948` | — | missing | `unserved: QueueBaseFields.priority is served (projection.ts:179) but ref dashboard-surfaces puts it in the provenance ⓘ, not a chip — docs/findings/queue-rows.md "Priority and preset on a queue row"` — the archive draws it in NEITHER place |
+| AR121 | Summary `priority` chip — `Chip label="priority" tone={priority==="bulk"?"neutral":"info"}` | `DemoArchive.tsx:946-948` | `archive.tsx:1308`, `archive-model.ts:72-76` | exact | — |
 | AR122 | Summary `preset` chip — `{run.preset && <Chip label="preset">…}` | `DemoArchive.tsx:949` | — | missing | `unserved: no descriptor declares presets; StartPlanRecordSchema / RunEnvelopeSchema carry no preset (docs/findings/queue-rows.md)` |
-| AR123 | Summary dry-run chip — `Chip tone="info" icon={<FlaskConical …/>}` with copy `dry run — wrote nothing` | `DemoArchive.tsx:950-954` | — | missing | OPEN — operator call (`detail.row.dryRun` IS served, `projection.ts:172`; `docs/findings/queue-rows.md` claims *"the archived detail draws it"* and at this commit it does not) |
+| AR123 | Summary dry-run chip — `Chip tone="info" icon={<FlaskConical …/>}` with copy `dry run — wrote nothing` | `DemoArchive.tsx:950-954` | `archive.tsx:1309-1314` | exact | — |
 | AR124 | Summary test-instance chip — demo `Chip tone="warning" icon={<TriangleAlert/>}` copy `test instance`; rebuild appends ` · ${systems.join(", ")}` | `DemoArchive.tsx:955-959` | `archive.tsx:1236-1240` | divergent | **OPEN — operator call** |
 | AR125 | Summary `shape moved · {currentVersionTag}` warning chip, shown when the run ran an older major | `DemoArchive.tsx:960` | `archive.tsx:1241-1244` | divergent | `unserved: no minor version` (condition is otherwise identical) |
 | AR126 | Summary `attempt` chip | — | `archive.tsx:1235` | extra | `ruled: D214` (attempt is the run's own identity component; the demo folds it into its attempts list) |
 | AR127 | Summary `MetaLine` — demo `[workflowLabel, "code X", "enqueued …", "ended …", "ran …", …instances]`; rebuild `["started …", "ended …" \| reason, "ran …" \| "duration unknown", "archived because …", …instances]` | `DemoArchive.tsx:963-972` | `archive.tsx:1247-1255` | divergent | OPEN — operator call (`workflowLabel` and the code moved to the subtitle at AR96; `enqueued` → `started` and the added drift clause are unruled) |
 | AR128 | `BumpRecordCard` / `SweepRecordCard` — missing arm is `Banner tone="warning"`; demo title `Archived by a sweep with no change record`, rebuild `Archived by a sweep this index does not carry` | `DemoArchive.tsx:1313-1318` | `archive.tsx:1031-1039` | divergent | **OPEN — operator call** |
-| AR129 | Sweep card header — demo `SectionLabel "Archived by"` + kind Badge + scope Badge + `${from} → ${to}` right-aligned; rebuild `SectionLabel "Archived by"` + scope Badge + `→ ${targetVersion}` right-aligned (no kind badge, no from-version) | `DemoArchive.tsx:1323-1330` | `archive.tsx:1044-1050` | divergent | OPEN — operator call (`changeRecord.value.kind` and `sweep.fromVersions` are both on the wire) |
+| AR129 | Sweep card header — `SectionLabel "Archived by"` + kind Badge + scope Badge + `${from} → ${to}` right-aligned; an empty source-version list keeps its explicit archived-nothing reason | `DemoArchive.tsx:1323-1330` | `archive.tsx:1092-1121`, `archive-model.ts:137-157` | exact | — |
 | AR130 | Sweep card body — demo `record.what` + `record.why` paragraphs; rebuild `sweepNameLabel` paragraph + `<ChangeRecordBody>` | `DemoArchive.tsx:1331-1332` | `archive.tsx:1051-1052` | divergent | `ruled: D223` |
 | AR131 | Sweep card `MetaLine` — demo `[at, by, commit, "${n} archived"]`; rebuild `[clock, appliedBy, "plan <hash8>", "app <ver>", "${n} runs archived"]` | `DemoArchive.tsx:1333` | `archive.tsx:1053-1061` | divergent | `ruled: D179` |
 | AR132 | Failure `Card tone="danger"` + `SectionLabel "Failure record"` | `DemoArchive.tsx:977-979` | `archive.tsx:1260-1262` | exact | — |
@@ -271,7 +271,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR209 | `Field label` — demo `Input it replays — unchanged from the archive` vs rebuild `Input it replays` | `DemoArchive.tsx:1466` | `archive.tsx:2117` | divergent | `ruled: D179` (a relaunch replans the RAW submission through today's schemas, so "unchanged" would be false) |
 | AR210 | Replayed-input LIST (`label` `w-[110px]` / `value` truncate, one `<li>` per item) | `DemoArchive.tsx:1468-1475` | `archive.tsx:2118-2124` | divergent | `ruled: D179` (the stored input is deliberately absent from the wire; the rebuild renders a `Well` sentence in its place) |
 | AR211 | `SectionLabel "Decide these, rather than discover them"` — demo renders it only when `plan.cautions.length > 0`; rebuild always | `DemoArchive.tsx:1479-1484` | `archive.tsx:2127-2135` | divergent | **OPEN — operator call** |
-| AR212 | Caution sentences — demo derives three from the archived run (dry run → "the new one is not…", test instance → "…defaults to production", members → "…including the N that already succeeded"); rebuild ships two fixed bullets about the moved shape and the untouched archived row | `demo-archive-wire.ts:1918-1928` | `archive.tsx:2130-2133` | divergent | OPEN — operator call (the dry-run and test-instance facts are BOTH in hand on `detail.row.dryRun` / `row.resolvedInstances`) |
+| AR212 | Caution sentences — dry-run and test-instance warnings derive from the frozen row before the two fixed archive/relaunch cautions; no member-completion sentence is guessed | `demo-archive-wire.ts:1918-1928` | `archive.tsx:2109,2213`, `archive-model.ts:165-181` | divergent | unserved: archived detail carries no frozen member-completion vector; served dry-run/test arms ported in `d1f87916` |
 | AR213 | `DialogFooter meta={`Archived run ${traceId} stays exactly as it ended.`}` | `DemoArchive.tsx:1487` | `archive.tsx:2138` | exact | — |
 | AR214 | Footer `Cancel` — `Button variant="secondary"` | `DemoArchive.tsx:1488-1490` | `archive.tsx:2139` | exact | — |
 | AR215 | Footer confirm — `Button variant="primary"` + `RotateCw` at `dsIcon.md` + label `Enqueue a new run` | `DemoArchive.tsx:1491-1493` | `archive.tsx:2140-2142` | exact | — |
@@ -311,7 +311,12 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR249 | `openCapture` resets to `null` when the selected run changes | `DemoArchive.tsx:862` | — | missing | OPEN — operator call (consequence of AR189) |
 | AR250 | Detail-pane `Nothing selected` `EmptyState` — title + `Pick an archived run on the left to see its stored snapshot.`, inside `Panel > PanelBody` | `DemoArchive.tsx:374-381` | `archive.tsx:2622-2630` | exact | — |
 
-**Counts:** exact 96 · divergent 100 · missing 24 · extra 30 · OPEN 71
+**Counts:** exact 106 · divergent 94 · missing 20 · extra 30 · OPEN 61
+
+> 2026-08-25 | Track F archive UI | `3d461962` served list-row `dryRun` and warning facts;
+> `d1f87916` drew those facts plus the already-served archive identity, priority, bump-kind and
+> relaunch facts through total view-model folds. AR27, AR62, AR67, AR77, AR78, AR91, AR95, AR96,
+> AR105, AR121, AR123, AR129 and AR212 are disposed above; no parity reference was updated.
 
 ---
 
@@ -1144,7 +1149,7 @@ archivable run by name in a scrolling `Well`; the rebuild's reviewed plan report
 | VB16 | `SectionLabel` `Must be terminalized or resolved first` → rebuild `<workflowLabel> — what a bump would refuse to bury` | `DemoVersionBump.tsx:206` | `archive.tsx:2404` | divergent | **OPEN — operator call** |
 | VB17 | `BlockerTable` `TH` set — demo `Run` / `Status` / `Why` / `<resolutionHead>`; rebuild `Run` / `State` / `What has to happen` | `DemoVersionBump.tsx:313-316` | `archive.tsx:2194-2196` | divergent | **OPEN — operator call** (the `Why` column is gone) |
 | VB18 | blocker `Run` cell — demo two lines, the run title over `<panel> · <day>`; rebuild the `traceId` alone, numeric | `DemoVersionBump.tsx:322-329` | `archive.tsx:2202` | divergent | unserved: `WorkflowVersionStateWire.blockers[]` carries `runId` / `traceId` / `runState` and no title, panel or day |
-| VB19 | blocker `Status` cell — demo a `StatusPill size="sm"`; rebuild the raw `runState` word | `DemoVersionBump.tsx:331` | `archive.tsx:2203` | divergent | **OPEN — operator call** (`dsStatusOf` is available on this surface) |
+| VB19 | blocker `Status` cell — a `StatusPill size="sm"` through the total authority-state fold; `terminal` fails loud because it cannot be a blocker | `DemoVersionBump.tsx:331` | `archive.tsx:2286`, `archive-model.ts:89-103` | exact | — |
 | VB20 | blocker `Why` cell (`max-w-[260px]`) | `DemoVersionBump.tsx:333` | — | missing | unserved: no `why` on `WorkflowVersionStateWire.blockers[]` |
 | VB21 | blocker resolution cell — demo prints the SERVED `requiredResolution`; rebuild derives three sentences client-side from `runState` | `DemoVersionBump.tsx:334` | `archive.tsx:2204-2210` | divergent | unserved: no `requiredResolution` on `WorkflowVersionStateWire.blockers[]` |
 | VB22 | the resolution column head is PARAMETERISED — `What has to happen` for blockers, `What a MAJOR bump would have demanded` for the minor arm's unaffected list | `DemoVersionBump.tsx:207,219` | `archive.tsx:2196` | divergent | **OPEN — operator call** (follows VB1) |
@@ -1180,7 +1185,7 @@ archivable run by name in a scrolling `Well`; the rebuild's reviewed plan report
 | VB52 | the apply-time rules — *"Applying archives every prior-version run in scope. It cannot be undone"* and *"A relaunch from the archive later starts a FRESH run on the current version"* | — | `archive.tsx:2423-2424` | extra | ruled: D179 |
 | VB53 | the plan's blocker table is rendered once, under the reviewed plan, instead of once per workflow | — | `archive.tsx:2395-2408,2452` | extra | ruled: D179 |
 
-**Counts:** 53 rows — exact 2 · divergent 30 · missing 13 · extra 8 · **OPEN 39 marks** across
+**Counts:** 53 rows — exact 3 · divergent 29 · missing 13 · extra 8 · **OPEN 38 marks** across
 **roughly 20 distinct questions** — VB13, VB22, VB23, VB26, VB30, VB31, VB33 and VB45 all follow
 VB1's arm question, and VB4–VB10 are one "what shape is the authoring step" question.
 
@@ -1371,21 +1376,21 @@ This is the highest-fidelity region in the whole audit, and it is high-fidelity 
 
 | # | Region | Rows | exact | divergent | missing | extra | OPEN marks |
 |---|--------|-----:|------:|----------:|--------:|------:|-----------:|
-| 1 | Archive | 250 | 96 | 100 | 24 | 30 | 71 |
+| 1 | Archive | 250 | 106 | 94 | 20 | 30 | 61 |
 | 2 | Activity report | 117 | 57 | 21 | 12 | 27 | 8 |
 | 3 | Workflow Explorer | 182 | 54 | 42 | 34 | 52 | 31 |
 | 4 | UI catalog | 69 | 0 | 0 | 39 | 30 | 6 |
 | 5 | Settings + storage doctor | 72 | 2 | 8 | 48 | 14 | 15 |
 | 6 | Data intake | 155 | 4 | 61 | 56 | 34 | 66 |
 | 7 | Phone capture | 62 | 1 | 3 | 20 | 38 | 6 |
-| 8 | Version-bump dialog | 53 | 2 | 30 | 13 | 8 | 39 |
+| 8 | Version-bump dialog | 53 | 3 | 29 | 13 | 8 | 38 |
 | 9 | Design-system primitives | 159 | 119 | 13 | 12 | 15 | 18 |
-| | **Total** | **1119** | **335** | **278** | **258** | **248** | **260** |
+| | **Total** | **1119** | **346** | **271** | **254** | **248** | **249** |
 
 **How to read the spread.** The two ends are the interesting part. The design system is 75% `exact`
 because it was COPIED rather than re-implemented; the UI catalog is 0% `exact` because the two files
 paired under that name are not the same surface at all. Everything between is a port whose
-divergences are mostly ruled — the 260 OPEN marks collapse to **roughly 60 distinct questions**,
+divergences are mostly ruled — the 249 OPEN marks collapse to **roughly 58 distinct questions**,
 because a single decision (the bump's arms, the specimen page, the Settings container) drags a
 dozen rows behind it.
 
@@ -1449,13 +1454,11 @@ Each entry is one question for the operator, with every row it settles. `→` na
 
 **Records that are false or stale at HEAD — fix the record or fix the code**
 
-13. `docs/findings/queue-rows.md:221` says *"`dryRun` LANDED on `QueueBaseFields` … and the archived
-    detail draws it."* It does not — `dryRun`, `priority`, `warnings`, `displayName` and `subtitle`
-    are all served on `detail.row` and read by nothing in `archive.tsx`. → AR62, AR67, AR95, AR96,
-    AR121, AR123
-14. `archive.tsx:386-388` says *"The demo's `major`/`minor` word has no counterpart on this wire."*
-    D223 put `changeRecord.value.kind` on `ArchiveSweepWire`, so the sweep badge, its `sr-only`
-    summary, the popover description and the Archived-by card all print the SCOPE on a dead premise.
+13. **RESOLVED 2026-08-25 (`3d461962`, `d1f87916`).** The index now serves `dryRun` and `warnings`;
+    the list/detail draw them with the already-served `priority`, `displayName` and `subtitle`.
+    → AR62, AR67, AR95, AR96, AR121, AR123
+14. **RESOLVED 2026-08-25 (`d1f87916`).** The stale comment is gone and every sweep location folds
+    `changeRecord.value.kind`; a generation-1 absence stays named rather than guessed.
     → AR77, AR78, AR91, AR129
 15. `ref operator-trust` §5.7 rules the Explorer's `Version registry` action absent *"because no
     version-registry surface exists in this tree"*; `archive.tsx:2351` renders
@@ -1482,11 +1485,10 @@ Each entry is one question for the operator, with every row it settles. `→` na
     with `aria-label` and a `useDsEnterTransition` translate/opacity enter (`activity.tsx:1095`,
     `archive.tsx:2168`, `explorer.tsx:1475`). Consistent, and nowhere ruled. → AC12, AR9
 21. **`overflow-x-auto` wrappers.** The rebuild wraps tables the demo leaves bare. → AC62, AC77, AR225
-22. **Raw wire enums where the demo prints a label.** The archive's status filter and rows, the bump's
-    blocker table, and the Activity caveats all print `awaiting-approval` / `blocked` / `partial`
-    where the demo prints `Review` / `Write parked` / `Parked` — and `status-model.ts:73` maps
-    `blocked → parked`, so the Activity caveat contradicts every pill on its own page. → AC24, AR27,
-    VB19
+22. **Raw wire enums where the demo prints a label — archive arms resolved 2026-08-25
+    (`d1f87916`).** The archive filter and bump blocker table now use the shared status vocabulary.
+    The Activity caveat still prints `blocked` where its pills say `Parked`; that non-archive arm
+    remains OPEN. → AC24 (**OPEN**), AR27 (**resolved**), VB19 (**resolved**)
 23. **Async states the demo has no counterpart for** — `Skeleton` panes and `Refusal` panes on the
     archive and Activity. Honest additions; nowhere ruled as a convention. → AR244, AR245
 24. **Two names per row in the Explorer** — the rebuild prints the node LABEL beside the id, and adds
