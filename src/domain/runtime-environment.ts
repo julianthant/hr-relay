@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { CONFIG_ENV_BINDINGS } from "./config/resolve.js";
 import { deepFreeze } from "./immutability.js";
-import { SECRET_FAMILY_SPECS, SECRET_SPECS } from "./secrets.js";
+import {
+  SECRET_FAMILY_SPECS,
+  SECRET_SPECS,
+  TEST_TARGET_EID_SECRET_SPECS,
+} from "./secrets.js";
 
 const EnvironmentKeySchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
 const EnvironmentFamilyPrefixSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
@@ -134,6 +138,8 @@ const SECRET_ENVIRONMENT_SPECS = [
   { key: "ONBOARDING_ROSTER_URL", classification: "secret", channel: "secret" },
 ] as const;
 
+const TEST_TARGET_EID_SECRET_ENVIRONMENT_KEYS = TEST_TARGET_EID_SECRET_SPECS.map(({ env }) => env);
+
 const PROVIDER_MODEL_ENVIRONMENT_KEYS = [
   "OCR_GEMINI_MODELS", "OCR_GROQ_MODELS", "OCR_MISTRAL_MODELS",
   "OCR_OPENROUTER_MODELS", "OCR_SAMBANOVA_MODELS",
@@ -168,6 +174,7 @@ const RETIRED_ENVIRONMENT_KEYS = [
 
 const DOCUMENTED_ENVIRONMENT_KEYS = new Set([
   "UCPATH_USER_ID", "UCPATH_PASSWORD", "TIMEKEEPER_NAME",
+  ...TEST_TARGET_EID_SECRET_ENVIRONMENT_KEYS,
   "ANNUAL_DATES_END", "KRONOS_DEFAULT_END_DATE", "KRONOS_DEFAULT_START_DATE",
   "ONBOARDING_ROSTER_URL", "HR_AUTOMATION_DUO_WEBAUTHN",
   "CAPTURE_PUBLIC_URL", "CAPTURE_NGROK_URL", "DEBUG_SCREENSHOTS",
@@ -209,6 +216,14 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     disposition: "active",
     owner: "src/domain/secrets.ts",
     documented: DOCUMENTED_ENVIRONMENT_KEYS.has(spec.key),
+  })),
+  ...TEST_TARGET_EID_SECRET_SPECS.map((spec) => ({
+    key: spec.env,
+    classification: spec.classification,
+    disposition: "active" as const,
+    channel: "secret" as const,
+    owner: "src/domain/secrets.ts",
+    documented: DOCUMENTED_ENVIRONMENT_KEYS.has(spec.env),
   })),
   ...PROVIDER_MODEL_ENVIRONMENT_KEYS.map((key) => ({
     key,
@@ -303,7 +318,12 @@ const PROBE_PROVIDER_FAMILIES = [
   ...ACTIVE_PROVIDER_FAMILIES, "CEREBRAS_API_KEY", "COHERE_API_KEY", "OCRSPACE_API_KEY", "ZEP_API_KEY",
 ] as const;
 const PROVIDER_MODEL_TARGETS = [...PROVIDER_MODEL_ENVIRONMENT_KEYS, ...LEGACY_PROVIDER_MODEL_ENVIRONMENT_KEYS] as const;
-const SECRET_EXACT_TARGETS = ["UCPATH_USER_ID", "UCPATH_PASSWORD", "TIMEKEEPER_NAME", "ONBOARDING_ROSTER_URL"] as const;
+const SECRET_EXACT_TARGETS = [
+  "UCPATH_USER_ID",
+  "UCPATH_PASSWORD",
+  "TIMEKEEPER_NAME",
+  "ONBOARDING_ROSTER_URL",
+] as const;
 
 interface ComputedReaderInput {
   readonly path: string;
@@ -358,6 +378,7 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "legacy:src/workflows/sharepoint-download/handler.ts", enclosingSymbol: "buildSharePointRosterDownloadHandler", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "1471aca1b99d7410cc61adcc6d5158de7ed8e5d7d10cd02509424d750fded359", classification: "legacy-production", targets: { kind: "closed-targets", exact: ["ONBOARDING_ROSTER_URL", "SEPARATIONS_ROSTER_URL"], families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "inspectSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecret", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: SECRET_EXACT_TARGETS, families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalTestTargetEidSecret", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "631a29fcc2465c1dc0a0e9d09d6ce9f9c51b624b3e7d5d2dd19bdb9b68efa39b", classification: "target-accessor", targets: { kind: "closed-targets", exact: TEST_TARGET_EID_SECRET_ENVIRONMENT_KEYS, families: [] } }),
   // Ref clock-config-secrets: the config resolver takes the environment as a VALUE and reads
   // only its statically-declared CONFIG_ENV_BINDINGS keys; this accessor is
   // where a composition root obtains that value, so no module outside the
@@ -456,6 +477,12 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
     const spec = exact.get(secret.env);
     if (spec?.disposition !== "active" || (spec.channel !== "secret" && spec.channel !== "config-and-secret")) {
       violations.push(`secret environment ${secret.env} has no active secret inventory entry`);
+    }
+  }
+  for (const secret of TEST_TARGET_EID_SECRET_SPECS) {
+    const spec = exact.get(secret.env);
+    if (spec?.disposition !== "active" || spec.channel !== "secret") {
+      violations.push(`test-target EID environment ${secret.env} has no active secret inventory entry`);
     }
   }
   for (const family of SECRET_FAMILY_SPECS) {

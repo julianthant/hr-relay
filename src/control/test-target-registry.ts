@@ -1,0 +1,230 @@
+import { readFileSync } from "node:fs";
+import { z } from "zod";
+import { deepFreeze } from "../domain/immutability.js";
+import {
+  optionalTestTargetEidSecret,
+  TestTargetEidSecretReferenceSchema,
+} from "../domain/secrets.js";
+import {
+  SeparationsKualiFinalizationCanonicalInput,
+  SeparationsKualiFinalizationInput,
+} from "../workflows/separations/kuali-finalization/descriptor.js";
+
+export const TEST_TARGET_REGISTRY_PATH = "config/test-subjects.json";
+
+export const TestTargetKindSchema = z.enum([
+  "ordinary",
+  "already-present",
+  "no-active-job",
+  "ambiguous-name",
+  "subject-mismatch",
+  "name-differs",
+  "concurrent-jobs",
+]);
+
+export const TestTargetAvailabilitySchema = z.strictObject({
+  state: z.enum(["available", "consumed", "gone", "unknown"]),
+  lastObserved: z.iso.date(),
+  reason: z.string().min(1),
+});
+
+export const TestTargetProvenanceSchema = z.strictObject({
+  document: z.string().min(1),
+  section: z.string().min(1),
+});
+
+/**
+ * The exact first-workflow ingress with its two EID-bearing leaves removed.
+ * Every remaining field is explicit and strict in config; `.partial()` lets
+ * gone/unknown subjects record only what was actually observed.
+ */
+export const SeparationsKualiFinalizationPublicTestInputSchema =
+  SeparationsKualiFinalizationInput.omit({ emplId: true, documentEid: true }).partial();
+
+export const TestTargetEidInputSchema = z.strictObject({
+  emplId: TestTargetEidSecretReferenceSchema.optional(),
+  documentEid: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), eid: TestTargetEidSecretReferenceSchema }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]).optional(),
+});
+
+export const TestTargetRegistryEntrySchema = z.strictObject({
+  label: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  workflow: z.literal("separations-kuali-finalization"),
+  kind: TestTargetKindSchema,
+  availability: TestTargetAvailabilitySchema,
+  provenance: TestTargetProvenanceSchema,
+  usagePolicy: z.enum(["read-only", "write-allowed-if-restored"]),
+  cleanupObligation: z.string().min(1),
+  owner: z.string().min(1),
+  publicInput: SeparationsKualiFinalizationPublicTestInputSchema,
+  secretInput: TestTargetEidInputSchema.optional(),
+});
+
+export const TestTargetRegistrySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  targets: z.array(TestTargetRegistryEntrySchema),
+});
+
+export type TestTargetRegistryInput = z.input<typeof TestTargetRegistrySchema>;
+export type TestTargetRegistry = z.output<typeof TestTargetRegistrySchema>;
+
+export const TestTargetBlockedResolutionSchema = z.strictObject({
+  state: z.literal("blocked"),
+  label: z.string().min(1),
+  reason: z.string().min(1),
+});
+export const SeparationsKualiFinalizationReadyTestTargetSchema = z.strictObject({
+  state: z.literal("ready"),
+  label: z.string().min(1),
+  canonicalInput: SeparationsKualiFinalizationCanonicalInput,
+});
+export const SeparationsKualiFinalizationTestTargetResolutionSchema = z.discriminatedUnion("state", [
+  TestTargetBlockedResolutionSchema,
+  SeparationsKualiFinalizationReadyTestTargetSchema,
+]);
+export type SeparationsKualiFinalizationTestTargetResolution =
+  z.output<typeof SeparationsKualiFinalizationTestTargetResolutionSchema>;
+
+export class TestTargetRegistryDefectError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TestTargetRegistryDefectError";
+  }
+}
+
+export type TestTargetManifestView = Readonly<{
+  workflow: string;
+  cases: readonly Readonly<{ subjectLabel: string; subjectKind: string }>[];
+}>;
+
+function assertManifestCompatibility(
+  registry: TestTargetRegistry,
+  manifests: readonly TestTargetManifestView[],
+): void {
+  for (const manifest of manifests) for (const scenario of manifest.cases) {
+    const target = registry.targets.find(({ label }) => label === scenario.subjectLabel);
+    if (target === undefined) {
+      throw new Error(
+        `dry-run manifest ${manifest.workflow} label ${scenario.subjectLabel} has no test target registry entry`,
+      );
+    }
+    if (target.workflow !== manifest.workflow) {
+      throw new Error(
+        `test target ${target.label} workflow ${target.workflow} does not match manifest ${manifest.workflow}`,
+      );
+    }
+    if (target.kind !== scenario.subjectKind) {
+      throw new Error(
+        `test target ${target.label} kind ${target.kind} does not match manifest kind ${scenario.subjectKind}`,
+      );
+    }
+  }
+}
+
+export function parseTestTargetRegistry(
+  input: unknown,
+  manifests: readonly TestTargetManifestView[] = [],
+): TestTargetRegistry {
+  const registry = TestTargetRegistrySchema.parse(input);
+  const labels = registry.targets.map(({ label }) => label);
+  const duplicate = labels.find((label, index) => labels.indexOf(label) !== index);
+  if (duplicate !== undefined) throw new Error(`test target registry repeats label ${duplicate}`);
+  assertManifestCompatibility(registry, manifests);
+  return deepFreeze(registry);
+}
+
+export function readTestTargetRegistry(
+  repoRoot: string,
+  manifests: readonly TestTargetManifestView[] = [],
+): TestTargetRegistry {
+  const input: unknown = JSON.parse(readFileSync(`${repoRoot}/${TEST_TARGET_REGISTRY_PATH}`, "utf8"));
+  return parseTestTargetRegistry(input, manifests);
+}
+
+const committedRegistryInput: unknown = JSON.parse(readFileSync(
+  new URL("../../config/test-subjects.json", import.meta.url),
+  "utf8",
+));
+
+/** The checked-in registry is parsed and recursively frozen at module load. */
+export const TEST_TARGET_REGISTRY: TestTargetRegistry = parseTestTargetRegistry(committedRegistryInput);
+
+function registryDefect(
+  target: TestTargetRegistry["targets"][number],
+  problem: string,
+): never {
+  throw new TestTargetRegistryDefectError(
+    `test target ${target.label} marked available, last observed ${target.availability.lastObserved}: ${problem}`,
+  );
+}
+
+/**
+ * Resolve the first T1b workflow's label before any browser can start. Only
+ * EIDs cross the secret boundary; every other canonical leaf is explicit in
+ * the strict public config and the exact canonical schema judges the merge.
+ */
+export function resolveSeparationsKualiFinalizationTestTarget(
+  registry: TestTargetRegistry,
+  label: string,
+  env?: NodeJS.ProcessEnv,
+): SeparationsKualiFinalizationTestTargetResolution {
+  const target = registry.targets.find((candidate) => candidate.label === label);
+  if (target === undefined) {
+    return TestTargetBlockedResolutionSchema.parse({
+      state: "blocked",
+      label,
+      reason: `blocked: needs ${label}`,
+    });
+  }
+  if (target.availability.state !== "available") {
+    return TestTargetBlockedResolutionSchema.parse({
+      state: "blocked",
+      label,
+      reason: `blocked: needs ${label}; registry says ${target.availability.state}, last observed ${target.availability.lastObserved}`,
+    });
+  }
+  const eidReference = target.secretInput?.emplId;
+  if (eidReference === undefined) registryDefect(target, "missing secret EID reference emplId");
+  const documentEidInput = target.secretInput?.documentEid;
+  if (documentEidInput === undefined) registryDefect(target, "missing secret EID mapping documentEid");
+
+  let emplId: ReturnType<typeof optionalTestTargetEidSecret>;
+  try {
+    emplId = optionalTestTargetEidSecret(eidReference.name, env);
+  } catch {
+    registryDefect(target, `secret EID reference ${eidReference.name} is invalid`);
+  }
+  if (emplId === undefined) registryDefect(target, `secret EID reference ${eidReference.name} is missing`);
+
+  let documentEid: z.input<typeof SeparationsKualiFinalizationInput>["documentEid"];
+  if (documentEidInput.state === "absent") {
+    documentEid = documentEidInput;
+  } else {
+    let value: ReturnType<typeof optionalTestTargetEidSecret>;
+    try {
+      value = optionalTestTargetEidSecret(documentEidInput.eid.name, env);
+    } catch {
+      registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is invalid`);
+    }
+    if (value === undefined) {
+      registryDefect(target, `secret EID reference ${documentEidInput.eid.name} is missing`);
+    }
+    documentEid = { state: "present", value };
+  }
+
+  const canonical = SeparationsKualiFinalizationCanonicalInput.safeParse({
+    ...target.publicInput,
+    emplId,
+    documentEid,
+  });
+  if (!canonical.success) {
+    registryDefect(target, "declared public fields and secret EID references do not form the complete canonical input");
+  }
+  return SeparationsKualiFinalizationReadyTestTargetSchema.parse({
+    state: "ready",
+    label,
+    canonicalInput: canonical.data,
+  });
+}

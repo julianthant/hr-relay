@@ -3,6 +3,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import type { Config } from "./config/schema.js";
+import { EidSchema } from "./ids.js";
+import type { Eid } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
 import {
   EnvironmentSecretNameSchema,
@@ -61,6 +63,17 @@ export const SecretFileSpecSchema = z.strictObject({
   maximumBytes: z.number().int().positive(),
 });
 
+export const TestTargetEidSecretReferenceSchema = z.strictObject({
+  name: z.literal("separationsKualiFinalizationCanaryEid"),
+  env: z.literal("HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID"),
+});
+export const TestTargetEidSecretNameSchema = TestTargetEidSecretReferenceSchema.shape.name;
+export type TestTargetEidSecretName = z.infer<typeof TestTargetEidSecretNameSchema>;
+
+export const TestTargetEidSecretSpecSchema = TestTargetEidSecretReferenceSchema.extend({
+  classification: z.literal("direct-identifier"),
+});
+
 export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathUserId", source: "environment", env: "UCPATH_USER_ID", requiredAtBoot: false, classification: "direct-identifier" },
   { name: "ucpathPassword", source: "environment", env: "UCPATH_PASSWORD", requiredAtBoot: false, classification: "secret" },
@@ -77,6 +90,13 @@ export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().par
 ]));
 export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
   { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: 64_000 },
+]));
+export const TEST_TARGET_EID_SECRET_SPECS = deepFreeze(TestTargetEidSecretSpecSchema.array().parse([
+  {
+    name: "separationsKualiFinalizationCanaryEid",
+    env: "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID",
+    classification: "direct-identifier",
+  },
 ]));
 
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
@@ -132,6 +152,30 @@ export class SecretSourceError extends Error {
     super(message, options);
     this.name = "SecretSourceError";
   }
+}
+
+function registeredTestTargetEidSecretSpec(name: TestTargetEidSecretName) {
+  const spec = TEST_TARGET_EID_SECRET_SPECS.find((candidate) => candidate.name === name);
+  if (spec === undefined) throw new SecretMissingError(`test-target EID registry has no entry for ${name}`);
+  return spec;
+}
+
+/**
+ * Resolve one registered live-subject EID. The environment key is closed by
+ * `TestTargetEidSecretNameSchema`; callers can never supply an arbitrary key.
+ */
+export function optionalTestTargetEidSecret(
+  name: TestTargetEidSecretName,
+  env: NodeJS.ProcessEnv = process.env,
+): Eid | undefined {
+  const spec = registeredTestTargetEidSecretSpec(name);
+  const encodedEid = env[spec.env]?.trim();
+  if (encodedEid === undefined || encodedEid === "") return undefined;
+  const parsed = EidSchema.safeParse(encodedEid);
+  if (!parsed.success) {
+    throw new SecretSourceError(`test-target EID ${name} is invalid in registered environment source ${spec.env}`);
+  }
+  return parsed.data;
 }
 
 function registeredSecretSpec(name: SecretName): SecretSpec {
