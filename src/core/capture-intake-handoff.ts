@@ -20,10 +20,9 @@
  *
  * The bundle → canonical-input step is a DECLARED, fingerprinted property of a
  * workflow (`src/domain/capture-intake.ts`), not something this module
- * invents. No registered workflow declares one: `person-lookup` is identified
- * by an employee id or a name, `kuali-timekeeper-annotation` by a document
- * number, and neither is derivable from a photograph without an OCR-backed
- * workflow that does not exist. So in production this handoff REFUSES BY NAME
+ * invents. No registered workflow declares one: their structured identifiers
+ * and fields are not derivable from a photograph without an OCR-backed binding
+ * that does not exist. So in production this handoff REFUSES BY NAME
  * — the same shape D170 gave intake projections before D172 — and the refusal
  * surfaces to the phone as a durable `failed` with Retry Finalize beside it,
  * never as a silently dropped bundle or a run carrying an invented input.
