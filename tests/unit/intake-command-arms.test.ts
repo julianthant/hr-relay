@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { createCommandKernel, type IntakeParser } from "../../src/core/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
@@ -122,8 +123,9 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
   const root = mkdtempSync(join(tmpdir(), "hrauto-intake-arms-"));
   roots.push(root);
   const clock = manualClock(new Date(NOW));
+  const path = join(root, "state.db");
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "intake-arms-test" },
+    { path, busyTimeoutMs: 250, migrationOwner: "intake-arms-test" },
     clock,
   );
   openDatabases.push(database);
@@ -150,7 +152,28 @@ function harness(sessionOverrides: Record<string, unknown> = {}, preReservation 
     updatedAt: NOW,
     ...sessionOverrides,
   });
-  database.withAuthorityTransaction((repositories) => repositories.intakeSessions.create(session));
+  if (preReservation) {
+    const legacy = new DatabaseSync(path);
+    try {
+      legacy.prepare(`
+        INSERT INTO intake_sessions
+          (record_key, workflow, source_sha256, state, record_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        session.intakeSessionId,
+        session.workflow,
+        session.artifact.sha256,
+        session.state,
+        JSON.stringify(session),
+        session.createdAt,
+        session.updatedAt,
+      );
+    } finally {
+      legacy.close();
+    }
+  } else {
+    database.withAuthorityTransaction((repositories) => repositories.intakeSessions.create(session));
+  }
 
   const kernel = createCommandKernel({
     appVersion: "0.1.0",

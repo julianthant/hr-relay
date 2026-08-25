@@ -121,5 +121,31 @@ export const IntakeSessionWireSchema = z.strictObject({
   validation: IntakeValidationWireSchema,
   /** Absent when these bytes have never been enqueued for this workflow. */
   rerun: IntakeRerunWireSchema.optional(),
+}).superRefine((session, context) => {
+  if (session.state === "enqueued" && session.intakeManifestId === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["intakeManifestId"],
+      message: "an enqueued session names the manifest it fanned out as",
+    });
+  }
+  if (session.state !== "enqueued" && session.intakeManifestId !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["intakeManifestId"],
+      message: "only an enqueued session carries a manifest id",
+    });
+  }
+  if (
+    session.reservedManifestId !== undefined
+    && session.intakeManifestId !== undefined
+    && session.reservedManifestId !== session.intakeManifestId
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["intakeManifestId"],
+      message: "an enqueued session consumes its reserved manifest id exactly",
+    });
+  }
 });
 export type IntakeSessionWire = z.infer<typeof IntakeSessionWireSchema>;

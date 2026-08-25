@@ -2854,6 +2854,11 @@ export class AuthorityDatabase implements Disposable {
       intakeSessions: Object.freeze({
         create: (input: unknown) => {
           const record = IntakeSessionSchema.parse(input);
+          if (record.reservedManifestId === undefined) {
+            throw new Error(
+              `intake session ${record.intakeSessionId} cannot be created with reserved manifest id absent`,
+            );
+          }
           if (record.state !== "mapping" || record.version !== 1) {
             throw new Error(
               `intake session ${record.intakeSessionId} must be created in mapping state at version 1`,
@@ -2876,6 +2881,26 @@ export class AuthorityDatabase implements Disposable {
         update: (input: unknown) => {
           const record = IntakeSessionSchema.parse(input);
           return this.#authorityWrite("intake_sessions", () => {
+            const current = this.#readRecord(
+              "intake_sessions",
+              record.intakeSessionId,
+              IntakeSessionSchema,
+            );
+            if (
+              current !== undefined
+              && current.reservedManifestId !== record.reservedManifestId
+            ) {
+              const currentReservation = current.reservedManifestId === undefined
+                ? "absent"
+                : current.reservedManifestId;
+              const nextReservation = record.reservedManifestId === undefined
+                ? "absent"
+                : record.reservedManifestId;
+              throw new Error(
+                `intake session ${record.intakeSessionId} cannot change reserved manifest id from `
+                + `${currentReservation} to ${nextReservation}`,
+              );
+            }
             const outcome = this.#database.prepare(`
               UPDATE intake_sessions SET record_json = ?, state = ?, updated_at = ?
               WHERE record_key = ? AND json_extract(record_json, '$.version') = ?
