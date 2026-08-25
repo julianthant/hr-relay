@@ -13,8 +13,11 @@
  * `queueRowAccessibleName` rather than reconstructing it in the test.
  */
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
+import { QueueRow } from "../../../src/dashboard/surfaces/queue.js";
 import {
   queueGateAge,
   queueRowAccessibleName,
@@ -93,5 +96,23 @@ describe("the row's accessible name carries the age", () => {
   it("leaves an ungated row's name exactly as it was", () => {
     const row = surface({ status: "running" });
     assert.equal(queueRowAccessibleName(row, NOW), "Jordan Reyes — running");
+  });
+
+  it("renders the production QueueRow press target with the composed gate age", () => {
+    const row = surface({
+      gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" },
+    });
+    const markup = renderToStaticMarkup(createElement(QueueRow, {
+      surface: row,
+      state: {
+        openWells: new Set<string>(),
+        panelWorkflowId: "person-lookup",
+        nowIso: NOW,
+      },
+      handlers: { onSelect: () => undefined },
+      workflowLabelOf: () => "Person Lookup",
+    }));
+
+    assert.ok(markup.includes('aria-label="Jordan Reyes — review · 18m 0s"'));
   });
 });
