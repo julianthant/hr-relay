@@ -13,6 +13,7 @@
  * never pretends a runtime started.
  */
 import type { RuntimeIsolation } from "../config/define-runtime-isolation.js";
+import { DRY_RUN_SCENARIO_USAGE } from "./dry-run-scenario-runner.js";
 import type { WorkerLoopReport } from "./worker-loop.js";
 
 export interface RunningDashboard {
@@ -34,6 +35,8 @@ export interface RebuildRuntimeStart {
   readonly ocr?: OcrComposer;
   /** Explicit seam override for tests; production registers via `registerStorageComposer`. */
   readonly storage?: StorageComposer;
+  /** Explicit seam override for tests; production registers via `registerDryRunScenarioComposer`. */
+  readonly dryRunScenario?: DryRunScenarioComposer;
 }
 
 type DashboardComposer = (isolation: RuntimeIsolation) => Promise<RunningDashboard>;
@@ -65,6 +68,10 @@ type StorageComposer = (
   isolation: RuntimeIsolation,
   args: readonly string[],
 ) => Promise<{ readonly output: string; readonly exitCode: number }>;
+type DryRunScenarioComposer = (
+  isolation: RuntimeIsolation,
+  args: readonly string[],
+) => Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }>;
 
 /**
  * The production injection door. The operational-isolation audit pins
@@ -117,6 +124,15 @@ export function registerStorageComposer(composer: StorageComposer): void {
   registeredStorageComposer = composer;
 }
 
+let registeredDryRunScenarioComposer: DryRunScenarioComposer | undefined;
+
+export function registerDryRunScenarioComposer(composer: DryRunScenarioComposer): void {
+  if (registeredDryRunScenarioComposer !== undefined) {
+    throw new Error("a dry-run scenario composer is already registered; two compositions cannot own one runtime");
+  }
+  registeredDryRunScenarioComposer = composer;
+}
+
 /**
  * The runtime's own phase status, in the phase docs' identifiers.
  *
@@ -152,6 +168,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     // Ref execution-and-sessions names no CLI subcommand for its worker (§3 names only the
     // `runWorker` loop), so `worker` is the recorded choice here.
     "  worker <workflow-id> [--drain]  run one workflow-scoped browser worker (ref execution-and-sessions §3)",
+    `  ${DRY_RUN_SCENARIO_USAGE}  execute one manifest case through the real dry-run runtime`,
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
     "  storage doctor [--json]  read-only authority + backup health report (ref dashboard-surfaces §2.5; exit 0 = healthy AND current backup)",
@@ -260,6 +277,29 @@ export function startRebuildRuntime(input: RebuildRuntimeStart): void {
       })
       .catch((error: unknown) => {
         // A worker that failed to run must never look finished.
+        throw error instanceof Error ? error : new Error(String(error));
+      });
+    return;
+  }
+  if (command === "dry-run-scenario") {
+    const commandArgs = args.slice(1);
+    if (commandArgs.length === 1 && (commandArgs[0] === "help"
+      || commandArgs[0] === "--help" || commandArgs[0] === "-h")) {
+      write(`usage: ${DRY_RUN_SCENARIO_USAGE}`);
+      return;
+    }
+    const compose = input.dryRunScenario ?? registeredDryRunScenarioComposer;
+    if (compose === undefined) {
+      throw new Error(
+        "the dry-run-scenario command needs its composition seam; start it through src/cli.ts, which registers composeDryRunScenarioCommand",
+      );
+    }
+    compose(input.isolation, commandArgs)
+      .then((outcome) => {
+        write(outcome.output);
+        if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
+      })
+      .catch((error: unknown) => {
         throw error instanceof Error ? error : new Error(String(error));
       });
     return;
