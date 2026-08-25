@@ -17,9 +17,10 @@ import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
 import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
-import { createPhase1WorkerRuntimeExecutor, phase1WorkerId } from "../../src/core/worker-loop.js";
+import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId } from "../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
-import { WorkflowIdSchema } from "../../src/domain/ids.js";
+import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
+import type { PositiveInt } from "../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { createDashboardWorkerSupervisor } from "../../src/server/dashboard/compose.js";
 import {
@@ -51,6 +52,8 @@ afterEach(() => {
 });
 
 const NOW = "2026-08-03T09:00:00.000Z";
+const POOL_INDEX_1 = PositiveIntSchema.parse(1);
+const POOL_INDEX_2 = PositiveIntSchema.parse(2);
 
 function repoRootWithState(): { repoRoot: string; stateRoot: string } {
   const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-worker-compose-"));
@@ -86,13 +89,14 @@ function composeInput(options: Readonly<{
   repoRoot: string;
   clock: TestClock;
   sessions: SessionFactoryHarness;
+  poolIndex: PositiveInt;
   args?: readonly string[];
   stopSignal?: AbortSignal;
   lines?: string[];
 }>) {
   return {
     isolation: rebuildRuntimeIsolation,
-    args: options.args ?? [WORKFLOW_ID, "--drain"],
+    args: options.args ?? [WORKFLOW_ID, "--pool-index", String(options.poolIndex), "--drain"],
     env: {},
     clock: options.clock,
     ids: sequentialIdFactory("c"),
@@ -112,12 +116,45 @@ function composeInput(options: Readonly<{
 }
 
 describe("worker CLI argument parsing", () => {
-  it("accepts a registered workflow with --drain and refuses everything else by name", () => {
-    assert.deepEqual(parseWorkerArguments([WORKFLOW_ID]), { workflowId: WORKFLOW_ID, drain: false });
-    assert.deepEqual(parseWorkerArguments([WORKFLOW_ID, "--drain"]), { workflowId: WORKFLOW_ID, drain: true });
+  it("accepts an explicit positive pool index", () => {
+    assert.deepEqual(parseWorkerArguments([WORKFLOW_ID, "--pool-index", "2", "--drain"]), {
+      workflowId: WORKFLOW_ID,
+      poolIndex: POOL_INDEX_2,
+      drain: true,
+    });
+  });
+
+  it("refuses absent, malformed, zero, and duplicate pool-index flags", () => {
+    assert.throws(() => parseWorkerArguments([WORKFLOW_ID]), /requires --pool-index/);
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "many"]),
+      /must be a positive integer; received many/,
+    );
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "0"]),
+      /must be a positive integer; received 0/,
+    );
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "1", "--pool-index", "2"]),
+      /duplicate worker flag: --pool-index/,
+    );
+  });
+
+  it("refuses missing values, duplicate drain flags, and unknown flags by name", () => {
     assert.throws(() => parseWorkerArguments([]), /needs a workflow id/);
     assert.throws(() => parseWorkerArguments(["not-registered"]), /is not registered/);
-    assert.throws(() => parseWorkerArguments([WORKFLOW_ID, "--headed"]), /unknown worker flag: --headed/);
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "--drain"]),
+      /requires a positive integer value/,
+    );
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "1", "--drain", "--drain"]),
+      /duplicate worker flag: --drain/,
+    );
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "1", "--headed"]),
+      /unknown worker flag: --headed/,
+    );
   });
 });
 
@@ -129,7 +166,9 @@ describe("composed worker runtime", () => {
     const sessions = happySessionHarness();
     const lines: string[] = [];
 
-    const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, lines }));
+    const report = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions, lines, poolIndex: POOL_INDEX_1,
+    }));
 
     assert.equal(report.workflowId, WORKFLOW_ID);
     assert.equal(report.workerId, phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID)));
@@ -160,11 +199,36 @@ describe("composed worker runtime", () => {
     assert.deepEqual(sessions.closeReasons(), ["worker-stop", "worker-stop"]);
   });
 
+  it("composes distinct stable identities for members of one workflow pool", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+
+    const first = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+    }));
+    const second = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_2,
+    }));
+
+    const expected = [
+      poolWorkerId(WorkflowIdSchema.parse(WORKFLOW_ID), POOL_INDEX_1),
+      poolWorkerId(WorkflowIdSchema.parse(WORKFLOW_ID), POOL_INDEX_2),
+    ];
+    const database = reopen(stateRoot, clock);
+    assert.deepEqual({
+      reports: [first.workerId, second.workerId],
+      authorityLeases: expected.map((workerId) => database.authority.workerLeases.get(workerId)?.workerId),
+    }, {
+      reports: expected,
+      authorityLeases: expected,
+    });
+  });
+
   it("refuses a second process answering to the same worker id", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
+    const workerId = poolWorkerId(WorkflowIdSchema.parse(WORKFLOW_ID), POOL_INDEX_1);
     const database = reopen(stateRoot, clock);
     assert.equal(database.authority.workerLeases.start({
       workerId,
@@ -175,7 +239,9 @@ describe("composed worker runtime", () => {
     }).state, "started");
 
     await assert.rejects(
-      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness() })),
+      composeWorkerRuntime(composeInput({
+        repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+      })),
       /a second process may not answer to the same worker id/,
     );
   });
@@ -203,7 +269,7 @@ describe("composed worker runtime", () => {
 
     const lines: string[] = [];
     const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines,
+      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
     }));
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     const lease = seed.authority.workerLeases.get(workerId);
@@ -236,7 +302,7 @@ describe("composed worker runtime", () => {
 
     const lines: string[] = [];
     const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines,
+      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
     }));
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     assert.ok(
@@ -289,7 +355,7 @@ describe("composed worker runtime", () => {
 
     const lines: string[] = [];
     const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines,
+      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
     }));
     // Nothing was claimable, so the drain reports idle with no outcomes at all.
     assert.deepEqual(report.outcomes, []);
@@ -325,7 +391,7 @@ describe("composed worker runtime", () => {
     const stop = new AbortController();
 
     const running = composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions, stopSignal: stop.signal,
+      repoRoot, clock, sessions, stopSignal: stop.signal, poolIndex: POOL_INDEX_1,
     }));
     await driverStarted;
     stop.abort(new Error("operator pressed Ctrl-C"));
@@ -369,7 +435,9 @@ describe("composed worker runtime", () => {
     };
 
     await assert.rejects(
-      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: unprovable })),
+      composeWorkerRuntime(composeInput({
+        repoRoot, clock, sessions: unprovable, poolIndex: POOL_INDEX_1,
+      })),
       (error: unknown) => error instanceof AggregateError
         && error.errors.some((failure: unknown) => failure instanceof Error
           && /did not close within its bounded deadline/.test(failure.message)),
@@ -399,7 +467,7 @@ describe("composed worker runtime", () => {
     }).state, "applied");
 
     const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(),
+      repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
     }));
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     const lease = seed.authority.workerLeases.get(workerId);

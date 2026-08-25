@@ -1052,7 +1052,7 @@ advances across profiles.
 
 <!-- roadmap-status: parallel-runs -->
 - [ ] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard
-- [ ] BE pool-indexed worker ids: `phase1WorkerId(workflowId)` derives ONE id per workflow, so two composed workers collide on the authority worker lease by design (`src/core/worker-loop.ts:368`)
+- [x] BE pool-indexed worker ids: the CLI requires a positive pool index and composition carries `<workflow>-worker-<index>` into the authority lease; distinct indices retain distinct rows and duplicate ownership is refused
 - [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis: `plan-worker-count` and `spawn-worker` target `{workflowId, expectedVersion}` where `expectedVersion` is the POOL row's version (0 for an unplanned workflow), the kernel refuses a stale one with `conflict` naming the current version BEFORE the runtime seam, and the day wire serves `workerPools[]` (`93b7b18e` store · `b4f30ea0` kernel · `24b04dfa` wire — D269)
 - [x] BE a durable session record and its grouping, membership derived from authority — `run_sessions` (schema v17, insert-only, member-less) written by `fanOutQueuedRuns` BEFORE its first member; every run row carries `sessionId` (`tasks.session_id`, read forward) and `runs.listBySession` IS the membership; a retry inherits its session; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa` — D269)
 - [ ] FE the session view — worker cards show membership and what each worker is doing, read from authority
@@ -1060,12 +1060,14 @@ advances across profiles.
 - [x] needs §10 first — the pool multiplies the hazard the lease removes (§10 landed, D267)
 > 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
 > 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
+> 2026-08-25 | parallel-runs P3 | pool-indexed identity is built: `worker <workflow> --pool-index N` validates positive N, derives the stable id and starts authority under that lease identity. The dashboard process supervisor, FE session view and parallel proof remain unbuilt
 <!-- /roadmap-status -->
 
-**AUTHORITY HALF AS-BUILT (D269, 2026-08-21); the pool PROCESS and the FE view are DESIGNED, NOT
-BUILT.** This section is the owning contract for the tree's `{#parallel-runs}` node and the normative
-text of D269. It defines the SESSION unit §1 names and the pool that serves one. Points 1 and 5 are
-built exactly as written below, at the cited commits; points 2, 4, 6 and 8 remain design.
+**AUTHORITY HALF AS-BUILT (D269, 2026-08-21); POOL-INDEXED IDENTITY AS-BUILT (2026-08-25); the
+dashboard process supervisor and FE view are DESIGNED, NOT BUILT.** This section is the owning
+contract for the tree's `{#parallel-runs}` node and the normative text of D269. Points 1 and 5 carry
+D269's authority build; point 4's identity propagation is built; process reconciliation plus points
+6 and 8 remain design.
 
 **1. A session is a dashboard-started group of runs.** It is not a browser session (§1), not a
 worker, and not a workflow. It is what an operator starts when they dispatch a batch — ten I-9
@@ -1128,6 +1130,14 @@ refusal is replaced by a reconciliation against the pool's declared size; until 
 refusing, because acknowledging a count the runtime cannot produce is an acknowledgement of an
 effect that did not happen.
 
+_As-built (2026-08-25):_ `poolWorkerId(workflowId, poolIndex)` derives
+`${workflowId}-worker-${poolIndex}` from a branded `PositiveInt`. The CLI requires
+`--pool-index <positive-int>` with no default, and `composeWorkerRuntime` uses that derived id for
+the loop, browser-profile partition and `workerLeases.start`. Thus indices 1 and 2 retain distinct
+stable lease rows, while a second process given the same index reaches the existing live-lease
+conflict. `phase1WorkerId` remains only on the explicitly single-worker runtime-executor
+compatibility arm; assigning and launching N members belongs to the unbuilt dashboard supervisor.
+
 **5. The spawn control needs a CAS basis before it needs a button.** `spawn-worker` and
 `plan-worker-count` target `{workflowId, expectedVersion}` (`src/domain/commands.ts`), and until
 D269 the projection served no pool version — `WorkerCardWire.revision` is one worker's row. A
@@ -1135,7 +1145,8 @@ frontend that guessed an `expectedVersion` would be inventing the exact fact the
 check, which is why there is no `+ Add workers` control today and why the pool version is a
 prerequisite of the control rather than a detail of it. The dashboard's supervisor keeps refusing
 spawn BY NAME (*"the dashboard process does not launch browser workers; start worker X with `npm
-run cli worker <workflowId>`"*) until a real process effect exists — a refusal, not a stub, so no
+run cli worker <workflowId> --pool-index <positive-int>`"*) until a real process effect exists — a
+refusal, not a stub, so no
 acknowledgement can claim an effect that did not happen.
 
 _As-built (D269):_ `worker_pools` (schema v17, `93b7b18e`) is the basis — `WorkerPoolRecord

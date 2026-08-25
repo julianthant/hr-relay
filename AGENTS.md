@@ -246,6 +246,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   test-only (`manual-clock-test-only.test.ts`).
 - Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
+- **2026-08-25 — pool worker identity:** worker composition accepts no default index. The CLI must
+  validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
+  shared by the loop, browser-profile partition and authority lease. Never infer an index from
+  current pool or lease rows.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`

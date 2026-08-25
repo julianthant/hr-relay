@@ -53,7 +53,7 @@ import type {
 import type { ProviderAdapterRegistry } from "../../core/provider-admission.js";
 import type { RunProviderWiring } from "../../core/run-executor.js";
 import {
-  phase1WorkerId,
+  poolWorkerId,
   runWorkerLoop,
   type WorkerLoopReport,
 } from "../../core/worker-loop.js";
@@ -66,9 +66,11 @@ import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   LOCAL_OPERATOR_ACTOR_ID,
+  PositiveIntSchema,
   ProviderAdmissionIdSchema,
   WorkflowIdSchema,
 } from "../../domain/ids.js";
+import type { PositiveInt } from "../../domain/ids.js";
 import type { WorkerId, WorkflowId } from "../../domain/ids.js";
 import type { WorkerDirective, WorkerLeaseRecord } from "../../domain/run/worker.js";
 import {
@@ -137,11 +139,12 @@ export function lineTaskLogger(write: (line: string) => void, clock: Clock): Tas
 
 export interface WorkerCliArguments {
   readonly workflowId: WorkflowId;
+  readonly poolIndex: PositiveInt;
   /** `--drain`: claim until the queue is idle once, then exit (harness mode). */
   readonly drain: boolean;
 }
 
-/** `worker <workflow-id> [--drain]` — anything else refuses by name. */
+/** `worker <workflow-id> --pool-index <positive-int> [--drain]` — anything else refuses by name. */
 export function parseWorkerArguments(args: readonly string[]): WorkerCliArguments {
   const [first, ...rest] = args;
   if (first === undefined) {
@@ -156,14 +159,33 @@ export function parseWorkerArguments(args: readonly string[]): WorkerCliArgument
     );
   }
   let drain = false;
-  for (const flag of rest) {
+  let poolIndex: PositiveInt | undefined;
+  for (let index = 0; index < rest.length; index += 1) {
+    const flag = rest[index];
     if (flag === "--drain") {
+      if (drain) throw new Error("duplicate worker flag: --drain");
       drain = true;
       continue;
     }
-    throw new Error(`unknown worker flag: ${flag} (supported: --drain)`);
+    if (flag === "--pool-index") {
+      if (poolIndex !== undefined) throw new Error("duplicate worker flag: --pool-index");
+      const raw = rest[index + 1];
+      if (raw === undefined || raw.startsWith("--")) {
+        throw new Error("worker --pool-index requires a positive integer value");
+      }
+      if (!/^[1-9]\d*$/u.test(raw)) {
+        throw new Error(`worker --pool-index must be a positive integer; received ${raw}`);
+      }
+      poolIndex = PositiveIntSchema.parse(Number(raw));
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown worker flag: ${String(flag)} (supported: --pool-index <positive-int>, --drain)`);
   }
-  return Object.freeze({ workflowId, drain });
+  if (poolIndex === undefined) {
+    throw new Error("the worker command requires --pool-index <positive-int>; no pool index may be guessed");
+  }
+  return Object.freeze({ workflowId, poolIndex, drain });
 }
 
 export interface WorkerComposeInput {
@@ -332,7 +354,7 @@ function startWorkerMaintenance(input: Readonly<{
 }
 
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
-  const { workflowId, drain } = parseWorkerArguments(input.args);
+  const { workflowId, poolIndex, drain } = parseWorkerArguments(input.args);
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
@@ -347,7 +369,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const module = SERVER_REGISTRY[workflowId];
   if (module === undefined) throw new Error(`workflow ${workflowId} is not registered`);
   const descriptor = module.descriptor;
-  const workerId = phase1WorkerId(workflowId);
+  const workerId = poolWorkerId(workflowId, poolIndex);
 
   const env = input.env ?? configResolutionEnvironment();
   const resolved = resolveConfigWithProvenance(env, {}, clock);

@@ -557,12 +557,14 @@ pool, because the pool multiplies the hazard it removes.
 
 <!-- roadmap-status: parallel-runs -->
 - [ ] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard
+- [x] BE pool-indexed worker ids — the CLI requires a positive pool index, derives a stable id, and authority refuses duplicate ownership of that index
 - [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis `spawn-worker`/`plan-worker-count` cite (0 for an unplanned workflow); the kernel refuses a stale one by name before the runtime seam; the day wire serves `workerPools[]` (`93b7b18e` · `b4f30ea0` · `24b04dfa`, D269)
 - [x] BE a durable session record and its grouping — `run_sessions` (insert-only, member-less), written by every fan-out before its first member; membership is `tasks.session_id` / `runs.listBySession`; a retry inherits; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa`, D269)
 - [ ] FE the session view — worker cards show membership and what each worker is doing, read from authority
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded
 > 2026-08-20 | docs-cohesion 03a | the kernel command arms exist and are validated (src/core/command-kernel.ts:95) while createDashboardWorkerSupervisor refuses spawn by name (src/server/dashboard/compose.ts:322) and the FE has no Add-workers control for the CAS reason quoted in src/dashboard/surfaces/shell.tsx:1036
 > 2026-08-21 | parallel-runs P12 | the authority half landed (D269) — ref execution-and-sessions §11 points 1 and 5 carry the as-built; left: the pool process (spawn + pool-indexed ids), the FE session view, the parallel proof
+> 2026-08-25 | parallel-runs P3 | pool-indexed identity landed — `worker <workflow> --pool-index N` validates a positive N, derives `<workflow>-worker-N`, and starts authority under that exact lease id; distinct indices retain distinct lease rows and duplicate N is refused. Left: the real dashboard process supervisor, FE session view and parallel proof
 <!-- /roadmap-status -->
 
 **A session is a dashboard-started group of N runs.** Every workflow follows the same
@@ -586,13 +588,19 @@ the record of why.)_ The command arms are real and composed:
 schemas, authority validation, the journal and typed refusals (`src/core/command-kernel.ts:95`). Two
 things are missing and only one of them is obvious. The dashboard's `WorkerProcessSupervisor` throws
 by name — *"the dashboard process does not launch browser workers; start worker X with
-`npm run cli worker <workflowId>`"* — which is a correct refusal rather than a stub, so no
+`npm run cli worker <workflowId> --pool-index <positive-int>`"* — which is a correct refusal rather
+than a stub, so no
 acknowledgement can claim an effect that did not happen. Less obvious: **the projection serves no
 POOL version.** `spawn-worker` and `plan-worker-count` target `{workflowId, expectedVersion}`, and
 `WorkerCardWire.revision` is one worker's row, not the pool's — so the frontend has no `+ Add
 workers` control today, deliberately, because a button that guessed an `expectedVersion` would be
 inventing the exact fact the CAS exists to check. The pool version is a prerequisite of the control,
 not a detail of it.
+
+**The identity path is now as-built (2026-08-25).** The worker CLI requires an explicit positive
+`--pool-index`; composition derives the stable worker id from it and uses that id for the loop,
+browser-profile partition and authority lease. There is no default index. The dashboard process
+supervisor that will assign and launch N members remains unbuilt.
 
 **Done looks like** a pool that spawns and stops from the dashboard against a real CAS basis, a
 durable session record the worker cards read their membership from, and TWO separations dry-run

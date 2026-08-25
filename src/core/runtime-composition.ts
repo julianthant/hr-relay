@@ -151,7 +151,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     `  dashboard  start the in-process typed dashboard BFF (1g-spine, port ${String(isolation.backendPort)})`,
     // Ref execution-and-sessions names no CLI subcommand for its worker (§3 names only the
     // `runWorker` loop), so `worker` is the recorded choice here.
-    "  worker <workflow-id> [--drain]  run one workflow-scoped browser worker (ref execution-and-sessions §3)",
+    "  worker <workflow-id> --pool-index <positive-int> [--drain]  run one indexed browser worker (ref execution-and-sessions §3/§11)",
     "  explain run <traceId|runId> [--json]  explain one run from authority (ref operator-trust §2.5)",
     "  ocr forms | instruction <form> | admit <file.json> | stack <classified.json> <form>  the one extraction gate, whoever read the page (D151/D158)",
     "  storage doctor [--json]  read-only authority + backup health report (ref dashboard-surfaces §2.5; exit 0 = healthy AND current backup)",
