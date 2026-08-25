@@ -332,7 +332,7 @@ worker. (`src/core/provider-admission.ts`; `provider-admission.test.ts`, `provid
 
 **A browser session is a callback LEASE, not a handle a caller holds.**
 `WorkerSessionManager.withDriver(need, instance, signal, operation)` is the whole surface
-(`src/core/worker-sessions.ts:313`): it serializes use per system inside the worker, acquires or
+(`src/core/worker-sessions.ts`, `WorkerSessionManager.withDriver`): it serializes use per system inside the worker, acquires or
 reuses the resource, runs the callback with the concrete driver, and decides what happens next from
 how the callback ENDED. There is no `release("clean")` call for a caller to forget.
 
