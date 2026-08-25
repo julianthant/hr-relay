@@ -249,6 +249,26 @@ export interface RunQueueProjectionHealth {
   readonly lastError?: string;
 }
 
+export type ProjectedRunLogEvent = Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>;
+
+export interface ProjectedRunLogEntry {
+  readonly line: EventStreamLine;
+  readonly event: ProjectedRunLogEvent;
+  /** Append-fold revision within this projection generation. */
+  readonly revision: number;
+}
+
+export interface ProjectedRunLogSnapshot {
+  readonly projectionGeneration: number;
+  readonly snapshotRevision: number;
+  readonly entries: readonly ProjectedRunLogEntry[];
+}
+
+interface ParsedSpanLine {
+  readonly line: EventStreamLine;
+  readonly event: SpanEventWire;
+}
+
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
 function deterministicProjectionKey(runId: string): Fingerprint {
@@ -343,6 +363,7 @@ export class RunQueueProjection {
   readonly #deps: RunQueueProjectionDeps;
   readonly #rows = new Map<string, RunFoldRecord>();
   readonly #workers = new Map<string, WorkerFold>();
+  readonly #runLogs = new Map<string, ProjectedRunLogEntry[]>();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedStatus = new Map<string, string>();
   readonly #foldSchemaHash: Fingerprint;
@@ -389,6 +410,24 @@ export class RunQueueProjection {
   }
 
   /**
+   * Observed/fenced rows indexed by the append-time disk tail. A logs query
+   * never reconstructs this list from run-instant partitions.
+   */
+  runLogSnapshot(runId: string): ProjectedRunLogSnapshot {
+    if (this.#health.state === "degraded") {
+      throw new ProjectionDegradedError(
+        `the run/queue projection is degraded and refuses to serve observed logs: ${this.#health.lastError ?? "unknown"}`,
+      );
+    }
+    const entries = this.#runLogs.get(runId) ?? [];
+    return Object.freeze({
+      projectionGeneration: this.#generationValue,
+      snapshotRevision: entries.at(-1)?.revision ?? 0,
+      entries: Object.freeze([...entries]),
+    });
+  }
+
+  /**
    * Fold ONE already-durable event. Never throws: a fold failure degrades the
    * projection and schedules the guarded rebuild instead of blocking the
    * caller. Production ingest reaches this fold only through `ingestFromDisk`
@@ -422,9 +461,10 @@ export class RunQueueProjection {
       this.#spanCursors = tail.cursors;
       if (tail.lines.length === 0) return;
       const events = this.#parseSpanLines(tail.lines);
-      for (const event of events) {
+      for (const { event, line } of events) {
         const affected = this.#fold(event);
         this.#cursorValue += 1;
+        this.#recordRunLog(event, line);
         this.#persist(affected.runIds);
         this.#notify(affected);
       }
@@ -449,10 +489,10 @@ export class RunQueueProjection {
    * per-run order still comes from each file's append order, since the sort
    * is stable and one run's spans ride one workflow's files.
    */
-  #parseSpanLines(lines: readonly EventStreamLine[]): readonly SpanEventWire[] {
+  #parseSpanLines(lines: readonly EventStreamLine[]): readonly ParsedSpanLine[] {
     const events = lines.map((line) => {
       try {
-        return SpanEventWireSchema.parse(JSON.parse(line.text));
+        return { line, event: SpanEventWireSchema.parse(JSON.parse(line.text)) };
       } catch (error) {
         throw new Error(
           `corrupt span line ${line.file.path}:${String(line.lineNumber)}: ${error instanceof Error ? error.message : String(error)}`,
@@ -460,7 +500,14 @@ export class RunQueueProjection {
         );
       }
     });
-    return events.sort((a, b) => a.ts.localeCompare(b.ts));
+    return events.sort((a, b) => a.event.ts.localeCompare(b.event.ts));
+  }
+
+  #recordRunLog(event: SpanEventWire, line: EventStreamLine): void {
+    if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
+    const entries = this.#runLogs.get(event.runId) ?? [];
+    if (!this.#runLogs.has(event.runId)) this.#runLogs.set(event.runId, entries);
+    entries.push(Object.freeze({ event, line, revision: this.#cursorValue }));
   }
 
   /** The `rebuild-from-native-jsonl` recovery class: clear, re-read, re-fold. */
@@ -470,10 +517,14 @@ export class RunQueueProjection {
       const events = this.#parseSpanLines(whole.lines);
       this.#rows.clear();
       this.#workers.clear();
+      this.#runLogs.clear();
       this.#notifiedStatus.clear();
       const touched = new Set<string>();
-      for (const event of events) {
+      this.#cursorValue = 0;
+      for (const { event, line } of events) {
         for (const runId of this.#fold(event).runIds) touched.add(runId);
+        this.#cursorValue += 1;
+        this.#recordRunLog(event, line);
       }
       this.#deps.projectionStore.withProjectionTransaction((repositories) => {
         repositories.runsView.clear();
@@ -484,7 +535,7 @@ export class RunQueueProjection {
       // together with `live` so the two ingest paths can never overlap.
       this.#spanCursors = whole.cursors;
       this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
-      this.#cursorValue = 1;
+      this.#cursorValue = Math.max(1, this.#cursorValue);
       this.#health = { state: "live" };
       const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
       for (const listener of this.#listeners) listener(change);
@@ -659,9 +710,8 @@ export class RunQueueProjection {
 
     /**
      * The durable-fence beat is transaction detail, not a task settlement.
-     * The observed-log FE row owns rendering it; until then this projection
-     * ignores it explicitly so ingesting a truthful transaction stream cannot
-     * degrade and rebuild forever.
+     * `#recordRunLog` indexes it for the run-detail query; this QUEUE fold
+     * ignores it explicitly so it cannot masquerade as task settlement.
      */
     if (event.t === "transaction.fenced") return { runIds: [], workerChanged: false };
 
@@ -669,13 +719,11 @@ export class RunQueueProjection {
      * D270 — `data.observed`. The queue row's vocabulary is task spans and
      * terminal outcomes; a recorded page observation is neither, and folding it
      * into a span it is not would be D123's collapse by another route. It is
-     * therefore IGNORED HERE BY NAME rather than by falling through, so a
-     * fourth reader of this union is a compile error instead of a silently
-     * mis-folded event. The run-detail side that renders these rows is
-     * `03a-finish-the-dashboard.md` §Observed logs' FE row; this arm exists so
-     * that a stream carrying them cannot degrade `rebuildFromJsonl` /
-     * `ingestFromDisk` in the meantime — a degraded ingest schedules a rebuild
-     * and a rebuild that refused the line would report real history as corrupt.
+     * therefore IGNORED BY THE QUEUE FOLD rather than by falling through, while
+     * `#recordRunLog` retains it in the append-time per-run log index. Keeping
+     * those jobs separate prevents an observation from becoming queue state and
+     * prevents the logs GET from reconstructing append partitions from record
+     * time.
      */
     if (event.t === "data.observed") return { runIds: [], workerChanged: false };
 

@@ -1,11 +1,20 @@
 # Lessons learned — the dated ledger
 
 Cited in prose as **`ref lessons`**. Every entry is dated and names the decision(s) it came out of;
-newest first. Moved here from the repository root `CLAUDE.md` on 2026-08-21 so that a session
+newest first. Moved here from the repository root agent instructions on 2026-08-21 so that a session
 loads it on demand rather than on every start. Add new root-level lessons HERE; module-scoped
-lessons keep living in the module's own `CLAUDE.md` (`src/dashboard`, `src/stores/<system>`).
+lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/stores/<system>`).
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
+
+- **2026-08-25: record time is not append time, and a page cursor must name the corpus it pages
+  (D5/D270; observed logs L3).** The span writer partitions on its append clock while an observation
+  retains the earlier instant at which the task recorded it. Deriving reader partitions from run
+  instants therefore drops a valid late append without an error. Index observed/fenced rows once in
+  the append-time disk-tail projection, retain file/line there for named corruption, and make the
+  query consume only that run's indexed rows. Pagination is the same class of bug: an offset into a
+  mutable sorted JSONL view duplicates or drops an old row when a newly appended event sorts before
+  it. Bind continuation to an immutable, bounded snapshot; a fresh first page sees new history.
 
 - **2026-08-25: operator prose containing a closed wire enum must use the same display fold as
   pills (AC24; ref frontend-backend-integration §4 “State ownership”).** Keep the pill's exact label

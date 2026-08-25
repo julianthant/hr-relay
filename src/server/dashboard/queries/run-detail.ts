@@ -61,6 +61,8 @@ import type { IdentityEvidencePacket } from "../../../domain/separations/identit
 import {
   FailureDetailWireSchema,
   IdentityGateDetailWireSchema,
+  LogPageCursorSchema,
+  LogRowWireSchema,
   ParkedWriteDetailWireSchema,
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
@@ -83,10 +85,14 @@ import {
   type EventStreamLine,
   type EventStreamScope,
 } from "../../../infra/events/jsonl-streams.js";
-import { NoteWireSchema as NoteAtRestSchema } from "../../../events/types.js";
+import {
+  NoteWireSchema as NoteAtRestSchema,
+  type SpanEventWire,
+} from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
+import { sha256Hex } from "../../../domain/sha256.js";
 import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
 
@@ -155,8 +161,8 @@ export interface RunDetailWriteContractView {
  * label, a task's effect or a freshness precedence would be a second copy of a
  * declaration the runtime already owns.
  *
- * `dir` is the node's own task EFFECT, not an inference: a task node runs a
- * `read` contract and a transaction node's sink is a `commit`. `system` is the
+ * `dir` is the invoked task's own EFFECT, not an inference: ordinary reads and
+ * transaction probe/verify roles are `read`; prepare/commit are `write`. `system` is the
  * driver system of the store that implements the task — absent for a headless
  * store, which owns none. `freshness` is pre-resolved per field path through
  * `resolveFreshnessBound`, already in the wire's shape (`unbounded` rather than
@@ -167,6 +173,10 @@ export interface RunDetailWriteContractView {
 export interface RunDetailDataOriginView {
   readonly nodeId: string;
   readonly step: string;
+  /** The producing task contract; node id alone is not an observed-log address. */
+  readonly taskId: string;
+  /** The transaction beat that invokes the task; ordinary nodes are `task`. */
+  readonly role?: "task" | "probe" | "prepare" | "commit" | "verify";
   readonly dir: "read" | "write";
   readonly system?: string;
   readonly freshness?: readonly Readonly<{
@@ -797,11 +807,23 @@ const SectionNameSchema = z.enum([
 
 const LEVEL_MAP = { error: "error", warn: "warning", waiting: "warning", step: "info", success: "info", debug: "info" } as const;
 
-/** One note line this run owns, in the order the corpus holds it. */
-export interface RunNoteScanEntry {
-  readonly line: EventStreamLine;
-  readonly note: z.infer<typeof NoteAtRestSchema>;
-}
+/** One parseable line that the selected run owns, before the query assigns page sequence. */
+type RunAtRestNote = Readonly<{
+  runId: string;
+  ts: string;
+  level: "error" | "warn" | "waiting" | "step" | "success" | "debug";
+  message: string;
+}>;
+
+type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system: string }>;
+
+export type RunLogScanEntry =
+  | Readonly<{ kind: "note"; line: EventStreamLine; note: RunAtRestNote }>
+  | Readonly<{ kind: "observed"; line: EventStreamLine; event: Extract<SpanEventWire, { t: "data.observed" }>; producer: RunLogProducer }>
+  | Readonly<{ kind: "transaction-fenced"; line: EventStreamLine; event: Extract<SpanEventWire, { t: "transaction.fenced" }>; producer: RunLogProducer }>;
+
+/** @deprecated The cache now holds the combined notes + span-observation log. */
+export type RunNoteScanEntry = RunLogScanEntry;
 
 /**
  * The `notes/` partitions ONE run's log lines can be in (D5, audit P3).
@@ -841,29 +863,64 @@ export function runNotePartitionScope(
 }
 
 /**
- * ONE note scan per run, for a caller that pages the same run to the end.
+ * ONE immutable combined-log snapshot, for a caller that pages the same run to the end.
  *
  * The archive's version-bump freeze walks `buildRunSection(run, "logs")` page by
  * page (`FROZEN_LOG_PAGE_LIMIT` of them), and each call re-read and re-parsed
  * the same partitions to slice a different 200 lines out of the same list. The
- * cache lives for exactly one freeze and is handed in explicitly, so nothing
- * long-lived can serve a page from a corpus a worker has since appended to.
+ * The archive cache lives for exactly one freeze and is handed in explicitly.
+ * Live request deps retain at most 128 snapshots; a missing/evicted cursor
+ * refuses by name and a fresh first page observes the new corpus.
  */
+interface RunLogSnapshot {
+  readonly id: string;
+  readonly entries: readonly RunLogScanEntry[];
+}
+
 export interface RunNoteScanCache {
-  read(runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[];
+  start(runId: string, scan: () => readonly RunLogScanEntry[]): RunLogSnapshot;
+  resume(runId: string, snapshotId: string): RunLogSnapshot;
 }
 
 export function createRunNoteScanCache(): RunNoteScanCache {
-  const byRun = new Map<string, readonly RunNoteScanEntry[]>();
+  const snapshots = new Map<string, Readonly<{ runId: string; snapshot: RunLogSnapshot }>>();
+  const hold = (runId: string, entries: readonly RunLogScanEntry[]): RunLogSnapshot => {
+    const id = sha256Hex(
+      `hrauto:run-log-snapshot:v1\0${runId}\0${entries.map((entry) => `${logIdOf(entry)}\0${entry.line.text}`).join("\n")}`,
+    );
+    const snapshot = Object.freeze({ id, entries: Object.freeze([...entries]) });
+    snapshots.delete(id);
+    snapshots.set(id, Object.freeze({ runId, snapshot }));
+    const oldest = snapshots.size > 128 ? snapshots.keys().next().value : undefined;
+    if (oldest !== undefined) snapshots.delete(oldest);
+    return snapshot;
+  };
   return Object.freeze({
-    read(runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[] {
-      const held = byRun.get(runId);
-      if (held !== undefined) return held;
-      const scanned = scan();
-      byRun.set(runId, scanned);
-      return scanned;
+    start(runId: string, scan: () => readonly RunLogScanEntry[]): RunLogSnapshot {
+      return hold(runId, scan());
+    },
+    resume(runId: string, snapshotId: string): RunLogSnapshot {
+      const held = snapshots.get(snapshotId);
+      if (held === undefined) {
+        throw new Error(`log snapshot ${snapshotId} for run ${runId} is unavailable or expired; restart from the first page`);
+      }
+      if (held.runId !== runId) {
+        throw new Error(`log snapshot ${snapshotId} belongs to run ${held.runId}, not requested run ${runId}`);
+      }
+      return held.snapshot;
     },
   });
+}
+
+const defaultLogSnapshots = new WeakMap<RunDetailQueryDeps, RunNoteScanCache>();
+
+function logSnapshotsFor(deps: RunDetailQueryDeps, provided?: RunNoteScanCache): RunNoteScanCache {
+  if (provided !== undefined) return provided;
+  const held = defaultLogSnapshots.get(deps);
+  if (held !== undefined) return held;
+  const created = createRunNoteScanCache();
+  defaultLogSnapshots.set(deps, created);
+  return created;
 }
 
 /**
@@ -888,26 +945,181 @@ function parseNoteLine(line: EventStreamLine): z.infer<typeof NoteAtRestSchema> 
   }
 }
 
-function noteLinesForRun(
+function assertScopedSpanWorkflow(
+  event: Extract<SpanEventWire, { runId: string }>,
+  line: EventStreamLine,
+): void {
+  if (event.workflow !== line.file.workflow) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} is filed in workflow ${line.file.workflow} but names `
+      + `workflow ${event.workflow}; refusing a span whose durable partition and identity disagree`,
+    );
+  }
+}
+
+function assertRunLogIdentity(
+  source: "note" | "span",
+  identity: Readonly<{ runId: string; workflow: string; traceId: string; attempt: number }>,
+  line: EventStreamLine,
+  runId: string,
+  row: RunFoldRecord,
+  authority: RunRecord,
+): void {
+  const location = `${source}s line ${line.file.path}:${String(line.lineNumber)}`;
+  if (identity.runId !== runId) {
+    throw new Error(`${location} was indexed for run ${runId} but names run ${identity.runId}`);
+  }
+  if (identity.workflow !== authority.envelope.workflow) {
+    throw new Error(
+      `${location} for run ${runId} names workflow ${identity.workflow}, but authority names ${authority.envelope.workflow}`,
+    );
+  }
+  if (identity.traceId !== authority.envelope.traceId) {
+    throw new Error(
+      `${location} for run ${runId} names ${source} trace ${identity.traceId}, but authority trace is ${authority.envelope.traceId}`,
+    );
+  }
+  const firstAttempt = row.queued.attempt;
+  const lastAttempt = Math.min(row.attempt, authority.envelope.attempt);
+  if (identity.attempt < firstAttempt || identity.attempt > lastAttempt) {
+    throw new Error(
+      `${location} for run ${runId} names attempt ${String(identity.attempt)}, outside the run's legal attempts `
+      + `${String(firstAttempt)}..${String(lastAttempt)}`,
+    );
+  }
+}
+
+function producerOf(
+  descriptor: RunDetailDescriptorView | undefined,
+  event: Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>,
+  line: EventStreamLine,
+): RunLogProducer {
+  if (descriptor === undefined) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve system for ${event.t} node ${event.t === "data.observed" ? event.nodeId : event.node} `
+      + `task ${event.taskId}: workflow ${event.workflow} has no descriptor view`,
+    );
+  }
+  const nodeId = event.t === "data.observed" ? event.nodeId : event.node;
+  const matches = (descriptor.dataOrigins ?? []).filter((origin) =>
+    origin.nodeId === nodeId && origin.taskId === event.taskId);
+  if (matches.length !== 1) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve one system for ${event.t} node ${nodeId} `
+      + `task ${event.taskId}: descriptor has ${String(matches.length)} matching data origins`,
+    );
+  }
+  const origin = matches[0];
+  if (origin === undefined || origin.system === undefined) {
+    throw new Error(
+      `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve system for ${event.t} node ${nodeId} `
+      + `task ${event.taskId}: its one descriptor data origin declares no browser system`,
+    );
+  }
+  return { nodeId: origin.nodeId, step: origin.step, taskId: origin.taskId, system: origin.system };
+}
+
+function logLinesForRun(
   deps: RunDetailQueryDeps,
   row: RunFoldRecord,
   authority: RunRecord,
   runId: string,
-  cache: RunNoteScanCache | undefined,
-): readonly RunNoteScanEntry[] {
-  const scan = (): readonly RunNoteScanEntry[] => {
-    const matches: RunNoteScanEntry[] = [];
+): readonly RunLogScanEntry[] {
+  const scan = (): readonly RunLogScanEntry[] => {
+    const matches: RunLogScanEntry[] = [];
     // The scope already selected this workflow's partitions, so the old
     // per-line `line.file.workflow !== workflow` skip can no longer be true —
     // the same lines reach the parse, and an unparsable one throws by name
     // rather than being read around (D218).
     for (const line of readScopedEventStreamLines(deps.stateRoot, "notes", runNotePartitionScope(runId, row, authority))) {
       const note = parseNoteLine(line);
-      if ("runId" in note && note.runId === runId) matches.push({ line, note });
+      if (note.workflow !== line.file.workflow) {
+        throw new Error(
+          `notes line ${line.file.path}:${String(line.lineNumber)} is filed in workflow ${line.file.workflow} but names `
+          + `workflow ${note.workflow}; refusing a note whose durable partition and identity disagree`,
+        );
+      }
+      if ("runId" in note && note.runId === runId) {
+        assertRunLogIdentity("note", note, line, runId, row, authority);
+        matches.push({
+          kind: "note",
+          line,
+          note: { runId: note.runId, ts: note.ts, level: note.level, message: note.message },
+        });
+      }
     }
-    return matches;
+    const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
+    for (const { line, event } of deps.projection.runLogSnapshot(runId).entries) {
+      assertScopedSpanWorkflow(event, line);
+      assertRunLogIdentity("span", event, line, runId, row, authority);
+      if (event.t === "data.observed") {
+        matches.push({ kind: "observed", line, event, producer: producerOf(descriptor, event, line) });
+      }
+      if (event.t === "transaction.fenced") {
+        matches.push({ kind: "transaction-fenced", line, event, producer: producerOf(descriptor, event, line) });
+      }
+    }
+    return matches.sort((left, right) =>
+      logInstantOf(left).localeCompare(logInstantOf(right))
+      || left.line.file.stream.localeCompare(right.line.file.stream)
+      || left.line.file.path.localeCompare(right.line.file.path)
+      || left.line.lineNumber - right.line.lineNumber);
   };
-  return cache === undefined ? scan() : cache.read(runId, scan);
+  return scan();
+}
+
+function logInstantOf(entry: RunLogScanEntry): string {
+  if (entry.kind === "note") return entry.note.ts;
+  return entry.kind === "observed" ? entry.event.observedAt : entry.event.ts;
+}
+
+function logIdOf(entry: RunLogScanEntry): string {
+  return deterministicUuid(`log:${entry.line.file.path}:${String(entry.line.lineNumber)}`);
+}
+
+function logRowOf(
+  entry: RunLogScanEntry,
+  sequence: number,
+): unknown {
+  const logId = logIdOf(entry);
+  if (entry.kind === "note") {
+    return {
+      kind: "note",
+      logId,
+      sequence,
+      note: {
+        noteId: logId,
+        runId: entry.note.runId,
+        sequence,
+        at: entry.note.ts,
+        level: LEVEL_MAP[entry.note.level],
+        message: entry.note.message,
+      },
+    };
+  }
+  if (entry.kind === "observed") {
+    return {
+      kind: "observed",
+      logId,
+      sequence,
+      at: entry.event.observedAt,
+      attempt: entry.event.attempt,
+      traceId: entry.event.traceId,
+      spanPath: entry.event.spanPath,
+      producer: entry.producer,
+      points: entry.event.points,
+    };
+  }
+  return {
+    kind: "transaction-fenced",
+    logId,
+    sequence,
+    at: entry.event.ts,
+    attempt: entry.event.attempt,
+    traceId: entry.event.traceId,
+    spanPath: entry.event.spanPath,
+    producer: entry.producer,
+  };
 }
 
 export function buildRunSection(
@@ -915,7 +1127,7 @@ export function buildRunSection(
   runId: string,
   sectionInput: string,
   cursorInput?: string,
-  /** D5: one note scan across a caller's whole page walk — see `createRunNoteScanCache`. */
+  /** D5/L3: immutable combined-log snapshots across a page walk. */
   noteScanCache?: RunNoteScanCache,
 ): RunDetailSectionResponse {
   const section = SectionNameSchema.parse(sectionInput);
@@ -957,25 +1169,32 @@ export function buildRunSection(
   }
 
   if (section === "logs") {
-    const offset = cursorInput === undefined
-      ? 0
-      : Number(z.string().regex(/^pc:[1-9]\d*$/).parse(cursorInput).slice(3)) - 1;
-    const all = noteLinesForRun(deps, row, authority, runId, noteScanCache);
+    const snapshots = logSnapshotsFor(deps, noteScanCache);
+    let offset = 0;
+    let snapshot: RunLogSnapshot;
+    if (cursorInput === undefined) {
+      snapshot = snapshots.start(runId, () => logLinesForRun(deps, row, authority, runId));
+    } else {
+      const cursor = LogPageCursorSchema.parse(cursorInput);
+      const [, snapshotId, offsetText] = cursor.split(":");
+      if (snapshotId === undefined || offsetText === undefined) throw new Error(`log cursor ${cursor} is incomplete`);
+      offset = Number(offsetText);
+      snapshot = snapshots.resume(runId, snapshotId);
+    }
+    const all = snapshot.entries;
     const page = all.slice(offset, offset + LOGS_PAGE_SIZE);
+    const rows = page.map((entry, index) => LogRowWireSchema.parse(logRowOf(
+      entry,
+      offset + index,
+    )));
     return RunDetailSectionResponseSchema.parse({
       section,
       payload: {
         runId,
-        notes: page.map(({ line, note }, index) => ({
-          noteId: deterministicUuid(`note:${line.file.path}:${String(line.lineNumber)}`),
-          runId,
-          sequence: offset + index,
-          at: note.ts,
-          level: LEVEL_MAP[note.level],
-          message: note.message,
-        })),
+        rows,
+        notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
         nextCursor: offset + LOGS_PAGE_SIZE < all.length
-          ? { state: "present", value: `pc:${String(offset + LOGS_PAGE_SIZE + 1)}` }
+          ? { state: "present", value: `lc:${snapshot.id}:${String(offset + LOGS_PAGE_SIZE)}` }
           : { state: "absent", reason: "end-of-page" },
       },
     });
@@ -1586,7 +1805,8 @@ function originOf(
   nodeId: string,
   fieldPath: string,
 ): ContextDataOriginWire {
-  const origin = descriptor?.dataOrigins?.find((entry) => entry.nodeId === nodeId);
+  const origin = descriptor?.dataOrigins?.find((entry) =>
+    entry.nodeId === nodeId && (entry.role === undefined || entry.role === "task" || entry.role === "commit"));
   if (origin === undefined) return {};
   const bound = origin.freshness?.find((entry) => entry.fieldPath === fieldPath);
   return {

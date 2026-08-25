@@ -268,7 +268,7 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
 ]).superRefine(refineEvidenceTransformPair);
 
 /** One recorded point; see `src/core/span-emitter.ts` for why it carries no `system`. */
-const ObservedDataPointWireSchema = z.strictObject({
+export const ObservedDataPointWireSchema = z.strictObject({
   direction: z.enum(["read", "write"]),
   field: SpanFieldPathSchema,
   values: z.array(RedactedSpanValueSchema).min(1),

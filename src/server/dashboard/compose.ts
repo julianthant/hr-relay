@@ -164,7 +164,7 @@ function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDe
 }
 
 /**
- * D252 — every node that can produce a Data-section value, with the four facts
+ * D252/L3 — every ordinary task and every real transaction role, with the facts
  * the rail's origin line draws: the step's label, whether its task READS or
  * WRITES, the system it runs against, and the reuse bound its own contract
  * declares per field.
@@ -180,7 +180,9 @@ function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDe
  * itself calls, and `feeds` through `reachableCommits` for the same reason —
  * the sentence the operator reads is the rule the executor applies.
  *
- * Only the field paths a Data entry can actually carry are resolved, which is
+ * Probe/prepare/commit/verify each retain their invoked task id; this is what
+ * lets an observed row resolve system without treating the transaction node's
+ * commit as every beat. Only the field paths a Data entry can actually carry are resolved, which is
  * exactly `details[].source` ∪ `capabilities.editData.fields`: a bound for a
  * path no surface serves is a fact nobody reads.
  */
@@ -214,7 +216,6 @@ export function dataOriginViewsOf(module: {
 
   return nodes.flatMap((node) => {
     if (node.kind !== "task" && node.kind !== "transaction") return [];
-    const contract = node.kind === "task" ? node.uses : node.commit.uses;
     const paths = declaredPaths.get(String(node.id));
     const feeds = reachableCommits(nodes, node.id, commitNodeIds).map((sink) => {
       const target = nodes.find((candidate) => String(candidate.id) === String(sink.nodeId));
@@ -223,27 +224,40 @@ export function dataOriginViewsOf(module: {
         label: target === undefined ? String(sink.nodeId) : runtimeNodeLabel(target),
       };
     });
-    return [{
-      nodeId: String(node.id),
-      step: runtimeNodeLabel(node),
-      dir: contract.effect === "read" ? "read" as const : "write" as const,
-      ...(systemByTaskId.has(String(contract.id))
-        ? { system: systemByTaskId.get(String(contract.id)) }
-        : {}),
-      ...(contract.effect === "read" && paths !== undefined
-        ? {
-          freshness: [...paths].sort().map((fieldPath) => {
-            const bound = resolveFreshnessBound(contract.freshness, fieldPath);
-            return {
-              fieldPath,
-              maxAge: Number.isFinite(bound.maxAgeMs) ? bound.maxAgeMs : "unbounded" as const,
-              override: bound.override,
-            };
-          }),
-        }
-        : {}),
-      feeds,
-    }];
+    const contracts = node.kind === "task"
+      ? [{ role: "task" as const, contract: node.uses }]
+      : [
+        { role: "probe" as const, contract: node.commit.uses.writeSafety.idempotency.probe },
+        { role: "prepare" as const, contract: node.prepare.uses },
+        { role: "commit" as const, contract: node.commit.uses },
+        ...(node.commit.uses.writeSafety.completion.kind === "receipt"
+          ? []
+          : [{ role: "verify" as const, contract: node.commit.uses.writeSafety.completion.verify }]),
+      ];
+    return contracts.map(({ role, contract }) => {
+      const taskId = "id" in contract ? String(contract.id) : String(contract.taskId);
+      return {
+        nodeId: String(node.id),
+        step: runtimeNodeLabel(node),
+        taskId,
+        role,
+        dir: contract.effect === "read" ? "read" as const : "write" as const,
+        ...(systemByTaskId.has(taskId) ? { system: systemByTaskId.get(taskId) } : {}),
+        ...(role === "task" && "freshness" in contract && paths !== undefined
+          ? {
+            freshness: [...paths].sort().map((fieldPath) => {
+              const bound = resolveFreshnessBound(contract.freshness, fieldPath);
+              return {
+                fieldPath,
+                maxAge: Number.isFinite(bound.maxAgeMs) ? bound.maxAgeMs : "unbounded" as const,
+                override: bound.override,
+              };
+            }),
+          }
+          : {}),
+        feeds,
+      };
+    });
   });
 }
 

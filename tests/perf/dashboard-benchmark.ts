@@ -37,6 +37,7 @@ import {
   readScopedEventStreamLines,
   scopedEventStreamFiles,
 } from "../../src/infra/events/jsonl-streams.js";
+import { SpanEventWireSchema } from "../../src/events/types.js";
 import { buildRunSection, runNotePartitionScope } from "../../src/server/dashboard/queries/run-detail.js";
 import { PERF_FIXTURE_PROFILE, seedDashboardPerfFixture, type PerfFixture } from "./dashboard-fixture.js";
 import { assertStatementCounterObserves, countSqliteStatements } from "./sqlite-statement-counter.js";
@@ -129,6 +130,40 @@ function selfCheckDayWireParseSpy(wire: DashboardDayWire): void {
     throw new Error(
       `the day-wire parse spy observed ${String(probe.parses)} parses while this harness performed exactly `
       + "one; it is not installed, and a zero reported for the patch row below would prove nothing",
+    );
+  }
+}
+
+function countSpanEventParses<Result>(work: () => Result): { readonly value: Result; readonly parses: number } {
+  const schema = SpanEventWireSchema as unknown as { parse: (input: unknown) => unknown };
+  const original = schema.parse.bind(SpanEventWireSchema);
+  const ownDescriptor = Object.getOwnPropertyDescriptor(schema, "parse");
+  let parses = 0;
+  Object.defineProperty(schema, "parse", {
+    configurable: true,
+    enumerable: ownDescriptor?.enumerable ?? false,
+    writable: true,
+    value: (input: unknown): unknown => {
+      parses += 1;
+      return original(input);
+    },
+  });
+  try {
+    return { value: work(), parses };
+  } finally {
+    if (ownDescriptor === undefined) delete (schema as Partial<typeof schema>).parse;
+    else Object.defineProperty(schema, "parse", ownDescriptor);
+  }
+}
+
+function selfCheckSpanEventParseSpy(fixture: PerfFixture): void {
+  const line = readEventStreamLines(fixture.stateRoot, "spans")[0];
+  if (line === undefined) throw new Error("the span parse spy needs one real fixture line");
+  const probe = countSpanEventParses(() => SpanEventWireSchema.parse(JSON.parse(line.text)));
+  if (probe.parses !== 1) {
+    throw new Error(
+      `the span-event parse spy observed ${String(probe.parses)} parses while the harness performed exactly one; `
+      + "a zero on the logs GET would prove nothing",
     );
   }
 }
@@ -228,6 +263,17 @@ function noteScopeForMeasuredRun(fixture: PerfFixture, runId: string): { files: 
   };
 }
 
+function rejectedSpanScopeForMeasuredRun(fixture: PerfFixture, runId: string): { files: number; lines: number } {
+  const row = fixture.runDetail.projection.runFold(runId);
+  const authority = fixture.runDetail.authority.getRun(runId);
+  if (row === undefined || authority === undefined) throw new Error(`run ${runId} has no span scope authority`);
+  const scope = runNotePartitionScope(runId, row, authority);
+  return {
+    files: scopedEventStreamFiles(fixture.stateRoot, "spans", scope).length,
+    lines: readScopedEventStreamLines(fixture.stateRoot, "spans", scope).length,
+  };
+}
+
 /* ── the self-check (finding 1) ──────────────────────────────────────────── */
 
 /**
@@ -310,7 +356,9 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
   const logsTiming = timeIt(iterations, () => {
     buildRunSection(fixture.runDetail, measuredRun, "logs");
   });
-  const logsSection = buildRunSection(fixture.runDetail, measuredRun, "logs");
+  selfCheckSpanEventParseSpy(fixture);
+  const logsParseCount = countSpanEventParses(() => buildRunSection(fixture.runDetail, measuredRun, "logs"));
+  const logsSection = logsParseCount.value;
   if (logsSection.section !== "logs") {
     throw new Error(
       `the logs section of ${measuredRun} came back as ${logsSection.section}; there is nothing to time`,
@@ -324,6 +372,8 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
   }
   const corpus = noteCorpus(fixture);
   const corpusInScope = noteScopeForMeasuredRun(fixture, measuredRun);
+  const rejectedSpanScope = rejectedSpanScopeForMeasuredRun(fixture, measuredRun);
+  const indexedSpanRows = fixture.runDetail.projection.runLogSnapshot(measuredRun).entries.length;
 
   /* D — the version-bump freeze, per run, over a five-run sample. */
   let sampleIndex = 0;
@@ -391,10 +441,15 @@ function measure(fixture: PerfFixture, iterations: number): Report["measurements
         corpusFilesAvailable: corpus.files,
         corpusLinesInScope: corpusInScope.lines,
         corpusFilesInScope: corpusInScope.files,
+        rejectedSpanLinesInScope: rejectedSpanScope.lines,
+        rejectedSpanFilesInScope: rejectedSpanScope.files,
+        spanEventSchemaParses: logsParseCount.parses,
+        indexedSpanRowsExamined: indexedSpanRows,
       },
       note: "`corpus…Available` is the whole corpus, unchanged by D5; `corpus…InScope` is what "
         + "`noteLinesForRun` may open for THIS run, taken through the production "
-        + "`runNotePartitionScope`. Before D5 the reader was unscoped and the two were equal",
+        + "`runNotePartitionScope`. `rejectedSpan…InScope` is the span corpus the rejected L3 query parsed; "
+        + "the live-checked `spanEventSchemaParses` is the replacement query's measured parse count",
     },
     {
       id: "archive-freeze",

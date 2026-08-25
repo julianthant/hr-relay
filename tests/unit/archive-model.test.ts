@@ -250,6 +250,19 @@ function snapshotSource(world: {
             state: "present",
             value: {
               runId: run.envelope.runId,
+              rows: [{
+                kind: "note",
+                logId: "dddddddd-0001-4000-8000-dddddddd0001",
+                sequence: 0,
+                note: {
+                  noteId: "dddddddd-0001-4000-8000-dddddddd0001",
+                  runId: run.envelope.runId,
+                  sequence: 0,
+                  at: NOW,
+                  level: "info",
+                  message: "frozen log line",
+                },
+              }],
               notes: [{
                 noteId: "dddddddd-0001-4000-8000-dddddddd0001",
                 runId: run.envelope.runId,
@@ -623,13 +636,60 @@ describe("the D80 archive model", () => {
       },
     };
 
-    assert.equal(CURRENT_ARCHIVE_SCHEMA_GENERATION, 4);
+    assert.equal(CURRENT_ARCHIVE_SCHEMA_GENERATION, 5);
     assert.equal(ArchivedRunRecordSchema.safeParse(generation4).success, true);
+
+    const sections = generation4.sections;
+    if (sections === undefined) throw new Error("archive fixture must hold frozen sections");
+    const { rows: _rows, ...noteOnlyLog } = sections.logs.state === "present"
+      ? sections.logs.value
+      : (() => { throw new Error("archive fixture must hold frozen logs"); })();
+    assert.equal(
+      ArchivedRunRecordSchema.safeParse({
+        ...generation4,
+        sections: { ...sections, logs: { state: "present", value: noteOnlyLog } },
+      }).success,
+      true,
+      "a pre-L3 archive keeps its note-only log page readable without invented observed rows",
+    );
 
     const { session: _session, ...sessionlessRow } = generation4.row;
     const refusedCurrent = ArchivedRunRecordSchema.safeParse({ ...generation4, row: sessionlessRow });
     assert.equal(refusedCurrent.success, false);
     assert.match(JSON.stringify(refusedCurrent.error?.issues ?? []), /generation 4 or later must carry.*session/u);
+  });
+
+  it("requires a combined logs snapshot in generation 5 while reading generation 4 absence forward", () => {
+    const sections = ARCHIVED_RUN_WITH_SECTIONS.sections;
+    if (sections === undefined) throw new Error("archive fixture must hold frozen sections");
+    const absentLogs = {
+      ...sections,
+      logs: { state: "absent" as const, reason: "logs were not frozen" },
+    };
+
+    assert.equal(ArchivedRunRecordSchema.safeParse({
+      ...ARCHIVED_RUN,
+      archiveSchemaGeneration: 4,
+      sections: absentLogs,
+      workflowCode: { state: "present" as const, value: "pl" },
+      row: {
+        ...ARCHIVED_RUN.row,
+        session: { state: "absent" as const, reason: "the archived run predates session grouping" },
+      },
+    }).success, true);
+
+    const refusedCurrent = ArchivedRunRecordSchema.safeParse({
+      ...ARCHIVED_RUN,
+      archiveSchemaGeneration: 5,
+      sections: absentLogs,
+      workflowCode: { state: "present" as const, value: "pl" },
+      row: {
+        ...ARCHIVED_RUN.row,
+        session: { state: "absent" as const, reason: "the archived run predates session grouping" },
+      },
+    });
+    assert.equal(refusedCurrent.success, false);
+    assert.match(JSON.stringify(refusedCurrent.error?.issues ?? []), /generation 5 or later must freeze the combined logs snapshot/u);
   });
 
   it("reads a generation-3 archive that already carries the QueueSurface session arm", () => {
