@@ -597,7 +597,7 @@ builds:
 - [ ] BE the notes stream gets a production emitter — `emitNote` is composed and never called; `.tracker-rebuild/notes/` does not exist, while the Logs section re-reads it per request and a failed run opens on it (audit C1)
 - [x] BE provenance points captured at record time and redacted by declaration; commit delivery is deferred past callback settlement for fence→click safety (an unclassified leaf fails loud) — D270
 - [x] BE transaction beats stream their observations (probe → stage → fence → click → read-back)
-- [x] BE L3 strict Logs row wire/query — bounded span + note partitions, deterministic combined pagination, exact `(nodeId,taskId)` system resolution and archive read-forward
+- [x] BE L3 strict Logs row wire/query — bounded note partitions + append-time per-run span index, immutable combined snapshots, exact `(nodeId,taskId)` system resolution and archive read-forward
 - [ ] FE the log panel renders observed rows per step, in the Context rail's vocabulary
 - [ ] PROOF a separations dry run reads as a ledger of page facts
 - [ ] BOTH a log line carries its own facts, not just a level — the demo's nine-kind icon vocabulary with its read/write direction hues, the per-line `SystemChip`, the read/write `Pill` chips, the attempt badge and the duration; the search predicate widens to match a pill's label and value (fidelity-2 B69–B75, B78)
@@ -613,7 +613,7 @@ log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | the demo's log-line anatomy booked here from ledger 2 (B52, B54, B69–B75, B78) — the line carries its own facts, which is what this node emits; the stream's GROUPING by step (B65) is a pure FE port today and sits on `{#track-f}` · left: all of it
 - 2026-08-21 | D270 | the EMISSION half landed — a twelfth span arm `data.observed`, one event per `ctx.recordData` call, redacted per leaf through the receipt's own declared table, an undeclared leaf failing the recording task by name, and the queue projection ignoring the arm by name (`ef090ea4` `68954117` `4d074886` `aabd46f4`). The channel is the SPAN stream, so the notes-emitter row is untouched · left: the transaction beats, the FE rows, the proof
 - 2026-08-25 | observed-logs L2 | transaction probe/prepare/commit/verify roles now own explicit spans and declared observations; `transaction.fenced` is a strict kernel arm, commit call-time batches flush fence-first after callback settlement to keep fallible emission out of fence→click, and dry-run reports only probe + prepare · left: the FE rows and proof
-- 2026-08-25 | observed-logs L3 | the strict combined Logs wire/query is landed: it parses every bounded in-scope span/note line with file+line refusals, keeps retries while excluding foreign runs, resolves system only from exact root-composed `(nodeId,taskId)` data origins, and freezes generation-5 archive rows without breaking generations 1–4 · left: FE rendering and live proof
+- 2026-08-25 | observed-logs L3 repair | notes retain the shared bounded producer scope; observed/fenced spans are indexed by the append-time disk-tail projection with source file/line, authority-bound workflow/trace/attempt, and immutable `lc:` page snapshots. Real transaction origins cover probe/prepare/commit/verify; generation 5 requires combined logs while 1–4 read forward. §7.4 measures 7,662 rejected-scope span parses → 0 per GET · left: FE rendering and live proof
 
 ### Testing tiers — the suite organized by what a test needs {#test-tiers}
 status: planned

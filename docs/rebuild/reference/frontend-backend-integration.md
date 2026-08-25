@@ -2205,6 +2205,25 @@ removes — up to `FROZEN_LOG_PAGE_LIMIT` (500) whole scans for one run, once pe
 bump — bites a run with a long log, and is pinned in the unit lane instead (450 notes, three pages,
 one scan).
 
+**Observed-logs L3 repair (2026-08-25).** The measurement contract now counts span schema parses
+inside one Logs GET, with the counter first proving it can observe exactly one parse of a real
+fixture line. The rejected L3 reader would open the same run-instant scope as notes and parse every
+span line in it. That scope is retained as the BEFORE count; the repaired reader consumes the
+disk-tail projection's append-time per-run index instead.
+
+| Bound | rejected query | repaired query |
+|---|---:|---:|
+| span files in rejected run-instant scope | 2 | 0 opened by GET |
+| span lines / `SpanEventWireSchema.parse` calls | 7,662 | **0** |
+| indexed observed/fenced rows examined for this note-only measured run | n/a | 0 |
+
+`npm run perf:dashboard` over the same 1,240-row fixture reported the Logs GET at 35.69 ms median /
+45.56 ms p95 over seven measured iterations. The durations are machine-local; the 7,662 → 0 parse
+count is the closure evidence. Late appends are not admitted by widening a date margin: the existing
+cross-process projector sees the append partition once, retains its source file/line, and indexes it
+under the event run. Continuation pages use an immutable `lc:<snapshot>:<offset>` cursor, so a later
+backdated append appears on a fresh first page without duplicating or displacing the old walk.
+
 **What D5 did NOT move, so nobody re-derives it:** rows 2 and 5's `rowsAvailable`/`members`, every
 `corpus…Available`, and the whole-day re-parse — those belong to D4 and D9.
 
