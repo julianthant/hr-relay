@@ -43,11 +43,18 @@ export const OfflineRestoreOptionsSchema = z.strictObject({
 export interface OfflineRestoreFileOperations {
   copyFile(source: string, destination: string): void;
   atomicReplace(source: string, destination: string): void;
+  /** File-system boundary used for reversible companion displacement and rollback. */
+  readonly renamePath?: (source: string, destination: string) => void;
+  /** File-system boundary used only after restored bytes are durable elsewhere. */
+  readonly removePath?: (path: string) => void;
   /** Test seam for post-swap durability failures; production uses fsync. */
   readonly syncPath?: (path: string) => void;
 }
 
-export type OfflineRestoreAuthorityState = "unchanged" | "replaced";
+export type OfflineRestoreAuthorityState =
+  | "unchanged"
+  | "companion-state-uncertain"
+  | "replaced";
 
 export class OfflineRestoreFailure extends Error {
   readonly authorityState: OfflineRestoreAuthorityState;
@@ -67,6 +74,8 @@ export type OfflineRestoreAdmissionFactory = (
 const DEFAULT_FILE_OPERATIONS: OfflineRestoreFileOperations = Object.freeze({
   copyFile: copyFileSync,
   atomicReplace: renameSync,
+  renamePath: renameSync,
+  removePath: rmSync,
 });
 
 function fsyncPath(path: string): void {
@@ -86,6 +95,36 @@ function copyAndSync(
   fileOperations.copyFile(source, destination);
   chmodSync(destination, 0o600);
   (fileOperations.syncPath ?? fsyncPath)(destination);
+}
+
+interface DisplacedCompanion {
+  readonly livePath: string;
+  readonly displacedPath: string;
+}
+
+function rollbackDisplacedCompanions(
+  displaced: readonly DisplacedCompanion[],
+  authorityDirectory: string,
+  fileOperations: OfflineRestoreFileOperations,
+): readonly unknown[] {
+  const failures: unknown[] = [];
+  for (const companion of displaced.toReversed()) {
+    const rollbackTemporaryPath = `${companion.displacedPath}.rollback.tmp`;
+    try {
+      copyAndSync(companion.displacedPath, rollbackTemporaryPath, fileOperations);
+      (fileOperations.renamePath ?? renameSync)(rollbackTemporaryPath, companion.livePath);
+      (fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
+      (fileOperations.removePath ?? rmSync)(companion.displacedPath);
+      (fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  return Object.freeze(failures);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export class OfflineAuthorityRestoreService {
@@ -162,61 +201,85 @@ export class OfflineAuthorityRestoreService {
         const authorityDirectory = dirname(this.#authorityPath);
         const stagedPath = join(authorityDirectory, `.restore-${token}.sqlite.tmp`);
         try {
-      copyAndSync(verified.backupPath, stagedPath, this.#fileOperations);
-      await verifyBackupBytesAtPath(
-        stagedPath,
-        verified.manifest,
-        `staged restore ${basename(stagedPath)}`,
-      );
-      const beforeProjection = AuthorityDatabase.inspectExistingReadOnly(stagedPath, this.#busyTimeoutMs);
-      if (beforeProjection.authorityContentFingerprint !== verified.manifest.authorityContentFingerprint
-        || beforeProjection.authorityGeneration !== verified.manifest.authorityGeneration) {
-        throw new Error(`staged restore ${basename(stagedPath)} does not match verified backup authority`);
-      }
+          copyAndSync(verified.backupPath, stagedPath, this.#fileOperations);
+          await verifyBackupBytesAtPath(
+            stagedPath,
+            verified.manifest,
+            `staged restore ${basename(stagedPath)}`,
+          );
+          const beforeProjection = AuthorityDatabase.inspectExistingReadOnly(
+            stagedPath,
+            this.#busyTimeoutMs,
+          );
+          if (beforeProjection.authorityContentFingerprint
+            !== verified.manifest.authorityContentFingerprint
+            || beforeProjection.authorityGeneration !== verified.manifest.authorityGeneration) {
+            throw new Error(
+              `staged restore ${basename(stagedPath)} does not match verified backup authority`,
+            );
+          }
 
-      await this.#projectionRebuild(stagedPath);
-      const afterProjection = AuthorityDatabase.inspectExistingReadOnly(stagedPath, this.#busyTimeoutMs);
-      if (afterProjection.authorityContentFingerprint !== beforeProjection.authorityContentFingerprint
-        || afterProjection.authorityGeneration !== beforeProjection.authorityGeneration) {
-        throw new Error("projection rebuild mutated non-rebuildable authority state");
-      }
+          await this.#projectionRebuild(stagedPath);
+          const afterProjection = AuthorityDatabase.inspectExistingReadOnly(
+            stagedPath,
+            this.#busyTimeoutMs,
+          );
+          if (afterProjection.authorityContentFingerprint
+            !== beforeProjection.authorityContentFingerprint
+            || afterProjection.authorityGeneration !== beforeProjection.authorityGeneration) {
+            throw new Error("projection rebuild mutated non-rebuildable authority state");
+          }
 
-      (this.#fileOperations.syncPath ?? fsyncPath)(stagedPath);
-      const quarantinedCompanions: string[] = [];
-      let authorityReplaced = false;
-      try {
-        for (const suffix of ["-wal", "-shm"] as const) {
-          const companion = `${this.#authorityPath}${suffix}`;
-          if (!existsSync(companion)) continue;
-          renameSync(companion, `${suspectPath}${suffix}`);
-          quarantinedCompanions.push(suffix);
-        }
-        (this.#fileOperations.syncPath ?? fsyncPath)(this.#suspectDirectory);
-        (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
-        this.#fileOperations.atomicReplace(stagedPath, this.#authorityPath);
-        authorityReplaced = true;
-        authorityState = "replaced";
-      } catch (error) {
-        if (!authorityReplaced) {
-          for (const suffix of quarantinedCompanions) {
-            copyAndSync(`${suspectPath}${suffix}`, `${this.#authorityPath}${suffix}`, this.#fileOperations);
+          (this.#fileOperations.syncPath ?? fsyncPath)(stagedPath);
+          const displacedCompanions: DisplacedCompanion[] = [];
+          let authorityReplaced = false;
+          try {
+            for (const suffix of ["-wal", "-shm"] as const) {
+              const companion = `${this.#authorityPath}${suffix}`;
+              if (!existsSync(companion)) continue;
+              const displacedPath = `${stagedPath}${suffix}.live-companion`;
+              (this.#fileOperations.renamePath ?? renameSync)(companion, displacedPath);
+              displacedCompanions.push({ livePath: companion, displacedPath });
+            }
+            (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
+            this.#fileOperations.atomicReplace(stagedPath, this.#authorityPath);
+            authorityReplaced = true;
+            authorityState = "replaced";
+          } catch (error) {
+            if (!authorityReplaced) {
+              const rollbackFailures = rollbackDisplacedCompanions(
+                displacedCompanions,
+                authorityDirectory,
+                this.#fileOperations,
+              );
+              if (rollbackFailures.length > 0) {
+                authorityState = "companion-state-uncertain";
+                const rollbackSummary = rollbackFailures.map(errorMessage).join("; ");
+                throw new AggregateError(
+                  [error, ...rollbackFailures],
+                  `authority replacement failed (${errorMessage(error)}); live SQLite companion rollback `
+                  + `was not proven (${rollbackSummary})`,
+                  { cause: error },
+                );
+              }
+            }
+            throw error;
+          }
+          for (const companion of displacedCompanions) {
+            (this.#fileOperations.removePath ?? rmSync)(companion.displacedPath);
           }
           (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
-        }
-        throw error;
-      }
-      (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
-      return OfflineRestoreReportSchema.parse({
-        state: "restored",
-        restoredAt: this.#clock.now().toISOString(),
-        manifestFileName: basename(verified.manifestPath),
-        backupFileName: verified.manifest.backupFileName,
-        suspectFileName,
-        sourceDatabaseIdentity,
-        authorityGeneration: afterProjection.authorityGeneration,
-        projectionRebuilt: true,
-        authorityPreservedAcrossProjectionRebuild: true,
-      });
+          return OfflineRestoreReportSchema.parse({
+            state: "restored",
+            restoredAt: this.#clock.now().toISOString(),
+            manifestFileName: basename(verified.manifestPath),
+            backupFileName: verified.manifest.backupFileName,
+            suspectFileName,
+            sourceDatabaseIdentity,
+            authorityGeneration: afterProjection.authorityGeneration,
+            projectionRebuilt: true,
+            authorityPreservedAcrossProjectionRebuild: true,
+          });
         } finally {
           for (const path of [stagedPath, `${stagedPath}-wal`, `${stagedPath}-shm`]) {
             if (existsSync(path)) rmSync(path);

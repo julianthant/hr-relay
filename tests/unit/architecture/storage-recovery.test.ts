@@ -1197,6 +1197,37 @@ describe("offline exact-backup restore", () => {
     }
   });
 
+  it("refuses a never-run proof after the first singleton starts and releases", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const suspects = join(root, "suspects");
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    const authorityBytes = readFileSync(authorityPath);
+    const proof = stoppedProof(root, authorityPath);
+    const server = acquireRuntimeProcessLock({
+      processLockRoot: join(root, "locks"),
+      name: "server",
+      pid: process.pid,
+    }, CLOCK);
+    assert.equal(server.generation, 2);
+    server.release();
+
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath, suspects),
+      async () => undefined,
+      CLOCK,
+    );
+    await assert.rejects(
+      restore.restore({ manifestPath, stoppedSystemProof: proof }),
+      /does not match current runtime and process-lock generations/u,
+    );
+    assert.deepEqual(readFileSync(authorityPath), authorityBytes);
+    assert.equal(existsSync(suspects), false);
+  });
+
   it("holds exclusive admission through verification and authority replacement", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
@@ -1298,6 +1329,84 @@ describe("offline exact-backup restore", () => {
     assert.equal(readFileSync(`${authorityPath}-shm`, "utf8"), "live shm bytes");
     assert.equal(AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration, liveGeneration);
     assert.equal(readdirSync(suspects).length > 0, true);
+  });
+
+  it.each([
+    { operation: "rename", expectedLiveCompanion: false },
+    { operation: "fsync", expectedLiveCompanion: false },
+    { operation: "unlink", expectedLiveCompanion: true },
+  ] as const)("reports uncertain companion state when rollback $operation fails", async ({
+    operation,
+    expectedLiveCompanion,
+  }) => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const suspects = join(root, "suspects");
+    const database = openDatabase(authorityPath);
+    database.authority.commands.insert(COMMAND_FIXTURES[0]);
+    const { manifestPath } = await createBackup(database, directory);
+    database.authority.notifications.create(NOTIFICATION);
+    database.close();
+    const liveAuthorityBytes = readFileSync(authorityPath);
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
+    let swapAttempted = false;
+    const rollbackMessage = `injected rollback ${operation} failure`;
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath, suspects),
+      async () => undefined,
+      CLOCK,
+      {
+        copyFile: copyFileSync,
+        atomicReplace: () => {
+          swapAttempted = true;
+          throw new Error("injected atomic swap failure");
+        },
+        renamePath: (source, destination) => {
+          if (operation === "rename" && swapAttempted && source.endsWith(".rollback.tmp")) {
+            throw new Error(rollbackMessage);
+          }
+          renameSync(source, destination);
+        },
+        removePath: (path) => {
+          if (operation === "unlink" && path.endsWith(".live-companion")) {
+            throw new Error(rollbackMessage);
+          }
+          rmSync(path);
+        },
+        syncPath: (path) => {
+          if (operation === "fsync" && swapAttempted && path.endsWith(".rollback.tmp")) {
+            throw new Error(rollbackMessage);
+          }
+        },
+      },
+    );
+
+    let failure: unknown;
+    try {
+      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+    } catch (error) {
+      failure = error;
+    }
+
+    assert.ok(failure instanceof OfflineRestoreFailure);
+    assert.equal(String(failure.authorityState), "companion-state-uncertain");
+    assert.match(failure.message, /injected atomic swap failure/u);
+    assert.match(failure.message, new RegExp(rollbackMessage, "u"));
+    assert.ok(failure.cause instanceof AggregateError);
+    assert.equal(
+      failure.cause.errors.some((error) => error instanceof Error && error.message === rollbackMessage),
+      true,
+    );
+    assert.deepEqual(readFileSync(authorityPath), liveAuthorityBytes);
+    assert.equal(existsSync(`${authorityPath}-wal`), expectedLiveCompanion);
+    if (expectedLiveCompanion) {
+      assert.equal(readFileSync(`${authorityPath}-wal`, "utf8"), "live wal bytes");
+    }
+    assert.equal(
+      readdirSync(root).some((name) => name.endsWith(".live-companion")),
+      true,
+    );
   });
 
   it("refuses when verified backup bytes mutate during the staged copy", async () => {

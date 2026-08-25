@@ -56,18 +56,28 @@ export interface StorageCommandOutcome {
 }
 
 export function restoreFailureDisposition(error: unknown): Readonly<{
-  heading: "authority restore REFUSED" | "authority restore POST-SWAP FAILURE";
+  heading:
+    | "authority restore REFUSED"
+    | "authority restore COMPANION-STATE FAILURE"
+    | "authority restore POST-SWAP FAILURE";
   authorityLine: string;
 }> {
-  return error instanceof OfflineRestoreFailure && error.authorityState === "replaced"
-    ? Object.freeze({
-        heading: "authority restore POST-SWAP FAILURE",
-        authorityLine: "the authority database was replaced; inspect the post-swap failure before restarting runtime",
-      })
-    : Object.freeze({
-        heading: "authority restore REFUSED",
-        authorityLine: "the live authority database was not modified",
-      });
+  if (error instanceof OfflineRestoreFailure && error.authorityState === "replaced") {
+    return Object.freeze({
+      heading: "authority restore POST-SWAP FAILURE",
+      authorityLine: "the authority database was replaced; inspect the post-swap failure before restarting runtime",
+    });
+  }
+  if (error instanceof OfflineRestoreFailure && error.authorityState === "companion-state-uncertain") {
+    return Object.freeze({
+      heading: "authority restore COMPANION-STATE FAILURE",
+      authorityLine: "the authority database was not replaced, but live WAL/SHM rollback is unproven; inspect recovery artifacts before restarting runtime",
+    });
+  }
+  return Object.freeze({
+    heading: "authority restore REFUSED",
+    authorityLine: "the live authority database was not modified",
+  });
 }
 
 /**

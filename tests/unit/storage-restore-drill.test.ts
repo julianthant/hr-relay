@@ -44,6 +44,7 @@ import {
 import {
   acquireRuntimeProcessLock,
   acquireRuntimeRestoreAdmission,
+  observeProcessIdentity,
   observeRuntimeLockSnapshot,
 } from "../../src/infra/sqlite/runtime-process-locks.js";
 import {
@@ -183,6 +184,14 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       heading: "authority restore POST-SWAP FAILURE",
       authorityLine: "the authority database was replaced; inspect the post-swap failure before restarting runtime",
     });
+    assert.deepEqual(restoreFailureDisposition(new OfflineRestoreFailure(
+      "companion-state-uncertain",
+      "offline authority restore failed",
+      new Error("rollback fsync failed"),
+    )), {
+      heading: "authority restore COMPANION-STATE FAILURE",
+      authorityLine: "the authority database was not replaced, but live WAL/SHM rollback is unproven; inspect recovery artifacts before restarting runtime",
+    });
     assert.deepEqual(restoreFailureDisposition(new Error("pre-swap refusal")), {
       heading: "authority restore REFUSED",
       authorityLine: "the live authority database was not modified",
@@ -303,7 +312,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       );
       assert.equal(refused.exitCode, 1);
       assert.match(refused.output, /authority restore REFUSED/u);
-      assert.match(refused.output, new RegExp(`server process lock generation 1 is active for pid ${String(process.pid)}`, "u"));
+      assert.match(refused.output, new RegExp(`server process lock generation 2 is active for pid ${String(process.pid)}`, "u"));
       assert.match(refused.output, /the live authority database was not modified/u);
       assert.match(refused.output, new RegExp(`server=ACTIVE pid ${String(process.pid)}`, "u"));
       assert.equal(readFileSync(paths.authorityPath).equals(corrupted), true);
@@ -496,7 +505,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
       CLOCK,
     );
-    assert.deepEqual(snapshot.processLocks.server, { state: "stopped", generation: 1 });
+    assert.deepEqual(snapshot.processLocks.server, { state: "stopped", generation: 2 });
   });
 
   it("reads the old root-level workers lock forward into the aggregate", () => {
@@ -630,7 +639,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       { processLockRoot: paths.processLockRoot, name: "server", pid: process.pid },
       CLOCK,
     );
-    assert.equal(second.generation, 2);
+    assert.equal(second.generation, 3);
     second.release();
   });
 
@@ -676,6 +685,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       const output = outputs.join("");
       assert.equal(output.match(/^ADMITTED /gmu)?.length, 1, output);
       assert.equal(output.match(/^REFUSED /gmu)?.length, contenderCount - 1, output);
+      assert.match(output, /^ADMITTED \S+ \d+ 2$/mu);
       assert.match(output, /^SNAPSHOT active$/mu);
       const snapshot = observeRuntimeLockSnapshot({
         processLockRoot: paths.processLockRoot,
@@ -687,7 +697,48 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       if (!existsSync(releasePath)) writeFileSync(releasePath, "release\n", { flag: "wx" });
       await Promise.all(children.map(waitForExit));
     }
+    const next = acquireRuntimeProcessLock(
+      { processLockRoot: paths.processLockRoot, name: "server", pid: process.pid },
+      CLOCK,
+    );
+    assert.equal(next.generation, 3);
+    next.release();
   }, 30_000);
+
+  it("keeps one live process identity stable when the caller timezone changes", () => {
+    const paths = drillPaths();
+    const priorTimezone = process.env["TZ"];
+    let held: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
+    try {
+      process.env["TZ"] = "America/Los_Angeles";
+      const first = observeProcessIdentity(process.pid);
+      held = acquireRuntimeProcessLock(
+        { processLockRoot: paths.processLockRoot, name: "server", pid: process.pid },
+        CLOCK,
+      );
+
+      process.env["TZ"] = "Pacific/Honolulu";
+      const second = observeProcessIdentity(process.pid);
+      const snapshot = observeRuntimeLockSnapshot(
+        { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
+        CLOCK,
+      );
+
+      assert.deepEqual(second, first);
+      assert.deepEqual(snapshot.processLocks.server, {
+        state: "active",
+        generation: 2,
+        pid: process.pid,
+      });
+      if (process.platform === "darwin" && second.state === "alive") {
+        assert.match(second.identity.startToken, /^\d+$/u);
+      }
+    } finally {
+      held?.release();
+      if (priorTimezone === undefined) delete process.env["TZ"];
+      else process.env["TZ"] = priorTimezone;
+    }
+  });
 
   it("treats a reused pid with a different OS start identity as a crashed owner", () => {
     const paths = drillPaths();
@@ -703,7 +754,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       CLOCK,
       { observeProcessIdentity: () => ({ state: "alive", identity: reusedIdentity }) },
     );
-    assert.deepEqual(snapshot.processLocks.server, { state: "stopped", generation: 1 });
+    assert.deepEqual(snapshot.processLocks.server, { state: "stopped", generation: 2 });
   });
 
   it("archives restore admission when its pid was reused by a different process birth", () => {

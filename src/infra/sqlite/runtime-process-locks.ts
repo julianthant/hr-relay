@@ -253,9 +253,10 @@ export function observePid(pid: number): PidObservation {
 /**
  * Observe the OS process birth identity, not only PID occupancy.
  *
- * Linux uses boot-id + `/proc/<pid>/stat` start ticks. macOS uses the kernel
- * process start stamp exposed by `ps`; Windows uses `Get-Process.StartTime`
- * ticks. Unsupported platforms refuse. The Darwin stamp has one-second
+ * Linux uses boot-id + `/proc/<pid>/stat` start ticks. macOS reads the kernel
+ * process start stamp through `ps` under a fixed C/UTC environment and stores
+ * epoch seconds; Windows uses `Get-Process.StartTime` ticks. Unsupported
+ * platforms refuse. The Darwin stamp has one-second
  * resolution; that narrow same-second PID-recycle limitation is documented in
  * ref dashboard-surfaces §2.5 rather than hidden behind PID-only liveness.
  */
@@ -292,12 +293,17 @@ export function observeProcessIdentity(pid: number): ProcessIdentityObservation 
   if (process.platform === "darwin") {
     const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(parsedPid)], {
       encoding: "utf8",
+      env: { LANG: "C", LC_ALL: "C", TZ: "UTC" },
     });
-    const token = result.stdout.trim();
-    if (result.status === 0 && token.length > 0) {
+    const rawStart = result.stdout.trim();
+    const startTimeMs = Date.parse(`${rawStart} UTC`);
+    if (result.status === 0 && rawStart.length > 0 && Number.isFinite(startTimeMs)) {
       return {
         state: "alive",
-        identity: ProcessStartIdentitySchema.parse({ platform: "darwin", startToken: token }),
+        identity: ProcessStartIdentitySchema.parse({
+          platform: "darwin",
+          startToken: String(Math.floor(startTimeMs / 1000)),
+        }),
       };
     }
     if (observePid(parsedPid).state === "gone") return { state: "gone" };
@@ -728,7 +734,7 @@ export function acquireRuntimeProcessLock(
       }
       continue;
     }
-    const generation = singletonGeneration(root, options.name) + 1;
+    const generation = Math.max(singletonGeneration(root, options.name), 1) + 1;
     const record = RuntimeProcessLockFileSchema.parse({
       schemaVersion: 2,
       name: options.name,
