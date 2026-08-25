@@ -26,7 +26,8 @@ import type { DelegationEdgeId, ItemId, NodeId } from "../domain/ids.js";
 import type { RetryPolicy } from "../domain/session.js";
 import { parseNodeCondition } from "../domain/workflow/node-condition.js";
 import type { NodeConditionSpec } from "../domain/workflow/node-condition.js";
-import type { WorkflowStepOf } from "../domain/workflow/presentation.js";
+import { TimelineCategorySpecSchema } from "../domain/workflow/presentation.js";
+import type { TimelineCategorySpec, WorkflowStepOf } from "../domain/workflow/presentation.js";
 import type {
   AnyWorkflowRef,
   BranchNode,
@@ -437,9 +438,10 @@ export interface FlowBuilder<
   /**
    * Apply a FRAGMENT — a function from this builder to a builder with more
    * nodes — without leaving the chain (D265 §1.2.2 rule 2). A step folder's
-   * node fragments are `defineTaskNode`/`defineTransactionNode`/
-   * `defineGateNode` values whose `.wire(...)` returns exactly such a function;
-  * `S2`/`Nodes2` are whatever the fragment accumulated, so nothing is erased.
+   * node fragments are values built through that folder's bound
+   * `defineWorkflowStepNodeFactory`; `.wire(...)` returns exactly such a
+   * function. `S2`/`Nodes2` are whatever the fragment accumulated, so nothing
+   * is erased.
   */
   pipe<S2 extends Readonly<Record<string, AnyNodeEntry>>, Nodes2 extends readonly GraphNodeBase[]>(
     fragment: FlowFragment<InputSchema, S, Nodes, S2, Nodes2>,
@@ -769,16 +771,18 @@ export function flow<InputSchema extends z.ZodType>(
  * (`bind`) — belongs to the graph that applies it, because the composition and
  * the harness that proves a step feed the same node from different upstreams.
  *
- * The identity begins with the OWNING STEP: the first argument is the folder's
- * own `step.ts` value, the fragment carries it, and it is what
- * `defineWorkflowStepNodes` checks — a step folder claiming another folder's
- * fragment is a type error (the fragment is branded by its step's literal key)
- * and, where the literal is gone, a load-time throw naming both keys.
+ * The identity begins with the OWNING STEP: the folder binds its own `step.ts`
+ * value once through `defineWorkflowStepNodeFactory`, every fragment carries
+ * it, and the factory's `category` method checks it — a step folder claiming
+ * another folder's fragment is a type error (the fragment is branded by its
+ * step's literal key) and, where the literal is gone, a load-time throw naming
+ * both keys.
  *
  * A fragment therefore carries the identity and takes the wiring:
  *
  * ```ts
- * export const NAME_SEARCH = defineTaskNode(IDENTITY_CHECK_STEP, "name-search", SearchPersonOrg, { label, replay: "checkpoint" });
+ * const nodes = defineWorkflowStepNodeFactory(IDENTITY_CHECK_STEP);
+ * export const NAME_SEARCH = nodes.task("name-search", SearchPersonOrg, { label, replay: "checkpoint" });
  * // the composition:            the harness:
  * flow(In).pipe(NAME_SEARCH.wire({ dependsOn: [PLAN], bind: ... }))   .pipe(NAME_SEARCH.wire({ dependsOn: [], bind: ... }))
  * ```
@@ -924,7 +928,7 @@ export interface OperatorGateNodeFragment<
 
 /**
  * Every fragment shape a STEP FOLDER whose key is `StepKey` can own. This is
- * the ownership type: `defineWorkflowStepNodes` takes `NodeFragmentOf<Key>`,
+ * the ownership type: the bound factory's `category` takes `NodeFragmentOf<Key>`,
  * so a category built from another folder's fragment fails `tsc` before the
  * load-time refusal ever runs.
  */
@@ -936,7 +940,7 @@ export type NodeFragmentOf<StepKey extends string> =
 /** A fragment of SOME step — the erased form, where only the runtime check remains. */
 export type AnyNodeFragment = NodeFragmentOf<string>;
 
-export function defineTaskNode<
+function defineTaskNode<
   StepKey extends string,
   Id extends string,
   C extends AnyReadTaskContract,
@@ -966,7 +970,7 @@ export function defineTaskNode<
   return Object.freeze(fragment);
 }
 
-export function defineTransactionNode<
+function defineTransactionNode<
   StepKey extends string,
   Id extends string,
   P extends AnyPrepareTaskContract,
@@ -1015,7 +1019,7 @@ export function defineTransactionNode<
   return Object.freeze(fragment);
 }
 
-export function defineOperatorGateNode<
+function defineOperatorGateNode<
   StepKey extends string,
   Id extends string,
   Result extends z.ZodType,
@@ -1044,4 +1048,74 @@ export function defineOperatorGateNode<
     },
   };
   return Object.freeze(fragment);
+}
+
+/**
+ * Bind one step folder's ownership once, then define every node and the final
+ * timeline category through the returned factory. The step key and each node
+ * id remain distinct identities, but callers cannot repeat or substitute the
+ * owner on every declaration.
+ *
+ * Ownership is checked twice: `category` accepts only fragments branded with
+ * this step's literal key, then requires the exact frozen step object at
+ * runtime. Equal keys from separately declared step objects are not ownership.
+ */
+export function defineWorkflowStepNodeFactory<const Key extends string>(step: WorkflowStepOf<Key>) {
+  const category = (fragments: readonly NodeFragmentOf<NoInfer<Key>>[]): TimelineCategorySpec => {
+    for (const fragment of fragments) {
+      if (fragment.step !== step) {
+        const sameKeyDifferentObject = fragment.step.key === step.key
+          ? `; same key but distinct step objects: "${step.label}" and "${fragment.step.label}"`
+          : "";
+        throw new Error(
+          `step "${step.key}" claims node fragment ${fragment.id}, which belongs to step "${fragment.step.key}"${sameKeyDifferentObject}`,
+        );
+      }
+    }
+    const nodeIds = fragments.map((fragment) => fragment.id);
+    const repeated = nodeIds.find((id, index) => nodeIds.indexOf(id) !== index);
+    if (repeated !== undefined) {
+      throw new Error(`step "${step.key}" lists node fragment ${repeated} twice`);
+    }
+    return Object.freeze(TimelineCategorySpecSchema.parse({
+      key: step.key,
+      label: step.label,
+      nodes: nodeIds,
+    }));
+  };
+
+  return Object.freeze({
+    task<const Id extends string, C extends AnyReadTaskContract>(
+      id: Id,
+      contract: C,
+      identity: Readonly<{ label: string; replay: "checkpoint" | "always-rerun" }>,
+    ) {
+      return defineTaskNode(step, id, contract, identity);
+    },
+    transaction<
+      const Id extends string,
+      P extends AnyPrepareTaskContract,
+      C extends AnyCommitTaskContract,
+    >(
+      id: Id,
+      identity: Readonly<{
+        label: string;
+        prepare: P;
+        commit: C;
+        dryRun: "stop-after-prepare" | "unsupported";
+        probePolicy: "always" | "retries-and-recovery-only";
+        probeToFenceMaxMs: number;
+        retryBeforeFence?: RetryPolicy;
+      }>,
+    ) {
+      return defineTransactionNode(step, id, identity);
+    },
+    operatorGate<const Id extends string, Result extends z.ZodType>(
+      id: Id,
+      identity: Readonly<{ label: string; statusKey?: string; result: Result }>,
+    ) {
+      return defineOperatorGateNode(step, id, identity);
+    },
+    category,
+  });
 }

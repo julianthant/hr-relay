@@ -9,8 +9,7 @@
  * policy lives here, beside the policy; the rationale for what feeds a node
  * lives beside the bind that feeds it.
  */
-import { defineTaskNode } from "../../../base/flow.js";
-import { defineWorkflowStepNodes } from "../../../base/workflow.js";
+import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
 import { KualiReadSeparationDocument } from "../../../domain/contracts/kuali/read-separation-document.js";
 import { KualiSearchSeparationAction } from "../../../domain/contracts/kuali/search-separation-action.js";
 import { SeparationsMatchTerminationType } from "../../../domain/contracts/separations/match-termination-type.js";
@@ -21,6 +20,8 @@ export const ACTION_NODE = "resolve-action";
 export const DOCUMENT_NODE = "document";
 export const PLAN_NODE = "plan";
 export const TERMINATION_TYPE_NODE = "termination-type";
+
+const nodes = defineWorkflowStepNodeFactory(KUALI_EXTRACTION_STEP);
 
 /**
  * D261's head node. It turns the one number a human knows into the address
@@ -37,7 +38,7 @@ export const TERMINATION_TYPE_NODE = "termination-type";
  * freshness bound here would replace a precise refusal with a timer, and §5A
  * already ruled that out for this graph.
  */
-export const actionNode = defineTaskNode(KUALI_EXTRACTION_STEP, ACTION_NODE, KualiSearchSeparationAction, {
+export const actionNode = nodes.task(ACTION_NODE, KualiSearchSeparationAction, {
   label: "Kuali Action",
   replay: "checkpoint",
 });
@@ -52,23 +53,23 @@ export const actionNode = defineTaskNode(KUALI_EXTRACTION_STEP, ACTION_NODE, Kua
  * ("a node whose real product is BROWSER state may not be `replay:
  * "checkpoint"`") is the same rule read the other way.
  */
-export const documentNode = defineTaskNode(KUALI_EXTRACTION_STEP, DOCUMENT_NODE, KualiReadSeparationDocument, {
+export const documentNode = nodes.task(DOCUMENT_NODE, KualiReadSeparationDocument, {
   label: "Separation Document",
   replay: "checkpoint",
 });
 
-export const planNode = defineTaskNode(KUALI_EXTRACTION_STEP, PLAN_NODE, SeparationsReadSeparationPlan, {
+export const planNode = nodes.task(PLAN_NODE, SeparationsReadSeparationPlan, {
   label: "Separation Plan",
   replay: "checkpoint",
 });
 
-export const terminationTypeNode = defineTaskNode(KUALI_EXTRACTION_STEP, TERMINATION_TYPE_NODE, SeparationsMatchTerminationType, {
+export const terminationTypeNode = nodes.task(TERMINATION_TYPE_NODE, SeparationsMatchTerminationType, {
   label: "Termination Type",
   replay: "checkpoint",
 });
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const KUALI_EXTRACTION_STEP_NODES = defineWorkflowStepNodes(KUALI_EXTRACTION_STEP, [
+export const KUALI_EXTRACTION_STEP_NODES = nodes.category([
   actionNode,
   documentNode,
   planNode,

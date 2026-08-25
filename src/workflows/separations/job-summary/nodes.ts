@@ -10,8 +10,7 @@
  * identity-check / write harnesses wire it straight from their ingress EID
  * (rule 3 — they IMPORT it rather than restating it).
  */
-import { defineTaskNode } from "../../../base/flow.js";
-import { defineWorkflowStepNodes } from "../../../base/workflow.js";
+import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
 import { SeparationsMatchActiveEmployment } from "../../../domain/contracts/separations/match-active-employment.js";
 import { SeparationsMatchDepartmentOption } from "../../../domain/contracts/separations/match-department-option.js";
 import { UcpathReadJobSummary } from "../../../domain/contracts/ucpath/read-job-summary.js";
@@ -21,6 +20,8 @@ export const JOB_SUMMARY_NODE = "job-summary";
 export const EMPLOYMENT_NODE = "employment";
 export const DEPARTMENT_NODE = "department-option";
 
+const nodes = defineWorkflowStepNodeFactory(JOB_SUMMARY_STEP);
+
 /**
  * `replay: "checkpoint"` is safe here for chunk 2's reason read the same way:
  * this node's product is its VALUE, not browser state. Nothing downstream
@@ -29,23 +30,23 @@ export const DEPARTMENT_NODE = "department-option";
  * executor releases every session on the way into a park. A node whose
  * product were browser state could not be replayed across a park at all.
  */
-export const jobSummaryNode = defineTaskNode(JOB_SUMMARY_STEP, JOB_SUMMARY_NODE, UcpathReadJobSummary, {
+export const jobSummaryNode = nodes.task(JOB_SUMMARY_NODE, UcpathReadJobSummary, {
   label: "Job Summary",
   replay: "checkpoint",
 });
 
-export const employmentNode = defineTaskNode(JOB_SUMMARY_STEP, EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
+export const employmentNode = nodes.task(EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
   label: "Employment",
   replay: "checkpoint",
 });
 
-export const departmentOptionNode = defineTaskNode(JOB_SUMMARY_STEP, DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
+export const departmentOptionNode = nodes.task(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
   label: "Department Option",
   replay: "checkpoint",
 });
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const JOB_SUMMARY_STEP_NODES = defineWorkflowStepNodes(JOB_SUMMARY_STEP, [
+export const JOB_SUMMARY_STEP_NODES = nodes.category([
   jobSummaryNode,
   employmentNode,
   departmentOptionNode,

@@ -11,8 +11,7 @@
  * hand-written there rather than being passed off as this step's
  * `timecard-search`.
  */
-import { defineTaskNode } from "../../../base/flow.js";
-import { defineWorkflowStepNodes } from "../../../base/workflow.js";
+import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
 import { NewKronosReadSeparationTimecard } from "../../../domain/contracts/new-kronos/read-separation-timecard.js";
 import { NewKronosSearchEmployee } from "../../../domain/contracts/new-kronos/search-employee.js";
 import { SeparationsReadSeparationDates } from "../../../domain/contracts/separations/read-separation-dates.js";
@@ -21,6 +20,8 @@ import { KRONOS_TIMECARD_STEP } from "./step.js";
 export const TIMECARD_SEARCH_NODE = "timecard-search";
 export const TIMECARD_NODE = "timecard";
 export const DATES_NODE = "dates";
+
+const nodes = defineWorkflowStepNodeFactory(KRONOS_TIMECARD_STEP);
 
 /**
  * `always-rerun`, and chunk 1 paid for the rule live (`sk-124132-9beb`): the
@@ -35,7 +36,7 @@ export const DATES_NODE = "dates";
  * checkpoint that restores a selection into a browser that never made one, and
  * that is the failure chunk 1 already recorded.
  */
-export const timecardSearchNode = defineTaskNode(KRONOS_TIMECARD_STEP, TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
+export const timecardSearchNode = nodes.task(TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
   label: "Timecard Search",
   replay: "always-rerun",
 });
@@ -47,18 +48,18 @@ export const timecardSearchNode = defineTaskNode(KRONOS_TIMECARD_STEP, TIMECARD_
  * through `requireFact` — Go To is disabled without the selection, and a
  * disabled Go To is a loud failure, never an empty card.
  */
-export const timecardNode = defineTaskNode(KRONOS_TIMECARD_STEP, TIMECARD_NODE, NewKronosReadSeparationTimecard, {
+export const timecardNode = nodes.task(TIMECARD_NODE, NewKronosReadSeparationTimecard, {
   label: "Timecard",
   replay: "checkpoint",
 });
 
-export const datesNode = defineTaskNode(KRONOS_TIMECARD_STEP, DATES_NODE, SeparationsReadSeparationDates, {
+export const datesNode = nodes.task(DATES_NODE, SeparationsReadSeparationDates, {
   label: "Reconciled Dates",
   replay: "checkpoint",
 });
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const KRONOS_TIMECARD_STEP_NODES = defineWorkflowStepNodes(KRONOS_TIMECARD_STEP, [
+export const KRONOS_TIMECARD_STEP_NODES = nodes.category([
   timecardSearchNode,
   timecardNode,
   datesNode,

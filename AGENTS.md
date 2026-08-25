@@ -297,7 +297,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   (D104).
 - 2026-08-25 (D265 review): a workflow-step key's literal type never replaces its category-key
   schema, and a node fragment belongs to the exact frozen step object that created it — equal keys
-  are not equal ownership at runtime.
+  are not equal ownership at runtime. Bind that object once per `nodes.ts` with
+  `defineWorkflowStepNodeFactory`; define task/transaction/gate fragments and the final category
+  through the returned factory rather than repeating the step on every node.
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
 

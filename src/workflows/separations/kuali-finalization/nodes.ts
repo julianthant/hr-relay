@@ -9,13 +9,14 @@
  * folder binds them from its own ingress (rule 3). `existingComments` is the
  * one pure fold only this step's binds consume, so it lives here.
  */
-import { defineTransactionNode } from "../../../base/flow.js";
-import { defineWorkflowStepNodes } from "../../../base/workflow.js";
+import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
 import { KualiSaveSeparationFinalization } from "../../../domain/contracts/kuali/save-separation-finalization.js";
 import { KualiStageSeparationFinalization } from "../../../domain/contracts/kuali/stage-separation-finalization.js";
 import { KUALI_FINALIZATION_STEP } from "./step.js";
 
 export const FINALIZE_NODE = "finalize-kuali";
+
+const nodes = defineWorkflowStepNodeFactory(KUALI_FINALIZATION_STEP);
 
 /** `""` when the control was empty — S56's baseline, which is a real value. */
 export function existingComments(comments: { state: "present"; value: string } | { state: "absent" }): string {
@@ -31,7 +32,7 @@ export function existingComments(comments: { state: "present"; value: string } |
  * Budget CONFIRMED live 2026-08-14 (§9.12 item 6): probe 3.30 s + prepare
  * 8.06 s = 11.4 s worst legs against 45 000 ms, ~4x headroom.
  */
-export const finalizeKualiNode = defineTransactionNode(KUALI_FINALIZATION_STEP, FINALIZE_NODE, {
+export const finalizeKualiNode = nodes.transaction(FINALIZE_NODE, {
   label: "Finalize Kuali Document",
   prepare: KualiStageSeparationFinalization,
   commit: KualiSaveSeparationFinalization,
@@ -41,4 +42,4 @@ export const finalizeKualiNode = defineTransactionNode(KUALI_FINALIZATION_STEP, 
 });
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragment above. */
-export const KUALI_FINALIZATION_STEP_NODES = defineWorkflowStepNodes(KUALI_FINALIZATION_STEP, [finalizeKualiNode]);
+export const KUALI_FINALIZATION_STEP_NODES = nodes.category([finalizeKualiNode]);
