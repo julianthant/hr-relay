@@ -5,7 +5,7 @@
  * A gap identity publishes once while this process is alive. Memory advances
  * only after the inbox commits the durable row, so a failed publish leaves the
  * same gap pending for the next resume attempt. Across a process restart the
- * inbox's dedupe fingerprint folds the same identity into its existing row.
+ * inbox's authority dedupe returns the existing row byte-for-byte unchanged.
  * Reconnect and resnapshot never clear or mutate that record.
  */
 import type { z } from "zod";
