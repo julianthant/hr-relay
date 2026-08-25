@@ -1354,20 +1354,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       );
     }
 
-    const verifyTask = requireTask(completion.verify.taskId, `${completion.kind} verifier`);
-    let verifyInput: unknown;
-    try {
-      verifyInput = verifyTask.contract.input.parse(input.commitInput);
-    } catch (error) {
-      throw postFence(
-        "unknown",
-        `${completion.verify.taskId} cannot bind the commit input for post-click verification`,
-        error,
-      );
-    }
     let verdict: z.output<ReturnType<typeof probeVerdictSchema>>;
-    emitTaskSpan(input.context, "verify", "span.started");
+    let verifySpanStarted = false;
     try {
+      const verifyTask = requireTask(completion.verify.taskId, `${completion.kind} verifier`);
+      const verifyInput: unknown = verifyTask.contract.input.parse(input.commitInput);
+      emitTaskSpan(input.context, "verify", "span.started");
+      verifySpanStarted = true;
       const { raw } = await invokeTransactionTask(
         input.context,
         "verify",
@@ -1384,10 +1377,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       verdict = probeVerdictSchema(completion.proofSchema).parse(verifyTask.contract.output.parse(raw));
       emitTaskSpan(input.context, "verify", "span.ended", "done");
     } catch (error) {
-      const preserved = preserveTaskFailure(input.context, "verify", error);
+      const preserved = verifySpanStarted
+        ? preserveTaskFailure(input.context, "verify", error)
+        : error;
       throw postFence(
         "unknown",
-        `${completion.verify.taskId} could not verify the landing state after the click`,
+        `${completion.verify.taskId} could not set up or verify the landing state after the click`,
         preserved,
       );
     }

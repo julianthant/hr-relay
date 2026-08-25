@@ -259,7 +259,9 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   indefinitely non-cooperative callback remains process-owned with an `attempting` intent so
   process-loss recovery, not detached I/O, owns the next action. If task and terminal-span delivery
   both fail, preserve them primary-first in an `AggregateError` and carry it through any parked-write
-  cause. See ref write-safety §3 and doc 03a §Observed logs.
+  cause. Post-click verification starts after authority is fenced, so task lookup, input binding and
+  `span.started` emission belong inside the `PostFenceWriteFailure` boundary too; none may escape
+  without parking. See ref write-safety §3 and doc 03a §Observed logs.
 
 ## After changes
 

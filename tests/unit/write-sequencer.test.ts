@@ -154,7 +154,7 @@ interface Harness {
 function harness(options: Readonly<{
   hooks?: WriteSequencerHooks;
   commitHooks?: AuthorityWriteCommitHooks;
-  emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced";
+  emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
 }> = {}): Harness {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
   const root = mkdtempSync(join(tmpdir(), "hrauto-write-sequencer-"));
@@ -178,8 +178,18 @@ function harness(options: Readonly<{
         && event.t === "span.ended"
         && event.kind === "task"
         && event.outcome === "failed";
-      if (event.t === options.emitterThrowsOn || throwOnFailedTaskSpan) {
-        const failureArm = throwOnFailedTaskSpan ? "failed-task-span" : event.t;
+      const throwOnVerifyStart = options.emitterThrowsOn === "verify-start"
+        && event.t === "span.started"
+        && event.kind === "task"
+        && event.spanPath.endsWith("/verify");
+      const throwOnEventArm = options.emitterThrowsOn !== undefined
+        && options.emitterThrowsOn !== "failed-task-span"
+        && options.emitterThrowsOn !== "verify-start"
+        && event.t === options.emitterThrowsOn;
+      if (throwOnEventArm || throwOnFailedTaskSpan || throwOnVerifyStart) {
+        const failureArm = throwOnFailedTaskSpan
+          ? "failed-task-span"
+          : throwOnVerifyStart ? "verify-start" : event.t;
         world.events.push(`emitter-throw:${failureArm}`);
         throw new Error(`injected ${failureArm} writer failure`);
       }
@@ -860,6 +870,37 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
       (error: unknown) => error instanceof WriteParkedError && error.parkCode === "unknown",
     );
     assert.equal(intentByKey(h2.database)?.status, "parked");
+  });
+
+  it("parks a post-click verifier when its start-span writer fails", async () => {
+    const h = harness({ emitterThrowsOn: "verify-start" });
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim, writeFixtureSaveDescriptor)),
+      (error: unknown) => {
+        assert.ok(error instanceof WriteParkedError);
+        assert.ok(error.cause instanceof Error);
+        assert.equal(error.cause.name, "PostFenceWriteFailure");
+        assert.ok(error.cause.cause instanceof Error);
+        assert.match(error.cause.cause.message, /injected verify-start writer failure/u);
+        return true;
+      },
+    );
+
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+    assert.ok(!h.world.events.includes("verify"), "failed verifier setup cannot invoke the read-back task");
+    assert.equal(
+      h.database.authority.runCheckpoints.latest(
+        WRITE_FIXTURE_WORKFLOW_ID,
+        WRITE_FIXTURE_ITEM_ID,
+        WRITE_FIXTURE_NODE_ID,
+      ),
+      undefined,
+      "a verifier setup failure cannot falsely report the external side effect",
+    );
   });
 });
 

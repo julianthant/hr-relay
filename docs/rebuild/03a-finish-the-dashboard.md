@@ -686,6 +686,9 @@ value the receipt would have dropped is the same defect from a different surface
 **An undeclared leaf fails the task, by name.** Probe, prepare and verify refuse inside
 `ctx.recordData`; commit refuses during its post-callback flush and therefore parks the already
 fenced write. Both paths name the producing task and exact leaf rather than silently dropping it.
+Because verify begins after the click, resolving its declaration, binding its input, and emitting its
+start span are inside the same post-fence failure boundary as the read-back itself; failure in any of
+those setup steps parks rather than escaping as an ordinary task error.
 The transaction lane explicitly declares all four production probe roles and all four post-fence
 verify roles. The executor's transaction fixture is DECLARED rather than exempted, because a
 fixture bypass would mean the refusal is never exercised by a composed run.
