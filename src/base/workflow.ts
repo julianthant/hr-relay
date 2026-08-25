@@ -85,7 +85,7 @@ import {
   WorkflowCapabilitiesSchema,
   WorkflowCategorySchema,
   WorkflowCodeSchema,
-  WorkflowStepSchema,
+  WorkflowStepOfSchema,
 } from "../domain/workflow/presentation.js";
 import type {
   ArtifactSinkId,
@@ -101,7 +101,7 @@ import type {
   VerdictDefinition,
   WorkflowActionPolicy,
   WorkflowCategory,
-  WorkflowStep,
+  WorkflowStepOf,
 } from "../domain/workflow/presentation.js";
 import { deriveGraphCoveragePoints } from "../domain/workflow/scenario-coverage.js";
 import type { GraphCoveragePoint } from "../domain/workflow/scenario-coverage.js";
@@ -110,7 +110,7 @@ import {
   assertSchemaOffersPath,
   assertSchemaOwnsPath,
 } from "../validation/contract-boundary.js";
-import type { AnyNodeEntry, AnyNodeFragment, BuiltFlow, OutputsOf, WorkflowResultSpec } from "./flow.js";
+import type { AnyNodeEntry, BuiltFlow, NodeFragmentOf, OutputsOf, WorkflowResultSpec } from "./flow.js";
 
 /* ── the authored halves that stay typed over the graph ──────────────────── */
 
@@ -201,8 +201,10 @@ export interface WorkflowIdentitySpec<Input> {
  * descriptor value-imports it, so it has to sit inside the D106 bundle-safe
  * set, beside the other builders a descriptor is allowed to reach.
  */
-export function defineWorkflowStep(step: { readonly key: string; readonly label: string }): WorkflowStep {
-  return Object.freeze(WorkflowStepSchema.parse(step));
+export function defineWorkflowStep<const Key extends string>(
+  step: Readonly<{ key: Key; label: string }>,
+): WorkflowStepOf<Key> {
+  return Object.freeze(WorkflowStepOfSchema(step.key).parse(step));
 }
 
 /**
@@ -213,16 +215,31 @@ export function defineWorkflowStep(step: { readonly key: string; readonly label:
  * kin, `src/base/flow.ts`) and exports exactly one of these; the composition's
  * `timeline` is the list of the six. The key and label come from the folder's
  * `step.ts`, the member ids from the fragments' own declared ids — so a
- * category that names a node the folder does not own, or spells the step's
- * key differently from the folder, is not a thing anybody can write. D225's
- * exhaustiveness (every graph node in exactly one category) is still checked
- * by `defineWorkflowDescriptor`, which is where a fragment left OUT of its
- * folder's list fails loud.
+ * category cannot spell the step's key differently from the folder it is.
+ *
+ * OWNERSHIP is checked here, not assumed: every fragment carries the step that
+ * owns it, so a category claiming ANOTHER folder's fragment is a type error
+ * (`NodeFragmentOf<Key>` is branded by the step's literal key) and, where that
+ * literal is gone, the load-time refusal below names the fragment and both step
+ * keys. Before it was structural, `defineWorkflowStepNodes(KUALI_EXTRACTION_STEP,
+ * [actionNode, receiptNode])` compiled: the only downstream check is
+ * `deriveTimeline`'s coverage/uniqueness pass, which knows nothing about which
+ * folder a node belongs to, so the mis-filed node would have shipped under the
+ * wrong step's heading. D225's exhaustiveness (every graph node in exactly one
+ * category) is still checked by `defineWorkflowDescriptor`, which is where a
+ * fragment left OUT of its folder's list fails loud.
  */
-export function defineWorkflowStepNodes(
-  step: WorkflowStep,
-  fragments: readonly AnyNodeFragment[],
+export function defineWorkflowStepNodes<const Key extends string>(
+  step: WorkflowStepOf<Key>,
+  fragments: readonly NodeFragmentOf<NoInfer<Key>>[],
 ): TimelineCategorySpec {
+  for (const fragment of fragments) {
+    if (fragment.step.key !== step.key) {
+      throw new Error(
+        `step "${step.key}" claims node fragment ${fragment.id}, which belongs to step "${fragment.step.key}"`,
+      );
+    }
+  }
   const nodes = fragments.map((fragment) => fragment.id);
   const repeated = nodes.find((id, index) => nodes.indexOf(id) !== index);
   if (repeated !== undefined) {

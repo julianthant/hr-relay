@@ -1,12 +1,12 @@
 # HR Rebuild Roadmap
-<!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see .claude/skills/custom-update-plan/SKILL.md §Notation): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
+<!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-21
 head: 59851cdf
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
 source: `docs/plans/2026-08-20-dashboard-architecture-audit.md` (Track D) · the phase docs win on any disagreement
-footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; `/custom-update-plan` keeps plan, site and owning docs in step. The normative plan is the phase docs `docs/rebuild/00`–`06`; the decision changelog `docs/rebuild/reference/decisions.md`. Sizes are relative build sizes (doc 00 §Size model + delivery tiers), not calendar.
+footer: Generated from `docs/roadmap/roadmap.md` (the plan, written in the roadmap notation) by `npm run roadmap` — edit the plan, never this file; plan, site and owning docs move together — notation: `docs/roadmap/notation.md`.
 > The ground-up rebuild of UCSD's UCPath HR automation, as a tree. **Phases 0–2 are complete** — the platform is built and proven; **Phase 3** migrates the 13 remaining legacy workflows one at a time and entered at **separations**; legacy stays the sole production authority until one all-at-once cutover. Every box shows what it **builds** (by layer, filled when built) and what it **needs** — select one for detail, hover to light up what it unlocks.
 
 tiles:
@@ -1924,7 +1924,7 @@ program.
 
 **D263 (2026-08-20) — the plan has a machine-readable form, and it is bound to the docs both ways.**
 `docs/roadmap/roadmap.md`, written in the roadmap notation
-(`.claude/skills/custom-update-plan/SKILL.md` §Notation), is that form and the operator tracking view;
+(`docs/roadmap/notation.md`), is that form and the operator tracking view;
 `docs/roadmap/index.html` is GENERATED from it by `npm run roadmap` and is never hand-edited. It is a
 second VIEW of this plan, never a second plan — **the plan's prose wins on any disagreement**, and the
 disagreement is CAUGHT rather than argued, because the binding is two-way and mechanical: every node
@@ -1935,7 +1935,7 @@ side fails the gate instead of rotting. Three rules bind the tree itself. A `bui
 **only** for what is landed at HEAD, with its commit or D-number cited in the line — never pre-marked.
 The tree never invents scope: an unplanned feature is a finding for `docs/findings/`, not a roadmap
 line. And session work is RECORDED where it happened — append-only per-node `log:` blocks plus one
-`## session:` spine marker per working session, written through `/custom-update-plan`'s `session`
+`## session:` spine marker per working session, written per `docs/roadmap/notation.md`'s `session`
 class, so the next agent reads a node's own history rather than re-deriving it from `git log`.
 
 ### D1 ownership map — the quick index (concept → owning doc)

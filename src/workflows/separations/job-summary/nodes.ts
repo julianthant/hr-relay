@@ -29,17 +29,17 @@ export const DEPARTMENT_NODE = "department-option";
  * executor releases every session on the way into a park. A node whose
  * product were browser state could not be replayed across a park at all.
  */
-export const jobSummaryNode = defineTaskNode(JOB_SUMMARY_NODE, UcpathReadJobSummary, {
+export const jobSummaryNode = defineTaskNode(JOB_SUMMARY_STEP, JOB_SUMMARY_NODE, UcpathReadJobSummary, {
   label: "Job Summary",
   replay: "checkpoint",
 });
 
-export const employmentNode = defineTaskNode(EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
+export const employmentNode = defineTaskNode(JOB_SUMMARY_STEP, EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
   label: "Employment",
   replay: "checkpoint",
 });
 
-export const departmentOptionNode = defineTaskNode(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
+export const departmentOptionNode = defineTaskNode(JOB_SUMMARY_STEP, DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
   label: "Department Option",
   replay: "checkpoint",
 });

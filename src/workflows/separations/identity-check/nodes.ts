@@ -38,17 +38,17 @@ export const APPROVAL_NODE = "approval";
  * pick a preferred candidate; here the point is to SHOW the operator every
  * person this name resolves to.
  */
-export const nameSearchNode = defineTaskNode(NAME_SEARCH_NODE, SearchPersonOrg, {
+export const nameSearchNode = defineTaskNode(IDENTITY_CHECK_STEP, NAME_SEARCH_NODE, SearchPersonOrg, {
   label: "Name Search",
   replay: "checkpoint",
 });
 
-export const subjectNode = defineTaskNode(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
+export const subjectNode = defineTaskNode(IDENTITY_CHECK_STEP, SUBJECT_NODE, SeparationsMatchSeparationSubject, {
   label: "Separation Subject",
   replay: "checkpoint",
 });
 
-export const comparisonNode = defineTaskNode(COMPARISON_NODE, SeparationsMatchIdentity, {
+export const comparisonNode = defineTaskNode(IDENTITY_CHECK_STEP, COMPARISON_NODE, SeparationsMatchIdentity, {
   label: "Identity Comparison",
   replay: "checkpoint",
 });
@@ -60,7 +60,7 @@ export const comparisonNode = defineTaskNode(COMPARISON_NODE, SeparationsMatchId
  * `gate_results` is the typed `resolve-gate` command, which parses this exact
  * schema and CASes the run version.
  */
-export const identityApprovalGate = defineOperatorGateNode(GATE_NODE, {
+export const identityApprovalGate = defineOperatorGateNode(IDENTITY_CHECK_STEP, GATE_NODE, {
   label: "Identity Approval",
   statusKey: "awaitingIdentityApproval",
   result: IdentityApprovalResultSchema,
@@ -71,7 +71,7 @@ export const identityApprovalGate = defineOperatorGateNode(GATE_NODE, {
  * gate result against re-derived evidence, and a replayed checkpoint would be
  * the previous comparison's ANSWER standing in for the comparison.
  */
-export const approvalNode = defineTaskNode(APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
+export const approvalNode = defineTaskNode(IDENTITY_CHECK_STEP, APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
   label: "Approval Check",
   replay: "always-rerun",
 });

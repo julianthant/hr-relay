@@ -37,7 +37,7 @@ export const TERMINATION_TYPE_NODE = "termination-type";
  * freshness bound here would replace a precise refusal with a timer, and §5A
  * already ruled that out for this graph.
  */
-export const actionNode = defineTaskNode(ACTION_NODE, KualiSearchSeparationAction, {
+export const actionNode = defineTaskNode(KUALI_EXTRACTION_STEP, ACTION_NODE, KualiSearchSeparationAction, {
   label: "Kuali Action",
   replay: "checkpoint",
 });
@@ -52,17 +52,17 @@ export const actionNode = defineTaskNode(ACTION_NODE, KualiSearchSeparationActio
  * ("a node whose real product is BROWSER state may not be `replay:
  * "checkpoint"`") is the same rule read the other way.
  */
-export const documentNode = defineTaskNode(DOCUMENT_NODE, KualiReadSeparationDocument, {
+export const documentNode = defineTaskNode(KUALI_EXTRACTION_STEP, DOCUMENT_NODE, KualiReadSeparationDocument, {
   label: "Separation Document",
   replay: "checkpoint",
 });
 
-export const planNode = defineTaskNode(PLAN_NODE, SeparationsReadSeparationPlan, {
+export const planNode = defineTaskNode(KUALI_EXTRACTION_STEP, PLAN_NODE, SeparationsReadSeparationPlan, {
   label: "Separation Plan",
   replay: "checkpoint",
 });
 
-export const terminationTypeNode = defineTaskNode(TERMINATION_TYPE_NODE, SeparationsMatchTerminationType, {
+export const terminationTypeNode = defineTaskNode(KUALI_EXTRACTION_STEP, TERMINATION_TYPE_NODE, SeparationsMatchTerminationType, {
   label: "Termination Type",
   replay: "checkpoint",
 });

@@ -35,7 +35,7 @@ export const RECEIPT_NODE = "receipt";
  * checkbox clicks. 90 s is ~5x that, and short enough that a stalled page
  * loses its selection rather than deleting on a stale probe.
  */
-export const clearPendingNode = defineTransactionNode(SWEEP_NODE, {
+export const clearPendingNode = defineTransactionNode(UCPATH_TRANSACTION_STEP, SWEEP_NODE, {
   label: "Clear Pending Terminations",
   prepare: UcpathStagePendingTerminationSweep,
   commit: UcpathDeletePendingTerminations,
@@ -48,7 +48,7 @@ export const clearPendingNode = defineTransactionNode(SWEEP_NODE, {
  * The real HR write. Budget measured live 2026-08-13 (§9.7): ≈32.4 s of live
  * wizard staging on top of ≈17 s of probe, and 120 s is ~3.7x that.
  */
-export const fileTerminationNode = defineTransactionNode(TERMINATION_NODE, {
+export const fileTerminationNode = defineTransactionNode(UCPATH_TRANSACTION_STEP, TERMINATION_NODE, {
   label: "File Termination",
   prepare: UcpathStageTermination,
   commit: UcpathCreateTermination,
@@ -63,7 +63,7 @@ export const fileTerminationNode = defineTransactionNode(TERMINATION_NODE, {
  * for the check. It is a pure fold over a durable proof, so re-running it costs
  * nothing and reaches no browser.
  */
-export const receiptNode = defineTaskNode(RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
+export const receiptNode = defineTaskNode(UCPATH_TRANSACTION_STEP, RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
   label: "Termination Receipt",
   replay: "always-rerun",
 });

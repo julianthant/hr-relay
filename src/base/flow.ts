@@ -26,6 +26,7 @@ import type { DelegationEdgeId, ItemId, NodeId } from "../domain/ids.js";
 import type { RetryPolicy } from "../domain/session.js";
 import { parseNodeCondition } from "../domain/workflow/node-condition.js";
 import type { NodeConditionSpec } from "../domain/workflow/node-condition.js";
+import type { WorkflowStepOf } from "../domain/workflow/presentation.js";
 import type {
   AnyWorkflowRef,
   BranchNode,
@@ -438,10 +439,10 @@ export interface FlowBuilder<
    * nodes — without leaving the chain (D265 §1.2.2 rule 2). A step folder's
    * node fragments are `defineTaskNode`/`defineTransactionNode`/
    * `defineGateNode` values whose `.wire(...)` returns exactly such a function;
-   * `S2`/`Nodes2` are whatever the fragment accumulated, so nothing is erased.
-   */
+  * `S2`/`Nodes2` are whatever the fragment accumulated, so nothing is erased.
+  */
   pipe<S2 extends Readonly<Record<string, AnyNodeEntry>>, Nodes2 extends readonly GraphNodeBase[]>(
-    fragment: (builder: FlowBuilder<InputSchema, S, Nodes>) => FlowBuilder<InputSchema, S2, Nodes2>,
+    fragment: FlowFragment<InputSchema, S, Nodes, S2, Nodes2>,
   ): FlowBuilder<InputSchema, S2, Nodes2>;
 
   build<ResultSchema extends z.ZodType, const D extends readonly (keyof S & string)[]>(
@@ -768,10 +769,16 @@ export function flow<InputSchema extends z.ZodType>(
  * (`bind`) — belongs to the graph that applies it, because the composition and
  * the harness that proves a step feed the same node from different upstreams.
  *
+ * The identity begins with the OWNING STEP: the first argument is the folder's
+ * own `step.ts` value, the fragment carries it, and it is what
+ * `defineWorkflowStepNodes` checks — a step folder claiming another folder's
+ * fragment is a type error (the fragment is branded by its step's literal key)
+ * and, where the literal is gone, a load-time throw naming both keys.
+ *
  * A fragment therefore carries the identity and takes the wiring:
  *
  * ```ts
- * export const NAME_SEARCH = defineTaskNode("name-search", SearchPersonOrg, { label, replay: "checkpoint" });
+ * export const NAME_SEARCH = defineTaskNode(IDENTITY_CHECK_STEP, "name-search", SearchPersonOrg, { label, replay: "checkpoint" });
  * // the composition:            the harness:
  * flow(In).pipe(NAME_SEARCH.wire({ dependsOn: [PLAN], bind: ... }))   .pipe(NAME_SEARCH.wire({ dependsOn: [], bind: ... }))
  * ```
@@ -810,17 +817,28 @@ export interface GateNodeWiring<S, D extends readonly (keyof S & string)[]> {
   readonly dependsOn: D;
 }
 
-/** A fragment is a function from a builder to the same builder with nodes appended. */
+/**
+ * A fragment is a function from a builder to the same builder with nodes
+ * appended. Only its INPUT scope is invariant: that stops an explicitly
+ * widened `wire<S>` from fitting a narrower builder while leaving
+ * `FlowBuilder` itself inference-friendly for ordinary contextual wiring.
+ */
 export type FlowFragment<
   InputSchema extends z.ZodType,
-  S extends Readonly<Record<string, AnyNodeEntry>>,
+  in out S extends Readonly<Record<string, AnyNodeEntry>>,
   Nodes extends readonly GraphNodeBase[],
   S2 extends Readonly<Record<string, AnyNodeEntry>>,
   Nodes2 extends readonly GraphNodeBase[],
 > = (builder: FlowBuilder<InputSchema, S, Nodes>) => FlowBuilder<InputSchema, S2, Nodes2>;
 
-export interface TaskNodeFragment<Id extends string, C extends AnyReadTaskContract> {
+export interface TaskNodeFragment<
+  StepKey extends string,
+  Id extends string,
+  C extends AnyReadTaskContract,
+> {
   readonly kind: "task";
+  /** The step folder that OWNS this node (D265 §1.2.2 rule 2). */
+  readonly step: WorkflowStepOf<StepKey>;
   readonly id: Id;
   readonly contract: C;
   readonly label: string;
@@ -842,11 +860,14 @@ export interface TaskNodeFragment<Id extends string, C extends AnyReadTaskContra
 }
 
 export interface TransactionNodeFragment<
+  StepKey extends string,
   Id extends string,
   P extends AnyPrepareTaskContract,
   C extends AnyCommitTaskContract,
 > {
   readonly kind: "transaction";
+  /** The step folder that OWNS this node (D265 §1.2.2 rule 2). */
+  readonly step: WorkflowStepOf<StepKey>;
   readonly id: Id;
   readonly prepare: P;
   readonly commit: C;
@@ -872,8 +893,14 @@ export interface TransactionNodeFragment<
 }
 
 /** Only the operator-resolved gate has a fragment form: the ALWAYS-GATE is the one a step folder owns. */
-export interface OperatorGateNodeFragment<Id extends string, Result extends z.ZodType> {
+export interface OperatorGateNodeFragment<
+  StepKey extends string,
+  Id extends string,
+  Result extends z.ZodType,
+> {
   readonly kind: "gate";
+  /** The step folder that OWNS this node (D265 §1.2.2 rule 2). */
+  readonly step: WorkflowStepOf<StepKey>;
   readonly id: Id;
   readonly label: string;
   readonly statusKey?: string;
@@ -895,19 +922,34 @@ export interface OperatorGateNodeFragment<Id extends string, Result extends z.Zo
   >;
 }
 
-export type AnyNodeFragment =
-  | TaskNodeFragment<string, AnyReadTaskContract>
-  | TransactionNodeFragment<string, AnyPrepareTaskContract, AnyCommitTaskContract>
-  | OperatorGateNodeFragment<string, z.ZodType>;
+/**
+ * Every fragment shape a STEP FOLDER whose key is `StepKey` can own. This is
+ * the ownership type: `defineWorkflowStepNodes` takes `NodeFragmentOf<Key>`,
+ * so a category built from another folder's fragment fails `tsc` before the
+ * load-time refusal ever runs.
+ */
+export type NodeFragmentOf<StepKey extends string> =
+  | TaskNodeFragment<StepKey, string, AnyReadTaskContract>
+  | TransactionNodeFragment<StepKey, string, AnyPrepareTaskContract, AnyCommitTaskContract>
+  | OperatorGateNodeFragment<StepKey, string, z.ZodType>;
 
-export function defineTaskNode<Id extends string, C extends AnyReadTaskContract>(
+/** A fragment of SOME step — the erased form, where only the runtime check remains. */
+export type AnyNodeFragment = NodeFragmentOf<string>;
+
+export function defineTaskNode<
+  StepKey extends string,
+  Id extends string,
+  C extends AnyReadTaskContract,
+>(
+  step: WorkflowStepOf<StepKey>,
   id: Id,
   contract: C,
   identity: Readonly<{ label: string; replay: "checkpoint" | "always-rerun" }>,
-): TaskNodeFragment<Id, C> {
+): TaskNodeFragment<StepKey, Id, C> {
   nodeId(id);
-  const fragment: TaskNodeFragment<Id, C> = {
+  const fragment: TaskNodeFragment<StepKey, Id, C> = {
     kind: "task",
+    step,
     id,
     contract,
     label: identity.label,
@@ -925,10 +967,12 @@ export function defineTaskNode<Id extends string, C extends AnyReadTaskContract>
 }
 
 export function defineTransactionNode<
+  StepKey extends string,
   Id extends string,
   P extends AnyPrepareTaskContract,
   C extends AnyCommitTaskContract,
 >(
+  step: WorkflowStepOf<StepKey>,
   id: Id,
   identity: Readonly<{
     label: string;
@@ -939,13 +983,14 @@ export function defineTransactionNode<
     probeToFenceMaxMs: number;
     retryBeforeFence?: RetryPolicy;
   }>,
-): TransactionNodeFragment<Id, P, C> {
+): TransactionNodeFragment<StepKey, Id, P, C> {
   nodeId(id);
   if (!Number.isInteger(identity.probeToFenceMaxMs) || identity.probeToFenceMaxMs <= 0) {
     throw new Error(`transaction ${id} requires a positive integer probeToFenceMaxMs budget`);
   }
-  const fragment: TransactionNodeFragment<Id, P, C> = {
+  const fragment: TransactionNodeFragment<StepKey, Id, P, C> = {
     kind: "transaction",
+    step,
     id,
     prepare: identity.prepare,
     commit: identity.commit,
@@ -970,13 +1015,19 @@ export function defineTransactionNode<
   return Object.freeze(fragment);
 }
 
-export function defineOperatorGateNode<Id extends string, Result extends z.ZodType>(
+export function defineOperatorGateNode<
+  StepKey extends string,
+  Id extends string,
+  Result extends z.ZodType,
+>(
+  step: WorkflowStepOf<StepKey>,
   id: Id,
   identity: Readonly<{ label: string; statusKey?: string; result: Result }>,
-): OperatorGateNodeFragment<Id, Result> {
+): OperatorGateNodeFragment<StepKey, Id, Result> {
   nodeId(id);
-  const fragment: OperatorGateNodeFragment<Id, Result> = {
+  const fragment: OperatorGateNodeFragment<StepKey, Id, Result> = {
     kind: "gate",
+    step,
     id,
     label: identity.label,
     ...(identity.statusKey === undefined ? {} : { statusKey: identity.statusKey }),

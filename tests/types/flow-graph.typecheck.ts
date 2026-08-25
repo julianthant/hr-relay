@@ -19,7 +19,8 @@
  */
 import { z } from "zod";
 import { defineOperatorGateNode, defineTaskNode, defineTransactionNode, flow } from "../../src/base/flow.js";
-import type { NodeEntry, OutputsOf } from "../../src/base/flow.js";
+import type { AnyNodeEntry, NodeEntry, OutputsOf } from "../../src/base/flow.js";
+import { defineWorkflowStep, defineWorkflowStepNodes } from "../../src/base/workflow.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
 import {
   DelegationEdgeIdSchema,
@@ -36,6 +37,7 @@ import type {
   ChildRunOutcome,
   DelegationManifestRef,
   DelegationPolicy,
+  GraphNodeBase,
   OperatorGateNode,
   TaskStepNode,
   TransactionNode,
@@ -623,15 +625,17 @@ negatives.build({
 
 /* ── node fragments (D265 §1.2.2 rule 2) ─────────────────────────────────── */
 
-const readContactFragment = defineTaskNode("read-contact", readCrmContact, {
+const fragmentStep = defineWorkflowStep({ key: "identity-check", label: "Identity check" });
+const otherFragmentStep = defineWorkflowStep({ key: "job-summary", label: "Job summary" });
+const readContactFragment = defineTaskNode(fragmentStep, "read-contact", readCrmContact, {
   label: "Read contact",
   replay: "checkpoint",
 });
-const approvalFragment = defineOperatorGateNode("approval", {
+const approvalFragment = defineOperatorGateNode(fragmentStep, "approval", {
   label: "Approve",
   result: z.object({ approved: z.boolean() }),
 });
-const terminationFragment = defineTransactionNode("terminate", {
+const terminationFragment = defineTransactionNode(fragmentStep, "terminate", {
   label: "Terminate",
   prepare: fillTermination,
   commit: submitTermination,
@@ -639,6 +643,22 @@ const terminationFragment = defineTransactionNode("terminate", {
   probePolicy: "always",
   probeToFenceMaxMs: 30_000,
 });
+
+// @ts-expect-error a workflow step cannot claim a fragment owned by another step folder
+defineWorkflowStepNodes(otherFragmentStep, [readContactFragment]);
+
+const explicitlyWidenedFragment = readContactFragment.wire<
+  typeof WORKFLOW_INPUT,
+  Readonly<Record<string, AnyNodeEntry>>,
+  readonly GraphNodeBase[],
+  readonly ["not-a-node"]
+>({
+  dependsOn: ["not-a-node"],
+  bind: ({ input }) => ({ eid: input.eid }),
+});
+
+// @ts-expect-error pipe must reject a fragment explicitly widened beyond its builder's scope
+negatives.pipe(explicitlyWidenedFragment);
 
 // A fragment applied through `.pipe` keeps the builder's accumulated generics:
 // the wiring's bind sees exactly the declared upstream scope, and the nodes
