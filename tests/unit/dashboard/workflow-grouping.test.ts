@@ -8,8 +8,8 @@
  * point of one function is that none of them can answer differently. So what
  * is pinned here is the function's ANSWER, not any surface's markup: the
  * category order, the nesting, the ordering stability that keeps the rail from
- * reshuffling when a harness registers, and the orphan arm that a filtered
- * list (and, today, `separations-kronos-timecard`'s own category) reaches.
+ * reshuffling when a harness registers, and the orphan arm a filtered list
+ * reaches when it genuinely omits a composition.
  *
  * Roles are parsed through `defineWorkflowRole`, so a fixture cannot state a
  * role no module could declare.
@@ -132,29 +132,37 @@ describe("groupWorkflowsByCategory — the membership half (D219)", () => {
     ]);
     assert.deepEqual(groups[0]?.entries[0]?.members[0]?.members, []);
   });
+
+  it("places all five real separations harnesses under Separation, including the cross-category Kronos step", () => {
+    const groups = groupWorkflowsByCategory([
+      entry("separations", "separation", COMPOSITION, "Separation"),
+      // This real harness's HR category is timekeeping, but its role address
+      // says it is a step of the Separation composition.
+      entry("separations-kronos-timecard", "timekeeping", harnessOf("separations"), "Separation Timecard"),
+      entry("separations-kuali-read", "separation", harnessOf("separations"), "Separation Document"),
+      entry("separations-identity-check", "separation", harnessOf("separations"), "Identity Check"),
+      entry("separations-ucpath-termination", "separation", harnessOf("separations"), "UCPath Termination"),
+      entry("separations-kuali-finalization", "separation", harnessOf("separations"), "Kuali Finalization"),
+    ]);
+
+    assert.deepEqual(shape(groups), {
+      Separations: [
+        {
+          id: "separations",
+          members: [
+            "separations-kronos-timecard",
+            "separations-kuali-read",
+            "separations-identity-check",
+            "separations-ucpath-termination",
+            "separations-kuali-finalization",
+          ],
+        },
+      ],
+    });
+  });
 });
 
 describe("groupWorkflowsByCategory — the orphan rule", () => {
-  it("keeps a harness whose composition is in ANOTHER category at top level, still marked", () => {
-    // This is `separations-kronos-timecard` exactly: it files itself under
-    // `timekeeping` while `separations` files itself under `separation`.
-    const groups = groupWorkflowsByCategory([
-      entry("separations", "separation", COMPOSITION, "Separations"),
-      entry("separations-kronos-timecard", "timekeeping", harnessOf("separations"), "Kronos timecard"),
-    ]);
-    assert.deepEqual(shape(groups), {
-      Separations: [{ id: "separations", members: [] }],
-      Timekeeping: [
-        { id: "separations-kronos-timecard", harnessOf: "separations", nested: false, members: [] },
-      ],
-    });
-    // The name still resolves: the composition is in the LIST, just not in the
-    // group, so the marking can say what it is a harness of.
-    const orphan = groups[1]?.entries[0];
-    assert.ok(orphan?.harness !== undefined);
-    assert.equal(workflowHarnessOfName(orphan.harness), "Separations");
-  });
-
   it("keeps a harness whose composition is not in the list at all — marked, named by its id", () => {
     const groups = groupWorkflowsByCategory([
       entry("separations-kuali-read", "separation", harnessOf("separations"), "Kuali read"),

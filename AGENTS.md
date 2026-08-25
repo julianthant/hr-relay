@@ -285,6 +285,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-25 — a harness's HR category is not its dashboard placement.** The Kronos timecard
+  harness truthfully remains `timekeeping`, but its role address says it is a step of `separations`.
+  Fold harnesses by `role.of` before partitioning categories; once nested, the composition's category
+  owns the picker and Explorer heading. Partitioning first turns a real step into a top-level peer.
+
 - **2026-08-25 — retiring a proof workflow does not retire the real workflow's vocabulary.** The
   timekeeper annotation staging/read-back schemas and tasks belonged only to D266's dismantled test
   workflow, but `KUALI_RRSS_TIMEKEEPER_FIELD` is also one of the twelve fields staged by real
