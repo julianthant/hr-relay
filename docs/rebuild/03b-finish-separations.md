@@ -680,10 +680,11 @@ own lane, because `duo-autopilot/` is a hard runtime dependency and a rule pinne
 - [ ] run the T1b manifest live against the finalization canary and record `met` — registry, insert-only result authority and CLI runner are built; the honest target is unavailable until 2026-08-28. The 2026-08-25 production CLI execution recorded immutable result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` as `blocked`/`not-started`, with `run_id = null` and `trace_id = null`, before browser composition; that refusal is evidence for the blocker, not a green T1b result
 - [x] `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
 - [x] the `workflow-layout` guard + its `guard-inventory.json` activation; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE
-- [x] `npm run build:manifest` regenerated; the D191 gate green; rendered rail/picker/Explorer inspected and intentional D266 visible changes re-frozen/asserted by parity
+- [x] `npm run build:manifest` regenerated; final D191 gate green at 241 files / 2,362 tests; rendered rail/picker/Explorer inspected; 157/157 parity cases assert-green after the deliberate workflow-fingerprint re-freeze (`0ff335d8`)
 > 2026-08-21 | workflow-tree ruling | drawn from the operator's ruling; D265 ratified in ref workflow-model §1.2.2; nothing under `src/workflows/` has moved yet — the move is the next session's code unit
 > 2026-08-21 | workflow-tree ruling | D266 the same session — `proving/` withdrawn; `kuali-timekeeper-annotation` dismantled into the Kuali finalization step's T1 pair
 > 2026-08-25 | test-tiers | source/test retirement and runner machinery complete; the rail has only main workflows, picker/Explorer nest all five marked harnesses, and the unavailable finalization canary produced durable blocked result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` (`not-started`, no run/trace). The only remaining T1b step is the date-gated live green on 2026-08-28
+> 2026-08-25 | workflow-tree completion | implementation merged through `88a20ee9`; 67 active architecture guards, 241 test files / 2,362 tests, schema v16 and parity 157/157 verified. The structural organization and testing-framework replacement are complete; only the date-gated live `met` result remains
 <!-- /roadmap-status -->
 
 **The ruling (2026-08-21).** Eight sibling folders under `src/workflows/` — `separations` beside the
