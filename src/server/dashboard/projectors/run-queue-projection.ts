@@ -1097,7 +1097,7 @@ export class RunQueueProjection {
   /** D269: membership is the run row's own field — never a lookup in a stored member list. */
   #session(authority: RunRecord): { state: "present"; sessionId: string } | { state: "absent"; reason: string } {
     return authority.sessionId === undefined
-      ? { state: "absent", reason: "enqueued before runs carried a session (D269)" }
+      ? { state: "absent", reason: "this run predates D269 session grouping, or retries a run that does" }
       : { state: "present", sessionId: authority.sessionId };
   }
 

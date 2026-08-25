@@ -1094,9 +1094,15 @@ manifest so a D174 replay names the same group). **A retry mints no session: it 
 retried run's** — it is the same item's next attempt (D221), so the group the operator started keeps
 reporting the item it contains; a retry of an ungrouped (pre-v17) run stays ungrouped. Pre-v17 rows
 carry no `sessionId` and are read forward as "no session" (D133); nothing back-fills a group nobody
-started. D235's bulk strip is NOT a session producer: a bulk `retry` re-dispatches members of the
-groups they already belong to, one child transaction each, and `bulkCommandId` never reaches the
-kernel.
+started. The queue's absence reason covers BOTH durable cases — *"this run predates D269 session
+grouping, or retries a run that does"* — rather than claiming every absent row was itself enqueued
+before v17. **Archive schema generation 4 freezes that required QueueSurface `session` arm.** A
+generation-1/2/3 archived row has no key and reads forward as *"no session recorded (archived before
+D269)"*; the archive read arm adds that sentence only to the served wire, never to stored JSON or
+its `contentDigest`, while a generation-4 record without the arm refuses. The LIVE QueueSurface
+schema remains required. D235's bulk strip is NOT a session producer: a bulk `retry` re-dispatches
+members of the groups they already belong to, one child transaction each, and `bulkCommandId` never
+reaches the kernel.
 
 **2. Every workflow follows the SAME browser-profile recipe; each worker owns its own profile
 directory.** Nothing new is needed here and nothing may be special-cased: §1's path already
@@ -1174,4 +1180,3 @@ end-to-end tier's first exercise (ref guards-and-tests §test tiers) — plus a 
 that lands the pool. It needs §10 first: the pool multiplies the hazard the ceremony lease removes,
 and shipping it in the other order would make the first parallel cold start the thing that burns a
 profile.
-

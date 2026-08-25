@@ -1181,7 +1181,10 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
     // session's membership, with no stored list consulted.
     assert.deepEqual(rows[0].session, { state: "present", sessionId: uuidOf(70) });
     assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70) });
-    assert.deepEqual(rows[2].session, { state: "absent", reason: "enqueued before runs carried a session (D269)" });
+    assert.deepEqual(rows[2].session, {
+      state: "absent",
+      reason: "this run predates D269 session grouping, or retries a run that does",
+    });
   });
 
   it("D269: serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", () => {

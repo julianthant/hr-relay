@@ -336,6 +336,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     assert.equal(stored?.consumedBy, undefined);
     assert.equal(stored?.version, plan.version);
     assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.equal(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
 

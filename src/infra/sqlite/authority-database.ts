@@ -4125,6 +4125,9 @@ export class AuthorityDatabase implements Disposable {
         `).all(WorkerIdSchema.parse(workerId));
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
+      listBySession: (sessionId: string) => Object.freeze(this.#database.prepare(`
+        SELECT record_json FROM tasks WHERE session_id = ? ORDER BY created_at, record_key
+      `).all(RunSessionIdSchema.parse(sessionId)).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       /**
        * D262. `tasks_heartbeat_idx ON tasks(state, heartbeat_at)` leads on
        * `state`, so this is an index scan over a set that is almost always
@@ -4134,10 +4137,7 @@ export class AuthorityDatabase implements Disposable {
        * name the run rather than quietly publish a notification about a gate
        * the record does not hold.
        */
-            listBySession: (sessionId: string) => Object.freeze(this.#database.prepare(`
-        SELECT record_json FROM tasks WHERE session_id = ? ORDER BY created_at, record_key
-      `).all(RunSessionIdSchema.parse(sessionId)).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
-listParkedAtGate: () => {
+      listParkedAtGate: () => {
         const rows = this.#database.prepare(`
           SELECT record_json FROM tasks WHERE state = 'parked-gate' ORDER BY created_at, record_key
         `).all();
