@@ -2,12 +2,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { acceptDiagnosticBundleReadback } from "../../../src/dashboard/surfaces/trust-model.js";
+import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { FIXTURE_DIAGNOSTIC_BUNDLE } from "../../parity/helpers/fixture-day.js";
 
 describe("diagnostic bundle trust readback", () => {
   it("keeps the requested identity and a named error when a client seam returns a foreign bundle", () => {
     const requestedBundleId = FIXTURE_DIAGNOSTIC_BUNDLE.bundleId;
-    const foreignBundleId = "00000000-0999-4000-8000-000000000999";
+    const foreignBundleId = DiagnosticBundleIdSchema.parse("00000000-0999-4000-8000-000000000999");
     const outcome = acceptDiagnosticBundleReadback(requestedBundleId, {
       ...FIXTURE_DIAGNOSTIC_BUNDLE,
       bundleId: foreignBundleId,

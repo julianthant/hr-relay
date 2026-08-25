@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActivityReportWireSchema } from "../../../src/domain/dashboard/activity.js";
+import { DiagnosticBundleIdSchema } from "../../../src/domain/ids.js";
 import { StorageDoctorWireSchema } from "../../../src/domain/dashboard/storage.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
@@ -294,7 +295,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 
   it("returns typed corruption when the diagnostic repository returns a foreign bundle id", async () => {
-    const foreignBundleId = "00000000-0000-4000-8000-000000000999";
+    const foreignBundleId = DiagnosticBundleIdSchema.parse("00000000-0000-4000-8000-000000000999");
     const h = harness({
       diagnosticBundles: (real) => ({
         ...real,
