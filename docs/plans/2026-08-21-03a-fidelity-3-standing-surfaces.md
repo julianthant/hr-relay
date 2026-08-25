@@ -861,8 +861,8 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN5 | Header action "Another file" (ghost, `RotateCcw` `dsIcon.sm`) | — | `intake.tsx:1323` | extra | ruled: D173 |
 | IN6 | Back button (footer, ghost, `ArrowLeft` `dsIcon.md`, steps one stage back) | `DemoIntake.tsx:365` | — | missing | ruled: D173 |
 | IN7 | Dismiss control: footer "Cancel" (secondary) vs header "Close" (ghost, sm) | `DemoIntake.tsx:373` | `intake.tsx:1332` | divergent | **OPEN — operator call** |
-| IN8 | Footer meta echoes `header row N` | `DemoIntake.tsx:357` | — | missing | **OPEN — operator call** |
-| IN9 | Footer meta echoes `fingerprint <first 8>` | `DemoIntake.tsx:358` | — | missing | **OPEN — operator call** |
+| IN8 | Footer meta echoes `header row N` | `DemoIntake.tsx:357` | `intake.tsx:1029` (`intake-model.ts:96`) | exact | **ported** `80967ce5` (F2 a) — the sticky outcome band is this workspace's footer |
+| IN9 | Footer meta echoes `fingerprint <first 8>` | `DemoIntake.tsx:358` | `intake.tsx:1029` (`intake-model.ts:96`) | exact | **ported** `80967ce5` (F2 a) — `shortHash` is 8, the demo's own prefix |
 | IN10 | Stage indicator: `<nav aria-label="Intake stages — step N of 6">` vs `TabList label="Intake stage"` with 2 tabs | `DemoRunStartKit.tsx:441` | `intake.tsx:1255` | divergent | ruled: D173 |
 | IN11 | Stage "File" | `DemoIntake.tsx:92` | — | missing | ruled: D173 |
 | IN12 | Stage "Header row" (a stage) vs a `Field` inside the source band | `DemoIntake.tsx:93` | `intake.tsx:311` | divergent | ruled: D173 |
@@ -906,7 +906,7 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN50 | Header-row proposal: info `Banner` titled "The parser proposes row N" + "A proposal, with its reasoning — not a decision. Every downstream binding is keyed to the row you confirm here…" | `DemoIntake.tsx:464` | `intake.tsx:312` | divergent | ruled: D173 |
 | IN51 | Header candidates as selectable `Card`s vs `<option>`s inside one `Select` | `DemoIntake.tsx:472` | `intake.tsx:321` | divergent | ruled: D173 |
 | IN52 | `Chip label="row"` per candidate | `DemoIntake.tsx:488` | `intake.tsx:323` | divergent | ruled: D173 |
-| IN53 | Per-candidate `confidence 0.96` (2dp) | `DemoIntake.tsx:489` | — | missing | **OPEN — operator call** (`ServedHeaderCandidateSchema.confidence` IS served) |
+| IN53 | Per-candidate `confidence 0.96` (2dp) | `DemoIntake.tsx:489` | `intake.tsx:332` (`intake-model.ts:61`) | divergent | **ported** `80967ce5` (F2 a) — the fact lands, in the ` · ` slot of the option label, because D173 made the candidate list one `Select` and an `<option>` carries text alone |
 | IN54 | Per-candidate `why` sentence, e.g. "6 of 6 cells distinct and non-empty; 5 match known field aliases" | `DemoIntake.tsx:490` | — | missing | unserved: `ServedHeaderCandidateSchema` omits `signals` and has no prose field — UNBOOKED |
 | IN55 | Candidate row preview: ALL non-empty cells joined ` · ` vs first 6 only inside the option label | `DemoIntake.tsx:493` | `intake.tsx:323` | divergent | **OPEN — operator call** |
 | IN56 | "(empty row)" fallback for a candidate whose cells are all blank | `DemoIntake.tsx:493` | — | missing | **OPEN — operator call** |
@@ -935,7 +935,7 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN79 | Samples: dedicated `TD numeric max-w-[220px]` truncating `bound ?? suggested` samples joined ` · `, `—` when none vs a `dsText.meta dsText.nums` line under the Select, first 3 only, absent when unbound | `DemoIntake.tsx:630` | `intake.tsx:539` | divergent | ruled: D173 |
 | IN80 | Suggestion cell shape: at most ONE proposal, plain text vs N proposals, each a recessed dashed `--ds-recess-*` box | `DemoIntake.tsx:634` | `intake.tsx:579` | divergent | ruled: D173 |
 | IN81 | Accept verb: `Accept “<column label>”` / `Accepted` (disabled when already bound) vs `Use it` with `aria-label="Bind <column label>"` | `DemoIntake.tsx:645` | `intake.tsx:597` | divergent | ruled: D173 |
-| IN82 | Suggestion score printed as `(0.94)` | `DemoIntake.tsx:637` | — | missing | **OPEN — operator call** (`SuggestionSchema.score` IS served) |
+| IN82 | Suggestion score printed as `(0.94)` | `DemoIntake.tsx:637` | `intake.tsx:609` (`intake-model.ts:75`) | exact | **ported** `80967ce5` (F2 a) — parenthesised after the reason, same muted span |
 | IN83 | Suggestion reason: composed prose `“Employee Name” matches the alias “employee name”` vs a fixed 4-term vocabulary joined `", "` (`known header` / `matches the field label` / `words in common` / `its values parse`) | `DemoIntake.tsx:637` | `intake.tsx:128` | divergent | unserved: `SuggestionSchema.why` is a closed enum array, not prose — UNBOOKED |
 | IN84 | Ambiguity note "another column scores the same — check both" | — | `intake.tsx:605` | extra | ruled: D173 |
 | IN85 | "no proposal" in `dsText.meta` + `--ds-fg-faint` | `DemoIntake.tsx:649` | `intake.tsx:572` | exact | — |
@@ -959,7 +959,7 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN103 | Offending column: `“<header>”` in `dsText.meta` muted vs MetaLine item `column <header>` | `DemoIntake.tsx:838` | `intake.tsx:798` | divergent | **OPEN — operator call** |
 | IN104 | Offending value: `raw: <value>` verbatim, `(empty)` when blank vs `value <redacted (class)>` / `<value> (<transform>)` / "(a structured value)" | `DemoIntake.tsx:839` | `intake.tsx:726` | divergent | ruled: D82 |
 | IN105 | Reason sentence: composed client-side `<workflow> intake, row N, column “X” (→ field): <reason>` vs the server's `reject.reason` verbatim in a `role="alert"` span | `demo-data-intake.ts:669` | `intake.tsx:793` | divergent | ruled: D173 |
-| IN106 | `code <code>` printed under the reason | `DemoIntake.tsx:844` | — | missing | **OPEN — operator call** (the code IS served; only its label is shown) |
+| IN106 | `code <code>` printed under the reason | `DemoIntake.tsx:844` | `intake.tsx:847` | exact | **ported** `780860d0` (F2 b) — first item of the reject's `MetaLine`, so it sits against the reason as the demo draws it |
 | IN107 | Fix affordance: "Fix cell" (sm outline) opening a separate editor `Card` vs an always-present inline `Input` + "Fix cell" per correctable reject | `DemoIntake.tsx:849` | `intake.tsx:808` | divergent | **OPEN — operator call** |
 | IN108 | Fix editor heading `Correct row N · <targetFieldId>` | `DemoIntake.tsx:866` | — | missing | **OPEN — operator call** |
 | IN109 | Fix `Field label="Corrected value"` + description "The source file is never rewritten. The correction is recorded in the manifest with the original beside it, and the value is re-coerced and re-parsed before it can become valid." vs a bare placeholder `corrected <label>` | `DemoIntake.tsx:869` | `intake.tsx:814` | divergent | **OPEN — operator call** |
@@ -974,17 +974,17 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN118 | Review gate: `Checkbox` "I have read all N rejected row(s)" + "Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen." | `DemoIntake.tsx:908` | — | missing | **OPEN — operator call** |
 | IN119 | Advance gate itself: `canContinueFromValidate = !block && (rejected === 0 \|\| reviewed)` vs `Run` enabled the moment `validation.state === "validated"`, unresolved rejections and all | `DemoIntake.tsx:260` | `intake.tsx:999` | divergent | **OPEN — operator call** (doc `reference/data-intake-and-edit-data.md` §2.2 step 4 and §7 vector 4 both say Run is disabled until the reject list is reviewed) |
 | IN120 | Courtesy blocker list: no `unresolved-rejections` entry, so the band cannot say why the kernel will refuse | `demo-data-intake.ts:784` | `intake.tsx:935` | divergent | **OPEN — operator call** |
-| IN121 | Corrections `Well`: `SectionLabel "Corrections"` + `row N · <field>: “<original>” → “<corrected>”` | `DemoIntake.tsx:918` | — | missing | **OPEN — operator call** (`IntakeSessionWire.corrections` IS served and read only for the discard count) |
+| IN121 | Corrections `Well`: `SectionLabel "Corrections"` + `row N · <field>: “<original>” → “<corrected>”` | `DemoIntake.tsx:918` | `intake.tsx:723` (`intake-model.ts:115`) | divergent | **ported** `780860d0` (F2 b) — the list lands in the demo's slot (after the rejections, before the exclusions), drawn as the exclusions section's twin rather than as a `Well`. The `“<original>” →` half stays **unserved**: `IntakeRowCorrectionSchema` has no `original` — UNBOOKED |
 | IN122 | Exclusions block: `Well` + `SectionLabel "Exclusions"` + `row N — <reason>` vs `<section aria-label="Excluded rows">` + `SectionLabel "Excluded by you"` + `Chip label="row"` + reason + MetaLine(`excludedAt`) | `DemoIntake.tsx:929` | `intake.tsx:700` | divergent | **OPEN — operator call** |
 | IN123 | The whole Manifest stage | `DemoIntake.tsx:946` | — | missing | **OPEN — operator call** |
 | IN124 | Manifest success banner "N of M source rows will run" + "Every source row below has exactly one disposition. The counts are derived from those dispositions, never summed from the rejection history…" | `DemoIntake.tsx:954` | — | missing | **OPEN — operator call** |
 | IN125 | Manifest `KeyValueList` row `plan id` | `DemoIntake.tsx:962` | — | missing | unserved: `IntakeSessionWire.intakeManifestId` is set only AFTER enqueue — UNBOOKED |
-| IN126 | Manifest row `source` = `<originalName> · sha <12>` | `DemoIntake.tsx:963` | — | missing | **OPEN — operator call** |
-| IN127 | Manifest row `artifact` = artifact id | `DemoIntake.tsx:964` | — | missing | **OPEN — operator call** (`IntakeSessionWire.artifact` IS served) |
+| IN126 | Manifest row `source` = `<originalName> · sha <12>` | `DemoIntake.tsx:963` | `intake.tsx:1303` (`intake-model.ts:135`) | exact | **ported** `99d1592f` (F2 c) — in a `KeyValueList` where the enqueued banner printed one bare `manifest <uuid>` |
+| IN127 | Manifest row `artifact` = artifact id | `DemoIntake.tsx:964` | `intake.tsx:1303` (`intake-model.ts:135`) | exact | **ported** `99d1592f` (F2 c) |
 | IN128 | Manifest row `mapping fingerprint` | `DemoIntake.tsx:965` | — | missing | unserved: `mappingFingerprint` is not on `IntakeSessionWire` — UNBOOKED |
 | IN129 | Manifest row `mapping snapshot` hash | `DemoIntake.tsx:966` | — | missing | unserved: `mappingSnapshotHash` is not on `IntakeSessionWire` — UNBOOKED |
 | IN130 | Manifest row `workflow contract` fingerprint | `DemoIntake.tsx:967` | — | missing | unserved: `workflowContractFingerprint` is not on `IntakeSessionWire` — UNBOOKED |
-| IN131 | Manifest row `created` instant | `DemoIntake.tsx:968` | — | missing | **OPEN — operator call** (`createdAt` IS served) |
+| IN131 | Manifest row `created` instant | `DemoIntake.tsx:968` | `intake.tsx:1303` (`intake-model.ts:135`) | divergent | **ported** `99d1592f` (F2 c) — read off `rerun.createdAt` (the MANIFEST's instant, present on every enqueued session) and rendered `fmtClock` like every other instant here; `session.createdAt` is the UPLOAD and is already drawn as `uploaded …`. Absent rather than substituted when no rerun view is served |
 | IN132 | Manifest row `totals` = `N rows · V valid · R rejected · E excluded · C corrected` | `DemoIntake.tsx:970` | — | missing | unserved: `IntakeValidationWireSchema` has no `corrected` (it exists on `IntakeManifestTotalsSchema`) — UNBOOKED |
 | IN133 | Source-row disposition `Table` (Row / Disposition / Item / Input hash / Parsed input) | `DemoIntake.tsx:977` | — | missing | unserved: `SourceRowDispositionSchema` and `ValidRowSchema` are not on `IntakeSessionWire` — UNBOOKED |
 | IN134 | Disposition `Badge` tones — valid=success, excluded=neutral, rejected=danger | `DemoIntake.tsx:996` | — | missing | unserved: as IN133 — UNBOOKED |
