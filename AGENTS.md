@@ -304,6 +304,25 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ### Dated lessons
 
+- **2026-08-25 — exact-id readback needs the same identity door at every authority boundary.** A
+  repository lookup, recursively strict wire parse, or injected dashboard client can each return a
+  valid diagnostic bundle for the wrong id. Compare the requested id to the durable row before
+  reading its index or artifacts, compare it again after the wire parse, and keep the requested id
+  in the dialog's error state so a foreign response can never rename the selection or its manifest.
+
+- **2026-08-25 — closing an async readback must invalidate its result, not only hide its dialog.**
+  Escape can unmount a loading diagnostic-bundle dialog while its durable verification remains in
+  flight; an unguarded resolution then remounts the dialog after the operator closed it. Advance a
+  request generation on both open and close, and accept a result only for the current generation.
+  The manifest fixture must also remain a strict durable `DiagnosticBundle`, distinct from its wire
+  projection, or a download test can accidentally prove client reconstruction instead of authority.
+
+- **2026-08-25 — a content-addressed diagnostic row is not evidence of readable bytes.** The D137
+  bundle row and attachment index can agree while an artifact has been lost or corrupted; E29 therefore
+  re-derives the bundle digest, compares the exact indexed attachments, and drains each content-addressed
+  artifact before it serves facts or a manifest. A client-side reconstruction would have made a damaged
+  record look download-ready.
+
 - **2026-08-25 — exact visual geometry and a usable touch target are separate boxes.** A demo-exact
   `Button ghost sm` may keep its 24px painted box while a transparent pseudo-element on the same
   semantic button supplies the 44px hit region. Prove the outer points hit that button and that its

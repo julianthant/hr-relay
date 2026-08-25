@@ -13,6 +13,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
 import {
+  DiagnosticBundleCorruptError,
   ProjectionDegradedError,
   SectionUnavailableError,
   TargetNotFoundError,
@@ -53,6 +54,19 @@ describe("failureStatus", () => {
     assert.equal(degraded.body.code, "PROJECTION_DEGRADED");
     // The ONE retryable arm: a guarded rebuild can clear it.
     assert.equal(degraded.body.retryable, true);
+  });
+
+  it("answers typed path-free corruption for a diagnostic readback failure", () => {
+    const localPath = "/private/operator/.tracker-rebuild/artifacts/missing";
+    const corruption = failureStatus(new DiagnosticBundleCorruptError(
+      "diagnostic bundle 00000000-0000-4000-8000-000000000004 is corrupt: an attachment could not be verified",
+      { cause: new Error(`ENOENT ${localPath}`) },
+    ));
+
+    assert.equal(corruption.status, 500);
+    assert.equal(corruption.body.code, "DIAGNOSTIC_BUNDLE_CORRUPT");
+    assert.equal(corruption.body.retryable, false);
+    assert.equal(String(corruption.body.message).includes(localPath), false);
   });
 
   it("classifies buildActivityReportWire's degraded refusal as PROJECTION_DEGRADED, not the plain-Error 500 it was", () => {

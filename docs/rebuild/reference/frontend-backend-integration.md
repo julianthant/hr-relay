@@ -727,6 +727,8 @@ GET  /api/v1/bootstrap
 GET  /api/v1/dashboard?day=YYYY-MM-DD          # includes monthCounts — there is no calendar route
 GET  /api/v1/runs/:runId
 GET  /api/v1/runs/:runId/:section              # one lazy panel section, cursor-paged where it pages
+GET  /api/v1/diagnostic-bundles/:bundleId      # exact D137 readback; verified index and stored bytes
+GET  /api/v1/diagnostic-bundles/:bundleId/manifest # canonical durable manifest download, never client-built
 POST /api/v1/runs/:runId/advisory              # the optional AI failure advisory (unjournaled, D178)
 GET  /api/v1/archive           ·  GET /api/v1/archive/:runId
 GET  /api/v1/explorer                          # the whole descriptor DAG, flat — no workflow segment

@@ -27,6 +27,7 @@ import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explor
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
+import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
 import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
@@ -38,6 +39,8 @@ export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
+  /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
+  readonly diagnosticBundles?: DiagnosticBundleQueryDeps;
   /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
   readonly archive: ArchiveQueryDeps;
   readonly commands: DashboardCommandService;
@@ -185,6 +188,29 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
   });
 
   app.get("/api/v1/runs/:runId", (c) => c.json(buildRunDetail(deps.runDetail, c.req.param("runId"))));
+
+  app.get("/api/v1/diagnostic-bundles/:bundleId", async (c) => {
+    if (deps.diagnosticBundles === undefined) {
+      throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
+    }
+    const bundle = await readDiagnosticBundle(deps.diagnosticBundles, c.req.param("bundleId"));
+    return c.json(bundle.wire);
+  });
+
+  app.get("/api/v1/diagnostic-bundles/:bundleId/manifest", async (c) => {
+    if (deps.diagnosticBundles === undefined) {
+      throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
+    }
+    const bundle = await readDiagnosticBundle(deps.diagnosticBundles, c.req.param("bundleId"));
+    return new Response(bundle.manifest, {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="${bundle.wire.bundleId}.json"`,
+        "cache-control": "no-store",
+      },
+    });
+  });
 
   app.get("/api/v1/runs/:runId/:section", (c) => {
     const cursor = c.req.query("cursor");

@@ -61,3 +61,15 @@ export class ProjectionDegradedError extends Error {
     this.name = "ProjectionDegradedError";
   }
 }
+
+/**
+ * A durable D137 bundle or one of its content-addressed attachments no longer
+ * agrees with its own recorded identity. This is a server fault, never an
+ * ordinary missing target, and it must be visible as a typed route error.
+ */
+export class DiagnosticBundleCorruptError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "DiagnosticBundleCorruptError";
+  }
+}

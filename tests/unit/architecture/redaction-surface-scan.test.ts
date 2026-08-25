@@ -101,6 +101,7 @@ const WIRE_SCHEMA_MODULES = [
   "../../../src/domain/dashboard/archive.js",
   "../../../src/domain/dashboard/artifacts.js",
   "../../../src/domain/dashboard/bootstrap.js",
+  "../../../src/domain/dashboard/diagnostic-bundle.js",
   "../../../src/domain/dashboard/explorer.js",
   "../../../src/domain/dashboard/primitives.js",
   "../../../src/domain/dashboard/projection.js",

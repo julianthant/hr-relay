@@ -19,12 +19,19 @@
  * - empty sections are omitted (D24 restraint) — a receipt does not explain
  *   itself, and "no warnings" is best said by no warnings section.
  */
-import { Fingerprint } from "lucide-react";
-import type { ReactNode } from "react";
+import { Check, Download, Fingerprint, Package } from "lucide-react";
+import { useRef, useState, type ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
   Chip,
+  Banner,
+  Button,
+  ButtonLink,
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
   IconButton,
   MetaLine,
   Popover,
@@ -37,12 +44,25 @@ import {
 import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { fmtClock, shortHash } from "./format.js";
-import { evidenceSourceMeta, inputHashFooter } from "./trust-model.js";
+import {
+  acceptDiagnosticBundleReadback,
+  evidenceSourceMeta,
+  inputHashFooter,
+} from "./trust-model.js";
+import { useDashboardClient } from "../state/client-context.js";
+import { DashboardClientError } from "../client/index.js";
+import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
 
 export type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
 export type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;
 type EvidenceFactWire = RunEvidenceReceiptWire["input"][number];
 type FactValue = Extract<EvidenceFactWire, { state: "satisfied" }>["value"];
+
+type BundleDialogState =
+  | Readonly<{ state: "closed" }>
+  | Readonly<{ state: "loading"; bundleId: string }>
+  | Readonly<{ state: "ready"; bundle: DiagnosticBundleWire }>
+  | Readonly<{ state: "error"; bundleId: string; message: string }>;
 
 /* ── shared little pieces ────────────────────────────────────────────────── */
 
@@ -116,6 +136,46 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
     configuration: "Configuration",
     "code-change": "Code change",
     "no-safe-action": "No safe action",
+  };
+  const client = useDashboardClient();
+  const [bundleDialog, setBundleDialog] = useState<BundleDialogState>({ state: "closed" });
+  const bundleTriggerRef = useRef<HTMLButtonElement>(null);
+  const bundleRequestRevision = useRef(0);
+  const openBundle = (): void => {
+    if (detail.diagnosticBundle.state !== "present") return;
+    const bundleId = detail.diagnosticBundle.bundleId;
+    const requestRevision = ++bundleRequestRevision.current;
+    setBundleDialog({ state: "loading", bundleId });
+    client.diagnosticBundle(bundleId).then(
+      (bundle) => {
+        if (bundleRequestRevision.current === requestRevision) {
+          const acceptance = acceptDiagnosticBundleReadback(bundleId, bundle);
+          setBundleDialog(acceptance.state === "ready"
+            ? acceptance
+            : {
+                state: "error",
+                bundleId: acceptance.bundleId,
+                message: acceptance.message,
+              });
+        }
+      },
+      (error: unknown) => {
+        if (bundleRequestRevision.current === requestRevision) {
+          setBundleDialog({
+            state: "error",
+            bundleId,
+            message: error instanceof DashboardClientError || error instanceof Error
+              ? error.message
+              : "the diagnostic bundle readback failed",
+          });
+        }
+      },
+    );
+  };
+  const closeBundle = (): void => {
+    bundleRequestRevision.current += 1;
+    setBundleDialog({ state: "closed" });
+    requestAnimationFrame(() => bundleTriggerRef.current?.focus());
   };
   return (
     <div className="flex flex-col gap-[var(--ds-space-base)]">
@@ -208,16 +268,121 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
             meta={cause.transient ? "transient" : undefined}
           />
         ))}
-        <MetaLine
-          items={[
-            `fingerprint ${detail.fingerprint.slice(0, 12)}…`,
-            detail.diagnosticBundle.state === "present"
-              ? `diagnostic bundle ${detail.diagnosticBundle.bundleId}`
-              : `no diagnostic bundle — ${detail.diagnosticBundle.reason}`,
-          ]}
-        />
+        <MetaLine items={[`fingerprint ${detail.fingerprint.slice(0, 12)}…`]} />
+        {detail.diagnosticBundle.state === "present" ? (
+          <Button
+            ref={bundleTriggerRef}
+            variant="secondary"
+            icon={<Package aria-hidden className={dsIcon.md} />}
+            className="min-h-11 self-start"
+            onClick={openBundle}
+          >
+            Diagnostic bundle {detail.diagnosticBundle.bundleId}
+          </Button>
+        ) : (
+          <MetaLine items={[`no diagnostic bundle — ${detail.diagnosticBundle.reason}`]} />
+        )}
       </TrustSection>
+      {bundleDialog.state !== "closed" && (
+        <DiagnosticBundleDialog
+          state={bundleDialog}
+          manifestUrl={bundleDialog.state === "ready"
+            ? client.diagnosticBundleManifestUrl(bundleDialog.bundle.bundleId)
+            : undefined}
+          onClose={closeBundle}
+        />
+      )}
     </div>
+  );
+}
+
+function byteSizeLabel(byteSize: number): string {
+  if (byteSize < 1024) return `${String(byteSize)} B`;
+  if (byteSize < 1024 * 1024) return `${(byteSize / 1024).toFixed(1)} KB`;
+  return `${(byteSize / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function redactionList(bundle: DiagnosticBundleWire): string {
+  const facts = bundle.redaction.fields.map((field) => `${field.key} · ${field.classification} · ${field.transform}`);
+  const warnings = bundle.redaction.warnings.map((warning) => `warning: ${warning}`);
+  const list = [...facts, ...warnings];
+  return list.length === 0 ? "No classified fields required a redaction transform" : list.join(" · ");
+}
+
+function DiagnosticBundleDialog({
+  state,
+  manifestUrl,
+  onClose,
+}: {
+  state: Exclude<BundleDialogState, { state: "closed" }>;
+  manifestUrl?: string;
+  onClose: () => void;
+}) {
+  const bundleId = state.state === "ready" ? state.bundle.bundleId : state.bundleId;
+  const description = state.state === "ready"
+    ? `Captured ${fmtClock(state.bundle.capturedAt)} · ${byteSizeLabel(state.bundle.byteSize)} · content-addressed, redacted at capture time`
+    : "Reading the durable diagnostic bundle before it is shown.";
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent size="lg" hideClose title={`Diagnostic bundle ${bundleId}`} description={description}>
+        <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
+          {state.state === "loading" && (
+            <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+              Verifying the stored bundle, its attachment index and every content-addressed artifact.
+            </p>
+          )}
+          {state.state === "error" && (
+            <Banner tone="danger" title="Diagnostic bundle readback failed">
+              {state.message}
+            </Banner>
+          )}
+          {state.state === "ready" && (
+            <>
+              <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                One bounded package, taken automatically the moment this failed. It is what <code>explain run --bundle</code> writes,
+                and it is what a bug report should carry instead of a pasted screenshot.
+              </p>
+              <div className="flex flex-col gap-[var(--ds-space-snug)]">
+                {state.bundle.contents.map((content) => (
+                  <div
+                    key={content.artifactId}
+                    className={cn(
+                      "grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
+                      "sm:grid-cols-[auto_minmax(0,16rem)_minmax(0,1fr)] sm:items-baseline",
+                    )}
+                  >
+                    <Check aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-success-fg)]")} />
+                    <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
+                      {content.key}
+                    </span>
+                    <span className={cn(dsText.meta, "col-start-2 min-w-0 break-words text-[color:var(--ds-fg-muted)] sm:col-start-3")}>
+                      {content.detail} · {content.digest}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <Banner tone="info" title="Redacted at capture, never at render">
+                {redactionList(state.bundle)} — removed when the bundle was written, so there is no copy to leak later.
+              </Banner>
+            </>
+          )}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" className="min-h-11" onClick={onClose}>Close</Button>
+          {state.state === "ready" && manifestUrl !== undefined && (
+            <ButtonLink
+              variant="primary"
+              className="min-h-11"
+              icon={<Download aria-hidden className={dsIcon.md} />}
+              href={manifestUrl}
+              download={`${bundleId}.json`}
+            >
+              Download the manifest
+            </ButtonLink>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

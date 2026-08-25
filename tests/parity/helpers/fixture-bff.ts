@@ -12,6 +12,7 @@ import { extname, join, normalize } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
@@ -22,6 +23,8 @@ import {
   FIXTURE_COMMAND_RESULTS,
   FIXTURE_DAY,
   FIXTURE_DAY_WIRE,
+  FIXTURE_DIAGNOSTIC_BUNDLE,
+  FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_IDS,
   FIXTURE_RUN_DETAILS,
@@ -128,6 +131,26 @@ export function createFixtureBff(dayWire: DashboardDayWire = FIXTURE_DAY_WIRE): 
       );
     }
     return c.json(section as unknown);
+  });
+
+  /** E29's fixture is exact-id only, just like the production route. */
+  app.get("/api/v1/diagnostic-bundles/:bundleId", (c) => {
+    if (c.req.param("bundleId") !== FIXTURE_DIAGNOSTIC_BUNDLE.bundleId) {
+      return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);
+    }
+    return c.json(FIXTURE_DIAGNOSTIC_BUNDLE as unknown);
+  });
+  app.get("/api/v1/diagnostic-bundles/:bundleId/manifest", (c) => {
+    if (c.req.param("bundleId") !== FIXTURE_DIAGNOSTIC_BUNDLE.bundleId) {
+      return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);
+    }
+    return new Response(canonicalJsonStringify(FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST), {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}.json"`,
+      },
+    });
   });
 
   app.post("/api/v1/start-plans", (c) => c.json(FIXTURE_START_PLAN as unknown));

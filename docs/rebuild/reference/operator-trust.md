@@ -560,7 +560,9 @@ reaches no surface until someone decides how it is classified, rather than relyi
 someone has to remember to update. Subject identity travels as a digest plus an already-redacted
 display suffix, the page as `urlRedacted`/`titleRedacted`. `sameFingerprintSeen` is §2.1's "same
 failure seen before" as a count — what the operator acts on, answerable without projecting other
-runs' subjects onto this panel. An absent diagnostic bundle names the slice that will fill it.
+runs' subjects onto this panel. An absent diagnostic bundle names why there is no action; a present
+id opens E29's exact-id readback, which verifies the attachment index and each stored digest before
+it returns its strict wire or the canonical durable manifest.
 
 The receipt section serves the WHOLE `RunEvidenceReceipt`: §2.2 puts redaction at capture time, every
 value already carries its classification and transform, and a second wire projection could only lose
@@ -689,6 +691,16 @@ system-driver layer fills in. Absent, the bundle carries structured evidence onl
 fabricated screenshot. `FailureRecord.summary` is deliberately not copied into the bundle: it is
 free text that can carry a name or an EID, it already lives in the failure row the bundle joins to,
 and duplicating it into an exportable artifact widens the blast radius for nothing.
+
+**E29 readback.** `GET /api/v1/diagnostic-bundles/:bundleId` accepts only the stored UUID and joins
+the D137 row to its exact attachment index. It recomputes the bundle digest, drains every referenced
+content-addressed artifact, and compares each byte count and digest before serving captured time,
+total attachment bytes, redaction facts, and the strict content list. Missing ids answer
+`TARGET_NOT_FOUND`; a malformed index, digest, or artifact answers the typed
+`DIAGNOSTIC_BUNDLE_CORRUPT` failure instead of serving a plausible record. The companion
+`/manifest` route sends the canonical durable bundle JSON with attachment disposition; the browser
+does not reconstruct an export. It is deliberately a bundle metadata/export surface, **not** the
+unserved generic artifact-byte route in ref frontend-backend-integration §3.6.
 
 ### 2.3 `RunEvidenceReceipt`
 
