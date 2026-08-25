@@ -458,8 +458,8 @@ the person axis, which `docs/findings/activity.md` has held open since 2026-08-1
 | AC116 | footer's `<span> — not yet generated` arm before the payload lands | — | `activity.tsx:1212` | extra | ruled: D180 |
 | AC117 | the `Chip` primitive appears on this surface | `DemoActivityReport.tsx:101` | — | missing | ruled: D180 — it left with the span chips (AC6/AC7) |
 
-**Counts:** 117 rows — exact 57 · divergent 21 · missing 12 · extra 27 · **OPEN 8** (AC10, AC11,
-AC12, AC19, AC24, AC62, AC77, AC90)
+**Counts:** 117 rows — exact 57 · divergent 21 · missing 12 · extra 27 · **OPEN 7** (AC10, AC11,
+AC12, AC19, AC62, AC77, AC90)
 
 ---
 
@@ -654,7 +654,7 @@ The three-panel skeleton is a faithful port: identical grid tracks and breakpoin
 | EX181 | Port-provenance claim: the same header names `laneOf`'s connector rule; no lane concept exists and the `Connector` is emitted between every consecutive pair | `demo-explorer-wire.ts:193-195` | `explorer.tsx:10` | divergent | ruled: operator-trust §5.7 (no lane fact) |
 | EX182 | Node id resolution: demo's node `id` IS the descriptor step label (prose, e.g. `Job summary`) and carries `aliases[]` for renamed steps; rebuild's is a kebab `NodeId` and there is no alias concept | `demo-explorer-wire.ts:99-108` | `explorer.tsx:523-525` | divergent | ruled: operator-trust §5.7 (aliases exist only to lay an older run over the graph) |
 
-**Counts:** exact 54 · divergent 42 · missing 34 · extra 52 · OPEN 31
+**Counts:** exact 55 · divergent 42 · missing 33 · extra 52 · OPEN 30
 
 ## 4. UI catalog — `DemoCatalogView.tsx` + `demo-catalog.ts` ↔ `surfaces/ui-catalog.tsx`
 
@@ -1015,7 +1015,7 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN154 | Read-failure banner "This intake session could not be read" | — | `intake.tsx:1177` | extra | ruled: D173 |
 | IN155 | Run-wide constants rendered read-only | — | `intake.tsx:934` (count only; nothing renders them) | missing | ruled: D173 (D173's own text says "CONSTANTS RENDER READ-ONLY"; the surface renders none) |
 
-**Counts:** exact 4 · divergent 61 · missing 56 · extra 34 · OPEN 66
+**Counts:** exact 10 · divergent 64 · missing 47 · extra 34 · OPEN 57
 
 ## 7. Phone capture — `DemoCapture.tsx` ↔ `phone/**` + `surfaces/capture-start.tsx`
 
@@ -1186,8 +1186,9 @@ archivable run by name in a scrolling `Well`; the rebuild's reviewed plan report
 | VB53 | the plan's blocker table is rendered once, under the reviewed plan, instead of once per workflow | — | `archive.tsx:2395-2408,2452` | extra | ruled: D179 |
 
 **Counts:** 53 rows — exact 3 · divergent 29 · missing 13 · extra 8 · **OPEN 38 marks** across
-**roughly 20 distinct questions** — VB13, VB22, VB23, VB26, VB30, VB31, VB33 and VB45 all follow
-VB1's arm question, and VB4–VB10 are one "what shape is the authoring step" question.
+three numbered decision groups below: MAJOR/MINOR behavior (2), the reviewed plan naming its runs
+(12), and the authoring shape/copy decision (31). VB13, VB22, VB23, VB26, VB30, VB31, VB33 and
+VB45 all follow the first group rather than asking eight more copies of it.
 
 ---
 
@@ -1378,21 +1379,22 @@ This is the highest-fidelity region in the whole audit, and it is high-fidelity 
 |---|--------|-----:|------:|----------:|--------:|------:|-----------:|
 | 1 | Archive | 250 | 106 | 94 | 20 | 30 | 61 |
 | 2 | Activity report | 117 | 57 | 21 | 12 | 27 | 7 |
-| 3 | Workflow Explorer | 182 | 54 | 42 | 34 | 52 | 31 |
+| 3 | Workflow Explorer | 182 | 55 | 42 | 33 | 52 | 30 |
 | 4 | UI catalog | 69 | 0 | 0 | 39 | 30 | 6 |
 | 5 | Settings + storage doctor | 72 | 2 | 8 | 48 | 14 | 15 |
-| 6 | Data intake | 155 | 4 | 61 | 56 | 34 | 66 |
+| 6 | Data intake | 155 | 10 | 64 | 47 | 34 | 57 |
 | 7 | Phone capture | 62 | 1 | 3 | 20 | 38 | 6 |
 | 8 | Version-bump dialog | 53 | 3 | 29 | 13 | 8 | 38 |
 | 9 | Design-system primitives | 159 | 119 | 13 | 12 | 15 | 18 |
-| | **Total** | **1119** | **346** | **271** | **254** | **248** | **248** |
+| | **Total** | **1119** | **353** | **274** | **244** | **248** | **238** |
 
 **How to read the spread.** The two ends are the interesting part. The design system is 75% `exact`
 because it was COPIED rather than re-implemented; the UI catalog is 0% `exact` because the two files
 paired under that name are not the same surface at all. Everything between is a port whose
-divergences are mostly ruled — the 248 OPEN marks collapse to **roughly 58 distinct questions**,
-because a single decision (the bump's arms, the specimen page, the Settings container) drags a
-dozen rows behind it.
+divergences are mostly ruled. The 238 OPEN marks map to **30 unresolved numbered decision groups**
+below: 35 numbered groups total, less four resolved groups (13–15 and 22) and one doc/code
+inconsistency that requires repair rather than an operator ruling (19). A single decision (the
+bump's arms, the specimen page, the Settings container) can still drag a dozen rows behind it.
 
 **Parity blind spots found while doing this.** `tests/parity/references/` has scenes for archive,
 activity, explorer, catalog, intake and capture, and **none for Settings, none for the version-bump
