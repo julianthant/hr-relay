@@ -24,10 +24,10 @@ export type EvidenceSourceWire = RunEvidenceReceiptWire["input"][number]["source
  * already carried: the `system` and `checkpoint` arms hold a `taskId` AND an
  * `observedAt` (`src/domain/trust/evidence.ts:25-26`) and the `input` arm holds
  * an `inputFingerprint` (`:24`). The demo draws both as columns of its reads
- * table and the fingerprint as the input section's own MetaLine; this tree's
- * facts are per-ENTRY rather than per-section, so the same facts ride the entry
- * they belong to instead of a section footer that would have to pick one of
- * them to speak for the rest.
+ * table and the fingerprint as the Input section's own MetaLine. This tree's
+ * facts are per-entry, but their input fingerprint is a run fact repeated on
+ * every input-sourced entry, so the surface draws that one value in one Input
+ * footer rather than on each field row.
  *
  * The fold is TOTAL on purpose. An arm that renders only its discriminant is
  * D253's unhandled-arm shape: it reads as a deliberate omission and is actually
@@ -50,4 +50,36 @@ export function evidenceSourceMeta(source: EvidenceSourceWire): string {
     case "derived":
       return `derived · from ${plural(source.evidence.length, "entry", "entries")}`;
   }
+}
+
+type ReceiptFact = RunEvidenceReceiptWire["input"][number];
+
+/**
+ * The Input section's ONE input-fingerprint footer.
+ *
+ * `inputFingerprint` is a fact about the RUN (`canonicalInputFingerprint`,
+ * `src/core/evidence-receipt.ts`), not about any one field — every fact in
+ * `receipt.input` whose source is `kind: "input"` carries the identical
+ * value. `trust.tsx` used to draw it as `evidenceSourceMeta`'s per-row meta,
+ * which printed the same hash on every row (cut to `shortHash`'s 8 chars,
+ * with no reachable full value — `shortHash`'s own contract in `format.ts`
+ * requires one). Ported from legacy
+ * hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
+ * DemoReceipt.tsx:437's `input hash {…}` `MetaLine`: the value is drawn ONCE,
+ * whole, at the section's foot instead of once per row.
+ *
+ * Returns `undefined` when no fact in the given set carries an `input`
+ * source, so a receipt with an empty or purely-observed Input section prints
+ * no dangling footer.
+ */
+export function inputHashFooter(facts: readonly ReceiptFact[]): string | undefined {
+  let inputFingerprint: string | undefined;
+  for (const fact of facts) {
+    if (fact.source.kind !== "input") continue;
+    if (inputFingerprint !== undefined && inputFingerprint !== fact.source.inputFingerprint) {
+      throw new Error("inputHashFooter: Input section has conflicting input fingerprints");
+    }
+    inputFingerprint = fact.source.inputFingerprint;
+  }
+  return inputFingerprint;
 }
