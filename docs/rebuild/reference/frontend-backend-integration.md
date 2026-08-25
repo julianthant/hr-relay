@@ -682,14 +682,30 @@ Rules:
 - every envelope parses before entering client state; malformed payload is a visible protocol
   failure, never `console.warn` + ignore;
 - cursors are monotonic and delivered as SSE ids; reconnect sends `Last-Event-ID`;
-- duplicate cursors are idempotent, gaps force a snapshot, and an expired cursor gets
-  `reset-required`;
+- duplicate/current cursors are idempotent; when a HISTORICAL requested cursor cannot be replayed
+  from retained history, the server first commits A46's pinned backfill-gap notification and only
+  then serves a fresh snapshot;
 - a descriptor hash or projection-generation change invalidates affected cached projections;
 - queue patches replace one complete surface by `(runId,rowRevision)`; Review patches replace one
   complete record by `(recordId,recordRevision)`; note pages append by stable note id;
 - stream payloads signal authoritative changes. They do not carry local UI state or draft edits;
 - the server bounds subscriber buffers and tells the client to reset rather than silently dropping
   state-bearing messages.
+
+**The history-gap detector is the replay boundary, not a timer.** `DashboardStreamHub.connect`
+holds the requested cursor, replay generation and current cursor at the instant it decides whether
+retained history can satisfy the request. `cursor-expired` means the held cursor predates the replay
+window; `snapshot-boundary` means a later full snapshot made the old patch chain unreplayable. Only
+those two historical-cursor outcomes publish. A disconnect, timeout, malformed cursor, current or
+future cursor, and an ordinary reconnect do not. The awaited durable publish precedes the
+replacement snapshot. Subscriber-buffer overflow remains the separate `reset-required` protocol
+arm: it says this live subscriber must reset, not that retained history already proved an unknown
+interval.
+
+The replacement snapshot establishes a new projection baseline; it does not prove what the operator
+missed. Reconnect and resnapshot therefore never clear the durable gap record. Until Track F
+ratifies independent reconciliation evidence and a separate resolved transition, that record stays
+permanently pinned.
 
 **It is SSE, and it is deliberately not an `EventSource`.** `src/dashboard/client/transport.ts`
 speaks the SSE wire format over `fetch` + `ReadableStream`, because `EventSource` cannot set a

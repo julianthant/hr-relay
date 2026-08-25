@@ -8,8 +8,8 @@
  *     mismatch, open operator gate, unknown write outcome, storage
  *     degradation, stalled lease/outbox, failed backup, and ref operator-trust §6 adds the
  *     repeat-threshold and the verified-done receipt. D79b routes all of them
- *     onto the six `NotificationTrigger` keys; this module owns that routing so
- *     no caller invents a seventh.
+ *     onto seven `NotificationTrigger` keys; A46 adds the closed backfill-gap
+ *     safety arm. This module owns that routing so no caller invents an eighth.
  *  2. **A notification message carries no free text.** Every event arm is ids,
  *     closed codes, and counts; the title/summary are composed from those.
  *     There is deliberately no `message: string` channel, because ref dashboard-surfaces §2.6

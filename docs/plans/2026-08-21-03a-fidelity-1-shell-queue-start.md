@@ -1,6 +1,6 @@
 # 03a demo-fidelity audit — group 1: the SHELL, the QUEUE, the RUN START
 
-**Date:** 2026-08-21 · **Unit:** demo-fidelity AUDIT group 1 of 3 (`feature/docs-fid-1`) · **Status:** ledger only — no doc, no code touched
+**Date:** 2026-08-21 · **Unit:** demo-fidelity AUDIT group 1 of 3 (`feature/docs-fid-1`) · **Status:** maintained closure ledger — A46 closed 2026-08-25
 
 ## What this is
 
@@ -99,9 +99,9 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A43 | Bell — raw square button, `p-snug`, `Bell` md, hover fill, accessible name "Notifications — N unread" | `DemoTopBarSurfaces.tsx:665-676` | `top-bar.tsx:673-684` | exact | — |
 | A44 | Bell badge — corner superscript, NOTHING painted at zero, `failed-solid` when any unread is critical else `waiting-solid`, dark ink on bright fill | `DemoTopBarSurfaces.tsx:677-694` | `top-bar.tsx:685-704` | exact | — |
 | A45 | `Drawer` 480px, title "Notifications", description "N unread · pings are silent · a record survives a failed desktop delivery" | `DemoTopBarSurfaces.tsx:697-702` | `top-bar.tsx:707-712` | exact | — |
-| A46 | **The pinned backfill-gap `Refusal`** — the one record that cannot be filtered, snoozed or dismissed | `DemoTopBarSurfaces.tsx:707-722` | `top-bar.tsx:—` | missing | `unserved: no backfill-gap notification trigger` — ref dashboard-surfaces §2.6's trigger union carries no gap arm, and nothing publishes one |
+| A46 | **The pinned backfill-gap `Refusal`** — the one record that cannot be filtered, snoozed or dismissed | `DemoTopBarSurfaces.tsx:707-722` | `top-bar.tsx:670-697`; filter partition `top-bar-model.ts:61-98`; protocol `dashboard-stream.ts:185-220` | exact | closed `68dea43a`: the strict historical-cursor replay seam publishes before replacement snapshot; the durable fold, wire and kernel make the Refusal permanently pinned and unhideable |
 | A47 | Filter chips **All · Unread · Pings · Inbox · Snoozed**, each with its count, counted over EVERY served record | `DemoTopBarSurfaces.tsx:724-730` | `top-bar.tsx:725-736` | exact | — |
-| A48 | `Pings` / `Inbox` counts read zero | `DemoTopBarSurfaces.tsx:635-636` | `top-bar.tsx:631-632` | divergent | `ruled: prior audit R1` (no row declares a delivery route; their filter answers the EmptyState, which says a zero here never means a record was deleted) |
+| A48 | `Pings` / `Inbox` counts read zero | `DemoTopBarSurfaces.tsx:635-636` | `top-bar-model.ts:77-82` (`Pings` counts A46's pinned arm; ordinary delivery remains unserved, `Inbox` stays zero) | divergent | `ruled: prior audit R1` for ordinary rows; A46 is a closed safety route, not inferred delivery data |
 | A49 | EmptyState "Nothing under this filter" + the never-deleted sentence | `DemoTopBarSurfaces.tsx:733-738` | `top-bar.tsx:739-744` | exact | — |
 | A50 | Standing footer sentence ("Failed · gate · parked · repeating · storage ping …") | `DemoTopBarSurfaces.tsx:762-771` | `top-bar.tsx:764-773` | exact | — |
 | A51 | A refused command is REPORTED in the drawer (`role="alert"`) | — | `top-bar.tsx:717-723` | extra | `ruled: prior audit R1` (the demo has no server to refuse one; swallowing it would let a failed `Mark read` read as a success) — the CAS `conflict` arm is D253 |
@@ -253,13 +253,14 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A177 | Panel grid — `grid-cols-1`, `gap`/`p` at `--ds-shell-inset`, `min-[1180px]:grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)]` | `RebuildDemo.tsx:748` | `dashboard-app.tsx:1221` | exact | — |
 | A178 | Session panel mounted below the shell body, under EVERY view | `RebuildDemo.tsx` shell tail | `dashboard-app.tsx:1351-1359` | exact | — |
 
-**Counts (Region A):** 178 elements — **131 exact · 34 divergent · 12 missing · 8 extra** (an element is
-counted once, under the strongest verdict). Reasons on the 47 non-exact rows: **ruled 34** ·
-**unserved 3** · **OPEN 10**.
+**Counts (Region A):** 178 elements — **132 exact · 34 divergent · 11 missing · 8 extra** (an element is
+counted once, under the strongest verdict). Reasons on the 46 non-exact rows: **ruled 34** ·
+**unserved 2** · **OPEN 10**.
 
 **Since 08-14 (baseline R1/R2/R4/R7 + the R8 keyboard half):**
 
-- **Fixed since the baseline:** the whole R7 `WorkerCardWireSchema` batch landed (R7-1 dead tone arms,
+- **Fixed since the baseline:** A46's strict backfill-gap publisher, durable pinned state and
+  filter/kernel refusal landed in `68dea43a`; the whole R7 `WorkerCardWireSchema` batch landed (R7-1 dead tone arms,
   R7-3's tile grid, R7-4's `Stop`, R7-5/6/7-data, R7-8's crashed arm — D248/D249); the global keydown
   listener exists and every advertised binding resolves (R2 D13/D14, R3 f.8, R5 f.7, R8 f.7 —
   `ebe2bac`); the panel's `ACTIVE│ALL` column, the 2-char code and the frontend category table (R2);
@@ -271,8 +272,8 @@ counted once, under the strongest verdict). Reasons on the 47 non-exact rows: **
   preflight summary and its rerun command (A39/A42).
 - **New here (not in the baseline):** A169/A168 the toast floor and the provider nesting (the demo's
   own documented gotcha, unported); A122 the "1 worker need attention" singular; A126 the app-version
-  format against its own tooltip; A65 the gear opening a dialog rather than the demo's takeover; A46
-  the pinned backfill-gap record; A58 the arrival ping; A16 the Escape-clears affordance; A81/A82 two
+  format against its own tooltip; A65 the gear opening a dialog rather than the demo's takeover; A58
+  the arrival ping; A16 the Escape-clears affordance; A81/A82 two
   unrecorded rail-entry spacing changes; A170 the dropped root classes; A174 the `Import spreadsheet`
   button; A175 the `CommandResultFeed` band.
 
@@ -740,13 +741,13 @@ node — and they are written in that node's own `- [ ] TAG …` notation.
 
 | Region | Elements | exact | divergent | missing | extra | ruled | unserved | **OPEN** |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| A — SHELL | 178 | 131 | 34 | 12 | 8 | 34 | 3 | **10** |
+| A — SHELL | 178 | 132 | 34 | 11 | 8 | 34 | 2 | **10** |
 | B — QUEUE | 196 | 118 | 40 | 27 | 11 | 40 | 25 | **13** |
 | C — RUN START | 115 | 48 | 39 | 19 | 9 | 38 | 15 | **14** |
-| **Total** | **489** | **297** | **113** | **58** | **28** | **112** | **43** | **37** |
+| **Total** | **489** | **298** | **113** | **57** | **28** | **112** | **42** | **37** |
 
-**297 of 489 elements (61%) are byte-exact ports.** Of the 192 that are not, 112 carry a ruling and
-43 name a wire gap; **37 are OPEN and need the operator.** Region A is the closest to the demo (74%
+**298 of 489 elements (61%) are byte-exact ports.** Of the 191 that are not, 112 carry a ruling and
+42 name a wire gap; **37 are OPEN and need the operator.** Region A is the closest to the demo (74%
 exact) and Region C the furthest (42%) — the run modal is where the most decisions were made and the
 most reasons ended up in a tooltip instead of on the page.
 
@@ -855,7 +856,7 @@ a coherent sub-node of their own (a demo-fidelity closure task) hanging off `{#d
 
 ```
 - [ ] BE the preflight/doctor summary and its rerun command — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184) and the whole popover is built behind it, so the stethoscope is absent from the bar entirely (A39, A42) {#dash-defaults}
-- [ ] BE a backfill-gap notification trigger — the one record that says WE DO NOT KNOW what you missed; ref dashboard-surfaces §2.6's trigger union carries no gap arm, so the bell's pinned Refusal block has nothing to draw (A46) {#dash-defaults}
+- [x] BOTH a backfill-gap notification trigger — strict unreplayable-history detection, durable dedupe fold and the permanently pinned Refusal landed in `68dea43a` (A46) {#dash-defaults}
 ```
 
 ### From Region B (the queue) — 10 lines

@@ -304,6 +304,13 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ### Dated lessons
 
+- **2026-08-25 — reconnect is not recovery from an unknown event-stream interval.** Publish a
+  backfill-gap refusal only when the authoritative replay boundary proves a historical cursor cannot
+  be replayed, commit it before the replacement snapshot or optional OS delivery, and key its dedupe
+  identity on the held cursor plus generation rather than the moving stream head. A reconnect or a
+  complete new snapshot establishes a baseline but cannot prove what was missed, so the row stays
+  pinned; filters and notification lifecycle commands must be unable to hide it in both UI and
+  kernel.
 - **2026-08-25 — exact visual geometry and a usable touch target are separate boxes.** A demo-exact
   `Button ghost sm` may keep its 24px painted box while a transparent pseudo-element on the same
   semantic button supplies the 44px hit region. Prove the outer points hit that button and that its
