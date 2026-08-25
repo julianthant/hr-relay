@@ -285,6 +285,12 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-25 — a graph walk cannot inherit an executor-backed transaction proof.** Retiring a
+  proof workflow also retires tests bound to its descriptor; re-home the invariant on the current
+  workflow through the real interpreter, beat-⑦ checkpoint read-back, terminal authority and
+  receipt derivation. A `walkDescriptor` assertion proves binds and derive shape, but it cannot
+  prove that any durable row was read or that a run terminalized from it.
+
 - **2026-08-25 — retiring a proof workflow does not retire the real workflow's vocabulary.** The
   timekeeper annotation staging/read-back schemas and tasks belonged only to D266's dismantled test
   workflow, but `KUALI_RRSS_TIMEKEEPER_FIELD` is also one of the twelve fields staged by real

@@ -25,6 +25,7 @@ import {
 } from "../../../src/core/write-sequencer.js";
 import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { kualiFinalizationIdempotencyKey } from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
+import { SearchPersonOrgOutputSchema } from "../../../src/domain/contracts/ucpath/search-person-org.js";
 import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
 import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
@@ -41,6 +42,7 @@ import {
   type KualiFinalizationFields,
   type KualiFinalizationVariables,
 } from "../../../src/domain/ui/kuali-separation-finalization.js";
+import { UcpathJobSummaryReadSchema } from "../../../src/domain/ui/ucpath-job-summary.js";
 import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import {
@@ -48,6 +50,7 @@ import {
   createKualiFakeWorld,
   type KualiFakeWorld,
 } from "../../../src/stores/kuali/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../src/stores/ucpath/driver/fake.js";
 import type { KualiFinalizationFieldName } from "../../../src/domain/ui/kuali-separation-finalization.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
 import {
@@ -134,6 +137,61 @@ export const FINALIZATION_RUN_INPUT = Object.freeze({
   observedExistingComments: FINALIZATION_VARIABLES.observedExistingComments,
 });
 
+/** The current UCPath fake answers consumed by the descriptor's two read nodes. */
+export const FINALIZATION_NAME_SEARCH_OUTPUT = SearchPersonOrgOutputSchema.parse({
+  results: [{
+    emplId: FINALIZATION_EID,
+    name: FINALIZATION_RUN_INPUT.employeeName,
+    department: "Housing/Dining/Hospitality",
+    jobTitle: FINALIZATION_VARIABLES.payrollTitle,
+    employeeStatus: "active",
+    hdh: true,
+  }],
+  selection: {
+    status: "resolved",
+    selected: {
+      emplId: FINALIZATION_EID,
+      name: FINALIZATION_RUN_INPUT.employeeName,
+      department: "Housing/Dining/Hospitality",
+      jobTitle: FINALIZATION_VARIABLES.payrollTitle,
+      employeeStatus: "active",
+      hdh: true,
+    },
+    candidateEids: [FINALIZATION_EID],
+  },
+});
+
+export const FINALIZATION_JOB_SUMMARY_READ = UcpathJobSummaryReadSchema.parse({
+  state: "read",
+  summary: {
+    pageStateId: "ucpath.person-org.detail-ready",
+    emplId: FINALIZATION_EID,
+    displayedName: FINALIZATION_NAME,
+    jobRows: [{
+      rowIndex: 0,
+      emplRecord: "0",
+      hrStatus: "Active",
+      businessUnit: "SDCMP",
+      effectiveDate: { state: "present", value: "06/01/2026" },
+      positionNumber: { state: "present", value: "40012345" },
+      deptId: { state: "present", value: "000412" },
+      department: { state: "present", value: "Housing/Dining/Hospitality" },
+      jobCode: { state: "present", value: FINALIZATION_VARIABLES.payrollTitleCode },
+      jobTitle: { state: "present", value: FINALIZATION_VARIABLES.payrollTitle },
+      expectedJobEndDate: { state: "absent", reason: "the fixture job has no expected end date" },
+      fte: { state: "present", value: "0.500000" },
+      emplClass: { state: "present", value: "Student" },
+    }],
+    rowCount: 1,
+    renderContext: {
+      entry: "auto-detail",
+      searchResultRows: 0,
+      employmentInstances: "already-complete",
+    },
+    observedAt: FINALIZATION_NOW,
+  },
+});
+
 /** The natural key the commit contract derives — recomputed, never copied. */
 export const FINALIZATION_IDEMPOTENCY_KEY = kualiFinalizationIdempotencyKey({
   actionId: FINALIZATION_ACTION_ID,
@@ -190,7 +248,7 @@ export function finalizationNode(): Extract<RuntimeFlowNode, { kind: "transactio
 }
 
 export function finalizationQueuedRun(
-  options: Readonly<{ dryRun?: boolean }> = {},
+  options: Readonly<{ dryRun?: boolean; startAt?: string }> = {},
 ): Record<string, unknown> {
   return {
     envelope: {
@@ -200,12 +258,13 @@ export function finalizationQueuedRun(
       traceId: "sf-100000-2222",
       descriptorVersion: 1,
       contractFingerprint: separationsKualiFinalizationDescriptor.contractFingerprint,
-      resolvedInstance: { kuali: "prod" },
+      resolvedInstance: { kuali: "prod", ucpath: "prod" },
       configFingerprint: FINALIZATION_CONFIG_FINGERPRINT,
       configSnapshotId: UUID_4,
       shape: "single",
       priority: "bulk",
       dryRun: options.dryRun ?? false,
+      ...(options.startAt === undefined ? {} : { startAt: options.startAt }),
       attempt: 1,
       enqueuedAt: FINALIZATION_NOW,
     },
@@ -232,6 +291,7 @@ export interface FinalizationHarness {
   readonly emitter: ReturnType<typeof recordingEmitter>;
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly sequencer: ProductionWriteSequencer;
+  readonly sessions: WorkerSessionManager;
   readonly bound: <Result>(work: () => Promise<Result>) => Promise<Result>;
   readonly dispose: () => void;
 }
@@ -276,6 +336,10 @@ export function finalizationHarness(options: Readonly<{
   }
   const sessions = sessionFactoryHarness({
     kuali: () => createDeterministicKualiDriver(world, clock),
+    ucpath: () => createDeterministicUcpathPersonOrgDriver(
+      FINALIZATION_NAME_SEARCH_OUTPUT,
+      FINALIZATION_JOB_SUMMARY_READ,
+    ),
   });
   const manager = new WorkerSessionManager({
     workerId: WorkerIdSchema.parse(FINALIZATION_WORKER_ID),
@@ -302,7 +366,7 @@ export function finalizationHarness(options: Readonly<{
     resolveImplFingerprint: () => FINALIZATION_IMPL_FINGERPRINT,
   });
   return {
-    world, database, clock, emitter, ids, sequencer,
+    world, database, clock, emitter, ids, sequencer, sessions: manager,
     bound: <Result>(work: () => Promise<Result>): Promise<Result> =>
       withBoundRunConfigFingerprint(manager, FINALIZATION_CONFIG_FINGERPRINT, work),
     dispose: (): void => {
