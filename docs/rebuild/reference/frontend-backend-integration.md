@@ -2217,8 +2217,8 @@ disk-tail projection's append-time per-run index instead.
 | span lines / `SpanEventWireSchema.parse` calls | 7,662 | **0** |
 | indexed observed/fenced rows examined for this note-only measured run | n/a | 0 |
 
-`npm run perf:dashboard` over the same 1,240-row fixture reported the Logs GET at 35.69 ms median /
-45.56 ms p95 over seven measured iterations. The durations are machine-local; the 7,662 → 0 parse
+`npm run perf:dashboard` over the same 1,240-row fixture reported the Logs GET at 43.58 ms median /
+45.09 ms p95 over seven measured iterations. The durations are machine-local; the 7,662 → 0 parse
 count is the closure evidence. Late appends are not admitted by widening a date margin: the existing
 cross-process projector sees the append partition once, retains its source file/line, and indexes it
 under the event run. Continuation pages use an immutable `lc:<snapshot>:<offset>` cursor, so a later
