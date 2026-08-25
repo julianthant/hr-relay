@@ -658,6 +658,14 @@ export class RunQueueProjection {
     if (event.t === "transaction.previewed") return { runIds: [], workerChanged: false };
 
     /**
+     * The durable-fence beat is transaction detail, not a task settlement.
+     * The observed-log FE row owns rendering it; until then this projection
+     * ignores it explicitly so ingesting a truthful transaction stream cannot
+     * degrade and rebuild forever.
+     */
+    if (event.t === "transaction.fenced") return { runIds: [], workerChanged: false };
+
+    /**
      * D270 — `data.observed`. The queue row's vocabulary is task spans and
      * terminal outcomes; a recorded page observation is neither, and folding it
      * into a span it is not would be D123's collapse by another route. It is

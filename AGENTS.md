@@ -252,6 +252,19 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   (D104).
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
+- **Lesson 2026-08-25 — fenced-write instrumentation:** a commit task may call `ctx.recordData`
+  before `ctx.driver.commit`. Capture and clock that batch at the call, then deliver commit-role
+  span events only after the callback itself settles; winning its deadline race merely requests
+  cancellation. The ordinary `withDriver` abort race is not sufficient: the write sequencer must
+  cross `withTransactionDriver`'s one-way `retainAfterFence()` boundary immediately after the durable
+  fence. Until actual settlement, parent abort and task deadline may request cancellation but must
+  not emit, park, return, reset, or close the transaction session. An
+  indefinitely non-cooperative callback remains process-owned with an `attempting` intent so
+  process-loss recovery, not detached I/O, owns the next action. If task and terminal-span delivery
+  both fail, preserve them primary-first in an `AggregateError` and carry it through any parked-write
+  cause. Post-click verification starts after authority is fenced, so task lookup, input binding and
+  `span.started` emission belong inside the `PostFenceWriteFailure` boundary too; none may escape
+  without parking. See ref write-safety §3 and doc 03a §Observed logs.
 
 ## After changes
 

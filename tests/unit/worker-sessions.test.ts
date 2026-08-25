@@ -288,6 +288,76 @@ describe("worker browser sessions", () => {
     assert.deepEqual(sessions.activeSystems(), []);
   });
 
+  it("retains a fenced transaction callback through parent abort and poison-closes after settlement", async () => {
+    const harness = sessionFactory();
+    const sessions = manager(harness);
+    const controller = new AbortController();
+    const parentFailure = new Error("parent cancelled retained transaction lease");
+    let releaseOperation = (): void => undefined;
+    const operationMayFinish = new Promise<void>((resolve) => {
+      releaseOperation = resolve;
+    });
+    let operationStarted = (): void => undefined;
+    const operationDidStart = new Promise<void>((resolve) => {
+      operationStarted = resolve;
+    });
+    let leaseSettled = false;
+    const lease = sessions.withTransactionDriver(
+      { ...UCPATH_REUSE, access: "transaction" },
+      "prod",
+      controller.signal,
+      async (_driver, ownership) => {
+        ownership.retainAfterFence();
+        operationStarted();
+        await operationMayFinish;
+        return "result";
+      },
+    ).then(
+      (value) => ({ state: "fulfilled" as const, value }),
+      (error: unknown) => ({ state: "rejected" as const, error }),
+    ).finally(() => {
+      leaseSettled = true;
+    });
+
+    await operationDidStart;
+    controller.abort(parentFailure);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(leaseSettled, false);
+    assert.equal(harness.closes(), 0);
+    assert.deepEqual(sessions.activeSystems(), ["ucpath"]);
+
+    releaseOperation();
+    const outcome = await lease;
+    assert.deepEqual(outcome, { state: "rejected", error: parentFailure });
+    assert.equal(harness.closes(), 1);
+    assert.deepEqual(sessions.activeSystems(), []);
+  });
+
+  it("keeps ordinary abort-race semantics before a transaction lease retains its fence", async () => {
+    const harness = sessionFactory();
+    const sessions = manager(harness);
+    const controller = new AbortController();
+    let operationStarted = (): void => undefined;
+    const operationDidStart = new Promise<void>((resolve) => {
+      operationStarted = resolve;
+    });
+    const lease = sessions.withTransactionDriver(
+      { ...UCPATH_REUSE, access: "transaction" },
+      "prod",
+      controller.signal,
+      async () => {
+        operationStarted();
+        return await new Promise<string>(() => undefined);
+      },
+    );
+
+    await operationDidStart;
+    controller.abort(new Error("parent cancelled before the durable fence"));
+    await assert.rejects(lease, /parent cancelled before the durable fence/u);
+    assert.equal(harness.closes(), 1);
+    assert.deepEqual(sessions.activeSystems(), []);
+  });
+
   it("retains and poisons a resource when failed login cleanup cannot prove closure", async () => {
     const harness = sessionFactory({ loginFailure: true, closeFailureAt: 1 });
     const sessions = manager(harness);

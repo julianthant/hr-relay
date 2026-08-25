@@ -390,7 +390,7 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(crossVerify.map((event) => event.state), ["cancelled", "done"]);
   });
 
-  it("stays live over a data.observed line and rebuilds identically from it (D270)", () => {
+  it("stays live over observed-data and transaction-fence beats and rebuilds identically", () => {
     // The observed-log arm is IGNORED BY NAME, not folded into a span it is
     // not. What must be true either way is that a stream carrying it cannot
     // degrade the projection: a degraded ingest schedules the guarded rebuild,
@@ -419,6 +419,14 @@ describe("THE run/queue projection (D81)", () => {
           { key: "selection.selected.emplId", state: "transformed", classification: "direct-identifier", transform: "last4", value: "6712" },
         ],
       }],
+    });
+    w.writer.emit({
+      ...base,
+      t: "transaction.fenced",
+      ts: ts(),
+      spanPath: `${traceOf(1)}/searching/commit`,
+      node: "searching",
+      taskId: "ucpath/create-termination",
     });
     w.writer.emit({ ...base, t: "span.ended", kind: "task", ts: ts(), outcome: "done" });
     assert.equal(w.projection.health().state, "live");

@@ -64,6 +64,7 @@ import {
   findGateDecision,
   gateDecisionFor,
 } from "../../../src/domain/trust/gate-decisions.js";
+import { WRITE_FIXTURE_TASK_IDS } from "../fixtures/write-sequencer-fixtures.js";
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
@@ -598,16 +599,19 @@ describe("evidence receipt — declared classification coverage", () => {
      * is what this guards, and D270 is what widened it: the observed-log
      * emission redacts by declaration for EVERY task the executor runs, and the
      * executor runs whatever a composed descriptor names — including the
-     * executor's own fixture descriptors, which must borrow a manifest-known id
-     * because `resolveTaskImplFingerprint` refuses any other. A registered task
-     * that no descriptor composes YET is exactly the case the narrower rule
-     * refused and the wider one still catches when the task is deleted.
+     * executor's own fixture descriptors. The ordinary executor fixture borrows
+     * a manifest-known id because it resolves the production fingerprint; the
+     * transaction fixture injects a fixed fingerprint and exports the exact ids
+     * of its sealed task contracts. A registered task that no descriptor
+     * composes YET is exactly the case the narrower rule refused and the wider
+     * one still catches when the task is deleted.
      */
     const descriptorTaskIds = new Set(WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
       workflowProjections(descriptor).contracts.map((contract) => String(contract.id))));
     const taskIds = new Set([
       ...descriptorTaskIds,
       ...BUILD_MANIFEST.tasks.map(({ id }) => String(id)),
+      ...WRITE_FIXTURE_TASK_IDS.map(String),
     ]);
     for (const entry of EVIDENCE_FIELD_CLASSIFICATIONS) {
       if (entry.scope.kind === "task-output") {

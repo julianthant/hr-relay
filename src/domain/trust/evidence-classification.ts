@@ -171,16 +171,24 @@ const IDENTITY_APPROVAL_GATE = gateResult("separations-identity-check", "identit
 const UCPATH_TERMINATION_INPUT = workflowInput("separations-ucpath-termination");
 const UCPATH_TERMINATION_RESULT = workflowResult("separations-ucpath-termination");
 const UCPATH_TERMINATION_GATE = gateResult("separations-ucpath-termination", "identity-approval");
+const UCPATH_MATCH_TERMINATION = taskOutput("ucpath/match-existing-termination");
+const UCPATH_MATCH_SWEEP = taskOutput("ucpath/match-pending-terminations");
 const UCPATH_STAGE_TERMINATION = taskOutput("ucpath/stage-termination");
 const UCPATH_CREATE_TERMINATION = taskOutput("ucpath/create-termination");
 const UCPATH_STAGE_SWEEP = taskOutput("ucpath/stage-pending-termination-sweep");
 const UCPATH_DELETE_PENDING = taskOutput("ucpath/delete-pending-terminations");
+const UCPATH_VERIFY_TERMINATION = taskOutput("ucpath/verify-termination");
+const UCPATH_VERIFY_SWEEP = taskOutput("ucpath/verify-pending-terminations-cleared");
 const KUALI_FINALIZATION_INPUT = workflowInput("separations-kuali-finalization");
 const KUALI_FINALIZATION_RESULT = workflowResult("separations-kuali-finalization");
 const KUALI_FINALIZATION_GATE = gateResult("separations-kuali-finalization", "identity-approval");
 const DEPARTMENT_OPTION = taskOutput("workflow:separations/match-department-option");
 const KUALI_STAGE_FINALIZATION = taskOutput("kuali/stage-separation-finalization");
 const KUALI_SAVE_FINALIZATION = taskOutput("kuali/save-separation-finalization");
+const KUALI_MATCH_TIMEKEEPER = taskOutput("kuali/read-timekeeper-annotation");
+const KUALI_VERIFY_TIMEKEEPER = taskOutput("kuali/verify-timekeeper-annotation");
+const KUALI_MATCH_FINALIZATION = taskOutput("kuali/match-separation-finalization");
+const KUALI_VERIFY_FINALIZATION = taskOutput("kuali/verify-separation-finalization");
 const SEPARATIONS_INPUT = workflowInput("separations");
 const SEPARATIONS_RESULT = workflowResult("separations");
 const SEPARATIONS_GATE = gateResult("separations", "identity-approval");
@@ -609,6 +617,13 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "transactionDate", "effectiveDate", "resolvedReasonOption", "lastDateWorked",
     "lastDateWorkedOverridden", "transactionIdDisplay", "observedAt"),
 
+  /* Transaction-lane beat ① probes. These points are the probe task's own
+     compact page report, not a copy of the eventual completion proof. */
+  ...person(UCPATH_MATCH_TERMINATION, "emplId"),
+  ...open(UCPATH_MATCH_TERMINATION, "state", "effectiveDate"),
+  ...person(UCPATH_MATCH_SWEEP, "emplId"),
+  ...open(UCPATH_MATCH_SWEEP, "state"),
+
   /* ucpath/create-termination — the commit's own post-click read. */
   ...terminationProofLeaves(UCPATH_CREATE_TERMINATION, "receipt"),
 
@@ -619,6 +634,13 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   /* ucpath/delete-pending-terminations — the sweep commit's own post-click read. */
   ...sweepProofLeaves(UCPATH_DELETE_PENDING, "cleared"),
+
+  /* Transaction-lane beat ⑥ read-backs. Separate task scopes are deliberate:
+     a verifier is the landing authority and cannot borrow its probe's table. */
+  ...person(UCPATH_VERIFY_TERMINATION, "emplId"),
+  ...open(UCPATH_VERIFY_TERMINATION, "state", "effectiveDate"),
+  ...person(UCPATH_VERIFY_SWEEP, "emplId"),
+  ...open(UCPATH_VERIFY_SWEEP, "state"),
 
   /* separations-ucpath-termination terminal result */
   ...open(UCPATH_TERMINATION_RESULT, "documentNumber", "pendingSweep.disposition",
@@ -658,6 +680,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "observedDepartmentOptions", "observedAt"),
   ...finalizationFieldLeaves(KUALI_STAGE_FINALIZATION, "previousFields"),
   ...finalizationFieldLeaves(KUALI_STAGE_FINALIZATION, "stagedFields"),
+
+  /* Kuali's two beat-① probes and two beat-⑥ reload read-backs. */
+  ...open(KUALI_MATCH_TIMEKEEPER, "state", "documentNumber"),
+  ...open(KUALI_VERIFY_TIMEKEEPER, "state", "documentNumber"),
+  ...open(KUALI_MATCH_FINALIZATION, "state", "documentNumber", "transactionNumber"),
+  ...open(KUALI_VERIFY_FINALIZATION, "state", "documentNumber", "transactionNumber"),
 
   /* kuali/save-separation-finalization — the commit's CLAIM about what it
      targeted. Beat ⑥ replaces it with the reload read-back's proof. */
@@ -751,6 +779,22 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
    */
   ...person(OCR_FORM_PAGE, "subject", "eid"),
   ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes"),
+
+  /* The write-sequencer's sealed transaction fixture exercises every role
+     through the same declaration refusal as production; it has no bypass. */
+  ...person(taskOutput("ucpath/read-write-fixture-probe"), "eid"),
+  ...open(taskOutput("ucpath/read-write-fixture-probe"), "state"),
+  {
+    scope: taskOutput("ucpath/read-write-fixture-probe"),
+    path: "secretCanary",
+    classification: "secret",
+    transform: "drop",
+  },
+  ...open(taskOutput("ucpath/fill-write-fixture"), "staged", "stagedPageState"),
+  ...open(taskOutput("ucpath/submit-write-fixture"), "preClickPageState", "transactionId"),
+  ...open(taskOutput("ucpath/save-write-fixture"), "preClickPageState", "transactionId"),
+  ...person(taskOutput("ucpath/read-write-fixture-verify"), "eid"),
+  ...open(taskOutput("ucpath/read-write-fixture-verify"), "state"),
 ].map((entry) => Object.freeze(EvidenceFieldClassificationSchema.parse(entry))));
 
 const BY_SCOPE_AND_PATH = new Map<string, EvidenceFieldClassification>();

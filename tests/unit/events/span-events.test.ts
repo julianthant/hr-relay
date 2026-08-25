@@ -146,6 +146,11 @@ describe("span wire leaf parity with the domain vocabulary", () => {
         t: "transaction.previewed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
         node: "clear-pending", subject, externalCommit: "none",
       })),
+      {
+        t: "transaction.fenced", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
+        spanPath: `${TRACE}/clear-pending/commit`, parentSpanPath: TRACE,
+        node: "clear-pending", taskId: "ucpath/delete-pending-terminations",
+      },
       /*
        * D270 — the observed-log arm, walked over every DIRECTION and every
        * legal `(classification, transform)` pair, plus a point whose value is a
@@ -173,6 +178,29 @@ describe("span wire leaf parity with the domain vocabulary", () => {
       ExecutorSpanEventSchema.parse(event);
       SpanEventWireSchema.parse({ ...event, pid: BASE.pid });
     }
+  });
+});
+
+describe("the transaction fence beat", () => {
+  const FENCED = {
+    t: "transaction.fenced",
+    ts: BASE.ts,
+    workflow: BASE.workflow,
+    ...RUN_IDENTITY,
+    spanPath: `${TRACE}/clear-pending/commit`,
+    parentSpanPath: TRACE,
+    node: "clear-pending",
+    taskId: "ucpath/delete-pending-terminations",
+  } as const;
+
+  it("round-trips through both strict parity twins", () => {
+    ExecutorSpanEventSchema.parse(FENCED);
+    SpanEventWireSchema.parse({ ...FENCED, pid: BASE.pid });
+  });
+
+  it("refuses a missing task role and a fabricated page-data field", () => {
+    assert.throws(() => ExecutorSpanEventSchema.parse({ ...FENCED, taskId: undefined }));
+    assert.throws(() => SpanEventWireSchema.parse({ ...FENCED, pid: BASE.pid, points: [] }));
   });
 });
 

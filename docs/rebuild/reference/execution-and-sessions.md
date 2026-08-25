@@ -332,9 +332,18 @@ worker. (`src/core/provider-admission.ts`; `provider-admission.test.ts`, `provid
 
 **A browser session is a callback LEASE, not a handle a caller holds.**
 `WorkerSessionManager.withDriver(need, instance, signal, operation)` is the whole surface
-(`src/core/worker-sessions.ts:313`): it serializes use per system inside the worker, acquires or
+(`src/core/worker-sessions.ts`, `WorkerSessionManager.withDriver`): it serializes use per system inside the worker, acquires or
 reuses the resource, runs the callback with the concrete driver, and decides what happens next from
 how the callback ENDED. There is no `release("clean")` call for a caller to forget.
+
+Ref write-safety has one explicit specialization rather than weakening that general contract:
+`withTransactionDriver` gives only the write sequencer a one-way `retainAfterFence()` transition.
+Before the sequencer calls it, parent abort races acquisition/use and poison-closes exactly like
+`withDriver`. After a durable fence, parent abort is recorded and forwarded to the task, but the
+manager cannot return, reset, or close while the callback remains unsettled. Once it settles, the
+original cancellation/failure is raised and the ordinary poison-close runs exactly once. A callback
+that never settles therefore leaves its session and `attempting` intent process-owned until process
+loss makes ref write-safety §4 recovery the owner; it never becomes detached live I/O.
 
 - **Driver use is exclusive while held**, serialized per `(worker, system)`.
 - **A callback that RETURNS resets.** The resource re-navigates to the system's entry route and
@@ -348,6 +357,9 @@ how the callback ENDED. There is no `release("clean")` call for a caller to forg
   subject mismatch. If the poison-close itself cannot be proven, both failures are raised together
   in one `AggregateError` and the resource is RETAINED as poisoned — the next lease for that system
   refuses by name rather than inheriting an uncertain page.
+- **A fenced transaction callback cannot be abort-detached.** Its parent cancellation is retained
+  until actual callback settlement; deadline-first plus parent-abort preserves the callback failure
+  first and the later cancellation second, while parent-first cancels the still-pending task bound.
 - **Reuse requires the COMPLETE identity** — this manager (the worker), the system, the resolved
   instance and the run's bound `configFingerprint` (D116) — plus agreement on the two launch
   properties, downloads and exclusivity. Any drift closes the old resource with an accepted proof

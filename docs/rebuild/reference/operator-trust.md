@@ -1073,13 +1073,20 @@ authority and at the domain schema both.
 
 <!-- roadmap: observed-logs -->
 
-**Ratified 2026-08-21.** §2.3.1's table stopped being a receipt-only contract. Every point a task
-records through `ctx.recordData` is now emitted on its span at record time as a `data.observed`
-event (`03a` §Observed logs), and each leaf of that point is pushed through
+**Ratified 2026-08-21; transaction lane completed 2026-08-25.** §2.3.1's table stopped being a
+receipt-only contract. Every point a task records through `ctx.recordData` is captured and stamped
+at record time for a `data.observed` event (`03a` §Observed logs), and each leaf is pushed through
 `redactEvidenceLeaf` — the SAME function, over the SAME table, that the receipt uses. There is
 deliberately no second redaction implementation: a log that leaked a value the receipt would have
 dropped is the same defect from a different surface, and the two channels are then provably
 consistent about one leaf rather than consistent by review.
+
+Probe, prepare and verify redact and emit synchronously. Commit is the only delivery exception:
+its points and one Clock instant are frozen in `ctx.recordData`, then redaction and emission wait
+until the callback settles. A commit task may legally record a page fact before invoking its
+driver, so synchronous delivery there would put the fallible span writer between a durable fence
+and the external click. The flush emits the kernel's strict `transaction.fenced` arm first, then
+the commit batches in call order; an undeclared commit leaf parks rather than preventing the click.
 
 Three consequences follow, and each is enforced rather than described.
 
@@ -1095,24 +1102,33 @@ refusal is never exercised by a composed run, and the executor's fixtures are th
 the unit lane has. The two person identifiers there carry the same `last4` as everywhere else, so a
 fixture cannot become the surface that proves a raw identifier reaches a stream.
 
+The write-sequencer corpus injects its fixed implementation fingerprint instead. Its five sealed
+task contracts export their exact ids as `WRITE_FIXTURE_TASK_IDS`; the orphan-classification guard
+adds only that derived set to the manifest/runtime baseline. Its probe/prepare/commit/verify leaves
+remain ordinary declarations and pass through the production refusal — the set is accounting for
+an executable test runtime, not a redaction bypass.
+
 **The orphan rule's baseline widened to the build manifest.** `evidence-receipt.test.ts` used to
 refuse a `task-output` scope naming a task no registered descriptor composes. That is the wrong
 baseline once the emission exists: the executor runs whatever a composed descriptor names, so a
 registered task that no descriptor composes YET is not an orphan — a DELETED one is, and the wider
 rule still catches it. D184's rot check is intact.
 
+**Transaction roles do not borrow declarations.** The four idempotency probes and four post-fence
+verifiers each have their own task scope in §2.3.1's table. UCPath EIDs use `last4`; states, dates,
+document numbers and transaction numbers are transaction facts and use `allow`. A verifier is the
+landing authority and cannot inherit its probe's declaration merely because their shapes happen to
+match.
+
 ##### What is recorded and still NOT classified
 
 Every one of the eighteen task nodes across the five registered descriptors was already declared, so
-the emission added no production declaration. Thirteen `recordData` call sites remain unclassified:
-four idempotency probes, four post-fence verifies, four descriptor-less data-service tasks, and one
-descriptor-less OCR task. They are listed rather than guessed at, because each belongs to a channel
-this ratification did not build:
+the original emission added no production declaration. The transaction lane now declares its eight
+roles. Five descriptor-less `recordData` call sites remain unclassified: four data-service tasks and
+one OCR task. They are listed rather than guessed at because no run can reach them yet:
 
 | Task | Why it is not declared here |
 |---|---|
-| `ucpath/match-existing-termination` · `ucpath/match-pending-terminations` · `kuali/read-timekeeper-annotation` · `kuali/match-separation-finalization` | ref write-safety §5 IDEMPOTENCY PROBES. They are invoked through `invokeBoundedTask` (`src/core/write-sequencer.ts`), which collects points into an array and redacts nothing — the transaction lane's own emission is `03a` §Observed logs' second BE row. |
-| `ucpath/verify-termination` · `ucpath/verify-pending-terminations-cleared` · `kuali/verify-timekeeper-annotation` · `kuali/verify-separation-finalization` | the same lane's post-fence VERIFY roles, same reason. |
 | `extraction/extract-spreadsheet` · `extraction/extract-pdf-pages` · `normalization/read-contact-advice` · `roster/match-spreadsheet` | wired into no descriptor, so no run can reach them; declaring a shape nothing has executed would be a guess. |
 | `ocr/extract-form-page` — its OWN output leaves | same, plus a real finding: the task records `pageFingerprint` and `hasRecord`, and `AdmittedExtractionSchema` carries neither, so `finalizeRead` would refuse it (`task provenance path … does not exist in the output`) the first time a descriptor composed it. Declaring `AdmittedExtraction`'s leaves would hide that; it is recorded here instead, unowned, for whoever wires the OCR route. |
 

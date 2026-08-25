@@ -58,7 +58,11 @@ import type { ActorId, Fingerprint, TaskId } from "../domain/ids.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { sha256Hex } from "../domain/sha256.js";
-import type { DataPoint } from "../domain/task-provenance.js";
+import {
+  DataPointSchema,
+  RecordedDataPointSchema,
+} from "../domain/task-provenance.js";
+import type { DataPoint, RecordedDataPoint } from "../domain/task-provenance.js";
 import { assertMintedMutationCapability, mintMutationCapability } from "../base/mutation-capability.js";
 import {
   BUILD_MANIFEST,
@@ -98,6 +102,7 @@ import type { SessionNeed } from "../domain/session.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import type { SpanEmitter } from "./span-emitter.js";
 import { ExecutorSpanEventSchema } from "./span-emitter.js";
+import { redactObservedDataPoints } from "./observed-data.js";
 import { WriteParkedError } from "./run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "./run-executor.js";
 
@@ -193,6 +198,15 @@ export interface TransactionSessionHost {
     instance: string | undefined,
     signal: AbortSignal,
     operation: (driver: BrowserDriver) => Promise<Result>,
+  ): Promise<Result>;
+  withTransactionDriver<Result>(
+    need: SessionNeed,
+    instance: string | undefined,
+    signal: AbortSignal,
+    operation: (
+      driver: BrowserDriver,
+      ownership: Readonly<{ retainAfterFence(): void }>,
+    ) => Promise<Result>,
   ): Promise<Result>;
   closeAll(reason: "parked"): Promise<void>;
 }
@@ -357,8 +371,28 @@ export interface BoundedTaskDeps {
   readonly log: TaskLogger;
 }
 
-/** Every task invocation races a mandatory injected monotonic deadline (ref execution-and-sessions §5.5). */
-export async function invokeBoundedTask(
+export interface BoundedTaskRecordBatch {
+  readonly recordedAt: string;
+  readonly points: readonly DataPoint[];
+}
+
+interface BoundedTaskResult {
+  readonly raw: unknown;
+  readonly recorded: readonly DataPoint[];
+}
+
+type BoundedTaskSettlement =
+  | Readonly<{ state: "fulfilled"; result: BoundedTaskResult }>
+  | Readonly<{ state: "rejected"; error: unknown }>;
+
+interface BoundedTaskInvocation {
+  /** The ordinary deadline/cancellation race used by non-fenced task lanes. */
+  readonly bounded: Promise<BoundedTaskResult>;
+  /** The callback itself, including a non-cooperative tail that ignores abort. */
+  readonly settlement: Promise<BoundedTaskSettlement>;
+}
+
+function beginBoundedTask(
   deps: BoundedTaskDeps,
   taskId: TaskId,
   signal: AbortSignal,
@@ -366,12 +400,21 @@ export async function invokeBoundedTask(
     innerSignal: AbortSignal,
     recordData: (point: DataPoint | readonly DataPoint[]) => void,
   ) => Promise<unknown>,
-): Promise<{ raw: unknown; recorded: readonly DataPoint[] }> {
+  onRecord?: (batch: BoundedTaskRecordBatch) => void,
+): BoundedTaskInvocation {
   z.number().int().positive().parse(deps.taskDeadlineMs);
   const recorded: DataPoint[] = [];
-  const recordData = (point: DataPoint | readonly DataPoint[]): void => {
-    if (Array.isArray(point)) recorded.push(...(point as readonly DataPoint[]));
-    else recorded.push(point as DataPoint);
+  const recordData = (pointInput: DataPoint | readonly DataPoint[]): void => {
+    const batch = Array.isArray(pointInput) ? pointInput : [pointInput];
+    if (batch.length === 0) throw new Error(`task ${taskId} recordData batch cannot be empty`);
+    const points = Object.freeze(batch.map((point) => DataPointSchema.parse(point)));
+    recorded.push(...points);
+    if (onRecord !== undefined) {
+      // ONE wall-clock read per call. The sink reuses this instant for both
+      // `ts` and `observedAt`; it never asks the clock again.
+      const recordedAt = IsoInstantSchema.parse(deps.clock.now().toISOString());
+      onRecord(Object.freeze({ recordedAt, points }));
+    }
   };
   const controller = new AbortController();
   const forwardAbort = (): void => {
@@ -387,17 +430,45 @@ export async function invokeBoundedTask(
       ));
     },
   );
-  try {
-    const raw = await raceAbortable(
-      Promise.resolve().then(() => run(controller.signal, recordData)),
-      controller.signal,
-      taskId,
-    );
-    return { raw, recorded };
-  } finally {
-    deadline.cancel();
-    signal.removeEventListener("abort", forwardAbort);
-  }
+  const operation = Promise.resolve().then(() => run(controller.signal, recordData));
+  const settlement: Promise<BoundedTaskSettlement> = operation.then(
+    (raw) => ({ state: "fulfilled", result: { raw, recorded } }),
+    (error: unknown) => ({ state: "rejected", error }),
+  );
+  const bounded = (async (): Promise<BoundedTaskResult> => {
+    try {
+      const raw = await raceAbortable(
+        operation,
+        controller.signal,
+        taskId,
+      );
+      return { raw, recorded };
+    } finally {
+      deadline.cancel();
+      signal.removeEventListener("abort", forwardAbort);
+    }
+  })();
+  return { bounded, settlement };
+}
+
+/** Every task invocation races a mandatory injected monotonic deadline (ref execution-and-sessions §5.5). */
+export async function invokeBoundedTask(
+  deps: BoundedTaskDeps,
+  taskId: TaskId,
+  signal: AbortSignal,
+  run: (
+    innerSignal: AbortSignal,
+    recordData: (point: DataPoint | readonly DataPoint[]) => void,
+  ) => Promise<unknown>,
+  onRecord?: (batch: BoundedTaskRecordBatch) => void,
+): Promise<BoundedTaskResult> {
+  return await beginBoundedTask(
+    deps,
+    taskId,
+    signal,
+    run,
+    onRecord,
+  ).bounded;
 }
 
 function taskCtx(
@@ -439,6 +510,7 @@ export async function executeIdempotencyProbe(
     commitInput: unknown;
     instance: string;
     signal: AbortSignal;
+    onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
   }>,
 ): Promise<z.output<ReturnType<typeof probeVerdictSchema>>> {
   const { commitContract } = input;
@@ -470,7 +542,7 @@ export async function executeIdempotencyProbe(
         input: probeInput,
         ctx: { ...taskCtx(probeRef.taskId, innerSignal, recordData, deps.log), driver },
       });
-    });
+    }, input.onRecord === undefined ? undefined : (batch) => input.onRecord?.(probeRef.taskId, batch));
     return output;
   });
   try {
@@ -773,17 +845,66 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     return task;
   }
 
-  const invokeBounded = (
-    taskId: TaskId,
-    signal: AbortSignal,
-    run: (innerSignal: AbortSignal, recordData: (point: DataPoint | readonly DataPoint[]) => void) => Promise<unknown>,
-  ) => invokeBoundedTask(deps, taskId, signal, run);
+  type TransactionTaskRole = "probe" | "prepare" | "commit" | "verify";
 
   const taskCtxCommon = (
     taskId: TaskId,
     signal: AbortSignal,
     recordData: (point: DataPoint | readonly DataPoint[]) => void,
   ) => taskCtx(taskId, signal, recordData, deps.log);
+
+  function transactionTaskSpanPath(context: WriteSequencerContext, role: TransactionTaskRole): string {
+    return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}`;
+  }
+
+  function emitObservedBatch(
+    context: WriteSequencerContext,
+    role: TransactionTaskRole,
+    taskId: TaskId,
+    batch: BoundedTaskRecordBatch,
+  ): void {
+    const envelope = context.run.envelope;
+    const trace = TraceIdSchema.parse(envelope.traceId);
+    const execution = {
+      runId: envelope.runId,
+      traceId: trace,
+      attempt: envelope.attempt,
+      workflowId: context.descriptor.id,
+      nodeId: String(context.node.id),
+      taskId,
+    } as const;
+    const points: readonly RecordedDataPoint[] = Object.freeze(batch.points.map((point) =>
+      RecordedDataPointSchema.parse({ ...point, execution, recordedAt: batch.recordedAt })));
+    const redacted = redactObservedDataPoints(taskId, points);
+    deps.emitter.emit(ExecutorSpanEventSchema.parse({
+      t: "data.observed",
+      ts: batch.recordedAt,
+      workflow: context.descriptor.id,
+      runId: envelope.runId,
+      attempt: envelope.attempt,
+      traceId: trace,
+      spanPath: transactionTaskSpanPath(context, role),
+      parentSpanPath: trace,
+      nodeId: String(context.node.id),
+      taskId,
+      observedAt: batch.recordedAt,
+      points: redacted,
+    }));
+  }
+
+  const invokeTransactionTask = (
+    context: WriteSequencerContext,
+    role: TransactionTaskRole,
+    taskId: TaskId,
+    signal: AbortSignal,
+    run: (innerSignal: AbortSignal, recordData: (point: DataPoint | readonly DataPoint[]) => void) => Promise<unknown>,
+  ) => invokeBoundedTask(
+    deps,
+    taskId,
+    signal,
+    run,
+    (batch) => emitObservedBatch(context, role, taskId, batch),
+  );
 
   function resolvedInstanceFor(context: WriteSequencerContext, system: string): string {
     const instance = context.run.envelope.resolvedInstance[BrowserSystemIdSchema.parse(system)];
@@ -909,13 +1030,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
 
   function emitTaskSpan(
     context: WriteSequencerContext,
-    suffix: string,
+    role: TransactionTaskRole,
     event: "span.started" | "span.ended",
     outcome?: "done" | "failed",
   ): void {
     const envelope = context.run.envelope;
     const trace = TraceIdSchema.parse(envelope.traceId);
-    const spanPath = `${trace}/${String(context.node.id)}/${suffix}`;
+    const spanPath = transactionTaskSpanPath(context, role);
     deps.emitter.emit(ExecutorSpanEventSchema.parse({
       t: event,
       kind: "task",
@@ -926,8 +1047,42 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       traceId: trace,
       spanPath,
       parentSpanPath: trace,
-      ...(event === "span.started" ? { name: suffix } : { outcome: outcome ?? "done" }),
+      ...(event === "span.started" ? { name: role } : { outcome: outcome ?? "done" }),
     }));
+  }
+
+  function failureMessage(error: unknown): string {
+    return error instanceof Error ? error.message : "non-Error thrown";
+  }
+
+  function aggregateSecondaryFailure(
+    primary: unknown,
+    secondary: unknown,
+    label: string,
+  ): AggregateError {
+    return new AggregateError(
+      [primary, secondary],
+      `${label}: ${failureMessage(primary)}; secondary failure: ${failureMessage(secondary)}`,
+      { cause: primary },
+    );
+  }
+
+  /** Emit the failed terminal beat without ever replacing the task's primary failure. */
+  function preserveTaskFailure(
+    context: WriteSequencerContext,
+    role: TransactionTaskRole,
+    taskFailure: unknown,
+  ): unknown {
+    try {
+      emitTaskSpan(context, role, "span.ended", "failed");
+      return taskFailure;
+    } catch (spanFailure) {
+      return aggregateSecondaryFailure(
+        taskFailure,
+        spanFailure,
+        `${role} task and failed-span emission both failed`,
+      );
+    }
   }
 
   /** Beat ① live probe on a separate read lease. */
@@ -937,12 +1092,20 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     commitInput: unknown,
   ): Promise<RuntimeProbeVerdict> {
     const instance = resolvedInstanceFor(context, systemOf(commitContract.id));
-    return executeIdempotencyProbe(deps, {
-      commitContract,
-      commitInput,
-      instance,
-      signal: context.signal,
-    });
+    emitTaskSpan(context, "probe", "span.started");
+    try {
+      const verdict = await executeIdempotencyProbe(deps, {
+        commitContract,
+        commitInput,
+        instance,
+        signal: context.signal,
+        onRecord: (taskId, batch) => emitObservedBatch(context, "probe", taskId, batch),
+      });
+      emitTaskSpan(context, "probe", "span.ended", "done");
+      return verdict;
+    } catch (error) {
+      throw preserveTaskFailure(context, "probe", error);
+    }
   }
 
   /** Persist an already-present settlement (checkpoint + run advance, one txn). */
@@ -1200,32 +1363,36 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       );
     }
 
-    const verifyTask = requireTask(completion.verify.taskId, `${completion.kind} verifier`);
-    let verifyInput: unknown;
-    try {
-      verifyInput = verifyTask.contract.input.parse(input.commitInput);
-    } catch (error) {
-      throw postFence(
-        "unknown",
-        `${completion.verify.taskId} cannot bind the commit input for post-click verification`,
-        error,
-      );
-    }
     let verdict: z.output<ReturnType<typeof probeVerdictSchema>>;
+    let verifySpanStarted = false;
     try {
-      const { raw } = await invokeBounded(completion.verify.taskId, input.context.signal, (innerSignal, recordData) => {
-        const run = RunnableTaskSchema.parse(verifyTask.impl.run);
-        return run({
-          input: verifyInput,
-          ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData), driver: input.driver },
-        });
-      });
+      const verifyTask = requireTask(completion.verify.taskId, `${completion.kind} verifier`);
+      const verifyInput: unknown = verifyTask.contract.input.parse(input.commitInput);
+      emitTaskSpan(input.context, "verify", "span.started");
+      verifySpanStarted = true;
+      const { raw } = await invokeTransactionTask(
+        input.context,
+        "verify",
+        completion.verify.taskId,
+        input.context.signal,
+        (innerSignal, recordData) => {
+          const run = RunnableTaskSchema.parse(verifyTask.impl.run);
+          return run({
+            input: verifyInput,
+            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData), driver: input.driver },
+          });
+        },
+      );
       verdict = probeVerdictSchema(completion.proofSchema).parse(verifyTask.contract.output.parse(raw));
+      emitTaskSpan(input.context, "verify", "span.ended", "done");
     } catch (error) {
+      const preserved = verifySpanStarted
+        ? preserveTaskFailure(input.context, "verify", error)
+        : error;
       throw postFence(
         "unknown",
-        `${completion.verify.taskId} could not verify the landing state after the click`,
-        error,
+        `${completion.verify.taskId} could not set up or verify the landing state after the click`,
+        preserved,
       );
     }
     if (verdict.state !== "present") {
@@ -1285,6 +1452,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           intentGeneration: failure.generation,
           parkCode: failure.parkCode,
           message: failure.message,
+          cause: failure,
         });
       }
       const settlement = buildCommittedSettlement({
@@ -1336,6 +1504,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       intentGeneration: failure.generation,
       parkCode: failure.parkCode,
       message: failure.message,
+      cause: failure,
     });
   }
 
@@ -1512,8 +1681,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
     let leased: LeasedCommitResult;
+    let retainedIntent: AttemptingIntent | undefined;
     try {
-      leased = await deps.sessions.withDriver(need, instance, context.signal, async (driver) => {
+      leased = await deps.sessions.withTransactionDriver(
+        need,
+        instance,
+        context.signal,
+        async (driver, ownership) => {
         const leaseId = deps.ids.uuid();
 
         /* beat ② — prepare stages the page; output is preview data only */
@@ -1521,18 +1695,23 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         let prepareOutput: unknown;
         try {
           const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
-          const { raw } = await invokeBounded(prepareContract.id, context.signal, (innerSignal, recordData) => {
-            const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
-            return runImpl({
-              input: prepareInput,
-              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
-            });
-          });
+          const { raw } = await invokeTransactionTask(
+            context,
+            "prepare",
+            prepareContract.id,
+            context.signal,
+            (innerSignal, recordData) => {
+              const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
+              return runImpl({
+                input: prepareInput,
+                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
+              });
+            },
+          );
           prepareOutput = prepareContract.output.parse(raw);
           emitTaskSpan(context, "prepare", "span.ended", "done");
         } catch (error) {
-          emitTaskSpan(context, "prepare", "span.ended", "failed");
-          throw error;
+          throw preserveTaskFailure(context, "prepare", error);
         }
         const stagedPageState = stagedPageStateOf(prepareOutput, prepareContract);
 
@@ -1557,7 +1736,25 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             + "probe-to-fence budget; the staged page is discarded and nothing was clicked",
           );
         }
+        // Open and fully validate the display beat BEFORE the authority fence.
+        // The fence and commit-task span/data writes are flushed only AFTER the
+        // task callback settles. `recordData` still validates and stamps each
+        // call synchronously, but its fallible sink cannot occupy the durable
+        // fence→external-click critical window.
+        emitTaskSpan(context, "commit", "span.started");
         const fencedAt = instant();
+        const deferredFenceEvent = ExecutorSpanEventSchema.parse({
+          t: "transaction.fenced",
+          ts: fencedAt,
+          workflow: context.descriptor.id,
+          runId: envelope.runId,
+          attempt: envelope.attempt,
+          traceId: trace,
+          spanPath: transactionTaskSpanPath(context, "commit"),
+          parentSpanPath: trace,
+          node: String(node.id),
+          taskId: commitContract.id,
+        });
         const attemptId = WriteAttemptIdSchema.parse(deps.ids.uuid());
         const intentId = refenceExpectedVersion === undefined
           ? WriteIntentIdSchema.parse(deps.ids.uuid())
@@ -1595,47 +1792,134 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           outcome: { state: "attempting" },
           recordedAt: fencedAt,
         });
-        const resolution = refenceExpectedVersion === undefined
-          ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord })
-          : deps.authority.authority.writeIntents.refenceRetryable({
-            expectedVersion: refenceExpectedVersion,
-            intent: intentRecord,
-            attempt: attemptRecord,
-          });
-        if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
-        if (resolution.state !== "fenced") {
-          throw new Error(`write fence for key ${key} reported ${resolution.state}; refusing to click`);
+        let fencedRecord: WriteIntentRecord;
+        if (context.signal.aborted) {
+          throw context.signal.reason instanceof Error
+            ? context.signal.reason
+            : new Error(`${commitContract.id} was cancelled before its write fence`);
         }
-        const fenced = resolution.intent;
-        if (fenced.status !== "attempting") throw new Error("fenced intent is not attempting");
+        try {
+          const resolution = refenceExpectedVersion === undefined
+            ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord })
+            : deps.authority.authority.writeIntents.refenceRetryable({
+              expectedVersion: refenceExpectedVersion,
+              intent: intentRecord,
+              attempt: attemptRecord,
+            });
+          if (resolution.state === "existing") throw new FenceLostRaceError(resolution.intent);
+          if (resolution.state !== "fenced") {
+            throw new Error(`write fence for key ${key} reported ${resolution.state}; refusing to click`);
+          }
+          fencedRecord = resolution.intent;
+        } catch (error) {
+          throw preserveTaskFailure(context, "commit", error);
+        }
+        if (fencedRecord.status !== "attempting") {
+          // PermanentWriteResolutionSchema makes this unreachable for a real
+          // authority repository. Keep the runtime check outside the pre-fence
+          // catch so even a corrupt test double cannot run an emitter after it
+          // claims to have won a fence.
+          throw new PostFenceWriteFailure({
+            writeIntentId: fencedRecord.writeIntentId,
+            generation: fencedRecord.generation,
+            intentVersion: fencedRecord.version,
+            parkCode: "unknown",
+            message: `write fence for key ${key} returned ${fencedRecord.status}, not attempting; refusing to click`,
+          });
+        }
+        const fenced: AttemptingIntent = fencedRecord;
+        retainedIntent = fenced;
+        ownership.retainAfterFence();
 
         /* beat ⑤ — the external commit under the minted capability */
         const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest);
-        emitTaskSpan(context, "commit", "span.started");
-        let rawCommitOutput: unknown;
-        try {
-          const { raw } = await invokeBounded(commitContract.id, context.signal, (innerSignal, recordData) => {
+        const bufferedCommitObservations: BoundedTaskRecordBatch[] = [];
+        let commitSettlement:
+          | Readonly<{ state: "done"; raw: unknown }>
+          | Readonly<{ state: "failed"; error: unknown }>;
+        const commitInvocation = beginBoundedTask(
+          deps,
+          commitContract.id,
+          context.signal,
+          (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
             return runImpl({
               input: commitInput,
               ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData), driver, mutation: capability },
             });
-          });
-          rawCommitOutput = raw;
-          emitTaskSpan(context, "commit", "span.ended", "done");
+          },
+          (batch) => bufferedCommitObservations.push(batch),
+        );
+        try {
+          const { raw } = await commitInvocation.bounded;
+          commitSettlement = { state: "done", raw };
+        } catch (boundedFailure) {
+          // A deadline requests cancellation but cannot prove that an external
+          // callback obeyed it. Keep the fenced intent and transaction lease
+          // owned until the callback itself settles. If it never does, this
+          // process never emits, parks, or closes; crash recovery owns the
+          // durable `attempting` intent instead of racing detached I/O.
+          const operationSettlement = await commitInvocation.settlement;
+          const failure = operationSettlement.state === "rejected"
+            && operationSettlement.error !== boundedFailure
+            ? aggregateSecondaryFailure(
+              operationSettlement.error,
+              boundedFailure,
+              `${commitContract.id} task failed after its bounded invocation also failed`,
+            )
+            : boundedFailure;
+          commitSettlement = { state: "failed", error: failure };
+        }
+
+        let emissionFailure: Readonly<{ error: unknown }> | undefined;
+        try {
+          // This is the first fallible emit after the authority fence, and the
+          // commit callback has already settled. A task may legally record a
+          // staged/page fact before it calls its driver: buffering keeps that
+          // record-time callback from stranding a fenced-but-unclicked write.
+          deps.emitter.emit(deferredFenceEvent);
+          for (const batch of bufferedCommitObservations) {
+            emitObservedBatch(context, "commit", commitContract.id, batch);
+          }
+          emitTaskSpan(
+            context,
+            "commit",
+            "span.ended",
+            commitSettlement.state === "done" ? "done" : "failed",
+          );
         } catch (error) {
-          emitTaskSpan(context, "commit", "span.ended", "failed");
+          emissionFailure = { error };
+        }
+
+        const postFenceTaskFailure = (detail: string, cause: unknown): PostFenceWriteFailure =>
           // The click may or may not have fired: post-fence uncertainty parks.
-          throw new PostFenceWriteFailure({
+          new PostFenceWriteFailure({
             writeIntentId: fenced.writeIntentId,
             generation: fenced.generation,
             intentVersion: fenced.version,
             parkCode: "unknown",
-            message: `${commitContract.id} threw after the fence; whether the external write landed is unknown: `
-              + `${error instanceof Error ? error.message : "non-Error thrown"}`,
-            cause: error,
+            message: `${detail}; whether the external write landed is unknown: `
+              + `${cause instanceof Error ? cause.message : "non-Error thrown"}`,
+            cause,
           });
+        if (commitSettlement.state === "failed" && emissionFailure !== undefined) {
+          const combined = aggregateSecondaryFailure(
+            commitSettlement.error,
+            emissionFailure.error,
+            `${commitContract.id} task and post-settlement observation emission both failed`,
+          );
+          throw postFenceTaskFailure(`${commitContract.id} threw after the fence`, combined);
         }
+        if (emissionFailure !== undefined) {
+          throw postFenceTaskFailure(
+            `${commitContract.id} settled after the fence, then its observation writer threw`,
+            emissionFailure.error,
+          );
+        }
+        if (commitSettlement.state === "failed") {
+          throw postFenceTaskFailure(`${commitContract.id} threw after the fence`, commitSettlement.error);
+        }
+        const rawCommitOutput = commitSettlement.raw;
 
         /* beat ⑥ — capture/verify on the retained transaction page */
         const captured = await captureProof({
@@ -1647,7 +1931,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           intent: fenced,
         });
         return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
-      });
+        },
+      );
     } catch (error) {
       if (error instanceof PostFenceWriteFailure) {
         await parkAfterFence(context, error);
@@ -1656,6 +1941,26 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           intentGeneration: error.generation,
           parkCode: error.parkCode,
           message: error.message,
+          cause: error,
+        });
+      }
+      if (retainedIntent !== undefined) {
+        const failure = new PostFenceWriteFailure({
+          writeIntentId: retainedIntent.writeIntentId,
+          generation: retainedIntent.generation,
+          intentVersion: retainedIntent.version,
+          parkCode: "unknown",
+          message: `${commitContract.id} transaction lease failed after the fence; whether the external write landed `
+            + `is unknown: ${error instanceof Error ? error.message : "non-Error thrown"}`,
+          cause: error,
+        });
+        await parkAfterFence(context, failure);
+        throw new WriteParkedError({
+          writeIntentId: failure.writeIntentId,
+          intentGeneration: failure.generation,
+          parkCode: failure.parkCode,
+          message: failure.message,
+          cause: failure,
         });
       }
       if (error instanceof FenceLostRaceError) {
@@ -1854,14 +2159,27 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const instance = resolvedInstanceFor(context, need.system);
     return deps.sessions.withDriver(need, instance, context.signal, async (driver) => {
       const prepareInput: unknown = prepareContract.input.parse(node.prepare.bind(context.scope));
-      const { raw } = await invokeBounded(prepareContract.id, context.signal, (innerSignal, recordData) => {
-        const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
-        return runImpl({
-          input: prepareInput,
-          ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
-        });
-      });
-      const prepareOutput = prepareContract.output.parse(raw);
+      emitTaskSpan(context, "prepare", "span.started");
+      let prepareOutput: unknown;
+      try {
+        const { raw } = await invokeTransactionTask(
+          context,
+          "prepare",
+          prepareContract.id,
+          context.signal,
+          (innerSignal, recordData) => {
+            const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
+            return runImpl({
+              input: prepareInput,
+              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
+            });
+          },
+        );
+        prepareOutput = prepareContract.output.parse(raw);
+        emitTaskSpan(context, "prepare", "span.ended", "done");
+      } catch (error) {
+        throw preserveTaskFailure(context, "prepare", error);
+      }
       const stagedPageState = stagedPageStateOf(prepareOutput, prepareContract);
       const observedAt = instant();
       const subjectSpec = commitContract.subject;

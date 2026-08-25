@@ -191,11 +191,28 @@ export const ExecutorSpanEventSchema = z.union([
     externalCommit: z.literal("none"),
   }),
   /**
+   * A durable fence is kernel authority, not something a page said. It gets
+   * its own strict arm so the observed log never fabricates a `DataPoint` for
+   * it. The sequencer constructs this event before fencing, then emits it only
+   * after the external commit callback has settled: span instrumentation
+   * therefore cannot interrupt the fence→click critical window.
+   */
+  z.strictObject({
+    t: z.literal("transaction.fenced"),
+    ...BaseFields,
+    ...RunSpanIdentityFields,
+    node: NodeIdSchema,
+    taskId: TaskIdSchema,
+  }),
+  /**
    * D270 / `03a-finish-the-dashboard.md` §Observed logs — every point a task
-   * records is emitted on the span AT RECORD TIME, so the observations a task
+   * records is captured and stamped AT RECORD TIME, so the observations a task
    * made before it threw are on the stream even though its checkpoint never
    * was. One event per `ctx.recordData` CALL: a batch is one observation of the
    * page, and `observedAt` is the single instant the collector stamped it with.
+   * Probe/prepare/verify emit synchronously. Commit-role emission is the one
+   * deliberate delay: its call-time batch is flushed only after the callback
+   * settles, keeping fallible instrumentation out of fence→external-click.
    *
    * This is an EMISSION, not a second scrape. Nothing re-reads the page: a
    * second observation of a moving system is exactly how a surface starts
