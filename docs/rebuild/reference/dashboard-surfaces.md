@@ -3400,6 +3400,14 @@ version registry and the Activity per-workflow table print the CURRENT registry'
 label; the Activity CSV gives it its own column rather than gluing it onto the label, because a
 spreadsheet sorts and filters columns. The code itself is ref workflow-model §1.1.1's.
 
+**D269 adds archive schema generation 4 for the frozen QueueSurface session arm.** The live row
+requires `session: {present, sessionId} | {absent, reason}`; making that wire optional would weaken
+every current queue response merely to read history. The archive storage reader alone admits a
+missing key on generation 1–3, preserves the stored JSON and `contentDigest` byte-for-byte, and the
+archived-detail query serves `absent: no session recorded (archived before D269)`. Generation 4
+requires the frozen arm, and a pre-generation-4 record carrying it refuses in the opposite
+direction, under the same generation-refinement rule as sections and workflow code.
+
 **The three arms, and where each refusal is computed:**
 
 - `plan-version-bump` mints an immutable plan **even when it cannot be applied**, because the
@@ -4727,4 +4735,3 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [!] D16's "no confirmation dialog" against the built confirm-first dialog — an operator call (`{#operator-calls}`)
 > 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
 <!-- /roadmap-status -->
-

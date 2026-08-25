@@ -98,7 +98,6 @@ const ARCHIVED_ROW = {
   dryRun: false,
   priority: "interactive",
   runNumber: { state: "present", value: 1 },
-  session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
   containment: "root",
   linkedRuns: [],
   facts: { state: "absent", reason: "this run's evidence receipt records no output fact" },

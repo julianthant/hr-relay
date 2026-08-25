@@ -53,6 +53,7 @@ import {
   PeoplePageSchema,
   type ContextDataSectionWire,
 } from "../../../domain/dashboard/run-detail.js";
+import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../domain/dashboard/projection.js";
 
 /** The frozen log page's own shape — one place, so the loop and the parse agree. */
 type FrozenNotePage = z.infer<typeof NotePageSchema>;
@@ -80,6 +81,14 @@ function archivedWorkflowCode(
     reason: `this record was archived at schema generation ${String(record.archiveSchemaGeneration)}, `
       + "which predates D242's frozen workflow short code; no code was recorded for this run",
   };
+}
+
+function archivedQueueRow(
+  row: Readonly<Record<string, unknown>> & { readonly session?: unknown },
+): QueueSurfaceWire {
+  return QueueSurfaceWireSchema.parse(row.session === undefined
+    ? { ...row, session: { state: "absent", reason: "no session recorded (archived before D269)" } }
+    : row);
 }
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import { buildRunDetail, buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps } from "./run-detail.js";
@@ -267,7 +276,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       archivedAt: record.archivedAt,
       archivedBy: record.archivedBy,
       archiveFingerprint: record.contentDigest,
-      row: record.row,
+      row: archivedQueueRow(record.row),
       detail: record.detail,
       receipt: record.receipt,
       failure: record.failure,

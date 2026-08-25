@@ -26,13 +26,17 @@ import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/
 import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { CommandResultSchema, type CommandResult } from "../../src/domain/commands.js";
+import { QueueSurfaceWireSchema } from "../../src/domain/dashboard/projection.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/server/dashboard/queries/archive.js";
-import { ArchivedRunRecordSchema } from "../../src/domain/archive/model.js";
+import {
+  ArchivedRunRecordSchema,
+  CURRENT_ARCHIVE_SCHEMA_GENERATION,
+} from "../../src/domain/archive/model.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 import { createLedgerProjector } from "../../src/infra/ledger/index.js";
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
@@ -166,7 +170,7 @@ function snapshotSource(world: {
             : { state: "present", value: run.runNumber },
           // D269: the same read-forward shape for the session the live row carried.
           session: run.sessionId === undefined
-            ? { state: "absent", reason: "enqueued before runs carried a session (D269)" }
+            ? { state: "absent", reason: "this run predates D269 session grouping, or retries a run that does" }
             : { state: "present", sessionId: run.sessionId },
           containment: "root",
           linkedRuns: [],
@@ -555,6 +559,58 @@ describe("the D80 archive model", () => {
       detail.workflowCode.state === "absent" ? detail.workflowCode.reason : "",
       /schema generation 1, which predates D242's frozen workflow short code/u,
     );
+  });
+
+  it("reads a pre-D269 archived row forward without changing its stored digest", () => {
+    const world = createWorld();
+    const { session: _session, ...preD269Row } = ARCHIVED_RUN.row;
+    const historicalDigest = "d".repeat(64);
+    const preD269Record = { ...ARCHIVED_RUN, row: preD269Row, contentDigest: historicalDigest };
+
+    assert.equal(QueueSurfaceWireSchema.safeParse(preD269Row).success, false, "the live queue wire still requires session");
+    world.database.withAuthorityTransaction((repositories) => {
+      repositories.runs.enqueue(QUEUED_RUN);
+      repositories.versionPlans.insert(VERSION_PLAN_ROW);
+      repositories.versionBumpApplications.insert(VERSION_BUMP_APPLICATION);
+      repositories.archivedRuns.insert(preD269Record);
+      return undefined;
+    });
+
+    const stored = world.database.authority.archivedRuns.get(ARCHIVED_RUN.runId);
+    assert.equal(stored?.row.session, undefined);
+    assert.equal(stored?.contentDigest, historicalDigest);
+    assert.deepEqual(buildArchivedRunDetail(emptyRegistryDeps(world), ARCHIVED_RUN.runId).row.session, {
+      state: "absent",
+      reason: "no session recorded (archived before D269)",
+    });
+  });
+
+  it("binds the frozen session arm to archive generation 4 in both directions", () => {
+    const generation4 = {
+      ...ARCHIVED_RUN,
+      archiveSchemaGeneration: 4,
+      sections: ARCHIVED_RUN_WITH_SECTIONS.sections,
+      workflowCode: { state: "present" as const, value: "pl" },
+      row: {
+        ...ARCHIVED_RUN.row,
+        session: { state: "absent" as const, reason: "the archived run predates session grouping" },
+      },
+    };
+
+    assert.equal(CURRENT_ARCHIVE_SCHEMA_GENERATION, 4);
+    assert.equal(ArchivedRunRecordSchema.safeParse(generation4).success, true);
+
+    const { session: _session, ...sessionlessRow } = generation4.row;
+    const refusedCurrent = ArchivedRunRecordSchema.safeParse({ ...generation4, row: sessionlessRow });
+    assert.equal(refusedCurrent.success, false);
+    assert.match(JSON.stringify(refusedCurrent.error?.issues ?? []), /generation 4 or later must carry.*session/u);
+
+    const refusedEarly = ArchivedRunRecordSchema.safeParse({
+      ...ARCHIVED_RUN,
+      row: { ...ARCHIVED_RUN.row, session: generation4.row.session },
+    });
+    assert.equal(refusedEarly.success, false);
+    assert.match(JSON.stringify(refusedEarly.error?.issues ?? []), /predates D269's frozen session arm/u);
   });
 
   /**
