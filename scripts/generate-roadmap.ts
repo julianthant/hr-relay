@@ -30,7 +30,7 @@ import {
  * every node BUILDS (`builds:` checklist, one layer tag per line) and what it
  * NEEDS (`needs:`) — from which this script derives each node's "unlocks" and
  * the prerequisite links. The phase docs `docs/rebuild/00`–`05` stay normative;
- * plan + site + owning docs are edited together (notation: docs/roadmap/notation.md).
+ * the `/custom-update-plan` skill edits plan + site + owning docs together.
  *
  * The page also renders the DOC side of the binding: every
  * `<!-- roadmap: <id> -->` tag and `<!-- roadmap-status: <id> -->` block the
