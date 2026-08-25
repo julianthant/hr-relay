@@ -270,7 +270,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   span supplies its exact `(nodeId, taskId)` and redacted page point; the module/store binding supplies
   the system. The Logs query resolves exactly one root-composed data origin for that pair and refuses
   missing, headless, or ambiguous origins by file and line. Defaulting to `read` or a plausible system
-  turns a trustworthy observation into an attributed lie.
+  turns a trustworthy observation into an attributed lie. Observed/fenced span rows are indexed by the
+  disk-tail projector at append time; the GET never re-derives their partitions from record-time run
+  instants. A continuation cursor binds an immutable combined snapshot, so a later backdated append is
+  visible on a fresh first page and cannot duplicate or displace rows in an existing page walk.
 
 ## After changes
 

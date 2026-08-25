@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { appendEventStreamLine } from "../../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import type { RunRecord } from "../../../src/domain/run/record.js";
+import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import {
   assertNoteWithinRunScope,
   runNotePartitionScope as sharedNotePartitionScope,
@@ -34,6 +34,8 @@ import {
   type RunNoteScanEntry,
 } from "../../../src/server/dashboard/queries/run-detail.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
+import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
+import { dataOriginViewsOf } from "../../../src/server/dashboard/compose.js";
 import {
   AT,
   claimEventOf,
@@ -496,18 +498,27 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
 
   function observedEvent(
     w: DashboardWorld,
-    input: Readonly<{ seed?: number; attempt?: number; at?: string; nodeId?: string; taskId?: string }> = {},
+    input: Readonly<{
+      seed?: number;
+      attempt?: number;
+      at?: string;
+      nodeId?: string;
+      taskId?: string;
+      workflow?: string;
+      traceId?: string;
+    }> = {},
   ): void {
     const seed = input.seed ?? 1;
     const at = input.at ?? w.clock.now().toISOString();
+    const traceId = input.traceId ?? traceOf(seed);
     w.writer.emit({
       t: "data.observed",
       ts: at,
-      workflow: "person-lookup",
+      workflow: input.workflow ?? "person-lookup",
       runId: uuidOf(seed),
       attempt: input.attempt ?? 1,
-      traceId: traceOf(seed),
-      spanPath: `${traceOf(seed)}/searching#1.${String(input.attempt ?? 1)}`,
+      traceId,
+      spanPath: `${traceId}/searching#1.${String(input.attempt ?? 1)}`,
       nodeId: input.nodeId ?? "searching",
       taskId: input.taskId ?? "ucpath/search-person-org",
       observedAt: at,
@@ -567,6 +578,79 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.equal("points" in fenced, false, "a durable fence is not fabricated page data");
   });
 
+  it("serves a real transaction module as probe, prepare, fence, commit, verify without fabricating fence data", () => {
+    const module = WORKFLOW_MODULES.find((candidate) =>
+      String(candidate.descriptor.id) === "kuali-timekeeper-annotation");
+    assert.ok(module !== undefined);
+    const w = makeWorld({ descriptors: { resolve: () => module.descriptor } });
+    worlds.push(w);
+    queuedEventOf(w, { seed: 1, workflow: "kuali-timekeeper-annotation" });
+    const emitObserved = (taskId: string, direction: "read" | "write", at: string): void => {
+      w.writer.emit({
+        t: "data.observed",
+        ts: at,
+        workflow: "kuali-timekeeper-annotation",
+        runId: uuidOf(1),
+        attempt: 1,
+        traceId: traceOf(1),
+        spanPath: `${traceOf(1)}/annotate-timekeeper/${taskId.split("/").at(-1)}#1.1`,
+        nodeId: "annotate-timekeeper",
+        taskId,
+        observedAt: at,
+        points: [{
+          direction,
+          field: "timekeeper.name",
+          values: [{
+            key: "timekeeper.name",
+            state: "allowed",
+            classification: "safe-diagnostic",
+            transform: "allow",
+            value: taskId,
+          }],
+        }],
+      });
+    };
+    emitObserved("kuali/read-timekeeper-annotation", "read", instantOffsetOf(0, 10));
+    emitObserved("kuali/fill-timekeeper-annotation", "write", instantOffsetOf(0, 20));
+    w.writer.emit({
+      t: "transaction.fenced",
+      ts: instantOffsetOf(0, 30),
+      workflow: "kuali-timekeeper-annotation",
+      runId: uuidOf(1),
+      attempt: 1,
+      traceId: traceOf(1),
+      spanPath: `${traceOf(1)}/annotate-timekeeper/commit`,
+      node: "annotate-timekeeper",
+      taskId: "kuali/save-timekeeper-annotation",
+    });
+    emitObserved("kuali/save-timekeeper-annotation", "write", instantOffsetOf(0, 40));
+    emitObserved("kuali/verify-timekeeper-annotation", "read", instantOffsetOf(0, 50));
+    const deps: RunDetailQueryDeps = {
+      stateRoot: w.stateRoot,
+      projection: w.projection,
+      authority: w.authority,
+      descriptors: { resolve: () => ({ dataOrigins: dataOriginViewsOf(module) }) },
+    };
+
+    const section = buildRunSection(deps, uuidOf(1), "logs");
+
+    assert.equal(section.section, "logs");
+    assert.ok(section.payload.rows !== undefined);
+    assert.deepEqual(section.payload.rows.map((row) => ({
+      kind: row.kind,
+      taskId: row.kind === "note" ? "note" : row.producer.taskId,
+      direction: row.kind === "observed" ? row.points[0]?.direction : undefined,
+      hasPoints: "points" in row,
+    })), [
+      { kind: "observed", taskId: "kuali/read-timekeeper-annotation", direction: "read", hasPoints: true },
+      { kind: "observed", taskId: "kuali/fill-timekeeper-annotation", direction: "write", hasPoints: true },
+      { kind: "transaction-fenced", taskId: "kuali/save-timekeeper-annotation", direction: undefined, hasPoints: false },
+      { kind: "observed", taskId: "kuali/save-timekeeper-annotation", direction: "write", hasPoints: true },
+      { kind: "observed", taskId: "kuali/verify-timekeeper-annotation", direction: "read", hasPoints: true },
+    ]);
+    assert.ok(section.payload.rows.every((row) => row.kind === "note" || row.producer.system === "kuali"));
+  });
+
   it("refuses an observed row whose system is missing or ambiguous instead of defaulting it", () => {
     const w = world();
     terminalDone(w, 1);
@@ -581,18 +665,120 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     );
   });
 
-  it("parses every in-scope span line, excludes another run, and preserves retry attempts", () => {
+  it("examines only this run's indexed span rows, excludes another run, and preserves legal retry attempts", () => {
     const w = world();
     terminalDone(w, 1);
     observedEvent(w, { seed: 2, at: instantOffsetOf(0, 5) });
     observedEvent(w, { seed: 1, attempt: 1, at: instantOffsetOf(0, 10) });
+    w.writer.emit({
+      t: "run.requeued",
+      ts: instantOffsetOf(0, 15),
+      workflow: "person-lookup",
+      runId: uuidOf(1),
+      attempt: 1,
+      nextAttempt: 2,
+      traceId: traceOf(1),
+      spanPath: traceOf(1),
+      cause: "recovery",
+    });
+    const authority = w.authority.getRun(uuidOf(1));
+    assert.ok(authority !== undefined);
+    w.authority.put(RunRecordSchema.parse({
+      ...authority,
+      envelope: { ...authority.envelope, attempt: 2 },
+      version: authority.version + 1,
+    }));
     observedEvent(w, { seed: 1, attempt: 2, at: instantOffsetOf(0, 20) });
+    assert.equal(w.projection.runLogSnapshot(uuidOf(1)).entries.length, 2);
+    assert.equal(w.projection.runLogSnapshot(uuidOf(2)).entries.length, 1);
     const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.ok(section.payload.rows !== undefined);
     const observations = section.payload.rows.filter((row) => row.kind === "observed");
     assert.deepEqual(observations.map((row) => row.attempt), [1, 2]);
     assert.deepEqual(observations.map((row) => row.at), [instantOffsetOf(0, 10), instantOffsetOf(0, 20)]);
+  });
+
+  it("serves an observation appended more than two days after the run instead of dropping its append partition", () => {
+    const w = world();
+    terminalDone(w, 1, { enqueuedAt: instantOffsetOf(0) });
+    w.clock.setWall(new Date(AT.getTime() + 3 * DAY_MS));
+    observedEvent(w, { at: instantOffsetOf(0, 10) });
+
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+
+    assert.equal(section.section, "logs");
+    assert.ok(section.payload.rows !== undefined);
+    assert.deepEqual(section.payload.rows.map((row) => row.kind), ["observed"]);
+  });
+
+  it("refuses a same-run observation whose trace is not the run authority trace", () => {
+    const w = world();
+    terminalDone(w, 1);
+    observedEvent(w, { traceId: traceOf(2) });
+
+    assert.throws(
+      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      /run 0001.*span trace pl-100002-0002.*authority trace is pl-100001-0001/s,
+    );
+  });
+
+  it("refuses observed rows under a foreign workflow or outside the run's legal attempts", () => {
+    const foreignWorkflow = world();
+    terminalDone(foreignWorkflow, 1);
+    observedEvent(foreignWorkflow, { workflow: "separations" });
+    assert.throws(
+      () => buildRunSection(observedDepsOf(foreignWorkflow, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      /run 0001.*workflow separations.*authority names person-lookup/s,
+    );
+
+    const foreignAttempt = world();
+    terminalDone(foreignAttempt, 1);
+    observedEvent(foreignAttempt, { attempt: 2 });
+    assert.throws(
+      () => buildRunSection(observedDepsOf(foreignAttempt, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      /run 0001.*attempt 2.*legal attempts 1\.\.1/s,
+    );
+  });
+
+  it("refuses foreign note workflow and trace identities by source line", () => {
+    const foreignWorkflow = world();
+    terminalDone(foreignWorkflow, 1);
+    appendEventStreamLine(
+      foreignWorkflow.stateRoot,
+      "notes",
+      "person-lookup",
+      "2026-08-03",
+      JSON.stringify({
+        ts: instantOffsetOf(0, 10),
+        workflow: "separations",
+        pid: 4242,
+        runId: uuidOf(1),
+        attempt: 1,
+        traceId: traceOf(1),
+        spanPath: traceOf(1),
+        level: "step",
+        message: "foreign workflow",
+      }),
+    );
+    assert.throws(
+      () => buildRunSection(observedDepsOf(foreignWorkflow, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      /notes line .*:1 is filed in workflow person-lookup but names workflow separations/s,
+    );
+
+    const foreignTrace = world();
+    terminalDone(foreignTrace, 1);
+    const notes = createNoteJsonlWriter({ stateRoot: foreignTrace.stateRoot, clock: foreignTrace.clock, pid: 4242 });
+    notes.emitNote({
+      workflow: "person-lookup",
+      address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(2), spanPath: traceOf(2) },
+      level: "step",
+      message: "foreign trace",
+    });
+    assert.throws(
+      () => buildRunSection(observedDepsOf(foreignTrace, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      /run 0001.*note trace pl-100002-0002.*authority trace is pl-100001-0001/s,
+    );
   });
 
   it("orders equal-clock rows by their durable stream location and pages the combined list without a second scan", () => {
@@ -603,11 +789,12 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     const inner = createRunNoteScanCache();
     let scans = 0;
     const cache = {
-      read: (runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[] =>
-        inner.read(runId, () => {
+      start: (runId: string, scan: () => readonly RunNoteScanEntry[]) =>
+        inner.start(runId, () => {
           scans += 1;
           return scan();
         }),
+      resume: (runId: string, snapshotId: string) => inner.resume(runId, snapshotId),
     };
     const first = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs", undefined, cache);
     assert.equal(first.section, "logs");
@@ -627,6 +814,29 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     );
   });
 
+  it("keeps a page walk on one immutable ordering when a later append has an older record clock", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const tie = instantOffsetOf(0, 20);
+    for (let index = 0; index < 201; index += 1) observedEvent(w, { at: tie });
+    const deps = observedDepsOf(w, [SEARCH_ORIGIN]);
+    const first = buildRunSection(deps, uuidOf(1), "logs");
+    assert.equal(first.section, "logs");
+    assert.ok(first.payload.rows !== undefined);
+    assert.equal(first.payload.nextCursor.state, "present");
+    if (first.payload.nextCursor.state !== "present") throw new Error("first combined page must continue");
+
+    observedEvent(w, { at: instantOffsetOf(0, 10) });
+    const second = buildRunSection(deps, uuidOf(1), "logs", first.payload.nextCursor.value);
+
+    assert.equal(second.section, "logs");
+    assert.ok(second.payload.rows !== undefined);
+    const walked = [...first.payload.rows, ...second.payload.rows];
+    assert.equal(walked.length, 201);
+    assert.equal(new Set(walked.map((row) => row.logId)).size, 201);
+    assert.ok(walked.every((row) => row.kind !== "observed" || row.at === tie));
+  });
+
   it("refuses malformed in-scope spans by file and line, while a missing span partition remains an honest no-observation page", () => {
     const w = world();
     terminalDone(w, 1);
@@ -635,9 +845,10 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.equal(noSpans.section, "logs");
     assert.deepEqual(noSpans.payload.rows, []);
     appendEventStreamLine(w.stateRoot, "spans", "person-lookup", "2026-08-03", "{ not json at all");
+    w.projection.ingestFromDisk();
     assert.throws(
       () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
-      new RegExp(`spans line ${join(w.stateRoot, "spans", "person-lookup-2026-08-03.jsonl").replaceAll(/[.\\/]/g, "\\$&")}:1 is not a readable span event`),
+      new RegExp(`corrupt span line ${join(w.stateRoot, "spans", "person-lookup-2026-08-03.jsonl").replaceAll(/[.\\/]/g, "\\$&")}:1`),
     );
   });
 
@@ -683,11 +894,12 @@ describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", ()
     const inner = createRunNoteScanCache();
     let scans = 0;
     const cache = {
-      read: (runId: string, scan: () => readonly RunNoteScanEntry[]): readonly RunNoteScanEntry[] =>
-        inner.read(runId, () => {
+      start: (runId: string, scan: () => readonly RunNoteScanEntry[]) =>
+        inner.start(runId, () => {
           scans += 1;
           return scan();
         }),
+      resume: (runId: string, snapshotId: string) => inner.resume(runId, snapshotId),
     };
     const messages: string[] = [];
     let cursor: string | undefined;
@@ -713,9 +925,9 @@ describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", ()
       scans += 1;
       return [];
     };
-    inner.read(uuidOf(1), counting);
-    inner.read(uuidOf(1), counting);
-    inner.read(uuidOf(2), counting);
+    const first = inner.start(uuidOf(1), counting);
+    inner.resume(uuidOf(1), first.id);
+    inner.start(uuidOf(2), counting);
     assert.equal(scans, 2);
   });
 
@@ -735,9 +947,8 @@ describe("D5 · the version-bump freeze scans a run's notes once (audit P3)", ()
     const first = buildRunSection(depsOf(w), uuidOf(1), "logs");
     assert.equal(first.section, "logs");
     assert.deepEqual(first.payload.notes.map((note) => note.message), ["note 0"]);
-    // No cache was handed in, so a line appended between the two calls must be
-    // in the second page: a cacheless call that served the first list would be
-    // a long-lived cache nobody asked for.
+    // No continuation cursor was handed in, so this is a fresh snapshot and a
+    // line appended between the two calls must be visible.
     emit("note 1");
     const second = buildRunSection(depsOf(w), uuidOf(1), "logs");
     assert.equal(second.section, "logs");

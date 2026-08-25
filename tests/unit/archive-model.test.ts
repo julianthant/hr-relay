@@ -659,6 +659,39 @@ describe("the D80 archive model", () => {
     assert.match(JSON.stringify(refusedCurrent.error?.issues ?? []), /generation 4 or later must carry.*session/u);
   });
 
+  it("requires a combined logs snapshot in generation 5 while reading generation 4 absence forward", () => {
+    const sections = ARCHIVED_RUN_WITH_SECTIONS.sections;
+    if (sections === undefined) throw new Error("archive fixture must hold frozen sections");
+    const absentLogs = {
+      ...sections,
+      logs: { state: "absent" as const, reason: "logs were not frozen" },
+    };
+
+    assert.equal(ArchivedRunRecordSchema.safeParse({
+      ...ARCHIVED_RUN,
+      archiveSchemaGeneration: 4,
+      sections: absentLogs,
+      workflowCode: { state: "present" as const, value: "pl" },
+      row: {
+        ...ARCHIVED_RUN.row,
+        session: { state: "absent" as const, reason: "the archived run predates session grouping" },
+      },
+    }).success, true);
+
+    const refusedCurrent = ArchivedRunRecordSchema.safeParse({
+      ...ARCHIVED_RUN,
+      archiveSchemaGeneration: 5,
+      sections: absentLogs,
+      workflowCode: { state: "present" as const, value: "pl" },
+      row: {
+        ...ARCHIVED_RUN.row,
+        session: { state: "absent" as const, reason: "the archived run predates session grouping" },
+      },
+    });
+    assert.equal(refusedCurrent.success, false);
+    assert.match(JSON.stringify(refusedCurrent.error?.issues ?? []), /generation 5 or later must freeze the combined logs snapshot/u);
+  });
+
   it("reads a generation-3 archive that already carries the QueueSurface session arm", () => {
     const generation3 = {
       ...ARCHIVED_RUN,

@@ -402,6 +402,11 @@ export const LogRowWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type LogRowWire = z.infer<typeof LogRowWireSchema>;
 
+/** Immutable combined-log snapshot plus the next zero-based row offset. */
+export const LogPageCursorSchema = z.string()
+  .regex(/^lc:[0-9a-f]{64}:[1-9]\d*$/, "log cursor must be lc:<snapshot digest>:<positive offset>")
+  .brand<"LogPageCursor">();
+
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
   /**
@@ -413,7 +418,9 @@ export const NotePageSchema = z.strictObject({
   rows: z.array(LogRowWireSchema).optional(),
   notes: z.array(NoteWireSchema),
   nextCursor: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("present"), value: ProjectionCursorSchema }),
+    // `ProjectionCursorSchema` is retained only for archived note pages written
+    // before immutable combined-log snapshots. Live queries emit `lc:`.
+    z.strictObject({ state: z.literal("present"), value: z.union([LogPageCursorSchema, ProjectionCursorSchema]) }),
     z.strictObject({ state: z.literal("absent"), reason: z.literal("end-of-page") }),
   ]),
 }).superRefine((page, context) => {

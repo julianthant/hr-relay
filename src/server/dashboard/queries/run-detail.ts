@@ -61,6 +61,7 @@ import type { IdentityEvidencePacket } from "../../../domain/separations/identit
 import {
   FailureDetailWireSchema,
   IdentityGateDetailWireSchema,
+  LogPageCursorSchema,
   LogRowWireSchema,
   ParkedWriteDetailWireSchema,
   RunDetailSectionResponseSchema,
@@ -86,12 +87,12 @@ import {
 } from "../../../infra/events/jsonl-streams.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
-  SpanEventWireSchema,
   type SpanEventWire,
 } from "../../../events/types.js";
 import type { RunFoldRecord, RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
+import { sha256Hex } from "../../../domain/sha256.js";
 import { deriveRunStatus, panelKindOf, taskStateOf } from "../run-status.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../../failures.js";
 
@@ -160,8 +161,8 @@ export interface RunDetailWriteContractView {
  * label, a task's effect or a freshness precedence would be a second copy of a
  * declaration the runtime already owns.
  *
- * `dir` is the node's own task EFFECT, not an inference: a task node runs a
- * `read` contract and a transaction node's sink is a `commit`. `system` is the
+ * `dir` is the invoked task's own EFFECT, not an inference: ordinary reads and
+ * transaction probe/verify roles are `read`; prepare/commit are `write`. `system` is the
  * driver system of the store that implements the task — absent for a headless
  * store, which owns none. `freshness` is pre-resolved per field path through
  * `resolveFreshnessBound`, already in the wire's shape (`unbounded` rather than
@@ -174,6 +175,8 @@ export interface RunDetailDataOriginView {
   readonly step: string;
   /** The producing task contract; node id alone is not an observed-log address. */
   readonly taskId: string;
+  /** The transaction beat that invokes the task; ordinary nodes are `task`. */
+  readonly role?: "task" | "probe" | "prepare" | "commit" | "verify";
   readonly dir: "read" | "write";
   readonly system?: string;
   readonly freshness?: readonly Readonly<{
@@ -860,29 +863,64 @@ export function runNotePartitionScope(
 }
 
 /**
- * ONE note scan per run, for a caller that pages the same run to the end.
+ * ONE immutable combined-log snapshot, for a caller that pages the same run to the end.
  *
  * The archive's version-bump freeze walks `buildRunSection(run, "logs")` page by
  * page (`FROZEN_LOG_PAGE_LIMIT` of them), and each call re-read and re-parsed
  * the same partitions to slice a different 200 lines out of the same list. The
- * cache lives for exactly one freeze and is handed in explicitly, so nothing
- * long-lived can serve a page from a corpus a worker has since appended to.
+ * The archive cache lives for exactly one freeze and is handed in explicitly.
+ * Live request deps retain at most 128 snapshots; a missing/evicted cursor
+ * refuses by name and a fresh first page observes the new corpus.
  */
+interface RunLogSnapshot {
+  readonly id: string;
+  readonly entries: readonly RunLogScanEntry[];
+}
+
 export interface RunNoteScanCache {
-  read(runId: string, scan: () => readonly RunLogScanEntry[]): readonly RunLogScanEntry[];
+  start(runId: string, scan: () => readonly RunLogScanEntry[]): RunLogSnapshot;
+  resume(runId: string, snapshotId: string): RunLogSnapshot;
 }
 
 export function createRunNoteScanCache(): RunNoteScanCache {
-  const byRun = new Map<string, readonly RunLogScanEntry[]>();
+  const snapshots = new Map<string, Readonly<{ runId: string; snapshot: RunLogSnapshot }>>();
+  const hold = (runId: string, entries: readonly RunLogScanEntry[]): RunLogSnapshot => {
+    const id = sha256Hex(
+      `hrauto:run-log-snapshot:v1\0${runId}\0${entries.map((entry) => `${logIdOf(entry)}\0${entry.line.text}`).join("\n")}`,
+    );
+    const snapshot = Object.freeze({ id, entries: Object.freeze([...entries]) });
+    snapshots.delete(id);
+    snapshots.set(id, Object.freeze({ runId, snapshot }));
+    const oldest = snapshots.size > 128 ? snapshots.keys().next().value : undefined;
+    if (oldest !== undefined) snapshots.delete(oldest);
+    return snapshot;
+  };
   return Object.freeze({
-    read(runId: string, scan: () => readonly RunLogScanEntry[]): readonly RunLogScanEntry[] {
-      const held = byRun.get(runId);
-      if (held !== undefined) return held;
-      const scanned = scan();
-      byRun.set(runId, scanned);
-      return scanned;
+    start(runId: string, scan: () => readonly RunLogScanEntry[]): RunLogSnapshot {
+      return hold(runId, scan());
+    },
+    resume(runId: string, snapshotId: string): RunLogSnapshot {
+      const held = snapshots.get(snapshotId);
+      if (held === undefined) {
+        throw new Error(`log snapshot ${snapshotId} for run ${runId} is unavailable or expired; restart from the first page`);
+      }
+      if (held.runId !== runId) {
+        throw new Error(`log snapshot ${snapshotId} belongs to run ${held.runId}, not requested run ${runId}`);
+      }
+      return held.snapshot;
     },
   });
+}
+
+const defaultLogSnapshots = new WeakMap<RunDetailQueryDeps, RunNoteScanCache>();
+
+function logSnapshotsFor(deps: RunDetailQueryDeps, provided?: RunNoteScanCache): RunNoteScanCache {
+  if (provided !== undefined) return provided;
+  const held = defaultLogSnapshots.get(deps);
+  if (held !== undefined) return held;
+  const created = createRunNoteScanCache();
+  defaultLogSnapshots.set(deps, created);
+  return created;
 }
 
 /**
@@ -907,29 +945,46 @@ function parseNoteLine(line: EventStreamLine): z.infer<typeof NoteAtRestSchema> 
   }
 }
 
-/** Every scoped span line must parse, even when it belongs to another run. */
-function parseSpanLine(line: EventStreamLine): SpanEventWire {
-  try {
-    return SpanEventWireSchema.parse(JSON.parse(line.text));
-  } catch (cause) {
+function assertScopedSpanWorkflow(
+  event: Extract<SpanEventWire, { runId: string }>,
+  line: EventStreamLine,
+): void {
+  if (event.workflow !== line.file.workflow) {
     throw new Error(
-      `spans line ${line.file.path}:${String(line.lineNumber)} is not a readable span event `
-      + `(${cause instanceof Error ? cause.message : String(cause)}); the logs reader refuses to read around a line `
-      + "the corpus holds, because a skipped line reports real history as absent (D218)",
-      { cause },
+      `spans line ${line.file.path}:${String(line.lineNumber)} is filed in workflow ${line.file.workflow} but names `
+      + `workflow ${event.workflow}; refusing a span whose durable partition and identity disagree`,
     );
   }
 }
 
-function assertScopedSpanWorkflow(
-  event: Extract<SpanEventWire, { runId: string }>,
+function assertRunLogIdentity(
+  source: "note" | "span",
+  identity: Readonly<{ runId: string; workflow: string; traceId: string; attempt: number }>,
   line: EventStreamLine,
-  workflow: string,
+  runId: string,
+  row: RunFoldRecord,
+  authority: RunRecord,
 ): void {
-  if (event.workflow !== workflow) {
+  const location = `${source}s line ${line.file.path}:${String(line.lineNumber)}`;
+  if (identity.runId !== runId) {
+    throw new Error(`${location} was indexed for run ${runId} but names run ${identity.runId}`);
+  }
+  if (identity.workflow !== authority.envelope.workflow) {
     throw new Error(
-      `spans line ${line.file.path}:${String(line.lineNumber)} is in ${workflow}'s bounded partition but names `
-      + `workflow ${event.workflow}; refusing a cross-workflow span that this run's log could otherwise silently exclude`,
+      `${location} for run ${runId} names workflow ${identity.workflow}, but authority names ${authority.envelope.workflow}`,
+    );
+  }
+  if (identity.traceId !== authority.envelope.traceId) {
+    throw new Error(
+      `${location} for run ${runId} names ${source} trace ${identity.traceId}, but authority trace is ${authority.envelope.traceId}`,
+    );
+  }
+  const firstAttempt = row.queued.attempt;
+  const lastAttempt = Math.min(row.attempt, authority.envelope.attempt);
+  if (identity.attempt < firstAttempt || identity.attempt > lastAttempt) {
+    throw new Error(
+      `${location} for run ${runId} names attempt ${String(identity.attempt)}, outside the run's legal attempts `
+      + `${String(firstAttempt)}..${String(lastAttempt)}`,
     );
   }
 }
@@ -969,7 +1024,6 @@ function logLinesForRun(
   row: RunFoldRecord,
   authority: RunRecord,
   runId: string,
-  cache: RunNoteScanCache | undefined,
 ): readonly RunLogScanEntry[] {
   const scan = (): readonly RunLogScanEntry[] => {
     const matches: RunLogScanEntry[] = [];
@@ -979,7 +1033,14 @@ function logLinesForRun(
     // rather than being read around (D218).
     for (const line of readScopedEventStreamLines(deps.stateRoot, "notes", runNotePartitionScope(runId, row, authority))) {
       const note = parseNoteLine(line);
+      if (note.workflow !== line.file.workflow) {
+        throw new Error(
+          `notes line ${line.file.path}:${String(line.lineNumber)} is filed in workflow ${line.file.workflow} but names `
+          + `workflow ${note.workflow}; refusing a note whose durable partition and identity disagree`,
+        );
+      }
       if ("runId" in note && note.runId === runId) {
+        assertRunLogIdentity("note", note, line, runId, row, authority);
         matches.push({
           kind: "note",
           line,
@@ -987,13 +1048,10 @@ function logLinesForRun(
         });
       }
     }
-    const scope = runNotePartitionScope(runId, row, authority);
     const descriptor = deps.descriptors.resolve(authority.envelope.workflow);
-    for (const line of readScopedEventStreamLines(deps.stateRoot, "spans", scope)) {
-      const event = parseSpanLine(line);
-      if (!("runId" in event)) continue;
-      assertScopedSpanWorkflow(event, line, authority.envelope.workflow);
-      if (event.runId !== runId) continue;
+    for (const { line, event } of deps.projection.runLogSnapshot(runId).entries) {
+      assertScopedSpanWorkflow(event, line);
+      assertRunLogIdentity("span", event, line, runId, row, authority);
       if (event.t === "data.observed") {
         matches.push({ kind: "observed", line, event, producer: producerOf(descriptor, event, line) });
       }
@@ -1007,7 +1065,7 @@ function logLinesForRun(
       || left.line.file.path.localeCompare(right.line.file.path)
       || left.line.lineNumber - right.line.lineNumber);
   };
-  return cache === undefined ? scan() : cache.read(runId, scan);
+  return scan();
 }
 
 function logInstantOf(entry: RunLogScanEntry): string {
@@ -1069,7 +1127,7 @@ export function buildRunSection(
   runId: string,
   sectionInput: string,
   cursorInput?: string,
-  /** D5: one note scan across a caller's whole page walk — see `createRunNoteScanCache`. */
+  /** D5/L3: immutable combined-log snapshots across a page walk. */
   noteScanCache?: RunNoteScanCache,
 ): RunDetailSectionResponse {
   const section = SectionNameSchema.parse(sectionInput);
@@ -1111,10 +1169,19 @@ export function buildRunSection(
   }
 
   if (section === "logs") {
-    const offset = cursorInput === undefined
-      ? 0
-      : Number(z.string().regex(/^pc:[1-9]\d*$/).parse(cursorInput).slice(3)) - 1;
-    const all = logLinesForRun(deps, row, authority, runId, noteScanCache);
+    const snapshots = logSnapshotsFor(deps, noteScanCache);
+    let offset = 0;
+    let snapshot: RunLogSnapshot;
+    if (cursorInput === undefined) {
+      snapshot = snapshots.start(runId, () => logLinesForRun(deps, row, authority, runId));
+    } else {
+      const cursor = LogPageCursorSchema.parse(cursorInput);
+      const [, snapshotId, offsetText] = cursor.split(":");
+      if (snapshotId === undefined || offsetText === undefined) throw new Error(`log cursor ${cursor} is incomplete`);
+      offset = Number(offsetText);
+      snapshot = snapshots.resume(runId, snapshotId);
+    }
+    const all = snapshot.entries;
     const page = all.slice(offset, offset + LOGS_PAGE_SIZE);
     const rows = page.map((entry, index) => LogRowWireSchema.parse(logRowOf(
       entry,
@@ -1127,7 +1194,7 @@ export function buildRunSection(
         rows,
         notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
         nextCursor: offset + LOGS_PAGE_SIZE < all.length
-          ? { state: "present", value: `pc:${String(offset + LOGS_PAGE_SIZE + 1)}` }
+          ? { state: "present", value: `lc:${snapshot.id}:${String(offset + LOGS_PAGE_SIZE)}` }
           : { state: "absent", reason: "end-of-page" },
       },
     });
@@ -1738,7 +1805,8 @@ function originOf(
   nodeId: string,
   fieldPath: string,
 ): ContextDataOriginWire {
-  const origin = descriptor?.dataOrigins?.find((entry) => entry.nodeId === nodeId);
+  const origin = descriptor?.dataOrigins?.find((entry) =>
+    entry.nodeId === nodeId && (entry.role === undefined || entry.role === "task" || entry.role === "commit"));
   if (origin === undefined) return {};
   const bound = origin.freshness?.find((entry) => entry.fieldPath === fieldPath);
   return {

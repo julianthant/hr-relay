@@ -430,7 +430,7 @@ function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
   const rows: NonNullable<FrozenNotePage["rows"]> = [];
   let cursor: string | undefined;
   /**
-   * D5 (audit P3): ONE note scan for the whole page walk.
+   * D5/L3 (audit P3): ONE immutable combined-log snapshot for the whole page walk.
    *
    * Every page below is still served by the production `buildRunSection` — the
    * freeze does not re-derive a payload the live panel would have shown

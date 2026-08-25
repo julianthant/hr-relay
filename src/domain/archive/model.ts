@@ -478,7 +478,16 @@ function refineObservedLogGeneration(
 ): void {
   if (record.archiveSchemaGeneration < 5 || record.sections === undefined) return;
   const sections = ArchivedRunSectionsSchema.safeParse(record.sections);
-  if (!sections.success || sections.data.logs.state !== "present") return;
+  if (!sections.success) return;
+  if (sections.data.logs.state !== "present") {
+    context.addIssue({
+      code: "custom",
+      path: ["sections", "logs"],
+      message: "an archive record at generation 5 or later must freeze the combined logs snapshot; "
+        + "logs.state='absent' means no snapshot was frozen",
+    });
+    return;
+  }
   if (sections.data.logs.value.rows === undefined) {
     context.addIssue({
       code: "custom",
