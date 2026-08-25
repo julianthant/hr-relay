@@ -407,8 +407,11 @@ describe("D170 intake session wire", () => {
 
 describe("D171 rerun diff — these exact bytes have run before", () => {
   /** Map, validate and enqueue the roster; returns the enqueued session id. */
-  async function runTheRoster(harness: Surface): Promise<string> {
-    const created = await uploadRoster(harness.intake);
+  async function runTheRoster(
+    harness: Surface,
+    existingUpload?: Awaited<ReturnType<typeof uploadRoster>>,
+  ): Promise<string> {
+    const created = existingUpload === undefined ? await uploadRoster(harness.intake) : existingUpload;
     const sessionId = created.session.intakeSessionId;
     const headerFingerprint = created.session.headerFingerprint;
     const wire = await harness.intake.read(sessionId);
@@ -440,6 +443,29 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     );
     return sessionId;
   }
+
+  it("reserves one manifest identity at upload and consumes it unchanged at enqueue", async () => {
+    const harness = surface();
+    const created = await uploadRoster(harness.intake);
+    const reservedManifestId = created.session.reservedManifestId;
+    assert.notEqual(reservedManifestId, undefined, "the durable upload session reserves its manifest identity");
+    assert.equal(
+      harness.database.authority.intakeSessions.get(created.session.intakeSessionId)?.reservedManifestId,
+      reservedManifestId,
+      "the identity served to the caller is the identity stored in authority",
+    );
+
+    const sessionId = await runTheRoster(harness, created);
+    const enqueued = await harness.intake.read(sessionId);
+    assert.equal(enqueued.intakeManifestId, reservedManifestId, "enqueue consumes the reserved identity");
+    assert.equal(
+      reservedManifestId === undefined
+        ? undefined
+        : harness.database.authority.intakeManifests.get(reservedManifestId)?.manifestId,
+      reservedManifestId,
+      "the immutable manifest is stored under that same identity",
+    );
+  });
 
   it("serves no rerun view for a file that has never been enqueued", async () => {
     const { intake } = surface();

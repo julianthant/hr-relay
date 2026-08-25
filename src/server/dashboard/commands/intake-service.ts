@@ -244,6 +244,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       ...(session.sourceName === undefined ? {} : { sourceName: session.sourceName }),
       state: session.state,
       expectedVersion: session.version,
+      ...(session.reservedManifestId === undefined ? {} : { reservedManifestId: session.reservedManifestId }),
       ...(session.intakeManifestId === undefined ? {} : { intakeManifestId: session.intakeManifestId }),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
@@ -294,6 +295,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         if (open !== undefined) return { state: "joined" as const, session: open };
         const record = IntakeSessionSchema.parse({
           intakeSessionId: dependencies.ids.uuid(),
+          reservedManifestId: dependencies.ids.uuid(),
           actorId: dependencies.actorId,
           workflow: request.workflow,
           artifact,

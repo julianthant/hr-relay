@@ -92,6 +92,8 @@ export const IntakeSessionWireSchema = z.strictObject({
   state: IntakeSessionStateSchema,
   /** The CAS token every intake command target carries. */
   expectedVersion: PositiveIntSchema,
+  /** Absent only on a durable session created before manifest identities were reserved at upload. */
+  reservedManifestId: IntakeManifestIdSchema.optional(),
   /** Set exactly when the session enqueued; the manifest is the rerun authority. */
   intakeManifestId: IntakeManifestIdSchema.optional(),
   createdAt: IsoInstantSchema,

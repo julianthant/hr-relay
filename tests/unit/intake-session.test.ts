@@ -66,6 +66,15 @@ describe("intake session record", () => {
     );
     assert.throws(() => session({ intakeManifestId: UUID_2 }), /only an enqueued session/u);
     assert.throws(
+      () => session({
+        state: "enqueued",
+        validation: { state: "validated", validatedAt: NOW, readAt: NOW },
+        reservedManifestId: UUID_2,
+        intakeManifestId: UUID_7,
+      }),
+      /consumes its reserved manifest id exactly/u,
+    );
+    assert.throws(
       () => session({ state: "validated" }),
       /retains its validation instant/u,
     );
@@ -81,6 +90,16 @@ describe("intake session record", () => {
       }),
       /settled header row/u,
     );
+  });
+
+  it("reads a pre-reservation stored session forward without inventing a manifest identity", () => {
+    const db = database();
+    db.authority.intakeSessions.create(session());
+
+    const stored = db.authority.intakeSessions.get(UUID_7);
+
+    assert.notEqual(stored, undefined);
+    assert.equal(stored?.reservedManifestId, undefined);
   });
 });
 

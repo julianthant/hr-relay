@@ -118,7 +118,7 @@ function commandId(): string {
   return `${String(commandSequence).padStart(8, "0")}-0000-4000-8000-000000000000`;
 }
 
-function harness(sessionOverrides: Record<string, unknown> = {}) {
+function harness(sessionOverrides: Record<string, unknown> = {}, preReservation = false) {
   const root = mkdtempSync(join(tmpdir(), "hrauto-intake-arms-"));
   roots.push(root);
   const clock = manualClock(new Date(NOW));
@@ -144,6 +144,7 @@ function harness(sessionOverrides: Record<string, unknown> = {}) {
     exclusions: [],
     state: "mapping",
     validation: { state: "none" },
+    ...(preReservation ? {} : { reservedManifestId: UUID_3 }),
     version: 1,
     createdAt: NOW,
     updatedAt: NOW,
@@ -435,6 +436,20 @@ function enqueue(send: ReturnType<typeof harness>["send"], dryRun = false) {
 }
 
 describe("D171 enqueue-intake-manifest — the readiness gate", () => {
+  it("refuses a pre-reservation session by id instead of minting a manifest identity", () => {
+    const { database, send, mapAndValidate } = harness({}, true);
+    send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
+    mapAndValidate();
+
+    const result = enqueue(send);
+
+    assert.equal(result.state, "rejected");
+    assert.equal(result.state === "rejected" ? result.code : "", "invalid-state");
+    assert.match(result.state === "rejected" ? result.message : "", new RegExp(`intake session ${UUID_7}`));
+    assert.match(result.state === "rejected" ? result.message : "", /predates reserved manifest identities/u);
+    assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
+  });
+
   it("refuses a session that has not been validated", () => {
     const { database, current, send, bindEid } = harness();
     bindEid();
