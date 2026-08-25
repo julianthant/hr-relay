@@ -575,7 +575,7 @@ builds:
 - [x] BE durable session record + grouping — `run_sessions` (insert-only, member-less) written by every fan-out before its first member; membership is the run row's `sessionId`; a retry inherits; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa`, D269)
 - [ ] FE session view — worker cards show membership and what each worker is doing, from authority
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded
-- [ ] BE pool-indexed worker ids — `phase1WorkerId(workflowId)` returns one id per workflow, so two composed workers collide on the authority worker lease (`src/core/worker-loop.ts`)
+- [x] BE pool-indexed worker ids — required CLI positive pool index → stable `<workflow>-worker-<index>` identity → authority lease; distinct indices retain distinct leases and duplicate ownership is refused (`src/core/worker-loop.ts`, `src/server/worker/compose.ts`)
 
 needs:
 - track-d
@@ -585,6 +585,8 @@ log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Parallel runs written; one `builds:` line ADDED from reading the code — the pool version is a prerequisite of the spawn control, not a detail of it (`src/dashboard/surfaces/shell.tsx:1036` states the CAS reason the demo's `+` is absent); `doc:` tightened to ref execution-and-sessions §1, §3 and §7.1
 - 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
 - 2026-08-21 | parallel-runs P12 | the AUTHORITY half built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (`93b7b18e`), the pool CAS in the kernel (`b4f30ea0`), the session written at every fan-out and inherited by retry (`57f2bb9c`), the wire's `workerPools[]` + row `session` (`24b04dfa`); left: the pool PROCESS (spawn + pool-indexed ids), the FE session view, the parallel PROOF
+- 2026-08-25 | parallel-runs P3 | pool-indexed identity built: `worker <workflow> --pool-index N` requires and validates a positive N, then composition carries the derived id through the loop and authority lease. Index 2 retains its own lease; duplicate N hits the existing lease collision. Left: the real dashboard process supervisor, FE session view and parallel proof
+- 2026-08-25 | parallel-runs P3 review | worker admission is per-start and strictly aggregated into D181's restore arm; singleton admission is atomic (16 synchronized processes admit one), ownership binds PID to OS process birth, and exclusive restore admission spans staged-byte verification through swap. Pool supervision, FE and parallel proof remain unbuilt
 
 #### Observed logs — the log carries what the page said {#observed-logs}
 status: active

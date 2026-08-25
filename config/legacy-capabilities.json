@@ -17,7 +17,7 @@
         "kind": "replaced",
         "milestone": "1f",
         "replacement": "src/server/worker/compose.ts",
-        "differencesAccepted": "Legacy's detached per-workflow daemon — spawned by daemon-registry, owning its own HTTP control surface, lockfile, session and claim loop — is replaced by a FOREGROUND `cli worker <workflow-id> [--drain]` process. Control moves off HTTP onto the one idempotent actor-stamped command family plus the authority's own claim leases, and D181's per-role process lock (.tracker-rebuild/locks) replaces the daemon lockfile while additionally refusing a second live holder of a role by name and PID. There is no per-daemon stdout log file: a worker's events reach the operator only through the ONE projection."
+        "differencesAccepted": "Legacy's detached per-workflow daemon — spawned by daemon-registry, owning its own HTTP control surface, lockfile, session and claim loop — is replaced by a FOREGROUND `cli worker <workflow-id> --pool-index <positive-int> [--drain]` process. Control moves off HTTP onto the one idempotent actor-stamped command family plus the authority's own claim leases. Each worker start owns a durable process record under .tracker-rebuild/locks/workers; D181 strictly aggregates those records into one restore-safety observation while identity collision remains the authority lease's job. There is no per-daemon stdout log file: a worker's events reach the operator only through the ONE projection."
       },
       "ownerMilestone": "1f",
       "verificationEvidence": [
@@ -594,7 +594,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "There is no per-INSTANCE stop. The command union's stop-worker addresses a worker by workflow scope, not by a spawned daemon instance id, because a rebuild worker is a foreground process holding a durable claim lease and a per-role process lock (D181) rather than a supervised detached daemon. Naming an instance would need a supervisor the rebuild does not have, and whether one is wanted is decided by how multi-worker operation actually behaves once real workflows run — so it closes with them, not ahead of them."
+        "reason": "There is no per-INSTANCE stop. The command union's stop-worker addresses a worker by workflow scope, not by a spawned daemon instance id, because a rebuild worker is a foreground process holding a durable claim lease and a per-start process record aggregated by D181 rather than a supervised detached daemon. Naming an instance would need a supervisor the rebuild does not have, and whether one is wanted is decided by how multi-worker operation actually behaves once real workflows run — so it closes with them, not ahead of them."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [

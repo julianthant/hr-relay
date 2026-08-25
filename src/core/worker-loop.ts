@@ -20,8 +20,8 @@ import type { TaskStoreRegistry } from "../base/store.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
-import { WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
-import type { WorkerId, WorkflowId } from "../domain/ids.js";
+import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
+import type { PositiveInt, WorkerId, WorkflowId } from "../domain/ids.js";
 import { WorkerDirectiveSchema, type WorkerDirective } from "../domain/run/worker.js";
 import type {
   CanonicalInputSnapshotMigration,
@@ -369,8 +369,12 @@ export interface WorkerProcessSupervisor {
   reopenBrowser?(input: Readonly<{ workerId: WorkerId; browserSessionId: string }>): void;
 }
 
+export function poolWorkerId(workflowId: WorkflowId, poolIndex: PositiveInt): WorkerId {
+  return WorkerIdSchema.parse(`${workflowId}-worker-${String(poolIndex)}`);
+}
+
 export function phase1WorkerId(workflowId: WorkflowId): WorkerId {
-  return WorkerIdSchema.parse(`${workflowId}-worker-1`);
+  return poolWorkerId(workflowId, PositiveIntSchema.parse(1));
 }
 
 /**

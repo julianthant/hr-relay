@@ -10,11 +10,12 @@ import { afterEach, describe, it } from "vitest";
 import {
   createPhase1WorkerRuntimeExecutor,
   phase1WorkerId,
+  poolWorkerId,
   runWorkerLoop,
   type WorkerLoopDependencies,
 } from "../../src/core/worker-loop.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
-import { WorkflowIdSchema } from "../../src/domain/ids.js";
+import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { personLookupDescriptor } from "../../src/workflows/person-lookup/descriptor.js";
 import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
@@ -280,6 +281,17 @@ function workerBrowserCommand(request: unknown) {
   if (parsed.family !== "worker-browser") throw new Error("fixture must be a worker-browser command");
   return parsed;
 }
+
+describe("pool worker identity", () => {
+  it("mints stable identities from the workflow and pool index", () => {
+    const workflowId = WorkflowIdSchema.parse(WORKFLOW_ID);
+
+    assert.deepEqual(
+      [1, 2].map((poolIndex) => poolWorkerId(workflowId, PositiveIntSchema.parse(poolIndex))),
+      ["person-lookup-worker-1", "person-lookup-worker-2"],
+    );
+  });
+});
 
 describe("phase-1 worker runtime executor seam", () => {
   const requestedAt = NOW;

@@ -1201,7 +1201,7 @@ digest without editing history.
 - [x] the verified online backup: `node:sqlite.backup`, the copy self-verified read-only, the manifest bound to the final bytes, fsync + atomic rename; no `VACUUM INTO` and no live-WAL file copy (D72)
 - [x] 2i-D's cadence — one backup at process start, a coalesced verified backup on each 15-minute tick ONLY when the store is dirty, and a graceful-drain backup inside `stop()`
 - [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
-- [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database), because its missing precondition finally exists: one runtime lock file per role, written before the authority database opens and released after its handle closes
+- [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database); singleton roles claim atomically, workers own per-start records, all owners participate in exclusive restore admission, records release only after authority closure, and any unproven pre-swap WAL/SHM rollback reports an explicit uncertain state
 - [ ] the 14/8/5 retention sweep and a configurable backup path — both D193 `wont-build-unless-asked` (§2.1's `def-retention` block carries them)
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/infra/sqlite/{offline-restore,recovery-stop-proof,runtime-process-locks}.ts, src/server/storage/compose.ts, src/server/dashboard/queries/storage.ts and the drill table below; left: only D193's two remainders
 <!-- /roadmap-status -->
@@ -1237,9 +1237,12 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    the verified copy's authority generation/RPO gap.
 5. `cli storage doctor` is read-only and reports checks, backup freshness, pending commands,
    unresolved writes, leases, outboxes, and restore candidates. `cli storage restore --from
-   <exact-backup>` verifies the exact backup first, then consumes a fresh one-time rebuild-runtime
-   proof bound to current runtime/server/worker lock generations before preserving the suspect DB;
-   it restores into a temp path, repeats all checks, and atomically swaps only while those locks remain stopped.
+   <exact-backup>` verifies the exact backup first, atomically owns exclusive restore admission,
+   compares a fresh live observation with the exact issued one-time proof, and holds that exclusion
+   through preservation, staged-byte checksum re-verification, repeated checks and atomic swap.
+   Every runtime start checks admission before and after its own atomic/per-start record and unwinds
+   if restore won. A post-swap failure is reported as replaced; a failed pre-swap companion rollback
+   is reported as companion-state-uncertain; neither may claim an untouched live database.
 6. Restore reconciliation replays JSONL into **projection tables only**. It never invents lost
    authority from spans. Runs/events newer than the restored authority generation are surfaced as
    `authority-unknown`; any possible external write is parked for ref write-safety's live probe/operator
@@ -1289,24 +1292,42 @@ recorded a snapshot** — `recordRuntimeState` had no caller, and `.tracker-rebu
 a distinct isolated resource by D88) was never created. The restore path was therefore complete,
 tested, and unreachable.
 
-**The locks are now real, one file per role.** `src/infra/sqlite/runtime-process-locks.ts` gives
-the dashboard composition (`server`) and the worker composition (`workers`) a lock file each,
-taken BEFORE the authority database opens and released only AFTER its handle closes. Each process
-writes only its own file; the snapshot the stop-proof store records is **composed at observation
-time** from both. That is the load-bearing choice: one shared snapshot file would need a
-read-modify-write from two processes, and a lost update there would report a running server as
-stopped — the exact state this interlock exists to refuse. A second live holder of one role is now
-refused by name and pid, which is the "two dashboards over one authority store" collision
-`config/runtime-isolation.json` has named since D88 and nothing enforced.
+**The locks are real, but “one file per role” is no longer the contract.** The singleton dashboard
+(`server`) claims its root record by an atomic hard link; a 16-process contention test admits
+exactly one holder, closing the former check-then-rename window. Worker processes append per-start
+records under `workers/`, so distinct pool indices coexist and duplicate worker identity reaches
+the authority lease instead of a role singleton. Observation strictly composes the singleton,
+every worker record and the legacy root-level `workers.lock.json` into the unchanged
+`{server,workers}` stop-proof shape. Malformed current, historical or legacy records fail loud and
+old records are archived forward, never deleted.
 
-**Liveness is OBSERVED, never assumed, and the observation writes nothing.** A crashed process
-leaves its lock held. Reading that as "still running" would make restore permanently impossible
-after a crash — the one moment it is most needed — so the observation asks the operating system
-whether the recorded pid still exists and reports `stopped` only for a pid that is genuinely gone
-(`EPERM` counts as ALIVE: the process exists and belongs to someone else). It never rewrites
-another process's lock file to make a restore possible. `runtimeGeneration` is the sum of the two
-lock generations, so it strictly advances whenever either process restarts, which is what stops a
-proof issued before a restart from matching the runtime after it.
+**Liveness is OBSERVED as `(pid, process-start identity)`, never PID occupancy alone, and the
+observation writes nothing.** Linux records boot id plus `/proc/<pid>/stat` start ticks; macOS runs
+`ps` under a fixed C/UTC environment and stores epoch seconds; Windows uses `Get-Process.StartTime`
+ticks. A PID occupied by a different
+birth is stale ownership and may be archived; `EPERM` remains alive and any unreadable identity
+fails loud. Legacy PID-only records read forward conservatively. The supported-platform limitation
+is macOS's one-second `ps` stamp: a PID recycled inside the same second cannot be distinguished and
+therefore remains conservatively active until the next acquisition can prove otherwise. A process
+record releases only after database closure returns successfully; a throwing close leaves it active.
+Generation 1 is the observable never-run baseline; every successful start/restart advances beyond
+it, so even a proof issued before the first-ever start is fenced after that process releases.
+
+**Restore uses exclusion, not late sampling.** Restore atomically claims its own birth-bound
+admission sentinel, then compares a fresh live observation with the exact persisted snapshot/proof
+without changing the fingerprinted `recordedAt`. Every runtime acquisition checks that sentinel on
+both sides of its atomic singleton claim or worker-record write and unwinds if restore won. Restore
+holds admission through staged checksum re-verification and authority swap. After the swap,
+fsync/report/admission-release errors carry an irreversible `replaced` state to the CLI. A rename
+throw is not itself evidence that no side effect happened: companion displacement reconciles both
+paths and enrolls a moved destination in rollback; authority replacement reconciles staged/live
+existence plus their pre-call SHA-256/size identities. A proven installed staged identity is
+`replaced`; an outcome that cannot be proven is `authority-state-uncertain`, with both paths named.
+Before replacement, live WAL/SHM companions move only into rollback staging and must restore by
+atomic rename plus fsync. If rollback rename, fsync or cleanup cannot be proven, the CLI reports
+`companion-state-uncertain` and preserves the recovery artifacts instead of claiming `unchanged`.
+Staged-file cleanup attempts every path and aggregates failures after the in-flight primary error,
+which remains first and is the cause; cleanup-only failure after swap remains `replaced`.
 
 **The command never chooses a backup.** `--from` names one exact manifest, because "restore the
 newest" is a decision about which minutes of real HR work to discard and no default is right; a
@@ -2067,7 +2088,7 @@ a rot table that cites imaginary machinery is itself the rot it warns about.
 | 4 | Re-stamp culture returns via a KV patch clobbering identity | **Structural since D254:** there is no patch arm. Identity attributes (`shape`, `parentRunId`, `traceId`, `itemId`) are named by `run.queued` and by no other arm of the strict union, so a re-stamp does not parse. `span-events.test.ts` keeps the negative control — a `span.patched` shape is refused by the wire |
 | 5 | Undeclared vocabulary (ad-hoc gate names, step keys, verdicts) | **Not emit-time validation** (§3): the executor composes every span name and path from the graph node it is executing, so an undeclared step or gate is unrepresentable. `descriptor-coverage` and `gate-coverage` walk every descriptor and assert the derived sets. The verdict arm has nothing to check, because no span carries a verdict |
 | 6 | A runtime crosses the isolation boundary and creates two sources of authority | separate repos share no module graph, build or process, so a legacy↔rebuild runtime edge is structurally impossible (D93 retired the D88 bidirectional-ban guards). What is still gated is the one-machine collision surface: `operational-isolation` proves distinct commands, state/artifact roots, ports, locks and browser profiles/sessions, from one exported direct-`const` call a composition root invokes at top level |
-| 7 | Open spans leak on crash and show "running" forever | **No guard, and no derivation.** `interrupted` exists only as an outcome enum value that maps to the `blocked` status; nothing derives it from a dead worker pid, and no projection compares a run span against a newer run for the same item. What DOES bound the state is D200's lease-as-evidence sweep — a worker winning its lease proves no other process answers to that id, so every row still claimed by it is orphaned regardless of heartbeat — and D181's role locks, which observe liveness by pid. The presentation half is open |
+| 7 | Open spans leak on crash and show "running" forever | **No guard, and no derivation.** `interrupted` exists only as an outcome enum value that maps to the `blocked` status; nothing derives it from a dead worker owner, and no projection compares a run span against a newer run for the same item. What DOES bound the state is D200's lease-as-evidence sweep — a worker winning its lease proves no other process answers to that id, so every row still claimed by it is orphaned regardless of heartbeat — and D181's process records, which observe `(pid, OS process-start identity)`. The presentation half is open |
 | 8 | The completion union grows a fourth ad-hoc arm as an object literal side-channel | **The mechanism exists under different names.** `defineFormSpec`/`extendFormSpec`/`src/forms/shared/eligibility.ts` were never built; `defineCompletionProgram` returns a sealed handle (a module-private `WeakSet` brand, `src/domain/workflow/completion.ts`) and `definePredicate` is the sole way to mint a predicate, so a hand-built object literal is not a program. `descriptor-coverage` pins that no workflow module can call `revealCompletionProgram` — one workflow cannot unseal another's. The two declared non-arms (oath-upload, verify — §4.5/§4.6) cannot be pinned by a test yet, because neither workflow exists |
 | 9 | A one-time historical importer becomes a runtime compatibility adapter | `one-time-import-offline` is `status: planned` with **no subject**: no import path exists in this tree, and D150/D156 retired the legacy accounting that would have fed one. It activates in the commit that builds the cutover data migration (`doc 05 §Exit criteria`) and not before; its inventory `owner` still names the dissolved master plan and wants repointing with `ref guards-and-tests`'s rewrite |
 | 10 | Notes stream abused as a data channel (parsing log text for state) | **The grep guard does not exist.** What exists is `redaction-surface-scan`, which classifies `payload.note.message` as `external-text` — a redaction obligation, not a ban on reading it — and the fact that no projection reads a note at all today, because nothing writes one (§1.1). The invariant is sound and unenforced; it wants a guard when the notes producer lands |

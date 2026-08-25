@@ -117,6 +117,37 @@ export class RecoveryStopProofStore {
 
   consume(input: unknown): StoppedSystemProof {
     const proof = StoppedSystemProofSchema.parse(input);
+    this.#assertProofCurrent(proof);
+    return this.#consumeIssuedProof(proof);
+  }
+
+  /**
+   * Consume the exact persisted proof after comparing a fresh live observation
+   * under restore admission. `recordedAt` is deliberately excluded from the
+   * live comparison: it says when the second observation happened, while the
+   * proof fingerprint remains bound to the exact issued snapshot on disk.
+   */
+  consumeAgainstLiveSnapshot(
+    input: unknown,
+    liveInput: unknown,
+  ): StoppedSystemProof {
+    const proof = StoppedSystemProofSchema.parse(input);
+    const live = RecoveryRuntimeLockSnapshotSchema.parse(liveInput);
+    this.#assertIssuedProofMatches(proof);
+    this.#assertProofCurrent(proof);
+    this.#assertCurrentAndStopped(live, proof.sourceDatabaseIdentity);
+    if (proof.runtimeNamespace !== live.runtimeNamespace
+      || proof.runtimeGeneration !== live.runtimeGeneration
+      || proof.processLockGenerations.server !== live.processLocks.server.generation
+      || proof.processLockGenerations.workers !== live.processLocks.workers.generation) {
+      throw new Error(
+        `stopped-system proof ${proof.proofId} does not match current runtime and process-lock generations`,
+      );
+    }
+    return this.#consumeIssuedProof(proof);
+  }
+
+  #consumeIssuedProof(proof: StoppedSystemProof): StoppedSystemProof {
     const ageMs = this.#clock.nowMs() - Date.parse(proof.observedAt);
     if (ageMs < 0) throw new Error(`stopped-system proof ${proof.proofId} was observed in the future`);
     if (ageMs > this.#maxProofAgeMs) {
@@ -132,15 +163,6 @@ export class RecoveryStopProofStore {
     if (canonicalJsonStringify(issued) !== canonicalJsonStringify(proof)) {
       throw new Error(`stopped-system proof ${proof.proofId} does not match its issued one-time record`);
     }
-    const state = this.#readCurrentState();
-    this.#assertCurrentAndStopped(state, proof.sourceDatabaseIdentity);
-    if (proof.runtimeNamespace !== state.runtimeNamespace
-      || proof.runtimeGeneration !== state.runtimeGeneration
-      || proof.processLockGenerations.server !== state.processLocks.server.generation
-      || proof.processLockGenerations.workers !== state.processLocks.workers.generation
-      || proof.runtimeStateFingerprint !== stateFingerprint(state)) {
-      throw new Error(`stopped-system proof ${proof.proofId} does not match current runtime and process-lock generations`);
-    }
     try {
       linkSync(pendingPath, consumedPath);
     } catch (error) {
@@ -150,6 +172,38 @@ export class RecoveryStopProofStore {
     fsyncPath(pendingDirectory);
     fsyncPath(consumedDirectory);
     return proof;
+  }
+
+  #assertIssuedProofMatches(proof: StoppedSystemProof): void {
+    const pendingPath = join(this.#root, PENDING_DIRECTORY, `${proof.proofId}.json`);
+    const consumedPath = join(this.#root, CONSUMED_DIRECTORY, `${proof.proofId}.json`);
+    if (existsSync(consumedPath)) {
+      throw new Error(`stopped-system proof ${proof.proofId} was already consumed`);
+    }
+    if (!existsSync(pendingPath)) {
+      throw new Error(`stopped-system proof ${proof.proofId} was not issued by the current runtime`);
+    }
+    const issued = parseJsonFile(pendingPath, StoppedSystemProofSchema);
+    if (canonicalJsonStringify(issued) !== canonicalJsonStringify(proof)) {
+      throw new Error(`stopped-system proof ${proof.proofId} does not match its issued one-time record`);
+    }
+  }
+
+  #assertProofCurrent(proof: StoppedSystemProof): void {
+    const ageMs = this.#clock.nowMs() - Date.parse(proof.observedAt);
+    if (ageMs < 0) throw new Error(`stopped-system proof ${proof.proofId} was observed in the future`);
+    if (ageMs > this.#maxProofAgeMs) {
+      throw new Error(`stopped-system proof ${proof.proofId} is stale at ${String(ageMs)}ms old`);
+    }
+    const state = this.#readCurrentState();
+    this.#assertCurrentAndStopped(state, proof.sourceDatabaseIdentity);
+    if (proof.runtimeNamespace !== state.runtimeNamespace
+      || proof.runtimeGeneration !== state.runtimeGeneration
+      || proof.processLockGenerations.server !== state.processLocks.server.generation
+      || proof.processLockGenerations.workers !== state.processLocks.workers.generation
+      || proof.runtimeStateFingerprint !== stateFingerprint(state)) {
+      throw new Error(`stopped-system proof ${proof.proofId} does not match current runtime and process-lock generations`);
+    }
   }
 
   #readCurrentState(): RecoveryRuntimeLockSnapshot {

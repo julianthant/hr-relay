@@ -62,6 +62,23 @@ async function sha256File(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
+export async function verifyBackupBytesAtPath(
+  pathInput: string,
+  manifest: AuthorityBackupManifest,
+  description = `backup file ${manifest.backupFileName}`,
+): Promise<void> {
+  const path = resolve(pathInput);
+  if (!existsSync(path)) throw new Error(`${description} does not exist`);
+  const stats = statSync(path);
+  if (!stats.isFile() || stats.size !== manifest.byteSize) {
+    throw new Error(`${description} byte size does not match verified manifest`);
+  }
+  const digest = await sha256File(path);
+  if (digest !== manifest.sha256) {
+    throw new Error(`${description} checksum does not match verified manifest`);
+  }
+}
+
 export function parseBackupManifestFile(manifestPath: string): AuthorityBackupManifest {
   const text = readFileSync(manifestPath, "utf8");
   return AuthorityBackupManifestSchema.parse(JSON.parse(text));
@@ -82,12 +99,11 @@ export async function verifyBackupManifestAtPath(
   if (basename(backupPath) !== manifest.backupFileName || !existsSync(backupPath)) {
     throw new Error(`backup file ${manifest.backupFileName} named by ${basename(manifestPath)} does not exist`);
   }
-  const stats = statSync(backupPath);
-  if (!stats.isFile() || stats.size !== manifest.byteSize) {
-    throw new Error(`backup file ${manifest.backupFileName} byte size does not match its manifest`);
-  }
-  const digest = await sha256File(backupPath);
-  if (digest !== manifest.sha256) throw new Error(`backup file ${manifest.backupFileName} checksum does not match its manifest`);
+  await verifyBackupBytesAtPath(
+    backupPath,
+    manifest,
+    `backup file ${manifest.backupFileName}`,
+  );
   const inspection = AuthorityDatabase.inspectExistingReadOnly(backupPath);
   for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (inspection[field] !== manifest[field]) {

@@ -33,6 +33,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import {
   AuthorityDatabase,
   OfflineAuthorityRestoreService,
+  OfflineRestoreFailure,
   RecoveryStopProofStore,
   doctorAuthorityStorage,
 } from "../../infra/sqlite/index.js";
@@ -52,6 +53,38 @@ import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.
 export interface StorageCommandOutcome {
   readonly output: string;
   readonly exitCode: number;
+}
+
+export function restoreFailureDisposition(error: unknown): Readonly<{
+  heading:
+    | "authority restore REFUSED"
+    | "authority restore COMPANION-STATE FAILURE"
+    | "authority restore AUTHORITY-STATE UNCERTAIN"
+    | "authority restore POST-SWAP FAILURE";
+  authorityLine: string;
+}> {
+  if (error instanceof OfflineRestoreFailure && error.authorityState === "replaced") {
+    return Object.freeze({
+      heading: "authority restore POST-SWAP FAILURE",
+      authorityLine: "the authority database was replaced; inspect the post-swap failure before restarting runtime",
+    });
+  }
+  if (error instanceof OfflineRestoreFailure && error.authorityState === "companion-state-uncertain") {
+    return Object.freeze({
+      heading: "authority restore COMPANION-STATE FAILURE",
+      authorityLine: "the authority database was not replaced, but live WAL/SHM rollback is unproven; inspect recovery artifacts before restarting runtime",
+    });
+  }
+  if (error instanceof OfflineRestoreFailure && error.authorityState === "authority-state-uncertain") {
+    return Object.freeze({
+      heading: "authority restore AUTHORITY-STATE UNCERTAIN",
+      authorityLine: "the authority replacement outcome is unproven; inspect staged/live paths before restarting runtime",
+    });
+  }
+  return Object.freeze({
+    heading: "authority restore REFUSED",
+    authorityLine: "the live authority database was not modified",
+  });
 }
 
 /**
@@ -275,14 +308,16 @@ async function restoreCommand(
     // backup, or an unreadable manifest, and the operator needs to read it —
     // so it is REPORTED with its whole cause chain and a non-zero status, not
     // rethrown as a stack trace. Nothing is defaulted: every field below is
-    // derived from the failure itself, and the live authority is untouched
-    // because the service preserves and swaps only after every check passed.
+    // derived from the failure itself. The service marks whether atomic
+    // replacement already happened, so a post-swap fsync/report/release error
+    // can never be described as an untouched live authority.
     const snapshotLine = describeLocksForRefusal(processLockRoot, sourceDatabaseIdentity, clock);
+    const disposition = restoreFailureDisposition(error);
     return {
       output: [
-        `authority restore REFUSED — ${messageChain(error)}`,
+        `${disposition.heading} — ${messageChain(error)}`,
         `process locks: ${snapshotLine}`,
-        "the live authority database was not modified",
+        disposition.authorityLine,
       ].join("\n"),
       exitCode: 1,
     };
