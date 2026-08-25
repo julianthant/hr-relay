@@ -38,8 +38,10 @@
  * never verified*. The `would-prepare` cases re-open the document after the
  * rehearsal, which is the verification legacy never did.
  */
-import { deepFreeze } from "../../../../src/domain/immutability.js";
-import type { DryRunScenarioManifest } from "../../helpers/dry-run-manifest.js";
+import {
+  parseDryRunScenarioManifest,
+  type DryRunScenarioManifest,
+} from "../../../../src/domain/trust/dry-run-scenario.js";
 
 /** The graph, in execution order. Three roots, a gate, a check, one write. */
 const READ_NODES = ["job-summary", "name-search", "department-option", "comparison"] as const;
@@ -58,7 +60,7 @@ const FULL_PATH = [...READ_NODES, GATE_NODE, APPROVAL_NODE, TRANSACTION_NODE] as
 const READ_CHECKPOINTS = READ_NODES.map((node) => ({
   node,
   attempt: 1,
-  keyedBy: ["workflow", "item", "node", "attempt"] as const,
+  keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
 }));
 
 /** Zero, as a delta measured BEFORE and AFTER: the database legitimately holds
@@ -71,10 +73,10 @@ const IDENTITY_GATE = {
   gate: GATE_NODE,
   decision: "approved",
   resolvedBy: "local-operator",
-  leaf: "Approve",
+  leaf: "resolve-gate-approved",
 } as const;
 
-const MANIFEST: DryRunScenarioManifest = {
+const MANIFEST = {
   scenarioId: "separations-kuali-finalization/dry-run",
   workflow: "separations-kuali-finalization",
   transactionNode: TRANSACTION_NODE,
@@ -249,4 +251,5 @@ const MANIFEST: DryRunScenarioManifest = {
 };
 
 /** Recursively frozen at module load, like every registry export in this tree. */
-export const SEPARATIONS_KUALI_FINALIZATION_DRY_RUN: DryRunScenarioManifest = deepFreeze(MANIFEST);
+export const SEPARATIONS_KUALI_FINALIZATION_DRY_RUN: DryRunScenarioManifest =
+  parseDryRunScenarioManifest(MANIFEST);

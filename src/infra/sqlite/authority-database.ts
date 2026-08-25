@@ -166,6 +166,7 @@ import {
   DryRunScenarioResultSchema,
   type DryRunScenarioResult,
 } from "../../domain/trust/dry-run-scenario-result.js";
+import { DryRunWriteSafetyCountsSchema } from "../../domain/trust/dry-run-scenario.js";
 import {
   FixRecordSchema,
   KnowledgeRecordSchema,
@@ -351,6 +352,13 @@ type WriteIntentRepository = Readonly<{
    * therefore correctly absent here: no run fenced it.
    */
   listByRun(runId: string): readonly z.infer<typeof WriteIntentRecordSchema>[];
+  /**
+   * T1b dry-run evidence, scoped through THIS run's intent rows. Attempts and
+   * durable outbox rows have no run id of their own, so both counts join via
+   * `write_intent_id`; a global table count would make another run's write look
+   * like this rehearsal's violation.
+   */
+  countDryRunEvidenceByRun(runId: string): z.infer<typeof DryRunWriteSafetyCountsSchema>;
 }>;
 
 export interface AuthorityWriteCommitHooks {
@@ -3637,6 +3645,28 @@ export class AuthorityDatabase implements Disposable {
             WriteIntentRecordSchema,
             JsonRowSchema.parse(row).record_json,
           )));
+        },
+        countDryRunEvidenceByRun: (runId: string) => {
+          const parsedRunId = RunIdSchema.parse(runId);
+          const count = (sql: string): number => CountRowSchema.parse(
+            this.#database.prepare(sql).get(parsedRunId),
+          ).count;
+          return DryRunWriteSafetyCountsSchema.parse({
+            writeIntents: count(`
+              SELECT count(*) AS count FROM write_intents
+              WHERE json_extract(record_json, '$.runId') = ?
+            `),
+            writeAttempts: count(`
+              SELECT count(*) AS count FROM write_attempts AS attempt
+              JOIN write_intents AS intent ON intent.record_key = attempt.write_intent_id
+              WHERE json_extract(intent.record_json, '$.runId') = ?
+            `),
+            durableOutbox: count(`
+              SELECT count(*) AS count FROM durable_outbox AS outbox
+              JOIN write_intents AS intent ON intent.record_key = outbox.write_intent_id
+              WHERE json_extract(intent.record_json, '$.runId') = ?
+            `),
+          });
         },
       }),
       writeAttempts: Object.freeze({
