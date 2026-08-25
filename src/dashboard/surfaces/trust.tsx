@@ -44,7 +44,11 @@ import {
 import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { fmtClock, shortHash } from "./format.js";
-import { evidenceSourceMeta, inputHashFooter } from "./trust-model.js";
+import {
+  acceptDiagnosticBundleReadback,
+  evidenceSourceMeta,
+  inputHashFooter,
+} from "./trust-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
 import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
@@ -145,7 +149,14 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
     client.diagnosticBundle(bundleId).then(
       (bundle) => {
         if (bundleRequestRevision.current === requestRevision) {
-          setBundleDialog({ state: "ready", bundle });
+          const acceptance = acceptDiagnosticBundleReadback(bundleId, bundle);
+          setBundleDialog(acceptance.state === "ready"
+            ? acceptance
+            : {
+                state: "error",
+                bundleId: acceptance.bundleId,
+                message: acceptance.message,
+              });
         }
       },
       (error: unknown) => {

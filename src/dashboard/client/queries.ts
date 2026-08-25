@@ -34,7 +34,12 @@ import {
 } from "../../domain/dashboard/explorer.js";
 import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
-import { WIRE_ERROR_BODY, httpError, schemaError } from "./errors.js";
+import {
+  WIRE_ERROR_BODY,
+  diagnosticBundleIdentityError,
+  httpError,
+  schemaError,
+} from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
 function parseOrThrow<Schema extends z.ZodType>(schema: Schema, context: string, body: unknown): z.output<Schema> {
@@ -177,11 +182,15 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
     async diagnosticBundle(bundleId: string): Promise<DiagnosticBundleWire> {
       const parsedBundleId = DiagnosticBundleIdSchema.parse(bundleId);
       const path = `/api/v1/diagnostic-bundles/${encodeURIComponent(parsedBundleId)}`;
-      return parseOrThrow(
+      const bundle = parseOrThrow(
         DiagnosticBundleWireSchema,
         `GET ${path}`,
         await transport.requestJson(path),
       );
+      if (bundle.bundleId !== parsedBundleId) {
+        throw diagnosticBundleIdentityError(`GET ${path}`, parsedBundleId);
+      }
+      return bundle;
     },
     diagnosticBundleManifestUrl(bundleId: string): string {
       const parsedBundleId = DiagnosticBundleIdSchema.parse(bundleId);

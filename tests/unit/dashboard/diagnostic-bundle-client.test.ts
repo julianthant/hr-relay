@@ -54,4 +54,28 @@ describe("E29 diagnostic bundle client and fixture route", () => {
       "mutation check: an unexpected wire key cannot reach the dialog",
     );
   });
+
+  it("rejects a strict response whose bundle identity differs from the requested id", async () => {
+    const requestedBundleId = FIXTURE_DIAGNOSTIC_BUNDLE.bundleId;
+    const foreignBundleId = "00000000-0999-4000-8000-000000000999";
+    const client = createDashboardClient({
+      baseUrl: "http://fixture.test",
+      fetchImpl: () => Promise.resolve(Response.json({
+        ...FIXTURE_DIAGNOSTIC_BUNDLE,
+        bundleId: foreignBundleId,
+      })),
+    });
+
+    await assert.rejects(
+      () => client.diagnosticBundle(requestedBundleId),
+      (error: unknown) => {
+        assert.ok(error instanceof DashboardClientError);
+        assert.equal(error.kind, "schema");
+        assert.equal(error.code, "DIAGNOSTIC_BUNDLE_IDENTITY_MISMATCH");
+        assert.match(error.message, new RegExp(requestedBundleId, "u"));
+        assert.doesNotMatch(error.message, new RegExp(foreignBundleId, "u"));
+        return true;
+      },
+    );
+  });
 });

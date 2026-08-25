@@ -271,6 +271,12 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ### Dated lessons
 
+- **2026-08-25 — exact-id readback needs the same identity door at every authority boundary.** A
+  repository lookup, recursively strict wire parse, or injected dashboard client can each return a
+  valid diagnostic bundle for the wrong id. Compare the requested id to the durable row before
+  reading its index or artifacts, compare it again after the wire parse, and keep the requested id
+  in the dialog's error state so a foreign response can never rename the selection or its manifest.
+
 - **2026-08-25 — closing an async readback must invalidate its result, not only hide its dialog.**
   Escape can unmount a loading diagnostic-bundle dialog while its durable verification remains in
   flight; an unguarded resolution then remounts the dialog after the operator closed it. Advance a

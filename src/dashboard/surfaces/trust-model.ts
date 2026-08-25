@@ -8,10 +8,28 @@
  * `input hash {…}` MetaLine under `The input this run was given`).
  */
 import type { z } from "zod";
+import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { fmtClock, plural, shortHash } from "./format.js";
 
 type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
+
+export type DiagnosticBundleReadbackAcceptance =
+  | Readonly<{ state: "ready"; bundle: DiagnosticBundleWire }>
+  | Readonly<{ state: "identity-mismatch"; bundleId: string; message: string }>;
+
+/** A component-injected client is still outside the trust boundary until its exact id is checked. */
+export function acceptDiagnosticBundleReadback(
+  requestedBundleId: string,
+  bundle: DiagnosticBundleWire,
+): DiagnosticBundleReadbackAcceptance {
+  if (bundle.bundleId === requestedBundleId) return Object.freeze({ state: "ready", bundle });
+  return Object.freeze({
+    state: "identity-mismatch",
+    bundleId: requestedBundleId,
+    message: `DIAGNOSTIC_BUNDLE_IDENTITY_MISMATCH: requested diagnostic bundle ${requestedBundleId} returned a different bundle identity`,
+  });
+}
 
 /** `EvidenceSourceSchema`'s six arms, reached through the receipt's own type. */
 export type EvidenceSourceWire = RunEvidenceReceiptWire["input"][number]["source"];

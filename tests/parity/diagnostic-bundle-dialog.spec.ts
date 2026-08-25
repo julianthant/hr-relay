@@ -86,6 +86,23 @@ test("does not reopen when a delayed bundle verification settles after Escape", 
   await expect(trigger).toBeFocused();
 });
 
+test("keeps the requested dialog identity when a strict response carries a foreign bundle id", async ({ page }) => {
+  const requestedBundleId = FIXTURE_DIAGNOSTIC_BUNDLE.bundleId;
+  const foreignBundleId = "00000000-0999-4000-8000-000000000999";
+  await page.route(`**/api/v1/diagnostic-bundles/${requestedBundleId}`, (route) => route.fulfill({
+    json: { ...FIXTURE_DIAGNOSTIC_BUNDLE, bundleId: foreignBundleId },
+  }));
+  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
+  await page.getByRole("button", { name: `Diagnostic bundle ${requestedBundleId}` }).click();
+
+  const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${requestedBundleId}` });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Diagnostic bundle readback failed")).toBeVisible();
+  await expect(dialog.getByText(/DIAGNOSTIC_BUNDLE_IDENTITY_MISMATCH/u)).toBeVisible();
+  await expect(dialog).not.toContainText(foreignBundleId);
+  await expect(dialog.getByRole("link", { name: "Download the manifest" })).toHaveCount(0);
+});
+
 test("keeps the absent diagnostic-bundle arm explanatory and does not expose a dead action", async ({ page }) => {
   const failureSection = FIXTURE_SECTIONS[FIXTURE_IDS.failedRun]?.failure;
   if (failureSection?.section !== "failure" || failureSection.payload.state !== "available") {
