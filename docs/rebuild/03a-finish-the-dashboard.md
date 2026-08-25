@@ -444,7 +444,10 @@ operator call turns a line into a ruled divergence or a port; nothing below is d
 
 **Resolved 2026-08-25 — C96.** Bootstrap now requires and projects the descriptor's single
 positive-integer `version`; the Run Modal footer renders `{label} v{n}` through shared
-`versionTag`. The demo's minor half has no rebuild field, so `.0` is not fabricated.
+`versionTag`. The synthetic bootstrap producer emits `v7` in the focused start-run parity
+corpus, while the server test also projects a synthetic version 7 descriptor, so neither
+producer nor client can hardcode or guess `v1`. The demo's minor half has no rebuild field,
+so `.0` is not fabricated.
 
 39. Run identity: the `wf ` noun before a bare fingerprint (`run-identity.tsx:129`; A3) · the `·` separator in the provenance `Workflow` row (`:173` vs `DemoRunIdentity.tsx:141`; A13) · the rename placeholder and `subject` fallbacks (`:363, 396` vs `:394, 433`; A38, A41) · the floor bar's live/idle dot (`DemoLogPanel.tsx:1183`; A49 = B87).
 40. Log panel: `opacity-70` on an untimed segment (`DemoLogPanel.tsx:617`; B44) · the hover card's `Status` row (`:644-647`; B50) · the axis prints the first→last SPAN where the demo prints the WORKING sum and `· {age} waiting on you` (`log-panel.tsx:440` vs `:714-716`; B60, B61) · the search control's DS swap, clear affordance and width (`log-panel.tsx:1178-1185` vs `:1148-1157`; B83) · `open {age}` beside `since {clock}` on the decision card (`log-panel.tsx:572-580` vs `:396-398`; B91) — and one recorded TENSION, not an OPEN: D225's `since <clock>` under a blocked segment against the demo's own argument that the AGE is the comparable number (B45).
