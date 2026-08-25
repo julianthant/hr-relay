@@ -620,7 +620,7 @@ builds:
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded (driven by the `{#claude-operator}`'s MCP tools)
 - [ ] BE coverage floor 80/80/80 global
 - [ ] PROOF the `idempotency-key-hygiene` guard §8 listed and nobody built, with its inventory entry (ref write-safety §8)
-- [ ] BE the FIRST T1 pair — `separations-kuali-finalization`, seeded from the dismantled `kuali-timekeeper-annotation` harness (D266; built inside `workflow-tree`)
+- [x] BE the FIRST T1 pair — `separations-kuali-finalization`, seeded from the valid proof shape of the dismantled `kuali-timekeeper-annotation` workflow (D266; built inside `workflow-tree`)
 
 needs:
 - dash-defaults
@@ -630,9 +630,10 @@ log:
 - 2026-08-20 | docs-cohesion ref guards-and-tests | §10 written as-built against vitest.config.ts, run-executor/write-sequencer, tests/scenario, tests/parity and separations §9.22 (dc2901de); §7's stub lane verified NEVER PORTED → history; measured 84.23/82.15/84.74/71.76 · left: 5.2b–5.2d
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Testing tiers filled against §10: the DOCS line ticks (dc2901de), the six code lines stay open. Confirmed NO workflow in the tree has a T1 pair yet — `tests/scenario/workflows/` does not exist, including for the migrated person-lookup
 - 2026-08-21 | workflow-tree ruling | D266 — the first T1 pair is named: `separations-kuali-finalization`, seeded from the dismantled timekeeper harness; the `workflow-tree` code unit builds it
+- 2026-08-25 | D266 | the first T1 pair is built; the structural file is collected and the sibling live manifest awaits this node's still-open subject registry + result table + CLI runner
 
 ### Co-operate with Claude — a second actor on the one local BFF {#claude-operator}
-status: planned
+status: active
 date: R15 · 2026-08-21
 size: L
 doc: 03d §Phase summary · ref:frontend-backend-integration §3.4 · ref:write-safety §14
@@ -1011,18 +1012,18 @@ size: M
 chip: next code unit
 doc: 03b §The workflow tree — folders are the rail and the timeline · ref:workflow-model §1.2.2 · ref:dashboard-surfaces §9.3 · ref:dashboard-surfaces §9.9 · 03c §The seven-step migration playbook
 
-> Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists, one sub-folder per TIMELINE step, test equipment under `proving/`. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` is DISMANTLED into the testing framework as the Kuali finalization step's first T1 pair (D266) — there is no `proving/`. IDs, run identity and every surface's rendering are unchanged — the `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
+> Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists and one sub-folder per TIMELINE step. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` is DISMANTLED into the testing framework as the Kuali finalization step's first T1 pair (D266) — there is no `proving/`. IDs and run identity are unchanged; the intentional visible delta is deletion of the obsolete `Test equipment` group. The `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
 
 builds:
 - [x] DOCS D265 ratified — the rule, the separations mapping and the `workflow-layout` guard's invariant written (`ref workflow-model` §1.2.2, 2026-08-21)
-- [ ] BE `src/workflows/separations/` gains six step folders, each holding its node fragments; the composition's `timeline` is one category per folder
-- [ ] BE the five harnesses move INTO the step they prove (`descriptor.ts` + `module.ts`, role `chunk-harness of separations, step <folder>`); ids unchanged; the write harnesses import `identity-check/`'s fragments instead of restating them
-- [ ] BE `kuali-timekeeper-annotation` DISMANTLED (D266) — workflow, module, four `kuali/*-timekeeper-annotation` tasks + contracts + UI entries, its scenario + claims, the `proving` arm and the `Test equipment` group; parity refs re-frozen; the D188 successor in `guard-inventory.json` re-pointed
-- [ ] BE the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the timekeeper `kualiHarness` + its four real-sequencer scenarios (D266, `ref guards-and-tests` §10.3/§10.4)
+- [x] BE `src/workflows/separations/` gains six step folders, each holding its node fragments; the composition's `timeline` is one category per folder
+- [x] BE the five harnesses move INTO the step they prove (`descriptor.ts` + `module.ts`, role `chunk-harness of separations, step <folder>`); ids unchanged; the write harnesses import `identity-check/`'s fragments instead of restating them
+- [x] BE `kuali-timekeeper-annotation` DISMANTLED (D266) — workflow, module, four `kuali/*-timekeeper-annotation` tasks + contracts + UI entries, its scenario + claims, the `proving` arm and the `Test equipment` group; parity refs re-frozen; the D188 successor in `guard-inventory.json` re-pointed
+- [x] BE the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the retired workflow's valid real-sequencer proof shape (D266, `ref guards-and-tests` §10.3/§10.4)
 - [ ] PROOF that dry-run manifest run live once against the finalization canary via `cli dry-run-scenario`, recorded (the first `dry_run_scenario_results` row)
-- [ ] BE `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
-- [ ] BE the `workflow-layout` guard activated with its `guard-inventory.json` entry; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE, not its id
-- [ ] PROOF `npm run build:manifest` regenerated; the D191 gate green; rail, picker, Explorer and the separations timeline byte-identical (parity unchanged)
+- [x] BE `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
+- [x] BE the `workflow-layout` guard activated with its `guard-inventory.json` entry; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE, not its id
+- [x] PROOF `npm run build:manifest` regenerated; the D191 gate green; rendered rail/picker/Explorer inspected and the intentional D266 visible delta re-frozen/asserted by parity
 
 needs:
 - sep-6a
@@ -1030,6 +1031,7 @@ needs:
 log:
 - 2026-08-21 | workflow-tree ruling | drawn from your ruling on the `src/workflows/` layout; D265 ratified in ref workflow-model §1.2.2 with pointers in ref dashboard-surfaces §9.3/§9.9, 03b, 03c and `docs/migrations/separations.md`; `workflow-layout` listed planned in `guard-inventory.json` · left: the whole code unit — nothing under `src/workflows/` has moved
 - 2026-08-21 | workflow-tree ruling | D266 the same session — `proving/` withdrawn, `kuali-timekeeper-annotation` dismantled; its harness seeds the first T1 pair for `separations-kuali-finalization` (builds lines redrawn) · left: the code unit
+- 2026-08-25 | D266 | source/test retirement and the first T1 pair complete; mutation controls proved the role/grouping tests red-capable; 151 parity cases assert the visible retirement · left: only the live T1b result, blocked by `test-tiers`' unbuilt subject registry + durable row + CLI runner
 
 ### Smaller operator calls open {#operator-calls}
 status: you

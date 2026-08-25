@@ -230,6 +230,16 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ## Conventions
 
+- `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
+  and a child folder is one declared timeline step. A chunk harness lives in the matching step
+  folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
+  nests under its composition in the picker/Explorer, and never appears in the rail. There is no
+  `src/workflows/proving/` and no registered workflow whose purpose is test equipment.
+- A workflow's T1 proof lives at
+  `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
+  one collected structural scenario and one sibling live dry-run manifest. The live half may write
+  ordinary upstream `run_checkpoints`; its submit-free invariant is zero deltas in
+  `write_intents`, `write_attempts`, and `durable_outbox`.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -252,6 +262,14 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   (D104).
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
+
+### Dated lessons
+
+- **2026-08-25 — retiring a proof workflow does not retire the real workflow's vocabulary.** The
+  timekeeper annotation staging/read-back schemas and tasks belonged only to D266's dismantled test
+  workflow, but `KUALI_RRSS_TIMEKEEPER_FIELD` is also one of the twelve fields staged by real
+  separation finalization. Audit every deleted contract through driver, fake, receipt and catalog
+  dependents; preserve shared semantic elements under the real task that still consumes them.
 
 ## After changes
 

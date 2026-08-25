@@ -260,13 +260,15 @@ the successor, never a silent shrink (§5).
 <!-- roadmap: p2-proof -->
 
 **RETIRED 2026-08-09 (D188), replaced by `write-safety-contract` plus the executable
-`kuali-timekeeper-annotation/dry-run-preview` scenario.** The retirement is recorded in
+`separations-kuali-finalization/dry-run-preview` scenario.** The retirement is recorded in
 `guard-inventory.json` with that successor named. The argument is the one this program applies
 everywhere: the retired guard would have inspected a *composition* for a missing call, while the
 successor asserts **durable absence** — zero `write_intents`, zero `write_attempts`, zero
-`durable_outbox`, zero fence — over the real sequencer and a real database. A run that wrote nothing
-is a stronger fact than a graph that contains no commit node. §10.4 makes that assertion the
-standing shape of every dry-run scenario rather than one workflow's fixture.
+`durable_outbox`, zero fence — over the real sequencer and a real database. Ordinary upstream task
+`run_checkpoints` do exist and are required to reach that preview boundary; they are not write
+evidence. A run that minted no write authority or output is a stronger fact than a graph that
+contains no commit node. §10.4 makes that assertion the standing shape of every dry-run scenario
+rather than one workflow's fixture.
 
 The normative text below is unchanged and still describes what a dry-run composition must be; what
 moved is only which file proves it.
@@ -1562,13 +1564,13 @@ the parity corpus (§10.1).
 
 <!-- roadmap-status: order-8 -->
 - [x] the worked example is as-built for the guard half — every RED it names is a guard that exists at HEAD
-- [ ] its steps 6 and 7 (the T1 pair, the canary subject, the recorded live dry run) describe machinery §10 specifies and nothing yet builds
+- [ ] step 6 now has its first concrete pair (`separations-kuali-finalization`); step 7 still needs the unbuilt subject registry, durable result table and CLI runner
 > 2026-08-20 | docs-cohesion ref guards-and-tests | §9 rewritten to name the test steps a migration owes; left: the code units behind §10
 <!-- /roadmap-status -->
 
 <!-- roadmap-status: migrations -->
 - [x] the per-workflow guard loop is unchanged and every guard it fires is active
-- [ ] the per-workflow TEST loop (§10.11's seven steps) is spec-only: no `tests/scenario/workflows/<id>/` folders, no `config/test-subjects.json`, no `dry_run_scenario_results` table, no `cli dry-run-scenario`
+- [ ] the per-workflow TEST loop (§10.11's seven steps) has its first T1 pair, but no `config/test-subjects.json`, `dry_run_scenario_results` table or `cli dry-run-scenario`
 > 2026-08-20 | docs-cohesion ref guards-and-tests | §10.11 is written for the agent doing a migration and 03c's 7-step loop cites it; left: the four code units
 <!-- /roadmap-status -->
 
@@ -1636,8 +1638,9 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 - [ ] BE the subject registry (`config/test-subjects.json`, values via `src/domain/secrets.ts`) + the durable `dry_run_scenario_results` row + `cli dry-run-scenario` (§10.5, §10.6)
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded — needs `{#parallel-runs}` and `{#duo-lease}` first (§10.8)
 - [ ] BE coverage floor 80/80/80 global, with D91's 50 % global branch gate adopted alongside it (§10.10)
-- [ ] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the dismantled `kuali-timekeeper-annotation` harness and its four real-sequencer scenarios (D266; doc 03b §The workflow tree)
+- [x] BE the FIRST T1 pair in the tree — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the valid proof contracts/helpers of the dismantled annotation workflow (D266; doc 03b §The workflow tree)
 > 2026-08-20 | docs-cohesion ref guards-and-tests | the spec is written against the code (`vitest.config.ts`, `src/core/run-executor.ts`, `src/core/write-sequencer.ts`, `tests/scenario/**`, `tests/parity/**`, `docs/migrations/separations.md` §9.22); left: the four code units 5.2b–5.2d. Two as-built findings recorded rather than assumed: `TransactionDryRunPreviewSchema`'s `mismatch` subject arm is unreachable, and a real subject's EID is hardcoded across seven tracked files
+> 2026-08-25 | D266 | the first T1 pair is built and structural coverage is collected; its sibling live manifest remains deliberately unexecuted until §10.5–§10.6's subject registry, authority row and CLI runner exist
 <!-- /roadmap-status -->
 
 This section is normative and it is the one an agent writing tests reads first. **R10's rule:
@@ -1705,7 +1708,8 @@ week is still citable this week.
 **The seed for the first pair (D266, 2026-08-21).** `kuali-timekeeper-annotation` — Phase 2's
 one-node proving workflow — is dismantled by the operator's ruling that it *is* this framework's
 business: its `kualiHarness` (a REAL write sequencer over a REAL authority database, asserting
-zero `write_intents` / `run_checkpoints` / `durable_outbox`) and its four scenarios
+zero `write_intents` / `write_attempts` / `durable_outbox` deltas while retaining the ordinary
+upstream task `run_checkpoints`) and its four scenarios
 (`dry-run-preview` · `subject-mismatch` · `committed` · `already-present`) become the first T1 pair,
 for the Kuali finalization step of separations (`separations-kuali-finalization`): the structural
 file keeps the sequencer walks over the real descriptor, and the `dry-run.scenario.ts` manifest

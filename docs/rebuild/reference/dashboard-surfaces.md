@@ -4316,7 +4316,8 @@ Three dated rulings narrowed it, and they read as one rule because they land in 
   not move**: chunks stay registered and independently runnable, and each still owes or holds its own
   §3.2 controlled-commit proof.
 - **D265 (2026-08-21) — the rail is a READ of the top level of `src/workflows/`.** One top-level
-  folder per rail workflow, one sub-folder per timeline step, test equipment under `proving/`; the
+  folder per rail workflow and one sub-folder per timeline step; D266 withdrew the draft
+  `proving/` arm. The
   `workflow-layout` guard pins the served role and the path to each other, so this filter and the
   folder view can never disagree (`ref workflow-model` §1.2.2, the owner). Nothing here re-renders.
 - **D266 (2026-08-21) — `Test equipment` is gone.** `kuali-timekeeper-annotation` is dismantled into
@@ -4453,7 +4454,7 @@ D264's moved declaration fields) and §7 the parity lane.
 - [x] the parity corpus re-frozen once, deliberately: 151/151 assert-green over 139 references × 3 files
 - [x] D18 — the pill row, the composite over projected buckets, the deleted banner and the inline decision
 - [x] D22 + D126 — both terminal dones draw `Done`; icon + hue + count carry it visibly and `accessibleLabel` carries it for assistive technology, pixels unchanged
-- [x] D219/D220/D241 — role-driven grouping in ONE module: harnesses nested where listed, dropped from the rail, and `proving` heading `Test equipment`
+- [x] D219/D220/D241/D266 — role-driven grouping in ONE module: harnesses nested where listed and dropped from the rail; the sole `proving` workflow and `Test equipment` group retired
 - [x] D224 — the action bar is an island; the gap above the panels equals the gap between them
 - [x] D195 — the panel region is a grid, so the no-run-open case cannot leave ~950px of empty black
 - [!] the drawn word for `waiting` is `Review`; D12/D18/D22/D23 all say `Waiting on you` — an operator call (`{#operator-calls}`)
@@ -4644,4 +4645,3 @@ dropped, and this table is how a citation to the old flat list resolves.
 - [!] D16's "no confirmation dialog" against the built confirm-first dialog — an operator call (`{#operator-calls}`)
 > 2026-08-21 | docs-dash-surfaces 5.1c | verified against src/core/command-kernel.ts (`shape: "single"` at every enqueue), src/domain/dashboard/projection.ts (`ContainmentSchema`), src/dashboard/surfaces/{queue,queue-model}*, src/dashboard/ds/tokens.css; left: the producer for every group-shaped fact in this section
 <!-- /roadmap-status -->
-

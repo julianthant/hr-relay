@@ -21,12 +21,13 @@ property of migrating a workflow, not of any one workflow; the tiers' own normat
 - [x] the risk-proof order is fixed and its entry point is chosen — separations (order 8) first, the table deliberately NOT re-sequenced (D84/D193)
 - [x] order 0 · person-lookup is migrated and live-proven (D74, run `4ebf7275-0158-49af-a78f-1f37948efb27`); `src/workflows/person-lookup/descriptor.ts` is registered
 - [x] the seven-step loop, the §b questionnaire and the per-workflow exit criteria are written and have been run once, by separations (doc 03b)
-- [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 8 modules and every one is person-lookup, `kuali-timekeeper-annotation` or a separations chunk
+- [ ] orders 1 · 2 · 3 · 4 · 5 · 6 · 7 · 9 — **no descriptor exists for any of them**; `src/control/workflow-registry.ts` registers 7 modules and every one is person-lookup or a separations composition/harness
 - [ ] the five declaration-only stores — `i9`, `old-kronos`, `onbase`, `servicenow`, `sharepoint` are `declareDriver(…, "unwired")` with `{}` tasks (`i9` is 4 lines, the other four 9); orders 1, 2 and 7 build them
 - [ ] the legacy capability register — **47 open · 20 replaced · 7 native · 4 retired** of 78 (recounted from `config/legacy-capabilities.json`, 2026-08-20); all 47 open name milestone `phase-3-workflow-migration`, and cutover requires zero open
 - [ ] every `Dashboard · wire <workflow>` sub-task — nine of them, one per order; only `{#order-0-dash}`'s four squares are ticked
 - [ ] the T1/T2 PROOF lines on every order node — the tiers are specified (`ref guards-and-tests` §10, landed in d5b0f8f2, as of dc2901de) and no workflow has its pair yet
 > 2026-08-20 | docs-cohesion 03c | verified against `src/control/workflow-registry.ts:38-47`, `src/workflows/*/descriptor.ts` (8 files), `src/stores/*` and `config/legacy-capabilities.json` (recount 47/20/7/4 matches the tree's note); left: every order after 0, minus 8
+> 2026-08-25 | D266 | the test-only Kuali annotation workflow retired; the registry now holds seven modules and the Kuali finalization T1 pair carries its reusable proof shape
 <!-- /roadmap-status -->
 
 **Phase 3c is the rest of the program.** Phase 3a built the dashboard every workflow inherits and
@@ -43,8 +44,9 @@ task libraries the entry was chosen to force into existence (`ucpath` 10 tasks, 
 typed start door (D250/D251/D261), and the wiring pattern each `Dashboard · wire` sub-task repeats.
 
 **The honest state at HEAD.** One of the nine order rows this phase owns is migrated.
-`src/control/workflow-registry.ts` registers eight modules: `person-lookup` (order 0), `kuali-timekeeper-annotation` (the D135
-transaction proof — not an order row), and the six separations descriptors (order 8, doc 03b).
+`src/control/workflow-registry.ts` registers seven modules: `person-lookup` (order 0) and the six
+separations descriptors (order 8, doc 03b). D266 retired the former D135 proof workflow into the
+Kuali finalization T1 pair rather than treating testing machinery as an order row.
 **Orders 1, 2, 3, 4, 5, 6, 7 and 9 are pure plans** — no descriptor, no module, no tuple entry.
 `config/pending-impl-bindings.json` is the checked-in EMPTY set, so nothing is half-bound either.
 
@@ -78,8 +80,8 @@ Classify every task REUSE / CUSTOMIZE / BUILD against ref stores before writing 
 catalog is the reuse ledger, and a task that already exists under another name is the single
 cheapest thing to get wrong. **Layout (D265, `ref workflow-model` §1.2.2):** a rail workflow is a top-level folder
 `src/workflows/<id>/`; each declared timeline category is a sub-folder `<id>/<step>/` holding that
-step's node fragments and, when chunk-proved, its harness; test equipment lives under
-`src/workflows/proving/`; the `workflow-layout` guard pins role ↔ path. **Artefacts:** `src/workflows/<id>/descriptor.ts` (bundle-safe: zod,
+step's node fragments and, when chunk-proved, its harness; there is no `src/workflows/proving/`.
+The `workflow-layout` guard pins role ↔ path. **Artefacts:** `src/workflows/<id>/descriptor.ts` (bundle-safe: zod,
 `src/domain/**`, audited `src/base/**` only — D106) + `module.ts` (server composition) + the tuple
 entry in `src/control/workflow-registry.ts` + any new `src/stores/<system>/tasks/*.ts`; a contract
 no store implements yet goes into `config/pending-impl-bindings.json` in the SAME commit (D107,
@@ -415,8 +417,9 @@ on `unverifiableByPage`, order-7 automation degrades to "operator manually confi
 - [ ] BE the subject registry `config/test-subjects.json` + the durable `dry_run_scenario_results` row + `cli dry-run-scenario`
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded
 - [ ] BE the coverage floor at 80/80/80 global (measured 84.23 / 82.15 / 84.74 at the spec's writing)
-- [ ] BE the FIRST T1 pair — `separations-kuali-finalization`, seeded from the dismantled `kuali-timekeeper-annotation` harness (D266, doc 03b §The workflow tree)
+- [x] BE the FIRST T1 pair — `separations-kuali-finalization`, seeded from the valid proof shape of the dismantled `kuali-timekeeper-annotation` workflow (D266, doc 03b §The workflow tree)
 > 2026-08-20 | docs-cohesion 03c | the DOCS line is landed at HEAD (`ref guards-and-tests` §10.1–§10.12, landed in d5b0f8f2, as of dc2901de); the six code lines are 5.2b–5.2d and no workflow in this doc has a T1 pair yet — left: everything below DOCS
+> 2026-08-25 | D266 | the first T1 pair now exists; the general T1 layout migration and the live subject/runner/result machinery remain open
 <!-- /roadmap-status -->
 
 `tests/` is organized by **what a test needs**, and this is what every migration below adds its
