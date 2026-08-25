@@ -50,6 +50,7 @@ function surfaceOf(runId: string, rowRevision: number, title: string): Record<st
     dryRun: false,
     priority: "interactive",
     runNumber: { state: "present", value: 1 },
+    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
     containment: "root",
     linkedRuns: [],
     facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
@@ -85,6 +86,7 @@ function threeRowDay(): DashboardDayWire {
     statusCounts: [{ status: "queued", count: surfaces.length }],
     queueSurfaces: surfaces,
     workerCards: [],
+    workerPools: [],
     notifications: [],
   });
 }

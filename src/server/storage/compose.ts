@@ -188,6 +188,7 @@ function rebuildStagedProjections(
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
           listLiveWorkerLeases: () => staged.authority.workerLeases.listLive(),
           getWorkerLease: (workerId) => staged.authority.workerLeases.get(workerId),
+          listWorkerPools: () => staged.authority.workerPools.list(),
           isArchived: (runId) => staged.authority.archivedRuns.isArchived(runId),
           getFailure: (failureId) => staged.authority.failures.get(failureId),
           getReceipt: (runId) => staged.authority.evidenceReceipts.findByRun(runId),

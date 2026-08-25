@@ -42,6 +42,7 @@ import {
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
   RunIdSchema,
+  RunSessionIdSchema,
   TraceIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
@@ -99,6 +100,8 @@ import {
   type DuoCeremonyLeaseRecord,
   type DuoCeremonyLeaseReleaseOutcome,
 } from "../../domain/duo-ceremony-lease.js";
+import { RunSessionRecordSchema, type RunSessionRecord } from "../../domain/run/session.js";
+import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../domain/run/worker-pool.js";
 import {
   isDuoCeremonyLeaseToken,
   mintDuoCeremonyLeaseToken,
@@ -125,6 +128,8 @@ import {
   StartPlanConsumeRequestSchema,
   WorkerControlRequestSchema,
   WorkerLifecycleRequestSchema,
+  WorkerPoolPlanOutcomeSchema,
+  WorkerPoolPlanRequestSchema,
   WorkerStartOutcomeSchema,
   WorkerStartRequestSchema,
   WorkerSweepRequestSchema,
@@ -133,6 +138,7 @@ import {
   type RunHeartbeatOutcome,
   type RunUpdateOutcome,
   type StartPlanConsumeOutcome,
+  type WorkerPoolPlanOutcome,
   type WorkerStartOutcome,
   type WorkerUpdateOutcome,
 } from "./run-store-contracts.js";
@@ -444,6 +450,12 @@ type RunRepository = Readonly<{
   nextWorkflowRunNumber(workflow: string): number;
   listByWorker(workerId: string): readonly RunRecord[];
   /**
+   * D269 — the MEMBERSHIP of a run session, derived from the run rows that
+   * carry the id (`tasks.session_id`). There is no stored member list to
+   * disagree with this; a session IS the set this returns, oldest first.
+   */
+  listBySession(sessionId: string): readonly RunRecord[];
+  /**
    * D262 — every run currently parked at an operator gate.
    *
    * The needs-you notification watch reads this and nothing else: a park is a
@@ -612,6 +624,30 @@ type StartPlanRepository = Readonly<{
   create(input: unknown): ImmutableInsertResult<StartPlanRecord>;
   get(startPlanId: string): StartPlanRecord | undefined;
   consume(input: unknown): StartPlanConsumeOutcome;
+}>;
+
+/**
+ * D269 (ref execution-and-sessions §11.5): the per-workflow worker POOL
+ * declaration. `plan` is a CAS over `(workflow, version)` where a workflow
+ * with no row is at version 0 — the first plan creates it — and a stale
+ * `expectedVersion` answers `conflict` naming the current version rather than
+ * applying over it. Never deleted; `list` is what the day wire serves.
+ */
+type WorkerPoolRepository = Readonly<{
+  plan(input: unknown): WorkerPoolPlanOutcome;
+  get(workflow: string): WorkerPoolRecord | undefined;
+  list(): readonly WorkerPoolRecord[];
+}>;
+
+/**
+ * D269 (ref execution-and-sessions §11.1): the durable run SESSION — a
+ * dashboard-started group. Insert-only and member-less: `runs.listBySession`
+ * is the membership, derived from the run rows that carry the id.
+ */
+type RunSessionRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<RunSessionRecord>;
+  get(sessionId: string): RunSessionRecord | undefined;
+  listByWorkflow(workflow: string): readonly RunSessionRecord[];
 }>;
 
 type WorkerLeaseRepository = Readonly<{
@@ -786,6 +822,8 @@ export type AuthorityRepositories = Readonly<{
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
   duoCeremonyLeases: DuoCeremonyLeaseRepository;
+  workerPools: WorkerPoolRepository;
+  runSessions: RunSessionRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
   dependencies: DependencyRepository;
@@ -930,7 +968,7 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 const INVARIANT_QUERIES = Object.freeze([
   {
     name: "run-columns-match-record",
-    sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber')",
+    sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber') OR session_id IS NOT json_extract(record_json, '$.sessionId')",
   },
   {
     name: "run-claim-owner-matches-record",
@@ -3062,6 +3100,8 @@ export class AuthorityDatabase implements Disposable {
       startPlans: this.#buildStartPlanRepository(),
       workerLeases: this.#buildWorkerLeaseRepository(),
       duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
+      workerPools: this.#buildWorkerPoolRepository(),
+      runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
         insert: (input: unknown) => {
           const record = CommandRequestSchema.parse(input);
@@ -3866,15 +3906,15 @@ export class AuthorityDatabase implements Disposable {
         ? this.#database.prepare(`
           INSERT INTO tasks (
             record_key, workflow, item_id, state, priority, attempt, not_before,
-            owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, version,
+            owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, session_id, version,
             record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         : this.#database.prepare(`
           UPDATE tasks SET
             workflow = ?, item_id = ?, state = ?, priority = ?, attempt = ?, not_before = ?,
             owner_worker_id = ?, claim_generation = ?, heartbeat_at = ?, parent_run_id = ?,
-            run_number = ?, version = ?, record_json = ?
+            run_number = ?, session_id = ?, version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
         `);
       const shared = [
@@ -3892,6 +3932,10 @@ export class AuthorityDatabase implements Disposable {
         // every later UPDATE unchanged. A row that names no ordinal keeps
         // naming none — an update is not the moment to invent one.
         record.runNumber ?? null,
+        // D269: the same read-forward shape — NULL for every run enqueued
+        // before schema v17 and for a run no fan-out grouped; never minted on
+        // an update.
+        record.sessionId ?? null,
         record.version,
       ] as const;
       const result = mode === "insert"
@@ -3998,6 +4042,30 @@ export class AuthorityDatabase implements Disposable {
            * historical row, a fixture built before v15), and a writer that
            * minted one here would be back-filling.
            */
+          /*
+           * D269 — a run that names a session names a row authority wrote.
+           * The fan-out inserts the session BEFORE its first member inside this
+           * same transaction, so a member enqueued without it is a caller
+           * defect, refused here by name rather than left as a dangling id the
+           * session view would have to explain away. A record with NO session
+           * is accepted unconditionally: that is the read-forward shape (a
+           * replayed pre-v17 row) and the shape of a run no fan-out grouped.
+           */
+          if (record.sessionId !== undefined) {
+            const session = this.#readRecord("run_sessions", record.sessionId, RunSessionRecordSchema);
+            if (session === undefined) {
+              throw new Error(
+                `run ${record.envelope.runId} names session ${record.sessionId}, which authority never wrote; `
+                + "a session row is inserted before its first member, never after",
+              );
+            }
+            if (session.workflow !== record.envelope.workflow) {
+              throw new Error(
+                `run ${record.envelope.runId} of ${record.envelope.workflow} names session ${record.sessionId}, `
+                + `which groups ${session.workflow}; a session groups runs of one workflow`,
+              );
+            }
+          }
           if (record.runNumber !== undefined) {
             const nextNumber = this.#nextWorkflowRunNumber(record.envelope.workflow);
             if (record.runNumber < nextNumber) {
@@ -4057,6 +4125,9 @@ export class AuthorityDatabase implements Disposable {
         `).all(WorkerIdSchema.parse(workerId));
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
+      listBySession: (sessionId: string) => Object.freeze(this.#database.prepare(`
+        SELECT record_json FROM tasks WHERE session_id = ? ORDER BY created_at, record_key
+      `).all(RunSessionIdSchema.parse(sessionId)).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       /**
        * D262. `tasks_heartbeat_idx ON tasks(state, heartbeat_at)` leads on
        * `state`, so this is an index scan over a set that is almost always
@@ -5157,6 +5228,92 @@ export class AuthorityDatabase implements Disposable {
         });
       },
       get: (credentialKey: string) => this.#readDuoCeremonyLease(FingerprintSchema.parse(credentialKey)),
+    });
+  }
+
+  #writeWorkerPool(record: WorkerPoolRecord, mode: "insert" | "update"): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("worker_pools", () => {
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO worker_pools (record_key, desired_workers, version, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(record.workflow, record.desiredWorkers, record.version, json, record.createdAt)
+        : this.#database.prepare(`
+          UPDATE worker_pools SET desired_workers = ?, version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `).run(record.desiredWorkers, record.version, json, record.workflow, record.version - 1);
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) {
+        throw new Error(`worker pool ${record.workflow} ${mode} affected ${String(changes)} rows`);
+      }
+      return { result: undefined, changes };
+    });
+  }
+
+  #buildWorkerPoolRepository(): WorkerPoolRepository {
+    const read = (workflow: string): WorkerPoolRecord | undefined =>
+      this.#readRecord("worker_pools", WorkflowIdSchema.parse(workflow), WorkerPoolRecordSchema);
+    return Object.freeze({
+      plan: (input: unknown): WorkerPoolPlanOutcome => {
+        const request = WorkerPoolPlanRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const existing = read(request.workflow);
+          const currentVersion = workerPoolVersion(existing);
+          if (currentVersion !== request.expectedVersion) {
+            return WorkerPoolPlanOutcomeSchema.parse({
+              state: "conflict",
+              currentVersion,
+              message: existing === undefined
+                ? `worker pool ${request.workflow} has no row yet (version 0), not version ${String(request.expectedVersion)}`
+                : `worker pool ${request.workflow} is at version ${String(currentVersion)}, not ${String(request.expectedVersion)}`,
+            });
+          }
+          const pool = WorkerPoolRecordSchema.parse({
+            workflow: request.workflow,
+            desiredWorkers: request.desiredWorkers,
+            plannedBy: request.requestedBy,
+            plannedAt: request.now,
+            version: currentVersion + 1,
+            createdAt: existing?.createdAt ?? request.now,
+            updatedAt: request.now,
+          });
+          this.#writeWorkerPool(pool, existing === undefined ? "insert" : "update");
+          return WorkerPoolPlanOutcomeSchema.parse({ state: "applied", pool });
+        });
+      },
+      get: read,
+      list: () => Object.freeze(this.#database.prepare(`
+        SELECT record_json FROM worker_pools ORDER BY record_key
+      `).all().map((row) => parseJsonRecord(WorkerPoolRecordSchema, JsonRowSchema.parse(row).record_json))),
+    });
+  }
+
+  #buildRunSessionRepository(): RunSessionRepository {
+    return Object.freeze({
+      insert: (input: unknown) => {
+        const record = RunSessionRecordSchema.parse(input);
+        const json = canonicalJsonStringify(record);
+        return this.#authorityWrite("run_sessions", () => {
+          const existing = this.#readRecord("run_sessions", record.sessionId, RunSessionRecordSchema);
+          if (existing !== undefined) {
+            if (canonicalJsonStringify(existing) !== json) {
+              throw new Error(`run session ${record.sessionId} already exists with different content`);
+            }
+            return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+          }
+          const result = this.#database.prepare(`
+            INSERT INTO run_sessions (record_key, workflow, started_at, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(record.sessionId, record.workflow, record.startedAt, json, record.createdAt);
+          return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+        });
+      },
+      get: (sessionId: string) =>
+        this.#readRecord("run_sessions", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema),
+      listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
+        SELECT record_json FROM run_sessions WHERE workflow = ? ORDER BY started_at, record_key
+      `).all(WorkflowIdSchema.parse(workflow)).map((row) => parseJsonRecord(RunSessionRecordSchema, JsonRowSchema.parse(row).record_json))),
     });
   }
 

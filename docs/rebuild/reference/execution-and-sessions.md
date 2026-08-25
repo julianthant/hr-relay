@@ -1053,16 +1053,19 @@ advances across profiles.
 <!-- roadmap-status: parallel-runs -->
 - [ ] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard
 - [ ] BE pool-indexed worker ids: `phase1WorkerId(workflowId)` derives ONE id per workflow, so two composed workers collide on the authority worker lease by design (`src/core/worker-loop.ts:368`)
-- [ ] BE the projection serves a worker-POOL version — `spawn-worker` and `plan-worker-count` target `{workflowId, expectedVersion}` while `WorkerCardWire.revision` is ONE worker's row, so the control has no honest CAS basis today
-- [ ] BE a durable session record and its grouping, membership derived from authority (B4's bulk dispatch is the seed)
+- [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis: `plan-worker-count` and `spawn-worker` target `{workflowId, expectedVersion}` where `expectedVersion` is the POOL row's version (0 for an unplanned workflow), the kernel refuses a stale one with `conflict` naming the current version BEFORE the runtime seam, and the day wire serves `workerPools[]` (`93b7b18e` store · `b4f30ea0` kernel · `24b04dfa` wire — D269)
+- [x] BE a durable session record and its grouping, membership derived from authority — `run_sessions` (schema v17, insert-only, member-less) written by `fanOutQueuedRuns` BEFORE its first member; every run row carries `sessionId` (`tasks.session_id`, read forward) and `runs.listBySession` IS the membership; a retry inherits its session; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa` — D269)
 - [ ] FE the session view — worker cards show membership and what each worker is doing, read from authority
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit
-- [ ] needs §10 first — the pool multiplies the hazard the lease removes
+- [x] needs §10 first — the pool multiplies the hazard the lease removes (§10 landed, D267)
 > 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
+> 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
 <!-- /roadmap-status -->
 
-**DESIGNED, NOT BUILT.** This section is the owning contract for the tree's `{#parallel-runs}` node.
-It defines the SESSION unit §1 names and the pool that serves one.
+**AUTHORITY HALF AS-BUILT (D269, 2026-08-21); the pool PROCESS and the FE view are DESIGNED, NOT
+BUILT.** This section is the owning contract for the tree's `{#parallel-runs}` node and the normative
+text of D269. It defines the SESSION unit §1 names and the pool that serves one. Points 1 and 5 are
+built exactly as written below, at the cited commits; points 2, 4, 6 and 8 remain design.
 
 **1. A session is a dashboard-started group of runs.** It is not a browser session (§1), not a
 worker, and not a workflow. It is what an operator starts when they dispatch a batch — ten I-9
@@ -1071,6 +1074,35 @@ is DURABLE: it has an id, a workflow, the actor who started it, its creation ins
 membership. Membership is DERIVED from authority — a run row carries its session id — never held in
 a supervisor's memory, because a supervisor's memory does not survive the process and a session an
 operator can see after a restart is the entire point.
+
+_As-built (D269):_ `run_sessions` (schema v17, `93b7b18e`) is the row — `RunSessionRecord
+{sessionId, workflow, origin, startedAt, createdAt}`, insert-only by trigger (UPDATE and DELETE
+abort, the archive tables' shape), and it holds **no member list**: `RunRecord.sessionId` (the
+mirrored, nullable `tasks.session_id` column, indexed) is the membership and `runs.listBySession`
+is how it is read, so a session can never claim a run the run table does not show and a restart
+loses nothing. **One session per fan-out, N ≥ 1** — there is no threshold, because a minimum would
+put a judgment call where a rule belongs: `fanOutQueuedRuns` (`57f2bb9c`) inserts the session row
+BEFORE its first member inside the caller's transaction, so a refusal on run 39 of 40 unwinds the
+session with everything else, and `runs.enqueue` refuses a member that names a session authority
+never wrote or another workflow's session. The four fan-out callers mint the id and name the
+`origin`: `start-run` (`{start-plan, startPlanId, actorId}`), `enqueue-intake-manifest`
+(`{intake-manifest, intakeManifestId, actorId}`), `relaunch-archived-run` (`{archive-relaunch,
+archivedRunId, actorId}`) and the capture handoff (`{capture-handoff, captureSessionId,
+intakeManifestId}` — NO actor, because the capture session row records none and `local-operator`
+there would be a value nobody recorded; its id folds from the same stable key as its run and
+manifest so a D174 replay names the same group). **A retry mints no session: it inherits the
+retried run's** — it is the same item's next attempt (D221), so the group the operator started keeps
+reporting the item it contains; a retry of an ungrouped (pre-v17) run stays ungrouped. Pre-v17 rows
+carry no `sessionId` and are read forward as "no session" (D133); nothing back-fills a group nobody
+started. The queue's absence reason covers BOTH durable cases — *"this run predates D269 session
+grouping, or retries a run that does"* — rather than claiming every absent row was itself enqueued
+before v17. **Archive schema generation 4 freezes that required QueueSurface `session` arm.** A
+generation-1/2/3 archived row has no key and reads forward as *"no session recorded (archived before
+D269)"*; the archive read arm adds that sentence only to the served wire, never to stored JSON or
+its `contentDigest`, while a generation-4 record without the arm refuses. The LIVE QueueSurface
+schema remains required. D235's bulk strip is NOT a session producer: a bulk `retry` re-dispatches
+members of the groups they already belong to, one child transaction each, and `bulkCommandId` never
+reaches the kernel.
 
 **2. Every workflow follows the SAME browser-profile recipe; each worker owns its own profile
 directory.** Nothing new is needed here and nothing may be special-cased: §1's path already
@@ -1097,19 +1129,43 @@ refusing, because acknowledging a count the runtime cannot produce is an acknowl
 effect that did not happen.
 
 **5. The spawn control needs a CAS basis before it needs a button.** `spawn-worker` and
-`plan-worker-count` target `{workflowId, expectedVersion}` (`src/domain/commands.ts:181`), and the
-projection serves no pool version — `WorkerCardWire.revision` is one worker's row. A frontend that
-guessed an `expectedVersion` would be inventing the exact fact the CAS exists to check, which is why
-there is no `+ Add workers` control today and why the pool version is a prerequisite of the control
-rather than a detail of it. The dashboard's supervisor keeps refusing spawn BY NAME
-(*"the dashboard process does not launch browser workers; start worker X with `npm run cli worker
-<workflowId>`"*) until a real process effect exists — a refusal, not a stub, so no acknowledgement
-can claim an effect that did not happen.
+`plan-worker-count` target `{workflowId, expectedVersion}` (`src/domain/commands.ts`), and until
+D269 the projection served no pool version — `WorkerCardWire.revision` is one worker's row. A
+frontend that guessed an `expectedVersion` would be inventing the exact fact the CAS exists to
+check, which is why there is no `+ Add workers` control today and why the pool version is a
+prerequisite of the control rather than a detail of it. The dashboard's supervisor keeps refusing
+spawn BY NAME (*"the dashboard process does not launch browser workers; start worker X with `npm
+run cli worker <workflowId>`"*) until a real process effect exists — a refusal, not a stub, so no
+acknowledgement can claim an effect that did not happen.
+
+_As-built (D269):_ `worker_pools` (schema v17, `93b7b18e`) is the basis — `WorkerPoolRecord
+{workflow, desiredWorkers, plannedBy, plannedAt, version, createdAt, updatedAt}`, one row per
+workflow keyed on the workflow id, UPDATED under a version CAS (a pool is a standing declaration,
+not a history) and never deleted. **A workflow with no row is at version 0**: nothing seeds rows at
+boot (a `desiredWorkers` nobody planned would be a fabricated operator intent, and the composed
+runtime's single worker is a fact about the PROCESS, not this table), so `expectedVersion` on both
+arms is `NonNegativeInt` and 0 is the honest basis for the first plan, which creates the row at 1.
+The kernel (`b4f30ea0`) CAS-checks the pool version FIRST on both arms and answers a stale one with
+`conflict` naming the current version (`CommandResult.conflict.currentVersion` and
+`versionChanges.before` admit 0 for exactly this target); `plan-worker-count` then consults the
+runtime seam — which still refuses any count but one until part 4's reconciliation lands — and only
+then writes `desiredWorkers` under CAS, reporting a `worker-pool` target with its version change, so
+the pool never records a count the runtime refused; `spawn-worker` stays refused by the supervisor,
+past a true check rather than a guessed version. The day wire (`24b04dfa`) serves
+`workerPools[] {workflowId, desiredWorkers, version, plannedBy, plannedAt}` — authority rows only,
+in workflow order; a workflow absent from the list has no row and its basis is 0 — read whole on
+every snapshot exactly as `workerCards` are. It is a SNAPSHOT-level block by construction: the D4
+day patch stream carries queue-row splices and nothing else, so a changed pool reaches the client on
+the next snapshot, never through a patch — the same shape the cards and the inbox already have.
+`desiredWorkers` is a declaration; what is actually running is the worker leases (§3), kept apart
+for the reason the lease separates `control` from `lifecycle`.
 
 **6. What the dashboard shows.** The session and its workers: membership, per-member run state, and
 what each worker is doing — every value read from authority through the ONE projection
 (ref dashboard-surfaces). The worker cards exist already (§4's D248 as-built); what they lack is a
-session to belong to. Two honesty rules carry over unchanged: a browser tile still reads
+session to belong to. _Since D269 the wire carries the facts the view needs and no view reads them
+yet:_ each queue row's `session` (`{present, sessionId} | {absent, reason}`, the row's own field —
+membership across the day IS the rows that name one session) and the day's `workerPools[]`. Two honesty rules carry over unchanged: a browser tile still reads
 `Not checked` because nothing probes a live session, and a wait reason is drawn only where a real
 holder can be named — which, once §10 lands, is exactly one place.
 
@@ -1124,4 +1180,3 @@ end-to-end tier's first exercise (ref guards-and-tests §test tiers) — plus a 
 that lands the pool. It needs §10 first: the pool multiplies the hazard the ceremony lease removes,
 and shipping it in the other order would make the first parallel cold start the thing that burns a
 profile.
-

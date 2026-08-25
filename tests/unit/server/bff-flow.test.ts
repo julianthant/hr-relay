@@ -87,6 +87,7 @@ function harness(options: {
       listNotifications: () => [],
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
+      listWorkerPools: () => database.authority.workerPools.list(),
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),

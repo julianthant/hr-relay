@@ -491,14 +491,21 @@ describe("dashboard-composed worker-browser command arms", () => {
     const harness = kernelHarness();
     const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
 
+    // D269: the pool version is the CAS basis — 0 for a workflow nobody has
+    // planned; the applied plan creates the row at version 1.
     const planned = harness.kernel.execute({
       ...envelope(),
       type: "plan-worker-count",
-      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 0 },
       payload: { desiredWorkers: 1 },
     });
     assert.equal(planned.state, "applied");
-    assert.deepEqual(planned.affectedTargets, [{ family: "worker-browser", workerId }]);
+    assert.deepEqual(planned.affectedTargets, [
+      { family: "worker-pool", workflowId: WORKFLOW_ID },
+      { family: "worker-browser", workerId },
+    ]);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID)?.version, 1);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID)?.desiredWorkers, 1);
 
     assert.equal(harness.database.authority.workerLeases.start({
       workerId, workflow: WORKFLOW_ID, processId: 11, requestedBy: "local-operator", now: NOW,
@@ -527,12 +534,15 @@ describe("dashboard-composed worker-browser command arms", () => {
       () => harness.kernel.execute({
         ...envelope(commandId),
         type: "plan-worker-count",
-        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 0 },
         payload: { desiredWorkers: 3 },
       }),
       /exactly one worker per workflow/,
     );
     assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    // D269: the runtime's refusal unwinds the pool write with the command —
+    // no declaration of 3 workers survives a count the runtime refused.
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID), undefined);
   });
 
   it("keeps spawn-worker unavailable in the dashboard process and names the CLI path", () => {
@@ -542,7 +552,7 @@ describe("dashboard-composed worker-browser command arms", () => {
       () => harness.kernel.execute({
         ...envelope(commandId),
         type: "spawn-worker",
-        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 0 },
         payload: { workerId: EXECUTOR_WORKER_ID },
       }),
       /does not launch browser workers .*cli worker person-lookup/s,

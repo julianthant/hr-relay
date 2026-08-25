@@ -24,6 +24,7 @@ import {
   TraceIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
+  RunSessionIdSchema,
 } from "../ids.js";
 import {
   PanelKindSchema,
@@ -148,6 +149,11 @@ const LinkedRunWireSchema = z.strictObject({
  */
 export const QueuePrioritySchema = z.enum(["interactive", "bulk"]);
 
+const QueueSessionWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), sessionId: RunSessionIdSchema }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
 const QueueBaseFields = {
   runId: RunIdSchema,
   itemId: ItemIdSchema,
@@ -203,6 +209,16 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("present"), value: PositiveIntSchema }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
+  /**
+   * The dashboard-started GROUP this run belongs to (D269, ref execution-and-sessions
+   * §11.1) — read off `RunRecord.sessionId`, the ONE place membership lives.
+   * The session view reads membership from THIS field across the day's rows;
+   * `run_sessions` holds no member list to disagree with it.
+   *
+   * The absent arm is read-forward (D133): a run enqueued before schema v17
+   * carries no session, and the row says so with its reason rather than being
+   * folded into some default group.
+   */
   /**
    * How this row is contained by its parent — `root`, `member` or `linked`.
    *
@@ -518,77 +534,84 @@ function refineContainment(
   }
 }
 
-const RegularQueueSurfaceWireSchema = z.strictObject({
-  ...QueueBaseFields,
-  surfaceKind: z.enum(["single", "preview"]),
-}).superRefine((surface, context) => {
-  refineEndedAt(surface, context);
-  refineGateOpenedAt(surface, context);
-  refineActions(surface, context);
-  refineContainment(surface, context);
-});
-const MemberQueueSurfaceWireSchema = z.strictObject({
-  ...QueueBaseFields,
-  surfaceKind: z.literal("member"),
-}).superRefine((surface, context) => {
-  refineEndedAt(surface, context);
-  refineGateOpenedAt(surface, context);
-  refineActions(surface, context);
-  refineContainment(surface, context);
-  if (surface.lineage.state !== "child") {
-    context.addIssue({ code: "custom", path: ["lineage"], message: "member surfaces require a parent run" });
-  }
-});
-const OperationQueueSurfaceWireSchema = z.strictObject({
-  ...QueueBaseFields,
-  surfaceKind: z.literal("operation"),
-  memberRunIds: z.array(RunIdSchema),
-  memberRollup: z.strictObject({
-    total: z.number().int().nonnegative(),
-    terminal: z.number().int().nonnegative(),
-    failed: z.number().int().nonnegative(),
-  }),
-  /**
-   * The first few members BY NAME, so a counted anchor whose own title is a
-   * number — `5 separations` — still says who is in it.
-   *
-   * It is on the OPERATION variant alone because only a group has members, and
-   * it is DERIVED from the member rows' own served titles rather than authored:
-   * a preview composed from anything but the titles those rows draw could name
-   * somebody the group does not contain. The `+N more` tail is part of the
-   * string for the same reason the count is — both come off one member list, in
-   * one place, so the preview and the rollup cannot disagree.
-   *
-   * Absent when the group has no members yet, or when none of them has resolved
-   * a subject the preview could print; a group is a real thing before its
-   * fan-out lands, and an empty string in that slot would read as a group of
-   * nobody.
-   */
-  memberPreview: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
-    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  ]),
-}).superRefine((surface, context) => {
-  refineEndedAt(surface, context);
-  refineGateOpenedAt(surface, context);
-  refineActions(surface, context);
-  refineContainment(surface, context);
-  if (new Set(surface.memberRunIds).size !== surface.memberRunIds.length) {
-    context.addIssue({ code: "custom", path: ["memberRunIds"], message: "operation member ids must be unique" });
-  }
-  if (surface.memberRollup.total !== surface.memberRunIds.length) {
-    context.addIssue({ code: "custom", path: ["memberRollup", "total"], message: "operation rollup total must match member ids" });
-  }
-  if (surface.memberRollup.terminal > surface.memberRollup.total || surface.memberRollup.failed > surface.memberRollup.terminal) {
-    context.addIssue({ code: "custom", path: ["memberRollup"], message: "operation rollup counts are inconsistent" });
-  }
-});
+function queueSurfaceWireSchema<SessionSchema extends z.ZodType>(session: SessionSchema) {
+  const baseFields = { ...QueueBaseFields, session };
+  const regular = z.strictObject({
+    ...baseFields,
+    surfaceKind: z.enum(["single", "preview"]),
+  }).superRefine((surface, context) => {
+    refineEndedAt(surface, context);
+    refineGateOpenedAt(surface, context);
+    refineActions(surface, context);
+    refineContainment(surface, context);
+  });
+  const member = z.strictObject({
+    ...baseFields,
+    surfaceKind: z.literal("member"),
+  }).superRefine((surface, context) => {
+    refineEndedAt(surface, context);
+    refineGateOpenedAt(surface, context);
+    refineActions(surface, context);
+    refineContainment(surface, context);
+    if (surface.lineage.state !== "child") {
+      context.addIssue({ code: "custom", path: ["lineage"], message: "member surfaces require a parent run" });
+    }
+  });
+  const operation = z.strictObject({
+    ...baseFields,
+    surfaceKind: z.literal("operation"),
+    memberRunIds: z.array(RunIdSchema),
+    memberRollup: z.strictObject({
+      total: z.number().int().nonnegative(),
+      terminal: z.number().int().nonnegative(),
+      failed: z.number().int().nonnegative(),
+    }),
+    /**
+     * The first few members BY NAME, so a counted anchor whose own title is a
+     * number — `5 separations` — still says who is in it.
+     *
+     * It is on the OPERATION variant alone because only a group has members, and
+     * it is DERIVED from the member rows' own served titles rather than authored:
+     * a preview composed from anything but the titles those rows draw could name
+     * somebody the group does not contain. The `+N more` tail is part of the
+     * string for the same reason the count is — both come off one member list, in
+     * one place, so the preview and the rollup cannot disagree.
+     *
+     * Absent when the group has no members yet, or when none of them has resolved
+     * a subject the preview could print; a group is a real thing before its
+     * fan-out lands, and an empty string in that slot would read as a group of
+     * nobody.
+     */
+    memberPreview: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
+      z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+    ]),
+  }).superRefine((surface, context) => {
+    refineEndedAt(surface, context);
+    refineGateOpenedAt(surface, context);
+    refineActions(surface, context);
+    refineContainment(surface, context);
+    if (new Set(surface.memberRunIds).size !== surface.memberRunIds.length) {
+      context.addIssue({ code: "custom", path: ["memberRunIds"], message: "operation member ids must be unique" });
+    }
+    if (surface.memberRollup.total !== surface.memberRunIds.length) {
+      context.addIssue({ code: "custom", path: ["memberRollup", "total"], message: "operation rollup total must match member ids" });
+    }
+    if (surface.memberRollup.terminal > surface.memberRollup.total || surface.memberRollup.failed > surface.memberRollup.terminal) {
+      context.addIssue({ code: "custom", path: ["memberRollup"], message: "operation rollup counts are inconsistent" });
+    }
+  });
+  return z.union([regular, member, operation]);
+}
 
-export const QueueSurfaceWireSchema = z.union([
-  RegularQueueSurfaceWireSchema,
-  MemberQueueSurfaceWireSchema,
-  OperationQueueSurfaceWireSchema,
-]);
+/** The live queue wire: every projected row states session membership or its reasoned absence. */
+export const QueueSurfaceWireSchema = queueSurfaceWireSchema(QueueSessionWireSchema);
+
+/**
+ * Archive-storage read arm only. Rows frozen before D269 have no `session` key;
+ * the archive generation says whether that absence is historical or invalid.
+ */
+export const ArchivedQueueSurfaceStorageSchema = queueSurfaceWireSchema(QueueSessionWireSchema.optional());
 
 export const DayCountWireSchema = z.strictObject({ day: LocalDateSchema, count: z.number().int().nonnegative() });
 export const StatusCountWireSchema = z.strictObject({ status: QueueStatusSchema, count: z.number().int().nonnegative() });
@@ -796,6 +819,33 @@ export const NotificationWireSchema = z.strictObject({
   link: NotificationLinkWireSchema.optional(),
 });
 
+/**
+ * The per-workflow worker POOL declaration (D269, ref execution-and-sessions §11.5)
+ * — the CAS basis `plan-worker-count` and `spawn-worker` cite, served on the
+ * day wire from `worker_pools` and nowhere else.
+ *
+ * `version` is the pool row's version and is the ONLY honest `expectedVersion`
+ * for those two commands. It is not `WorkerCardWire.leaseVersion` (one
+ * worker's row, the basis `stop-worker` cites) and not `revision` (a patch
+ * cursor). A workflow ABSENT from this list has no pool row: its basis is 0
+ * and the first plan creates the row — the list carries authority rows only,
+ * and serving a fabricated `{desiredWorkers: 1, version: 0}` for every
+ * registered workflow would be the projection inventing a declaration nobody
+ * made.
+ *
+ * Like `workerCards` and `notifications`, this is a SNAPSHOT-level block: the
+ * day patch stream carries queue-row splices only (D4), so a changed pool
+ * reaches the client on the next snapshot, never through a patch.
+ */
+export const WorkerPoolWireSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  desiredWorkers: PositiveIntSchema,
+  version: PositiveIntSchema,
+  plannedBy: ActorIdSchema,
+  plannedAt: IsoInstantSchema,
+});
+export type WorkerPoolWire = z.infer<typeof WorkerPoolWireSchema>;
+
 function requireUnique(values: readonly string[], path: string, context: z.RefinementCtx): void {
   if (new Set(values).size !== values.length) {
     context.addIssue({ code: "custom", path: [path], message: `${path} identities must be unique` });
@@ -812,6 +862,8 @@ export const DashboardDayWireSchema = z.strictObject({
   statusCounts: z.array(StatusCountWireSchema),
   queueSurfaces: z.array(QueueSurfaceWireSchema),
   workerCards: z.array(WorkerCardWireSchema),
+  /** D269: one entry per workflow that HAS a pool row; see `WorkerPoolWireSchema`. */
+  workerPools: z.array(WorkerPoolWireSchema),
   notifications: z.array(NotificationWireSchema),
 }).superRefine((day, context) => {
   requireUnique(day.monthCounts.map(({ day: value }) => value), "monthCounts", context);
@@ -819,6 +871,7 @@ export const DashboardDayWireSchema = z.strictObject({
   requireUnique(day.statusCounts.map(({ status }) => status), "statusCounts", context);
   requireUnique(day.queueSurfaces.map(({ runId }) => runId), "queueSurfaces", context);
   requireUnique(day.workerCards.map(({ workerId }) => workerId), "workerCards", context);
+  requireUnique(day.workerPools.map(({ workflowId }) => workflowId), "workerPools", context);
   requireUnique(day.notifications.map(({ notificationId }) => notificationId), "notifications", context);
 });
 

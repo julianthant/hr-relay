@@ -33,7 +33,7 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { SemverSchema, VersionScopeSchema } from "../commands.js";
 import { AppVersionSchema, RunAppVersionSchema } from "../dashboard/primitives.js";
-import { QueueSurfaceWireSchema } from "../dashboard/projection.js";
+import { ArchivedQueueSurfaceStorageSchema } from "../dashboard/projection.js";
 import { FailureDetailWireSchema, RunDetailWireSchema } from "../dashboard/run-detail.js";
 import {
   ActorIdSchema,
@@ -63,7 +63,12 @@ import { WorkflowCodeSchema } from "../workflow/presentation.js";
  * implement refuses by name instead of parsing an older shape through a newer
  * schema and reporting the difference as data.
  */
-export const ArchiveSchemaGenerationSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+export const ArchiveSchemaGenerationSchema = z.union([
+  z.literal(1),
+  z.literal(2),
+  z.literal(3),
+  z.literal(4),
+]);
 export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSchema>;
 
 /**
@@ -90,8 +95,15 @@ export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSche
  * keeps its byte-identical `contentDigest`; a WRITER may not produce one,
  * because a new record that named no code would be indistinguishable from a
  * record written before codes were frozen.
+ *
+ * Generation 4 is D269: the frozen QueueSurface requires its `session` arm.
+ * Generation-1/2/3 rows may omit that key or carry it because generation 3 was
+ * the current writer when the live QueueSurface wire first required the arm.
+ * Readers add an honest absence only when the stored row omits it, never
+ * changing the stored record or its digest. A generation-4 writer must freeze
+ * the live row's required arm.
  */
-export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 3;
+export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 4;
 
 /** What "the current version of this workflow" means, as a value. */
 export const WorkflowVersionIdentitySchema = z.strictObject({
@@ -332,7 +344,7 @@ const ArchivedRunContentFields = {
   drift: z.array(VersionDriftReasonSchema).min(1),
   archivedAt: IsoInstantSchema,
   archivedBy: ActorIdSchema,
-  row: QueueSurfaceWireSchema,
+  row: ArchivedQueueSurfaceStorageSchema,
   detail: RunDetailWireSchema,
   receipt: z.discriminatedUnion("state", [
     z.strictObject({ state: z.literal("present"), value: RunEvidenceReceiptSchema }),
@@ -439,6 +451,21 @@ function refineCodeGeneration(
   }
 }
 
+/** D269 requires every generation-4-or-later record to freeze the session arm. */
+function refineSessionGeneration(
+  record: Readonly<{ archiveSchemaGeneration: number; row: { session?: unknown } }>,
+  context: z.RefinementCtx,
+): void {
+  if (record.archiveSchemaGeneration >= 4 && record.row.session === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["row", "session"],
+      message: "an archive record at generation 4 or later must carry the frozen QueueSurface session arm (D269); "
+        + "an absent key means the row was archived before D269",
+    });
+  }
+}
+
 function refineArchivedIdentity(
   record: Readonly<{
     runId: string;
@@ -447,13 +474,14 @@ function refineArchivedIdentity(
     sections?: unknown;
     workflowLabel: { state: string };
     workflowCode?: { state: string };
-    row: { runId: string; traceId: string };
+    row: { runId: string; traceId: string; session?: unknown };
     detail: { runId: string };
   }>,
   context: z.RefinementCtx,
 ): void {
   refineSectionGeneration(record, context);
   refineCodeGeneration(record, context);
+  refineSessionGeneration(record, context);
   if (record.row.runId !== record.runId) {
     context.addIssue({ code: "custom", path: ["row", "runId"], message: "archived row identity must match the record" });
   }

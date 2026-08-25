@@ -290,6 +290,29 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     assert.equal(audit.versionChanges[0].after, plan.version + 1);
   });
 
+  it("D269: the fan-out is ONE durable session, written before its first member, and membership is the run rows", () => {
+    const harness = createHarness();
+    const plan = createPlan(harness, rejectActiveDescriptor, ["10800000", "10800001"]);
+    const result = harness.kernel.execute(startCommand(plan));
+    assert.equal(result.state, "applied");
+
+    const sessionIds = new Set(plan.planned.map((planned) => harness.database.authority.runs.get(planned.runId)?.sessionId));
+    assert.equal(sessionIds.size, 1, "both runs carry the same session id");
+    const [sessionId] = [...sessionIds];
+    assert.ok(sessionId !== undefined);
+    const session = harness.database.authority.runSessions.get(sessionId);
+    assert.ok(session !== undefined);
+    assert.equal(session.workflow, plan.workflowId);
+    assert.deepEqual(session.origin, { kind: "start-plan", startPlanId: plan.startPlanId, actorId: "local-operator" });
+    assert.equal(session.startedAt, NOW);
+    // Membership is DERIVED — the session row names nobody; the run table does.
+    assert.deepEqual(
+      harness.database.authority.runs.listBySession(sessionId).map((run) => run.envelope.runId).sort(),
+      plan.planned.map((planned) => planned.runId).sort(),
+    );
+    assert.deepEqual(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).map((row) => row.sessionId), [sessionId]);
+  });
+
   it("rolls back consumption and the journal when a run insert crashes", () => {
     let shouldFail = false;
     const harness = createHarness((repositories) => ({
@@ -313,6 +336,7 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
     assert.equal(stored?.consumedBy, undefined);
     assert.equal(stored?.version, plan.version);
     assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
+    assert.equal(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
     assert.equal(harness.database.authority.commands.get(command.commandId), undefined);
     assert.equal(harness.database.getMeta().authorityGeneration, generationBefore);
 
@@ -414,6 +438,9 @@ describe("D113 start arm — atomic D109 plan consumption", () => {
       assert.equal(result.code, "policy-refused");
       assert.match(result.message, /already has an active run/);
     }
+    // D269: the session row minted for this fan-out went with it — it lives
+    // inside the same transaction as its members.
+    assert.equal(harness.database.authority.runSessions.listByWorkflow(plan.workflowId).length, 0);
     // The FIRST planned run was enqueued before the second refused — all of it
     // must have rolled back with the consumption.
     assert.equal(harness.database.authority.runs.get(plan.planned[0].runId), undefined);
@@ -533,6 +560,13 @@ describe("D113 run arms", () => {
     assert.equal(retried.envelope.attempt, 2);
     assert.equal(retried.lifecycle.state, "queued");
     assert.deepEqual(retried.input, harness.database.authority.runs.get(runId)?.input);
+    // D269 — a retry INHERITS the retried run's session; it mints none.
+    assert.ok(run.sessionId !== undefined);
+    assert.equal(retried.sessionId, run.sessionId);
+    assert.deepEqual(
+      harness.database.authority.runs.listBySession(run.sessionId).map((member) => member.envelope.runId).sort(),
+      [runId, newTarget.runId].sort(),
+    );
   });
 
   it("cancel is CAS-scoped and cascades through authority dependency edges only", () => {
@@ -981,12 +1015,21 @@ describe("D113 worker-browser arms", () => {
 
   it("delegates plan/spawn/refresh/reopen to the typed runtime seam after authority validation", () => {
     const harness = createHarness();
+    // D269: a workflow nobody has planned is at pool version 0 — the first
+    // plan cites it and creates the row at version 1.
     const planned = harness.kernel.execute(workerCommand(
       "plan-worker-count",
-      { workflowId: "kernel-reject", expectedVersion: 1 },
+      { workflowId: "kernel-reject", expectedVersion: 0 },
       { desiredWorkers: 2 },
     ));
     assert.equal(planned.state, "applied");
+    if (planned.state === "applied") {
+      assert.deepEqual(planned.affectedTargets[0], { family: "worker-pool", workflowId: "kernel-reject" });
+    }
+    const pool = harness.database.authority.workerPools.get("kernel-reject");
+    assert.equal(pool?.version, 1);
+    assert.equal(pool?.desiredWorkers, 2);
+    assert.equal(pool?.plannedBy, "local-operator");
 
     const spawned = harness.kernel.execute(workerCommand(
       "spawn-worker",
@@ -1024,6 +1067,61 @@ describe("D113 worker-browser arms", () => {
       "spawn:spawn-worker",
       "refresh:refresh-browser",
     ]);
+  });
+
+  it("D269: plan/spawn CAS against the durable POOL version and refuse a stale one by name, before the runtime seam", () => {
+    const harness = createHarness();
+    // No row yet: the basis is 0, and citing 1 is told so — with the current version.
+    const unplanned = harness.kernel.execute(workerCommand(
+      "plan-worker-count",
+      { workflowId: "kernel-reject", expectedVersion: 1 },
+      { desiredWorkers: 1 },
+    ));
+    assert.equal(unplanned.state, "conflict");
+    if (unplanned.state === "conflict") {
+      assert.equal(unplanned.currentVersion, 0);
+      assert.match(unplanned.message, /worker pool kernel-reject is at version 0 \(no worker count has been planned for it yet\), not 1/);
+    }
+    assert.equal(harness.database.authority.workerPools.get("kernel-reject"), undefined);
+    assert.deepEqual(harness.workerCalls, [], "a refused CAS never reaches the runtime seam");
+
+    const first = harness.kernel.execute(workerCommand(
+      "plan-worker-count",
+      { workflowId: "kernel-reject", expectedVersion: 0 },
+      { desiredWorkers: 1 },
+    ));
+    assert.equal(first.state, "applied");
+    const audit = harness.database.authority.commandAudits.findByCommand(first.commandId);
+    assert.ok(audit !== undefined);
+    assert.deepEqual(audit.versionChanges, [{ target: { family: "worker-pool", workflowId: "kernel-reject" }, before: 0, after: 1 }]);
+
+    // The same basis again is stale now: the row is at 1.
+    const stale = harness.kernel.execute(workerCommand(
+      "plan-worker-count",
+      { workflowId: "kernel-reject", expectedVersion: 0 },
+      { desiredWorkers: 3 },
+    ));
+    assert.equal(stale.state, "conflict");
+    if (stale.state === "conflict") assert.equal(stale.currentVersion, 1);
+    assert.equal(harness.database.authority.workerPools.get("kernel-reject")?.desiredWorkers, 1);
+
+    const staleSpawn = harness.kernel.execute(workerCommand(
+      "spawn-worker",
+      { workflowId: "kernel-reject", expectedVersion: 0 },
+      { workerId: "worker-1" },
+    ));
+    assert.equal(staleSpawn.state, "conflict");
+    if (staleSpawn.state === "conflict") assert.equal(staleSpawn.currentVersion, 1);
+    assert.deepEqual(harness.workerCalls, ["plan:plan-worker-count"], "only the applied plan reached the seam");
+
+    const next = harness.kernel.execute(workerCommand(
+      "plan-worker-count",
+      { workflowId: "kernel-reject", expectedVersion: 1 },
+      { desiredWorkers: 3 },
+    ));
+    assert.equal(next.state, "applied");
+    assert.equal(harness.database.authority.workerPools.get("kernel-reject")?.version, 2);
+    assert.equal(harness.database.authority.workerPools.get("kernel-reject")?.desiredWorkers, 3);
   });
 });
 

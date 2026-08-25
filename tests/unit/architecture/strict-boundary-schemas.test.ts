@@ -562,7 +562,7 @@ const BOOTSTRAP = {
 };
 const DAY = {
   day: "2026-07-31", descriptorHash: HASH_A, projectionGeneration: 1, snapshotCursor: "pc:1",
-  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], notifications: [],
+  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], workerPools: [], notifications: [],
 };
 const DETAIL = {
   runId: UUID_1, rowRevision: 1, panelKind: "run",

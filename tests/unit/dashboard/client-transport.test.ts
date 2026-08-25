@@ -37,6 +37,7 @@ function surfaceOf(rowRevision: number, status = "queued"): Record<string, unkno
     dryRun: false,
   priority: "interactive",
   runNumber: { state: "present", value: 1 },
+  session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
   containment: "root",
   linkedRuns: [],
   facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
@@ -73,6 +74,7 @@ function dayOf(surfaces: readonly Record<string, unknown>[]): DashboardDayWire {
     statusCounts: surfaces.length === 0 ? [] : [{ status: "queued", count: surfaces.length }],
     queueSurfaces: surfaces,
     workerCards: [],
+    workerPools: [],
     notifications: [],
   });
 }

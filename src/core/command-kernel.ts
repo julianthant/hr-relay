@@ -83,6 +83,7 @@ import { isTerminalRunState, runClaim, RunRecordSchema, type RunRecord } from ".
 import { RunCheckpointRecordSchema } from "../domain/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "./checkpoint-patch.js";
 import { isLiveWorker } from "../domain/run/worker.js";
+import { workerPoolVersion } from "../domain/run/worker-pool.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../domain/schema-bound-value.js";
 import type { WriteIntentRecord } from "../domain/write-safety.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
@@ -343,6 +344,10 @@ interface CommandApplication {
   readonly affectedDependencyIds: readonly string[];
 }
 
+function workerPoolTarget(workflowId: string): TargetReference {
+  return { family: "worker-pool", workflowId };
+}
+
 function workerTarget(workerId: string): TargetReference {
   return { family: "worker-browser", workerId };
 }
@@ -538,6 +543,11 @@ function executeStartRun(
       dryRun: plan.dryRun,
       ingressSchemaHash: plan.ingressSchemaHash,
       appVersion: dependencies.appVersion,
+      // D269: the start is the session; the plan and the operator are its origin.
+      session: {
+        sessionId: dependencies.ids.uuid(),
+        origin: { kind: "start-plan", startPlanId: plan.startPlanId, actorId: request.requestedBy },
+      },
     },
     plan.planned.map((planned) => ({
       runId: planned.runId,
@@ -654,6 +664,13 @@ function executeRetry(
      * that re-used `#7` would make one footer describe two runs.
      */
     runNumber: repositories.runs.nextWorkflowRunNumber(current.envelope.workflow),
+    /*
+     * D269: a retry INHERITS the retried run's session rather than minting
+     * one. It is the same item's next attempt (D221), so the group the operator
+     * started keeps reporting the item it contains; a retry of a run no
+     * fan-out grouped (a pre-v17 row) stays ungrouped — nothing is invented.
+     */
+    ...(current.sessionId === undefined ? {} : { sessionId: current.sessionId }),
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -1621,6 +1638,16 @@ function executeIntake(
           dryRun: request.payload.dryRun,
           ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),
           appVersion: dependencies.appVersion,
+          // D269: the manifest's whole fan-out is ONE session; the manifest and
+          // the operator who enqueued it are its origin.
+          session: {
+            sessionId: dependencies.ids.uuid(),
+            origin: {
+              kind: "intake-manifest",
+              intakeManifestId: plan.manifest.manifestId,
+              actorId: request.requestedBy,
+            },
+          },
         },
         plan.manifest.validRows.map((row) => {
           const runId = dependencies.ids.uuid();
@@ -1902,20 +1929,57 @@ function executeWorkerBrowser(
   now: string,
 ): CommandApplication {
   const context: WorkerRuntimeContext = Object.freeze({ command: request, now });
+  /**
+   * D269 (ref execution-and-sessions §11.5): the two pool-targeted arms CAS
+   * against the durable POOL version — the row's, or 0 for a workflow nobody
+   * has planned — before anything else is consulted. A stale basis is a
+   * `conflict` naming the current version, so a control can re-read the pool
+   * block and try again with a true number; it is never guessed past.
+   */
+  const checkPoolVersion = (workflowId: string, expectedVersion: number): number => {
+    const current = workerPoolVersion(repositories.workerPools.get(workflowId));
+    if (current !== expectedVersion) {
+      conflict(
+        request,
+        current,
+        `worker pool ${workflowId} is at version ${String(current)}`
+        + `${current === 0 ? " (no worker count has been planned for it yet)" : ""}, not `
+        + `${String(expectedVersion)}; re-read the pool before planning or spawning against it`,
+      );
+    }
+    return current;
+  };
   switch (request.type) {
     case "plan-worker-count": {
       resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+      const poolVersion = checkPoolVersion(request.target.workflowId, request.target.expectedVersion);
+      // The runtime seam is consulted BEFORE the declaration is written: today
+      // it refuses any count but one (P3 replaces that with a reconciliation),
+      // and a throw here unwinds the whole command, so the pool never records
+      // a count the runtime refused to acknowledge.
       const acknowledgement = WorkerPlanAcknowledgementSchema.parse(
         dependencies.workerRuntime.planWorkerCount(context),
       );
+      const planned = repositories.workerPools.plan({
+        workflow: request.target.workflowId,
+        expectedVersion: request.target.expectedVersion,
+        desiredWorkers: request.payload.desiredWorkers,
+        requestedBy: request.requestedBy,
+        now,
+      });
+      requireApplied(planned, `planning worker pool ${request.target.workflowId}`);
       return applied(
         request,
-        acknowledgement.workerIds.map((workerId) => workerTarget(workerId)),
-        [],
+        [
+          workerPoolTarget(request.target.workflowId),
+          ...acknowledgement.workerIds.map((workerId) => workerTarget(workerId)),
+        ],
+        [{ target: workerPoolTarget(request.target.workflowId), before: poolVersion, after: poolVersion + 1 }],
       );
     }
     case "spawn-worker": {
       resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+      checkPoolVersion(request.target.workflowId, request.target.expectedVersion);
       const existing = repositories.workerLeases.get(request.payload.workerId);
       if (existing !== undefined && isLiveWorker(existing)) {
         reject(
@@ -2331,6 +2395,12 @@ function executeArchivedRunRelaunch(
       dryRun: record.dryRun,
       ingressSchemaHash: record.ingressSchemaHash,
       appVersion: dependencies.appVersion,
+      // D269: a relaunch is a dashboard-started group of one, and the archived
+      // run it relaunches is the origin the session names.
+      session: {
+        sessionId: dependencies.ids.uuid(),
+        origin: { kind: "archive-relaunch", archivedRunId: archived.runId, actorId: request.requestedBy },
+      },
     },
     record.planned.map((entry) => ({
       runId: entry.runId,

@@ -123,3 +123,13 @@ export const WORKER_START_REQUEST = {
   requestedBy: "local-operator",
   now: NOW,
 };
+
+/** D269 — a dashboard-started group of runs; `QUEUED_RUN` carries no session (pre-v17 shape). */
+export const RUN_SESSION_ID = "99999999-9999-4999-8999-999999999999";
+export const RUN_SESSION = {
+  sessionId: RUN_SESSION_ID,
+  workflow: WORKFLOW_ID,
+  origin: { kind: "start-plan", startPlanId: UUID_5, actorId: "local-operator" },
+  startedAt: NOW,
+  createdAt: NOW,
+} as const;

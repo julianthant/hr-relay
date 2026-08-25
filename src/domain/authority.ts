@@ -44,6 +44,8 @@ export const AuthorityTableNameSchema = z.enum([
   "archived_runs",
   "archive_relaunches",
   "duo_ceremony_leases",
+  "worker_pools",
+  "run_sessions",
 ]);
 
 export const ProjectionTableNameSchema = z.enum([

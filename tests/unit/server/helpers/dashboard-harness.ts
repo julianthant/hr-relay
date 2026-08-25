@@ -16,6 +16,7 @@ import { FingerprintSchema } from "../../../../src/domain/ids.js";
 import { NotificationRecordSchema } from "../../../../src/domain/notifications.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
 import { isLiveWorker, WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/domain/run/worker.js";
+import { WorkerPoolRecordSchema, type WorkerPoolRecord } from "../../../../src/domain/run/worker-pool.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/domain/trust/evidence.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/trust/failure.js";
 import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/domain/gates.js";
@@ -114,6 +115,10 @@ export interface AuthorityFake {
   listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
   getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
   putWorkerLease(record: unknown): void;
+  /** D269: the pool declarations the day wire's `workerPools` block serves; parsed insert. */
+  readonly workerPools: Map<string, WorkerPoolRecord>;
+  listWorkerPools(): readonly WorkerPoolRecord[];
+  putWorkerPool(record: unknown): void;
 }
 
 export function authorityFake(): AuthorityFake {
@@ -125,6 +130,7 @@ export function authorityFake(): AuthorityFake {
   const writeIntents = new Map<string, WriteIntentRecord>();
   const gateResults: GateResultRecord[] = [];
   const workerLeases = new Map<string, WorkerLeaseRecord>();
+  const workerPools = new Map<string, WorkerPoolRecord>();
   const notifications: NotificationRecord[] = [];
   const checkpointKey = (workflowId: string, itemId: string, nodeId: string): string =>
     `${workflowId}\u0000${itemId}\u0000${nodeId}`;
@@ -154,6 +160,12 @@ export function authorityFake(): AuthorityFake {
     putWorkerLease: (record) => {
       const lease = WorkerLeaseRecordSchema.parse(record);
       workerLeases.set(lease.workerId, lease);
+    },
+    workerPools,
+    listWorkerPools: () => [...workerPools.values()].sort((a, b) => a.workflow.localeCompare(b.workflow)),
+    putWorkerPool: (record) => {
+      const pool = WorkerPoolRecordSchema.parse(record);
+      workerPools.set(pool.workflow, pool);
     },
     gateResults,
     listGateResults: (runId) => gateResults.filter((record) => record.runId === runId),
@@ -307,6 +319,8 @@ export interface SeedRunInput {
    * skipping it.
    */
   readonly runNumber?: number;
+  /** D269: the session this run belongs to; absent = a pre-v17 row. */
+  readonly sessionId?: string;
 }
 
 /**
@@ -374,6 +388,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
     claimGeneration: input.claimGeneration ?? 0,
     ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
     ...(input.runNumber === undefined ? {} : { runNumber: input.runNumber }),
+    ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     version: input.version ?? 1,
     createdAt: enqueuedAt,
     updatedAt: enqueuedAt,

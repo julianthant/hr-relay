@@ -41,6 +41,7 @@ import {
 import {
   QUEUED_RUN,
   RUN_ID,
+  RUN_SESSION,
   START_PLAN,
   WORKER_ID,
   WORKER_START_REQUEST,
@@ -929,6 +930,15 @@ describe("authority generation accounting", () => {
         });
       },
     },
+    {
+      table: "worker_pools",
+      mutate: (db) => {
+        db.authority.workerPools.plan({
+          workflow: WORKFLOW_ID, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW,
+        });
+      },
+    },
+    { table: "run_sessions", mutate: (db) => { db.authority.runSessions.insert(RUN_SESSION); } },
     { table: "delegation_manifests", mutate: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); } },
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },

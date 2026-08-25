@@ -40,6 +40,7 @@ const QUEUE = {
   dryRun: false,
 priority: "interactive",
 runNumber: { state: "present", value: 1 },
+session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
 containment: "root",
 linkedRuns: [],
 facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
@@ -86,6 +87,7 @@ const DAY = {
   workflowCounts: [{ workflowId: "onboarding", count: 1, statusCounts: [{ status: "running", count: 1 }] }],
   statusCounts: [{ status: "running", count: 1 }],
   queueSurfaces: [QUEUE],
+  workerPools: [],
   workerCards: [{
     workerId: "ucpath-worker",
     workflowId: "onboarding",

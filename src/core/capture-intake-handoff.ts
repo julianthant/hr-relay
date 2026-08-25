@@ -248,6 +248,15 @@ export function createCaptureIntakeHandoff(options: CaptureIntakeHandoffOptions)
           configSnapshotId: options.configIdentity.configSnapshotId,
           ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),
           appVersion: options.appVersion,
+          // D269: a handoff is a group of one. The id is a fold of the SAME
+          // stable key the manifest and run ids fold from, so a replay names
+          // the same session (D174's "same identities, never a second run");
+          // the origin carries no actor because the capture session records
+          // none — nobody's id is invented here.
+          session: {
+            sessionId: deriveStableUuid("hrauto:capture-session:v1", String(outbox.stableKey)),
+            origin: { kind: "capture-handoff", captureSessionId: session.sessionId, intakeManifestId: manifestId },
+          },
         },
         [{
           runId,
