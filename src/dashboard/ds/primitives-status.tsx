@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { dsClip, dsIcon, dsRadius, dsText } from "./tokens.js";
+import { DISPLAY_STATUS_LABELS, type DisplayStatus } from "../../domain/dashboard/status-vocabulary.js";
 
 /**
  * The eight ratified queue statuses.
@@ -40,15 +41,7 @@ import { dsClip, dsIcon, dsRadius, dsText } from "./tokens.js";
  * still reads emphasis tier, icon shape and the label.
  */
 
-export type DsStatus =
-  | "queued"
-  | "running"
-  | "waiting"
-  | "parked"
-  | "verifiedDone"
-  | "doneWarnings"
-  | "failed"
-  | "cancelled";
+export type DsStatus = DisplayStatus;
 
 /** How loud a status is allowed to be. Drives fill, weight and dot shape. */
 export type DsStatusTier = "solid" | "dashed" | "tinted" | "outline" | "ghost";
@@ -124,7 +117,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     // Was "Waiting on you · age" in solid amber. Operator: drop the timer,
     // and every waiting tag becomes the blue `Review` pill (same info solid
     // as the old outcome CTA) — the word names the work, not the wait.
-    label: "Review",
+    label: DISPLAY_STATUS_LABELS.waiting,
     tier: "solid",
     icon: UserRoundSearch,
     chip: "bg-[var(--ds-info-solid-bg)] border-transparent",
@@ -138,7 +131,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
       "Stopped at a gate for a decision. Nothing is written until you answer. Open Review to act.",
   },
   failed: {
-    label: "Failed",
+    label: DISPLAY_STATUS_LABELS.failed,
     tier: "solid",
     icon: TriangleAlert,
     chip: "bg-[var(--ds-status-failed-solid-bg)] border-transparent",
@@ -150,7 +143,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     meaning: "Stopped on an error. Retry replays the same input.",
   },
   parked: {
-    label: "Write parked",
+    label: DISPLAY_STATUS_LABELS.parked,
     tier: "dashed",
     icon: PauseCircle,
     // The dashed hairline is this status's shape cue — nothing else dashes.
@@ -172,7 +165,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     // it from the green solid Done; the CircleAlert stays for filters/solo.
     // The qualifier survives on the ACCESSIBLE name only — a screen reader
     // reads neither the tint nor the count chip.
-    label: "Done",
+    label: DISPLAY_STATUS_LABELS.doneWarnings,
     accessibleLabel: "Done with warnings",
     tier: "tinted",
     icon: CircleAlert,
@@ -188,7 +181,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
       "Finished, but something needs your eyes — a fallback, a gap, a rejected page. The △ count beside the pill names how many.",
   },
   running: {
-    label: "Running",
+    label: DISPLAY_STATUS_LABELS.running,
     tier: "tinted",
     icon: Loader2,
     chip:
@@ -202,7 +195,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     meaning: "A worker owns it right now. Only cancel is offered.",
   },
   queued: {
-    label: "Queued",
+    label: DISPLAY_STATUS_LABELS.queued,
     tier: "outline",
     icon: Clock,
     // No fill at all: nothing has happened to this row yet.
@@ -217,7 +210,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
   cancelled: {
     // Operator: same solid pill shape as Done, gray, no strikethrough.
     // Neither amber nor red — a deliberate stop is not a warning and not a failure.
-    label: "Cancelled",
+    label: DISPLAY_STATUS_LABELS.cancelled,
     tier: "solid",
     icon: Ban,
     chip: "bg-[var(--ds-status-cancelled-solid-bg)] border-transparent",
@@ -237,7 +230,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     // SOLID green fill, same shape as Waiting on you — just the word, no icon
     // and no age. A bare green `Done` next to a shield glyph was the prior
     // look; the operator asked for the Waiting-on-you pill, in green (2026-07-29).
-    label: "Done",
+    label: DISPLAY_STATUS_LABELS.verifiedDone,
     tier: "solid",
     icon: CheckCircle2,
     chip: "bg-[var(--ds-status-verified-done-solid-bg)] border-transparent",

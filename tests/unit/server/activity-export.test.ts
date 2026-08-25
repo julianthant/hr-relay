@@ -19,6 +19,11 @@ import {
   activityReportCsv,
   activityReportCsvFileName,
 } from "../../../src/server/dashboard/queries/activity-export.js";
+import {
+  displayStatusLabelOf,
+  displayStatusProseLabelOf,
+} from "../../../src/domain/dashboard/status-vocabulary.js";
+import { dsStatusOf, PROPOSED_STATUS } from "../../../src/dashboard/surfaces/status-model.js";
 
 const EMPTY: ActivityReportWire = ActivityReportWireSchema.parse({
   wireVersion: 1,
@@ -96,6 +101,33 @@ function lines(csv: string): readonly string[] {
 }
 
 describe("the Activity report's CSV export (D240)", () => {
+  it("uses the shared display vocabulary and sentence treatment for all closed statuses", () => {
+    const caveat = activityReportCaveats(FILLED).find((value) => value.startsWith("Error rate counts"));
+    assert.ok(caveat);
+    assert.equal(displayStatusLabelOf("blocked"), PROPOSED_STATUS[dsStatusOf("blocked")].label);
+    assert.equal(displayStatusLabelOf("blocked"), "Write parked");
+    assert.equal(
+      caveat,
+      "Error rate counts only runs that reached a terminal state. Anything queued, running, waiting on you "
+      + "or write parked is excluded and reported separately as still open, so a busy span cannot read as a finished one.",
+    );
+    assert.equal(caveat.includes("blocked"), false);
+
+    const proseLabels = [
+      ["queued", "queued"],
+      ["running", "running"],
+      ["blocked", "write parked"],
+      ["awaiting-approval", "waiting on you"],
+      ["done", "done"],
+      ["failed", "failed"],
+      ["cancelled", "cancelled"],
+      ["partial", "done with warnings"],
+    ] as const;
+    for (const [status, expected] of proseLabels) {
+      assert.equal(displayStatusProseLabelOf(status), expected);
+    }
+  });
+
   it("names the window in the artifact and in the file name", () => {
     assert.equal(activityReportCsvFileName(FILLED), "activity-2026-08-01_2026-08-07.csv");
     const rows = lines(activityReportCsv(FILLED));

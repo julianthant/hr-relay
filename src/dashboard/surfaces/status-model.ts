@@ -12,6 +12,10 @@
 import type { ComponentType, SVGProps } from "react";
 import { cn } from "../lib/utils.js";
 import { DS_STATUS, dsStatusAccessibleName, dsStatusText, type DsStatus } from "../ds/ui.js";
+import {
+  displayStatusOf,
+  type DisplayStatus,
+} from "../../domain/dashboard/status-vocabulary.js";
 import type { z } from "zod";
 import type { QueueStatusSchema } from "../../domain/dashboard/projection.js";
 import type { OutcomeWireSchema } from "../../domain/dashboard/run-detail.js";
@@ -22,7 +26,7 @@ export type OutcomeWire = z.infer<typeof OutcomeWireSchema>;
 
 export type TerminalOutcomeResult = Extract<OutcomeWire, { state: "terminal" }>["result"];
 
-export type ProposedStatus = DsStatus;
+export type ProposedStatus = DisplayStatus;
 
 export interface ProposedStatusSpec {
   label: string;
@@ -66,20 +70,8 @@ export const PROPOSED_STATUS: Record<ProposedStatus, ProposedStatusSpec> = Objec
   }),
 ) as Record<ProposedStatus, ProposedStatusSpec>;
 
-/** The fixed wire→ds status mapping — exhaustive over the closed wire enum. */
-const WIRE_DS_STATUS: Record<QueueStatus, DsStatus> = {
-  queued: "queued",
-  running: "running",
-  blocked: "parked",
-  "awaiting-approval": "waiting",
-  done: "verifiedDone",
-  failed: "failed",
-  cancelled: "cancelled",
-  partial: "doneWarnings",
-};
-
 export function dsStatusOf(status: QueueStatus): DsStatus {
-  return WIRE_DS_STATUS[status];
+  return displayStatusOf(status);
 }
 
 /** The fixed terminal-outcome→ds mapping (ref dashboard-surfaces D22: verified-done renders as Done). */
