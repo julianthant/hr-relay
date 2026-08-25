@@ -256,6 +256,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   test-only (`manual-clock-test-only.test.ts`).
 - Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
+- Treat `dry_run_scenario_results` as insert-only evidence: exact result-id replay may return the
+  existing canonical row, while divergent replay, SQL UPDATE, and SQL DELETE must fail. Persist a
+  subject label only; the explicit `not-started` arm carries no run/trace ids, and `started`
+  requires both ids bound to the real dry-run execution.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
@@ -273,6 +277,11 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   workflow, but `KUALI_RRSS_TIMEKEEPER_FIELD` is also one of the twelve fields staged by real
   separation finalization. Audit every deleted contract through driver, fake, receipt and catalog
   dependents; preserve shared semantic elements under the real task that still consumes them.
+
+- **2026-08-25 — Dry-run evidence must model pre-browser blockage explicitly.** A gone subject has
+  no run or trace identity to record, so nullable identities invite fabrication; use the strict
+  `not-started` blocked arm. Keep assertion diagnostics to safe reason slugs: free text can leak the
+  resolved subject value into otherwise label-only evidence.
 
 ## After changes
 

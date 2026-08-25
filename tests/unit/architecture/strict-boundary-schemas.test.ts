@@ -222,6 +222,7 @@ import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { FixRecordSchema, KnowledgeRecordSchema } from "../../../src/domain/trust/knowledge.js";
 import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../src/domain/trust/preflight-scenarios.js";
 import { ScenarioManifestSchema } from "../../../src/domain/trust/scenario.js";
+import { DryRunScenarioResultSchema } from "../../../src/domain/trust/dry-run-scenario-result.js";
 import {
   AbsentEvidenceSchema,
   IdempotencyKeySchema,
@@ -1302,6 +1303,32 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "SecretFileSpec", schema: SecretFileSpecSchema, fixtures: [SECRET_FILE_SPECS[0]] },
   { name: "SecretAvailability", schema: SecretAvailabilitySchema, fixtures: [{ name: "ngrokCredential", source: "local-ngrok-config", state: "unknown", diagnostic: "registered source could not be read" }] },
   { name: "ScenarioManifest", schema: ScenarioManifestSchema, fixtures: [PREFLIGHT_SCENARIO_MANIFESTS[0]], openFixturePaths: ["input"] },
+  { name: "DryRunScenarioResult", schema: DryRunScenarioResultSchema, fixtures: [
+    {
+      resultId: UUID_1,
+      scenarioId: "separations-kuali-finalization/dry-run",
+      workflow: "separations-kuali-finalization",
+      subjectLabel: "finalization-canary",
+      manifestDigest: HASH_A,
+      verdict: "met",
+      assertions: [{ assertionId: "nodes-reached", verdict: "met", reason: "reached-declared-nodes" }],
+      wallTimeMs: 12_345,
+      recordedAt: NOW,
+      execution: { state: "started", runId: UUID_2, traceId: "sep-120000-2222" },
+    },
+    {
+      resultId: UUID_3,
+      scenarioId: "separations-kuali-finalization/dry-run",
+      workflow: "separations-kuali-finalization",
+      subjectLabel: "finalization-canary",
+      manifestDigest: HASH_A,
+      verdict: "blocked",
+      assertions: [{ assertionId: "subject-available", verdict: "blocked", reason: "subject-unavailable" }],
+      wallTimeMs: 0,
+      recordedAt: NOW,
+      execution: { state: "not-started", reason: "subject-unavailable" },
+    },
+  ] },
   { name: "FailureRecord", schema: FailureRecordSchema, fixtures: [FAILURE] },
   { name: "DiagnosticBundle", schema: DiagnosticBundleSchema, fixtures: [{ bundleId: UUID_1, runId: UUID_2, origin: { kind: "operator-request", requestedBy: "local-operator" }, createdAt: NOW, contentDigest: HASH_A, configFingerprint: HASH_A, descriptorFingerprint: HASH_B, redaction: { fields: [], warnings: [] }, attachments: [], retention: { kind: "pinned", reason: "fix" } }] },
   { name: "EvidenceFact", schema: EvidenceFactSchema, fixtures: [EVIDENCE_FACT] },

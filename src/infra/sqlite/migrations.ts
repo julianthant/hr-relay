@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 15;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 16;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -165,6 +165,29 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL,
       CHECK ((result = 'failed') = (failure_id IS NOT NULL)),
       CHECK (result <> 'verified-done' OR confidence = 'verified')
+    ) STRICT
+  `,
+  // Ref guards-and-tests §10.6. This is citable dry-run evidence, not a mutable
+  // projection. A started result binds to one real run; a pre-browser block
+  // carries neither run nor trace identity rather than fabricating either.
+  dry_run_scenario_results: `
+    CREATE TABLE dry_run_scenario_results (
+      record_key TEXT PRIMARY KEY,
+      scenario_id TEXT NOT NULL,
+      workflow TEXT NOT NULL,
+      subject_label TEXT NOT NULL,
+      manifest_digest TEXT NOT NULL,
+      verdict TEXT NOT NULL CHECK (verdict IN ('met','blocked','failed')),
+      execution_state TEXT NOT NULL CHECK (execution_state IN ('started','not-started')),
+      run_id TEXT UNIQUE REFERENCES tasks(record_key) ON DELETE RESTRICT,
+      trace_id TEXT,
+      wall_time_ms INTEGER NOT NULL CHECK (wall_time_ms >= 0),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL,
+      CHECK (
+        (execution_state = 'started' AND run_id IS NOT NULL AND trace_id IS NOT NULL)
+        OR (execution_state = 'not-started' AND run_id IS NULL AND trace_id IS NULL AND verdict = 'blocked')
+      )
     ) STRICT
   `,
   // Ref operator-trust §4. Knowledge and fix records are authored records, not run output;
@@ -489,6 +512,7 @@ const POST_V1_TABLE_ORDER = [
   "version_bump_applications",
   "archived_runs",
   "archive_relaunches",
+  "dry_run_scenario_results",
 ] as const satisfies readonly TableName[];
 
 const TABLE_ORDER =[...V1_TABLE_ORDER, ...POST_V1_TABLE_ORDER] as const satisfies readonly TableName[];
@@ -1044,6 +1068,23 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     statements: [
       "ALTER TABLE tasks ADD COLUMN run_number INTEGER",
       "CREATE UNIQUE INDEX tasks_run_number_idx ON tasks(workflow, run_number)",
+    ],
+  },
+  {
+    // Ref guards-and-tests §10.6 — durable, insert-only dry-run scenario evidence.
+    version: 16,
+    statements: [
+      SQLITE_TABLE_DDL.dry_run_scenario_results,
+      `CREATE TRIGGER dry_run_scenario_results_immutable_update
+        BEFORE UPDATE ON dry_run_scenario_results
+        BEGIN
+          SELECT RAISE(ABORT, 'dry-run scenario results are immutable');
+        END`,
+      `CREATE TRIGGER dry_run_scenario_results_never_deleted
+        BEFORE DELETE ON dry_run_scenario_results
+        BEGIN
+          SELECT RAISE(ABORT, 'dry-run scenario results are never deleted');
+        END`,
     ],
   },
 ] as const);
