@@ -292,7 +292,7 @@ export type WorkflowStep = z.infer<typeof WorkflowStepSchema>;
  * owning folder in the type system as well as at runtime.
  */
 export const WorkflowStepOfSchema = <const Key extends string>(key: Key) =>
-  WorkflowStepSchema.extend({ key: z.literal(key) });
+  WorkflowStepSchema.extend({ key: TimelineCategoryKeySchema.and(z.literal(key)) });
 export type WorkflowStepOf<Key extends string> = z.infer<ReturnType<typeof WorkflowStepOfSchema<Key>>>;
 
 export const TimelineCategorySpecSchema = z.strictObject({
