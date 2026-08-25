@@ -20,7 +20,8 @@ import {
   activityReportCsvFileName,
 } from "../../../src/server/dashboard/queries/activity-export.js";
 import {
-  displayStatusLabelOf,
+  DISPLAY_STATUS_LABELS,
+  displayStatusOf,
   displayStatusProseLabelOf,
 } from "../../../src/domain/dashboard/status-vocabulary.js";
 import { dsStatusOf, PROPOSED_STATUS } from "../../../src/dashboard/surfaces/status-model.js";
@@ -104,8 +105,8 @@ describe("the Activity report's CSV export (D240)", () => {
   it("uses the shared display vocabulary and sentence treatment for all closed statuses", () => {
     const caveat = activityReportCaveats(FILLED).find((value) => value.startsWith("Error rate counts"));
     assert.ok(caveat);
-    assert.equal(displayStatusLabelOf("blocked"), PROPOSED_STATUS[dsStatusOf("blocked")].label);
-    assert.equal(displayStatusLabelOf("blocked"), "Write parked");
+    assert.equal(DISPLAY_STATUS_LABELS[displayStatusOf("blocked")], PROPOSED_STATUS[dsStatusOf("blocked")].label);
+    assert.equal(DISPLAY_STATUS_LABELS.parked, "Write parked");
     assert.equal(
       caveat,
       "Error rate counts only runs that reached a terminal state. Anything queued, running, waiting on you "

@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { dsClip, dsIcon, dsRadius, dsText } from "./tokens.js";
-import { DISPLAY_STATUS_LABELS, type DisplayStatus } from "../../domain/dashboard/status-vocabulary.js";
+import { DISPLAY_STATUS_LABELS } from "../../domain/dashboard/status-vocabulary.js";
+import type { displayStatusOf } from "../../domain/dashboard/status-vocabulary.js";
 
 /**
  * The eight ratified queue statuses.
@@ -41,7 +42,7 @@ import { DISPLAY_STATUS_LABELS, type DisplayStatus } from "../../domain/dashboar
  * still reads emphasis tier, icon shape and the label.
  */
 
-export type DsStatus = DisplayStatus;
+export type DsStatus = ReturnType<typeof displayStatusOf>;
 
 /** How loud a status is allowed to be. Drives fill, weight and dot shape. */
 export type DsStatusTier = "solid" | "dashed" | "tinted" | "outline" | "ghost";

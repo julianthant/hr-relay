@@ -9,7 +9,7 @@ import type { QueueStatusSchema } from "./projection.js";
 
 type QueueStatus = z.infer<typeof QueueStatusSchema>;
 
-export type DisplayStatus =
+type DisplayStatus =
   | "queued"
   | "running"
   | "waiting"
@@ -45,14 +45,10 @@ export function displayStatusOf(status: QueueStatus): DisplayStatus {
   return WIRE_TO_DISPLAY_STATUS[status];
 }
 
-export function displayStatusLabelOf(status: QueueStatus): string {
-  return DISPLAY_STATUS_LABELS[displayStatusOf(status)];
-}
-
 /**
  * The same closed vocabulary in sentence case. `waiting` keeps the operator's
  * established prose, while the parked arm keeps the pill's words in sentence
- * case. The exact pill label remains available from `displayStatusLabelOf`.
+ * case. The exact pill label remains available from `DISPLAY_STATUS_LABELS`.
  */
 export function displayStatusProseLabelOf(status: QueueStatus): string {
   switch (displayStatusOf(status)) {

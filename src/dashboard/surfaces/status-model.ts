@@ -14,7 +14,6 @@ import { cn } from "../lib/utils.js";
 import { DS_STATUS, dsStatusAccessibleName, dsStatusText, type DsStatus } from "../ds/ui.js";
 import {
   displayStatusOf,
-  type DisplayStatus,
 } from "../../domain/dashboard/status-vocabulary.js";
 import type { z } from "zod";
 import type { QueueStatusSchema } from "../../domain/dashboard/projection.js";
@@ -26,7 +25,7 @@ export type OutcomeWire = z.infer<typeof OutcomeWireSchema>;
 
 export type TerminalOutcomeResult = Extract<OutcomeWire, { state: "terminal" }>["result"];
 
-export type ProposedStatus = DisplayStatus;
+export type ProposedStatus = ReturnType<typeof displayStatusOf>;
 
 export interface ProposedStatusSpec {
   label: string;
