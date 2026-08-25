@@ -1159,7 +1159,7 @@ digest without editing history.
 - [x] the verified online backup: `node:sqlite.backup`, the copy self-verified read-only, the manifest bound to the final bytes, fsync + atomic rename; no `VACUUM INTO` and no live-WAL file copy (D72)
 - [x] 2i-D's cadence — one backup at process start, a coalesced verified backup on each 15-minute tick ONLY when the store is dirty, and a graceful-drain backup inside `stop()`
 - [x] the two health readings, and which is which: the cheap bootstrap summary versus the doctor's on-demand byte re-verification (`cli storage doctor [--json]`, exit 0 only when authority is healthy AND a verified current backup exists)
-- [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database); singleton roles claim atomically, workers own per-start records, all owners participate in exclusive restore admission, and a record releases only after its authority handle closure is proven
+- [x] **D181** — `cli storage restore --from <manifest>` is live and DRILLED (2026-08-09, on a copy of the standing local authority database); singleton roles claim atomically, workers own per-start records, all owners participate in exclusive restore admission, records release only after authority closure, and any unproven pre-swap WAL/SHM rollback reports an explicit uncertain state
 - [ ] the 14/8/5 retention sweep and a configurable backup path — both D193 `wont-build-unless-asked` (§2.1's `def-retention` block carries them)
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified against src/infra/sqlite/{offline-restore,recovery-stop-proof,runtime-process-locks}.ts, src/server/storage/compose.ts, src/server/dashboard/queries/storage.ts and the drill table below; left: only D193's two remainders
 <!-- /roadmap-status -->
@@ -1199,7 +1199,8 @@ of erasing claim, delegation, checkpoint, and write-fence truth. The base theref
    compares a fresh live observation with the exact issued one-time proof, and holds that exclusion
    through preservation, staged-byte checksum re-verification, repeated checks and atomic swap.
    Every runtime start checks admission before and after its own atomic/per-start record and unwinds
-   if restore won; a post-swap failure is reported as replaced, never as an untouched live database.
+   if restore won. A post-swap failure is reported as replaced; a failed pre-swap companion rollback
+   is reported as companion-state-uncertain; neither may claim an untouched live database.
 6. Restore reconciliation replays JSONL into **projection tables only**. It never invents lost
    authority from spans. Runs/events newer than the restored authority generation are surfaced as
    `authority-unknown`; any possible external write is parked for ref write-safety's live probe/operator
@@ -1259,14 +1260,16 @@ every worker record and the legacy root-level `workers.lock.json` into the uncha
 old records are archived forward, never deleted.
 
 **Liveness is OBSERVED as `(pid, process-start identity)`, never PID occupancy alone, and the
-observation writes nothing.** Linux records boot id plus `/proc/<pid>/stat` start ticks; macOS uses
-`ps`'s process-start stamp; Windows uses `Get-Process.StartTime` ticks. A PID occupied by a different
+observation writes nothing.** Linux records boot id plus `/proc/<pid>/stat` start ticks; macOS runs
+`ps` under a fixed C/UTC environment and stores epoch seconds; Windows uses `Get-Process.StartTime`
+ticks. A PID occupied by a different
 birth is stale ownership and may be archived; `EPERM` remains alive and any unreadable identity
 fails loud. Legacy PID-only records read forward conservatively. The supported-platform limitation
 is macOS's one-second `ps` stamp: a PID recycled inside the same second cannot be distinguished and
 therefore remains conservatively active until the next acquisition can prove otherwise. A process
 record releases only after database closure returns successfully; a throwing close leaves it active.
-Every successful start/restart advances the aggregate generation.
+Generation 1 is the observable never-run baseline; every successful start/restart advances beyond
+it, so even a proof issued before the first-ever start is fenced after that process releases.
 
 **Restore uses exclusion, not late sampling.** Restore atomically claims its own birth-bound
 admission sentinel, then compares a fresh live observation with the exact persisted snapshot/proof
@@ -1274,7 +1277,9 @@ without changing the fingerprinted `recordedAt`. Every runtime acquisition check
 both sides of its atomic singleton claim or worker-record write and unwinds if restore won. Restore
 holds admission through staged checksum re-verification and authority swap. After the swap,
 fsync/report/admission-release errors carry an irreversible `replaced` state to the CLI; before it,
-the state is `unchanged`.
+live WAL/SHM companions move only into rollback staging and must restore by atomic rename plus fsync.
+If rollback rename, fsync or cleanup cannot be proven, the CLI reports
+`companion-state-uncertain` and preserves the recovery artifacts instead of claiming `unchanged`.
 
 **The command never chooses a backup.** `--from` names one exact manifest, because "restore the
 newest" is a decision about which minutes of real HR work to discard and no default is right; a

@@ -530,7 +530,11 @@ write-safety work.
   through the swap; every runtime checks it on both sides of an atomic singleton claim or per-worker
   record; records bind PID to OS process birth; worker records release only after database closure
   returns; staged bytes are checksummed after copy; and failures carry whether rename already made
-  replacement irreversible. Sampling, PID liveness, and a generic “not modified” catch are each
+  replacement irreversible. Follow-up review found two more aliases for stale evidence: Darwin's raw
+  `ps lstart` changes with `TZ`, and a never-run generation equal to the first acquisition lets a
+  pre-start proof survive start/release. Normalize the birth stamp, reserve the baseline, and never
+  call a failed WAL/SHM rollback unchanged: its rename/fsync/unlink failures carry an explicit
+  uncertain state and all causes. Sampling, PID liveness, and a generic “not modified” catch are each
   plausible facts, but none proves the state needed at the irreversible boundary.
 - **2026-08-09: An id minted unconditionally and emitted conditionally is a citation to nothing
   (D187).** `buildRunEvidenceReceipt` minted a `verificationId` for EVERY node but pushed the

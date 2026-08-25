@@ -565,7 +565,7 @@ pool, because the pool multiplies the hazard it removes.
 > 2026-08-20 | docs-cohesion 03a | the kernel command arms exist and are validated (src/core/command-kernel.ts:95) while createDashboardWorkerSupervisor refuses spawn by name (src/server/dashboard/compose.ts:322) and the FE has no Add-workers control for the CAS reason quoted in src/dashboard/surfaces/shell.tsx:1036
 > 2026-08-21 | parallel-runs P12 | the authority half landed (D269) — ref execution-and-sessions §11 points 1 and 5 carry the as-built; left: the pool process (spawn + pool-indexed ids), the FE session view, the parallel proof
 > 2026-08-25 | parallel-runs P3 | pool-indexed identity landed — `worker <workflow> --pool-index N` validates a positive N, derives `<workflow>-worker-N`, and starts authority under that exact lease id; distinct indices retain distinct lease rows and duplicate N is refused. Left: the real dashboard process supervisor, FE session view and parallel proof
-> 2026-08-25 | parallel-runs P3 review | the CLI/identity seam admits concurrent workers through per-start records while D181 atomically admits the singleton server, binds ownership to PID + OS process birth, and holds exclusive restore admission through staged-byte verification and swap. This does not build pool supervision, FE or the parallel dry-run proof
+> 2026-08-25 | parallel-runs P3 review | the CLI/identity seam admits concurrent workers through per-start records while D181 atomically admits the singleton server, reserves generation 1 for never-run, binds ownership to PID + OS process birth (Darwin normalized to C/UTC epoch seconds), and holds exclusive restore admission through staged-byte verification and swap; unproven WAL/SHM rollback is explicit companion-state-uncertain. This does not build pool supervision, FE or the parallel dry-run proof
 <!-- /roadmap-status -->
 
 **A session is a dashboard-started group of N runs.** Every workflow follows the same
@@ -606,7 +606,8 @@ Worker process starts append independent durable lock records, so distinct membe
 duplicate identity reaches the authority lease; D181 still observes them through one strict
 aggregate restore arm. The adjacent restore interlock atomically admits singleton roles and binds
 current ownership to OS process birth, so neither contention nor PID reuse can make that arm report
-a false stopped/live state.
+a false stopped/live state. Its never-run generation is reserved, so the first start/release fences
+an earlier proof; Darwin's normalized start token retains an honest one-second resolution limit.
 
 **Done looks like** a pool that spawns and stops from the dashboard against a real CAS basis, a
 durable session record the worker cards read their membership from, and TWO separations dry-run

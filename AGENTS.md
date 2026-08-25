@@ -258,7 +258,12 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   before and after writing its record and unwinds if restore won. A persisted recovery snapshot is
   evidence, not current liveness or exclusion. Singleton admission must use the atomic filesystem
   claim, never check-then-rename; new ownership records bind PID to OS process birth, and a process
-  record may report stopped only after its authority handle closure returned successfully.
+  record may report stopped only after its authority handle closure returned successfully. Reserve
+  generation 1 for the observable never-run baseline, so the first acquisition is generation 2;
+  on macOS normalize `ps` under C/UTC before storing epoch seconds (the kernel stamp remains
+  one-second resolution). Before authority replacement, displaced WAL/SHM files need a verified
+  atomic rollback; any rollback rename/fsync/unlink failure is `companion-state-uncertain`, never
+  `unchanged`.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
