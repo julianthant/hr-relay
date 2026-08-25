@@ -837,8 +837,9 @@ Built and holding:
    when work starts, not whether it may be enqueued.
 6. Authentication is decided by CONTENT, and so is its refusal (§4.1, §4.2).
 
-Settled by ruling and not yet built — the design is in §10 and §11, and neither is re-openable
-without a new operator decision:
+Settled by ruling — §10 is built, while §11's authority and read view are built and its process
+supervisor/proof work remains explicit below. Neither ruling is re-openable without a new operator
+decision:
 
 7. **Every Duo ceremony is serialized per CREDENTIAL** (R12, §10). Not per worker, not per system,
    not per profile — the counter is per credential, so the lease is too.
