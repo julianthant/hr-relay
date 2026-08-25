@@ -899,7 +899,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "97a141d2882696982d848a27f6e4a1c1a4e0d3f2963f25577911f9a7ab4490a3",
+      "fingerprint": "46dbb849d750de80a350220ff4a9acadfcb1645e21614bf2698b6a3771509078",
       "sources": [
         {
           "path": "src/base/flow.ts",
@@ -1127,7 +1127,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/separations/kuali-finalization/descriptor.ts",
-          "sha256": "6b6eb5bb0acc69e1c0012725986c056e327432dcb760f368ede38a8e344cd62a"
+          "sha256": "7b5225ff6a4aff2c457850ed3fcfad8610d0ffe9b43de8c5f423639f867c0c66"
         },
         {
           "path": "src/workflows/separations/kuali-finalization/nodes.ts",
@@ -6695,7 +6695,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-department-option"
     },
     {
-      "fingerprint": "11923fa766b99f1f820eea18e7e00c016dff0536bc14e691e64f8722024a2376",
+      "fingerprint": "6e40fa05f25ccdd3a6794e11d258e9e72880df61c2e189a950040c7a08558d81",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6843,7 +6843,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/separations/tasks/match-identity.ts",
-          "sha256": "5bbadf90d2483f88bd3e9e781c68ba08171d789d546515af2f5a674b31c49585"
+          "sha256": "4560966e310697852ebb7aa7b690076358948577786b9c21f37f808699cbba8f"
         },
         {
           "path": "src/validation/contract-boundary.ts",
