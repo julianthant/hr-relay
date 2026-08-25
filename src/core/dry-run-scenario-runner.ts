@@ -210,26 +210,6 @@ export function evaluateDryRunScenarioEvidence(
     writeAttempts: evidence.writeSafetyAfter.writeAttempts - before.writeAttempts,
     durableOutbox: evidence.writeSafetyAfter.durableOutbox - before.durableOutbox,
   };
-  const verificationMatches = scenarioCase.receipt.verification.every((expected) =>
-    evidence.receipt.verification.some((actual) =>
-      actual.obligation === `node.${expected.node}`
-      && actual.verdict === expected.verdict
-      && actual.mandatory === expected.mandatory));
-  const declaredReceiptObligations = evidence.receipt.verification.filter(({ obligation }) =>
-    !obligation.startsWith("node.") && obligation !== "completion.terminal-result");
-  const obligationMatches = same(
-    declaredReceiptObligations.map(({ obligation }) => obligation),
-    scenarioCase.receipt.obligations.map(({ obligation }) => obligation),
-  ) && scenarioCase.receipt.obligations.every((expected) => {
-    const actual = evidence.receipt.verification.find(({ obligation }) => obligation === expected.obligation);
-    if (actual === undefined) return false;
-    const verdict = actual.verdict === "verified" || actual.verdict === "present"
-      ? "met"
-      : actual.verdict === "unknown"
-        ? "unknown"
-        : "unmet";
-    return verdict === expected.verdict;
-  });
   const terminalMatches = scenarioCase.terminal.lifecycle === "failed"
     ? evidence.terminal.lifecycle === "failed"
       && evidence.terminal.code === scenarioCase.terminal.code
@@ -264,7 +244,7 @@ export function evaluateDryRunScenarioEvidence(
       "write-safety-deltas-zero", "write-safety-deltas-nonzero"),
     assertion("receipt", evidence.receipt.result === scenarioCase.receipt.result
       && evidence.receipt.confidence === scenarioCase.receipt.confidence
-      && verificationMatches && obligationMatches,
+      && same(evidence.receipt.verification, scenarioCase.receipt.verification),
     "receipt-match", "receipt-mismatch"),
     assertion("terminal", terminalMatches, "terminal-match", "terminal-mismatch"),
     assertion("preview", previewMatches, "preview-match", "preview-mismatch"),

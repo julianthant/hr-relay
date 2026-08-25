@@ -85,20 +85,31 @@ const IDENTITY_GATE = {
   leaf: "resolve-gate-approved",
 } as const;
 
-/** The exact obligations declared for this workflow by receipt derivation. A
- * preview has no transaction checkpoint: four comparisons are unknown, while
- * the literal reload-read-back proof is absent (`unmet` here). */
-const PREVIEW_RECEIPT_OBLIGATIONS = [
-  { obligation: "write.timekeeper-matches-request", verdict: "unknown" as const },
-  { obligation: "identity.eid-agrees-across-sources", verdict: "unknown" as const },
-  { obligation: "write.document-matches-request", verdict: "unknown" as const },
-  { obligation: "write.transaction-matches-request", verdict: "unknown" as const },
-  { obligation: "write.proof-is-a-read-back", verdict: "unmet" as const },
-].map((expectation) => ({
-  ...expectation,
-  why: "A preview stores no transaction checkpoint, so receipt derivation cannot compare this "
-    + "obligation's transaction-side source.",
-}));
+/** The receipt service's complete ordered authority vocabulary for a preview.
+ * Every graph node is present: the five checkpointed nodes and resolved gate
+ * are verified, while the transaction has no checkpoint. The terminal result
+ * and four cross-source comparisons are unknown; literal reload read-back is
+ * absent. These are authority verdicts, not a lossy met/unmet projection. */
+const PREVIEW_RECEIPT_VERIFICATION = [
+  { obligation: "node.job-summary", verdict: "verified", mandatory: false },
+  { obligation: "node.name-search", verdict: "verified", mandatory: false },
+  { obligation: "node.department-option", verdict: "verified", mandatory: true },
+  { obligation: "node.comparison", verdict: "verified", mandatory: false },
+  { obligation: "node.identity-approval", verdict: "verified", mandatory: false },
+  { obligation: "node.approval", verdict: "verified", mandatory: true },
+  { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
+  { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
+  { obligation: "write.timekeeper-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "identity.eid-agrees-across-sources", verdict: "unknown", mandatory: true },
+  { obligation: "write.document-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "write.transaction-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "write.proof-is-a-read-back", verdict: "absent", mandatory: true },
+] as const;
+
+const FAILED_RECEIPT_VERIFICATION = PREVIEW_RECEIPT_VERIFICATION.map((row) =>
+  row.obligation === "completion.terminal-result"
+    ? { ...row, verdict: "absent" as const }
+    : row);
 
 const MANIFEST = {
   scenarioId: "separations-kuali-finalization/dry-run",
@@ -126,10 +137,7 @@ const MANIFEST = {
       receipt: {
         result: "partial",
         confidence: "unknown",
-        verification: [
-          { node: TRANSACTION_NODE, verdict: "unknown", mandatory: true },
-        ],
-        obligations: PREVIEW_RECEIPT_OBLIGATIONS,
+        verification: PREVIEW_RECEIPT_VERIFICATION,
       },
       terminal: {
         lifecycle: "done",
@@ -155,10 +163,7 @@ const MANIFEST = {
       receipt: {
         result: "partial",
         confidence: "unknown",
-        verification: [
-          { node: TRANSACTION_NODE, verdict: "unknown", mandatory: true },
-        ],
-        obligations: PREVIEW_RECEIPT_OBLIGATIONS,
+        verification: PREVIEW_RECEIPT_VERIFICATION,
       },
       terminal: {
         lifecycle: "done",
@@ -184,10 +189,7 @@ const MANIFEST = {
       receipt: {
         result: "partial",
         confidence: "unknown",
-        verification: [
-          { node: TRANSACTION_NODE, verdict: "unknown", mandatory: true },
-        ],
-        obligations: PREVIEW_RECEIPT_OBLIGATIONS,
+        verification: PREVIEW_RECEIPT_VERIFICATION,
       },
       terminal: {
         lifecycle: "done",
@@ -213,10 +215,7 @@ const MANIFEST = {
       receipt: {
         result: "failed",
         confidence: "unknown",
-        verification: [
-          { node: TRANSACTION_NODE, verdict: "unknown", mandatory: true },
-        ],
-        obligations: PREVIEW_RECEIPT_OBLIGATIONS,
+        verification: FAILED_RECEIPT_VERIFICATION,
       },
       /*
        * §10.4's recorded as-built defect, carried here rather than left to be

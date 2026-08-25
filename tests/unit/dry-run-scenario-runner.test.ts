@@ -34,8 +34,12 @@ const MANIFEST = {
     receipt: {
       result: "partial",
       confidence: "unknown",
-      verification: [{ node: "write", verdict: "unknown", mandatory: true }],
-      obligations: [{ obligation: "landing", verdict: "unknown", why: "a preview writes nothing" }],
+      verification: [
+        { obligation: "node.read", verdict: "verified", mandatory: false },
+        { obligation: "node.write", verdict: "unknown", mandatory: true },
+        { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
+        { obligation: "landing", verdict: "unknown", mandatory: true },
+      ],
     },
     terminal: {
       lifecycle: "done",
@@ -75,7 +79,9 @@ const READY_EVIDENCE = {
     result: "partial",
     confidence: "unknown",
     verification: [
+      { obligation: "node.read", verdict: "verified", mandatory: false },
       { obligation: "node.write", verdict: "unknown", mandatory: true },
+      { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
       { obligation: "landing", verdict: "unknown", mandatory: true },
     ],
   },
@@ -122,7 +128,7 @@ describe("dry-run scenario manifest boundary", () => {
 
     assert.equal(
       deriveDryRunScenarioManifestDigest(parsed),
-      "054481de2b7a4395ef8261dee1ac2284c81c7a97e644675d11ca6c9dbffe9534",
+      "0f150541beb3edf4844380b02efc65f85b3c41668fa89cb09ec1204ee1a8d5c6",
     );
   });
 
@@ -196,7 +202,7 @@ describe("dry-run scenario execution", () => {
       scenarioId: "fixture-workflow/dry-run",
       workflow: "fixture-workflow",
       subjectLabel: "fixture-canary",
-      manifestDigest: "054481de2b7a4395ef8261dee1ac2284c81c7a97e644675d11ca6c9dbffe9534",
+      manifestDigest: "0f150541beb3edf4844380b02efc65f85b3c41668fa89cb09ec1204ee1a8d5c6",
       verdict: "blocked",
       execution: { state: "not-started", reason: "subject-unavailable" },
       assertions: [{
@@ -264,8 +270,11 @@ describe("dry-run scenario execution", () => {
         receipt: {
           result: "failed",
           confidence: "unknown",
-          verification: [{ node: "write", verdict: "absent", mandatory: true }],
-          obligations: [],
+          verification: [
+            { obligation: "node.read", verdict: "verified", mandatory: false },
+            { obligation: "node.write", verdict: "absent", mandatory: true },
+            { obligation: "completion.terminal-result", verdict: "absent", mandatory: true },
+          ],
         },
         terminal: {
           lifecycle: "failed",
@@ -299,7 +308,11 @@ describe("dry-run scenario execution", () => {
           receipt: {
             result: "failed",
             confidence: "unknown",
-            verification: [{ obligation: "node.write", verdict: "absent", mandatory: true }],
+            verification: [
+              { obligation: "node.read", verdict: "verified", mandatory: false },
+              { obligation: "node.write", verdict: "absent", mandatory: true },
+              { obligation: "completion.terminal-result", verdict: "absent", mandatory: true },
+            ],
           },
           terminal: {
             lifecycle: "failed",
@@ -361,6 +374,36 @@ describe("dry-run scenario evidence assertions", () => {
   if (scenarioCase === undefined) throw new Error("fixture manifest has no case");
   const before = { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 } as const;
 
+  it("rejects an authority verdict mutation instead of collapsing its meaning", () => {
+    const absentCase = parseDryRunScenarioManifest({
+      ...GATED_MANIFEST,
+      cases: [{
+        ...GATED_MANIFEST.cases[0],
+        receipt: {
+          ...GATED_MANIFEST.cases[0]?.receipt,
+          verification: GATED_MANIFEST.cases[0]?.receipt.verification.map((row) =>
+            row.obligation === "landing" ? { ...row, verdict: "absent" as const } : row),
+        },
+      }],
+    }).cases[0];
+    if (absentCase === undefined) throw new Error("fixture manifest has no case");
+    const mutatedEvidence = {
+      ...READY_EVIDENCE,
+      receipt: {
+        ...READY_EVIDENCE.receipt,
+        verification: READY_EVIDENCE.receipt.verification.map((row) =>
+          row.obligation === "landing" ? { ...row, verdict: "ambiguous" as const } : row),
+      },
+    };
+
+    const outcomes = evaluateDryRunScenarioEvidence(absentCase, before, mutatedEvidence);
+
+    assert.deepEqual(
+      outcomes.filter(({ verdict }) => verdict === "failed").map(({ assertionId }) => assertionId),
+      ["receipt"],
+    );
+  });
+
   const mutations = [
     [["nodes-reached"], { ...READY_EVIDENCE, reachedNodeIds: ["read", "approval"] }],
     [["nodes-reached", "nodes-excluded"], {
@@ -382,6 +425,22 @@ describe("dry-run scenario evidence assertions", () => {
     [["receipt"], {
       ...READY_EVIDENCE,
       receipt: { ...READY_EVIDENCE.receipt, confidence: "partial" },
+    }],
+    [["receipt"], {
+      ...READY_EVIDENCE,
+      receipt: {
+        ...READY_EVIDENCE.receipt,
+        verification: READY_EVIDENCE.receipt.verification.map((row) =>
+          row.obligation === "landing" ? { ...row, verdict: "ambiguous" as const } : row),
+      },
+    }],
+    [["receipt"], {
+      ...READY_EVIDENCE,
+      receipt: {
+        ...READY_EVIDENCE.receipt,
+        verification: READY_EVIDENCE.receipt.verification.filter(({ obligation }) =>
+          obligation !== "node.read"),
+      },
     }],
     [["receipt"], {
       ...READY_EVIDENCE,

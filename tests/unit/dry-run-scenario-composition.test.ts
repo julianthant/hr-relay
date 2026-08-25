@@ -72,6 +72,23 @@ function composedSessions(clock: TestClock, displayedEidAfterStage?: string) {
   });
   return { sessions, world };
 }
+
+const PREVIEW_RECEIPT_VERIFICATION = [
+  { obligation: "node.job-summary", verdict: "verified", mandatory: false },
+  { obligation: "node.name-search", verdict: "verified", mandatory: false },
+  { obligation: "node.department-option", verdict: "verified", mandatory: true },
+  { obligation: "node.comparison", verdict: "verified", mandatory: false },
+  { obligation: "node.identity-approval", verdict: "verified", mandatory: false },
+  { obligation: "node.approval", verdict: "verified", mandatory: true },
+  { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
+  { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
+  { obligation: "write.timekeeper-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "identity.eid-agrees-across-sources", verdict: "unknown", mandatory: true },
+  { obligation: "write.document-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "write.transaction-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "write.proof-is-a-read-back", verdict: "absent", mandatory: true },
+] as const;
+
 const TEST_MANIFEST = parseDryRunScenarioManifest({
   scenarioId: "separations-kuali-finalization/dry-run",
   workflow: "separations-kuali-finalization",
@@ -102,18 +119,7 @@ const TEST_MANIFEST = parseDryRunScenarioManifest({
     receipt: {
       result: "partial",
       confidence: "unknown",
-      verification: [{ node: "finalize-kuali", verdict: "unknown", mandatory: true }],
-      obligations: [
-        "write.timekeeper-matches-request",
-        "identity.eid-agrees-across-sources",
-        "write.document-matches-request",
-        "write.transaction-matches-request",
-        "write.proof-is-a-read-back",
-      ].map((obligation) => ({
-        obligation,
-        verdict: obligation === "write.proof-is-a-read-back" ? "unmet" as const : "unknown" as const,
-        why: "preview has no transaction checkpoint",
-      })),
+      verification: PREVIEW_RECEIPT_VERIFICATION,
     },
     terminal: {
       lifecycle: "done",
@@ -136,6 +142,10 @@ const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
     receipt: {
       ...TEST_MANIFEST.cases[0]?.receipt,
       result: "failed",
+      verification: PREVIEW_RECEIPT_VERIFICATION.map((row) =>
+        row.obligation === "completion.terminal-result"
+          ? { ...row, verdict: "absent" as const }
+          : row),
     },
     terminal: {
       lifecycle: "failed",
@@ -331,24 +341,9 @@ describe("dry-run scenario production composition boundary", () => {
       result: "partial",
       confidence: "unknown",
     });
-    assert.deepEqual(evidence.receipt.verification.filter(({ obligation }) =>
-      obligation === "node.finalize-kuali"
-      || obligation === "completion.terminal-result"
-      || obligation === "write.timekeeper-matches-request"
-      || obligation === "identity.eid-agrees-across-sources"
-      || obligation === "write.document-matches-request"
-      || obligation === "write.transaction-matches-request"
-      || obligation === "write.proof-is-a-read-back").map(({ obligation, verdict, mandatory }) => ({
+    assert.deepEqual(evidence.receipt.verification.map(({ obligation, verdict, mandatory }) => ({
       obligation, verdict, mandatory,
-    })), [
-      { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
-      { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
-      { obligation: "write.timekeeper-matches-request", verdict: "unknown", mandatory: true },
-      { obligation: "identity.eid-agrees-across-sources", verdict: "unknown", mandatory: true },
-      { obligation: "write.document-matches-request", verdict: "unknown", mandatory: true },
-      { obligation: "write.transaction-matches-request", verdict: "unknown", mandatory: true },
-      { obligation: "write.proof-is-a-read-back", verdict: "absent", mandatory: true },
-    ]);
+    })), PREVIEW_RECEIPT_VERIFICATION);
     assert.deepEqual(evidence.terminal, {
       lifecycle: "done",
       resultSchema: "RunDryRunPreviewResultSchema",

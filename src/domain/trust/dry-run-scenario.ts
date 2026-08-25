@@ -55,15 +55,10 @@ export const DryRunReceiptExpectationSchema = z.strictObject({
   result: z.enum(["partial", "done-with-warnings", "failed", "cancelled"]),
   confidence: z.enum(["partial", "unknown"]),
   verification: z.array(z.strictObject({
-    node: NodeIdSchema,
-    verdict: z.enum(["present", "absent", "unknown", "ambiguous"]),
-    mandatory: z.boolean(),
-  })),
-  obligations: z.array(z.strictObject({
     obligation: ObligationIdSchema,
-    verdict: z.enum(["met", "unmet", "unknown"]),
-    why: z.string().min(1),
-  })),
+    verdict: z.enum(["verified", "present", "absent", "unknown", "ambiguous"]),
+    mandatory: z.boolean(),
+  })).min(1),
 });
 
 export const DryRunTerminalExpectationSchema = z.discriminatedUnion("lifecycle", [
