@@ -160,6 +160,46 @@ async function comparisonFor(
 }
 
 describe("separations-identity-check scenarios", () => {
+  it("match-identity refusals identify the defect without persisting either EID", async () => {
+    const messages: string[] = [];
+    const failingCtx = {
+      ...taskCtx,
+      fail: (code: string, message: string): never => {
+        messages.push(`${code}: ${message}`);
+        throw new Error(code);
+      },
+    };
+    const base = {
+      documentNumber: RUN_INPUT.documentNumber,
+      documentName: RUN_INPUT.employeeName,
+      documentEid: RUN_INPUT.documentEid,
+      emplId: RUN_INPUT.emplId,
+      emplIdSource: RUN_INPUT.emplIdSource,
+      nameSelection: nameSearch().selection,
+      plan: noSeparationWritePlan("this fixture composes no separation write plan"),
+    };
+
+    await assert.rejects(matchIdentityTask.impl.run({
+      input: { ...base, jobSummary: jobSummary([cells()], { emplId: OTHER_EID }) },
+      ctx: failingCtx,
+    }));
+    await assert.rejects(matchIdentityTask.impl.run({
+      input: {
+        ...base,
+        documentEid: { state: "present", value: OTHER_EID },
+        jobSummary: jobSummary([cells()]),
+      },
+      ctx: failingCtx,
+    }));
+
+    assert.equal(messages.length, 2);
+    for (const message of messages) {
+      assert.doesNotMatch(message, new RegExp(EID));
+      assert.doesNotMatch(message, new RegExp(OTHER_EID));
+      assert.match(message, /correct|rerun|refus/iu);
+    }
+  });
+
   it("separations-identity-check/single-active-job — S14: one active job, names agree, one-click gate", async () => {
     const summary = await readJobSummary(jobSummary([cells()]));
     assert.equal(summary.rowCount, 1);

@@ -9,7 +9,12 @@ import {
 } from "../domain/trust/dry-run-scenario-result.js";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
-import { WorkflowIdSchema } from "../domain/ids.js";
+import {
+  ErrorCodeSchema,
+  FailureFingerprintSchema,
+  NodeIdSchema,
+  WorkflowIdSchema,
+} from "../domain/ids.js";
 import {
   deriveDryRunScenarioManifestDigest,
   DryRunWriteSafetyCountsSchema,
@@ -86,7 +91,12 @@ const EvidenceTerminalSchema = z.discriminatedUnion("lifecycle", [
     stoppedAtNodeId: z.string().min(1),
     preview: EvidencePreviewSchema,
   }),
-  z.strictObject({ lifecycle: z.literal("failed") }),
+  z.strictObject({
+    lifecycle: z.literal("failed"),
+    code: ErrorCodeSchema,
+    node: NodeIdSchema,
+    fingerprint: FailureFingerprintSchema,
+  }),
 ]);
 
 export const DryRunScenarioEvidenceSchema = z.strictObject({
@@ -205,7 +215,12 @@ export function evaluateDryRunScenarioEvidence(
       actual.obligation === `node.${expected.node}`
       && actual.verdict === expected.verdict
       && actual.mandatory === expected.mandatory));
-  const obligationMatches = scenarioCase.receipt.obligations.every((expected) => {
+  const declaredReceiptObligations = evidence.receipt.verification.filter(({ obligation }) =>
+    !obligation.startsWith("node.") && obligation !== "completion.terminal-result");
+  const obligationMatches = same(
+    declaredReceiptObligations.map(({ obligation }) => obligation),
+    scenarioCase.receipt.obligations.map(({ obligation }) => obligation),
+  ) && scenarioCase.receipt.obligations.every((expected) => {
     const actual = evidence.receipt.verification.find(({ obligation }) => obligation === expected.obligation);
     if (actual === undefined) return false;
     const verdict = actual.verdict === "verified" || actual.verdict === "present"
@@ -217,6 +232,9 @@ export function evaluateDryRunScenarioEvidence(
   });
   const terminalMatches = scenarioCase.terminal.lifecycle === "failed"
     ? evidence.terminal.lifecycle === "failed"
+      && evidence.terminal.code === scenarioCase.terminal.code
+      && evidence.terminal.node === scenarioCase.terminal.node
+      && evidence.terminal.fingerprint === scenarioCase.terminal.fingerprint
     : evidence.terminal.lifecycle === "done"
       && evidence.terminal.resultSchema === scenarioCase.terminal.resultSchema
       && evidence.terminal.kind === scenarioCase.terminal.kind

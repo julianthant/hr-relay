@@ -1,18 +1,77 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { manualClock } from "../../src/domain/clock.js";
+import { manualClock, type TestClock } from "../../src/domain/clock.js";
+import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { composeDryRunScenarioCommand } from "../../src/server/dry-run-scenario/compose.js";
 import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
+import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
 import { SeparationsKualiFinalizationCanonicalInput } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
+import {
+  FINALIZATION_ACTION_ID,
+  FINALIZATION_DOCUMENT,
+  FINALIZATION_EID,
+  FINALIZATION_OTHER_EID,
+  FINALIZATION_RUN_INPUT,
+} from "./fixtures/kuali-finalization-fixtures.js";
+import { sessionFactoryHarness } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 
 const roots: string[] = [];
+
+function composedSessions(clock: TestClock, displayedEidAfterStage?: string) {
+  const world = createKualiFakeWorld({
+    actionId: FINALIZATION_ACTION_ID,
+    documentNumber: FINALIZATION_DOCUMENT,
+    displayedEid: FINALIZATION_EID,
+  });
+  if (displayedEidAfterStage !== undefined) world.displayedEidAfterStage = displayedEidAfterStage;
+  const candidate = {
+    emplId: FINALIZATION_EID,
+    name: FINALIZATION_RUN_INPUT.employeeName,
+    department: "Housing Dining Hospitality",
+    jobTitle: "STDT 2",
+    employeeStatus: "active" as const,
+    hdh: true,
+  };
+  const jobRows = [deriveJobRowFromCells([
+    "0", "07/01/2025", "Active", "SDCMP", "40012345", "000412",
+    "HOUSING/DINING/HOSPITALITY", "004921", "STDT 2", "", "0.500000", "Student",
+  ], 0)];
+  const sessions = sessionFactoryHarness({
+    ucpath: () => createDeterministicUcpathPersonOrgDriver(
+      {
+        results: [candidate],
+        selection: { status: "resolved", selected: candidate, candidateEids: [FINALIZATION_EID] },
+      },
+      UcpathJobSummaryReadSchema.parse({
+        state: "read",
+        summary: {
+          pageStateId: "ucpath.person-org.detail-ready",
+          emplId: FINALIZATION_EID,
+          displayedName: "Deterministic Person",
+          jobRows,
+          rowCount: 1,
+          renderContext: {
+            entry: "auto-detail",
+            searchResultRows: 0,
+            employmentInstances: "already-complete",
+          },
+          observedAt: "2026-08-25T18:00:00.000Z",
+        },
+      }),
+    ),
+    kuali: () => createDeterministicKualiDriver(world, clock),
+  });
+  return { sessions, world };
+}
 const TEST_MANIFEST = parseDryRunScenarioManifest({
   scenarioId: "separations-kuali-finalization/dry-run",
   workflow: "separations-kuali-finalization",
@@ -28,7 +87,7 @@ const TEST_MANIFEST = parseDryRunScenarioManifest({
       "identity-approval", "approval", "finalize-kuali",
     ],
     nodesExcluded: [],
-    checkpoints: ["job-summary", "name-search", "department-option", "comparison"].map((node) => ({
+    checkpoints: ["job-summary", "name-search", "department-option", "comparison", "approval"].map((node) => ({
       node,
       attempt: 1,
       keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"],
@@ -42,13 +101,19 @@ const TEST_MANIFEST = parseDryRunScenarioManifest({
     durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
     receipt: {
       result: "partial",
-      confidence: "partial",
-      verification: [{ node: "finalize-kuali", verdict: "absent", mandatory: true }],
-      obligations: [{
-        obligation: "kuali-finalization-reload-read-back",
-        verdict: "unknown",
-        why: "the unit declaration keeps the live obligation unresolved",
-      }],
+      confidence: "unknown",
+      verification: [{ node: "finalize-kuali", verdict: "unknown", mandatory: true }],
+      obligations: [
+        "write.timekeeper-matches-request",
+        "identity.eid-agrees-across-sources",
+        "write.document-matches-request",
+        "write.transaction-matches-request",
+        "write.proof-is-a-read-back",
+      ].map((obligation) => ({
+        obligation,
+        verdict: obligation === "write.proof-is-a-read-back" ? "unmet" as const : "unknown" as const,
+        why: "preview has no transaction checkpoint",
+      })),
     },
     terminal: {
       lifecycle: "done",
@@ -58,6 +123,27 @@ const TEST_MANIFEST = parseDryRunScenarioManifest({
       stoppedAtNodeId: "finalize-kuali",
     },
     preview: { outcome: "would-prepare", subject: "match", staged: true },
+  }],
+});
+
+const FAILED_TEST_MANIFEST = parseDryRunScenarioManifest({
+  ...TEST_MANIFEST,
+  cases: [{
+    ...TEST_MANIFEST.cases[0],
+    caseId: "subject-mismatch",
+    subjectLabel: "finalization-subject-mismatch",
+    subjectKind: "subject-mismatch",
+    receipt: {
+      ...TEST_MANIFEST.cases[0]?.receipt,
+      result: "failed",
+    },
+    terminal: {
+      lifecycle: "failed",
+      code: "UNHANDLED",
+      node: "finalize-kuali",
+      fingerprint: "2459ee6496de1582e97ff1e4a5c647ec91358201f9960b2f602968efd7d29625",
+    },
+    preview: { outcome: "not-reached", reason: "binding proof refused before preview settlement" },
   }],
 });
 
@@ -188,6 +274,162 @@ describe("dry-run scenario production composition boundary", () => {
       });
     } finally {
       database.close();
+    }
+  });
+
+  it("composes both worker drains and the real gate command through terminal receipt evidence", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-composed-"));
+    roots.push(root);
+    writeFileSync(join(root, "package.json"), readFileSync(join(process.cwd(), "package.json"), "utf8"));
+    mkdirSync(join(root, rebuildRuntimeIsolation.stateRoot), { recursive: true });
+    const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
+    const { sessions } = composedSessions(clock);
+    const runtime = createProductionDryRunScenarioRuntime({
+      isolation: rebuildRuntimeIsolation,
+      repoRoot: root,
+      env: {},
+      clock,
+      ids: sequentialIdFactory("e"),
+      sessionFactory: sessions.factory,
+      processId: 4242,
+      write: () => undefined,
+    });
+    const scenarioCase = TEST_MANIFEST.cases[0];
+    assert.ok(scenarioCase);
+
+    const started = await runtime.start({
+      manifest: TEST_MANIFEST,
+      scenarioCase,
+      canonicalInput: SeparationsKualiFinalizationCanonicalInput.parse(FINALIZATION_RUN_INPUT),
+    });
+    await runtime.drain(TEST_MANIFEST.workflow);
+    await runtime.resolveGate({ manifest: TEST_MANIFEST, scenarioCase, runId: started.runId });
+    await runtime.drain(TEST_MANIFEST.workflow);
+    const evidence = await runtime.collectEvidence(started.runId) as {
+      reachedNodeIds: readonly string[];
+      checkpoints: readonly unknown[];
+      gateResults: readonly unknown[];
+      writeSafetyAfter: unknown;
+      receipt: {
+        result: string;
+        confidence: string;
+        verification: readonly { obligation: string; verdict: string; mandatory: boolean }[];
+      };
+      terminal: unknown;
+    };
+
+    assert.deepEqual(evidence.reachedNodeIds, [
+      "job-summary", "name-search", "department-option", "comparison",
+      "identity-approval", "approval", "finalize-kuali",
+    ]);
+    assert.deepEqual(evidence.checkpoints, scenarioCase.checkpoints);
+    assert.deepEqual(evidence.gateResults, [
+      { gate: "identity-approval", decision: "approved", resolvedBy: "local-operator" },
+    ]);
+    assert.deepEqual(evidence.writeSafetyAfter, { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 });
+    assert.deepEqual({ result: evidence.receipt.result, confidence: evidence.receipt.confidence }, {
+      result: "partial",
+      confidence: "unknown",
+    });
+    assert.deepEqual(evidence.receipt.verification.filter(({ obligation }) =>
+      obligation === "node.finalize-kuali"
+      || obligation === "completion.terminal-result"
+      || obligation === "write.timekeeper-matches-request"
+      || obligation === "identity.eid-agrees-across-sources"
+      || obligation === "write.document-matches-request"
+      || obligation === "write.transaction-matches-request"
+      || obligation === "write.proof-is-a-read-back").map(({ obligation, verdict, mandatory }) => ({
+      obligation, verdict, mandatory,
+    })), [
+      { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
+      { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
+      { obligation: "write.timekeeper-matches-request", verdict: "unknown", mandatory: true },
+      { obligation: "identity.eid-agrees-across-sources", verdict: "unknown", mandatory: true },
+      { obligation: "write.document-matches-request", verdict: "unknown", mandatory: true },
+      { obligation: "write.transaction-matches-request", verdict: "unknown", mandatory: true },
+      { obligation: "write.proof-is-a-read-back", verdict: "absent", mandatory: true },
+    ]);
+    assert.deepEqual(evidence.terminal, {
+      lifecycle: "done",
+      resultSchema: "RunDryRunPreviewResultSchema",
+      kind: "dry-run-preview",
+      externalCommit: "none",
+      stoppedAtNodeId: "finalize-kuali",
+      preview: { outcome: "would-prepare", subject: "match", staged: true },
+    });
+  });
+
+  it("derives transaction reach and EID-safe failure evidence from every durable worker sink", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-failed-"));
+    roots.push(root);
+    writeFileSync(join(root, "package.json"), readFileSync(join(process.cwd(), "package.json"), "utf8"));
+    const stateRoot = join(root, rebuildRuntimeIsolation.stateRoot);
+    mkdirSync(stateRoot, { recursive: true });
+    const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
+    const { sessions } = composedSessions(clock, FINALIZATION_OTHER_EID);
+    const lines: string[] = [];
+    const runtime = createProductionDryRunScenarioRuntime({
+      isolation: rebuildRuntimeIsolation,
+      repoRoot: root,
+      env: {},
+      clock,
+      ids: sequentialIdFactory("a"),
+      sessionFactory: sessions.factory,
+      processId: 4243,
+      write: (line) => lines.push(line),
+    });
+    const scenarioCase = FAILED_TEST_MANIFEST.cases[0];
+    assert.ok(scenarioCase);
+
+    const started = await runtime.start({
+      manifest: FAILED_TEST_MANIFEST,
+      scenarioCase,
+      canonicalInput: SeparationsKualiFinalizationCanonicalInput.parse(FINALIZATION_RUN_INPUT),
+    });
+    await runtime.drain(FAILED_TEST_MANIFEST.workflow);
+    await runtime.resolveGate({
+      manifest: FAILED_TEST_MANIFEST,
+      scenarioCase,
+      runId: started.runId,
+    });
+    await runtime.drain(FAILED_TEST_MANIFEST.workflow);
+    const evidence = await runtime.collectEvidence(started.runId) as {
+      reachedNodeIds: readonly string[];
+      terminal: unknown;
+    };
+
+    assert.deepEqual(evidence.reachedNodeIds, [
+      "job-summary", "name-search", "department-option", "comparison",
+      "identity-approval", "approval", "finalize-kuali",
+    ]);
+    assert.deepEqual(evidence.terminal, {
+      lifecycle: "failed",
+      code: "UNHANDLED",
+      node: "finalize-kuali",
+      fingerprint: "2459ee6496de1582e97ff1e4a5c647ec91358201f9960b2f602968efd7d29625",
+    });
+
+    const database = AuthorityDatabase.open(
+      { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "dry-run-failed-query" },
+      clock,
+    );
+    const run = database.authority.runs.get(started.runId);
+    assert.ok(run?.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined);
+    const failure = database.authority.failures.get(run.lifecycle.failureId);
+    const receipt = database.authority.evidenceReceipts.findByRun(started.runId);
+    database.close();
+    assert.ok(failure);
+    assert.ok(receipt);
+    assert.match(failure.summary, /subject observation.*real write would refuse to fence/iu);
+
+    const spanText = readdirSync(join(stateRoot, "spans"))
+      .map((file) => readFileSync(join(stateRoot, "spans", file), "utf8"))
+      .join("\n");
+    for (const sink of [JSON.stringify(failure), JSON.stringify(receipt), spanText, lines.join("\n")]) {
+      assert.doesNotMatch(sink, new RegExp(FINALIZATION_EID));
+      assert.doesNotMatch(sink, new RegExp(FINALIZATION_OTHER_EID));
+      assert.doesNotMatch(sink, new RegExp(`…${FINALIZATION_EID.slice(-4)}`));
+      assert.doesNotMatch(sink, new RegExp(`…${FINALIZATION_OTHER_EID.slice(-4)}`));
     }
   });
 

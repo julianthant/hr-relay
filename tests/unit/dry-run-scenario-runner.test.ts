@@ -267,7 +267,12 @@ describe("dry-run scenario execution", () => {
           verification: [{ node: "write", verdict: "absent", mandatory: true }],
           obligations: [],
         },
-        terminal: { lifecycle: "failed", reason: "expected", openItem: "expected" },
+        terminal: {
+          lifecycle: "failed",
+          code: "UNHANDLED",
+          node: "read",
+          fingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
         preview: { outcome: "not-reached", reason: "expected" },
       }],
     } as const;
@@ -296,7 +301,12 @@ describe("dry-run scenario execution", () => {
             confidence: "unknown",
             verification: [{ obligation: "node.write", verdict: "absent", mandatory: true }],
           },
-          terminal: { lifecycle: "failed" },
+          terminal: {
+            lifecycle: "failed",
+            code: "UNHANDLED",
+            node: "read",
+            fingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          },
         }),
       }),
       clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
@@ -373,6 +383,16 @@ describe("dry-run scenario evidence assertions", () => {
       ...READY_EVIDENCE,
       receipt: { ...READY_EVIDENCE.receipt, confidence: "partial" },
     }],
+    [["receipt"], {
+      ...READY_EVIDENCE,
+      receipt: {
+        ...READY_EVIDENCE.receipt,
+        verification: [
+          ...READY_EVIDENCE.receipt.verification,
+          { obligation: "unexpected-obligation", verdict: "unknown", mandatory: true },
+        ],
+      },
+    }],
     [["terminal"], {
       ...READY_EVIDENCE,
       terminal: { ...READY_EVIDENCE.terminal, stoppedAtNodeId: "after-write" },
@@ -393,5 +413,64 @@ describe("dry-run scenario evidence assertions", () => {
       outcomes.filter(({ verdict }) => verdict === "failed").map(({ assertionId: id }) => id),
       assertionIds,
     );
+  });
+
+  it("matches a failed terminal only by its safe durable failure identity", () => {
+    const failedCase = parseDryRunScenarioManifest({
+      ...GATED_MANIFEST,
+      cases: [{
+        ...GATED_MANIFEST.cases[0],
+        terminal: {
+          lifecycle: "failed",
+          code: "SUBJECT_MISMATCH",
+          node: "write",
+          fingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        },
+        preview: { outcome: "not-reached", reason: "binding proof refused before preview settlement" },
+      }],
+    }).cases[0];
+    assert.ok(failedCase);
+
+    const outcomes = evaluateDryRunScenarioEvidence(failedCase, before, {
+      ...READY_EVIDENCE,
+      terminal: {
+        lifecycle: "failed",
+        code: "SUBJECT_MISMATCH",
+        node: "write",
+        fingerprint: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      },
+    });
+
+    assert.deepEqual(outcomes.filter(({ verdict }) => verdict === "failed"), []);
+  });
+
+  it.each([
+    { field: "code", terminal: { lifecycle: "failed", code: "OTHER_FAILURE", node: "write", fingerprint: "a".repeat(64) } },
+    { field: "node", terminal: { lifecycle: "failed", code: "SUBJECT_MISMATCH", node: "other", fingerprint: "a".repeat(64) } },
+    { field: "fingerprint", terminal: { lifecycle: "failed", code: "SUBJECT_MISMATCH", node: "write", fingerprint: "b".repeat(64) } },
+  ])("turns terminal red when failed evidence mutates only $field", ({ terminal }) => {
+    const failedCase = parseDryRunScenarioManifest({
+      ...GATED_MANIFEST,
+      cases: [{
+        ...GATED_MANIFEST.cases[0],
+        terminal: {
+          lifecycle: "failed",
+          code: "SUBJECT_MISMATCH",
+          node: "write",
+          fingerprint: "a".repeat(64),
+        },
+        preview: { outcome: "not-reached", reason: "binding proof refused before preview settlement" },
+      }],
+    }).cases[0];
+    assert.ok(failedCase);
+
+    const outcomes = evaluateDryRunScenarioEvidence(failedCase, before, {
+      ...READY_EVIDENCE,
+      terminal,
+    });
+
+    assert.deepEqual(outcomes.filter(({ verdict }) => verdict === "failed").map(({ assertionId }) => assertionId), [
+      "terminal",
+    ]);
   });
 });

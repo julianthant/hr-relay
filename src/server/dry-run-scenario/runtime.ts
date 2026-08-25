@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../base/workflow.js";
+import type { WorkerBrowserSessionFactory } from "../../base/session.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import { DESCRIPTORS } from "../../control/workflow-registry.js";
 import {
@@ -39,6 +40,10 @@ export interface ProductionDryRunScenarioRuntimeInput {
   readonly ids: IdFactory;
   /** Deterministic integration seam; production always uses the real worker composition. */
   readonly drainWorker?: (workflow: string) => Promise<void>;
+  /** Deterministic system edge; omitted by production CLI composition. */
+  readonly sessionFactory?: WorkerBrowserSessionFactory;
+  readonly processId?: number;
+  readonly write?: (line: string) => void;
 }
 
 function unavailable(capability: string): never {
@@ -98,11 +103,26 @@ function parseRunEvents(stateRoot: string, workflow: string, runId: string) {
     .filter((event) => "runId" in event && event.runId === runId);
 }
 
-function reachedNodes(stateRoot: string, workflow: string, runId: string): readonly string[] {
+function reachedNodes(
+  stateRoot: string,
+  workflow: string,
+  runId: string,
+  descriptor: NonNullable<ReturnType<typeof descriptorFor>>,
+  failedNodeId?: string,
+): readonly string[] {
+  const taskIdBySpanName = new Map<string, string>();
+  for (const node of descriptorRuntimeNodes(descriptor)) {
+    if (node.kind !== "task") continue;
+    const spanName = node.label ?? node.uses.title;
+    if (taskIdBySpanName.has(spanName)) {
+      throw new Error(`descriptor ${descriptor.id} repeats task span name ${spanName}; reached-node evidence is ambiguous`);
+    }
+    taskIdBySpanName.set(spanName, String(node.id));
+  }
   const ordered: string[] = [];
   for (const event of parseRunEvents(stateRoot, workflow, runId)) {
     const node = event.t === "span.started" && event.kind === "task"
-      ? event.name
+      ? taskIdBySpanName.get(event.name)
       : event.t === "gate.opened"
         ? event.gate
         : event.t === "transaction.previewed"
@@ -110,6 +130,9 @@ function reachedNodes(stateRoot: string, workflow: string, runId: string): reado
           : undefined;
     if (node !== undefined && !ordered.includes(node)) ordered.push(node);
   }
+  // A transaction failure happens before `transaction.previewed`; its durable
+  // FailureRecord is the authority that proves the node was entered.
+  if (failedNodeId !== undefined && !ordered.includes(failedNodeId)) ordered.push(failedNodeId);
   return Object.freeze(ordered);
 }
 
@@ -137,6 +160,9 @@ export function createProductionDryRunScenarioRuntime(
       clock: input.clock,
       ids: input.ids,
       repoRoot: input.repoRoot,
+      ...(input.sessionFactory === undefined ? {} : { sessionFactory: input.sessionFactory }),
+      ...(input.processId === undefined ? {} : { processId: input.processId }),
+      ...(input.write === undefined ? {} : { write: input.write }),
     });
   });
 
@@ -340,6 +366,14 @@ export function createProductionDryRunScenarioRuntime(
           resolvedBy: gate.resolvedBy,
         }));
         const receipt = createReceiptService({ database, descriptors: DESCRIPTORS }).ensureReceipt(runId);
+        const failure = run.lifecycle.failureId === undefined
+          ? undefined
+          : database.authority.failures.get(run.lifecycle.failureId);
+        if (run.lifecycle.outcome === "failed" && failure === undefined) {
+          throw new Error(`dry-run ${runId} failed without its durable failure record`);
+        }
+        const descriptor = descriptorFor(run.envelope.workflow);
+        if (descriptor === undefined) throw new Error(`dry-run ${runId} names unregistered workflow ${run.envelope.workflow}`);
         const receiptEvidence = {
           result: receipt.result,
           confidence: receipt.confidence,
@@ -350,14 +384,31 @@ export function createProductionDryRunScenarioRuntime(
           })),
         };
         const common = {
-          reachedNodeIds: reachedNodes(stateRoot, run.envelope.workflow, runId),
+          reachedNodeIds: reachedNodes(
+            stateRoot,
+            run.envelope.workflow,
+            runId,
+            descriptor,
+            failure?.nodeId,
+          ),
           checkpoints,
           gateResults,
           writeSafetyAfter: database.authority.writeIntents.countDryRunEvidenceByRun(runId),
           receipt: receiptEvidence,
         };
         if (run.lifecycle.outcome === "failed") {
-          return { ...common, terminal: { lifecycle: "failed" } };
+          if (failure?.nodeId === undefined) {
+            throw new Error(`dry-run ${runId} failed before a node; this scenario requires node-bound evidence`);
+          }
+          return {
+            ...common,
+            terminal: {
+              lifecycle: "failed",
+              code: failure.code,
+              node: failure.nodeId,
+              fingerprint: failure.fingerprint,
+            },
+          };
         }
         if (run.lifecycle.outcome !== "done") {
           throw new Error(`dry-run ${runId} terminal outcome ${run.lifecycle.outcome} is unsupported scenario evidence`);

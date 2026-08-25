@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import {
+  ErrorCodeSchema,
+  FailureFingerprintSchema,
   FingerprintSchema,
   NodeIdSchema,
   ScenarioIdSchema,
@@ -9,6 +11,7 @@ import {
 } from "../ids.js";
 import { deepFreeze } from "../immutability.js";
 import { sha256Hex } from "../sha256.js";
+import { ObligationIdSchema } from "./evidence-obligations.js";
 import { DryRunSubjectLabelSchema } from "./dry-run-scenario-result.js";
 
 export const DryRunSubjectKindSchema = z.enum([
@@ -57,7 +60,7 @@ export const DryRunReceiptExpectationSchema = z.strictObject({
     mandatory: z.boolean(),
   })),
   obligations: z.array(z.strictObject({
-    obligation: slugSchema("dry-run receipt obligation must be kebab-case"),
+    obligation: ObligationIdSchema,
     verdict: z.enum(["met", "unmet", "unknown"]),
     why: z.string().min(1),
   })),
@@ -73,8 +76,9 @@ export const DryRunTerminalExpectationSchema = z.discriminatedUnion("lifecycle",
   }),
   z.strictObject({
     lifecycle: z.literal("failed"),
-    reason: z.string().min(1),
-    openItem: z.string().min(1),
+    code: ErrorCodeSchema,
+    node: NodeIdSchema,
+    fingerprint: FailureFingerprintSchema,
   }),
 ]);
 

@@ -25,8 +25,8 @@ export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
     if (input.jobSummary.emplId !== input.emplId) {
       return ctx.fail(
         "identity-subject-mismatch",
-        `the run checked EID ${input.emplId} and the job summary it holds was read for `
-        + `${input.jobSummary.emplId}; refusing to present one person's employment grid as another's.`,
+        "the checked subject does not match the subject bound to the UCPath job-summary checkpoint; "
+        + "rerun the job-summary read for this run before presenting the identity gate.",
       );
     }
     const documentEidValue = input.documentEid.state === "present" ? input.documentEid.value : undefined;
@@ -34,10 +34,8 @@ export const matchIdentityTask = defineTask(SeparationsMatchIdentity, {
     if (input.emplIdSource === "document-eid" && documentEidValue !== input.emplId) {
       return ctx.fail(
         "identity-source-inconsistent",
-        `the run claims EID ${input.emplId} came from separation document ${input.documentNumber}, whose `
-        + `EID field ${documentEidPresent ? `holds ${String(documentEidValue)}` : "is blank"}. `
-        + "S18/S19's fork — did the document supply this identity, or did a name search? — is what the "
-        + "gate shows the operator, so a run may not misstate it.",
+        "document-eid was declared as the identity source, but the document field does not match the "
+        + "checked subject; correct the canonical input or identity-source classification before retrying.",
       );
     }
 

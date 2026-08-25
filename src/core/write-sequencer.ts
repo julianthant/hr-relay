@@ -859,7 +859,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     } catch (error) {
       throw new Error(
         `${commitContract.id}: subject observation ${subject.observe} failed on the staged page — `
-        + `zero fence, zero click: ${error instanceof Error ? error.message : "non-Error thrown"}`,
+        + "zero fence, zero click; inspect the bound observation and driver diagnostics",
         { cause: error },
       );
     }
@@ -880,9 +880,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     });
     if (expectedNormalized !== observedNormalized) {
       throw new Error(
-        `${commitContract.id}: staged page shows subject …${displaySuffixOf(observedNormalized)}, `
-        + `but the commit input names …${displaySuffixOf(expectedNormalized)} — subject mismatch, `
-        + "zero fence, zero click",
+        `${commitContract.id}: staged-page subject does not match commit-input subject — subject mismatch, `
+        + "zero fence, zero click; reopen the target and verify the run's subject binding",
       );
     }
     return WriteBindingProofSchema.parse(SubjectProofSchema.parse({
