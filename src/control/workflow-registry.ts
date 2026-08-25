@@ -25,6 +25,7 @@ import {
   type CaptureIntakeBinding,
 } from "../domain/capture-intake.js";
 import type { WorkflowModuleRole } from "../domain/workflow/module-role.js";
+import { workflowSourceFolder } from "../domain/workflow/source-layout.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
@@ -248,6 +249,31 @@ export function auditWorkflowModuleRoles(
         ? module.descriptor.timeline.map((category) => category.key)
         : undefined,
     });
+  }
+  // `(of, step)` is an ADDRESS, not a label: §1.2.2 rule 3 puts the harness's
+  // `descriptor.ts` and `module.ts` at `src/workflows/<of>/<step>/`, so two
+  // harnesses claiming the same pair claim the same two files — a state the
+  // filesystem cannot represent. Left unrefused, `workflow-layout` arm (a)
+  // would read that folder's descriptor, find the OTHER id declared, and blame
+  // whichever module it visited first; naming both here says what actually
+  // happened. Checked in its own pass so a collision is still reported when the
+  // shared step is also undeclared — otherwise adding the missing folder would
+  // silently promote a collision to green.
+  const byAddress = new Map<string, { of: string; step: string; claimants: string[] }>();
+  for (const module of modules) {
+    if (module.role.kind !== "chunk-harness") continue;
+    const address = workflowSourceFolder(String(module.descriptor.id), module.role);
+    const claim = byAddress.get(address)
+      ?? { of: String(module.role.of), step: module.role.step, claimants: [] };
+    claim.claimants.push(String(module.descriptor.id));
+    byAddress.set(address, claim);
+  }
+  for (const [address, { of, step, claimants }] of byAddress) {
+    if (claimants.length < 2) continue;
+    violations.push(
+      `workflows ${claimants.join(" and ")} both declare role chunk-harness of ${of} `
+      + `step ${step}; a step has ONE harness and ${address}/ is the one folder they would share`,
+    );
   }
   for (const module of modules) {
     if (module.role.kind !== "chunk-harness") continue;

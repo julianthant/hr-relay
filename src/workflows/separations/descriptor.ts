@@ -91,32 +91,8 @@
 import { z } from "zod";
 import { flow } from "../../base/flow.js";
 import { defineWorkflowDescriptor, requireFact } from "../../base/workflow.js";
-import { KualiReadSeparationDocument } from "../../domain/contracts/kuali/read-separation-document.js";
-import { KualiSearchSeparationAction } from "../../domain/contracts/kuali/search-separation-action.js";
-import { KualiSaveSeparationFinalization } from "../../domain/contracts/kuali/save-separation-finalization.js";
-import { KualiStageSeparationFinalization } from "../../domain/contracts/kuali/stage-separation-finalization.js";
-import { NewKronosReadSeparationTimecard } from "../../domain/contracts/new-kronos/read-separation-timecard.js";
-import { NewKronosSearchEmployee } from "../../domain/contracts/new-kronos/search-employee.js";
-import { SeparationsMatchActiveEmployment } from "../../domain/contracts/separations/match-active-employment.js";
-import { SeparationsMatchDepartmentOption } from "../../domain/contracts/separations/match-department-option.js";
-import { SeparationsMatchIdentity } from "../../domain/contracts/separations/match-identity.js";
-import { SeparationsMatchSeparationSubject } from "../../domain/contracts/separations/match-separation-subject.js";
-import { SeparationsMatchTerminationType } from "../../domain/contracts/separations/match-termination-type.js";
-import { SeparationsReadSeparationDates } from "../../domain/contracts/separations/read-separation-dates.js";
-import { SeparationsReadSeparationPlan } from "../../domain/contracts/separations/read-separation-plan.js";
-import { SeparationsVerifyIdentityApproval } from "../../domain/contracts/separations/verify-identity-approval.js";
-import { SeparationsVerifyTerminationReceipt } from "../../domain/contracts/separations/verify-termination-receipt.js";
-import { UcpathCreateTermination } from "../../domain/contracts/ucpath/create-termination.js";
-import { UcpathDeletePendingTerminations } from "../../domain/contracts/ucpath/delete-pending-terminations.js";
-import { UcpathReadJobSummary } from "../../domain/contracts/ucpath/read-job-summary.js";
-import { SearchPersonOrg } from "../../domain/contracts/ucpath/search-person-org.js";
-import { UcpathStagePendingTerminationSweep } from "../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
-import { UcpathStageTermination } from "../../domain/contracts/ucpath/stage-termination.js";
 import { WorkflowIdSchema } from "../../domain/ids.js";
-import {
-  ApprovedIdentitySubjectSchema,
-  IdentityApprovalResultSchema,
-} from "../../domain/separations/identity-approval.js";
+import { ApprovedIdentitySubjectSchema } from "../../domain/separations/identity-approval.js";
 import {
   buildFinalizationComments,
   separationInitials,
@@ -134,12 +110,63 @@ import {
 } from "../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../domain/workflow/presentation.js";
-import { IDENTITY_CHECK_STEP } from "./identity-check/step.js";
-import { JOB_SUMMARY_STEP } from "./job-summary/step.js";
-import { KRONOS_TIMECARD_STEP } from "./kronos-timecard/step.js";
-import { KUALI_EXTRACTION_STEP } from "./kuali-extraction/step.js";
-import { KUALI_FINALIZATION_STEP } from "./kuali-finalization/step.js";
-import { UCPATH_TRANSACTION_STEP } from "./ucpath-transaction/step.js";
+import {
+  APPROVAL_NODE,
+  COMPARISON_NODE,
+  GATE_NODE,
+  IDENTITY_CHECK_STEP_NODES,
+  NAME_SEARCH_NODE,
+  SUBJECT_NODE,
+  approvalNode,
+  comparisonNode,
+  identityApprovalGate,
+  nameSearchNode,
+  subjectNode,
+} from "./identity-check/nodes.js";
+import {
+  DEPARTMENT_NODE,
+  EMPLOYMENT_NODE,
+  JOB_SUMMARY_NODE,
+  JOB_SUMMARY_STEP_NODES,
+  departmentOptionNode,
+  employmentNode,
+  jobSummaryNode,
+} from "./job-summary/nodes.js";
+import {
+  DATES_NODE,
+  KRONOS_TIMECARD_STEP_NODES,
+  TIMECARD_NODE,
+  TIMECARD_SEARCH_NODE,
+  datesNode,
+  timecardNode,
+  timecardSearchNode,
+} from "./kronos-timecard/nodes.js";
+import {
+  ACTION_NODE,
+  DOCUMENT_NODE,
+  KUALI_EXTRACTION_STEP_NODES,
+  PLAN_NODE,
+  TERMINATION_TYPE_NODE,
+  actionNode,
+  documentNode,
+  planNode,
+  terminationTypeNode,
+} from "./kuali-extraction/nodes.js";
+import {
+  FINALIZE_NODE,
+  KUALI_FINALIZATION_STEP_NODES,
+  existingComments,
+  finalizeKualiNode,
+} from "./kuali-finalization/nodes.js";
+import {
+  RECEIPT_NODE,
+  SWEEP_NODE,
+  TERMINATION_NODE,
+  UCPATH_TRANSACTION_STEP_NODES,
+  clearPendingNode,
+  fileTerminationNode,
+  receiptNode,
+} from "./ucpath-transaction/nodes.js";
 
 /**
  * How long a New Kronos search may go without answering EITHER WAY. Chunk 1's
@@ -265,73 +292,21 @@ export const SeparationsResultSchema = z.strictObject({
   }),
 });
 
-const ACTION_NODE = "resolve-action";
-const DOCUMENT_NODE = "document";
-const PLAN_NODE = "plan";
-const TERMINATION_TYPE_NODE = "termination-type";
-const NAME_SEARCH_NODE = "name-search";
-const SUBJECT_NODE = "subject";
-const JOB_SUMMARY_NODE = "job-summary";
-const EMPLOYMENT_NODE = "employment";
-const DEPARTMENT_NODE = "department-option";
-const TIMECARD_SEARCH_NODE = "timecard-search";
-const TIMECARD_NODE = "timecard";
-const DATES_NODE = "dates";
-const COMPARISON_NODE = "comparison";
-const GATE_NODE = "identity-approval";
-const APPROVAL_NODE = "approval";
-const RECEIPT_NODE = "receipt";
-const SWEEP_NODE = "clear-pending";
-const TERMINATION_NODE = "file-termination";
-const FINALIZE_NODE = "finalize-kuali";
-
-/** `""` when the control was empty — S56's baseline, which is a real value. */
-function existingComments(comments: { state: "present"; value: string } | { state: "absent" }): string {
-  return comments.state === "present" ? comments.value : "";
-}
 
 const separationsFlow = flow(SeparationsInput)
-  .step(ACTION_NODE, KualiSearchSeparationAction, {
-    label: "Kuali Action",
+  .pipe(actionNode.wire({
     dependsOn: [],
-    /**
-     * D261's head node. It turns the one number a human knows into the address
-     * Kuali actually answers to, by filtering the Action List's own search box
-     * and reading the matched row's `href` — no click into a document, nothing
-     * staged, nothing written.
-     *
-     * `replay: "checkpoint"` for `document`'s reason, one node earlier: the
-     * node's product is a VALUE, so restoring it into a fresh browser leaves
-     * nothing broken, and the gate releases every session on the way in. The
-     * value CAN go stale between the checkpoint and a post-gate finalization —
-     * an action id names a workflow step — and that is exactly the case
-     * `openDocument` refuses loudly on, by proving the document number off the
-     * page's own heading. A freshness bound here would replace a precise
-     * refusal with a timer, and §5A already ruled that out for this graph.
-     */
-    replay: "checkpoint",
     bind: ({ input }) => ({ documentNumber: input.documentNumber }),
-  })
-  .step(DOCUMENT_NODE, KualiReadSeparationDocument, {
-    label: "Separation Document",
+  }))
+  .pipe(documentNode.wire({
     dependsOn: [ACTION_NODE],
-    /**
-     * Chunk 2's argument verbatim: this node's product is its VALUE, not browser
-     * state, so restoring the checkpoint into a fresh browser leaves nothing
-     * broken. That matters more here than it did there — the gate parks and the
-     * executor releases every session on the way in, so every read upstream of
-     * the gate is replayed into a browser that has never seen these pages.
-     */
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       actionId: outputs[ACTION_NODE].actionId,
       documentNumber: input.documentNumber,
     }),
-  })
-  .step(PLAN_NODE, SeparationsReadSeparationPlan, {
-    label: "Separation Plan",
+  }))
+  .pipe(planNode.wire({
     dependsOn: [DOCUMENT_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[DOCUMENT_NODE].employee.name,
@@ -341,11 +316,9 @@ const separationsFlow = flow(SeparationsInput)
       // says what is true — *as of the moment this run read the document*.
       observedAt: outputs[DOCUMENT_NODE].observedAt,
     }),
-  })
-  .step(TERMINATION_TYPE_NODE, SeparationsMatchTerminationType, {
-    label: "Termination Type",
+  }))
+  .pipe(terminationTypeNode.wire({
     dependsOn: [DOCUMENT_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       terminationType: outputs[DOCUMENT_NODE].separation.terminationType,
       // The complete option list this run ACTUALLY observed, so a republished
@@ -353,54 +326,39 @@ const separationsFlow = flow(SeparationsInput)
       observedOptions: outputs[DOCUMENT_NODE].options.terminationType,
       documentNumber: input.documentNumber,
     }),
-  })
-  .step(NAME_SEARCH_NODE, SearchPersonOrg, {
-    label: "Name Search",
+  }))
+  .pipe(nameSearchNode.wire({
     dependsOn: [PLAN_NODE],
-    replay: "checkpoint",
-    /**
-     * `keepNonHdh: true`, always, and UNCONDITIONALLY run — chunk 3's two
-     * sharpest choices. Legacy searches only when its name tier came back
-     * `different`, so the alternative candidate `T002173685` turned on exists
-     * only on the runs a Levenshtein threshold happened to select; and an HDH
-     * filter would hide exactly the career employee a common name matched.
-     */
+    // `keepNonHdh: true`, always, and UNCONDITIONALLY run — the fragment's own
+    // doc says why; the composition feeds it the plan's employee name.
     bind: ({ outputs }) => ({
       kind: "by-name" as const,
       name: outputs[PLAN_NODE].employeeName,
       keepNonHdh: true,
     }),
-  })
-  .step(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
-    label: "Separation Subject",
+  }))
+  .pipe(subjectNode.wire({
     dependsOn: [DOCUMENT_NODE, PLAN_NODE, NAME_SEARCH_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       employeeName: outputs[PLAN_NODE].employeeName,
       documentEid: outputs[DOCUMENT_NODE].employee.eid,
       nameSelection: outputs[NAME_SEARCH_NODE].selection,
     }),
-  })
-  .step(JOB_SUMMARY_NODE, UcpathReadJobSummary, {
-    label: "Job Summary",
+  }))
+  .pipe(jobSummaryNode.wire({
     dependsOn: [SUBJECT_NODE],
-    replay: "checkpoint",
     bind: ({ outputs }) => ({ emplId: outputs[SUBJECT_NODE].emplId }),
-  })
-  .step(EMPLOYMENT_NODE, SeparationsMatchActiveEmployment, {
-    label: "Employment",
+  }))
+  .pipe(employmentNode.wire({
     dependsOn: [DOCUMENT_NODE, JOB_SUMMARY_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       jobSummary: outputs[JOB_SUMMARY_NODE],
     }),
-  })
-  .step(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
-    label: "Department Option",
+  }))
+  .pipe(departmentOptionNode.wire({
     dependsOn: [DOCUMENT_NODE, EMPLOYMENT_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       deptId: outputs[EMPLOYMENT_NODE].deptId,
       department: outputs[EMPLOYMENT_NODE].department,
@@ -410,33 +368,16 @@ const separationsFlow = flow(SeparationsInput)
       observedOptions: outputs[DOCUMENT_NODE].options.department,
       documentNumber: input.documentNumber,
     }),
-  })
-  .step(TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
-    label: "Timecard Search",
+  }))
+  .pipe(timecardSearchNode.wire({
     dependsOn: [SUBJECT_NODE],
-    /**
-     * `always-rerun`, and chunk 1 paid for the rule live (`sk-124132-9beb`): the
-     * search's OUTPUT is durable but its POINT is a side effect that is not — it
-     * leaves the employee selected in the WFD panel, which is the only thing
-     * that enables Go To. **A node whose real product is BROWSER state may not
-     * be `replay: "checkpoint"`.**
-     *
-     * The composition pays a real cost for that: a gate resume re-runs this node
-     * (the timecard replays from its checkpoint, so nothing consumes the panel),
-     * which is one New Kronos session per gated run. The alternative is a
-     * checkpoint that restores a selection into a browser that never made one,
-     * and that is the failure chunk 1 already recorded.
-     */
-    replay: "always-rerun",
     bind: ({ input, outputs }) => ({
       emplId: outputs[SUBJECT_NODE].emplId,
       searchTimeoutMs: input.searchTimeoutMs,
     }),
-  })
-  .step(TIMECARD_NODE, NewKronosReadSeparationTimecard, {
-    label: "Timecard",
+  }))
+  .pipe(timecardNode.wire({
     dependsOn: [SUBJECT_NODE, PLAN_NODE, TIMECARD_SEARCH_NODE],
-    replay: "checkpoint",
     bind: ({ outputs }) => {
       // Reading the search's own match is what makes the dependency load-bearing
       // rather than decorative: Go To is disabled without the selection, and a
@@ -448,11 +389,9 @@ const separationsFlow = flow(SeparationsInput)
         rangeEnd: outputs[PLAN_NODE].timecardWindow.end,
       };
     },
-  })
-  .step(DATES_NODE, SeparationsReadSeparationDates, {
-    label: "Reconciled Dates",
+  }))
+  .pipe(datesNode.wire({
     dependsOn: [PLAN_NODE, TIMECARD_NODE],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       plan: outputs[PLAN_NODE],
       timekeeperName: input.timekeeperName,
@@ -467,9 +406,8 @@ const separationsFlow = flow(SeparationsInput)
         end: outputs[TIMECARD_NODE].range.observedEnd,
       },
     }),
-  })
-  .step(COMPARISON_NODE, SeparationsMatchIdentity, {
-    label: "Identity Comparison",
+  }))
+  .pipe(comparisonNode.wire({
     /**
      * Everything the gate must have seen depends INTO this node, which is what
      * makes `identity-gate-before-commit` pass on a graph with three transaction
@@ -480,7 +418,6 @@ const separationsFlow = flow(SeparationsInput)
       DOCUMENT_NODE, PLAN_NODE, SUBJECT_NODE, JOB_SUMMARY_NODE, NAME_SEARCH_NODE,
       TERMINATION_TYPE_NODE, DEPARTMENT_NODE, EMPLOYMENT_NODE, DATES_NODE,
     ],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       documentName: outputs[PLAN_NODE].employeeName,
@@ -530,104 +467,52 @@ const separationsFlow = flow(SeparationsInput)
         },
       },
     }),
-  })
-  .gate(GATE_NODE, {
-    label: "Identity Approval",
-    statusKey: "awaitingIdentityApproval",
-    dependsOn: [COMPARISON_NODE],
-    /**
-     * `resolvedBy: "operator"` and nothing else can resolve it (§14.4). Not a
-     * retry, not a bump, not a cascade, not AI (charter §23 / D60), and not a
-     * generic "Done" — the kernel's ONLY path into `gate_results` is the typed
-     * `resolve-gate` command, which parses this exact schema and CASes the run
-     * version.
-     */
-    resolvedBy: "operator",
-    result: IdentityApprovalResultSchema,
-  })
-  .step(APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
-    label: "Approval Check",
+  }))
+  .pipe(identityApprovalGate.wire({ dependsOn: [COMPARISON_NODE] }))
+  .pipe(approvalNode.wire({
     dependsOn: [COMPARISON_NODE, GATE_NODE],
-    /**
-     * `always-rerun`: this node's whole job is to compare a stored gate result
-     * against re-derived evidence, and a replayed checkpoint would be the
-     * previous comparison's ANSWER standing in for the comparison.
-     */
-    replay: "always-rerun",
     bind: ({ outputs }) => ({
       packet: outputs[COMPARISON_NODE].packet,
       evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
       approval: outputs[GATE_NODE],
     }),
-  })
-  .transaction(SWEEP_NODE, {
-    label: "Clear Pending Terminations",
+  }))
+  .pipe(clearPendingNode.wire({
     dependsOn: [APPROVAL_NODE],
-    prepare: {
-      uses: UcpathStagePendingTerminationSweep,
-      bind: ({ outputs }) => ({
-        emplId: outputs[APPROVAL_NODE].approved.emplId,
-        expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      }),
-    },
-    commit: {
-      uses: UcpathDeletePendingTerminations,
-      bind: ({ outputs }) => ({
-        emplId: outputs[APPROVAL_NODE].approved.emplId,
-        expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-      }),
-    },
-    dryRun: "stop-after-prepare",
-    probePolicy: "always",
-    // Chunk 4's measured bound, unchanged: probe search open 4.6 s + search run
-    // 7.4 s + detail 4.9 s ≈ 17 s to read the grid (live 2026-08-13, §9.7).
-    probeToFenceMaxMs: 90_000,
-  })
-  .transaction(TERMINATION_NODE, {
-    label: "File Termination",
+    prepare: { bind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+    }) },
+    commit: { bind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+    }) },
+  }))
+  .pipe(fileTerminationNode.wire({
     dependsOn: [APPROVAL_NODE, TERMINATION_TYPE_NODE, EMPLOYMENT_NODE, DATES_NODE, SWEEP_NODE],
-    prepare: {
-      uses: UcpathStageTermination,
-      bind: ({ outputs }) => ({
-        emplId: outputs[APPROVAL_NODE].approved.emplId,
-        expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-        emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
-        effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        template: outputs[TERMINATION_TYPE_NODE].template,
-        reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
-        lastDateWorked: outputs[DATES_NODE].lastDayWorked,
-        initiatorComments: outputs[DATES_NODE].terminationComments,
-      }),
-    },
-    commit: {
-      uses: UcpathCreateTermination,
-      bind: ({ outputs }) => ({
-        emplId: outputs[APPROVAL_NODE].approved.emplId,
-        expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
-        emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
-        effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
-        template: outputs[TERMINATION_TYPE_NODE].template,
-        reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
-        lastDateWorked: outputs[DATES_NODE].lastDayWorked,
-        initiatorComments: outputs[DATES_NODE].terminationComments,
-      }),
-    },
-    dryRun: "stop-after-prepare",
-    probePolicy: "always",
-    // Chunk 4's measured bound, unchanged: ≈32.4 s of live wizard staging on
-    // top of ≈17 s of probe (2026-08-13, §9.7), and 120 s is ~3.7x that.
-    probeToFenceMaxMs: 120_000,
-  })
-  .step(RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
-    label: "Termination Receipt",
+    prepare: { bind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
+      effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+      template: outputs[TERMINATION_TYPE_NODE].template,
+      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
+      lastDateWorked: outputs[DATES_NODE].lastDayWorked,
+      initiatorComments: outputs[DATES_NODE].terminationComments,
+    }) },
+    commit: { bind: ({ outputs }) => ({
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      expectedName: outputs[APPROVAL_NODE].approved.ucpathName,
+      emplRecord: outputs[EMPLOYMENT_NODE].emplRecord,
+      effectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+      template: outputs[TERMINATION_TYPE_NODE].template,
+      reasonCode: outputs[TERMINATION_TYPE_NODE].reasonCode,
+      lastDateWorked: outputs[DATES_NODE].lastDayWorked,
+      initiatorComments: outputs[DATES_NODE].terminationComments,
+    }) },
+  }))
+  .pipe(receiptNode.wire({
     dependsOn: [APPROVAL_NODE, DATES_NODE, TERMINATION_NODE],
-    /**
-     * `always-rerun`, for `approval`'s reason: this node's job is to CHECK a
-     * proof, and a replayed checkpoint would be the previous check's answer
-     * standing in for the check. It is a pure fold over a durable proof, so
-     * re-running it costs nothing and reaches no browser.
-     */
-    replay: "always-rerun",
     bind: ({ outputs }) => ({
       // A transaction node's scope value is the typed outcome envelope (D144);
       // `output` is the COMMIT contract's own bare output.
@@ -636,86 +521,74 @@ const separationsFlow = flow(SeparationsInput)
       approvedEmplId: outputs[APPROVAL_NODE].approved.emplId,
       expectedEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
     }),
-  })
-  .transaction(FINALIZE_NODE, {
-    label: "Finalize Kuali Document",
+  }))
+  .pipe(finalizeKualiNode.wire({
     dependsOn: [
       APPROVAL_NODE, ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE,
       DATES_NODE, RECEIPT_NODE,
     ],
-    prepare: {
-      uses: KualiStageSeparationFinalization,
-      bind: ({ input, outputs }) => ({
-        actionId: outputs[ACTION_NODE].actionId,
-        documentNumber: input.documentNumber,
-        emplId: outputs[APPROVAL_NODE].approved.emplId,
-        variables: {
-          department: outputs[DEPARTMENT_NODE].option,
-          payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
-          payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
-          timekeeperName: input.timekeeperName,
-          // §4e's 2026-08-14 amendment — legacy's step-13 write-backs, staged
-          // from the RECONCILED variables and UNCONDITIONALLY. When nothing
-          // moved these equal what the document already carries, so the save
-          // writes the same string back and the read-back proves it either way;
-          // a conditional stage would need an expectation composed from the
-          // page's own prior value, which is the re-read §4e forbids.
-          lastDayWorked: outputs[DATES_NODE].lastDayWorked,
-          separationDate: outputs[DATES_NODE].separationDate,
-          terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+    prepare: { bind: ({ input, outputs }) => ({
+      actionId: outputs[ACTION_NODE].actionId,
+      documentNumber: input.documentNumber,
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      variables: {
+        department: outputs[DEPARTMENT_NODE].option,
+        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
+        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
+        timekeeperName: input.timekeeperName,
+        // §4e's 2026-08-14 amendment — legacy's step-13 write-backs, staged
+        // from the RECONCILED variables and UNCONDITIONALLY. When nothing
+        // moved these equal what the document already carries, so the save
+        // writes the same string back and the read-back proves it either way;
+        // a conditional stage would need an expectation composed from the
+        // page's own prior value, which is the re-read §4e forbids.
+        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
+        separationDate: outputs[DATES_NODE].separationDate,
+        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+        transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
+        timekeeperComments: buildFinalizationComments({
+          existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+          dateChangeComments: outputs[DATES_NODE].dateChangeComments,
+          documentNumber: input.documentNumber,
           transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
-          timekeeperComments: buildFinalizationComments({
-            existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-            dateChangeComments: outputs[DATES_NODE].dateChangeComments,
-            documentNumber: input.documentNumber,
-            transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
-            initials: separationInitials(input.timekeeperName),
-            asOfDate: outputs[PLAN_NODE].asOfDate,
-          }),
-          observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-        },
-      }),
-    },
-    commit: {
-      /**
-       * The SAME target the prepare staged, bound from workflow input plus the
-       * gate-approved identity and the folds — never from the prepare's own
-       * output. That is what makes the permanent key stable before any page
-       * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
-       */
-      uses: KualiSaveSeparationFinalization,
-      bind: ({ input, outputs }) => ({
-        actionId: outputs[ACTION_NODE].actionId,
-        documentNumber: input.documentNumber,
-        emplId: outputs[APPROVAL_NODE].approved.emplId,
-        variables: {
-          department: outputs[DEPARTMENT_NODE].option,
-          payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
-          payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
-          timekeeperName: input.timekeeperName,
-          // §4e's 2026-08-14 amendment, bound identically to the prepare's.
-          lastDayWorked: outputs[DATES_NODE].lastDayWorked,
-          separationDate: outputs[DATES_NODE].separationDate,
-          terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+          initials: separationInitials(input.timekeeperName),
+          asOfDate: outputs[PLAN_NODE].asOfDate,
+        }),
+        observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+      },
+    }) },
+    /**
+     * The SAME target the prepare staged, bound from workflow input plus the
+     * gate-approved identity and the folds — never from the prepare's own
+     * output. That is what makes the permanent key stable before any page
+     * mutation (ref workflow-model §3.1), and what the beat-⑥ read-back compares against.
+     */
+    commit: { bind: ({ input, outputs }) => ({
+      actionId: outputs[ACTION_NODE].actionId,
+      documentNumber: input.documentNumber,
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      variables: {
+        department: outputs[DEPARTMENT_NODE].option,
+        payrollTitleCode: outputs[EMPLOYMENT_NODE].payrollTitleCode,
+        payrollTitle: outputs[EMPLOYMENT_NODE].payrollTitle,
+        timekeeperName: input.timekeeperName,
+        // §4e's 2026-08-14 amendment, bound identically to the prepare's.
+        lastDayWorked: outputs[DATES_NODE].lastDayWorked,
+        separationDate: outputs[DATES_NODE].separationDate,
+        terminationEffectiveDate: outputs[DATES_NODE].terminationEffectiveDate,
+        transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
+        timekeeperComments: buildFinalizationComments({
+          existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+          dateChangeComments: outputs[DATES_NODE].dateChangeComments,
+          documentNumber: input.documentNumber,
           transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
-          timekeeperComments: buildFinalizationComments({
-            existingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-            dateChangeComments: outputs[DATES_NODE].dateChangeComments,
-            documentNumber: input.documentNumber,
-            transactionNumber: outputs[RECEIPT_NODE].transactionNumber,
-            initials: separationInitials(input.timekeeperName),
-            asOfDate: outputs[PLAN_NODE].asOfDate,
-          }),
-          observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
-        },
-      }),
-    },
-    dryRun: "stop-after-prepare",
-    probePolicy: "always",
-    // Chunk 5's bound, CONFIRMED live 2026-08-14 (§9.12 item 6): probe 3.30 s +
-    // prepare 8.06 s = 11.4 s worst legs against 45 000 ms, ~4x headroom.
-    probeToFenceMaxMs: 45_000,
-  })
+          initials: separationInitials(input.timekeeperName),
+          asOfDate: outputs[PLAN_NODE].asOfDate,
+        }),
+        observedExistingComments: existingComments(outputs[DOCUMENT_NODE].timekeeper.comments),
+      },
+    }) },
+  }))
   .build({
     schema: SeparationsResultSchema,
     dependsOn: [
@@ -933,12 +806,14 @@ export const separationsDescriptor = defineWorkflowDescriptor({
   subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
   /**
    * D225 — the operator-approved categorical timeline (2026-08-18, separations
-   * §9.18): six categories over the eighteen nodes, each keyed (D265) by the
+   * §9.18): six categories over the nineteen nodes, each keyed (D265) by the
    * step folder that owns its nodes, legacy's step vocabulary
-   * kept where it fits. Each key/label pair is IMPORTED from the folder that is
-   * the step (D265 §1.2.2 rule 2) — this declaration adds only the nodes, so a
-   * folder and its category cannot come to disagree about what the step is
-   * called. Legacy's `transaction-check` folds into *UCPath
+   * kept where it fits. Each category is IMPORTED whole from the folder that is
+   * the step (D265 §1.2.2 rule 2): its key and label from the folder's
+   * `step.ts`, its member ids from the folder's own node fragments — this
+   * declaration only lists the six, so a folder and its category cannot come
+   * to disagree about what the step is called or which nodes it owns.
+   * Legacy's `transaction-check` folds into *UCPath
    * transaction*, because here the pending check is the sweep transaction plus
    * the in-write probes, not a standalone step. The gate is a MEMBER of
    * *Identity check* — a wait is a state of a step, not a step of its own —
@@ -946,12 +821,12 @@ export const separationsDescriptor = defineWorkflowDescriptor({
    * category's `×N` marker instead of drawing duplicate segments.
    */
   timeline: [
-    { ...KUALI_EXTRACTION_STEP, nodes: [ACTION_NODE, DOCUMENT_NODE, PLAN_NODE, TERMINATION_TYPE_NODE] },
-    { ...IDENTITY_CHECK_STEP, nodes: [NAME_SEARCH_NODE, SUBJECT_NODE, COMPARISON_NODE, GATE_NODE, APPROVAL_NODE] },
-    { ...JOB_SUMMARY_STEP, nodes: [JOB_SUMMARY_NODE, EMPLOYMENT_NODE, DEPARTMENT_NODE] },
-    { ...KRONOS_TIMECARD_STEP, nodes: [TIMECARD_SEARCH_NODE, TIMECARD_NODE, DATES_NODE] },
-    { ...UCPATH_TRANSACTION_STEP, nodes: [SWEEP_NODE, TERMINATION_NODE, RECEIPT_NODE] },
-    { ...KUALI_FINALIZATION_STEP, nodes: [FINALIZE_NODE] },
+    KUALI_EXTRACTION_STEP_NODES,
+    IDENTITY_CHECK_STEP_NODES,
+    JOB_SUMMARY_STEP_NODES,
+    KRONOS_TIMECARD_STEP_NODES,
+    UCPATH_TRANSACTION_STEP_NODES,
+    KUALI_FINALIZATION_STEP_NODES,
   ],
   identity: {
     /**

@@ -36,7 +36,6 @@ import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor, requireFact } from "../../../base/workflow.js";
 import {
-  NewKronosReadSeparationTimecard,
   ReadSeparationTimecardOutputSchema,
   TimecardRangeBoundSchema,
 } from "../../../domain/contracts/new-kronos/read-separation-timecard.js";
@@ -54,6 +53,7 @@ import {
 } from "../../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
+import { timecardNode } from "./nodes.js";
 
 /**
  * The employee's name as the run expects it — the SAME canonical schema object
@@ -204,14 +204,16 @@ const separationsKronosTimecardFlow = flow(SeparationsKronosTimecardInput)
     replay: "always-rerun",
     bind: ({ input }) => ({ emplId: input.emplId, searchTimeoutMs: input.searchTimeoutMs }),
   })
-  .step("timecard", NewKronosReadSeparationTimecard, {
-    label: "Timecard",
+  // The step's own `timecard` fragment (`./nodes.ts`), wired from this
+  // harness's `search` node and its ingress window. `search` itself stays a
+  // hand-written node: its id and label ("search" / "Employee Search") are not
+  // the composition's `timecard-search`, and a node's id is its identity.
+  .pipe(timecardNode.wire({
     // The timecard visit begins from the selection the search node left in the
     // panel, so it depends on it structurally as well as semantically: Go To is
     // disabled without it, and a disabled Go To is a loud failure, never an
     // empty card.
     dependsOn: ["search"],
-    replay: "checkpoint",
     bind: ({ input, outputs }) => {
       // The EID comes from the RUN INPUT, not from the row text: the search
       // task already refused unless `matched.employeeId` equalled it, so
@@ -222,7 +224,7 @@ const separationsKronosTimecardFlow = flow(SeparationsKronosTimecardInput)
       requireFact(outputs.search.matched, "search", "matched");
       return { emplId: input.emplId, rangeStart: input.rangeStart, rangeEnd: input.rangeEnd };
     },
-  })
+  }))
   .build({
     schema: SeparationsKronosTimecardResultSchema,
     dependsOn: ["search", "timecard"],

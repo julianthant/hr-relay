@@ -82,18 +82,8 @@
 import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor } from "../../../base/workflow.js";
-import { KualiSaveSeparationFinalization } from "../../../domain/contracts/kuali/save-separation-finalization.js";
-import { KualiStageSeparationFinalization } from "../../../domain/contracts/kuali/stage-separation-finalization.js";
-import { SeparationsMatchDepartmentOption } from "../../../domain/contracts/separations/match-department-option.js";
-import { SeparationsMatchIdentity } from "../../../domain/contracts/separations/match-identity.js";
-import { SeparationsVerifyIdentityApproval } from "../../../domain/contracts/separations/verify-identity-approval.js";
-import { UcpathReadJobSummary } from "../../../domain/contracts/ucpath/read-job-summary.js";
-import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-org.js";
 import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import {
-  ApprovedIdentitySubjectSchema,
-  IdentityApprovalResultSchema,
-} from "../../../domain/separations/identity-approval.js";
+import { ApprovedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
 import {
@@ -119,6 +109,18 @@ import {
 } from "../../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
+import {
+  APPROVAL_NODE,
+  COMPARISON_NODE,
+  GATE_NODE,
+  NAME_SEARCH_NODE,
+  approvalNode,
+  comparisonNode,
+  identityApprovalGate,
+  nameSearchNode,
+} from "../identity-check/nodes.js";
+import { DEPARTMENT_NODE, JOB_SUMMARY_NODE, departmentOptionNode, jobSummaryNode } from "../job-summary/nodes.js";
+import { FINALIZE_NODE, finalizeKualiNode } from "./nodes.js";
 
 /**
  * The ingress: the identity-check ingress, plus exactly the staged variables no
@@ -216,152 +218,100 @@ export const SeparationsKualiFinalizationResultSchema = z.strictObject({
   }),
 });
 
-const DEPARTMENT_NODE = "department-option";
-const FINALIZE_NODE = "finalize-kuali";
 
 const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
-  .step("job-summary", UcpathReadJobSummary, {
-    label: "Job Summary",
+  // The Identity check and Job summary steps' fragments, wired straight from
+  // the harness ingress (D265 §1.2.2 rule 3 — imported, never restated), then
+  // this folder's own finalization fragment wired from the same ingress where
+  // the composition binds the reconciled folds and the receipt.
+  .pipe(jobSummaryNode.wire({
     dependsOn: [],
-    replay: "checkpoint",
     bind: ({ input }) => ({ emplId: input.emplId }),
-  })
-  .step("name-search", SearchPersonOrg, {
-    label: "Name Search",
+  }))
+  .pipe(nameSearchNode.wire({
     dependsOn: [],
-    replay: "checkpoint",
     bind: ({ input }) => ({
       kind: "by-name" as const,
       name: input.employeeName,
       keepNonHdh: true,
     }),
-  })
-  .step(DEPARTMENT_NODE, SeparationsMatchDepartmentOption, {
-    label: "Department Option",
+  }))
+  .pipe(departmentOptionNode.wire({
     dependsOn: [],
-    replay: "checkpoint",
     bind: ({ input }) => ({
       deptId: input.ucpathDeptId,
       department: input.ucpathDepartment,
       observedOptions: input.observedDepartmentOptions,
       documentNumber: input.documentNumber,
     }),
-  })
-  .step("comparison", SeparationsMatchIdentity, {
-    label: "Identity Comparison",
-    dependsOn: ["job-summary", "name-search"],
-    replay: "checkpoint",
+  }))
+  .pipe(comparisonNode.wire({
+    dependsOn: [JOB_SUMMARY_NODE, NAME_SEARCH_NODE],
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       documentName: input.employeeName,
       documentEid: input.documentEid,
       emplId: input.emplId,
       emplIdSource: input.emplIdSource,
-      jobSummary: outputs["job-summary"],
-      nameSelection: outputs["name-search"].selection,
+      jobSummary: outputs[JOB_SUMMARY_NODE],
+      nameSelection: outputs[NAME_SEARCH_NODE].selection,
       plan: noSeparationWritePlan(
         "this chunk finalizes the Kuali document alone; the composed `separations` graph is where the whole write plan — the UCPath termination included — exists to show",
       ),
     }),
-  })
-  .gate("identity-approval", {
-    label: "Identity Approval",
-    statusKey: "awaitingIdentityApproval",
-    /**
-     * `department-option` is a declared dependency so S55's refusal lands before
-     * a human is asked, and so the resolution is inside the gate's own ancestry
-     * — which is what lets the staged department reach the commit at all
-     * (`identity-gate-before-commit`).
-     */
-    dependsOn: ["comparison", DEPARTMENT_NODE],
-    resolvedBy: "operator",
-    result: IdentityApprovalResultSchema,
-  })
-  .step("approval", SeparationsVerifyIdentityApproval, {
-    label: "Approval Check",
-    dependsOn: ["comparison", "identity-approval"],
-    replay: "always-rerun",
+  }))
+  .pipe(identityApprovalGate.wire({ dependsOn: [COMPARISON_NODE, DEPARTMENT_NODE] }))
+  .pipe(approvalNode.wire({
+    dependsOn: [COMPARISON_NODE, GATE_NODE],
     bind: ({ outputs }) => ({
-      packet: outputs.comparison.packet,
-      evidenceDigest: outputs.comparison.evidenceDigest,
-      approval: outputs["identity-approval"],
+      packet: outputs[COMPARISON_NODE].packet,
+      evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
+      approval: outputs[GATE_NODE],
     }),
-  })
-  .transaction(FINALIZE_NODE, {
-    label: "Finalize Kuali Document",
-    dependsOn: ["approval", DEPARTMENT_NODE],
-    prepare: {
-      uses: KualiStageSeparationFinalization,
-      bind: ({ input, outputs }) => ({
-        actionId: input.actionId,
-        documentNumber: input.documentNumber,
-        emplId: outputs.approval.approved.emplId,
-        variables: {
-          department: outputs[DEPARTMENT_NODE].option,
-          payrollTitleCode: input.payrollTitleCode,
-          payrollTitle: input.payrollTitle,
-          timekeeperName: input.timekeeperName,
-          lastDayWorked: input.lastDayWorked,
-          separationDate: input.separationDate,
-          terminationEffectiveDate: input.terminationEffectiveDate,
-          transactionNumber: input.transactionNumber,
-          timekeeperComments: input.timekeeperComments,
-          observedExistingComments: input.observedExistingComments,
-        },
-      }),
-    },
-    commit: {
-      /**
-       * The SAME target the prepare staged, bound from workflow input plus the
-       * gate-approved identity and the department fold — never from the prepare's
-       * own output. That is what makes the permanent key stable before any page
-       * mutation (ref workflow-model §3.1), and it is what the beat-⑥ read-back compares the
-       * reloaded document against.
-       */
-      uses: KualiSaveSeparationFinalization,
-      bind: ({ input, outputs }) => ({
-        actionId: input.actionId,
-        documentNumber: input.documentNumber,
-        emplId: outputs.approval.approved.emplId,
-        variables: {
-          department: outputs[DEPARTMENT_NODE].option,
-          payrollTitleCode: input.payrollTitleCode,
-          payrollTitle: input.payrollTitle,
-          timekeeperName: input.timekeeperName,
-          lastDayWorked: input.lastDayWorked,
-          separationDate: input.separationDate,
-          terminationEffectiveDate: input.terminationEffectiveDate,
-          transactionNumber: input.transactionNumber,
-          timekeeperComments: input.timekeeperComments,
-          observedExistingComments: input.observedExistingComments,
-        },
-      }),
-    },
-    dryRun: "stop-after-prepare",
-    // "always" (§5 item 3's recorded answer): separations files a real,
-    // hard-to-reverse termination and this write is what records its transaction
-    // number on the source document; a probe is one document read against a page
-    // the run is already on.
-    probePolicy: "always",
-    /**
-     * §5 item 3's recorded answer: **45 s** for the Kuali write, the same value
-     * and the same justification the timekeeper-annotation node carries — D78's
-     * measured ~8–10 s fill→save→reload→verify cycle plus the ~6 s cold document
-     * open observed 2026-08-04. It is short enough that a stalled page discards
-     * its staged form rather than clicking on a stale probe.
-     *
-     * This prepare stages TWELVE controls where the annotation stages one, so 5c's
-     * first live dry-run reports probe-complete → prepare-complete off the run's
-     * own per-beat spans and tightens or confirms this number.
-     */
-    probeToFenceMaxMs: 45_000,
-  })
+  }))
+  .pipe(finalizeKualiNode.wire({
+    dependsOn: [APPROVAL_NODE, DEPARTMENT_NODE],
+    prepare: { bind: ({ input, outputs }) => ({
+      actionId: input.actionId,
+      documentNumber: input.documentNumber,
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      variables: {
+        department: outputs[DEPARTMENT_NODE].option,
+        payrollTitleCode: input.payrollTitleCode,
+        payrollTitle: input.payrollTitle,
+        timekeeperName: input.timekeeperName,
+        lastDayWorked: input.lastDayWorked,
+        separationDate: input.separationDate,
+        terminationEffectiveDate: input.terminationEffectiveDate,
+        transactionNumber: input.transactionNumber,
+        timekeeperComments: input.timekeeperComments,
+        observedExistingComments: input.observedExistingComments,
+      },
+    }) },
+    commit: { bind: ({ input, outputs }) => ({
+      actionId: input.actionId,
+      documentNumber: input.documentNumber,
+      emplId: outputs[APPROVAL_NODE].approved.emplId,
+      variables: {
+        department: outputs[DEPARTMENT_NODE].option,
+        payrollTitleCode: input.payrollTitleCode,
+        payrollTitle: input.payrollTitle,
+        timekeeperName: input.timekeeperName,
+        lastDayWorked: input.lastDayWorked,
+        separationDate: input.separationDate,
+        terminationEffectiveDate: input.terminationEffectiveDate,
+        transactionNumber: input.transactionNumber,
+        timekeeperComments: input.timekeeperComments,
+        observedExistingComments: input.observedExistingComments,
+      },
+    }) },
+  }))
   .build({
     schema: SeparationsKualiFinalizationResultSchema,
-    dependsOn: ["approval", DEPARTMENT_NODE, FINALIZE_NODE],
+    dependsOn: [APPROVAL_NODE, DEPARTMENT_NODE, FINALIZE_NODE],
     derive: ({ outputs }) => ({
-      documentNumber: outputs.approval.documentNumber,
-      approved: outputs.approval.approved,
+      documentNumber: outputs[APPROVAL_NODE].documentNumber,
+      approved: outputs[APPROVAL_NODE].approved,
       department: {
         option: outputs[DEPARTMENT_NODE].option,
         departmentCode: outputs[DEPARTMENT_NODE].departmentCode,

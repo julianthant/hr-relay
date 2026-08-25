@@ -60,15 +60,8 @@
 import { z } from "zod";
 import { flow } from "../../../base/flow.js";
 import { defineWorkflowDescriptor } from "../../../base/workflow.js";
-import { SeparationsMatchIdentity } from "../../../domain/contracts/separations/match-identity.js";
-import { SeparationsVerifyIdentityApproval } from "../../../domain/contracts/separations/verify-identity-approval.js";
-import { SearchPersonOrg } from "../../../domain/contracts/ucpath/search-person-org.js";
-import { UcpathReadJobSummary } from "../../../domain/contracts/ucpath/read-job-summary.js";
 import { EidSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import {
-  ApprovedIdentitySubjectSchema,
-  IdentityApprovalResultSchema,
-} from "../../../domain/separations/identity-approval.js";
+import { ApprovedIdentitySubjectSchema } from "../../../domain/separations/identity-approval.js";
 import { IdentityEidSourceSchema } from "../../../domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../domain/separations/write-plan.js";
 import { JobSummaryClassificationSchema } from "../../../domain/separations/job-summary-classification.js";
@@ -80,6 +73,17 @@ import {
 } from "../../../domain/workflow/build-manifest.js";
 import { defineCanonicalInput } from "../../../domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../domain/workflow/presentation.js";
+import { JOB_SUMMARY_NODE, jobSummaryNode } from "../job-summary/nodes.js";
+import {
+  APPROVAL_NODE,
+  COMPARISON_NODE,
+  GATE_NODE,
+  NAME_SEARCH_NODE,
+  approvalNode,
+  comparisonNode,
+  identityApprovalGate,
+  nameSearchNode,
+} from "./nodes.js";
 
 /**
  * The ingress.
@@ -160,84 +164,45 @@ export const SeparationsIdentityCheckResultSchema = z.strictObject({
 });
 
 const separationsIdentityCheckFlow = flow(SeparationsIdentityCheckInput)
-  .step("job-summary", UcpathReadJobSummary, {
-    label: "Job Summary",
+  // The step's own fragments (`./nodes.ts`) and the Job summary step's read,
+  // wired straight from the harness ingress: the EID and the name are the run's
+  // input here, where the composition resolves them from the Kuali reads.
+  .pipe(jobSummaryNode.wire({
     dependsOn: [],
-    /**
-     * `replay: "checkpoint"` is safe here for chunk 2's reason read the same
-     * way: this node's product is its VALUE, not browser state. Nothing
-     * downstream stands on the page it opened — the consumers are two pure
-     * folds and one operator gate — and a gate resume ALWAYS lands in a fresh
-     * browser, because the executor releases every session on the way into a
-     * park. A node whose product were browser state could not be replayed
-     * across a park at all.
-     */
-    replay: "checkpoint",
     bind: ({ input }) => ({ emplId: input.emplId }),
-  })
-  .step("name-search", SearchPersonOrg, {
-    label: "Name Search",
+  }))
+  .pipe(nameSearchNode.wire({
     dependsOn: [],
-    replay: "checkpoint",
-    /**
-     * `keepNonHdh: true`, always. The HDH filter exists so person-lookup can
-     * pick a preferred candidate; here the point is to SHOW the operator every
-     * person this name resolves to, and a filter that hid the career employee a
-     * common name matched would hide exactly the candidate `T002173685` turned
-     * on.
-     */
     bind: ({ input }) => ({
       kind: "by-name" as const,
       name: input.employeeName,
       keepNonHdh: true,
     }),
-  })
-  .step("comparison", SeparationsMatchIdentity, {
-    label: "Identity Comparison",
-    dependsOn: ["job-summary", "name-search"],
-    replay: "checkpoint",
+  }))
+  .pipe(comparisonNode.wire({
+    dependsOn: [JOB_SUMMARY_NODE, NAME_SEARCH_NODE],
     bind: ({ input, outputs }) => ({
       documentNumber: input.documentNumber,
       documentName: input.employeeName,
       documentEid: input.documentEid,
       emplId: input.emplId,
       emplIdSource: input.emplIdSource,
-      jobSummary: outputs["job-summary"],
-      nameSelection: outputs["name-search"].selection,
+      jobSummary: outputs[JOB_SUMMARY_NODE],
+      nameSelection: outputs[NAME_SEARCH_NODE].selection,
       plan: noSeparationWritePlan(
         "this chunk resolves an identity and files nothing; the composed `separations` graph is where a write plan exists to show",
       ),
     }),
-  })
-  .gate("identity-approval", {
-    label: "Identity Approval",
-    statusKey: "awaitingIdentityApproval",
-    dependsOn: ["comparison"],
-    /**
-     * `resolvedBy: "operator"` and nothing else can resolve it (§14.4). Not a
-     * retry, not a bump, not a cascade from a parent, not AI (charter §23/D60),
-     * and not a generic "Done" — the kernel's ONLY path into
-     * `gate_results` is the typed `resolve-gate` command, which parses this
-     * exact schema and CASes the run version.
-     */
-    resolvedBy: "operator",
-    result: IdentityApprovalResultSchema,
-  })
-  .step("approval", SeparationsVerifyIdentityApproval, {
-    label: "Approval Check",
-    dependsOn: ["comparison", "identity-approval"],
-    /**
-     * `always-rerun`, deliberately: this node's whole job is to compare a stored
-     * gate result against re-derived evidence, and a replayed checkpoint would
-     * be the previous comparison's ANSWER standing in for the comparison.
-     */
-    replay: "always-rerun",
+  }))
+  .pipe(identityApprovalGate.wire({ dependsOn: [COMPARISON_NODE] }))
+  .pipe(approvalNode.wire({
+    dependsOn: [COMPARISON_NODE, GATE_NODE],
     bind: ({ outputs }) => ({
-      packet: outputs.comparison.packet,
-      evidenceDigest: outputs.comparison.evidenceDigest,
-      approval: outputs["identity-approval"],
+      packet: outputs[COMPARISON_NODE].packet,
+      evidenceDigest: outputs[COMPARISON_NODE].evidenceDigest,
+      approval: outputs[GATE_NODE],
     }),
-  })
+  }))
   /**
    * `dependsOn: ["approval"]` and NOTHING else — the guard caught the first
    * draft, which read the document number and the employment picture straight
@@ -247,8 +212,8 @@ const separationsIdentityCheckFlow = flow(SeparationsIdentityCheckInput)
    */
   .build({
     schema: SeparationsIdentityCheckResultSchema,
-    dependsOn: ["approval"],
-    derive: ({ outputs }) => outputs.approval,
+    dependsOn: [APPROVAL_NODE],
+    derive: ({ outputs }) => outputs[APPROVAL_NODE],
   });
 
 export const separationsIdentityCheckDescriptor = defineWorkflowDescriptor({

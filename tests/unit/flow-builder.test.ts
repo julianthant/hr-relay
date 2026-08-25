@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { describe, it } from "vitest";
-import { flow } from "../../src/base/flow.js";
+import { defineOperatorGateNode, defineTaskNode, defineTransactionNode, flow } from "../../src/base/flow.js";
+import { defineWorkflowStep, defineWorkflowStepNodes } from "../../src/base/workflow.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
 import {
   DelegationEdgeIdSchema,
@@ -437,5 +438,97 @@ describe("workflow flow builder", () => {
     assert.equal(node.join, "all-settled");
     assert.deepEqual(node.branches.map((branch) => branch.id), ["org", "contact"]);
     assert.equal(Object.isFrozen(node.branches), true);
+  });
+  describe("node fragments (D265 §1.2.2 rule 2)", () => {
+    const contactFragment = defineTaskNode("contact", readTwo, { label: "Contact", replay: "always-rerun" });
+    const approvalFragment = defineOperatorGateNode("approval", {
+      label: "Approve",
+      statusKey: "awaitingApproval",
+      result: z.object({ approved: z.boolean() }),
+    });
+    const terminateFragment = defineTransactionNode("terminate", {
+      label: "Terminate",
+      prepare: preparePair,
+      commit: commitPair,
+      dryRun: "stop-after-prepare",
+      probePolicy: "retries-and-recovery-only",
+      probeToFenceMaxMs: 30_000,
+    });
+
+    it("applies a wired fragment through pipe exactly as the hand-written call would", () => {
+      const byHand = base()
+        .step("contact", readTwo, {
+          label: "Contact",
+          dependsOn: ["search"],
+          bind: ({ outputs }) => ({ eid: outputs.search.eid }),
+          replay: "always-rerun",
+        })
+        .gate("approval", {
+          label: "Approve",
+          statusKey: "awaitingApproval",
+          dependsOn: ["contact"],
+          resolvedBy: "operator",
+          result: approvalFragment.result,
+        })
+        .transaction("terminate", {
+          label: "Terminate",
+          dependsOn: ["approval", "search"],
+          prepare: { uses: preparePair, bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
+          commit: { uses: commitPair, bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
+          dryRun: "stop-after-prepare",
+          probePolicy: "retries-and-recovery-only",
+          probeToFenceMaxMs: 30_000,
+        })
+        .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["search"], derive: ({ outputs }) => ({ eid: outputs.search.eid }) });
+      const byFragment = base()
+        .pipe(contactFragment.wire({ dependsOn: ["search"], bind: ({ outputs }) => ({ eid: outputs.search.eid }) }))
+        .pipe(approvalFragment.wire({ dependsOn: ["contact"] }))
+        .pipe(terminateFragment.wire({
+          dependsOn: ["approval", "search"],
+          prepare: { bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
+          commit: { bind: ({ outputs }) => ({ eid: outputs.search.eid }) },
+        }))
+        .build({ schema: z.object({ eid: EidSchema }), dependsOn: ["search"], derive: ({ outputs }) => ({ eid: outputs.search.eid }) });
+      const stripBinds = (nodes: readonly GraphNodeBase[]): unknown =>
+        JSON.parse(JSON.stringify(nodes, (key, value: unknown) => (
+          typeof value === "function" ? "<fn>" : key === "result" ? "<schema>" : key === "uses" ? (value as { id: string }).id : value
+        )));
+      assert.deepEqual(stripBinds(byFragment.nodes), stripBinds(byHand.nodes));
+      assert.equal(byFragment.nodes.length, 4);
+      assert.equal(Object.isFrozen(contactFragment), true);
+      assert.equal(contactFragment.id, "contact");
+      assert.equal(terminateFragment.prepare.id, "ucpath/fill-termination");
+    });
+
+    it("refuses a fragment that hands back a different builder", () => {
+      const other = base();
+      assert.throws(
+        // The cast is the point: a fragment that ignores its argument is exactly what pipe refuses.
+        () => base().pipe(() => other as never),
+        /must return the builder it was given/,
+      );
+    });
+
+    it("refuses a transaction fragment without a positive probe-to-fence budget, and a bad node id", () => {
+      assert.throws(
+        () => defineTransactionNode("terminate", {
+          label: "Terminate", prepare: preparePair, commit: commitPair,
+          dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 0,
+        }),
+        /positive integer probeToFenceMaxMs budget/,
+      );
+      assert.throws(() => defineTaskNode("Not Kebab", readTwo, { label: "x", replay: "checkpoint" }));
+    });
+
+    it("derives a step's timeline category from its fragments and refuses a repeated one", () => {
+      const step = defineWorkflowStep({ key: "identity-check", label: "Identity check" });
+      const category = defineWorkflowStepNodes(step, [contactFragment, approvalFragment, terminateFragment]);
+      assert.deepEqual(category, { key: "identity-check", label: "Identity check", nodes: ["contact", "approval", "terminate"] });
+      assert.equal(Object.isFrozen(category), true);
+      assert.throws(
+        () => defineWorkflowStepNodes(step, [contactFragment, contactFragment]),
+        /lists node fragment contact twice/,
+      );
+    });
   });
 });

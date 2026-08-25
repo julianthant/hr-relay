@@ -156,3 +156,81 @@ describe("auditWorkflowModuleRoles — a harness's step (D265, §1.2.2 rule 2)",
     }
   });
 });
+
+/**
+ * The U1b review finding: role → path was not injective yet.
+ *
+ * §1.2.2 rule 3 makes a harness's `(of, step)` its ADDRESS —
+ * `src/workflows/<of>/<step>/` is where its `descriptor.ts` and `module.ts`
+ * sit. Two harnesses claiming the same pair therefore claim the same two
+ * files, which is a state the filesystem cannot represent: one of them is not
+ * where it says it is, and `workflow-layout`'s arm (a) would read that folder's
+ * descriptor, find the OTHER id declared, and report the mismatch against
+ * whichever module it happened to visit first. Refusing the collision here
+ * names both ids instead, at the composition root, before any guard has to
+ * guess which of the two is the impostor.
+ */
+describe("auditWorkflowModuleRoles — two harnesses cannot share one step (D265, §1.2.2 rule 3)", () => {
+  const composition = descriptorNamed("role-fixture-declared", "rfd", [
+    { key: "kuali-extraction", label: "Kuali extraction", nodes: ["kuali-extraction"] },
+    { key: "identity-check", label: "Identity check", nodes: ["identity-check"] },
+  ]);
+  const SECOND_HARNESS = descriptorNamed("role-fixture-harness-two", "rft");
+
+  it("refuses a duplicate (of, step), naming both harnesses", () => {
+    const violations = auditWorkflowModuleRoles([
+      { descriptor: composition, role: defineWorkflowRole({ kind: "composition" }) },
+      {
+        descriptor: HARNESS,
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-declared", step: "identity-check" }),
+      },
+      {
+        descriptor: SECOND_HARNESS,
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-declared", step: "identity-check" }),
+      },
+    ]);
+    assert.equal(violations.length, 1, violations.join("; "));
+    assert.match(violations[0] ?? "", /role-fixture-harness and role-fixture-harness-two/);
+    assert.match(violations[0] ?? "", /role-fixture-declared step identity-check/);
+    assert.match(violations[0] ?? "", /src\/workflows\/role-fixture-declared\/identity-check/);
+  });
+
+  it("accepts two harnesses of the same composition on DIFFERENT steps", () => {
+    assert.deepEqual(
+      auditWorkflowModuleRoles([
+        { descriptor: composition, role: defineWorkflowRole({ kind: "composition" }) },
+        {
+          descriptor: HARNESS,
+          role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-declared", step: "identity-check" }),
+        },
+        {
+          descriptor: SECOND_HARNESS,
+          role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-declared", step: "kuali-extraction" }),
+        },
+      ]),
+      [],
+    );
+  });
+
+  /**
+   * A duplicate that is ALSO not a declared step must still be refused as a
+   * duplicate. Reporting only "not a step" would leave the collision standing
+   * the moment somebody added the missing folder.
+   */
+  it("reports the collision even when the shared step is not declared", () => {
+    const noTimeline = descriptorNamed("role-fixture-none", "rfn");
+    const violations = auditWorkflowModuleRoles([
+      { descriptor: noTimeline, role: defineWorkflowRole({ kind: "composition" }) },
+      {
+        descriptor: HARNESS,
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-none", step: "identity-check" }),
+      },
+      {
+        descriptor: SECOND_HARNESS,
+        role: defineWorkflowRole({ kind: "chunk-harness", of: "role-fixture-none", step: "identity-check" }),
+      },
+    ]);
+    assert.equal(violations.length, 3, violations.join("; "));
+    assert.match(violations.join("\n"), /role-fixture-harness and role-fixture-harness-two/);
+  });
+});

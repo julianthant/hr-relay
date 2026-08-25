@@ -433,6 +433,17 @@ export interface FlowBuilder<
   /** Instrumentation on EVERY step of this workflow. */
   instrument(hooks: TaskHooks<AnyTaskContract>, label: string): FlowBuilder<InputSchema, S, Nodes>;
 
+  /**
+   * Apply a FRAGMENT — a function from this builder to a builder with more
+   * nodes — without leaving the chain (D265 §1.2.2 rule 2). A step folder's
+   * node fragments are `defineTaskNode`/`defineTransactionNode`/
+   * `defineGateNode` values whose `.wire(...)` returns exactly such a function;
+   * `S2`/`Nodes2` are whatever the fragment accumulated, so nothing is erased.
+   */
+  pipe<S2 extends Readonly<Record<string, AnyNodeEntry>>, Nodes2 extends readonly GraphNodeBase[]>(
+    fragment: (builder: FlowBuilder<InputSchema, S, Nodes>) => FlowBuilder<InputSchema, S2, Nodes2>,
+  ): FlowBuilder<InputSchema, S2, Nodes2>;
+
   build<ResultSchema extends z.ZodType, const D extends readonly (keyof S & string)[]>(
     result: WorkflowResultSpec<ResultSchema, InputSchema, S, D>,
   ): BuiltFlow<InputSchema, ResultSchema, Nodes, S, D>;
@@ -711,6 +722,13 @@ function makeBuilder(state: MutableFlowState): unknown {
       state.instrumentation.push(Object.freeze({ hooks, label }));
       return builder;
     },
+    pipe(fragment: (builder: unknown) => unknown): unknown {
+      const piped = fragment(builder);
+      if (piped !== builder) {
+        throw new Error("a flow fragment must return the builder it was given, with its nodes appended");
+      }
+      return piped;
+    },
     build(result: { dependsOn: readonly string[] }): unknown {
       assertDeclaredDependencies(state, nodeId("workflow-result"), nodeIds(result.dependsOn));
       if (state.nodes.length === 0) throw new Error("a workflow graph requires at least one node");
@@ -737,4 +755,242 @@ export function flow<InputSchema extends z.ZodType>(
     decorations: [],
     instrumentation: [],
   }) as FlowBuilder<InputSchema, Record<never, never>, readonly []>;
+}
+
+/* ── node fragments (D265 §1.2.2 rule 2) ─────────────────────────────────── */
+
+/**
+ * A node's IDENTITY and a node's WIRING are two different facts with two
+ * different owners. The identity — its id, the contract(s) it runs, its label,
+ * its replay policy or, for a transaction, its whole write policy — belongs to
+ * the step folder that owns the node, declared ONCE. The wiring — where the
+ * node sits in a particular graph (`dependsOn`) and what feeds each input
+ * (`bind`) — belongs to the graph that applies it, because the composition and
+ * the harness that proves a step feed the same node from different upstreams.
+ *
+ * A fragment therefore carries the identity and takes the wiring:
+ *
+ * ```ts
+ * export const NAME_SEARCH = defineTaskNode("name-search", SearchPersonOrg, { label, replay: "checkpoint" });
+ * // the composition:            the harness:
+ * flow(In).pipe(NAME_SEARCH.wire({ dependsOn: [PLAN], bind: ... }))   .pipe(NAME_SEARCH.wire({ dependsOn: [], bind: ... }))
+ * ```
+ *
+ * The builder's generics flow through unchanged: `wire` is generic over the
+ * builder's `S`/`Nodes` at the point of application, so `bind` sees exactly the
+ * `Pick<S, D[number]>` scope a hand-written `.step` would, and `pipe` returns
+ * the accumulated `S`/`Nodes` rather than erasing them. No `when` — a declared
+ * condition is a fact about the graph, not about the node, and none of the
+ * fragments this seam exists for declares one.
+ */
+export interface TaskNodeWiring<
+  InputSchema extends z.ZodType,
+  S,
+  C extends AnyReadTaskContract,
+  D extends readonly (keyof S & string)[],
+> {
+  readonly dependsOn: D;
+  readonly bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]>;
+}
+
+export interface TransactionNodeWiring<
+  InputSchema extends z.ZodType,
+  S,
+  P extends AnyPrepareTaskContract,
+  C extends AnyCommitTaskContract,
+  D extends readonly (keyof S & string)[],
+> {
+  readonly dependsOn: D;
+  readonly prepare: Readonly<{ bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<P["input"]> }>;
+  /** Never sees prepare output — the durable key is stable before page mutation. */
+  readonly commit: Readonly<{ bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<C["input"]> }>;
+}
+
+export interface GateNodeWiring<S, D extends readonly (keyof S & string)[]> {
+  readonly dependsOn: D;
+}
+
+/** A fragment is a function from a builder to the same builder with nodes appended. */
+export type FlowFragment<
+  InputSchema extends z.ZodType,
+  S extends Readonly<Record<string, AnyNodeEntry>>,
+  Nodes extends readonly GraphNodeBase[],
+  S2 extends Readonly<Record<string, AnyNodeEntry>>,
+  Nodes2 extends readonly GraphNodeBase[],
+> = (builder: FlowBuilder<InputSchema, S, Nodes>) => FlowBuilder<InputSchema, S2, Nodes2>;
+
+export interface TaskNodeFragment<Id extends string, C extends AnyReadTaskContract> {
+  readonly kind: "task";
+  readonly id: Id;
+  readonly contract: C;
+  readonly label: string;
+  readonly replay: "checkpoint" | "always-rerun";
+  wire<
+    InputSchema extends z.ZodType,
+    S extends Readonly<Record<string, AnyNodeEntry>>,
+    Nodes extends readonly GraphNodeBase[],
+    const D extends readonly (keyof S & string)[],
+  >(
+    wiring: TaskNodeWiring<InputSchema, S, C, D>,
+  ): FlowFragment<
+    InputSchema,
+    S,
+    Nodes,
+    S & { readonly [K in Id]: NodeEntry<z.output<C["output"]>, false, readonly [C]> },
+    AppendTaskNode<Nodes, InputSchema, S, C, D>
+  >;
+}
+
+export interface TransactionNodeFragment<
+  Id extends string,
+  P extends AnyPrepareTaskContract,
+  C extends AnyCommitTaskContract,
+> {
+  readonly kind: "transaction";
+  readonly id: Id;
+  readonly prepare: P;
+  readonly commit: C;
+  readonly label: string;
+  readonly dryRun: "stop-after-prepare" | "unsupported";
+  readonly probePolicy: "always" | "retries-and-recovery-only";
+  readonly probeToFenceMaxMs: number;
+  readonly retryBeforeFence?: RetryPolicy;
+  wire<
+    InputSchema extends z.ZodType,
+    S extends Readonly<Record<string, AnyNodeEntry>>,
+    Nodes extends readonly GraphNodeBase[],
+    const D extends readonly (keyof S & string)[],
+  >(
+    wiring: TransactionNodeWiring<InputSchema, S, P, C, D>,
+  ): FlowFragment<
+    InputSchema,
+    S,
+    Nodes,
+    S & { readonly [K in Id]: NodeEntry<TypedTransactionOutcome<C>, false, readonly [P, C]> },
+    AppendTransactionNode<Nodes, InputSchema, S, P, C, D>
+  >;
+}
+
+/** Only the operator-resolved gate has a fragment form: the ALWAYS-GATE is the one a step folder owns. */
+export interface OperatorGateNodeFragment<Id extends string, Result extends z.ZodType> {
+  readonly kind: "gate";
+  readonly id: Id;
+  readonly label: string;
+  readonly statusKey?: string;
+  readonly resolvedBy: "operator";
+  readonly result: Result;
+  wire<
+    InputSchema extends z.ZodType,
+    S extends Readonly<Record<string, AnyNodeEntry>>,
+    Nodes extends readonly GraphNodeBase[],
+    const D extends readonly (keyof S & string)[],
+  >(
+    wiring: GateNodeWiring<S, D>,
+  ): FlowFragment<
+    InputSchema,
+    S,
+    Nodes,
+    S & { readonly [K in Id]: NodeEntry<z.output<Result>, false, readonly []> },
+    readonly [...Nodes, OperatorGateNode<Result>]
+  >;
+}
+
+export type AnyNodeFragment =
+  | TaskNodeFragment<string, AnyReadTaskContract>
+  | TransactionNodeFragment<string, AnyPrepareTaskContract, AnyCommitTaskContract>
+  | OperatorGateNodeFragment<string, z.ZodType>;
+
+export function defineTaskNode<Id extends string, C extends AnyReadTaskContract>(
+  id: Id,
+  contract: C,
+  identity: Readonly<{ label: string; replay: "checkpoint" | "always-rerun" }>,
+): TaskNodeFragment<Id, C> {
+  nodeId(id);
+  const fragment: TaskNodeFragment<Id, C> = {
+    kind: "task",
+    id,
+    contract,
+    label: identity.label,
+    replay: identity.replay,
+    wire(wiring) {
+      return (builder) => builder.step(id, contract, {
+        label: identity.label,
+        dependsOn: wiring.dependsOn,
+        bind: wiring.bind,
+        replay: identity.replay,
+      });
+    },
+  };
+  return Object.freeze(fragment);
+}
+
+export function defineTransactionNode<
+  Id extends string,
+  P extends AnyPrepareTaskContract,
+  C extends AnyCommitTaskContract,
+>(
+  id: Id,
+  identity: Readonly<{
+    label: string;
+    prepare: P;
+    commit: C;
+    dryRun: "stop-after-prepare" | "unsupported";
+    probePolicy: "always" | "retries-and-recovery-only";
+    probeToFenceMaxMs: number;
+    retryBeforeFence?: RetryPolicy;
+  }>,
+): TransactionNodeFragment<Id, P, C> {
+  nodeId(id);
+  if (!Number.isInteger(identity.probeToFenceMaxMs) || identity.probeToFenceMaxMs <= 0) {
+    throw new Error(`transaction ${id} requires a positive integer probeToFenceMaxMs budget`);
+  }
+  const fragment: TransactionNodeFragment<Id, P, C> = {
+    kind: "transaction",
+    id,
+    prepare: identity.prepare,
+    commit: identity.commit,
+    label: identity.label,
+    dryRun: identity.dryRun,
+    probePolicy: identity.probePolicy,
+    probeToFenceMaxMs: identity.probeToFenceMaxMs,
+    ...(identity.retryBeforeFence === undefined ? {} : { retryBeforeFence: identity.retryBeforeFence }),
+    wire(wiring) {
+      return (builder) => builder.transaction(id, {
+        label: identity.label,
+        dependsOn: wiring.dependsOn,
+        prepare: { uses: identity.prepare, bind: wiring.prepare.bind },
+        commit: { uses: identity.commit, bind: wiring.commit.bind },
+        dryRun: identity.dryRun,
+        probePolicy: identity.probePolicy,
+        probeToFenceMaxMs: identity.probeToFenceMaxMs,
+        ...(identity.retryBeforeFence === undefined ? {} : { retryBeforeFence: identity.retryBeforeFence }),
+      });
+    },
+  };
+  return Object.freeze(fragment);
+}
+
+export function defineOperatorGateNode<Id extends string, Result extends z.ZodType>(
+  id: Id,
+  identity: Readonly<{ label: string; statusKey?: string; result: Result }>,
+): OperatorGateNodeFragment<Id, Result> {
+  nodeId(id);
+  const fragment: OperatorGateNodeFragment<Id, Result> = {
+    kind: "gate",
+    id,
+    label: identity.label,
+    ...(identity.statusKey === undefined ? {} : { statusKey: identity.statusKey }),
+    resolvedBy: "operator",
+    result: identity.result,
+    wire(wiring) {
+      return (builder) => builder.gate(id, {
+        label: identity.label,
+        ...(identity.statusKey === undefined ? {} : { statusKey: identity.statusKey }),
+        dependsOn: wiring.dependsOn,
+        resolvedBy: "operator",
+        result: identity.result,
+      });
+    },
+  };
+  return Object.freeze(fragment);
 }
