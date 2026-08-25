@@ -31,7 +31,7 @@ export function existingComments(comments: { state: "present"; value: string } |
  * Budget CONFIRMED live 2026-08-14 (§9.12 item 6): probe 3.30 s + prepare
  * 8.06 s = 11.4 s worst legs against 45 000 ms, ~4x headroom.
  */
-export const finalizeKualiNode = defineTransactionNode(FINALIZE_NODE, {
+export const finalizeKualiNode = defineTransactionNode(KUALI_FINALIZATION_STEP, FINALIZE_NODE, {
   label: "Finalize Kuali Document",
   prepare: KualiStageSeparationFinalization,
   commit: KualiSaveSeparationFinalization,

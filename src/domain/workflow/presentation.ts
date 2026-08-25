@@ -286,6 +286,15 @@ export const WorkflowStepSchema = z.strictObject({
 });
 export type WorkflowStep = z.infer<typeof WorkflowStepSchema>;
 
+/**
+ * The step boundary narrowed to one folder's literal key. The schema factory
+ * keeps that literal attached after parsing so node fragments can carry their
+ * owning folder in the type system as well as at runtime.
+ */
+export const WorkflowStepOfSchema = <const Key extends string>(key: Key) =>
+  WorkflowStepSchema.extend({ key: z.literal(key) });
+export type WorkflowStepOf<Key extends string> = z.infer<ReturnType<typeof WorkflowStepOfSchema<Key>>>;
+
 export const TimelineCategorySpecSchema = z.strictObject({
   key: TimelineCategoryKeySchema,
   label: z.string().min(1),

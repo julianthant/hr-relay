@@ -440,13 +440,14 @@ describe("workflow flow builder", () => {
     assert.equal(Object.isFrozen(node.branches), true);
   });
   describe("node fragments (D265 §1.2.2 rule 2)", () => {
-    const contactFragment = defineTaskNode("contact", readTwo, { label: "Contact", replay: "always-rerun" });
-    const approvalFragment = defineOperatorGateNode("approval", {
+    const fragmentStep = defineWorkflowStep({ key: "identity-check", label: "Identity check" });
+    const contactFragment = defineTaskNode(fragmentStep, "contact", readTwo, { label: "Contact", replay: "always-rerun" });
+    const approvalFragment = defineOperatorGateNode(fragmentStep, "approval", {
       label: "Approve",
       statusKey: "awaitingApproval",
       result: z.object({ approved: z.boolean() }),
     });
-    const terminateFragment = defineTransactionNode("terminate", {
+    const terminateFragment = defineTransactionNode(fragmentStep, "terminate", {
       label: "Terminate",
       prepare: preparePair,
       commit: commitPair,
@@ -511,23 +512,31 @@ describe("workflow flow builder", () => {
 
     it("refuses a transaction fragment without a positive probe-to-fence budget, and a bad node id", () => {
       assert.throws(
-        () => defineTransactionNode("terminate", {
+        () => defineTransactionNode(fragmentStep, "terminate", {
           label: "Terminate", prepare: preparePair, commit: commitPair,
           dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 0,
         }),
         /positive integer probeToFenceMaxMs budget/,
       );
-      assert.throws(() => defineTaskNode("Not Kebab", readTwo, { label: "x", replay: "checkpoint" }));
+      assert.throws(() => defineTaskNode(fragmentStep, "Not Kebab", readTwo, { label: "x", replay: "checkpoint" }));
     });
 
     it("derives a step's timeline category from its fragments and refuses a repeated one", () => {
-      const step = defineWorkflowStep({ key: "identity-check", label: "Identity check" });
-      const category = defineWorkflowStepNodes(step, [contactFragment, approvalFragment, terminateFragment]);
+      const category = defineWorkflowStepNodes(fragmentStep, [contactFragment, approvalFragment, terminateFragment]);
       assert.deepEqual(category, { key: "identity-check", label: "Identity check", nodes: ["contact", "approval", "terminate"] });
       assert.equal(Object.isFrozen(category), true);
       assert.throws(
-        () => defineWorkflowStepNodes(step, [contactFragment, contactFragment]),
+        () => defineWorkflowStepNodes(fragmentStep, [contactFragment, contactFragment]),
         /lists node fragment contact twice/,
+      );
+    });
+
+    it("refuses a node fragment owned by another workflow step", () => {
+      const otherStep = defineWorkflowStep({ key: "job-summary", label: "Job summary" });
+
+      assert.throws(
+        () => defineWorkflowStepNodes(otherStep, [contactFragment as never]),
+        /step "job-summary" claims node fragment contact, which belongs to step "identity-check"/,
       );
     });
   });

@@ -35,7 +35,7 @@ export const DATES_NODE = "dates";
  * checkpoint that restores a selection into a browser that never made one, and
  * that is the failure chunk 1 already recorded.
  */
-export const timecardSearchNode = defineTaskNode(TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
+export const timecardSearchNode = defineTaskNode(KRONOS_TIMECARD_STEP, TIMECARD_SEARCH_NODE, NewKronosSearchEmployee, {
   label: "Timecard Search",
   replay: "always-rerun",
 });
@@ -47,12 +47,12 @@ export const timecardSearchNode = defineTaskNode(TIMECARD_SEARCH_NODE, NewKronos
  * through `requireFact` — Go To is disabled without the selection, and a
  * disabled Go To is a loud failure, never an empty card.
  */
-export const timecardNode = defineTaskNode(TIMECARD_NODE, NewKronosReadSeparationTimecard, {
+export const timecardNode = defineTaskNode(KRONOS_TIMECARD_STEP, TIMECARD_NODE, NewKronosReadSeparationTimecard, {
   label: "Timecard",
   replay: "checkpoint",
 });
 
-export const datesNode = defineTaskNode(DATES_NODE, SeparationsReadSeparationDates, {
+export const datesNode = defineTaskNode(KRONOS_TIMECARD_STEP, DATES_NODE, SeparationsReadSeparationDates, {
   label: "Reconciled Dates",
   replay: "checkpoint",
 });
