@@ -1428,8 +1428,8 @@ the real tree and against its own violating fixture.
 `legacy-change-accounting` → live re-verification at each migration (D150), and D188's four:
 `authority-target-no-fallback` → `storage-recovery`, `commit-routes-through-mutation` →
 `task-driver-boundary`, `dry-run-composition-submit-free` → `write-safety-contract` plus the
-executable `kuali-timekeeper-annotation/dry-run-preview`, `sleep-budget` → the `wait-for-timeout`
-arm plus `bounded-task-deadline`. `guard-manifest` holds a retirement to a real standard: `retiredBy`
+`separations-kuali-finalization/dry-run` T1 manifest and its structural executor proof,
+`sleep-budget` → the `wait-for-timeout` arm plus `bounded-task-deadline`. `guard-manifest` holds a retirement to a real standard: `retiredBy`
 must match `/^D\d+$/`, the `invariant` must be longer than 40 characters (a retirement has to explain
 where the invariant went), and `replacementRequired` stays `true`.
 

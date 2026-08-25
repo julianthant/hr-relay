@@ -258,9 +258,9 @@ canaries have already evaporated between passes.** Every row below carries the p
 | **doc 4524** | was the natural Kuali controlled-commit candidate from §9.12 | **GONE** — action completed 2026-08-14, between two passes on the same day (§9.16 §3) | nothing further; the recommendation was withdrawn on the facts, not on a judgement |
 | **(no subject)** | a subject holding a **PENDING** UCPath termination | **none exists.** Deleting `T002209631` cleared the canary path exactly as intended and removed the only mapped subject with anything for the sweep to delete (§9.16 §4, §9.19 §5) | `clear-pending`'s COMMITTED arm. Its one honest window is re-running ① immediately after ② files, before an approver clears the row — an operator call, named under §Smaller operator calls open |
 
-**Beside the registry, the Phase-2 pair.** Kuali docs **4489** and **4490** are not separations
-subjects — they belong to `kuali-timekeeper-annotation` — but they are the baseline every absence
-proof in this migration is measured against: 4489 carries the ONE controlled commit this program has
+**Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
+subjects of the now-retired annotation proof workflow; they are not current workflow entries or
+separations canaries. Their records remain the baseline for the earlier absence evidence: 4489 carries the ONE controlled commit this program has
 made (2026-08-04), and 4490 is where the propagation window was measured over four write/restore
 cycles. Both were restored to their captured original values, each restore proved by reload
 read-back.

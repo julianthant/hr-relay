@@ -1775,8 +1775,8 @@ operator command (`src/core/run-executor.ts:1363-1377`), whatever the gate decla
 `children-terminal` gate would therefore park forever, so the arm is a declared-but-unreachable one
 of exactly the kind D254 retired elsewhere, and it is named here rather than left to be discovered
 by the first workflow that declares it. There is also no `oath-upload` workflow, no
-`subscribeToApproval`, and no born-at-upload prepare seam: `src/workflows/` holds person-lookup,
-kuali-timekeeper-annotation and the six separations descriptors.
+`subscribeToApproval`, and no born-at-upload prepare seam: `src/workflows/` holds the two rail
+folders (`person-lookup`, `separations`) and separations' six timeline-step children.
 
 <!-- roadmap-status: order-7 -->
 - [x] the shape is DECIDED and recorded here rather than mis-modelled as a CompletionProgram (D11) — oath-upload is a fan-out target with no form spec, and its ticket is a real `single` task
@@ -2369,9 +2369,8 @@ wrong.
 | `separations-kronos-timecard` | `EID 10620118` | `timecard.subject.observedDisplayName` — the S37 wrong-person control's own page, never the search panel's candidate list |
 | `person-lookup` | `EID 10873698` | `searching.selection.selected.name` |
 
-`separations-ucpath-termination`, `separations-kuali-finalization` and `kuali-timekeeper-annotation`
-declare nothing, and that is complete rather than pending: the first two already title with a person
-their input carried, and the third's subject IS its document. `run-detail`'s header title goes
+`separations-ucpath-termination` and `separations-kuali-finalization` declare nothing, and that is
+complete rather than pending: both already title with a person their input carried. `run-detail`'s header title goes
 through the SAME resolver — a row and the panel it opens are the pair an operator sees side by side,
 and two surfaces naming one run two ways is exactly the divergence §2.2's one-projection rule exists
 to prevent.
@@ -4325,25 +4324,17 @@ Three dated rulings narrowed it, and they read as one rule because they land in 
   has no member and leaves the union; the D241 group drops by the grouping rule's own empty-group
   rule and the arm is removed from `groupWorkflowsByCategory` in the same code unit. Nothing else here changes.
 - **D220, the same day — the RAIL lists main workflows only.** On seeing the nesting live: *"not
-  needed at all — only the main workflows should be there."* The rail drops every entry whose role is
-  `chunk-harness` or `proving`, and a category whose entries all dropped goes with them rather than
-  rendering an empty heading. D219's one-rule claim narrows to the surfaces that still list them —
-  the Run Modal picker (both lists) and the Explorer — so proving work stays startable and
-  documented. The always-visible-nesting rationale (a hidden harness's `Needs you` must not vanish)
+  needed at all — only the main workflows should be there."* The rail drops every `chunk-harness`,
+  and a category whose entries all dropped goes with them rather than rendering an empty heading.
+  D219's one-rule claim narrows to the surfaces that still list harnesses — the Run Modal picker
+  (both lists) and the Explorer — so step harnesses stay startable and documented. The
+  always-visible-nesting rationale (a hidden harness's `Needs you` must not vanish)
   is answered at the rail's level instead: attention reaches the operator through the cross-panel
   `Needs you` total and the notification inbox, neither of which is rail-scoped.
-- **D241 — a proving workflow heads `Test equipment`, not an HR category.** D220 left
-  `kuali-timekeeper-annotation` heading the picker and the Explorer under **Operations**, beside
-  daily work (*"a crash test dummy is not a workflow … maybe it belongs in a different category,
-  perhaps in test"*). A descriptor's `category` answers *which HR area does this touch*; for a
-  workflow that exists to prove the write kernel that is the wrong question with a plausible answer,
-  and **a plausible wrong answer is worse than none.** So the one grouping rule reads the module's
-  ROLE for these entries and not their category: role `proving` groups under **`Test equipment`**,
-  appended after every listed and unlisted category, on every surface that lists it. It appears
-  exactly once — lifted out of the category pass, never duplicated into it — and the group DROPS when
-  nothing proving is served. The picker's auto-pick set narrows to the same pair on D219's own
-  argument (a dialog that opens on a step the operator did not ask for must not open on test
-  equipment either).
+- **D241 — RETIRED by D266.** D241 once moved the proving workflow out of its plausible-but-wrong
+  HR category. D266 removed that workflow, its role and its special group entirely; no current
+  grouping or auto-pick rule has a proving arm. Decision ownership remains recorded here because
+  D266 superseded the presentation rule rather than pretending it never existed.
 
 #### The action bar is an ISLAND (D224), and row commands live in a context menu
 

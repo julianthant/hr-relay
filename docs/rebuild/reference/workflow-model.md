@@ -745,18 +745,11 @@ rehearsed, not as a registered workflow of its own. The arm leaves the union in 
 group goes with it, by the grouping rule's own empty-group drop. The paragraph below is kept as the
 record of why the arm existed.
 
-**The `proving` arm (D220, 2026-08-14).** A workflow registered to prove program MACHINERY — a
-kernel capability, a driver, a write path — rather than to run daily HR work, and belonging to no
-composition. `kuali-timekeeper-annotation` is the type specimen: it exists to carry D135's
-controlled-transaction proof and stays registered and startable because a kernel change may need
-that proof re-run. It deliberately carries no `of` — there is nothing for it to be a step of, and
-`chunk-harness` would force it to name a composition it does not prove. Presentation is ref dashboard-surfaces's
-(§Shell, D220 and D241 amendments): the rail drops it alongside harnesses, and the surfaces that
-still list it — the picker and the Explorer — group it by this ROLE under `Test equipment` rather
-than under the HR `category` its descriptor declares. That override is stated here because it is
-the one place a role outranks a category: a proving workflow's category answers *which HR area does
-this touch*, which is the wrong question about equipment, and `operations` is not false enough to
-be noticed (D241).
+**Retired record — the `proving` arm (D220, 2026-08-14).** This arm once described a workflow
+registered to prove program machinery rather than run daily HR work. D241 consequently overrode
+its HR category in the picker and Explorer. D266 withdrew both the arm and that presentation rule:
+this paragraph survives only to explain the superseded decisions, not as authoring or surface
+behaviour.
 
 **Why the module and not the descriptor** is D170's argument verbatim: taxonomy is presentation and
 server bookkeeping, not part of a run's contract identity — a run of `separations-kuali-finalization`
@@ -1539,10 +1532,11 @@ re-parsing every value through the schema that owns it, and REPORTS the coverage
 exercised. `scenario-coverage` audits that observed corpus against the derived points in both
 directions. Two derived points are out of a pure walk's reach because they are executor behaviours
 rather than descriptor functions — `transaction:*/dry-run` and `transaction:*/subject-mismatch` —
-and they were the obligation Phase 1f had to satisfy. **It did.** Both are claimed by real executor
-scenarios: `tests/scenario/kuali-timekeeper-annotation.scenario.test.ts` runs the preview through
-`executeDryRun` and asserts nothing durable moved, and runs a mismatched displayed subject through
-the sequencer asserting zero fence and zero click. D185 additionally makes the corpus DIRECTORY
+and they were the obligation Phase 1f had to satisfy. **They remain structurally covered after
+D266's retirement.** `tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts`
+runs the real finalization transaction through `executeDryRun`, asserts zero `write_intents`,
+`write_attempts` and `durable_outbox` deltas while ordinary upstream checkpoints exist, and drives
+the mismatched-subject refusal with zero fence and zero click. D185 additionally makes the corpus DIRECTORY
 guarded: `tests/scenario/` holds exactly two declared kinds — a graph scenario
 (`*.scenario.test.ts`) and an integration walk (`*.walk.test.ts`) — which the registered-set audits
 structurally cannot see.
@@ -2444,7 +2438,7 @@ Nothing launched, no Duo spent, no partial run row.
 - [x] the two identity defects it exposed are closed at the identity rather than at a store: a span folds by `(runId, attempt, spanPath)` (D121/D122), and the bundle-crossing defect that made the app render nothing became `dashboard-wire-boundary` (D120's sibling)
 - [x] session acquisition gained its own bound, `timeouts.sessionAcquireMs`, because every step inside a login recipe was bounded and nothing bounded the CHAIN (D125)
 - [x] §8 is marked as-built here, which is doc 02 §Exit criteria's own criterion
-- [ ] what this slice cannot exercise, by construction: `person-lookup` declares no branch, gate, delegation or transaction, so it derives ZERO graph coverage points and §5.5's freshness walk passes trivially. The write half is proved by `kuali-timekeeper-annotation` instead
+- [ ] what this slice cannot exercise, by construction: `person-lookup` declares no branch, gate, delegation or transaction, so it derives ZERO graph coverage points and §5.5's freshness walk passes trivially. D266 moved the write-half structural proof to `separations-kuali-finalization/structural.scenario.test.ts`; its live T1b rehearsal remains pending the §10.5–§10.6 runner
 > 2026-08-21 | docs-cohesion workflow-model | verified against `src/workflows/person-lookup/descriptor.ts` and the D74 run record; left: nothing — Phase 1's exit is closed
 <!-- /roadmap-status -->
 
@@ -2487,8 +2481,10 @@ delegation or transaction, so `workflowProjections(...).coveragePoints` derives 
 coverage points for it — the correct answer, not a pass by absence (`scenario-coverage.test.ts`
 proves the derivation against `fixtureDescriptor`, whose fifteen points span every path-bearing
 node kind). §5.5's freshness walk passes trivially here for the same reason §8 says it does: there
-is no transaction commit to be a freshness sink. The write half of the model is proved instead by
-`kuali-timekeeper-annotation` (ref write-safety §Phase-2 controlled-commit as-built).
+is no transaction commit to be a freshness sink. The write half of the model is now structurally
+proved by `tests/scenario/workflows/separations-kuali-finalization/structural.scenario.test.ts`;
+the historical Phase-2 controlled commit remains evidence, while the real finalization T1b
+rehearsal is still blocked on ref guards-and-tests §10.5–§10.6's unbuilt runner.
 
 ---
 
