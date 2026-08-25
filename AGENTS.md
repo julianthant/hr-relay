@@ -266,6 +266,12 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   `span.started` emission belong inside the `PostFenceWriteFailure` boundary too; none may escape
   without parking. See ref write-safety §3 and doc 03a §Observed logs.
 
+- **Lesson 2026-08-25 — an observed row's system is a composition fact, never a log fallback.** A
+  span supplies its exact `(nodeId, taskId)` and redacted page point; the module/store binding supplies
+  the system. The Logs query resolves exactly one root-composed data origin for that pair and refuses
+  missing, headless, or ambiguous origins by file and line. Defaulting to `read` or a plausible system
+  turns a trustworthy observation into an attributed lie.
+
 ## After changes
 
 Run `npm run typecheck && npm run lint && npm run test:coverage` before committing (D191 —
