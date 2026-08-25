@@ -192,6 +192,14 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       heading: "authority restore COMPANION-STATE FAILURE",
       authorityLine: "the authority database was not replaced, but live WAL/SHM rollback is unproven; inspect recovery artifacts before restarting runtime",
     });
+    assert.deepEqual(restoreFailureDisposition(new OfflineRestoreFailure(
+      "authority-state-uncertain",
+      "offline authority restore failed",
+      new Error("swap outcome could not be observed"),
+    )), {
+      heading: "authority restore AUTHORITY-STATE UNCERTAIN",
+      authorityLine: "the authority replacement outcome is unproven; inspect staged/live paths before restarting runtime",
+    });
     assert.deepEqual(restoreFailureDisposition(new Error("pre-swap refusal")), {
       heading: "authority restore REFUSED",
       authorityLine: "the live authority database was not modified",

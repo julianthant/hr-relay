@@ -59,6 +59,7 @@ export function restoreFailureDisposition(error: unknown): Readonly<{
   heading:
     | "authority restore REFUSED"
     | "authority restore COMPANION-STATE FAILURE"
+    | "authority restore AUTHORITY-STATE UNCERTAIN"
     | "authority restore POST-SWAP FAILURE";
   authorityLine: string;
 }> {
@@ -72,6 +73,12 @@ export function restoreFailureDisposition(error: unknown): Readonly<{
     return Object.freeze({
       heading: "authority restore COMPANION-STATE FAILURE",
       authorityLine: "the authority database was not replaced, but live WAL/SHM rollback is unproven; inspect recovery artifacts before restarting runtime",
+    });
+  }
+  if (error instanceof OfflineRestoreFailure && error.authorityState === "authority-state-uncertain") {
+    return Object.freeze({
+      heading: "authority restore AUTHORITY-STATE UNCERTAIN",
+      authorityLine: "the authority replacement outcome is unproven; inspect staged/live paths before restarting runtime",
     });
   }
   return Object.freeze({

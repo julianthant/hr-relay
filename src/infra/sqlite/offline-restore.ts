@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
   closeSync,
@@ -7,6 +7,7 @@ import {
   fsyncSync,
   mkdirSync,
   openSync,
+  readFileSync,
   renameSync,
   rmSync,
   statSync,
@@ -54,6 +55,7 @@ export interface OfflineRestoreFileOperations {
 export type OfflineRestoreAuthorityState =
   | "unchanged"
   | "companion-state-uncertain"
+  | "authority-state-uncertain"
   | "replaced";
 
 export class OfflineRestoreFailure extends Error {
@@ -125,6 +127,77 @@ function rollbackDisplacedCompanions(
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeError(error: unknown, context: string): Error {
+  return error instanceof Error ? error : new Error(`${context}: ${String(error)}`, { cause: error });
+}
+
+interface FileIdentity {
+  readonly byteSize: number;
+  readonly sha256: string;
+}
+
+function fileIdentity(path: string): FileIdentity {
+  const bytes = readFileSync(path);
+  return Object.freeze({
+    byteSize: bytes.byteLength,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  });
+}
+
+function fileIdentityEquals(left: FileIdentity, right: FileIdentity): boolean {
+  return left.byteSize === right.byteSize && left.sha256 === right.sha256;
+}
+
+type AuthorityReplaceReconciliation =
+  | Readonly<{ state: "unchanged" | "replaced"; observationFailures: readonly unknown[] }>
+  | Readonly<{ state: "uncertain"; observationFailures: readonly unknown[] }>;
+
+function reconcileAuthorityReplaceError(
+  stagedPath: string,
+  authorityPath: string,
+  stagedIdentityBefore: FileIdentity,
+  liveIdentityBefore: FileIdentity,
+): AuthorityReplaceReconciliation {
+  try {
+    const stagedExists = existsSync(stagedPath);
+    const authorityExists = existsSync(authorityPath);
+    if (!stagedExists && authorityExists) {
+      return Object.freeze({
+        state: fileIdentityEquals(fileIdentity(authorityPath), stagedIdentityBefore)
+          ? "replaced"
+          : "uncertain",
+        observationFailures: Object.freeze([]),
+      });
+    }
+    if (stagedExists && authorityExists
+      && !fileIdentityEquals(stagedIdentityBefore, liveIdentityBefore)
+      && fileIdentityEquals(fileIdentity(authorityPath), liveIdentityBefore)) {
+      return Object.freeze({ state: "unchanged", observationFailures: Object.freeze([]) });
+    }
+    return Object.freeze({ state: "uncertain", observationFailures: Object.freeze([]) });
+  } catch (error) {
+    return Object.freeze({ state: "uncertain", observationFailures: Object.freeze([error]) });
+  }
+}
+
+function cleanupStagedPaths(
+  paths: readonly string[],
+  fileOperations: OfflineRestoreFileOperations,
+): readonly Error[] {
+  const failures: Error[] = [];
+  for (const path of paths) {
+    try {
+      if (existsSync(path)) (fileOperations.removePath ?? rmSync)(path);
+    } catch (error) {
+      failures.push(new Error(
+        `staged restore cleanup failed for ${path}: ${errorMessage(error)}`,
+        { cause: error },
+      ));
+    }
+  }
+  return Object.freeze(failures);
 }
 
 export class OfflineAuthorityRestoreService {
@@ -200,6 +273,8 @@ export class OfflineAuthorityRestoreService {
 
         const authorityDirectory = dirname(this.#authorityPath);
         const stagedPath = join(authorityDirectory, `.restore-${token}.sqlite.tmp`);
+        let stagedReport: OfflineRestoreReport | undefined;
+        let stagedPrimaryError: Error | undefined;
         try {
           copyAndSync(verified.backupPath, stagedPath, this.#fileOperations);
           await verifyBackupBytesAtPath(
@@ -231,21 +306,77 @@ export class OfflineAuthorityRestoreService {
           }
 
           (this.#fileOperations.syncPath ?? fsyncPath)(stagedPath);
+          const liveIdentityBeforeReplace = fileIdentity(this.#authorityPath);
+          const stagedIdentityBeforeReplace = fileIdentity(stagedPath);
           const displacedCompanions: DisplacedCompanion[] = [];
           let authorityReplaced = false;
+          let replacementAttempted = false;
+          let replacementError: Error | undefined;
+          let replacementReconciliation: AuthorityReplaceReconciliation | undefined;
           try {
             for (const suffix of ["-wal", "-shm"] as const) {
               const companion = `${this.#authorityPath}${suffix}`;
               if (!existsSync(companion)) continue;
               const displacedPath = `${stagedPath}${suffix}.live-companion`;
-              (this.#fileOperations.renamePath ?? renameSync)(companion, displacedPath);
+              try {
+                (this.#fileOperations.renamePath ?? renameSync)(companion, displacedPath);
+              } catch (error) {
+                const liveExists = existsSync(companion);
+                const displacedExists = existsSync(displacedPath);
+                if (!liveExists && displacedExists) {
+                  displacedCompanions.push({ livePath: companion, displacedPath });
+                } else if (liveExists === displacedExists) {
+                  authorityState = "companion-state-uncertain";
+                  throw new AggregateError(
+                    [error],
+                    `companion rename failed and filesystem outcome is uncertain for source `
+                    + `${companion} and destination ${displacedPath}`,
+                    { cause: error },
+                  );
+                }
+                throw error;
+              }
               displacedCompanions.push({ livePath: companion, displacedPath });
             }
             (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
+            replacementAttempted = true;
             this.#fileOperations.atomicReplace(stagedPath, this.#authorityPath);
             authorityReplaced = true;
             authorityState = "replaced";
           } catch (error) {
+            replacementError = normalizeError(error, "atomic authority replacement failed");
+            replacementReconciliation = replacementAttempted
+              ? reconcileAuthorityReplaceError(
+                  stagedPath,
+                  this.#authorityPath,
+                  stagedIdentityBeforeReplace,
+                  liveIdentityBeforeReplace,
+                )
+              : Object.freeze({
+                  state: "unchanged" as const,
+                  observationFailures: Object.freeze([]),
+                });
+          }
+          if (replacementError !== undefined) {
+            if (replacementReconciliation === undefined) {
+              throw new Error("atomic authority replacement failed without reconciliation", {
+                cause: replacementError,
+              });
+            }
+            if (replacementReconciliation.state === "replaced") {
+              authorityReplaced = true;
+              authorityState = "replaced";
+            } else if (replacementReconciliation.state === "uncertain") {
+              authorityState = "authority-state-uncertain";
+            }
+            if (authorityState === "authority-state-uncertain") {
+              throw new AggregateError(
+                [replacementError, ...replacementReconciliation.observationFailures],
+                `atomic authority replacement failed and filesystem outcome is uncertain for source `
+                + `${stagedPath} and destination ${this.#authorityPath}`,
+                { cause: replacementError },
+              );
+            }
             if (!authorityReplaced) {
               const rollbackFailures = rollbackDisplacedCompanions(
                 displacedCompanions,
@@ -256,20 +387,34 @@ export class OfflineAuthorityRestoreService {
                 authorityState = "companion-state-uncertain";
                 const rollbackSummary = rollbackFailures.map(errorMessage).join("; ");
                 throw new AggregateError(
-                  [error, ...rollbackFailures],
-                  `authority replacement failed (${errorMessage(error)}); live SQLite companion rollback `
+                  [replacementError, ...rollbackFailures],
+                  `authority replacement failed (${errorMessage(replacementError)}); live SQLite companion rollback `
                   + `was not proven (${rollbackSummary})`,
-                  { cause: error },
+                  { cause: replacementError },
                 );
               }
             }
-            throw error;
+            if (!authorityReplaced) throw replacementError;
           }
-          for (const companion of displacedCompanions) {
-            (this.#fileOperations.removePath ?? rmSync)(companion.displacedPath);
+          let companionCleanupError: Error | undefined;
+          try {
+            for (const companion of displacedCompanions) {
+              (this.#fileOperations.removePath ?? rmSync)(companion.displacedPath);
+            }
+            (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
+          } catch (cleanupError) {
+            companionCleanupError = normalizeError(cleanupError, "post-replacement companion cleanup failed");
           }
-          (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
-          return OfflineRestoreReportSchema.parse({
+          if (companionCleanupError !== undefined) {
+            if (replacementError === undefined) throw companionCleanupError;
+            throw new AggregateError(
+              [replacementError, companionCleanupError],
+              "atomic authority replacement failed after taking effect and companion cleanup also failed",
+              { cause: replacementError },
+            );
+          }
+          if (replacementError !== undefined) throw replacementError;
+          stagedReport = OfflineRestoreReportSchema.parse({
             state: "restored",
             restoredAt: this.#clock.now().toISOString(),
             manifestFileName: basename(verified.manifestPath),
@@ -280,11 +425,36 @@ export class OfflineAuthorityRestoreService {
             projectionRebuilt: true,
             authorityPreservedAcrossProjectionRebuild: true,
           });
-        } finally {
-          for (const path of [stagedPath, `${stagedPath}-wal`, `${stagedPath}-shm`]) {
-            if (existsSync(path)) rmSync(path);
-          }
+        } catch (error) {
+          stagedPrimaryError = normalizeError(error, "offline authority restore failed");
         }
+        const cleanupFailures = cleanupStagedPaths(
+          [stagedPath, `${stagedPath}-wal`, `${stagedPath}-shm`],
+          this.#fileOperations,
+        );
+        if (cleanupFailures.length > 0) {
+          const firstCleanupFailure = cleanupFailures[0];
+          if (firstCleanupFailure === undefined) {
+            throw new Error("staged cleanup reported failures without an error");
+          }
+          const cleanupSummary = cleanupFailures.map(errorMessage).join("; ");
+          if (stagedPrimaryError !== undefined) {
+            throw new AggregateError(
+              [stagedPrimaryError, ...cleanupFailures],
+              `offline authority restore failed (${errorMessage(stagedPrimaryError)}) and `
+              + `staged cleanup also failed (${cleanupSummary})`,
+              { cause: stagedPrimaryError },
+            );
+          }
+          throw new AggregateError(
+            cleanupFailures,
+            `offline authority restore staged cleanup failed (${cleanupSummary})`,
+            { cause: firstCleanupFailure },
+          );
+        }
+        if (stagedPrimaryError !== undefined) throw stagedPrimaryError;
+        if (stagedReport === undefined) throw new Error("offline authority restore produced no staged report");
+        return stagedReport;
       })();
     } catch (error) {
       restoreError = error instanceof OfflineRestoreFailure

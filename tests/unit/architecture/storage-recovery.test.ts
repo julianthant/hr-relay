@@ -1331,6 +1331,172 @@ describe("offline exact-backup restore", () => {
     assert.equal(readdirSync(suspects).length > 0, true);
   });
 
+  it("restores a companion when its displacement rename throws after moving it", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    database.authority.commands.insert(COMMAND_FIXTURES[0]);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    writeFileSync(`${authorityPath}-wal`, "live wal bytes");
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      CLOCK,
+      {
+        copyFile: copyFileSync,
+        atomicReplace: renameSync,
+        renamePath: (source, destination) => {
+          renameSync(source, destination);
+          if (source === `${authorityPath}-wal` && destination.endsWith(".live-companion")) {
+            throw new Error("injected displacement error after rename");
+          }
+        },
+      },
+    );
+
+    let failure: unknown;
+    try {
+      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+    } catch (error) {
+      failure = error;
+    }
+
+    assert.ok(failure instanceof OfflineRestoreFailure);
+    assert.equal(failure.authorityState, "unchanged");
+    assert.match(failure.message, /injected displacement error after rename/u);
+    assert.ok(failure.cause instanceof Error);
+    assert.equal(failure.cause.message, "injected displacement error after rename");
+    assert.equal(readFileSync(`${authorityPath}-wal`, "utf8"), "live wal bytes");
+    assert.equal(readdirSync(root).some((name) => name.endsWith(".live-companion")), false);
+  });
+
+  it("reports authority replaced when atomic swap throws after replacing it", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    database.authority.commands.insert(COMMAND_FIXTURES[0]);
+    const backupGeneration = database.getMeta().authorityGeneration;
+    const { manifestPath } = await createBackup(database, directory);
+    database.authority.notifications.create(NOTIFICATION);
+    database.close();
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      CLOCK,
+      {
+        copyFile: copyFileSync,
+        atomicReplace: (source, destination) => {
+          renameSync(source, destination);
+          throw new Error("injected atomic swap error after rename");
+        },
+      },
+    );
+
+    let failure: unknown;
+    try {
+      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+    } catch (error) {
+      failure = error;
+    }
+
+    assert.ok(failure instanceof OfflineRestoreFailure);
+    assert.equal(failure.authorityState, "replaced");
+    assert.match(failure.message, /injected atomic swap error after rename/u);
+    assert.ok(failure.cause instanceof Error);
+    assert.equal(failure.cause.message, "injected atomic swap error after rename");
+    assert.equal(
+      AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration,
+      backupGeneration,
+    );
+  });
+
+  it("reports cleanup-only failure after authority replacement and names the staged path", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    let cleanupPath = "";
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      CLOCK,
+      {
+        copyFile: copyFileSync,
+        atomicReplace: (source, destination) => {
+          renameSync(source, destination);
+          cleanupPath = `${source}-wal`;
+          writeFileSync(cleanupPath, "staged cleanup bytes");
+        },
+        removePath: (path) => {
+          if (path === cleanupPath) throw new Error("injected staged cleanup failure");
+          rmSync(path);
+        },
+      },
+    );
+
+    let failure: unknown;
+    try {
+      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+    } catch (error) {
+      failure = error;
+    }
+
+    assert.ok(failure instanceof OfflineRestoreFailure);
+    assert.equal(failure.authorityState, "replaced");
+    assert.match(failure.message, /injected staged cleanup failure/u);
+    assert.match(failure.message, new RegExp(cleanupPath, "u"));
+    assert.equal(existsSync(cleanupPath), true);
+  });
+
+  it("preserves primary failure before staged cleanup failure", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    let stagedPath = "";
+    const primaryError = new Error("injected primary projection failure");
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async (path) => {
+        stagedPath = path;
+        throw primaryError;
+      },
+      CLOCK,
+      {
+        copyFile: copyFileSync,
+        atomicReplace: renameSync,
+        removePath: (path) => {
+          if (path === stagedPath) throw new Error("injected cleanup after primary failure");
+          rmSync(path);
+        },
+      },
+    );
+
+    let failure: unknown;
+    try {
+      await restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) });
+    } catch (error) {
+      failure = error;
+    }
+
+    assert.ok(failure instanceof OfflineRestoreFailure);
+    assert.equal(failure.authorityState, "unchanged");
+    assert.match(failure.message, /injected primary projection failure/u);
+    assert.match(failure.message, /injected cleanup after primary failure/u);
+    assert.match(failure.message, new RegExp(stagedPath, "u"));
+    assert.ok(failure.cause instanceof AggregateError);
+    assert.equal(failure.cause.cause, primaryError);
+    assert.equal(failure.cause.errors[0], primaryError);
+    assert.equal(existsSync(stagedPath), true);
+  });
+
   it.each([
     { operation: "rename", expectedLiveCompanion: false },
     { operation: "fsync", expectedLiveCompanion: false },
