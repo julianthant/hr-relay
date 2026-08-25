@@ -1,7 +1,17 @@
 import { expect, test, type Page } from "@playwright/test";
-import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
+import { DashboardDayWireSchema } from "../../src/domain/dashboard/projection.js";
+import {
+  fixtureSnapshotEnvelope,
+  startFixtureServer,
+  type FixtureServer,
+} from "./helpers/fixture-bff.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
-import { FIXTURE_DAY, FIXTURE_IDS } from "./helpers/fixture-day.js";
+import {
+  FIXTURE_DAY,
+  FIXTURE_DAY_WIRE,
+  FIXTURE_IDS,
+  FIXTURE_RUN_DETAILS,
+} from "./helpers/fixture-day.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 
 const RUN = FIXTURE_IDS.doneRun;
@@ -78,6 +88,18 @@ async function serveObservedLogs(page: Page): Promise<void> {
   });
 }
 
+function deferred<Value>() {
+  let settle: ((value: Value) => void) | undefined;
+  const promise = new Promise<Value>((resolve) => { settle = resolve; });
+  return {
+    promise,
+    resolve(value: Value): void {
+      if (settle === undefined) throw new Error("deferred promise was not initialized");
+      settle(value);
+    },
+  };
+}
+
 let server: FixtureServer;
 
 test.beforeAll(async () => {
@@ -87,6 +109,140 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await server.close();
+});
+
+test("a stale continuation cannot append to or clear loading for a refreshed snapshot", async ({ page }) => {
+  const firstRelease = deferred<void>();
+  const firstFulfilled = deferred<void>();
+  const secondRelease = deferred<void>();
+  const firstCursor = `lc:${"a".repeat(64)}:3`;
+  const secondCursor = `lc:${"b".repeat(64)}:1`;
+  const secondInitialNote = {
+    noteId: "e1b8ae3e-0000-4000-8000-000000000011",
+    runId: RUN,
+    sequence: 1,
+    at: AT,
+    level: "warning" as const,
+    message: "Current run B evidence",
+  };
+  const secondNextNote = {
+    ...secondInitialNote,
+    noteId: "e1b8ae3e-0000-4000-8000-000000000012",
+    sequence: 2,
+    message: "Current run B continuation",
+  };
+
+  let initialLogReads = 0;
+  let firstContinuationReads = 0;
+  let secondContinuationReads = 0;
+  let refreshed = false;
+  const logRequestUrls: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes(`/api/v1/runs/${RUN}/logs`)) logRequestUrls.push(request.url());
+  });
+  await page.route(`**/api/v1/runs/${RUN}/logs**`, async (route) => {
+    const url = new URL(route.request().url());
+    const cursor = url.searchParams.get("cursor");
+    if (cursor === null) {
+      initialLogReads += 1;
+      if (!refreshed) {
+        await route.fulfill({ contentType: "application/json", body: JSON.stringify(logResponse(false)) });
+        return;
+      }
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          section: "logs",
+          payload: {
+            runId: RUN,
+            rows: [{ kind: "note", logId: secondInitialNote.noteId, sequence: 1, note: secondInitialNote }],
+            notes: [secondInitialNote],
+            nextCursor: { state: "present", value: secondCursor },
+          },
+        }),
+      });
+      return;
+    }
+    if (cursor === firstCursor) {
+      firstContinuationReads += 1;
+      await firstRelease.promise;
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify(logResponse(true)) });
+      firstFulfilled.resolve();
+      return;
+    }
+    if (cursor === secondCursor) {
+      secondContinuationReads += 1;
+      await secondRelease.promise;
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          section: "logs",
+          payload: {
+            runId: RUN,
+            rows: [{ kind: "note", logId: secondNextNote.noteId, sequence: 2, note: secondNextNote }],
+            notes: [secondNextNote],
+            nextCursor: { state: "absent", reason: "end-of-page" },
+          },
+        }),
+      });
+      return;
+    }
+    throw new Error(`unexpected log cursor ${String(cursor)}`);
+  });
+
+  const detailFixture = FIXTURE_RUN_DETAILS[RUN];
+  if (detailFixture === undefined) throw new Error(`fixture run ${RUN} has no detail`);
+  let detailReads = 0;
+  await page.route(`**/api/v1/runs/${RUN}`, async (route) => {
+    detailReads += 1;
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...detailFixture,
+        rowRevision: detailFixture.rowRevision + (refreshed ? 1 : 0),
+      }),
+    });
+  });
+
+  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: RUN, section: "logs" });
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Load more lines" }).click();
+  await expect(page.getByRole("button", { name: "Loading more lines…" })).toBeVisible();
+  await expect.poll(() => firstContinuationReads, { timeout: 10_000 }).toBe(1);
+  expect(logRequestUrls.some((url) => new URL(url).searchParams.get("cursor") === firstCursor)).toBe(true);
+
+  refreshed = true;
+  const refreshedDay = DashboardDayWireSchema.parse({
+      ...FIXTURE_DAY_WIRE,
+      queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map((surface) => (
+        surface.runId === RUN
+          ? {
+              ...surface,
+              rowRevision: surface.rowRevision + 1,
+              actions: surface.actions.map((action) => action.kind === "command"
+                ? { ...action, expectedVersion: action.expectedVersion + 1 }
+                : action),
+            }
+          : surface
+      )),
+  });
+  server.publish(fixtureSnapshotEnvelope(refreshedDay, "pc:2"));
+  await expect.poll(() => detailReads, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => initialLogReads, { timeout: 10_000 }).toBeGreaterThanOrEqual(2);
+  await expect(page.getByText(secondInitialNote.message)).toBeVisible();
+  await page.getByRole("button", { name: "Load more lines" }).click();
+  await expect.poll(() => secondContinuationReads, { timeout: 10_000 }).toBe(1);
+  await expect(page.getByRole("button", { name: "Loading more lines…" })).toBeVisible();
+
+  firstRelease.resolve();
+  await firstFulfilled.promise;
+  await expect(page.getByText(secondInitialNote.message)).toBeVisible();
+  await expect(page.getByRole("list", { name: "Run log lines" }).getByRole("listitem")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Loading more lines…" })).toBeVisible();
+
+  secondRelease.resolve();
+  await expect(page.getByText(secondNextNote.message)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Loading more lines…" })).toHaveCount(0);
 });
 
 for (const viewport of [

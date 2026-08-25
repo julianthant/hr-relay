@@ -1154,7 +1154,7 @@ function LogsTab({
     return response.payload;
   }, [client, detail.runId]);
   const paged = useLogPages(notes, loadNext);
-  const lines = useMemo(() => logRowsOf(paged.page), [paged.page]);
+  const lines = useMemo(() => logRowsOf(paged.page, "current"), [paged.page]);
   const trimmed = query.trim().toLowerCase();
   const matches = useCallback(
     (row: LogRow): boolean => rowMatchesLogQuery(row, trimmed),

@@ -69,8 +69,24 @@ function page(rows: readonly ReturnType<typeof observed>[], cursor: { state: "pr
 }
 
 describe("observed log presentation fold", () => {
+  it("fails loud with run and cursor when a live page omits strict rows", () => {
+    const cursor = `lc:${"e".repeat(64)}:4`;
+    const noteRow = note(1);
+    if (noteRow.kind !== "note") throw new Error("the note fixture did not parse as a note row");
+    const notesOnly = NotePageSchema.parse({
+      runId: RUN,
+      notes: [noteRow.note],
+      nextCursor: { state: "absent", reason: "end-of-page" },
+    });
+
+    assert.throws(
+      () => logRowsOf(notesOnly, cursor),
+      new RegExp(`live log page for run ${RUN} at cursor ${cursor} is missing rows`),
+    );
+  });
+
   it("keeps every strict row kind in sequence order even when observations share a timestamp", () => {
-    const rows = logRowsOf(page([fence(3), note(1), observed(2)], { state: "absent", reason: "end-of-page" }));
+    const rows = logRowsOf(page([fence(3), note(1), observed(2)], { state: "absent", reason: "end-of-page" }), "initial");
     assert.deepEqual(rows.map((row) => [row.kind, row.sequence]), [["note", 1], ["observed", 2], ["transaction-fenced", 3]]);
   });
 
@@ -104,17 +120,31 @@ describe("observed log presentation fold", () => {
   });
 
   it("appends an immutable next page without altering the first snapshot", () => {
-    const first = page([note(1), observed(2)], { state: "present", value: `lc:${"a".repeat(64)}:2` });
+    const cursor = `lc:${"a".repeat(64)}:2`;
+    const first = page([note(1), observed(2)], { state: "present", value: cursor });
     const next = page([fence(3)], { state: "absent", reason: "end-of-page" });
-    const appended = appendLogPage(first, next);
-    assert.deepEqual(logRowsOf(first).map((row) => row.sequence), [1, 2]);
-    assert.deepEqual(logRowsOf(appended).map((row) => row.sequence), [1, 2, 3]);
+    const appended = appendLogPage(first, cursor, next);
+    assert.deepEqual(logRowsOf(first, "initial").map((row) => row.sequence), [1, 2]);
+    assert.deepEqual(logRowsOf(appended, cursor).map((row) => row.sequence), [1, 2, 3]);
     assert.deepEqual(appended.nextCursor, { state: "absent", reason: "end-of-page" });
   });
 
   it("refuses a duplicated append instead of silently losing or reordering evidence", () => {
-    const first = page([observed(2)], { state: "present", value: `lc:${"b".repeat(64)}:1` });
+    const cursor = `lc:${"b".repeat(64)}:1`;
+    const first = page([observed(2)], { state: "present", value: cursor });
     const duplicate = page([observed(2)], { state: "absent", reason: "end-of-page" });
-    assert.throws(() => appendLogPage(first, duplicate), /duplicate log sequence 2/);
+    assert.throws(() => appendLogPage(first, cursor, duplicate), /duplicate log sequence 2/);
+  });
+
+  it("refuses a continuation launched for a different cursor than the current snapshot owns", () => {
+    const ownedCursor = `lc:${"c".repeat(64)}:1`;
+    const staleCursor = `lc:${"d".repeat(64)}:1`;
+    const first = page([observed(1)], { state: "present", value: ownedCursor });
+    const next = page([observed(2)], { state: "absent", reason: "end-of-page" });
+
+    assert.throws(
+      () => appendLogPage(first, staleCursor, next),
+      new RegExp(`cursor ${staleCursor}.*current run ${RUN} owns ${ownedCursor}`),
+    );
   });
 });

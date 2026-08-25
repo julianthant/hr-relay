@@ -7,7 +7,7 @@
  * surface invalidate upward into `dashboard-app.tsx` and remount the app
  * instead of hot-swapping the component.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { z } from "zod";
 import { fmtClock } from "./format.js";
 import type { LogRowWire, NotePageSchema, RunDetailWireSchema } from "../../domain/dashboard/run-detail.js";
@@ -32,20 +32,19 @@ export interface LogRowGroup {
 }
 
 /**
- * Live pages now carry `rows`; legacy archive pages still carry only the
- * compatibility notes mirror. In both cases the server sequence is the one
- * ordering key. Observations may share a clock instant, so time must never be
- * used as a tie-breaker.
+ * Live pages must carry `rows`. The notes-only compatibility shape belongs to
+ * frozen archive readers; this live surface must never silently reinterpret it.
+ * The server sequence is the one ordering key. Observations may share a clock
+ * instant, so time must never be used as a tie-breaker.
  */
-export function logRowsOf(page: NotePage | undefined): readonly LogRowWire[] {
+export function logRowsOf(page: NotePage | undefined, requestedCursor: string): readonly LogRowWire[] {
   if (page === undefined) return [];
-  const rows: readonly LogRowWire[] = page.rows ?? page.notes.map((note) => ({
-    kind: "note" as const,
-    logId: note.noteId,
-    sequence: note.sequence,
-    note,
-  }));
-  return rows.toSorted((left, right) => left.sequence - right.sequence);
+  if (page.rows === undefined) {
+    throw new Error(
+      `live log page for run ${String(page.runId)} at cursor ${requestedCursor} is missing rows`,
+    );
+  }
+  return page.rows.toSorted((left, right) => left.sequence - right.sequence);
 }
 
 function renderedRedactedValue(value: Extract<LogRowWire, { kind: "observed" }> ["points"][number]["values"][number]): string {
@@ -103,10 +102,16 @@ export function groupLogRows(rows: readonly LogRowWire[]): readonly LogRowGroup[
  * re-sorting evidence. A duplicate sequence is a broken cursor contract, not
  * a reason to silently drop a row.
  */
-export function appendLogPage(page: NotePage, next: NotePage): NotePage {
+export function appendLogPage(page: NotePage, requestedCursor: string, next: NotePage): NotePage {
+  if (page.nextCursor.state !== "present" || page.nextCursor.value !== requestedCursor) {
+    const ownedCursor = page.nextCursor.state === "present" ? page.nextCursor.value : page.nextCursor.reason;
+    throw new Error(
+      `cannot append cursor ${requestedCursor}: current run ${String(page.runId)} owns ${ownedCursor}`,
+    );
+  }
   if (page.runId !== next.runId) throw new Error(`cannot append logs for ${String(next.runId)} to ${String(page.runId)}`);
-  const existing = logRowsOf(page);
-  const appended = logRowsOf(next);
+  const existing = logRowsOf(page, `current-before-${requestedCursor}`);
+  const appended = logRowsOf(next, requestedCursor);
   const seen = new Set(existing.map((row) => row.sequence));
   for (const row of appended) {
     if (seen.has(row.sequence)) throw new Error(`duplicate log sequence ${String(row.sequence)} in append page`);
@@ -124,6 +129,19 @@ export interface LogPagesState {
   readonly loadMore: () => void;
 }
 
+interface LogPageRequest {
+  readonly ownerKey: string;
+  readonly runId: string;
+  readonly cursor: string;
+}
+
+interface LogPageSnapshot {
+  readonly ownerKey: string;
+  readonly page: NotePage | undefined;
+  readonly request: LogPageRequest | undefined;
+  readonly error: Error | undefined;
+}
+
 /**
  * The logs section remains lazy. It appends only the server's next immutable
  * cursor page and leaves evidence already on screen intact while that request
@@ -138,40 +156,86 @@ export function useLogPages(
     return [
       String(initial.runId),
       initial.nextCursor.state === "present" ? initial.nextCursor.value : initial.nextCursor.reason,
-      ...logRowsOf(initial).map((row) => `${row.logId}:${String(row.sequence)}`),
+      ...logRowsOf(initial, "initial").map((row) => `${row.logId}:${String(row.sequence)}`),
     ].join("|");
   }, [initial]);
-  const [page, setPage] = useState<NotePage | undefined>(initial);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<Error | undefined>();
-
-  useEffect(() => {
-    setPage(initial);
-    setLoading(false);
-    setError(undefined);
-  }, [initial, initialKey]);
+  const liveOwnerKey = useRef(initialKey);
+  liveOwnerKey.current = initialKey;
+  const [snapshot, setSnapshot] = useState<LogPageSnapshot>({
+    ownerKey: initialKey,
+    page: initial,
+    request: undefined,
+    error: undefined,
+  });
+  const current = snapshot.ownerKey === initialKey
+    ? snapshot
+    : { ownerKey: initialKey, page: initial, request: undefined, error: undefined };
 
   const loadMore = useCallback(() => {
-    if (page?.nextCursor.state !== "present" || loading) return;
-    const cursor = page.nextCursor.value;
-    setLoading(true);
-    setError(undefined);
+    if (current.page?.nextCursor.state !== "present" || current.request !== undefined) return;
+    const request: LogPageRequest = {
+      ownerKey: initialKey,
+      runId: String(current.page.runId),
+      cursor: current.page.nextCursor.value,
+    };
+    setSnapshot({ ...current, request, error: undefined });
+    const cursor = request.cursor;
     void load(cursor).then(
       (next) => {
-        setPage((current) => {
-          if (current === undefined) throw new Error("the log page disappeared while its next page was loading");
-          return appendLogPage(current, next);
+        setSnapshot((settled) => {
+          if (
+            liveOwnerKey.current !== request.ownerKey
+            || settled.ownerKey !== request.ownerKey
+            || settled.request !== request
+          ) return settled;
+          if (settled.page === undefined) {
+            return {
+              ...settled,
+              request: undefined,
+              error: new Error(
+                `log continuation for run ${request.runId} at cursor ${request.cursor} lost its current page`,
+              ),
+            };
+          }
+          try {
+            return {
+              ...settled,
+              page: appendLogPage(settled.page, request.cursor, next),
+              request: undefined,
+              error: undefined,
+            };
+          } catch (caught) {
+            return {
+              ...settled,
+              request: undefined,
+              error: caught instanceof Error ? caught : new Error(String(caught)),
+            };
+          }
         });
-        setLoading(false);
       },
       (reason: unknown) => {
-        setLoading(false);
-        setError(reason instanceof Error ? reason : new Error("could not load more log lines"));
+        setSnapshot((settled) => {
+          if (
+            liveOwnerKey.current !== request.ownerKey
+            || settled.ownerKey !== request.ownerKey
+            || settled.request !== request
+          ) return settled;
+          return {
+            ...settled,
+            request: undefined,
+            error: reason instanceof Error ? reason : new Error("could not load more log lines"),
+          };
+        });
       },
     );
-  }, [load, loading, page]);
+  }, [current, initialKey, load]);
 
-  return { page, loading, error, loadMore };
+  return {
+    page: current.page,
+    loading: current.request !== undefined,
+    error: current.error,
+    loadMore,
+  };
 }
 
 /** The tab set this slice can draw. Review and People are advertised, not assumed. */
