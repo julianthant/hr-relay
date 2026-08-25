@@ -96,10 +96,12 @@ export type ArchiveSchemaGeneration = z.infer<typeof ArchiveSchemaGenerationSche
  * because a new record that named no code would be indistinguishable from a
  * record written before codes were frozen.
  *
- * Generation 4 is D269: the frozen QueueSurface carries its `session` arm.
- * Generation-1/2/3 rows predate that wire field and retain no key; readers add
- * an honest absence only to the served wire, never to the stored record or its
- * digest. A generation-4 writer must freeze the live row's required arm.
+ * Generation 4 is D269: the frozen QueueSurface requires its `session` arm.
+ * Generation-1/2/3 rows may omit that key or carry it because generation 3 was
+ * the current writer when the live QueueSurface wire first required the arm.
+ * Readers add an honest absence only when the stored row omits it, never
+ * changing the stored record or its digest. A generation-4 writer must freeze
+ * the live row's required arm.
  */
 export const CURRENT_ARCHIVE_SCHEMA_GENERATION = 4;
 
@@ -449,7 +451,7 @@ function refineCodeGeneration(
   }
 }
 
-/** D269's frozen session arm and generation are one fact, checked both ways. */
+/** D269 requires every generation-4-or-later record to freeze the session arm. */
 function refineSessionGeneration(
   record: Readonly<{ archiveSchemaGeneration: number; row: { session?: unknown } }>,
   context: z.RefinementCtx,
@@ -460,13 +462,6 @@ function refineSessionGeneration(
       path: ["row", "session"],
       message: "an archive record at generation 4 or later must carry the frozen QueueSurface session arm (D269); "
         + "an absent key means the row was archived before D269",
-    });
-  }
-  if (record.archiveSchemaGeneration < 4 && record.row.session !== undefined) {
-    context.addIssue({
-      code: "custom",
-      path: ["archiveSchemaGeneration"],
-      message: "a pre-generation-4 archive record predates D269's frozen session arm and cannot carry one",
     });
   }
 }

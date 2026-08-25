@@ -3402,11 +3402,12 @@ spreadsheet sorts and filters columns. The code itself is ref workflow-model §1
 
 **D269 adds archive schema generation 4 for the frozen QueueSurface session arm.** The live row
 requires `session: {present, sessionId} | {absent, reason}`; making that wire optional would weaken
-every current queue response merely to read history. The archive storage reader alone admits a
-missing key on generation 1–3, preserves the stored JSON and `contentDigest` byte-for-byte, and the
-archived-detail query serves `absent: no session recorded (archived before D269)`. Generation 4
-requires the frozen arm, and a pre-generation-4 record carrying it refuses in the opposite
-direction, under the same generation-refinement rule as sections and workflow code.
+every current queue response merely to read history. Generation 3 was the current archive writer
+when that live wire already required `session`, so generation 1–3 records legitimately carry either
+shape. The archive storage reader alone admits their missing key, preserves the stored JSON and
+`contentDigest` byte-for-byte, and the archived-detail query serves `absent: no session recorded
+(archived before D269)` only when the key is absent. Generation 4 requires the frozen arm; unlike
+sections and workflow code, compatibility has no inverse pre-generation-4 refusal.
 
 **The three arms, and where each refusal is computed:**
 

@@ -585,7 +585,7 @@ describe("the D80 archive model", () => {
     });
   });
 
-  it("binds the frozen session arm to archive generation 4 in both directions", () => {
+  it("requires the frozen session arm in archive generation 4", () => {
     const generation4 = {
       ...ARCHIVED_RUN,
       archiveSchemaGeneration: 4,
@@ -604,13 +604,21 @@ describe("the D80 archive model", () => {
     const refusedCurrent = ArchivedRunRecordSchema.safeParse({ ...generation4, row: sessionlessRow });
     assert.equal(refusedCurrent.success, false);
     assert.match(JSON.stringify(refusedCurrent.error?.issues ?? []), /generation 4 or later must carry.*session/u);
+  });
 
-    const refusedEarly = ArchivedRunRecordSchema.safeParse({
+  it("reads a generation-3 archive that already carries the QueueSurface session arm", () => {
+    const generation3 = {
       ...ARCHIVED_RUN,
-      row: { ...ARCHIVED_RUN.row, session: generation4.row.session },
-    });
-    assert.equal(refusedEarly.success, false);
-    assert.match(JSON.stringify(refusedEarly.error?.issues ?? []), /predates D269's frozen session arm/u);
+      archiveSchemaGeneration: 3,
+      sections: ARCHIVED_RUN_WITH_SECTIONS.sections,
+      workflowCode: { state: "present" as const, value: "pl" },
+      row: {
+        ...ARCHIVED_RUN.row,
+        session: { state: "present" as const, sessionId: UUID_4 },
+      },
+    };
+
+    assert.equal(ArchivedRunRecordSchema.safeParse(generation3).success, true);
   });
 
   /**
