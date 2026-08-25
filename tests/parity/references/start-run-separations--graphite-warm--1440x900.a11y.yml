@@ -1,0 +1,81 @@
+# start-run-separations--graphite-warm--1440x900
+# adapter: fixture
+# fixture: start-run-separations
+# descriptorHash: a7d4624ee48d4008d7796a5db65c5e6511d0be9a21c58ebe6ffac49f8d5f8df8
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: Pick what to run. It declares what it takes, and the plan says exactly what will exist before anything is enqueued.
+    - button "Close"
+  - text: Filter workflows
+  - textbox "Filter workflows":
+    - /placeholder: Filter
+  - navigation "Workflow":
+    - text: Separations
+    - list:
+      - listitem:
+        - button "Separation sp"
+    - text: Search
+    - list:
+      - listitem:
+        - button "Person Lookup pl"
+  - text: Separations
+  - list:
+    - listitem: Separation Document , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
+    - listitem: Identity Check , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
+    - listitem: UCPath Termination , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
+    - listitem: Kuali Finalization , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
+  - text: Timekeeping
+  - list:
+    - listitem: Separation Timecard , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
+  - button "5 not startable" [expanded]
+  - navigation "Start stages — step 1 of 3":
+    - button "1 Input"
+    - button "2 Plan" [disabled]
+    - button "3 Result" [disabled]
+  - text: Workflow setup
+  - heading "Person Lookup" [level=3]
+  - text: group Search
+  - paragraph: "Resolves ONE person across UCPath and the CRM: searches Person Org by EID or name, cross-verifies the match against the CRM onboarding record, folds the two into an active / inactive verdict, and reads the CRM onboarding dates when the run asks for them."
+  - text: Examples
+  - button "One EID"
+  - button "An EID and a name"
+  - text: employee IDs — separated by “;” or a new line 0 parsed
+  - textbox "employee IDs — separated by “;” or a new line":
+    - /placeholder: Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)
+  - paragraph: An employee ID is eight digits beginning 10; anything else is taken exactly as typed.
+  - text: How this run is shaped keepNonHdh no includeCrmDates no
+  - complementary "Run controls":
+    - text: Shared settings
+    - heading "Run controls" [level=3]
+    - paragraph: These options work the same way for every workflow.
+    - heading "Queue behavior" [level=4]
+    - paragraph: Choose how this work enters the browser queue.
+    - text: Active-run policy Refuses the start while a run for the same subject is unfinished Priority
+    - combobox "Priority":
+      - option "Interactive" [selected]
+      - option "Bulk"
+    - paragraph: Bulk work yields whenever interactive work needs the browser.
+    - heading "Safety & mode" [level=4]
+    - paragraph: Apply optional limits before the run starts.
+    - checkbox "Dry run not declared by this workflow" [disabled]
+    - text: Dry run not declared by this workflow
+    - heading "Destination" [level=4]
+    - paragraph: Confirm the systems this run is allowed to write to.
+    - text: UCPATH
+    - combobox "UCPATH":
+      - option "Production" [selected]
+      - option "Test instance"
+    - text: CRM
+    - combobox "CRM" [disabled]:
+      - option "Production" [selected]
+      - option "Test instance — not wired" [disabled]
+    - paragraph: no CRM test instance is configured
+  - contentinfo:
+    - text: Person LookupType at least one value.
+    - button "Cancel"
+    - button "Plan the run" [disabled]

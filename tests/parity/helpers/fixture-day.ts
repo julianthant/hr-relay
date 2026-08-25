@@ -14,6 +14,13 @@ import { z } from "zod";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
+import { personLookupModule } from "../../../src/workflows/person-lookup/module.js";
+import { separationsIdentityCheckModule } from "../../../src/workflows/separations/identity-check/module.js";
+import { separationsKronosTimecardModule } from "../../../src/workflows/separations/kronos-timecard/module.js";
+import { separationsKualiFinalizationModule } from "../../../src/workflows/separations/kuali-finalization/module.js";
+import { separationsKualiReadModule } from "../../../src/workflows/separations/kuali-extraction/module.js";
+import { separationsUcpathTerminationModule } from "../../../src/workflows/separations/ucpath-transaction/module.js";
+import { separationsModule } from "../../../src/workflows/separations/module.js";
 import {
   FrontendBootstrapWireSchema,
   type FrontendBootstrapWire,
@@ -1199,6 +1206,50 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
     { feature: "archive", availability: { state: "unavailable", code: "deferred", reason: "archive lands in 2i" } },
     { feature: "workflow-editor", availability: { state: "unavailable", code: "deferred", reason: "the editor lands in a later phase" } },
   ],
+});
+
+/**
+ * The start-picker reference needs the actual registry shape, while the day
+ * fixture above intentionally remains the Person Lookup queue corpus. Keeping
+ * these as separate profiles prevents a picker-coverage addition from
+ * redrawing unrelated queue references.
+ *
+ * Every role comes from its real `module.ts`, not a fixture-local spelling: in
+ * particular, the Kronos timecard is a `timekeeping` harness of `separations`.
+ * That cross-category fact is the regression this profile exists to capture.
+ */
+const START_PICKER_MODULES = Object.freeze([
+  personLookupModule,
+  separationsKronosTimecardModule,
+  separationsKualiReadModule,
+  separationsIdentityCheckModule,
+  separationsUcpathTerminationModule,
+  separationsKualiFinalizationModule,
+  separationsModule,
+]);
+
+export const FIXTURE_START_PICKER_DESCRIPTOR_HASH = descriptorSetHash(
+  START_PICKER_MODULES.map(({ descriptor }) => descriptor.contractFingerprint),
+);
+
+export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
+  ...FIXTURE_BOOTSTRAP,
+  descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+  workflows: START_PICKER_MODULES.map(({ descriptor, role }) => ({
+    id: descriptor.id,
+    code: descriptor.code,
+    label: descriptor.label,
+    categoryId: descriptor.category,
+    descriptorFingerprint: descriptor.contractFingerprint,
+    availability: { state: "available" },
+    role,
+  })),
+});
+
+/** The start-picker profile's day and bootstrap name the same current descriptor set. */
+export const FIXTURE_START_PICKER_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
+  ...FIXTURE_DAY_WIRE,
+  descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
 });
 
 /* ── start plan + command results ────────────────────────────────────────── */
