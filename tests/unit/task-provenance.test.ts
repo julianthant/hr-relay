@@ -5,6 +5,7 @@ import { createTaskProvenanceCollector } from "../../src/core/task-provenance.js
 import type { RecordedDataBatch } from "../../src/core/task-provenance.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
+import type { Clock } from "../../src/domain/clock.js";
 import { ContractFieldPathSchema, ProvenancePolicySchema } from "../../src/domain/contracts/base.js";
 import {
   CrmReadOnboardingRecord,
@@ -248,7 +249,24 @@ function dependencyCheckpoints(): Readonly<{
 describe("task provenance collector", () => {
   it("hands each recordData CALL to the sink at record time, under ONE shared instant (D270)", () => {
     observedBatches.length = 0;
-    const provenance = collector("searching", SearchPersonOrg.id, []);
+    const baseClock = manualClock(new Date(NOW));
+    let clockReads = 0;
+    const advancingClock: Clock = Object.freeze({
+      ...baseClock,
+      now(): Date {
+        const instant = baseClock.now();
+        clockReads += 1;
+        baseClock.advanceWall(1_000);
+        return instant;
+      },
+    });
+    const provenance = createTaskProvenanceCollector({
+      descriptor: personLookupDescriptor,
+      execution: execution("searching", SearchPersonOrg.id),
+      upstreamEvidence: { checkpoints: [] },
+      clock: advancingClock,
+      onRecord: recordBatch,
+    });
     // A batch is one observation of the page, so it is one sink call...
     provenance.recordData([
       { direction: "read", field: "results", value: person.results },
@@ -256,16 +274,19 @@ describe("task provenance collector", () => {
     ]);
     assert.equal(observedBatches.length, 1);
     assert.equal(observedBatches[0]?.points.length, 2);
+    assert.equal(clockReads, 1);
     // ...stamped ONCE, so the emitted event carries an honest `observedAt`
     // rather than one derived from whichever point happened to be first.
     assert.deepEqual([...new Set(observedBatches[0]?.points.map((point) => point.recordedAt))],
-      [observedBatches[0]?.recordedAt]);
+      [NOW]);
+    assert.equal(observedBatches[0]?.recordedAt, NOW);
 
     // The sink is called BEFORE finalization, which is the whole point: a task
     // that throws after reading the page has still read the page.
     assert.equal(observedBatches.length, 1);
     provenance.finalizeRead(person);
     assert.equal(observedBatches.length, 1);
+    assert.equal(clockReads, 1);
   });
 
   it("calls the sink once per CALL, not once per task (D270)", () => {
