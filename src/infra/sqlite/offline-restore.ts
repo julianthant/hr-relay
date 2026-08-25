@@ -16,7 +16,10 @@ import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { AuthorityDatabase } from "./authority-database.js";
-import { verifyBackupManifestAtPath } from "./backup-service.js";
+import {
+  verifyBackupBytesAtPath,
+  verifyBackupManifestAtPath,
+} from "./backup-service.js";
 import {
   OfflineRestoreReportSchema,
   OfflineRestoreRequestSchema,
@@ -26,6 +29,7 @@ import { RecoveryStopProofStore } from "./recovery-stop-proof.js";
 import {
   acquireRuntimeRestoreAdmission,
   observeRuntimeLockSnapshot,
+  type RestoreAdmissionHandle,
 } from "./runtime-process-locks.js";
 
 export const OfflineRestoreOptionsSchema = z.strictObject({
@@ -39,7 +43,26 @@ export const OfflineRestoreOptionsSchema = z.strictObject({
 export interface OfflineRestoreFileOperations {
   copyFile(source: string, destination: string): void;
   atomicReplace(source: string, destination: string): void;
+  /** Test seam for post-swap durability failures; production uses fsync. */
+  readonly syncPath?: (path: string) => void;
 }
+
+export type OfflineRestoreAuthorityState = "unchanged" | "replaced";
+
+export class OfflineRestoreFailure extends Error {
+  readonly authorityState: OfflineRestoreAuthorityState;
+
+  constructor(authorityState: OfflineRestoreAuthorityState, message: string, cause: unknown) {
+    super(`${message}: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    this.name = "OfflineRestoreFailure";
+    this.authorityState = authorityState;
+  }
+}
+
+export type OfflineRestoreAdmissionFactory = (
+  input: Readonly<{ processLockRoot: string; pid: number }>,
+  clock: Clock,
+) => RestoreAdmissionHandle;
 
 const DEFAULT_FILE_OPERATIONS: OfflineRestoreFileOperations = Object.freeze({
   copyFile: copyFileSync,
@@ -62,7 +85,7 @@ function copyAndSync(
 ): void {
   fileOperations.copyFile(source, destination);
   chmodSync(destination, 0o600);
-  fsyncPath(destination);
+  (fileOperations.syncPath ?? fsyncPath)(destination);
 }
 
 export class OfflineAuthorityRestoreService {
@@ -74,12 +97,14 @@ export class OfflineAuthorityRestoreService {
   #fileOperations: OfflineRestoreFileOperations;
   #stopProofStore: RecoveryStopProofStore;
   #processLockRoot: string;
+  #admissionFactory: OfflineRestoreAdmissionFactory;
 
   constructor(
     input: unknown,
     projectionRebuild: (stagedAuthorityPath: string) => Promise<void>,
     clock: Clock = systemClock,
     fileOperations: OfflineRestoreFileOperations = DEFAULT_FILE_OPERATIONS,
+    admissionFactory: OfflineRestoreAdmissionFactory = acquireRuntimeRestoreAdmission,
   ) {
     const options = OfflineRestoreOptionsSchema.parse(input);
     this.#authorityPath = resolve(options.authorityPath);
@@ -89,6 +114,7 @@ export class OfflineAuthorityRestoreService {
     this.#clock = clock;
     this.#fileOperations = fileOperations;
     this.#processLockRoot = resolve(options.processLockRoot);
+    this.#admissionFactory = admissionFactory;
     this.#stopProofStore = new RecoveryStopProofStore({
       processLockRoot: options.processLockRoot,
       maxProofAgeMs: options.stoppedProofMaxAgeMs,
@@ -103,19 +129,23 @@ export class OfflineAuthorityRestoreService {
     }
 
     const verified = await verifyBackupManifestAtPath(request.manifestPath, sourceDatabaseIdentity);
-    const restoreAdmission = acquireRuntimeRestoreAdmission({
+    const restoreAdmission = this.#admissionFactory({
       processLockRoot: this.#processLockRoot,
       pid: process.pid,
     }, this.#clock);
+    let authorityState: OfflineRestoreAuthorityState = "unchanged";
     let restoreReport: OfflineRestoreReport | undefined;
-    let restoreError: unknown;
+    let restoreError: OfflineRestoreFailure | undefined;
     try {
       restoreReport = await (async (): Promise<OfflineRestoreReport> => {
-        this.#stopProofStore.recordRuntimeState(observeRuntimeLockSnapshot({
+        const liveSnapshot = observeRuntimeLockSnapshot({
           processLockRoot: this.#processLockRoot,
           sourceDatabaseIdentity,
-        }, this.#clock));
-        this.#stopProofStore.consume(request.stoppedSystemProof);
+        }, this.#clock);
+        this.#stopProofStore.consumeAgainstLiveSnapshot(
+          request.stoppedSystemProof,
+          liveSnapshot,
+        );
 
         mkdirSync(this.#suspectDirectory, { recursive: true, mode: 0o700 });
         const token = randomUUID();
@@ -127,12 +157,17 @@ export class OfflineAuthorityRestoreService {
           const companion = `${this.#authorityPath}${suffix}`;
           if (existsSync(companion)) copyAndSync(companion, `${suspectPath}${suffix}`, this.#fileOperations);
         }
-        fsyncPath(this.#suspectDirectory);
+        (this.#fileOperations.syncPath ?? fsyncPath)(this.#suspectDirectory);
 
         const authorityDirectory = dirname(this.#authorityPath);
         const stagedPath = join(authorityDirectory, `.restore-${token}.sqlite.tmp`);
         try {
       copyAndSync(verified.backupPath, stagedPath, this.#fileOperations);
+      await verifyBackupBytesAtPath(
+        stagedPath,
+        verified.manifest,
+        `staged restore ${basename(stagedPath)}`,
+      );
       const beforeProjection = AuthorityDatabase.inspectExistingReadOnly(stagedPath, this.#busyTimeoutMs);
       if (beforeProjection.authorityContentFingerprint !== verified.manifest.authorityContentFingerprint
         || beforeProjection.authorityGeneration !== verified.manifest.authorityGeneration) {
@@ -146,7 +181,7 @@ export class OfflineAuthorityRestoreService {
         throw new Error("projection rebuild mutated non-rebuildable authority state");
       }
 
-      fsyncPath(stagedPath);
+      (this.#fileOperations.syncPath ?? fsyncPath)(stagedPath);
       const quarantinedCompanions: string[] = [];
       let authorityReplaced = false;
       try {
@@ -156,20 +191,21 @@ export class OfflineAuthorityRestoreService {
           renameSync(companion, `${suspectPath}${suffix}`);
           quarantinedCompanions.push(suffix);
         }
-        fsyncPath(this.#suspectDirectory);
-        fsyncPath(authorityDirectory);
+        (this.#fileOperations.syncPath ?? fsyncPath)(this.#suspectDirectory);
+        (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
         this.#fileOperations.atomicReplace(stagedPath, this.#authorityPath);
         authorityReplaced = true;
+        authorityState = "replaced";
       } catch (error) {
         if (!authorityReplaced) {
           for (const suffix of quarantinedCompanions) {
             copyAndSync(`${suspectPath}${suffix}`, `${this.#authorityPath}${suffix}`, this.#fileOperations);
           }
-          fsyncPath(authorityDirectory);
+          (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
         }
         throw error;
       }
-      fsyncPath(authorityDirectory);
+      (this.#fileOperations.syncPath ?? fsyncPath)(authorityDirectory);
       return OfflineRestoreReportSchema.parse({
         state: "restored",
         restoredAt: this.#clock.now().toISOString(),
@@ -188,23 +224,33 @@ export class OfflineAuthorityRestoreService {
         }
       })();
     } catch (error) {
-      restoreError = error;
+      restoreError = error instanceof OfflineRestoreFailure
+        ? error
+        : new OfflineRestoreFailure(authorityState, "offline authority restore failed", error);
     }
     try {
       restoreAdmission.release();
     } catch (releaseError) {
       if (restoreError !== undefined) {
-        throw new AggregateError(
+        const aggregate = new AggregateError(
           [restoreError, releaseError],
           "offline authority restore failed and its exclusive admission could not release",
-          { cause: releaseError },
+          { cause: restoreError },
+        );
+        throw new OfflineRestoreFailure(
+          authorityState,
+          "offline authority restore failed and its exclusive admission could not release",
+          aggregate,
         );
       }
-      throw releaseError;
+      throw new OfflineRestoreFailure(
+        authorityState,
+        "offline authority restore exclusive admission release failed",
+        releaseError,
+      );
     }
     if (restoreError !== undefined) {
-      if (restoreError instanceof Error) throw restoreError;
-      throw new Error("offline authority restore failed with a non-Error value", { cause: restoreError });
+      throw restoreError;
     }
     if (restoreReport === undefined) throw new Error("offline authority restore produced no report");
     return restoreReport;

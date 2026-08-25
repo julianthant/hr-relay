@@ -20,6 +20,7 @@ export {
 export {
   AuthorityBackupService,
   AuthorityBackupServiceOptionsSchema,
+  verifyBackupBytesAtPath,
   verifyBackupManifestAtPath,
   type VerifiedBackup,
 } from "./backup-service.js";
@@ -31,7 +32,10 @@ export {
 export { AuthorityHealthPreflightRunner } from "./authority-health-runner.js";
 export {
   OfflineAuthorityRestoreService,
+  OfflineRestoreFailure,
   OfflineRestoreOptionsSchema,
+  type OfflineRestoreAdmissionFactory,
+  type OfflineRestoreAuthorityState,
   type OfflineRestoreFileOperations,
 } from "./offline-restore.js";
 export {

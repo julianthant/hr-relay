@@ -19,6 +19,7 @@
  * the real atomic rename.
  */
 import assert from "node:assert/strict";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -35,13 +36,20 @@ import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { CaptureSessionSchema } from "../../src/domain/capture.js";
-import { AuthorityBackupService, AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import {
+  AuthorityBackupService,
+  AuthorityDatabase,
+  OfflineRestoreFailure,
+} from "../../src/infra/sqlite/index.js";
 import {
   acquireRuntimeProcessLock,
   acquireRuntimeRestoreAdmission,
   observeRuntimeLockSnapshot,
 } from "../../src/infra/sqlite/runtime-process-locks.js";
-import { composeStorageCommand } from "../../src/server/storage/compose.js";
+import {
+  composeStorageCommand,
+  restoreFailureDisposition,
+} from "../../src/server/storage/compose.js";
 import {
   COMMAND_FIXTURES,
   HASH_A,
@@ -165,6 +173,22 @@ function corrupt(paths: DrillPaths): void {
 }
 
 describe("2j — corruption → degraded → restore → rebuild, through the CLI", () => {
+  it("reports post-swap failures without claiming the live authority was untouched", () => {
+    const failure = new OfflineRestoreFailure(
+      "replaced",
+      "offline authority restore failed",
+      new Error("injected post-swap fsync failure"),
+    );
+    assert.deepEqual(restoreFailureDisposition(failure), {
+      heading: "authority restore POST-SWAP FAILURE",
+      authorityLine: "the authority database was replaced; inspect the post-swap failure before restarting runtime",
+    });
+    assert.deepEqual(restoreFailureDisposition(new Error("pre-swap refusal")), {
+      heading: "authority restore REFUSED",
+      authorityLine: "the live authority database was not modified",
+    });
+  });
+
   it("names the corruption read-only, restores the named backup, and keeps every authority family", async () => {
     const paths = drillPaths();
     const database = open(paths);
@@ -386,7 +410,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     acquireRuntimeRestoreAdmission({
       processLockRoot: stalePaths.processLockRoot,
       pid: deadPid(),
-    }, CLOCK);
+    }, CLOCK, { observeProcessIdentity: pretendAliveIdentity });
     const replacement = acquireRuntimeRestoreAdmission({
       processLockRoot: stalePaths.processLockRoot,
       pid: process.pid,
@@ -414,7 +438,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       name: "workers",
       workerId: "person-lookup-worker-1",
       pid: deadPid(),
-    }, CLOCK);
+    }, CLOCK, { observeProcessIdentity: pretendAliveIdentity });
     assert.equal(observe(), 2);
     first.release();
     const restarted = acquireRuntimeProcessLock({
@@ -422,7 +446,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       name: "workers",
       workerId: "person-lookup-worker-1",
       pid: deadPid(),
-    }, CLOCK);
+    }, CLOCK, { observeProcessIdentity: pretendAliveIdentity });
     assert.equal(observe(), 3);
     restarted.release();
   });
@@ -450,6 +474,29 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
       CLOCK,
     );
     assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+  });
+
+  it("retries singleton release after its first durable write attempt fails", () => {
+    const paths = drillPaths();
+    let nowCalls = 0;
+    const failFirstReleaseClock = {
+      ...CLOCK,
+      now: (): Date => {
+        nowCalls += 1;
+        return nowCalls === 2 ? new Date(Number.NaN) : new Date(NOW);
+      },
+    };
+    const held = acquireRuntimeProcessLock(
+      { processLockRoot: paths.processLockRoot, name: "server", pid: process.pid },
+      failFirstReleaseClock,
+    );
+    assert.throws(() => held.release(), /Invalid time value/u);
+    assert.doesNotThrow(() => held.release());
+    const snapshot = observeRuntimeLockSnapshot(
+      { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
+      CLOCK,
+    );
+    assert.deepEqual(snapshot.processLocks.server, { state: "stopped", generation: 1 });
   });
 
   it("reads the old root-level workers lock forward into the aggregate", () => {
@@ -543,6 +590,7 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
         pid: deadPid(),
       },
       CLOCK,
+      { observeProcessIdentity: pretendAliveIdentity },
     );
     const snapshot = observeRuntimeLockSnapshot(
       { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(paths.authorityPath) },
@@ -586,6 +634,96 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     second.release();
   });
 
+  it("admits exactly one singleton under 16-process contention and never observes it stopped", async () => {
+    const paths = drillPaths();
+    const contenderCount = 16;
+    const readyDirectory = join(paths.repoRoot, "contenders-ready");
+    const startPath = join(paths.repoRoot, "contenders-start");
+    const releasePath = join(paths.repoRoot, "contenders-release");
+    mkdirSync(readyDirectory);
+    const fixturePath = join(
+      process.cwd(),
+      "tests",
+      "fixtures",
+      "runtime-lock-contender.ts",
+    );
+    const children: ChildProcessWithoutNullStreams[] = [];
+    const outputs: string[] = [];
+    for (let index = 0; index < contenderCount; index += 1) {
+      const child = spawn(process.execPath, [
+        "--import",
+        "tsx",
+        fixturePath,
+        paths.processLockRoot,
+        readyDirectory,
+        startPath,
+        releasePath,
+        String(index),
+      ], { stdio: ["pipe", "pipe", "pipe"] });
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk: string) => outputs.push(chunk));
+      child.stderr.on("data", (chunk: string) => outputs.push(`STDERR ${chunk}`));
+      children.push(child);
+    }
+    try {
+      await waitFor(() => readdirSync(readyDirectory).length === contenderCount, outputs);
+      writeFileSync(startPath, "start\n", { flag: "wx" });
+      await waitFor(
+        () => outputs.join("").match(/^(?:ADMITTED|REFUSED) /gmu)?.length === contenderCount,
+        outputs,
+      );
+      const output = outputs.join("");
+      assert.equal(output.match(/^ADMITTED /gmu)?.length, 1, output);
+      assert.equal(output.match(/^REFUSED /gmu)?.length, contenderCount - 1, output);
+      assert.match(output, /^SNAPSHOT active$/mu);
+      const snapshot = observeRuntimeLockSnapshot({
+        processLockRoot: paths.processLockRoot,
+        sourceDatabaseIdentity: "a".repeat(64),
+      });
+      assert.equal(snapshot.processLocks.server.state, "active", output);
+    } finally {
+      if (!existsSync(startPath)) writeFileSync(startPath, "start\n", { flag: "wx" });
+      if (!existsSync(releasePath)) writeFileSync(releasePath, "release\n", { flag: "wx" });
+      await Promise.all(children.map(waitForExit));
+    }
+  }, 30_000);
+
+  it("treats a reused pid with a different OS start identity as a crashed owner", () => {
+    const paths = drillPaths();
+    const originalIdentity = Object.freeze({ platform: "darwin" as const, startToken: "birth-a" });
+    const reusedIdentity = Object.freeze({ platform: "darwin" as const, startToken: "birth-b" });
+    acquireRuntimeProcessLock(
+      { processLockRoot: paths.processLockRoot, name: "server", pid: process.pid },
+      CLOCK,
+      { observeProcessIdentity: () => ({ state: "alive", identity: originalIdentity }) },
+    );
+    const snapshot = observeRuntimeLockSnapshot(
+      { processLockRoot: paths.processLockRoot, sourceDatabaseIdentity: "a".repeat(64) },
+      CLOCK,
+      { observeProcessIdentity: () => ({ state: "alive", identity: reusedIdentity }) },
+    );
+    assert.deepEqual(snapshot.processLocks.server, { state: "stopped", generation: 1 });
+  });
+
+  it("archives restore admission when its pid was reused by a different process birth", () => {
+    const paths = drillPaths();
+    const originalIdentity = Object.freeze({ platform: "darwin" as const, startToken: "birth-a" });
+    const reusedIdentity = Object.freeze({ platform: "darwin" as const, startToken: "birth-b" });
+    acquireRuntimeRestoreAdmission(
+      { processLockRoot: paths.processLockRoot, pid: process.pid },
+      CLOCK,
+      { observeProcessIdentity: () => ({ state: "alive", identity: originalIdentity }) },
+    );
+    const replacement = acquireRuntimeRestoreAdmission(
+      { processLockRoot: paths.processLockRoot, pid: process.pid },
+      CLOCK,
+      { observeProcessIdentity: () => ({ state: "alive", identity: reusedIdentity }) },
+    );
+    assert.equal(readdirSync(join(paths.processLockRoot, "restore-admission-history")).length, 1);
+    replacement.release();
+  });
+
   it("refuses restore without an exact named manifest", async () => {
     const paths = drillPaths();
     const database = open(paths);
@@ -611,6 +749,40 @@ describe("2j — corruption → degraded → restore → rebuild, through the CL
     assert.match(missing.output, /no-such\.manifest\.json does not exist/u);
   });
 });
+
+async function waitFor(predicate: () => boolean, diagnostics: readonly string[]): Promise<void> {
+  const deadline = Date.now() + 20_000;
+  while (!predicate()) {
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out waiting for lock contenders:\n${diagnostics.join("")}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function waitForExit(child: ChildProcessWithoutNullStreams): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (child.exitCode !== null) {
+      if (child.exitCode === 0) resolve();
+      else reject(new Error(`runtime-lock contender exited with code ${String(child.exitCode)}`));
+      return;
+    }
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) resolve();
+      else reject(new Error(
+        `runtime-lock contender exited with code ${String(code)} signal ${signal ?? "none"}`,
+      ));
+    });
+  });
+}
+
+function pretendAliveIdentity(pid: number) {
+  return {
+    state: "alive" as const,
+    identity: { platform: "darwin" as const, startToken: `synthetic-${String(pid)}` },
+  };
+}
 
 /**
  * A pid that is certainly not running. Node reserves nothing here, so the loop

@@ -22,7 +22,10 @@ import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { PositiveInt } from "../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
+import {
+  observeProcessIdentity,
+  observeRuntimeLockSnapshot,
+} from "../../src/infra/sqlite/runtime-process-locks.js";
 import { createDashboardWorkerSupervisor } from "../../src/server/dashboard/compose.js";
 import {
   composeWorkerRuntime,
@@ -104,6 +107,12 @@ function composeInput(options: Readonly<{
     ids: sequentialIdFactory("c"),
     repoRoot: options.repoRoot,
     processId: options.processId ?? 4242,
+    processIdentityObserver: (pid: number) => pid === process.pid
+      ? observeProcessIdentity(pid)
+      : {
+          state: "alive" as const,
+          identity: { platform: "darwin" as const, startToken: `synthetic-${String(pid)}` },
+        },
     sessionFactory: options.sessions.factory,
     duoCeremony: fixtureDuoCeremonyGates(options.clock),
     stopSignal: options.stopSignal ?? new AbortController().signal,
@@ -192,10 +201,11 @@ describe("composed worker runtime", () => {
     assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
   });
 
-  it("releases its process record even when database close fails", async () => {
+  it("keeps its process record active when database closure cannot be proven", async () => {
     const { repoRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     const closeFailure = new Error("injected database close failure");
+    let stillOpen: AuthorityDatabase | undefined;
     await assert.rejects(
       composeWorkerRuntime({
         ...composeInput({
@@ -206,17 +216,24 @@ describe("composed worker runtime", () => {
           processId: process.pid,
         }),
         closeDatabase: (database) => {
-          database.close();
+          stillOpen = database;
           throw closeFailure;
         },
       }),
       (error: unknown) => error === closeFailure,
     );
+    assert.ok(stillOpen !== undefined);
+    assert.doesNotThrow(() => stillOpen?.getMeta(), "the injected close failure left the handle usable");
     const snapshot = observeRuntimeLockSnapshot({
       processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
       sourceDatabaseIdentity: "a".repeat(64),
     }, clock);
-    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+    assert.deepEqual(snapshot.processLocks.workers, {
+      state: "active",
+      generation: 2,
+      pid: process.pid,
+    });
+    stillOpen.close();
   });
 
   it("builds the whole dependency graph and drains a queued run to done", async () => {

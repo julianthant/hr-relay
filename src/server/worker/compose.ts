@@ -89,7 +89,10 @@ import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
-import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
+import {
+  acquireRuntimeProcessLock,
+  type ProcessIdentityObserver,
+} from "../../infra/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../../stores/index.js";
 
 /**
@@ -202,6 +205,8 @@ export interface WorkerComposeInput {
   /** Where the isolation state root resolves from; defaults to `process.cwd()`. */
   readonly repoRoot?: string;
   readonly processId?: number;
+  /** Test seam for synthetic process ids; production always observes the OS. */
+  readonly processIdentityObserver?: ProcessIdentityObserver;
   /** Test seam for proving process-record cleanup when authority open fails. */
   readonly openDatabase?: (
     options: Readonly<{ path: string; busyTimeoutMs: number; migrationOwner: string }>,
@@ -401,6 +406,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       pid: input.processId ?? process.pid,
     },
     clock,
+    { observeProcessIdentity: input.processIdentityObserver },
   );
   let database: AuthorityDatabase;
   let runtimeError: unknown;
@@ -706,15 +712,23 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     process.removeListener("SIGTERM", onSigterm);
   }
   const cleanupErrors: unknown[] = [];
+  let databaseClosureProven = false;
   try {
     (input.closeDatabase ?? ((opened) => opened.close()))(database);
+    databaseClosureProven = true;
   } catch (error) {
     cleanupErrors.push(error);
   }
-  try {
-    processLock.release();
-  } catch (error) {
-    cleanupErrors.push(error);
+  // The process record is the restore interlock's claim that no authority
+  // handle from this worker remains usable. A throwing close supplies no such
+  // proof, so releasing here would let restore report the system stopped while
+  // this caller can still use `database`.
+  if (databaseClosureProven) {
+    try {
+      processLock.release();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
   }
   if (cleanupErrors.length === 1 && runtimeError === undefined) throw cleanupErrors[0];
   if (cleanupErrors.length > 0) {

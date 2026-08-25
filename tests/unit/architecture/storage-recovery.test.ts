@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   truncateSync,
@@ -38,12 +39,14 @@ import {
   AuthorityHealthPreflightRunner,
   AuthorityMutationUnavailableError,
   OfflineAuthorityRestoreService,
+  OfflineRestoreFailure,
   RecoveryStopProofStore,
   doctorAuthorityStorage,
   verifyBackupManifestAtPath,
 } from "../../../src/infra/sqlite/index.js";
 import {
   acquireRuntimeProcessLock,
+  acquireRuntimeRestoreAdmission,
   observeRuntimeLockSnapshot,
 } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import {
@@ -1056,6 +1059,24 @@ describe("fail-closed degraded boot and read-only doctor", () => {
 });
 
 describe("offline exact-backup restore", () => {
+  it("consumes the exact issued proof when the wall clock advances before exclusive verification", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    const advancingClock = manualClock(new Date(NOW));
+    const proof = stoppedProof(root, authorityPath, advancingClock);
+    advancingClock.advanceWall(1);
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      advancingClock,
+    );
+    await assert.doesNotReject(restore.restore({ manifestPath, stoppedSystemProof: proof }));
+  });
+
   it("preserves nonempty failure, result, terminal-outbox, and authorization authority", async () => {
     const root = testRoot();
     const authorityPath = join(root, "terminal-state.sqlite");
@@ -1279,6 +1300,132 @@ describe("offline exact-backup restore", () => {
     assert.equal(readdirSync(suspects).length > 0, true);
   });
 
+  it("refuses when verified backup bytes mutate during the staged copy", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    database.authority.commands.insert(COMMAND_FIXTURES[0]);
+    const { manifestPath } = await createBackup(database, directory);
+    database.authority.notifications.create(NOTIFICATION);
+    database.close();
+    const liveBytes = readFileSync(authorityPath);
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { backupFileName: string };
+    const backupPath = join(directory, manifest.backupFileName);
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      CLOCK,
+      {
+        copyFile: (source, destination) => {
+          if (source === backupPath) {
+            const bytes = readFileSync(source);
+            bytes[bytes.length - 1] = (bytes[bytes.length - 1] ?? 0) ^ 0xff;
+            writeFileSync(source, bytes);
+          }
+          copyFileSync(source, destination);
+        },
+        atomicReplace: renameSync,
+      },
+    );
+    await assert.rejects(
+      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      /staged restore .* checksum does not match verified manifest/u,
+    );
+    assert.deepEqual(readFileSync(authorityPath), liveBytes);
+  });
+
+  it("classifies post-swap directory fsync failure as authority replaced", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    database.authority.commands.insert(COMMAND_FIXTURES[0]);
+    const generation = database.getMeta().authorityGeneration;
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    let swapped = false;
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      CLOCK,
+      {
+        copyFile: copyFileSync,
+        atomicReplace: (source, destination) => {
+          renameSync(source, destination);
+          swapped = true;
+        },
+        syncPath: () => {
+          if (swapped) throw new Error("injected post-swap directory fsync failure");
+        },
+      },
+    );
+    await assert.rejects(
+      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      replacedFailure(/post-swap directory fsync failure/u),
+    );
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(authorityPath).authorityGeneration, generation);
+  });
+
+  it("classifies post-swap report validation failure as authority replaced", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    let swapped = false;
+    const reportClock = {
+      ...CLOCK,
+      now: (): Date => swapped ? new Date(Number.NaN) : CLOCK.now(),
+    };
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      reportClock,
+      {
+        copyFile: copyFileSync,
+        atomicReplace: (source, destination) => {
+          renameSync(source, destination);
+          swapped = true;
+        },
+      },
+    );
+    await assert.rejects(
+      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath, reportClock) }),
+      replacedFailure(/Invalid time value/u),
+    );
+  });
+
+  it("classifies exclusive-admission release failure after swap as authority replaced", async () => {
+    const root = testRoot();
+    const authorityPath = join(root, "state.sqlite");
+    const directory = backupDirectory(root);
+    const database = openDatabase(authorityPath);
+    const { manifestPath } = await createBackup(database, directory);
+    database.close();
+    const restore = new OfflineAuthorityRestoreService(
+      restoreOptions(root, authorityPath),
+      async () => undefined,
+      CLOCK,
+      undefined,
+      (input, clock) => {
+        const admission = acquireRuntimeRestoreAdmission(input, clock);
+        return Object.freeze({
+          admissionId: admission.admissionId,
+          release: (): void => {
+            admission.release();
+            throw new Error("injected admission release failure");
+          },
+        });
+      },
+    );
+    await assert.rejects(
+      restore.restore({ manifestPath, stoppedSystemProof: stoppedProof(root, authorityPath) }),
+      replacedFailure(/admission release failure/u),
+    );
+  });
+
   it("rejects stale, replayed, generation-mismatched, and currently-active process-lock proofs", async () => {
     const root = testRoot();
     const authorityPath = join(root, "state.sqlite");
@@ -1398,6 +1545,12 @@ describe("offline exact-backup restore", () => {
     assert.equal(existsSync(suspects), false);
   });
 });
+
+function replacedFailure(message: RegExp): (error: unknown) => boolean {
+  return (error: unknown): boolean => error instanceof OfflineRestoreFailure
+    && error.authorityState === "replaced"
+    && message.test(error.message);
+}
 
 describe("authority.health preflight and static recovery boundary", () => {
   it("projects doctor health through the registered authority.health runner", async () => {

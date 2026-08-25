@@ -12,15 +12,15 @@
  * `.tracker-rebuild/locks` as a distinct resource since D88 and no code wrote
  * there.
  *
- * ## One durable record per process start, composed at observation time
+ * ## Atomic singleton admission plus one worker record per process start
  *
- * The singleton server owns one root-level lock file. Every worker process
- * appends its own immutable-identity record under `workers/` and only rewrites
- * that record to release it. The snapshot the stop-proof store records is
- * COMPOSED into the existing strict `{server, workers}` shape when an operator
- * asks to restore. This admits concurrent workers without a shared
- * read-modify-write and still refuses restore while any recorded worker pid is
- * alive. The old root-level `workers.lock.json` remains part of that aggregate.
+ * The singleton server claims its root record with an atomic hard link, so two
+ * contenders cannot both pass a check-then-replace window. Every worker
+ * process appends its own immutable-identity record under `workers/`. The
+ * snapshot is COMPOSED into the existing strict `{server, workers}` shape when
+ * an operator asks to restore. This admits concurrent workers without a shared
+ * read-modify-write and still refuses restore while any recorded worker owner
+ * is alive. Old root-level role records remain readable and are never deleted.
  *
  * ## Liveness is observed, never assumed
  *
@@ -29,14 +29,16 @@
  * moment restore is most needed. So the observation asks the operating system
  * whether the recorded pid still exists (`process.kill(pid, 0)`), and reports
  * `stopped` only for a pid that is genuinely gone. It never rewrites another
- * process's lock file to make a restore possible, and a pid that IS alive
- * refuses by name and number.
+ * process's lock file to make a restore possible. New records bind PID to an
+ * OS process-start identity, so a recycled PID is not mistaken for its prior
+ * owner; legacy PID-only records stay conservative and read forward.
  *
  * `runtimeGeneration` is the sum of the two aggregate generations. The worker
  * generation advances for every durable worker-start record, including a
  * restart, so a stopped proof can never survive a later process start.
  */
 import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   closeSync,
   existsSync,
@@ -85,7 +87,7 @@ export const RUNTIME_PROCESS_LOCK_NAMES: readonly RuntimeProcessLockName[] = Obj
   "workers",
 ]);
 
-export const RuntimeProcessLockFileSchema = z.strictObject({
+const LegacyRuntimeProcessLockFileSchema = z.strictObject({
   schemaVersion: z.literal(1),
   name: RuntimeProcessLockNameSchema,
   pid: PositiveIntSchema,
@@ -94,9 +96,31 @@ export const RuntimeProcessLockFileSchema = z.strictObject({
   /** `null` while the process holds the lock; the instant it released it otherwise. */
   releasedAt: IsoInstantSchema.nullable(),
 });
+
+export const ProcessStartIdentitySchema = z.strictObject({
+  platform: z.enum(["linux", "darwin", "win32"]),
+  startToken: z.string().min(1),
+});
+export type ProcessStartIdentity = z.infer<typeof ProcessStartIdentitySchema>;
+
+const CurrentRuntimeProcessLockFileSchema = z.strictObject({
+  schemaVersion: z.literal(2),
+  name: z.enum(["server", "live-smoke"]),
+  pid: PositiveIntSchema,
+  processIdentity: ProcessStartIdentitySchema,
+  acquisitionId: z.uuid(),
+  generation: PositiveIntSchema,
+  acquiredAt: IsoInstantSchema,
+  releasedAt: IsoInstantSchema.nullable(),
+});
+
+export const RuntimeProcessLockFileSchema = z.union([
+  LegacyRuntimeProcessLockFileSchema,
+  CurrentRuntimeProcessLockFileSchema,
+]);
 export type RuntimeProcessLockFile = z.infer<typeof RuntimeProcessLockFileSchema>;
 
-export const WorkerProcessLockFileSchema = z.strictObject({
+const LegacyWorkerProcessLockFileSchema = z.strictObject({
   schemaVersion: z.literal(2),
   name: z.literal("workers"),
   workerId: WorkerIdSchema,
@@ -106,14 +130,43 @@ export const WorkerProcessLockFileSchema = z.strictObject({
   /** `null` while this exact worker process holds the record. */
   releasedAt: IsoInstantSchema.nullable(),
 });
+
+const CurrentWorkerProcessLockFileSchema = z.strictObject({
+  schemaVersion: z.literal(3),
+  name: z.literal("workers"),
+  workerId: WorkerIdSchema,
+  pid: PositiveIntSchema,
+  processIdentity: ProcessStartIdentitySchema,
+  acquisitionId: z.uuid(),
+  acquiredAt: IsoInstantSchema,
+  releasedAt: IsoInstantSchema.nullable(),
+});
+
+export const WorkerProcessLockFileSchema = z.union([
+  LegacyWorkerProcessLockFileSchema,
+  CurrentWorkerProcessLockFileSchema,
+]);
 export type WorkerProcessLockFile = z.infer<typeof WorkerProcessLockFileSchema>;
 
-export const RestoreAdmissionFileSchema = z.strictObject({
+const LegacyRestoreAdmissionFileSchema = z.strictObject({
   schemaVersion: z.literal(1),
   pid: PositiveIntSchema,
   admissionId: z.uuid(),
   acquiredAt: IsoInstantSchema,
 });
+
+const CurrentRestoreAdmissionFileSchema = z.strictObject({
+  schemaVersion: z.literal(2),
+  pid: PositiveIntSchema,
+  processIdentity: ProcessStartIdentitySchema,
+  admissionId: z.uuid(),
+  acquiredAt: IsoInstantSchema,
+});
+
+export const RestoreAdmissionFileSchema = z.union([
+  LegacyRestoreAdmissionFileSchema,
+  CurrentRestoreAdmissionFileSchema,
+]);
 export type RestoreAdmissionFile = z.infer<typeof RestoreAdmissionFileSchema>;
 
 const SingletonRuntimeProcessLockOptionsSchema = z.strictObject({
@@ -154,6 +207,12 @@ export interface RestoreAdmissionHandle {
 export interface RuntimeProcessLockAcquisitionHooks {
   /** Test-only race seam after the first admission check and before the process record write. */
   readonly afterInitialAdmissionCheck?: () => void;
+  /** Test-only OS observation seam for deterministic PID-reuse cases. */
+  readonly observeProcessIdentity?: ProcessIdentityObserver;
+}
+
+export interface RuntimeLockObservationHooks {
+  readonly observeProcessIdentity?: ProcessIdentityObserver;
 }
 
 /**
@@ -166,6 +225,12 @@ export interface RuntimeProcessLockAcquisitionHooks {
 export type PidObservation =
   | Readonly<{ state: "alive" }>
   | Readonly<{ state: "gone" }>;
+
+export type ProcessIdentityObservation =
+  | Readonly<{ state: "alive"; identity: ProcessStartIdentity }>
+  | Readonly<{ state: "gone" }>;
+
+export type ProcessIdentityObserver = (pid: number) => ProcessIdentityObservation;
 
 function errnoOf(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null) return undefined;
@@ -185,6 +250,107 @@ export function observePid(pid: number): PidObservation {
   );
 }
 
+/**
+ * Observe the OS process birth identity, not only PID occupancy.
+ *
+ * Linux uses boot-id + `/proc/<pid>/stat` start ticks. macOS uses the kernel
+ * process start stamp exposed by `ps`; Windows uses `Get-Process.StartTime`
+ * ticks. Unsupported platforms refuse. The Darwin stamp has one-second
+ * resolution; that narrow same-second PID-recycle limitation is documented in
+ * ref dashboard-surfaces §2.5 rather than hidden behind PID-only liveness.
+ */
+export function observeProcessIdentity(pid: number): ProcessIdentityObservation {
+  const parsedPid = PositiveIntSchema.parse(pid);
+  if (observePid(parsedPid).state === "gone") return { state: "gone" };
+  if (process.platform === "linux") {
+    try {
+      const bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+      const stat = readFileSync(`/proc/${String(parsedPid)}/stat`, "utf8");
+      const closeParen = stat.lastIndexOf(")");
+      if (closeParen === -1) throw new Error("process stat has no closing command delimiter");
+      const fieldsAfterCommand = stat.slice(closeParen + 2).trim().split(/\s+/u);
+      const startTicks = fieldsAfterCommand[19];
+      if (bootId.length === 0 || startTicks === undefined || !/^\d+$/u.test(startTicks)) {
+        throw new Error("process stat has no valid start-time ticks or boot identity");
+      }
+      return {
+        state: "alive",
+        identity: ProcessStartIdentitySchema.parse({
+          platform: "linux",
+          startToken: `${bootId}:${startTicks}`,
+        }),
+      };
+    } catch (error) {
+      if (errnoOf(error) === "ENOENT" && observePid(parsedPid).state === "gone") {
+        return { state: "gone" };
+      }
+      throw new Error(`could not observe Linux start identity for pid ${String(parsedPid)}`, {
+        cause: error,
+      });
+    }
+  }
+  if (process.platform === "darwin") {
+    const result = spawnSync("/bin/ps", ["-o", "lstart=", "-p", String(parsedPid)], {
+      encoding: "utf8",
+    });
+    const token = result.stdout.trim();
+    if (result.status === 0 && token.length > 0) {
+      return {
+        state: "alive",
+        identity: ProcessStartIdentitySchema.parse({ platform: "darwin", startToken: token }),
+      };
+    }
+    if (observePid(parsedPid).state === "gone") return { state: "gone" };
+    throw new Error(
+      `could not observe Darwin start identity for pid ${String(parsedPid)}: `
+      + `${result.stderr.trim() || `ps exited ${String(result.status)}`}`,
+      { cause: result.error },
+    );
+  }
+  if (process.platform === "win32") {
+    const script = `(Get-Process -Id ${String(parsedPid)} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`;
+    const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+      encoding: "utf8",
+    });
+    const token = result.stdout.trim();
+    if (result.status === 0 && /^\d+$/u.test(token)) {
+      return {
+        state: "alive",
+        identity: ProcessStartIdentitySchema.parse({ platform: "win32", startToken: token }),
+      };
+    }
+    if (observePid(parsedPid).state === "gone") return { state: "gone" };
+    throw new Error(
+      `could not observe Windows start identity for pid ${String(parsedPid)}: `
+      + `${result.stderr.trim() || `PowerShell exited ${String(result.status)}`}`,
+      { cause: result.error },
+    );
+  }
+  throw new Error(`runtime process identity is unsupported on platform ${process.platform}`);
+}
+
+function processIdentityEquals(left: ProcessStartIdentity, right: ProcessStartIdentity): boolean {
+  return left.platform === right.platform && left.startToken === right.startToken;
+}
+
+function captureProcessIdentity(pid: number, observer: ProcessIdentityObserver): ProcessStartIdentity {
+  const observation = observer(pid);
+  if (observation.state === "gone") {
+    throw new Error(`cannot acquire a runtime process lock for non-running pid ${String(pid)}`);
+  }
+  return ProcessStartIdentitySchema.parse(observation.identity);
+}
+
+function recordOwnerIsAlive(
+  record: RuntimeProcessLockFile | WorkerProcessLockFile | RestoreAdmissionFile,
+  observer: ProcessIdentityObserver,
+): boolean {
+  const observation = observer(record.pid);
+  if (observation.state === "gone") return false;
+  if (!("processIdentity" in record)) return true;
+  return processIdentityEquals(record.processIdentity, observation.identity);
+}
+
 function signalProcess(pid: number): unknown {
   try {
     process.kill(pid, 0);
@@ -199,6 +365,7 @@ function lockPath(root: string, name: RuntimeProcessLockName): string {
 }
 
 const WORKER_PROCESS_LOCK_DIRECTORY = "workers";
+const SINGLETON_HISTORY_DIRECTORY = "singleton-history";
 const RESTORE_ADMISSION_FILE = "restore-admission.lock.json";
 const RESTORE_ADMISSION_HISTORY_DIRECTORY = "restore-admission-history";
 
@@ -232,6 +399,84 @@ function writeLockFile(root: string, record: RuntimeProcessLockFile): void {
     fsyncPath(temporaryPath);
     renameSync(temporaryPath, finalPath);
     fsyncPath(root);
+  } finally {
+    if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+  }
+}
+
+function singletonHistoryDirectory(root: string, name: "server" | "live-smoke"): string {
+  return join(root, SINGLETON_HISTORY_DIRECTORY, name);
+}
+
+function readSingletonHistory(root: string, name: "server" | "live-smoke"): readonly RuntimeProcessLockFile[] {
+  const directory = singletonHistoryDirectory(root, name);
+  if (!existsSync(directory)) return [];
+  return Object.freeze(readdirSync(directory, { withFileTypes: true })
+    .filter(({ name: entryName }) => !entryName.startsWith("."))
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map((entry) => {
+      if (!entry.isFile() || !entry.name.endsWith(".lock.json")) {
+        throw new Error(`${name} process-lock history contains unexpected entry ${entry.name}`);
+      }
+      const path = join(directory, entry.name);
+      try {
+        const record = RuntimeProcessLockFileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+        if (record.name !== name) {
+          throw new Error(`record names ${record.name}`);
+        }
+        return record;
+      } catch (error) {
+        throw new Error(`${name} process-lock history record ${entry.name} is malformed`, {
+          cause: error,
+        });
+      }
+    }));
+}
+
+function archiveSingletonLock(root: string, record: RuntimeProcessLockFile): void {
+  if (record.name === "workers") {
+    throw new Error("worker aggregate lock cannot enter singleton history");
+  }
+  const directory = singletonHistoryDirectory(root, record.name);
+  mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const identity = "acquisitionId" in record ? record.acquisitionId : randomUUID();
+  renameSync(lockPath(root, record.name), join(
+    directory,
+    `${String(record.generation).padStart(12, "0")}-${identity}.lock.json`,
+  ));
+  fsyncPath(directory);
+  fsyncPath(root);
+}
+
+function singletonGeneration(root: string, name: "server" | "live-smoke"): number {
+  return readSingletonHistory(root, name).reduce(
+    (maximum, record) => Math.max(maximum, record.generation),
+    0,
+  );
+}
+
+function createSingletonLockAtomically(root: string, record: RuntimeProcessLockFile): boolean {
+  if (record.name === "workers") throw new Error("worker aggregate lock is not a singleton");
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  const identity = "acquisitionId" in record ? record.acquisitionId : randomUUID();
+  const temporaryPath = join(root, `.${record.name}-${identity}.tmp`);
+  try {
+    writeFileSync(temporaryPath, `${canonicalJsonStringify(record)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    fsyncPath(temporaryPath);
+    const failure = tryLink(temporaryPath, lockPath(root, record.name));
+    if (failure !== undefined) {
+      if (errnoOf(failure) === "EEXIST") return false;
+      if (failure instanceof Error) throw failure;
+      throw new Error(`${record.name} atomic process-lock link failed with a non-Error value`, {
+        cause: failure,
+      });
+    }
+    fsyncPath(root);
+    return true;
   } finally {
     if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
   }
@@ -274,10 +519,13 @@ function archiveRestoreAdmission(root: string, record: RestoreAdmissionFile): vo
   fsyncPath(root);
 }
 
-function assertRestoreAdmissionOpen(root: string): void {
+function assertRestoreAdmissionOpen(
+  root: string,
+  observer: ProcessIdentityObserver = observeProcessIdentity,
+): void {
   const held = readRestoreAdmission(root);
   if (held === undefined) return;
-  if (observePid(held.pid).state === "alive") {
+  if (recordOwnerIsAlive(held, observer)) {
     throw new Error(
       `rebuild restore admission ${held.admissionId} is held by live pid ${String(held.pid)}; `
       + "runtime process start refused until restore exits",
@@ -324,14 +572,18 @@ function tryLink(source: string, destination: string): unknown {
 export function acquireRuntimeRestoreAdmission(
   input: Readonly<{ processLockRoot: string; pid: number }>,
   clock: Clock = systemClock,
+  hooks: RuntimeLockObservationHooks = {},
 ): RestoreAdmissionHandle {
   const root = resolve(input.processLockRoot);
   const pid = PositiveIntSchema.parse(input.pid);
+  const observer = hooks.observeProcessIdentity ?? observeProcessIdentity;
+  const processIdentity = captureProcessIdentity(pid, observer);
   for (;;) {
-    assertRestoreAdmissionOpen(root);
+    assertRestoreAdmissionOpen(root, observer);
     const record = RestoreAdmissionFileSchema.parse({
-      schemaVersion: 1,
+      schemaVersion: 2,
       pid,
+      processIdentity,
       admissionId: randomUUID(),
       acquiredAt: clock.now().toISOString(),
     });
@@ -384,7 +636,11 @@ export function readRuntimeProcessLock(
   const path = lockPath(resolve(processLockRoot), name);
   if (!existsSync(path)) return undefined;
   try {
-    return RuntimeProcessLockFileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+    const record = RuntimeProcessLockFileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+    if (record.name !== name) {
+      throw new Error(`record names ${record.name}`);
+    }
+    return record;
   } catch (error) {
     throw new Error(`${name} process-lock record ${path} is malformed`, { cause: error });
   }
@@ -402,7 +658,9 @@ export function acquireRuntimeProcessLock(
 ): RuntimeProcessLockHandle {
   const options = RuntimeProcessLockOptionsSchema.parse(input);
   const root = resolve(options.processLockRoot);
-  assertRestoreAdmissionOpen(root);
+  const observer = hooks.observeProcessIdentity ?? observeProcessIdentity;
+  const processIdentity = captureProcessIdentity(options.pid, observer);
+  assertRestoreAdmissionOpen(root, observer);
   hooks.afterInitialAdmissionCheck?.();
   if (options.name === "workers") {
     // Validate every prior record before writing this process's own. A malformed
@@ -412,10 +670,11 @@ export function acquireRuntimeProcessLock(
     const existingRecords = readWorkerProcessLocks(root);
     const acquisitionId = randomUUID();
     const record = WorkerProcessLockFileSchema.parse({
-      schemaVersion: 2,
+      schemaVersion: 3,
       name: "workers",
       workerId: options.workerId,
       pid: options.pid,
+      processIdentity,
       acquisitionId,
       acquiredAt: clock.now().toISOString(),
       releasedAt: null,
@@ -436,7 +695,7 @@ export function acquireRuntimeProcessLock(
       },
     });
     try {
-      assertRestoreAdmissionOpen(root);
+      assertRestoreAdmissionOpen(root, observer);
     } catch (admissionError) {
       try {
         handle.release();
@@ -451,55 +710,72 @@ export function acquireRuntimeProcessLock(
     }
     return handle;
   }
-  const held = readRuntimeProcessLock(root, options.name);
-  if (held !== undefined && held.releasedAt === null) {
-    const observation = observePid(held.pid);
-    if (observation.state === "alive") {
-      throw new Error(
-        `rebuild ${options.name} process lock is held by live pid ${String(held.pid)} `
-        + `(generation ${String(held.generation)}, acquired ${held.acquiredAt}); `
-        + "stop it before starting another",
-      );
+  for (;;) {
+    const held = readRuntimeProcessLock(root, options.name);
+    if (held !== undefined) {
+      if (held.releasedAt === null && recordOwnerIsAlive(held, observer)) {
+        throw new Error(
+          `rebuild ${options.name} process lock is held by live pid ${String(held.pid)} `
+          + `(generation ${String(held.generation)}, acquired ${held.acquiredAt}); `
+          + "stop it before starting another",
+        );
+      }
+      try {
+        archiveSingletonLock(root, held);
+      } catch (error) {
+        if (errnoOf(error) === "ENOENT") continue;
+        throw error;
+      }
+      continue;
     }
-  }
-  const generation = (held?.generation ?? 0) + 1;
-  const record = RuntimeProcessLockFileSchema.parse({
-    schemaVersion: 1,
-    name: options.name,
-    pid: options.pid,
-    generation,
-    acquiredAt: clock.now().toISOString(),
-    releasedAt: null,
-  });
-  writeLockFile(root, record);
-  let released = false;
-  const handle = Object.freeze({
-    name: options.name,
-    generation,
-    release: (): void => {
-      if (released) return;
-      writeLockFile(root, RuntimeProcessLockFileSchema.parse({
-        ...record,
-        releasedAt: clock.now().toISOString(),
-      }));
-      released = true;
-    },
-  });
-  try {
-    assertRestoreAdmissionOpen(root);
-  } catch (admissionError) {
+    const generation = singletonGeneration(root, options.name) + 1;
+    const record = RuntimeProcessLockFileSchema.parse({
+      schemaVersion: 2,
+      name: options.name,
+      pid: options.pid,
+      processIdentity,
+      acquisitionId: randomUUID(),
+      generation,
+      acquiredAt: clock.now().toISOString(),
+      releasedAt: null,
+    });
+    if (!createSingletonLockAtomically(root, record)) continue;
+    let released = false;
+    const handle = Object.freeze({
+      name: options.name,
+      generation,
+      release: (): void => {
+        if (released) return;
+        const current = readRuntimeProcessLock(root, options.name);
+        if (current === undefined
+          || !("acquisitionId" in current)
+          || !("acquisitionId" in record)
+          || current.acquisitionId !== record.acquisitionId) {
+          throw new Error(`${options.name} process lock ${"acquisitionId" in record ? record.acquisitionId : "legacy"} is no longer the current owner`);
+        }
+        writeLockFile(root, RuntimeProcessLockFileSchema.parse({
+          ...record,
+          releasedAt: clock.now().toISOString(),
+        }));
+        released = true;
+      },
+    });
     try {
-      handle.release();
-    } catch (releaseError) {
-      throw new AggregateError(
-        [admissionError, releaseError],
-        `${record.name} lost restore admission and its process lock could not release`,
-        { cause: releaseError },
-      );
+      assertRestoreAdmissionOpen(root, observer);
+    } catch (admissionError) {
+      try {
+        handle.release();
+      } catch (releaseError) {
+        throw new AggregateError(
+          [admissionError, releaseError],
+          `${record.name} lost restore admission and its process lock could not release`,
+          { cause: releaseError },
+        );
+      }
+      throw admissionError;
     }
-    throw admissionError;
+    return handle;
   }
-  return handle;
 }
 
 /**
@@ -512,9 +788,11 @@ export function acquireRuntimeProcessLock(
 export function observeRuntimeLockSnapshot(
   input: unknown,
   clock: Clock = systemClock,
+  hooks: RuntimeLockObservationHooks = {},
 ): RecoveryRuntimeLockSnapshot {
   const options = RuntimeLockObservationOptionsSchema.parse(input);
   const root = resolve(options.processLockRoot);
+  const observer = hooks.observeProcessIdentity ?? observeProcessIdentity;
   const processLocks: Record<string, unknown> = {};
   let runtimeGeneration = 0;
   for (const name of RUNTIME_PROCESS_LOCK_NAMES) {
@@ -524,11 +802,11 @@ export function observeRuntimeLockSnapshot(
       const generation = (legacy?.generation ?? 1) + records.length;
       runtimeGeneration += generation;
       const activePids: number[] = [];
-      if (legacy !== undefined && legacy.releasedAt === null && observePid(legacy.pid).state === "alive") {
+      if (legacy !== undefined && legacy.releasedAt === null && recordOwnerIsAlive(legacy, observer)) {
         activePids.push(legacy.pid);
       }
       for (const record of records) {
-        if (record.releasedAt === null && observePid(record.pid).state === "alive") {
+        if (record.releasedAt === null && recordOwnerIsAlive(record, observer)) {
           activePids.push(record.pid);
         }
       }
@@ -539,10 +817,12 @@ export function observeRuntimeLockSnapshot(
         : { state: "active", generation, pid: activePid };
       continue;
     }
+    const historyGeneration = singletonGeneration(root, name);
     const held = readRuntimeProcessLock(root, name);
     if (held === undefined) {
-      processLocks[name] = { state: "stopped", generation: 1 };
-      runtimeGeneration += 1;
+      const generation = Math.max(historyGeneration, 1);
+      processLocks[name] = { state: "stopped", generation };
+      runtimeGeneration += generation;
       continue;
     }
     runtimeGeneration += held.generation;
@@ -550,8 +830,7 @@ export function observeRuntimeLockSnapshot(
       processLocks[name] = { state: "stopped", generation: held.generation };
       continue;
     }
-    const observation = observePid(held.pid);
-    processLocks[name] = observation.state === "alive"
+    processLocks[name] = recordOwnerIsAlive(held, observer)
       ? { state: "active", generation: held.generation, pid: held.pid }
       : { state: "stopped", generation: held.generation };
   }

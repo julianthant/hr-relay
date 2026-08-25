@@ -33,6 +33,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import {
   AuthorityDatabase,
   OfflineAuthorityRestoreService,
+  OfflineRestoreFailure,
   RecoveryStopProofStore,
   doctorAuthorityStorage,
 } from "../../infra/sqlite/index.js";
@@ -52,6 +53,21 @@ import { createLedgerReadThrough } from "../../infra/ledger/ledger-read-through.
 export interface StorageCommandOutcome {
   readonly output: string;
   readonly exitCode: number;
+}
+
+export function restoreFailureDisposition(error: unknown): Readonly<{
+  heading: "authority restore REFUSED" | "authority restore POST-SWAP FAILURE";
+  authorityLine: string;
+}> {
+  return error instanceof OfflineRestoreFailure && error.authorityState === "replaced"
+    ? Object.freeze({
+        heading: "authority restore POST-SWAP FAILURE",
+        authorityLine: "the authority database was replaced; inspect the post-swap failure before restarting runtime",
+      })
+    : Object.freeze({
+        heading: "authority restore REFUSED",
+        authorityLine: "the live authority database was not modified",
+      });
 }
 
 /**
@@ -275,14 +291,16 @@ async function restoreCommand(
     // backup, or an unreadable manifest, and the operator needs to read it —
     // so it is REPORTED with its whole cause chain and a non-zero status, not
     // rethrown as a stack trace. Nothing is defaulted: every field below is
-    // derived from the failure itself, and the live authority is untouched
-    // because the service preserves and swaps only after every check passed.
+    // derived from the failure itself. The service marks whether atomic
+    // replacement already happened, so a post-swap fsync/report/release error
+    // can never be described as an untouched live authority.
     const snapshotLine = describeLocksForRefusal(processLockRoot, sourceDatabaseIdentity, clock);
+    const disposition = restoreFailureDisposition(error);
     return {
       output: [
-        `authority restore REFUSED — ${messageChain(error)}`,
+        `${disposition.heading} — ${messageChain(error)}`,
         `process locks: ${snapshotLine}`,
-        "the live authority database was not modified",
+        disposition.authorityLine,
       ].join("\n"),
       exitCode: 1,
     };
