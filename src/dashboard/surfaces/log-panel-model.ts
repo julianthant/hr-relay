@@ -84,12 +84,12 @@ function groupLabelOf(row: LogRowWire): string | undefined {
  * did not produce.
  */
 export function groupLogRows(rows: readonly LogRowWire[]): readonly LogRowGroup[] {
-  const groups: LogRowGroup[] = [];
+  const groups: { label: string | undefined; rows: LogRowWire[] }[] = [];
   for (const row of rows) {
     const label = groupLabelOf(row);
     const last = groups.at(-1);
     if (last !== undefined && last.label === label) {
-      groups[groups.length - 1] = { label, rows: [...last.rows, row] };
+      last.rows.push(row);
     } else {
       groups.push({ label, rows: [row] });
     }
@@ -167,9 +167,11 @@ export function useLogPages(
     request: undefined,
     error: undefined,
   });
-  const current = snapshot.ownerKey === initialKey
-    ? snapshot
-    : { ownerKey: initialKey, page: initial, request: undefined, error: undefined };
+  const current = useMemo<LogPageSnapshot>(() => (
+    snapshot.ownerKey === initialKey
+      ? snapshot
+      : { ownerKey: initialKey, page: initial, request: undefined, error: undefined }
+  ), [initial, initialKey, snapshot]);
 
   const loadMore = useCallback(() => {
     if (current.page?.nextCursor.state !== "present" || current.request !== undefined) return;

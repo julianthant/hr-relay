@@ -134,6 +134,7 @@ import {
 } from "./log-panel-model.js";
 import { SystemChip } from "./system-chip.js";
 import { useDashboardClient } from "../state/client-context.js";
+import { DashboardClientError } from "../client/index.js";
 
 export type { PanelTab };
 
@@ -1063,8 +1064,9 @@ function logRowLabel(row: LogRow): string {
   if (row.kind === "transaction-fenced") {
     return `${fmtClock(row.at)}: authority transaction fence at ${row.producer.step}, attempt ${String(row.attempt)}`;
   }
+  const directions = [...new Set(row.points.map((point) => point.direction))].join(", ");
   const facts = logPillsOf(row).map((pill) => `${pill.label}: ${pill.value}`).join("; ");
-  return `${fmtClock(row.at)}: observed at ${row.producer.step}, ${row.producer.taskId}, attempt ${String(row.attempt)}. ${facts}`;
+  return `${fmtClock(row.at)}: observed at ${row.producer.step}, ${row.producer.taskId}, system ${row.producer.system}, directions ${directions}, attempt ${String(row.attempt)}. ${facts}`;
 }
 
 function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean }) {
@@ -1273,12 +1275,21 @@ function LogsTab({
         )}
         {paged.error !== undefined && (
           <div role="alert" className={cn(dsText.meta, "px-5 py-[var(--ds-space-tight)] text-[color:var(--ds-danger)]")}>
-            Could not load more log lines. Try again.
+            {paged.error instanceof DashboardClientError && paged.error.code !== undefined
+              ? `${paged.error.code}: ${paged.error.message}`
+              : paged.error.message}
           </div>
         )}
         {paged.page?.nextCursor.state === "present" && (
           <div className="px-5 py-[var(--ds-space-tight)]">
-            <Button variant="ghost" size="sm" onClick={paged.loadMore} disabled={paged.loading} aria-busy={paged.loading || undefined}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 min-w-11 sm:min-h-0 sm:min-w-0"
+              onClick={paged.loadMore}
+              disabled={paged.loading}
+              aria-busy={paged.loading || undefined}
+            >
               {paged.loading ? "Loading more lines…" : "Load more lines"}
             </Button>
           </div>

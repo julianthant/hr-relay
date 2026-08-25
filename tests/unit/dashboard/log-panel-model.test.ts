@@ -99,6 +99,16 @@ describe("observed log presentation fold", () => {
     ]);
   });
 
+  it("keeps the served 200-row page bound complete in one contiguous producer group", () => {
+    const rows = Array.from({ length: 200 }, (_, index) => observed(index + 1));
+    const groups = groupLogRows(rows);
+
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]?.rows.length, 200);
+    assert.equal(groups[0]?.rows[0], rows[0]);
+    assert.equal(groups[0]?.rows[199], rows[199]);
+  });
+
   it("preserves redaction and retry facts without assigning a fence a page direction or system", () => {
     const row = observed(2, 3);
     assert.deepEqual(logPillsOf(row), [
