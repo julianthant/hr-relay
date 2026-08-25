@@ -7,6 +7,10 @@ lessons keep living in the module's own `CLAUDE.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-08-25: operator prose containing a closed wire enum must use the same display fold as
+  pills (AC24; ref frontend-backend-integration §4 “State ownership”).** Keep the pill's exact label
+  available, then apply a total, tested sentence-case fold for prose; never print the transport
+  spelling beside a display label.
 
 - **2026-08-20: a structural rule is satisfied by moving the SCHEMA, not by arguing with the rule —
   and the value you were told to type is often already on the page (D261).** D260 proved, correctly
