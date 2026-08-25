@@ -148,6 +148,37 @@ const LinkedRunWireSchema = z.strictObject({
  */
 export const QueuePrioritySchema = z.enum(["interactive", "bulk"]);
 
+/**
+ * The `△ N` chip's REAL count (D22 as amended by D126).
+ *
+ * D126's argument for letting `verifiedDone` and `doneWarnings` draw the same
+ * visible word rests on three visible channels separating them — icon, hue,
+ * and *this count*. A chip that always read `1` because nothing counted made
+ * the third channel a constant, which is weaker than the argument assumes.
+ *
+ * The present arm carries a POSITIVE count and the first warning's own
+ * sentence (the chip's title). There is deliberately no `count: 0` arm:
+ * absence IS zero here, exactly as it is for this file's sparse count arrays,
+ * and a zero-count present arm would be a chip with nothing to say. The
+ * absent arm's `reason` is what distinguishes "this run recorded no warning"
+ * from "nothing has derived this run's warning set yet" — collapsing those
+ * two into one silent zero is the absence-versus-failure conflation this
+ * program bans.
+ *
+ * It is a NAMED export rather than an inline union because the Archive index
+ * entry carries the same fact, copied verbatim off the frozen row: two
+ * definitions of one shape are two things to keep in sync, and the whole point
+ * of the copy is that the list and the detail can never disagree.
+ */
+export const RunWarningsWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("present"),
+    count: PositiveIntSchema,
+    first: z.string().min(1),
+  }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
 const QueueBaseFields = {
   runId: RunIdSchema,
   itemId: ItemIdSchema,
@@ -329,31 +360,7 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
-  /**
-   * The `△ N` chip's REAL count (D22 as amended by D126).
-   *
-   * D126's argument for letting `verifiedDone` and `doneWarnings` draw the same
-   * visible word rests on three visible channels separating them — icon, hue,
-   * and *this count*. A chip that always read `1` because nothing counted made
-   * the third channel a constant, which is weaker than the argument assumes.
-   *
-   * The present arm carries a POSITIVE count and the first warning's own
-   * sentence (the chip's title). There is deliberately no `count: 0` arm:
-   * absence IS zero here, exactly as it is for this file's sparse count arrays,
-   * and a zero-count present arm would be a chip with nothing to say. The
-   * absent arm's `reason` is what distinguishes "this run recorded no warning"
-   * from "nothing has derived this run's warning set yet" — collapsing those
-   * two into one silent zero is the absence-versus-failure conflation this
-   * program bans.
-   */
-  warnings: z.discriminatedUnion("state", [
-    z.strictObject({
-      state: z.literal("present"),
-      count: PositiveIntSchema,
-      first: z.string().min(1),
-    }),
-    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-  ]),
+  warnings: RunWarningsWireSchema,
   pipeline: z.array(PipelineStepWireSchema),
   panelKind: PanelKindSchema,
   availableSections: z.array(RunDetailSectionSchema),

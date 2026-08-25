@@ -42,7 +42,12 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { AppVersionSchema, DashboardWireVersionSchema } from "./primitives.js";
-import { QueueStatusSchema, QueueSurfaceWireSchema, ResolvedInstanceSchema } from "./projection.js";
+import {
+  QueueStatusSchema,
+  QueueSurfaceWireSchema,
+  ResolvedInstanceSchema,
+  RunWarningsWireSchema,
+} from "./projection.js";
 import { FailureDetailWireSchema, RunDetailWireSchema } from "./run-detail.js";
 import { RunEvidenceReceiptSchema } from "../trust/evidence.js";
 
@@ -92,6 +97,33 @@ export const ArchiveEntryWireSchema = z.strictObject({
    * same fact off `row.resolvedInstances`, so the two can never disagree.
    */
   resolvedInstances: z.array(ResolvedInstanceSchema),
+  /**
+   * Whether this archived run was a REHEARSAL, copied verbatim off the frozen
+   * row exactly as `resolvedInstances` is (`QueueBaseFields.dryRun`,
+   * `projection.ts`, D6).
+   *
+   * There is no absent arm, and read-forward (D133) does not ask for one: the
+   * stored `archived_runs.row` parses as a whole `QueueSurfaceWireSchema`, on
+   * which `dryRun` is a required boolean — a record that lacked it could not be
+   * read back at all, so a `{state:"absent"}` arm here would be a shape no row
+   * can ever take. Its absence is what makes the list honest: a rehearsal that
+   * renders identically to a real filing is the cheapest way to read a dry run
+   * as a submitted transaction, and until now the operator had to OPEN a run to
+   * find out which it was.
+   */
+  dryRun: z.boolean(),
+  /**
+   * The `△ N` chip's count and its first sentence, copied off the same frozen
+   * row (`RunWarningsWireSchema`). The union is the row's own — a run that
+   * recorded no warning and a run nothing has derived warnings for are
+   * different facts, and the index restates neither.
+   *
+   * D126's argument for `verifiedDone` and `doneWarnings` sharing the visible
+   * word `Done` rests on three separating channels, and this count is one of
+   * them. A list that drew the pill without the count was running that argument
+   * on two.
+   */
+  warnings: RunWarningsWireSchema,
   /** ref frontend-backend-integration §5's "integrity" — what a relaunch must cite back. */
   archiveFingerprint: FingerprintSchema,
 });

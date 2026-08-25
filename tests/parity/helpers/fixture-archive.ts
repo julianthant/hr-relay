@@ -152,6 +152,11 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
     // The SAME value the frozen row carries — the index copies it, never
     // re-derives it, so the two surfaces cannot name different instances.
     resolvedInstances: [{ system: "ucpath", instance: "prod" }],
+    // Both copied off ARCHIVED_ROW above, byte for byte — the index entry is a
+    // copy of the frozen row's own fields, so a fixture that disagreed with the
+    // row would photograph a state production cannot produce.
+    dryRun: false,
+    warnings: { state: "absent", reason: "this run's evidence receipt records no warning" },
     archiveFingerprint: ARCHIVE_DIGEST,
   }],
   sweeps: [{

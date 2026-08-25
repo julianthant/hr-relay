@@ -178,6 +178,12 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         // Copied off the FROZEN row, never re-derived: the index and the
         // detail must name the same instances, and the detail reads `row`.
         resolvedInstances: record.row.resolvedInstances,
+        // The same copy, for the same reason. Both facts are already in this
+        // record — the detail has drawn them since D179 — so serving them on
+        // the index adds no authority read and cannot diverge from the run's
+        // own page.
+        dryRun: record.row.dryRun,
+        warnings: record.row.warnings,
         archiveFingerprint: record.contentDigest,
       })),
       sweeps: repositories.versionBumpApplications.list().map((application) => ({
