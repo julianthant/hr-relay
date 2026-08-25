@@ -4,20 +4,21 @@
 session contract (§2), the worker's claim/heartbeat/recovery lifecycle (§3), browser-session
 ownership and the content-level authentication proof (§4), the speed contract (§5), failure
 isolation (§6), the guards and the executed concurrency matrix (§7), a worked example (§8), the
-settled defaults (§9), and the two things this doc has DESIGNED and the tree has not yet built —
-the Duo ceremony lease (§10) and sessions plus the worker pool (§11). It is a REFERENCE spec: it
-states what holds, and where the code differs the as-built is stated in the section it amends.
+settled defaults (§9), the built Duo ceremony lease (§10), and sessions plus the worker pool (§11).
+Section 11 is deliberately split: its authority records and dashboard read view are built, while
+the pool process and parallel proof remain designed. It is a REFERENCE spec: it states what holds,
+and where the code differs the as-built is stated in the section it amends.
 
-**Status, verified against the tree 2026-08-21 (D252).** §1–§9 are BUILT and running. One worker
+**Status, verified against the tree 2026-08-25 (D252, D267, D269).** §1–§9 are BUILT and running. One worker
 owns one active run (`src/core/worker-loop.ts`), its browser sessions are callback leases keyed on
 the whole `(worker, system, instance, configFingerprint)` identity (`src/core/worker-sessions.ts`),
 the concrete factory launches Playwright's full Chromium with the Duo Autopilot extension and proves
 every close (`src/infra/browser/browser-session-factory.ts`), four systems are bound
 (`src/infra/browser/system-bindings.ts`), and D182's concurrency matrix executes the multi-worker
-cases against real `runWorkerLoop` instances over one authority database (§7.1). §10 remains
-**DESIGNED, NOT BUILT**; §11's authority records and dashboard read view are built, while its pool
-process and parallel proof remain designed. The executor-lane and static per-system capacity design
-is retired and stays retired (§0).
+cases against real `runWorkerLoop` instances over one authority database (§7.1). §10 is built as
+the durable D267 ceremony lease and recovery contract; §11's authority records and dashboard read
+view are built, while its pool process and parallel proof remain designed. The executor-lane and
+static per-system capacity design is retired and stays retired (§0).
 
 Four dated Phase-1 stage blocks (1d's seam ratification, the 1f runtime, the 1f concrete factory and
 D125's bound) stood above §0 until 2026-08-21; their contracts are folded into §2, §4, §4.1 and §4.3
