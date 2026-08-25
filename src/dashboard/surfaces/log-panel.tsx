@@ -46,13 +46,17 @@ import {
   type ReactNode,
 } from "react";
 import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
   ClipboardList,
   CornerDownRight,
+  Database,
   FileText,
   Info,
   Pause,
   Receipt,
   ScrollText,
+  ShieldCheck,
   TriangleAlert,
   UserRoundSearch,
   Users,
@@ -61,6 +65,8 @@ import {
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
+  Badge,
+  Button,
   Chip,
   EmptyState,
   FloatingSurface,
@@ -71,6 +77,7 @@ import {
   PopoverTrigger,
   SearchInput,
   SectionLabel,
+  Skeleton,
   StatusDot,
   Tooltip,
   dsStatusText,
@@ -87,6 +94,7 @@ import {
   type DsStatus,
 } from "../ds/ui.js";
 import type {
+  LogRowWire,
   RunDetailSectionResponseSchema,
   RunDetailWireSchema,
 } from "../../domain/dashboard/run-detail.js";
@@ -117,6 +125,15 @@ import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
 import { dsStatusOf, outcomeDsStatusOf } from "./status-model.js";
 import { DETAIL_THREE_COLUMN_PX } from "./layout-metrics.js";
 import { defaultTabFor, tabsFor, terminalOutcomeText, type PanelTab } from "./log-panel-model.js";
+import {
+  groupLogRows,
+  logPillsOf,
+  logRowsOf,
+  rowMatchesLogQuery,
+  useLogPages,
+} from "./log-panel-model.js";
+import { SystemChip } from "./system-chip.js";
+import { useDashboardClient } from "../state/client-context.js";
 
 export type { PanelTab };
 
@@ -126,6 +143,7 @@ type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
 type TimelineEvent = RunDetailWire["timeline"]["events"][number];
 type NotePage = Extract<RunDetailSectionResponse, { section: "logs" }>["payload"];
+type LogRow = LogRowWire;
 type FailurePayload = Extract<RunDetailSectionResponse, { section: "failure" }>["payload"];
 /**
  * The gate section's type is DEFINED one layer up, in
@@ -994,12 +1012,97 @@ const NOTE_ICON: Record<NotePage["notes"][number]["level"], typeof Info> = {
  * every note (or whose page is empty) still renders, at the top or the end. A
  * served record is NEVER dropped for want of a place to put it.
  */
-function anchorIndex(notes: readonly NotePage["notes"][number][], at: string): number {
+function logRowAt(row: LogRow): string {
+  return row.kind === "note" ? row.note.at : row.at;
+}
+
+function anchorIndex(rows: readonly LogRow[], at: string): number {
   let index = -1;
-  for (const [position, note] of notes.entries()) {
-    if (note.at <= at) index = position;
+  for (const [position, row] of rows.entries()) {
+    if (logRowAt(row) <= at) index = position;
   }
   return index;
+}
+
+function LogFactPill({ direction, label, value }: { direction: "read" | "write"; label: string; value: string }) {
+  const read = direction === "read";
+  const Icon = read ? ArrowDownToLine : ArrowUpFromLine;
+  return (
+    <Chip
+      label={label}
+      icon={<Icon aria-hidden className={cn(dsIcon.sm, read ? "text-[color:var(--ds-read-fg)]" : "text-[color:var(--ds-write-fg)]")} />}
+      title={`${label}: ${value}`}
+      className={cn(
+        read
+          ? "border-[color:var(--ds-read-border)] bg-[var(--ds-read-bg)] text-[color:var(--ds-read-fg)]"
+          : "border-[color:var(--ds-write-border)] bg-[var(--ds-write-bg)] text-[color:var(--ds-write-fg)]",
+      )}
+    >
+      {value}
+    </Chip>
+  );
+}
+
+function logIconOf(row: LogRow): { readonly Icon: typeof Info; readonly tone: string } {
+  if (row.kind === "note") {
+    return { Icon: NOTE_ICON[row.note.level], tone: NOTE_TONE[row.note.level] };
+  }
+  if (row.kind === "transaction-fenced") {
+    return { Icon: ShieldCheck, tone: "text-[color:var(--ds-fg-muted)]" };
+  }
+  const directions = new Set(row.points.map((point) => point.direction));
+  if (directions.size !== 1) return { Icon: Database, tone: "text-[color:var(--ds-fg-muted)]" };
+  const direction = [...directions][0];
+  return direction === "read"
+    ? { Icon: ArrowDownToLine, tone: "text-[color:var(--ds-read-fg)]" }
+    : { Icon: ArrowUpFromLine, tone: "text-[color:var(--ds-write-fg)]" };
+}
+
+function logRowLabel(row: LogRow): string {
+  if (row.kind === "note") return `${fmtClock(row.note.at)}: ${row.note.level} note: ${row.note.message}`;
+  if (row.kind === "transaction-fenced") {
+    return `${fmtClock(row.at)}: authority transaction fence at ${row.producer.step}, attempt ${String(row.attempt)}`;
+  }
+  const facts = logPillsOf(row).map((pill) => `${pill.label}: ${pill.value}`).join("; ");
+  return `${fmtClock(row.at)}: observed at ${row.producer.step}, ${row.producer.taskId}, attempt ${String(row.attempt)}. ${facts}`;
+}
+
+function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean }) {
+  const { Icon, tone } = logIconOf(row);
+  const observed = row.kind === "observed";
+  const note = row.kind === "note" ? row.note : undefined;
+  const fenced = row.kind === "transaction-fenced";
+  const at = row.kind === "note" ? row.note.at : row.at;
+  return (
+    <div
+      role="listitem"
+      aria-label={logRowLabel(row)}
+      className={cn(
+        "flex min-w-0 items-start gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)] pl-5 py-[var(--ds-space-hair)]",
+        dim && "opacity-35",
+      )}
+    >
+      <span className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] shrink-0 text-[color:var(--ds-fg-muted)]")}>
+        {fmtClock(at)}
+      </span>
+      <span className="mt-[var(--ds-space-hair)] w-3.5 shrink-0 text-center">
+        <Icon aria-hidden className={cn(dsIcon.sm, tone)} />
+      </span>
+      <span className={cn(dsText.body, "min-w-0 break-words", note !== undefined && NOTE_TONE[note.level], hit && cn(dsRadius.xs, "bg-[var(--ds-info-bg)]"))}>
+        {note !== undefined && note.message}
+        {observed && (
+          <span className="inline-flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
+            <SystemChip system={row.producer.system} />
+            {logPillsOf(row).map((pill, index) => (
+              <LogFactPill key={`${pill.direction}:${pill.label}:${pill.value}:${String(index)}`} {...pill} />
+            ))}
+          </span>
+        )}
+        {fenced && <span className="text-[color:var(--ds-fg-secondary)]">Authority fence</span>}
+        {row.kind !== "note" && <Badge tone="warning" className="ml-[var(--ds-space-tight)]">attempt {row.attempt}</Badge>}
+      </span>
+    </div>
+  );
 }
 
 function LogsTab({
@@ -1041,17 +1144,25 @@ function LogsTab({
   servedDescriptorHash: string | undefined;
   aiAdvisory: CapabilityAvailability;
 }) {
+  const client = useDashboardClient();
   const [query, setQuery] = useState("");
   useEffect(() => setQuery(""), [detail.runId]);
 
-  const lines = useMemo(() => [...(notes?.notes ?? [])].sort((a, b) => a.sequence - b.sequence), [notes]);
+  const loadNext = useCallback(async (cursor: string): Promise<NotePage> => {
+    const response = await client.runSection(detail.runId, "logs", cursor);
+    if (response.section !== "logs") throw new Error(`logs pagination returned ${response.section}, not logs`);
+    return response.payload;
+  }, [client, detail.runId]);
+  const paged = useLogPages(notes, loadNext);
+  const lines = useMemo(() => logRowsOf(paged.page), [paged.page]);
   const trimmed = query.trim().toLowerCase();
   const matches = useCallback(
-    (note: NotePage["notes"][number]): boolean =>
-      trimmed.length > 0 && note.message.toLowerCase().includes(trimmed),
+    (row: LogRow): boolean => rowMatchesLogQuery(row, trimmed),
     [trimmed],
   );
   const matchCount = trimmed.length > 0 ? lines.filter(matches).length : 0;
+  const groups = useMemo(() => groupLogRows(lines), [lines]);
+  const lineIndex = useMemo(() => new Map(lines.map((row, index) => [row.logId, index])), [lines]);
 
   const gate = detail.gate;
   const decisionAt = gate.state === "open" ? anchorIndex(lines, gate.openedAt) : undefined;
@@ -1065,7 +1176,7 @@ function LogsTab({
   // The park's own instant, off the served section — the run stopped when the
   // kernel parked it, which is not the same moment as any line in the stream.
   const parkedAt = parked === undefined ? undefined : anchorIndex(lines, parked.parkedAt);
-  const errorNotes = lines.filter((note) => note.level === "error");
+  const errorNotes = lines.flatMap((row) => row.kind === "note" && row.note.level === "error" ? [row.note] : []);
 
   const decision =
     gate.state === "open" ? (
@@ -1104,65 +1215,73 @@ function LogsTab({
         {gateRecordAt === -1 && gateRecord}
         {failureAt === -1 && failureRecord}
         {parkedAt === -1 && parkedRecord}
-        {lines.length === 0 ? (
+        {notes === undefined ? (
+          <div className="space-y-[var(--ds-space-snug)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]" aria-label="Loading logs" aria-busy="true">
+            <Skeleton className="h-[var(--ds-h-row)] w-full" />
+            <Skeleton className="h-[var(--ds-h-row)] w-4/5" />
+          </div>
+        ) : lines.length === 0 ? (
           <EmptyState
             icon={<FileText aria-hidden className={dsIcon.lg} />}
             title="No log lines yet"
             description="Lines appear here as the run works. Nothing has been recorded for this run."
           />
+        ) : trimmed.length > 0 && matchCount === 0 ? (
+          <EmptyState
+            icon={<ScrollText aria-hidden className={dsIcon.lg} />}
+            title="No matching log lines"
+            description="Try a different search."
+            action={<Button variant="ghost" size="sm" onClick={() => setQuery("")}>Clear search</Button>}
+          />
         ) : (
-          lines.map((note, index) => {
-            const Icon = NOTE_ICON[note.level];
-            const hit = matches(note);
-            const dim = trimmed.length > 0 && !hit;
-            return (
-              <div key={note.noteId}>
-                <div
-                  className={cn(
-                    "flex items-start gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)] pl-5 py-[var(--ds-space-hair)]",
-                    dim && "opacity-35",
-                  )}
-                >
-                  <span
+          <div role="list" aria-label="Run log lines">
+            {groups.map((group, groupIndex) => (
+              <div key={`${group.label ?? "note"}:${String(groupIndex)}`}>
+                {group.label !== undefined && (
+                  <div
+                    role="heading"
+                    aria-level={3}
                     className={cn(
-                      dsText.micro,
-                      dsText.nums,
-                      "mt-[var(--ds-space-hair)] shrink-0 text-[color:var(--ds-fg-muted)]",
+                      "sticky top-[var(--ds-panel-head-h,0px)] flex items-center gap-[var(--ds-space-snug)]",
+                      "bg-[var(--ds-surface-1)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-tight)] pt-[var(--ds-space-base)]",
+                      dsText.meta,
+                      "font-semibold text-[color:var(--ds-fg-secondary)]",
                     )}
                   >
-                    {fmtClock(note.at)}
-                  </span>
-                  <span className="mt-[var(--ds-space-hair)] w-3.5 shrink-0 text-center">
-                    <Icon aria-hidden className={cn(dsIcon.sm, NOTE_TONE[note.level])} />
-                  </span>
-                  <span
-                    className={cn(
-                      dsText.body,
-                      "min-w-0 break-words",
-                      NOTE_TONE[note.level],
-                      hit && cn(dsRadius.xs, "bg-[var(--ds-info-bg)]"),
-                    )}
-                  >
-                    {note.message}
-                  </span>
-                </div>
-                {decisionAt === index && decision}
-                {gateRecordAt === index && gateRecord}
-                {failureAt === index && failureRecord}
-                {parkedAt === index && parkedRecord}
+                    <span className="min-w-0 break-words">{group.label}</span>
+                    <span aria-hidden className="h-px min-w-0 flex-1 bg-[var(--ds-border-subtle)]" />
+                  </div>
+                )}
+                {group.rows.map((row) => {
+                  const index = lineIndex.get(row.logId);
+                  if (index === undefined) throw new Error(`log row ${String(row.logId)} is absent from its own grouped sequence`);
+                  const hit = matches(row);
+                  const dim = trimmed.length > 0 && !hit;
+                  return (
+                    <div key={row.logId}>
+                      <LogLine row={row} hit={hit} dim={dim} />
+                      {decisionAt === index && decision}
+                      {gateRecordAt === index && gateRecord}
+                      {failureAt === index && failureRecord}
+                      {parkedAt === index && parkedRecord}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })
+            ))}
+          </div>
         )}
-        {notes?.nextCursor.state === "present" && (
-          <span
-            className={cn(
-              dsText.meta,
-              "px-5 py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]",
-            )}
-          >
-            More lines follow.
-          </span>
+        {paged.error !== undefined && (
+          <div role="alert" className={cn(dsText.meta, "px-5 py-[var(--ds-space-tight)] text-[color:var(--ds-danger)]")}>
+            Could not load more log lines. Try again.
+          </div>
+        )}
+        {paged.page?.nextCursor.state === "present" && (
+          <div className="px-5 py-[var(--ds-space-tight)]">
+            <Button variant="ghost" size="sm" onClick={paged.loadMore} disabled={paged.loading} aria-busy={paged.loading || undefined}>
+              {paged.loading ? "Loading more lines…" : "Load more lines"}
+            </Button>
+          </div>
         )}
       </div>
 
