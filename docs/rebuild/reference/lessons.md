@@ -534,8 +534,13 @@ write-safety work.
   `ps lstart` changes with `TZ`, and a never-run generation equal to the first acquisition lets a
   pre-start proof survive start/release. Normalize the birth stamp, reserve the baseline, and never
   call a failed WAL/SHM rollback unchanged: its rename/fsync/unlink failures carry an explicit
-  uncertain state and all causes. Sampling, PID liveness, and a generic “not modified” catch are each
-  plausible facts, but none proves the state needed at the irreversible boundary.
+  uncertain state and all causes. Final review found the same mistaken boundary one layer lower: a
+  filesystem rename may take effect and then throw, while a `finally` cleanup throw may replace the
+  failure that led there. Reconcile source/destination truth after throwing companion-displacement
+  or authority-replacement renames, classify unprovable authority state explicitly, and aggregate
+  cleanup behind the original error. Sampling,
+  PID liveness, a returned primitive, and a generic “not modified” catch are each plausible facts,
+  but none proves the state needed at the irreversible boundary.
 - **2026-08-09: An id minted unconditionally and emitted conditionally is a citation to nothing
   (D187).** `buildRunEvidenceReceipt` minted a `verificationId` for EVERY node but pushed the
   verification row only for a terminal dependency or a not-run node, while a downstream derived fact

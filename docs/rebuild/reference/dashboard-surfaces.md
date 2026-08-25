@@ -1276,10 +1276,16 @@ admission sentinel, then compares a fresh live observation with the exact persis
 without changing the fingerprinted `recordedAt`. Every runtime acquisition checks that sentinel on
 both sides of its atomic singleton claim or worker-record write and unwinds if restore won. Restore
 holds admission through staged checksum re-verification and authority swap. After the swap,
-fsync/report/admission-release errors carry an irreversible `replaced` state to the CLI; before it,
-live WAL/SHM companions move only into rollback staging and must restore by atomic rename plus fsync.
-If rollback rename, fsync or cleanup cannot be proven, the CLI reports
+fsync/report/admission-release errors carry an irreversible `replaced` state to the CLI. A rename
+throw is not itself evidence that no side effect happened: companion displacement reconciles both
+paths and enrolls a moved destination in rollback; authority replacement reconciles staged/live
+existence plus their pre-call SHA-256/size identities. A proven installed staged identity is
+`replaced`; an outcome that cannot be proven is `authority-state-uncertain`, with both paths named.
+Before replacement, live WAL/SHM companions move only into rollback staging and must restore by
+atomic rename plus fsync. If rollback rename, fsync or cleanup cannot be proven, the CLI reports
 `companion-state-uncertain` and preserves the recovery artifacts instead of claiming `unchanged`.
+Staged-file cleanup attempts every path and aggregates failures after the in-flight primary error,
+which remains first and is the cause; cleanup-only failure after swap remains `replaced`.
 
 **The command never chooses a backup.** `--from` names one exact manifest, because "restore the
 newest" is a decision about which minutes of real HR work to discard and no default is right; a
