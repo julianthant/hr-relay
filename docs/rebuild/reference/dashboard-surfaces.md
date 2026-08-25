@@ -134,6 +134,7 @@ What is **good** and must be kept (charter: port, don't rewrite):
 <!-- roadmap: observed-logs -->
 <!-- roadmap-status: observed-logs -->
 - [ ] BE the notes stream is DECLARED, its writer is composed and exposed, and nothing in `src/` calls `emitNote` — the worker logs to stdout instead (`lineTaskLogger`, `src/server/worker/compose.ts`)
+- [x] D270 — `data.observed`: every recorded point emitted on the task's span at record time, redacted by declaration, with the queue projection ignoring the arm by name
 - [ ] BE a transaction node's beats emit task spans with no observation payload (`emitTaskSpan`, `src/core/write-sequencer.ts`), so nothing streams what the page said
 - [ ] FE the run-detail Logs section reads the notes JSONL per request and a failed run OPENS on it (`noteLinesForRun` + `defaultTabFor`), so today's default tab for a failure is an empty stream
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified at D254's own bar — `.tracker-rebuild/` holds `spans/` and no `notes/` directory at all; the three doc sections that describe the stream (§1.1, §1.2, §2.1) now say so
@@ -184,7 +185,7 @@ boundary by design — before D214 both executions emitted the same path, so the
 different executions into one (D123's lesson, one level in). Every reader still parses the node id
 as everything before the LAST `#`, so a stored pre-D214 stream stays readable.
 
-**The union is eleven strict arms** (`SpanEventWireSchema`, `src/events/types.ts`). Every arm
+**The union is twelve strict arms** (`SpanEventWireSchema`, `src/events/types.ts`). Every arm
 carries `t`, `ts`, `workflow` and `pid` plus its identity tuple; `t` alone cannot discriminate,
 because `span.started`/`span.ended` legitimately appear for four kinds, so the union is plain and
 each arm is a `strictObject`.
@@ -199,6 +200,7 @@ each arm is a `strictObject`.
 | `gate.opened` | run | `gate` | the executor |
 | `gate.resolved` | run | `gate`, `resolutionKey`, `resultHash` | the BFF command service, on an applied `resolve-gate` |
 | `transaction.previewed` | run | `node`, `subject` (`match` · `mismatch` · `unscoped` · `not-observed`), `externalCommit: "none"` | the executor, on a dry run's transaction node (D210/D215) |
+| `data.observed` | run | `nodeId`, `taskId`, `observedAt`, `points` — one entry per recorded point: `direction`, `field`, and its value split into evidence LEAVES, each already redacted | the executor, once per `ctx.recordData` call (D270) |
 | `span.ended` `kind:"task"` | run | `outcome`, `failureId?`, `errorSummary?`, `notRunReason?` | the executor |
 | `span.ended` `kind:"run"` | run | `outcome`, `failureId?` | the executor |
 | `span.ended` `kind:"worker"\|"browser"` | worker | `outcome`, `errorSummary?` | the worker composition |
@@ -211,7 +213,7 @@ it — a refinement enforces that, because a `done` span carrying a not-run reas
 different things at once. Its ABSENCE means "no reason was recorded" and must stay legible as
 that; it is never back-filled with a plausible one (D123).
 
-**The kernel's port is nine of those arms, not eleven.** `ExecutorSpanEventSchema`
+**The kernel's port is ten of those arms, not twelve.** `ExecutorSpanEventSchema`
 (`src/core/span-emitter.ts`) is the executor's REQUIRED sink — no default, no no-op — and it
 deliberately omits `run.queued` and `gate.resolved`, which the BFF emits because it is where the
 enqueue and the gate resolution are applied. The two schemas are parity twins over the arms they
@@ -220,6 +222,40 @@ kernel's union and never reached this wire leaf, so the FIRST preview that ever 
 inside the JSONL writer and killed a live worker one emit short of its terminal (separations
 §9.15). The pinning cases are `tests/unit/events/span-events.test.ts`, and the lesson they now
 carry is to enumerate the VALUES a producer can emit rather than sampling the shapes.
+
+**`data.observed` is the OBSERVED LOG, and it is an emission rather than a scrape (D270).** Every
+point a task records through `ctx.recordData` — the D115 collector — is what the run actually READ
+or WROTE in the system's own words, and until D270 those points validated the output and were then
+discarded. They now ride this arm, on the producing task's own span path, one event per
+`recordData` CALL: a batch is one observation of the page, so the collector reads the clock once per
+call and the event's `observedAt` is that single instant rather than one derived from whichever
+point happened to be first.
+
+Four properties are worth stating where a reader meets the arm.
+
+- **Record time, not finalization.** A task that throws after reading the page has still read the
+  page, so its observations are on the stream even though its checkpoint never was.
+- **Redacted by DECLARATION, per leaf.** Each point's value is split by the provenance collector's
+  own leaf rule and pushed through `redactEvidenceLeaf` — the same declared table
+  (`ref operator-trust` §2.3) the D82 receipt uses, never a second implementation. An UNDECLARED
+  leaf fails the recording task by name; dropping it would make a log look complete while hiding
+  what the run read.
+- **`direction` is carried natively, `system` is NOT.** `DataPoint` has always carried read/write,
+  which the Context rail has to DERIVE from the producing node's declared task-contract `effect`
+  because the checkpoint row has no such field (D252) — so an observed log is strictly better placed
+  than the rail to say what the run did to the world and must not re-derive what it holds. The
+  system is declared by the STORE implementing the task and reaches the wire through
+  `RunDetailDescriptorView.dataOrigins`, composed at the root because a descriptor may not reach a
+  store (D106); a `system` field here would be a second authority over a fact the declaration
+  already owns.
+- **The queue projection ignores it BY NAME.** The queue row's vocabulary is task spans and terminal
+  outcomes, and folding a page observation into a span it is not would be D123's collapse again — so
+  the arm is refused a fold explicitly, which is what keeps a stream carrying it from degrading
+  `ingestFromDisk` and triggering the guarded rebuild (D218). Rendering the rows is `03a` §Observed
+  logs' FE row.
+
+It rides `spans/` and adds no file kind: §2.1's layout is unchanged, and no note is written, so
+`assertNoteWithinRunScope` is not on this path at all.
 
 **What the wire deliberately does NOT carry.** Each of these is a named absence, not an oversight,
 and every one of them was in an earlier draft of this section:

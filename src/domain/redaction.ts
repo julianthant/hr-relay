@@ -1,63 +1,55 @@
 import { z } from "zod";
 import { canonicalJsonStringify, JsonValueSchema } from "./canonical-json.js";
 import { FingerprintSchema } from "./ids.js";
+import {
+  DataClassificationSchema,
+  EvidenceTransformSchema,
+  evidenceTransformAllowed,
+  refineEvidenceTransformPair,
+} from "./redaction-policy.js";
 import { sha256Hex } from "./sha256.js";
 
-export const DataClassificationSchema = z.enum([
-  "secret",
-  "credential-file",
-  "direct-identifier",
-  "sensitive-hr",
-  "safe-diagnostic",
-]);
-export const EvidenceTransformSchema = z.enum(["drop", "digest", "last4", "basename", "count", "allow"]);
-
-const ALLOWED_TRANSFORMS = {
-  secret: new Set(["drop", "digest"]),
-  "credential-file": new Set(["drop", "digest"]),
-  "direct-identifier": new Set(["drop", "digest", "last4"]),
-  "sensitive-hr": new Set(["drop", "digest", "count"]),
-  "safe-diagnostic": new Set(["allow", "count", "basename"]),
-} satisfies Record<z.infer<typeof DataClassificationSchema>, ReadonlySet<string>>;
-
-/**
- * Whether a classification permits a transform. Exported because a
- * DECLARATION of (classification, transform) — ref operator-trust §2.3's receipt field
- * classifications — must be refused at declaration time, not only when a value
- * is finally pushed through `redactDiagnosticFields`. One table, two callers.
- */
-export function evidenceTransformAllowed(
-  classification: z.infer<typeof DataClassificationSchema>,
-  transform: z.infer<typeof EvidenceTransformSchema>,
-): boolean {
-  return ALLOWED_TRANSFORMS[classification].has(transform);
-}
+export { DataClassificationSchema, EvidenceTransformSchema, evidenceTransformAllowed } from "./redaction-policy.js";
 
 export const ClassifiedDiagnosticValueSchema = z.strictObject({
   key: z.string().regex(/^[a-z][A-Za-z0-9]*$/),
   classification: DataClassificationSchema,
   transform: EvidenceTransformSchema,
   value: JsonValueSchema,
-}).superRefine((field, context) => {
-  if (!evidenceTransformAllowed(field.classification, field.transform)) {
-    context.addIssue({ code: "custom", path: ["transform"], message: `${field.transform} is forbidden for ${field.classification}` });
-  }
-});
+}).superRefine(refineEvidenceTransformPair);
 
 const RedactedDropArm = z.strictObject({
   state: z.literal("redacted"),
   classification: DataClassificationSchema,
   transform: z.literal("drop"),
 });
-const RedactedTransformedArm = z.strictObject({
+const RedactedDigestArm = z.strictObject({
   state: z.literal("transformed"),
   classification: DataClassificationSchema,
-  transform: z.enum(["digest", "last4", "basename", "count"]),
-  value: z.union([FingerprintSchema, z.string(), z.number().int().nonnegative()]),
+  transform: z.literal("digest"),
+  value: FingerprintSchema,
+});
+const RedactedLast4Arm = z.strictObject({
+  state: z.literal("transformed"),
+  classification: DataClassificationSchema,
+  transform: z.literal("last4"),
+  value: z.string().max(4, "must contain at most four characters"),
+});
+const RedactedBasenameArm = z.strictObject({
+  state: z.literal("transformed"),
+  classification: DataClassificationSchema,
+  transform: z.literal("basename"),
+  value: z.string(),
+});
+const RedactedCountArm = z.strictObject({
+  state: z.literal("transformed"),
+  classification: DataClassificationSchema,
+  transform: z.literal("count"),
+  value: z.number().int().nonnegative(),
 });
 const RedactedAllowedArm = z.strictObject({
   state: z.literal("allowed"),
-  classification: z.literal("safe-diagnostic"),
+  classification: DataClassificationSchema,
   transform: z.literal("allow"),
   value: JsonValueSchema,
 });
@@ -72,18 +64,24 @@ const RedactedAllowedArm = z.strictObject({
  * thing to drift, and a reject row that leaked a value the receipt would have
  * dropped is the same defect from a different surface.
  */
-export const RedactedValueSchema = z.discriminatedUnion("state", [
+export const RedactedValueSchema = z.discriminatedUnion("transform", [
   RedactedDropArm,
-  RedactedTransformedArm,
+  RedactedDigestArm,
+  RedactedLast4Arm,
+  RedactedBasenameArm,
+  RedactedCountArm,
   RedactedAllowedArm,
-]);
+]).superRefine(refineEvidenceTransformPair);
 
 const KEYED = { key: z.string() } as const;
-export const RedactedFieldSchema = z.discriminatedUnion("state", [
+export const RedactedFieldSchema = z.discriminatedUnion("transform", [
   RedactedDropArm.extend(KEYED),
-  RedactedTransformedArm.extend(KEYED),
+  RedactedDigestArm.extend(KEYED),
+  RedactedLast4Arm.extend(KEYED),
+  RedactedBasenameArm.extend(KEYED),
+  RedactedCountArm.extend(KEYED),
   RedactedAllowedArm.extend(KEYED),
-]);
+]).superRefine(refineEvidenceTransformPair);
 
 export const RedactionResultSchema = z.strictObject({
   fields: z.array(RedactedFieldSchema),
