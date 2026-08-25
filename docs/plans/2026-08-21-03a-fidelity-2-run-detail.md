@@ -214,22 +214,22 @@ B21, B23, B25, B26, B30, B32, B63, B90, B105, B111).
 | # | Element | Demo | Rebuild | Verdict | Reason |
 |---|---|---|---|---|---|
 | B64 | stream wrapper, no scroller of its own | `pb-2 pt-1` `:1072` | `pb-base pt-tight` `:1101` | exact | |
-| B65 | **the stream is GROUPED BY STEP, with a sticky per-step heading** (`sticky top-[var(--ds-panel-head-h,0px)] … text-[11px] font-semibold` + a hairline rule) | `:1060-1065,1082-1085` | absent — one flat list | missing | **OPEN — operator call.** The rebuild publishes `--ds-panel-head-h` (`:1586-1601`) whose stated purpose is *"the log stream's step dividers … land BELOW it"*, and there are no dividers to land. Notes carry `sequence`; the timeline carries per-node steps |
+| B65 | **the stream is GROUPED BY STEP, with a sticky per-step heading** (`sticky top-[var(--ds-panel-head-h,0px)] … text-[11px] font-semibold` + a hairline rule) | `:1060-1065,1082-1085` | contiguous producing rows group under their served `step · task`; notes retain no fabricated producer heading | exact | the heading uses the published `--ds-panel-head-h`, spans the whole contiguous producer run, and preserves server sequence order |
 | B66 | line row `flex items-start gap-snug px-cozy pl-5 py-hair` | `:1095` | `:1119-1123` | exact | |
 | B67 | line timestamp cell (`mt-hair shrink-0` micro/nums muted) | `:1096` | `:1125-1133` | exact | |
 | B68 | line icon cell (`mt-hair w-3.5 shrink-0 text-center`) | `:1097-1099` | `:1134-1136` | exact | |
-| B69 | line ICON VOCABULARY | 9-kind `LINE_ICON` — `nav`/`search`/`read`/`write`/`ok`/`error`/`warn`/`pause`/`event`, with the `--ds-read-*` / `--ds-write-*` DIRECTION hues `:190-215` | 3-level `NOTE_ICON` — `info`/`warning`/`error` `:981-985` | divergent | `unserved:` a note carries a `level`, not a kind; nothing records nav/search/read/write/ok/pause/event on a note |
-| B70 | line TONE | partial `LINE_TONE` over ok/error/warn, default `text-secondary-foreground` `:228-232,1100` | total `NOTE_TONE` over the three levels `:975-979` | divergent | same as B69 |
+| B69 | line ICON VOCABULARY | 9-kind `LINE_ICON` — `nav`/`search`/`read`/`write`/`ok`/`error`/`warn`/`pause`/`event`, with the `--ds-read-*` / `--ds-write-*` DIRECTION hues `:190-215` | note level icons; observed rows use their served read/write direction glyph and hue; a mixed observed batch uses neutral database; fence uses an authority-fence glyph | divergent | `unserved:` note kinds remain only levels and no wire arm serves nav/search/ok/pause/event; the served row kinds no longer pretend otherwise |
+| B70 | line TONE | partial `LINE_TONE` over ok/error/warn, default `text-secondary-foreground` `:228-232,1100` | note levels retain their own tone; observed direction uses the Context rail's read/write hues; fence stays neutral | divergent | exact for the wire's independent note / observation / fence semantics, divergent from the demo's unavailable general kind vocabulary |
 | B71 | `pause` line row tint (`bg-info/6`) | `:1095` | absent | missing | same as B69 |
-| B72 | per-line `SystemChip` | `:1101` | absent | missing | `unserved:` a note carries no system |
-| B73 | per-line read/write `Pill` chips (`ArrowDownToLine`/`ArrowUpFromLine`, `h-[--ds-h-xs]`, read/write token trio, label + `dsText.nums` value) | `:234-258,1103` | absent | missing | `unserved:` a note carries no field/value pairs |
-| B74 | per-line `attempt N` badge | `:1104-1106` | absent | missing | `unserved:` a note carries no attempt |
+| B72 | per-line `SystemChip` | `:1101` | exact `SystemChip` on observed rows only | divergent | a note has no system and an authority fence is deliberately not presented as a page observation; neither receives an invented chip |
+| B73 | per-line read/write `Pill` chips (`ArrowDownToLine`/`ArrowUpFromLine`, `h-[--ds-h-xs]`, read/write token trio, label + `dsText.nums` value) | `:234-258,1103` | exact direction pills for each served redacted observation fact | divergent | notes have no facts; a fence has no fabricated page fact; the pill label/value search reaches the strict wire's field/key and redacted value |
+| B74 | per-line `attempt N` badge | `:1104-1106` | exact on observed and fenced rows | divergent | note attempts are unserved and remain absent rather than defaulted |
 | B75 | per-line duration | `:1107` | absent | missing | `unserved:` a note carries no duration |
 | B76 | search dimming `opacity-35` on a non-match | `:1092,1095` | `:1116,1122` | exact | |
 | B77 | search hit highlight | `rounded-sm bg-info/15` `:1100` | `dsRadius.xs bg-[--ds-info-bg]` `:1142` | exact | |
-| B78 | search PREDICATE | text OR any pill's `label value` `:1046-1048` | `note.message` only `:1049-1050` | divergent | same as B73 — there are no pills to match |
+| B78 | search PREDICATE | text OR any pill's `label value` `:1046-1048` | note prose OR an observed pill's served label/value | exact | fence rows have no invented searchable page detail |
 | B79 | empty-stream state | (none — a fixture always has lines) | `EmptyState` "No log lines yet" `:1107-1111` | extra | **OPEN — operator call** (defensible, uncited) |
-| B80 | `More lines follow.` | (none — the demo pages nothing) | `:1156-1165` | extra | **OPEN — operator call** (the wire pages via `nextCursor`; the sentence is honest but uncited, and it is not a control) |
+| B80 | `More lines follow.` | (none — the demo pages nothing) | `Load more lines` appends the immutable next cursor snapshot | extra | `ruled:` the strict wire pages through `nextCursor`; the explicit control is a truthful pagination affordance, not a demo-text port |
 | B81 | `live — streaming` pulse line | `:1137-1142` | absent | missing | `ruled:` port rule-(c) — fixture-only (`row.id === "pl-daniel"`) |
 | B82 | floor bar `sticky bottom-0 mt-auto flex items-center gap-snug border-t … px-cozy py-snug` | `:1147` | `:1171-1176` (adds `flex-wrap`) | exact | |
 | B83 | the search control | raw `<input class="w-40 …">` + an `sr-only <label htmlFor>` `:1148-1157` | the `SearchInput` DS primitive, `aria-label`, an `onClear`, `w-48` `:1178-1185` | divergent | **OPEN — operator call** (DS alignment plus a clear affordance the demo lacks; one width step wider) |
@@ -271,7 +271,7 @@ B21, B23, B25, B26, B30, B32, B63, B90, B105, B111).
 | B114 | `ParkResolveDialog` mounted at the REGION, not beside the record | `:2748-2754` | `:2040-2045` | exact | |
 | B115 | `IdentityApproveDialog` mounted at the region | (no counterpart) | `:2034-2039` | extra | `ruled: D226` |
 
-**R-B counts — 114 elements (B101 forwards to R-E): 48 exact · 24 divergent · 27 missing · 15 extra.**
+**R-B counts — 114 elements (B101 forwards to R-E): 50 exact · 26 divergent · 23 missing · 15 extra.**
 
 **Since 08-14.** R5's 17 header findings all hold at HEAD — none regressed. What CHANGED under the
 panel since the wave: D225 replaced the per-event strip with the categorical `StepStrip` (B45, B51,
@@ -281,11 +281,10 @@ and `efab4e1` moved the panel's clock to the served one (B23). Five ledger rows 
 "booked" were dispositioned on 2026-08-20 with named missing producers, and they are the reason
 B32, B63, B90, B111 and B112 are absences rather than defects.
 
-**OPEN in R-B (11 questions):** B41 the non-focusable timeline segment (and the dead
+**OPEN in R-B (9 questions):** B41 the non-focusable timeline segment (and the dead
 `group-focus-within` behind it) · B44 the untimed-segment dim · B50 the hover card's `Status` row ·
 B57 the orphan-gate segment · B60 the axis's `working` total · B61 the axis's `waiting on you` half ·
-B65 the stream's step grouping and sticky headings · B79 the empty-stream state · B80
-`More lines follow.` · B83 the search control · B87 the live/idle dot (= A49) · B91 `open {age}` on
+B79 the empty-stream state · B83 the search control · B87 the live/idle dot (= A49) · B91 `open {age}` on
 the decision card. Plus one recorded TENSION, not an OPEN: B45, where D225's `since <clock>`
 contradicts the demo's own argument for the age.
 
@@ -666,12 +665,12 @@ corpus in four states.
 | Region | Elements | exact | divergent | missing | extra | OPEN |
 |---|---:|---:|---:|---:|---:|---:|
 | R-A run identity | 49 | 23 | 14 | 4 | 8 | 7 |
-| R-B log panel | 114 | 48 | 24 | 27 | 15 | 11 |
+| R-B log panel | 114 | 50 | 26 | 23 | 15 | 9 |
 | R-C context rail | 76 | 31 | 18 | 17 | 10 | 9 |
 | R-D receipt | 39 | 9 | 15 | 12 | 3 | 12 |
 | R-E failure record | 34 | 7 | 15 | 8 | 4 | 13 |
 | R-F park + ceremonies | 36 | 6 | 11 | 7 | 12 | 2 |
-| **total** | **348** | **124** | **97** | **75** | **52** | **54** |
+| **total** | **348** | **126** | **99** | **71** | **52** | **52** |
 
 `exact` is 36 % of the surface. Of the 97 divergences and 75 absences, **119 carry a citation**
 (a D-number, an R-finding as-built, a named missing producer, or a stated in-code argument) and
@@ -711,7 +710,7 @@ each entry below keeps the audit's sentence and names what now draws it:
 
 9. **E15** the failure record has NO disclosure — the demo hides the progress ledger, the classification, the cause chain and the bundle behind `Show the diagnostic record`, on the stated argument that a 400px dump expanded into a log stream buries the lines after it. The `run-failed` reference shows exactly that shape.
 10. **B41** the timeline segment is a non-focusable `<span>`, not the demo's `<button>` — so the member disclosure's `group-focus-within:block` can never fire, and the hover tint and focus ring are gone.
-11. **B65** the log stream is a FLAT list — the demo groups by step with a sticky heading, and the rebuild publishes `--ds-panel-head-h` whose stated purpose is to make those headings land below the head.
+11. ~~**B65** the log stream is a FLAT list.~~ Ported 2026-08-25: contiguous producer rows now carry a sticky `step · task` heading under `--ds-panel-head-h`; notes remain ungrouped rather than taking a fabricated step.
 12. **C4** `dataExpanded` is owned by two components; collapsing an expanded rail and re-opening it gives a wide rail whose header says `Run data` and whose control offers `Widen`.
 13. **C51** the step group lost the `Well`, the recessed band and the row dividers R6 f.1 named beside the levels.
 14. **C55 / C57** a refusal is one uncoded red span, and nothing says the operator's edits survived it.
@@ -719,7 +718,7 @@ each entry below keeps the audit's sentence and names what now draws it:
 
 **Words and glyphs (24):** A3 the `wf ` noun · A13 the `·` separator · A38/A41 the placeholder and `subject` fallbacks · B44 the untimed-segment dim · B50 the hover card's `Status` row · B60 the axis's `working` total · B61 the axis's `waiting on you` half · B83 the search control's DS swap and width · B87/A49 the floor bar's live/idle dot · B91 `open {age}` on the decision card · C16 the Data section's accessible name · C21 the ⓘ bullet that now understates the surface · C32 `written` vs `write` · D8 the confidence Chip and its three sentences · D9 the scattered receipt identity line · D13 the dry-run Banner · D17 the commit/prepare Badge · D24 the criterion icon · D29 the uncertainty icon and its two sentences · E4 the head's category vs the run's own summary · E5 the `code` Chip · E6 the missing `permanent` arm · E8/E9 the write-state block's frame, label and tones · E11 `What is safe to retry` vs `What to do` · E22 the observed-subject danger tone · E30's `First time this fingerprint has been seen.` arm.
 
-**Rebuild-only additions with no citation (8):** A18 the `Config` row · A19 the `Attempt` row · A35/A37/A47 the rename error affordance · B79 the empty-stream state · B80 `More lines follow.` · C70 the duplicated blocked-reason sentence · C71 `Saving…` · F22 the park footer's meta slot · F35 the duplicated `RefusedNotice`.
+**Rebuild-only additions with no citation (8):** A18 the `Config` row · A19 the `Attempt` row · A35/A37/A47 the rename error affordance · B79 the empty-stream state · B80 the cursor-backed `Load more lines` control · C70 the duplicated blocked-reason sentence · C71 `Saving…` · F22 the park footer's meta slot · F35 the duplicated `RefusedNotice`.
 
 **Stale claims in code (2):** D11's missing invariant Banner (the schema may already make it
 unrepresentable — nobody wrote that down) · **D39** `receipt.tsx`'s header still calls itself the
@@ -759,7 +758,7 @@ contradicts the demo's own argument that the AGE is the comparable number.
       `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` — each becomes ported, or a recorded
       divergence with its argument
 - [ ] FE B2b the 8 served-and-dropped facts (R-D + R-E) — no wire moves
-- [ ] FE B2c the 7 structural findings (R-E E15 · R-B B41/B65/B57 · R-C C4/C51/C55+C57)
+- [ ] FE B2c the 6 structural findings (R-E E15 · R-B B41/B57 · R-C C4/C51/C55+C57)
 - [ ] FE B2d the 8 uncited rebuild-only additions — kept with a stated argument, or removed
 - [ ] DOCS B2e `receipt.tsx`'s header stops calling itself the 1i placeholder (R-D D39), and the
       D11 invariant question is answered in the owning doc
@@ -770,12 +769,13 @@ contradicts the demo's own argument that the AGE is the comparable number.
 node's `FE` line and adds the demo's own line anatomy as the target:
 
 ```
-- [ ] FE the stream is GROUPED BY STEP with a sticky heading — the demo's three-level shape, and
-      the reason `--ds-panel-head-h` is published at all (R-B B65)
-- [ ] BOTH a log line carries its own facts, not just a level — the demo's nine-kind icon
-      vocabulary with its read/write direction hues, the per-line `SystemChip`, the read/write
-      `Pill` chips, the attempt badge and the duration (R-B B69-B75); the search predicate widens
-      to match a pill's label and value with them (R-B B78)
+- [x] FE the stream is GROUPED BY its served producer with a sticky heading — the demo's structural
+      shape, and the reason `--ds-panel-head-h` is published at all (R-B B65)
+- [x] FE observed rows carry their served system, read/write pills and attempt badge; search widens
+      to a pill's label and value, while notes stay prose and a fence receives no fabricated page fact
+      (R-B B69-B74, B78)
+- [ ] BOTH the demo's unserved general line kinds and duration (R-B B69-B75) — `pause` still has no
+      wire kind, and no log row carries an honest duration
 - [ ] FE the `pause` line's own row tint (R-B B71) and the floor bar's live/idle dot (R-B B87)
 - [ ] BE the timeline hover card's `System` row and its key lines (R-B B52/B54) — the same
       provenance points this node emits, read one level up
