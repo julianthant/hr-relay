@@ -518,9 +518,14 @@ question; conflating the two is what produced the gap.
 **The interpreter registers the row it did not write.** `src/core/run-executor.ts` reads back the
 exact `run_checkpoints` row beat ⑦ committed and refuses if it is absent, or if it does not project
 to the very settlement the sequencer just reported. It never mints a checkpoint from the value it
-was handed. `tests/unit/transaction-terminal-dependency.test.ts` drives a queued
-`kuali-timekeeper-annotation` run through the real interpreter, real sequencer and real authority to
-terminal `done`, and derives its evidence receipt from the result.
+was handed. `tests/unit/separations-kuali-finalization-terminal-proof.test.ts` drives the CURRENT
+`separations-kuali-finalization` descriptor from authenticated pre-gate fixture checkpoints through
+the real approval check, interpreter, Kuali store tasks, write sequencer and authority to terminal
+`done`; it then proves both `buildRunEvidenceReceipt` and the authority-backed receipt service derive
+the verified read-back obligations from those rows. Independent controls hide beat ⑦'s row from the
+interpreter and bypass the interpreter entirely, and both refuse the terminal/receipt claim. The
+deleted `tests/unit/transaction-terminal-dependency.test.ts` proof against the retired
+`kuali-timekeeper-annotation` workflow is historical pre-D266 evidence, not the current owner.
 
 **Why `TransactionOutcomeSchema` sits in `write-safety-primitives.ts`.** A descriptor's terminal
 `build` must hash the schema, and a descriptor closure may not reach a Node built-in;
@@ -1449,9 +1454,11 @@ the lease discipline beats ②–⑥ run inside.
 `task-driver-boundary` holds it, and the capability became runtime-unforgeable at D127 — a
 module-private WeakSet is a stronger statement than an import walk.
 `dry-run-composition-submit-free` retired at the same decision into `write-safety-contract` plus the
-executable scenario `kuali-timekeeper-annotation/dry-run-preview`, which runs the REAL sequencer over
-a REAL authority database and asserts DURABLE absence rather than inspecting a composition for the
-absence of a call.
+executable scenario `separations-kuali-finalization/dry-run-preview`. Its T1a arm runs the REAL
+sequencer over a REAL authority database and proves no write intent, transaction checkpoint or
+write outbox; its sibling T1b manifest declares truthful BEFORE/AFTER deltas of zero for
+`write_intents`, `write_attempts` and `durable_outbox` while allowing the ordinary upstream
+`run_checkpoints`, gate result and terminal-preview rows a dry run really writes.
 
 **One designed guard was never built, and it is worth naming rather than leaving in a list as if it
 were.** "Idempotency key hygiene" — an AST check that an `idempotency.key` body never references

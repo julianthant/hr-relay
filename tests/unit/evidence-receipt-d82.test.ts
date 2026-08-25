@@ -327,8 +327,6 @@ describe("D82 — the Kuali finalization write explains itself", () => {
   });
 });
 
-/* ── the gap this Kuali fixture once stood in for, now closed ────────────── */
-
-// D144 closed it: a transaction node IS a terminal dependency, this fixture's
-// terminal record comes from the real `buildRunResult`, and the whole path is
-// covered by the finalization structural scenario's gate-approved graph walk.
+/* This fixture pins receipt interpretation over seeded rows. D144's current
+ * executor → checkpoint → terminal → receipt chain is independently proved by
+ * `separations-kuali-finalization-terminal-proof.test.ts`. */
