@@ -513,16 +513,16 @@ size: L
 chip: ~148 OPEN questions — needs you
 doc: 03a §Demo fidelity — every detail, region by region
 
-> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); the archive UI slice and Activity AC24 bring the live disposition to 767 exact and ~148 distinct OPEN questions, and this node carries the remainder until each is ported or recorded with its argument.
+> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); the archive UI slice, Activity AC24 and Explorer EX5 bring the live disposition to 768 exact and ~148 distinct OPEN questions, and this node carries the remainder until each is ported or recorded with its argument.
 
 builds:
 - [!] DOCS the operator rules the 37 shell / queue / run-start OPEN questions (ledger 1 §Roll-up)
 - [!] DOCS the operator rules the 54 run-detail OPEN questions (ledger 2 §Roll-up)
 - [!] DOCS the operator rules the ~58 standing-surface OPEN questions, the twelve structural ones first — the virtualised archive · the bump's MAJOR/MINOR arms · a DS specimen page · the row-and-panel vocabulary surface · Settings as a takeover · the keyboard legend · intake stages 5–6 · the intake review gate · the archived-capture lightbox · the bump plan naming its runs · the operator capture half · the two Settings sections already served (ledger 3 §Roll-up)
-- [ ] FE the served-and-dropped facts — receipt/failure, intake, archive, the queue gate age, the run-modal descriptor version and Activity AC24 are complete; left: Explorer EX5 (doc 03a §Served-and-dropped)
+- [x] FE the served-and-dropped facts — receipt/failure, intake, archive, the queue gate age, the run-modal descriptor version, Activity AC24 and Explorer EX5 are complete (doc 03a §Served-and-dropped)
 - [ ] FE the structural run-detail ports — the failure-record disclosure + write-state block, the focusable timeline segment, the step-group Well, one-owner `dataExpanded`, the grouped log stream
 - [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
-- [ ] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
+- [x] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
 - [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
 - [ ] BE a diagnostic bundle is readable (ledger 2 E29)
 - [ ] BOTH the intake manifest + rerun-diff surface (ledger 3 IN15/IN16)
@@ -536,6 +536,7 @@ needs:
 log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | node drawn from the three 2026-08-21 ledgers; doc 03a §Demo fidelity carries the per-region table, every OPEN question as one line, the served-and-dropped list and the stale-claims table · left: the operator's rulings, then every FE / BE / BOTH / PROOF line above
 - 2026-08-25 | track-f archive UI + Activity AC24 | `3d461962` served frozen list warnings/rehearsal state; `d1f87916` drew those and the already-served archive identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared wire→display status fold. Ledger 3 remains 346/1,119 exact with 248 OPEN marks. Before/after screenshots were taken without `PARITY_UPDATE` · left in this unit: Explorer EX5 and every other non-archive served-and-dropped fact
+- 2026-08-25 | track-f Explorer EX5 | `4e09fb49` restores the demo's ghost `Version registry` action with its `Eye` icon; it clears the Explorer takeover and opens Archive's actual `Versions & bumps` view through `?archive=&archiveView=versions`. The browser test proves the door, pressed Archive view and real `Workflow version registry` table; no parity reference was re-frozen. Ledger 3 is 347/1,119 exact with 247 OPEN marks · left: every non-archive served-and-dropped fact
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: planned

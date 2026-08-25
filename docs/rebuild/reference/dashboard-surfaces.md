@@ -3802,6 +3802,12 @@ opens it. Which takeover wins when a link carries several is §9.5's one resolve
 last in it by design — a reference view is what the operator looks UP, so it yields to the place they
 navigated to and to the work they have in progress.
 
+**Archive's view is route-owned too.** `?archive=` names the Archive takeover and
+`archiveView=runs|versions` names its actual visible panel. The omitted arm remains the ledger for
+existing Archive links; `?archive=&archiveView=versions` is the Version registry destination. This
+lets Explorer's `Version registry` action arrive on the existing `Versions & bumps` panel in one
+navigation (EX5, `4e09fb49`), without a second local state authority or a copied registry surface.
+
 **Corrected 2026-08-21 — no such buttons exist.** This section used to say entry was two `ghost`
 buttons in the panel's action bar beside `Import spreadsheet`. `top-bar.tsx:1121-1125` records why:
 the demo's keyboard-legend glyph was deliberately removed (*"we already have help in settings"*),

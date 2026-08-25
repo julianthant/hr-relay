@@ -234,6 +234,9 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
   (`dashboard-refresh-boundary`, ref frontend-backend-integration §8.14, `src/dashboard/AGENTS.md`).
+- Archive subviews are dashboard route state (`archiveView`), not `ArchiveWorkspace` local state; a
+  cross-takeover door must name the real Archive view in that state rather than open the ledger and
+  require a second click.
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
