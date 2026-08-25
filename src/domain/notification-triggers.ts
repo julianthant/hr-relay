@@ -30,6 +30,7 @@ import {
   GateIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
+  ProjectionCursorSchema,
   RunIdSchema,
   WorkflowIdSchema,
   WriteIntentIdSchema,
@@ -50,6 +51,26 @@ export const StorageHealthConcernSchema = z.enum([
   "outbox-stalled",
   "lease-stalled",
 ]);
+
+export const BackfillGapTriggerEventSchema = z.strictObject({
+  kind: z.literal("backfill-gap"),
+  detector: z.literal("server-resume"),
+  reason: z.enum(["cursor-expired", "snapshot-boundary"]),
+  topic: z.literal("dashboard-day"),
+  requestedCursor: ProjectionCursorSchema,
+  currentCursor: ProjectionCursorSchema,
+  projectionGeneration: PositiveIntSchema,
+}).superRefine((gap, context) => {
+  const requested = Number(gap.requestedCursor.slice(3));
+  const current = Number(gap.currentCursor.slice(3));
+  if (requested >= current) {
+    context.addIssue({
+      code: "custom",
+      path: ["requestedCursor"],
+      message: "a backfill gap requires a historical requested cursor before the current cursor",
+    });
+  }
+});
 
 export const NotificationTriggerEventSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -99,6 +120,7 @@ export const NotificationTriggerEventSchema = z.discriminatedUnion("kind", [
     runId: RunIdSchema,
     workflowId: WorkflowIdSchema,
   }),
+  BackfillGapTriggerEventSchema,
 ]);
 export type NotificationTriggerEvent = z.infer<typeof NotificationTriggerEventSchema>;
 
@@ -136,6 +158,15 @@ export function deriveNotificationDedupeFingerprint(input: unknown): string {
         return { kind: event.kind, concern: event.concern, diagnosticFingerprint: event.diagnosticFingerprint };
       case "verified-done":
         return { kind: event.kind, runId: event.runId };
+      case "backfill-gap":
+        return {
+          kind: event.kind,
+          detector: event.detector,
+          reason: event.reason,
+          topic: event.topic,
+          requestedCursor: event.requestedCursor,
+          projectionGeneration: String(event.projectionGeneration),
+        };
     }
   })();
   return FingerprintSchema.parse(sha256Hex(
@@ -207,6 +238,14 @@ export function projectNotificationTrigger(input: unknown): NotificationProjecti
           title: `Done — ${event.workflowId}`,
           summary: `${event.workflowId} run ${event.runId} completed with every declared completion criterion evidenced.`,
           links: [{ kind: "run", runId: event.runId }],
+        };
+      case "backfill-gap":
+        return {
+          trigger: "backfill-gap",
+          channel: "ping",
+          title: "Notification history is incomplete",
+          summary: "The dashboard could not backfill part of the event stream. Resnapshot and reconcile the affected work before relying on dashboard history.",
+          links: [],
         };
     }
   })();

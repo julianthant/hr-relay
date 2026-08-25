@@ -1024,6 +1024,13 @@ function executeNotification(
       `notification ${request.target.notificationId} belongs to ${current.actorId}, not ${request.target.actorId}`,
     );
   }
+  if (current.trigger === "backfill-gap") {
+    reject(
+      request,
+      "policy-refused",
+      "a pinned backfill gap cannot be marked read, marked unread, or snoozed; resnapshot and reconcile the affected work",
+    );
+  }
   if (current.version !== request.target.expectedVersion) {
     reject(
       request,

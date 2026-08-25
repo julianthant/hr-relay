@@ -10,6 +10,7 @@ import { applyDashboardDayPatch } from "../../../src/dashboard/client/index.js";
 import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import type { DashboardStreamEnvelope } from "../../../src/domain/dashboard/subscription.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
+import { BackfillGapObservationSchema } from "../../../src/services/notifications/backfill-gap.js";
 import {
   claimEventOf,
   DAY,
@@ -24,10 +25,21 @@ import {
 const worlds: DashboardWorld[] = [];
 const hubs: DashboardStreamHub[] = [];
 
+const VALIDATING_BACKFILL_GAPS = {
+  detected: (input: unknown) => Promise.resolve({
+    published: false as const,
+    gap: BackfillGapObservationSchema.parse(input),
+  }),
+};
+
 function harness(): { w: DashboardWorld; hub: DashboardStreamHub } {
   const w = makeWorld();
   worlds.push(w);
-  const hub = createDashboardStreamHub({ projection: w.projection, maxPending: 4 });
+  const hub = createDashboardStreamHub({
+    projection: w.projection,
+    maxPending: 4,
+    backfillGaps: VALIDATING_BACKFILL_GAPS,
+  });
   hubs.push(hub);
   return { w, hub };
 }
@@ -47,10 +59,10 @@ function applyEnvelope(day: DashboardDayWire | undefined, envelope: DashboardStr
 }
 
 describe("dashboard stream hub", () => {
-  it("opens with hello -> snapshot -> health and stamps the projection identity", () => {
+  it("opens with hello -> snapshot -> health and stamps the projection identity", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
-    const connection = hub.connect({ day: DAY });
+    const connection = await hub.connect({ day: DAY });
     const [hello, snapshot, health] = connection.initial;
     assert.equal(hello.type, "hello");
     if (hello.type !== "hello") assert.fail("expected hello");
@@ -60,10 +72,10 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
 
-  it("EXIT: snapshot + any valid live envelope sequence equals a fresh snapshot", () => {
+  it("EXIT: snapshot + any valid live envelope sequence equals a fresh snapshot", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
-    const connection = hub.connect({ day: DAY });
+    const connection = await hub.connect({ day: DAY });
     let local: DashboardDayWire | undefined;
     for (const envelope of connection.initial) local = applyEnvelope(local, envelope);
     connection.subscribe((envelope) => {
@@ -89,33 +101,71 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
 
-  it("replays retained patches for a resumable cursor and never re-snapshots", () => {
+  it("replays retained patches for a resumable cursor and never re-snapshots", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
-    const first = hub.connect({ day: DAY });
+    const first = await hub.connect({ day: DAY });
     const cursorAt = w.projection.cursor();
     first.close();
 
     taskEventsOf(w, 1, "searching"); // count-neutral -> retained patch
-    const resumed = hub.connect({ day: DAY, lastEventId: cursorAt });
+    const resumed = await hub.connect({ day: DAY, lastEventId: cursorAt });
     const types = resumed.initial.map(({ type }) => type);
     assert.deepEqual(types, ["hello", "patch", "health"]);
     resumed.close();
   });
 
-  it("serves a fresh snapshot for an expired or foreign cursor", () => {
+  it("reports the exact historical cursor transition when a retained snapshot forces replacement", async () => {
+    const w = makeWorld();
+    worlds.push(w);
+    const observed: unknown[] = [];
+    const hub = createDashboardStreamHub({
+      projection: w.projection,
+      backfillGaps: {
+        detected: (input: unknown) => {
+          observed.push(input);
+          return Promise.resolve({ published: false as const, gap: BackfillGapObservationSchema.parse(input) });
+        },
+      },
+    });
+    hubs.push(hub);
+    queuedEventOf(w, { seed: 1 });
+    const heldCursor = w.projection.cursor();
+    queuedEventOf(w, { seed: 2 });
+
+    const replaced = await hub.connect({ day: DAY, lastEventId: heldCursor });
+    assert.deepEqual(replaced.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
+    assert.deepEqual(observed, [{
+      kind: "backfill-gap",
+      detector: "server-resume",
+      reason: "snapshot-boundary",
+      topic: "dashboard-day",
+      requestedCursor: heldCursor,
+      currentCursor: w.projection.cursor(),
+      projectionGeneration: w.projection.generation(),
+    }]);
+    replaced.close();
+
+    const current = await hub.connect({ day: DAY, lastEventId: w.projection.cursor() });
+    current.close();
+    const future = await hub.connect({ day: DAY, lastEventId: "pc:999999" });
+    future.close();
+    assert.equal(observed.length, 1, "a current or future cursor is not evidence that history was missed");
+  });
+
+  it("serves a fresh snapshot for an expired or foreign cursor", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
-    const connection = hub.connect({ day: DAY, lastEventId: "pc:999999" });
+    const connection = await hub.connect({ day: DAY, lastEventId: "pc:999999" });
     assert.deepEqual(connection.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
     connection.close();
   });
 
-  it("broadcasts reset-required when the projection generation changes", () => {
+  it("broadcasts reset-required when the projection generation changes", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
-    const connection = hub.connect({ day: DAY });
+    const connection = await hub.connect({ day: DAY });
     const live: DashboardStreamEnvelope[] = [];
     connection.subscribe((envelope) => live.push(envelope));
     w.projection.rebuildFromJsonl();
@@ -125,11 +175,11 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
 
-  it("replaces an overflowing pending queue with one loud reset-required", () => {
+  it("replaces an overflowing pending queue with one loud reset-required", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
     claimEventOf(w, 1);
-    const connection = hub.connect({ day: DAY });
+    const connection = await hub.connect({ day: DAY });
     // No subscribe(): the pending queue absorbs patches until the bound.
     for (let step = 0; step < 8; step += 1) taskEventsOf(w, 1, `node-${String(step)}`);
     const delivered: DashboardStreamEnvelope[] = [];
@@ -138,7 +188,7 @@ describe("dashboard stream hub", () => {
     connection.close();
   });
 
-  it("greets a degraded projection with health degraded instead of a fabricated snapshot", () => {
+  it("greets a degraded projection with health degraded instead of a fabricated snapshot", async () => {
     const { w } = harness();
     w.projection.apply({
       t: "run.claimed", ts: w.clock.now().toISOString(), workflow: "person-lookup", pid: 1,
@@ -149,7 +199,10 @@ describe("dashboard stream hub", () => {
     // immediately and recovered; force a degraded state via corrupt storage.
     const degradedWorld = makeWorld({ collectRebuilds: true });
     worlds.push(degradedWorld);
-    const degradedHub = createDashboardStreamHub({ projection: degradedWorld.projection });
+    const degradedHub = createDashboardStreamHub({
+      projection: degradedWorld.projection,
+      backfillGaps: VALIDATING_BACKFILL_GAPS,
+    });
     hubs.push(degradedHub);
     degradedWorld.projection.apply({
       t: "run.claimed", ts: degradedWorld.clock.now().toISOString(), workflow: "person-lookup", pid: 1,
@@ -157,7 +210,7 @@ describe("dashboard stream hub", () => {
       workerId: "person-lookup-worker-1",
     } as never);
     assert.equal(degradedWorld.projection.health().state, "degraded");
-    const connection = degradedHub.connect({ day: DAY });
+    const connection = await degradedHub.connect({ day: DAY });
     assert.deepEqual(connection.initial.map(({ type }) => type), ["hello", "health"]);
     const health = connection.initial[1];
     if (health.type !== "health") assert.fail("expected health");

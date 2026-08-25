@@ -75,6 +75,7 @@ import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { createNotificationInbox } from "../../services/notifications/inbox.js";
+import { createBackfillGapNotifier } from "../../services/notifications/backfill-gap.js";
 import { createBackupHealthNotifier } from "../../services/notifications/storage-health.js";
 import {
   GateParkObservationSchema,
@@ -461,6 +462,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ids,
     actorId: LOCAL_OPERATOR_ACTOR_ID,
   });
+  const backfillGapNotifier = createBackfillGapNotifier({ inbox });
   const backupNotifier = createBackupHealthNotifier({ inbox });
   const publishBackupHealth = async (): Promise<void> => {
     try {
@@ -831,7 +833,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       },
     };
 
-  const hub = createDashboardStreamHub({ projection });
+  const hub = createDashboardStreamHub({ projection, backfillGaps: backfillGapNotifier });
 
   // Ref operator-trust §7's phone-origin scope: the host the gate below binds, read from
   // the SAME `capture` leaf `createCaptureIngressResolver` reads. It throws

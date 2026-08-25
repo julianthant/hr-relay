@@ -777,6 +777,17 @@ export function notificationWireOf(
   record: z.infer<typeof NotificationRecordSchema>,
   nowMs: number,
 ): z.infer<typeof NotificationWireSchema> {
+  if (record.trigger === "backfill-gap") {
+    return NotificationWireSchema.parse({
+      kind: "backfill-gap",
+      notificationId: record.notificationId,
+      actorId: record.actorId,
+      severity: "error",
+      title: record.title,
+      state: "pinned",
+      occurredAt: record.lastSeenAt,
+    });
+  }
   const severity = record.trigger === "failed" || record.trigger === "write-parked"
     ? "error"
     : record.trigger === "verified-done"
@@ -792,6 +803,7 @@ export function notificationWireOf(
    */
   const runLink = record.links.find((link) => link.kind === "run" || link.kind === "failure");
   return NotificationWireSchema.parse({
+    kind: "notification",
     notificationId: record.notificationId,
     actorId: record.actorId,
     severity,
@@ -815,7 +827,8 @@ const NotificationLinkWireSchema = z.strictObject({
   runId: RunIdSchema,
 });
 
-export const NotificationWireSchema = z.strictObject({
+const StandardNotificationWireSchema = z.strictObject({
+  kind: z.literal("notification"),
   notificationId: NotificationIdSchema,
   actorId: ActorIdSchema,
   severity: z.enum(["info", "warning", "error"]),
@@ -825,6 +838,21 @@ export const NotificationWireSchema = z.strictObject({
   revision: RowRevisionSchema,
   link: NotificationLinkWireSchema.optional(),
 });
+
+const BackfillGapNotificationWireSchema = z.strictObject({
+  kind: z.literal("backfill-gap"),
+  notificationId: NotificationIdSchema,
+  actorId: ActorIdSchema,
+  severity: z.literal("error"),
+  title: z.literal("Notification history is incomplete"),
+  state: z.literal("pinned"),
+  occurredAt: IsoInstantSchema,
+});
+
+export const NotificationWireSchema = z.discriminatedUnion("kind", [
+  StandardNotificationWireSchema,
+  BackfillGapNotificationWireSchema,
+]);
 
 /**
  * The per-workflow worker POOL declaration (D269, ref execution-and-sessions §11.5)

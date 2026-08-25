@@ -22,6 +22,7 @@ import {
   type DashboardStreamEnvelope,
 } from "../../../domain/dashboard/subscription.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../projectors/run-queue-projection.js";
+import type { BackfillGapNotifier } from "../../../services/notifications/backfill-gap.js";
 
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
 
@@ -35,6 +36,7 @@ export interface DashboardStreamConnection {
 
 export interface DashboardStreamHubDeps {
   readonly projection: RunQueueProjection;
+  readonly backfillGaps: Pick<BackfillGapNotifier, "detected">;
   /** Retained envelope count for cursor resume. */
   readonly retention?: number;
   /** Per-subscriber pending bound before a loud reset. */
@@ -69,6 +71,7 @@ export class DashboardStreamHub {
   readonly #projection: RunQueueProjection;
   readonly #retention: number;
   readonly #maxPending: number;
+  readonly #backfillGaps: Pick<BackfillGapNotifier, "detected">;
   readonly #subscribers = new Set<Subscriber>();
   #retained: RetainedEntry[] = [];
   #disposeProjection: () => void;
@@ -77,6 +80,7 @@ export class DashboardStreamHub {
     this.#projection = deps.projection;
     this.#retention = z.number().int().positive().parse(deps.retention ?? 256);
     this.#maxPending = z.number().int().positive().parse(deps.maxPending ?? 64);
+    this.#backfillGaps = deps.backfillGaps;
     this.#disposeProjection = deps.projection.onChange((change) => this.#onProjectionChange(change));
   }
 
@@ -167,7 +171,7 @@ export class DashboardStreamHub {
     }
   }
 
-  connect(input: Readonly<{ day: string; lastEventId?: string }>): DashboardStreamConnection {
+  async connect(input: Readonly<{ day: string; lastEventId?: string }>): Promise<DashboardStreamConnection> {
     const day = z.iso.date().parse(input.day);
     const subscriber: Subscriber = { day, queue: [], closed: false, resetPending: false };
     const initial: DashboardStreamEnvelope[] = [this.#hello()];
@@ -181,12 +185,14 @@ export class DashboardStreamHub {
       // Resumable only when the retained window provably covers everything
       // after the presented cursor, in the current generation.
       const current = cursorNumber(this.#projection.cursor());
-      const resumable = resumeFrom !== undefined
+      const atHead = resumeFrom !== undefined && current !== undefined && resumeFrom === current;
+      const retainedWindowCovers = resumeFrom !== undefined
         && oldest !== undefined
         && resumeFrom >= oldest.cursorNumber - 1
         && current !== undefined
-        && resumeFrom <= current // a cursor from the future is foreign, not resumable
+        && resumeFrom < current
         && this.#retained.every((entry) => entry.generation === generation);
+      const resumable = atHead || retainedWindowCovers;
       const window = resumable
         ? this.#retained.filter((entry) => entry.cursorNumber > resumeFrom)
         : undefined;
@@ -195,6 +201,20 @@ export class DashboardStreamHub {
           if (entry.day === day) initial.push(entry.envelope);
         }
       } else {
+        const isHistoricalCursor = resumeFrom !== undefined
+          && current !== undefined
+          && resumeFrom < current;
+        if (isHistoricalCursor) {
+          await this.#backfillGaps.detected({
+            kind: "backfill-gap",
+            detector: "server-resume",
+            reason: window === undefined ? "cursor-expired" : "snapshot-boundary",
+            topic: "dashboard-day",
+            requestedCursor: input.lastEventId,
+            currentCursor: this.#projection.cursor(),
+            projectionGeneration: generation,
+          });
+        }
         // Not resumable, or a count-bearing snapshot marker sits inside the
         // window: a fresh snapshot supersedes whatever the client held.
         initial.push(this.#snapshot(day));

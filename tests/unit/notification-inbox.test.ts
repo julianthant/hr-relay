@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { notificationWireOf } from "../../src/domain/dashboard/projection.js";
+import { NotificationWireSchema, notificationWireOf } from "../../src/domain/dashboard/projection.js";
 import { NotificationRecordSchema } from "../../src/domain/notifications.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { HASH_A, LATER, NOW, UUID_2, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
@@ -104,6 +104,43 @@ function command(type: string, expectedVersion: number, extra: Record<string, un
 }
 
 describe("notification lifecycle arms", () => {
+  it("refuses a crafted mark-read command for a pinned backfill gap", () => {
+    const { database, kernel } = harness();
+    database.authority.notifications.create(record({
+      trigger: "backfill-gap",
+      links: [],
+    }));
+
+    const result = kernel.execute(command("notification-read", 1));
+
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") {
+      assert.equal(result.code, "policy-refused");
+      assert.match(result.message, /pinned backfill gap/u);
+    }
+    const unchanged = database.authority.notifications.get(UUID_7);
+    assert.equal(unchanged?.status, "unread");
+    assert.equal(unchanged?.version, 1);
+  });
+
+  it("refuses a crafted snooze command for a pinned backfill gap", () => {
+    const { database, kernel } = harness();
+    database.authority.notifications.create(record({
+      trigger: "backfill-gap",
+      links: [],
+    }));
+
+    const result = kernel.execute(command("notification-snooze", 1, {
+      payload: { until: "2026-07-31T19:00:00.000Z" },
+    }));
+
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.equal(result.code, "policy-refused");
+    const unchanged = database.authority.notifications.get(UUID_7);
+    assert.deepEqual(unchanged?.snooze, { state: "not-snoozed" });
+    assert.equal(unchanged?.version, 1);
+  });
+
   it("marks read preserving the snooze, and unread preserving it too", () => {
     const { database, kernel } = harness();
     database.authority.notifications.create(record({
@@ -156,6 +193,27 @@ describe("notification lifecycle arms", () => {
 
 describe("notificationWireOf", () => {
   const nowMs = Date.parse(LATER);
+
+  it("serves a closed pinned arm with no lifecycle revision or invented link", () => {
+    const wire = notificationWireOf(record({
+      trigger: "backfill-gap",
+      title: "Notification history is incomplete",
+      links: [],
+    }), nowMs);
+
+    assert.deepEqual(wire, {
+      kind: "backfill-gap",
+      notificationId: UUID_7,
+      actorId: ACTOR,
+      severity: "error",
+      title: "Notification history is incomplete",
+      state: "pinned",
+      occurredAt: NOW,
+    });
+    assert.equal(NotificationWireSchema.safeParse({ ...wire, revision: 1 }).success, false);
+    assert.equal(NotificationWireSchema.safeParse({ ...wire, link: { kind: "run", runId: UUID_2 } }).success, false);
+    assert.equal(NotificationWireSchema.safeParse({ ...wire, state: "unread" }).success, false);
+  });
 
   it("maps severity by trigger and state by status", () => {
     const wire = notificationWireOf(record(), nowMs);

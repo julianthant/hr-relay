@@ -60,6 +60,7 @@ import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -866,7 +867,7 @@ export async function startSeededServer(
     configSnapshotId: CONFIG_SNAPSHOT_ID,
     plannedBy: "local-operator",
   });
-  const hub = createDashboardStreamHub({ projection });
+  const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
 
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,
