@@ -9,6 +9,7 @@ import { afterEach, describe, it } from "vitest";
 import { applyDashboardDayPatch } from "../../../src/dashboard/client/index.js";
 import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import type { DashboardStreamEnvelope } from "../../../src/domain/dashboard/subscription.js";
+import { NotificationRecordSchema } from "../../../src/domain/notifications.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { BackfillGapObservationSchema } from "../../../src/services/notifications/backfill-gap.js";
 import {
@@ -261,6 +262,102 @@ describe("dashboard stream hub", () => {
     assert.equal(snapshot.cursor, hello.cursor);
     assert.equal(hello.projectionGeneration, w.projection.generation());
     replacement.close();
+  });
+
+  it("captures the complete replacement snapshot after durable gap publication without projection movement", async () => {
+    const w = makeWorld();
+    worlds.push(w);
+    const counts = { beforePublication: -1, afterPublication: -1 };
+    const hub = createDashboardStreamHub({
+      projection: w.projection,
+      backfillGaps: {
+        detected: (input: unknown) => {
+          const gap = BackfillGapObservationSchema.parse(input);
+          const cursor = w.projection.cursor();
+          const generation = w.projection.generation();
+          counts.beforePublication = w.projection.buildDashboardDayWire(DAY).notifications.length;
+          const notification = NotificationRecordSchema.parse({
+            notificationId: uuidOf(7001),
+            actorId: "local-operator",
+            dedupeFingerprint: "a".repeat(64),
+            trigger: "backfill-gap",
+            channel: "ping",
+            status: "unread",
+            snooze: { state: "not-snoozed" },
+            title: "Notification history is incomplete",
+            summary: "event-stream history gap",
+            links: [],
+            count: 1,
+            lastSeenAt: w.clock.now().toISOString(),
+            version: 1,
+            createdAt: w.clock.now().toISOString(),
+            updatedAt: w.clock.now().toISOString(),
+          });
+          w.authority.notifications.push(notification);
+          counts.afterPublication = w.projection.buildDashboardDayWire(DAY).notifications.length;
+          assert.equal(w.projection.cursor(), cursor);
+          assert.equal(w.projection.generation(), generation);
+          return Promise.resolve({
+            published: true as const,
+            gap,
+            report: { notification, durable: "created" as const, delivery: { state: "no-channel" as const } },
+          });
+        },
+      },
+    });
+    hubs.push(hub);
+    queuedEventOf(w, { seed: 1 });
+    const heldCursor = w.projection.cursor();
+    const heldGeneration = w.projection.generation();
+    queuedEventOf(w, { seed: 2 });
+
+    const replacement = await hub.connect({
+      day: DAY,
+      lastEventId: heldCursor,
+      lastProjectionGeneration: heldGeneration,
+    });
+    const snapshot = replacement.initial.find((entry) => entry.type === "snapshot");
+    if (snapshot?.type !== "snapshot" || snapshot.topic !== "dashboard-day") {
+      assert.fail("expected one replacement dashboard snapshot");
+    }
+    const fresh = w.projection.buildDashboardDayWire(DAY);
+
+    assert.deepEqual({
+      ...counts,
+      servedNotifications: snapshot.payload.notifications.length,
+      freshNotifications: fresh.notifications.length,
+    }, {
+      beforePublication: 0,
+      afterPublication: 1,
+      servedNotifications: 1,
+      freshNotifications: 1,
+    });
+    replacement.close();
+  });
+
+  it("refuses to serve a replacement handshake when durable gap publication fails", async () => {
+    const w = makeWorld();
+    worlds.push(w);
+    const hub = createDashboardStreamHub({
+      projection: w.projection,
+      backfillGaps: {
+        detected: () => Promise.reject(new Error("notification authority is unavailable")),
+      },
+    });
+    hubs.push(hub);
+    queuedEventOf(w, { seed: 1 });
+    const heldCursor = w.projection.cursor();
+    const heldGeneration = w.projection.generation();
+    queuedEventOf(w, { seed: 2 });
+
+    await assert.rejects(
+      hub.connect({
+        day: DAY,
+        lastEventId: heldCursor,
+        lastProjectionGeneration: heldGeneration,
+      }),
+      /notification authority is unavailable/u,
+    );
   });
 
   it("serves a fresh snapshot for an expired or foreign cursor", async () => {

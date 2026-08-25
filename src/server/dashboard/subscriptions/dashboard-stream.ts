@@ -232,24 +232,20 @@ export class DashboardStreamHub {
             currentCursor: capturedCursor,
             projectionGeneration: generation,
           });
-          const projectionMoved = this.#projection.generation() !== capturedGeneration
-            || this.#projection.cursor() !== capturedCursor;
-          if (projectionMoved) {
-            const refreshed = this.#projection.buildDashboardDayWire(day);
-            initial.splice(0, initial.length,
-              this.#hello({
-                generation: refreshed.projectionGeneration,
-                cursor: refreshed.snapshotCursor,
-                descriptorHash: refreshed.descriptorHash,
-              }),
-              DashboardStreamEnvelopeSchema.parse({
-                type: "snapshot",
-                topic: "dashboard-day",
-                cursor: refreshed.snapshotCursor,
-                payload: refreshed,
-              }));
-            handshakeRestarted = true;
-          }
+          const refreshed = this.#projection.buildDashboardDayWire(day);
+          initial.splice(0, initial.length,
+            this.#hello({
+              generation: refreshed.projectionGeneration,
+              cursor: refreshed.snapshotCursor,
+              descriptorHash: refreshed.descriptorHash,
+            }),
+            DashboardStreamEnvelopeSchema.parse({
+              type: "snapshot",
+              topic: "dashboard-day",
+              cursor: refreshed.snapshotCursor,
+              payload: refreshed,
+            }));
+          handshakeRestarted = true;
         }
         // Not resumable, or a count-bearing snapshot marker sits inside the
         // window: a fresh snapshot supersedes whatever the client held.
