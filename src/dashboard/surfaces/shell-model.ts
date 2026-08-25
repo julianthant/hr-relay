@@ -329,6 +329,146 @@ export interface SessionView {
 }
 
 /**
+ * The membership panel has a one-second parent tick, while the performance
+ * fixture has 1,240 rows. Fixed-height rows make the viewport math exact and
+ * keep the DOM bounded without dropping an authority record. Long opaque
+ * values remain available through each row's detail trigger in the renderer.
+ */
+export const SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT = 512;
+const SESSION_LIST_OVERSCAN_PX = 72;
+const SESSION_LIST_HEADER_HEIGHT = 48;
+const SESSION_LIST_MEMBER_HEIGHT = 72;
+
+export type SessionListItem =
+  | Readonly<{ kind: "session-header"; session: SessionGroupView }>
+  | Readonly<{
+    kind: "session-member";
+    sessionId: SessionGroupView["sessionId"];
+    member: SessionMemberView;
+  }>
+  | Readonly<{ kind: "absent-header" }>
+  | Readonly<{ kind: "absent-member"; member: AbsentSessionMemberView }>;
+
+export interface SessionListLayoutRow {
+  readonly index: number;
+  readonly key: string;
+  readonly top: number;
+  readonly height: number;
+  readonly item: SessionListItem;
+}
+
+export interface SessionListLayout {
+  readonly rows: readonly SessionListLayoutRow[];
+  readonly totalHeight: number;
+}
+
+export interface SessionListWindow {
+  readonly rows: readonly SessionListLayoutRow[];
+  readonly totalHeight: number;
+}
+
+export interface SessionPoolDisplay {
+  readonly summary?: string;
+  readonly facts: readonly Readonly<{ label: string; value: string }>[];
+}
+
+/** Dense resting copy plus the complete authority values opened from it. */
+export function sessionPoolDisplay(session: SessionGroupView): SessionPoolDisplay {
+  const summaries = session.pools.map(({ facts }) => facts.state === "declared"
+    ? `${String(facts.desiredWorkers)} declared · ${String(facts.activeWorkers)} active`
+    : `No pool declaration · ${String(facts.activeWorkers)} active`);
+  const first = summaries[0];
+  return {
+    summary: first === undefined
+      ? undefined
+      : summaries.length === 1
+        ? first
+        : `${first} · +${String(summaries.length - 1)} workflows`,
+    facts: session.pools.map(({ workflowId, facts }) => ({
+      label: `Workflow ${workflowId}`,
+      value: facts.state === "declared"
+        ? `${String(facts.desiredWorkers)} declared at pool version ${String(facts.version)} · ${String(facts.activeWorkers)} active authority worker cards`
+        : `No worker-pool declaration · ${String(facts.activeWorkers)} active authority worker cards`,
+    })),
+  };
+}
+
+/** Flatten grouped authority data into one addressable layout, without filtering. */
+export function buildSessionListLayout(sessionView: SessionView): SessionListLayout {
+  const rows: SessionListLayoutRow[] = [];
+  let top = 0;
+  const push = (key: string, height: number, item: SessionListItem): void => {
+    rows.push({ index: rows.length, key, top, height, item });
+    top += height;
+  };
+
+  for (const session of sessionView.sessions) {
+    const sessionId = String(session.sessionId);
+    push(`session:${sessionId}`, SESSION_LIST_HEADER_HEIGHT, { kind: "session-header", session });
+    for (const member of session.members) {
+      push(`session:${sessionId}:run:${String(member.row.runId)}`, SESSION_LIST_MEMBER_HEIGHT, {
+        kind: "session-member",
+        sessionId: session.sessionId,
+        member,
+      });
+    }
+  }
+  if (sessionView.absentMembers.length > 0) {
+    push("absent:header", SESSION_LIST_HEADER_HEIGHT, { kind: "absent-header" });
+    for (const member of sessionView.absentMembers) {
+      push(`absent:run:${String(member.row.runId)}`, SESSION_LIST_MEMBER_HEIGHT, {
+        kind: "absent-member",
+        member,
+      });
+    }
+  }
+
+  return { rows, totalHeight: top };
+}
+
+/** Binary-search the first layout row whose bottom crosses the requested top. */
+function firstSessionListRowAfter(layout: SessionListLayout, top: number): number {
+  let low = 0;
+  let high = layout.rows.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    const row = layout.rows[middle];
+    if (row === undefined || row.top + row.height > top) high = middle;
+    else low = middle + 1;
+  }
+  return low;
+}
+
+/** The only rows the renderer mounts for one scroll position. */
+export function sessionListWindow(
+  layout: SessionListLayout,
+  scrollTop: number,
+  viewportHeight: number,
+): SessionListWindow {
+  const safeViewportHeight = Math.max(1, viewportHeight);
+  const overscanTop = Math.max(0, scrollTop - SESSION_LIST_OVERSCAN_PX);
+  const overscanBottom = Math.min(
+    layout.totalHeight,
+    Math.max(0, scrollTop) + safeViewportHeight + SESSION_LIST_OVERSCAN_PX,
+  );
+  const first = firstSessionListRowAfter(layout, overscanTop);
+  let last = first;
+  while (last < layout.rows.length && (layout.rows[last]?.top ?? layout.totalHeight) < overscanBottom) last += 1;
+  return { rows: layout.rows.slice(first, last), totalHeight: layout.totalHeight };
+}
+
+/** A keyboard/scroll target that makes any retained row visible. */
+export function sessionListScrollTopForIndex(
+  layout: SessionListLayout,
+  index: number,
+  viewportHeight: number,
+): number {
+  const row = layout.rows[index];
+  if (row === undefined) throw new Error(`Session membership row ${String(index)} is outside the served layout`);
+  return Math.max(0, Math.min(row.top, layout.totalHeight - Math.max(1, viewportHeight)));
+}
+
+/**
  * How a particular worker relates to the selected day's session rows.
  *
  * This is deliberately not a worker state: an idle worker has no claimed run,

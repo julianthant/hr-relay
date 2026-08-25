@@ -5,19 +5,28 @@
  * second session vocabulary beside it.
  */
 import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import {
+  SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT,
+  buildSessionListLayout,
   buildSessionView,
   poolFactsForWorkflow,
+  sessionListScrollTopForIndex,
+  sessionListWindow,
   sessionMembershipForWorker,
 } from "../../../src/dashboard/surfaces/shell-model.js";
+import { SessionMembershipList } from "../../../src/dashboard/surfaces/shell.js";
 import { FIXTURE_DAY_WIRE, uuidOf } from "../../parity/helpers/fixture-day.js";
 
 const SESSION_ID = uuidOf(700);
 const LONG_TITLE = "Separation — Nguyễn, Thi (long subject label preserved in the session member row without truncating its value)";
 
 function sessionDay(): DashboardDayWire {
+  const failedWorker = FIXTURE_DAY_WIRE.workerCards.find((card) => card.state === "failed");
+  if (failedWorker === undefined) throw new Error("the real wire fixture needs a failed retained worker card");
   return DashboardDayWireSchema.parse({
     ...FIXTURE_DAY_WIRE,
     queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map((row) => {
@@ -39,7 +48,28 @@ function sessionDay(): DashboardDayWire {
       plannedBy: "local-operator",
       plannedAt: "2026-08-03T09:00:00.000-07:00",
     }],
+    workerCards: [
+      ...FIXTURE_DAY_WIRE.workerCards,
+      {
+        ...failedWorker,
+        workerId: "person-lookup-worker-stopped-retained",
+        state: "stopped",
+        stopReason: "operator",
+      },
+    ],
   });
+}
+
+function hostileSessionDay(): DashboardDayWire {
+  const day = sessionDay();
+  const source = day.queueSurfaces[0];
+  const rows = Array.from({ length: 1240 }, (_, index) => ({
+    ...source,
+    runId: uuidOf(10_000 + index),
+    title: `Long session subject ${String(index)} — Nguyễn, Thi — this title must remain an authority row instead of being dropped for density`,
+    session: { state: "present" as const, sessionId: SESSION_ID },
+  }));
+  return DashboardDayWireSchema.parse({ ...day, queueSurfaces: rows });
 }
 
 describe("P4 — Session Panel authority joins", () => {
@@ -92,7 +122,12 @@ describe("P4 — Session Panel authority joins", () => {
       state: "absent",
       activeWorkers: 0,
     });
-    assert.equal(day.workerCards.length, 5, "the fixture keeps a failed worker card as a retained authority record");
+    assert.equal(day.workerCards.length, 6, "the fixture keeps failed and stopped worker cards as retained authority records");
+    assert.equal(
+      day.workerCards.filter((card) => card.state === "failed" || card.state === "stopped").length,
+      2,
+      "neither terminal record may inflate the active count",
+    );
   });
 
   it("does not turn an idle worker's absence of a current run into an absent session or browser verdict", () => {
@@ -112,19 +147,36 @@ describe("P4 — Session Panel authority joins", () => {
   });
 
   it("retains every member in a hostile 1,240-row session with long titles", () => {
-    const day = sessionDay();
-    const source = day.queueSurfaces[0];
-    const rows = Array.from({ length: 1240 }, (_, index) => ({
-      ...source,
-      runId: uuidOf(10_000 + index),
-      title: `Long session subject ${String(index)} — Nguyễn, Thi — this title must remain an authority row instead of being dropped for density`,
-      session: { state: "present" as const, sessionId: SESSION_ID },
-    }));
-    const hostile = DashboardDayWireSchema.parse({ ...day, queueSurfaces: rows });
+    const hostile = hostileSessionDay();
 
     const view = buildSessionView(hostile.queueSurfaces, hostile.workerCards, hostile.workerPools);
     assert.equal(view.sessions.length, 1);
     assert.equal(view.sessions[0].members.length, 1240);
     assert.match(view.sessions[0].members[1239].row.title, /Long session subject 1239/);
+  });
+
+  it("bounds every mounted window while keeping all 1,240 authority members reachable", () => {
+    const hostile = hostileSessionDay();
+    const view = buildSessionView(hostile.queueSurfaces, hostile.workerCards, hostile.workerPools);
+    const layout = buildSessionListLayout(view);
+
+    assert.equal(layout.rows.length, 1241, "one session heading plus every authority member remains addressable");
+    for (const row of layout.rows) {
+      const scrollTop = sessionListScrollTopForIndex(layout, row.index, SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT);
+      const window = sessionListWindow(layout, scrollTop, SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT);
+      assert.ok(window.rows.length <= 16, `window at row ${String(row.index)} mounted ${String(window.rows.length)} rows`);
+      assert.ok(window.rows.some((candidate) => candidate.index === row.index), `row ${String(row.index)} is reachable`);
+    }
+  });
+
+  it("mounts only the initial virtual window for the hostile session", () => {
+    const hostile = hostileSessionDay();
+    const view = buildSessionView(hostile.queueSurfaces, hostile.workerCards, hostile.workerPools);
+    const markup = renderToStaticMarkup(createElement(SessionMembershipList, { sessionView: view }));
+    const mountedRows = markup.match(/data-session-virtual-row=/g) ?? [];
+
+    assert.ok(mountedRows.length > 0);
+    assert.ok(mountedRows.length <= 16, `initial render mounted ${String(mountedRows.length)} rows`);
+    assert.doesNotMatch(markup, /Long session subject 1239/, "offscreen member is not mounted initially");
   });
 });

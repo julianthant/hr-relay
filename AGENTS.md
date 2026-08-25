@@ -238,6 +238,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   only by their present `session.sessionId`, join a worker only by exact `currentRun.runId`, and retain an
   absent arm's served reason. A pool's declared `desiredWorkers` is distinct from non-terminal
   authority worker-card facts; a missing pool row is no declaration, never a target of one.
+- **2026-08-25 — virtual session rows preserve authority across dashboard ticks (P4).** Flatten every
+  served member into a fixed layout, mount only the viewport plus bounded overscan, and memoize that
+  renderer away from the one-second elapsed-time tick. Keep clipped titles and opaque ids keyboard-
+  and touch-reachable through the design-system detail popover; visual truncation never drops data.
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
