@@ -256,7 +256,9 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   serialize the fleet with a singleton role lock or preempt the authority lease collision. Offline
   restore owns exclusive admission through the authority swap; every runtime acquisition checks
   before and after writing its record and unwinds if restore won. A persisted recovery snapshot is
-  evidence, not current liveness or exclusion.
+  evidence, not current liveness or exclusion. Singleton admission must use the atomic filesystem
+  claim, never check-then-rename; new ownership records bind PID to OS process birth, and a process
+  record may report stopped only after its authority handle closure returned successfully.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`

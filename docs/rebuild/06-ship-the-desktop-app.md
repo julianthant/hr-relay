@@ -129,8 +129,8 @@ gate of its own until the operator schedules it.
 **managed child process**, and the reasons are all about locks and lifetimes rather than taste.
 
 - **The role lock is per-PROCESS.** `acquireRuntimeProcessLock({ … name: "server", pid: process.pid })`
-  writes one file per role, and `cli storage restore` composes its stopped-system proof from the
-  `server` and `worker` files together (D181). A child process holds a lock whose pid is a real,
+  atomically claims one singleton server record, and `cli storage restore` composes its stopped-system
+  proof from that record plus the per-start worker aggregate (D181). A child process holds a lock whose pid is a real,
   observable BFF; an in-process BFF makes the Electron main process the `server` holder, so the app
   cannot be running while the BFF is stopped — which is exactly the state a restore needs.
 - **A BFF crash must not take the window with it.** In-process, an unhandled rejection in the API

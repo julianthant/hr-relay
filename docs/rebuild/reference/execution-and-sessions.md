@@ -1061,7 +1061,7 @@ advances across profiles.
 > 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
 > 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
 > 2026-08-25 | parallel-runs P3 | pool-indexed identity is built: `worker <workflow> --pool-index N` validates positive N, derives the stable id and starts authority under that lease identity. The dashboard process supervisor, FE session view and parallel proof remain unbuilt
-> 2026-08-25 | parallel-runs P3 review | worker processes now use per-start durable records aggregated into D181's unchanged restore arm; distinct indices coexist, duplicate identity reaches authority, old root locks read forward, and any live or malformed record refuses restore. Offline restore atomically claims exclusive admission before observing and consuming its proof, holds it through swap, and every runtime acquisition checks on both sides of its record write and unwinds if restore won; malformed ownership refuses and crashed ownership is archived forward. Pool supervision, FE and parallel proof remain unbuilt
+> 2026-08-25 | parallel-runs P3 review | worker processes use per-start durable records aggregated into D181's unchanged restore arm; distinct indices coexist and duplicate identity reaches authority. Singleton admission is an atomic filesystem claim (16 synchronized processes admit one), restore holds exclusive admission through staged checksum verification and swap, runtime starts check before/after their record, and ownership binds PID to OS process birth. Pool supervision, FE and parallel proof remain unbuilt
 <!-- /roadmap-status -->
 
 **AUTHORITY HALF AS-BUILT (D269, 2026-08-21); POOL-INDEXED IDENTITY AS-BUILT (2026-08-25); the
@@ -1126,7 +1126,9 @@ authority lease refusal proves each pool member is singular. D181's process-lock
 preempt that identity check: each worker start has its own durable process record, while observation
 strictly aggregates all records (plus the old root-level `workers.lock.json`) into the existing
 single `processLocks.workers` restore arm. Any live worker blocks restore; malformed records refuse;
-every start/restart advances the aggregate generation. `createPhase1WorkerRuntimeExecutor` keeps
+every start/restart advances the aggregate generation. The singleton server uses an atomic hard-link
+claim, and every new process/restore owner is identified by PID plus OS process birth rather than PID
+occupancy alone. `createPhase1WorkerRuntimeExecutor` keeps
 refusing `desiredWorkers !== 1` until the unbuilt supervisor reconciles the declared pool size.
 
 _As-built (2026-08-25):_ `poolWorkerId(workflowId, poolIndex)` derives

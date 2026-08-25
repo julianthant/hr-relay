@@ -594,7 +594,7 @@
       "disposition": {
         "kind": "open",
         "milestone": "phase-3-workflow-migration",
-        "reason": "There is no per-INSTANCE stop. The command union's stop-worker addresses a worker by workflow scope, not by a spawned daemon instance id, because a rebuild worker is a foreground process holding a durable claim lease and a per-role process lock (D181) rather than a supervised detached daemon. Naming an instance would need a supervisor the rebuild does not have, and whether one is wanted is decided by how multi-worker operation actually behaves once real workflows run — so it closes with them, not ahead of them."
+        "reason": "There is no per-INSTANCE stop. The command union's stop-worker addresses a worker by workflow scope, not by a spawned daemon instance id, because a rebuild worker is a foreground process holding a durable claim lease and a per-start process record aggregated by D181 rather than a supervised detached daemon. Naming an instance would need a supervisor the rebuild does not have, and whether one is wanted is decided by how multi-worker operation actually behaves once real workflows run — so it closes with them, not ahead of them."
       },
       "ownerMilestone": "phase-3-workflow-migration",
       "verificationEvidence": [

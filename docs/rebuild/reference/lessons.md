@@ -522,6 +522,16 @@ write-safety work.
   to refuse. Liveness is OBSERVED (`process.kill(pid, 0)`, `EPERM` counts as alive) and the observation
   writes nothing — a crashed holder must not brick recovery at the one moment it is needed, and
   rewriting another process's lock file to make a restore possible would be fabricating the fact.
+- **2026-08-25: two late observations are not restore exclusion, PID occupancy is not process
+  identity, and a pre-swap sentence becomes false after rename.** P3A's first restore repair sampled
+  locks twice around proof consumption, but a runtime could still start after the last sample and
+  before authority rename; its singleton claim also used check-then-rename, admitting 11 of 48
+  adversarial contenders. The repair is one protocol: restore atomically owns an admission sentinel
+  through the swap; every runtime checks it on both sides of an atomic singleton claim or per-worker
+  record; records bind PID to OS process birth; worker records release only after database closure
+  returns; staged bytes are checksummed after copy; and failures carry whether rename already made
+  replacement irreversible. Sampling, PID liveness, and a generic “not modified” catch are each
+  plausible facts, but none proves the state needed at the irreversible boundary.
 - **2026-08-09: An id minted unconditionally and emitted conditionally is a citation to nothing
   (D187).** `buildRunEvidenceReceipt` minted a `verificationId` for EVERY node but pushed the
   verification row only for a terminal dependency or a not-run node, while a downstream derived fact

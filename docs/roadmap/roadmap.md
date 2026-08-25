@@ -584,7 +584,7 @@ log:
 - 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
 - 2026-08-21 | parallel-runs P12 | the AUTHORITY half built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (`93b7b18e`), the pool CAS in the kernel (`b4f30ea0`), the session written at every fan-out and inherited by retry (`57f2bb9c`), the wire's `workerPools[]` + row `session` (`24b04dfa`); left: the pool PROCESS (spawn + pool-indexed ids), the FE session view, the parallel PROOF
 - 2026-08-25 | parallel-runs P3 | pool-indexed identity built: `worker <workflow> --pool-index N` requires and validates a positive N, then composition carries the derived id through the loop and authority lease. Index 2 retains its own lease; duplicate N hits the existing lease collision. Left: the real dashboard process supervisor, FE session view and parallel proof
-- 2026-08-25 | parallel-runs P3 review | worker process admission is now per-start, with every record strictly aggregated into D181's existing restore arm; distinct workers coexist and duplicate identity reaches authority. Pool supervision, FE and parallel proof remain unbuilt
+- 2026-08-25 | parallel-runs P3 review | worker admission is per-start and strictly aggregated into D181's restore arm; singleton admission is atomic (16 synchronized processes admit one), ownership binds PID to OS process birth, and exclusive restore admission spans staged-byte verification through swap. Pool supervision, FE and parallel proof remain unbuilt
 
 #### Observed logs — the log carries what the page said {#observed-logs}
 status: planned

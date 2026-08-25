@@ -565,7 +565,7 @@ pool, because the pool multiplies the hazard it removes.
 > 2026-08-20 | docs-cohesion 03a | the kernel command arms exist and are validated (src/core/command-kernel.ts:95) while createDashboardWorkerSupervisor refuses spawn by name (src/server/dashboard/compose.ts:322) and the FE has no Add-workers control for the CAS reason quoted in src/dashboard/surfaces/shell.tsx:1036
 > 2026-08-21 | parallel-runs P12 | the authority half landed (D269) — ref execution-and-sessions §11 points 1 and 5 carry the as-built; left: the pool process (spawn + pool-indexed ids), the FE session view, the parallel proof
 > 2026-08-25 | parallel-runs P3 | pool-indexed identity landed — `worker <workflow> --pool-index N` validates a positive N, derives `<workflow>-worker-N`, and starts authority under that exact lease id; distinct indices retain distinct lease rows and duplicate N is refused. Left: the real dashboard process supervisor, FE session view and parallel proof
-> 2026-08-25 | parallel-runs P3 review | the CLI/identity seam also admits concurrent worker processes through per-start lock records while D181 aggregates every live, malformed and legacy root record for restore safety; restore holds atomic exclusive admission through swap and runtime starts check before/after their record write. This does not build pool process supervision, FE or the parallel dry-run proof
+> 2026-08-25 | parallel-runs P3 review | the CLI/identity seam admits concurrent workers through per-start records while D181 atomically admits the singleton server, binds ownership to PID + OS process birth, and holds exclusive restore admission through staged-byte verification and swap. This does not build pool supervision, FE or the parallel dry-run proof
 <!-- /roadmap-status -->
 
 **A session is a dashboard-started group of N runs.** Every workflow follows the same
@@ -604,7 +604,9 @@ browser-profile partition and authority lease. There is no default index. The da
 supervisor that will assign and launch N members remains unbuilt.
 Worker process starts append independent durable lock records, so distinct members coexist and
 duplicate identity reaches the authority lease; D181 still observes them through one strict
-aggregate restore arm.
+aggregate restore arm. The adjacent restore interlock atomically admits singleton roles and binds
+current ownership to OS process birth, so neither contention nor PID reuse can make that arm report
+a false stopped/live state.
 
 **Done looks like** a pool that spawns and stops from the dashboard against a real CAS basis, a
 durable session record the worker cards read their membership from, and TWO separations dry-run
