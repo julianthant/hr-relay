@@ -681,10 +681,11 @@ Rules:
 
 - every envelope parses before entering client state; malformed payload is a visible protocol
   failure, never `console.warn` + ignore;
-- cursors are monotonic and delivered as SSE ids; reconnect sends `Last-Event-ID`;
+- cursors are monotonic and delivered as SSE ids; reconnect sends the pair `Last-Event-ID` plus
+  `Dashboard-Projection-Generation` (query fallbacks are `cursor` plus `generation`);
 - duplicate/current cursors are idempotent; when a HISTORICAL requested cursor cannot be replayed
-  from retained history, the server first commits A46's pinned backfill-gap notification and only
-  then serves a fresh snapshot;
+  from retained history in that exact generation, the server first commits A46's pinned backfill-gap
+  notification and only then serves a fresh snapshot;
 - a descriptor hash or projection-generation change invalidates affected cached projections;
 - queue patches replace one complete surface by `(runId,rowRevision)`; Review patches replace one
   complete record by `(recordId,recordRevision)`; note pages append by stable note id;
@@ -693,14 +694,20 @@ Rules:
   state-bearing messages.
 
 **The history-gap detector is the replay boundary, not a timer.** `DashboardStreamHub.connect`
-holds the requested cursor, replay generation and current cursor at the instant it decides whether
-retained history can satisfy the request. `cursor-expired` means the held cursor predates the replay
-window; `snapshot-boundary` means a later full snapshot made the old patch chain unreplayable. Only
-those two historical-cursor outcomes publish. A disconnect, timeout, malformed cursor, current or
-future cursor, and an ordinary reconnect do not. The awaited durable publish precedes the
-replacement snapshot. Subscriber-buffer overflow remains the separate `reset-required` protocol
-arm: it says this live subscriber must reset, not that retained history already proved an unknown
-interval.
+requires exact generation-bound cursor evidence before it considers replay. A cursor from another
+projection generation — including a held cursor across rebuild or process restart — means the old
+ordinal space is no longer comparable, so it receives a fresh snapshot and publishes nothing. A
+cursor without generation evidence is equally ineligible. Within one exact generation,
+`cursor-expired` means the held cursor predates the replay window and `snapshot-boundary` means a
+later full snapshot made the old patch chain unreplayable. Only those two historical-cursor outcomes
+publish. A disconnect, timeout, malformed cursor, current or future cursor, cross-generation
+cursor, missing generation, ordinary reconnect and subscriber-buffer overflow do not; overflow is
+the separate `reset-required` arm.
+
+The hub captures one complete `DashboardDayWire` and derives hello's generation/cursor/hash and the
+snapshot envelope from that same object. It awaits the durable publication before exposing the
+replacement. If publication itself moves the projection generation or cursor, the captured pair is
+discarded and a new hello+snapshot handshake is captured; hello N is never paired with snapshot N+1.
 
 The replacement snapshot establishes a new projection baseline; it does not prove what the operator
 missed. Reconnect and resnapshot therefore never clear the durable gap record. Until Track F
@@ -708,9 +715,10 @@ ratifies independent reconciliation evidence and a separate resolved transition,
 permanently pinned.
 
 **It is SSE, and it is deliberately not an `EventSource`.** `src/dashboard/client/transport.ts`
-speaks the SSE wire format over `fetch` + `ReadableStream`, because `EventSource` cannot set a
-request header and the resume contract is `Last-Event-ID`. The route reads that header and falls
-back to `?cursor=`.
+speaks the SSE wire format over `fetch` + `ReadableStream`, because `EventSource` cannot set request
+headers and the resume contract is the bound `Last-Event-ID` + `Dashboard-Projection-Generation`
+pair. The route reads those headers and falls back to `?cursor=&generation=`; generation without a
+cursor and every malformed value fail the strict request schema.
 
 **One topic has a producer.** `TopicKeySchema` declares six (`dashboard-day`, `run-detail`,
 `run-logs`, `run-review`, `run-people`, `artifact`); the route's topic pattern admits only
@@ -1381,7 +1389,9 @@ workflow-versioning half is row **D8**.
 2. The rows ride the day wire; the bell renders unread and critical counts and the all / ping /
    inbox / snoozed filters.
 3. Read, unread and snooze are COMMANDS, CASed on the row's own `revision` — which the D134 fold
-   advances on every publish, so a bell action races a fold that is designed to happen.
+   advances on every ordinary publish, so a bell action races a fold that is designed to happen.
+   A46's permanent arm has no revision and authority refuses every update/fold, including same-state
+   writes, before any version can advance.
 4. A refusal is shown, never swallowed (D253).
 
 **Implemented:** the bell is `NotificationBell` inside `surfaces/top-bar.tsx`; the rows are on
@@ -1389,7 +1399,10 @@ workflow-versioning half is row **D8**.
 the services' half — a park at an ALWAYS-GATE publishes a needs-you row by re-derivation over
 authority, and the backup hazard publishes `storage-degraded` on state TRANSITIONS only (D222).
 
-**Generic:** entirely — the trigger set is ref dashboard-surfaces §2.6's closed vocabulary.
+**Generic:** entirely — the trigger set is ref dashboard-surfaces §2.6's closed vocabulary. A46's
+closed pinned arm is the one permanent safety lane: it contributes to All, Unread and Pings, remains
+outside ordinary filtering, and shares the drawer's bounded scroller so every pin and ordinary row
+remains reachable.
 
 **Left:** there is no notification patch topic, so the bell moves when the day snapshot does (§3.5);
 snooze has no inverse because the kernel serves none; and the OS-delivery half belongs to the

@@ -524,7 +524,7 @@ builds:
 - [ ] FE the structural run-detail ports — the failure-record disclosure + write-state block, the focusable timeline segment, the step-group Well, one-owner `dataExpanded`, the grouped log stream
 - [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
 - [x] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
-- [x] BOTH A46's unreplayable-history trigger, durable fold and permanently pinned Refusal (`68dea43a`; fidelity ledger 1 A46)
+- [x] BOTH A46's exact-generation unreplayable-history trigger, stable no-churn permanent fact, authority-immutable Refusal and reachable 6+ pin mobile lane (`68dea43a`, `e108ff3f`, `a2d2a8e8`; fidelity ledger 1 A46)
 - [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
 - [ ] BE a diagnostic bundle is readable (ledger 2 E29)
 - [ ] BOTH the intake manifest + rerun-diff surface (ledger 3 IN15/IN16)
@@ -539,6 +539,7 @@ log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | node drawn from the three 2026-08-21 ledgers; doc 03a §Demo fidelity carries the per-region table, every OPEN question as one line, the served-and-dropped list and the stale-claims table · left: the operator's rulings, then every FE / BE / BOTH / PROOF line above
 - 2026-08-25 | track-f archive UI + Activity AC24 | `3d461962` served frozen list warnings/rehearsal state; `d1f87916` drew those and the already-served archive identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared wire→display status fold. Ledger 3 remains 346/1,119 exact with 248 OPEN marks. Before/after screenshots were taken without `PARITY_UPDATE` · left in this unit: Explorer EX5 and every other non-archive served-and-dropped fact
 - 2026-08-25 | track-f Explorer EX5 | `4e09fb49` restores the demo's ghost `Version registry` action with its `Eye` icon; it clears the Explorer takeover and opens Archive's actual `Versions & bumps` view through `?archive=&archiveView=versions`. The browser test proves the exact search state, direct deep-link and Back/Forward restoration against the pressed view and real `Workflow version registry` table; no parity reference was re-frozen. A mechanical recount of ledger 3's current rows gives 353/1,119 exact with 238 OPEN marks · left: every non-archive served-and-dropped fact
+- 2026-08-25 | track-f A46 adversarial correction | `e108ff3f` separates cross-generation restart/rebuild from real missed history, stabilises interval identity across reason aging/head movement and process restart, single-flights concurrent clients, refuses every authority mutation/fold, and restarts an atomically captured handshake if publication moves the projection; `a2d2a8e8` keeps 6+ pins, ordinary rows and fixed filters reachable at 390×844 with truthful Pings counts and a 44px bell. A46 stays exact, so ledger 1 remains 132/178 and the three-ledger total remains 775/1,956 exact. Production-bundle mobile proof passed; no parity reference was re-frozen.
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: planned

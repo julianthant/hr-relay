@@ -1469,19 +1469,23 @@ The differences from the durable record are deliberate:
   not. It names a `run` or a `failure`; `storage` and `backfill-gap` name none and draw no button, because an
   affordance that navigated nowhere would be worse than none.
 
-**Durable representation (D134).** "Repeated identical triggers update count/lastSeen" is stored as
-**one row per `(actorId, dedupeFingerprint)`, updated in place** — schema v10 adds that unique index
-plus triggers freezing identity and creation and requiring a strictly advancing `version`. The
-durable `NotificationRecord` therefore carries `count` and `lastSeenAt` beside `version`. Ref operator-trust
-§6.1 owns the justification and the boundary against the ledger's true immutability.
+**Durable representation (D134).** Ordinary repeated identical triggers update one row per
+`(actorId, dedupeFingerprint)` in place — schema v10 adds that unique index plus triggers freezing
+identity and creation and requiring a strictly advancing `version`. The durable
+`NotificationRecord` therefore carries `count` and `lastSeenAt` beside `version`. A46 is the narrow
+exception: once its permanent fact exists, re-observing that identity returns the existing row with
+no count, timestamp or version churn. Ref operator-trust §6.1 owns the justification and the
+boundary against the ledger's true immutability.
 
 **Publish ordering (D138).** "A failed toast never loses the unread inbox item" is an ORDER, not an
-aspiration. `publish` settles create-or-fold in one authority transaction and only then attempts OS
-delivery; the delivery call is made after that transaction returns, over a row authority can already
-read. A delivery that throws is reported to the caller and **never written back** — status, `count`,
-and `version` are untouched — and no per-attempt delivery state is stored at all. A missing desktop
+aspiration. `publish` settles create-or-fold (or A46's unchanged existing fact) in one authority
+transaction and only then attempts OS delivery; the delivery call is made after that transaction
+returns, over a row authority can already read. A delivery that throws is reported to the caller and
+**never written back** — status, `count`, and `version` are untouched — and no per-attempt delivery
+state is stored at all. A missing desktop
 channel reports `no-channel`, never success. Snooze is evaluated at delivery time only: a snoozed
-row still folds durably, it just does not ping.
+ordinary row still folds durably, it just does not ping. Re-observing an existing A46 fact requests no
+second OS delivery.
 
 **Trigger arguments are closed (D138).** "Notification text uses redacted arguments" is enforced by
 having no free-text argument: every trigger-event arm is ids, closed codes, and counts, and the
@@ -1492,23 +1496,34 @@ in the table above (`NotificationTriggerSchema`, `src/domain/notifications.ts:12
 `projectNotificationTrigger`'s exhaustive switch — one place, not a per-caller choice.
 
 **As-built (2026-08-25, Track F A46) — a backfill gap means an UNKNOWN interval, not a weak
-connection.** Only the server replay seam may publish it: a client presents a historical cursor and
-the hub proves that cursor cannot be replayed from retained history, either because it expired or
-because a snapshot boundary displaced it. Current and future cursors, reconnects, disconnects,
-timeouts and malformed requests do not qualify. The hub awaits the durable create-or-fold before it
-serves the replacement snapshot, so the resnapshot can never race ahead of the warning.
+connection.** Only the server replay seam may publish it: the client presents an exact
+`(projectionGeneration, requestedCursor)` pair and the hub proves that historical cursor cannot be
+replayed from retained history in that same generation, either because it expired or because a
+snapshot boundary displaced it. A cursor from another generation is restart/rebuild evidence, not
+missed-history evidence, and resnapshots without publication. Current and future cursors, missing
+generation evidence, reconnects, disconnects, timeouts, overflow and malformed requests do not
+qualify.
 
-The dedupe identity is the held requested cursor plus replay generation, detector, reason and topic;
-it deliberately excludes the moving current cursor. Retrying the same gap after the stream head
-advances therefore folds one row, while a failed publish remains retryable because the notifier does
-not advance its transition memory until authority commits. The closed event contains only cursors,
-generation and enums — no caller-authored prose or person/run data.
+The identity is detector + topic + requested cursor + requested projection generation. It excludes
+both mutable observations: current head and detection reason. If one actual interval ages from
+`snapshot-boundary` to `cursor-expired`, it remains the same fact. An in-process identity-keyed
+single-flight lets simultaneous clients perform one publication, and authority's unique identity is
+the cross-process/restart arbiter: re-observation returns the existing row unchanged, without count,
+last-seen, updated-at, version or OS-delivery churn. A failed first publication remains retryable.
+The closed event contains only cursors, generation and enums — no caller-authored prose or person/run
+data.
+
+The hub captures hello and snapshot from one complete day-wire instant and awaits durable
+publication before exposing them. If publication moves generation or cursor, it discards the pair
+and captures a new handshake, so no response can pair hello N with snapshot N+1.
 
 The durable row is permanently pinned. Projection gives it a closed wire arm with no ordinary
-lifecycle controls, and the command kernel refuses crafted read/unread/snooze requests before any
-mutation. The UI partitions the pinned arm before ordinary filtering, so no present or future filter
-branch receives it. Reconnect and even a complete replacement snapshot establish a new baseline but
-cannot establish what happened inside the missed interval, so neither clears the historical warning.
+lifecycle controls, and one authority-level guard refuses update and fold for that trigger before
+CAS/version logic. That covers mark-read, mark-unread, snooze, clear-snooze, command-kernel calls,
+direct repository calls and same-state writes. The UI partitions the pinned arm before ordinary
+filtering, so no present or future filter branch receives it. Reconnect and even a complete
+replacement snapshot establish a new baseline but cannot establish what happened inside the missed
+interval, so neither clears the historical warning.
 If Track F later wants a resolved state, its final decision brief must name independent evidence that
 proves reconciliation and add a separate closed state/transition; reconnect alone is forbidden as
 that evidence.
@@ -3980,9 +3995,18 @@ draws `Open run` (or `Open failure`); `storage` and `backfill-gap` draw no inven
 refusal arms are settled through the one exhaustive fold, because a conflict that fell through to the
 success path is D253's defect on a control whose only feedback is that the row changed. Snooze has
 no inverse on purpose: the kernel serves no `notification-unsnooze`, so the surface offers none.
-The pinned arm exposes no lifecycle control or revision. Crafted read/unread/snooze commands are
-also refused by the kernel before mutation, so hiding it is impossible through the backend as well
-as through the surface.
+The pinned arm exposes no lifecycle control or revision. The authority itself refuses every fold or
+state update for that trigger — read, unread, snooze, clear-snooze and direct same-state writes — so
+hiding or version-bumping it is impossible through any service/repository path, not merely the
+surface or command kernel.
+
+**One reachable lane at every size.** Pinned Refusals are immune to the selected ordinary filter but
+still belong to the filter vocabulary: each contributes to All, Unread and Pings, and a selected
+Pings body therefore never says empty while one is visible. Filters stay above one bounded scroll
+region containing every pinned and ordinary row; six or more permanent facts cannot consume a fixed
+non-scrolling lane and strand later pins or ordinary records. At 390×844 the bell is a 44px touch
+target and keyboard focus, every pin, every filter and an ordinary row remain reachable without
+horizontal overflow.
 
 **The bell reads the SAME served instant every other surface does.** A notification's age is a fact
 about the server's clock, so the row ages against the one calibrated `nowIso` §9.9's D256 clock

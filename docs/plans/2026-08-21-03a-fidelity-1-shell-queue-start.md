@@ -1,6 +1,6 @@
 # 03a demo-fidelity audit — group 1: the SHELL, the QUEUE, the RUN START
 
-**Date:** 2026-08-21 · **Unit:** demo-fidelity AUDIT group 1 of 3 (`feature/docs-fid-1`) · **Status:** maintained closure ledger — A46 closed 2026-08-25
+**Date:** 2026-08-21 · **Unit:** demo-fidelity AUDIT group 1 of 3 (`feature/docs-fid-1`) · **Status:** maintained closure ledger — A46 closed and adversarial corrections verified 2026-08-25
 
 ## What this is
 
@@ -99,7 +99,7 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A43 | Bell — raw square button, `p-snug`, `Bell` md, hover fill, accessible name "Notifications — N unread" | `DemoTopBarSurfaces.tsx:665-676` | `top-bar.tsx:673-684` | exact | — |
 | A44 | Bell badge — corner superscript, NOTHING painted at zero, `failed-solid` when any unread is critical else `waiting-solid`, dark ink on bright fill | `DemoTopBarSurfaces.tsx:677-694` | `top-bar.tsx:685-704` | exact | — |
 | A45 | `Drawer` 480px, title "Notifications", description "N unread · pings are silent · a record survives a failed desktop delivery" | `DemoTopBarSurfaces.tsx:697-702` | `top-bar.tsx:707-712` | exact | — |
-| A46 | **The pinned backfill-gap `Refusal`** — the one record that cannot be filtered, snoozed or dismissed | `DemoTopBarSurfaces.tsx:707-722` | `top-bar.tsx:670-697`; filter partition `top-bar-model.ts:61-98`; protocol `dashboard-stream.ts:185-220` | exact | closed `68dea43a`: the strict historical-cursor replay seam publishes before replacement snapshot; the durable fold, wire and kernel make the Refusal permanently pinned and unhideable |
+| A46 | **The pinned backfill-gap `Refusal`** — the one record that cannot be filtered, snoozed or dismissed | `DemoTopBarSurfaces.tsx:707-722` | `top-bar.tsx`; filter partition `top-bar-model.ts`; protocol `dashboard-stream.ts` | exact | closed `68dea43a`, corrected `e108ff3f`/`a2d2a8e8`: exact generation-bound replay evidence excludes restart/rebuild; stable interval identity is single-flight and no-churn across restart; authority refuses every mutation/fold; one bounded lane keeps 6+ pins, filters and ordinary rows reachable at 390×844 |
 | A47 | Filter chips **All · Unread · Pings · Inbox · Snoozed**, each with its count, counted over EVERY served record | `DemoTopBarSurfaces.tsx:724-730` | `top-bar.tsx:725-736` | exact | — |
 | A48 | `Pings` / `Inbox` counts read zero | `DemoTopBarSurfaces.tsx:635-636` | `top-bar-model.ts:77-82` (`Pings` counts A46's pinned arm; ordinary delivery remains unserved, `Inbox` stays zero) | divergent | `ruled: prior audit R1` for ordinary rows; A46 is a closed safety route, not inferred delivery data |
 | A49 | EmptyState "Nothing under this filter" + the never-deleted sentence | `DemoTopBarSurfaces.tsx:733-738` | `top-bar.tsx:739-744` | exact | — |
@@ -257,10 +257,14 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 counted once, under the strongest verdict). Reasons on the 46 non-exact rows: **ruled 34** ·
 **unserved 2** · **OPEN 10**.
 
+A46's adversarial correction changed its implementation proof, not its verdict or row accounting;
+Region A therefore remains **132/178 exact** with **10 OPEN**.
+
 **Since 08-14 (baseline R1/R2/R4/R7 + the R8 keyboard half):**
 
-- **Fixed since the baseline:** A46's strict backfill-gap publisher, durable pinned state and
-  filter/kernel refusal landed in `68dea43a`; the whole R7 `WorkerCardWireSchema` batch landed (R7-1 dead tone arms,
+- **Fixed since the baseline:** A46's strict backfill-gap publisher and pinned Refusal landed in
+  `68dea43a`; `e108ff3f` binds it to same-generation replay evidence, makes repeat identity no-churn
+  and enforces immutability in authority, while `a2d2a8e8` proves the 6-pin mobile lane; the whole R7 `WorkerCardWireSchema` batch landed (R7-1 dead tone arms,
   R7-3's tile grid, R7-4's `Stop`, R7-5/6/7-data, R7-8's crashed arm — D248/D249); the global keydown
   listener exists and every advertised binding resolves (R2 D13/D14, R3 f.8, R5 f.7, R8 f.7 —
   `ebe2bac`); the panel's `ACTIVE│ALL` column, the 2-char code and the frontend category table (R2);
@@ -856,7 +860,7 @@ a coherent sub-node of their own (a demo-fidelity closure task) hanging off `{#d
 
 ```
 - [ ] BE the preflight/doctor summary and its rerun command — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184) and the whole popover is built behind it, so the stethoscope is absent from the bar entirely (A39, A42) {#dash-defaults}
-- [x] BOTH a backfill-gap notification trigger — strict unreplayable-history detection, durable dedupe fold and the permanently pinned Refusal landed in `68dea43a` (A46) {#dash-defaults}
+- [x] BOTH a backfill-gap notification trigger — same-generation unreplayable-history detection, stable no-churn durable identity and the authority-immutable permanently pinned Refusal landed in `68dea43a` and corrected in `e108ff3f`/`a2d2a8e8` (A46) {#dash-defaults}
 ```
 
 ### From Region B (the queue) — 10 lines
