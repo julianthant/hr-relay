@@ -88,3 +88,27 @@ test("virtual membership keeps one coherent row focus through navigation, scroll
   await expect(authorityFocus).toHaveCount(1);
   await expect(rowTabStops).toHaveCount(1);
 });
+
+test("focused authority trigger transfers to the visible row before its owner unmounts", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
+  await page.getByRole("button", { name: /^Sessions/u }).click();
+
+  const membership = page.getByRole("list", { name: /Session membership/u });
+  const firstRow = membership.locator("[data-session-row-index='0']");
+  const details = firstRow.getByRole("button", { name: /^Show full details for session/u });
+  await details.focus();
+  await expect(details).toBeFocused();
+
+  await membership.hover();
+  await page.mouse.wheel(0, 100_000);
+  await expect.poll(async () => membership.evaluate((node) =>
+    Math.round(node.scrollHeight - node.clientHeight - node.scrollTop),
+  )).toBe(0);
+  await expect(firstRow).toHaveCount(0);
+
+  const visibleRovingRow = membership.locator("[data-session-virtual-row][tabindex='0']");
+  await expect(visibleRovingRow).toHaveCount(1);
+  await expect(visibleRovingRow).toBeInViewport();
+  await expect(visibleRovingRow).toBeFocused();
+});

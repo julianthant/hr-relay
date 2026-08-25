@@ -1069,7 +1069,7 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>): void => {
     scrollFocusedRowIndexRef.current = undefined;
     for (const [index, row] of rowRefs.current) {
-      if (row === document.activeElement) {
+      if (row.contains(document.activeElement)) {
         scrollFocusedRowIndexRef.current = index;
         break;
       }
