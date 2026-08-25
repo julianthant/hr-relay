@@ -112,3 +112,37 @@ test("focused authority trigger transfers to the visible row before its owner un
   await expect(visibleRovingRow).toBeInViewport();
   await expect(visibleRovingRow).toBeFocused();
 });
+
+test("focused authority popover closes and transfers before its owner unmounts", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
+  await page.getByRole("button", { name: /^Sessions/u }).click();
+
+  const membership = page.getByRole("list", { name: /Session membership/u });
+  const rowTabStops = membership.locator("[data-session-virtual-row][tabindex='0']");
+  await rowTabStops.focus();
+  await page.keyboard.press("End");
+  const farRow = membership.locator(`[data-session-row-index='${String(TOTAL_LAYOUT_ROWS - 1)}']`);
+  await page.keyboard.press("Tab");
+  await farRow.getByRole("button", { name: /^Show full details for Long session subject 1239/u }).press("Enter");
+
+  const popover = page.getByRole("dialog", { name: "Session member" });
+  const close = popover.getByRole("button", { name: "Close" });
+  await expect(popover).toBeVisible();
+  await expect(close).toBeFocused();
+
+  await membership.hover();
+  await page.mouse.wheel(0, -40);
+  await expect(popover).toBeVisible();
+  await expect(close).toBeFocused();
+
+  await page.mouse.wheel(0, -100_000);
+  await expect.poll(async () => membership.evaluate((node) => node.scrollTop)).toBe(0);
+  await expect(farRow).toHaveCount(0);
+  await expect(popover).toHaveCount(0);
+
+  const visibleRovingRow = membership.locator("[data-session-virtual-row][tabindex='0']");
+  await expect(visibleRovingRow).toHaveCount(1);
+  await expect(visibleRovingRow).toBeInViewport();
+  await expect(visibleRovingRow).toBeFocused();
+});

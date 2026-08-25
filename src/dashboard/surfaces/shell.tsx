@@ -16,6 +16,7 @@
  * projection exists to delete.
  */
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type KeyboardEvent, type ReactElement, type SVGProps, type UIEvent } from "react";
+import { flushSync } from "react-dom";
 import {
   AlertTriangle,
   ChevronDown,
@@ -741,19 +742,27 @@ function BrowserTile({
 }
 
 /** Keyboard/touch route from a dense clipped value to every served character. */
+interface AuthorityDetailsOwnership {
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly surfaceRef: (node: HTMLDivElement | null) => void;
+}
+
 function AuthorityDetails({
   label,
   title,
   facts,
   touchAlign = "center",
+  ownership,
 }: {
   label: string;
   title: string;
   facts: readonly Readonly<{ label: string; value: string }>[];
   touchAlign?: "center" | "up" | "down";
+  ownership?: AuthorityDetailsOwnership;
 }) {
   return (
-    <Popover>
+    <Popover {...(ownership === undefined ? {} : { open: ownership.open, onOpenChange: ownership.onOpenChange })}>
       <PopoverTrigger asChild>
         <IconButton
           size="xs"
@@ -779,7 +788,7 @@ function AuthorityDetails({
           )}
         />
       </PopoverTrigger>
-      <PopoverContent title={title} width="lg" align="start">
+      <PopoverContent title={title} width="lg" align="start" surfaceRef={ownership?.surfaceRef}>
         <dl className="flex min-w-0 flex-col gap-[var(--ds-space-base)]">
           {facts.map((fact) => (
             <div key={fact.label} className="min-w-0">
@@ -855,7 +864,15 @@ function WorkerSessionLine({ membership }: { membership: WorkerSessionMembership
 }
 
 /** One row of a session's authority membership list; it remains a compact divider, not a nested card. */
-function SessionMemberRow({ member, sessionId }: { member: SessionMemberView; sessionId: SessionGroupView["sessionId"] }) {
+function SessionMemberRow({
+  member,
+  sessionId,
+  authorityDetails,
+}: {
+  member: SessionMemberView;
+  sessionId: SessionGroupView["sessionId"];
+  authorityDetails: AuthorityDetailsOwnership;
+}) {
   const status = dsStatusOf(member.row.status);
   const workerDetails = member.workers.length === 0
     ? "No current worker card claims this run"
@@ -880,6 +897,7 @@ function SessionMemberRow({ member, sessionId }: { member: SessionMemberView; se
               { label: "Current worker cards", value: workerDetails },
             ]}
             touchAlign="down"
+            ownership={authorityDetails}
           />
         </div>
         <div className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] min-w-0 truncate text-[color:var(--ds-fg-muted)]")}>
@@ -903,7 +921,13 @@ function SessionMemberRow({ member, sessionId }: { member: SessionMemberView; se
   );
 }
 
-function SessionHeaderRow({ session }: { session: SessionGroupView }) {
+function SessionHeaderRow({
+  session,
+  authorityDetails,
+}: {
+  session: SessionGroupView;
+  authorityDetails: AuthorityDetailsOwnership;
+}) {
   const pool = sessionPoolDisplay(session);
   return (
     <div className="flex h-full min-w-0 items-center gap-[var(--ds-space-snug)] px-[var(--ds-shell-inset)]">
@@ -920,12 +944,19 @@ function SessionHeaderRow({ session }: { session: SessionGroupView }) {
         label={`Show full details for session ${String(session.sessionId)}`}
         title="Session details"
         facts={[{ label: "Session ID", value: String(session.sessionId) }, ...pool.facts]}
+        ownership={authorityDetails}
       />
     </div>
   );
 }
 
-function AbsentSessionMemberRow({ member }: { member: Extract<SessionListItem, { kind: "absent-member" }>["member"] }) {
+function AbsentSessionMemberRow({
+  member,
+  authorityDetails,
+}: {
+  member: Extract<SessionListItem, { kind: "absent-member" }>["member"];
+  authorityDetails: AuthorityDetailsOwnership;
+}) {
   return (
     <div className="h-full min-w-0 px-[var(--ds-shell-inset)] py-[var(--ds-space-snug)]">
       <div className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
@@ -939,6 +970,7 @@ function AbsentSessionMemberRow({ member }: { member: Extract<SessionListItem, {
             { label: "Served reason", value: member.reason },
           ]}
           touchAlign="down"
+          ownership={authorityDetails}
         />
       </div>
       <span className={cn(dsText.micro, "block truncate text-[color:var(--ds-fg-muted)]")}>{member.reason}</span>
@@ -954,6 +986,9 @@ function SessionVirtualRow({
   rowRef,
   onFocus,
   onKeyDown,
+  authorityOpen,
+  onAuthorityOpenChange,
+  onAuthoritySurfaceRef,
 }: {
   row: SessionListLayoutRow;
   totalRows: number;
@@ -961,8 +996,16 @@ function SessionVirtualRow({
   rowRef: (node: HTMLDivElement | null) => void;
   onFocus: () => void;
   onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
+  authorityOpen: boolean;
+  onAuthorityOpenChange: (rowIndex: number, open: boolean) => void;
+  onAuthoritySurfaceRef: (rowIndex: number, node: HTMLDivElement | null) => void;
 }) {
   const item = row.item;
+  const authorityDetails: AuthorityDetailsOwnership = {
+    open: authorityOpen,
+    onOpenChange: (open) => onAuthorityOpenChange(row.index, open),
+    surfaceRef: (node) => onAuthoritySurfaceRef(row.index, node),
+  };
   const ariaLabel = item.kind === "session-header"
     ? `Session ${String(item.session.sessionId)}`
     : item.kind === "session-member"
@@ -992,14 +1035,20 @@ function SessionVirtualRow({
       )}
       style={{ top: row.top, height: row.height }}
     >
-      {item.kind === "session-header" && <SessionHeaderRow session={item.session} />}
-      {item.kind === "session-member" && <SessionMemberRow member={item.member} sessionId={item.sessionId} />}
+      {item.kind === "session-header" && (
+        <SessionHeaderRow session={item.session} authorityDetails={authorityDetails} />
+      )}
+      {item.kind === "session-member" && (
+        <SessionMemberRow member={item.member} sessionId={item.sessionId} authorityDetails={authorityDetails} />
+      )}
       {item.kind === "absent-header" && (
         <div className="flex h-full items-center px-[var(--ds-shell-inset)]">
           <span className={cn(dsText.caps, "text-[color:var(--ds-fg-muted)]")}>No session recorded</span>
         </div>
       )}
-      {item.kind === "absent-member" && <AbsentSessionMemberRow member={item.member} />}
+      {item.kind === "absent-member" && (
+        <AbsentSessionMemberRow member={item.member} authorityDetails={authorityDetails} />
+      )}
     </div>
   );
 }
@@ -1012,13 +1061,17 @@ function SessionVirtualRow({
 export const SessionMembershipList = memo(function SessionMembershipList({ sessionView }: { sessionView: SessionView }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
+  // AuthorityDetails portals outside its row, so DOM ancestry alone cannot
+  // preserve that row's focus ownership across a virtual-window swap.
+  const authoritySurfaceRefs = useRef(new Map<number, HTMLDivElement>());
   const pendingFocusIndexRef = useRef<number | undefined>(undefined);
-  const scrollFocusedRowIndexRef = useRef<number | undefined>(undefined);
+  const scrollOwnedRowIndexRef = useRef<number | undefined>(undefined);
   const scrollFrameRef = useRef<number | undefined>(undefined);
   const pendingScrollTopRef = useRef(0);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [openAuthorityRowIndex, setOpenAuthorityRowIndex] = useState<number | undefined>(undefined);
   const layout = useMemo(() => buildSessionListLayout(sessionView), [sessionView]);
   const windowed = useMemo(
     () => sessionListWindow(layout, scrollTop, viewportHeight),
@@ -1048,38 +1101,68 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
       const row = rowRefs.current.get(pendingIndex);
       if (row === undefined) return;
       pendingFocusIndexRef.current = undefined;
-      scrollFocusedRowIndexRef.current = pendingIndex;
+      scrollOwnedRowIndexRef.current = pendingIndex;
       row.focus({ preventScroll: true });
       return;
     }
 
-    const focusedBeforeScroll = scrollFocusedRowIndexRef.current;
+    const focusedBeforeScroll = scrollOwnedRowIndexRef.current;
     if (focusedBeforeScroll === undefined || rowRefs.current.has(focusedBeforeScroll)) return;
     const activeElement = document.activeElement;
     if (activeElement !== null && activeElement !== document.body) {
-      scrollFocusedRowIndexRef.current = undefined;
+      scrollOwnedRowIndexRef.current = undefined;
       return;
     }
     const row = rowRefs.current.get(rovingIndex);
     if (row === undefined) return;
-    scrollFocusedRowIndexRef.current = rovingIndex;
+    scrollOwnedRowIndexRef.current = rovingIndex;
     row.focus({ preventScroll: true });
   }, [rovingIndex, windowed.rows]);
 
   const onScroll = useCallback((event: UIEvent<HTMLDivElement>): void => {
-    scrollFocusedRowIndexRef.current = undefined;
+    scrollOwnedRowIndexRef.current = undefined;
+    const activeElement = document.activeElement;
     for (const [index, row] of rowRefs.current) {
-      if (row.contains(document.activeElement)) {
-        scrollFocusedRowIndexRef.current = index;
+      if (row.contains(activeElement)) {
+        scrollOwnedRowIndexRef.current = index;
         break;
+      }
+    }
+    if (scrollOwnedRowIndexRef.current === undefined) {
+      for (const [index, surface] of authoritySurfaceRefs.current) {
+        if (surface.contains(activeElement)) {
+          scrollOwnedRowIndexRef.current = index;
+          break;
+        }
       }
     }
     pendingScrollTopRef.current = event.currentTarget.scrollTop;
     if (scrollFrameRef.current !== undefined) return;
     scrollFrameRef.current = requestAnimationFrame(() => {
       scrollFrameRef.current = undefined;
-      setScrollTop(pendingScrollTopRef.current);
+      const nextScrollTop = pendingScrollTopRef.current;
+      const focusedOwner = scrollOwnedRowIndexRef.current;
+      if (
+        focusedOwner !== undefined
+        && openAuthorityRowIndex === focusedOwner
+        && !sessionListWindow(layout, nextScrollTop, viewportHeight).rows.some((row) => row.index === focusedOwner)
+      ) {
+        // Let Radix close and restore to its still-mounted trigger before this
+        // render swaps the owner row out; the layout effect then moves that
+        // owned focus to the new visible roving row.
+        flushSync(() => setOpenAuthorityRowIndex(undefined));
+      }
+      setScrollTop(nextScrollTop);
     });
+  }, [layout, openAuthorityRowIndex, viewportHeight]);
+
+  const onAuthorityOpenChange = useCallback((rowIndex: number, open: boolean): void => {
+    setOpenAuthorityRowIndex((current) => open ? rowIndex : current === rowIndex ? undefined : current);
+  }, []);
+
+  const onAuthoritySurfaceRef = useCallback((rowIndex: number, node: HTMLDivElement | null): void => {
+    if (node === null) authoritySurfaceRefs.current.delete(rowIndex);
+    else authoritySurfaceRefs.current.set(rowIndex, node);
   }, []);
 
   const focusIndex = useCallback((index: number): void => {
@@ -1130,6 +1213,9 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
             }}
             onFocus={() => setActiveIndex(row.index)}
             onKeyDown={(event) => onRowKeyDown(row.index, event)}
+            authorityOpen={openAuthorityRowIndex === row.index}
+            onAuthorityOpenChange={onAuthorityOpenChange}
+            onAuthoritySurfaceRef={onAuthoritySurfaceRef}
           />
         ))}
       </div>
