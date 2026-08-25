@@ -822,6 +822,22 @@ const OCR_EXTRACTION = {
   record: null,
   pageFingerprint: "1".repeat(64),
 };
+const DRY_RUN_SCENARIO_RESULT = {
+  resultId: UUID_8,
+  scenarioId: "person-lookup/dry-run",
+  workflow: "person-lookup",
+  subjectLabel: "ordinary-canary",
+  manifestDigest: HASH_A,
+  verdict: "blocked",
+  assertions: [{
+    assertionId: "subject-available",
+    verdict: "blocked",
+    reason: "subject-unavailable",
+  }],
+  wallTimeMs: 0,
+  recordedAt: NOW,
+  execution: { state: "not-started", reason: "subject-unavailable" },
+};
 
 describe("authority generation accounting", () => {
   type MutationCase = Readonly<{
@@ -890,6 +906,10 @@ describe("authority generation accounting", () => {
       table: "evidence_receipts",
       prepare: (db) => { terminalizeForTrust(db); },
       mutate: (db) => { db.authority.evidenceReceipts.insert(EVIDENCE_RECEIPT); },
+    },
+    {
+      table: "dry_run_scenario_results",
+      mutate: (db) => { db.authority.dryRunScenarioResults.insert(DRY_RUN_SCENARIO_RESULT); },
     },
     { table: "intake_manifests", mutate: (db) => { db.authority.intakeManifests.insert(INTAKE_MANIFEST); } },
     { table: "intake_sessions", mutate: (db) => { db.authority.intakeSessions.create(INTAKE_SESSION); } },
