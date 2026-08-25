@@ -797,7 +797,7 @@ is no row.
 <!-- roadmap-status: order-5 -->
 - [x] the kernel side of this example is real: N loops over one queue, one item each, per-worker profiles and sessions (§7.1)
 - [ ] the i9 system has no landed browser binding — `src/stores/i9/session.ts` is a provider declaration and `BROWSER_SYSTEM_BINDINGS` does not name it, so a session for it refuses at open
-- [ ] no `i9-check` descriptor exists (`src/workflows/` holds person-lookup, kuali-timekeeper-annotation and the six separations graphs)
+- [ ] no `i9-check` descriptor exists (`src/workflows/` holds two rail-level workflows — `person-lookup` and `separations` — with the latter's six timeline-step folders and five nested harnesses)
 - [ ] "choose 3 workers" is not startable from a surface — the count comes from three CLI processes today (§0 item 4, §11)
 > 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/workflows/, src/infra/browser/system-bindings.ts and src/stores/i9/session.ts; this section is the SHAPE the migration targets, and every prerequisite it is missing is named
 <!-- /roadmap-status -->
@@ -1029,4 +1029,3 @@ end-to-end tier's first exercise (ref guards-and-tests §test tiers) — plus a 
 that lands the pool. It needs §10 first: the pool multiplies the hazard the ceremony lease removes,
 and shipping it in the other order would make the first parallel cold start the thing that burns a
 profile.
-

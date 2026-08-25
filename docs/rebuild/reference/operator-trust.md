@@ -1007,11 +1007,13 @@ over `src/domain/trust/gate-decisions.ts`; pinned by
 **Closed 2026-08-04 (D144, ref write-safety §3.1).** The gap was real: the sequencer stored a transaction
 checkpoint under the durable `TransactionOutcome` schema hash while the descriptor factory's
 terminal `build` demanded the COMMIT CONTRACT's output schema hash, and the interpreter never
-registered a transaction checkpoint as terminal evidence at all — so `kuali-timekeeper-annotation`
-could not reach terminal `done` and the controlled commit had no receipt in authority. The stored
-hash was the correct one; the terminal side moved. `kualiReceiptEvidence`'s terminal record now
-comes from the real `buildRunResult`, and `tests/unit/transaction-terminal-dependency.test.ts`
-drives a queued Kuali run through the real interpreter to `done` and derives its receipt.
+registered a transaction checkpoint as terminal evidence at all — so the then-current annotation
+proof could not reach terminal `done` and the controlled commit had no receipt in authority. The
+stored hash was the correct one; the terminal side moved. The current owner is
+`tests/unit/separations-kuali-finalization-terminal-proof.test.ts`: it drives the real finalization
+descriptor through executor, sequencer and authority to terminal `done`, derives the verified
+receipt, and proves that hiding beat ⑦'s checkpoint or bypassing the executor cannot satisfy the
+terminal/receipt oracle.
 
 #### 2.3.7 A DRY RUN is a rehearsal, and the label is derived from the verdict (D215/D238)
 
@@ -1611,11 +1613,11 @@ cite them.
 
 > **DEFERRED OUT OF PHASE 2 — D186 (2j, 2026-08-09).** Phase B is **not built**, and this is a
 > decision rather than a slip. The argument is D79a's own, one level down: an editor exists to
-> avoid a code change per tweak **across many workflows**, and the tree today has ONE production
-> workflow (`person-lookup`) plus the one-node transaction proof
-> (`kuali-timekeeper-annotation`). With one workflow, editing the source IS the cheaper and more
-> reviewable path, so a Phase-B pipeline right now would be — in §5.4's own words about the
-> trimmed DSL — "a pipeline whose only user is its own test". Building it against a single
+> avoid a code change per tweak **across many workflows**. At the 2026-08-09 decision point the tree
+> had ONE production workflow (`person-lookup`) plus the one-node annotation transaction proof;
+> editing source was therefore cheaper and more reviewable, and a Phase-B pipeline would have been
+> — in §5.4's own words about the trimmed DSL — "a pipeline whose only user is its own test".
+> Building it against that single
 > consumer would also fix its closed policy union and its override schema against a sample of
 > one, which is precisely how an authoring surface acquires the wrong shape.
 >
@@ -1626,7 +1628,7 @@ cite them.
 > about the deferral weakens a safety property: there is no partial editor, no half-authority, and
 > no config path that can reach a descriptor.
 >
-> **The trigger that ends the deferral, named so it is checkable.** The SECOND production workflow
+> **The trigger that ends the deferral, named so it is checkable.** The SECOND operator workflow
 > whose presentation, notification preference, or allowlisted policy value an operator wants to
 > change *without* a code change. At that point the closed set has two consumers to be shaped by,
 > and §5.4's apply protocol (strict versioned override, temp+fsync+atomic-replace, stale-base

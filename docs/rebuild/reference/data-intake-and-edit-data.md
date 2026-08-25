@@ -1755,9 +1755,9 @@ there holding the phone) and never `dryRun`.
 canonical-input step is a DECLARED, fingerprinted property of a workflow
 (`defineCaptureIntakeBinding`, registered off the server module exactly as an intake projection is),
 and `captureIntakeRegistry` refuses a hand-built binding or one over a COPY of the descriptor's
-input schema. `person-lookup` is identified by an employee id or a name and
-`kuali-timekeeper-annotation` by a document number; neither is derivable from a photograph without
-an OCR-backed workflow that does not exist. So `CAPTURE_INTAKE_BINDINGS` is empty and the handoff
+input schema. `person-lookup` is identified by an employee id or a name and `separations` by a
+Kuali document number plus workflow constants; neither is derivable from a photograph without an
+OCR-backed workflow that does not exist. So `CAPTURE_INTAKE_BINDINGS` is empty and the handoff
 **refuses by name** — the same shape `INTAKE_PROJECTIONS` had between D170 and D172, and for the
 same reason: an invented binding would put a plausible-but-wrong canonical input into a real run.
 The refusal is not a dead end but the designed failure path: it throws inside the settlement

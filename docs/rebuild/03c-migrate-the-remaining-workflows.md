@@ -351,16 +351,17 @@ And the rule the sweep is applied under: **a wrong `native` claim is worse than 
 A family whose core landed but whose operator-visible half did not stays `open` and names what is
 missing; only an evidenced, resolvable target closes an entry.
 
-At every workflow rebuild-ready milestone, the commit updates affected capability entries and the
-legacy-change-accounting map. Before cutover, the guard requires zero undecided/missing entries,
+At every workflow rebuild-ready milestone, the commit updates affected capability entries. D150
+froze legacy change accounting; live selector/page-state re-verification at each migration replaced
+it. Before cutover, the guard requires zero undecided/missing entries,
 every `retired` target decision has evidence, every native/replaced target resolves, every old
 route/service/script/component path is covered exactly once, and the final CLI/help/dashboard
 inventories match. Nothing in this inventory authorizes legacy deletion.
 
 ## Live probe status (the design assumptions still unproven)
 
-_Origin: the dissolved master plan's §3.8. Re-verified 2026-08-20 — Kuali and UCPath are settled and
-BUILT (`src/stores/kuali/tasks/verify-timekeeper-annotation.ts`, `src/stores/ucpath/tasks/verify-termination.ts`);
+_Origin: the dissolved master plan's §3.8. Re-verified 2026-08-25 — Kuali and UCPath are settled and
+BUILT (`src/stores/kuali/tasks/verify-separation-finalization.ts`, `src/stores/ucpath/tasks/verify-termination.ts`);
 ServiceNow and OnBase are unchanged and both are `you:` lines on `{#order-7}`._
 
 Ref write-safety's write-safety contract requires each system to produce a typed completion proof. For two
@@ -375,7 +376,7 @@ Phase-1 blockers. Deferral changes timing only; it does not waive proof.
 
 | System | Completion arm | Status | Gate |
 |---|---|---|---|
-| **Kuali** | `save-verify` | ✅ **RESOLVED buildable** (live probe 2026-07-23, docs 4444/4453; read-only + a full write round-trip restored byte-identically) — **BUILT 2026-08-04** as `kuali/verify-timekeeper-annotation`, with its three element recipes ported and re-verified read-only the same day | — |
+| **Kuali** | `save-verify` | ✅ **RESOLVED buildable** (live probe 2026-07-23, docs 4444/4453; read-only + a full write round-trip restored byte-identically). The annotation-only verifier was retired by D266; the current write family is `kuali/verify-separation-finalization`, built from the same reload-read-back mechanism and carrying D207's obligation to confirm or move the inherited window | — |
 | **UCPath** | `receipt` (`T…` transaction number) | ✅ **RESOLVED buildable — and the arm as specified was WRONG** (live probe 2026-08-04, D130; **read-only, no transaction created**, so the authorized submit was not spent). The `T…` lives on SS Smart HR's transaction detail (`UC_EXTENSIONS.UC_SS_TBH.GBL`), NOT on the submit and NOT on the Transaction Status dashboard, which has no Transaction ID column at all. **A Denied transaction carries a well-formed `T…`** (`T002204014`; 300 Denied rows live), so the proof is the PAIR `(transactionNumber, approvalStatus)` — ref write-safety §2.2's number-only schema is corrected. Six constraints in ref write-safety §13.6 | residual submit-side questions before Phase 2's controlled commit |
 | **ServiceNow** | `receipt` (`HRC0…` from the post-submit redirect) | ⏳ operator naming a target | before order 7 |
 | **OnBase** | `upload-verify` or `unverifiableByPage`→always-park | ⏸ **blocked — no probe target exists today**; gated on the next real document upload | before order 7 |

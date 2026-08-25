@@ -712,19 +712,21 @@ dismantled and could be used to create the dry run and scenario for the Kuali se
 So it goes — workflow, module, tasks, contracts, UI entries, scenario, the `proving` arm and the
 `Test equipment` group — and what was valuable in it is re-seeded where `ref guards-and-tests` §10
 says a proof of machinery lives: the FIRST T1 pair in the tree, for the Kuali finalization step
-(`separations-kuali-finalization`): `structural.scenario.test.ts` keeps the real-sequencer walks
-over the real descriptor (`kualiHarness`: zero `write_intents` / `write_attempts` /
-`durable_outbox` deltas asserted over a real authority database, with the ordinary upstream task
-`run_checkpoints` required), and `dry-run.scenario.ts` is the live manifest
+(`separations-kuali-finalization`): `structural.scenario.test.ts` keeps the valid real-sequencer
+proof shape over the current descriptor (zero write-intent, transaction-checkpoint and outbox rows
+for preview/refusal arms, with the ordinary upstream task checkpoints allowed), and
+`dry-run.scenario.ts` is the live manifest
 `cli dry-run-scenario` runs against the finalization canary. §3.4's proof of record and D207's window
 are history and stay cited; the Kuali write proof going forward is chunk 5c's own commit.
 
 **What the code unit does NOT do.** No id changes (`separations-identity-check` stays
 `separations-identity-check`; a path move re-stamps no run, receipt or checkpoint), no change to how
-any surface renders (every surface reads the ROLE; the guard pins role ↔ path), no change to
-startability or to the §3.2 proofs each harness holds. The three write harnesses stop carrying their
-own copy of the identity-gate nodes and import `identity-check/`'s — the one functional simplification,
-and it is why `build:manifest` regenerates.
+the rail filters main workflows, no change to startability or to the §3.2 proofs each harness holds.
+The intentional picker/Explorer hierarchy delta is that ALL five harnesses now nest under
+Separations, including the Kronos harness whose own HR category remains `timekeeping`; grouping by
+`role.of` happens before category partitioning. The three write harnesses stop carrying their own
+copy of the identity-gate nodes and import `identity-check/`'s — the functional simplification that
+required `build:manifest` regeneration.
 
 ## Smaller operator calls open
 <!-- roadmap: operator-calls -->

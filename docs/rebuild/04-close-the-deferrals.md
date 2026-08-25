@@ -96,9 +96,9 @@ declared how a bundle becomes its input.**
 
 **The decision that deferred it: D174** (round 41, 2026-08-09). The handoff seam was built with an
 explicitly EMPTY registry rather than a plausible first binding, and the registry's own comment says
-why: `person-lookup` is identified by an employee id or a name, `kuali-timekeeper-annotation` by a
-document number, and neither is derivable from a photograph without an OCR-backed workflow that does
-not exist. This is `INTAKE_PROJECTIONS` between D170 and D172 for the same reason — an invented
+why: `person-lookup` is identified by an employee id or a name, while `separations` needs a Kuali
+document number plus workflow constants, and neither is derivable from a photograph without an
+OCR-backed workflow that does not exist. This is `INTAKE_PROJECTIONS` between D170 and D172 for the same reason — an invented
 binding puts a plausible-but-wrong canonical input into a real run.
 
 **Its trigger: the first OCR-consuming workflow, order 3.** The OCR pipeline workflow migrates at
