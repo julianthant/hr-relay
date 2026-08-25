@@ -47,6 +47,7 @@ function surface(input: Record<string, unknown>) {
     runNumber: { state: "present", value: 1 },
     containment: "root",
     linkedRuns: [],
+    session: { state: "absent", reason: "this fixture predates D269 session grouping" },
     facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
     startedAt: NOW,
     updatedAt: NOW,
