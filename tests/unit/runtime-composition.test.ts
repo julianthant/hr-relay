@@ -162,4 +162,49 @@ describe("isolated rebuild runtime composition after the Phase-1 exit", () => {
     startRebuildRuntime({ isolation: rebuildRuntimeIsolation, args: [], write: (value) => output.push(value) });
     assert.equal(output[0], runtimeHelp(rebuildRuntimeIsolation));
   });
+
+  it("routes the strict dry-run scenario command and preserves its exit semantics", async () => {
+    const output: string[] = [];
+    const seen: string[][] = [];
+    const previousExitCode = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      startRebuildRuntime({
+        isolation: rebuildRuntimeIsolation,
+        args: ["dry-run-scenario", "separations-kuali-finalization", "--subject", "finalization-canary"],
+        write: (value) => output.push(value),
+        dryRunScenario: (_isolation, args) => {
+          seen.push([...args]);
+          return Promise.resolve({
+            output: "blocked: needs finalization-canary\nresult: 11111111-1111-4111-8111-111111111111",
+            exitCode: 2,
+          });
+        },
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(seen, [["separations-kuali-finalization", "--subject", "finalization-canary"]]);
+      assert.deepEqual(output, [
+        "blocked: needs finalization-canary\nresult: 11111111-1111-4111-8111-111111111111",
+      ]);
+      assert.equal(process.exitCode, 2);
+    } finally {
+      process.exitCode = previousExitCode;
+    }
+  });
+
+  it("serves dry-run scenario help without constructing its composition", () => {
+    let composed = false;
+    const output: string[] = [];
+    startRebuildRuntime({
+      isolation: rebuildRuntimeIsolation,
+      args: ["dry-run-scenario", "--help"],
+      write: (value) => output.push(value),
+      dryRunScenario: () => {
+        composed = true;
+        return Promise.reject(new Error("must not compose"));
+      },
+    });
+    assert.equal(composed, false);
+    assert.deepEqual(output, ["usage: dry-run-scenario <workflow> --subject <label>"]);
+  });
 });

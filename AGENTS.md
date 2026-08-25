@@ -69,7 +69,8 @@ npm run test:watch
 npm run test:parity        # ref frontend-backend-integration §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
 npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)
 
-npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)
+npm run cli               # the runtime CLI (help | phase | dashboard | worker | dry-run-scenario | explain | storage | ocr)
+npm run cli -- dry-run-scenario <workflow> --subject <label> # execute exactly one T1b manifest case
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
 npm run cli -- dashboard  # the BFF alone (dashboard:prod — see D189, the prod mode is unbuilt)
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
@@ -253,6 +254,14 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   one collected structural scenario and one sibling live dry-run manifest. The live half may write
   ordinary upstream `run_checkpoints`; its submit-free invariant is zero deltas in
   `write_intents`, `write_attempts`, and `durable_outbox`.
+- The dry-run declaration boundary is `src/domain/trust/dry-run-scenario.ts`; the runner/assertions
+  are `src/core/dry-run-scenario-runner.ts`, and `src/server/dry-run-scenario/` owns real start-plan,
+  start-run, worker-drain, gate-command, receipt, and authority composition. Only `src/cli.ts` may
+  dynamically load the non-collected `tests/scenario/**/dry-run.scenario.ts` declaration; no
+  production module imports a test module. Blocked targets persist `not-started` before the ready
+  runtime factory is called. A ready case declares the receipt service's complete ordered
+  `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
+  compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -273,6 +282,15 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   existing canonical row, while divergent replay, SQL UPDATE, and SQL DELETE must fail. Persist a
   subject label only; the explicit `not-started` arm carries no run/trace ids, and `started`
   requires both ids bound to the real dry-run execution.
+- Dry-run write-safety counts are queried by run through
+  `writeIntents.countDryRunEvidenceByRun`: attempts and durable outbox rows join through THIS run's
+  intent ids. Never compare global table counts or attribute another run's write to the rehearsal.
+- Dry-run reached-node evidence maps task span labels back through the registered descriptor; a
+  label is not a node id. A transaction that fails before `transaction.previewed` is reached by its
+  durable node-bound `FailureRecord`, and failed terminal expectations compare its exact safe
+  `(code, nodeId, fingerprint)` tuple. Failure summaries, receipt warnings, spans and worker logs
+  must never carry full or suffix person identifiers. A malformed staged subject observation names
+  the required canonical format and owning contract, never the observed value.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
@@ -302,6 +320,17 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   receipt derivation. A `walkDescriptor` assertion proves binds and derive shape, but it cannot
   prove that any durable row was read or that a run terminalized from it.
 
+- **2026-08-25 — a preview has to be asserted in the receipt's real vocabulary.** A dry-run
+  transaction stores no transaction checkpoint, so Kuali finalization receipts derive four
+  cross-source obligations as `unknown` and the literal reload-read-back obligation as `absent`;
+  inventing one aggregate obligation, collapsing `absent` with `ambiguous`, omitting an upstream
+  node row, or claiming partial confidence makes the manifest lie about authority. Compare the
+  whole ordered tuple list. Likewise, `replay: "always-rerun"` forbids reuse but still writes the
+  current claim generation's checkpoint, and a failed transaction can be reached only from its
+  durable failure before a `transaction.previewed` event exists. Malformed subject text looked
+  useful in a format error, but that message fans out to failure, receipt, span and log sinks; keep
+  the contract/format actionable and omit the observed text entirely.
+
 - **2026-08-25 — retiring a proof workflow does not retire the real workflow's vocabulary.** The
   timekeeper annotation staging/read-back schemas and tasks belonged only to D266's dismantled test
   workflow, but `KUALI_RRSS_TIMEKEEPER_FIELD` is also one of the twelve fields staged by real
@@ -312,6 +341,11 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   no run or trace identity to record, so nullable identities invite fabrication; use the strict
   `not-started` blocked arm. Keep assertion diagnostics to safe reason slugs: free text can leak the
   resolved subject value into otherwise label-only evidence.
+
+- **2026-08-25 — Write-safety tables do not share one run key.** `write_intents` carries the run id,
+  while `write_attempts` and `durable_outbox` carry only `write_intent_id`. A global before/after
+  count looked like a delta but could blame concurrent work on the rehearsal; derive all three
+  counts from the named run's intent set, before and after, and assert the exact zero tuple.
 
 ## After changes
 

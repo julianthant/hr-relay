@@ -237,7 +237,11 @@ const separationsKualiFinalizationFlow = flow(SeparationsKualiFinalizationInput)
     }),
   }))
   .pipe(departmentOptionNode.wire({
-    dependsOn: [],
+    // This harness receives the selected UCPath row and Kuali option list as
+    // canonical ingress, but the fold is still downstream of this run's live
+    // job-summary read. Naming that dependency gives its derived checkpoint a
+    // real observation clock instead of pretending an input-only fold is live.
+    dependsOn: [JOB_SUMMARY_NODE],
     bind: ({ input }) => ({
       deptId: input.ucpathDeptId,
       department: input.ucpathDepartment,

@@ -727,6 +727,23 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
       "zero checkpoints",
     );
   });
+
+  it("refuses a malformed staged EID without echoing the observed value", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock, writeFixtureQueuedRun({ dryRun: true }));
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.subjectEid = "EID 10899999";
+
+    await assert.rejects(
+      h.executeDryRun(contextFor(run, claim, writeFixtureDescriptor, true)),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /does not normalize to an EID/);
+        assert.doesNotMatch(error.message, /10899999/);
+        return true;
+      },
+    );
+  });
 });
 
 describe("D116 — a driver lease without the claimed run's bound fingerprint refuses", () => {

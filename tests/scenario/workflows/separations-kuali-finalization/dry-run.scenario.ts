@@ -38,8 +38,10 @@
  * never verified*. The `would-prepare` cases re-open the document after the
  * rehearsal, which is the verification legacy never did.
  */
-import { deepFreeze } from "../../../../src/domain/immutability.js";
-import type { DryRunScenarioManifest } from "../../helpers/dry-run-manifest.js";
+import {
+  parseDryRunScenarioManifest,
+  type DryRunScenarioManifest,
+} from "../../../../src/domain/trust/dry-run-scenario.js";
 
 /** The graph, in execution order. Three roots, a gate, a check, one write. */
 const READ_NODES = ["job-summary", "name-search", "department-option", "comparison"] as const;
@@ -51,15 +53,24 @@ const FULL_PATH = [...READ_NODES, GATE_NODE, APPROVAL_NODE, TRANSACTION_NODE] as
 
 /**
  * The four read/fold nodes checkpoint (`replay: "checkpoint"`); `approval` is
- * `replay: "always-rerun"` and therefore owns no reusable row, and the
+ * `replay: "always-rerun"` and still records this claim generation's output,
+ * though no later claim may reuse it. The
  * transaction node writes none on a rehearsal — which is the `durableDeltas`
  * assertion from the other side.
  */
 const READ_CHECKPOINTS = READ_NODES.map((node) => ({
   node,
   attempt: 1,
-  keyedBy: ["workflow", "item", "node", "attempt"] as const,
+  keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
 }));
+const EXPECTED_CHECKPOINTS = [
+  ...READ_CHECKPOINTS,
+  {
+    node: APPROVAL_NODE,
+    attempt: 1,
+    keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"] as const,
+  },
+] as const;
 
 /** Zero, as a delta measured BEFORE and AFTER: the database legitimately holds
  * rows from earlier real proofs, so an absolute count would be false. */
@@ -71,10 +82,36 @@ const IDENTITY_GATE = {
   gate: GATE_NODE,
   decision: "approved",
   resolvedBy: "local-operator",
-  leaf: "Approve",
+  leaf: "resolve-gate-approved",
 } as const;
 
-const MANIFEST: DryRunScenarioManifest = {
+/** The receipt service's complete ordered authority vocabulary for a preview.
+ * Every graph node is present: the five checkpointed nodes and resolved gate
+ * are verified, while the transaction has no checkpoint. The terminal result
+ * and four cross-source comparisons are unknown; literal reload read-back is
+ * absent. These are authority verdicts, not a lossy met/unmet projection. */
+const PREVIEW_RECEIPT_VERIFICATION = [
+  { obligation: "node.job-summary", verdict: "verified", mandatory: false },
+  { obligation: "node.name-search", verdict: "verified", mandatory: false },
+  { obligation: "node.department-option", verdict: "verified", mandatory: true },
+  { obligation: "node.comparison", verdict: "verified", mandatory: false },
+  { obligation: "node.identity-approval", verdict: "verified", mandatory: false },
+  { obligation: "node.approval", verdict: "verified", mandatory: true },
+  { obligation: "node.finalize-kuali", verdict: "unknown", mandatory: true },
+  { obligation: "completion.terminal-result", verdict: "unknown", mandatory: true },
+  { obligation: "write.timekeeper-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "identity.eid-agrees-across-sources", verdict: "unknown", mandatory: true },
+  { obligation: "write.document-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "write.transaction-matches-request", verdict: "unknown", mandatory: true },
+  { obligation: "write.proof-is-a-read-back", verdict: "absent", mandatory: true },
+] as const;
+
+const FAILED_RECEIPT_VERIFICATION = PREVIEW_RECEIPT_VERIFICATION.map((row) =>
+  row.obligation === "completion.terminal-result"
+    ? { ...row, verdict: "absent" as const }
+    : row);
+
+const MANIFEST = {
   scenarioId: "separations-kuali-finalization/dry-run",
   workflow: "separations-kuali-finalization",
   transactionNode: TRANSACTION_NODE,
@@ -94,24 +131,13 @@ const MANIFEST: DryRunScenarioManifest = {
       // "it did more than expected" half is carried by the zero deltas and by
       // `staged: true` meaning staged-and-read-back rather than saved.
       nodesExcluded: [],
-      checkpoints: [...READ_CHECKPOINTS],
+      checkpoints: [...EXPECTED_CHECKPOINTS],
       gateResults: [IDENTITY_GATE],
       durableDeltas: NO_WRITES,
       receipt: {
         result: "partial",
-        confidence: "partial",
-        verification: [
-          { node: TRANSACTION_NODE, verdict: "absent", mandatory: true },
-        ],
-        obligations: [
-          {
-            obligation: "kuali-finalization-reload-read-back",
-            verdict: "unknown",
-            why: "A rehearsal stages and reads back the staged form; only a real save can be "
-              + "verified by reloading the document, so the landing proof is UNRESOLVED rather "
-              + "than absent — and that is what forbids `verified` (D237/D238).",
-          },
-        ],
+        confidence: "unknown",
+        verification: PREVIEW_RECEIPT_VERIFICATION,
       },
       terminal: {
         lifecycle: "done",
@@ -131,23 +157,13 @@ const MANIFEST: DryRunScenarioManifest = {
         + "reach first — a preview that skipped beat ① would fail on the ordinary subject instead.",
       nodesReached: [...FULL_PATH],
       nodesExcluded: [],
-      checkpoints: [...READ_CHECKPOINTS],
+      checkpoints: [...EXPECTED_CHECKPOINTS],
       gateResults: [IDENTITY_GATE],
       durableDeltas: NO_WRITES,
       receipt: {
         result: "partial",
-        confidence: "partial",
-        verification: [
-          { node: TRANSACTION_NODE, verdict: "present", mandatory: true },
-        ],
-        obligations: [
-          {
-            obligation: "kuali-finalization-reload-read-back",
-            verdict: "met",
-            why: "The probe read the finalization off the document itself, so the obligation is "
-              + "discharged by observation — and `already-present` still never means WE filed it.",
-          },
-        ],
+        confidence: "unknown",
+        verification: PREVIEW_RECEIPT_VERIFICATION,
       },
       terminal: {
         lifecycle: "done",
@@ -162,37 +178,27 @@ const MANIFEST: DryRunScenarioManifest = {
       caseId: "no-active-job",
       subjectLabel: "finalization-no-active-job",
       subjectKind: "no-active-job",
-      why: "The refusal that must land BEFORE a human is asked: UCPath shows no active employment, so "
-        + "`comparison` refuses and the gate is never opened. Live-proved once already — §9.17 item 2, "
-        + "run `ee9824f7`, `NO_ACTIVE_EMPLOYMENT` — and this case is what keeps it proved.",
-      nodesReached: [...READ_NODES],
-      nodesExcluded: [GATE_NODE, APPROVAL_NODE, TRANSACTION_NODE],
-      checkpoints: [...READ_CHECKPOINTS],
-      gateResults: [],
+      why: "UCPath shows no active employment. The identity comparison intentionally carries that "
+        + "fact to the operator rather than refusing it, so this case proves the ALWAYS-GATE and the "
+        + "same prepare-only finalization preview under an explicitly approved identity.",
+      nodesReached: [...FULL_PATH],
+      nodesExcluded: [],
+      checkpoints: [...EXPECTED_CHECKPOINTS],
+      gateResults: [IDENTITY_GATE],
       durableDeltas: NO_WRITES,
       receipt: {
-        result: "failed",
+        result: "partial",
         confidence: "unknown",
-        verification: [],
-        obligations: [
-          {
-            obligation: "kuali-finalization-reload-read-back",
-            verdict: "unknown",
-            why: "The write node was never reached, so nothing observed the document at all.",
-          },
-        ],
+        verification: PREVIEW_RECEIPT_VERIFICATION,
       },
       terminal: {
-        lifecycle: "failed",
-        reason: "`comparison` refuses `NO_ACTIVE_EMPLOYMENT` before the gate, so the run has no "
-          + "preview to settle: a refusal ahead of the gate is a failed run, not a rehearsal.",
-        openItem: "None — this arm is correct as built. It expects `failed` because failing is the "
-          + "right outcome here, not because something is unfinished.",
+        lifecycle: "done",
+        resultSchema: "RunDryRunPreviewResultSchema",
+        kind: "dry-run-preview",
+        externalCommit: "none",
+        stoppedAtNodeId: TRANSACTION_NODE,
       },
-      preview: {
-        outcome: "not-reached",
-        reason: "The transaction node is downstream of the gate, and the gate was never opened.",
-      },
+      preview: { outcome: "would-prepare", subject: "match", staged: true },
     },
     {
       caseId: "subject-mismatch",
@@ -203,23 +209,13 @@ const MANIFEST: DryRunScenarioManifest = {
         + "of staging on a POOLED page is that the page can move underneath the run.",
       nodesReached: [...FULL_PATH],
       nodesExcluded: [],
-      checkpoints: [...READ_CHECKPOINTS],
+      checkpoints: [...EXPECTED_CHECKPOINTS],
       gateResults: [IDENTITY_GATE],
       durableDeltas: NO_WRITES,
       receipt: {
         result: "failed",
         confidence: "unknown",
-        verification: [
-          { node: TRANSACTION_NODE, verdict: "unknown", mandatory: true },
-        ],
-        obligations: [
-          {
-            obligation: "kuali-finalization-reload-read-back",
-            verdict: "unknown",
-            why: "The binding proof threw before anything was fenced, so nothing was written and "
-              + "nothing could be read back.",
-          },
-        ],
+        verification: FAILED_RECEIPT_VERIFICATION,
       },
       /*
        * §10.4's recorded as-built defect, carried here rather than left to be
@@ -233,11 +229,9 @@ const MANIFEST: DryRunScenarioManifest = {
        */
       terminal: {
         lifecycle: "failed",
-        reason: "`executeDryRun` wraps the binding-proof throw into a generic error, so the run "
-          + "terminalizes `failed` instead of previewing a refusal.",
-        openItem: "`TransactionDryRunPreviewSchema`'s `subject: { state: \"mismatch\" }` arm is "
-          + "unreachable (ref guards-and-tests §10.4). When the arm is either reached or removed, this "
-          + "case moves to `done` with `preview.subject: \"mismatch\"`, or the arm goes.",
+        code: "UNHANDLED",
+        node: TRANSACTION_NODE,
+        fingerprint: "2459ee6496de1582e97ff1e4a5c647ec91358201f9960b2f602968efd7d29625",
       },
       preview: {
         outcome: "not-reached",
@@ -249,4 +243,5 @@ const MANIFEST: DryRunScenarioManifest = {
 };
 
 /** Recursively frozen at module load, like every registry export in this tree. */
-export const SEPARATIONS_KUALI_FINALIZATION_DRY_RUN: DryRunScenarioManifest = deepFreeze(MANIFEST);
+export const SEPARATIONS_KUALI_FINALIZATION_DRY_RUN: DryRunScenarioManifest =
+  parseDryRunScenarioManifest(MANIFEST);
