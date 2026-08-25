@@ -330,7 +330,7 @@ is read from source, and the four rows that would need a demo pixel to settle ar
 | B28 | Row gutter: `px-cozy pt-snug`, first row `pt-cozy` | `DemoQueue.tsx:807` | `queue.tsx:1330` | exact | — |
 | B29 | Whole card is one press target: `role="button"`, `aria-pressed`, Enter/Space, `data-demo-row-id` | `DemoQueue.tsx:809-825` | `queue.tsx:1338-1354` | exact | — |
 | B30 | Card accessible name uses the ACCESSIBLE status word (`done with warnings`), not the visible `Done` | `DemoQueue.tsx:818` (visible word) | `queue.tsx:1345` | divergent | `ruled: D22 (amended 2026-08-04) / D126` — the two terminal dones share the visible word and are separated on screen by hue + `△ n`, neither of which a screen reader can read |
-| B31 | Card accessible name carries the GATE AGE — `…— waiting on you · 18m` | `DemoQueue.tsx:818` (`statusText(status, gateAge(row, tick))`) | `queue.tsx:1345` (`statusAccessibleName(status)`, no age arg) | divergent | **OPEN — operator call.** `gateOpenedAt` is served and the row's own pill already prints the age (`queue.tsx:279-283`); `statusAccessibleName(status, age?)` takes the argument and is not given one. R3 f.17 named this exact loss ("aria is the ONLY place age reaches a screen reader for waiting/parked") and the wire gap it blamed is now closed |
+| B31 | Card accessible name carries the GATE AGE — `…— waiting on you · 18m` | `DemoQueue.tsx:818` (`statusText(status, gateAge(row, tick))`) | `queue.tsx:1345` (`queueRowAccessibleName(surface, nowIso)`) | exact | Fixed 2026-08-25 (F4B): QueueRow consumes the one model composition, which passes the served `gateOpenedAt` age to `statusAccessibleName`; the mutation-pinned unit case proves deleting that argument loses `· 18m 0s`. |
 | B32 | Card resting border: ONE ink for every status; selection is the lighter perimeter only, no fill change | `DemoQueue.tsx:827-844` | `queue.tsx:1356-1370` | exact | — |
 | B33 | The attention settle: a lift of `--ds-travel-sm`, border unchanged, 900 ms, on the EDGE only, never on mount | `DemoQueue.tsx:752-773` | `queue-model.ts:158-186` | exact | — |
 | B34 | Row grid: one leading `--ds-w-row-indent` track, one `gap-y-snug`, `px-cozy py-snug` | `DemoQueue.tsx:860-863` | `queue.tsx:1382-1385` | exact | — |
@@ -526,9 +526,9 @@ is read from source, and the four rows that would need a demo pixel to settle ar
 
 **Since 08-14:**
 
-- **fixed** — R3 f.1 (the `attention` sort really ranks now, `queue-model.ts:139`), f.2/f.3/f.5 (empty-state arms and the `Finished` narrowing), f.4 (digest strip), f.6 partial → now three of four chip families (`linkedRuns[]`, parent, `facts[]`), f.7 (subline suppression), f.9 (rollup strip + the honest "N of M loaded"), f.10 (△ chip, and the count is served rather than derived), f.11 (dry-run chip, with a real fifth hue — D232), f.12 (`memberPreview`), f.13 (member ranks), f.16 (ⓘ always drawn), f.18 (`#N` ordinal, `showId`, the trace chip), f.19/f.21/f.22, f.25 (`displayName`); R8 f.1/f.2/f.3 (park cards with their served detail), f.4/f.4b (confirm mounted, subject drawn), f.5/f.6 (the bulk strip and the result vector now exist — D235), f.13/f.14/f.15/f.16, f.18 (vocabulary), f.22 (`Select all` no longer disabled at zero).
+- **fixed** — R3 f.1 (the `attention` sort really ranks now, `queue-model.ts:139`), f.2/f.3/f.5 (empty-state arms and the `Finished` narrowing), f.4 (digest strip), f.6 partial → now three of four chip families (`linkedRuns[]`, parent, `facts[]`), f.7 (subline suppression), f.9 (rollup strip + the honest "N of M loaded"), f.10 (△ chip, and the count is served rather than derived), f.11 (dry-run chip, with a real fifth hue — D232), f.12 (`memberPreview`), f.13 (member ranks), f.16 (ⓘ always drawn), f.18 (`#N` ordinal, `showId`, the trace chip), f.19/f.21/f.22, f.25 (`displayName`); R8 f.1/f.2/f.3 (park cards with their served detail), f.4/f.4b (confirm mounted, subject drawn), f.5/f.6 (the bulk strip and the result vector now exist — D235), f.13/f.14/f.15/f.16, f.18 (vocabulary), f.22 (`Select all` no longer disabled at zero); B31 (the row's accessible name now consumes the shared served gate-age fold).
 - **still open** — the roster/drill-in surface and the `records[]` stream (B97, B100-B104, B130-B135); the member EID column (B75); the per-status member tally (B77) and the `Outcome` column heading (B83); the row-variant naming layer behind the ⓘ (B43-B48, B51); `reviewRunId` (B110) and `extractedCount` (B111).
-- **new (not in the baseline)** — B31 (the gate age left the row's accessible name when D124/D237 work re-pointed it at `statusAccessibleName`); B112 (the fact chip forks the ds `Chip` primitive); B141 (`Import spreadsheet` in the toolbar); B155 (the bulk strip leads with the destructive verb); B164/B165 (the result heading, and the vector's counts filtered to non-zero — the one regression against D235's own headline); B172/B173/B174 (the skipped-row disclosure and both closing sentences); B195/B196 (`CommandResultFeed` + the applied toast, whose stated deferral reason D253 has spent). B57/B80 (the operator's "checked" mark) were in the baseline as a wire gap and are re-classed here as an operator question, because the demo holds it as client state.
+- **new (not in the baseline)** — B112 (the fact chip forks the ds `Chip` primitive); B141 (`Import spreadsheet` in the toolbar); B155 (the bulk strip leads with the destructive verb); B164/B165 (the result heading, and the vector's counts filtered to non-zero — the one regression against D235's own headline); B172/B173/B174 (the skipped-row disclosure and both closing sentences); B195/B196 (`CommandResultFeed` + the applied toast, whose stated deferral reason D253 has spent). B57/B80 (the operator's "checked" mark) were in the baseline as a wire gap and are re-classed here as an operator question, because the demo holds it as client state.
 
 ---
 
@@ -775,16 +775,12 @@ Nothing below is dismissed, waved through or "modified". Each needs a ruling; no
    enqueue policy's reason each survive only as a `LockedValue` `title` tooltip — invisible to touch
    and keyboard, and confirmed absent in the 1440×900 reference. `DESIGN.md:305` and D251 both say
    the value is drawn read-only **with its reason**.
-7. **B31 — the gate age left the row's accessible name.** `{title} — review` where the demo says
-   `{title} — waiting on you · 18m`. `gateOpenedAt` is served, the pill already prints the age, and
-   `statusAccessibleName(status, age?)` takes the argument and is not given one. R3 f.17 named this
-   loss and the wire gap it blamed is now closed.
-8. **A122 — "1 worker need attention".** Subject/verb disagreement at a count of one, visible in the
+7. **A122 — "1 worker need attention".** Subject/verb disagreement at a count of one, visible in the
    parity reference. The demo's chip is always plural, so the port inherited a sentence that only
    works above one.
-9. **C61 — a raw ISO instant in operator-facing text** (`expires {ISO}` on the plan-provenance line).
+8. **C61 — a raw ISO instant in operator-facing text** (`expires {ISO}` on the plan-provenance line).
    `fmtClock` is imported two files over; the same defect R6 f.10 fixed on the rail.
-10. **A126 — `app 0.1.0` under a tooltip that explains only MAJOR and MINOR.** The demo's tag is
+9. **A126 — `app 0.1.0` under a tooltip that explains only MAJOR and MINOR.** The demo's tag is
     two-part; the schema here is semver, so the drawn string has a component its own sentence never
     mentions.
 

@@ -14,6 +14,7 @@ import type { z } from "zod";
 import type { QueueSurfaceWireSchema } from "../../domain/dashboard/projection.js";
 import {
   dsStatusOf,
+  statusAccessibleName,
   type ProposedStatus,
 } from "./status-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
@@ -162,6 +163,20 @@ export function queueGateAge(surface: QueueSurfaceWire, nowIso: string): string 
   return surface.gateOpenedAt.state === "present"
     ? fmtElapsed(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
     : undefined;
+}
+
+/**
+ * The queue row's accessible identity, including the served age of a gate.
+ *
+ * This is the same composition `QueueRow` puts on its one press target. It
+ * lives beside the shared age fold so a visual pill and the sentence an
+ * operator hears cannot become two different readings of the same gate.
+ */
+export function queueRowAccessibleName(surface: QueueSurfaceWire, nowIso: string): string {
+  return `${queueRowTitle(surface)} — ${statusAccessibleName(
+    dsStatusOf(surface.status),
+    queueGateAge(surface, nowIso),
+  ).toLowerCase()}`;
 }
 
 export function sortQueueBand(

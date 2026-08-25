@@ -9,14 +9,16 @@
  * whole band exists to separate.
  *
  * Both halves are pinned here: `queueGateAge` is the one fold the pill and the
- * name share (so they cannot disagree about one gate), and the composed name is
- * asserted against the exact string `DemoQueue.tsx:818` produces.
+ * name share (so they cannot disagree about one gate), and QueueRow consumes
+ * `queueRowAccessibleName` rather than reconstructing it in the test.
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { queueGateAge, queueRowTitle } from "../../../src/dashboard/surfaces/queue-model.js";
-import { dsStatusOf, statusAccessibleName } from "../../../src/dashboard/surfaces/status-model.js";
+import {
+  queueGateAge,
+  queueRowAccessibleName,
+} from "../../../src/dashboard/surfaces/queue-model.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -85,13 +87,11 @@ describe("the row's accessible name carries the age", () => {
     const row = surface({
       gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" },
     });
-    const name = `${queueRowTitle(row)} — ${statusAccessibleName(dsStatusOf(row.status), queueGateAge(row, NOW)).toLowerCase()}`;
-    assert.equal(name, "Jordan Reyes — review · 18m 0s");
+    assert.equal(queueRowAccessibleName(row, NOW), "Jordan Reyes — review · 18m 0s");
   });
 
   it("leaves an ungated row's name exactly as it was", () => {
     const row = surface({ status: "running" });
-    const name = `${queueRowTitle(row)} — ${statusAccessibleName(dsStatusOf(row.status), queueGateAge(row, NOW)).toLowerCase()}`;
-    assert.equal(name, "Jordan Reyes — running");
+    assert.equal(queueRowAccessibleName(row, NOW), "Jordan Reyes — running");
   });
 });

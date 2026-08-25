@@ -80,6 +80,7 @@ import {
   orderMembers,
   partition,
   queueGateAge,
+  queueRowAccessibleName,
   queueRowTitle,
   queueRowTitleTooltip,
   sortQueueBand,
@@ -1220,7 +1221,7 @@ export function QueueRow({
           // pill that draws it is the only place it appears and a pill is not
           // something a screen reader reaches: `— waiting on you · 18m` is the
           // difference between a queue you scan and one you triage.
-          aria-label={`${queueRowTitle(surface)} — ${statusAccessibleName(status, queueGateAge(surface, state.nowIso)).toLowerCase()}`}
+          aria-label={queueRowAccessibleName(surface, state.nowIso)}
           data-demo-row-id={surface.runId}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {

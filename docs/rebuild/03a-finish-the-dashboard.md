@@ -439,7 +439,7 @@ operator call turns a line into a ruled divergence or a port; nothing below is d
 
 **Words and glyphs — each is a revert or a ruling**
 
-37. Shell and queue: `"1 worker need attention"` at a count of one (`shell.tsx:1029`; A122) · `app 0.1.0` under a tooltip that explains only MAJOR.MINOR (`shell.tsx:1052-1057` vs `DemoShell.tsx:1919-1924`; A126) · the gate age dropped from the row's accessible name (`queue.tsx:1345` vs `DemoQueue.tsx:818`; B31 — `gateOpenedAt` is served) · the bulk result heading (B164, in 25 above).
+37. Shell and queue: `"1 worker need attention"` at a count of one (`shell.tsx:1029`; A122) · `app 0.1.0` under a tooltip that explains only MAJOR.MINOR (`shell.tsx:1052-1057` vs `DemoShell.tsx:1919-1924`; A126) · the bulk result heading (B164, in 25 above).
 38. Run start: `Dismiss` on every result arm where the demo says `Close` on applied (`run-start-kit.tsx:341-345` vs `DemoRunStartKit.tsx:341, 379-383`; C72) · a raw ISO `expires` on the plan-provenance line (`run-start-kit.tsx:291-294`; C61).
 
 **Resolved 2026-08-25 — C96.** Bootstrap now requires and projects the descriptor's single
@@ -448,6 +448,11 @@ positive-integer `version`; the Run Modal footer renders `{label} v{n}` through 
 corpus, while the server test also projects a synthetic version 7 descriptor, so neither
 producer nor client can hardcode or guess `v1`. The demo's minor half has no rebuild field,
 so `.0` is not fabricated.
+
+**Resolved 2026-08-25 — B31.** The queue row now consumes
+`queueRowAccessibleName(surface, nowIso)`, which passes its one shared served gate-age fold to
+`statusAccessibleName`; the mutation-pinned test proves an awaiting-approval row reads
+`{title} — review · 18m 0s` rather than dropping the age that distinguishes its urgency.
 
 39. Run identity: the `wf ` noun before a bare fingerprint (`run-identity.tsx:129`; A3) · the `·` separator in the provenance `Workflow` row (`:173` vs `DemoRunIdentity.tsx:141`; A13) · the rename placeholder and `subject` fallbacks (`:363, 396` vs `:394, 433`; A38, A41) · the floor bar's live/idle dot (`DemoLogPanel.tsx:1183`; A49 = B87).
 40. Log panel: `opacity-70` on an untimed segment (`DemoLogPanel.tsx:617`; B44) · the hover card's `Status` row (`:644-647`; B50) · the axis prints the first→last SPAN where the demo prints the WORKING sum and `· {age} waiting on you` (`log-panel.tsx:440` vs `:714-716`; B60, B61) · the search control's DS swap, clear affordance and width (`log-panel.tsx:1178-1185` vs `:1148-1157`; B83) · `open {age}` beside `since {clock}` on the decision card (`log-panel.tsx:572-580` vs `:396-398`; B91) — and one recorded TENSION, not an OPEN: D225's `since <clock>` under a blocked segment against the demo's own argument that the AGE is the comparable number (B45).
@@ -476,7 +481,7 @@ the wire (or in the bundle) and simply not drawn.
 - **Failure record (ledger 2 E19, E20, E24, E25):** `occurredAt` (the record prints the RUN's terminal instant instead — a different moment) · `traceId` + `attempt` · `page.urlRedacted` (and `page.titleRedacted`, consumed by nobody) · `action.elementId` (all on `FailureDetailWireSchema`, `run-detail.ts`).
 - **Intake (ledger 3 IN8, IN9, IN53, IN82, IN106, IN121, IN126, IN127, IN131):** the footer's header-row and fingerprint echo · per-candidate `confidence` (`ServedHeaderCandidateSchema.confidence`) · suggestion `score` (`SuggestionSchema.score`) · the reject `code` (only its label is shown) · the whole corrections list (`IntakeSessionWire.corrections`, read only for the discard count) · the manifest's source sha, `artifact` id and `createdAt`.
 - **Archive (ledger 3 AR95, AR96, AR121, AR123; AR77, AR78, AR91, AR129; AR105, AR212):** the detail draws `displayName`, `subtitle`, `priority` and the `dry run` chip off `detail.row` (`projection.ts:172, 179, 309, 313`) · the sweep head, its `sr-only` summary, the popover description and the Archived-by card print the bump KIND — `changeRecord.value.kind` has ridden `ArchiveSweepWire` since D223 · the relaunch banner names the workflow and the version it has in hand · the relaunch cautions derive from `detail.row.dryRun` / `row.resolvedInstances`. (The LIST row's `△ N` and `dry run` chips — AR62, AR67 — need the index entry to carry `warnings` / `dryRun`, a WIRE half.)
-- **Elsewhere:** the gate age in the queue row's accessible name (B31 — `statusAccessibleName(status, age?)` takes the argument and is not given one) · the Explorer's `Version registry` action (EX5 — the recorded reason for dropping it is false, `archive.tsx:2350` renders the registry) · every closed-enum status through its ds label (AC24, AR27, VB19 — `DS_STATUS[dsStatusOf(s)].label` is one import away).
+- **Elsewhere:** the Explorer's `Version registry` action (EX5 — the recorded reason for dropping it is false, `archive.tsx:2350` renders the registry) · every closed-enum status through its ds label (AC24, AR27, VB19 — `DS_STATUS[dsStatusOf(s)].label` is one import away).
 
 ### Stale and false claims in code and docs — fix the record or fix the code
 
