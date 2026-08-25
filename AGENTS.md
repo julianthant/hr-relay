@@ -241,11 +241,12 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - **2026-08-25 — virtual session rows preserve authority across dashboard ticks (P4).** Flatten every
   served member into a fixed layout, mount only the viewport plus bounded overscan, and memoize that
   renderer away from the one-second elapsed-time tick. Give one mounted `listitem` the roving tab stop;
-  keyboard moves mount and then focus the designated row, while native scroll that unmounts an exactly
-  focused row root transfers real focus to the visible roving row. Focus inside a row child or portaled
-  detail stays with that control, and a clamped boundary key clears deferred focus before a later resize.
-  Keep clipped values reachable through a detail popover whose invisible 44px hit area is proven not to
-  overlap another trigger; visual truncation never drops data.
+  keyboard moves mount and then focus the designated row. Native scroll owns focus across the whole row
+  and its explicitly registered detail portal: focus stays with a descendant while its owner remains
+  mounted, then an owned popover closes before an owner leaves the window and the visible roving row takes
+  real focus. Unrelated controls stay outside that transfer, and a clamped boundary key clears deferred
+  focus before a later resize. Keep clipped values reachable through a detail popover whose invisible
+  44px hit area is proven not to overlap another trigger; visual truncation never drops data.
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
