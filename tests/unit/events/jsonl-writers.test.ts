@@ -154,6 +154,7 @@ describe("span JSONL writer", () => {
     writer.emit(observed([
       { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "resolved" },
       { key: "selection.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "6712" },
+      { key: "selection.eidDigest", state: "transformed", classification: "direct-identifier", transform: "digest", value: "c".repeat(64) },
     ]));
     // The point is emitted at RECORD time, so the arm must survive being
     // written many times under one span identity — unlike an open or a close,
@@ -165,6 +166,7 @@ describe("span JSONL writer", () => {
     assert.equal(lines.length, 2);
     assert.match(lines[0]?.text ?? "", /"pid":1/);
     assert.match(lines[0]?.text ?? "", /"6712"/);
+    assert.match(lines[0]?.text ?? "", new RegExp(`"${"c".repeat(64)}"`));
     assert.doesNotMatch(lines[0]?.text ?? "", /10456712/);
 
     // An unclassified value is refused BEFORE any byte reaches disk: the wire
@@ -173,6 +175,48 @@ describe("span JSONL writer", () => {
     assert.throws(() => writer.emit(observed([{ key: "selection.eid", value: "10456712" }])));
     const after = readEventStreamLines(root, "spans").filter((line) => line.text.includes("data.observed"));
     assert.equal(after.length, 2);
+  });
+
+  it("refuses a raw EID disguised as a last4 value before appending it (D270)", () => {
+    const root = stateRoot();
+    const clock = manualClock(AT);
+    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const disguised = {
+      t: "data.observed", ts: clock.now().toISOString(), workflow: "person-lookup",
+      runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: `${TRACE}/searching#1.1`, parentSpanPath: TRACE,
+      nodeId: "searching", taskId: "ucpath/search-person-org", observedAt: clock.now().toISOString(),
+      points: [{ direction: "read", field: "selection.eid", values: [{
+        key: "selection.eid",
+        state: "transformed",
+        classification: "direct-identifier",
+        transform: "last4",
+        value: "10456712",
+      }] }],
+    };
+
+    assert.throws(() => writer.emit(disguised));
+    assert.equal(readEventStreamLines(root, "spans").length, 0);
+  });
+
+  it("refuses a non-SHA-256 string disguised as a digest before appending it (D270)", () => {
+    const root = stateRoot();
+    const clock = manualClock(AT);
+    const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
+    const disguised = {
+      t: "data.observed", ts: clock.now().toISOString(), workflow: "person-lookup",
+      runId: RUN_ID, attempt: 1, traceId: TRACE, spanPath: `${TRACE}/searching#1.1`, parentSpanPath: TRACE,
+      nodeId: "searching", taskId: "ucpath/search-person-org", observedAt: clock.now().toISOString(),
+      points: [{ direction: "read", field: "selection.eid", values: [{
+        key: "selection.eid",
+        state: "transformed",
+        classification: "direct-identifier",
+        transform: "digest",
+        value: "10456712",
+      }] }],
+    };
+
+    assert.throws(() => writer.emit(disguised));
+    assert.equal(readEventStreamLines(root, "spans").length, 0);
   });
 });
 

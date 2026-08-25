@@ -49,11 +49,29 @@ const RedactedDropArm = z.strictObject({
   classification: DataClassificationSchema,
   transform: z.literal("drop"),
 });
-const RedactedTransformedArm = z.strictObject({
+const RedactedDigestArm = z.strictObject({
   state: z.literal("transformed"),
   classification: DataClassificationSchema,
-  transform: z.enum(["digest", "last4", "basename", "count"]),
-  value: z.union([FingerprintSchema, z.string(), z.number().int().nonnegative()]),
+  transform: z.literal("digest"),
+  value: FingerprintSchema,
+});
+const RedactedLast4Arm = z.strictObject({
+  state: z.literal("transformed"),
+  classification: DataClassificationSchema,
+  transform: z.literal("last4"),
+  value: z.string().max(4, "must contain at most four characters"),
+});
+const RedactedBasenameArm = z.strictObject({
+  state: z.literal("transformed"),
+  classification: DataClassificationSchema,
+  transform: z.literal("basename"),
+  value: z.string(),
+});
+const RedactedCountArm = z.strictObject({
+  state: z.literal("transformed"),
+  classification: DataClassificationSchema,
+  transform: z.literal("count"),
+  value: z.number().int().nonnegative(),
 });
 const RedactedAllowedArm = z.strictObject({
   state: z.literal("allowed"),
@@ -72,16 +90,22 @@ const RedactedAllowedArm = z.strictObject({
  * thing to drift, and a reject row that leaked a value the receipt would have
  * dropped is the same defect from a different surface.
  */
-export const RedactedValueSchema = z.discriminatedUnion("state", [
+export const RedactedValueSchema = z.discriminatedUnion("transform", [
   RedactedDropArm,
-  RedactedTransformedArm,
+  RedactedDigestArm,
+  RedactedLast4Arm,
+  RedactedBasenameArm,
+  RedactedCountArm,
   RedactedAllowedArm,
 ]);
 
 const KEYED = { key: z.string() } as const;
-export const RedactedFieldSchema = z.discriminatedUnion("state", [
+export const RedactedFieldSchema = z.discriminatedUnion("transform", [
   RedactedDropArm.extend(KEYED),
-  RedactedTransformedArm.extend(KEYED),
+  RedactedDigestArm.extend(KEYED),
+  RedactedLast4Arm.extend(KEYED),
+  RedactedBasenameArm.extend(KEYED),
+  RedactedCountArm.extend(KEYED),
   RedactedAllowedArm.extend(KEYED),
 ]);
 

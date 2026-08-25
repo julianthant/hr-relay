@@ -214,7 +214,7 @@ const TransactionPreviewedSchema = z.strictObject({
 export const SpanDataClassificationSchema = z.enum([
   "secret", "credential-file", "direct-identifier", "sensitive-hr", "safe-diagnostic",
 ]);
-const RedactedSpanValueSchema = z.discriminatedUnion("state", [
+const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
   z.strictObject({
     key: z.string(),
     state: z.literal("redacted"),
@@ -225,8 +225,29 @@ const RedactedSpanValueSchema = z.discriminatedUnion("state", [
     key: z.string(),
     state: z.literal("transformed"),
     classification: SpanDataClassificationSchema,
-    transform: z.enum(["digest", "last4", "basename", "count"]),
-    value: z.union([Hex64Schema, z.string(), z.number().int().nonnegative()]),
+    transform: z.literal("last4"),
+    value: z.string().max(4, "must contain at most four characters"),
+  }),
+  z.strictObject({
+    key: z.string(),
+    state: z.literal("transformed"),
+    classification: SpanDataClassificationSchema,
+    transform: z.literal("digest"),
+    value: Hex64Schema,
+  }),
+  z.strictObject({
+    key: z.string(),
+    state: z.literal("transformed"),
+    classification: SpanDataClassificationSchema,
+    transform: z.literal("basename"),
+    value: z.string(),
+  }),
+  z.strictObject({
+    key: z.string(),
+    state: z.literal("transformed"),
+    classification: SpanDataClassificationSchema,
+    transform: z.literal("count"),
+    value: z.number().int().nonnegative(),
   }),
   z.strictObject({
     key: z.string(),

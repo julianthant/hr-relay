@@ -214,6 +214,19 @@ describe("the observed-log arm (D270)", () => {
       points: [{ direction: "read", field: "results", values: [{ key: "results", value: "Ada Lovelace" }] }],
     }));
   });
+
+  it("refuses malformed last4 and digest outputs in the kernel schema twin", () => {
+    for (const value of [
+      { key: "selection.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "10456712" },
+      { key: "selection.eid", state: "transformed", classification: "direct-identifier", transform: "digest", value: "10456712" },
+    ]) {
+      assert.throws(() => ObservedDataPointSchema.parse({
+        direction: "read",
+        field: "selection.eid",
+        values: [value],
+      }));
+    }
+  });
 });
 
 describe("span wire strictness", () => {
