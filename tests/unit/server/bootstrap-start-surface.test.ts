@@ -1,5 +1,5 @@
 /**
- * D264/D11 — the run modal's three start facts are SERVED, and the descriptor
+ * D264/D11 — the run modal's four start facts are SERVED, and the descriptor
  * registry leaves the browser bundle.
  *
  * D251 read `summary`, `enqueue` and `surfaces.inputRun` straight off the
@@ -74,6 +74,7 @@ describe("bootstrap start-surface block", () => {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
           enqueue: descriptor.enqueue,
+          version: descriptor.version,
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
             : { inputRun: descriptor.surfaces.inputRun }),
@@ -90,7 +91,28 @@ describe("bootstrap start-surface block", () => {
   });
 
   it("refuses a start block carrying a field the modal does not read", () => {
-    const block = { enqueue: "reject-active", inputRun: undefined, note: "extra" };
+    const block = { enqueue: "reject-active", version: 1, inputRun: undefined, note: "extra" };
     expect(WorkflowStartWireSchema.safeParse(block).success).toBe(false);
+  });
+
+  /**
+   * Ledger 1 C96 — the modal's footer prints `{label} v{n}`, and the version is
+   * REQUIRED on the block for the reason D264 made `enqueue` required: an
+   * optional version is a version the client has to guess at, and the only
+   * guess available (`v1`) is a wrong statement about every workflow that has
+   * ever been bumped. A descriptor always declares one, so it always travels.
+   */
+  it("requires the version — a modal cannot guess which shape it is starting", () => {
+    const block = { enqueue: "reject-active" };
+    expect(WorkflowStartWireSchema.safeParse(block).success).toBe(false);
+  });
+
+  it("refuses a version that is not a positive integer", () => {
+    for (const version of [0, -1, 1.5]) {
+      expect(
+        WorkflowStartWireSchema.safeParse({ enqueue: "reject-active", version }).success,
+        String(version),
+      ).toBe(false);
+    }
   });
 });

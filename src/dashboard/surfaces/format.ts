@@ -175,3 +175,25 @@ export const SHORT_HASH_PREFIX = 8;
 export function shortHash(value: string): string {
   return value.slice(0, SHORT_HASH_PREFIX);
 }
+
+/**
+ * A descriptor version as the operator reads it — `v3`.
+ *
+ * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `demo-wire.ts:1773` `fmtVersionTag`, which prints `v{major}.{minor}` because
+ * the demo's descriptors carry a pair. This tree's do not:
+ * `defineWorkflowDescriptor` admits ONE positive integer (`src/base/workflow.ts`
+ * — *"version must be a positive integer"*), and the run envelope, the
+ * checkpoint rows and the archive's `descriptorVersion` all record that single
+ * number. So the tag is `v{n}` and a `.0` is never appended — a digit nobody
+ * records, printed on the last screen before a real HR transaction starts, is
+ * the fabricated constant this tree bans.
+ *
+ * Every place a version is shown to the operator composes it here. `archive.tsx`
+ * builds the identical string inline for its row-token tooltip; it is the same
+ * shape by construction and should adopt this function when that file is next
+ * touched.
+ */
+export function versionTag(version: number): string {
+  return `v${String(version)}`;
+}

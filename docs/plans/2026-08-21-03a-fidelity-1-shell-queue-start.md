@@ -656,7 +656,7 @@ lane — so every row is a source diff plus that one rebuild image.
 | C93 | Test `Banner` — "Targeting the TEST instance of …" + the ledger sentence | `DemoRunStartKit.tsx:103-108` | `run-start-kit.tsx:128-133` | exact | — |
 | C94 | Zero-system Well — "This start declares no browser system." | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:84-90` | extra | OPEN — operator call: rebuild-only honest arm; the demo's fixtures always declare at least one system so it has no counterpart to compare against |
 | C95 | Footer `MetaLine tone="faint"` | `DemoRunStart.tsx:941-956` | `run-start.tsx:1026-1035` | exact | — |
-| C96 | Footer item 1 — `{workflow label} v{major}.{minor}` | `DemoRunStart.tsx:946`, `demo-wire.ts:1777-1780` | `run-start.tsx:1031` (label only) | divergent | OPEN — operator call: `descriptor.version` exists in the bundle (`person-lookup/descriptor.ts:169`) and the archive already prints `v{n}` (`archive.tsx:286`), so the modal drops a fact it holds |
+| C96 | Footer item 1 — `{workflow label} v{major}.{minor}` | `DemoRunStart.tsx:946`, `demo-wire.ts:1777-1780` | `run-start.tsx` footer — `{label} v{n}` from required bootstrap `start.version` | divergent | ruled 2026-08-25: every rebuild descriptor records one positive integer, not a `{major, minor}` pair. The footer now prints that exact recorded integer through shared `versionTag`; appending `.0` would fabricate a minor version. |
 | C97 | Footer item 2 — the blocked reason, else the plan headline | `DemoRunStart.tsx:947` | `run-start.tsx:1032` | divergent | ruled: `ref dashboard-surfaces §9.1` — reads `N to create` off `planned.length` for the same reason as C55 |
 | C98 | Blocked reason **Type at least one value.** | `DemoRunStart.tsx:627` | `run-start.tsx:783` | exact | — |
 | C99 | Blocked reason **Fix or remove the refused values first.** | `DemoRunStart.tsx:629` | `run-start.tsx:781` (**Fix the refused entry first.**) | divergent | ruled: `<plan>` R8 f.17 — the whole-text parser refuses one entry at a time, so the plural is not a true statement |
@@ -678,9 +678,9 @@ lane — so every row is a source diff plus that one rebuild image.
 | C115 | The surfaces wrapper mounts the modal beside the intake dialog | `DemoRunStart.tsx:990-1015` | `run-start.tsx:1071-1093` | divergent | ruled: D251 + `dashboard-app.tsx:1160-1172` — nothing to hand off to, so the wrapper mounts the dialog alone |
 
 **Counts:** 115 elements — 48 exact · 39 divergent · 19 missing · 9 extra.
-Of the 67 non-exact: **ruled 38** · **unserved 15** · **OPEN 14**.
+Of the 67 non-exact: **ruled 39** · **unserved 15** · **OPEN 13**.
 
-**OPEN (14), for the operator:** C28 · C48 · C57 · C61 · C69 · C72 · C81 · C83 · C84 · C94 · C96 ·
+**OPEN (13), for the operator:** C28 · C48 · C57 · C61 · C69 · C72 · C81 · C83 · C84 · C94 ·
 C107 · C108 · C109.
 **Unserved (15), each a `builds:` line:** C49 · C50 · C51 · C55 · C56 · C58 · C59 · C64 · C65 ·
 C66 · C68 · C70 · C85 · C86 · C91.
@@ -701,8 +701,8 @@ C66 · C68 · C70 · C85 · C86 · C91.
   invisible-reason rows (C48, C81) and the raw field name standing in for a label (C49), all three
   now confirmed on the 1440×900 reference; the always-drawn group 02 and its frozen `03` (C83, C84);
   the stage machine's three consequences (C107, C108, C109) — the baseline audited a modal that had
-  no stage rail to hide anything behind; the conflict arm with no re-plan exit (C69); the dropped
-  version tag (C96); the raw ISO `expiresAt` (C61); and the card→table plan shape (C57).
+  no stage rail to hide anything behind; the conflict arm with no re-plan exit (C69); the raw ISO
+  `expiresAt` (C61); and the card→table plan shape (C57).
 
 **Proposed `builds:` lines from region C's 15 `unserved:` rows.** All eight go on
 `{#dash-defaults}` — `{#track-b}` is `status: done`, so a new line there would reopen a closed
@@ -832,11 +832,12 @@ Nothing below is dismissed, waved through or "modified". Each needs a ruling; no
     but no D-number, plan section or dated operator call rules on it.
 23. **C72 — the dismiss control says `Dismiss` on every arm**; the demo says `Close` on applied and
     `Dismiss` on rejected.
-24. **C96 — the modal drops the workflow VERSION** (`{label} v{major}.{minor}`), a fact the bundle
-    already holds (`person-lookup/descriptor.ts:169`) and the archive already prints
-    (`archive.tsx:286`).
-25. **C109 — changing a shared setting after a result leaves the result banner and the `Result` stage
+24. **C109 — changing a shared setting after a result leaves the result banner and the `Result` stage
     standing** over a plan the change invalidated.
+
+**Resolved 2026-08-25 — C96.** The footer receives the descriptor's required `version` in the
+bootstrap start block and prints `{label} v{n}` through `versionTag`. The demo's minor half has no
+rebuild counterpart, so no `.0` is fabricated.
 
 ### Rebuild-only additions with no demo counterpart (keep, or cut — the operator decides)
 
