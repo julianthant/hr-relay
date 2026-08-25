@@ -68,11 +68,14 @@ export function fixtureHelloEnvelope(): DashboardStreamEnvelope {
   });
 }
 
-export function fixtureSnapshotEnvelope(dayWire: DashboardDayWire = FIXTURE_DAY_WIRE): DashboardStreamEnvelope {
+export function fixtureSnapshotEnvelope(
+  dayWire: DashboardDayWire = FIXTURE_DAY_WIRE,
+  cursor = "pc:1",
+): DashboardStreamEnvelope {
   return DashboardStreamEnvelopeSchema.parse({
     type: "snapshot",
     topic: "dashboard-day",
-    cursor: "pc:1",
+    cursor,
     payload: dayWire,
   });
 }
@@ -365,6 +368,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
 export interface FixtureServer {
   readonly port: number;
   readonly baseUrl: string;
+  publish(envelope: DashboardStreamEnvelope): void;
   close(): Promise<void>;
 }
 
@@ -416,6 +420,11 @@ export async function startFixtureServer(
   return Object.freeze({
     port: address.port,
     baseUrl: `http://127.0.0.1:${address.port}`,
+    publish(envelope: DashboardStreamEnvelope): void {
+      if (openStreams.size === 0) throw new Error("the fixture server has no open SSE stream to publish to");
+      const serialized = sseSerialize(DashboardStreamEnvelopeSchema.parse(envelope));
+      for (const stream of openStreams) stream.write(serialized);
+    },
     close: async (): Promise<void> => {
       for (const stream of openStreams) stream.destroy();
       server.closeAllConnections();

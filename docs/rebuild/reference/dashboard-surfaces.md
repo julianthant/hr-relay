@@ -137,7 +137,7 @@ What is **good** and must be kept (charter: port, don't rewrite):
 - [x] D270 — `data.observed`: every point captured at record time and redacted by declaration; probe/prepare/verify emit synchronously, commit flushes after callback settlement; the queue projection ignores the arm by name
 - [x] BE transaction probe/prepare/commit/verify roles emit their declared observations, with the durable fence carried by strict `transaction.fenced`; commit delivery waits for callback settlement so no fallible span write occupies fence→click
 - [x] BE L3 — the lazy Logs query joins bounded-scope notes with append-time indexed `data.observed`/`transaction.fenced` rows in one immutable-snapshot page walk, validates run workflow/trace/attempt authority, and resolves system through root-composed `(nodeId,taskId)` data origins (missing or ambiguous resolution refuses)
-- [ ] FE the run-detail Logs section reads the notes JSONL per request and a failed run OPENS on it (`noteLinesForRun` + `defaultTabFor`), so today's default tab for a failure is an empty stream
+- [x] FE the run-detail Logs section folds the strict combined `LogRowWire` page: notes remain prose; observed rows show their exact producer system, direction and redacted facts; an authority fence draws no invented observation detail; cursor pages append in sequence order
 > 2026-08-20 | docs-dash-surfaces 5.1b | verified at D254's own bar — `.tracker-rebuild/` holds `spans/` and no `notes/` directory at all; the three doc sections that describe the stream (§1.1, §1.2, §2.1) now say so
 <!-- /roadmap-status -->
 

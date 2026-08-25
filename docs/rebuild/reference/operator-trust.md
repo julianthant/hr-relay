@@ -1120,6 +1120,13 @@ adds only that derived set to the manifest/runtime baseline. Its probe/prepare/c
 remain ordinary declarations and pass through the production refusal — the set is accounting for
 an executable test runtime, not a redaction bypass.
 
+**Presentation preserves the arm boundary.** The dashboard's combined log renderer reads the strict
+row union in its served sequence: only `data.observed` supplies a resolved system, direction and
+redacted value facts. `transaction.fenced` is the durable authority beat preceding a commit batch,
+not a page observation, so the surface does not manufacture a system chip, read/write arrow or value
+pill for it. A note remains prose. This keeps a redacted page fact, an authority fact and an operator
+message distinguishable even when their clocks are equal.
+
 **The orphan rule's baseline widened to the build manifest.** `evidence-receipt.test.ts` used to
 refuse a `task-output` scope naming a task no registered descriptor composes. That is the wrong
 baseline once the emission exists: the executor runs whatever a composed descriptor names, so a
