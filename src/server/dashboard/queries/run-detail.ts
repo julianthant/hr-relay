@@ -815,7 +815,7 @@ type RunAtRestNote = Readonly<{
   message: string;
 }>;
 
-type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system: string }>;
+type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string }>;
 
 export type RunLogScanEntry =
   | Readonly<{ kind: "note"; line: EventStreamLine; note: RunAtRestNote }>
@@ -1010,13 +1010,18 @@ function producerOf(
     );
   }
   const origin = matches[0];
-  if (origin === undefined || origin.system === undefined) {
+  if (origin === undefined) {
     throw new Error(
-      `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve system for ${event.t} node ${nodeId} `
-      + `task ${event.taskId}: its one descriptor data origin declares no browser system`,
+      `spans line ${line.file.path}:${String(line.lineNumber)} cannot resolve producer for ${event.t} node ${nodeId} `
+      + `task ${event.taskId}: its matching descriptor data origin disappeared`,
     );
   }
-  return { nodeId: origin.nodeId, step: origin.step, taskId: origin.taskId, system: origin.system };
+  return {
+    nodeId: origin.nodeId,
+    step: origin.step,
+    taskId: origin.taskId,
+    ...(origin.system === undefined ? {} : { system: origin.system }),
+  };
 }
 
 function logLinesForRun(

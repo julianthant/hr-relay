@@ -70,6 +70,18 @@ const secondObserved = {
   spanPath: "run/person-read-again",
 };
 
+const serviceObserved = {
+  ...observed,
+  logId: "e1b8ae3e-0000-4000-8000-000000000005",
+  sequence: 5,
+  spanPath: "run/read-separation-plan",
+  producer: {
+    nodeId: "plan",
+    step: "Read separation plan",
+    taskId: "workflow:separations/read-separation-plan",
+  },
+};
+
 function logResponse(next: boolean) {
   const rows = next
     ? [secondObserved]
@@ -297,6 +309,31 @@ test("the initial log request exposes its loading state", async ({ page }) => {
   await expect(loading).toHaveAttribute("aria-busy", "true");
   release.resolve();
   await expect(page.getByRole("list", { name: "Run log lines" })).toBeVisible();
+});
+
+test("a service-task observation makes no browser-system claim", async ({ page }) => {
+  await page.route(`**/api/v1/runs/${RUN}/logs**`, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        section: "logs",
+        payload: {
+          runId: RUN,
+          rows: [serviceObserved],
+          notes: [],
+          nextCursor: { state: "absent", reason: "end-of-page" },
+        },
+      }),
+    });
+  });
+
+  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: RUN, section: "logs" });
+  await page.keyboard.press("Escape");
+  const row = page.getByRole("list", { name: "Run log lines" })
+    .getByRole("listitem", { name: /observed at Read separation plan/i });
+  await expect(row).toBeVisible();
+  await expect(row).not.toHaveAttribute("aria-label", /system /i);
+  await expect(row.getByText("UCPATH", { exact: true })).toHaveCount(0);
 });
 
 test("the served 200-row bound remains complete and searchable without eager continuation", async ({ page }) => {

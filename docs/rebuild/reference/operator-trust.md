@@ -1121,8 +1121,8 @@ remain ordinary declarations and pass through the production refusal — the set
 an executable test runtime, not a redaction bypass.
 
 **Presentation preserves the arm boundary.** The dashboard's combined log renderer reads the strict
-row union in its served sequence: only `data.observed` supplies a resolved system, direction and
-redacted value facts. `transaction.fenced` is the durable authority beat preceding a commit batch,
+row union in its served sequence: only `data.observed` supplies direction, redacted value facts and
+any browser system its exact descriptor origin declares. `transaction.fenced` is the durable authority beat preceding a commit batch,
 not a page observation, so the surface does not manufacture a system chip, read/write arrow or value
 pill for it. A note remains prose. This keeps a redacted page fact, an authority fact and an operator
 message distinguishable even when their clocks are equal.

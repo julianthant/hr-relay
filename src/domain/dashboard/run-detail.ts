@@ -362,7 +362,7 @@ const LogProducerWireSchema = z.strictObject({
   nodeId: NodeIdSchema,
   step: z.string().min(1),
   taskId: TaskIdSchema,
-  system: BrowserSystemIdSchema,
+  system: BrowserSystemIdSchema.optional(),
 });
 
 const LogSpanIdentityWireSchema = z.strictObject({

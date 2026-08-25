@@ -6,10 +6,11 @@ atoms from `ds/ui.tsx`; do not fork local visual vocabularies.
 
 ## Logs
 
-The Logs tab renders the strict lazy `LogRowWire` union. `observed` rows alone carry a resolved system,
-directions and redacted value facts; `transaction-fenced` is an authority beat and must never borrow any
-of those observation fields. Keep server `sequence` order, append only immutable cursor pages, and group
-only contiguous rows by their real producer. Notes stay notes.
+The Logs tab renders the strict lazy `LogRowWire` union. `observed` rows carry directions and redacted
+value facts, plus a system only when their one descriptor origin declares a browser system; an absent
+system stays absent and draws no chip or accessibility claim. `transaction-fenced` is an authority beat
+and must never borrow any observation fields. Keep server `sequence` order, append only immutable cursor
+pages, and group only contiguous rows by their real producer. Notes stay notes.
 
 Continuation ownership is the exact `(runId, cursor, initial snapshot)` that launched the request.
 A refresh or run switch supersedes that owner: its stale response changes neither rows, loading nor
@@ -17,6 +18,12 @@ error for the current snapshot. The live panel requires `rows`; notes-only pages
 archive readers and must fail here with the run and cursor.
 
 ### Dated lessons
+
+- **2026-08-25 — an exact descriptor origin need not be a browser origin.** The first live observed-log
+  proof reached `workflow:separations/read-separation-plan`: one exact data origin existed, but it was a
+  service task and correctly declared no browser system. Making every log producer carry a system turned
+  an honest absence into a 500. Preserve that absence exactly as the Context rail does; refuse zero or
+  multiple origins, never invent a system for one exact origin that declares none. (D252 / D270)
 
 - **2026-08-25 — a fence is not a page observation.** A producer's task system resolves the origin of
   an observed row, but a durable `transaction.fenced` beat is not an observed read or write. Rendering

@@ -1066,7 +1066,8 @@ function logRowLabel(row: LogRow): string {
   }
   const directions = [...new Set(row.points.map((point) => point.direction))].join(", ");
   const facts = logPillsOf(row).map((pill) => `${pill.label}: ${pill.value}`).join("; ");
-  return `${fmtClock(row.at)}: observed at ${row.producer.step}, ${row.producer.taskId}, system ${row.producer.system}, directions ${directions}, attempt ${String(row.attempt)}. ${facts}`;
+  const system = row.producer.system === undefined ? "" : `, system ${row.producer.system}`;
+  return `${fmtClock(row.at)}: observed at ${row.producer.step}, ${row.producer.taskId}${system}, directions ${directions}, attempt ${String(row.attempt)}. ${facts}`;
 }
 
 function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean }) {
@@ -1094,7 +1095,7 @@ function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean })
         {note !== undefined && note.message}
         {observed && (
           <span className="inline-flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
-            <SystemChip system={row.producer.system} />
+            {row.producer.system !== undefined && <SystemChip system={row.producer.system} />}
             {logPillsOf(row).map((pill, index) => (
               <LogFactPill key={`${pill.direction}:${pill.label}:${pill.value}:${String(index)}`} {...pill} />
             ))}

@@ -651,14 +651,23 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.ok(section.payload.rows.every((row) => row.kind === "note" || row.producer.system === "kuali"));
   });
 
-  it("refuses an observed row whose system is missing or ambiguous instead of defaulting it", () => {
+  it("preserves a descriptor's absent browser system and still refuses an ambiguous producer", () => {
     const w = world();
     terminalDone(w, 1);
     observedEvent(w);
-    assert.throws(
-      () => buildRunSection(observedDepsOf(w, [{ ...SEARCH_ORIGIN, system: undefined }]), uuidOf(1), "logs"),
-      /declares no browser system/,
+    const section = buildRunSection(
+      observedDepsOf(w, [{ ...SEARCH_ORIGIN, system: undefined }]),
+      uuidOf(1),
+      "logs",
     );
+    assert.equal(section.section, "logs");
+    const row = section.payload.rows?.find((entry) => entry.kind === "observed");
+    assert.ok(row !== undefined && row.kind === "observed");
+    assert.deepEqual(row.producer, {
+      nodeId: SEARCH_ORIGIN.nodeId,
+      step: SEARCH_ORIGIN.step,
+      taskId: SEARCH_ORIGIN.taskId,
+    });
     assert.throws(
       () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN, { ...SEARCH_ORIGIN, system: "crm" }]), uuidOf(1), "logs"),
       /has 2 matching data origins/,
