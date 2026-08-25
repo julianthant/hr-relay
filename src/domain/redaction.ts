@@ -1,48 +1,22 @@
 import { z } from "zod";
 import { canonicalJsonStringify, JsonValueSchema } from "./canonical-json.js";
 import { FingerprintSchema } from "./ids.js";
+import {
+  DataClassificationSchema,
+  EvidenceTransformSchema,
+  evidenceTransformAllowed,
+  refineEvidenceTransformPair,
+} from "./redaction-policy.js";
 import { sha256Hex } from "./sha256.js";
 
-export const DataClassificationSchema = z.enum([
-  "secret",
-  "credential-file",
-  "direct-identifier",
-  "sensitive-hr",
-  "safe-diagnostic",
-]);
-export const EvidenceTransformSchema = z.enum(["drop", "digest", "last4", "basename", "count", "allow"]);
-
-const ALLOWED_TRANSFORMS = {
-  secret: new Set(["drop", "digest"]),
-  "credential-file": new Set(["drop", "digest"]),
-  "direct-identifier": new Set(["drop", "digest", "last4"]),
-  "sensitive-hr": new Set(["drop", "digest", "count"]),
-  "safe-diagnostic": new Set(["allow", "count", "basename"]),
-} satisfies Record<z.infer<typeof DataClassificationSchema>, ReadonlySet<string>>;
-
-/**
- * Whether a classification permits a transform. Exported because a
- * DECLARATION of (classification, transform) — ref operator-trust §2.3's receipt field
- * classifications — must be refused at declaration time, not only when a value
- * is finally pushed through `redactDiagnosticFields`. One table, two callers.
- */
-export function evidenceTransformAllowed(
-  classification: z.infer<typeof DataClassificationSchema>,
-  transform: z.infer<typeof EvidenceTransformSchema>,
-): boolean {
-  return ALLOWED_TRANSFORMS[classification].has(transform);
-}
+export { DataClassificationSchema, EvidenceTransformSchema, evidenceTransformAllowed } from "./redaction-policy.js";
 
 export const ClassifiedDiagnosticValueSchema = z.strictObject({
   key: z.string().regex(/^[a-z][A-Za-z0-9]*$/),
   classification: DataClassificationSchema,
   transform: EvidenceTransformSchema,
   value: JsonValueSchema,
-}).superRefine((field, context) => {
-  if (!evidenceTransformAllowed(field.classification, field.transform)) {
-    context.addIssue({ code: "custom", path: ["transform"], message: `${field.transform} is forbidden for ${field.classification}` });
-  }
-});
+}).superRefine(refineEvidenceTransformPair);
 
 const RedactedDropArm = z.strictObject({
   state: z.literal("redacted"),
@@ -75,7 +49,7 @@ const RedactedCountArm = z.strictObject({
 });
 const RedactedAllowedArm = z.strictObject({
   state: z.literal("allowed"),
-  classification: z.literal("safe-diagnostic"),
+  classification: DataClassificationSchema,
   transform: z.literal("allow"),
   value: JsonValueSchema,
 });
@@ -97,7 +71,7 @@ export const RedactedValueSchema = z.discriminatedUnion("transform", [
   RedactedBasenameArm,
   RedactedCountArm,
   RedactedAllowedArm,
-]);
+]).superRefine(refineEvidenceTransformPair);
 
 const KEYED = { key: z.string() } as const;
 export const RedactedFieldSchema = z.discriminatedUnion("transform", [
@@ -107,7 +81,7 @@ export const RedactedFieldSchema = z.discriminatedUnion("transform", [
   RedactedBasenameArm.extend(KEYED),
   RedactedCountArm.extend(KEYED),
   RedactedAllowedArm.extend(KEYED),
-]);
+]).superRefine(refineEvidenceTransformPair);
 
 export const RedactionResultSchema = z.strictObject({
   fields: z.array(RedactedFieldSchema),

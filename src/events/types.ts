@@ -1,8 +1,8 @@
 /**
  * The span/notes wire and at-rest contract (ref dashboard-surfaces §1.1) — a leaf module.
  *
- * This file imports NOTHING but zod on purpose (the same import budget a
- * bundle-safe descriptor gets): every JSONL line, projector ingest, and SSE
+ * This file imports zod plus the zod-only canonical redaction-policy leaf on
+ * purpose (the same import budget a bundle-safe descriptor gets): every JSONL line, projector ingest, and SSE
  * payload that carries a span or note parses through these schemas, so the
  * contract must not drag the server module graph — or the descriptor closure —
  * behind it. The id patterns are therefore restated locally; the
@@ -34,6 +34,7 @@
  * would duplicate that identity today).
  */
 import { z } from "zod";
+import { DataClassificationSchema, refineEvidenceTransformPair } from "../domain/redaction-policy.js";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -206,14 +207,13 @@ const TransactionPreviewedSchema = z.strictObject({
 
 /**
  * D270 — an observed data point's redacted value. The parity twin of
- * `RedactedFieldSchema` (`src/domain/redaction.ts`), restated arm-for-arm; the
+ * `RedactedFieldSchema` (`src/domain/redaction.ts`), restated arm-for-arm while
+ * sharing its canonical classification/transform rule; the
  * round-trip cases in `tests/unit/events/span-events.test.ts` enumerate every
  * classification and every transform, because the D215 lesson is that two
  * schemas calling each other twins still fork on the arm nobody emits.
  */
-export const SpanDataClassificationSchema = z.enum([
-  "secret", "credential-file", "direct-identifier", "sensitive-hr", "safe-diagnostic",
-]);
+export const SpanDataClassificationSchema = DataClassificationSchema;
 const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
   z.strictObject({
     key: z.string(),
@@ -252,11 +252,11 @@ const RedactedSpanValueSchema = z.discriminatedUnion("transform", [
   z.strictObject({
     key: z.string(),
     state: z.literal("allowed"),
-    classification: z.literal("safe-diagnostic"),
+    classification: SpanDataClassificationSchema,
     transform: z.literal("allow"),
     value: JsonValueWireSchema,
   }),
-]);
+]).superRefine(refineEvidenceTransformPair);
 
 /** One recorded point; see `src/core/span-emitter.ts` for why it carries no `system`. */
 const ObservedDataPointWireSchema = z.strictObject({
