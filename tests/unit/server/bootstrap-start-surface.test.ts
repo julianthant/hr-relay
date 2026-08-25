@@ -144,7 +144,7 @@ describe("bootstrap start-surface block", () => {
       }));
 
       expect(wire.workflows).toHaveLength(1);
-      expect(wire.workflows[0]?.start.version).toBe(VERSION_SEVEN_DESCRIPTOR.version);
+      expect(WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.version).toBe(VERSION_SEVEN_DESCRIPTOR.version);
     } finally {
       world.dispose();
     }
