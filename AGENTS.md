@@ -259,7 +259,9 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   start-run, worker-drain, gate-command, receipt, and authority composition. Only `src/cli.ts` may
   dynamically load the non-collected `tests/scenario/**/dry-run.scenario.ts` declaration; no
   production module imports a test module. Blocked targets persist `not-started` before the ready
-  runtime factory is called.
+  runtime factory is called. A ready case declares the receipt service's complete ordered
+  `(obligation, authority verdict, mandatory)` tuples, including every `node.*` row; the runner
+  compares that list exactly and never projects `absent`/`ambiguous` into a shared verdict.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -287,7 +289,8 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   label is not a node id. A transaction that fails before `transaction.previewed` is reached by its
   durable node-bound `FailureRecord`, and failed terminal expectations compare its exact safe
   `(code, nodeId, fingerprint)` tuple. Failure summaries, receipt warnings, spans and worker logs
-  must never carry full or suffix person identifiers.
+  must never carry full or suffix person identifiers. A malformed staged subject observation names
+  the required canonical format and owning contract, never the observed value.
 - A workflow descriptor value-imports only zod, `src/domain/**`, and the audited `src/base/**`
   builders; `module.ts` is where anything server-side attaches (D106). Branch cases and parallel
   branches name nodes DOWNSTREAM of their controller — forward references, checked at `build()`
@@ -303,10 +306,13 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 - **2026-08-25 — a preview has to be asserted in the receipt's real vocabulary.** A dry-run
   transaction stores no transaction checkpoint, so Kuali finalization receipts derive four
   cross-source obligations as `unknown` and the literal reload-read-back obligation as `absent`;
-  inventing one aggregate obligation or claiming partial confidence makes the manifest impossible.
-  Likewise, `replay: "always-rerun"` forbids reuse but still writes the current claim generation's
-  checkpoint, and a failed transaction can be reached only from its durable failure before a
-  `transaction.previewed` event exists.
+  inventing one aggregate obligation, collapsing `absent` with `ambiguous`, omitting an upstream
+  node row, or claiming partial confidence makes the manifest lie about authority. Compare the
+  whole ordered tuple list. Likewise, `replay: "always-rerun"` forbids reuse but still writes the
+  current claim generation's checkpoint, and a failed transaction can be reached only from its
+  durable failure before a `transaction.previewed` event exists. Malformed subject text looked
+  useful in a format error, but that message fans out to failure, receipt, span and log sinks; keep
+  the contract/format actionable and omit the observed text entirely.
 
 - **2026-08-25 — retiring a proof workflow does not retire the real workflow's vocabulary.** The
   timekeeper annotation staging/read-back schemas and tasks belonged only to D266's dismantled test

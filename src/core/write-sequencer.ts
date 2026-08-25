@@ -291,7 +291,7 @@ function normalizeSubjectIdentifier(
   if (identity === "eid") {
     const normalized = raw.replaceAll(/\s+/gu, "");
     if (!/^\d{6,10}$/.test(normalized)) {
-      throw new Error(`${owner}: "${raw}" does not normalize to an EID (6–10 digits)`);
+      throw new Error(`${owner}: subject identifier does not normalize to an EID (6–10 digits)`);
     }
     return normalized;
   }

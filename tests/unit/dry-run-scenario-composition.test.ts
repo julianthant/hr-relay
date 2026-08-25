@@ -361,7 +361,8 @@ describe("dry-run scenario production composition boundary", () => {
     const stateRoot = join(root, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
     const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
-    const { sessions } = composedSessions(clock, FINALIZATION_OTHER_EID);
+    const malformedObservation = `EID ${FINALIZATION_OTHER_EID}`;
+    const { sessions } = composedSessions(clock, malformedObservation);
     const lines: string[] = [];
     const runtime = createProductionDryRunScenarioRuntime({
       isolation: rebuildRuntimeIsolation,
@@ -421,6 +422,7 @@ describe("dry-run scenario production composition boundary", () => {
       .map((file) => readFileSync(join(stateRoot, "spans", file), "utf8"))
       .join("\n");
     for (const sink of [JSON.stringify(failure), JSON.stringify(receipt), spanText, lines.join("\n")]) {
+      assert.doesNotMatch(sink, new RegExp(malformedObservation));
       assert.doesNotMatch(sink, new RegExp(FINALIZATION_EID));
       assert.doesNotMatch(sink, new RegExp(FINALIZATION_OTHER_EID));
       assert.doesNotMatch(sink, new RegExp(`…${FINALIZATION_EID.slice(-4)}`));
