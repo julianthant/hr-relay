@@ -139,6 +139,62 @@ describe("observed log presentation fold", () => {
     assert.deepEqual(appended.nextCursor, { state: "absent", reason: "end-of-page" });
   });
 
+  it("rejects returned rows that reverse sequence within one continuation page", () => {
+    const cursor = `lc:${"a".repeat(64)}:10`;
+    const first = page([observed(9)], { state: "present", value: cursor });
+    const reversed = page([observed(10), observed(5)], { state: "absent", reason: "end-of-page" });
+
+    assert.throws(
+      () => appendLogPage(first, cursor, reversed),
+      new RegExp(`log continuation for run ${RUN} at cursor ${cursor} must strictly increase after sequence 10; received 5`),
+    );
+  });
+
+  it("rejects a continuation that begins below the requested cursor offset", () => {
+    const cursor = `lc:${"a".repeat(64)}:10`;
+    const first = page([observed(2)], { state: "present", value: cursor });
+    const beforeCursor = page([observed(5)], { state: "absent", reason: "end-of-page" });
+
+    assert.throws(
+      () => appendLogPage(first, cursor, beforeCursor),
+      new RegExp(`log continuation for run ${RUN} at cursor ${cursor} must strictly increase after sequence 9; received 5`),
+    );
+  });
+
+  it("rejects a returned next cursor from a different immutable snapshot", () => {
+    const requestedDigest = "a".repeat(64);
+    const returnedDigest = "b".repeat(64);
+    const cursor = `lc:${requestedDigest}:2`;
+    const first = page([note(1), observed(2)], { state: "present", value: cursor });
+    const differentSnapshot = page(
+      [observed(3)],
+      { state: "present", value: `lc:${returnedDigest}:3` },
+    );
+
+    assert.throws(
+      () => appendLogPage(first, cursor, differentSnapshot),
+      new RegExp(
+        `log continuation for run ${RUN} at cursor ${cursor} returned snapshot digest ${returnedDigest}; expected ${requestedDigest}`,
+      ),
+    );
+  });
+
+  it("accepts a strictly increasing continuation on the requested immutable snapshot", () => {
+    const digest = "c".repeat(64);
+    const cursor = `lc:${digest}:10`;
+    const returnedCursor = `lc:${digest}:12`;
+    const first = page([observed(9)], { state: "present", value: cursor });
+    const continuation = page(
+      [observed(10), fence(11)],
+      { state: "present", value: returnedCursor },
+    );
+
+    const appended = appendLogPage(first, cursor, continuation);
+
+    assert.deepEqual(logRowsOf(appended, returnedCursor).map((row) => row.sequence), [9, 10, 11]);
+    assert.deepEqual(appended.nextCursor, { state: "present", value: returnedCursor });
+  });
+
   it("refuses a duplicated append instead of silently losing or reordering evidence", () => {
     const cursor = `lc:${"b".repeat(64)}:1`;
     const first = page([observed(2)], { state: "present", value: cursor });

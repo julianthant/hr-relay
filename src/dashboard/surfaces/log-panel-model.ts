@@ -10,7 +10,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { z } from "zod";
 import { fmtClock } from "./format.js";
-import type { LogRowWire, NotePageSchema, RunDetailWireSchema } from "../../domain/dashboard/run-detail.js";
+import {
+  LogPageCursorSchema,
+  type LogRowWire,
+  type NotePageSchema,
+  type RunDetailWireSchema,
+} from "../../domain/dashboard/run-detail.js";
 import type { RunDetailSectionSchema } from "../../domain/dashboard/primitives.js";
 
 type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
@@ -37,14 +42,18 @@ export interface LogRowGroup {
  * The server sequence is the one ordering key. Observations may share a clock
  * instant, so time must never be used as a tie-breaker.
  */
-export function logRowsOf(page: NotePage | undefined, requestedCursor: string): readonly LogRowWire[] {
-  if (page === undefined) return [];
+function requireLiveLogRows(page: NotePage, requestedCursor: string): readonly LogRowWire[] {
   if (page.rows === undefined) {
     throw new Error(
       `live log page for run ${String(page.runId)} at cursor ${requestedCursor} is missing rows`,
     );
   }
-  return page.rows.toSorted((left, right) => left.sequence - right.sequence);
+  return page.rows;
+}
+
+export function logRowsOf(page: NotePage | undefined, requestedCursor: string): readonly LogRowWire[] {
+  if (page === undefined) return [];
+  return requireLiveLogRows(page, requestedCursor).toSorted((left, right) => left.sequence - right.sequence);
 }
 
 function renderedRedactedValue(value: Extract<LogRowWire, { kind: "observed" }> ["points"][number]["values"][number]): string {
@@ -97,6 +106,23 @@ export function groupLogRows(rows: readonly LogRowWire[]): readonly LogRowGroup[
   return groups;
 }
 
+interface LogCursorIdentity {
+  readonly digest: string;
+  readonly offset: number;
+}
+
+function logCursorIdentity(cursor: string, runId: NotePage["runId"]): LogCursorIdentity {
+  const parsed = LogPageCursorSchema.safeParse(cursor);
+  if (!parsed.success) {
+    throw new Error(`log continuation for run ${String(runId)} has invalid live cursor ${cursor}`);
+  }
+  const [, digest, offsetText] = parsed.data.split(":");
+  if (digest === undefined || offsetText === undefined) {
+    throw new Error(`log continuation for run ${String(runId)} has incomplete live cursor ${cursor}`);
+  }
+  return { digest, offset: Number(offsetText) };
+}
+
 /**
  * Append the next immutable page without mutating, deduplicating, or
  * re-sorting evidence. A duplicate sequence is a broken cursor contract, not
@@ -110,12 +136,34 @@ export function appendLogPage(page: NotePage, requestedCursor: string, next: Not
     );
   }
   if (page.runId !== next.runId) throw new Error(`cannot append logs for ${String(next.runId)} to ${String(page.runId)}`);
+  const requested = logCursorIdentity(requestedCursor, page.runId);
+  if (next.nextCursor.state === "present") {
+    const returned = logCursorIdentity(next.nextCursor.value, page.runId);
+    if (returned.digest !== requested.digest) {
+      throw new Error(
+        `log continuation for run ${String(page.runId)} at cursor ${requestedCursor} returned snapshot digest `
+        + `${returned.digest}; expected ${requested.digest}`,
+      );
+    }
+  }
   const existing = logRowsOf(page, `current-before-${requestedCursor}`);
-  const appended = logRowsOf(next, requestedCursor);
+  const appended = requireLiveLogRows(next, requestedCursor);
   const seen = new Set(existing.map((row) => row.sequence));
+  let previousSequence = requested.offset - 1;
+  const currentLastRow = existing.at(-1);
+  if (currentLastRow !== undefined && currentLastRow.sequence > previousSequence) {
+    previousSequence = currentLastRow.sequence;
+  }
   for (const row of appended) {
     if (seen.has(row.sequence)) throw new Error(`duplicate log sequence ${String(row.sequence)} in append page`);
+    if (previousSequence !== undefined && row.sequence <= previousSequence) {
+      throw new Error(
+        `log continuation for run ${String(page.runId)} at cursor ${requestedCursor} must strictly increase `
+        + `after sequence ${String(previousSequence)}; received ${String(row.sequence)}`,
+      );
+    }
     seen.add(row.sequence);
+    previousSequence = row.sequence;
   }
   const rows = [...existing, ...appended];
   const notes = rows.flatMap((row) => row.kind === "note" ? [row.note] : []);
