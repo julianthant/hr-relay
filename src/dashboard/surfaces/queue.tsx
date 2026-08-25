@@ -55,7 +55,7 @@ import {
   RowContextMenu,
   type DashboardActionHandler,
 } from "./actions.js";
-import { dayLabel, elapsedSecondsBetween, fmtClock, fmtElapsed, plural, runTiming } from "./format.js";
+import { dayLabel, fmtClock, fmtElapsed, plural, runTiming } from "./format.js";
 import { testInstanceHazardTitle, testInstanceSystems } from "./test-instance-hazard.js";
 import { StatusBadge } from "./status.js";
 import {
@@ -79,6 +79,8 @@ import {
   canViewAllMembers,
   orderMembers,
   partition,
+  queueGateAge,
+  queueRowAccessibleName,
   queueRowTitle,
   queueRowTitleTooltip,
   sortQueueBand,
@@ -276,11 +278,11 @@ function HeaderChips({
    * calibrated `nowIso` the row's elapsed uses, so the two clocks on one card
    * cannot disagree. Display-only arithmetic: the server dates the gate from
    * the gate's own record and never from `updatedAt`, which is what keeps an
-   * aging gate from rendering young.
+   * aging gate from rendering young. The fold is shared with the row's own
+   * accessible name (`queueGateAge`), so the pill and the sentence a screen
+   * reader hears are the same measurement.
    */
-  const gateAge = surface.gateOpenedAt.state === "present"
-    ? fmtElapsed(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
-    : undefined;
+  const gateAge = queueGateAge(surface, nowIso);
   return (
     <>
       {/* A run against a TEST instance can never be mistaken for a real filing,
@@ -1214,7 +1216,12 @@ export function QueueRow({
           // Same collision as the filter bar's, one surface down: the row's
           // name ended `— done` for BOTH terminal dones. The badge inside the
           // row still draws the short word; only the name lengthens.
-          aria-label={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
+          //
+          // The gate AGE rides the name too (`DemoQueue.tsx:818`), because the
+          // pill that draws it is the only place it appears and a pill is not
+          // something a screen reader reaches: `— waiting on you · 18m` is the
+          // difference between a queue you scan and one you triage.
+          aria-label={queueRowAccessibleName(surface, state.nowIso)}
           data-demo-row-id={surface.runId}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {

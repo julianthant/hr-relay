@@ -1,5 +1,5 @@
 /**
- * D251 — the Run Modal's three remaining facts, and the one it refuses.
+ * D251 — the Run Modal's start facts, and the one it refuses.
  *
  * None of them grew a wire: every value here is already on the client-bundled
  * descriptor. What these cases pin is that the modal's words about those values
@@ -15,6 +15,17 @@ import {
   ENQUEUE_POLICY_REASON,
   START_DOOR_ABSENCE,
 } from "../../../src/dashboard/surfaces/run-start-model.js";
+import { versionTag } from "../../../src/dashboard/surfaces/format.js";
+
+describe("the descriptor version in the Run Modal footer (C96)", () => {
+  it("prints the stored integer with no fabricated minor version", () => {
+    for (const descriptor of WORKFLOW_DESCRIPTORS) {
+      const tag = versionTag(descriptor.version);
+      assert.equal(tag, `v${String(descriptor.version)}`, `${descriptor.id} footer tag`);
+      assert.doesNotMatch(tag, /\./u, `${descriptor.id} has no recorded minor version`);
+    }
+  });
+});
 
 describe("the declared active-run policy, as the modal states it (D251)", () => {
   it("covers the enum exactly — a new policy arm cannot land wordless, and no word outlives its arm", () => {

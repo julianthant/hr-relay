@@ -106,7 +106,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       descriptorFingerprint: descriptor.contractFingerprint,
       availability: { state: "available" },
       role,
-      // D264 (amending D251) — the Run Modal's three start facts, projected
+      // D264 (amending D251) — the Run Modal's four start facts, projected
       // from the SAME descriptor this process plans with. They used to be read
       // off the bundle-safe descriptor tuple in the browser, which is what kept
       // the whole composition root in the dashboard bundle; serving them here
@@ -118,6 +118,11 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       start: {
         ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
         enqueue: descriptor.enqueue,
+        // C96 — the descriptor's own version, verbatim, for the modal footer's
+        // `{label} v{n}`. It is the same integer the run envelope and every
+        // archived row carry, so the footer names the shape the planner is
+        // about to enqueue rather than a second opinion about it.
+        version: descriptor.version,
         ...(descriptor.surfaces.inputRun === undefined
           ? {}
           : { inputRun: descriptor.surfaces.inputRun }),

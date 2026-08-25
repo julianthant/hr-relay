@@ -5,6 +5,7 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   LocalOperatorActorSchema,
+  PositiveIntSchema,
   WorkflowIdSchema,
 } from "../ids.js";
 import { InputRunSurfaceSchema } from "../workflow/ingress.js";
@@ -110,6 +111,20 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  *   served fact that this workflow has no typed start surface; the modal
  *   renders that absence rather than empty scaffolding.
  *
+ * - `version` — the descriptor's own version, printed in the modal's footer as
+ *   `{label} v{n}` (ledger 1 C96, `DemoRunStart.tsx:946`). It answers the one
+ *   question a confirmation dialog owes an operator that the label cannot:
+ *   WHICH shape of this workflow is about to run, which is the same fact the
+ *   archive's row-token tooltip prints beside every stored run. Required for
+ *   D264's reason: a descriptor always declares one, and an optional version
+ *   leaves the client guessing `v1` — a wrong statement about every workflow
+ *   that has ever been bumped.
+ *
+ *   It is a single positive integer, NOT the demo's `{major, minor}` pair:
+ *   `defineWorkflowDescriptor` admits one positive integer and this tree
+ *   records no minor anywhere, so serving a `.0` would be a digit nobody wrote
+ *   rendered on the last screen before a real HR transaction starts.
+ *
  * `uploadRun` is deliberately NOT here. No registered workflow declares one and
  * no surface reads one (ref frontend-backend-integration, run-start's header) — serving an arm
  * nothing can produce is the D181/`degraded` shape, and it belongs in the commit
@@ -118,6 +133,7 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
 export const WorkflowStartWireSchema = z.strictObject({
   summary: z.string().min(1).optional(),
   enqueue: EnqueuePolicySchema,
+  version: PositiveIntSchema,
   inputRun: InputRunSurfaceSchema.optional(),
 });
 export type WorkflowStartWire = z.infer<typeof WorkflowStartWireSchema>;

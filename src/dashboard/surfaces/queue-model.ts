@@ -14,9 +14,11 @@ import type { z } from "zod";
 import type { QueueSurfaceWireSchema } from "../../domain/dashboard/projection.js";
 import {
   dsStatusOf,
+  statusAccessibleName,
   type ProposedStatus,
 } from "./status-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
+import { elapsedSecondsBetween, fmtElapsed } from "./format.js";
 
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -138,6 +140,43 @@ export function queueRowTitleTooltip(surface: QueueSurfaceWire): string | undefi
   return surface.displayName.state === "present"
     ? `Named by you — subject is ${surface.title}`
     : undefined;
+}
+
+/**
+ * How long the row's gate has been waiting, as the operator reads it.
+ *
+ * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * `demo-data.ts:4084` `gateAge` (`fmtElapsed(gateWaitSec(row, tick))`).
+ *
+ * D12 draws this age on the row's own pill and `DemoQueue.tsx:818` puts it in
+ * the row's accessible NAME as well, which is the only place it reaches a
+ * screen reader: the pill's age is a visual fact, and a queue you triage by
+ * ear needs `waiting on you · 18m`, not `waiting on you`. It lives here, once,
+ * so the pill and the name cannot disagree about how old one gate is — the
+ * defect D256 named on this very panel, one clock lower down.
+ *
+ * `undefined` when the server dated no gate, which is every row that is not
+ * waiting on a human: an absent age draws and speaks nothing rather than a
+ * zero nobody measured.
+ */
+export function queueGateAge(surface: QueueSurfaceWire, nowIso: string): string | undefined {
+  return surface.gateOpenedAt.state === "present"
+    ? fmtElapsed(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
+    : undefined;
+}
+
+/**
+ * The queue row's accessible identity, including the served age of a gate.
+ *
+ * This is the same composition `QueueRow` puts on its one press target. It
+ * lives beside the shared age fold so a visual pill and the sentence an
+ * operator hears cannot become two different readings of the same gate.
+ */
+export function queueRowAccessibleName(surface: QueueSurfaceWire, nowIso: string): string {
+  return `${queueRowTitle(surface)} — ${statusAccessibleName(
+    dsStatusOf(surface.status),
+    queueGateAge(surface, nowIso),
+  ).toLowerCase()}`;
 }
 
 export function sortQueueBand(

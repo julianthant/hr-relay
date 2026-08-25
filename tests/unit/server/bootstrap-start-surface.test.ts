@@ -1,5 +1,5 @@
 /**
- * D264/D11 — the run modal's three start facts are SERVED, and the descriptor
+ * D264/D11 — the run modal's four start facts are SERVED, and the descriptor
  * registry leaves the browser bundle.
  *
  * D251 read `summary`, `enqueue` and `surfaces.inputRun` straight off the
@@ -16,17 +16,59 @@
  * source D251 was right to refuse.
  */
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { flow } from "../../../src/base/flow.js";
+import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   FrontendBootstrapWireSchema,
   WorkflowBootstrapPrimitiveSchema,
   WorkflowStartWireSchema,
 } from "../../../src/domain/dashboard/bootstrap.js";
+import { EidSchema } from "../../../src/domain/ids.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
+import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/dashboard/queries/bootstrap.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "./helpers/dashboard-harness.js";
+
+const VersionSevenInput = z.strictObject({ eid: EidSchema });
+const VersionSevenCanonicalInput = defineCanonicalInput(
+  VersionSevenInput,
+  z.strictObject({ eid: EidSchema }),
+  [{ eid: "10873698" }],
+);
+const VERSION_SEVEN_DESCRIPTOR = defineWorkflowDescriptor({
+  id: "version-seven-fixture",
+  version: 7,
+  contractFingerprint: descriptorSetHash(["version-seven-fixture"]),
+  code: "vs",
+  label: "Version seven fixture",
+  icon: "Search",
+  category: "operations",
+  canonicalInput: VersionSevenCanonicalInput,
+  inputSubject: "eid",
+  surface: { shape: "single" },
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  surfaces: {},
+  details: [],
+  identity: { matchKey: ({ eid }) => `eid:${eid}` },
+  presentation: { title: ({ eid }) => `EID ${eid}` },
+  scenarios: ["ucpath/person-org-happy"],
+  flow: flow(VersionSevenInput).step("probe", FixtureReadReceipt, {
+    dependsOn: [],
+    replay: "checkpoint",
+    bind: ({ input }) => ({ eid: input.eid }),
+  }).build({
+    schema: z.strictObject({ eid: EidSchema }),
+    dependsOn: ["probe"],
+    derive: ({ input }) => ({ eid: input.eid }),
+  }),
+});
 
 /**
  * Every registered descriptor, each served as a `standalone` module.
@@ -74,6 +116,7 @@ describe("bootstrap start-surface block", () => {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
           enqueue: descriptor.enqueue,
+          version: descriptor.version,
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
             : { inputRun: descriptor.surfaces.inputRun }),
@@ -89,8 +132,47 @@ describe("bootstrap start-surface block", () => {
     }
   });
 
+  it("serves a synthetic bumped descriptor version verbatim", () => {
+    const world = makeWorld();
+    try {
+      const wire = FrontendBootstrapWireSchema.parse(buildBootstrap({
+        ...depsOf(world),
+        modules: [{
+          descriptor: VERSION_SEVEN_DESCRIPTOR,
+          role: defineWorkflowRole({ kind: "standalone" }),
+        }],
+      }));
+
+      expect(wire.workflows).toHaveLength(1);
+      expect(WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.version).toBe(VERSION_SEVEN_DESCRIPTOR.version);
+    } finally {
+      world.dispose();
+    }
+  });
+
   it("refuses a start block carrying a field the modal does not read", () => {
-    const block = { enqueue: "reject-active", inputRun: undefined, note: "extra" };
+    const block = { enqueue: "reject-active", version: 1, inputRun: undefined, note: "extra" };
     expect(WorkflowStartWireSchema.safeParse(block).success).toBe(false);
+  });
+
+  /**
+   * Ledger 1 C96 — the modal's footer prints `{label} v{n}`, and the version is
+   * REQUIRED on the block for the reason D264 made `enqueue` required: an
+   * optional version is a version the client has to guess at, and the only
+   * guess available (`v1`) is a wrong statement about every workflow that has
+   * ever been bumped. A descriptor always declares one, so it always travels.
+   */
+  it("requires the version — a modal cannot guess which shape it is starting", () => {
+    const block = { enqueue: "reject-active" };
+    expect(WorkflowStartWireSchema.safeParse(block).success).toBe(false);
+  });
+
+  it("refuses a version that is not a positive integer", () => {
+    for (const version of [0, -1, 1.5]) {
+      expect(
+        WorkflowStartWireSchema.safeParse({ enqueue: "reject-active", version }).success,
+        String(version),
+      ).toBe(false);
+    }
   });
 });

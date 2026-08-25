@@ -160,6 +160,9 @@ const WORKFLOW_PRIMITIVE = {
   start: {
     summary: "Look one person up in UCPath and CRM.",
     enqueue: "reject-active",
+    // C96: keep this non-1 so the wire fixture never makes a guessed default
+    // appear equivalent to a producer-supplied descriptor version.
+    version: 7,
     inputRun: {
       placeholder: "Enter EIDs or names, semicolon-separated",
       parser: {

@@ -103,6 +103,7 @@ import {
 import { type InstanceChoice, type SystemInstancePrimitive } from "./run-start-kit-model.js";
 import { testSystemsOf } from "./run-start-kit-model.js";
 import { ENQUEUE_POLICY_MEANING, ENQUEUE_POLICY_REASON } from "./run-start-model.js";
+import { versionTag } from "./format.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
 const SOURCE_SURFACE = "run-start";
@@ -153,6 +154,14 @@ export interface RunStartWorkflow {
    * the server would ignore.
    */
   readonly enqueue: EnqueuePolicy;
+  /**
+   * The descriptor's own version, served on the boot document's start block
+   * (C96). The footer prints `{label} v{n}` because a confirmation dialog owes
+   * the operator the one thing the label cannot say — WHICH shape of this
+   * workflow is about to run — and it is the same integer every archived row's
+   * token tooltip carries, so the two agree by construction.
+   */
+  readonly version: number;
   /** the descriptor's declared typed-input surface, or why there is none */
   readonly inputRun:
     | { readonly state: "present"; readonly surface: InputRunSurface }
@@ -1034,7 +1043,11 @@ export function RunStartDialog({
             <MetaLine
               tone="faint"
               items={[
-                workflow?.label,
+                // `{label} v{n}` — the demo's own footer item 1
+                // (`DemoRunStart.tsx:946`). The version is what separates two
+                // runs of one workflow started a descriptor bump apart, and
+                // this dialog is the last screen before one is enqueued.
+                workflow === undefined ? undefined : `${workflow.label} ${versionTag(workflow.version)}`,
                 blockedReason ?? (plan === null ? undefined : `${String(plan.planned.length)} to create`),
               ].filter((item): item is string => item !== undefined)}
             />
