@@ -334,6 +334,18 @@ describe("the explorer and catalog route keys", () => {
     assert.equal(routeToSearch(route), "?catalog=");
   });
 
+  it("addresses Archive's real version registry as the Explorer's destination", () => {
+    const route = parseRoute("?archive=&archiveView=versions");
+    assert.equal(route.archive, "");
+    assert.equal(route.archiveView, "versions");
+    assert.equal(activeTakeover(route), "archive");
+    assert.equal(routeToSearch(route), "?archive=&archiveView=versions");
+
+    // A view alone is not a second route. The Archive owns the actual
+    // takeover, and the view only selects a real panel inside that takeover.
+    assert.deepEqual(parseRoute("?archiveView=versions"), { start: false });
+  });
+
   it("drops an empty explore value, because a workflow id is never blank", () => {
     assert.equal(parseRoute("?explore=").explore, undefined);
     assert.equal(activeTakeover(parseRoute("?explore=")), "none");

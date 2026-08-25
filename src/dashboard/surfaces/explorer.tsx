@@ -50,6 +50,7 @@ import {
   ArrowDownToLine,
   ArrowLeft,
   ArrowUpFromLine,
+  Eye,
   FileCode2,
   Info,
   Lock,
@@ -1415,10 +1416,13 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
 export function WorkflowExplorer({
   workflowId,
   onWorkflow,
+  onVersionRegistry,
   onClose,
 }: {
   workflowId: string;
   onWorkflow: (next: string) => void;
+  /** Opens Archive's real Versions & bumps view through the dashboard route. */
+  onVersionRegistry: () => void;
   onClose: () => void;
 }) {
   const client = useDashboardClient();
@@ -1494,6 +1498,20 @@ export function WorkflowExplorer({
             onClick={onClose}
           >
             Back to the dashboard
+          </Button>
+        }
+        actions={
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "relative touch-manipulation",
+              "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
+            )}
+            icon={<Eye aria-hidden className={dsIcon.md} />}
+            onClick={onVersionRegistry}
+          >
+            Version registry
           </Button>
         }
       />

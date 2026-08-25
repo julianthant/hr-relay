@@ -990,6 +990,7 @@ function LoadedApp({
         ...route,
         intake: undefined,
         archive: undefined,
+        archiveView: undefined,
         activity: undefined,
         explore: undefined,
         catalog: undefined,
@@ -1107,7 +1108,15 @@ function LoadedApp({
    */
   const onShellView = useCallback(
     (next: ShellView): void => {
-      const base = { ...route, intake: undefined, archive: undefined, activity: undefined, explore: undefined, catalog: undefined };
+      const base = {
+        ...route,
+        intake: undefined,
+        archive: undefined,
+        archiveView: undefined,
+        activity: undefined,
+        explore: undefined,
+        catalog: undefined,
+      };
       if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
       else if (next === "activity") setRoute({ ...base, activity: "" });
       else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
@@ -1216,9 +1225,11 @@ function LoadedApp({
             <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
               <ArchiveWorkspace
                 selection={route.archive ?? ARCHIVE_INDEX}
+                view={route.archiveView ?? "runs"}
                 actorId={boot.actor.id}
                 onSelection={(next) => setRoute({ ...route, archive: next })}
-                onClose={() => setRoute({ ...route, archive: undefined })}
+                onView={(next) => setRoute({ ...route, archiveView: next })}
+                onClose={() => setRoute({ ...route, archive: undefined, archiveView: undefined })}
               />
             </div>
           ) : takeover === "activity" ? (
@@ -1257,6 +1268,15 @@ function LoadedApp({
               <WorkflowExplorer
                 workflowId={route.explore ?? activeWorkflowId}
                 onWorkflow={(next) => setRoute({ ...route, explore: next })}
+                onVersionRegistry={() => setRoute({
+                  ...route,
+                  intake: undefined,
+                  archive: ARCHIVE_INDEX,
+                  archiveView: "versions",
+                  activity: undefined,
+                  explore: undefined,
+                  catalog: undefined,
+                })}
                 onClose={() => setRoute({ ...route, explore: undefined })}
               />
             </div>

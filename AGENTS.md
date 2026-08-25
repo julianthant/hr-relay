@@ -234,6 +234,9 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
   (`dashboard-refresh-boundary`, ref frontend-backend-integration §8.14, `src/dashboard/AGENTS.md`).
+- Archive subviews are dashboard route state (`archiveView`), not `ArchiveWorkspace` local state; a
+  cross-takeover door must name the real Archive view in that state rather than open the ledger and
+  require a second click.
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
@@ -265,6 +268,14 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   cause. Post-click verification starts after authority is fenced, so task lookup, input binding and
   `span.started` emission belong inside the `PostFenceWriteFailure` boundary too; none may escape
   without parking. See ref write-safety §3 and doc 03a §Observed logs.
+
+### Dated lessons
+
+- **2026-08-25 — exact visual geometry and a usable touch target are separate boxes.** A demo-exact
+  `Button ghost sm` may keep its 24px painted box while a transparent pseudo-element on the same
+  semantic button supplies the 44px hit region. Prove the outer points hit that button and that its
+  effective rectangle intersects no neighboring control; increasing the shared button size would
+  silently change every header's fidelity instead.
 
 ## After changes
 

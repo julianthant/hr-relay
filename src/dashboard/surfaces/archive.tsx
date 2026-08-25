@@ -168,6 +168,7 @@ import { dsStatusOf } from "./status-model.js";
 import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
 import {
   ARCHIVE_INDEX,
+  type ArchiveView,
   archiveBumpKind,
   archivePriorityTone,
   archiveStatusLabel,
@@ -183,7 +184,6 @@ import { settleCommandResult } from "../app/command-result.js";
 
 const SOURCE_SURFACE = "archive";
 
-type ArchiveView = "runs" | "versions";
 type ArchiveTab = "summary" | "logs" | "data" | "people" | "evidence";
 
 /**
@@ -2580,19 +2580,23 @@ function VersionsView({
 
 export function ArchiveWorkspace({
   selection,
+  view,
   actorId,
   onSelection,
+  onView,
   onClose,
 }: {
   /** `""` is the ledger; anything else is an archived run id. */
   selection: string;
+  /** The dashboard route owns which of Archive's two real views is visible. */
+  view: ArchiveView;
   actorId: string;
   onSelection: (next: string) => void;
+  onView: (next: ArchiveView) => void;
   onClose: () => void;
 }) {
   const client = useDashboardClient();
   const enter = useDsEnterTransition();
-  const [view, setView] = useState<ArchiveView>("runs");
   const [index, setIndex] = useState<AsyncResource<ArchiveIndexWire>>(LOADING);
   const [detail, setDetail] = useState<AsyncResource<ArchivedRunDetailWire>>(LOADING);
   const [query, setQuery] = useState<ArchiveQuery>(EMPTY_ARCHIVE_QUERY);
@@ -2810,7 +2814,7 @@ export function ArchiveWorkspace({
               size="sm"
               variant={view === "runs" ? "secondary" : "ghost"}
               aria-pressed={view === "runs"}
-              onClick={() => setView("runs")}
+              onClick={() => onView("runs")}
             >
               Archived runs
             </Button>
@@ -2818,7 +2822,7 @@ export function ArchiveWorkspace({
               size="sm"
               variant={view === "versions" ? "secondary" : "ghost"}
               aria-pressed={view === "versions"}
-              onClick={() => setView("versions")}
+              onClick={() => onView("versions")}
             >
               Versions & bumps
             </Button>

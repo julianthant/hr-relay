@@ -22,10 +22,10 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [ ] the three nodes drawn under this one on 2026-08-20 — the Duo ceremony lease, the worker pool and sessions, observed logs
 - [ ] `ref frontend-backend-integration` §7.4's performance budgets — the instrument and its BEFORE baseline landed 2026-08-21 and **D5's AFTER numbers are recorded**; D4 still owes its half, and the recorded numbers become the non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
-- [!] demo fidelity — every region exact or ruled; ~148 OPEN questions remain across the three 2026-08-21 ledgers after the archive UI slice and Activity AC24 closed 15 ledger marks (Track F, §Demo fidelity — every detail, region by region)
+- [!] demo fidelity — every region exact or ruled; 52 current numbered decision lines remain after the archive UI slice, Activity AC24 and Explorer EX5 closed their ledger marks (Track F, §Demo fidelity — every detail, region by region)
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
 > 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
-> 2026-08-25 | track-f archive UI + Activity AC24 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; ledger 3 remains 346/1,119 exact with 248 OPEN marks; left in this unit: Explorer `EX5` and every other non-archive served-and-dropped fact
+> 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; `4e09fb49` carries Explorer's `Version registry` door through dashboard route state to Archive's actual `Versions & bumps` view. A mechanical recount of ledger 3's 1,119 rows gives 353 exact and 238 OPEN marks; left in this unit: every other non-archive served-and-dropped fact
 <!-- /roadmap-status -->
 
 ### What this phase is, and what it is not
@@ -76,8 +76,8 @@ hold. Only the first four hold at HEAD.
 7. The Duo ceremony lease exists, so a second workflow's worker cold-starting beside the first
    cannot burn the shared credential's counter.
 8. Every region of the dashboard is demo-exact or ruled — Track F's bar, above Track B's: Track B's
-   definition of done was the findings ledger; demo fidelity is the stricter bar, and ~148 OPEN
-   questions stand against it at HEAD (§Demo fidelity — every detail, region by region).
+   definition of done was the findings ledger; demo fidelity is the stricter bar, and 52 numbered
+   decision lines stand against it at HEAD (§Demo fidelity — every detail, region by region).
 
 ### The honest state at HEAD, surface by surface
 
@@ -110,12 +110,12 @@ disagreed, the code won and the row says so.
 three ledgers' own counts; the per-region table and every question are in §Demo fidelity below):
 shell 131/178 (74 %), 10 OPEN · queue 118/196, 13 · run start 48/115 (42 %), 14 · run identity
 23/49, 7 questions · log panel 48/114, 11 · Context rail 31/76, 9 · receipt 9/39, 12 · failure
-record 7/34, 13 · park + ceremonies 6/36, 2 · archive 106/250, 61 marks · activity 57/117, 8 ·
-explorer 54/182, 31 · UI catalog 0/69 (not the same surface as the demo's), 6 · Settings + doctor
+record 7/34, 13 · park + ceremonies 6/36, 2 · archive 106/250, 61 marks · activity 57/117, 7 ·
+explorer 55/182, 30 · UI catalog 0/69 (not the same surface as the demo's), 6 · Settings + doctor
 2/72, 10 questions · intake 10/155, 57 marks · phone capture 1/62 (the demo's DESKTOP view has no
-counterpart), 6 · version-bump dialog 3/53, ~20 questions · DS primitives 119/159 (copied with
+counterpart), 6 · version-bump dialog 3/53, 38 marks across three decision groups · DS primitives 119/159 (copied with
 provenance; zero tokens missing), 18. "Built" in the table above and "exact" here are different
-claims: every row above is served and drawn; 767 of 1,956 elements are drawn exactly as the demo
+claims: every row above is served and drawn; 774 of 1,956 elements are drawn exactly as the demo
 draws them.
 
 **The one place the prose was contradicted.** The skeleton carried 07 §7.1's approved target verbatim
@@ -331,8 +331,8 @@ question at the moment a field crosses onto a wire is the guard working.
 <!-- roadmap-status: track-f -->
 - [!] the operator rules the 37 shell · queue · run-start OPEN questions — ledger 1, `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` §Roll-up (28 numbered questions over 37 rows)
 - [!] the operator rules the 54 run-detail OPEN questions — ledger 2, `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §Roll-up (8 served-and-dropped · 7 structural · 24 words-and-glyphs · 8 rebuild-only · 2 stale claims, plus the B45 tension)
-- [!] the operator rules the ~58 standing-surface OPEN questions, the twelve structural ones first — ledger 3, `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §Roll-up (248 marks collapsing to ~58 questions)
-- [ ] the served-and-dropped facts drawn — pure FE, no ruling needed; receipt/failure, intake, archive, the queue gate age, the run-modal descriptor version and Activity AC24 are complete, leaving only Explorer EX5 (§Served-and-dropped below)
+- [!] the operator rules the 30 unresolved standing-surface decision groups, the twelve structural ones first — ledger 3, `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §Roll-up (238 OPEN marks mapped to the numbered list exactly)
+- [x] the served-and-dropped facts drawn — pure FE, no ruling needed; receipt/failure, intake, archive, the queue gate age, the run-modal descriptor version, Activity AC24 and Explorer EX5 are complete (§Served-and-dropped below)
 - [ ] the structural run-detail ports — the failure record's disclosure and write-state block, the focusable timeline segment, the step group's Well + band + dividers, one owner for `dataExpanded`, the grouped log stream
 - [x] the stale claims in code and docs corrected (§Stale and false claims below) — `5cb9a307`, `33e140f9`, `06041db1`, `5b13ec0e`, `155b1048`
 - [ ] the vocabulary sweep — every word and glyph off the demo across the three ledgers reverted, or recorded with its ruling
@@ -343,7 +343,7 @@ question at the moment a field crosses onto a wire is the guard working.
 - [ ] wire: the OPERATOR half of phone capture — session state, pages received, the unreadable-page alert, the contact sheet (ledger 3 CP2–CP21)
 > 2026-08-21 | docs-cohesion 03a fidelity fold | folded from the three 2026-08-21 ledgers — 1,956 elements/rows audited (489 + 348 + 1,119), 756 exact, ~150 distinct OPEN questions (37 + 54 + ~60; 260 marks in ledger 3); nothing is ticked because nothing here is a ruling yet; left: every line above, in the order the operator rules them
 > 2026-08-21 | track-f | the 14 rows in §Stale and false claims resolved — 12 record fixes (comments/docs, no behaviour change) plus 2 book-a-gap rows (`intake.md`/`capture.md` created, `explorer.md` reopened with 3 real gaps, `queue-rows.md` corrected); one light-code exception permitted by the unit's brief was not needed — every row resolved as a docs/comments fix. Commits: `5cb9a307` (5 surface header comments), `33e140f9` (DESIGN.md), `06041db1` (queue-rows.md), `5b13ec0e` (intake.md + capture.md + explorer.md + README.md), `155b1048` (operator-trust.md, dashboard-surfaces.md x2, data-intake-and-edit-data.md)
-> 2026-08-25 | track-f archive UI + Activity AC24 | archive ledger rows AR27, AR62, AR67, AR77, AR78, AR91, AR95, AR96, AR105, AR121, AR123, AR129, AR212 and VB19 disposed by `3d461962` + `d1f87916`; `4da19fd7` closes Activity AC24 with the shared wire→display fold and sentence-case prose; left: Explorer EX5 and every non-archive item on the open served-and-dropped line
+> 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | archive ledger rows AR27, AR62, AR67, AR77, AR78, AR91, AR95, AR96, AR105, AR121, AR123, AR129, AR212 and VB19 are disposed by `3d461962` + `d1f87916`; `4da19fd7` closes Activity AC24 with the shared wire→display fold and sentence-case prose; `4e09fb49` closes Explorer EX5 with the real Archive registry route; left: every non-archive item on the open served-and-dropped line
 <!-- /roadmap-status -->
 
 **The standard, in the operator's words.** *"Finish the dashboard, dive deeper, looking back at the
@@ -378,14 +378,14 @@ images. "Cited" is the ledger's own `ruled:` + `unserved:` count where it split 
 | Park / ceremonies — the parked write, the park dialog, the D226 gate ceremony | 36 | 6 | 28 (cited) | — | 2 | ledger 2 §R-F |
 | Archive — ledger, sweeps, detail tabs, relaunch, Versions view | 250 | 106 | 83 (cited) | — | 61 marks | ledger 3 §1 |
 | Activity report | 117 | 57 | 52 (cited) | — | 7 | ledger 3 §2 |
-| Explorer | 182 | 54 | 97 (cited) | — | 31 | ledger 3 §3 |
+| Explorer | 182 | 55 | 97 (cited) | — | 30 | ledger 3 §3 |
 | UI catalog — the demo's row-and-panel catalog vs the selector catalog (not the same surface) | 69 | 0 | 63 (cited) | — | 6 | ledger 3 §4 |
 | Settings + storage doctor | 72 | 2 | 55 (cited) | — | 15 marks / 10 questions | ledger 3 §5 |
-| Intake | 155 | 4 | 85 (cited) | — | 66 marks | ledger 3 §6 |
+| Intake | 155 | 10 | 85 (cited) | — | 57 marks | ledger 3 §6 |
 | Phone capture — the demo's DESKTOP view vs the rebuild's phone | 62 | 1 | 55 (cited) | — | 6 | ledger 3 §7 |
-| Version-bump dialog | 53 | 3 | 12 (cited) | — | 38 marks / ~20 questions | ledger 3 §8 |
+| Version-bump dialog | 53 | 3 | 12 (cited) | — | 38 marks / 3 decision groups | ledger 3 §8 |
 | DS primitives — tokens, barrel, the specimen page | 159 | 119 | 22 (cited) | — | 18 | ledger 3 §9 |
-| **Total** | **1,956** | **767** | | | **~148 distinct questions** | |
+| **Total** | **1,956** | **774** | | | **52 current numbered decision lines** | |
 
 Two readings worth having before the list. The design system is 75 % exact because it was COPIED
 with provenance rather than re-implemented (231 demo tokens, zero missing, zero values divergent);
@@ -484,7 +484,7 @@ the wire (or in the bundle) and simply not drawn.
 - ~~**Intake (ledger 3 IN8, IN9, IN53, IN82, IN106, IN121, IN126, IN127, IN131):** the footer's header-row and fingerprint echo · per-candidate `confidence` (`ServedHeaderCandidateSchema.confidence`) · suggestion `score` (`SuggestionSchema.score`) · the reject `code` · the corrections list · the manifest's source sha, artifact id and createdAt.~~ **LANDED `80967ce5`…`ce4ba649`.**
 - **Archive — LANDED 2026-08-25 (`3d461962`, `d1f87916`; ledger 3 AR62, AR67, AR95, AR96, AR121, AR123; AR77, AR78, AR91, AR129; AR105, AR212):** the list draws frozen warning/rehearsal facts; the detail draws `displayName`, `subtitle`, `priority` and `dryRun`; every sweep location folds kind and source-version absence; the relaunch banner/cautions derive from the available arm and frozen row. Every absence stays named and no default is invented.
 - **Activity AC24 — LANDED 2026-08-25 (`4da19fd7`):** the caveat derives all eight closed wire-status arms through the shared fold; prose is sentence-case (`write parked`) while the pill preserves the exact `Write parked` label, and raw `blocked` is absent.
-- **Elsewhere:** the gate age in the queue row's accessible name (B31 — `statusAccessibleName(status, age?)` takes the argument and is not given one) · the run modal's `{label} v{major}.{minor}` (C96 — `person-lookup/descriptor.ts:169`; the archive prints it at `archive.tsx:286`) · the Explorer's `Version registry` action (EX5 — the recorded reason for dropping it is false, `archive.tsx:2350` renders the registry) · closed-enum status through its ds label: AR27 and VB19 LANDED in `d1f87916`; Activity AC24 LANDED in `4da19fd7` and leaves EX5.
+- **Elsewhere:** the gate age in the queue row's accessible name (B31 — `statusAccessibleName(status, age?)` takes the argument and is not given one) · the run modal's `{label} v{major}.{minor}` (C96 — `person-lookup/descriptor.ts:169`; the archive prints it at `archive.tsx:286`) · closed-enum status through its ds label: AR27 and VB19 LANDED in `d1f87916`; Activity AC24 LANDED in `4da19fd7`; Explorer EX5 LANDED in `4e09fb49` through the real Archive registry route.
 
 ### Stale and false claims in code and docs — fix the record or fix the code
 
@@ -502,7 +502,7 @@ none required a behaviour change.
 | `src/dashboard/surfaces/archive.tsx:386-388` | "the demo's `major`/`minor` word has no counterpart on this wire" | false since D223 — `ArchiveSweepWire.changeRecord.value.kind` exists; the sweep badge, its summary, the popover and the card print the SCOPE on a dead premise (ledger 3 AR77, AR78, AR91, AR129) | `5cb9a307` |
 | `src/dashboard/surfaces/archive.tsx:12-19` | argues the demo's 800-row virtualisation case | the table is not virtualised (question 1); Track D D9 names the deferral | `5cb9a307` |
 | `docs/findings/queue-rows.md:221` | "`dryRun` LANDED on `QueueBaseFields` … and the archived detail draws it" | it does not — `dryRun`, `priority`, `warnings`, `displayName`, `subtitle` are served on `detail.row` and read by nothing in `archive.tsx` (ledger 3 AR62, AR67, AR95, AR96, AR121, AR123) | `06041db1` |
-| `ref operator-trust` §5.7 | the Explorer's `Version registry` action is absent "because no version-registry surface exists in this tree" | `archive.tsx:2350` renders `<Table label="Workflow version registry">` inside Archive's `Versions & bumps` view; only the Explorer's own door to it is absent (ledger 3 EX5) | `155b1048` |
+| `ref operator-trust` §5.7 | the Explorer's `Version registry` action is absent "because no version-registry surface exists in this tree" | the Explorer's `ghost` `Version registry` action routes to Archive's actual `Versions & bumps` view through `?archive=&archiveView=versions` (ledger 3 EX5) | `4e09fb49` |
 | `src/dashboard/surfaces/explorer.tsx:8-10` | `skippedAboveBoundary` and `laneOf`'s connector rule were ported | `explorer-model.ts` exports neither; no early-skip mark is drawn and the `Connector` is emitted between every consecutive pair (ledger 3 EX180, EX181) | `5cb9a307` |
 | `src/dashboard/DESIGN.md:112, 690, 691, 696-697` | skim `DemoUiKit.tsx`; open `kit.html` on port 3943 | neither artifact exists in this tree; corrected in the top adaptation-notes block rather than the verbatim body (ledger 3 UK158) | `33e140f9` |
 | `src/dashboard/DESIGN.md:13-22`, `:18` | the porting header names two adaptations; the barrel is `ui.ts` | the missing specimen page is a third adaptation, undisclosed; the barrel is `ui.tsx` (UK66, UK67) | `33e140f9` |
@@ -788,7 +788,7 @@ stricter bar Track F carries (row 10).
 | 7 | **The Duo ceremony lease landed** | **met (D267, bfc7d318…1c244a40)** | `duo_ceremony_leases` is schema v16; `defineVerifiedLoginRecipe` runs its `ceremony` half only under the lease token; the live two-worker cold start is still to be recorded |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the kernel arms exist; the supervisor refuses spawn by name and the projection serves no pool version |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **open** | recorded points reach no durable channel today |
-| 10 | **Demo fidelity: every region exact or ruled** — ~148 OPEN questions outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 767 exact; 37 + 54 + ~57 distinct questions await the operator (§Demo fidelity — every detail, region by region); archive and Activity served-and-dropped facts are complete, while the other facts, structural ports, vocabulary sweep and re-freeze remain |
+| 10 | **Demo fidelity: every region exact or ruled** — 52 numbered decision lines outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 774 exact; the consolidated list carries 52 current decision lines, while ledger 3's source rows carry 238 OPEN marks mapped to 30 unresolved groups (§Demo fidelity — every detail, region by region); archive, Activity AC24 and Explorer EX5 are complete, while the other facts, structural ports, vocabulary sweep and re-freeze remain |
 
 **Deliberately outside this phase, each with an owner.** The Review and People panel bodies (their
 projections belong to the OCR and group migrations in doc 03c); editable settings, the explorer's

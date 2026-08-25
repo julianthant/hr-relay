@@ -1888,12 +1888,12 @@ the ⓘ saying so in as many words — **superseded by §5.9 (D227), which serve
 and counts fields**; the graph header omits the demo's file-count segment (a per-run
 fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
 (a descriptor-authored phase would sit inside §5.3's closed editable set once Phase B exists); and
-the demo's `Version registry` header action is absent from the Explorer's toolbar — corrected
-2026-08-21: the surface itself is not missing, only the Explorer's DOOR to it. `archive.tsx`
-renders `<Table label="Workflow version registry">` inside the Archive's `Versions & bumps` view
-(`:2350`, D179/D223), reachable today by opening the Archive (`?archive=`) and clicking its
-`Versions & bumps` tab — the view is client-side state, not its own URL param. The Explorer simply
-carries no button or link that opens it (ledger 3 EX5). The conditional-node line printed "runs when the descriptor's own when() predicate
+the demo's `Version registry` header action now opens the actual Archive registry — `4e09fb49` gives
+the Explorer the matching `ghost` button with the `Eye` icon and moves Archive's view selection into
+the dashboard route as `?archive=&archiveView=versions`. `archive.tsx` renders `<Table label="Workflow
+version registry">` inside that selected `Versions & bumps` view (`D179/D223`); the Explorer's door
+therefore replaces its takeover with the destination it names, rather than creating a local registry
+or leaving the operator one click short (ledger 3 EX5). The conditional-node line printed "runs when the descriptor's own when() predicate
 holds" — honest, and less than the demo's authored sentence — and the recorded fix named an authored
 `whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
 refused**: `purpose` and `summary` are authored data (§5.9, D229), while `whenLabel` is refused

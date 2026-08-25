@@ -4,18 +4,31 @@
  * warning row is supplied only to this test: the stored archive references
  * remain reserved for Track F's one deliberate final re-freeze.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { ArchiveIndexWireSchema } from "../../src/domain/dashboard/archive.js";
-import { gotoAppState } from "./helpers/app-driver.js";
+import { gotoAppState, routeUrl } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_ARCHIVE_INDEX } from "./helpers/fixture-archive.js";
 import { FIXTURE_DAY } from "./helpers/fixture-day.js";
+import { FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
 
 const FIRST_WARNING = "CRM returned a stale session on attempt 1";
 const PARTIAL_RUN_ID = "00000000-0000-4000-8000-000000000099";
+const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
 
 let server: FixtureServer;
+
+async function expectExactSearch(page: Page, search: string): Promise<void> {
+  await expect.poll(() => new URL(page.url()).search).toBe(search);
+}
+
+async function expectVersionRegistry(page: Page, search: string): Promise<void> {
+  await expectExactSearch(page, search);
+  await expect(page.getByRole("table", { name: "Workflow version registry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Versions & bumps" }))
+    .toHaveAttribute("aria-pressed", "true");
+}
 
 test.beforeAll(async () => {
   ensureParityBundle();
@@ -71,4 +84,87 @@ test("archive status filter distinguishes done from done with warnings", async (
 
   await expect(page.getByRole("combobox", { name: "Final status" }).getByRole("option"))
     .toHaveText(["Any outcome", "Done", "Done with warnings"]);
+});
+
+test("Explorer's Version registry door restores the route-owned view through links and history", async ({ page }) => {
+  const explorerRoute = {
+    day: FIXTURE_DAY,
+    explore: FIXTURE_EXPLORER_WORKFLOW_ID,
+    catalog: "competing-route-must-clear",
+  } as const;
+  const registryRoute = { day: FIXTURE_DAY, archive: "", archiveView: "versions" } as const;
+  const explorerSearch = new URL(routeUrl(server.baseUrl, explorerRoute)).search;
+  const registrySearch = new URL(routeUrl(server.baseUrl, registryRoute)).search;
+
+  await gotoAppState(page, server.baseUrl, {
+    ...explorerRoute,
+  });
+  await expectExactSearch(page, explorerSearch);
+
+  await page.getByRole("button", { name: "Version registry" }).click();
+  await expectVersionRegistry(page, registrySearch);
+
+  await page.goBack();
+  await expectExactSearch(page, explorerSearch);
+  await expect(page.getByRole("button", { name: "Version registry" })).toBeVisible();
+
+  await page.goForward();
+  await expectVersionRegistry(page, registrySearch);
+
+  await gotoAppState(page, server.baseUrl, registryRoute);
+  await expectVersionRegistry(page, registrySearch);
+});
+
+test("Explorer's mobile Version registry action keeps ghost-sm geometry with a 44px clear hit target", async ({ page }) => {
+  await page.setViewportSize(MOBILE_VIEWPORT);
+  await gotoAppState(page, server.baseUrl, {
+    day: FIXTURE_DAY,
+    explore: FIXTURE_EXPLORER_WORKFLOW_ID,
+  });
+
+  const action = page.getByRole("button", { name: "Version registry" });
+  const proof = await action.evaluate((button) => {
+    const visual = button.getBoundingClientRect();
+    const pseudo = getComputedStyle(button, "::after");
+    const effectiveHeight = Number.parseFloat(pseudo.height);
+    const effective = {
+      left: visual.left,
+      right: visual.right,
+      top: visual.top + visual.height / 2 - effectiveHeight / 2,
+      bottom: visual.top + visual.height / 2 + effectiveHeight / 2,
+    };
+    const centerX = (effective.left + effective.right) / 2;
+    const ownsPoint = (y: number): boolean => {
+      const hit = document.elementFromPoint(centerX, y);
+      return hit === button || (hit !== null && button.contains(hit));
+    };
+    const overlaps = [...document.querySelectorAll("button")]
+      .filter((candidate) => candidate !== button)
+      .filter((candidate) => {
+        const style = getComputedStyle(candidate);
+        if (style.visibility === "hidden" || style.display === "none") return false;
+        const rect = candidate.getBoundingClientRect();
+        return rect.width > 0
+          && rect.height > 0
+          && effective.left < rect.right
+          && effective.right > rect.left
+          && effective.top < rect.bottom
+          && effective.bottom > rect.top;
+      })
+      .map((candidate) => candidate.getAttribute("aria-label") ?? candidate.textContent?.trim() ?? "unnamed");
+
+    return {
+      visualHeight: visual.height,
+      effectiveHeight,
+      ownsTop: ownsPoint(effective.top + 1),
+      ownsBottom: ownsPoint(effective.bottom - 1),
+      overlaps,
+    };
+  });
+
+  expect(proof.visualHeight).toBe(24);
+  expect(proof.effectiveHeight).toBeGreaterThanOrEqual(44);
+  expect(proof.ownsTop).toBe(true);
+  expect(proof.ownsBottom).toBe(true);
+  expect(proof.overlaps).toEqual([]);
 });
