@@ -1,7 +1,7 @@
 # run-group--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: run-group
-# descriptorHash: 133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9
+# descriptorHash: 704f6829221352c9de72e090961a12a1550501de22991ea03fbf7f277d1927f5
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -187,7 +187,7 @@
       - tab "Receipt"
     - text: 9:10 AM Fan-out planned 13 member lookups 9:13 AM 2 members failed cross-verification
     - searchbox "Search logs"
-    - text: wf 13351835
+    - text: wf 704f6829
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data

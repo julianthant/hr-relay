@@ -80,7 +80,7 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
     selector must never be read without.
   */
   { id: "explorer-graph", route: { day: FIXTURE_DAY, explore: FIXTURE_EXPLORER_WORKFLOW_ID } },
-  { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "kuali-timekeeper-annotation" } },
+  { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "separations-kuali-finalization" } },
   { id: "catalog-search", route: { day: FIXTURE_DAY, catalog: FIXTURE_CATALOG_QUERY } },
   /*
     The archive model's three operator states (2i-G, D179). `archive-ledger`
