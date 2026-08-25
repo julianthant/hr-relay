@@ -788,7 +788,7 @@ per the standing R2 D17/D18 split.
 - [x] `workflow-layout` is an active guard with its `guard-inventory.json` entry; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE
 > 2026-08-21 | workflow-tree ruling | ratified from the operator's ruling on the `src/workflows/` layout; the code unit is the next session's — nothing under `src/workflows/` has moved yet
 > 2026-08-21 | workflow-tree ruling | D266 the same session: the `proving/` arm withdrawn, `kuali-timekeeper-annotation` dismantled into the Kuali finalization step's T1 pair
-> 2026-08-25 | D266 | source retirement, first T1 pair, role/registry/layout guards, manifest regeneration and the intentional dashboard parity re-freeze landed; the live T1b run remains owned by the still-unbuilt subject registry + runner in ref guards-and-tests §10.5–§10.6
+> 2026-08-25 | test-tiers | source retirement, first T1 pair, role/registry/layout guards, manifest regeneration and dashboard parity landed; subject registry, insert-only result and CLI runner are now built. The live T1b green waits only for the finalization canary's 2026-08-28 availability
 <!-- /roadmap-status -->
 
 **Operator ruling (2026-08-21).** *"We will just have a separations folder for the separations

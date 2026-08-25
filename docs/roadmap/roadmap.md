@@ -38,7 +38,7 @@ builds:
 - [x] DOCS two-repo coexistence + one cutover (D88–D94)
 
 log:
-- 2026-08-21 | docs-cohesion 00 | doc 00 rewritten as-built; all three status blocks in this subtree filled. Phase 0 is DONE and every `[x]` here re-verified, but the rewrite adds two lists the phase doc had nowhere to put — **six Phase-0 contracts AMENDED** by a later decision (D150 retired legacy change accounting, D191 the gate family with D91's floors untouched, D247 and D216 the isolation names, D263 the plan's form, D193c the Phase-3 ENTRY with D84's order intact, D184 the D58 inventory guard) and **two Phase-0 promises never built** — D79's `scaffold new-task` / `scaffold new-workflow` generators (the new-workflow half owned by `def-explorer-edit`, the **new-task half UNOWNED and reported**) and D85's `cli test workflow --dry-run` + `TestTargetRegistry` (reassigned to `test-tiers` by R10)
+- 2026-08-25 | test-tiers | Phase 0 remains DONE; of its two later-unbuilt promises, D85 is now built under R10's `cli dry-run-scenario` + `config/test-subjects.json` + durable-result names. D79's scaffold generators are the one remaining promise (new-workflow owned by `def-explorer-edit`, new-task unowned and reported)
 - 2026-08-21 | docs-cohesion charter | ref charter's 27 items numbered so `ref:charter §N` resolves (`c89957f5`)
 
 ### ALWAYS-GATE identity approval {#phase0-always-gate}
@@ -604,7 +604,7 @@ log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | the demo's log-line anatomy booked here from ledger 2 (B52, B54, B69–B75, B78) — the line carries its own facts, which is what this node emits; the stream's GROUPING by step (B65) is a pure FE port today and sits on `{#track-f}` · left: all of it
 
 ### Testing tiers — the suite organized by what a test needs {#test-tiers}
-status: planned
+status: active
 date: R10 · 2026-08-20
 size: L
 doc: 03c §Testing tiers · ref:guards-and-tests §10
@@ -616,7 +616,7 @@ builds:
 - [ ] BE T1 layout — one structural fixture scenario per workflow + its dry-run scenario manifest (checkpoints + subject labels), the pretending scenarios rewritten
 - [ ] BE T2 dashboard / non-run scenarios per feature, seeded from `tests/unit/dashboard`
 - [ ] BE T3 dashboard conditions attachable to a dry-run scenario — the first: separations §9.22 as a file
-- [ ] BE the subject registry (labels in config, values outside git) + the durable `dry_run_scenario_results` row + `cli dry-run-scenario`
+- [x] BE the subject registry (labels in config, values outside git) + the insert-only `dry_run_scenario_results` row + `cli dry-run-scenario`
 - [ ] PROOF T4 the agent-operated parallel e2e runner + the first journey, recorded (driven by the `{#claude-operator}`'s MCP tools)
 - [ ] BE coverage floor 80/80/80 global
 - [ ] PROOF the `idempotency-key-hygiene` guard §8 listed and nobody built, with its inventory entry (ref write-safety §8)
@@ -630,7 +630,8 @@ log:
 - 2026-08-20 | docs-cohesion ref guards-and-tests | §10 written as-built against vitest.config.ts, run-executor/write-sequencer, tests/scenario, tests/parity and separations §9.22 (dc2901de); §7's stub lane verified NEVER PORTED → history; measured 84.23/82.15/84.74/71.76 · left: 5.2b–5.2d
 - 2026-08-20 | docs-cohesion 03c | doc 03c §Testing tiers filled against §10: the DOCS line ticks (dc2901de), the six code lines stay open. Confirmed NO workflow in the tree has a T1 pair yet — `tests/scenario/workflows/` does not exist, including for the migrated person-lookup
 - 2026-08-21 | workflow-tree ruling | D266 — the first T1 pair is named: `separations-kuali-finalization`, seeded from the dismantled timekeeper harness; the `workflow-tree` code unit builds it
-- 2026-08-25 | D266 | the first T1 pair is built; the structural file is collected and the sibling live manifest awaits this node's still-open subject registry + result table + CLI runner
+- 2026-08-25 | test-tiers | registry, durable result and production CLI runner built; the first finalization execution is honestly `blocked`/`not-started` before browser composition because its canary is unavailable until 2026-08-28 · left: the live green, general T1/T2/T3/T4 layout and coverage floors
+- 2026-08-25 | D266 | the first T1 pair is built and the structural file is collected; the sibling live manifest now has its registry/result/runner and waits only for the dated canary
 
 ### Co-operate with Claude — a second actor on the one local BFF {#claude-operator}
 status: active
@@ -1006,13 +1007,13 @@ log:
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 ### The workflow tree — folders are the rail and the timeline {#workflow-tree}
-status: planned
+status: active
 date: D265 · ruled 2026-08-21
 size: M
-chip: next code unit
+chip: waits for 2026-08-28 canary
 doc: 03b §The workflow tree — folders are the rail and the timeline · ref:workflow-model §1.2.2 · ref:dashboard-surfaces §9.3 · ref:dashboard-surfaces §9.9 · 03c §The seven-step migration playbook
 
-> Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists and one sub-folder per TIMELINE step. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` is DISMANTLED into the testing framework as the Kuali finalization step's first T1 pair (D266) — there is no `proving/`. IDs and run identity are unchanged; the intentional visible delta is deletion of the obsolete `Test equipment` group. The `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
+> Your ruling: `src/workflows/` is organized down to the folder level — one top-level folder per workflow the RAIL lists and one sub-folder per TIMELINE step. Separations becomes `separations/` with `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` · `kuali-finalization` inside (D225's six categories, as folders); the five harnesses move INTO the step they prove; `kuali-timekeeper-annotation` is DISMANTLED into the testing framework as the Kuali finalization step's first T1 pair (D266) — there is no `proving/`. IDs and run identity are unchanged. Visible deltas: the obsolete `Test equipment` group disappears, and picker/Explorer place all five harnesses under Separations (including the timekeeping-category Kronos harness). The `workflow-layout` guard pins role ↔ path so the folder view and the dashboard view cannot disagree.
 
 builds:
 - [x] DOCS D265 ratified — the rule, the separations mapping and the `workflow-layout` guard's invariant written (`ref workflow-model` §1.2.2, 2026-08-21)
@@ -1031,7 +1032,7 @@ needs:
 log:
 - 2026-08-21 | workflow-tree ruling | drawn from your ruling on the `src/workflows/` layout; D265 ratified in ref workflow-model §1.2.2 with pointers in ref dashboard-surfaces §9.3/§9.9, 03b, 03c and `docs/migrations/separations.md`; `workflow-layout` listed planned in `guard-inventory.json` · left: the whole code unit — nothing under `src/workflows/` has moved
 - 2026-08-21 | workflow-tree ruling | D266 the same session — `proving/` withdrawn, `kuali-timekeeper-annotation` dismantled; its harness seeds the first T1 pair for `separations-kuali-finalization` (builds lines redrawn) · left: the code unit
-- 2026-08-25 | D266 | source/test retirement and the first T1 pair complete; mutation controls proved the role/grouping tests red-capable; 151 parity cases assert the visible retirement · left: only the live T1b result, blocked by `test-tiers`' unbuilt subject registry + durable row + CLI runner
+- 2026-08-25 | test-tiers | source/test retirement, first T1 pair, subject registry, durable row and CLI runner complete; role/grouping mutations are red-capable and parity asserts the hierarchy · left: only the date-gated live `met` result on 2026-08-28
 
 ### Smaller operator calls open {#operator-calls}
 status: you
