@@ -44,6 +44,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import {
   CheckCircle2,
   FileSpreadsheet,
+  Info,
   ListChecks,
   RotateCcw,
   Table2,
@@ -70,11 +71,16 @@ import {
   Dropzone,
   EmptyState,
   Field,
+  IconButton,
   Input,
+  KeyValueList,
   MetaLine,
   Panel,
   PanelBody,
   PanelHeader,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Refusal,
   SectionLabel,
   Select,
@@ -99,6 +105,16 @@ import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { CaptureStart } from "./capture-start.js";
 import { fmtClock, pluralize, shortHash } from "./format.js";
+import {
+  correctionText,
+  headerCandidateOptionLabel,
+  layoutFingerprint,
+  layoutMetaItems,
+  manifestIdentifierFacts,
+  manifestFacts,
+  sourceLabel,
+  suggestionProposalText,
+} from "./intake-model.js";
 
 type DetectedColumn = z.infer<typeof DetectedColumnSchema>;
 type ColumnBinding = z.infer<typeof ColumnBindingSchema>;
@@ -123,14 +139,6 @@ const REJECT_CODE_LABEL: Record<RowReject["code"], string> = {
   "workflow-schema": "row rejected by the workflow",
   "duplicate-identity": "duplicate person",
   "cross-field": "fields disagree",
-};
-
-/** Why a column was proposed — §2.5's scorer, said out loud. */
-const SUGGESTION_WHY_LABEL: Record<Suggestion["why"][number], string> = {
-  "alias-exact": "known header",
-  "label-exact": "matches the field label",
-  "token-overlap": "words in common",
-  "samples-parse": "its values parse",
 };
 
 /* ── command plumbing ─────────────────────────────────────────────────────── */
@@ -284,7 +292,7 @@ function SourceBand({
         <FileSpreadsheet aria-hidden className={cn(dsIcon.lg, "text-[color:var(--ds-fg-muted)]")} />
         <span className="flex min-w-0 flex-col">
           <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>
-            {session.sourceName ?? "(this session predates file names)"}
+            {sourceLabel(session)}
           </span>
           <MetaLine
             items={[
@@ -328,7 +336,7 @@ function SourceBand({
             {settled === null && <option value="">Pick the row that holds the headers</option>}
             {session.headerCandidates.map((candidate) => (
               <option key={candidate.rowIndex} value={String(candidate.rowIndex)}>
-                {`row ${String(candidate.rowIndex + 1)} — ${candidate.cells.filter((cell) => cell.length > 0).slice(0, 6).join(" · ")}`}
+                {headerCandidateOptionLabel(candidate)}
               </option>
             ))}
           </Select>
@@ -605,7 +613,7 @@ function SuggestionCell({
             </span>
             <MetaLine
               items={[
-                proposal.why.map((why) => SUGGESTION_WHY_LABEL[why]).join(", "),
+                suggestionProposalText(proposal),
                 proposal.ambiguous ? "another column scores the same — check both" : undefined,
               ]}
             />
@@ -675,7 +683,7 @@ function ValidationReview({
         ]}
       />
 
-      {rows.length === 0 && validation.excluded.length === 0 ? (
+      {rows.length === 0 && validation.excluded.length === 0 && session.corrections.length === 0 ? (
         <EmptyState
           icon={<CheckCircle2 aria-hidden className={dsIcon.lg} />}
           title={`All ${String(validation.validRows)} rows are runnable`}
@@ -683,22 +691,58 @@ function ValidationReview({
         />
       ) : (
         <>
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-            Every rejected row is fixed or excluded before this file can run — there is deliberately
-            no way to ignore one. An exclusion is durable and keeps the reason it was made with.
-          </span>
-          {rows.map(([sourceRow, rejects]) => (
-            <RejectedRow
-              key={sourceRow}
-              sourceRow={sourceRow}
-              rejects={rejects}
-              locked={locked}
-              pending={pending}
-              labelOf={labelOf}
-              onCorrect={onCorrect}
-              onExclude={onExclude}
-            />
-          ))}
+          {rows.length > 0 && (
+            <>
+              <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                Every rejected row is fixed or excluded before this file can run — there is
+                deliberately no way to ignore one. An exclusion is durable and keeps the reason it
+                was made with.
+              </span>
+              {rows.map(([sourceRow, rejects]) => (
+                <RejectedRow
+                  key={sourceRow}
+                  sourceRow={sourceRow}
+                  rejects={rejects}
+                  locked={locked}
+                  pending={pending}
+                  labelOf={labelOf}
+                  onCorrect={onCorrect}
+                  onExclude={onExclude}
+                />
+              ))}
+            </>
+          )}
+
+          {/*
+            * IN121 / `DemoIntake.tsx:917-922` — what the operator has already
+            * fixed, listed rather than counted.
+            *
+            * A correction MOVES a row out of the rejection list, so the
+            * previous shape hid its own successes: correct the last bad cell
+            * and every trace of the work vanished behind "all rows are
+            * runnable", while the manifest still recorded each one. It sits
+            * where the demo puts it — after the rejections, before the
+            * exclusions — and it is drawn as the exclusions' twin, because
+            * the two are the same kind of thing: a durable, dated decision
+            * this operator made about one source row.
+            */}
+          {session.corrections.length > 0 && (
+            <section aria-label="Corrected cells" className="flex flex-col gap-[var(--ds-space-tight)]">
+              <SectionLabel>Corrections</SectionLabel>
+              {session.corrections.map((correction) => (
+                <span
+                  key={`${String(correction.sourceRow)}:${correction.field}`}
+                  className="flex flex-wrap items-baseline gap-[var(--ds-space-snug)]"
+                >
+                  <Chip label="row">{String(correction.sourceRow)}</Chip>
+                  <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg-secondary)]")}>
+                    {correctionText(correction, labelOf(correction.field))}
+                  </span>
+                  <MetaLine items={[fmtClock(correction.correctedAt)]} />
+                </span>
+              ))}
+            </section>
+          )}
 
           {validation.excluded.length > 0 && (
             <section aria-label="Excluded rows" className="flex flex-col gap-[var(--ds-space-tight)]">
@@ -799,6 +843,15 @@ function RejectedRow({
           </span>
           <MetaLine
             items={[
+              /*
+               * IN106 / `DemoIntake.tsx:844` — the raw code, under the reason
+               * it names. The badge above spells the SAME code in the
+               * operator's words, and a re-worded label is not a thing anyone
+               * can quote back to us: a `Refusal` on this surface always
+               * carries its code for exactly that reason, and a rejection is
+               * the same kind of sentence one row down.
+               */
+              `code ${reject.code}`,
               "column" in reject ? `column ${reject.column.header}` : undefined,
               "field" in reject ? reject.field : undefined,
               rejectRawText(reject) === undefined ? undefined : `value ${rejectRawText(reject) ?? ""}`,
@@ -902,6 +955,42 @@ function RerunBanner({ rerun }: { rerun: NonNullable<IntakeSessionWire["rerun"]>
   );
 }
 
+/**
+ * The complete identifier behind a dense, eye-scan-friendly value. Popover is
+ * the design system's accessible home for load-bearing detail that would make
+ * the resting surface noisy; the body wraps opaque tokens instead of clipping
+ * them again as `KeyValueList` correctly does in dense lists.
+ */
+function IdentifierPopover({
+  label,
+  title,
+  facts,
+}: {
+  label: string;
+  title: string;
+  facts: { key: string; value: string }[];
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <IconButton size="xs" label={label} icon={<Info aria-hidden className={dsIcon.sm} />} />
+      </PopoverTrigger>
+      <PopoverContent title={title} width="lg" align="start">
+        <dl className="flex flex-col gap-[var(--ds-space-base)]">
+          {facts.map((fact) => (
+            <div key={fact.key} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+              <dt className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{fact.key}</dt>
+              <dd className={cn(dsText.body, dsText.nums, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
+                {fact.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /* ── outcome band ─────────────────────────────────────────────────────────── */
 
 /**
@@ -943,6 +1032,7 @@ function OutcomeBand({
 
   const validated = validation.state === "validated";
   const rejectedRows = validated ? new Set(validation.rejected.map((entry) => entry.sourceRow)).size : 0;
+  const fingerprint = layoutFingerprint(session);
 
   return (
     <div
@@ -973,6 +1063,23 @@ function OutcomeBand({
               : "This mapping has not been validated, so nothing is known about its rows yet."}
           </span>
         )}
+        {/*
+          * IN8 / IN9 / `DemoIntake.tsx:355-358` — the layout every decision on
+          * this screen is fenced against, echoed where the deciding buttons
+          * are. `faint` because it is a standing note about the session, not a
+          * fact about what is about to happen; `MetaLine`'s own docstring
+          * names this exact line as one of the seven it was extracted for.
+          */}
+        <span className="flex items-center gap-[var(--ds-space-snug)]">
+          <MetaLine tone="faint" items={layoutMetaItems(session)} />
+          {fingerprint !== undefined && (
+            <IdentifierPopover
+              label="Show full layout fingerprint"
+              title="Layout fingerprint"
+              facts={[{ key: "fingerprint", value: fingerprint }]}
+            />
+          )}
+        </span>
       </span>
 
       <span className="flex-1" />
@@ -1236,16 +1343,24 @@ export function IntakeWorkspace({
                 Its rows are now runs in the queue. The manifest is the join — every run it minted
                 references it, which is what makes &quot;all of them ran&quot; a checkable claim.
               </span>
-              <MetaLine
-                items={[
-                  session.intakeManifestId === undefined
-                    ? undefined
-                    : `manifest ${session.intakeManifestId}`,
-                  session.rerun === undefined
-                    ? undefined
-                    : `${String(session.rerun.totals.valid)} of ${String(session.rerun.totals.sourceRows)} rows`,
-                ]}
-              />
+              {/*
+                * IN126 / IN127 / IN131 / `DemoIntake.tsx:961-971` — what the
+                * manifest is made OF, where a bare `manifest <uuid>` used to
+                * stand. The id alone names a record without saying what it
+                * binds; the demo answers that with a `KeyValueList`, and the
+                * three facts this wire carries — the source and its digest,
+                * the artifact, the instant — are drawn in its shape and its
+                * order. The four it does not carry stay booked as unserved
+                * rather than filled from the nearest plausible value.
+                */}
+              <span className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
+                <KeyValueList items={manifestFacts(session)} className="min-w-0 flex-1" />
+                <IdentifierPopover
+                  label="Show full manifest identifiers"
+                  title="Manifest identifiers"
+                  facts={manifestIdentifierFacts(session)}
+                />
+              </span>
             </span>
           </Banner>
         )}
