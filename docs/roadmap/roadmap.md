@@ -1021,7 +1021,7 @@ builds:
 - [x] BE the five harnesses move INTO the step they prove (`descriptor.ts` + `module.ts`, role `chunk-harness of separations, step <folder>`); ids unchanged; the write harnesses import `identity-check/`'s fragments instead of restating them
 - [x] BE `kuali-timekeeper-annotation` DISMANTLED (D266) — workflow, module, four `kuali/*-timekeeper-annotation` tasks + contracts + UI entries, its scenario + claims, the `proving` arm and the `Test equipment` group; parity refs re-frozen; the D188 successor in `guard-inventory.json` re-pointed
 - [x] BE the FIRST T1 pair — `tests/scenario/workflows/separations-kuali-finalization/{structural.scenario.test.ts, dry-run.scenario.ts}`, seeded from the retired workflow's valid real-sequencer proof shape (D266, `ref guards-and-tests` §10.3/§10.4)
-- [ ] PROOF that dry-run manifest run live once against the finalization canary via `cli dry-run-scenario`, recorded (the first `dry_run_scenario_results` row)
+- [ ] PROOF that dry-run manifest records `met` against the live finalization canary via `cli dry-run-scenario` — the first production execution on 2026-08-25 correctly recorded immutable result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` as `blocked` / `not-started`, with no run or trace, because the canary is unavailable until 2026-08-28; the refusal proves the blocker, not the live scenario
 - [x] BE `module-role.ts`: `chunk-harness` gains `step`; the registry refuses a `step` that `of` does not declare
 - [x] BE the `workflow-layout` guard activated with its `guard-inventory.json` entry; `descriptor-coverage` and `workflow-editor-compile-integrity` derive a descriptor's path from its ROLE, not its id
 - [x] PROOF `npm run build:manifest` regenerated; the D191 gate green; rendered rail/picker/Explorer inspected and the intentional D266 visible delta re-frozen/asserted by parity
@@ -1032,7 +1032,7 @@ needs:
 log:
 - 2026-08-21 | workflow-tree ruling | drawn from your ruling on the `src/workflows/` layout; D265 ratified in ref workflow-model §1.2.2 with pointers in ref dashboard-surfaces §9.3/§9.9, 03b, 03c and `docs/migrations/separations.md`; `workflow-layout` listed planned in `guard-inventory.json` · left: the whole code unit — nothing under `src/workflows/` has moved
 - 2026-08-21 | workflow-tree ruling | D266 the same session — `proving/` withdrawn, `kuali-timekeeper-annotation` dismantled; its harness seeds the first T1 pair for `separations-kuali-finalization` (builds lines redrawn) · left: the code unit
-- 2026-08-25 | test-tiers | source/test retirement, first T1 pair, subject registry, durable row and CLI runner complete; role/grouping mutations are red-capable and parity asserts the hierarchy · left: only the date-gated live `met` result on 2026-08-28
+- 2026-08-25 | test-tiers | source/test retirement, first T1 pair, subject registry, durable row and CLI runner complete; role/grouping mutations are red-capable and parity asserts the hierarchy; production result `d0a75e7f-b021-4e9e-a288-a8e6266fe2b4` proves the unavailable target is `blocked` / `not-started`, not silently failed or fabricated · left: only the date-gated live `met` result on 2026-08-28
 
 ### Smaller operator calls open {#operator-calls}
 status: you
