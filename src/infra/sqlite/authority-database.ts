@@ -164,6 +164,7 @@ import {
   NotificationRecordOutcomeSchema,
   NotificationRecordSchema,
   NotificationStateRequestSchema,
+  requireMutableNotification,
   type NotificationRecord,
   type NotificationRecordOutcome,
 } from "../../domain/notifications.js";
@@ -2449,6 +2450,7 @@ export class AuthorityDatabase implements Disposable {
           if (existing === undefined) {
             throw new Error(`notification fold found no row for ${request.actorId} fingerprint ${request.dedupeFingerprint}`);
           }
+          requireMutableNotification(existing);
           if (Date.parse(request.seenAt) < Date.parse(existing.lastSeenAt)) {
             throw new Error(`notification ${existing.notificationId} cannot fold an observation older than its last seen instant`);
           }
@@ -2475,6 +2477,7 @@ export class AuthorityDatabase implements Disposable {
         return this.#authorityWrite("notifications", () => {
           const existing = this.#readRecord("notifications", request.notificationId, NotificationRecordSchema);
           if (existing === undefined) throw new Error(`notification ${request.notificationId} does not exist`);
+          requireMutableNotification(existing);
           if (existing.version !== request.expectedVersion) {
             throw new Error(`notification ${request.notificationId} is at version ${String(existing.version)}, not ${String(request.expectedVersion)}`);
           }

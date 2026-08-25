@@ -90,13 +90,13 @@ export class DashboardStreamHub {
     this.#subscribers.clear();
   }
 
-  #hello(): DashboardStreamEnvelope {
+  #hello(input?: Readonly<{ generation: number; cursor: string; descriptorHash: string }>): DashboardStreamEnvelope {
     return DashboardStreamEnvelopeSchema.parse({
       type: "hello",
       wireVersion: 1,
-      descriptorHash: this.#projection.descriptorSetHash(),
-      projectionGeneration: this.#projection.generation(),
-      cursor: this.#projection.cursor(),
+      descriptorHash: input?.descriptorHash ?? this.#projection.descriptorSetHash(),
+      projectionGeneration: input?.generation ?? this.#projection.generation(),
+      cursor: input?.cursor ?? this.#projection.cursor(),
     });
   }
 
@@ -171,22 +171,38 @@ export class DashboardStreamHub {
     }
   }
 
-  async connect(input: Readonly<{ day: string; lastEventId?: string }>): Promise<DashboardStreamConnection> {
+  async connect(input: Readonly<{
+    day: string;
+    lastEventId?: string;
+    lastProjectionGeneration?: number;
+  }>): Promise<DashboardStreamConnection> {
     const day = z.iso.date().parse(input.day);
     const subscriber: Subscriber = { day, queue: [], closed: false, resetPending: false };
-    const initial: DashboardStreamEnvelope[] = [this.#hello()];
+    const live = this.#projection.health().state !== "degraded";
+    const capturedSnapshot = live ? this.#projection.buildDashboardDayWire(day) : undefined;
+    const capturedGeneration = capturedSnapshot?.projectionGeneration ?? this.#projection.generation();
+    const capturedCursor = capturedSnapshot?.snapshotCursor ?? this.#projection.cursor();
+    const initial: DashboardStreamEnvelope[] = [this.#hello({
+      generation: capturedGeneration,
+      cursor: capturedCursor,
+      descriptorHash: capturedSnapshot?.descriptorHash ?? this.#projection.descriptorSetHash(),
+    })];
 
-    if (this.#projection.health().state === "degraded") {
+    if (!live) {
       initial.push(DashboardStreamEnvelopeSchema.parse({ type: "health", state: "degraded" }));
     } else {
       const resumeFrom = input.lastEventId === undefined ? undefined : cursorNumber(input.lastEventId);
-      const generation = this.#projection.generation();
+      const generation = capturedGeneration;
+      const generationMatches = input.lastProjectionGeneration !== undefined
+        && input.lastProjectionGeneration === generation;
       const oldest = this.#retained[0];
       // Resumable only when the retained window provably covers everything
       // after the presented cursor, in the current generation.
-      const current = cursorNumber(this.#projection.cursor());
-      const atHead = resumeFrom !== undefined && current !== undefined && resumeFrom === current;
-      const retainedWindowCovers = resumeFrom !== undefined
+      const current = cursorNumber(capturedCursor);
+      const atHead = generationMatches
+        && resumeFrom !== undefined && current !== undefined && resumeFrom === current;
+      const retainedWindowCovers = generationMatches
+        && resumeFrom !== undefined
         && oldest !== undefined
         && resumeFrom >= oldest.cursorNumber - 1
         && current !== undefined
@@ -201,7 +217,9 @@ export class DashboardStreamHub {
           if (entry.day === day) initial.push(entry.envelope);
         }
       } else {
-        const isHistoricalCursor = resumeFrom !== undefined
+        let handshakeRestarted = false;
+        const isHistoricalCursor = generationMatches
+          && resumeFrom !== undefined
           && current !== undefined
           && resumeFrom < current;
         if (isHistoricalCursor) {
@@ -211,13 +229,38 @@ export class DashboardStreamHub {
             reason: window === undefined ? "cursor-expired" : "snapshot-boundary",
             topic: "dashboard-day",
             requestedCursor: input.lastEventId,
-            currentCursor: this.#projection.cursor(),
+            currentCursor: capturedCursor,
             projectionGeneration: generation,
           });
+          const projectionMoved = this.#projection.generation() !== capturedGeneration
+            || this.#projection.cursor() !== capturedCursor;
+          if (projectionMoved) {
+            const refreshed = this.#projection.buildDashboardDayWire(day);
+            initial.splice(0, initial.length,
+              this.#hello({
+                generation: refreshed.projectionGeneration,
+                cursor: refreshed.snapshotCursor,
+                descriptorHash: refreshed.descriptorHash,
+              }),
+              DashboardStreamEnvelopeSchema.parse({
+                type: "snapshot",
+                topic: "dashboard-day",
+                cursor: refreshed.snapshotCursor,
+                payload: refreshed,
+              }));
+            handshakeRestarted = true;
+          }
         }
         // Not resumable, or a count-bearing snapshot marker sits inside the
         // window: a fresh snapshot supersedes whatever the client held.
-        initial.push(this.#snapshot(day));
+        if (!handshakeRestarted) {
+          initial.push(DashboardStreamEnvelopeSchema.parse({
+            type: "snapshot",
+            topic: "dashboard-day",
+            cursor: capturedCursor,
+            payload: capturedSnapshot,
+          }));
+        }
       }
       initial.push(DashboardStreamEnvelopeSchema.parse({ type: "health", state: "live" }));
     }

@@ -447,6 +447,14 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(unknownRoute)).code, "ROUTE_NOT_FOUND");
 
     const badTopics = await h.app.request("/events/v1?topics=everything");
+    const badCursor = await h.app.request(`/events/v1?topics=dashboard-day:${DAY}`, {
+      headers: { "last-event-id": "not-a-projection-cursor" },
+    });
+    assert.equal(badCursor.status, 400);
+    const unboundGeneration = await h.app.request(`/events/v1?topics=dashboard-day:${DAY}`, {
+      headers: { "dashboard-projection-generation": "7" },
+    });
+    assert.equal(unboundGeneration.status, 400);
     assert.equal(badTopics.status, 400);
   });
 

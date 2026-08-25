@@ -12,6 +12,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import {
   NotificationTriggerEventSchema,
+  deriveNotificationDedupeFingerprint,
   projectNotificationTrigger,
 } from "../../src/domain/notification-triggers.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
@@ -58,7 +59,7 @@ function world() {
     ids: sequentialIdFactory("b"),
     actorId: LOCAL_OPERATOR_ACTOR_ID,
   });
-  return { inbox };
+  return { database, inbox };
 }
 
 describe("backfill-gap notification", () => {
@@ -115,6 +116,13 @@ describe("backfill-gap notification", () => {
     assert.equal(rows[0]?.version, 1);
   });
 
+  it("keeps one identity when the retained snapshot boundary later ages into cursor expiry", () => {
+    const atBoundary = deriveNotificationDedupeFingerprint({ ...GAP, reason: "snapshot-boundary" });
+    const afterRetentionAged = deriveNotificationDedupeFingerprint({ ...GAP, reason: "cursor-expired" });
+
+    assert.equal(afterRetentionAged, atBoundary);
+  });
+
   it("retries the same gap after a publisher failure instead of forgetting it", async () => {
     const { inbox } = world();
     let failures = 1;
@@ -138,7 +146,7 @@ describe("backfill-gap notification", () => {
     assert.equal(rows[0]?.count, 1);
   });
 
-  it("folds the same gap identity after notifier restart instead of minting another row", async () => {
+  it("preserves the permanent row without count or version churn after notifier restart", async () => {
     const { inbox } = world();
 
     await createBackfillGapNotifier({ inbox }).detected(GAP);
@@ -146,8 +154,37 @@ describe("backfill-gap notification", () => {
 
     const rows = inbox.list(LOCAL_OPERATOR_ACTOR_ID);
     assert.equal(rows.length, 1);
-    assert.equal(rows[0]?.count, 2);
-    assert.equal(rows[0]?.version, 2);
+    assert.equal(rows[0]?.count, 1);
+    assert.equal(rows[0]?.version, 1);
+    assert.equal(rows[0]?.lastSeenAt, NOW);
+    assert.equal(rows[0]?.updatedAt, NOW);
+  });
+
+  it("single-flights simultaneous clients observing one missing interval", async () => {
+    const { inbox } = world();
+    let publishCalls = 0;
+    let releasePublish: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      releasePublish = resolve;
+    });
+    const notifier = createBackfillGapNotifier({
+      inbox: {
+        publish: async (event: unknown) => {
+          publishCalls += 1;
+          await held;
+          return inbox.publish(event);
+        },
+      },
+    });
+
+    const first = notifier.detected(GAP);
+    const second = notifier.detected({ ...GAP, reason: "snapshot-boundary", currentCursor: "pc:13" });
+    assert.equal(publishCalls, 1);
+    releasePublish?.();
+    const reports = await Promise.all([first, second]);
+
+    assert.deepEqual(reports.map(({ published }) => published).sort(), [false, true]);
+    assert.equal(inbox.list(LOCAL_OPERATOR_ACTOR_ID).length, 1);
   });
 
   it("refuses direct backend read-state mutation of the pinned record", async () => {
@@ -163,6 +200,19 @@ describe("backfill-gap notification", () => {
     const row = inbox.get(published.report.notification.notificationId);
     assert.equal(row?.status, "unread");
     assert.equal(row?.version, 1);
+  });
+
+  it("refuses a same-state mark-unread that would only bump the pinned record version", async () => {
+    const { inbox } = world();
+    const published = await createBackfillGapNotifier({ inbox }).detected(GAP);
+    assert.equal(published.published, true);
+    if (!published.published) assert.fail("expected a published gap");
+
+    assert.throws(
+      () => inbox.markUnread(published.report.notification.notificationId, 1),
+      /pinned backfill gap/u,
+    );
+    assert.equal(inbox.get(published.report.notification.notificationId)?.version, 1);
   });
 
   it("refuses direct backend snooze mutation of the pinned record", async () => {
@@ -184,6 +234,49 @@ describe("backfill-gap notification", () => {
     assert.equal(row?.version, 1);
   });
 
+  it("refuses clear-snooze even when the pinned record is already not snoozed", async () => {
+    const { inbox } = world();
+    const published = await createBackfillGapNotifier({ inbox }).detected(GAP);
+    assert.equal(published.published, true);
+    if (!published.published) assert.fail("expected a published gap");
+
+    assert.throws(
+      () => inbox.clearSnooze(published.report.notification.notificationId, 1),
+      /pinned backfill gap/u,
+    );
+    assert.equal(inbox.get(published.report.notification.notificationId)?.version, 1);
+  });
+
+  it("refuses direct authority state writes and folds for a pinned record", async () => {
+    const { database, inbox } = world();
+    const published = await createBackfillGapNotifier({ inbox }).detected(GAP);
+    assert.equal(published.published, true);
+    if (!published.published) assert.fail("expected a published gap");
+    const row = published.report.notification;
+
+    assert.throws(
+      () => database.authority.notifications.updateState({
+        notificationId: row.notificationId,
+        expectedVersion: 1,
+        status: "unread",
+        snooze: { state: "not-snoozed" },
+        updatedAt: NOW,
+      }),
+      /pinned backfill gap/u,
+    );
+    assert.throws(
+      () => database.authority.notifications.fold({
+        actorId: row.actorId,
+        dedupeFingerprint: row.dedupeFingerprint,
+        seenAt: NOW,
+        title: row.title,
+        summary: row.summary,
+      }),
+      /pinned backfill gap/u,
+    );
+    assert.equal(database.authority.notifications.get(row.notificationId)?.version, 1);
+  });
+
   it("persists one gap when a requested cursor has fallen outside retained history", async () => {
     const { inbox } = world();
     const dashboard = makeDashboardWorld();
@@ -197,13 +290,22 @@ describe("backfill-gap notification", () => {
     queuedEventOf(dashboard, { seed: 1 });
     const first = await hub.connect({ day: DAY });
     const oldCursor = dashboard.projection.cursor();
+    const oldGeneration = dashboard.projection.generation();
     first.close();
     queuedEventOf(dashboard, { seed: 2 });
     queuedEventOf(dashboard, { seed: 3 });
 
-    const expired = await hub.connect({ day: DAY, lastEventId: oldCursor });
+    const expired = await hub.connect({
+      day: DAY,
+      lastEventId: oldCursor,
+      lastProjectionGeneration: oldGeneration,
+    });
     expired.close();
-    const repeated = await hub.connect({ day: DAY, lastEventId: oldCursor });
+    const repeated = await hub.connect({
+      day: DAY,
+      lastEventId: oldCursor,
+      lastProjectionGeneration: oldGeneration,
+    });
     repeated.close();
     const clean = await hub.connect({ day: DAY });
     clean.close();

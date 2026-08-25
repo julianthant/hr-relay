@@ -107,10 +107,15 @@ describe("dashboard stream hub", () => {
     claimEventOf(w, 1);
     const first = await hub.connect({ day: DAY });
     const cursorAt = w.projection.cursor();
+    const generationAt = w.projection.generation();
     first.close();
 
     taskEventsOf(w, 1, "searching"); // count-neutral -> retained patch
-    const resumed = await hub.connect({ day: DAY, lastEventId: cursorAt });
+    const resumed = await hub.connect({
+      day: DAY,
+      lastEventId: cursorAt,
+      lastProjectionGeneration: generationAt,
+    });
     const types = resumed.initial.map(({ type }) => type);
     assert.deepEqual(types, ["hello", "patch", "health"]);
     resumed.close();
@@ -132,9 +137,14 @@ describe("dashboard stream hub", () => {
     hubs.push(hub);
     queuedEventOf(w, { seed: 1 });
     const heldCursor = w.projection.cursor();
+    const heldGeneration = w.projection.generation();
     queuedEventOf(w, { seed: 2 });
 
-    const replaced = await hub.connect({ day: DAY, lastEventId: heldCursor });
+    const replaced = await hub.connect({
+      day: DAY,
+      lastEventId: heldCursor,
+      lastProjectionGeneration: heldGeneration,
+    });
     assert.deepEqual(replaced.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
     assert.deepEqual(observed, [{
       kind: "backfill-gap",
@@ -147,17 +157,120 @@ describe("dashboard stream hub", () => {
     }]);
     replaced.close();
 
-    const current = await hub.connect({ day: DAY, lastEventId: w.projection.cursor() });
+    const current = await hub.connect({
+      day: DAY,
+      lastEventId: w.projection.cursor(),
+      lastProjectionGeneration: w.projection.generation(),
+    });
     current.close();
-    const future = await hub.connect({ day: DAY, lastEventId: "pc:999999" });
+    const future = await hub.connect({
+      day: DAY,
+      lastEventId: "pc:999999",
+      lastProjectionGeneration: w.projection.generation(),
+    });
     future.close();
     assert.equal(observed.length, 1, "a current or future cursor is not evidence that history was missed");
+  });
+
+  it("resnapshots a cursor from an earlier projection generation without reporting missed history", async () => {
+    const w = makeWorld();
+    worlds.push(w);
+    const observed: unknown[] = [];
+    const hub = createDashboardStreamHub({
+      projection: w.projection,
+      backfillGaps: {
+        detected: (input: unknown) => {
+          observed.push(input);
+          return Promise.resolve({ published: false as const, gap: BackfillGapObservationSchema.parse(input) });
+        },
+      },
+    });
+    hubs.push(hub);
+    queuedEventOf(w, { seed: 1 });
+    const heldCursor = w.projection.cursor();
+    const heldGeneration = w.projection.generation();
+
+    w.projection.rebuildFromJsonl();
+    const replacement = await hub.connect({
+      day: DAY,
+      lastEventId: heldCursor,
+      lastProjectionGeneration: heldGeneration,
+    });
+
+    assert.deepEqual(replacement.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
+    assert.deepEqual(observed, []);
+    replacement.close();
+  });
+
+  it("resnapshots a historical cursor without generation evidence without reporting missed history", async () => {
+    const w = makeWorld();
+    worlds.push(w);
+    const observed: unknown[] = [];
+    const hub = createDashboardStreamHub({
+      projection: w.projection,
+      backfillGaps: {
+        detected: (input: unknown) => {
+          observed.push(input);
+          return Promise.resolve({ published: false as const, gap: BackfillGapObservationSchema.parse(input) });
+        },
+      },
+    });
+    hubs.push(hub);
+    queuedEventOf(w, { seed: 1 });
+    const heldCursor = w.projection.cursor();
+    queuedEventOf(w, { seed: 2 });
+
+    const replacement = await hub.connect({ day: DAY, lastEventId: heldCursor });
+
+    assert.deepEqual(replacement.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
+    assert.deepEqual(observed, []);
+    replacement.close();
+  });
+
+  it("never pairs a hello from one generation with a snapshot captured after publish rebuilt projection", async () => {
+    const w = makeWorld();
+    worlds.push(w);
+    const hub: DashboardStreamHub = createDashboardStreamHub({
+      projection: w.projection,
+      backfillGaps: {
+        detected: (input: unknown) => {
+          const gap = BackfillGapObservationSchema.parse(input);
+          w.projection.rebuildFromJsonl();
+          return Promise.resolve({ published: false as const, gap });
+        },
+      },
+    });
+    hubs.push(hub);
+    queuedEventOf(w, { seed: 1 });
+    const heldCursor = w.projection.cursor();
+    const heldGeneration = w.projection.generation();
+    queuedEventOf(w, { seed: 2 });
+
+    const replacement = await hub.connect({
+      day: DAY,
+      lastEventId: heldCursor,
+      lastProjectionGeneration: heldGeneration,
+    });
+    const hello = replacement.initial.find((entry) => entry.type === "hello");
+    const snapshot = replacement.initial.find((entry) => entry.type === "snapshot");
+    if (hello?.type !== "hello" || snapshot?.type !== "snapshot" || snapshot.topic !== "dashboard-day") {
+      assert.fail("expected one replacement handshake");
+    }
+
+    assert.equal(snapshot.payload.projectionGeneration, hello.projectionGeneration);
+    assert.equal(snapshot.cursor, hello.cursor);
+    assert.equal(hello.projectionGeneration, w.projection.generation());
+    replacement.close();
   });
 
   it("serves a fresh snapshot for an expired or foreign cursor", async () => {
     const { w, hub } = harness();
     queuedEventOf(w, { seed: 1 });
-    const connection = await hub.connect({ day: DAY, lastEventId: "pc:999999" });
+    const connection = await hub.connect({
+      day: DAY,
+      lastEventId: "pc:999999",
+      lastProjectionGeneration: w.projection.generation(),
+    });
     assert.deepEqual(connection.initial.map(({ type }) => type), ["hello", "snapshot", "health"]);
     connection.close();
   });

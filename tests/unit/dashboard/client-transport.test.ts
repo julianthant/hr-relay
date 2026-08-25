@@ -168,6 +168,7 @@ interface ScriptedStream {
   push(envelope: Record<string, unknown>, id?: string): void;
   fail(): void;
   readonly lastEventId: string | undefined;
+  readonly lastProjectionGeneration: string | undefined;
 }
 
 function scriptedFetch(): {
@@ -187,6 +188,7 @@ function scriptedFetch(): {
     });
     const stream: ScriptedStream = {
       lastEventId: headers.get("last-event-id") ?? undefined,
+      lastProjectionGeneration: headers.get("dashboard-projection-generation") ?? undefined,
       push: (envelope, id) => {
         const idLine = id === undefined ? "" : `id: ${id}\n`;
         controller.enqueue(encoder.encode(`${idLine}data: ${JSON.stringify(envelope)}\n\n`));
@@ -243,6 +245,7 @@ describe("resumable subscription protocol", () => {
     await tick();
     assert.equal(streams.length, 2);
     assert.equal(streams[1].lastEventId, "pc:2");
+    assert.equal(streams[1].lastProjectionGeneration, "7");
     assert.equal(states.some(({ state }) => state === "reconnecting"), true);
     subscription.close();
   });

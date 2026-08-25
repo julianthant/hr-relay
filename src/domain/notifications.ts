@@ -125,3 +125,12 @@ export const NotificationRecordOutcomeSchema = z.discriminatedUnion("state", [
 
 export type NotificationRecord = z.infer<typeof NotificationRecordSchema>;
 export type NotificationRecordOutcome = z.infer<typeof NotificationRecordOutcomeSchema>;
+
+/** Permanent safety facts admit no update, including a same-state version bump. */
+export function requireMutableNotification(input: unknown): NotificationRecord {
+  const record = NotificationRecordSchema.parse(input);
+  if (record.trigger === "backfill-gap") {
+    throw new Error(`notification ${record.notificationId} is a pinned backfill gap and cannot be mutated`);
+  }
+  return record;
+}

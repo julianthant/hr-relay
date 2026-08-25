@@ -162,7 +162,6 @@ export function deriveNotificationDedupeFingerprint(input: unknown): string {
         return {
           kind: event.kind,
           detector: event.detector,
-          reason: event.reason,
           topic: event.topic,
           requestedCursor: event.requestedCursor,
           projectionGeneration: String(event.projectionGeneration),

@@ -34,6 +34,7 @@ export function createBackfillGapNotifier(
   dependencies: Readonly<{ inbox: Pick<NotificationInbox, "publish"> }>,
 ): BackfillGapNotifier {
   const reported = new Set<string>();
+  const inFlight = new Map<string, Promise<NotificationPublishReport>>();
 
   return Object.freeze({
     async detected(input: unknown): Promise<BackfillGapDetectionReport> {
@@ -41,9 +42,23 @@ export function createBackfillGapNotifier(
       const identity = deriveNotificationDedupeFingerprint(gap);
       if (reported.has(identity)) return { published: false, gap };
 
-      const report = await dependencies.inbox.publish(gap);
-      reported.add(identity);
-      return { published: true, gap, report };
+      const pending = inFlight.get(identity);
+      if (pending !== undefined) {
+        await pending;
+        return { published: false, gap };
+      }
+
+      const publication = dependencies.inbox.publish(gap);
+      inFlight.set(identity, publication);
+      try {
+        const report = await publication;
+        reported.add(identity);
+        return report.durable === "created"
+          ? { published: true, gap, report }
+          : { published: false, gap };
+      } finally {
+        inFlight.delete(identity);
+      }
     },
   });
 }

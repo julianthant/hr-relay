@@ -141,6 +141,20 @@ describe("notification lifecycle arms", () => {
     assert.equal(unchanged?.version, 1);
   });
 
+  it("refuses a crafted same-state mark-unread command for a pinned backfill gap", () => {
+    const { database, kernel } = harness();
+    database.authority.notifications.create(record({
+      trigger: "backfill-gap",
+      links: [],
+    }));
+
+    const result = kernel.execute(command("notification-unread", 1));
+
+    assert.equal(result.state, "rejected");
+    if (result.state === "rejected") assert.equal(result.code, "policy-refused");
+    assert.equal(database.authority.notifications.get(UUID_7)?.version, 1);
+  });
+
   it("marks read preserving the snooze, and unread preserving it too", () => {
     const { database, kernel } = harness();
     database.authority.notifications.create(record({

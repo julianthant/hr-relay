@@ -32,6 +32,7 @@ import { activityReportCsv, activityReportCsvFileName } from "../queries/activit
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
 import { SectionUnavailableError } from "../../failures.js";
+import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
 import { failureStatus, wireError } from "./failure-status.js";
 
 export interface DashboardAppDeps {
@@ -69,6 +70,18 @@ export interface DashboardAppDeps {
 
 const DayQuerySchema = z.iso.date();
 const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
+const StreamResumeSchema = z.strictObject({
+  lastEventId: ProjectionCursorSchema.optional(),
+  lastProjectionGeneration: PositiveIntSchema.optional(),
+}).superRefine((resume, context) => {
+  if (resume.lastProjectionGeneration !== undefined && resume.lastEventId === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["lastProjectionGeneration"],
+      message: "a projection generation can resume only the cursor it qualifies",
+    });
+  }
+});
 
 function sseSerialize(envelope: DashboardStreamEnvelope): string {
   const id = "cursor" in envelope ? `id: ${envelope.cursor}\n` : "";
@@ -380,10 +393,18 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
       .parse(c.req.query("topics"));
     const match = TOPICS_PATTERN.exec(topics);
     if (match === null) throw new Error(`topics ${topics} passed its schema but did not match; refusing to subscribe`);
-    const lastEventId = c.req.header("Last-Event-ID") ?? c.req.query("cursor");
+    const rawLastEventId = c.req.header("Last-Event-ID") ?? c.req.query("cursor");
+    const rawLastProjectionGeneration = c.req.header("Dashboard-Projection-Generation")
+      ?? c.req.query("projectionGeneration");
+    const resume = StreamResumeSchema.parse({
+      ...(rawLastEventId === undefined ? {} : { lastEventId: rawLastEventId }),
+      ...(rawLastProjectionGeneration === undefined
+        ? {}
+        : { lastProjectionGeneration: Number(rawLastProjectionGeneration) }),
+    });
     const connection = await deps.hub.connect({
       day: match[1],
-      ...(lastEventId === undefined ? {} : { lastEventId }),
+      ...resume,
     });
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
