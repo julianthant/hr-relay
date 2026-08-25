@@ -199,6 +199,15 @@ export interface TransactionSessionHost {
     signal: AbortSignal,
     operation: (driver: BrowserDriver) => Promise<Result>,
   ): Promise<Result>;
+  withTransactionDriver<Result>(
+    need: SessionNeed,
+    instance: string | undefined,
+    signal: AbortSignal,
+    operation: (
+      driver: BrowserDriver,
+      ownership: Readonly<{ retainAfterFence(): void }>,
+    ) => Promise<Result>,
+  ): Promise<Result>;
   closeAll(reason: "parked"): Promise<void>;
 }
 
@@ -1672,8 +1681,13 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     }
 
     let leased: LeasedCommitResult;
+    let retainedIntent: AttemptingIntent | undefined;
     try {
-      leased = await deps.sessions.withDriver(need, instance, context.signal, async (driver) => {
+      leased = await deps.sessions.withTransactionDriver(
+        need,
+        instance,
+        context.signal,
+        async (driver, ownership) => {
         const leaseId = deps.ids.uuid();
 
         /* beat ② — prepare stages the page; output is preview data only */
@@ -1779,6 +1793,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           recordedAt: fencedAt,
         });
         let fencedRecord: WriteIntentRecord;
+        if (context.signal.aborted) {
+          throw context.signal.reason instanceof Error
+            ? context.signal.reason
+            : new Error(`${commitContract.id} was cancelled before its write fence`);
+        }
         try {
           const resolution = refenceExpectedVersion === undefined
             ? deps.authority.authority.writeIntents.fenceAttempt({ intent: intentRecord, attempt: attemptRecord })
@@ -1809,6 +1828,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           });
         }
         const fenced: AttemptingIntent = fencedRecord;
+        retainedIntent = fenced;
+        ownership.retainAfterFence();
 
         /* beat ⑤ — the external commit under the minted capability */
         const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest);
@@ -1910,7 +1931,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           intent: fenced,
         });
         return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
-      });
+        },
+      );
     } catch (error) {
       if (error instanceof PostFenceWriteFailure) {
         await parkAfterFence(context, error);
@@ -1920,6 +1942,25 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           parkCode: error.parkCode,
           message: error.message,
           cause: error,
+        });
+      }
+      if (retainedIntent !== undefined) {
+        const failure = new PostFenceWriteFailure({
+          writeIntentId: retainedIntent.writeIntentId,
+          generation: retainedIntent.generation,
+          intentVersion: retainedIntent.version,
+          parkCode: "unknown",
+          message: `${commitContract.id} transaction lease failed after the fence; whether the external write landed `
+            + `is unknown: ${error instanceof Error ? error.message : "non-Error thrown"}`,
+          cause: error,
+        });
+        await parkAfterFence(context, failure);
+        throw new WriteParkedError({
+          writeIntentId: failure.writeIntentId,
+          intentGeneration: failure.generation,
+          parkCode: failure.parkCode,
+          message: failure.message,
+          cause: failure,
         });
       }
       if (error instanceof FenceLostRaceError) {

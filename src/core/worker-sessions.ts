@@ -252,6 +252,90 @@ export interface RunConfigFingerprintBinding {
 }
 
 /**
+ * One-way ownership transition for ref write-safety's durable fence.
+ * Before this arm is called, parent cancellation has ordinary `withDriver`
+ * semantics. Afterwards cancellation is retained until the callback settles.
+ */
+export interface TransactionDriverLeaseOwnership {
+  retainAfterFence(): void;
+}
+
+class TransactionDriverLeaseOwnershipState implements TransactionDriverLeaseOwnership {
+  #retained = false;
+  #cancellation: Error | undefined;
+
+  retainAfterFence(): void {
+    if (this.#retained) throw new Error("transaction driver lease was retained after its fence more than once");
+    if (this.#cancellation !== undefined) throw this.#cancellation;
+    this.#retained = true;
+  }
+
+  retainCancellation(error: Error): boolean {
+    this.#cancellation ??= error;
+    return this.#retained;
+  }
+
+  cancellation(): Error | undefined {
+    return this.#cancellation;
+  }
+
+  retained(): boolean {
+    return this.#retained;
+  }
+}
+
+function containsFailure(root: unknown, target: unknown, seen = new Set<unknown>()): boolean {
+  if (root === target) return true;
+  if (root === null || typeof root !== "object" || seen.has(root)) return false;
+  seen.add(root);
+  if (root instanceof AggregateError) {
+    return root.errors.some((error: unknown) => containsFailure(error, target, seen));
+  }
+  return root instanceof Error && containsFailure(root.cause, target, seen);
+}
+
+async function waitForTransactionOperation<Result>(
+  start: (ownership: TransactionDriverLeaseOwnership) => Promise<Result>,
+  signal: AbortSignal,
+  system: BrowserSystemId,
+): Promise<Result> {
+  if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : abortError(system);
+  const ownership = new TransactionDriverLeaseOwnershipState();
+  let removeAbort = (): void => undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const listener = (): void => {
+      const reason = signal.reason instanceof Error
+        ? signal.reason
+        : new Error(`${system} transaction driver lease was aborted during use`);
+      if (!ownership.retainCancellation(reason)) reject(reason);
+    };
+    signal.addEventListener("abort", listener, { once: true });
+    removeAbort = (): void => signal.removeEventListener("abort", listener);
+  });
+  const operation = Promise.resolve().then(() => start(ownership));
+  try {
+    const result = await Promise.race([operation, aborted]);
+    const cancellation = ownership.cancellation();
+    if (cancellation !== undefined) throw cancellation;
+    return result;
+  } catch (operationError) {
+    const cancellation = ownership.cancellation();
+    if (ownership.retained()
+      && cancellation !== undefined
+      && !containsFailure(operationError, cancellation)) {
+      throw new AggregateError(
+        [operationError, cancellation],
+        `${system} transaction operation failed after its retained parent cancellation`,
+        { cause: operationError },
+      );
+    }
+    throw operationError;
+  } finally {
+    removeAbort();
+  }
+}
+
+/**
  * The ONE bind/execute/release discipline every run-scoped driver-lease window
  * uses (worker loop and tests alike). A bind failure throws BEFORE `operation`
  * runs — a second concurrent run binding, or a malformed fingerprint, is a
@@ -334,6 +418,37 @@ export class WorkerSessionManager {
     operation: (driver: BrowserDriver) => Promise<Result>,
   ): Promise<Result> {
     const need = SessionNeedSchema.parse(needInput);
+    return this.#withDriverLease(need, instance, signal, (driver) => waitForOperation(
+      Promise.resolve().then(() => operation(driver)),
+      signal,
+      need.system,
+    ));
+  }
+
+  async withTransactionDriver<Result>(
+    needInput: SessionNeed,
+    instance: string | undefined,
+    signal: AbortSignal,
+    operation: (driver: BrowserDriver, ownership: TransactionDriverLeaseOwnership) => Promise<Result>,
+  ): Promise<Result> {
+    const need = SessionNeedSchema.parse(needInput);
+    if (need.access !== "transaction") {
+      throw new Error(`${need.system} retained driver lease requires transaction access`);
+    }
+    return this.#withDriverLease(need, instance, signal, (driver) =>
+      waitForTransactionOperation(
+        (ownership) => operation(driver, ownership),
+        signal,
+        need.system,
+      ));
+  }
+
+  async #withDriverLease<Result>(
+    need: SessionNeed,
+    instance: string | undefined,
+    signal: AbortSignal,
+    use: (driver: BrowserDriver) => Promise<Result>,
+  ): Promise<Result> {
     if (this.#closingReason !== undefined) {
       throw new Error(
         `${need.system} driver lease cannot start while worker sessions are closing for ${this.#closingReason}`,
@@ -351,11 +466,7 @@ export class WorkerSessionManager {
       }
       const resource = await this.#acquireBounded(need, instance, configFingerprint, signal);
       try {
-        const result = await waitForOperation(
-          Promise.resolve().then(() => operation(resource.driver)),
-          signal,
-          need.system,
-        );
+        const result = await use(resource.driver);
         try {
           await resource.reset({ signal });
           this.#emit({

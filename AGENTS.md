@@ -255,7 +255,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 - **Lesson 2026-08-25 — fenced-write instrumentation:** a commit task may call `ctx.recordData`
   before `ctx.driver.commit`. Capture and clock that batch at the call, then deliver commit-role
   span events only after the callback itself settles; winning its deadline race merely requests
-  cancellation. Until actual settlement, do not emit, park, or close the transaction session. An
+  cancellation. The ordinary `withDriver` abort race is not sufficient: the write sequencer must
+  cross `withTransactionDriver`'s one-way `retainAfterFence()` boundary immediately after the durable
+  fence. Until actual settlement, parent abort and task deadline may request cancellation but must
+  not emit, park, return, reset, or close the transaction session. An
   indefinitely non-cooperative callback remains process-owned with an `attempting` intent so
   process-loss recovery, not detached I/O, owns the next action. If task and terminal-span delivery
   both fail, preserve them primary-first in an `AggregateError` and carry it through any parked-write

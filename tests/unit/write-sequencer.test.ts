@@ -8,6 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
 import { TaskError } from "../../src/base/errors.js";
 import type { WriteSequencerContext } from "../../src/core/run-executor.js";
 import {
@@ -737,6 +738,122 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
 
     releaseCallback();
     await assert.rejects(execution, /exceeded its immutable 60000ms task deadline/u);
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
+  });
+
+  it("retains a parent-aborted transaction lease until its non-cooperative commit callback settles", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    let releaseCallback = (): void => undefined;
+    const callbackMaySettle = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let reportCallbackInFlight = (): void => undefined;
+    const callbackInFlight = new Promise<void>((resolve) => {
+      reportCallbackInFlight = resolve;
+    });
+    h.world.afterCommitClickBeforeTaskSettlement = async () => {
+      reportCallbackInFlight();
+      await callbackMaySettle;
+    };
+    const parent = new AbortController();
+    const parentFailure = new Error("operator cancelled while the external callback was in flight");
+    let executionSettled = false;
+    const execution = h.execute({
+      ...contextFor(run, claim),
+      signal: parent.signal,
+    }).then(
+      (value) => ({ state: "fulfilled" as const, value }),
+      (error: unknown) => ({ state: "rejected" as const, error }),
+    ).finally(() => {
+      executionSettled = true;
+    });
+
+    await callbackInFlight;
+    parent.abort(parentFailure);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(
+      h.emitter.events()
+        .filter((event) => event.spanPath.endsWith("/commit"))
+        .map((event) => event.t),
+      ["span.started"],
+      "parent abort cannot flush the commit lane before callback settlement",
+    );
+    assert.equal(intentByKey(h.database)?.status, "attempting");
+    assert.deepEqual(h.sessions.closeReasons(), [], "the retained transaction session remains open");
+    assert.equal(executionSettled, false, "the fenced execution remains owned while its callback is in flight");
+    assert.deepEqual(h.scheduler.pending(), [], "parent-first cancellation cancels the later task deadline");
+
+    releaseCallback();
+    const outcome = await execution;
+    assert.equal(outcome.state, "rejected");
+    if (outcome.state !== "rejected") return;
+    assert.ok(outcome.error instanceof WriteParkedError);
+    assert.match(outcome.error.message, /operator cancelled while the external callback was in flight/u);
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+    assert.deepEqual(h.sessions.closeReasons(), ["poisoned"], "post-settlement failure poisons exactly once");
+  });
+
+  it("keeps a deadline failure primary when parent abort follows during retained callback settlement", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    let releaseCallback = (): void => undefined;
+    const callbackMaySettle = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let reportCallbackInFlight = (): void => undefined;
+    const callbackInFlight = new Promise<void>((resolve) => {
+      reportCallbackInFlight = resolve;
+    });
+    h.world.afterCommitClickBeforeTaskSettlement = async () => {
+      reportCallbackInFlight();
+      await callbackMaySettle;
+    };
+    const parent = new AbortController();
+    const parentFailure = new Error("parent abort followed the commit deadline");
+    const execution = h.execute({
+      ...contextFor(run, claim),
+      signal: parent.signal,
+    }).then(
+      (value) => ({ state: "fulfilled" as const, value }),
+      (error: unknown) => ({ state: "rejected" as const, error }),
+    );
+
+    await callbackInFlight;
+    const [commitDeadline] = h.scheduler.pending();
+    assert.ok(commitDeadline);
+    commitDeadline.fire();
+    await new Promise((resolve) => setImmediate(resolve));
+    parent.abort(parentFailure);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(
+      h.emitter.events()
+        .filter((event) => event.spanPath.endsWith("/commit"))
+        .map((event) => event.t),
+      ["span.started"],
+    );
+    assert.equal(intentByKey(h.database)?.status, "attempting");
+    assert.deepEqual(h.sessions.closeReasons(), []);
+
+    releaseCallback();
+    const outcome = await execution;
+    assert.equal(outcome.state, "rejected");
+    if (outcome.state !== "rejected") return;
+    assert.ok(outcome.error instanceof WriteParkedError);
+    assert.ok(outcome.error.cause instanceof Error);
+    assert.ok(outcome.error.cause.cause instanceof AggregateError);
+    const [deadlineFailure, retainedParentFailure] = z.array(z.unknown()).parse(
+      outcome.error.cause.cause.errors,
+    );
+    assert.ok(deadlineFailure instanceof Error);
+    assert.match(deadlineFailure.message, /exceeded its immutable 60000ms task deadline/u);
+    assert.equal(retainedParentFailure, parentFailure);
     assert.equal(intentByKey(h.database)?.status, "parked");
     assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
   });
