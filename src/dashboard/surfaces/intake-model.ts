@@ -94,11 +94,25 @@ export function suggestionProposalText(proposal: Suggestion): string {
  * every rejection use; `headerRowIndex` is 0-based on the wire.
  */
 export function layoutMetaItems(session: IntakeSessionWire): string[] {
-  if (session.headerRowIndex === null || session.headerFingerprint === null) return [];
+  const fingerprint = layoutFingerprint(session);
+  if (session.headerRowIndex === null || fingerprint === undefined) return [];
   return [
     `header row ${String(session.headerRowIndex + 1)}`,
-    `fingerprint ${shortHash(session.headerFingerprint)}`,
+    `fingerprint ${shortHash(fingerprint)}`,
   ];
+}
+
+/**
+ * The whole layout fingerprint behind the footer's short eye-scan value.
+ *
+ * The short prefix keeps the sticky outcome band dense, but this is a fencing
+ * value rather than decorative metadata: the operator must be able to inspect
+ * the exact value the kernel will compare. It stays absent until there is a
+ * settled layout for the same reason as `layoutMetaItems`.
+ */
+export function layoutFingerprint(session: IntakeSessionWire): string | undefined {
+  if (session.headerRowIndex === null || session.headerFingerprint === null) return undefined;
+  return session.headerFingerprint;
 }
 
 /**
@@ -147,4 +161,19 @@ export function manifestFacts(session: IntakeSessionWire): { key: string; value:
     });
   }
   return facts;
+}
+
+/**
+ * The full opaque identifiers behind the manifest block's compact rows.
+ *
+ * `KeyValueList` deliberately truncates its dense value column, so these exact
+ * values travel separately to the one accessible disclosure beside that list.
+ * The digest is the full SHA-256, never the source row's eye-scan prefix.
+ */
+export function manifestIdentifierFacts(session: IntakeSessionWire): { key: string; value: string }[] {
+  return [
+    ...(session.intakeManifestId === undefined ? [] : [{ key: "manifest id", value: session.intakeManifestId }]),
+    { key: "sha256", value: session.artifact.sha256 },
+    { key: "artifact id", value: session.artifact.id },
+  ];
 }

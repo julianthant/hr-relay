@@ -44,6 +44,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import {
   CheckCircle2,
   FileSpreadsheet,
+  Info,
   ListChecks,
   RotateCcw,
   Table2,
@@ -70,12 +71,16 @@ import {
   Dropzone,
   EmptyState,
   Field,
+  IconButton,
   Input,
   KeyValueList,
   MetaLine,
   Panel,
   PanelBody,
   PanelHeader,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Refusal,
   SectionLabel,
   Select,
@@ -103,7 +108,9 @@ import { fmtClock, pluralize, shortHash } from "./format.js";
 import {
   correctionText,
   headerCandidateOptionLabel,
+  layoutFingerprint,
   layoutMetaItems,
+  manifestIdentifierFacts,
   manifestFacts,
   sourceLabel,
   suggestionProposalText,
@@ -728,7 +735,7 @@ function ValidationReview({
                   className="flex flex-wrap items-baseline gap-[var(--ds-space-snug)]"
                 >
                   <Chip label="row">{String(correction.sourceRow)}</Chip>
-                  <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                  <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg-secondary)]")}>
                     {correctionText(correction, labelOf(correction.field))}
                   </span>
                   <MetaLine items={[fmtClock(correction.correctedAt)]} />
@@ -948,6 +955,42 @@ function RerunBanner({ rerun }: { rerun: NonNullable<IntakeSessionWire["rerun"]>
   );
 }
 
+/**
+ * The complete identifier behind a dense, eye-scan-friendly value. Popover is
+ * the design system's accessible home for load-bearing detail that would make
+ * the resting surface noisy; the body wraps opaque tokens instead of clipping
+ * them again as `KeyValueList` correctly does in dense lists.
+ */
+function IdentifierPopover({
+  label,
+  title,
+  facts,
+}: {
+  label: string;
+  title: string;
+  facts: { key: string; value: string }[];
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <IconButton size="xs" label={label} icon={<Info aria-hidden className={dsIcon.sm} />} />
+      </PopoverTrigger>
+      <PopoverContent title={title} width="lg" align="start">
+        <dl className="flex flex-col gap-[var(--ds-space-base)]">
+          {facts.map((fact) => (
+            <div key={fact.key} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+              <dt className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{fact.key}</dt>
+              <dd className={cn(dsText.body, dsText.nums, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
+                {fact.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /* ── outcome band ─────────────────────────────────────────────────────────── */
 
 /**
@@ -989,6 +1032,7 @@ function OutcomeBand({
 
   const validated = validation.state === "validated";
   const rejectedRows = validated ? new Set(validation.rejected.map((entry) => entry.sourceRow)).size : 0;
+  const fingerprint = layoutFingerprint(session);
 
   return (
     <div
@@ -1026,7 +1070,16 @@ function OutcomeBand({
           * fact about what is about to happen; `MetaLine`'s own docstring
           * names this exact line as one of the seven it was extracted for.
           */}
-        <MetaLine tone="faint" items={layoutMetaItems(session)} />
+        <span className="flex items-center gap-[var(--ds-space-snug)]">
+          <MetaLine tone="faint" items={layoutMetaItems(session)} />
+          {fingerprint !== undefined && (
+            <IdentifierPopover
+              label="Show full layout fingerprint"
+              title="Layout fingerprint"
+              facts={[{ key: "fingerprint", value: fingerprint }]}
+            />
+          )}
+        </span>
       </span>
 
       <span className="flex-1" />
@@ -1300,7 +1353,14 @@ export function IntakeWorkspace({
                 * order. The four it does not carry stay booked as unserved
                 * rather than filled from the nearest plausible value.
                 */}
-              <KeyValueList items={manifestFacts(session)} />
+              <span className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
+                <KeyValueList items={manifestFacts(session)} className="min-w-0 flex-1" />
+                <IdentifierPopover
+                  label="Show full manifest identifiers"
+                  title="Manifest identifiers"
+                  facts={manifestIdentifierFacts(session)}
+                />
+              </span>
             </span>
           </Banner>
         )}

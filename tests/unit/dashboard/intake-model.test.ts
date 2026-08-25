@@ -26,7 +26,9 @@ import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/do
 import {
   correctionText,
   headerCandidateOptionLabel,
+  layoutFingerprint,
   layoutMetaItems,
+  manifestIdentifierFacts,
   manifestFacts,
   sourceLabel,
   suggestionProposalText,
@@ -88,6 +90,10 @@ describe("IN8 / IN9 — the layout every decision on the screen is fenced agains
     ]);
   });
 
+  it("keeps the full fenced fingerprint available behind the compact footer value", () => {
+    assert.equal(layoutFingerprint(FIXTURE_INTAKE_MAPPING), FIXTURE_INTAKE_MAPPING.headerFingerprint);
+  });
+
   it("is ABSENT before a header row is settled — there is no layout to name yet", () => {
     const unsettled: IntakeSessionWire = {
       ...FIXTURE_INTAKE_MAPPING,
@@ -95,6 +101,7 @@ describe("IN8 / IN9 — the layout every decision on the screen is fenced agains
       headerFingerprint: null,
     };
     assert.deepEqual(layoutMetaItems(unsettled), []);
+    assert.equal(layoutFingerprint(unsettled), undefined);
   });
 });
 
@@ -156,6 +163,14 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
     assert.equal(manifestFacts(enqueued).find((fact) => fact.key === "artifact")?.value, enqueued.artifact.id);
   });
 
+  it("keeps each full opaque identifier available behind the dense manifest rows", () => {
+    assert.deepEqual(manifestIdentifierFacts(enqueued), [
+      { key: "manifest id", value: MANIFEST_ID },
+      { key: "sha256", value: enqueued.artifact.sha256 },
+      { key: "artifact id", value: enqueued.artifact.id },
+    ]);
+  });
+
   it("reads `created` off the MANIFEST, never off the upload that preceded it", () => {
     const shifted: IntakeSessionWire = IntakeSessionWireSchema.parse({
       ...enqueued,
@@ -172,6 +187,7 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
     const withoutRerun: IntakeSessionWire = { ...enqueued, rerun: undefined };
     const keys = manifestFacts(withoutRerun).map((fact) => fact.key);
     assert.deepEqual(keys, ["manifest", "source", "artifact"]);
+    assert.deepEqual(manifestIdentifierFacts(withoutRerun).map((fact) => fact.key), ["manifest id", "sha256", "artifact id"]);
   });
 
   it("names a pre-D171 file as one that predates the field, never as a blank", () => {
