@@ -64,6 +64,7 @@ export const WRITE_FIXTURE_ITEM_ID = UUID_3;
 export const WRITE_FIXTURE_WORKER_ID = "write-fixture-worker-1";
 export const WRITE_FIXTURE_FINGERPRINT = FingerprintSchema.parse("e".repeat(64));
 export const WRITE_FIXTURE_IMPL_FINGERPRINT = FingerprintSchema.parse("d".repeat(64));
+export const WRITE_FIXTURE_SECRET_CANARY = "RAW_TRANSACTION_SECRET_CANARY";
 
 const SubjectInput = z.strictObject({ eid: EidSchema });
 export const WriteFixtureProofSchema = z.strictObject({
@@ -240,6 +241,15 @@ export const WriteFixtureSaveCommit = defineTaskContract({
   example: { transactionId: "T123456" },
 });
 
+/** The exact task-output scopes the sealed transaction fixture can produce. */
+export const WRITE_FIXTURE_TASK_IDS = Object.freeze([
+  WriteFixtureProbe.id,
+  WriteFixturePrepare.id,
+  WriteFixtureCommit.id,
+  WriteFixtureSaveCommit.id,
+  WriteFixtureVerify.id,
+]);
+
 /* ── the recording fake driver + store ───────────────────────────────────── */
 
 export interface WriteFixtureDriver {
@@ -261,6 +271,8 @@ export interface WriteFixtureWorld {
   commitOutput: unknown;
   /** When set, the commit impl throws this instead of clicking. */
   commitThrows?: Error;
+  /** Mutation control: record a declared page fact before invoking the external commit. */
+  commitRecordsBeforeClick: boolean;
   /** Called between the fence and the click (the fence-before-click witness). */
   onCommitClick?: () => void;
   /** Called when the staged page's subject observation is read (beat ③). */
@@ -273,6 +285,12 @@ export interface WriteFixtureWorld {
   omitDriverRead: boolean;
   /** When set, driver.read throws it. */
   subjectReadThrows?: Error;
+  /** Throw only after the probe has recorded its observation. */
+  probeThrowsAfterRecord?: Error;
+  /** Mutation control: author one unclassified point and require a loud refusal. */
+  recordUndeclaredProbeField: boolean;
+  /** Mutation control: author one unclassified commit point after the click. */
+  recordUndeclaredCommitField: boolean;
 }
 
 export function createWriteFixtureWorld(): WriteFixtureWorld {
@@ -282,7 +300,10 @@ export function createWriteFixtureWorld(): WriteFixtureWorld {
     verifyResults: [],
     subjectEid: WRITE_FIXTURE_EID,
     commitOutput: { transactionId: "T123456" },
+    commitRecordsBeforeClick: false,
     omitDriverRead: false,
+    recordUndeclaredProbeField: false,
+    recordUndeclaredCommitField: false,
   };
 }
 
@@ -318,50 +339,86 @@ export interface WriteFixtureRegistry {
 export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRegistry {
   const probe = defineTask(writeFixtureDriverDeclaration, WriteFixtureProbe, {
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
-    async run() {
+    async run({ input, ctx }) {
       world.events.push("probe");
       const next = world.probeResults.shift();
       if (next === undefined) {
         throw new Error("write fixture probe was invoked with no queued result; the test under-provisioned it");
       }
       if (next instanceof Error) throw next;
-      return ProbeOutputSchema.parse(next);
+      const verdict = ProbeOutputSchema.parse(next);
+      ctx.recordData([
+        { direction: "read", field: "state", value: verdict.state },
+        { direction: "read", field: "eid", value: input.eid },
+        { direction: "read", field: "secretCanary", value: WRITE_FIXTURE_SECRET_CANARY },
+      ]);
+      if (world.recordUndeclaredProbeField) {
+        ctx.recordData({ direction: "read", field: "undeclaredProbeField", value: "must-refuse" });
+      }
+      if (world.probeThrowsAfterRecord !== undefined) throw world.probeThrowsAfterRecord;
+      return verdict;
     },
   });
   const prepare = defineTask(writeFixtureDriverDeclaration, WriteFixturePrepare, {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
-    async run() {
+    async run({ ctx }) {
       world.events.push("prepare");
       world.onPrepare?.();
-      return { staged: true as const, stagedPageState: WRITE_FIXTURE_STAGED_STATE };
+      const staged = { staged: true as const, stagedPageState: WRITE_FIXTURE_STAGED_STATE };
+      ctx.recordData([
+        { direction: "write", field: "staged", value: staged.staged },
+        { direction: "read", field: "stagedPageState", value: staged.stagedPageState },
+      ]);
+      return staged;
     },
   });
   const commit = defineTask(writeFixtureDriverDeclaration, WriteFixtureCommit, {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
     async run({ ctx }) {
       if (world.commitThrows !== undefined) throw world.commitThrows;
+      if (world.commitRecordsBeforeClick) {
+        ctx.recordData({ direction: "read", field: "preClickPageState", value: "ready-to-submit" });
+      }
       await ctx.driver.commit("ucpath.write-fixture.save-submit", ctx.mutation);
-      return WriteFixtureProofSchema.parse(world.commitOutput);
+      const proof = WriteFixtureProofSchema.parse(world.commitOutput);
+      ctx.recordData({ direction: "write", field: "transactionId", value: proof.transactionId });
+      if (world.recordUndeclaredCommitField) {
+        ctx.recordData({ direction: "read", field: "undeclaredCommitField", value: "RAW_UNDECLARED_COMMIT" });
+      }
+      return proof;
     },
   });
   const saveCommit = defineTask(writeFixtureDriverDeclaration, WriteFixtureSaveCommit, {
     sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
     async run({ ctx }) {
       if (world.commitThrows !== undefined) throw world.commitThrows;
+      if (world.commitRecordsBeforeClick) {
+        ctx.recordData({ direction: "read", field: "preClickPageState", value: "ready-to-submit" });
+      }
       await ctx.driver.commit("ucpath.write-fixture.save", ctx.mutation);
-      return WriteFixtureProofSchema.parse(world.commitOutput);
+      const proof = WriteFixtureProofSchema.parse(world.commitOutput);
+      ctx.recordData({ direction: "write", field: "transactionId", value: proof.transactionId });
+      if (world.recordUndeclaredCommitField) {
+        ctx.recordData({ direction: "read", field: "undeclaredCommitField", value: "RAW_UNDECLARED_COMMIT" });
+      }
+      return proof;
     },
   });
   const verify = defineTask(writeFixtureDriverDeclaration, WriteFixtureVerify, {
     sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
-    async run() {
+    async run({ input, ctx }) {
       world.events.push("verify");
       const next = world.verifyResults.shift();
       if (next === undefined) {
         throw new Error("write fixture verify was invoked with no queued result; the test under-provisioned it");
       }
       if (next instanceof Error) throw next;
-      return ProbeOutputSchema.parse(next);
+      const verdict = ProbeOutputSchema.parse(next);
+      ctx.recordData([
+        { direction: "read", field: "state", value: verdict.state },
+        { direction: "read", field: "eid", value: input.eid },
+      ]);
+      return verdict;
     },
   });
   const store = defineBrowserStore("ucpath", writeFixtureDriverDeclaration, writeFixtureSession, {

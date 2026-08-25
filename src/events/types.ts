@@ -205,6 +205,15 @@ const TransactionPreviewedSchema = z.strictObject({
   externalCommit: z.literal("none"),
 });
 
+/** The strict wire twin of the kernel-only durable-fence beat. */
+const TransactionFencedSchema = z.strictObject({
+  t: z.literal("transaction.fenced"),
+  ...BaseFields,
+  ...RunSpanIdentityFields,
+  node: SlugSchema,
+  taskId: SpanTaskIdSchema,
+});
+
 /**
  * D270 — an observed data point's redacted value. The parity twin of
  * `RedactedFieldSchema` (`src/domain/redaction.ts`), restated arm-for-arm while
@@ -348,6 +357,7 @@ export const SpanEventWireSchema = z.union([
   GateOpenedSchema,
   GateResolvedSchema,
   TransactionPreviewedSchema,
+  TransactionFencedSchema,
   DataObservedSchema,
   TaskSpanEndedSchema,
   RunSpanEndedSchema,

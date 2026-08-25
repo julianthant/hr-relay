@@ -197,8 +197,9 @@ export class WriteParkedError extends Error {
     intentGeneration: number;
     parkCode: WriteIntentParkCode;
     message: string;
+    cause?: unknown;
   }>) {
-    super(input.message);
+    super(input.message, input.cause === undefined ? undefined : { cause: input.cause });
     this.name = "WriteParkedError";
     this.writeIntentId = input.writeIntentId;
     this.intentGeneration = input.intentGeneration;
