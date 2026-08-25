@@ -10,6 +10,13 @@
  */
 export const ARCHIVE_INDEX = "";
 
+/**
+ * The two real Archive views. This belongs beside the archive route sentinel
+ * because the dashboard route owns which view is visible; keeping it local to
+ * the component would leave another surface unable to name a destination.
+ */
+export type ArchiveView = "runs" | "versions";
+
 import type {
   ArchiveEntryWire,
   ArchiveSweepWire,

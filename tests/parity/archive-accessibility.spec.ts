@@ -11,6 +11,7 @@ import { PARITY_DIST_DIR, ensureParityBundle } from "./helpers/bundle.js";
 import { startFixtureServer, type FixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_ARCHIVE_INDEX } from "./helpers/fixture-archive.js";
 import { FIXTURE_DAY } from "./helpers/fixture-day.js";
+import { FIXTURE_EXPLORER_WORKFLOW_ID } from "./helpers/fixture-explorer.js";
 
 const FIRST_WARNING = "CRM returned a stale session on attempt 1";
 const PARTIAL_RUN_ID = "00000000-0000-4000-8000-000000000099";
@@ -71,4 +72,17 @@ test("archive status filter distinguishes done from done with warnings", async (
 
   await expect(page.getByRole("combobox", { name: "Final status" }).getByRole("option"))
     .toHaveText(["Any outcome", "Done", "Done with warnings"]);
+});
+
+test("Explorer's Version registry door lands Archive's actual Versions & bumps view", async ({ page }) => {
+  await gotoAppState(page, server.baseUrl, {
+    day: FIXTURE_DAY,
+    explore: FIXTURE_EXPLORER_WORKFLOW_ID,
+  });
+
+  await page.getByRole("button", { name: "Version registry" }).click();
+
+  await expect(page).toHaveURL(/archive=&archiveView=versions/u);
+  await expect(page.getByRole("table", { name: "Workflow version registry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Versions & bumps" })).toHaveAttribute("aria-pressed", "true");
 });
