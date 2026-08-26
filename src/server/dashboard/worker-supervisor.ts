@@ -39,9 +39,11 @@ import type {
 } from "../../core/deadline-scheduler.js";
 import {
   WorkerPoolMemberSchema,
+  WorkerStopEscalationPolicySchema,
   WorkerSupervisorAcknowledgementSchema,
   type WorkerPoolMember,
   type WorkerPoolProcessSupervisor,
+  type WorkerStopEscalationPolicy,
   type WorkerSupervisorAcknowledgement,
   type WorkerSupervisorRequest,
 } from "../../core/worker-loop.js";
@@ -326,11 +328,118 @@ export function createDashboardWorkerProcessSupervisor(
     });
   };
 
+  /**
+   * A member this supervisor durably owns as a LIVE child. Anything else —
+   * never spawned (possibly externally running: indistinguishable on purpose),
+   * still unproved, or already exited — refuses BY NAME with its evidence.
+   */
+  const requireLiveOwnedChild = (
+    command: WorkerSupervisorRequest["command"],
+    member: WorkerPoolMember,
+  ): MemberRecord => {
+    const record = records.get(member.workerId);
+    if (record === undefined) {
+      throw new Error(
+        `${command} refused: this supervisor never spawned ${member.workerId}; an externally started `
+        + "worker is never adopted or controlled",
+      );
+    }
+    if (record.state === "awaiting-birth") {
+      throw new Error(
+        `${command} refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved its `
+        + "lease birth yet",
+      );
+    }
+    if (record.state === "exited") {
+      const exit = record.exit;
+      throw new Error(
+        `${command} refused: worker ${member.workerId} already exited `
+        + `(${exit?.outcome ?? "unknown"}, code ${String(exit?.exitCode)}, signal ${String(exit?.signal)}) `
+        + `at ${exit?.at ?? "unknown"}; there is no live child to control`,
+      );
+    }
+    return record;
+  };
+
+  /**
+   * Arm the next escalation deadline. Each stage is recorded only AFTER its
+   * signal was actually delivered; an undeliverable signal goes to the fault
+   * sink and records nothing — never a stage that did not happen.
+   */
+  const armEscalation = (
+    record: MemberRecord,
+    signal: "SIGTERM" | "SIGKILL",
+    stage: "sigterm-sent" | "sigkill-sent",
+    delayMs: number,
+    next?: () => void,
+  ): void => {
+    record.escalationTimer = deps.scheduler.schedule(deps.clock.monotonicMs() + delayMs, () => {
+      record.escalationTimer = undefined;
+      if (record.state !== "stopping") return;
+      if (!record.child.kill(signal)) {
+        deps.onFault(new Error(
+          `worker ${record.member.workerId} (pid ${String(record.pid)}) escalation ${signal} was not `
+          + "delivered and the child has not reported exit; the stop is wedged",
+        ));
+        return;
+      }
+      record.observedStop.push({ stage, at: instant() });
+      next?.();
+    });
+  };
+
+  const beginStopEscalation = async (
+    record: MemberRecord,
+    escalation: WorkerStopEscalationPolicy,
+  ): Promise<void> => {
+    const durable = await deps.gracefulStop.request(record.member);
+    const requestedAt = IsoInstantSchema.parse(durable.requestedAt);
+    if (record.state !== "running") {
+      throw new Error(
+        `stop-worker for ${record.member.workerId} raced: the child left the running state while the `
+        + `durable graceful stop was being requested (now ${record.state})`,
+      );
+    }
+    record.state = "stopping";
+    record.observedStop.push({ stage: "graceful-stop-requested", at: requestedAt });
+    armEscalation(record, "SIGTERM", "sigterm-sent", escalation[0].timeoutMs, () => {
+      armEscalation(record, "SIGKILL", "sigkill-sent", escalation[1].timeoutMs);
+    });
+  };
+
+  const stopWorker = async (
+    member: WorkerPoolMember,
+    escalation: WorkerStopEscalationPolicy,
+  ): Promise<WorkerSupervisorAcknowledgement> => {
+    const record = requireLiveOwnedChild("stop-worker", member);
+    if (record.state === "stopping") {
+      throw new Error(
+        `stop-worker refused: a stop is already in flight for ${member.workerId} `
+        + `(observed: ${record.observedStop.map(({ stage }) => stage).join(" → ")}); its later escalation `
+        + "stages are recorded as they occur, not re-initiated",
+      );
+    }
+    await beginStopEscalation(record, escalation);
+    return WorkerSupervisorAcknowledgementSchema.parse({
+      command: "stop-worker",
+      state: "acknowledged",
+      member,
+      ownership: "supervised",
+      escalation,
+      observed: [...record.observedStop],
+    });
+  };
+
   return Object.freeze({
     async execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement> {
       switch (request.command) {
         case "spawn-worker":
           return spawnWorker(WorkerPoolMemberSchema.parse(request.member));
+        case "stop-worker":
+          return stopWorker(
+            WorkerPoolMemberSchema.parse(request.member),
+            WorkerStopEscalationPolicySchema.parse(request.escalation),
+          );
         default:
           throw new Error(`worker supervisor cannot execute ${request.command} yet`);
       }

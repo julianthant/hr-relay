@@ -15,8 +15,12 @@ import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js"
 import type { WorkerId } from "../../../src/domain/ids.js";
 import {
   poolWorkerId,
+  WORKER_GRACEFUL_STOP_TIMEOUT_MS,
+  WORKER_SIGTERM_TIMEOUT_MS,
   WorkerPoolMemberSchema,
+  WorkerStopEscalationPolicySchema,
   type WorkerPoolMember,
+  type WorkerStopEscalationPolicy,
 } from "../../../src/core/worker-loop.js";
 import {
   createDashboardWorkerProcessSupervisor,
@@ -340,6 +344,152 @@ describe("a crashed child", () => {
     expect(harness.supervisor.memberEvidence(target)).toMatchObject({
       state: "running",
       pid: harness.children[1]?.pid,
+    });
+  });
+});
+
+/* ── bounded stop escalation (D271: graceful → SIGTERM → SIGKILL) ────────── */
+
+function stopPolicy(): WorkerStopEscalationPolicy {
+  return WorkerStopEscalationPolicySchema.parse([
+    { stage: "graceful-stop-requested", timeoutMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS },
+    { stage: "sigterm-sent", timeoutMs: WORKER_SIGTERM_TIMEOUT_MS },
+    { stage: "sigkill-sent" },
+  ]);
+}
+
+async function runningHarness(): Promise<{ harness: Harness; target: WorkerPoolMember }> {
+  const harness = openHarness();
+  const target = member(1);
+  await harness.supervisor.execute({ command: "spawn-worker", member: target });
+  return { harness, target };
+}
+
+describe("stop-worker", () => {
+  it("requests the durable graceful stop and acknowledges only the observed graceful stage", async () => {
+    const { harness, target } = await runningHarness();
+    harness.clock.advanceWall(5_000);
+
+    const acknowledgement = await harness.supervisor.execute({
+      command: "stop-worker",
+      member: target,
+      escalation: stopPolicy(),
+    });
+
+    expect(harness.gracefulRequests).toEqual([target]);
+    expect(acknowledgement).toEqual({
+      command: "stop-worker",
+      state: "acknowledged",
+      member: target,
+      ownership: "supervised",
+      escalation: stopPolicy(),
+      observed: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:05.000Z" }],
+    });
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "stopping",
+      observedStop: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:05.000Z" }],
+    });
+  });
+
+  it("escalates to SIGTERM after the graceful bound and SIGKILL after the SIGTERM bound, recording each stage as it happens", async () => {
+    const { harness, target } = await runningHarness();
+    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    const child = harness.children[0];
+    if (child === undefined) throw new Error("expected a spawned child");
+    expect(child.signalsSent).toEqual([]);
+
+    harness.clock.advanceMonotonic(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
+    harness.clock.advanceWall(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
+    const sigterm = harness.scheduler.pending()[0];
+    if (sigterm === undefined) throw new Error("expected the armed SIGTERM deadline");
+    sigterm.fire();
+    expect(child.signalsSent).toEqual(["SIGTERM"]);
+
+    harness.clock.advanceMonotonic(WORKER_SIGTERM_TIMEOUT_MS);
+    harness.clock.advanceWall(WORKER_SIGTERM_TIMEOUT_MS);
+    const sigkill = harness.scheduler.pending()[0];
+    if (sigkill === undefined) throw new Error("expected the armed SIGKILL deadline");
+    sigkill.fire();
+    expect(child.signalsSent).toEqual(["SIGTERM", "SIGKILL"]);
+
+    harness.clock.advanceWall(1_000);
+    child.emitExit(null, "SIGKILL");
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "exited",
+      pid: child.pid,
+      outcome: "stopped",
+      exitCode: null,
+      signal: "SIGKILL",
+      at: "2026-08-26T09:02:31.000Z",
+      observedStop: [
+        { stage: "graceful-stop-requested", at: NOW },
+        { stage: "sigterm-sent", at: "2026-08-26T09:02:00.000Z" },
+        { stage: "sigkill-sent", at: "2026-08-26T09:02:30.000Z" },
+      ],
+    });
+    expect(harness.faults).toHaveLength(0);
+  });
+
+  it("never signals a child that exits gracefully before the bound — the deadline is cancelled", async () => {
+    const { harness, target } = await runningHarness();
+    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    const child = harness.children[0];
+    if (child === undefined) throw new Error("expected a spawned child");
+
+    harness.clock.advanceWall(30_000);
+    child.emitExit(0, null);
+
+    expect(harness.scheduler.pending()).toHaveLength(0);
+    expect(child.signalsSent).toEqual([]);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "exited",
+      outcome: "stopped",
+      exitCode: 0,
+      observedStop: [{ stage: "graceful-stop-requested", at: NOW }],
+    });
+  });
+
+  it("refuses a second stop while an escalation is already in flight", async () => {
+    const { harness, target } = await runningHarness();
+    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+      .rejects.toThrow(/a stop is already in flight/);
+    expect(harness.gracefulRequests).toHaveLength(1);
+  });
+
+  it("refuses to stop a member it never spawned — external workers are not controlled", async () => {
+    const harness = openHarness();
+
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: member(2), escalation: stopPolicy() }))
+      .rejects.toThrow(/never spawned .* externally started worker is never adopted or controlled/);
+  });
+
+  it("refuses to stop a child that already exited, naming its evidence", async () => {
+    const { harness, target } = await runningHarness();
+    harness.children[0]?.emitExit(1, null);
+
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+      .rejects.toThrow(/already exited \(crashed, code 1, signal null\)/);
+  });
+
+  it("routes a failed escalation signal to the fault sink instead of recording an unsent stage", async () => {
+    const { harness, target } = await runningHarness();
+    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    const child = harness.children[0];
+    if (child === undefined) throw new Error("expected a spawned child");
+    child.killResult = false;
+
+    harness.clock.advanceMonotonic(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
+    const sigterm = harness.scheduler.pending()[0];
+    if (sigterm === undefined) throw new Error("expected the armed SIGTERM deadline");
+    sigterm.fire();
+
+    expect(harness.faults).toHaveLength(1);
+    expect(harness.faults[0]?.message).toMatch(/escalation SIGTERM was not delivered/);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "stopping",
+      observedStop: [{ stage: "graceful-stop-requested", at: NOW }],
     });
   });
 });
