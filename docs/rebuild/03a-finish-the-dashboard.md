@@ -20,7 +20,7 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [x] the reference corpus asserts green over the corrected surfaces — 139 references re-frozen, 151 assert-mode cases green (`81287bb1`)
 - [x] Track D's D1–D5 + D11 — one status derivation, typed failures, one settlement fold, patch-splice + stable `memo` props, bounded reads and the descriptor registry outside the browser bundle; D6–D10 remain proposed outside the exit gate (D264/D268)
 - [x] the Duo ceremony lease — authority, token, bounded waiters, recovery, guard, docs and the live two-worker cold-start proof all landed (D267)
-- [ ] the worker pool / sessions node — pool-indexed identity, durable pool/session authority and the FE session view landed; the real dashboard supervisor and two-scenario parallel proof remain
+- [x] the worker pool / sessions node — pool-indexed identity, durable pool/session authority, the FE session view, the real dashboard supervisor with its panel controls (W3/W4), and the two-scenario parallel proof recorded live 2026-08-26 (`docs/migrations/separations.md` §9.27)
 - [x] observed logs — the real dashboard/composed separations dry run served 13 observed rows (sequences 0..12), no notes and zero run-scoped write evidence (`docs/migrations/separations.md` §9.25)
 - [x] `ref frontend-backend-integration` §7.4's performance budgets — the instrument, BEFORE baseline and both D4/D5 AFTER measurements are recorded against the same 1,240-row / 108-member fixture; the recorded bounds are the later-workflow non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
@@ -62,7 +62,8 @@ observed logs beside them.
 
 A later migration's `Dashboard · wire` task may read `{#dash-defaults}` as met when all of these
 hold. The original eight criteria are 7/8 met; demo fidelity remains open. The expanded ten-row exit
-table is 8/10 met: it also keeps parallel runs open and records observed logs met.
+table is 9/10 met: parallel runs is proved live (`docs/migrations/separations.md` §9.27) and
+observed logs met.
 
 1. Every row of the wiring matrix (`ref frontend-backend-integration` §5) has an implementation and
    a test, and every surface landed as ONE vertical slice (see §Integration execution rule).
@@ -103,7 +104,7 @@ disagreed, the code won and the row says so.
 | Start Run modal | built — four rows, and a typed door for separations | `surfaces/run-start.tsx`, `run-start-kit.tsx` (D250/D251, D261) |
 | Spreadsheet intake | built | `surfaces/intake.tsx`, `commands/intake-service.ts` |
 | Mobile capture | the page is built; the production byte path is NOT | `phone/**`, `surfaces/capture-start.tsx`; D189 → doc 04 `{#def-byte-path}` |
-| Session panel + worker cards | built as a VIEW; no spawn/stop control | `surfaces/shell.tsx:914`; `createDashboardWorkerSupervisor` refuses by name (`server/dashboard/compose.ts:322`) — the pool is `{#parallel-runs}` |
+| Session panel + worker cards | built, WITH the D271 pool controls — plan / spawn / replacement spawn / stop, live-proved | `surfaces/shell.tsx` over the W3 supervisor's real spawn (`server/dashboard/compose.ts`); `docs/migrations/separations.md` §9.27 |
 | Settings + doctor/storage | built READ-ONLY | `surfaces/settings.tsx:9` — editable settings are the deferred `apply-settings` family, doc 04 `{#def-settings}` |
 | Archive + version bump | built — frozen sections, five tabs, Export; frozen list/detail/bump facts drawn | `surfaces/archive.tsx`, `queries/archive.ts` (D223; `3d461962`, `d1f87916`) |
 | Explorer | built read-only | `surfaces/explorer.tsx`, `queries/explorer.ts` (D227–D229); the EDIT half is doc 04 `{#def-explorer-edit}` (D186) |
@@ -587,17 +588,18 @@ pool, because the pool multiplies the hazard it removes.
 <!-- roadmap: parallel-runs -->
 
 <!-- roadmap-status: parallel-runs -->
-- [ ] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard
+- [x] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard: the W4 Session Panel controls over the W3 supervisor's real spawn, live-exercised end to end 2026-08-26 (plan 2 → spawn ×2 → replacement spawn ×2 → stop ×2, `docs/migrations/separations.md` §9.27)
 - [x] BE pool-indexed worker ids — the CLI requires a positive pool index, derives a stable id, and authority refuses duplicate ownership of that index
 - [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis `spawn-worker`/`plan-worker-count` cite (0 for an unplanned workflow); the kernel refuses a stale one by name before the runtime seam; the day wire serves `workerPools[]` (`93b7b18e` · `b4f30ea0` · `24b04dfa`, D269)
 - [x] BE a durable session record and its grouping — `run_sessions` (insert-only, member-less), written by every fan-out before its first member; membership is `tasks.session_id` / `runs.listBySession`; a retry inherits; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa`, D269)
 - [x] FE the session view — worker cards show authority membership and what each worker is doing; groups exact queue-row session ids, joins the claiming card by exact `runId`, preserves absent reasons and distinguishes declared pool size from non-terminal authority worker cards (`97a55b07`)
-- [ ] PROOF two separations dry-run scenarios in parallel, recorded
+- [x] PROOF two separations dry-run scenarios in parallel, recorded — LIVE 2026-08-26: docs 4502 (preview terminal, gate approved through the ceremony, resumed by the OTHER pool member) and 4495 (the genuine S7 refusal) simultaneously `running` for 29.7 s on `separations-worker-1`/`-2` under one D269 session, all ceremonies lease-serialized, 0/0/0 write rows (`docs/migrations/separations.md` §9.27; ref execution-and-sessions §7.1 C12 live-extension note in the same commit) — still open beyond this node: the two-full-chain-preview variant awaits a second past-dated subject (§9.27 §1; doc 4495 unlocks 09/02), and the T1b canary gate (doc 4537, ≥2026-08-28) is unaffected
 > 2026-08-20 | docs-cohesion 03a | the kernel command arms exist and are validated (src/core/command-kernel.ts:95) while createDashboardWorkerSupervisor refuses spawn by name (src/server/dashboard/compose.ts:322) and the FE has no Add-workers control for the CAS reason quoted in src/dashboard/surfaces/shell.tsx:1036
 > 2026-08-21 | parallel-runs P12 | the authority half landed (D269) — ref execution-and-sessions §11 points 1 and 5 carry the as-built; left: the pool process (spawn + pool-indexed ids), the FE session view, the parallel proof
 > 2026-08-25 | parallel-runs P3 | pool-indexed identity landed — `worker <workflow> --pool-index N` validates a positive N, derives `<workflow>-worker-N`, and starts authority under that exact lease id; distinct indices retain distinct lease rows and duplicate N is refused. Left: the real dashboard process supervisor, FE session view and parallel proof
 > 2026-08-25 | parallel-runs P3 review | the CLI/identity seam admits concurrent workers through per-start records while D181 atomically admits the singleton server, reserves generation 1 for never-run, binds ownership to PID + OS process birth (Darwin normalized to C/UTC epoch seconds), and holds exclusive restore admission through staged-byte verification and swap; unproven WAL/SHM rollback is explicit companion-state-uncertain. This does not build pool supervision, FE or the parallel dry-run proof
 > 2026-08-25 | parallel-runs P4 | the FE session view is built from the D269 day wire (`97a55b07`): every present `QueueSurface.session.sessionId` groups membership, `WorkerCard.currentRun.runId` joins the current worker, and an absent arm keeps its served reason; no process control was added. Left: the pool process and the parallel proof
+> 2026-08-26 | parallel-runs PROOF (W6) | the live two-worker pass closed the node (§9.27): pool planned+spawned+stopped from the Session Panel, two dashboard-started composed dry runs concurrently running, the D267 waiter refusal and D214 cross-worker park+resume both live. Findings NAMED there, not fixed: the Duo preflight proves the wrong credential file for a fresh worktree; macOS timer throttling starves an idle spawned worker's heartbeat until a peer's sweep stops it; a cold system's first `plan-worker-count` is unreachable from the panel; the start-result list's duplicate React key `run`; the open panel's worker card does not follow the day stream
 <!-- /roadmap-status -->
 
 **A session is a dashboard-started group of N runs.** Every workflow follows the same
@@ -819,7 +821,7 @@ stricter bar Track F carries (row 10).
 | 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **MET** | D1–D5 and D11 all landed and are test/guard held: D268's shared status fold; typed failure mapping; the one settlement fold; D4's splice + stable-prop `memo`; D5's bounded scans; D11's bundle-closure guard and 1,114,214 → 753,197-byte result. D6–D10 remain `proposed` outside this gate. |
 | 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **MET** | the BEFORE instrument (`407d373f`) and both AFTER rows use the same seeded 1,240-row / 108-member fixture: D4 row patch 22.30 → 0.02 ms / parses 1 → 0; D5 day wire 6,718 → 5,568 statements, preview delta 216 → 6 and logs scope 4 → 2 partitions. |
 | 7 | **The Duo ceremony lease landed** | **MET** | D267 authority/token/waiters/recovery/guard/docs landed (`bfc7d318`…`1c244a40`); the live two-worker cold start then serialized lease generations 3 → 4 with no overlap and zero waiter refusals (ref execution-and-sessions §10 §Live proof). |
-| 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the authority records and their FE view landed; the supervisor still refuses spawn by name, so the pool process and parallel dry-run proof remain |
+| 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **MET** | `docs/migrations/separations.md` §9.27 (2026-08-26): pool planned, spawned and stopped from the Session Panel; docs 4502 and 4495 concurrently `running` for 29.7 s on `separations-worker-1`/`-2` under session `79476d81…`; the gate approved through the ceremony and resumed by the other member; ceremonies lease-serialized g1…g8; 0/0/0 write rows |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **MET** | §9.25's real dashboard/composed separations dry run: document 4502, 13 observed rows (0..12), zero notes and 0 / 0 / 0 run-scoped write evidence. Its service-origin row proves a browser system is optional by declaration; `17468e60` changed the false API-500 invariant to a 200 response and the UI omits the absent claim. The node stays active for its notes emitter and fidelity extras. |
 | 10 | **Demo fidelity: every region exact or ruled** — decisions ratified, ports/proofs open | **open** | D271–D276 record all 49 A answers from the six 2026-08-25 sheets. Archive, Activity AC24, Explorer EX5, shell A46 and autonomous served-fact ports are complete; the resulting ports, vocabulary sweep, proofs and one deliberate parity re-freeze remain. |
 
