@@ -670,6 +670,66 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
+  it("refuses a supervisor that mutates the spawn request member after submission", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        // An adversarial supervisor rewrites the submitted member in place and
+        // acknowledges the rewritten member, hoping the executor compares the
+        // acknowledgement against its own mutation instead of the original.
+        const mutable = request as unknown as { member: { poolIndex: number; workerId: string } };
+        mutable.member.poolIndex = 2;
+        mutable.member.workerId = "person-lookup-worker-2";
+        return {
+          command: "spawn-worker",
+          state: "acknowledged",
+          member: poolMemberFixture(2),
+          stage: "started",
+        };
+      },
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-1" },
+    });
+
+    await assert.rejects(() => executor.spawnWorker({ command: spawn, now: requestedAt }));
+  });
+
+  it("refuses a supervisor that mutates the plan request roster after submission", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        // Rewriting a submitted roster entry must never leak into the accepted
+        // plan's workerIds — the acknowledged ids are the ORIGINAL scalars.
+        const mutable = request as unknown as { members: { workerId: string }[] };
+        const second = mutable.members[1];
+        if (second === undefined) throw new Error("fixture expected a three-member roster");
+        second.workerId = "person-lookup-worker-hijacked";
+        return {
+          command: "plan-worker-count",
+          state: "acknowledged",
+          desiredWorkers: 3,
+          members: [1, 2, 3].map((poolIndex) => ({
+            member: poolMemberFixture(poolIndex),
+            stage: "running",
+            ownership: "supervised",
+          })),
+        };
+      },
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 3 },
+    });
+
+    await assert.rejects(() => executor.planWorkerCount({ command: plan, now: requestedAt }));
+  });
+
   it("awaits an asynchronous supervisor effect before acknowledging a spawn", async () => {
     let effectProved = false;
     const executor = createWorkerPoolRuntimeExecutor({

@@ -413,7 +413,7 @@ export const WorkerStopEscalationSchema = z.tuple([
   }),
   z.strictObject({ stage: z.literal("sigkill-sent") }),
 ]);
-export type WorkerStopEscalation = z.infer<typeof WorkerStopEscalationSchema>;
+export type WorkerStopEscalation = Readonly<z.infer<typeof WorkerStopEscalationSchema>>;
 
 export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("stage", [
   z.strictObject({
@@ -576,13 +576,18 @@ export interface WorkerPoolRuntimeExecutor extends WorkerRuntimeExecutor {
   resumeWorker(context: WorkerRuntimeContext): Promise<unknown>;
 }
 
+/**
+ * Members are FROZEN at mint: every acknowledgement is compared against the
+ * original request scalars, so a supervisor that mutates the submitted request
+ * after the fact fails loudly instead of steering what gets acknowledged.
+ */
 function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember {
   const parsedIndex = PoolSizeSchema.parse(poolIndex);
-  return WorkerPoolMemberSchema.parse({
+  return Object.freeze(WorkerPoolMemberSchema.parse({
     workflowId,
     poolIndex: parsedIndex,
     workerId: poolWorkerId(workflowId, parsedIndex),
-  });
+  }));
 }
 
 function poolMemberFromIdentity(workerId: WorkerId): WorkerPoolMember {
@@ -608,11 +613,13 @@ function poolMemberFromWorkerId(workflowId: WorkflowId, workerId: WorkerId): Wor
 }
 
 function workerStopEscalation(): WorkerStopEscalation {
-  return WorkerStopEscalationSchema.parse([
+  const escalation = WorkerStopEscalationSchema.parse([
     { stage: "graceful-stop-requested", timeoutMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS },
     { stage: "sigterm-sent", timeoutMs: WORKER_SIGTERM_TIMEOUT_MS },
     { stage: "sigkill-sent" },
   ]);
+  for (const stage of escalation) Object.freeze(stage);
+  return Object.freeze(escalation);
 }
 
 function requireSameMember(
@@ -670,16 +677,20 @@ export function createWorkerPoolRuntimeExecutor(
         throw new Error(`planWorkerCount received a ${command.type} command`);
       }
       const desiredWorkers = PoolSizeSchema.parse(command.payload.desiredWorkers);
-      const members = Array.from(
+      const members = Object.freeze(Array.from(
         { length: desiredWorkers },
         (_, offset) => poolMember(command.target.workflowId, offset + 1),
-      );
-      const acknowledgement = WorkerPoolReconciliationAcknowledgementSchema.parse(await supervisor.execute({
+      ));
+      // Snapshot the acknowledged ids BEFORE the supervisor sees the request:
+      // the accepted plan names the original scalars, never a post-submission
+      // rewrite (the frozen roster makes such a rewrite throw anyway).
+      const plannedWorkerIds = Object.freeze(members.map(({ workerId }) => workerId));
+      const acknowledgement = WorkerPoolReconciliationAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "plan-worker-count",
         workflowId: command.target.workflowId,
         desiredWorkers,
         members,
-      }));
+      })));
       if (acknowledgement.desiredWorkers !== desiredWorkers) {
         throw new Error(
           `plan-worker-count requested ${String(desiredWorkers)} workers but the supervisor acknowledged `
@@ -707,7 +718,7 @@ export function createWorkerPoolRuntimeExecutor(
           + `at index ${String(acknowledgement.members.length + 1)}`,
         );
       }
-      return { state: "accepted", workerIds: members.map(({ workerId }) => workerId) };
+      return { state: "accepted", workerIds: [...plannedWorkerIds] };
     },
     async spawnWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
@@ -715,10 +726,10 @@ export function createWorkerPoolRuntimeExecutor(
         throw new Error(`spawnWorker received a ${command.type} command`);
       }
       const member = poolMemberFromWorkerId(command.target.workflowId, command.payload.workerId);
-      const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(await supervisor.execute({
+      const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "spawn-worker",
         member,
-      }));
+      })));
       requireSameMember("spawn-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
@@ -729,11 +740,11 @@ export function createWorkerPoolRuntimeExecutor(
       }
       const member = poolMemberFromIdentity(command.target.workerId);
       const escalation = workerStopEscalation();
-      const acknowledgement = WorkerStopAcknowledgementSchema.parse(await supervisor.execute({
+      const acknowledgement = WorkerStopAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "stop-worker",
         member,
         escalation,
-      }));
+      })));
       requireSameMember("stop-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
@@ -743,10 +754,10 @@ export function createWorkerPoolRuntimeExecutor(
         throw new Error(`pauseWorker received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerPauseAcknowledgementSchema.parse(await supervisor.execute({
+      const acknowledgement = WorkerPauseAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "pause-worker",
         member,
-      }));
+      })));
       requireSameMember("pause-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
@@ -756,10 +767,10 @@ export function createWorkerPoolRuntimeExecutor(
         throw new Error(`resumeWorker received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerResumeAcknowledgementSchema.parse(await supervisor.execute({
+      const acknowledgement = WorkerResumeAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "resume-worker",
         member,
-      }));
+      })));
       requireSameMember("resume-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
@@ -769,11 +780,11 @@ export function createWorkerPoolRuntimeExecutor(
         throw new Error(`refreshBrowser received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(await supervisor.execute({
+      const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "refresh-browser",
         member,
         browserSessionId: command.target.browserSessionId,
-      }));
+      })));
       requireSameMember("refresh-browser", member, acknowledgement.member);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
         throw new Error(
@@ -789,11 +800,11 @@ export function createWorkerPoolRuntimeExecutor(
         throw new Error(`reopenBrowser received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerReopenAcknowledgementSchema.parse(await supervisor.execute({
+      const acknowledgement = WorkerReopenAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
         command: "reopen-browser",
         member,
         browserSessionId: command.target.browserSessionId,
-      }));
+      })));
       requireSameMember("reopen-browser", member, acknowledgement.member);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
         throw new Error(
@@ -856,10 +867,10 @@ export function createPhase1WorkerRuntimeExecutor(
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(requireSupervisorAcknowledgement(
         "refresh-browser",
-        supervisor.refreshBrowser({
+        supervisor.refreshBrowser(Object.freeze({
           member,
           browserSessionId: command.target.browserSessionId,
-        }),
+        })),
       ));
       requireSameMember("refresh-browser", member, acknowledgement.member);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
@@ -883,10 +894,10 @@ export function createPhase1WorkerRuntimeExecutor(
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerReopenAcknowledgementSchema.parse(requireSupervisorAcknowledgement(
         "reopen-browser",
-        supervisor.reopenBrowser({
+        supervisor.reopenBrowser(Object.freeze({
           member,
           browserSessionId: command.target.browserSessionId,
-        }),
+        })),
       ));
       requireSameMember("reopen-browser", member, acknowledgement.member);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
