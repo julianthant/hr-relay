@@ -58,7 +58,7 @@
  * Values arrive redacted BY THE SERVER. `valueRedacted` renders verbatim: this
  * surface never re-derives, re-formats or unmasks one.
  */
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -648,6 +648,17 @@ function DataSection({
   const [refusal, setRefusal] = useState<
     { readonly settlement: RefusedSettlement; readonly heldEdits: number } | null
   >(null);
+  /**
+   * Dismissing the refusal unmounts `CheckpointRefusal` — Dismiss button
+   * included — so a keyboard operator's focus would otherwise fall off the
+   * document entirely and land on `body` (the restoreFocus pattern
+   * `ds/primitives-overlay.tsx`'s toast toggle already uses, one surface on;
+   * see `src/dashboard/CLAUDE.md`'s 2026-08-26 F5b lesson on the same defect
+   * in the Run Modal). The Save control is always mounted, whatever the
+   * refusal state, so the target exists before the unmount and the focus
+   * move can happen synchronously in the same handler that clears it.
+   */
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
 
   const liveLock = liveLockReasonOf(liveStatus);
   const policies = payload.entries.map((entry) => ({
@@ -724,15 +735,23 @@ function DataSection({
            the banner: the banner is the standing record, at the top of a ledger
            the operator may have scrolled well past, and the press that produced
            it happened in the dock at the BOTTOM of that ledger. The toast is
-           what reaches the eye that is still on the button. `danger` never
-           auto-dismisses (`primitives-overlay.tsx`), so a refused HR correction
-           is dismissed by a human either way. */
+           what reaches the eye that is still on the button — and it is the
+           courtesy notice, not the record: it auto-dismisses on its own, while
+           the standing banner (`Refusal` for `rejected`, `Banner tone="danger"`
+           for `conflict` — both `role="alert"`, CheckpointRefusal's own comment
+           above) is the half a human dismisses, on EITHER arm.
+           `ds/primitives-overlay.tsx`'s toast ties its live-region role straight
+           to tone — `role="alert"` for `danger`, `role="status"` otherwise — so
+           a `danger` toast here would announce the same sentence the banner just
+           announced a SECOND time, and the two survive as near-duplicates on
+           screen. `warning` is the register the `conflict` arm already used for
+           an unrelated reason (D253: "a kernel rejection is a rule they have to
+           read"); it also happens to be `role="status"`, so it is reused on
+           BOTH arms to keep the toast polite and let the banner alone own the
+           assertive announcement. */
         const copy = checkpointRefusalCopy(settlement.reason, heldEdits);
         toast({
-          // A CAS conflict is the target moving, which the operator resolves by
-          // reopening the run; a kernel rejection is a rule they have to read.
-          // Two events, two registers.
-          tone: settlement.reason === "conflict" ? "warning" : "danger",
+          tone: "warning",
           title: copy.title,
           description: `${copy.heldSentence} ${settlement.message}`,
         });
@@ -960,7 +979,17 @@ function DataSection({
             </span>
           )}
 
-          <CheckpointRefusal refusal={refusal} onDismiss={() => setRefusal(null)} />
+          <CheckpointRefusal
+            refusal={refusal}
+            onDismiss={() => {
+              // Focus BEFORE the clear: `setRefusal(null)` unmounts the
+              // Dismiss button underneath the operator's focus in the same
+              // tick, and a focus move issued after that state update would
+              // be racing React's own re-render rather than preceding it.
+              saveButtonRef.current?.focus();
+              setRefusal(null);
+            }}
+          />
           {/*
             THE LIVE LOCK IS A STANDING STATE, NOT AN ALERT — and the wave-end
             parity gate is what proved the difference matters.
@@ -1068,6 +1097,7 @@ function DataSection({
                 Reset edits
               </Button>
               <Button
+                ref={saveButtonRef}
                 size="sm"
                 // ONE CONTROL FAMILY: the dock's peers are `secondary` and
                 // exactly one of them is `primary`. On this surface the commit
