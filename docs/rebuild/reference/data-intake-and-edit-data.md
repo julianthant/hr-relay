@@ -2303,3 +2303,13 @@ decision, not headings.
    suggestion engine consumes them but cannot write a mapping without operator action.
 5. ~~Edit-Data on a `done` item~~ — **resolved:** read-only. Correction/rerun is always the separate
    new-input/new-item path; a done item's identity, proof, and checkpoints are never reopened.
+
+## D273/D274/D275/D276 intake presentation boundary (2026-08-26)
+
+The ratified ports preserve D173/D171's authority: coded Edit-Data refusals preserve drafts and may
+show truthful Saving; Intake gets one demo-shaped correction/review flow, review-gated enqueue, and
+Manifest/Rerun framing only over served facts. Capture's desktop viewer remains pointers-only.
+The rejected B/C arms respectively flatten or hide refusals, advertise a known kernel refusal,
+invent producer-owned fields, or defer already-served review states. Detailed item-by-item wording
+and alternatives are in `ref dashboard-surfaces` §10; nothing here changes intake/edit authority or
+claims a port is implemented.

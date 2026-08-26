@@ -365,7 +365,7 @@ authorization and its own capability/rollback proof. Master owner: the phase doc
 - [x] the zero-compat-code claim is CHECKED rather than asserted: `archive-invariants` reads a stored record back with the descriptor list **empty**, which is the only test that can settle "viewing an archived run needs no old-version code"
 - [x] the app-version stamp this item depends on was MISSING — the queue projection stamped the build serving the PAGE, so run-detail's "different app build" warning compared a value with itself; `RunRecord` now carries an `appVersion` stamped at the ONE enqueue point and read forward, never back-filled (**D133**/**D179**)
 - [x] the workflow LABEL, and since **D242** the short CODE, are FROZEN into the archived record — resolving either later would be a descriptor read on the archived path, which this item forbids
-- [x] the "cannot archive a non-terminal run" rule is enforced where it decides: `apply` re-derives candidates AND blockers from authority inside its own transaction and refuses naming every blocker, so an unresolved possible-submit is never buried
+- [x] the MAJOR-bump "cannot archive a non-terminal run" rule is enforced where it decides: `apply` re-derives candidates AND blockers from authority inside its own transaction and refuses naming every blocker, so an unresolved possible-submit is never buried; D274 requires MINOR bumps to archive nothing and therefore never be blocked by non-terminal runs (implementation remains open)
 - [x] "git is the archive" holds for the CODE — no archive folders exist anywhere in the tree; prior descriptor versions live in git history while RUN data is archived as self-contained rows
 - [ ] two criteria left Phase 2 by explicit DISPOSITION, both on 2i surfaces: the Workflow Explorer's EDIT half (**D186**, reassigned with a named trigger) and the BFF serving no frontend bytes (**D189**) — neither is a waiver and both name an owner
 > 2026-08-21 | docs-cohesion charter | verified against `src/domain/archive/model.ts`, `src/services/archive/archive-service.ts`, `src/infra/sqlite/migrations.ts` and `tests/unit/architecture/archive-invariants.test.ts`; left: nothing in 2i itself — all eight squares are `[x]` at `{#p2-2i}`; the two dispositions are recorded above
@@ -374,20 +374,22 @@ authorization and its own capability/rollback proof. Master owner: the phase doc
 
 No archive folders. Descriptors carry a version + content fingerprint; guards force a bump on
 behavior change; every run permanently stamps the workflow version *and* app version it ran
-with at enqueue. **When a workflow's version bumps, all runs of prior versions leave the
+with at enqueue. **When a workflow's MAJOR version bumps, all runs of prior versions leave the
 dashboard** — active surfaces, counts, and filters only ever contain current-version runs — and
-move to a read-only **Archive**. This is what buys the zero-compat-code invariant: the archive
+move to a read-only **Archive**. A **MINOR bump archives nothing and cannot be blocked**; it records
+the new version without moving prior runs. Major-bump archival is what buys the zero-compat-code invariant: the archive
 stores each run's final projected row + receipt + evidence pointers as **self-contained data**,
 so viewing an archived run needs no old-version code, no shims, no version fallbacks, exactly
-one rendering path. A **dashboard (app) update bumps every workflow's effective version**, for
-the same reason. The session making a change declares its scope (single-workflow /
+one rendering path. A **dashboard (app) update that requires archival is a major effective-version
+bump for every affected workflow**, for the same reason. The session making a change declares its scope (single-workflow /
 multi-workflow / dashboard) and the bump follows that scope, recorded in the change record.
 Three hard rules: the **write ledger is never archived** (what was filed in HR systems stays
 forever, independent of run archival); **"relaunch from archive" starts a fresh run on the
-current version** from the archived immutable input, never a resume; and a bump **cannot
+current version** from the archived immutable input, never a resume; and a MAJOR bump **cannot
 archive a non-terminal run** — queued/parked runs must be terminalized first (cancelled, or for
-a parked write RESOLVED present/absent) and the bump flow lists them, so an unresolved
-possible-submit is never buried. Reversible Hide still exists for same-version runs.
+a parked write RESOLVED present/absent) and the major-bump flow lists them, so an unresolved
+possible-submit is never buried. A MINOR bump archives nothing, so non-terminal runs do not block
+it. **Hide/Unhide is retired by D234**; Archive is the only whole-run exclusion.
 
 ### 26. One projection owns every count (2026-07-24 acceptance requirement)
 

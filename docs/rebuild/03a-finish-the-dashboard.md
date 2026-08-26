@@ -24,7 +24,7 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [x] observed logs — the real dashboard/composed separations dry run served 13 observed rows (sequences 0..12), no notes and zero run-scoped write evidence (`docs/migrations/separations.md` §9.25)
 - [x] `ref frontend-backend-integration` §7.4's performance budgets — the instrument, BEFORE baseline and both D4/D5 AFTER measurements are recorded against the same 1,240-row / 108-member fixture; the recorded bounds are the later-workflow non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
-- [!] demo fidelity — every region exact or ruled; 49 live operator decisions remain across six bounded sheets after the autonomous ports (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/2026-08-25-03a-decision-brief-coverage.md`)
+- [!] demo fidelity — the 49 operator decisions are ratified as D271–D276; their resulting ports, proofs and one deliberate parity re-freeze remain open (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/2026-08-25-03a-decision-brief-coverage.md`)
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
 > 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
 > 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; `4e09fb49` carries Explorer's `Version registry` door through dashboard route state to Archive's actual `Versions & bumps` view. A mechanical recount of ledger 3's 1,119 rows gives 353 exact and 238 OPEN marks; left in this unit: every other non-archive served-and-dropped fact
@@ -80,9 +80,9 @@ table is 8/10 met: it also keeps parallel runs open and records observed logs me
 7. The Duo ceremony lease exists, so a second workflow's worker cold-starting beside the first
    cannot burn the shared credential's counter.
 8. Every region of the dashboard is demo-exact or ruled — Track F's bar, above Track B's: Track B's
-   definition of done was the findings ledger; demo fidelity is the stricter bar, and 49 live
-   operator decisions across six sheets stand against it at HEAD (§Demo fidelity — every detail,
-   region by region).
+   definition of done was the findings ledger; demo fidelity is the stricter bar, and D271–D276
+   ratify all 49 sheet answers while their resulting ports/proofs remain open (§Demo fidelity — every
+   detail, region by region).
 
 ### The honest state at HEAD, surface by surface
 
@@ -336,24 +336,25 @@ question at the moment a field crosses onto a wire is the guard working.
 <!-- roadmap: track-f -->
 
 <!-- roadmap-status: track-f -->
-- [!] the operator rules the 37 shell · queue · run-start OPEN questions — ledger 1, `docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` §Roll-up (28 numbered questions over 37 rows)
-- [!] the operator rules the 54 run-detail OPEN questions — ledger 2, `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §Roll-up (8 served-and-dropped · 7 structural · 24 words-and-glyphs · 8 rebuild-only · 2 stale claims, plus the B45 tension)
-- [!] the operator rules the 30 unresolved standing-surface decision groups, the twelve structural ones first — ledger 3, `docs/plans/2026-08-21-03a-fidelity-3-standing-surfaces.md` §Roll-up (238 OPEN marks mapped to the numbered list exactly)
+- [x] D272 ratifies the shell · queue · run-start choices; ledger 1's 37 OPEN rows / 28 numbered questions remain the exact 2026-08-21 historical audit count, while the resulting implementations and proofs stay open below
+- [x] D273 ratifies the run-detail choices; ledger 2's 54 OPEN questions remain the exact 2026-08-21 historical audit count (8 served-and-dropped · 7 structural · 24 words-and-glyphs · 8 rebuild-only · 2 stale claims, plus the B45 tension), while the resulting implementations and proofs stay open below
+- [x] D274–D276 ratify the 30 standing-surface decision groups; ledger 3's 238 OPEN marks remain the exact 2026-08-21 historical audit count mapped to that numbered list, while the resulting implementations and proofs stay open below
 - [x] the served-and-dropped facts drawn — pure FE, no ruling needed; receipt/failure, intake, archive, the queue gate age, the run-modal descriptor version, Activity AC24 and Explorer EX5 are complete (§Served-and-dropped below)
 - [x] A46 — an exact same-generation unreplayable SSE cursor commits one permanent backfill-gap fact; restart/rebuild only resnapshots, repeat observation never churns the row, authority refuses every mutation/fold, and the 6+ pin mobile lane keeps filters and ordinary rows reachable (`68dea43a`, `e108ff3f`, `a2d2a8e8`)
 - [ ] the structural run-detail ports — the failure record's disclosure and write-state block, the focusable timeline segment, the step group's Well + band + dividers, one owner for `dataExpanded`, the grouped log stream
 - [x] the stale claims in code and docs corrected (§Stale and false claims below) — `5cb9a307`, `33e140f9`, `06041db1`, `5b13ec0e`, `155b1048`
-- [ ] the vocabulary sweep — every word and glyph off the demo across the three ledgers reverted, or recorded with its ruling
+- [ ] the vocabulary sweep — implement D272–D276's required demo wording and named truthful exceptions across all three ledgers
 - [ ] the parity corpus re-frozen ONCE over every change, with the three scenes it has never photographed — Settings, the version-bump dialog, a DS specimen page
 - [x] BOTH: a diagnostic bundle is READABLE — exact-id D137 readback serves captured clock, recorded attachment-byte size, content digest, contents/redaction facts and the manifest route behind the `BundleDialog` (ledger 2 E28/E29)
 - [ ] wire: the receipt's action entry carries what proved the write — target, system, the written values, the confirmation number and the read-back verdict beside the write it proves (ledger 2 D16–D22)
-- [x] BOTH: intake Manifest + Rerun diff stages — reserved-vs-committed identity, terminal fingerprints/totals/dispositions and changed-axis/add/remove/hash-only evidence are rendered and fixture-covered in exact local 10-row pages; full clipped values remain keyboard/touch reachable, this is not D9 virtualization, IN137/IN138 remain operator-owned and IN143's missing item label stays explicit (ledger 3 IN123–IN143). IN144's closing copy/icon is outside this autonomous row and remains OPEN for the operator.
+- [x] BOTH: intake Manifest + Rerun diff stages — reserved-vs-committed identity, terminal fingerprints/totals/dispositions and changed-axis/add/remove/hash-only evidence are rendered and fixture-covered in exact local 10-row pages; full clipped values remain keyboard/touch reachable, this is not D9 virtualization, and IN143's missing item label stays explicit (ledger 3 IN123–IN143). D274/D276 ratify the Compare control, Run verb and IN144 closing copy/icon; their implementations remain open.
 - [ ] wire: the OPERATOR half of phone capture — session state, pages received, the unreadable-page alert, the contact sheet (ledger 3 CP2–CP21)
 > 2026-08-21 | docs-cohesion 03a fidelity fold | folded from the three 2026-08-21 ledgers — 1,956 elements/rows audited (489 + 348 + 1,119), 756 exact, ~150 distinct OPEN questions (37 + 54 + ~60; 260 marks in ledger 3); nothing is ticked because nothing here is a ruling yet; left: every line above, in the order the operator rules them
 > 2026-08-21 | track-f | the 14 rows in §Stale and false claims resolved — 12 record fixes (comments/docs, no behaviour change) plus 2 book-a-gap rows (`intake.md`/`capture.md` created, `explorer.md` reopened with 3 real gaps, `queue-rows.md` corrected); one light-code exception permitted by the unit's brief was not needed — every row resolved as a docs/comments fix. Commits: `5cb9a307` (5 surface header comments), `33e140f9` (DESIGN.md), `06041db1` (queue-rows.md), `5b13ec0e` (intake.md + capture.md + explorer.md + README.md), `155b1048` (operator-trust.md, dashboard-surfaces.md x2, data-intake-and-edit-data.md)
 > 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | archive ledger rows AR27, AR62, AR67, AR77, AR78, AR91, AR95, AR96, AR105, AR121, AR123, AR129, AR212 and VB19 are disposed by `3d461962` + `d1f87916`; `4da19fd7` closes Activity AC24 with the shared wire→display fold and sentence-case prose; `4e09fb49` closes Explorer EX5 with the real Archive registry route; left: every non-archive item on the open served-and-dropped line
 > 2026-08-25 | track-f A46 | `68dea43a` closes ledger 1 A46 end to end: strict protocol observation, commit-before-snapshot publisher, durable dedupe fold, pinned wire/kernel policy, demo-exact Refusal and deterministic production-bundle browser proof; reconnect/resnapshot does not clear the row, and any future resolved state requires separately ratified reconciliation evidence
 > 2026-08-25 | track-f A46 adversarial correction | `e108ff3f` makes cursor evidence generation-bound, gives one missing interval a reason/head-independent identity with process single-flight and restart-stable no-churn authority dedupe, guards every repository mutation/fold, and captures hello+snapshot atomically; `a2d2a8e8` gives permanent Refusals and ordinary rows one bounded mobile scroller with truthful Pings counts and a 44px bell. A46 remains exact; ledger 1 remains 132/178 exact and the three-ledger total remains 775/1,956 exact. No parity reference was re-frozen.
+> 2026-08-26 | track-f ratification | D272–D276 ratify all 49 choices from the six sheets; Track F is implementation-owned now. Left: the resulting FE / BE / BOTH / PROOF rows and one deliberate parity re-freeze; no operator ruling remains on this node.
 <!-- /roadmap-status -->
 
 **The standard, in the operator's words.** *"Finish the dashboard, dive deeper, looking back at the
@@ -365,13 +366,15 @@ modifying a feature."* The dashboard is a **1:1 detail replica** of the legacy r
 enumeration is: every element is **exact**, or a divergence **ruled** by a D-number / a plan decision /
 a dated operator call, or **unserved** by a NAMED missing producer (which is a `builds:` line, never a
 reason to drop the detail), or **OPEN** — the tree diverges and nothing in the repository says why.
-Track B's definition of "frontend done" was the findings ledger; **Track F is this stricter bar**, and
-it is `status: you` because an OPEN question is the operator's to answer, not this phase's to dismiss.
+Track B's definition of "frontend done" was the findings ledger; **Track F is this stricter bar**.
+D272–D276 have now ruled every OPEN choice, so the node is implementation-owned: ports and proofs,
+not operator judgment, are what remain.
 
 ### The three ledgers, region by region
 
 Audited 2026-08-21 at HEAD, demo source against rebuild source plus the parity references read as
-images. "Cited" is the ledger's own `ruled:` + `unserved:` count where it split them, and
+images. These counts are the exact historical audit counts; ratification does not rewrite them.
+"Cited" is the ledger's own `ruled:` + `unserved:` count where it split them, and
 `elements − exact − OPEN` where it did not; OPEN is counted in the ledger's own unit (rows in ledger
 1, rows-and-questions in ledger 2, marks in ledger 3 — a single decision drags many rows behind it).
 
@@ -395,7 +398,7 @@ images. "Cited" is the ledger's own `ruled:` + `unserved:` count where it split 
 | Phone capture — the demo's DESKTOP view vs the rebuild's phone | 62 | 1 | 55 (cited) | — | 6 | ledger 3 §7 |
 | Version-bump dialog | 53 | 3 | 12 (cited) | — | 38 marks / 3 decision groups | ledger 3 §8 |
 | DS primitives — tokens, barrel, the specimen page | 159 | 119 | 22 (cited) | — | 18 | ledger 3 §9 |
-| **Total** | **1,956** | **775** | | | **49 live operator decisions across six sheets** | |
+| **Total** | **1,956** | **775** | | | **49 ratified decisions across six sheets (historical audit count)** | |
 
 Two readings worth having before the list. The design system is 75 % exact because it was COPIED
 with provenance rather than re-implemented (231 demo tokens, zero missing, zero values divergent);
@@ -404,11 +407,13 @@ most decisions were made and the most reasons ended up in a tooltip instead of o
 three run-detail regions — identity, receipt, failure record — had never been audited at all
 before 2026-08-21 and hold 32 of ledger 2's 54 questions between them.
 
-### The OPEN questions — what the operator must rule
+### The 49 ratified questions — historical audit inventory
 
-Each line is ONE question, with the ledger rows it settles and the demo / rebuild `file:line` the
-ruling is about. An element seen by two ledgers is listed once. A `D###`, a plan decision or a dated
-operator call turns a line into a ruled divergence or a port; nothing below is dismissed by this doc.
+Each line preserves ONE question exactly as audited, with the ledger rows it settles and the demo /
+rebuild `file:line` the ruling addressed. An element seen by two ledgers is listed once. D272–D276
+answer the inventory; the grouped normative outcomes and rejected alternatives live in
+`ref dashboard-surfaces` §10. The question-shaped wording below is historical evidence, not an open
+request for operator judgment.
 
 **Structural and behavioural — one decision decides many rows**
 
@@ -420,7 +425,7 @@ operator call turns a line into a ruled divergence or a port; nothing below is d
 6. **The keyboard legend is reachable from nowhere.** The demo made one change in two halves — delete the top bar's glyph (*"we already have help in settings"*) AND add Settings → Help → Keyboard; the rebuild ported the deletion only: `ShortcutsPopover` (`top-bar.tsx:912`) has zero callers and `app/global-keys.ts` binds no `?` (`DemoSettings.tsx:990-1015, 1029-1030`). → SE7, SE43, SE44
 7. **Two Settings status sections need no new authority.** System hosts reads `systemInstances`, already on the bootstrap; Workflow capabilities is descriptor-derived from the same descriptors the Explorer reads; both are absent because `settingsSections` lists only `storage` (`bootstrap.ts:122`; `DemoSettings.tsx:682-857`). → SE40–SE42
 8. **The OPERATOR half of phone capture does not exist.** `DemoCapture.tsx` is the DESKTOP view of a phone session (`:201-430`); the rebuild built the phone, and after the QR is scanned nothing on the desktop shows the phase, pages received, the expiry, an unreadable page or a contact sheet (`capture-start.tsx`). D175 rules the phone; nothing rules the operator half's absence. → CP3–CP5, CP17, CP18, CP59 (the wire behind it: CP2, CP6–CP16, CP21, CP45)
-9. **Intake stages 5 and 6 still have operator-owned demo choices.** The autonomous IN123–IN143 row now renders both stages and their served evidence. The operator still rules the Compare control (IN137), Run verb (IN138) and closing rerun copy/icon (IN144); the human-readable IN143 membership label remains unserved and is not fabricated. D173 ratifies the dialog → workspace reshaping but does not decide those choices. → IN137, IN138, IN143, IN144
+9. **Intake stages 5 and 6 had operator-owned demo choices.** The autonomous IN123–IN143 row now renders both stages and their served evidence. D274/D276 require the Compare control (IN137), Run verb (IN138) and closing rerun copy/icon (IN144); the human-readable IN143 membership label remains unserved and is not fabricated. D173 continues to own the dialog → workspace reshaping. → IN137, IN138, IN143, IN144
 10. **The intake review gate is gone.** `Run` goes live the moment validation returns, beside unresolved rejections (`intake.tsx:999`, `intake-review--paper-ink--1280x720.a11y.yml` `button "Run 3 rows"`); `ref data-intake-and-edit-data` §2.2 step 4 and §7 vector 4 both say it is disabled until the reject list is reviewed, and the courtesy blocker list never names `unresolved-rejections` (`intake.tsx:935`; `DemoIntake.tsx:260, 908`). → IN118–IN120
 11. **No archived capture can be opened.** The tile is inert — no `Open` / `What it was` action, no lightbox, no purged note; a "what it was" viewer needs no bytes, so D179's pointers-only rule does not decide it (`DemoArchive.tsx:1285-1293, 1373-1375` vs `archive.tsx:1813-1846`). → AR188–AR190, AR249
 12. **The reviewed bump plan reports a COUNT, never the runs.** The demo lists every archivable run by name in a scrolling `Well` (`DemoVersionBump.tsx:226-254` vs `archive.tsx:2416`). → VB24, VB25
@@ -449,7 +454,7 @@ operator call turns a line into a ruled divergence or a port; nothing below is d
 35. **The Explorer's pencil moved out of the field cell** into two `FactRow`s below the table, reversing the demo's argument that *"editability is a property of a FIELD"* (`DemoExplorer.tsx:839-844` vs `explorer.tsx:1108-1117, 1134-1139`), and the rebuild prints a second name per row plus `contracts` and `re-runs on every attempt` lines §5.2 does not list (`explorer.tsx:526-530, 548-555, 1100-1124, 1173-1187, 1374-1376`). → EX114, EX125, EX66, EX87, EX88, EX127, EX133, EX165
 36. **Four cross-region conventions to rule ONCE.** Every takeover wraps the demo's bare `div` in a `Panel` with an enter transition (`activity.tsx:1095`, `archive.tsx:2684-2692`, `explorer.tsx:1467-1477`; AC12, AR9); tables get `overflow-x-auto` wrappers the demo leaves bare (AC62, AC77, AR225); `Skeleton` / `Refusal` async panes the demo never needed (AR244, AR245); and closed wire enums where the demo prints a label — the archive filter and rows, the bump blocker table and the Activity caveat now use the shared wire→display fold, with sentence-case prose at Activity (AC24, AR27, VB19).
 
-**Words and glyphs — each is a revert or a ruling**
+**Words and glyphs — each is now a D272–D276 implementation or named exception**
 
 37. Shell and queue: `"1 worker need attention"` at a count of one (`shell.tsx:1029`; A122) · `app 0.1.0` under a tooltip that explains only MAJOR.MINOR (`shell.tsx:1052-1057` vs `DemoShell.tsx:1919-1924`; A126) · the bulk result heading (B164, in 25 above).
 38. Run start: `Dismiss` on every result arm where the demo says `Close` on applied (`run-start-kit.tsx:341-345` vs `DemoRunStartKit.tsx:341, 379-383`; C72) · a raw ISO `expires` on the plan-provenance line (`run-start-kit.tsx:291-294`; C61).
@@ -771,7 +776,7 @@ into this repo's `src/dashboard/`, while strict schema-valid fixture adapters re
 
 ## Decisions this phase ratified
 
-Checked against `reference/decisions.md`'s `_phase: 3a_` markers on 2026-08-20. The ratification act
+Checked against `reference/decisions.md`'s `_phase: 3a_` markers on 2026-08-26. The ratification act
 and the normative pointer stay in the ledger; this is the phase index.
 
 | Rounds | Dates | D-range | What they settled |
@@ -783,6 +788,7 @@ and the normative pointer stay in the ledger; this is the phase index.
 | 78–83 | 2026-08-20 | D248–D259 | the Session Panel stops guessing (D248/D249), the run modal (D250/D251), the Data ledger and the unhandled `conflict` arm (D252/D253), the dead channel and the findings ledger (D254/D255), the dashboard's clock (D256/D257), the projection stops claiming history it cannot see (D258/D259) |
 | 87 | 2026-08-20 | D264 | **Track D is ratified** — dashboard hardening before the second migration, and the descriptor registry leaves the bundle |
 | 90 | 2026-08-21 | D268 | **Track D row D1** — ONE `deriveRunStatus`, ONE task-outcome vocabulary, ONE `panelKindOf`; the detail panel can no longer disagree with the queue row |
+| 95 | 2026-08-26 | D271–D276 | **Phase 3a's 49 recommendations are ratified** — worker-pool process semantics plus shell/start, run-detail, standing-product, standing-convention and standing-copy requirements; resulting implementations/proofs remain open |
 
 **Ratified elsewhere, load-bearing here.** Four rounds the ledger assigns to phase 3b are what
 Track B and Track C were built on, and nothing about their phase is re-litigated by saying so:
@@ -815,7 +821,7 @@ stricter bar Track F carries (row 10).
 | 7 | **The Duo ceremony lease landed** | **MET** | D267 authority/token/waiters/recovery/guard/docs landed (`bfc7d318`…`1c244a40`); the live two-worker cold start then serialized lease generations 3 → 4 with no overlap and zero waiter refusals (ref execution-and-sessions §10 §Live proof). |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the authority records and their FE view landed; the supervisor still refuses spawn by name, so the pool process and parallel dry-run proof remain |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **MET** | §9.25's real dashboard/composed separations dry run: document 4502, 13 observed rows (0..12), zero notes and 0 / 0 / 0 run-scoped write evidence. Its service-origin row proves a browser system is optional by declaration; `17468e60` changed the false API-500 invariant to a 200 response and the UI omits the absent claim. The node stays active for its notes emitter and fidelity extras. |
-| 10 | **Demo fidelity: every region exact or ruled** — 49 live operator decisions outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 775 exact; the six 2026-08-25 decision sheets contain each of the 49 live choices exactly once. Archive, Activity AC24, Explorer EX5, shell A46 and the autonomous served-fact ports are complete; the decisions, resulting ports, vocabulary sweep and one deliberate parity re-freeze remain. |
+| 10 | **Demo fidelity: every region exact or ruled** — decisions ratified, ports/proofs open | **open** | D271–D276 record all 49 A answers from the six 2026-08-25 sheets. Archive, Activity AC24, Explorer EX5, shell A46 and autonomous served-fact ports are complete; the resulting ports, vocabulary sweep, proofs and one deliberate parity re-freeze remain. |
 
 **Deliberately outside this phase, each with an owner.** The Review and People panel bodies (their
 projections belong to the OCR and group migrations in doc 03c); editable settings, the explorer's
