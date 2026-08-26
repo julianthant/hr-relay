@@ -377,6 +377,122 @@ export function phase1WorkerId(workflowId: WorkflowId): WorkerId {
   return poolWorkerId(workflowId, PositiveIntSchema.parse(1));
 }
 
+export const MAX_WORKERS_PER_POOL = 3;
+
+const PoolSizeSchema = PositiveIntSchema.refine(
+  (value) => value <= MAX_WORKERS_PER_POOL,
+  `worker pool size must not exceed ${String(MAX_WORKERS_PER_POOL)}`,
+);
+
+export const WorkerPoolMemberSchema = z.strictObject({
+  workflowId: WorkflowIdSchema,
+  poolIndex: PoolSizeSchema,
+  workerId: WorkerIdSchema,
+}).superRefine((member, context) => {
+  const expectedWorkerId = `${member.workflowId}-worker-${String(member.poolIndex)}`;
+  if (member.workerId !== expectedWorkerId) {
+    context.addIssue({
+      code: "custom",
+      message: `pool member index ${String(member.poolIndex)} for ${member.workflowId} requires worker id ${expectedWorkerId}`,
+      path: ["workerId"],
+    });
+  }
+});
+export type WorkerPoolMember = z.infer<typeof WorkerPoolMemberSchema>;
+
+const WorkerPlanMemberFactSchema = z.discriminatedUnion("stage", [
+  z.strictObject({
+    member: WorkerPoolMemberSchema,
+    stage: z.literal("running"),
+    ownership: z.enum(["supervised", "external"]),
+  }),
+  z.strictObject({
+    member: WorkerPoolMemberSchema,
+    stage: z.literal("unmet"),
+    reason: z.enum(["not-started", "crashed"]),
+  }),
+]);
+
+const WorkerPlanReconciliationAcknowledgementSchema = z.strictObject({
+  command: z.literal("plan-worker-count"),
+  state: z.literal("acknowledged"),
+  desiredWorkers: PoolSizeSchema,
+  members: z.array(WorkerPlanMemberFactSchema).min(1).max(MAX_WORKERS_PER_POOL),
+});
+
+interface WorkerPoolPlanRequest {
+  readonly command: "plan-worker-count";
+  readonly workflowId: WorkflowId;
+  readonly desiredWorkers: PositiveInt;
+  readonly members: readonly WorkerPoolMember[];
+}
+
+export interface WorkerPoolProcessSupervisor {
+  execute(request: WorkerPoolPlanRequest): unknown;
+}
+
+function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember {
+  const parsedIndex = PoolSizeSchema.parse(poolIndex);
+  return WorkerPoolMemberSchema.parse({
+    workflowId,
+    poolIndex: parsedIndex,
+    workerId: poolWorkerId(workflowId, parsedIndex),
+  });
+}
+
+/**
+ * The pool-capable runtime adapter. The supervisor acknowledges exact member
+ * facts before the kernel may persist the declaration; an `accepted` envelope
+ * is never manufactured from a missing or mismatched process observation.
+ */
+export function createWorkerPoolRuntimeExecutor(
+  supervisor: WorkerPoolProcessSupervisor,
+): WorkerRuntimeExecutor {
+  return Object.freeze({
+    planWorkerCount(context: WorkerRuntimeContext): z.input<typeof WorkerPlanAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "plan-worker-count") {
+        throw new Error(`planWorkerCount received a ${command.type} command`);
+      }
+      const desiredWorkers = PoolSizeSchema.parse(command.payload.desiredWorkers);
+      const members = Array.from(
+        { length: desiredWorkers },
+        (_, offset) => poolMember(command.target.workflowId, offset + 1),
+      );
+      const acknowledgement = WorkerPlanReconciliationAcknowledgementSchema.parse(supervisor.execute({
+        command: "plan-worker-count",
+        workflowId: command.target.workflowId,
+        desiredWorkers,
+        members,
+      }));
+      if (acknowledgement.desiredWorkers !== desiredWorkers) {
+        throw new Error(
+          `plan-worker-count requested ${String(desiredWorkers)} workers but the supervisor acknowledged `
+          + String(acknowledgement.desiredWorkers),
+        );
+      }
+      for (const [offset, member] of members.entries()) {
+        const acknowledged = acknowledgement.members[offset]?.member;
+        if (acknowledged?.workerId !== member.workerId) {
+          throw new Error(
+            `plan-worker-count requires acknowledgement for member ${member.workerId} at index ${String(offset + 1)}`,
+          );
+        }
+      }
+      return { state: "accepted", workerIds: members.map(({ workerId }) => workerId) };
+    },
+    spawnWorker(): never {
+      throw new Error("spawn-worker is not implemented by the pool runtime contract yet");
+    },
+    refreshBrowser(): never {
+      throw new Error("refresh-browser is not implemented by the pool runtime contract yet");
+    },
+    reopenBrowser(): never {
+      throw new Error("reopen-browser is not implemented by the pool runtime contract yet");
+    },
+  });
+}
+
 /**
  * The Phase-1 `WorkerRuntimeExecutor`: exactly one worker per workflow (ref execution-and-sessions
  * §0.3 scoped to this phase's single-operator runtime). A plan asking for more

@@ -9,6 +9,7 @@ import { setImmediate } from "node:timers";
 import { afterEach, describe, it } from "vitest";
 import {
   createPhase1WorkerRuntimeExecutor,
+  createWorkerPoolRuntimeExecutor,
   phase1WorkerId,
   poolWorkerId,
   runWorkerLoop,
@@ -290,6 +291,85 @@ describe("pool worker identity", () => {
       [1, 2].map((poolIndex) => poolWorkerId(workflowId, PositiveIntSchema.parse(poolIndex))),
       ["person-lookup-worker-1", "person-lookup-worker-2"],
     );
+  });
+});
+
+describe("pool-capable worker runtime executor seam", () => {
+  const requestedAt = NOW;
+  const envelope = {
+    commandId: UUID_7,
+    requestedBy: "local-operator",
+    requestedAt,
+    source: "dashboard",
+  };
+
+  it("plans three deterministic members only after the supervisor acknowledges their lifecycle facts", () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "plan-worker-count",
+          state: "acknowledged",
+          desiredWorkers: 3,
+          members: [
+            {
+              member: {
+                workflowId: WORKFLOW_ID,
+                poolIndex: 1,
+                workerId: "person-lookup-worker-1",
+              },
+              stage: "running",
+              ownership: "supervised",
+            },
+            {
+              member: {
+                workflowId: WORKFLOW_ID,
+                poolIndex: 2,
+                workerId: "person-lookup-worker-2",
+              },
+              stage: "running",
+              ownership: "external",
+            },
+            {
+              member: {
+                workflowId: WORKFLOW_ID,
+                poolIndex: 3,
+                workerId: "person-lookup-worker-3",
+              },
+              stage: "unmet",
+              reason: "crashed",
+            },
+          ],
+        };
+      },
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 3 },
+    });
+
+    assert.deepEqual(executor.planWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: [
+        "person-lookup-worker-1",
+        "person-lookup-worker-2",
+        "person-lookup-worker-3",
+      ],
+    });
+    assert.deepEqual(requests, [{
+      command: "plan-worker-count",
+      workflowId: WORKFLOW_ID,
+      desiredWorkers: 3,
+      members: [
+        { workflowId: WORKFLOW_ID, poolIndex: 1, workerId: "person-lookup-worker-1" },
+        { workflowId: WORKFLOW_ID, poolIndex: 2, workerId: "person-lookup-worker-2" },
+        { workflowId: WORKFLOW_ID, poolIndex: 3, workerId: "person-lookup-worker-3" },
+      ],
+    }]);
   });
 });
 
