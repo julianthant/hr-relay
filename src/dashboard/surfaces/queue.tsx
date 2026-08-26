@@ -71,6 +71,7 @@ import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import {
   BAND_LABEL,
   BAND_ORDER,
+  MEMBER_TOUCH_TARGET,
   type LinkedRunWire,
   type MemberSurfaceWire,
   type OperationSurfaceWire,
@@ -833,6 +834,7 @@ function MemberLine({
         {onToggleChecked !== undefined && (
           <IconButton
             size="sm"
+            className={MEMBER_TOUCH_TARGET}
             label={checked ? `Mark ${queueRowTitle(surface)} unchecked` : `Mark ${queueRowTitle(surface)} checked by you`}
             onClick={(event) => {
               event.stopPropagation();

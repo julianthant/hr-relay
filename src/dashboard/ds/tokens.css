@@ -1309,3 +1309,26 @@ body[data-demo-theme="light"] {
     --ds-scale-enter: 1;
   }
 }
+
+/* ── THE TOUCH FLOOR, and why it moves the LINE rather than the target ──────
+   The member line carries a control (the "checked by you" toggle), and at its
+   resting 28px pitch that control paints 24px. 24 is the WCAG 2.2 AA minimum
+   (2.5.8) and it is what a mouse gets; 44 is the floor a finger needs, and it
+   is what `surfaces/intake.tsx`'s `IdentifierPopover` already gives one.
+
+   A 44px target cannot simply be hung on a 24px control here: member lines
+   stack at a 28px pitch, so two neighbouring 44px targets would overlap by
+   16px and a tap near a boundary would mark the WRONG member checked. An
+   undersized target is a nuisance; a target that acts on the row above it is
+   the class of wrong-person error this product exists to prevent.
+
+   So the LINE grows on a coarse pointer and the target then fits inside it
+   with nothing to overlap. Both well heights are derived from this token, so
+   the whole mini-table scales in one move. A fine pointer sees no change at
+   all — density is a desktop fact, and the parity corpus renders at
+   `pointer: fine`, so no reference moves. */
+@media (pointer: coarse) {
+  :root {
+    --ds-h-member-line: 44px;
+  }
+}

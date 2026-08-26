@@ -21,6 +21,33 @@ import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import { elapsedSecondsBetween, fmtElapsed } from "./format.js";
 
 /**
+ * THE 44px TOUCH FLOOR for a control that paints smaller than it.
+ *
+ * The member line's "checked by you" toggle is an `IconButton size="sm"` — 24px
+ * of paint, which is the WCAG 2.2 AA minimum (2.5.8) and the right size for a
+ * mouse on a dense operator table, and well under the 44px a finger needs.
+ * This grows the effective HIT AREA without touching the paint, the same
+ * `::after` overlay `surfaces/explorer.tsx` uses on its version-registry
+ * control.
+ *
+ * It is gated on `pointer: coarse` for a reason the fine-pointer case makes
+ * clear: member lines stack at a 28px pitch there, so a 44px overlay would
+ * reach 8px into the rows above and below and a click near a boundary would
+ * mark the WRONG member checked. On a coarse pointer `--ds-h-member-line` is
+ * 44px (`ds/tokens.css`), so the overlay fills its own line exactly and can
+ * never reach a neighbour's.
+ *
+ * `touch-manipulation` rides along because the same tap is otherwise held for
+ * ~300ms waiting to see whether it was a double-tap zoom.
+ */
+export const MEMBER_TOUCH_TARGET = [
+  "relative touch-manipulation",
+  "pointer-coarse:after:absolute pointer-coarse:after:left-1/2 pointer-coarse:after:top-1/2",
+  "pointer-coarse:after:size-11 pointer-coarse:after:-translate-x-1/2 pointer-coarse:after:-translate-y-1/2",
+  "pointer-coarse:after:content-['']",
+].join(" ");
+
+/**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * `demo-data.ts` `DEMO_SORTS` / `sortDemoRows` / `SORT_STATUS_RANK`.
  *
