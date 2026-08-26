@@ -55,7 +55,19 @@ export function RefusedNotice({
   if (refusal.code === undefined) {
     return (
       <Banner tone="danger" title={REFUSED_NOTICE_TITLE} className={enterClass} {...entering}>
-        {refusal.message} {copy.uncoded}
+        {/*
+          TWO BLOCKS, not one run-on line. Both copies used to interpolate the
+          server's sentence directly into the product's — `{message} The gate is
+          still open …` — and a `conflict` message does not end in a period
+          ("… the fresh projection replaces it"), so the operator read
+          "…replaces it The write is still parked…" as one broken sentence. The
+          coded arm below already gives the server's message its own node above
+          the `MetaLine`; this is the same reading. No word changed.
+        */}
+        <span className="flex flex-col gap-[var(--ds-space-tight)]">
+          <span>{refusal.message}</span>
+          <span>{copy.uncoded}</span>
+        </span>
       </Banner>
     );
   }
