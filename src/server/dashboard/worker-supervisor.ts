@@ -590,11 +590,39 @@ export function createDashboardWorkerProcessSupervisor(
         + `desiredWorkers ${String(request.desiredWorkers)}`,
       );
     }
-    for (const member of [...desired, ...excess]) {
+    // EVERY refusal is pre-scanned before the first fact or stop: initiating
+    // an excess member's durable stop and then refusing the plan would leave
+    // that stop durably requested but unacknowledged.
+    const roster = [...desired, ...excess];
+    const seen = new Set<string>();
+    for (const member of roster) {
       if (member.workflowId !== request.workflowId) {
         throw new Error(
           `plan-worker-count refused: member ${member.workerId} belongs to workflow ${member.workflowId}, `
           + `not the planned workflow ${request.workflowId}`,
+        );
+      }
+      if (seen.has(member.workerId)) {
+        throw new Error(
+          `plan-worker-count refused: worker ${member.workerId} appears more than once across the `
+          + "desired and excess rosters; one plan cannot both keep and stop (or doubly cover) the same worker",
+        );
+      }
+      seen.add(member.workerId);
+    }
+    for (const member of roster) {
+      const record = records.get(member.workerId);
+      if (record === undefined) continue;
+      if (record.state === "awaiting-birth") {
+        throw new Error(
+          `plan-worker-count refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved `
+          + "its lease birth; a plan cannot truthfully cover a spawn still in flight",
+        );
+      }
+      if (record.state === "running" && record.stopInFlight) {
+        throw new Error(
+          `plan-worker-count refused: worker ${member.workerId} has a stop in flight whose durable `
+          + "directive has not yet been acknowledged; a plan cannot truthfully cover it",
         );
       }
     }

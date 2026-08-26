@@ -860,6 +860,45 @@ describe("plan-worker-count", () => {
     expect(acknowledgement.members[0]).toEqual({ member: member(1), stage: "unmet", reason: "not-started" });
   });
 
+  it("refuses a member listed as both desired and excess before emitting any fact or initiating any stop", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+
+    await expect(harness.supervisor.execute(planRequest(1, [member(1)], [member(1)])))
+      .rejects.toThrow(new RegExp(`plan-worker-count refused: worker ${member(1).workerId} appears more than once`));
+    expect(harness.gracefulRequests).toHaveLength(0);
+    expect(harness.supervisor.memberEvidence(member(1))).toMatchObject({ state: "running" });
+  });
+
+  it("refuses a duplicated workerId within the desired roster", async () => {
+    const harness = openHarness();
+
+    await expect(harness.supervisor.execute(planRequest(2, [member(1), member(1)], [])))
+      .rejects.toThrow(/appears more than once/);
+  });
+
+  it("pre-scans every refusal before initiating any stop — an unprovable roster leaves no dangling durable stop", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    // member(3) is a spawn still awaiting birth: its lease never publishes.
+    harness.nextSpawn = (): FakeWorkerChild => new FakeWorkerChild(5000);
+    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", member: member(3) });
+    const settled = expect(pendingSpawn).rejects.toThrow(/exited/);
+
+    // The excess roster stops member(2) BEFORE reaching the unprovable
+    // member(3): without the pre-scan, member(2)'s durable stop would be
+    // requested and then abandoned unacknowledged by the refusal.
+    await expect(harness.supervisor.execute(planRequest(1, [member(1)], [member(2), member(3)])))
+      .rejects.toThrow(/has not proved its lease birth/);
+
+    expect(harness.gracefulRequests).toHaveLength(0);
+    expect(harness.supervisor.memberEvidence(member(2))).toMatchObject({ state: "running" });
+
+    harness.children[2]?.emitExit(1, null);
+    await settled;
+  });
+
   it("refuses a roster whose desired member count disagrees with desiredWorkers", async () => {
     const harness = openHarness();
 
