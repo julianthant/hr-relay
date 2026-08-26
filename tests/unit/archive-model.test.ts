@@ -1089,4 +1089,57 @@ describe("D274 — bump kind semantics", () => {
     assert.equal(world.database.authority.archivedRuns.isArchived(inFlight), false);
     assert.equal(world.database.authority.runs.get(inFlight)?.lifecycle.state, "queued");
   });
+
+  it("a minor bump archives NOTHING — prior-version terminal runs stay in every live read", () => {
+    const world = createWorld();
+    const settled = startRun(world, "10873698", true);
+    world.registry = V2;
+
+    const result = apply(world, plan(world, "minor"));
+    assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "minor apply refused");
+
+    // The run a MAJOR bump would have swept is still live.
+    assert.equal(world.database.authority.archivedRuns.isArchived(settled), false);
+    assert.equal(world.database.authority.archivedRuns.list().length, 0);
+
+    // The sweep is still RECORDED — the version moved — with an empty archive
+    // set and the reviewed change record carried verbatim.
+    const applications = world.database.authority.versionBumpApplications.list();
+    assert.equal(applications.length, 1);
+    assert.deepEqual([...(applications[0]?.archivedRunIds ?? ["unread"])], []);
+    assert.equal(applications[0]?.changeRecord?.kind, "minor");
+
+    // And the archive read path serves that sweep as what it is: a version
+    // record that took no run with it.
+    const index = buildArchiveIndex(emptyRegistryDeps(world));
+    assert.equal(index.entries.length, 0);
+    assert.equal(index.sweeps.length, 1);
+    assert.equal(index.sweeps[0]?.archivedCount, 0);
+    assert.deepEqual([...(index.sweeps[0]?.fromVersions ?? ["unread"])], []);
+  });
+
+  it("a minor plan's review copy states what apply will do: no candidates, no blockers", () => {
+    const world = createWorld();
+    // Both an archivable-looking run and a would-be blocker exist…
+    startRun(world, "10873698", true);
+    startRun(world, "10456712", false);
+    world.registry = V2;
+
+    const reviewed = plan(world, "minor");
+    const stored = world.database.authority.versionPlans.get(reviewed.versionPlanId);
+    // …and the MINOR plan lists neither: its candidates are "what apply will
+    // archive" and its blockers are "what apply will refuse on", and for a
+    // minor bump both are empty by definition (D274). Listing them would be a
+    // review copy that lies about the sweep it reviews.
+    assert.deepEqual([...(stored?.plan.candidates ?? ["unread"])], []);
+    assert.deepEqual([...(stored?.plan.blockers ?? ["unread"])], []);
+    assert.equal(stored?.plan.changeRecord?.kind, "minor");
+
+    // The same registry facts under a MAJOR plan list both — the kind, not
+    // the facts, is what changed.
+    const major = plan(world);
+    const majorStored = world.database.authority.versionPlans.get(major.versionPlanId);
+    assert.equal(majorStored?.plan.candidates.length, 1);
+    assert.equal(majorStored?.plan.blockers.length, 1);
+  });
 });

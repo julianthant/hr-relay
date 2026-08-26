@@ -2663,6 +2663,14 @@ function executeVersionBumpPlan(
     );
   }
   const assessment = assessOrReject(dependencies, repositories, request, scope);
+  /**
+   * D274: the run sets the plan records are the ones its KIND will act on. A
+   * major plan lists what apply will archive and what will refuse it; a minor
+   * plan lists neither, because a minor bump archives nothing and cannot be
+   * blocked — recording the assessment's raw lists on it would be a review
+   * copy that lies about the sweep it reviews.
+   */
+  const effect = resolveBumpEffect(request.payload.changeRecord.kind, assessment);
   const versionPlanId = dependencies.ids.uuid();
   const plan = VersionBumpPlanSchema.parse({
     archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
@@ -2677,11 +2685,12 @@ function executeVersionBumpPlan(
     changeRecord: request.payload.changeRecord,
     observedAppVersion: dependencies.appVersion,
     observedIdentities: assessment.identities,
-    candidates: assessment.candidates,
+    candidates: effect.candidates,
     // Charter §25: the flow LISTS the runs that block it. A plan is minted
     // even when it cannot be applied, because the list is the thing the
-    // operator needs in order to clear it.
-    blockers: assessment.blockers,
+    // operator needs in order to clear it. (For a MINOR bump the list is
+    // empty by D274's definition, not by observation.)
+    blockers: effect.blockers,
     plannedBy: request.requestedBy,
     plannedAt: now,
   });
