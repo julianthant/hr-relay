@@ -84,6 +84,32 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
   code it pins** — the touch-target guard was proved by ungating one `after:` utility, the fact fold
   by having it print the label instead of the value.
 
+  **Amended again 2026-08-26 (unit F2d): fixing a target creates targets, and a fix's OWN neighbours
+  are the next defect.** Four more, all downstream of the three above. (a) The member toggle's 44px
+  overlay was CENTRED, so it reached ~10px back across the name button `--ds-space-tight` to its
+  left: a tap on the end of a truncated name toggled the checkbox instead of selecting the row — the
+  same wrong-act-on-the-right-row error as the pitch bug, in the axis nobody had measured. It is
+  anchored to the toggle's LEFT edge now and spends its 44px going right, where only inert subtitle
+  text sits. **Containment is a claim about every direction the box grows in**, and the probe that
+  catches it is an adjacent-TARGET probe (what does the neighbour's last pixel resolve to), not a
+  size assertion. (b) The name button beside it was 16px tall inside a 44px line — **growing a line
+  for one control does not give the height to the others on it.** (c) The ⓘ from (3) above was
+  itself 20px: **a control introduced to fix a reachability defect inherits the floor of the thing it
+  replaced.** Its overlay needed the title LINE grown too, because the card is `overflow-hidden` and
+  clips whatever the line does not hold — F2c's lesson landing a second time, on a different clip.
+  (d) The toolbar's refusal sentence was `truncate` with no ⓘ to recover it: **the row's popover
+  route does not exist on a toolbar, so a clipped sentence there is unreachable on every pointer** —
+  it wraps, and the band takes `min-h` instead of `h` so it has somewhere to wrap to. And one that
+  is not about pixels at all: the one-command route's chained `.catch` titled every post-dispatch
+  throw `Nothing was recorded`, **a negative the client cannot know** — the envelope is already on
+  the wire and the fulfilment arm's own guards throw only after a result came back, so an operator
+  who believes it re-issues a command that may have landed. Both stages now settle through
+  `commandFailureToast`, and the after-dispatch arm says the result is unknown and names the one
+  thing that resolves it. (The bullet above says this tree renders no React in the unit lane. It
+  does for COPY: `queue-bulk-band-sentence.test.ts` runs the real toolbar through
+  `renderToStaticMarkup`, which is what pinned the tense and the absent `truncate` here — a
+  sentence composed across three JSX branches has no fold to test.)
+
 - **2026-08-21: an HTTP status decided by reading an error MESSAGE is a protocol keyed on prose, and
   every surface that renders a refusal inherits the mistake (Track D row D2, audit C3).** The BFF's
   `failureStatus` classified every throw by substring — four phrases meant 404, `"is not available"`
