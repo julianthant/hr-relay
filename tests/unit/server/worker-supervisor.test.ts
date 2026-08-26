@@ -13,7 +13,9 @@ import { manualClock } from "../../../src/domain/clock.js";
 import type { TestClock } from "../../../src/domain/clock.js";
 import { BrowserSessionIdSchema, PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
 import type { WorkerId } from "../../../src/domain/ids.js";
+import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import {
+  createWorkerPoolRuntimeExecutor,
   poolWorkerId,
   WORKER_GRACEFUL_STOP_TIMEOUT_MS,
   WORKER_SIGTERM_TIMEOUT_MS,
@@ -663,6 +665,58 @@ describe("plan-worker-count", () => {
 
     harness.children[0]?.emitExit(1, null);
     await settled;
+  });
+});
+
+/* ── the W1 contract round-trip: this supervisor's acks survive the pool executor's validators ── */
+
+describe("through createWorkerPoolRuntimeExecutor", () => {
+  function workerBrowserCommand(request: Readonly<Record<string, unknown>>) {
+    const parsed = CommandRequestSchema.parse({
+      commandId: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      requestedBy: "local-operator",
+      requestedAt: NOW,
+      source: "dashboard",
+      family: "worker-browser",
+      ...request,
+    });
+    if (parsed.family !== "worker-browser") throw new Error("fixture must be a worker-browser command");
+    return parsed;
+  }
+
+  it("spawn, stop and reconciling plan acknowledgements all pass W1 validation end to end", async () => {
+    const harness = openHarness();
+    const executor = createWorkerPoolRuntimeExecutor(harness.supervisor);
+
+    for (const poolIndex of [1, 2]) {
+      await expect(executor.spawnPoolWorker({
+        command: workerBrowserCommand({
+          type: "spawn-worker",
+          target: { workflowId: WORKFLOW, expectedVersion: 1 },
+          payload: { workerId: member(poolIndex).workerId },
+        }),
+        now: NOW,
+      })).resolves.toEqual({ state: "accepted" });
+    }
+
+    await expect(executor.stopPoolWorker({
+      command: workerBrowserCommand({
+        type: "stop-worker",
+        target: { workerId: member(2).workerId, expectedVersion: 1 },
+      }),
+      now: NOW,
+    })).resolves.toEqual({ state: "accepted" });
+
+    // The scale-down plan: member 1 stays, member 2's stop is attested
+    // reconciling, member 3 is honestly unmet — all under W1's validators.
+    await expect(executor.planPoolWorkerCount({
+      command: workerBrowserCommand({
+        type: "plan-worker-count",
+        target: { workflowId: WORKFLOW, expectedVersion: 1 },
+        payload: { desiredWorkers: 1 },
+      }),
+      now: NOW,
+    })).resolves.toEqual({ state: "accepted", workerIds: [member(1).workerId] });
   });
 });
 
