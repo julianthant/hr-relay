@@ -37,6 +37,19 @@ describe("dataOriginViewsOf (D252)", () => {
     assert.equal(write.freshness, undefined);
   });
 
+  it("resolves every real transaction beat from the registered module's task declarations", () => {
+    const origins = dataOriginViewsOf(moduleFor("separations-kuali-finalization"))
+      .filter((origin) => origin.nodeId === "finalize-kuali")
+      .map(({ role, taskId, dir, system }) => ({ role, taskId, dir, system }));
+
+    assert.deepEqual(origins, [
+      { role: "probe", taskId: "kuali/match-separation-finalization", dir: "read", system: "kuali" },
+      { role: "prepare", taskId: "kuali/stage-separation-finalization", dir: "write", system: "kuali" },
+      { role: "commit", taskId: "kuali/save-separation-finalization", dir: "write", system: "kuali" },
+      { role: "verify", taskId: "kuali/verify-separation-finalization", dir: "read", system: "kuali" },
+    ]);
+  });
+
   it("resolves the bound only for the field paths a Data entry can carry, through the executor's own precedence", () => {
     const origins = dataOriginViewsOf(moduleFor("person-lookup"));
     for (const origin of origins) {

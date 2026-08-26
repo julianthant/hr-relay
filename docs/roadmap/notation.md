@@ -162,4 +162,3 @@ Three standing rules for this class:
 - **`log:` lines are append-only.** A prior session's line is history: never edit it, never delete it. Correct it with a new line that names what the old one got wrong.
 - **A session that changed nothing on the tree still leaves its `## session:` marker if it touched the docs.** "The docs moved and the tree did not" is a fact worth being able to read; silence is indistinguishable from a session that never happened.
 - **The next agent reads first.** Before starting, read the newest `log:` lines of the nodes it is assigned (`npm run roadmap -- --json` if you want them structured) — the node's own journal is where the last agent said what is left.
-

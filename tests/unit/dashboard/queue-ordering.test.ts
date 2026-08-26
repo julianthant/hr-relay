@@ -39,6 +39,7 @@ function surface(input: Record<string, unknown>) {
     dryRun: false,
     priority: "interactive",
     runNumber: { state: "present", value: 1 },
+    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
     // Containment tracks the surface kind this fixture is building, because the
     // wire refuses a payload where the two disagree — a member is exactly the
     // row counted in its parent's rollup instead of the day's totals.

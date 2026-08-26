@@ -26,6 +26,7 @@ import type { DryRunScenarioCase } from "../../domain/trust/dry-run-scenario.js"
 import { SpanEventWireSchema } from "../../events/types.js";
 import { readEventStreamLines } from "../../infra/events/jsonl-streams.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import type { ProcessIdentityObserver } from "../../infra/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../dashboard/commands/start-plan-service.js";
 import { createReceiptService } from "../trust/receipt-service.js";
 import { composeWorkerRuntime } from "../worker/compose.js";
@@ -43,6 +44,8 @@ export interface ProductionDryRunScenarioRuntimeInput {
   /** Deterministic system edge; omitted by production CLI composition. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
   readonly processId?: number;
+  /** Test seam paired with a synthetic process id; production observes the OS. */
+  readonly processIdentityObserver?: ProcessIdentityObserver;
   readonly write?: (line: string) => void;
 }
 
@@ -155,13 +158,19 @@ export function createProductionDryRunScenarioRuntime(
   const drain = input.drainWorker ?? (async (workflow: string): Promise<void> => {
     await composeWorkerRuntime({
       isolation: input.isolation,
-      args: [workflow, "--drain"],
+      // The scenario runner owns one explicit ephemeral worker identity. It
+      // may restart that same member for the post-gate drain, but it never
+      // infers an index from pool or lease state.
+      args: [workflow, "--pool-index", "1", "--drain"],
       env: input.env,
       clock: input.clock,
       ids: input.ids,
       repoRoot: input.repoRoot,
       ...(input.sessionFactory === undefined ? {} : { sessionFactory: input.sessionFactory }),
       ...(input.processId === undefined ? {} : { processId: input.processId }),
+      ...(input.processIdentityObserver === undefined
+        ? {}
+        : { processIdentityObserver: input.processIdentityObserver }),
       ...(input.write === undefined ? {} : { write: input.write }),
     });
   });

@@ -25,7 +25,7 @@
  * poll loop (ref execution-and-sessions §5).
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
-import type { LoginResult } from "../../domain/session.js";
+import type { DuoCeremonyLeaseToken } from "../../base/duo-ceremony-lease.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
@@ -131,7 +131,7 @@ export const verifyCrmAuthenticatedApplication: AuthenticatedApplicationVerifier
  * Active Directory is fatal, because submitting under the wrong login type
  * sends this user's real credentials to the wrong realm.
  */
-async function ensureActiveDirectorySelected(context: SystemLoginContext): Promise<void> {
+async function ensureActiveDirectorySelected(context: SystemLoginContext, token: DuoCeremonyLeaseToken): Promise<void> {
   const { page, config } = context;
   const picker = page.locator(LOGIN_TYPE_SELECTOR).first();
   if (await picker.count() === 0) return;
@@ -153,7 +153,7 @@ async function ensureActiveDirectorySelected(context: SystemLoginContext): Promi
   // Selecting fires the picker's onchange, which re-posts and rebuilds the form
   // under the new realm. The credentials must go into THAT form, not the one
   // that is being torn down.
-  await waitForSsoForm(SYSTEM, context);
+  await waitForSsoForm(SYSTEM, context, token);
   const settled = await page.locator(LOGIN_TYPE_SELECTOR).first()
     .inputValue({ timeout: config.timeouts.navigationMs });
   if (settled !== ACTIVE_DIRECTORY_VALUE) {
@@ -169,10 +169,8 @@ async function ensureActiveDirectorySelected(context: SystemLoginContext): Promi
 export const crmLoginRecipe = defineVerifiedLoginRecipe({
   system: SYSTEM,
   verify: verifyCrmAuthenticatedApplication,
-  flow: async (context, probe): Promise<LoginResult> => {
+  navigate: async (context): Promise<void> => {
     const { page, config } = context;
-    if ((await probe()).authenticated) return "already-authenticated";
-
     const loginUrl = resolveSystemLoginUrl(config, SYSTEM, context.instance, context.label);
     abortIfCancelled(SYSTEM, "navigate-login-entry", context);
     try {
@@ -195,20 +193,22 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
 
     // A warm profile can land straight on the Communities app — but only the
     // two-fact probe may say so; the Communities login page shares the host.
-    if ((await probe()).authenticated) return "already-authenticated";
-
+    // The wrapper probes again after this navigation and skips the ceremony.
+  },
+  ceremony: async (context, token): Promise<void> => {
+    const { config } = context;
     // The form must exist BEFORE its login type can be read: the entry route is
     // still redirecting into `a5.ucsd.edu` when `goto` resolves.
-    await waitForSsoForm(SYSTEM, context);
-    await ensureActiveDirectorySelected(context);
-    await fillSsoCredentials(SYSTEM, context);
-    await submitSsoForm(SYSTEM, context);
+    await waitForSsoForm(SYSTEM, context, token);
+    await ensureActiveDirectorySelected(context, token);
+    await fillSsoCredentials(SYSTEM, context, token);
+    await submitSsoForm(SYSTEM, context, token);
     await waitForAuthenticatedLanding(
       SYSTEM,
       context,
+      token,
       isAuthenticatedCrmUrl,
       config.timeouts.duoApprovalCrmSeconds * 1_000,
     );
-    return "logged-in";
   },
 });

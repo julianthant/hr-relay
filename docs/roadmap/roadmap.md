@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-25
-head: 88a20ee9
+head: 1af961c3
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -13,8 +13,8 @@ tiles:
 - Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
 - Active | Phase 3 | per-workflow migration · entered at separations
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
-- Decisions | D1–D266 | rounds 68–90 landed this wave · D131 retired, never reused
-- Gates | 67 active guards | 2,362 tests · parity 157/157 assert-green 08-25 · schema v16
+- Decisions | D1–D270 | D267–D270 landed in dashboard hardening · D131 retired, never reused
+- Gates | 69 active guards | integrated D191 2,729/2,729 · parity last frozen 157/157 on 08-25 · schema v18
 - !Critical-path blocker | Wait for 08-28 | canary **4537 named** — S7 admits its separation date then; the three commits run ② → ① → ③
 
 <!-- roadmap:start -->
@@ -240,7 +240,7 @@ doc: 02 §2g — event / trust layer · ref:operator-trust §2 · ref:operator-t
 builds:
 - [x] BE schema v10
 - [x] BE automatic redacted diagnostic capture
-- [x] BE durable actor-keyed notification inbox (row commits before any OS delivery) — 2 of the 7 trigger arms have publishers (D222/D262); five do not
+- [x] BE durable actor-keyed notification inbox (row commits before any OS delivery) — 3 of the 8 trigger arms have publishers (D222/D262/A46); five do not
 - [x] BE knowledge / fix admission — admission is durable and audited; the PROJECTION has no caller, so no `KNOWLEDGE.md` exists
 - [x] BE ordered fsync'd ledger projector — unit-proven and guarded; `createLedgerProjector` has NO production caller, so nothing drains the durable outbox to a file
 - [x] BE D82's evidence receipt DERIVED from authority
@@ -364,11 +364,11 @@ log:
 
 ### Dashboard defaults — the generic surfaces every workflow inherits {#dash-defaults}
 status: active
-chip: B+C done · D ratified (D264)
+chip: B+C+D done · Duo + observed proof done · pool + fidelity open
 size: L
 doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C is proving the connection against a real run; Track D hardens the stack before cutover; **Track F is the fidelity bar above all three** — every region demo-exact or ruled, with ~150 OPEN questions waiting on the operator. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
+> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C proved the connection against a real run; Track D's D1–D5 + D11 are done, with D4/D5's budgets measured. **Track F is the fidelity bar above all three** — every region demo-exact or ruled, with 49 live decisions across six bounded sheets waiting on the operator. The Duo lease and observed-log proof are done; the worker supervisor/parallel proof remains. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -378,7 +378,7 @@ builds:
 - [ ] BE producers for the five declared notification triggers that have none — run-failed · subject-mismatch · write-parked · repeating-failure · verified-done (audit C4)
 - [ ] BE the `operation` run shape is minted by SOME enqueue path — today every path stamps `single`, so §9's group model (member well, rollup, containment) is presentation over fixtures (audit C2)
 - [ ] PROOF T2 dashboard feature scenarios over the DEFAULT surfaces (R10)
-- [ ] BE a backfill-gap notification trigger — the one record that says WE DO NOT KNOW what you missed; ref dashboard-surfaces §2.6's trigger union carries no gap arm, so the bell's pinned Refusal block has nothing to draw (fidelity-1 A46)
+- [x] BOTH a backfill-gap notification trigger — the one record that says WE DO NOT KNOW what you missed; an unreplayable historical SSE cursor commits it before replacement snapshot, and the pinned Refusal cannot be filtered/read/snoozed/dismissed (`68dea43a`, fidelity-1 A46)
 - [ ] BOTH member-outcome vocabulary on the member wire — the typed outcome word and the Outcome / Detail column-heading switch (fidelity-1 B83, B89)
 - [ ] BE per-status member counts on `memberRollup` — the well's six-status tally and a group's `△ N` fold (fidelity-1 B56, B77)
 - [ ] BOTH a declared `identifierProjection` so a member line can carry its EID column (fidelity-1 B75, B82)
@@ -407,6 +407,8 @@ log:
 - 2026-08-20 | docs-cohesion frontend-backend-integration | ref frontend-backend-integration rewritten as-built; §5.1 split into seven wire squares (5.1.1 run modal … 5.1.7 intake/capture/Edit Data), each separately citable and tagged; §1.1 and §5 gained a Built column · left: the per-run stream topics, the Review and People panel kinds, six Session-Panel controls
 - 2026-08-20 | docs-cohesion dashboard-surfaces audit | 109 sections classified (49 done · 32 needs-attention · 15 to-build · 8 superseded · 5 reference); C1–C4 booked as builds: lines; rewrite split into 5.1b/c/d
 - 2026-08-21 | docs-cohesion 03a fidelity fold | Track F drawn under this node (the demo-fidelity bar; ~150 OPEN questions as you-lines) and the nineteen `unserved:` wire gaps ledger 1 named booked here as `builds:` lines (A46; B43–B48, B51, B56, B68, B75, B77, B82, B83, B89, B97, B98, B100–B104, B110, B111, B114–B116, B130–B135; C49–C51, C55, C56, C58, C59, C64–C66, C68, C70, C85, C86, C91) — the preflight/doctor pair (A39/A42) already sits on `{#def-settings}`; ledger 3's dash-defaults proposals are all subsumed by Track F's lines · left: the rulings, then the builds
+- 2026-08-25 | track-f A46 | `68dea43a` closes fidelity-1 A46: the historical-cursor replay seam commits one deduped backfill-gap row before replacement snapshot; its strict pinned wire arm is filter-immune and command-refused, and reconnect/resnapshot never falsely clears it · left: any future resolved state requires Track F to ratify independent reconciliation evidence
+- 2026-08-25 | observed-logs live proof | §9.25 records the already-collected dashboard/composed separations dry run: document 4502, plan `479f9f1e-83b3-4157-915b-2794bcf61ab0`, run `25d90c9d-72bf-4fa4-bcea-116665f22790` / `sp-143516-25d9`, `parked-gate` v52; 13 observed rows (0..12), no notes and 0 / 0 / 0 run-scoped write evidence. The service origin at `separations-2026-08-25.jsonl:12` has no browser system; `17468e60` repaired the resulting false 500 invariant, API 200 and UI omission. `dash-defaults` remains active for its other builds and Track F.
 
 #### Track B · dashboard completion {#track-b}
 status: done
@@ -459,25 +461,25 @@ log:
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
 #### Track D · dashboard hardening, pre-cutover budgets {#track-d}
-status: planned
+status: done
 date: D264 · audit 2026-08-20
-chip: ratified 2026-08-20 (D264) · D1–D5 planned · D6–D10 proposed
+chip: D1–D5 + D11 landed · D4/D5 measured · D6–D10 proposed
 doc: 03a §Track D · dashboard hardening, pre-cutover budgets · ref:frontend-backend-integration §2 · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4 · ref:workflow-model §1.2
 
 > From the 2026-08-20 architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of ref frontend-backend-integration §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
 
 builds:
-- [ ] BE D1 one status/outcome derivation — exported `deriveRunStatus`, ONE `TASK_OUTCOME` vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row (closes C1/C2, part of M3)
-- [ ] BOTH D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified, the D253 sentence corrected (closes C3/C4/M7/M8)
-- [ ] FE D3 every command settlement folds through `settleCommandResult` — 7 sites still enumerate both refusal arms by hand (closes C5)
-- [ ] BOTH D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; then MEASURED against a seeded 1,240-row / 108-member fixture and recorded as ref frontend-backend-integration §7.4's first numbers (closes P1)
-- [ ] BE D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded (closes P2/P3/P4)
+- [x] BE D1 one status/outcome derivation — exported `deriveRunStatus`, ONE task-outcome vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row (D268, `81bfed73`; closes C1/C2, part of M3)
+- [x] BOTH D2 hygiene — the HTTP status is the error's KIND not its wording (`f39b2e95`), the phone-host gate is WIRED from `capture.ingress: "forwarded"` with a producer guard (`47eeb44e`), two dead hooks and ten dead exports gone (`69102aaf`), the TEST-instance hazard / `plural` / `shortHash` one each (`6d44bb1e`) (closes C3/C4/M7/M8; the D253-sentence half landed with D3, `1b13115f`)
+- [x] FE D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold; the guard's second arm requires any module calling `.executeCommand(` to import it (closes C5)
+- [x] BOTH D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against the seeded 1,240-row / 108-member fixture and recorded as ref frontend-backend-integration §7.4's first D4 numbers — one SSE row patch `22.30 → 0.02 ms`, `dayWireSchemaParses 1 → 0` (closes P1)
+- [x] BE D5 bound the read scans — the member preview slices ids before joining and a row reads its receipt once, the notes reader opens only its run's own `(workflow, date)` partitions, the archive freeze scans once per page walk; measured and recorded in ref frontend-backend-integration §7.4's AFTER table (closes P2/P3/P4)
 - [?] FE D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what ref frontend-backend-integration §2 says it is (closes M2)
 - [?] FE D7 split `LoadedApp` along its own seams — `useDayRoute`/`useRunDetailState`/`useBulkSelection` into `app/*-model.ts`, the five takeover layouts into `app/takeovers.tsx` (closes M1)
 - [?] BOTH D8 models for intake / archive / log-panel, the versioning half of `archive.tsx` split out, and ONE `foldTaskExecutions(row)` for pipeline / timeline / archive (closes M3/M5/M6)
-- [?] FE D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured (closes P5)
+- [?] FE D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured (closes P5) — still behind its trigger; observed-logs pins the current exact 200-row page without claiming virtualization
 - [?] BOTH D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped (closes M4)
-- [ ] BOTH D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads (`summary`, `enqueue`, `surfaces.inputRun`) and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251; ref frontend-backend-integration §4)
+- [x] BOTH D11 the descriptor registry LEAVES the bundle — bootstrap serves the three start-surface fields the modal reads (`summary`, `enqueue`, `surfaces.inputRun`) on `WorkflowStartWireSchema`, `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import, and `dashboard-wire-boundary` arm (15) refuses any dashboard entry whose closure reaches `src/workflows/**` or `src/control/**` (amends D251; ref frontend-backend-integration §4)
 - [ ] BE the write ledger has NO production writer — `createLedgerProjector` is composed nowhere while `createLedgerReadThrough` is composed at two roots; `ledger/` has never been written (ref dashboard-surfaces §9.5.2 · ref write-safety §6.1)
 - [ ] BE a production tick that leases and drains the ledger outbox (ref write-safety §6.1)
 - [ ] BOTH ledger health as a storage notification per D222, not a banner (ref write-safety §6.1)
@@ -500,51 +502,62 @@ log:
 - 2026-08-20 | docs-cohesion 03a | every one of the eleven rows re-verified UNLANDED at HEAD rather than carried on the audit's say-so, with the file:line of each finding recorded in doc 03a's Track D table (no exported `deriveRunStatus`, two `TASK_OUTCOME` vocabularies, two `panelKindOf` copies, `settleCommandResult` imported by two surfaces, zero `React.memo`, `WORKFLOW_DESCRIPTORS` at `dashboard-app.tsx:25`)
 - 2026-08-20 | docs-cohesion frontend-backend-integration | all eleven rows tick in ONE place — ref frontend-backend-integration §7.4's status block, with a per-row map of where each lands; §7.4 records that NOTHING in src/ or tests/ measures any budget it names
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
+- 2026-08-21 | track-d D2 | D2 DONE (`f39b2e95`, `47eeb44e`, `69102aaf`, `6d44bb1e`) — the BFF's status mapper stopped reading its own error MESSAGES (three declared kinds in `src/server/failures.ts`, every reachable producer converted, a plain `Error` wearing each retired phrase now a 500 rather than a 404); the phone-host gate is WIRED rather than deleted, because `capture.ingress: "forwarded"` is a producer an operator can set today and deleting the gate would put the scope check in the very slice that opens the door (`capture-durability-and-scope` §2b pins the producer). Two deliberate keeps against the audit's reading: `GET /api/v1/dashboard` (two tests drive it, one the only proof a composed BFF serves a day) and `INTAKE_UPLOAD_MEDIA_TYPES` (a named open wire task). ONE operator-visible change: the receipt's TEST banner no longer uppercases its system names
+- 2026-08-21 | track-d5 | D5 DONE (`d6d6c758`, `c1fa129b`, `c74efcca`, `c547f65a`; bounds pinned `4d3247d8`) — all four read scans bounded and BEHAVIOUR-PRESERVING, verified byte-identical over the perf fixture's whole day wire, three neighbouring days, six run details, six logs pages and five archive freezes. Measured against the same seed: day wire 6,718 → 5,568 SQLite statements (the −1,150 decomposes exactly into 940 saved receipt reads + 210 saved preview joins), member-preview delta 216 → 6 and no longer scaling with the member count, logs scope 4 → 2 partitions. The logs row moves only 15 % in LINES because 78 % of this fixture's corpus is on the measured run's own day — what changed is that the read stopped growing with the corpus, which is the bound P3 names. The tests pin the BOUND, not a duration, and the notes reader is proved bounded by a tripwire (unparsable bytes planted in out-of-scope partitions)
+- 2026-08-21 | track-d11 | D11 DONE (`149bc5f8` the wire block + server projection + a test driving `buildBootstrap` over the whole registry; `0911becd` the frontend drop + guard arm 15, proved to bite by re-adding the deleted import). The audit's "49 modules for three plain fields" undercounted the cost: the production bundle fell **1,114,214 → 753,197 bytes (32 %)**, `separations` string occurrences 259 → 7. `run-start.tsx` needed no edit — the composed `RunStartWorkflow` is identical field for field, so the whole frontend delta is one deleted import and one read site, and the modal's `?? "reject-active"` default retired with it (it stood in for a fact the server always had). ref frontend-backend-integration §4's ONE named divergence is closed and its §7.4 exit-criterion 2 is MET
+- 2026-08-21 | track-d4 | D4 DONE (`345475bf` splice + tests, `bb406615` memo + stable props + guard) — a single-row SSE patch no longer re-validates the whole day: `22.30 → 0.02 ms` median and `dayWireSchemaParses` 1 → 0 over three runs against the same seed, with rows 1/3/4/5 held as an unchanged control so the delta is the change and not the loaded machine. Dropping the parse also gives every untouched row back its REFERENCE, which is the only reason `memo` on `LogPanel` can skip a 2,000-line subtree during a bulk run — the two halves are one change. New guard `dashboard-memo-prop-stability` refuses the five provably-fresh prop shapes, because a `memo` beaten by one fresh prop re-renders as often as before with every gate green. Honest bound recorded in §7.4: the D256 live clock is a prop of all three panels and ticks 1 Hz, so `memo` buys the re-renders BETWEEN ticks; the browser render count is deliberately not taken on a contended laptop and belongs to D9
+- 2026-08-21 | track-d3 | D3 DONE (`1b13115f`) — the seven hand-enumerating sites fold; the fold carries the server's own per-arm facts (`message`/`code`/`currentVersion`) beside the composed sentence, so a surface drawing a refusal in its own components stops taking the union apart, and ZERO operator-visible text moved (the parity corpus photographs identity-approve's conflict alert). The guard gains a second arm + fixture (`5c36a82d`): posting through `executeCommand` without importing the fold is now a failure, which the first arm could not see
+- 2026-08-25 | 03a reconciliation | Track D's exit scope is DONE: D1–D5 + D11 are landed and held by tests/guards; D4/D5 are measured, and ref frontend-backend-integration §7.4 carries their shared-fixture BEFORE/AFTER numbers. D6–D10 remain proposed behind their trigger and are outside this gate; the additional unchecked findings on this node remain explicitly booked work rather than false completion claims
 
 #### Track F · demo fidelity — every detail, region by region {#track-f}
 status: you
 date: fidelity re-audit 2026-08-21
 size: L
-chip: ~150 OPEN questions — needs you
+chip: 49 live decisions across six sheets — needs you
 doc: 03a §Demo fidelity — every detail, region by region
 
-> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119; 756 exact; ~150 distinct OPEN questions), and this node carries them until each is ported or recorded with its argument.
+> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. Six decision sheets contain the 49 live operator choices exactly once; ledger 3 has 238 OPEN row marks mapped to 30 unresolved numbered groups.
 
 builds:
 - [!] DOCS the operator rules the 37 shell / queue / run-start OPEN questions (ledger 1 §Roll-up)
 - [!] DOCS the operator rules the 54 run-detail OPEN questions (ledger 2 §Roll-up)
-- [!] DOCS the operator rules the ~60 standing-surface OPEN questions, the twelve structural ones first — the virtualised archive · the bump's MAJOR/MINOR arms · a DS specimen page · the row-and-panel vocabulary surface · Settings as a takeover · the keyboard legend · intake stages 5–6 · the intake review gate · the archived-capture lightbox · the bump plan naming its runs · the operator capture half · the two Settings sections already served (ledger 3 §Roll-up)
-- [ ] FE the served-and-dropped facts — 8 in run detail (the receipt footer, the failure's occurredAt / traceId / attempt, `page.urlRedacted`, `action.elementId`) + the standing-surface ones the ledger 3 roll-up lists (doc 03a §Served-and-dropped)
+- [!] DOCS the operator rules the 30 unresolved standing-surface decision groups, the twelve structural ones first — the virtualised archive · the bump's MAJOR/MINOR arms · a DS specimen page · the row-and-panel vocabulary surface · Settings as a takeover · the keyboard legend · intake stages 5–6 · the intake review gate · the archived-capture lightbox · the bump plan naming its runs · the operator capture half · the two Settings sections already served (238 OPEN row marks; ledger 3 §Roll-up)
+- [x] FE the served-and-dropped facts — receipt/failure, intake, archive, the queue gate age, the run-modal descriptor version, Activity AC24 and Explorer EX5 are complete (doc 03a §Served-and-dropped)
 - [ ] FE the structural run-detail ports — the failure-record disclosure + write-state block, the focusable timeline segment, the step-group Well, one-owner `dataExpanded`, the grouped log stream
 - [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
-- [ ] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
+- [x] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
+- [x] BOTH A46's exact-generation unreplayable-history trigger, stable no-churn permanent fact, authority-immutable Refusal and reachable 6+ pin mobile lane (`68dea43a`, `e108ff3f`, `a2d2a8e8`; fidelity ledger 1 A46)
 - [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
-- [ ] BE a diagnostic bundle is readable (ledger 2 E29)
-- [ ] BOTH the intake manifest + rerun-diff surface (ledger 3 IN15/IN16)
+- [x] BOTH a diagnostic bundle is readable — exact-id D137 readback plus `BundleDialog` and server manifest download (ledger 2 E28/E29)
+- [x] BOTH the intake manifest + rerun-diff surface — terminal and preflight identities, manifest projection and rerun diff are fixture-rendered in exact local pages with full compact values keyboard/touch reachable; this does not claim D9, IN144 remains OPEN, and no parity reference was re-frozen (ledger 3 IN123–IN143)
 - [ ] BOTH the operator half of phone capture (ledger 3 CP3–CP5)
 - [ ] PROOF the parity corpus re-frozen once over every change, with the three missing scenes (Settings · the version-bump dialog · a DS specimen page)
 
 needs:
 - track-b
-- you: rule the ~150 OPEN questions in the three ledgers — each becomes ported, or a recorded divergence with its argument
+- you: rule the 49 live decisions in the six 2026-08-25 sheets — each becomes ported, or a recorded divergence with its argument
 
 log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | node drawn from the three 2026-08-21 ledgers; doc 03a §Demo fidelity carries the per-region table, every OPEN question as one line, the served-and-dropped list and the stale-claims table · left: the operator's rulings, then every FE / BE / BOTH / PROOF line above
+- 2026-08-25 | track-f archive UI + Activity AC24 | `3d461962` served frozen list warnings/rehearsal state; `d1f87916` drew those and the already-served archive identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared wire→display status fold. Ledger 3 remains 346/1,119 exact with 248 OPEN marks. Before/after screenshots were taken without `PARITY_UPDATE` · left in this unit: Explorer EX5 and every other non-archive served-and-dropped fact
+- 2026-08-25 | track-f Explorer EX5 | `4e09fb49` restores the demo's ghost `Version registry` action with its `Eye` icon; it clears the Explorer takeover and opens Archive's actual `Versions & bumps` view through `?archive=&archiveView=versions`. The browser test proves the exact search state, direct deep-link and Back/Forward restoration against the pressed view and real `Workflow version registry` table; no parity reference was re-frozen. A mechanical recount of ledger 3's current rows gives 353/1,119 exact with 238 OPEN marks · left: every non-archive served-and-dropped fact
+- 2026-08-25 | track-f A46 adversarial correction | `e108ff3f` separates cross-generation restart/rebuild from real missed history, stabilises interval identity across reason aging/head movement and process restart, single-flights concurrent clients, refuses every authority mutation/fold, and restarts an atomically captured handshake if publication moves the projection; `a2d2a8e8` keeps 6+ pins, ordinary rows and fixed filters reachable at 390×844 with truthful Pings counts and a 44px bell. A46 stays exact, so ledger 1 remains 132/178 and the three-ledger total remains 775/1,956 exact. Production-bundle mobile proof passed; no parity reference was re-frozen.
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
-status: planned
+status: done
 date: R12 · 2026-08-20
 size: S
+chip: D267 landed · live generations 3 → 4 serialized
 doc: 03a §Duo ceremony lease — one login at a time per credential · ref:execution-and-sessions §4.1 · ref:execution-and-sessions §4.2 · ref:execution-and-sessions §10
 
 > A durable per-credential lease in authority serializes EVERY Duo ceremony — from "navigate to SSO" until the content verifier proves the session — across every worker and every system. TTL is `sessionAcquireMs` + grace; waiters are bounded and refuse loud naming the holder; a refused assertion poison-closes and retries ONCE under the same lease on a FRESH profile, then fails naming the profile; `defineVerifiedLoginRecipe` takes a lease token only the lease store mints, pinned by a guard with a violating fixture. The hazard exists TODAY — two workflows' workers cold-starting together share one credential's server-side counter (D243).
 
 builds:
-- [ ] BE `duo_ceremony_leases` in authority + the lease token `defineVerifiedLoginRecipe` requires + the grace config leaf `timeouts.duoCeremonyLeaseGraceMs` (a D133 snapshot-generation change)
-- [ ] BE bounded waiters + the fresh-profile-once recovery, both failing by name
-- [ ] BE the guard: no login path without the lease, with a violating fixture
-- [ ] PROOF two workers' cold starts serialize (unit) + a live two-worker cold start + a ref execution-and-sessions §7.1 concurrency-matrix row in the same commit
-- [ ] DOCS the decision in `reference/execution-and-sessions` + `reference/decisions`
+- [x] BE `duo_ceremony_leases` in authority + the lease token `defineVerifiedLoginRecipe` requires + the grace config leaf `timeouts.duoCeremonyLeaseGraceMs` (D267, `bfc7d318`, `cb7f17f8`)
+- [x] BE bounded waiters + the fresh-profile-once recovery, both failing by name (`cb7f17f8`)
+- [x] BE the guard: no login path without the lease, with a violating fixture (`37e747f0`)
+- [x] PROOF two workers' cold starts serialize — unit (`1c244a40`) + the LIVE two-worker cold start (2026-08-21) + the ref execution-and-sessions §7.1 concurrency-matrix row
+- [x] DOCS the decision in `reference/execution-and-sessions` + `reference/decisions` (D267)
 
 needs:
 - track-d
@@ -552,9 +565,10 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Duo ceremony lease written; verified UNBUILT at HEAD — nothing named `duo_ceremony_leases` exists in `src/` and `defineVerifiedLoginRecipe` (`src/infra/browser/authenticated-application.ts:159`) takes system + verify + flow and no lease token; `doc:` tightened to ref execution-and-sessions §4.1 and §4.2
 - 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
+- 2026-08-21 | duo-lease E2 | PROOF closed live: two cold workers (`live-a` / `live-b`) on ONE credential serialized their Duo ceremonies — generation 3 released 20:49:58.033Z, generation 4 acquired 20:49:58.261Z, both `logged-in`, zero waiter refusals; ref execution-and-sessions §10 §Live proof is the record. The four BE / DOCS lines above landed in E1 (`bfc7d318` · `cb7f17f8` · `37e747f0` · `1c244a40`) and are ticked in doc 03a and ref execution-and-sessions §10; ticking them HERE and moving this node's `status:` is the plan owner's pass
 
 #### Parallel runs — sessions and the worker pool {#parallel-runs}
-status: planned
+status: active
 date: R11 · 2026-08-20
 size: L
 doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-sessions §1 · ref:execution-and-sessions §3 · ref:execution-and-sessions §7.1 · ref:execution-and-sessions §11
@@ -563,11 +577,11 @@ doc: 03a §Parallel runs — sessions and the worker pool · ref:execution-and-s
 
 builds:
 - [ ] BE worker pool — N workers per workflow, spawned and stopped from the dashboard (the kernel command arms exist and are validated; `createDashboardWorkerSupervisor` refuses spawn BY NAME today)
-- [ ] BE the projection serves a worker-POOL version — `spawn-worker`/`plan-worker-count` target `{workflowId, expectedVersion}` and `WorkerCardWire.revision` is ONE worker's row, so the FE control has no honest CAS basis until this lands
-- [ ] BE durable session record + grouping (B4's bulk dispatch is the seed)
-- [ ] FE session view — worker cards show membership and what each worker is doing, from authority
+- [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis `spawn-worker`/`plan-worker-count` cite (`expectedVersion` = the pool row's version, 0 for an unplanned workflow), refused by name when stale; the day wire serves `workerPools[]` (`93b7b18e` · `b4f30ea0` · `24b04dfa`, D269)
+- [x] BE durable session record + grouping — `run_sessions` (insert-only, member-less) written by every fan-out before its first member; membership is the run row's `sessionId`; a retry inherits; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa`, D269)
+- [x] FE session view — worker cards show authority membership and what each worker is doing; groups exact queue-row session ids, joins the claiming card by exact `runId`, preserves absent reasons and distinguishes declared pool size from non-terminal authority worker cards (`97a55b07`)
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded
-- [ ] BE pool-indexed worker ids — `phase1WorkerId(workflowId)` returns one id per workflow, so two composed workers collide on the authority worker lease (`src/core/worker-loop.ts`)
+- [x] BE pool-indexed worker ids — required CLI positive pool index → stable `<workflow>-worker-<index>` identity → authority lease; distinct indices retain distinct leases and duplicate ownership is refused (`src/core/worker-loop.ts`, `src/server/worker/compose.ts`)
 
 needs:
 - track-d
@@ -576,22 +590,27 @@ needs:
 log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Parallel runs written; one `builds:` line ADDED from reading the code — the pool version is a prerequisite of the spawn control, not a detail of it (`src/dashboard/surfaces/shell.tsx:1036` states the CAS reason the demo's `+` is absent); `doc:` tightened to ref execution-and-sessions §1, §3 and §7.1
 - 2026-08-21 | docs-cohesion execution-and-sessions | §10 (the lease) and §11 (sessions) are the owning contracts (`fed795e1`)
+- 2026-08-21 | parallel-runs P12 | the AUTHORITY half built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (`93b7b18e`), the pool CAS in the kernel (`b4f30ea0`), the session written at every fan-out and inherited by retry (`57f2bb9c`), the wire's `workerPools[]` + row `session` (`24b04dfa`); left: the pool PROCESS (spawn + pool-indexed ids), the FE session view, the parallel PROOF
+- 2026-08-25 | parallel-runs P3 | pool-indexed identity built: `worker <workflow> --pool-index N` requires and validates a positive N, then composition carries the derived id through the loop and authority lease. Index 2 retains its own lease; duplicate N hits the existing lease collision. Left: the real dashboard process supervisor, FE session view and parallel proof
+- 2026-08-25 | parallel-runs P3 review | worker admission is per-start and strictly aggregated into D181's restore arm; singleton admission is atomic (16 synchronized processes admit one), ownership binds PID to OS process birth, and exclusive restore admission spans staged-byte verification through swap. Pool supervision, FE and parallel proof remain unbuilt
+- 2026-08-25 | parallel-runs P4 | the FE session view reads only the D269 day wire (`97a55b07`): exact present `QueueSurface.session.sessionId` groups membership, exact `WorkerCard.currentRun.runId` joins a worker, and the absent arm preserves its served reason; the add-workers control remains absent because the supervisor refuses its process effect, not because the pool CAS version is unavailable
 
 #### Observed logs — the log carries what the page said {#observed-logs}
-status: planned
+status: active
 date: operator 2026-08-20
 size: M
 doc: 03a §Observed logs — the log carries what the page said · ref:dashboard-surfaces §1.1 · ref:dashboard-surfaces §2.1 · ref:operator-trust §2.3
 
-> The log stream quotes the facts each task RECORDED — the provenance points: field, value, system, observed-at — redacted by the declared evidence classification, and never a second scrape. A transaction node's beats stream their observations while the step is still running, so the operator watches the page's own words rather than a step name. The log emission path and the log structure are rebuilt around recorded observations; the scope may widen when the operator reviews phase 3a.
+> The log stream quotes the facts each task RECORDED — the provenance points: field, value, direction, observed-at, with the SYSTEM resolved through `dataOrigins` rather than carried on the point (D252/D106) — redacted by the declared evidence classification, and never a second scrape. Transaction roles preserve each call's observation instant; probe/prepare/verify stream synchronously, while commit flushes after callback settlement so instrumentation cannot interrupt fence→click. The log emission path and the log structure are rebuilt around recorded observations; the scope may widen when the operator reviews phase 3a.
 
 builds:
 - [ ] BE the notes stream gets a production emitter — `emitNote` is composed and never called; `.tracker-rebuild/notes/` does not exist, while the Logs section re-reads it per request and a failed run opens on it (audit C1)
-- [ ] BE provenance points emitted on the span at record time, redacted by declaration (an unclassified leaf fails loud)
-- [ ] BE transaction beats stream their observations (probe → stage → fence → click → read-back)
-- [ ] FE the log panel renders observed rows per step, in the Context rail's vocabulary
-- [ ] PROOF a separations dry run reads as a ledger of page facts
-- [ ] BOTH a log line carries its own facts, not just a level — the demo's nine-kind icon vocabulary with its read/write direction hues, the per-line `SystemChip`, the read/write `Pill` chips, the attempt badge and the duration; the search predicate widens to match a pill's label and value (fidelity-2 B69–B75, B78)
+- [x] BE provenance points captured at record time and redacted by declaration; commit delivery is deferred past callback settlement for fence→click safety (an unclassified leaf fails loud) — D270
+- [x] BE transaction beats stream their observations (probe → stage → fence → click → read-back)
+- [x] BE L3 strict Logs row wire/query — bounded note partitions + append-time per-run span index, immutable combined snapshots, exact `(nodeId,taskId)` system resolution and archive read-forward
+- [x] FE the log panel renders combined note / observed / authority-fence rows per producer, in the Context rail's vocabulary; immutable cursor pages are owned by exact run+cursor+snapshot, stale responses cannot disturb the current request, and a fence carries no invented observation facts
+- [x] PROOF a separations dry run reads as a ledger of page facts — document 4502, plan `479f9f1e-83b3-4157-915b-2794bcf61ab0`, run `25d90c9d-72bf-4fa4-bcea-116665f22790` / `sp-143516-25d9`; 13 observed rows (0..12), no notes and zero write evidence (doc 03a / separations §9.25)
+- [ ] BOTH the demo's unserved general line kinds and duration (fidelity-2 B69–B75): observed facts, attempts and pill search are rendered, but `pause`/nav/search/ok/event and duration have no producer
 - [ ] FE the `pause` line's own row tint, once a line carries its kind (fidelity-2 B71)
 - [ ] BE the timeline hover card's `System` row and its key lines — the same provenance points this node emits, read one level up (fidelity-2 B52, B54)
 
@@ -602,6 +621,12 @@ log:
 - 2026-08-20 | docs-cohesion 03a | doc 03a §Observed logs written; the emission is a real build, not a re-read — `finalizeRead` validates the recorded points and the executor stores only `provenance` plus the parsed output (`src/core/task-provenance.ts:264`, `src/core/run-executor.ts:1052`), and `DataPoint` carries `direction` natively but NO system, which the store's declaration owns (D252/D106)
 - 2026-08-20 | docs-dash-surfaces 5.1b | ref dashboard-surfaces rewritten as-built; status block filled (`632ce168`)
 - 2026-08-21 | docs-cohesion 03a fidelity fold | the demo's log-line anatomy booked here from ledger 2 (B52, B54, B69–B75, B78) — the line carries its own facts, which is what this node emits; the stream's GROUPING by step (B65) is a pure FE port today and sits on `{#track-f}` · left: all of it
+- 2026-08-21 | D270 | the EMISSION half landed — a twelfth span arm `data.observed`, one event per `ctx.recordData` call, redacted per leaf through the receipt's own declared table, an undeclared leaf failing the recording task by name, and the queue projection ignoring the arm by name (`ef090ea4` `68954117` `4d074886` `aabd46f4`). The channel is the SPAN stream, so the notes-emitter row is untouched · left: the transaction beats, the FE rows, the proof
+- 2026-08-25 | observed-logs L2 | transaction probe/prepare/commit/verify roles now own explicit spans and declared observations; `transaction.fenced` is a strict kernel arm, commit call-time batches flush fence-first after callback settlement to keep fallible emission out of fence→click, and dry-run reports only probe + prepare · left: the FE rows and proof
+- 2026-08-25 | observed-logs L3 repair | notes retain the shared bounded producer scope; observed/fenced spans are indexed by the append-time disk-tail projection with source file/line, authority-bound workflow/trace/attempt, and immutable `lc:` page snapshots. Real transaction origins cover probe/prepare/commit/verify; generation 5 requires combined logs while 1–4 read forward. §7.4 measures 7,662 rejected-scope span parses → 0 per GET · left: FE rendering and live proof
+- 2026-08-25 | observed-logs FE | strict note / observed / fence rows now fold in server sequence order under contiguous producer headings; observations use the Context rail’s system/direction vocabulary and redacted value pills, while authority fences deliberately draw no system, direction or page fact. Cursor pages append immutably; targeted production-bundle desktop/mobile proof covers grouping, search/focus, pagination, fence absence and containment · left: live separations proof
+- 2026-08-25 | observed-logs FE adversarial repair | exact run+cursor+snapshot ownership ignores a delayed stale continuation without changing current rows/loading/error; live notes-only pages fail with run+cursor; ARIA names served observation system/directions and no fence defaults; computed read/write token assertions, named server errors, 44×44 mobile continuation geometry and the complete/searchable/no-eager-fetch 200-row bound are pinned. D9 still owns the triggered shared queue/log/archive virtualization primitive; this node claims none · left: live separations proof
+- 2026-08-25 | observed-logs live proof | §9.25 records the dashboard/composed run: document 4502, plan `479f9f1e-83b3-4157-915b-2794bcf61ab0`, run `25d90c9d-72bf-4fa4-bcea-116665f22790` / `sp-143516-25d9`, `parked-gate` v52; 13 observed rows in sequences 0..12, no notes and 0 / 0 / 0 run-scoped write evidence. The service-origin row at `separations-2026-08-25.jsonl:12` has no browser-system declaration; `17468e60` repaired the false API-500 invariant, so the API answered 200 and UI omitted the system claim. Processes and browser sessions stopped after collection · left: notes emitter and fidelity extras
 
 ### Testing tiers — the suite organized by what a test needs {#test-tiers}
 status: active
@@ -1067,7 +1092,9 @@ log:
 
 ## session: 2026-08-25 | workflow-tree completion | workflow-tree and test-tiers implementation landed through `88a20ee9`; the annotation is gone, the T1 machinery records honest blocked evidence, final D191 is 2,362/2,362 and parity is 157/157; only the 08-28 live `met` remains
 
-## today: 2026-08-25 · HEAD 88a20ee9 · D265 + D266 implemented — folders now mirror the rail and timeline, `kuali-timekeeper-annotation` is dismantled into the first T1 pair, and the production runner records blocked-not-started honestly · ~150 OPEN Track F questions wait on you · separations 8 / 9 · the controlled commits and live T1b `met` wait for 08-28
+## session: 2026-08-25 | 03a integration close | Track D D1–D5 + D11 and §7.4's D4/D5 measurements reconciled DONE; Duo D267 + its live proof reconciled DONE; observed logs live proof and intake Manifest/Rerun landed; integrated D191 PASS at `1af961c3` is 263 files / 2,729 tests (82.75 % statements, 84.79 % lines). Left honestly open: the real worker supervisor + parallel proof, 49 operator decisions and their resulting fidelity ports, then the one deliberate parity re-freeze
+
+## today: 2026-08-25 · 03a autonomous integration is green at 2,729/2,729 — Track D, Duo, observed-log proof and intake Manifest/Rerun are reconciled; worker supervision/parallel proof and 49 operator decisions remain · separations 8 / 9 · the live T1b `met` waits for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued

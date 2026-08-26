@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
+import { BUILD_MANIFEST } from "../../../src/domain/workflow/build-manifest.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
@@ -63,6 +64,7 @@ import {
   findGateDecision,
   gateDecisionFor,
 } from "../../../src/domain/trust/gate-decisions.js";
+import { WRITE_FIXTURE_TASK_IDS } from "../fixtures/write-sequencer-fixtures.js";
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
@@ -588,8 +590,29 @@ describe("evidence receipt — declared classification coverage", () => {
       );
     }
     const workflowIds = new Set(WORKFLOW_DESCRIPTORS.map(({ id }) => String(id)));
-    const taskIds = new Set(WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
+    /*
+     * A task-output scope is an orphan when it names a task this RUNTIME cannot
+     * execute — which is the build manifest's task set, not the narrower set
+     * today's descriptors happen to compose.
+     *
+     * D184's rule (a declaration nobody can produce is one nobody can act on)
+     * is what this guards, and D270 is what widened it: the observed-log
+     * emission redacts by declaration for EVERY task the executor runs, and the
+     * executor runs whatever a composed descriptor names — including the
+     * executor's own fixture descriptors. The ordinary executor fixture borrows
+     * a manifest-known id because it resolves the production fingerprint; the
+     * transaction fixture injects a fixed fingerprint and exports the exact ids
+     * of its sealed task contracts. A registered task that no descriptor
+     * composes YET is exactly the case the narrower rule refused and the wider
+     * one still catches when the task is deleted.
+     */
+    const descriptorTaskIds = new Set(WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
       workflowProjections(descriptor).contracts.map((contract) => String(contract.id))));
+    const taskIds = new Set([
+      ...descriptorTaskIds,
+      ...BUILD_MANIFEST.tasks.map(({ id }) => String(id)),
+      ...WRITE_FIXTURE_TASK_IDS.map(String),
+    ]);
     for (const entry of EVIDENCE_FIELD_CLASSIFICATIONS) {
       if (entry.scope.kind === "task-output") {
         assert.ok(taskIds.has(String(entry.scope.taskId)), `orphan classification scope ${evidenceScopeKey(entry.scope)}`);

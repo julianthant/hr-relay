@@ -16,12 +16,13 @@ import { FingerprintSchema } from "../../../../src/domain/ids.js";
 import { NotificationRecordSchema } from "../../../../src/domain/notifications.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
 import { isLiveWorker, WorkerLeaseRecordSchema, type WorkerLeaseRecord } from "../../../../src/domain/run/worker.js";
+import { WorkerPoolRecordSchema, type WorkerPoolRecord } from "../../../../src/domain/run/worker-pool.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../../../src/domain/trust/evidence.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../../src/domain/trust/failure.js";
 import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/domain/gates.js";
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
-import type { RunQueuedWire } from "../../../../src/events/types.js";
+import type { RunQueuedWire, SpanOutcomeWire } from "../../../../src/events/types.js";
 import { createSpanJsonlWriter, type SpanJsonlWriter } from "../../../../src/infra/events/span-jsonl-writer.js";
 import { createLedgerReadThrough } from "../../../../src/infra/ledger/ledger-read-through.js";
 import type { ProjectionRepositories } from "../../../../src/infra/sqlite/authority-database.js";
@@ -114,6 +115,10 @@ export interface AuthorityFake {
   listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
   getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
   putWorkerLease(record: unknown): void;
+  /** D269: the pool declarations the day wire's `workerPools` block serves; parsed insert. */
+  readonly workerPools: Map<string, WorkerPoolRecord>;
+  listWorkerPools(): readonly WorkerPoolRecord[];
+  putWorkerPool(record: unknown): void;
 }
 
 export function authorityFake(): AuthorityFake {
@@ -125,6 +130,7 @@ export function authorityFake(): AuthorityFake {
   const writeIntents = new Map<string, WriteIntentRecord>();
   const gateResults: GateResultRecord[] = [];
   const workerLeases = new Map<string, WorkerLeaseRecord>();
+  const workerPools = new Map<string, WorkerPoolRecord>();
   const notifications: NotificationRecord[] = [];
   const checkpointKey = (workflowId: string, itemId: string, nodeId: string): string =>
     `${workflowId}\u0000${itemId}\u0000${nodeId}`;
@@ -154,6 +160,12 @@ export function authorityFake(): AuthorityFake {
     putWorkerLease: (record) => {
       const lease = WorkerLeaseRecordSchema.parse(record);
       workerLeases.set(lease.workerId, lease);
+    },
+    workerPools,
+    listWorkerPools: () => [...workerPools.values()].sort((a, b) => a.workflow.localeCompare(b.workflow)),
+    putWorkerPool: (record) => {
+      const pool = WorkerPoolRecordSchema.parse(record);
+      workerPools.set(pool.workflow, pool);
     },
     gateResults,
     listGateResults: (runId) => gateResults.filter((record) => record.runId === runId),
@@ -307,6 +319,8 @@ export interface SeedRunInput {
    * skipping it.
    */
   readonly runNumber?: number;
+  /** D269: the session this run belongs to; absent = a pre-v17 row. */
+  readonly sessionId?: string;
 }
 
 /**
@@ -374,6 +388,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
     claimGeneration: input.claimGeneration ?? 0,
     ...(input.displayName === undefined ? {} : { displayName: input.displayName }),
     ...(input.runNumber === undefined ? {} : { runNumber: input.runNumber }),
+    ...(input.sessionId === undefined ? {} : { sessionId: input.sessionId }),
     version: input.version ?? 1,
     createdAt: enqueuedAt,
     updatedAt: enqueuedAt,
@@ -409,11 +424,19 @@ export function queuedEventOf(world: DashboardWorld, input: SeedRunInput): RunQu
   return event as unknown as RunQueuedWire;
 }
 
+/**
+ * ONE task span, started and (optionally) ended.
+ *
+ * `outcome` is the WHOLE `SpanOutcomeWire` union rather than a convenient
+ * three, because D268's vocabulary pin has to state each of the seven words a
+ * span can actually carry — a helper that could only emit three would have made
+ * the four unpinnable arms exactly the ones that diverged.
+ */
 export function taskEventsOf(
   world: DashboardWorld,
   seed: number,
   node: string,
-  outcome?: "done" | "failed" | "skipped",
+  outcome?: SpanOutcomeWire,
   notRunReason?: "condition-false" | "branch-not-selected",
 ): void {
   const base = {
@@ -432,7 +455,11 @@ export function taskEventsOf(
   }
 }
 
-/** The run's own `span.ended` — the settlement the fold sees before authority. */
+/**
+ * The run's own `span.ended`, written straight to the stream — the harness's
+ * way to put the fold ahead of authority, an order the real executor never
+ * produces (it settles the terminal CAS before it emits).
+ */
 export function runEndedEventOf(
   world: DashboardWorld,
   seed: number,

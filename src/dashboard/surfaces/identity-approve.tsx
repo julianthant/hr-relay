@@ -74,6 +74,7 @@ import {
 import { identityGateArm } from "./identity-approve-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { composeCommandRequest, type CommandAction } from "../app/command-dispatch.js";
+import { settleCommandResult } from "../app/command-result.js";
 import {
   EMPTY_IDENTITY_GATE_DRAFT,
   identityCeremonyFor,
@@ -520,12 +521,16 @@ export function IdentityApproveDialog({
     }
     setOutcome({ state: "sending" });
     client.executeCommand(composed.request).then((result) => {
-      // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4).
-      if (result.state === "conflict" || result.state === "rejected") {
+      // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4),
+      // and the ONE fold says which arm landed (D253, Track D row D3). The
+      // refusal is still drawn with the server's own facts, because a gate
+      // refusal an operator cannot quote a code for is one nobody can file.
+      const settlement = settleCommandResult(result);
+      if (settlement.kind === "refused") {
         refuse(
-          result.state === "rejected"
-            ? { message: result.message, code: result.code }
-            : { message: result.message },
+          settlement.reason === "rejected"
+            ? { message: settlement.message, code: settlement.code }
+            : { message: settlement.message },
         );
         return;
       }

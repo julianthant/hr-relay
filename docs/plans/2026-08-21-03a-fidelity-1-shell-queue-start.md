@@ -1,6 +1,6 @@
 # 03a demo-fidelity audit — group 1: the SHELL, the QUEUE, the RUN START
 
-**Date:** 2026-08-21 · **Unit:** demo-fidelity AUDIT group 1 of 3 (`feature/docs-fid-1`) · **Status:** ledger only — no doc, no code touched
+**Date:** 2026-08-21 · **Unit:** demo-fidelity AUDIT group 1 of 3 (`feature/docs-fid-1`) · **Status:** maintained closure ledger — A46 closed and adversarial corrections verified 2026-08-25
 
 ## What this is
 
@@ -99,9 +99,9 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A43 | Bell — raw square button, `p-snug`, `Bell` md, hover fill, accessible name "Notifications — N unread" | `DemoTopBarSurfaces.tsx:665-676` | `top-bar.tsx:673-684` | exact | — |
 | A44 | Bell badge — corner superscript, NOTHING painted at zero, `failed-solid` when any unread is critical else `waiting-solid`, dark ink on bright fill | `DemoTopBarSurfaces.tsx:677-694` | `top-bar.tsx:685-704` | exact | — |
 | A45 | `Drawer` 480px, title "Notifications", description "N unread · pings are silent · a record survives a failed desktop delivery" | `DemoTopBarSurfaces.tsx:697-702` | `top-bar.tsx:707-712` | exact | — |
-| A46 | **The pinned backfill-gap `Refusal`** — the one record that cannot be filtered, snoozed or dismissed | `DemoTopBarSurfaces.tsx:707-722` | `top-bar.tsx:—` | missing | `unserved: no backfill-gap notification trigger` — ref dashboard-surfaces §2.6's trigger union carries no gap arm, and nothing publishes one |
+| A46 | **The pinned backfill-gap `Refusal`** — the one record that cannot be filtered, snoozed or dismissed | `DemoTopBarSurfaces.tsx:707-722` | `top-bar.tsx`; filter partition `top-bar-model.ts`; protocol `dashboard-stream.ts` | exact | closed `68dea43a`, corrected `e108ff3f`/`a2d2a8e8`: exact generation-bound replay evidence excludes restart/rebuild; stable interval identity is single-flight and no-churn across restart; authority refuses every mutation/fold; one bounded lane keeps 6+ pins, filters and ordinary rows reachable at 390×844 |
 | A47 | Filter chips **All · Unread · Pings · Inbox · Snoozed**, each with its count, counted over EVERY served record | `DemoTopBarSurfaces.tsx:724-730` | `top-bar.tsx:725-736` | exact | — |
-| A48 | `Pings` / `Inbox` counts read zero | `DemoTopBarSurfaces.tsx:635-636` | `top-bar.tsx:631-632` | divergent | `ruled: prior audit R1` (no row declares a delivery route; their filter answers the EmptyState, which says a zero here never means a record was deleted) |
+| A48 | `Pings` / `Inbox` counts read zero | `DemoTopBarSurfaces.tsx:635-636` | `top-bar-model.ts:77-82` (`Pings` counts A46's pinned arm; ordinary delivery remains unserved, `Inbox` stays zero) | divergent | `ruled: prior audit R1` for ordinary rows; A46 is a closed safety route, not inferred delivery data |
 | A49 | EmptyState "Nothing under this filter" + the never-deleted sentence | `DemoTopBarSurfaces.tsx:733-738` | `top-bar.tsx:739-744` | exact | — |
 | A50 | Standing footer sentence ("Failed · gate · parked · repeating · storage ping …") | `DemoTopBarSurfaces.tsx:762-771` | `top-bar.tsx:764-773` | exact | — |
 | A51 | A refused command is REPORTED in the drawer (`role="alert"`) | — | `top-bar.tsx:717-723` | extra | `ruled: prior audit R1` (the demo has no server to refuse one; swallowing it would let a failed `Mark read` read as a success) — the CAS `conflict` arm is D253 |
@@ -253,13 +253,18 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A177 | Panel grid — `grid-cols-1`, `gap`/`p` at `--ds-shell-inset`, `min-[1180px]:grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)]` | `RebuildDemo.tsx:748` | `dashboard-app.tsx:1221` | exact | — |
 | A178 | Session panel mounted below the shell body, under EVERY view | `RebuildDemo.tsx` shell tail | `dashboard-app.tsx:1351-1359` | exact | — |
 
-**Counts (Region A):** 178 elements — **131 exact · 34 divergent · 12 missing · 8 extra** (an element is
-counted once, under the strongest verdict). Reasons on the 47 non-exact rows: **ruled 34** ·
-**unserved 3** · **OPEN 10**.
+**Counts (Region A):** 178 elements — **132 exact · 34 divergent · 11 missing · 8 extra** (an element is
+counted once, under the strongest verdict). Reasons on the 46 non-exact rows: **ruled 34** ·
+**unserved 2** · **OPEN 10**.
+
+A46's adversarial correction changed its implementation proof, not its verdict or row accounting;
+Region A therefore remains **132/178 exact** with **10 OPEN**.
 
 **Since 08-14 (baseline R1/R2/R4/R7 + the R8 keyboard half):**
 
-- **Fixed since the baseline:** the whole R7 `WorkerCardWireSchema` batch landed (R7-1 dead tone arms,
+- **Fixed since the baseline:** A46's strict backfill-gap publisher and pinned Refusal landed in
+  `68dea43a`; `e108ff3f` binds it to same-generation replay evidence, makes repeat identity no-churn
+  and enforces immutability in authority, while `a2d2a8e8` proves the 6-pin mobile lane; the whole R7 `WorkerCardWireSchema` batch landed (R7-1 dead tone arms,
   R7-3's tile grid, R7-4's `Stop`, R7-5/6/7-data, R7-8's crashed arm — D248/D249); the global keydown
   listener exists and every advertised binding resolves (R2 D13/D14, R3 f.8, R5 f.7, R8 f.7 —
   `ebe2bac`); the panel's `ACTIVE│ALL` column, the 2-char code and the frontend category table (R2);
@@ -271,8 +276,8 @@ counted once, under the strongest verdict). Reasons on the 47 non-exact rows: **
   preflight summary and its rerun command (A39/A42).
 - **New here (not in the baseline):** A169/A168 the toast floor and the provider nesting (the demo's
   own documented gotcha, unported); A122 the "1 worker need attention" singular; A126 the app-version
-  format against its own tooltip; A65 the gear opening a dialog rather than the demo's takeover; A46
-  the pinned backfill-gap record; A58 the arrival ping; A16 the Escape-clears affordance; A81/A82 two
+  format against its own tooltip; A65 the gear opening a dialog rather than the demo's takeover; A58
+  the arrival ping; A16 the Escape-clears affordance; A81/A82 two
   unrecorded rail-entry spacing changes; A170 the dropped root classes; A174 the `Import spreadsheet`
   button; A175 the `CommandResultFeed` band.
 
@@ -330,7 +335,7 @@ is read from source, and the four rows that would need a demo pixel to settle ar
 | B28 | Row gutter: `px-cozy pt-snug`, first row `pt-cozy` | `DemoQueue.tsx:807` | `queue.tsx:1330` | exact | — |
 | B29 | Whole card is one press target: `role="button"`, `aria-pressed`, Enter/Space, `data-demo-row-id` | `DemoQueue.tsx:809-825` | `queue.tsx:1338-1354` | exact | — |
 | B30 | Card accessible name uses the ACCESSIBLE status word (`done with warnings`), not the visible `Done` | `DemoQueue.tsx:818` (visible word) | `queue.tsx:1345` | divergent | `ruled: D22 (amended 2026-08-04) / D126` — the two terminal dones share the visible word and are separated on screen by hue + `△ n`, neither of which a screen reader can read |
-| B31 | Card accessible name carries the GATE AGE — `…— waiting on you · 18m` | `DemoQueue.tsx:818` (`statusText(status, gateAge(row, tick))`) | `queue.tsx:1345` (`statusAccessibleName(status)`, no age arg) | divergent | **OPEN — operator call.** `gateOpenedAt` is served and the row's own pill already prints the age (`queue.tsx:279-283`); `statusAccessibleName(status, age?)` takes the argument and is not given one. R3 f.17 named this exact loss ("aria is the ONLY place age reaches a screen reader for waiting/parked") and the wire gap it blamed is now closed |
+| B31 | Card accessible name carries the GATE AGE — `…— waiting on you · 18m` | `DemoQueue.tsx:818` (`statusText(status, gateAge(row, tick))`) | `queue.tsx:1345` (`queueRowAccessibleName(surface, nowIso)`) | exact | Fixed 2026-08-25 (F4B): QueueRow consumes the one model composition, which passes the served `gateOpenedAt` age to `statusAccessibleName`; the mutation-pinned unit case proves deleting that argument loses `· 18m 0s`. |
 | B32 | Card resting border: ONE ink for every status; selection is the lighter perimeter only, no fill change | `DemoQueue.tsx:827-844` | `queue.tsx:1356-1370` | exact | — |
 | B33 | The attention settle: a lift of `--ds-travel-sm`, border unchanged, 900 ms, on the EDGE only, never on mount | `DemoQueue.tsx:752-773` | `queue-model.ts:158-186` | exact | — |
 | B34 | Row grid: one leading `--ds-w-row-indent` track, one `gap-y-snug`, `px-cozy py-snug` | `DemoQueue.tsx:860-863` | `queue.tsx:1382-1385` | exact | — |
@@ -526,9 +531,9 @@ is read from source, and the four rows that would need a demo pixel to settle ar
 
 **Since 08-14:**
 
-- **fixed** — R3 f.1 (the `attention` sort really ranks now, `queue-model.ts:139`), f.2/f.3/f.5 (empty-state arms and the `Finished` narrowing), f.4 (digest strip), f.6 partial → now three of four chip families (`linkedRuns[]`, parent, `facts[]`), f.7 (subline suppression), f.9 (rollup strip + the honest "N of M loaded"), f.10 (△ chip, and the count is served rather than derived), f.11 (dry-run chip, with a real fifth hue — D232), f.12 (`memberPreview`), f.13 (member ranks), f.16 (ⓘ always drawn), f.18 (`#N` ordinal, `showId`, the trace chip), f.19/f.21/f.22, f.25 (`displayName`); R8 f.1/f.2/f.3 (park cards with their served detail), f.4/f.4b (confirm mounted, subject drawn), f.5/f.6 (the bulk strip and the result vector now exist — D235), f.13/f.14/f.15/f.16, f.18 (vocabulary), f.22 (`Select all` no longer disabled at zero).
+- **fixed** — R3 f.1 (the `attention` sort really ranks now, `queue-model.ts:139`), f.2/f.3/f.5 (empty-state arms and the `Finished` narrowing), f.4 (digest strip), f.6 partial → now three of four chip families (`linkedRuns[]`, parent, `facts[]`), f.7 (subline suppression), f.9 (rollup strip + the honest "N of M loaded"), f.10 (△ chip, and the count is served rather than derived), f.11 (dry-run chip, with a real fifth hue — D232), f.12 (`memberPreview`), f.13 (member ranks), f.16 (ⓘ always drawn), f.18 (`#N` ordinal, `showId`, the trace chip), f.19/f.21/f.22, f.25 (`displayName`); R8 f.1/f.2/f.3 (park cards with their served detail), f.4/f.4b (confirm mounted, subject drawn), f.5/f.6 (the bulk strip and the result vector now exist — D235), f.13/f.14/f.15/f.16, f.18 (vocabulary), f.22 (`Select all` no longer disabled at zero); B31 (the row's accessible name now consumes the shared served gate-age fold).
 - **still open** — the roster/drill-in surface and the `records[]` stream (B97, B100-B104, B130-B135); the member EID column (B75); the per-status member tally (B77) and the `Outcome` column heading (B83); the row-variant naming layer behind the ⓘ (B43-B48, B51); `reviewRunId` (B110) and `extractedCount` (B111).
-- **new (not in the baseline)** — B31 (the gate age left the row's accessible name when D124/D237 work re-pointed it at `statusAccessibleName`); B112 (the fact chip forks the ds `Chip` primitive); B141 (`Import spreadsheet` in the toolbar); B155 (the bulk strip leads with the destructive verb); B164/B165 (the result heading, and the vector's counts filtered to non-zero — the one regression against D235's own headline); B172/B173/B174 (the skipped-row disclosure and both closing sentences); B195/B196 (`CommandResultFeed` + the applied toast, whose stated deferral reason D253 has spent). B57/B80 (the operator's "checked" mark) were in the baseline as a wire gap and are re-classed here as an operator question, because the demo holds it as client state.
+- **new (not in the baseline)** — B112 (the fact chip forks the ds `Chip` primitive); B141 (`Import spreadsheet` in the toolbar); B155 (the bulk strip leads with the destructive verb); B164/B165 (the result heading, and the vector's counts filtered to non-zero — the one regression against D235's own headline); B172/B173/B174 (the skipped-row disclosure and both closing sentences); B195/B196 (`CommandResultFeed` + the applied toast, whose stated deferral reason D253 has spent). B57/B80 (the operator's "checked" mark) were in the baseline as a wire gap and are re-classed here as an operator question, because the demo holds it as client state.
 
 ---
 
@@ -656,7 +661,7 @@ lane — so every row is a source diff plus that one rebuild image.
 | C93 | Test `Banner` — "Targeting the TEST instance of …" + the ledger sentence | `DemoRunStartKit.tsx:103-108` | `run-start-kit.tsx:128-133` | exact | — |
 | C94 | Zero-system Well — "This start declares no browser system." | `DemoRunStartKit.tsx:—` | `run-start-kit.tsx:84-90` | extra | OPEN — operator call: rebuild-only honest arm; the demo's fixtures always declare at least one system so it has no counterpart to compare against |
 | C95 | Footer `MetaLine tone="faint"` | `DemoRunStart.tsx:941-956` | `run-start.tsx:1026-1035` | exact | — |
-| C96 | Footer item 1 — `{workflow label} v{major}.{minor}` | `DemoRunStart.tsx:946`, `demo-wire.ts:1777-1780` | `run-start.tsx:1031` (label only) | divergent | OPEN — operator call: `descriptor.version` exists in the bundle (`person-lookup/descriptor.ts:169`) and the archive already prints `v{n}` (`archive.tsx:286`), so the modal drops a fact it holds |
+| C96 | Footer item 1 — `{workflow label} v{major}.{minor}` | `DemoRunStart.tsx:946`, `demo-wire.ts:1777-1780` | `run-start.tsx` footer — `{label} v{n}` from required bootstrap `start.version` | divergent | ruled 2026-08-25: every rebuild descriptor records one positive integer, not a `{major, minor}` pair. The footer now prints that exact recorded integer through shared `versionTag`; appending `.0` would fabricate a minor version. |
 | C97 | Footer item 2 — the blocked reason, else the plan headline | `DemoRunStart.tsx:947` | `run-start.tsx:1032` | divergent | ruled: `ref dashboard-surfaces §9.1` — reads `N to create` off `planned.length` for the same reason as C55 |
 | C98 | Blocked reason **Type at least one value.** | `DemoRunStart.tsx:627` | `run-start.tsx:783` | exact | — |
 | C99 | Blocked reason **Fix or remove the refused values first.** | `DemoRunStart.tsx:629` | `run-start.tsx:781` (**Fix the refused entry first.**) | divergent | ruled: `<plan>` R8 f.17 — the whole-text parser refuses one entry at a time, so the plural is not a true statement |
@@ -678,9 +683,9 @@ lane — so every row is a source diff plus that one rebuild image.
 | C115 | The surfaces wrapper mounts the modal beside the intake dialog | `DemoRunStart.tsx:990-1015` | `run-start.tsx:1071-1093` | divergent | ruled: D251 + `dashboard-app.tsx:1160-1172` — nothing to hand off to, so the wrapper mounts the dialog alone |
 
 **Counts:** 115 elements — 48 exact · 39 divergent · 19 missing · 9 extra.
-Of the 67 non-exact: **ruled 38** · **unserved 15** · **OPEN 14**.
+Of the 67 non-exact: **ruled 39** · **unserved 15** · **OPEN 13**.
 
-**OPEN (14), for the operator:** C28 · C48 · C57 · C61 · C69 · C72 · C81 · C83 · C84 · C94 · C96 ·
+**OPEN (13), for the operator:** C28 · C48 · C57 · C61 · C69 · C72 · C81 · C83 · C84 · C94 ·
 C107 · C108 · C109.
 **Unserved (15), each a `builds:` line:** C49 · C50 · C51 · C55 · C56 · C58 · C59 · C64 · C65 ·
 C66 · C68 · C70 · C85 · C86 · C91.
@@ -701,8 +706,8 @@ C66 · C68 · C70 · C85 · C86 · C91.
   invisible-reason rows (C48, C81) and the raw field name standing in for a label (C49), all three
   now confirmed on the 1440×900 reference; the always-drawn group 02 and its frozen `03` (C83, C84);
   the stage machine's three consequences (C107, C108, C109) — the baseline audited a modal that had
-  no stage rail to hide anything behind; the conflict arm with no re-plan exit (C69); the dropped
-  version tag (C96); the raw ISO `expiresAt` (C61); and the card→table plan shape (C57).
+  no stage rail to hide anything behind; the conflict arm with no re-plan exit (C69); the raw ISO
+  `expiresAt` (C61); and the card→table plan shape (C57).
 
 **Proposed `builds:` lines from region C's 15 `unserved:` rows.** All eight go on
 `{#dash-defaults}` — `{#track-b}` is `status: done`, so a new line there would reopen a closed
@@ -740,13 +745,13 @@ node — and they are written in that node's own `- [ ] TAG …` notation.
 
 | Region | Elements | exact | divergent | missing | extra | ruled | unserved | **OPEN** |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| A — SHELL | 178 | 131 | 34 | 12 | 8 | 34 | 3 | **10** |
+| A — SHELL | 178 | 132 | 34 | 11 | 8 | 34 | 2 | **10** |
 | B — QUEUE | 196 | 118 | 40 | 27 | 11 | 40 | 25 | **13** |
 | C — RUN START | 115 | 48 | 39 | 19 | 9 | 38 | 15 | **14** |
-| **Total** | **489** | **297** | **113** | **58** | **28** | **112** | **43** | **37** |
+| **Total** | **489** | **298** | **113** | **57** | **28** | **112** | **42** | **37** |
 
-**297 of 489 elements (61%) are byte-exact ports.** Of the 192 that are not, 112 carry a ruling and
-43 name a wire gap; **37 are OPEN and need the operator.** Region A is the closest to the demo (74%
+**298 of 489 elements (61%) are byte-exact ports.** Of the 191 that are not, 112 carry a ruling and
+42 name a wire gap; **37 are OPEN and need the operator.** Region A is the closest to the demo (74%
 exact) and Region C the furthest (42%) — the run modal is where the most decisions were made and the
 most reasons ended up in a tooltip instead of on the page.
 
@@ -775,16 +780,12 @@ Nothing below is dismissed, waved through or "modified". Each needs a ruling; no
    enqueue policy's reason each survive only as a `LockedValue` `title` tooltip — invisible to touch
    and keyboard, and confirmed absent in the 1440×900 reference. `DESIGN.md:305` and D251 both say
    the value is drawn read-only **with its reason**.
-7. **B31 — the gate age left the row's accessible name.** `{title} — review` where the demo says
-   `{title} — waiting on you · 18m`. `gateOpenedAt` is served, the pill already prints the age, and
-   `statusAccessibleName(status, age?)` takes the argument and is not given one. R3 f.17 named this
-   loss and the wire gap it blamed is now closed.
-8. **A122 — "1 worker need attention".** Subject/verb disagreement at a count of one, visible in the
+7. **A122 — "1 worker need attention".** Subject/verb disagreement at a count of one, visible in the
    parity reference. The demo's chip is always plural, so the port inherited a sentence that only
    works above one.
-9. **C61 — a raw ISO instant in operator-facing text** (`expires {ISO}` on the plan-provenance line).
+8. **C61 — a raw ISO instant in operator-facing text** (`expires {ISO}` on the plan-provenance line).
    `fmtClock` is imported two files over; the same defect R6 f.10 fixed on the rail.
-10. **A126 — `app 0.1.0` under a tooltip that explains only MAJOR and MINOR.** The demo's tag is
+9. **A126 — `app 0.1.0` under a tooltip that explains only MAJOR and MINOR.** The demo's tag is
     two-part; the schema here is semver, so the drawn string has a component its own sentence never
     mentions.
 
@@ -832,11 +833,12 @@ Nothing below is dismissed, waved through or "modified". Each needs a ruling; no
     but no D-number, plan section or dated operator call rules on it.
 23. **C72 — the dismiss control says `Dismiss` on every arm**; the demo says `Close` on applied and
     `Dismiss` on rejected.
-24. **C96 — the modal drops the workflow VERSION** (`{label} v{major}.{minor}`), a fact the bundle
-    already holds (`person-lookup/descriptor.ts:169`) and the archive already prints
-    (`archive.tsx:286`).
-25. **C109 — changing a shared setting after a result leaves the result banner and the `Result` stage
+24. **C109 — changing a shared setting after a result leaves the result banner and the `Result` stage
     standing** over a plan the change invalidated.
+
+**Resolved 2026-08-25 — C96.** The footer receives the descriptor's required `version` in the
+bootstrap start block and prints `{label} v{n}` through `versionTag`. The demo's minor half has no
+rebuild counterpart, so no `.0` is fabricated.
 
 ### Rebuild-only additions with no demo counterpart (keep, or cut — the operator decides)
 
@@ -858,7 +860,7 @@ a coherent sub-node of their own (a demo-fidelity closure task) hanging off `{#d
 
 ```
 - [ ] BE the preflight/doctor summary and its rerun command — `FrontendBootstrapWireSchema#preflight` is declared-unserved (D184) and the whole popover is built behind it, so the stethoscope is absent from the bar entirely (A39, A42) {#dash-defaults}
-- [ ] BE a backfill-gap notification trigger — the one record that says WE DO NOT KNOW what you missed; ref dashboard-surfaces §2.6's trigger union carries no gap arm, so the bell's pinned Refusal block has nothing to draw (A46) {#dash-defaults}
+- [x] BOTH a backfill-gap notification trigger — same-generation unreplayable-history detection, stable no-churn durable identity and the authority-immutable permanently pinned Refusal landed in `68dea43a` and corrected in `e108ff3f`/`a2d2a8e8` (A46) {#dash-defaults}
 ```
 
 ### From Region B (the queue) — 10 lines

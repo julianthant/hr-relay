@@ -41,6 +41,7 @@ import {
 import { WorkflowCodeSchema } from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
+import { displayStatusProseLabelOf } from "./status-vocabulary.js";
 
 /**
  * How many exemplar run ids an aggregate row may carry.
@@ -476,8 +477,10 @@ export function activityReportCaveats(report: ActivityReportWire): readonly stri
   return Object.freeze([
     `This report covers runs that started between ${report.from} and ${report.to} inclusive. `
     + "Both bounds were named by whoever asked for it; nothing here defaults a window.",
-    "Error rate counts only runs that reached a terminal state. Anything queued, running, waiting on "
-    + "you or blocked is excluded and reported separately as still open, so a busy span cannot read "
+    "Error rate counts only runs that reached a terminal state. Anything "
+    + `${displayStatusProseLabelOf("queued")}, ${displayStatusProseLabelOf("running")}, `
+    + `${displayStatusProseLabelOf("awaiting-approval")} or ${displayStatusProseLabelOf("blocked")} is excluded `
+    + "and reported separately as still open, so a busy span cannot read "
     + "as a finished one.",
     `${runWord} still open in this span, and that work is represented in no total on this page except its own.`,
     "Every total here is a rendering of the one run/queue projection the Queue Panel reads. Archived "

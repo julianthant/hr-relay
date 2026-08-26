@@ -8,11 +8,17 @@
  * instead of hot-swapping the component.
  */
 
-const FINGERPRINT_PREFIX = 8;
+import { shortHash } from "./format.js";
 
-/** the served fingerprint, at chip length — the full hash stays in the ⓘ */
+/**
+ * the served fingerprint, at chip length — the full hash stays in the ⓘ
+ *
+ * The cut is `format.ts`'s `shortHash`, not a second local constant: an id and
+ * a fingerprint shown at two different lengths on two surfaces reads as two
+ * different values.
+ */
 export function shortFingerprint(fingerprint: string): string {
-  return fingerprint.slice(0, FINGERPRINT_PREFIX);
+  return shortHash(fingerprint);
 }
 
 /**

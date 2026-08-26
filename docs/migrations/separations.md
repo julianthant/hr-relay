@@ -5872,7 +5872,34 @@ NAMED here rather than half-fixed. The Kuali registry is not unguarded in the me
 catalog freshness guard covers its published content byte-for-byte, and
 `legacy-selector-port-provenance` covers every ported key.
 
-### 9.25 The first T1b production invocation — correctly BLOCKED before start (2026-08-25)
+---
+
+### 9.25 Observed logs — dashboard/composed live dry-run proof, 2026-08-25
+
+**Status: MET for the observed-log proof only.** This is the already-collected real dashboard / composed
+`separations` dry run for the Observed Logs node; it does not close the node's notes-emitter or
+remaining fidelity work. The dashboard planned document **4502** as
+`479f9f1e-83b3-4157-915b-2794bcf61ab0` and ran
+`25d90c9d-72bf-4fa4-bcea-116665f22790` / trace **`sp-143516-25d9`** to the
+`parked-gate` authority row at version **52**.
+
+| Proof fact | Observed value |
+|---|---|
+| Combined Logs rows | **13 observed** rows, server sequences **0..12**; **0 notes** |
+| Service-origin row | `.tracker-rebuild/spans/separations-2026-08-25.jsonl:12` for `workflow:separations/read-separation-plan` |
+| Browser-origin rows | their declared systems are shown honestly as **KUALI**, **UCPATH** and **New Kronos** |
+| Dry-run write evidence | `write_intents` / `write_attempts` / `durable_outbox` = **0 / 0 / 0** for this run |
+
+The service row exposed a false invariant in the live API: it returned **500** by requiring every
+exact origin to have a browser system. A service origin legitimately has none. Fix
+`17468e60` removes that false requirement: the API then answered **200**, and the UI omitted the
+system claim for that row rather than inventing one. That distinction is the point of the proof — a
+browser system belongs only to an origin that declares it.
+
+The screenshot at `.tracker-rebuild/artifacts/observed-logs-live-2026-08-25.png` is ignored as
+evidence; the authority, JSONL and served rows above are the proof. The dashboard/worker processes
+were stopped and browser sessions closed after collection.
+### 9.26 The first T1b production invocation — correctly BLOCKED before start (2026-08-25)
 
 D266 dismantled `kuali-timekeeper-annotation` into the Kuali finalization step's T1 pair rather than
 keeping a second proof workflow. The production command

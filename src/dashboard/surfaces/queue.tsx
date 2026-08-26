@@ -27,6 +27,7 @@
  * each is a fixed map over a closed served enum or a display-only subtraction
  * of two served instants — never a second opinion about what a run IS.
  */
+import { memo } from "react";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
 import { cn } from "../lib/utils.js";
@@ -54,7 +55,8 @@ import {
   RowContextMenu,
   type DashboardActionHandler,
 } from "./actions.js";
-import { dayLabel, elapsedSecondsBetween, fmtClock, fmtElapsed, plural, runTiming } from "./format.js";
+import { dayLabel, fmtClock, fmtElapsed, plural, runTiming } from "./format.js";
+import { testInstanceHazardTitle, testInstanceSystems } from "./test-instance-hazard.js";
 import { StatusBadge } from "./status.js";
 import {
   PROPOSED_STATUS,
@@ -77,6 +79,8 @@ import {
   canViewAllMembers,
   orderMembers,
   partition,
+  queueGateAge,
+  queueRowAccessibleName,
   queueRowTitle,
   queueRowTitleTooltip,
   sortQueueBand,
@@ -177,6 +181,9 @@ const STEP_TONE: Record<PipelineStep["state"], string> = {
   failed: "bg-[var(--ds-danger)]",
   blocked: "bg-[var(--ds-status-waiting-mark)]",
   skipped: "bg-[var(--ds-border-subtle)]",
+  // D268 — the pipeline's own `cancelled` arm, in the same hue the run-detail
+  // timeline draws a cancelled step: one span, one word, one colour.
+  cancelled: "bg-[var(--ds-status-cancelled-mark)]",
 };
 
 /**
@@ -255,11 +262,6 @@ const rowChip = (tone: RowChipTone, extra?: string): string =>
     extra,
   );
 
-/** every system this run resolved to its TEST instance, in the served order */
-function testSystemsOf(surface: QueueSurfaceWire): string[] {
-  return surface.resolvedInstances.filter(({ instance }) => instance === "test").map(({ system }) => system);
-}
-
 function HeaderChips({
   surface,
   status,
@@ -270,24 +272,24 @@ function HeaderChips({
   /** the bootstrap-calibrated instant every elapsed on this panel measures against */
   nowIso: string;
 }) {
-  const testSystems = testSystemsOf(surface);
+  const testSystems = testInstanceSystems(surface.resolvedInstances);
   /**
    * D12 — `Waiting on you · 10m`. The SERVED gate instant against the same
    * calibrated `nowIso` the row's elapsed uses, so the two clocks on one card
    * cannot disagree. Display-only arithmetic: the server dates the gate from
    * the gate's own record and never from `updatedAt`, which is what keeps an
-   * aging gate from rendering young.
+   * aging gate from rendering young. The fold is shared with the row's own
+   * accessible name (`queueGateAge`), so the pill and the sentence a screen
+   * reader hears are the same measurement.
    */
-  const gateAge = surface.gateOpenedAt.state === "present"
-    ? fmtElapsed(elapsedSecondsBetween(surface.gateOpenedAt.value, nowIso))
-    : undefined;
+  const gateAge = queueGateAge(surface, nowIso);
   return (
     <>
       {/* A run against a TEST instance can never be mistaken for a real filing,
           and a rehearsal says so before you read its receipt. */}
       {testSystems.length > 0 && (
         <span
-          title={`Ran against the TEST instance of ${testSystems.join(", ")} — nothing here reached production.`}
+          title={testInstanceHazardTitle(testSystems)}
           className={rowChip("info", cn(dsText.caps, "tracking-[var(--ds-tracking-caps)]"))}
         >
           test
@@ -1214,7 +1216,12 @@ export function QueueRow({
           // Same collision as the filter bar's, one surface down: the row's
           // name ended `— done` for BOTH terminal dones. The badge inside the
           // row still draws the short word; only the name lengthens.
-          aria-label={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
+          //
+          // The gate AGE rides the name too (`DemoQueue.tsx:818`), because the
+          // pill that draws it is the only place it appears and a pill is not
+          // something a screen reader reaches: `— waiting on you · 18m` is the
+          // difference between a queue you scan and one you triage.
+          aria-label={queueRowAccessibleName(surface, state.nowIso)}
           data-demo-row-id={surface.runId}
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") {
@@ -1453,7 +1460,24 @@ export function QueueRow({
  */
 export type QueueFilterScope = { kind: "needsYou" } | { kind: "status"; word: string };
 
-export function QueuePanel({
+/**
+ * D4 (Track D, ref frontend-backend-integration §7.4; audit finding P1) — this
+ * panel is `memo`'d, and every prop it takes is stable or primitive at the one
+ * place that renders it (`app/dashboard-app.tsx`;
+ * `dashboard-memo-prop-stability` refuses an inline object, array, arrow or
+ * call in any of its prop slots, because ONE of those turns this wrapper into
+ * pure overhead).
+ *
+ * What it buys and what it cannot: the app's live instant (D256) reaches this
+ * panel through `state.nowIso` and ticks once a second, so a queue drawn from
+ * a served day re-renders once a second no matter what — that is the floor,
+ * and it is deliberate (a frozen elapsed is D256's own defect). What `memo`
+ * removes is every re-render BETWEEN those ticks: a dialog opening, a
+ * selection toggling, a run-detail section landing, a nav step, a theme swap,
+ * and an SSE patch whose row is not in this panel's scope. At the §7.4
+ * fixture's 1,240 rows each of those used to redraw the whole queue.
+ */
+export const QueuePanel = memo(function QueuePanel({
   surfaces,
   state,
   handlers,
@@ -1678,5 +1702,4 @@ export function QueuePanel({
       </div>
     </section>
   );
-}
-
+});

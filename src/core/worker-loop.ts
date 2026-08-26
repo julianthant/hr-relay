@@ -20,8 +20,8 @@ import type { TaskStoreRegistry } from "../base/store.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
-import { WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
-import type { WorkerId, WorkflowId } from "../domain/ids.js";
+import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
+import type { PositiveInt, WorkerId, WorkflowId } from "../domain/ids.js";
 import { WorkerDirectiveSchema, type WorkerDirective } from "../domain/run/worker.js";
 import type {
   CanonicalInputSnapshotMigration,
@@ -59,6 +59,7 @@ import {
   type WorkerBrowserSessionFactory,
   type WorkerSessionEvent,
 } from "./worker-sessions.js";
+import type { DuoCeremonyGateFactory } from "./duo-ceremony-gate.js";
 
 export interface WorkerLoopDependencies {
   readonly workflowId: WorkflowId;
@@ -79,6 +80,8 @@ export interface WorkerLoopDependencies {
    * whole-task deadline for session liveness.
    */
   readonly sessionAcquireMs: number;
+  /** D267 (ref execution-and-sessions §10): the per-credential Duo ceremony lease gate factory. */
+  readonly duoCeremony: DuoCeremonyGateFactory;
   readonly heartbeatIntervalMs: number;
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
@@ -205,6 +208,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     clock,
     scheduler: deps.scheduler,
     acquireDeadlineMs: deps.sessionAcquireMs,
+    duoCeremony: deps.duoCeremony,
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
       if (event.type === "browser-session:start") {
@@ -365,8 +369,12 @@ export interface WorkerProcessSupervisor {
   reopenBrowser?(input: Readonly<{ workerId: WorkerId; browserSessionId: string }>): void;
 }
 
+export function poolWorkerId(workflowId: WorkflowId, poolIndex: PositiveInt): WorkerId {
+  return WorkerIdSchema.parse(`${workflowId}-worker-${String(poolIndex)}`);
+}
+
 export function phase1WorkerId(workflowId: WorkflowId): WorkerId {
-  return WorkerIdSchema.parse(`${workflowId}-worker-1`);
+  return poolWorkerId(workflowId, PositiveIntSchema.parse(1));
 }
 
 /**

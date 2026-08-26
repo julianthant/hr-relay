@@ -44,6 +44,7 @@ import {
   wireResourceSchema,
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
+import { ObservedDataPointWireSchema } from "../../events/types.js";
 
 export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,
@@ -345,17 +346,105 @@ export const NoteWireSchema = z.strictObject({
   level: z.enum(["info", "warning", "error"]),
   message: z.string().min(1),
 });
+
+/**
+ * The one lazy-log row vocabulary. Notes retain their existing wire under the
+ * `note` arm while the span stream supplies recorded page observations and the
+ * durable fence beat. A row carries its own sequence because notes and spans
+ * are one ordered log, not two independently paged feeds.
+ */
+const LogRowBase = {
+  logId: NoteIdSchema,
+  sequence: z.number().int().nonnegative(),
+} as const;
+
+const LogProducerWireSchema = z.strictObject({
+  nodeId: NodeIdSchema,
+  step: z.string().min(1),
+  taskId: TaskIdSchema,
+  system: BrowserSystemIdSchema.optional(),
+});
+
+const LogSpanIdentityWireSchema = z.strictObject({
+  attempt: z.number().int().positive(),
+  traceId: TraceIdSchema,
+  spanPath: z.string().min(1),
+});
+
+export const LogRowWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("note"),
+    ...LogRowBase,
+    note: NoteWireSchema,
+  }).superRefine((row, context) => {
+    if (row.logId !== row.note.noteId) {
+      context.addIssue({ code: "custom", path: ["logId"], message: "a note row's log id must be its existing note id" });
+    }
+    if (row.sequence !== row.note.sequence) {
+      context.addIssue({ code: "custom", path: ["sequence"], message: "a note row and its existing note must carry one sequence" });
+    }
+  }),
+  z.strictObject({
+    kind: z.literal("observed"),
+    ...LogRowBase,
+    at: IsoInstantSchema,
+    ...LogSpanIdentityWireSchema.shape,
+    producer: LogProducerWireSchema,
+    points: z.array(ObservedDataPointWireSchema).min(1),
+  }),
+  z.strictObject({
+    kind: z.literal("transaction-fenced"),
+    ...LogRowBase,
+    at: IsoInstantSchema,
+    ...LogSpanIdentityWireSchema.shape,
+    producer: LogProducerWireSchema,
+  }),
+]);
+export type LogRowWire = z.infer<typeof LogRowWireSchema>;
+
+/** Immutable combined-log snapshot plus the next zero-based row offset. */
+export const LogPageCursorSchema = z.string()
+  .regex(/^lc:[0-9a-f]{64}:[1-9]\d*$/, "log cursor must be lc:<snapshot digest>:<positive offset>")
+  .brand<"LogPageCursor">();
+
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
+  /**
+   * D270 / L3 — the one combined page. Optional only so a frozen archive
+   * written before observed-log rows existed remains readable; a live query
+   * always sends it. `notes` below stays as an exact compatibility mirror for
+   * the renderer that predates this row vocabulary.
+   */
+  rows: z.array(LogRowWireSchema).optional(),
   notes: z.array(NoteWireSchema),
   nextCursor: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("present"), value: ProjectionCursorSchema }),
+    // `ProjectionCursorSchema` is retained only for archived note pages written
+    // before immutable combined-log snapshots. Live queries emit `lc:`.
+    z.strictObject({ state: z.literal("present"), value: z.union([LogPageCursorSchema, ProjectionCursorSchema]) }),
     z.strictObject({ state: z.literal("absent"), reason: z.literal("end-of-page") }),
   ]),
 }).superRefine((page, context) => {
   if (page.notes.some(({ runId }) => runId !== page.runId)) context.addIssue({ code: "custom", path: ["notes"], message: "note run identities must match page" });
   const ids = page.notes.map(({ noteId }) => noteId);
   if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["notes"], message: "note ids must be unique" });
+  if (page.rows !== undefined) {
+    const sequences = page.rows.map(({ sequence }) => sequence);
+    if (new Set(sequences).size !== sequences.length) context.addIssue({ code: "custom", path: ["rows"], message: "log row sequences must be unique" });
+    const rowNotes = page.rows.flatMap((row) => row.kind === "note" ? [row.note] : []);
+    const sameNotes = rowNotes.length === page.notes.length && rowNotes.every((note, index) => {
+      const mirrored = page.notes[index];
+      return mirrored !== undefined
+        && note.noteId === mirrored.noteId
+        && note.runId === mirrored.runId
+        && note.sequence === mirrored.sequence
+        && note.at === mirrored.at
+        && note.level === mirrored.level
+        && note.message === mirrored.message;
+    });
+    if (!sameNotes) {
+      context.addIssue({ code: "custom", path: ["notes"], message: "notes must exactly mirror the note rows of this combined log page" });
+    }
+  }
 });
 
 export const ReviewRecordWireSchema = z.strictObject({

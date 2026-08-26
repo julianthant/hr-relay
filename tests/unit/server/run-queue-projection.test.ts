@@ -13,6 +13,7 @@ import { afterEach, describe, it } from "vitest";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
+import { ProjectionDegradedError } from "../../../src/server/failures.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
@@ -389,6 +390,66 @@ describe("THE run/queue projection (D81)", () => {
     assert.deepEqual(crossVerify.map((event) => event.state), ["cancelled", "done"]);
   });
 
+  it("stays live over observed-data and transaction-fence beats and rebuilds identically", () => {
+    // The observed-log arm is IGNORED BY NAME, not folded into a span it is
+    // not. What must be true either way is that a stream carrying it cannot
+    // degrade the projection: a degraded ingest schedules the guarded rebuild,
+    // and the rebuild would then refuse the same line by name (D218).
+    const w = world();
+    queuedEventOf(w, { seed: 1 });
+    claimEventOf(w, 1);
+    const base = {
+      workflow: "person-lookup" as const,
+      runId: uuidOf(1),
+      traceId: traceOf(1),
+      spanPath: `${traceOf(1)}/searching#1.1`,
+      parentSpanPath: traceOf(1),
+      attempt: 1,
+    };
+    const ts = (): string => w.clock.now().toISOString();
+    w.writer.emit({ ...base, t: "span.started", kind: "task", ts: ts(), name: "searching" });
+    w.writer.emit({
+      ...base, t: "data.observed", ts: ts(), observedAt: ts(),
+      nodeId: "searching", taskId: "ucpath/search-person-org",
+      points: [{
+        direction: "read",
+        field: "selection",
+        values: [
+          { key: "selection.status", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "resolved" },
+          { key: "selection.selected.emplId", state: "transformed", classification: "direct-identifier", transform: "last4", value: "6712" },
+        ],
+      }],
+    });
+    w.writer.emit({
+      ...base,
+      t: "transaction.fenced",
+      ts: ts(),
+      spanPath: `${traceOf(1)}/searching/commit`,
+      node: "searching",
+      taskId: "ucpath/create-termination",
+    });
+    w.writer.emit({ ...base, t: "span.ended", kind: "task", ts: ts(), outcome: "done" });
+    assert.equal(w.projection.health().state, "live");
+
+    const before = w.projection.buildDashboardDayWire(DAY);
+    const fresh = createRunQueueProjection({
+      stateRoot: w.stateRoot,
+      clock: w.clock,
+      appVersion: APP_VERSION,
+      descriptorSetHash: DESCRIPTOR_SET_HASH,
+      ledger: createLedgerReadThrough(w.stateRoot),
+      authority: w.authority,
+      descriptors: { resolve: () => undefined },
+      projectionStore: w.store,
+    });
+    fresh.rebuildFromJsonl();
+    assert.equal(fresh.health().state, "live");
+    assert.deepEqual(
+      { ...fresh.buildDashboardDayWire(DAY), projectionGeneration: 0, snapshotCursor: "pc:1" },
+      { ...before, projectionGeneration: 0, snapshotCursor: "pc:1" },
+    );
+  });
+
   it("persists every folded row to the rebuildable runs_view table", () => {
     const w = world();
     seedWorld(w);
@@ -432,6 +493,20 @@ describe("THE run/queue projection (D81)", () => {
     assert.equal(w.projection.health().state, "degraded");
     assert.match(w.projection.health().lastError ?? "", /no run\.queued span/);
     assert.throws(() => w.projection.buildDashboardDayWire(DAY), /degraded and refuses to serve counts/);
+    // `buildActivityReportWire` shares the same degraded-health guard as
+    // `buildDashboardDayWire` and must re-kind to the SAME typed refusal
+    // (ProjectionDegradedError, not a plain Error) so /api/v1/reports/activity
+    // and .csv answer PROJECTION_DEGRADED/retryable:true instead of a bare 500.
+    assert.throws(
+      () => w.projection.buildActivityReportWire(DAY, DAY),
+      /degraded and refuses to serve activity aggregates/,
+    );
+    try {
+      w.projection.buildActivityReportWire(DAY, DAY);
+      assert.fail("expected buildActivityReportWire to throw while degraded");
+    } catch (error) {
+      assert.ok(error instanceof ProjectionDegradedError, "must throw the typed refusal, not a plain Error");
+    }
     assert.equal(w.scheduledRebuilds.length, 1);
 
     w.scheduledRebuilds[0]();
@@ -1154,6 +1229,43 @@ describe("the queue row's ordinal, class, links and outcome (D230, D7)", () => {
       state: "absent",
       reason: "enqueued before runs carried a workflow ordinal (D230)",
     });
+  });
+
+  it("D269: serves the run's session off its own row, and names the absence of one", () => {
+    const w = world();
+    queuedEventOf(w, { seed: 1, sessionId: uuidOf(70) });
+    queuedEventOf(w, { seed: 2, sessionId: uuidOf(70) });
+    queuedEventOf(w, { seed: 3 });
+    const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
+    // Membership is the row's own field — two rows naming one session ARE that
+    // session's membership, with no stored list consulted.
+    assert.deepEqual(rows[0].session, { state: "present", sessionId: uuidOf(70) });
+    assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70) });
+    assert.deepEqual(rows[2].session, {
+      state: "absent",
+      reason: "this run predates D269 session grouping, or retries a run that does",
+    });
+  });
+
+  it("D269: serves the worker POOL block from authority — one entry per planned workflow, absent means version 0", () => {
+    const w = world();
+    assert.deepEqual(w.projection.buildDashboardDayWire(DAY).workerPools, []);
+    w.authority.putWorkerPool({
+      workflow: "person-lookup", desiredWorkers: 2, plannedBy: "local-operator",
+      plannedAt: instantOffsetOf(0), version: 3, createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0),
+    });
+    w.authority.putWorkerPool({
+      workflow: "separations", desiredWorkers: 1, plannedBy: "local-operator",
+      plannedAt: instantOffsetOf(0), version: 1, createdAt: instantOffsetOf(0), updatedAt: instantOffsetOf(0),
+    });
+    const day = w.projection.buildDashboardDayWire(DAY);
+    assert.deepEqual(day.workerPools, [
+      { workflowId: "person-lookup", desiredWorkers: 2, version: 3, plannedBy: "local-operator", plannedAt: instantOffsetOf(0) },
+      { workflowId: "separations", desiredWorkers: 1, version: 1, plannedBy: "local-operator", plannedAt: instantOffsetOf(0) },
+    ]);
+    // The pool version is the CAS basis — never a worker card's lease version
+    // or revision, which this day does not even have.
+    assert.equal(day.workerCards.length, 0);
   });
 
   it("reads priority from the envelope, which is what a bump rewrites", () => {

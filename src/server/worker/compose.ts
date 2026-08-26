@@ -53,10 +53,12 @@ import type {
 import type { ProviderAdapterRegistry } from "../../core/provider-admission.js";
 import type { RunProviderWiring } from "../../core/run-executor.js";
 import {
-  phase1WorkerId,
+  poolWorkerId,
   runWorkerLoop,
   type WorkerLoopReport,
 } from "../../core/worker-loop.js";
+import { composeDuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
+import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
 import { createWriteSequencer } from "../../core/write-sequencer.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
@@ -64,9 +66,11 @@ import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   LOCAL_OPERATOR_ACTOR_ID,
+  PositiveIntSchema,
   ProviderAdmissionIdSchema,
   WorkflowIdSchema,
 } from "../../domain/ids.js";
+import type { PositiveInt } from "../../domain/ids.js";
 import type { WorkerId, WorkflowId } from "../../domain/ids.js";
 import type { WorkerDirective, WorkerLeaseRecord } from "../../domain/run/worker.js";
 import {
@@ -85,7 +89,10 @@ import { createGeminiOcrExtractAdapter } from "../../infra/providers/gemini-ocr-
 import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
-import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
+import {
+  acquireRuntimeProcessLock,
+  type ProcessIdentityObserver,
+} from "../../infra/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../../stores/index.js";
 
 /**
@@ -135,11 +142,12 @@ export function lineTaskLogger(write: (line: string) => void, clock: Clock): Tas
 
 export interface WorkerCliArguments {
   readonly workflowId: WorkflowId;
+  readonly poolIndex: PositiveInt;
   /** `--drain`: claim until the queue is idle once, then exit (harness mode). */
   readonly drain: boolean;
 }
 
-/** `worker <workflow-id> [--drain]` — anything else refuses by name. */
+/** `worker <workflow-id> --pool-index <positive-int> [--drain]` — anything else refuses by name. */
 export function parseWorkerArguments(args: readonly string[]): WorkerCliArguments {
   const [first, ...rest] = args;
   if (first === undefined) {
@@ -154,14 +162,37 @@ export function parseWorkerArguments(args: readonly string[]): WorkerCliArgument
     );
   }
   let drain = false;
-  for (const flag of rest) {
+  let poolIndex: PositiveInt | undefined;
+  for (let index = 0; index < rest.length; index += 1) {
+    const flag = rest[index];
     if (flag === "--drain") {
+      if (drain) throw new Error("duplicate worker flag: --drain");
       drain = true;
       continue;
     }
-    throw new Error(`unknown worker flag: ${flag} (supported: --drain)`);
+    if (flag === "--pool-index") {
+      if (poolIndex !== undefined) throw new Error("duplicate worker flag: --pool-index");
+      const raw = rest[index + 1];
+      if (raw === undefined || raw.startsWith("--")) {
+        throw new Error("worker --pool-index requires a positive integer value");
+      }
+      if (!/^[1-9]\d*$/u.test(raw)) {
+        throw new Error(`worker --pool-index must be a positive integer; received ${raw}`);
+      }
+      const numeric = Number(raw);
+      if (!Number.isSafeInteger(numeric)) {
+        throw new Error(`worker --pool-index must be a positive safe integer; received ${raw}`);
+      }
+      poolIndex = PositiveIntSchema.parse(numeric);
+      index += 1;
+      continue;
+    }
+    throw new Error(`unknown worker flag: ${String(flag)} (supported: --pool-index <positive-int>, --drain)`);
   }
-  return Object.freeze({ workflowId, drain });
+  if (poolIndex === undefined) {
+    throw new Error("the worker command requires --pool-index <positive-int>; no pool index may be guessed");
+  }
+  return Object.freeze({ workflowId, poolIndex, drain });
 }
 
 export interface WorkerComposeInput {
@@ -174,8 +205,24 @@ export interface WorkerComposeInput {
   /** Where the isolation state root resolves from; defaults to `process.cwd()`. */
   readonly repoRoot?: string;
   readonly processId?: number;
+  /** Test seam for synthetic process ids; production always observes the OS. */
+  readonly processIdentityObserver?: ProcessIdentityObserver;
+  /** Test seam for proving process-record cleanup when authority open fails. */
+  readonly openDatabase?: (
+    options: Readonly<{ path: string; busyTimeoutMs: number; migrationOwner: string }>,
+    clock: Clock,
+  ) => AuthorityDatabase;
+  /** Test seam for proving process-record cleanup when database close fails. */
+  readonly closeDatabase?: (database: AuthorityDatabase) => void;
   /** Test seam over the concrete Playwright factory; production omits it. */
   readonly sessionFactory?: WorkerBrowserSessionFactory;
+  /**
+   * Test seam over the Duo ceremony lease gate factory (D267); production
+   * omits it and resolves the credential identity at boot. The seam exists
+   * for the same reason `sessionFactory` does: a composition test has no
+   * credential file, and a fixture gate is still a REAL gate over authority.
+   */
+  readonly duoCeremony?: DuoCeremonyGateFactory;
   /** Test seam over SIGINT/SIGTERM; production wires the real signals. */
   readonly stopSignal?: AbortSignal;
   readonly log?: TaskLogger;
@@ -323,7 +370,7 @@ function startWorkerMaintenance(input: Readonly<{
 }
 
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
-  const { workflowId, drain } = parseWorkerArguments(input.args);
+  const { workflowId, poolIndex, drain } = parseWorkerArguments(input.args);
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
@@ -338,7 +385,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const module = SERVER_REGISTRY[workflowId];
   if (module === undefined) throw new Error(`workflow ${workflowId} is not registered`);
   const descriptor = module.descriptor;
-  const workerId = phase1WorkerId(workflowId);
+  const workerId = poolWorkerId(workflowId, poolIndex);
 
   const env = input.env ?? configResolutionEnvironment();
   const resolved = resolveConfigWithProvenance(env, {}, clock);
@@ -352,13 +399,36 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
    * moment when the authority database may be unreadable.
    */
   const processLock = acquireRuntimeProcessLock(
-    { processLockRoot: join(repoRoot, input.isolation.processLockRoot), name: "workers", pid: input.processId ?? process.pid },
+    {
+      processLockRoot: join(repoRoot, input.isolation.processLockRoot),
+      name: "workers",
+      workerId,
+      pid: input.processId ?? process.pid,
+    },
     clock,
+    { observeProcessIdentity: input.processIdentityObserver },
   );
-  const database = AuthorityDatabase.open(
-    { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" },
-    clock,
-  );
+  let database: AuthorityDatabase;
+  let runtimeError: unknown;
+  let runtimeReport: WorkerLoopReport | undefined;
+  try {
+    database = (input.openDatabase ?? ((options, openClock) =>
+      AuthorityDatabase.open(options, openClock)))(
+      { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" },
+      clock,
+    );
+  } catch (openError) {
+    try {
+      processLock.release();
+    } catch (releaseError) {
+      throw new AggregateError(
+        [openError, releaseError],
+        `worker ${workerId} authority open failed and its process record could not release`,
+        { cause: releaseError },
+      );
+    }
+    throw openError;
+  }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const sessionFactory = input.sessionFactory ?? new PlaywrightWorkerSessionFactory({
@@ -369,6 +439,15 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     newSessionId: () => ids.uuid(),
   });
   const emitter = createSpanJsonlWriter({ stateRoot, clock });
+  // D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
+  // lease, keyed on the credential identity resolved ONCE here — an
+  // unresolvable identity refuses the whole worker at boot.
+  const duoCeremony = input.duoCeremony ?? composeDuoCeremonyGateFactory({
+    config: resolved.config,
+    leases: database.authority.duoCeremonyLeases,
+    clock,
+    scheduler,
+  });
 
   // D162 (ref data-intake-and-edit-data §4.11): ctx.artifacts' writer, shared with the OCR adapter's
   // page reads. The artifact root is the isolation-pinned literal.
@@ -578,6 +657,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         scheduler,
         taskDeadlineMs: resolved.config.timeouts.taskMs,
         sessionAcquireMs: resolved.config.timeouts.sessionAcquireMs,
+        duoCeremony,
         heartbeatIntervalMs,
         idleRepollMs: resolved.config.daemon.idleRepollMs,
         log,
@@ -623,14 +703,47 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
       undefined,
       log,
     );
-    return report;
+    runtimeReport = report;
+  } catch (error) {
+    runtimeError = error;
   } finally {
     if (externalStop !== undefined) externalStop.removeEventListener("abort", onExternalStop);
     process.removeListener("SIGINT", onSigint);
     process.removeListener("SIGTERM", onSigterm);
-    database.close();
-    processLock.release();
   }
+  const cleanupErrors: unknown[] = [];
+  let databaseClosureProven = false;
+  try {
+    (input.closeDatabase ?? ((opened) => opened.close()))(database);
+    databaseClosureProven = true;
+  } catch (error) {
+    cleanupErrors.push(error);
+  }
+  // The process record is the restore interlock's claim that no authority
+  // handle from this worker remains usable. A throwing close supplies no such
+  // proof, so releasing here would let restore report the system stopped while
+  // this caller can still use `database`.
+  if (databaseClosureProven) {
+    try {
+      processLock.release();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+  }
+  if (cleanupErrors.length === 1 && runtimeError === undefined) throw cleanupErrors[0];
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(
+      runtimeError === undefined ? cleanupErrors : [runtimeError, ...cleanupErrors],
+      `worker ${workerId} failed while releasing composed resources`,
+      { cause: cleanupErrors.at(-1) },
+    );
+  }
+  if (runtimeError !== undefined) {
+    if (runtimeError instanceof Error) throw runtimeError;
+    throw new Error(`worker ${workerId} failed with a non-Error value`, { cause: runtimeError });
+  }
+  if (runtimeReport === undefined) throw new Error(`worker ${workerId} produced no report`);
+  return runtimeReport;
 }
 
 /**

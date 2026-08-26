@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { createTaskProvenanceCollector } from "../../src/core/task-provenance.js";
+import type { RecordedDataBatch } from "../../src/core/task-provenance.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
@@ -53,6 +54,8 @@ const recordData = (input: DataPoint | readonly DataPoint[]): void => {
 };
 const commonCtx = { signal, log, fail, recordData };
 
+const observedBatches: RecordedDataBatch[] = [];
+
 function collectorFor(
   taskId: string,
   nodeId: string,
@@ -72,6 +75,8 @@ function collectorFor(
       checkpoints: [...checkpoints],
     },
     clock: manualClock(new Date(NOW)),
+    // D270 — an explicit recording sink; the collector has no no-op default.
+    onRecord: (batch) => { observedBatches.push(batch); },
   });
 }
 

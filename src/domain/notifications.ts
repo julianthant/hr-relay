@@ -16,6 +16,7 @@ export const NotificationTriggerSchema = z.enum([
   "repeating",
   "storage",
   "verified-done",
+  "backfill-gap",
 ]);
 
 const NotificationLinkSchema = z.discriminatedUnion("kind", [
@@ -39,7 +40,7 @@ export const NotificationRecordSchema = z.strictObject({
   snooze: NotificationSnoozeSchema,
   title: z.string().min(1).max(160),
   summary: z.string().min(1).max(1_000),
-  links: z.array(NotificationLinkSchema).min(1),
+  links: z.array(NotificationLinkSchema),
   /**
    * D134 (ref dashboard-surfaces §2.6, ref operator-trust §6): a repeated identical trigger folds into the
    * ONE row its `(actorId, dedupeFingerprint)` already owns. `count` is how many
@@ -57,6 +58,30 @@ export const NotificationRecordSchema = z.strictObject({
   const expectedChannel = notification.trigger === "verified-done" ? "inbox" : "ping";
   if (notification.channel !== expectedChannel) {
     context.addIssue({ code: "custom", path: ["channel"], message: `${notification.trigger} notifications require ${expectedChannel}` });
+  }
+  const expectsNoLink = notification.trigger === "backfill-gap";
+  if (expectsNoLink !== (notification.links.length === 0)) {
+    context.addIssue({
+      code: "custom",
+      path: ["links"],
+      message: expectsNoLink
+        ? "backfill-gap notifications cannot invent a navigation target"
+        : `${notification.trigger} notifications require an evidence link`,
+    });
+  }
+  if (notification.trigger === "backfill-gap" && notification.status !== "unread") {
+    context.addIssue({
+      code: "custom",
+      path: ["status"],
+      message: "a pinned backfill gap must remain unread",
+    });
+  }
+  if (notification.trigger === "backfill-gap" && notification.snooze.state !== "not-snoozed") {
+    context.addIssue({
+      code: "custom",
+      path: ["snooze"],
+      message: "a pinned backfill gap cannot be snoozed",
+    });
   }
   if (Date.parse(notification.updatedAt) < Date.parse(notification.createdAt)) {
     context.addIssue({ code: "custom", path: ["updatedAt"], message: "notification updatedAt cannot precede createdAt" });
@@ -100,3 +125,12 @@ export const NotificationRecordOutcomeSchema = z.discriminatedUnion("state", [
 
 export type NotificationRecord = z.infer<typeof NotificationRecordSchema>;
 export type NotificationRecordOutcome = z.infer<typeof NotificationRecordOutcomeSchema>;
+
+/** Permanent safety facts admit no update, including a same-state version bump. */
+export function requireMutableNotification(input: unknown): NotificationRecord {
+  const record = NotificationRecordSchema.parse(input);
+  if (record.trigger === "backfill-gap") {
+    throw new Error(`notification ${record.notificationId} is a pinned backfill gap and cannot be mutated`);
+  }
+  return record;
+}

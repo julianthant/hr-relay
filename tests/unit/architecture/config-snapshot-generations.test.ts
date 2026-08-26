@@ -48,10 +48,19 @@ describe("durable config-leaf generations", () => {
 
   it("tolerates exactly the registered post-baseline leaves in a stored snapshot", () => {
     const config = ConfigSchema.parse({ paths: defaultRuntimePaths() });
-    assert.deepEqual([...POST_BASELINE_CONFIG_LEAVES], ["timeouts.sessionAcquireMs"]);
+    assert.deepEqual(
+      [...POST_BASELINE_CONFIG_LEAVES],
+      ["timeouts.sessionAcquireMs", "timeouts.duoCeremonyLeaseGraceMs"],
+    );
 
     const { sessionAcquireMs: _bound, ...withoutBound } = config.timeouts;
     assert.equal(StoredConfigSchema.safeParse({ ...config, timeouts: withoutBound }).success, true);
+    // D267: a generation-2 snapshot (no grace leaf) and a generation-1 snapshot
+    // (neither leaf) both still parse — read forward, never back-filled.
+    const { duoCeremonyLeaseGraceMs: _grace, ...withoutGrace } = config.timeouts;
+    assert.equal(StoredConfigSchema.safeParse({ ...config, timeouts: withoutGrace }).success, true);
+    const { sessionAcquireMs: _b, duoCeremonyLeaseGraceMs: _g, ...baseline } = config.timeouts;
+    assert.equal(StoredConfigSchema.safeParse({ ...config, timeouts: baseline }).success, true);
 
     for (const unregistered of ["taskMs", "navigationMs", "retryDelayMs"] as const) {
       const { [unregistered]: _dropped, ...rest } = config.timeouts;

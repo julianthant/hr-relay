@@ -266,6 +266,22 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
   (`dashboard-refresh-boundary`, ref frontend-backend-integration §8.14, `src/dashboard/AGENTS.md`).
+- Archive subviews are dashboard route state (`archiveView`), not `ArchiveWorkspace` local state; a
+  cross-takeover door must name the real Archive view in that state rather than open the ledger and
+  require a second click.
+- **2026-08-25 — dashboard session joins stay authority-shaped (P4).** Group `QueueSurface` rows
+  only by their present `session.sessionId`, join a worker only by exact `currentRun.runId`, and retain an
+  absent arm's served reason. A pool's declared `desiredWorkers` is distinct from non-terminal
+  authority worker-card facts; a missing pool row is no declaration, never a target of one.
+- **2026-08-25 — virtual session rows preserve authority across dashboard ticks (P4).** Flatten every
+  served member into a fixed layout, mount only the viewport plus bounded overscan, and memoize that
+  renderer away from the one-second elapsed-time tick. Give one mounted `listitem` the roving tab stop;
+  keyboard moves mount and then focus the designated row. Native scroll owns focus across the whole row
+  and its explicitly registered detail portal: focus stays with a descendant while its owner remains
+  mounted, then an owned popover closes before an owner leaves the window and the visible roving row takes
+  real focus. Unrelated controls stay outside that transfer, and a clamped boundary key clears deferred
+  focus before a later resize. Keep clipped values reachable through a detail popover whose invisible
+  44px hit area is proven not to overlap another trigger; visual truncation never drops data.
 - Kebab-case filenames; `.tsx` only under `src/dashboard/`.
 - `verbatimModuleSyntax` + `.js` extensions on relative imports.
 - Every durable / wire / config boundary is a recursively strict zod schema; no open records at a
@@ -278,6 +294,26 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   test-only (`manual-clock-test-only.test.ts`).
 - Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
+- **2026-08-25 — pool worker identity:** worker composition accepts no default index. The CLI must
+  validate an explicit positive `--pool-index`, and `<workflow>-worker-<index>` is the one identity
+  shared by the loop, browser-profile partition and authority lease. Never infer an index from
+  current pool or lease rows.
+- **2026-08-25 — worker process locks observe a fleet; they do not own identity.** Every worker
+  start appends its own durable lock record, including restarts. D181 aggregates all records and the
+  legacy root lock into one strict restore arm; any live or malformed record refuses restore. Never
+  serialize the fleet with a singleton role lock or preempt the authority lease collision. Offline
+  restore owns exclusive admission through the authority swap; every runtime acquisition checks
+  before and after writing its record and unwinds if restore won. A persisted recovery snapshot is
+  evidence, not current liveness or exclusion. Singleton admission must use the atomic filesystem
+  claim, never check-then-rename; new ownership records bind PID to OS process birth, and a process
+  record may report stopped only after its authority handle closure returned successfully. Reserve
+  generation 1 for the observable never-run baseline, so the first acquisition is generation 2;
+  on macOS normalize `ps` under C/UTC before storing epoch seconds (the kernel stamp remains
+  one-second resolution). Before authority replacement, displaced WAL/SHM files need a verified
+  atomic rollback; any rollback rename/fsync/unlink failure is `companion-state-uncertain`, never
+  `unchanged`. A rename primitive returning is not the transition boundary: if it throws, reconcile
+  source/destination existence and final staged/live byte identity before classifying the result.
+  Staged cleanup failures aggregate behind the primary error and name every failed path.
 - Treat `dry_run_scenario_results` as insert-only evidence: exact result-id replay may return the
   existing canonical row, while divergent replay, SQL UPDATE, and SQL DELETE must fail. Persist a
   subject label only; the explicit `not-started` arm carries no run/trace ids, and `started`
@@ -302,6 +338,88 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
   through the returned factory rather than repeating the step on every node.
 - A contract a descriptor uses but no store implements yet must be listed in
   `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
+- **Lesson 2026-08-25 — fenced-write instrumentation:** a commit task may call `ctx.recordData`
+  before `ctx.driver.commit`. Capture and clock that batch at the call, then deliver commit-role
+  span events only after the callback itself settles; winning its deadline race merely requests
+  cancellation. The ordinary `withDriver` abort race is not sufficient: the write sequencer must
+  cross `withTransactionDriver`'s one-way `retainAfterFence()` boundary immediately after the durable
+  fence. Until actual settlement, parent abort and task deadline may request cancellation but must
+  not emit, park, return, reset, or close the transaction session. An
+  indefinitely non-cooperative callback remains process-owned with an `attempting` intent so
+  process-loss recovery, not detached I/O, owns the next action. If task and terminal-span delivery
+  both fail, preserve them primary-first in an `AggregateError` and carry it through any parked-write
+  cause. Post-click verification starts after authority is fenced, so task lookup, input binding and
+  `span.started` emission belong inside the `PostFenceWriteFailure` boundary too; none may escape
+  without parking. See ref write-safety §3 and doc 03a §Observed logs.
+
+### Dated lessons
+
+- **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
+  current side again from the immutable intake artifact, durable decisions and their retained
+  read instant. `removed` carries the prior manifest row and `added` the current re-derived row,
+  keyed only by `itemId`: a mapping that changes identity is remove-plus-add, while one that keeps
+  identity uses a separate `changedInputs` vector when its canonical input hash moves. Carry only
+  before/after hashes there; the values retain their existing classifications. Missing current
+  layout or prior/current row facts must refuse by name; an absent vector is never an empty-vector
+  fallback. A reserved manifest id is preflight identity, not proof a manifest exists. Enqueued
+  reads bind both terminal projections to their exact committed id; open reads may select only the
+  unique latest earlier same-source manifest, never their reservation or a future row. Equal latest
+  creation times refuse by session, timestamp and candidate ids rather than selecting by repository
+  order. Share the durable
+  manifest's field schemas and row refinement with the reviewed wire projection so totals, row
+  coverage and stable-item uniqueness cannot drift without broadening data egress.
+
+- **2026-08-25 — an irreversible intake must consume an identity authority reserved before review.**
+  Mint `reservedManifestId` in the upload route's durable session write, serve that exact value, and
+  make enqueue pass it unchanged into the immutable manifest. Keep terminal `intakeManifestId`
+  exclusive to `enqueued` and require equality when a reservation exists. The reservation stays
+  optional only for read-forward compatibility; an older row without it refuses by session id and
+  must never fall back to a fresh UUID, because that would commit a different plan than the operator
+  inspected.
+
+- **2026-08-25 — exact-id readback needs the same identity door at every authority boundary.** A
+  repository lookup, recursively strict wire parse, or injected dashboard client can each return a
+  valid diagnostic bundle for the wrong id. Compare the requested id to the durable row before
+  reading its index or artifacts, compare it again after the wire parse, and keep the requested id
+  in the dialog's error state so a foreign response can never rename the selection or its manifest.
+
+- **2026-08-25 — closing an async readback must invalidate its result, not only hide its dialog.**
+  Escape can unmount a loading diagnostic-bundle dialog while its durable verification remains in
+  flight; an unguarded resolution then remounts the dialog after the operator closed it. Advance a
+  request generation on both open and close, and accept a result only for the current generation.
+  The manifest fixture must also remain a strict durable `DiagnosticBundle`, distinct from its wire
+  projection, or a download test can accidentally prove client reconstruction instead of authority.
+
+- **2026-08-25 — a content-addressed diagnostic row is not evidence of readable bytes.** The D137
+  bundle row and attachment index can agree while an artifact has been lost or corrupted; E29 therefore
+  re-derives the bundle digest, compares the exact indexed attachments, and drains each content-addressed
+  artifact before it serves facts or a manifest. A client-side reconstruction would have made a damaged
+  record look download-ready.
+
+- **2026-08-25 — reconnect is not recovery from an unknown event-stream interval.** Bind resume
+  evidence to both cursor and projection generation: a cursor from an earlier generation proves
+  restart/rebuild, not missed history, and must resnapshot without publishing. Only a same-generation
+  historical cursor that retained history cannot replay creates the permanent fact. Its identity is
+  the requested cursor plus generation, never the aging reason or moving head; duplicate observation
+  leaves the durable row byte-for-byte unchanged. Capture hello and snapshot from one projection
+  instant, restart the handshake if publication moves it, and enforce immutability in authority so
+  no service, command or direct same-state write can hide or version-bump the fact. All pinned rows
+  share the drawer's bounded scroll region with ordinary rows while filters remain reachable.
+
+- **2026-08-25 — exact visual geometry and a usable touch target are separate boxes.** A demo-exact
+  `Button ghost sm` may keep its 24px painted box while a transparent pseudo-element on the same
+  semantic button supplies the 44px hit region. Prove the outer points hit that button and that its
+  effective rectangle intersects no neighboring control; increasing the shared button size would
+  silently change every header's fidelity instead.
+- **Lesson 2026-08-25 — an observed row's system is a composition fact, never a log fallback.** A
+  span supplies its exact `(nodeId, taskId)` and redacted page point; the module/store binding supplies
+  a browser system only when that exact origin declares one. The Logs query resolves exactly one
+  root-composed data origin for the pair and refuses missing or ambiguous origins by file and line;
+  one service origin with no browser system stays absent on wire and screen. Defaulting to `read` or
+  a plausible system turns a trustworthy observation into an attributed lie. Observed/fenced span rows are indexed by the
+  disk-tail projector at append time; the GET never re-derives their partitions from record-time run
+  instants. A continuation cursor binds an immutable combined snapshot, so a later backdated append is
+  visible on a fresh first page and cannot duplicate or displace rows in an existing page walk.
 
 ### Dated lessons
 

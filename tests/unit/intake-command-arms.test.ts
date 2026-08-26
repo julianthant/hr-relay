@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { createCommandKernel, type IntakeParser } from "../../src/core/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
@@ -118,12 +119,13 @@ function commandId(): string {
   return `${String(commandSequence).padStart(8, "0")}-0000-4000-8000-000000000000`;
 }
 
-function harness(sessionOverrides: Record<string, unknown> = {}) {
+function harness(sessionOverrides: Record<string, unknown> = {}, preReservation = false) {
   const root = mkdtempSync(join(tmpdir(), "hrauto-intake-arms-"));
   roots.push(root);
   const clock = manualClock(new Date(NOW));
+  const path = join(root, "state.db");
   const database = AuthorityDatabase.open(
-    { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "intake-arms-test" },
+    { path, busyTimeoutMs: 250, migrationOwner: "intake-arms-test" },
     clock,
   );
   openDatabases.push(database);
@@ -144,12 +146,34 @@ function harness(sessionOverrides: Record<string, unknown> = {}) {
     exclusions: [],
     state: "mapping",
     validation: { state: "none" },
+    ...(preReservation ? {} : { reservedManifestId: UUID_3 }),
     version: 1,
     createdAt: NOW,
     updatedAt: NOW,
     ...sessionOverrides,
   });
-  database.withAuthorityTransaction((repositories) => repositories.intakeSessions.create(session));
+  if (preReservation) {
+    const legacy = new DatabaseSync(path);
+    try {
+      legacy.prepare(`
+        INSERT INTO intake_sessions
+          (record_key, workflow, source_sha256, state, record_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        session.intakeSessionId,
+        session.workflow,
+        session.artifact.sha256,
+        session.state,
+        JSON.stringify(session),
+        session.createdAt,
+        session.updatedAt,
+      );
+    } finally {
+      legacy.close();
+    }
+  } else {
+    database.withAuthorityTransaction((repositories) => repositories.intakeSessions.create(session));
+  }
 
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
@@ -435,6 +459,20 @@ function enqueue(send: ReturnType<typeof harness>["send"], dryRun = false) {
 }
 
 describe("D171 enqueue-intake-manifest — the readiness gate", () => {
+  it("refuses a pre-reservation session by id instead of minting a manifest identity", () => {
+    const { database, send, mapAndValidate } = harness({}, true);
+    send("exclude-intake-row", { sourceRow: REJECTED_ROW, reason: "Malformed EID" });
+    mapAndValidate();
+
+    const result = enqueue(send);
+
+    assert.equal(result.state, "rejected");
+    assert.equal(result.state === "rejected" ? result.code : "", "invalid-state");
+    assert.match(result.state === "rejected" ? result.message : "", new RegExp(`intake session ${UUID_7}`));
+    assert.match(result.state === "rejected" ? result.message : "", /predates reserved manifest identities/u);
+    assert.equal(database.authority.intakeManifests.findBySource(HASH_A).length, 0);
+  });
+
   it("refuses a session that has not been validated", () => {
     const { database, current, send, bindEid } = harness();
     bindEid();

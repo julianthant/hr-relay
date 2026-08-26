@@ -41,6 +41,7 @@ import {
 import {
   QUEUED_RUN,
   RUN_ID,
+  RUN_SESSION,
   START_PLAN,
   WORKER_ID,
   WORKER_START_REQUEST,
@@ -775,6 +776,7 @@ const INTAKE_SESSION = {
   exclusions: [],
   state: "mapping",
   validation: { state: "none" },
+  reservedManifestId: "8e7d6c5b-4a39-4827-9615-0f1e2d3c4b5a",
   version: 1,
   createdAt: NOW,
   updatedAt: NOW,
@@ -940,6 +942,24 @@ describe("authority generation accounting", () => {
     { table: "provider_budget_counters", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "provider_admissions", prepare: prepareProviderRunning, mutate: reserveProvider },
     { table: "leases", mutate: (db) => { db.authority.workerLeases.start(WORKER_START_REQUEST); } },
+    {
+      table: "duo_ceremony_leases",
+      mutate: (db) => {
+        db.authority.duoCeremonyLeases.acquire({
+          credentialKey: "ab".repeat(32), workerId: "worker-a", system: "ucpath",
+          now: "2026-08-21T10:00:00.000Z", ttlMs: 80_000,
+        });
+      },
+    },
+    {
+      table: "worker_pools",
+      mutate: (db) => {
+        db.authority.workerPools.plan({
+          workflow: WORKFLOW_ID, expectedVersion: 0, desiredWorkers: 1, requestedBy: "local-operator", now: NOW,
+        });
+      },
+    },
+    { table: "run_sessions", mutate: (db) => { db.authority.runSessions.insert(RUN_SESSION); } },
     { table: "delegation_manifests", mutate: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); } },
     { table: "dependencies", prepare: (db) => { db.authority.delegationManifests.insert(DELEGATION_MANIFEST); }, mutate: (db) => { db.authority.dependencies.insert(DEPENDENCY_RECORD); } },
     { table: "commands", mutate: (db) => { db.authority.commands.insert(COMMAND_FIXTURES[0]); } },

@@ -77,6 +77,7 @@ import {
   CapturePointerWireSchema,
 } from "../../../../src/domain/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../../src/domain/dashboard/bootstrap.js";
+import { DiagnosticBundleWireSchema } from "../../../../src/domain/dashboard/diagnostic-bundle.js";
 import {
   UiCatalogWireSchema,
   WorkflowExplorerWireSchema,
@@ -575,6 +576,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/dashboard-day", egress: "operator-loopback", module: "src/domain/dashboard/projection.ts", schema: DashboardDayWireSchema },
   { id: "wire/stream-envelope", egress: "operator-loopback", module: "src/domain/dashboard/subscription.ts", schema: DashboardStreamEnvelopeSchema },
   { id: "wire/bootstrap", egress: "operator-loopback", module: "src/domain/dashboard/bootstrap.ts", schema: FrontendBootstrapWireSchema },
+  { id: "wire/diagnostic-bundle", egress: "operator-loopback", module: "src/domain/dashboard/diagnostic-bundle.ts", schema: DiagnosticBundleWireSchema },
   { id: "wire/activity-report", egress: "operator-loopback", module: "src/domain/dashboard/activity.ts", schema: ActivityReportWireSchema },
   { id: "wire/run-advisory", egress: "operator-loopback", module: "src/domain/dashboard/advisory.ts", schema: RunAdvisoryWireSchema },
   { id: "wire/action-descriptor", egress: "operator-loopback", module: "src/domain/dashboard/actions.ts", schema: ActionDescriptorWireSchema },
@@ -635,6 +637,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/run-detail-section", path: "payload.members[].label", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.message", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.notes[].message", origin: "external-text" },
+  { surface: "wire/run-detail-section", path: "payload.rows[].note.message", origin: "external-text" },
+  { surface: "wire/run-detail-section", path: "payload.rows[].producer.step", origin: "repository-authored" },
+  { surface: "wire/run-detail-section", path: "payload.rows[].spanPath", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.reason", origin: "repository-authored" },
   { surface: "wire/run-detail-section", path: "payload.records[].label", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.causeChain[].summary", origin: "external-text" },
@@ -788,6 +793,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/queue-surface", path: "warnings.first", origin: "external-text" },
   { surface: "wire/queue-surface", path: "warnings.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "runNumber.reason", origin: "repository-authored" },
+  { surface: "wire/queue-surface", path: "session.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "facts.reason", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "facts.value[].label", origin: "repository-authored" },
   { surface: "wire/queue-surface", path: "facts.value[].value", origin: "captured-hr-value" },
@@ -822,6 +828,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/dashboard-day", path: "queueSurfaces[].liveMessage.value", origin: "external-text" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].pipeline[].label", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].runNumber.reason", origin: "repository-authored" },
+  { surface: "wire/dashboard-day", path: "queueSurfaces[].session.reason", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].facts.reason", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].facts.value[].label", origin: "repository-authored" },
   { surface: "wire/dashboard-day", path: "queueSurfaces[].facts.value[].value", origin: "captured-hr-value" },
@@ -855,6 +862,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.message", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.note.message", origin: "external-text" },
   { surface: "wire/stream-envelope", path: "payload.notes[].message", origin: "external-text" },
+  { surface: "wire/stream-envelope", path: "payload.rows[].note.message", origin: "external-text" },
+  { surface: "wire/stream-envelope", path: "payload.rows[].producer.step", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.rows[].spanPath", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.notifications[].title", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.outcome.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].appVersion.reason", origin: "repository-authored" },
@@ -912,6 +922,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.timeline.events[].notRun.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.workerCards[].currentRun.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].runNumber.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].session.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].facts.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].facts.value[].label", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].facts.value[].value", origin: "captured-hr-value" },
@@ -919,6 +930,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].memberPreview.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].memberPreview.value", origin: "captured-hr-value" },
   { surface: "wire/stream-envelope", path: "payload.replacement.runNumber.reason", origin: "repository-authored" },
+  { surface: "wire/stream-envelope", path: "payload.replacement.session.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.replacement.facts.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.replacement.facts.value[].label", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.replacement.facts.value[].value", origin: "captured-hr-value" },
@@ -949,6 +961,30 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // constrains it to two-to-four lowercase letters at the wire boundary
   // (D242), so the scan does not read it as a free-text leaf.
   { surface: "wire/bootstrap", path: "workflows[].label", origin: "repository-authored" },
+  /**
+   * D264/D11 — the served start block. Every leaf of it is a DESCRIPTOR
+   * CONSTANT: a sentence, a placeholder, a delimiter or a worked example that a
+   * developer typed into `src/workflows/<id>/descriptor.ts` and this repository
+   * ships. Nothing here is read from UCPath, Kuali or an operator's box — the
+   * block moved onto the wire precisely so the browser would stop holding the
+   * descriptors that declare it, and moving a constant does not change where its
+   * bytes came from.
+   *
+   * The one leaf that needs saying out loud is `examples[].text`: it is the
+   * text the modal TYPES FOR the operator (D250), so it looks like a subject
+   * identifier and is not one — `defineWorkflowDescriptor` proves every example
+   * parses and satisfies the workflow's own input schema, and the values are
+   * the fabricated demonstration EIDs and names the descriptor authors chose.
+   * A real person's identifier in an example would be a repository defect, not
+   * a wire one.
+   */
+  { surface: "wire/bootstrap", path: "workflows[].start.summary", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.placeholder", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.parser.split.delimiters[]", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.parser.constants[].value.text", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.examples[].label", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.examples[].note", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "workflows[].start.inputRun.examples[].text", origin: "repository-authored" },
 
   { surface: "wire/activity-report", path: "categories[].category.reason", origin: "repository-authored" },
   { surface: "wire/activity-report", path: "durations.longestMs.reason", origin: "repository-authored" },
@@ -1058,6 +1094,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archive-index", path: "entries[].title", origin: "captured-hr-value" },
   { surface: "wire/archive-index", path: "entries[].workflowLabel", origin: "repository-authored" },
   { surface: "wire/archive-index", path: "entries[].workflowCode.reason", origin: "repository-authored" },
+  { surface: "wire/archive-index", path: "entries[].warnings.first", origin: "external-text" },
+  { surface: "wire/archive-index", path: "entries[].warnings.reason", origin: "repository-authored" },
   { surface: "wire/archive-index", path: "plans[].blockers[].title", origin: "captured-hr-value" },
   { surface: "wire/archive-index", path: "plans[].candidates[].title", origin: "captured-hr-value" },
   { surface: "wire/archive-index", path: "versionState[].blockers[].title", origin: "captured-hr-value" },
@@ -1122,6 +1160,9 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/version-bump-plan", path: "changeRecord.value.commit.value", origin: "external-text" },
   { surface: "wire/version-bump-plan", path: "changeRecord.value.commit.reason", origin: "external-text" },
   { surface: "wire/archived-run-detail", path: "appVersion.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.logs.value.rows[].note.message", origin: "external-text" },
+  { surface: "wire/archived-run-detail", path: "sections.value.logs.value.rows[].producer.step", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "sections.value.logs.value.rows[].spanPath", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].pointer.system", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].system", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "ledger[].reason", origin: "repository-authored" },
@@ -1188,6 +1229,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/archived-run-detail", path: "row.warnings.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "workflowLabel", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "row.runNumber.reason", origin: "repository-authored" },
+  { surface: "wire/archived-run-detail", path: "row.session.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "row.facts.reason", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "row.facts.value[].label", origin: "repository-authored" },
   { surface: "wire/archived-run-detail", path: "row.facts.value[].value", origin: "captured-hr-value" },
@@ -1205,8 +1247,14 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/intake-session", path: "corrections[].correctedValue", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "exclusions[].reason", origin: "repository-authored" },
   { surface: "wire/intake-session", path: "headerCandidates[].cells[]", origin: "captured-hr-value" },
+  // Terminal valid inputs come from the immutable manifest loaded by exact id;
+  // rerun removed rows are those same durable facts, while added rows are the
+  // canonical inputs revalidated from the session's immutable source artifact.
+  { surface: "wire/intake-session", path: "manifest.validRows[].parsedInput", origin: "captured-hr-value" },
+  { surface: "wire/intake-session", path: "rerun.diff.added[].parsedInput", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "rerun.diff.changes[].now", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "rerun.diff.changes[].was", origin: "captured-hr-value" },
+  { surface: "wire/intake-session", path: "rerun.diff.removed[].parsedInput", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "sheet", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "sheets[]", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "sourceName", origin: "captured-hr-value" },
@@ -1221,6 +1269,15 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/capture-session", path: "contextHint", origin: "captured-hr-value" },
   { surface: "wire/capture-session", path: "formType", origin: "captured-hr-value" },
   { surface: "wire/capture-session", path: "handoff.message", origin: "repository-authored" },
+
+  // E29 derives the display key/detail around a closed attachment kind, its
+  // stored metadata and a verified digest; neither is captured page text.
+  // Media types are driver declarations, and D137 warnings are emitted by the
+  // capture-time classifier rather than copied from an inspected page.
+  { surface: "wire/diagnostic-bundle", path: "contents[].key", origin: "repository-authored" },
+  { surface: "wire/diagnostic-bundle", path: "contents[].detail", origin: "repository-authored" },
+  { surface: "wire/diagnostic-bundle", path: "contents[].mediaType", origin: "repository-authored" },
+  { surface: "wire/diagnostic-bundle", path: "redaction.warnings[]", origin: "repository-authored" },
 
   { surface: "durable/failure-record", path: "causeChain[].summary", origin: "external-text",
     exception: "each cause's own thrown message, same reason as `summary` and dropped by the same advisory declaration." },
@@ -1268,10 +1325,12 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/archive.ts", state: "audited", reason: "the archive index and archived run detail re-serve retired runs" },
     { module: "src/domain/dashboard/artifacts.ts", state: "audited", reason: "artifact resources point at downloadable run output" },
     { module: "src/domain/dashboard/bootstrap.ts", state: "audited", reason: "bootstrap carries the actor, the workflow registry and feature availability" },
+    { module: "src/domain/dashboard/diagnostic-bundle.ts", state: "audited", reason: "D137 readback carries only verified attachment metadata and capture-time redaction facts" },
     { module: "src/domain/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and the UI catalog" },
     { module: "src/domain/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
     { module: "src/domain/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
+    { module: "src/domain/dashboard/status-vocabulary.ts", state: "audited", reason: "the closed status vocabulary is operator-visible prose and pill copy" },
     { module: "src/domain/dashboard/storage.ts", state: "audited", reason: "the storage doctor reports on backups, files and health causes" },
     { module: "src/domain/dashboard/subscription.ts", state: "audited", reason: "the stream envelope carries every live patch of the surfaces above" },
     { module: "src/domain/capture-surface.ts", state: "audited", reason: "ref operator-trust SS7's phone capture page is the one non-loopback surface" },

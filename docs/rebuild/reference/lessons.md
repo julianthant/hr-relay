@@ -1,12 +1,25 @@
 # Lessons learned — the dated ledger
 
 Cited in prose as **`ref lessons`**. Every entry is dated and names the decision(s) it came out of;
-newest first. Moved here from the repository root `CLAUDE.md` on 2026-08-21 so that a session
+newest first. Moved here from the repository root agent instructions on 2026-08-21 so that a session
 loads it on demand rather than on every start. Add new root-level lessons HERE; module-scoped
-lessons keep living in the module's own `CLAUDE.md` (`src/dashboard`, `src/stores/<system>`).
+lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/stores/<system>`).
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-08-25: record time is not append time, and a page cursor must name the corpus it pages
+  (D5/D270; observed logs L3).** The span writer partitions on its append clock while an observation
+  retains the earlier instant at which the task recorded it. Deriving reader partitions from run
+  instants therefore drops a valid late append without an error. Index observed/fenced rows once in
+  the append-time disk-tail projection, retain file/line there for named corruption, and make the
+  query consume only that run's indexed rows. Pagination is the same class of bug: an offset into a
+  mutable sorted JSONL view duplicates or drops an old row when a newly appended event sorts before
+  it. Bind continuation to an immutable, bounded snapshot; a fresh first page sees new history.
+
+- **2026-08-25: operator prose containing a closed wire enum must use the same display fold as
+  pills (AC24; ref frontend-backend-integration §4 “State ownership”).** Keep the pill's exact label
+  available, then apply a total, tested sentence-case fold for prose; never print the transport
+  spelling beside a display label.
 
 - **2026-08-20: a structural rule is satisfied by moving the SCHEMA, not by arguing with the rule —
   and the value you were told to type is often already on the page (D261).** D260 proved, correctly
@@ -522,6 +535,25 @@ write-safety work.
   to refuse. Liveness is OBSERVED (`process.kill(pid, 0)`, `EPERM` counts as alive) and the observation
   writes nothing — a crashed holder must not brick recovery at the one moment it is needed, and
   rewriting another process's lock file to make a restore possible would be fabricating the fact.
+- **2026-08-25: two late observations are not restore exclusion, PID occupancy is not process
+  identity, and a pre-swap sentence becomes false after rename.** P3A's first restore repair sampled
+  locks twice around proof consumption, but a runtime could still start after the last sample and
+  before authority rename; its singleton claim also used check-then-rename, admitting 11 of 48
+  adversarial contenders. The repair is one protocol: restore atomically owns an admission sentinel
+  through the swap; every runtime checks it on both sides of an atomic singleton claim or per-worker
+  record; records bind PID to OS process birth; worker records release only after database closure
+  returns; staged bytes are checksummed after copy; and failures carry whether rename already made
+  replacement irreversible. Follow-up review found two more aliases for stale evidence: Darwin's raw
+  `ps lstart` changes with `TZ`, and a never-run generation equal to the first acquisition lets a
+  pre-start proof survive start/release. Normalize the birth stamp, reserve the baseline, and never
+  call a failed WAL/SHM rollback unchanged: its rename/fsync/unlink failures carry an explicit
+  uncertain state and all causes. Final review found the same mistaken boundary one layer lower: a
+  filesystem rename may take effect and then throw, while a `finally` cleanup throw may replace the
+  failure that led there. Reconcile source/destination truth after throwing companion-displacement
+  or authority-replacement renames, classify unprovable authority state explicitly, and aggregate
+  cleanup behind the original error. Sampling,
+  PID liveness, a returned primitive, and a generic “not modified” catch are each plausible facts,
+  but none proves the state needed at the irreversible boundary.
 - **2026-08-09: An id minted unconditionally and emitted conditionally is a citation to nothing
   (D187).** `buildRunEvidenceReceipt` minted a `verificationId` for EVERY node but pushed the
   verification row only for a terminal dependency or a not-run node, while a downstream derived fact

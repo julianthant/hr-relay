@@ -18,6 +18,7 @@ import type { AuthorityRepositories } from "../infra/sqlite/authority-database.j
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { InstanceSelection, RunPriority, RunShape } from "../domain/run/envelope.js";
 import { isTerminalRunState, RunRecordSchema, type RunRecord } from "../domain/run/record.js";
+import { RunSessionRecordSchema, type RunSessionOrigin } from "../domain/run/session.js";
 
 /** Built loosely, then proven strict by the `CommandResultSchema`/audit parses. */
 export type TargetReference = Readonly<Record<string, unknown>>;
@@ -79,6 +80,15 @@ export interface FanOutEnvelope {
    * bump, and back-filling it later would claim a build the run never saw.
    */
   readonly appVersion: string;
+  /**
+   * D269 (ref execution-and-sessions §11.1): the SESSION this fan-out is. One
+   * per fan-out, N ≥ 1, minted by the caller (a fresh uuid for a command, a
+   * stable-key derivation for the capture handoff so a replay names the same
+   * group) and written HERE, before the first member, inside the caller's
+   * transaction — so a member row can never exist without its session row,
+   * and `runs.enqueue` refuses one that tries.
+   */
+  readonly session: Readonly<{ sessionId: string; origin: RunSessionOrigin }>;
 }
 
 /**
@@ -99,6 +109,24 @@ export function fanOutQueuedRuns(
 ): Readonly<{ affectedTargets: readonly TargetReference[]; versionChanges: readonly VersionChange[] }> {
   const affectedTargets: TargetReference[] = [];
   const versionChanges: VersionChange[] = [];
+  /*
+   * The session row FIRST (D269). It holds no member list — membership is the
+   * `sessionId` each run below carries — so inserting it before the loop is
+   * what lets `runs.enqueue` refuse a member whose session authority never
+   * wrote, and a refusal on run 39 of 40 still unwinds it with everything else.
+   */
+  const session = repositories.runSessions.insert(RunSessionRecordSchema.parse({
+    sessionId: envelope.session.sessionId,
+    workflow: envelope.workflow,
+    origin: envelope.session.origin,
+    startedAt: now,
+    createdAt: now,
+  }));
+  if (session.state !== "inserted") {
+    throw new Error(
+      `${origin} proposed session id ${envelope.session.sessionId}, which already exists; refusing to adopt it`,
+    );
+  }
   for (const entry of planned) {
     // An authority read error here aborts the whole fan-out — never "continue
     // and enqueue anyway" (ref dashboard-surfaces §2.4 Enqueue).
@@ -171,6 +199,8 @@ export function fanOutQueuedRuns(
        * defect this comment exists to prevent.
        */
       runNumber: repositories.runs.nextWorkflowRunNumber(envelope.workflow),
+      // D269: membership is THIS field, nothing else.
+      sessionId: envelope.session.sessionId,
       version: 1,
       createdAt: now,
       updatedAt: now,

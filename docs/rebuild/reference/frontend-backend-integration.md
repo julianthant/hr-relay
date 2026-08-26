@@ -115,7 +115,7 @@ The following are settled:
    preserved wholesale as the rollback asset.
 
 <!-- roadmap-status: phase-1 -->
-- [x] 0.1 the frontend renders finished read models — every count, status, action and containment fact is projected (`src/server/dashboard/projectors/run-queue-projection.ts`), with the ONE standing exception named in §4: the run modal still reads `WORKFLOW_DESCRIPTORS` from the bundle (D264 row D11)
+- [x] 0.1 the frontend renders finished read models — every count, status, action and containment fact is projected (`src/server/dashboard/projectors/run-queue-projection.ts`). The ONE standing exception, the run modal reading `WORKFLOW_DESCRIPTORS` from the bundle, CLOSED 2026-08-21 with D264 row D11 (§4): the three fields are served on `WorkflowStartWireSchema` and `dashboard-wire-boundary` arm (15) keeps the registry out of every dashboard bundle
 - [x] 0.2 one transport owner per bundle — `src/dashboard/client/transport.ts` and `src/dashboard/phone/capture-client.ts`, enforced by `isNetworkOwner` in `provider-capability-boundary.test.ts`
 - [x] 0.3 REST snapshots + ONE resumable stream + ONE command route — `routes/api.ts`, `GET /events/v1`, `POST /api/v1/commands` (+ the bulk vector arm)
 - [x] 0.5 no optimistic authority — every surface settles through the served result and the next projection (D253, `app/command-result.ts`)
@@ -516,7 +516,9 @@ slice), and `captures` (the section lists artifact refs and **nothing serves art
 §3.6). `wire-connectivity` fails in both directions over that manifest: an undeclared orphan arm, and
 a declaration whose binding has become reachable.
 
-Logs/notes are served by cursor-paged GET on the section route. Review records use stable record ids
+Logs are served by cursor-paged GET on the section route as strict note/observed/fence rows; the legacy
+`notes` member is an exact compatibility mirror of that page's note rows while the renderer moves to rows.
+Review records use stable record ids
 and record revisions so one page result can stream without replacing the whole run; People use
 stable member ids and pagination metadata for large groups. Receipt, failure, and archive evidence
 are immutable once finalized. **The per-run SUBSCRIPTION those three describe does not exist yet** —
@@ -679,9 +681,11 @@ Rules:
 
 - every envelope parses before entering client state; malformed payload is a visible protocol
   failure, never `console.warn` + ignore;
-- cursors are monotonic and delivered as SSE ids; reconnect sends `Last-Event-ID`;
-- duplicate cursors are idempotent, gaps force a snapshot, and an expired cursor gets
-  `reset-required`;
+- cursors are monotonic and delivered as SSE ids; reconnect sends the pair `Last-Event-ID` plus
+  `Dashboard-Projection-Generation` (query fallbacks are `cursor` plus `generation`);
+- duplicate/current cursors are idempotent; when a HISTORICAL requested cursor cannot be replayed
+  from retained history in that exact generation, the server first commits A46's pinned backfill-gap
+  notification and only then serves a fresh snapshot;
 - a descriptor hash or projection-generation change invalidates affected cached projections;
 - queue patches replace one complete surface by `(runId,rowRevision)`; Review patches replace one
   complete record by `(recordId,recordRevision)`; note pages append by stable note id;
@@ -689,10 +693,32 @@ Rules:
 - the server bounds subscriber buffers and tells the client to reset rather than silently dropping
   state-bearing messages.
 
+**The history-gap detector is the replay boundary, not a timer.** `DashboardStreamHub.connect`
+requires exact generation-bound cursor evidence before it considers replay. A cursor from another
+projection generation — including a held cursor across rebuild or process restart — means the old
+ordinal space is no longer comparable, so it receives a fresh snapshot and publishes nothing. A
+cursor without generation evidence is equally ineligible. Within one exact generation,
+`cursor-expired` means the held cursor predates the replay window and `snapshot-boundary` means a
+later full snapshot made the old patch chain unreplayable. Only those two historical-cursor outcomes
+publish. A disconnect, timeout, malformed cursor, current or future cursor, cross-generation
+cursor, missing generation, ordinary reconnect and subscriber-buffer overflow do not; overflow is
+the separate `reset-required` arm.
+
+The hub captures one complete `DashboardDayWire` and derives hello's generation/cursor/hash and the
+snapshot envelope from that same object. It awaits the durable publication before exposing the
+replacement. If publication itself moves the projection generation or cursor, the captured pair is
+discarded and a new hello+snapshot handshake is captured; hello N is never paired with snapshot N+1.
+
+The replacement snapshot establishes a new projection baseline; it does not prove what the operator
+missed. Reconnect and resnapshot therefore never clear the durable gap record. Until Track F
+ratifies independent reconciliation evidence and a separate resolved transition, that record stays
+permanently pinned.
+
 **It is SSE, and it is deliberately not an `EventSource`.** `src/dashboard/client/transport.ts`
-speaks the SSE wire format over `fetch` + `ReadableStream`, because `EventSource` cannot set a
-request header and the resume contract is `Last-Event-ID`. The route reads that header and falls
-back to `?cursor=`.
+speaks the SSE wire format over `fetch` + `ReadableStream`, because `EventSource` cannot set request
+headers and the resume contract is the bound `Last-Event-ID` + `Dashboard-Projection-Generation`
+pair. The route reads those headers and falls back to `?cursor=&generation=`; generation without a
+cursor and every malformed value fail the strict request schema.
 
 **One topic has a producer.** `TopicKeySchema` declares six (`dashboard-day`, `run-detail`,
 `run-logs`, `run-review`, `run-people`, `artifact`); the route's topic pattern admits only
@@ -725,6 +751,8 @@ GET  /api/v1/bootstrap
 GET  /api/v1/dashboard?day=YYYY-MM-DD          # includes monthCounts — there is no calendar route
 GET  /api/v1/runs/:runId
 GET  /api/v1/runs/:runId/:section              # one lazy panel section, cursor-paged where it pages
+GET  /api/v1/diagnostic-bundles/:bundleId      # exact D137 readback; verified index and stored bytes
+GET  /api/v1/diagnostic-bundles/:bundleId/manifest # canonical durable manifest download, never client-built
 POST /api/v1/runs/:runId/advisory              # the optional AI failure advisory (unjournaled, D178)
 GET  /api/v1/archive           ·  GET /api/v1/archive/:runId
 GET  /api/v1/explorer                          # the whole descriptor DAG, flat — no workflow segment
@@ -799,26 +827,48 @@ refetches on every dependency change and every remount, invalidation arrives as 
 prop threaded down from the app, and two components asking for the same run issue two GETs. Nor is
 the "client-only UI state" half here: URL state is `app/url-state.ts`, preferences are
 `lib/preference-storage.ts` + `ds/theme.ts`, panel geometry is `surfaces/layout-metrics.ts`. Two of
-the folder's exports (`useDashboardDaySnapshot`, `useRunSection`) have no importer at all. Track D
-row **D6** is what makes the folder match this table; **D2** deletes the dead pair.
+the folder's exports (`useDashboardDaySnapshot`, `useRunSection`) had no importer at all and were
+DELETED by Track D row **D2** on 2026-08-21 (`69102aaf`); `GET /api/v1/dashboard` and the client's
+`dashboardDay` STAY, because `compose-real-port` — the one test that proves a really-composed BFF
+serves a day — drives them. Track D row **D6** is what makes the folder match this table.
 
-**One row of this table is violated today, deliberately and named.**
+**Every row of this table is now honoured. The one that was not is below, with what closed it.**
 
-**D264 (2026-08-20) — the descriptor registry leaves the browser bundle, amending D251.** The
-`workflow metadata/start methods/system instances` row above names `descriptor/config projection`
-as the owner and §0.1 says the frontend renders finished read models; the run modal does neither.
-`src/dashboard/app/dashboard-app.tsx:25` imports `WORKFLOW_DESCRIPTORS` and `:516` joins it by
-`descriptor.id` against the bootstrap's own workflow list for exactly three fields — `summary`,
-`enqueue` and `surfaces.inputRun` (the typed-input surface carrying D250's declared examples); the
-picker's other rows (`label`, `categoryId`, `role`, `code`) are served already. **Those three are
-therefore SERVED over `FrontendBootstrapWire` and the frontend drops the registry import** — Track D
-row D11 (`docs/plans/2026-08-20-dashboard-architecture-audit.md` §3.5). D251's reasoning, that the
-bundle already carries them so a wire would be a second source (§8 #2), is superseded on its own
-premise: the import is what makes the bundle a source, and a projection with no registry beside it
-is ONE source. D251's other findings stand. Until D11 lands the import — 49 modules, 22 % of the
-bundle's module closure, for three plain fields — is a KNOWN divergence from this table, named here
-rather than left for the next reader to discover. It is the ONE such import: `run-start.tsx` does
-not reach the registry, and the audit sentence that said it did is corrected here.
+**D264 (2026-08-20) — the descriptor registry leaves the browser bundle, amending D251. LANDED
+2026-08-21 (Track D row D11).** The `workflow metadata/start methods/system instances` row above
+names `descriptor/config projection` as the owner and §0.1 says the frontend renders finished read
+models; the run modal did neither. `src/dashboard/app/dashboard-app.tsx` imported
+`WORKFLOW_DESCRIPTORS` and joined it by `descriptor.id` against the bootstrap's own workflow list
+for exactly three fields — `summary`, `enqueue` and `surfaces.inputRun` (the typed-input surface
+carrying D250's declared examples); the picker's other rows (`label`, `categoryId`, `role`, `code`)
+were served already. D251's reasoning, that the bundle already carries them so a wire would be a
+second source (§8 #2), is superseded on its own premise: the import is what made the bundle a
+source, and a projection with no registry beside it is ONE source. D251's other findings stand.
+
+**As built.** `WorkflowStartWireSchema` (`src/domain/dashboard/bootstrap.ts`) is a strict block on
+every served workflow — `summary?`, `enqueue`, `inputRun?` — projected in
+`src/server/dashboard/queries/bootstrap.ts` from the same descriptor this process plans with.
+`enqueue` is REQUIRED, which retired the client's `?? "reject-active"`: that default stood in for a
+fact the server always had. `summary` and `inputRun` are omitted when the descriptor declares none,
+because their ABSENCE is the fact the modal renders. `uploadRun` is deliberately not on the block —
+no registered workflow declares one, and serving an arm nothing can produce is the D181/`degraded`
+shape. `run-start.tsx` did not change at all: the composed `RunStartWorkflow` is identical field for
+field, so the whole frontend delta is the deleted import and one read site.
+
+**What holds it.** `dashboard-wire-boundary` arm (15): no `*.html` entry's closure may reach
+`src/workflows/**` or `src/control/**`. A CLOSURE arm rather than an import lint, for arms (13) and
+(14)'s reason — one shared helper re-exporting a descriptor would put the whole tuple back with
+nothing in the diff that reads like a registry import. `src/domain/**` and `src/base/**` stay
+reachable on purpose: a descriptor's CONTRACTS are what keep the daemon and the dashboard one
+product, and it is the composed tuple that may not ship.
+
+**Measured, because §7.4 asks for numbers rather than adjectives.** The production bundle
+(`npm run web:build`) fell from **1,114,214 bytes to 753,197** — 32 % — and the registry's own
+strings went with it: `separations` 259 → 7 occurrences, `kuali` 327 → 62, `ucpath` 349 → 79. The
+survivors are `src/domain/**` write-safety scenario ids and redaction audit notes reached through
+the wire schemas, not descriptors. The audit's estimate of "49 modules, 22 % of the bundle's module
+closure" was conservative on bytes. It was the ONE such import: `run-start.tsx` never reached the
+registry, and the audit sentence that said it did is corrected here.
 
 Track D's checklist for every row that lands on this section — D1, D4, D6, D7, D8, D11 — is in
 §7.4's status block, so the track is ticked in one place.
@@ -849,7 +899,7 @@ surface, it is a wire nobody has run yet.
 | Top Bar + app shell | bootstrap, search, calendar month counts, notification summary, storage/preflight summary | descriptor/config/storage/notification patches | notification lifecycle; doctor rerun | descriptor registry, projection queries, notification/config/storage services | mostly — search is within the served day, preflight is unserved, the doctor is a GET not a command, and there are no descriptor/config/storage/notification patch topics |
 | Workflow Panel + Status Bar | `DashboardDayWire` counts from the queue projection | changed count tuples in the same dashboard cursor | none; filters/navigation are local | ref dashboard-surfaces one run/queue projection | yes |
 | Queue Panel + rows | flat `QueueSurfaceWire[]` for selected day/workflow | complete row replacements and removals/tombstones | served row/bulk action descriptors | authority command state + span projection | yes (D230–D235) |
-| Log Panel + Context rail | `RunDetailWire`, paged notes, context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes for the sections that have producers — but the live half is a **refetch keyed on the day row's `rowRevision`** (D257), not a per-run subscription; `context-evidence` and `captures` are declared-unserved |
+| Log Panel + Context rail | `RunDetailWire`, paged strict log rows (notes + observed span rows), context/evidence/attempt summaries | run/timeline/gate/outcome/note patches | gate, retry/cancel/rename/bump, checkpoint and write resolution | spans/notes, checkpoints, commands, write intents, evidence | yes — the Logs tab folds combined rows in sequence order, groups contiguous producers, appends immutable cursor pages, and uses the Context rail direction vocabulary plus its SystemChip only when an observed fact's exact descriptor origin declares a browser system; fence rows remain authority-only. The live half is a **refetch keyed on the day row's `rowRevision`** (D257), not a per-run subscription; `context-evidence` and `captures` are declared-unserved |
 | Gate ceremony + park resolution | the `identity-gate` and `parked-write` sections, with the packet, the server's `approvalShape` and both typed resolutions | the same `rowRevision` follow | `resolve-gate`, `resolve-write-present`, `resolve-write-absent` | `gate_results`, write intents, ref write-safety §14 | yes (D226/D245) — the packet is separations-shaped; a second gated workflow generalises it |
 | Group People | paged members + rollup + containment | per-member replacement and rollup patch | contextual member and bulk commands | delegation manifests + run projection | **no surface** — `people` is declared-unserved; group/member ROWS exist in the queue |
 | OCR Review | record/page/capture projections with provenance and revision | progressive record replacements and OCR child state | approve/reject, retry page, re-research, relookup; one atomic correction list | OCR checkpoints/gates, evidence, commands | **no surface** — `review` is declared-unserved; the OCR stores and the CLI path exist (2h) |
@@ -920,8 +970,9 @@ control the bundle knows (D226, §3.4).
 - [x] B6 explorer: field census, the declared `when` in words, descriptor prose (D227–D229) — §5.1.5
 - [x] B7 worker-card / session-footer batch; the rail names step, direction and bound; a CAS conflict is a refusal (D248/D249/D252/D253) — §3.2, §5.1.3
 - [x] B8 findings ledger zero-or-decided; `span.patched` retired (D254/D255)
-- [ ] the fold is called by 2 of 9 command surfaces (Track D row D3) and `src/dashboard/CLAUDE.md` claims all 9 (row D2)
+- [x] the fold is called by all 9 command surfaces and `src/dashboard/CLAUDE.md`'s claim is TRUE (Track D row D3, `1b13115f`)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/dashboard/surfaces/**, src/dashboard/app/command-result.ts, tests/unit/architecture/command-result-exhaustive.test.ts; left: D3's seven call sites and the CLAUDE.md sentence
+> 2026-08-21 | track-d3 | the seven call sites and the sentence both landed (`1b13115f`); nothing left on this block
 <!-- /roadmap-status -->
 
 #### D253 — a refused command that looks like a save (2026-08-20)
@@ -954,18 +1005,39 @@ sentence unchanged; the fold never rewrites a refusal it did not compute. Drafts
 on both surfaces.
 
 `command-result-exhaustive.test.ts` (guard inventory) holds the rule for every module under
-`src/dashboard/**`: naming one refusal arm without the other fails. Naming both in one condition —
-including the negated early-return form `archive.tsx` uses — is exhaustive and clean. The fold and
-the client transport are exempt: the transport's job is to PARSE the union, not to act on it. A
-checked-in violating fixture carries the exact shipped shape, so a walker that resolved nothing
-cannot report the tree clean.
+`src/dashboard/**`, in two arms. **(1)** Naming one refusal arm without the other fails. Naming both
+in one condition — including the negated early-return form `archive.tsx` uses — is exhaustive and
+clean. **(2)** A module that calls `.executeCommand(` must IMPORT the fold's module. The fold and
+the client transport are exempt from both: the transport's job is to PARSE the union, not to act on
+it. Each arm carries its own checked-in violating fixture, so a walker that resolved nothing cannot
+report the tree clean.
 
-**Two of the nine command-issuing surfaces call the fold; the other seven enumerate both arms by
-hand and are correct.** That is what the guard enforces and it is enough for correctness — but it
-is not what `src/dashboard/CLAUDE.md`'s D253 lesson says ("every command-issuing surface … now
-settles through"), and it is not what this decision intends: one fold means one place to change
-when a fourth arm arrives. Folding the remaining seven is Track D row **D3**, and correcting the
-CLAUDE.md sentence is part of row **D2**.
+**Track D row D3 (2026-08-21, `1b13115f`) folded the remaining seven, so all nine command-issuing
+surfaces settle through the ONE fold** and the second guard arm above became statable. The first arm
+governed a module that HOLDS a result without posting one and could never see the worse shape: a
+module naming NEITHER arm, which posts a command, ignores the answer, and lands every refusal on the
+success path in silence.
+
+**What the fold decides, and what it deliberately does not.** It decides ONE thing — whether the
+command LANDED — and that question has one right answer per result, so it has one implementation.
+It does not decide how a refusal is DRAWN: nine surfaces draw one nine ways (a `danger` toast with a
+single description slot, a `Refusal` with its own code chip, a `Banner` whose meta line carries the
+version), and a fold that flattened all of that into one string would force six of them to take the
+union apart again to get their facts back — the hand enumeration this decision exists to delete. So
+a refused settlement carries BOTH: `problem`, the composed one-slot sentence (the `conflict` form
+above, still what `top-bar.tsx` and `context-rail.tsx` print), and the server's own facts verbatim
+and per-arm — `message`, plus `code` or `currentVersion`. On a `rejected`, `message` and `problem`
+are the same string, because there is nothing to add to a sentence that already names what was
+refused and why. Reading a FACT off the settlement is the point; re-deriving the VERDICT from
+`result.state` is what the guard refuses.
+
+**D3 moved no operator-visible text, and that was a decision rather than an accident.** Every
+adopting site prints `settlement.message` exactly where it printed `result.message`. The parity
+corpus PHOTOGRAPHS one of these refusals — `identity-approve.tsx`'s conflict alert, in
+`run-open-gate--graphite-warm--1440x900--gate-refused` — so adopting the composed `problem` sentence
+at the seven sites would have been a copy change wearing a refactor's clothes, and would have moved
+a reference nobody re-froze (D132). Whether the `currentVersion` sentence should reach those seven
+is a deliberate copy pass, and it is not this row.
 
 **What is NOT built, and is recorded rather than deferred.** The demo's per-field CAS re-offer
 (`DemoContextRail.tsx:699-749`) shows the server's current value for each patched field so the
@@ -1161,11 +1233,16 @@ rail's origins need. Served sections today: `logs`, `receipt`, `failure`, `conte
 declaration-gated (`capabilities.editData`, declared by `person-lookup` alone).
 
 **Left:** `context-evidence` and `captures` (declared-unserved); the per-run subscription step 3
-replaces (§3.5); the whole-notes-corpus read on every logs GET (Track D row D5); and the panel's
-SECOND status/outcome derivation — `queries/run-detail.ts` re-derives what the projector already
-computed, so a run whose span stream ended before authority settled can read `done` in its row and
-`running` in its panel. That is Track D row **D1** and it is a projection defect, not a
-presentation one: ref dashboard-surfaces §2.3 says there is one derivation.
+replaces (§3.5); and the whole-notes-corpus read on every logs GET (Track D row D5).
+
+The panel's SECOND status/outcome derivation is CLOSED — Track D row **D1**, ratified as **D268**
+(2026-08-21, `81bfed73`), whose normative text is ref dashboard-surfaces §2.3. `queries/run-detail.ts`
+used to re-derive what the projector had already computed, missing the fold's `ended` and
+`claimedBy` arms, so a run whose span stream ended before authority settled read `done` in its row
+and `queued` in its panel; it now reads `deriveRunStatus`, `taskStateOf` and `panelKindOf` from
+`src/server/dashboard/run-status.ts`, the one implementation the queue projector reads. It was
+always a projection defect rather than a presentation one: ref dashboard-surfaces §2.3 says there is
+one derivation.
 
 ##### D252 — a ledger value names its STEP, its DIRECTION and the bound it is held under (2026-08-20)
 
@@ -1314,7 +1391,9 @@ workflow-versioning half is row **D8**.
 2. The rows ride the day wire; the bell renders unread and critical counts and the all / ping /
    inbox / snoozed filters.
 3. Read, unread and snooze are COMMANDS, CASed on the row's own `revision` — which the D134 fold
-   advances on every publish, so a bell action races a fold that is designed to happen.
+   advances on every ordinary publish, so a bell action races a fold that is designed to happen.
+   A46's permanent arm has no revision and authority refuses every update/fold, including same-state
+   writes, before any version can advance.
 4. A refusal is shown, never swallowed (D253).
 
 **Implemented:** the bell is `NotificationBell` inside `surfaces/top-bar.tsx`; the rows are on
@@ -1322,7 +1401,10 @@ workflow-versioning half is row **D8**.
 the services' half — a park at an ALWAYS-GATE publishes a needs-you row by re-derivation over
 authority, and the backup hazard publishes `storage-degraded` on state TRANSITIONS only (D222).
 
-**Generic:** entirely — the trigger set is ref dashboard-surfaces §2.6's closed vocabulary.
+**Generic:** entirely — the trigger set is ref dashboard-surfaces §2.6's closed vocabulary. A46's
+closed pinned arm is the one permanent safety lane: it contributes to All, Unread and Pings, remains
+outside ordinary filtering, and shares the drawer's bounded scroller so every pin and ordinary row
+remains reachable.
 
 **Left:** there is no notification patch topic, so the bell moves when the day snapshot does (§3.5);
 snooze has no inverse because the kernel serves none; and the OS-delivery half belongs to the
@@ -1353,10 +1435,7 @@ Context rail's `run.edit-checkpoint`, gated on `capabilities.editData` — decla
 **Generic:** the intake pipeline and the capture session. **Per-workflow:** the intake projection
 each workflow declares, and the Edit Data field list on its descriptor.
 
-**Left:** the operator-side capture-session poll (declared `served-unconsumed`, D175); the phone-host
-gate middleware, which **compiles and never fires** because `deps.capturePhoneHost` is never supplied
-— harmless until D189's ingress exists and exactly the shape D181 warns about, so it is wired or
-deleted-with-a-note in Track D row **D2**; a model file for `intake.tsx`, whose folds are untested by
+**Left:** the operator-side capture-session poll (declared `served-unconsumed`, D175); a model file for `intake.tsx`, whose folds are untested by
 construction (row **D8**); the triple envelope parse in `intake.prepare` and the capture service
 throwing its refusals instead of returning the result union (row **D10**).
 
@@ -1715,10 +1794,24 @@ test fixtures. Four consequences, all real:
 2. **The phone capture page has no delivery path.** `api.ts` allow-lists `/capture.html` for the
    phone host gate and nothing in production serves that file, so 2i-F's token-scoped surface is
    unreachable from a phone even though every route behind it works and is tested.
-3. **The host gate itself is inert.** The `app.use("*")` capture-ingress middleware is composed and
-   `deps.capturePhoneHost` is never supplied, so the gate compiles and can never fire. It is
-   harmless until the ingress exists — and it is exactly D181's shape, a complete tested path with
-   no producer for its one precondition. Track D row **D2** wires it or deletes it with this note.
+3. **The host gate is WIRED (Track D row D2, 2026-08-21, `47eeb44e`).** It was composed with
+   `deps.capturePhoneHost` supplied nowhere, so it compiled and could never fire — exactly D181's
+   shape, a complete tested path with no producer for its one precondition. Row D2 wired it rather
+   than deleting it, because a producer exists TODAY: `capture.ingress: "forwarded"` is a shipped
+   mode naming a real HTTPS origin, so `capturePhoneHostOf` reads the host off the SAME config leaf
+   `createCaptureIngressResolver` reads, and the gate binds it. `disabled` and the unbuilt
+   `on-demand-ngrok` name no origin and supply nothing, which correctly leaves loopback unscoped; a
+   forwarded ingress whose URL yields no host THROWS rather than going unscoped. Deleting the gate
+   would have left a forwarded operator's phone origin able to reach the whole dashboard, and would
+   have moved the scope check into the very slice that opens the door. `capture-durability-and-scope`
+   §2b now pins the derivation, its two refusals, and the composition root that supplies it, so the
+   gate cannot lose its producer again in silence. The other three consequences below are unchanged
+   — this BFF still serves no bytes, so `capturePhoneAssetPaths` stays absent by design. **Caveat,
+   recorded rather than fixed here:** the gate identifies a phone request by the `Host` header
+   ALONE, so a reverse proxy that rewrites `Host` to the upstream (nginx's default
+   `proxy_set_header Host $host`) makes it inert — the byte-path slice (`{#def-byte-path}`) must
+   either preserve the phone's original Host end to end or read `X-Forwarded-Host` deliberately; see
+   the doc-comment on `capture.ingress` in `src/domain/config/schema.ts`.
 4. `config/legacy-capabilities.json`'s `legacy-route-static` is therefore genuinely **open**, and
    D184 moved it to the non-workflow capability closure milestone rather than closing it.
 
@@ -1764,8 +1857,9 @@ as the charter defines it: the day this repo becomes the operator's daily local 
 - [ ] `/capture.html` delivered, so 2i-F's phone surface is reachable from a phone
 - [ ] the on-demand ngrok tunnel launcher (D175)
 - [ ] the guard arm: a phone-origin request may not be served any file outside the capture allow-list (§8)
-- [!] the inert phone-host gate — wired or deleted with a D189 note (Track D row D2); it is a precondition nothing supplies
+- [x] the phone-host gate — WIRED from `capture.ingress: "forwarded"` (Track D row D2, 2026-08-21, `47eeb44e`); the precondition has a producer and `capture-durability-and-scope` §2b refuses a composition root that stops supplying it
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/routes/api.ts:141-156 (the gate), compose.ts (no `capturePhoneHost` supplied), src/domain/capture-surface.ts (`/capture.html` is an allow-list constant only); left: all five halves — they build together at the first phone-consuming migration
+> 2026-08-21 | track-d D2 | the gate is no longer one of the halves: `capturePhoneHostOf` (src/domain/capture-surface.ts) supplies it from `capture.ingress`/`forwardedUrl` and src/server/dashboard/compose.ts passes it; left: the four byte-path halves, which still build together at the first phone-consuming migration
 <!-- /roadmap-status -->
 
 ---
@@ -1990,12 +2084,17 @@ Budgets are measured on the local production build with a realistic large fixtur
 - disconnected/degraded/read-only state remains navigable and evidence stays readable while
   mutation controls are visibly refused.
 
-**Not one of these is measured or asserted anywhere in this repository.** The evidence of absence,
-so the next reader does not re-run the search: no test or helper named for performance, a budget or
-a benchmark exists except doc 01's `tsc` type-inference budget; no 1,240-row or 108-member fixture
-exists; nothing in `src/dashboard` virtualizes or pages; there is no `memo` in any surface or app
-module; nothing mentions backpressure. The section has been normative and unenforced since it was
-written, and the audit that found that is what Track D exists to answer.
+**Not one of these was measured or asserted anywhere in this repository, until the instrument
+below.** The evidence of absence as the 2026-08-20 audit found it, so the next reader does not
+re-run the search: no test or helper named for performance, a budget or a benchmark existed except
+doc 01's `tsc` type-inference budget; no 1,240-row or 108-member fixture existed; nothing in
+`src/dashboard` virtualizes or pages; there is no `memo` in any surface or app module; nothing
+mentions backpressure. The section had been normative and unenforced since it was written, and the
+audit that found that is what Track D exists to answer. **What has changed since:** the measurement
+instrument and its BEFORE numbers landed 2026-08-21 (below), and Track D's **D5** then bounded the
+four server-side read scans and recorded its AFTER numbers against them. Everything else on that
+list still stands — nothing virtualizes or pages, no surface is memoized, and nothing handles
+backpressure — because the instrument measures the tree and D5 only fixed the reads it named.
 
 **D264 (2026-08-20) — Track D's D4/D5 supply the first numbers, and the numbers become the gates.**
 The thresholds this section defers to the first Person Lookup slice were never recorded: that slice
@@ -2015,19 +2114,228 @@ D1 → §5.1.3 (the panel's second status derivation) · D2 → §6.9 and §5.1.
 (`state/`) · D7/D8 → §2 · D9 → this section's virtualize bullet · D10 → §3.4 (one CAS transport) ·
 D11 → §4.
 
+#### Measurement instrument + baseline (2026-08-21)
+
+**The instrument.** `npm run perf:dashboard` seeds ONE deterministic world and times the five hot
+paths the audit named, in-process, through the production functions the BFF calls — no browser, no
+HTTP, no re-implementation. It lives in `tests/perf/`: `dashboard-fixture.ts` (the seed),
+`dashboard-benchmark.ts` (the harness), `sqlite-statement-counter.ts` (the counter).
+`tests/unit/server/dashboard-perf-fixture-shape.test.ts` asserts, in the ordinary unit lane, that
+the seeded world really is the shape the numbers claim to be about — a seeder that quietly shrank
+would otherwise make a later baseline look like an improvement.
+
+**The fixture is this section's 1,240-row / 108-member fixture, and it is production machinery all
+the way down.** A `mkdtemp` state root (never `.tracker-rebuild`); a real `AuthorityDatabase` with
+its real migrations; every row moved by `runs.enqueue` / `claimNext` / `transition` and the D110/D114
+atomic terminalizations; the real span and note JSONL writers; the real `RunQueueProjection` folding
+what those writers put on disk. Nothing writes SQL and nothing hand-builds a wire payload, because a
+fixture that bypassed a schema invariant would measure a system this repository does not have.
+Volume: **1,240 rows on one day** (700 done · 180 failed · 60 cancelled · 5 running · 3 awaiting
+approval · 183 queued, plus one operation and its **108 members**), 120 rows on each of three
+neighbouring days so the day filter has something to filter, **20,800 note lines** across four files
+(5.43 MB), and 175 derived receipts — a quarter of the done runs, because D141 makes derivation an
+on-demand act, and because a quarter is what puts BOTH `#warningVerdict` arms on one wire.
+
+**The BASELINE — these are the BEFORE numbers.** Taken at commit `407d373f` (tracked tree clean),
+`npm run perf:dashboard -- --iterations 11`, on an Apple M3 Pro · 11 cores · 18 GB · node v26.1.0 ·
+darwin-arm64. Durations are the median and nearest-rank p95 of 11 samples after one discarded
+warm-up; **counts are exact** (the world is deterministic, so a count that varied would mean the
+measurement had a side effect) and were byte-identical across every run taken. The machine is a
+laptop that carries other work, so read the durations as ±15 % — three runs at this commit put the
+day wire between 156 and 188 ms — and read the counts as exact. That asymmetry is the reason the
+counters are in the table at all: they are what a later comparison can be made on without owning
+the machine.
+
+| # | Path | Audit | median ms | p95 ms | Counters |
+|---|---|---|---|---|---|
+| 1 | `buildDashboardDayWire` — the whole day snapshot | P2 / P4 | 177.15 | 249.99 | rows 1,240 · sqliteStatements 6,718 · sqliteStatementsPerRow 5.42 |
+| 2 | `applyDashboardDayPatch` — one SSE single-row patch | P1 | 22.30 | 30.12 | rowsAvailable 1,240 · dayWireSchemaParses 1 |
+| 3 | `buildRunSection(run, "logs")` — one logs GET | P3 | 49.02 | 65.28 | notesServed 13 · corpusLinesAvailable 20,800 · corpusBytesAvailable 5,691,200 · corpusFilesAvailable 4 |
+| 4 | `archiveSnapshots.snapshot(run)` — the version-bump freeze, per run | P3 | 46.64 | 67.54 | sqliteStatements 14 · projectedDayMs 57,833.6 |
+| 5 | `queueSurface` — a 108-member operation vs a single row | P2 | — | — | operationRowStatements 218 · singleRowStatements 2 · previewDeltaStatements 216 · members 108 |
+
+**What the counts confirm, and it is worth saying because the audit predicted them from reading:**
+the member preview really does cost **216 SQLite statements** to print three names (`getRun` +
+`latestCheckpoint` per member, 108 of each, before `.slice(0, 3)`) against **2** for a plain row;
+the day wire really does cost **5.42 statements per row**; and one single-row SSE patch really does
+run exactly **one** `DashboardDayWireSchema.parse` over all **1,240** rows. Row 5 carries no
+duration on purpose — its finding is a count, and `0.00 ms` in a baseline table is a number somebody
+would later compare against.
+
+**How the counters are taken, and what they do not cover.** SQLite statements are counted by
+patching `DatabaseSync.prototype.prepare` around one callback: the finding is stated in SQLite hits,
+`AuthorityDatabase` prepares at the point of use with no cache, so one `prepare()` is one statement.
+It does not count `exec()` — this tree's DDL and transaction control — which a measured READ never
+runs. The counter refuses to install if the property is not a writable, configurable data property,
+and the harness refuses to report a parse count its spy did not observe, because a counter that can
+report zero is a check that cannot fail — the harness self-checks the SQLite counter against a real
+probe before reporting anything, and separately asserts the day-wire row's own count is nonzero,
+because that is the row P2/P4 lead with. `corpusLinesAvailable` / `corpusBytesAvailable` /
+`corpusFilesAvailable` are the corpus SIZE — a fixture fact, taken independently of the timed call —
+not an in-process OBSERVATION of what `noteLinesForRun` actually read: it is not a syscall-level spy,
+because Node snapshots ESM named imports of `node:fs` and no in-process counter can honestly observe
+that read. They are named `…Available` rather than `…Scanned`/`…Read` for exactly that reason. As
+long as `noteLinesForRun` walks the corpus unscoped on every logs GET (true of this commit — read the
+source, not this counter, to re-confirm), they equal what it reads; once D5 scopes the reader they
+would print the same numbers regardless, and the millisecond column, not these counters, is what
+moves.
+
+**P5 is not on this table, and neither is a browser number.** Virtualization is a DOM property, not
+a server one; it belongs to D9, which this section's virtualize-or-page bullet already owns, and
+which re-measures after it lands. A time-to-interactive figure against the production bundle was
+scoped and deliberately NOT taken: the five findings above are all server-side, and a TTI measured
+on a contended laptop would be a number with no defensible comparison behind it. D4's `memo` work is
+the row that will owe one, and the parity lane already boots the real stack over a seeded state root
+(`tests/parity/helpers/seeded-bff.ts`), so the seam is there when it is wanted.
+
+#### The AFTER numbers — Track D **D5**, the bounded read scans (2026-08-21)
+
+Same command, same seed, same iteration count: `npm run perf:dashboard -- --iterations 11`, taken at
+commit `c547f65a` (tracked tree clean) on the same Apple M3 Pro · 11 cores · 18 GB · node v26.1.0 ·
+darwin-arm64. **One caveat on the durations and it is not a small one:** this run was taken while
+sibling worktree units were compiling and running suites on the same laptop, so read the millisecond
+columns as noisier than the baseline's stated ±15 %. The COUNTS are exact and unaffected — which is
+the whole reason they are in the table.
+
+| # | Path | median ms | p95 ms | Counters |
+|---|---|---|---|---|
+| 1 | `buildDashboardDayWire` | 157.95 | 224.56 | rows 1,240 · sqliteStatements **5,568** · sqliteStatementsPerRow **4.49** |
+| 2 | `applyDashboardDayPatch` | 29.19 | 36.96 | rowsAvailable 1,240 · dayWireSchemaParses 1 |
+| 3 | `buildRunSection(run, "logs")` | 40.55 | 61.74 | notesServed 13 · corpusLinesAvailable 20,800 · corpusBytesAvailable 5,691,200 · corpusFilesAvailable 4 · **corpusLinesInScope 17,680** · **corpusFilesInScope 2** |
+| 4 | `archiveSnapshots.snapshot(run)` | 42.33 | 59.15 | sqliteStatements **13** · projectedDayMs 52,489.2 |
+| 5 | `queueSurface` — 108-member operation vs a single row | — | — | operationRowStatements **8** · singleRowStatements 2 · **previewDeltaStatements 6** · members 108 |
+
+**The delta, per counter, and what each one is evidence of.**
+
+| Counter | BEFORE | AFTER | Why |
+|---|---|---|---|
+| `previewDeltaStatements` (row 5) | 216 | **6** | `#memberPreview` slices before it joins: three named members × (`getRun` + `latestCheckpoint`). It no longer scales with `members` at all — the same six for a 4-member group and a 40-member one, pinned in the unit lane. |
+| `sqliteStatements` (row 1) | 6,718 | **5,568** | −1,150, and the arithmetic closes exactly: **940** is one saved `getReceipt` per terminal row on the day (700 done + 180 failed + 60 cancelled), **210** is the 105 members the preview stopped joining × 2 reads each. |
+| `sqliteStatementsPerRow` (row 1) | 5.42 | **4.49** | The same 1,150 over the same 1,240 rows. |
+| `corpusFilesInScope` / `corpusLinesInScope` (row 3) | 4 / 20,800 (the reader was unscoped, so it equalled the corpus) | **2 / 17,680** | New counters, taken through the production `runNotePartitionScope`. See the honest reading below. |
+| `sqliteStatements` (row 4) | 14 | **13** | The receipt dedupe reaching the frozen row. |
+| `corpus…Available` (row 3) | 20,800 / 5,691,200 / 4 | unchanged | **By design, and the baseline predicted it**: these are the corpus SIZE, a fixture fact, not an observation of what the reader read. They are why the two `…InScope` counters were added. |
+| `dayWireSchemaParses` (row 2) | 1 | 1 | D4's row, untouched by D5. Its millisecond movement is machine noise. |
+
+**The logs row is the honest disappointment, and the reason is a property of THIS fixture, not of
+the fix.** 15 % fewer lines in scope is not the order of magnitude audit P3 describes, and the cause
+is arithmetic: the seeder gives the first 1,600 runs a 13-line trail in day order, and 1,240 of those
+runs are on the measured day — so **16,120 of the corpus's 20,800 lines sit in the measured run's
+OWN partition**, where no day-scoping can reach them. What actually changed is the shape of the
+bound, which is what P3 is about ("187k lines/month in legacy; a read that grows forever for a tool
+that runs for years"): the read is now **O(the run's own partitions + one day of margin)** instead of
+**O(days × workflows)**. At the D86 30-day retention that is 2 partitions instead of 30 for one
+workflow, and 2 instead of 30 × N once a second workflow writes notes — and it stops growing as the
+corpus ages, which is the property the finding names. A fixture that seeded four EVEN days would
+have printed a prettier number and measured less.
+
+**The archive freeze's own fix does not appear in row 4, and that is expected.** At 13 notes per run
+`freezeLogs` walks exactly ONE page, so reading the corpus once per freeze saves nothing here; row
+4's 14 → 13 and its ~4 ms are the receipt dedupe and the scoped notes read. The bound the freeze fix
+removes — up to `FROZEN_LOG_PAGE_LIMIT` (500) whole scans for one run, once per run in a version
+bump — bites a run with a long log, and is pinned in the unit lane instead (450 notes, three pages,
+one scan).
+
+**Observed-logs L3 repair (2026-08-25).** The measurement contract now counts span schema parses
+inside one Logs GET, with the counter first proving it can observe exactly one parse of a real
+fixture line. The rejected L3 reader would open the same run-instant scope as notes and parse every
+span line in it. That scope is retained as the BEFORE count; the repaired reader consumes the
+disk-tail projection's append-time per-run index instead.
+
+| Bound | rejected query | repaired query |
+|---|---:|---:|
+| span files in rejected run-instant scope | 2 | 0 opened by GET |
+| span lines / `SpanEventWireSchema.parse` calls | 7,662 | **0** |
+| indexed observed/fenced rows examined for this note-only measured run | n/a | 0 |
+
+`npm run perf:dashboard` over the same 1,240-row fixture reported the Logs GET at 43.58 ms median /
+45.09 ms p95 over seven measured iterations. The durations are machine-local; the 7,662 → 0 parse
+count is the closure evidence. Late appends are not admitted by widening a date margin: the existing
+cross-process projector sees the append partition once, retains its source file/line, and indexes it
+under the event run. Continuation pages use an immutable `lc:<snapshot>:<offset>` cursor, so a later
+backdated append appears on a fresh first page without duplicating or displacing the old walk.
+
+**What D5 did NOT move, so nobody re-derives it:** rows 2 and 5's `rowsAvailable`/`members`, every
+`corpus…Available`, and the whole-day re-parse — those belong to D4 and D9.
+
+**These numbers become the gate by being RE-RUN, not by being retyped.** Track D's D4 and D5 run the
+exact command above against the exact same seed and record the delta beneath this table. Anything
+else — a hand-edited number, a different fixture, a different machine class — is a claim, not a
+measurement.
+
+#### D4 — AFTER (2026-08-21)
+
+Taken at commit `bb406615` (tracked tree clean), the same `npm run perf:dashboard -- --iterations 11`
+against the same seed, same machine. **The machine was loaded by five sibling Track-D agents while
+these ran**, so three full runs were taken rather than one and the unchanged rows are reported
+beside the changed one — that is what makes the delta readable on a contended laptop.
+
+| # | Path | Audit | median ms | p95 ms | Counters |
+|---|---|---|---|---|---|
+| 1 | `buildDashboardDayWire` — the whole day snapshot | P2 / P4 | 159.71 | 223.22 | rows 1,240 · sqliteStatements 6,718 · sqliteStatementsPerRow 5.42 |
+| 2 | `applyDashboardDayPatch` — one SSE single-row patch | P1 | **0.02** | **0.02** | rowsAvailable 1,240 · **dayWireSchemaParses 0** |
+| 3 | `buildRunSection(run, "logs")` — one logs GET | P3 | 52.28 | 79.89 | notesServed 13 · corpusLinesAvailable 20,800 · corpusBytesAvailable 5,691,200 · corpusFilesAvailable 4 |
+| 4 | `archiveSnapshots.snapshot(run)` — the version-bump freeze, per run | P3 | 48.90 | 77.92 | sqliteStatements 14 · projectedDayMs 60,636 |
+| 5 | `queueSurface` — a 108-member operation vs a single row | P2 | — | — | operationRowStatements 218 · singleRowStatements 2 · previewDeltaStatements 216 · members 108 |
+
+**Row 2 is the only row D4 touches, and it is the whole finding.** `22.30 ms → 0.02 ms` median
+(`30.12 → 0.02` p95), and `dayWireSchemaParses` **1 → 0**: a single-row SSE patch no longer
+re-validates 1,240 rows to change one. Over three runs the patch median was 0.02 / 0.02 / 0.07 ms
+and the parse count was 0 in every one. **The count is the durable half of this delta** — it is
+exact, it is machine-independent, and it is the number a later reader should compare against; the
+milliseconds are a laptop's, and this one was busy.
+
+**Rows 1, 3, 4 and 5 are the control, and they did not move.** No code under any of them changed
+(rows 1/3/4 are D5's and D9's). Over the same three runs the day wire read 729.74 / 159.71 / 183.90
+ms, the logs GET 52.93 / 52.28 / 50.08, the freeze 48.05 / 48.90 / 50.15, and every count was
+byte-identical to the baseline's. Two of the three day-wire samples fall inside the 156–188 ms
+window the baseline itself recorded, and the 729.74 outlier is a contention spike on the longest
+measurement, not a regression — which is exactly why the row is reported three times instead of
+once. A table where the unchanged rows had also "improved" would have been measuring the machine.
+
+**What the second half of D4 — the `memo` work — did and did not buy, stated rather than measured.**
+`QueuePanel`, `TopBar` and `LogPanel` are now `memo`'d and every prop the app hands them is stable
+or primitive (`viewState`, the queue's five-closure `handlers`, `nav`, the day's three list props,
+the per-render `SettingsSectionPrimitiveSchema.array().parse`, `onDay`, `onDetailEdited`, and the
+open panel's row and served actions). The honest bound on it: the app's live instant (D256) is a
+prop of all three and ticks once a second, so a loaded day redraws once a second by design — a
+frozen elapsed is D256's own defect, not a saving. What `memo` removes is every re-render BETWEEN
+those ticks: a dialog opening, a selection toggling, a run-detail section landing, a nav step, a
+theme swap. The largest single win is `LogPanel`, which reads ONE row and never the day's list, so
+a patch for any other run now leaves every one of its props identical and a 2,000-line subtree
+skips entirely — **and that win exists only because of row 2's fix**, since zod's `parse` returned
+a fresh object graph and handed `surface` a new reference after every patch. The two halves of D4
+are one change.
+
+**No browser number is recorded here, and the reason is the same one the baseline gave.** A render
+count taken on a laptop running five sibling agents would not be a defensible comparison, and this
+section already declined a TTI figure on that argument. What stands in its place is a STATIC proof
+that the wrappers are real rather than decorative: `dashboard-memo-prop-stability` refuses an object
+literal, array literal, arrow, function expression or `new` in any prop slot of those three
+elements, and asserts the three are `memo`-wrapped — because a `memo` defeated by one fresh prop
+re-renders exactly as often as before while every gate stays green and no surface looks wrong. The
+empirical half is still owed and belongs with **D9**, which re-measures the list surfaces in a
+browser after virtualization lands.
+
 <!-- roadmap-status: track-d -->
-- [ ] D1 one status/outcome derivation — exported `deriveRunStatus`, ONE `TASK_OUTCOME` vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row
-- [ ] D2 hygiene — dead hooks and exports deleted, a typed not-found error instead of message-sniffing, the inert phone-host gate wired or deleted with its D189 note, `testSystemsOf`/`plural`/`shortHash` unified, the false D253 sentence in `src/dashboard/CLAUDE.md` corrected
-- [ ] D3 every command settlement folds through `settleCommandResult` — 7 of 9 sites still enumerate both refusal arms by hand
-- [ ] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against a seeded 1,240-row / 108-member fixture and recorded here as this section's first numbers
-- [ ] D5 bound the read scans — the member preview slices ids before joining, one receipt read per row, the notes reader scoped by workflow and day range, the archive freeze reads the corpus once; measured and recorded
-- [ ] D11 the descriptor registry LEAVES the bundle — bootstrap serves `summary`, `enqueue` and `surfaces.inputRun`, and `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import (amends D251, §4)
+- [x] D1 one status/outcome derivation — `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in `src/server/dashboard/run-status.ts`, read by the queue projector AND `queries/run-detail.ts`; the unified task vocabulary keeps `cancelled` on D123's rule and `PipelineStepWireSchema.state` gains that arm (**D268**, `81bfed73`)
+- [x] D2 hygiene — the HTTP status is the error's KIND (`src/server/failures.ts` + `routes/failure-status.ts`, `f39b2e95`), the phone-host gate is wired from `capture.ingress: "forwarded"` with a producer guard (`47eeb44e`), the dead hooks and ten dead exports are gone (`69102aaf`), and the TEST-instance hazard / plural rule / hash cut are one each (`6d44bb1e`); the false D253 sentence was corrected with D3 (`1b13115f`)
+- [x] D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold (`1b13115f`); the guard's second arm requires any module calling `.executeCommand(` to import it (`5c36a82d`)
+- [x] D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against the seeded 1,240-row / 108-member fixture and recorded above — one SSE row patch `22.30 → 0.02 ms` and `dayWireSchemaParses 1 → 0`, with the four unchanged rows held as the control (`345475bf` the splice, `bb406615` the `memo` half + `dashboard-memo-prop-stability`)
+- [x] D5 bound the read scans — the member preview slices ids before joining (`d6d6c758`), one receipt read per row (same commit), the notes reader scoped to its run's own `(workflow, date)` partitions (`c1fa129b`, margin corrected in `c547f65a`), the archive freeze scans once per page walk (`c74efcca`); all four pinned by their BOUND in `tests/unit/server/dashboard-read-scan-bounds.test.ts` (`4d3247d8`) and MEASURED above — day wire 6,718 → 5,568 statements, preview delta 216 → 6, logs scope 4 → 2 partitions
+- [x] D11 the descriptor registry LEAVES the bundle — bootstrap serves `summary`, `enqueue` and `surfaces.inputRun` on `WorkflowStartWireSchema`, `dashboard-app.tsx` drops its `WORKFLOW_DESCRIPTORS` import, and `dashboard-wire-boundary` arm (15) holds the closure (amends D251, §4). Bundle 1,114,214 → 753,197 bytes
 - [?] D6 `useResource` in `state/` over `async-resource.ts` — the nine hand-copied fetch effects migrate and `state/` becomes what §2 says it is
 - [?] D7 split `LoadedApp` along its own seams — `useDayRoute`/`useRunDetailState`/`useBulkSelection` into `app/*-model.ts`, the five takeover layouts into `app/takeovers.tsx`
 - [?] D8 models for intake / archive / log-panel, the versioning half of `archive.tsx` split out, and ONE `foldTaskExecutions(row)` for pipeline / timeline / archive
 - [?] D9 a virtualized list primitive in `ds/`, adopted by queue / logs / archive, then re-measured — this section's virtualize-or-page bullet
 - [?] D10 one CAS transport — `expectedVersion` in the body everywhere, the `intake.prepare` double-parse dropped
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified that NOTHING in src/ or tests/ measures or asserts any budget in this section (no perf/budget/bench test, no 1,240-row fixture, no `memo`, no virtualization, no backpressure handling) — the section is normative and unenforced, exactly as D264 records; left: all eleven rows
+> 2026-08-21 | track-d D5 | D5 landed — the four read scans are bounded and the FIRST half of this section's owed numbers is recorded above (BEFORE `407d373f` → AFTER `c547f65a`, same command/seed/iterations). All four changes are behaviour-preserving, verified byte-identical over the perf fixture's whole day wire, three neighbouring days, six run details, six logs pages and five archive freezes. Two things a later reader should not have to re-derive: the day wire's −1,150 statements decompose exactly (940 receipt + 210 preview), and the logs row's modest 15 % is a property of the FIXTURE (78 % of its corpus is on the measured run's own day), not of the fix — what changed is that the read stopped growing with the corpus. Left: D4's half of the numbers, D2, D11
+> 2026-08-21 | track-d D11 | D11 LANDED (`149bc5f8` the wire + server projection + registry-wide test, `0911becd` the frontend drop + `dashboard-wire-boundary` arm 15). §4's one named divergence is closed and §7.4's exit-criterion 2 is MET. Measured: the production bundle fell 1,114,214 → 753,197 bytes (32 %). Seven free-text leaves of the new block are dispositioned `repository-authored` in the redaction audit — every one is a descriptor constant, and moving a constant onto the wire does not change where its bytes came from. Left on this section: D2–D5's numbers
+> 2026-08-21 | track-d D4 | D4 landed (`345475bf` splice + tests, `bb406615` memo + stable props + guard): `applyDashboardDayPatch` no longer re-parses the whole day — one SSE row patch went 22.30 → 0.02 ms median with `dayWireSchemaParses` 1 → 0, measured three times against the same seed with rows 1/3/4/5 held as an unchanged control; the three hot panels are `memo`'d with every prop stabilized at the parent and a new guard (`dashboard-memo-prop-stability`) refusing the five provably-fresh prop shapes. Recorded honestly: the D256 live clock is a prop of all three panels and ticks 1 Hz, so `memo` buys the re-renders BETWEEN ticks, not the ticks; the browser render count is deliberately NOT taken on a contended laptop and is left to D9. Left: D2, D5, D11, and §7.4's remaining unmeasured budgets
+> 2026-08-21 | track-d D1 | D1 landed as **D268** (`81bfed73`): one `deriveRunStatus`, one task-outcome vocabulary, one `panelKindOf`, pinned by `tests/unit/server/run-status-derivation.test.ts` asserting the queue row and the detail panel against each other; left: D2–D5, D11, and every number this section still owes
+> 2026-08-21 | track-d3 | D3 DONE (`1b13115f`, guard `5c36a82d`); left: ten rows. Nothing in this section's budgets moved — D3 is a settlement refactor with zero measured surface
+> 2026-08-25 | 03a reconciliation | the status block now matches the landed tree: D1–D5 + D11 are complete; D4/D5's BEFORE/AFTER measurements are recorded in this section; D6–D10 remain proposed and outside doc 03a's Track-D exit gate
 <!-- /roadmap-status -->
 
 ---
@@ -2185,7 +2493,7 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 | # | Criterion | State |
 |---|---|---|
 | 1 | every production product surface in §1.1 is served by the matrix in §5 | **partial** — Group People and OCR Review have no surface; Settings is read-only; the phone surface has no production delivery path (§6.9) |
-| 2 | the production app contains no workflow-specific registry, route switch, raw tracker model, direct component transport, or client-authored command policy | **partial** — held by guards for every clause except the ONE named registry import (§4, D264 row D11); no served route names a workflow and no `TrackerEntry` type exists |
+| 2 | the production app contains no workflow-specific registry, route switch, raw tracker model, direct component transport, or client-authored command policy | **MET** 2026-08-21 — the last clause closed with D264 row D11: the registry import is gone and `dashboard-wire-boundary` arm (15) refuses any dashboard entry whose closure reaches `src/workflows/**` or `src/control/**`. No served route names a workflow and no `TrackerEntry` type exists |
 | 3 | bootstrap, snapshots, detail sections, stream envelopes, commands, and artifacts all parse strict runtime schemas | **met** — `strict-boundary-schemas`, recursively strict, unknown keys refused |
 | 4 | reconnect/gap/reset and command conflict/idempotency paths are visibly and mechanically proven | **partial** — mechanically yes (`client-transport`, `command-kernel`, `commands-authority`, `command-result-exhaustive`); **visibly no** — no reference photographs a disconnected, degraded, read-only or conflicted state (§7.1) |
 | 5 | all authoritative counts and reports reconcile from the one projection family | **met** — `one-projection-counts`, with D236's carve-out bounded by its own arm |
@@ -2201,6 +2509,7 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 - [~] 1 · 2 · 4 · 7 — partial, each with exactly one named blocker in the table above
 - [ ] 9 the complete reference matrix — Settings and the Session Panel are unroutable in the harness; keyboard/reduced-motion exist in one theme (§7.1)
 - [ ] 11 the cutover rehearsal — the isolation half is proven; the rehearsal itself has not run, and `--prod` must first mean what its name says (§6.9)
-- [ ] §7.4's budgets, which doc 05's exit criteria also gate on — normative and never measured; Track D's D4/D5 supply the first numbers
+- [x] §7.4's Track-D budgets — the 2026-08-21 instrument records the shared-fixture baseline and both D4/D5 AFTER rows; D9's later browser/virtualization measurement remains its own proposed work
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified each of the eleven criteria against the guard suite, the parity corpus and the served routes; left: 9 and 11 outright, four partials with one named blocker each, and the budgets
+> 2026-08-25 | 03a reconciliation | §7.4's D4/D5 budget row is MET; the other partial/unmet integration criteria above are unchanged
 <!-- /roadmap-status -->

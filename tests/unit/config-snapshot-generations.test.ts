@@ -85,7 +85,11 @@ describe("pre-D125 config snapshots are read forward", () => {
     // session-acquire bound at all, and the record must not claim it held 60s.
     assert.equal(record.config.timeouts.sessionAcquireMs, undefined);
     assert.deepEqual(configSnapshotAbsentLeaves(record.config), ["timeouts.sessionAcquireMs"]);
-    assert.equal(configSnapshotGeneration(record.config), CURRENT_CONFIG_SNAPSHOT_GENERATION - 1);
+    // A snapshot missing generation 2's leaf IS generation 1, whatever later
+    // leaves (D267's generation-3 grace) the fixture happens to carry: the
+    // generation is the last one whose every introduced leaf is present.
+    assert.equal(configSnapshotGeneration(record.config), 1);
+    assert.ok(CURRENT_CONFIG_SNAPSHOT_GENERATION >= 3);
     // Every other leaf still parsed strictly.
     assert.equal(record.config.timeouts.taskMs, currentConfig().timeouts.taskMs);
   });

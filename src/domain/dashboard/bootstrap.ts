@@ -5,10 +5,12 @@ import {
   FingerprintSchema,
   IsoInstantSchema,
   LocalOperatorActorSchema,
+  PositiveIntSchema,
   WorkflowIdSchema,
 } from "../ids.js";
+import { InputRunSurfaceSchema } from "../workflow/ingress.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
-import { WorkflowCodeSchema } from "../workflow/presentation.js";
+import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
 import {
   AppVersionSchema,
   DashboardWireVersionSchema,
@@ -78,6 +80,64 @@ export const StorageHealthSummaryWireSchema = z.strictObject({
  * category rule, so no two workflow-listing surfaces can disagree about what is
  * a step and what is a workflow.
  */
+/**
+ * The Run Modal's start facts for ONE workflow (D264, amending D251).
+ *
+ * D251 read these three off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple, on
+ * the argument that serving a fact the bundle already carries would give the
+ * surface two sources for one value. The argument was right about the two
+ * sources and wrong about the price: holding the tuple in the browser bundle
+ * ships every registered workflow's whole descriptor closure — graphs, node
+ * specs, contracts, the base builders that mint them — so an operator downloads
+ * the composition root to read three plain-data fields. D264 amends it the
+ * other way round: the fields are SERVED, the tuple leaves the bundle
+ * (`dashboard-wire-boundary`'s registry-reach arm holds that), and there is
+ * still exactly one source — this block is projected from the same descriptor
+ * the daemon plans with, at the composition root.
+ *
+ * It carries exactly what the modal reads and nothing else, and it is strict,
+ * so a fourth fact is a wire change somebody has to write down rather than a
+ * field that quietly appears. What each one is:
+ *
+ * - `summary` — the descriptor's own one-line "what this does", drawn under the
+ *   picker's selection. Optional because a descriptor may declare none, and an
+ *   invented sentence about a real HR workflow is worse than a missing one.
+ * - `enqueue` — the policy the PLANNER applies (`services/start/plan.ts` reads
+ *   `descriptor.enqueue` and accepts no per-start override), stated to the
+ *   operator before they confirm. Required: every descriptor declares it, and
+ *   the client's old `?? "reject-active"` was a fail-closed guess standing in
+ *   for a fact the server always had.
+ * - `inputRun` — D250's typed-input door, examples and all. Its ABSENCE is the
+ *   served fact that this workflow has no typed start surface; the modal
+ *   renders that absence rather than empty scaffolding.
+ *
+ * - `version` — the descriptor's own version, printed in the modal's footer as
+ *   `{label} v{n}` (ledger 1 C96, `DemoRunStart.tsx:946`). It answers the one
+ *   question a confirmation dialog owes an operator that the label cannot:
+ *   WHICH shape of this workflow is about to run, which is the same fact the
+ *   archive's row-token tooltip prints beside every stored run. Required for
+ *   D264's reason: a descriptor always declares one, and an optional version
+ *   leaves the client guessing `v1` — a wrong statement about every workflow
+ *   that has ever been bumped.
+ *
+ *   It is a single positive integer, NOT the demo's `{major, minor}` pair:
+ *   `defineWorkflowDescriptor` admits one positive integer and this tree
+ *   records no minor anywhere, so serving a `.0` would be a digit nobody wrote
+ *   rendered on the last screen before a real HR transaction starts.
+ *
+ * `uploadRun` is deliberately NOT here. No registered workflow declares one and
+ * no surface reads one (ref frontend-backend-integration, run-start's header) — serving an arm
+ * nothing can produce is the D181/`degraded` shape, and it belongs in the commit
+ * that adds the first upload surface.
+ */
+export const WorkflowStartWireSchema = z.strictObject({
+  summary: z.string().min(1).optional(),
+  enqueue: EnqueuePolicySchema,
+  version: PositiveIntSchema,
+  inputRun: InputRunSurfaceSchema.optional(),
+});
+export type WorkflowStartWire = z.infer<typeof WorkflowStartWireSchema>;
+
 export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   id: WorkflowIdSchema,
   code: WorkflowCodeSchema,
@@ -86,6 +146,7 @@ export const WorkflowBootstrapPrimitiveSchema = z.strictObject({
   descriptorFingerprint: FingerprintSchema,
   availability: CapabilityAvailabilitySchema,
   role: WorkflowModuleRoleSchema,
+  start: WorkflowStartWireSchema,
 });
 export const SystemInstancePrimitiveSchema = z.strictObject({
   system: BrowserSystemIdSchema,

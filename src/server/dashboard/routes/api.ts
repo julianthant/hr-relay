@@ -11,7 +11,6 @@
  */
 import { Hono } from "hono";
 import { z } from "zod";
-import { WireErrorSchema } from "../../../domain/dashboard/primitives.js";
 import type { DashboardStreamEnvelope } from "../../../domain/dashboard/subscription.js";
 import type { DashboardCommandService } from "../commands/command-service.js";
 import type { IntakeService } from "../commands/intake-service.js";
@@ -28,16 +27,21 @@ import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explor
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
 import { buildRunAdvisory, type AdvisoryQueryDeps } from "../queries/advisory.js";
+import { readDiagnosticBundle, type DiagnosticBundleQueryDeps } from "../queries/diagnostic-bundle.js";
 import { buildArchiveIndex, buildArchivedRunDetail, type ArchiveQueryDeps } from "../queries/archive.js";
 import { activityReportCsv, activityReportCsvFileName } from "../queries/activity-export.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DashboardStreamHub } from "../subscriptions/dashboard-stream.js";
-import { errorText } from "../support.js";
+import { SectionUnavailableError } from "../../failures.js";
+import { PositiveIntSchema, ProjectionCursorSchema } from "../../../domain/ids.js";
+import { failureStatus, wireError } from "./failure-status.js";
 
 export interface DashboardAppDeps {
   readonly bootstrap: BootstrapQueryDeps;
   readonly projection: RunQueueProjection;
   readonly runDetail: RunDetailQueryDeps;
+  /** D137 bundle readback; exact-id routes verify durable row and bytes before serving. */
+  readonly diagnosticBundles?: DiagnosticBundleQueryDeps;
   /** Ref dashboard-surfaces §10.2's read-only Archive + the live version-bump state (2i-G, D179). */
   readonly archive: ArchiveQueryDeps;
   readonly commands: DashboardCommandService;
@@ -67,36 +71,20 @@ export interface DashboardAppDeps {
   readonly capturePhoneAssetPaths?: ReadonlySet<string>;
 }
 
-const NOT_FOUND_MARKERS = [
-  "is not registered",
-  "does not exist",
-  "has no span fold",
-  "not in authority",
-] as const;
-
-function wireError(code: string, message: string, retryable: boolean): Record<string, unknown> {
-  return WireErrorSchema.parse({ state: "error", code, message, retryable });
-}
-
-function failureStatus(error: unknown): { status: 400 | 404 | 409 | 500; body: Record<string, unknown> } {
-  if (error instanceof z.ZodError) {
-    return { status: 400, body: wireError("SCHEMA_INVALID", z.prettifyError(error), false) };
-  }
-  const message = errorText(error);
-  if (NOT_FOUND_MARKERS.some((marker) => message.includes(marker))) {
-    return { status: 404, body: wireError("TARGET_NOT_FOUND", message, false) };
-  }
-  if (message.includes("is not available")) {
-    return { status: 409, body: wireError("SECTION_UNAVAILABLE", message, false) };
-  }
-  if (message.includes("degraded")) {
-    return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };
-  }
-  return { status: 500, body: wireError("INTERNAL_FAILURE", message, false) };
-}
-
 const DayQuerySchema = z.iso.date();
 const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
+const StreamResumeSchema = z.strictObject({
+  lastEventId: ProjectionCursorSchema.optional(),
+  lastProjectionGeneration: PositiveIntSchema.optional(),
+}).superRefine((resume, context) => {
+  if (resume.lastProjectionGeneration !== undefined && resume.lastEventId === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["lastProjectionGeneration"],
+      message: "a projection generation can resume only the cursor it qualifies",
+    });
+  }
+});
 
 function sseSerialize(envelope: DashboardStreamEnvelope): string {
   const id = "cursor" in envelope ? `id: ${envelope.cursor}\n` : "";
@@ -214,6 +202,29 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   app.get("/api/v1/runs/:runId", (c) => c.json(buildRunDetail(deps.runDetail, c.req.param("runId"))));
 
+  app.get("/api/v1/diagnostic-bundles/:bundleId", async (c) => {
+    if (deps.diagnosticBundles === undefined) {
+      throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
+    }
+    const bundle = await readDiagnosticBundle(deps.diagnosticBundles, c.req.param("bundleId"));
+    return c.json(bundle.wire);
+  });
+
+  app.get("/api/v1/diagnostic-bundles/:bundleId/manifest", async (c) => {
+    if (deps.diagnosticBundles === undefined) {
+      throw new SectionUnavailableError("diagnostic bundle readback is not available: no diagnostic bundle authority is composed");
+    }
+    const bundle = await readDiagnosticBundle(deps.diagnosticBundles, c.req.param("bundleId"));
+    return new Response(bundle.manifest, {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="${bundle.wire.bundleId}.json"`,
+        "cache-control": "no-store",
+      },
+    });
+  });
+
   app.get("/api/v1/runs/:runId/:section", (c) => {
     const cursor = c.req.query("cursor");
     return c.json(buildRunSection(
@@ -233,7 +244,9 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
    */
   app.post("/api/v1/runs/:runId/advisory", async (c) => {
     if (deps.advisory === undefined) {
-      throw new Error("the failure advisory is not available: no ai.advisory provider is composed");
+      throw new SectionUnavailableError(
+        "the failure advisory is not available: no ai.advisory provider is composed",
+      );
     }
     return c.json(await buildRunAdvisory(deps.advisory, c.req.param("runId")));
   });
@@ -400,16 +413,24 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     return c.json(result, result.state === "refused" ? 422 : 200);
   });
 
-  app.get("/events/v1", (c) => {
+  app.get("/events/v1", async (c) => {
     const topics = z.string()
       .regex(TOPICS_PATTERN, "topics must be dashboard-day:<YYYY-MM-DD>")
       .parse(c.req.query("topics"));
     const match = TOPICS_PATTERN.exec(topics);
     if (match === null) throw new Error(`topics ${topics} passed its schema but did not match; refusing to subscribe`);
-    const lastEventId = c.req.header("Last-Event-ID") ?? c.req.query("cursor");
-    const connection = deps.hub.connect({
+    const rawLastEventId = c.req.header("Last-Event-ID") ?? c.req.query("cursor");
+    const rawLastProjectionGeneration = c.req.header("Dashboard-Projection-Generation")
+      ?? c.req.query("projectionGeneration");
+    const resume = StreamResumeSchema.parse({
+      ...(rawLastEventId === undefined ? {} : { lastEventId: rawLastEventId }),
+      ...(rawLastProjectionGeneration === undefined
+        ? {}
+        : { lastProjectionGeneration: Number(rawLastProjectionGeneration) }),
+    });
+    const connection = await deps.hub.connect({
       day: match[1],
-      ...(lastEventId === undefined ? {} : { lastEventId }),
+      ...resume,
     });
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({

@@ -218,8 +218,13 @@ wire — and until the first descriptor declares a preset there is nothing for t
   chose; both would have to reach `QueueSurfaceWire` at projection time. Read-forward per D133 —
   a run enqueued before the field existed reports its absence with the reason, and rows archived
   from then on carry it forward automatically, exactly as `dryRun` did (commit 446e7d7).
-- **Already closed:** `dryRun` LANDED on `QueueBaseFields` 2026-08-14 (446e7d7) and the archived
-  detail draws it.
+- **`dryRun` LANDED, `priority`/`warnings`/`displayName`/`subtitle` DID NOT reach the archived
+  detail (corrected 2026-08-21).** `dryRun` was served on `QueueBaseFields` 2026-08-14 (446e7d7),
+  and is present on `detail.row` — but `archive.tsx` reads it nowhere (`grep -n dryRun
+  src/dashboard/surfaces/archive.tsx` → 0 hits). The same is true of `priority`, `warnings`,
+  `displayName` and `subtitle`: all five are served on `detail.row` and read by nothing in
+  `archive.tsx` (ledger 3 AR62, AR67, AR95, AR96, AR121, AR123). Drawing them on the archived
+  detail is Track F's sibling unit F3's, not this file's.
 
 ---
 

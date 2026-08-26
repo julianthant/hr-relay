@@ -63,9 +63,15 @@ export const CONFIG_SNAPSHOT_GENERATIONS = deepFreeze([
     introduced: ["timeouts.sessionAcquireMs"],
     leafDigest: "8cb95d3cdf4ed5012a3e4ba69a9d496f5c86ef38ba0ed3e0da44efc0647af3d8",
   },
+  {
+    generation: 3,
+    decision: "D267",
+    introduced: ["timeouts.duoCeremonyLeaseGraceMs"],
+    leafDigest: "fc5c224d9378ec31213cc9b9d86f2ddc619354a38ca798ab538c51e5c9b3cb17",
+  },
 ] as const satisfies readonly ConfigSnapshotGeneration[]);
 
-export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 2;
+export const CURRENT_CONFIG_SNAPSHOT_GENERATION = 3;
 
 /**
  * The leaves introduced after the baseline generation — precisely the leaves a
@@ -103,8 +109,9 @@ export function configLeafDigest(paths: readonly string[]): string {
 export const StoredConfigSchema = z.strictObject({
   actor: ConfigSchema.shape.actor.unwrap(),
   urls: ConfigSchema.shape.urls.unwrap(),
-  // Generation 2 (D125) introduced `timeouts.sessionAcquireMs`.
-  timeouts: ConfigSchema.shape.timeouts.unwrap().partial({ sessionAcquireMs: true }),
+  // Generation 2 (D125) introduced `timeouts.sessionAcquireMs`; generation 3
+  // (D267) introduced `timeouts.duoCeremonyLeaseGraceMs`.
+  timeouts: ConfigSchema.shape.timeouts.unwrap().partial({ sessionAcquireMs: true, duoCeremonyLeaseGraceMs: true }),
   paths: ConfigSchema.shape.paths,
   annualDates: ConfigSchema.shape.annualDates.unwrap(),
   operator: ConfigSchema.shape.operator.unwrap(),

@@ -84,10 +84,9 @@ export interface EventStreamLine {
   readonly text: string;
 }
 
-/** Every non-empty line of a stream, in (date, workflow, line) order. */
-export function readEventStreamLines(stateRoot: string, stream: EventStream): readonly EventStreamLine[] {
+function readWholeFiles(files: readonly EventStreamFile[]): readonly EventStreamLine[] {
   const lines: EventStreamLine[] = [];
-  for (const file of listEventStreamFiles(stateRoot, stream)) {
+  for (const file of files) {
     const rows = readFileSync(file.path, "utf8").split("\n");
     for (const [index, text] of rows.entries()) {
       if (text === "") continue;
@@ -95,6 +94,74 @@ export function readEventStreamLines(stateRoot: string, stream: EventStream): re
     }
   }
   return lines;
+}
+
+/** Every non-empty line of a stream, in (date, workflow, line) order. */
+export function readEventStreamLines(stateRoot: string, stream: EventStream): readonly EventStreamLine[] {
+  return readWholeFiles(listEventStreamFiles(stateRoot, stream));
+}
+
+/**
+ * The partitions ONE reader may open (D5, ref frontend-backend-integration §7.4).
+ *
+ * These directories are partitioned by `(workflow, date)` in the file NAME, so
+ * a reader that wants one workflow's lines over one date range never has to
+ * open — let alone parse — the rest of the corpus. That is the whole finding
+ * behind audit P3: a logs GET read every byte of every workflow's every day to
+ * serve thirteen lines, and the corpus grows for as long as the tool runs.
+ *
+ * The scope is INCLUSIVE at both ends and fails loud on an inverted range: a
+ * `from` after `to` selects nothing, and silently serving zero lines for a run
+ * that has them would report real history as absent. A workflow whose id could
+ * never appear in a file name is refused for the same reason — it would scope
+ * to nothing while looking like a run with no notes.
+ */
+export interface EventStreamScope {
+  readonly workflow: string;
+  /** Inclusive `YYYY-MM-DD` lower bound on the partition date. */
+  readonly fromDate: string;
+  /** Inclusive `YYYY-MM-DD` upper bound on the partition date. */
+  readonly toDate: string;
+}
+
+const WORKFLOW_SEGMENT_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** The files `readScopedEventStreamLines` would open, without reading them. */
+export function scopedEventStreamFiles(
+  stateRoot: string,
+  stream: EventStream,
+  scope: EventStreamScope,
+): readonly EventStreamFile[] {
+  const fromDate = DateOnlySchema.parse(scope.fromDate);
+  const toDate = DateOnlySchema.parse(scope.toDate);
+  if (fromDate > toDate) {
+    throw new Error(
+      `refusing to scope ${stream}/ to ${scope.workflow} over ${fromDate}..${toDate}: the range is inverted, `
+      + "and an empty scope would report a run's own lines as absent",
+    );
+  }
+  if (!WORKFLOW_SEGMENT_PATTERN.test(scope.workflow)) {
+    throw new Error(
+      `refusing to scope ${stream}/ to workflow ${scope.workflow}: no ${stream} partition file can carry that `
+      + "id, so the scope would silently select nothing",
+    );
+  }
+  return listEventStreamFiles(stateRoot, stream).filter(
+    (file) => file.workflow === scope.workflow && file.date >= fromDate && file.date <= toDate,
+  );
+}
+
+/**
+ * Every non-empty line of ONE workflow's partitions inside `scope`, in the same
+ * (date, workflow, line) order `readEventStreamLines` returns — so a caller that
+ * narrows its scope gets a SUBSEQUENCE of the unscoped read, never a reordering.
+ */
+export function readScopedEventStreamLines(
+  stateRoot: string,
+  stream: EventStream,
+  scope: EventStreamScope,
+): readonly EventStreamLine[] {
+  return readWholeFiles(scopedEventStreamFiles(stateRoot, stream, scope));
 }
 
 export interface EventStreamFileCursor {

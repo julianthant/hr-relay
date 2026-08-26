@@ -37,6 +37,7 @@ function surfaceOf(rowRevision: number, status = "queued"): Record<string, unkno
     dryRun: false,
   priority: "interactive",
   runNumber: { state: "present", value: 1 },
+  session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
   containment: "root",
   linkedRuns: [],
   facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
@@ -73,6 +74,7 @@ function dayOf(surfaces: readonly Record<string, unknown>[]): DashboardDayWire {
     statusCounts: surfaces.length === 0 ? [] : [{ status: "queued", count: surfaces.length }],
     queueSurfaces: surfaces,
     workerCards: [],
+    workerPools: [],
     notifications: [],
   });
 }
@@ -166,6 +168,7 @@ interface ScriptedStream {
   push(envelope: Record<string, unknown>, id?: string): void;
   fail(): void;
   readonly lastEventId: string | undefined;
+  readonly lastProjectionGeneration: string | undefined;
 }
 
 function scriptedFetch(): {
@@ -185,6 +188,7 @@ function scriptedFetch(): {
     });
     const stream: ScriptedStream = {
       lastEventId: headers.get("last-event-id") ?? undefined,
+      lastProjectionGeneration: headers.get("dashboard-projection-generation") ?? undefined,
       push: (envelope, id) => {
         const idLine = id === undefined ? "" : `id: ${id}\n`;
         controller.enqueue(encoder.encode(`${idLine}data: ${JSON.stringify(envelope)}\n\n`));
@@ -241,6 +245,7 @@ describe("resumable subscription protocol", () => {
     await tick();
     assert.equal(streams.length, 2);
     assert.equal(streams[1].lastEventId, "pc:2");
+    assert.equal(streams[1].lastProjectionGeneration, "7");
     assert.equal(states.some(({ state }) => state === "reconnecting"), true);
     subscription.close();
   });

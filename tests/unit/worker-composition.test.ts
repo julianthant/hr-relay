@@ -17,10 +17,15 @@ import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
 import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
-import { createPhase1WorkerRuntimeExecutor, phase1WorkerId } from "../../src/core/worker-loop.js";
+import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId } from "../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
-import { WorkflowIdSchema } from "../../src/domain/ids.js";
+import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
+import type { PositiveInt } from "../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import {
+  observeProcessIdentity,
+  observeRuntimeLockSnapshot,
+} from "../../src/infra/sqlite/runtime-process-locks.js";
 import { createDashboardWorkerSupervisor } from "../../src/server/dashboard/compose.js";
 import {
   composeWorkerRuntime,
@@ -38,6 +43,7 @@ import {
   type SessionFactoryHarness,
 } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory, ITEM_ID, RUN_ID, WORKFLOW_ID } from "./fixtures/phase1f-run-fixtures.js";
+import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "./fixtures/archive-fixtures.js";
 
@@ -50,6 +56,8 @@ afterEach(() => {
 });
 
 const NOW = "2026-08-03T09:00:00.000Z";
+const POOL_INDEX_1 = PositiveIntSchema.parse(1);
+const POOL_INDEX_2 = PositiveIntSchema.parse(2);
 
 function repoRootWithState(): { repoRoot: string; stateRoot: string } {
   const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-worker-compose-"));
@@ -85,19 +93,28 @@ function composeInput(options: Readonly<{
   repoRoot: string;
   clock: TestClock;
   sessions: SessionFactoryHarness;
+  poolIndex: PositiveInt;
+  processId?: number;
   args?: readonly string[];
   stopSignal?: AbortSignal;
   lines?: string[];
 }>) {
   return {
     isolation: rebuildRuntimeIsolation,
-    args: options.args ?? [WORKFLOW_ID, "--drain"],
+    args: options.args ?? [WORKFLOW_ID, "--pool-index", String(options.poolIndex), "--drain"],
     env: {},
     clock: options.clock,
     ids: sequentialIdFactory("c"),
     repoRoot: options.repoRoot,
-    processId: 4242,
+    processId: options.processId ?? 4242,
+    processIdentityObserver: (pid: number) => pid === process.pid
+      ? observeProcessIdentity(pid)
+      : {
+          state: "alive" as const,
+          identity: { platform: "darwin" as const, startToken: `synthetic-${String(pid)}` },
+        },
     sessionFactory: options.sessions.factory,
+    duoCeremony: fixtureDuoCeremonyGates(options.clock),
     stopSignal: options.stopSignal ?? new AbortController().signal,
     // Long enough that no scheduled beat fires during a test; the boot beat is
     // synchronous, so the lease/sweep path is still exercised.
@@ -110,16 +127,115 @@ function composeInput(options: Readonly<{
 }
 
 describe("worker CLI argument parsing", () => {
-  it("accepts a registered workflow with --drain and refuses everything else by name", () => {
-    assert.deepEqual(parseWorkerArguments([WORKFLOW_ID]), { workflowId: WORKFLOW_ID, drain: false });
-    assert.deepEqual(parseWorkerArguments([WORKFLOW_ID, "--drain"]), { workflowId: WORKFLOW_ID, drain: true });
+  it("accepts an explicit positive pool index", () => {
+    assert.deepEqual(parseWorkerArguments([WORKFLOW_ID, "--pool-index", "2", "--drain"]), {
+      workflowId: WORKFLOW_ID,
+      poolIndex: POOL_INDEX_2,
+      drain: true,
+    });
+  });
+
+  it("refuses absent, malformed, zero, and duplicate pool-index flags", () => {
+    assert.throws(() => parseWorkerArguments([WORKFLOW_ID]), /requires --pool-index/);
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "many"]),
+      /must be a positive integer; received many/,
+    );
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "0"]),
+      /must be a positive integer; received 0/,
+    );
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "1", "--pool-index", "2"]),
+      /duplicate worker flag: --pool-index/,
+    );
+    const oversized = "999999999999999999999999999999";
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", oversized]),
+      new RegExp(`--pool-index.*${oversized}`, "u"),
+    );
+  });
+
+  it("refuses missing values, duplicate drain flags, and unknown flags by name", () => {
     assert.throws(() => parseWorkerArguments([]), /needs a workflow id/);
     assert.throws(() => parseWorkerArguments(["not-registered"]), /is not registered/);
-    assert.throws(() => parseWorkerArguments([WORKFLOW_ID, "--headed"]), /unknown worker flag: --headed/);
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "--drain"]),
+      /requires a positive integer value/,
+    );
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "1", "--drain", "--drain"]),
+      /duplicate worker flag: --drain/,
+    );
+    assert.throws(
+      () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "1", "--headed"]),
+      /unknown worker flag: --headed/,
+    );
   });
 });
 
 describe("composed worker runtime", () => {
+  it("releases its process record when authority open fails without masking that error", async () => {
+    const { repoRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    const openFailure = new Error("injected authority open failure");
+    await assert.rejects(
+      composeWorkerRuntime({
+        ...composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: POOL_INDEX_1,
+          processId: process.pid,
+        }),
+        openDatabase: () => {
+          throw openFailure;
+        },
+      }),
+      (error: unknown) => error === openFailure,
+    );
+    const snapshot = observeRuntimeLockSnapshot({
+      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
+      sourceDatabaseIdentity: "a".repeat(64),
+    }, clock);
+    assert.deepEqual(snapshot.processLocks.workers, { state: "stopped", generation: 2 });
+  });
+
+  it("keeps its process record active when database closure cannot be proven", async () => {
+    const { repoRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+    const closeFailure = new Error("injected database close failure");
+    let stillOpen: AuthorityDatabase | undefined;
+    await assert.rejects(
+      composeWorkerRuntime({
+        ...composeInput({
+          repoRoot,
+          clock,
+          sessions: happySessionHarness(),
+          poolIndex: POOL_INDEX_1,
+          processId: process.pid,
+        }),
+        closeDatabase: (database) => {
+          stillOpen = database;
+          throw closeFailure;
+        },
+      }),
+      (error: unknown) => error === closeFailure,
+    );
+    assert.ok(stillOpen !== undefined);
+    assert.doesNotThrow(() => stillOpen?.getMeta(), "the injected close failure left the handle usable");
+    const snapshot = observeRuntimeLockSnapshot({
+      processLockRoot: join(repoRoot, rebuildRuntimeIsolation.processLockRoot),
+      sourceDatabaseIdentity: "a".repeat(64),
+    }, clock);
+    assert.deepEqual(snapshot.processLocks.workers, {
+      state: "active",
+      generation: 2,
+      pid: process.pid,
+    });
+    stillOpen.close();
+  });
+
   it("builds the whole dependency graph and drains a queued run to done", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
@@ -127,7 +243,9 @@ describe("composed worker runtime", () => {
     const sessions = happySessionHarness();
     const lines: string[] = [];
 
-    const report = await composeWorkerRuntime(composeInput({ repoRoot, clock, sessions, lines }));
+    const report = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions, lines, poolIndex: POOL_INDEX_1,
+    }));
 
     assert.equal(report.workflowId, WORKFLOW_ID);
     assert.equal(report.workerId, phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID)));
@@ -158,11 +276,36 @@ describe("composed worker runtime", () => {
     assert.deepEqual(sessions.closeReasons(), ["worker-stop", "worker-stop"]);
   });
 
+  it("composes distinct stable identities for members of one workflow pool", async () => {
+    const { repoRoot, stateRoot } = repoRootWithState();
+    const clock = manualClock(new Date(NOW));
+
+    const first = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+    }));
+    const second = await composeWorkerRuntime(composeInput({
+      repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_2,
+    }));
+
+    const expected = [
+      poolWorkerId(WorkflowIdSchema.parse(WORKFLOW_ID), POOL_INDEX_1),
+      poolWorkerId(WorkflowIdSchema.parse(WORKFLOW_ID), POOL_INDEX_2),
+    ];
+    const database = reopen(stateRoot, clock);
+    assert.deepEqual({
+      reports: [first.workerId, second.workerId],
+      authorityLeases: expected.map((workerId) => database.authority.workerLeases.get(workerId)?.workerId),
+    }, {
+      reports: expected,
+      authorityLeases: expected,
+    });
+  });
+
   it("refuses a second process answering to the same worker id", async () => {
     const { repoRoot, stateRoot } = repoRootWithState();
     const clock = manualClock(new Date(NOW));
     seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
-    const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
+    const workerId = poolWorkerId(WorkflowIdSchema.parse(WORKFLOW_ID), POOL_INDEX_1);
     const database = reopen(stateRoot, clock);
     assert.equal(database.authority.workerLeases.start({
       workerId,
@@ -173,7 +316,9 @@ describe("composed worker runtime", () => {
     }).state, "started");
 
     await assert.rejects(
-      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: happySessionHarness() })),
+      composeWorkerRuntime(composeInput({
+        repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
+      })),
       /a second process may not answer to the same worker id/,
     );
   });
@@ -201,7 +346,7 @@ describe("composed worker runtime", () => {
 
     const lines: string[] = [];
     const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines,
+      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
     }));
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     const lease = seed.authority.workerLeases.get(workerId);
@@ -234,7 +379,7 @@ describe("composed worker runtime", () => {
 
     const lines: string[] = [];
     const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines,
+      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
     }));
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     assert.ok(
@@ -287,7 +432,7 @@ describe("composed worker runtime", () => {
 
     const lines: string[] = [];
     const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(), lines,
+      repoRoot, clock, sessions: happySessionHarness(), lines, poolIndex: POOL_INDEX_1,
     }));
     // Nothing was claimable, so the drain reports idle with no outcomes at all.
     assert.deepEqual(report.outcomes, []);
@@ -323,7 +468,7 @@ describe("composed worker runtime", () => {
     const stop = new AbortController();
 
     const running = composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions, stopSignal: stop.signal,
+      repoRoot, clock, sessions, stopSignal: stop.signal, poolIndex: POOL_INDEX_1,
     }));
     await driverStarted;
     stop.abort(new Error("operator pressed Ctrl-C"));
@@ -367,7 +512,9 @@ describe("composed worker runtime", () => {
     };
 
     await assert.rejects(
-      composeWorkerRuntime(composeInput({ repoRoot, clock, sessions: unprovable })),
+      composeWorkerRuntime(composeInput({
+        repoRoot, clock, sessions: unprovable, poolIndex: POOL_INDEX_1,
+      })),
       (error: unknown) => error instanceof AggregateError
         && error.errors.some((failure: unknown) => failure instanceof Error
           && /did not close within its bounded deadline/.test(failure.message)),
@@ -397,7 +544,7 @@ describe("composed worker runtime", () => {
     }).state, "applied");
 
     const report = await composeWorkerRuntime(composeInput({
-      repoRoot, clock, sessions: happySessionHarness(),
+      repoRoot, clock, sessions: happySessionHarness(), poolIndex: POOL_INDEX_1,
     }));
     assert.deepEqual(report.outcomes.map(({ state }) => state), ["done"]);
     const lease = seed.authority.workerLeases.get(workerId);
@@ -489,14 +636,21 @@ describe("dashboard-composed worker-browser command arms", () => {
     const harness = kernelHarness();
     const workerId = phase1WorkerId(WorkflowIdSchema.parse(WORKFLOW_ID));
 
+    // D269: the pool version is the CAS basis — 0 for a workflow nobody has
+    // planned; the applied plan creates the row at version 1.
     const planned = harness.kernel.execute({
       ...envelope(),
       type: "plan-worker-count",
-      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 0 },
       payload: { desiredWorkers: 1 },
     });
     assert.equal(planned.state, "applied");
-    assert.deepEqual(planned.affectedTargets, [{ family: "worker-browser", workerId }]);
+    assert.deepEqual(planned.affectedTargets, [
+      { family: "worker-pool", workflowId: WORKFLOW_ID },
+      { family: "worker-browser", workerId },
+    ]);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID)?.version, 1);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID)?.desiredWorkers, 1);
 
     assert.equal(harness.database.authority.workerLeases.start({
       workerId, workflow: WORKFLOW_ID, processId: 11, requestedBy: "local-operator", now: NOW,
@@ -525,12 +679,15 @@ describe("dashboard-composed worker-browser command arms", () => {
       () => harness.kernel.execute({
         ...envelope(commandId),
         type: "plan-worker-count",
-        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 0 },
         payload: { desiredWorkers: 3 },
       }),
       /exactly one worker per workflow/,
     );
     assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    // D269: the runtime's refusal unwinds the pool write with the command —
+    // no declaration of 3 workers survives a count the runtime refused.
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID), undefined);
   });
 
   it("keeps spawn-worker unavailable in the dashboard process and names the CLI path", () => {
@@ -540,7 +697,7 @@ describe("dashboard-composed worker-browser command arms", () => {
       () => harness.kernel.execute({
         ...envelope(commandId),
         type: "spawn-worker",
-        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 0 },
         payload: { workerId: EXECUTOR_WORKER_ID },
       }),
       /does not launch browser workers .*cli worker person-lookup/s,

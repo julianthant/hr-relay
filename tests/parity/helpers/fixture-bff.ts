@@ -12,6 +12,7 @@ import { extname, join, normalize } from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import { assertServedBundle, type ParityBundleProof } from "./bundle.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
@@ -24,6 +25,8 @@ import {
   FIXTURE_COMMAND_RESULTS,
   FIXTURE_DAY,
   FIXTURE_DAY_WIRE,
+  FIXTURE_DIAGNOSTIC_BUNDLE,
+  FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST,
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_IDS,
   FIXTURE_RUN_DETAILS,
@@ -80,12 +83,15 @@ export function fixtureHelloEnvelope(profile: FixtureDashboardProfile = DEFAULT_
   });
 }
 
-export function fixtureSnapshotEnvelope(profile: FixtureDashboardProfile = DEFAULT_DASHBOARD_PROFILE): DashboardStreamEnvelope {
+export function fixtureSnapshotEnvelope(
+  dayWire: DashboardDayWire = FIXTURE_DAY_WIRE,
+  cursor = "pc:1",
+): DashboardStreamEnvelope {
   return DashboardStreamEnvelopeSchema.parse({
     type: "snapshot",
     topic: "dashboard-day",
-    cursor: "pc:1",
-    payload: profile.day,
+    cursor,
+    payload: dayWire,
   });
 }
 
@@ -113,10 +119,11 @@ const CaptureOrderProbeSchema = z.looseObject({
 });
 
 export function createFixtureBff(
-  input: Readonly<{ profile?: FixtureDashboardProfile }> = {},
+  input: Readonly<{ profile?: FixtureDashboardProfile; dayWire?: DashboardDayWire }> = {},
 ): { app: Hono } {
   const app = new Hono();
   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
+  const dayWire = input.dayWire ?? profile.day;
 
   app.get("/api/v1/bootstrap", (c) => c.json(profile.bootstrap as unknown));
 
@@ -125,7 +132,7 @@ export function createFixtureBff(
     if (day !== FIXTURE_DAY) {
       return c.json(wireError("TARGET_NOT_FOUND", `the fixture corpus serves only day ${FIXTURE_DAY}`), 404);
     }
-    return c.json(profile.day as unknown);
+    return c.json(dayWire as unknown);
   });
 
   app.get("/api/v1/runs/:runId", (c) => {
@@ -146,6 +153,26 @@ export function createFixtureBff(
       );
     }
     return c.json(section as unknown);
+  });
+
+  /** E29's fixture is exact-id only, just like the production route. */
+  app.get("/api/v1/diagnostic-bundles/:bundleId", (c) => {
+    if (c.req.param("bundleId") !== FIXTURE_DIAGNOSTIC_BUNDLE.bundleId) {
+      return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);
+    }
+    return c.json(FIXTURE_DIAGNOSTIC_BUNDLE as unknown);
+  });
+  app.get("/api/v1/diagnostic-bundles/:bundleId/manifest", (c) => {
+    if (c.req.param("bundleId") !== FIXTURE_DIAGNOSTIC_BUNDLE.bundleId) {
+      return c.json(wireError("TARGET_NOT_FOUND", `no fixture diagnostic bundle ${c.req.param("bundleId")}`), 404);
+    }
+    return new Response(canonicalJsonStringify(FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST), {
+      status: 200,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}.json"`,
+      },
+    });
   });
 
   app.post("/api/v1/start-plans", (c) => c.json(FIXTURE_START_PLAN as unknown));
@@ -332,14 +359,19 @@ async function serveStatic(distDir: string, pathname: string, res: ServerRespons
   }
 }
 
-function serveSse(res: ServerResponse, open: Set<ServerResponse>, profile: FixtureDashboardProfile): void {
+function serveSse(
+  res: ServerResponse,
+  open: Set<ServerResponse>,
+  profile: FixtureDashboardProfile,
+  dayWire: DashboardDayWire,
+): void {
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     connection: "keep-alive",
   });
   res.write(sseSerialize(fixtureHelloEnvelope(profile)));
-  res.write(sseSerialize(fixtureSnapshotEnvelope(profile)));
+  res.write(sseSerialize(fixtureSnapshotEnvelope(dayWire)));
   res.write(sseSerialize(fixtureHealthEnvelope()));
   const heartbeat = setInterval(() => {
     res.write(": ping\n\n");
@@ -360,25 +392,32 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
 export interface FixtureServer {
   readonly port: number;
   readonly baseUrl: string;
+  publish(envelope: DashboardStreamEnvelope): void;
   close(): Promise<void>;
 }
 
 export async function startFixtureServer(
-  input: Readonly<{ distDir: string; bundle: ParityBundleProof; profile?: FixtureDashboardProfile }>,
+  input: Readonly<{
+    distDir: string;
+    bundle: ParityBundleProof;
+    profile?: FixtureDashboardProfile;
+    dayWire?: DashboardDayWire;
+  }>,
 ): Promise<FixtureServer> {
   // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
   // Asserted BEFORE a port is bound, so a stale `dist/dashboard` can never be
   // reached over HTTP — and never leaks a listening socket on refusal.
   assertServedBundle(input.distDir, input.bundle);
   const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
-  const { app } = createFixtureBff({ profile });
+  const dayWire = input.dayWire ?? profile.day;
+  const { app } = createFixtureBff({ profile, dayWire });
   const openStreams = new Set<ServerResponse>();
 
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (url.pathname === "/events/v1") {
-        serveSse(res, openStreams, profile);
+        serveSse(res, openStreams, profile, dayWire);
         return;
       }
       if (url.pathname.startsWith("/api/")) {
@@ -411,6 +450,11 @@ export async function startFixtureServer(
   return Object.freeze({
     port: address.port,
     baseUrl: `http://127.0.0.1:${address.port}`,
+    publish(envelope: DashboardStreamEnvelope): void {
+      if (openStreams.size === 0) throw new Error("the fixture server has no open SSE stream to publish to");
+      const serialized = sseSerialize(DashboardStreamEnvelopeSchema.parse(envelope));
+      for (const stream of openStreams) stream.write(serialized);
+    },
     close: async (): Promise<void> => {
       for (const stream of openStreams) stream.destroy();
       server.closeAllConnections();

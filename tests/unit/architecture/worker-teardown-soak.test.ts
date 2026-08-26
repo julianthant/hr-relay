@@ -22,6 +22,7 @@
  * own claim on the way out would be guessing whether the browser it just lost
  * had already submitted something.
  */
+import { fixtureDuoCeremonyGates } from "../fixtures/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { runWorkerLoop, WorkerLoopReportSchema, type WorkerLoopDependencies } from "../../../src/core/worker-loop.js";
@@ -151,6 +152,7 @@ function workerHarness(
       scheduler,
       taskDeadlineMs: 60_000,
       sessionAcquireMs: 20_000,
+      duoCeremony: fixtureDuoCeremonyGates(authority.clock),
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
       idleRepollMs: 1_000,
       log: recordingLogger().log,
@@ -290,6 +292,7 @@ function teardownManager(factory: TeardownFactory): WorkerSessionManager {
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: fixtureDuoCeremonyGates(clock),
   });
   // Stand-in for the worker loop's per-run D116 bind.
   sessions.bindRunConfigFingerprint(TEARDOWN_FINGERPRINT);

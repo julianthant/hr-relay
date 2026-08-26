@@ -86,7 +86,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR24 | `Select aria-label="Workflow"` + `className="w-auto shrink-0"` + `<option value="all">Every workflow</option>` | `DemoArchive.tsx:306-312` | `archive.tsx:833-839` | exact | — |
 | AR25 | Workflow options derived from the corpus (`workflowId → workflowLabel`) | `DemoArchive.tsx:313-317` | `archive.tsx:840-842` | exact | — |
 | AR26 | `Select aria-label="Final status"` + `<option value="all">Any outcome</option>` | `DemoArchive.tsx:319-325` | `archive.tsx:844-850` | exact | — |
-| AR27 | Status option LABELS — demo prints `PROPOSED_STATUS[status].label` (`Done`, `Review`, `Write parked`…); rebuild prints the raw wire enum (`awaiting-approval`, `blocked`, `partial`) | `DemoArchive.tsx:326-330` | `archive.tsx:851-853` | divergent | OPEN — operator call (`DS_STATUS[dsStatusOf(s)].label` is already imported-adjacent; this is not a wire gap) |
+| AR27 | Status option LABELS — demo prints `PROPOSED_STATUS[status].label` (`Done`, `Review`, `Write parked`…); rebuild prints those same labels through the shared status model | `DemoArchive.tsx:326-330` | `archive.tsx:914`, `archive-model.ts:78` | exact | — |
 | AR28 | `Select aria-label="Instance"` + options `Any instance` / `Production only` / `Touched a test instance` | `DemoArchive.tsx:332-341` | `archive.tsx:862-874` | exact | — |
 | AR29 | `Clear` button — `size="sm" variant="ghost" className="shrink-0"`, rendered only when `filtered` | `DemoArchive.tsx:342-346` | `archive.tsx:875-879` | exact | — |
 | AR30 | `queryIsFiltered` predicate (text trimmed ≠ "" \|\| workflow ≠ all \|\| status ≠ all \|\| instance ≠ all) | `demo-archive-wire.ts:1498-1502` | `archive.tsx:236-241` | exact | — |
@@ -121,12 +121,12 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR59 | `data-demo-row-id={entry.runId}` attribute on the run `TR` | — | `archive.tsx:427` | extra | OPEN — operator call (parity-harness hook; the demo has none) |
 | AR60 | `ArchiveStatusLead` — fixed-width `dsIcon.sm` well, `aria-hidden` when empty, so pills and section badges share an x | `DemoArchive.tsx:588-597` | `archive.tsx:404-413` | exact | — |
 | AR61 | Status cell `StatusPill status size="sm" hideIcon` | `DemoArchive.tsx:607` | `archive.tsx:431` | exact | — |
-| AR62 | Warning-count chip beside the pill — `h-[var(--ds-h-xs)] … rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]`, `border-[color:var(--ds-status-done-warnings-border)] bg-[var(--ds-status-done-warnings-bg)] text-[color:var(--ds-status-done-warnings-fg)]`, `dsText.meta/nums/flush`, `TriangleAlert` + count, `title={warnings.first ?? "Finished with warnings"}` | `DemoArchive.tsx:608-622` | — | missing | `unserved: ArchiveEntryWire has no warnings field` (it IS on `detail.row.warnings` — `projection.ts:339-346` — but not on the index entry) |
+| AR62 | Warning-count chip beside the pill — `h-[var(--ds-h-xs)] … rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]`, warning tokens, `dsText.meta/nums/flush`, `TriangleAlert` + count, `title={warnings.first}` | `DemoArchive.tsx:608-622` | `archive.tsx:424-442,479` | exact | — |
 | AR63 | Name-cell button — `stopPropagation` + `onSelect`, `min-w-0 flex-1 truncate text-left text-[color:var(--ds-fg)]` + `dsFocus` | `DemoArchive.tsx:627-633` | `archive.tsx:441-447` | exact | — |
 | AR64 | Name-button `title` — demo `${displayName ?? title} · ${workflowCode} ${archivedVersionTag}`; rebuild swaps the code for the full label AND appends a clause the demo has no counterpart for: `${title} · ${workflowLabel} v${N}[ — no short code: reason] — archived because ${driftWords}` | `DemoArchive.tsx:634` | `archive.tsx:448`, `285-290` | divergent | `ruled: D242` (the whole label moves to the hover) |
 | AR65 | Row NAME text — demo `run.displayName ?? run.title`; rebuild `entry.title` only | `DemoArchive.tsx:636` | `archive.tsx:450` | divergent | `unserved: ArchiveEntryWire has no displayName` (served on `detail.row.displayName`, `projection.ts:309`, but not on the index entry) |
 | AR66 | Name meta suffix — demo ` · ${workflowCode} ${archivedVersionTag}` (`· ec v3.1`) vs rebuild ` · ${workflowToken} v${descriptorVersion}` (`· sd v1`), same `dsText.meta dsText.nums text-[color:var(--ds-fg-muted)]` | `DemoArchive.tsx:637-640` | `archive.tsx:451-454` | divergent | `unserved: WorkflowVersionIdentity.descriptorVersion is a single positive int — no minor half exists on the descriptor or any wire` |
-| AR67 | Dry-run chip on the LIST row — `FlaskConical` + copy `dry run`, `border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]`, `title="Dry run — this rehearsal reads the systems and writes nothing."` | `DemoArchive.tsx:642-655` | — | missing | `unserved: ArchiveEntryWire has no dryRun field` (it IS on `detail.row.dryRun`, `projection.ts:172` — see AR100) |
+| AR67 | Dry-run chip on the LIST row — `FlaskConical` + copy `dry run`, info tokens, `title="Dry run — this rehearsal reads the systems and writes nothing."` | `DemoArchive.tsx:642-655` | `archive.tsx:445-462,516` | exact | — |
 | AR68 | Test-instance hazard `TriangleAlert` at `dsIcon.sm` + `text-[color:var(--ds-status-waiting-fg)]`; `aria-label` demo `touched a test instance` vs rebuild `touched a test instance of ${systems}` | `DemoArchive.tsx:656-661` | `archive.tsx:476-481` | divergent | OPEN — operator call (a strictly richer label; still a divergence from the demo's exact string) |
 | AR69 | App-build-unrecorded hazard `TriangleAlert` with `aria-label="app build unrecorded"` on the name cell | — | `archive.tsx:462-467` | extra | `ruled: D179` (an unstamped `appVersion` is read forward and treated as prior-version) |
 | AR70 | Trace cell `TD numeric className="truncate text-[color:var(--ds-fg-muted)]"` printing `traceId` | `DemoArchive.tsx:664-666` | `archive.tsx:484-486` | exact | — |
@@ -136,8 +136,8 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR74 | Sweep-head cell background `bg-[var(--ds-surface-2)] border-b border-[color:var(--ds-border)]` on all five `TD`s | `DemoArchive.tsx:732` | `archive.tsx:524` | exact | — |
 | AR75 | Chevron choice `collapsed ? ChevronRight : ChevronDown`, `dsIcon.sm shrink-0 text-[color:var(--ds-fg-muted)]` inside `ArchiveStatusLead` | `DemoArchive.tsx:731`, `754-756` | `archive.tsx:523`, `546-548` | exact | — |
 | AR76 | Disclosure `<button aria-expanded={!collapsed}>` with `stopPropagation` and `flex min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)] text-left` + `dsFocus` + `dsRadius.sm` | `DemoArchive.tsx:740-752` | `archive.tsx:532-544` | exact | — |
-| AR77 | `sr-only` summary — demo `${fromVersion} to ${toVersion}, ${kind} bump — ${target.text}, ${plural(count,"run")}` / `${bumpId} — change record missing, ${plural(count,"run")}` vs rebuild `${sweepNameLabel}, ${scopeWord} scope, ${plural(count,"run")}` / `${applicationId} — the index carries no sweep record, ${plural(count,"run")}` | `DemoArchive.tsx:733-735` | `archive.tsx:525-527` | divergent | OPEN — operator call (`changeRecord.value.kind` IS on the wire — `change-record.ts:30` — so the `major`/`minor` word is available) |
-| AR78 | Sweep-head BADGE — demo carries the bump KIND (`major`/`minor`), `tone={kind==="major"?"warning":"neutral"}`, `title={BUMP_KIND_LABEL[kind]}`; rebuild carries the SCOPE word (`app` / `N workflows`), `tone={scope.kind==="application"?"warning":"neutral"}`, no `title` | `DemoArchive.tsx:758-761` | `archive.tsx:550-556` | divergent | OPEN — operator call (`archive.tsx:386-388`'s comment claims *"the demo's `major`/`minor` word has no counterpart on this wire"*; that was true before D223 and is now false — `ArchiveSweepWire.changeRecord.value.kind` exists) |
+| AR77 | `sr-only` summary — the rebuild's frozen sweep identity and scope sentence differs from the demo's synthetic target sentence, but now includes the served `${kind} bump`; the absent change-record arm names its reason | `DemoArchive.tsx:733-735` | `archive.tsx:575-584` | divergent | ruled: D179/D223 — archive summary names authority sweep identity/scope; kind omission ported in `d1f87916` |
+| AR78 | Sweep-head BADGE — carries bump KIND (`major`/`minor`), warning/neutral tone and `title={BUMP_KIND_LABEL[kind]}` | `DemoArchive.tsx:758-761` | `archive.tsx:609` | exact | — |
 | AR79 | `no record` danger arm in the badge slot — `aria-hidden`, `dsText.meta text-[color:var(--ds-danger)]`, copy `no record` | `DemoArchive.tsx:762-766` | `archive.tsx:551` | exact | — |
 | AR80 | Sweep NAME cell text — demo `bumpNameLabel(record)` = `${codes.join("+")} ${from} → ${to}` (`ec v3.1 → v4.0`), app bumps keep the bare `app 2.4 → app 3.0`; rebuild `sweepNameLabel(sweep)` = `${workflowId} v${N}, … → ${targetVersion}` (full ids, semver target) | `demo-archive-wire.ts:301-307` | `archive.tsx:390-395` | divergent | OPEN — operator call (`WorkflowVersionStateWire.workflowCode` exists, and D242 froze the code onto the archived record — the sweep head prints the raw `workflowId` anyway) |
 | AR81 | Sweep NAME cell classes `dsText.meta dsText.nums block min-w-0 truncate font-semibold text-[color:var(--ds-fg)]` | `DemoArchive.tsx:774` | `archive.tsx:568` | exact | — |
@@ -150,12 +150,12 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR88 | Sweep ⓘ `label` — `About this bump — ${nameLabel}` / `About ${id}` (arms swapped in source order, same strings) | `DemoArchive.tsx:805` | `archive.tsx:595` | exact | — |
 | AR89 | Sweep ⓘ `PopoverContent width="lg" align="end"` | `DemoArchive.tsx:813-814` | `archive.tsx:603-604` | exact | — |
 | AR90 | Sweep ⓘ popover `title` — `bumpNameLabel(record)` vs `sweepNameLabel(sweep)`; missing arm `Change record missing` vs `Sweep record missing` | `DemoArchive.tsx:811` | `archive.tsx:601` | divergent | OPEN — operator call (inherits AR80/AR83) |
-| AR91 | Sweep ⓘ popover `description` — demo `BUMP_KIND_LABEL[kind]` (`Major — the run's shape changed`) vs rebuild `${scopeWord} scope` (`app scope`) | `DemoArchive.tsx:812` | `archive.tsx:602` | divergent | OPEN — operator call (`changeRecord.value.kind` is on the wire) |
+| AR91 | Sweep ⓘ popover `description` — `BUMP_KIND_LABEL[kind]`; the minor arm says the current contract's `behaviour inside the same shape`, not the demo's narrower presentation-only claim | `DemoArchive.tsx:812` | `archive.tsx:664`, `archive-model.ts:108-111` | divergent | ruled: `VersionBumpChangeRecordSchema.kind` contract; served kind ported in `d1f87916` |
 | AR92 | Sweep ⓘ body — demo three paragraphs `record.what` (fg) / `record.why` (fg-muted) / `target.full` (meta, fg-muted); rebuild one scope paragraph then `<ChangeRecordBody>` (kind badge + what + why + commit) | `DemoArchive.tsx:816-822` | `archive.tsx:612-625`, `1875-1891` | divergent | `ruled: D223` (the change record is authored at plan time and read forward; a pre-generation-2 sweep prints its reason instead of a blank) |
 | AR93 | Sweep ⓘ `MetaLine` — demo four items `[by, commit, at, "${n} runs archived"]` vs rebuild six `[appliedBy, "plan <hash8>", "app <ver>", <clock>, "${n} runs archived", "v… → target" \| "archived nothing, so no from-version"]` | `DemoArchive.tsx:821` | `archive.tsx:626-637` | divergent | `ruled: D179` (`fromVersions` is derived from the archived records, and `versionPlanId` / `appliedAppVersion` are D179 facts the demo had no equivalent for) |
 | AR94 | Sweep ⓘ missing-record paragraph — demo `Swept by <id>, which the change-record store does not hold. The runs are intact; what is missing is why they were archived.` vs rebuild `Swept by <id>, which this index does not carry. …` | `DemoArchive.tsx:824-827` | `archive.tsx:607-610` | divergent | **OPEN — operator call** |
-| AR95 | Detail `PanelHeader title` — demo `run.displayName ?? run.title`; rebuild `detail.detail.header.title` | `DemoArchive.tsx:877` | `archive.tsx:1164` | divergent | OPEN — operator call (`detail.row.displayName` IS served, `projection.ts:309`, and is not read) |
-| AR96 | Detail header `subtitle` — demo `${run.subtitle} · archived ${archivedAt} by ${archivedBy}`; rebuild `${workflowLabel} · code ${code} · archived ${fmtClock(archivedAt)} by ${archivedBy}` | `DemoArchive.tsx:878` | `archive.tsx:1165-1167` | divergent | OPEN — operator call (`detail.row.subtitle` IS served, `projection.ts:313`, and is replaced by the workflow label + code) |
+| AR95 | Detail `PanelHeader title` — `run.displayName` when present, otherwise the row contract's composed `run.title` | `DemoArchive.tsx:877` | `archive.tsx:1237`, `archive-model.ts:57-69` | exact | — |
+| AR96 | Detail header `subtitle` — `${run.subtitle} · archived ${archivedAt} by ${archivedBy}` when present; the absence arm draws archive provenance alone | `DemoArchive.tsx:878` | `archive.tsx:1238-1240`, `archive-model.ts:57-69` | exact | — |
 | AR97 | Detail header `icon={<FileClock … dsIcon.lg/>}` | — | `archive.tsx:1168` | extra | OPEN — operator call (the demo's detail header carries no icon) |
 | AR98 | Detail header `meta={<StatusPill status size="sm"/>}` (with icon) | `DemoArchive.tsx:879` | `archive.tsx:1169` | exact | — |
 | AR99 | Detail header action `Button size="sm" variant="ghost"` + `Download` at `dsIcon.md` + label `Export` | `DemoArchive.tsx:881-883` | `archive.tsx:1170-1179` | exact | — |
@@ -164,7 +164,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR102 | Export TOAST — demo `{tone:"success", title:"Archived run exported", description:"archive-<trace>.json"}`; rebuild `{tone:"success", title:"archive-<trace>.json", description:"Exactly what this page holds — the display-redacted archived record, nothing re-derived."}` (title/description swapped) | `DemoArchive.tsx:871` | `archive.tsx:1118-1122` | divergent | **OPEN — operator call** |
 | AR103 | Detail `Panel aria-label={`Archived run ${title}`}` | — | `archive.tsx:1162` | extra | **OPEN — operator call** |
 | AR104 | Relaunch banner mount — above the tab set, in `div.px-[var(--ds-space-cozy)].pt-[var(--ds-space-cozy)]`, `Banner tone="success"` | `DemoArchive.tsx:891-893` | `archive.tsx:1187-1191` | exact | — |
-| AR105 | Relaunch banner TITLE — demo `New ${workflowLabel} run enqueued on ${versionTag}`; rebuild the fixed `A fresh run was enqueued on the current version` | `demo-archive-wire.ts:1965` | `archive.tsx:1191` | divergent | OPEN — operator call (both label and version are in hand: `detail.workflowLabel`, `detail.relaunch.current.descriptorVersion`) |
+| AR105 | Relaunch banner TITLE — `New ${workflowLabel} run enqueued on ${versionTag}` from the available relaunch arm; the impossible unavailable arm fails loud | `demo-archive-wire.ts:1965` | `archive.tsx:1264`, `archive-model.ts:184-194` | exact | — |
 | AR106 | Relaunch banner BODY — demo three sentences naming the replayed input labels, the archived trace, the archived version and the fingerprint rule; rebuild two sentences about the fresh trace id and the `Relaunched as` list | `demo-archive-wire.ts:1966-1969` | `archive.tsx:1194-1197` | divergent | **OPEN — operator call** |
 | AR107 | Relaunch banner `MetaLine items={["new run ${traceId}", "lands in ${panel}"]}` | `DemoArchive.tsx:914` | — | missing | `unserved: the relaunch CommandResult carries no created runId/traceId back to the surface` (rebuild re-reads the index by nonce instead) |
 | AR108 | Relaunch banner action `Button size="sm" variant="secondary"` + `ArrowUpRight` at `dsIcon.md` labelled `Open {panel}`, wired to `onOpenWorkflow` | `DemoArchive.tsx:898-905` | — | missing | `unserved: no created-run identity on the relaunch result` (see AR107) |
@@ -180,15 +180,15 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR118 | Summary `app` chip — demo a plain `Chip label="app"`; rebuild adds `tone="warning"` + `title={reason}` + the literal `unrecorded` on the absent arm | `DemoArchive.tsx:943` | `archive.tsx:1226-1232` | divergent | `ruled: D179` (`appVersion` is read forward and never back-filled) |
 | AR119 | Summary `trace` chip | `DemoArchive.tsx:944` | `archive.tsx:1233` | exact | — |
 | AR120 | Summary `by` chip — demo `run.requestedBy`, rebuild `row.actorId` | `DemoArchive.tsx:945` | `archive.tsx:1234` | exact | — |
-| AR121 | Summary `priority` chip — `Chip label="priority" tone={priority==="bulk"?"neutral":"info"}` | `DemoArchive.tsx:946-948` | — | missing | `unserved: QueueBaseFields.priority is served (projection.ts:179) but ref dashboard-surfaces puts it in the provenance ⓘ, not a chip — docs/findings/queue-rows.md "Priority and preset on a queue row"` — the archive draws it in NEITHER place |
+| AR121 | Summary `priority` chip — `Chip label="priority" tone={priority==="bulk"?"neutral":"info"}` | `DemoArchive.tsx:946-948` | `archive.tsx:1308`, `archive-model.ts:72-76` | exact | — |
 | AR122 | Summary `preset` chip — `{run.preset && <Chip label="preset">…}` | `DemoArchive.tsx:949` | — | missing | `unserved: no descriptor declares presets; StartPlanRecordSchema / RunEnvelopeSchema carry no preset (docs/findings/queue-rows.md)` |
-| AR123 | Summary dry-run chip — `Chip tone="info" icon={<FlaskConical …/>}` with copy `dry run — wrote nothing` | `DemoArchive.tsx:950-954` | — | missing | OPEN — operator call (`detail.row.dryRun` IS served, `projection.ts:172`; `docs/findings/queue-rows.md` claims *"the archived detail draws it"* and at this commit it does not) |
+| AR123 | Summary dry-run chip — `Chip tone="info" icon={<FlaskConical …/>}` with copy `dry run — wrote nothing` | `DemoArchive.tsx:950-954` | `archive.tsx:1309-1314` | exact | — |
 | AR124 | Summary test-instance chip — demo `Chip tone="warning" icon={<TriangleAlert/>}` copy `test instance`; rebuild appends ` · ${systems.join(", ")}` | `DemoArchive.tsx:955-959` | `archive.tsx:1236-1240` | divergent | **OPEN — operator call** |
 | AR125 | Summary `shape moved · {currentVersionTag}` warning chip, shown when the run ran an older major | `DemoArchive.tsx:960` | `archive.tsx:1241-1244` | divergent | `unserved: no minor version` (condition is otherwise identical) |
 | AR126 | Summary `attempt` chip | — | `archive.tsx:1235` | extra | `ruled: D214` (attempt is the run's own identity component; the demo folds it into its attempts list) |
 | AR127 | Summary `MetaLine` — demo `[workflowLabel, "code X", "enqueued …", "ended …", "ran …", …instances]`; rebuild `["started …", "ended …" \| reason, "ran …" \| "duration unknown", "archived because …", …instances]` | `DemoArchive.tsx:963-972` | `archive.tsx:1247-1255` | divergent | OPEN — operator call (`workflowLabel` and the code moved to the subtitle at AR96; `enqueued` → `started` and the added drift clause are unruled) |
 | AR128 | `BumpRecordCard` / `SweepRecordCard` — missing arm is `Banner tone="warning"`; demo title `Archived by a sweep with no change record`, rebuild `Archived by a sweep this index does not carry` | `DemoArchive.tsx:1313-1318` | `archive.tsx:1031-1039` | divergent | **OPEN — operator call** |
-| AR129 | Sweep card header — demo `SectionLabel "Archived by"` + kind Badge + scope Badge + `${from} → ${to}` right-aligned; rebuild `SectionLabel "Archived by"` + scope Badge + `→ ${targetVersion}` right-aligned (no kind badge, no from-version) | `DemoArchive.tsx:1323-1330` | `archive.tsx:1044-1050` | divergent | OPEN — operator call (`changeRecord.value.kind` and `sweep.fromVersions` are both on the wire) |
+| AR129 | Sweep card header — `SectionLabel "Archived by"` + kind Badge + scope Badge + `${from} → ${to}` right-aligned; an empty source-version list keeps its explicit archived-nothing reason | `DemoArchive.tsx:1323-1330` | `archive.tsx:1092-1121`, `archive-model.ts:137-157` | exact | — |
 | AR130 | Sweep card body — demo `record.what` + `record.why` paragraphs; rebuild `sweepNameLabel` paragraph + `<ChangeRecordBody>` | `DemoArchive.tsx:1331-1332` | `archive.tsx:1051-1052` | divergent | `ruled: D223` |
 | AR131 | Sweep card `MetaLine` — demo `[at, by, commit, "${n} archived"]`; rebuild `[clock, appliedBy, "plan <hash8>", "app <ver>", "${n} runs archived"]` | `DemoArchive.tsx:1333` | `archive.tsx:1053-1061` | divergent | `ruled: D179` |
 | AR132 | Failure `Card tone="danger"` + `SectionLabel "Failure record"` | `DemoArchive.tsx:977-979` | `archive.tsx:1260-1262` | exact | — |
@@ -271,7 +271,7 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR209 | `Field label` — demo `Input it replays — unchanged from the archive` vs rebuild `Input it replays` | `DemoArchive.tsx:1466` | `archive.tsx:2117` | divergent | `ruled: D179` (a relaunch replans the RAW submission through today's schemas, so "unchanged" would be false) |
 | AR210 | Replayed-input LIST (`label` `w-[110px]` / `value` truncate, one `<li>` per item) | `DemoArchive.tsx:1468-1475` | `archive.tsx:2118-2124` | divergent | `ruled: D179` (the stored input is deliberately absent from the wire; the rebuild renders a `Well` sentence in its place) |
 | AR211 | `SectionLabel "Decide these, rather than discover them"` — demo renders it only when `plan.cautions.length > 0`; rebuild always | `DemoArchive.tsx:1479-1484` | `archive.tsx:2127-2135` | divergent | **OPEN — operator call** |
-| AR212 | Caution sentences — demo derives three from the archived run (dry run → "the new one is not…", test instance → "…defaults to production", members → "…including the N that already succeeded"); rebuild ships two fixed bullets about the moved shape and the untouched archived row | `demo-archive-wire.ts:1918-1928` | `archive.tsx:2130-2133` | divergent | OPEN — operator call (the dry-run and test-instance facts are BOTH in hand on `detail.row.dryRun` / `row.resolvedInstances`) |
+| AR212 | Caution sentences — dry-run and test-instance warnings derive from the frozen row before the two fixed archive/relaunch cautions; no member-completion sentence is guessed | `demo-archive-wire.ts:1918-1928` | `archive.tsx:2109,2213`, `archive-model.ts:165-181` | divergent | unserved: archived detail carries no frozen member-completion vector; served dry-run/test arms ported in `d1f87916` |
 | AR213 | `DialogFooter meta={`Archived run ${traceId} stays exactly as it ended.`}` | `DemoArchive.tsx:1487` | `archive.tsx:2138` | exact | — |
 | AR214 | Footer `Cancel` — `Button variant="secondary"` | `DemoArchive.tsx:1488-1490` | `archive.tsx:2139` | exact | — |
 | AR215 | Footer confirm — `Button variant="primary"` + `RotateCw` at `dsIcon.md` + label `Enqueue a new run` | `DemoArchive.tsx:1491-1493` | `archive.tsx:2140-2142` | exact | — |
@@ -311,7 +311,12 @@ The demo's Archive is a two-view takeover: **Archived runs** (a virtualised, `ta
 | AR249 | `openCapture` resets to `null` when the selected run changes | `DemoArchive.tsx:862` | — | missing | OPEN — operator call (consequence of AR189) |
 | AR250 | Detail-pane `Nothing selected` `EmptyState` — title + `Pick an archived run on the left to see its stored snapshot.`, inside `Panel > PanelBody` | `DemoArchive.tsx:374-381` | `archive.tsx:2622-2630` | exact | — |
 
-**Counts:** exact 96 · divergent 100 · missing 24 · extra 30 · OPEN 71
+**Counts:** exact 106 · divergent 94 · missing 20 · extra 30 · OPEN 61
+
+> 2026-08-25 | Track F archive UI | `3d461962` served list-row `dryRun` and warning facts;
+> `d1f87916` drew those facts plus the already-served archive identity, priority, bump-kind and
+> relaunch facts through total view-model folds. AR27, AR62, AR67, AR77, AR78, AR91, AR95, AR96,
+> AR105, AR121, AR123, AR129 and AR212 are disposed above; no parity reference was updated.
 
 ---
 
@@ -358,7 +363,7 @@ the person axis, which `docs/findings/activity.md` has held open since 2026-08-1
 | AC21 | `PopoverContent` title `How this report is counted`, `width="lg"`, `align="end"` | `DemoActivityReport.tsx:123` | `activity.tsx:1154` | exact | — |
 | AC22 | caveat — "Hours saved is an ESTIMATE — …" | `demo-report-wire.ts:267` | — | missing | ruled: D239 (ref frontend-backend-integration §6.7) — the number it qualifies was dropped |
 | AC23 | caveat — the named window (`covers runs that started between … Both bounds were named`) | — | `activity.ts:477-478` | extra | ruled: D180 |
-| AC24 | caveat — error rate counts only terminal runs. **Demo says "…waiting on you or parked…"; rebuild says "…waiting on you or blocked…"** while every pill on the page renders `blocked` as **Parked** (`status-model.ts:73`) | `demo-report-wire.ts:268` | `activity.ts:479-481` | divergent | **OPEN — operator call** |
+| AC24 | caveat — error rate counts only terminal runs. **Demo says "…waiting on you or parked…"; rebuild now says "…waiting on you or write parked…"** through the shared closed-status vocabulary, while the exact pill label remains **Write parked** (`status-model.ts` → `status-vocabulary.ts`) | `demo-report-wire.ts:268` | `activity.ts:479-483` | divergent | **LANDED `4da19fd7`**; ruled: ref frontend-backend-integration §4 “State ownership” — pure presentation helpers may map closed enums to explanatory copy; the prose fold keeps the established sentence case and the pill's exact parked words |
 | AC25 | caveat — "N run(s) still outstanding … not represented in hours saved" → rebuild "…represented in no total on this page except its own" | `demo-report-wire.ts:269` | `activity.ts:482` | divergent | ruled: D239 — the clause named a total that no longer exists |
 | AC26 | caveat — people counted by EID across members | `demo-report-wire.ts:270` | — | missing | unserved: `people.distinct` (`docs/findings/activity.md`) |
 | AC27 | caveat — ledger entries are what was filed, never pruned, never archived | `demo-report-wire.ts:271` | `activity.ts:493-496` | divergent | ruled: D236 — the rebuild's sentence adds the second-authority seam the carve-out requires |
@@ -453,8 +458,8 @@ the person axis, which `docs/findings/activity.md` has held open since 2026-08-1
 | AC116 | footer's `<span> — not yet generated` arm before the payload lands | — | `activity.tsx:1212` | extra | ruled: D180 |
 | AC117 | the `Chip` primitive appears on this surface | `DemoActivityReport.tsx:101` | — | missing | ruled: D180 — it left with the span chips (AC6/AC7) |
 
-**Counts:** 117 rows — exact 57 · divergent 21 · missing 12 · extra 27 · **OPEN 8** (AC10, AC11,
-AC12, AC19, AC24, AC62, AC77, AC90)
+**Counts:** 117 rows — exact 57 · divergent 21 · missing 12 · extra 27 · **OPEN 7** (AC10, AC11,
+AC12, AC19, AC62, AC77, AC90)
 
 ---
 
@@ -462,7 +467,7 @@ AC12, AC19, AC24, AC62, AC77, AC90)
 
 **Demo:** `legacy `rebuild-demo/`DemoExplorer.tsx` (1027) + `demo-explorer-wire.ts` (2006) · **Rebuild:** ``src/dashboard/`surfaces/explorer.tsx` (1595) + `explorer-model.ts` (226)
 
-The three-panel skeleton is a faithful port: identical grid tracks and breakpoints, identical `PageHeader`, identical `DryRunBoundary`, identical `DirHeaderRow`, identical ⓘ trigger/popover geometry, identical no-rehearsal banner sentence. **The biggest structural finding is that the demo's SECOND panel is a run-overlay surface and the rebuild's is a registration surface** — twenty-three separate demo elements (the run `Select` and both of its empty-arms, the run option label, the status pill, the trace `MetaLine`, the `dry run` chip, the version-mismatch banner, the per-node state dot / state word / duration / attempts / value-count / evidence / skip-reason / child note, the recorded value cell and its four chips, the recorded-only row, the provenance meta line, the run title + key lines) are ALL one ruled exclusion, ref operator-trust §5.7, seen from many angles; the toolbar slot they occupied now carries a seven-chip identity band. Second finding: **the demo's contract table is a table of operator-worded FIELDS with the run's value in column 3, and the rebuild's is a table of zod LEAVES with the field's declared provenance in column 3** — ruled D227, but it changes every cell on the page, and it pushed the editable-field pencil out of the table into two chip rows below it (EX110, unruled). Third: **the version tag lost its minor digit** — the demo prints `v1.2` everywhere and the rebuild prints `v1`, because no minor/presentation version exists anywhere in this tree's domain, wire or version-bump scope union; that gap is **not booked** in `docs/findings/explorer.md`, which reports zero open records. Fourth: **the `Version registry` header action is gone and the recorded reason for dropping it is now false** — ref operator-trust §5.7 says "no version-registry surface exists in this tree", and `archive.tsx:2351` renders `<Table label="Workflow version registry">`. Fifth: the port header at `explorer.tsx:8-10` names `skippedAboveBoundary` and `laneOf`'s connector rule as ported, and neither exists in `explorer-model.ts`.
+The three-panel skeleton is a faithful port: identical grid tracks and breakpoints, identical `PageHeader`, identical `DryRunBoundary`, identical `DirHeaderRow`, identical ⓘ trigger/popover geometry, identical no-rehearsal banner sentence. **The biggest structural finding is that the demo's SECOND panel is a run-overlay surface and the rebuild's is a registration surface** — twenty-three separate demo elements (the run `Select` and both of its empty-arms, the run option label, the status pill, the trace `MetaLine`, the `dry run` chip, the version-mismatch banner, the per-node state dot / state word / duration / attempts / value-count / evidence / skip-reason / child note, the recorded value cell and its four chips, the recorded-only row, the provenance meta line, the run title + key lines) are ALL one ruled exclusion, ref operator-trust §5.7, seen from many angles; the toolbar slot they occupied now carries a seven-chip identity band. Second finding: **the demo's contract table is a table of operator-worded FIELDS with the run's value in column 3, and the rebuild's is a table of zod LEAVES with the field's declared provenance in column 3** — ruled D227, but it changes every cell on the page, and it pushed the editable-field pencil out of the table into two chip rows below it (EX110, unruled). Third: **the version tag lost its minor digit** — the demo prints `v1.2` everywhere and the rebuild prints `v1`, because no minor/presentation version exists anywhere in this tree's domain, wire or version-bump scope union; that gap is **not booked** in `docs/findings/explorer.md`, which reports zero open records. Fourth: **the `Version registry` header action opens the Archive's real `Versions & bumps` view** — `4e09fb49` moves the exact `archiveView=versions` state through the dashboard route, so it replaces the Explorer takeover rather than opening a local imitation. Fifth: the port header at `explorer.tsx:8-10` names `skippedAboveBoundary` and `laneOf`'s connector rule as ported, and neither exists in `explorer-model.ts`.
 
 | # | Element | Demo | Rebuild | Verdict | Reason |
 |---|---------|------|---------|---------|--------|
@@ -470,7 +475,7 @@ The three-panel skeleton is a faithful port: identical grid tracks and breakpoin
 | EX2 | Header icon `<Workflow>` at `dsIcon.lg`, `aria-hidden` | `DemoExplorer.tsx:168` | `explorer.tsx:1480` | exact | — |
 | EX3 | Header badge `Badge tone="neutral"` carrying `<Lock dsIcon.sm>` + the word `read-only` | `DemoExplorer.tsx:170-173` | `explorer.tsx:1482-1485` | exact | — |
 | EX4 | Back control: `Button variant="ghost" size="sm"` + `<ArrowLeft dsIcon.md>` + copy `Back to the dashboard` | `DemoExplorer.tsx:176-178` | `explorer.tsx:1488-1495` | exact | — |
-| EX5 | Header action `Button ghost sm` + `<Eye dsIcon.md>` + copy `Version registry`. Ref operator-trust §5.7's as-built delta rules it absent "because no version-registry surface exists in this tree" — that premise is FALSE at HEAD: `archive.tsx:2351` renders `<Table label="Workflow version registry">` | `DemoExplorer.tsx:181-183` | — | missing | **OPEN — operator call** |
+| EX5 | Header action `Button ghost sm` + `<Eye dsIcon.md>` + copy `Version registry`. It carries the Archive's real `archiveView=versions` route state, which renders `<Table label="Workflow version registry">` | `DemoExplorer.tsx:181-183` | `explorer.tsx` → `dashboard-app.tsx` → `archive.tsx` | exact | **LANDED 2026-08-25 (`4e09fb49`)** — one route-owned door, no local registry copy |
 | EX6 | Page root: demo is a bare `div.flex.min-h-0.flex-1.flex-col`; rebuild is a `Panel aria-label="Workflow explorer"` with `useDsEnterTransition` + `ds-motion-enter` + `translate-y-[calc(-1*var(--ds-travel-sm))]` | `DemoExplorer.tsx:165` | `explorer.tsx:1467-1477` | divergent | ruled: dashboard-surfaces §9.5.3 |
 | EX7 | Three-panel grid — `grid-cols-1`, `min-[900px]:grid-cols-[minmax(0,232px)_minmax(0,1fr)]`, `min-[1280px]:…_minmax(0,420px)]`, `gap-base p-cozy` | `DemoExplorer.tsx:191` | `explorer.tsx:1502` | exact | — |
 | EX8 | Record-column placement between the two thresholds: rebuild wraps `NodeDetail` in `div.min-[900px]:col-span-2.min-[1280px]:col-span-1`; the demo has no wrapper and auto-places it | — | `explorer.tsx:1581-1587` | extra | **OPEN — operator call** |
@@ -649,7 +654,7 @@ The three-panel skeleton is a faithful port: identical grid tracks and breakpoin
 | EX181 | Port-provenance claim: the same header names `laneOf`'s connector rule; no lane concept exists and the `Connector` is emitted between every consecutive pair | `demo-explorer-wire.ts:193-195` | `explorer.tsx:10` | divergent | ruled: operator-trust §5.7 (no lane fact) |
 | EX182 | Node id resolution: demo's node `id` IS the descriptor step label (prose, e.g. `Job summary`) and carries `aliases[]` for renamed steps; rebuild's is a kebab `NodeId` and there is no alias concept | `demo-explorer-wire.ts:99-108` | `explorer.tsx:523-525` | divergent | ruled: operator-trust §5.7 (aliases exist only to lay an older run over the graph) |
 
-**Counts:** exact 54 · divergent 42 · missing 34 · extra 52 · OPEN 31
+**Counts:** exact 55 · divergent 42 · missing 33 · extra 52 · OPEN 30
 
 ## 4. UI catalog — `DemoCatalogView.tsx` + `demo-catalog.ts` ↔ `surfaces/ui-catalog.tsx`
 
@@ -861,8 +866,8 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN5 | Header action "Another file" (ghost, `RotateCcw` `dsIcon.sm`) | — | `intake.tsx:1323` | extra | ruled: D173 |
 | IN6 | Back button (footer, ghost, `ArrowLeft` `dsIcon.md`, steps one stage back) | `DemoIntake.tsx:365` | — | missing | ruled: D173 |
 | IN7 | Dismiss control: footer "Cancel" (secondary) vs header "Close" (ghost, sm) | `DemoIntake.tsx:373` | `intake.tsx:1332` | divergent | **OPEN — operator call** |
-| IN8 | Footer meta echoes `header row N` | `DemoIntake.tsx:357` | — | missing | **OPEN — operator call** |
-| IN9 | Footer meta echoes `fingerprint <first 8>` | `DemoIntake.tsx:358` | — | missing | **OPEN — operator call** |
+| IN8 | Footer meta echoes `header row N` | `DemoIntake.tsx:357` | `intake.tsx:1029` (`intake-model.ts:96`) | exact | **ported** `80967ce5` (F2 a) — the sticky outcome band is this workspace's footer |
+| IN9 | Footer meta echoes `fingerprint <first 8>` | `DemoIntake.tsx:358` | `intake.tsx:1029` (`intake-model.ts:96`) | exact | **ported** `80967ce5` (F2 a) — `shortHash` is 8, the demo's own prefix |
 | IN10 | Stage indicator: `<nav aria-label="Intake stages — step N of 6">` vs `TabList label="Intake stage"` with 2 tabs | `DemoRunStartKit.tsx:441` | `intake.tsx:1255` | divergent | ruled: D173 |
 | IN11 | Stage "File" | `DemoIntake.tsx:92` | — | missing | ruled: D173 |
 | IN12 | Stage "Header row" (a stage) vs a `Field` inside the source band | `DemoIntake.tsx:93` | `intake.tsx:311` | divergent | ruled: D173 |
@@ -906,7 +911,7 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN50 | Header-row proposal: info `Banner` titled "The parser proposes row N" + "A proposal, with its reasoning — not a decision. Every downstream binding is keyed to the row you confirm here…" | `DemoIntake.tsx:464` | `intake.tsx:312` | divergent | ruled: D173 |
 | IN51 | Header candidates as selectable `Card`s vs `<option>`s inside one `Select` | `DemoIntake.tsx:472` | `intake.tsx:321` | divergent | ruled: D173 |
 | IN52 | `Chip label="row"` per candidate | `DemoIntake.tsx:488` | `intake.tsx:323` | divergent | ruled: D173 |
-| IN53 | Per-candidate `confidence 0.96` (2dp) | `DemoIntake.tsx:489` | — | missing | **OPEN — operator call** (`ServedHeaderCandidateSchema.confidence` IS served) |
+| IN53 | Per-candidate `confidence 0.96` (2dp) | `DemoIntake.tsx:489` | `intake.tsx:332` (`intake-model.ts:61`) | divergent | **ported** `80967ce5` (F2 a) — the fact lands, in the ` · ` slot of the option label, because D173 made the candidate list one `Select` and an `<option>` carries text alone |
 | IN54 | Per-candidate `why` sentence, e.g. "6 of 6 cells distinct and non-empty; 5 match known field aliases" | `DemoIntake.tsx:490` | — | missing | unserved: `ServedHeaderCandidateSchema` omits `signals` and has no prose field — UNBOOKED |
 | IN55 | Candidate row preview: ALL non-empty cells joined ` · ` vs first 6 only inside the option label | `DemoIntake.tsx:493` | `intake.tsx:323` | divergent | **OPEN — operator call** |
 | IN56 | "(empty row)" fallback for a candidate whose cells are all blank | `DemoIntake.tsx:493` | — | missing | **OPEN — operator call** |
@@ -935,7 +940,7 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN79 | Samples: dedicated `TD numeric max-w-[220px]` truncating `bound ?? suggested` samples joined ` · `, `—` when none vs a `dsText.meta dsText.nums` line under the Select, first 3 only, absent when unbound | `DemoIntake.tsx:630` | `intake.tsx:539` | divergent | ruled: D173 |
 | IN80 | Suggestion cell shape: at most ONE proposal, plain text vs N proposals, each a recessed dashed `--ds-recess-*` box | `DemoIntake.tsx:634` | `intake.tsx:579` | divergent | ruled: D173 |
 | IN81 | Accept verb: `Accept “<column label>”` / `Accepted` (disabled when already bound) vs `Use it` with `aria-label="Bind <column label>"` | `DemoIntake.tsx:645` | `intake.tsx:597` | divergent | ruled: D173 |
-| IN82 | Suggestion score printed as `(0.94)` | `DemoIntake.tsx:637` | — | missing | **OPEN — operator call** (`SuggestionSchema.score` IS served) |
+| IN82 | Suggestion score printed as `(0.94)` | `DemoIntake.tsx:637` | `intake.tsx:609` (`intake-model.ts:75`) | exact | **ported** `80967ce5` (F2 a) — parenthesised after the reason, same muted span |
 | IN83 | Suggestion reason: composed prose `“Employee Name” matches the alias “employee name”` vs a fixed 4-term vocabulary joined `", "` (`known header` / `matches the field label` / `words in common` / `its values parse`) | `DemoIntake.tsx:637` | `intake.tsx:128` | divergent | unserved: `SuggestionSchema.why` is a closed enum array, not prose — UNBOOKED |
 | IN84 | Ambiguity note "another column scores the same — check both" | — | `intake.tsx:605` | extra | ruled: D173 |
 | IN85 | "no proposal" in `dsText.meta` + `--ds-fg-faint` | `DemoIntake.tsx:649` | `intake.tsx:572` | exact | — |
@@ -959,7 +964,7 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN103 | Offending column: `“<header>”` in `dsText.meta` muted vs MetaLine item `column <header>` | `DemoIntake.tsx:838` | `intake.tsx:798` | divergent | **OPEN — operator call** |
 | IN104 | Offending value: `raw: <value>` verbatim, `(empty)` when blank vs `value <redacted (class)>` / `<value> (<transform>)` / "(a structured value)" | `DemoIntake.tsx:839` | `intake.tsx:726` | divergent | ruled: D82 |
 | IN105 | Reason sentence: composed client-side `<workflow> intake, row N, column “X” (→ field): <reason>` vs the server's `reject.reason` verbatim in a `role="alert"` span | `demo-data-intake.ts:669` | `intake.tsx:793` | divergent | ruled: D173 |
-| IN106 | `code <code>` printed under the reason | `DemoIntake.tsx:844` | — | missing | **OPEN — operator call** (the code IS served; only its label is shown) |
+| IN106 | `code <code>` printed under the reason | `DemoIntake.tsx:844` | `intake.tsx:847` | exact | **ported** `780860d0` (F2 b) — first item of the reject's `MetaLine`, so it sits against the reason as the demo draws it |
 | IN107 | Fix affordance: "Fix cell" (sm outline) opening a separate editor `Card` vs an always-present inline `Input` + "Fix cell" per correctable reject | `DemoIntake.tsx:849` | `intake.tsx:808` | divergent | **OPEN — operator call** |
 | IN108 | Fix editor heading `Correct row N · <targetFieldId>` | `DemoIntake.tsx:866` | — | missing | **OPEN — operator call** |
 | IN109 | Fix `Field label="Corrected value"` + description "The source file is never rewritten. The correction is recorded in the manifest with the original beside it, and the value is re-coerced and re-parsed before it can become valid." vs a bare placeholder `corrected <label>` | `DemoIntake.tsx:869` | `intake.tsx:814` | divergent | **OPEN — operator call** |
@@ -974,29 +979,29 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN118 | Review gate: `Checkbox` "I have read all N rejected row(s)" + "Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen." | `DemoIntake.tsx:908` | — | missing | **OPEN — operator call** |
 | IN119 | Advance gate itself: `canContinueFromValidate = !block && (rejected === 0 \|\| reviewed)` vs `Run` enabled the moment `validation.state === "validated"`, unresolved rejections and all | `DemoIntake.tsx:260` | `intake.tsx:999` | divergent | **OPEN — operator call** (doc `reference/data-intake-and-edit-data.md` §2.2 step 4 and §7 vector 4 both say Run is disabled until the reject list is reviewed) |
 | IN120 | Courtesy blocker list: no `unresolved-rejections` entry, so the band cannot say why the kernel will refuse | `demo-data-intake.ts:784` | `intake.tsx:935` | divergent | **OPEN — operator call** |
-| IN121 | Corrections `Well`: `SectionLabel "Corrections"` + `row N · <field>: “<original>” → “<corrected>”` | `DemoIntake.tsx:918` | — | missing | **OPEN — operator call** (`IntakeSessionWire.corrections` IS served and read only for the discard count) |
+| IN121 | Corrections `Well`: `SectionLabel "Corrections"` + `row N · <field>: “<original>” → “<corrected>”` | `DemoIntake.tsx:918` | `intake.tsx:723` (`intake-model.ts:115`) | divergent | **ported** `780860d0` (F2 b) — the list lands in the demo's slot (after the rejections, before the exclusions), drawn as the exclusions section's twin rather than as a `Well`. The `“<original>” →` half stays **unserved**: `IntakeRowCorrectionSchema` has no `original` — UNBOOKED |
 | IN122 | Exclusions block: `Well` + `SectionLabel "Exclusions"` + `row N — <reason>` vs `<section aria-label="Excluded rows">` + `SectionLabel "Excluded by you"` + `Chip label="row"` + reason + MetaLine(`excludedAt`) | `DemoIntake.tsx:929` | `intake.tsx:700` | divergent | **OPEN — operator call** |
-| IN123 | The whole Manifest stage | `DemoIntake.tsx:946` | — | missing | **OPEN — operator call** |
-| IN124 | Manifest success banner "N of M source rows will run" + "Every source row below has exactly one disposition. The counts are derived from those dispositions, never summed from the rejection history…" | `DemoIntake.tsx:954` | — | missing | **OPEN — operator call** |
-| IN125 | Manifest `KeyValueList` row `plan id` | `DemoIntake.tsx:962` | — | missing | unserved: `IntakeSessionWire.intakeManifestId` is set only AFTER enqueue — UNBOOKED |
-| IN126 | Manifest row `source` = `<originalName> · sha <12>` | `DemoIntake.tsx:963` | — | missing | **OPEN — operator call** |
-| IN127 | Manifest row `artifact` = artifact id | `DemoIntake.tsx:964` | — | missing | **OPEN — operator call** (`IntakeSessionWire.artifact` IS served) |
-| IN128 | Manifest row `mapping fingerprint` | `DemoIntake.tsx:965` | — | missing | unserved: `mappingFingerprint` is not on `IntakeSessionWire` — UNBOOKED |
-| IN129 | Manifest row `mapping snapshot` hash | `DemoIntake.tsx:966` | — | missing | unserved: `mappingSnapshotHash` is not on `IntakeSessionWire` — UNBOOKED |
-| IN130 | Manifest row `workflow contract` fingerprint | `DemoIntake.tsx:967` | — | missing | unserved: `workflowContractFingerprint` is not on `IntakeSessionWire` — UNBOOKED |
-| IN131 | Manifest row `created` instant | `DemoIntake.tsx:968` | — | missing | **OPEN — operator call** (`createdAt` IS served) |
-| IN132 | Manifest row `totals` = `N rows · V valid · R rejected · E excluded · C corrected` | `DemoIntake.tsx:970` | — | missing | unserved: `IntakeValidationWireSchema` has no `corrected` (it exists on `IntakeManifestTotalsSchema`) — UNBOOKED |
-| IN133 | Source-row disposition `Table` (Row / Disposition / Item / Input hash / Parsed input) | `DemoIntake.tsx:977` | — | missing | unserved: `SourceRowDispositionSchema` and `ValidRowSchema` are not on `IntakeSessionWire` — UNBOOKED |
-| IN134 | Disposition `Badge` tones — valid=success, excluded=neutral, rejected=danger | `DemoIntake.tsx:996` | — | missing | unserved: as IN133 — UNBOOKED |
-| IN135 | Per-row `inputHash` first 10 chars | `DemoIntake.tsx:1001` | — | missing | unserved: as IN133 — UNBOOKED |
-| IN136 | Per-row parsed input rendered `key=value · key=value`, or `rejects: <ids>` when the row is not valid, or `—` | `DemoIntake.tsx:1004` | — | missing | unserved: as IN133 — UNBOOKED |
+| IN123 | The whole Manifest stage | `DemoIntake.tsx:946` | `intake.tsx` `ManifestStageView` | ported | **ported** 2026-08-25 — preflight reservation remains distinct from a committed terminal manifest |
+| IN124 | Manifest success banner "N of M source rows will run" + "Every source row below has exactly one disposition. The counts are derived from those dispositions, never summed from the rejection history…" | `DemoIntake.tsx:954` | `intake.tsx` `ManifestStageView` | exact | **ported** 2026-08-25 |
+| IN125 | Manifest `KeyValueList` row `plan id` | `DemoIntake.tsx:962` | `intake.tsx` `ManifestStageView` | divergent | **ported** 2026-08-25 — preflight says `reserved plan id`; terminal says `plan id`, never committed before enqueue |
+| IN126 | Manifest row `source` = `<originalName> · sha <12>` | `DemoIntake.tsx:963` | `intake-model.ts` `manifestStage` | exact | **ported** 2026-08-25 |
+| IN127 | Manifest row `artifact` = artifact id | `DemoIntake.tsx:964` | `intake-model.ts` `manifestStage` | exact | **ported** 2026-08-25 |
+| IN128 | Manifest row `mapping fingerprint` | `DemoIntake.tsx:965` | `intake-model.ts` `manifestStage` | exact | **ported** 2026-08-25 |
+| IN129 | Manifest row `mapping snapshot` hash | `DemoIntake.tsx:966` | `intake-model.ts` `manifestStage` | exact | **ported** 2026-08-25 |
+| IN130 | Manifest row `workflow contract` fingerprint | `DemoIntake.tsx:967` | `intake-model.ts` `manifestStage` | exact | **ported** 2026-08-25 |
+| IN131 | Manifest row `created` instant | `DemoIntake.tsx:968` | `intake-model.ts` `manifestStage` | divergent | **ported** 2026-08-25 — terminal `manifest.createdAt` is the formatted operator clock; upload time remains source metadata |
+| IN132 | Manifest row `totals` = `N rows · V valid · R rejected · E excluded · C corrected` | `DemoIntake.tsx:970` | `intake-model.ts` `manifestStage` | exact | **ported** 2026-08-25 |
+| IN133 | Source-row disposition `Table` (Row / Disposition / Item / Input hash / Parsed input) | `DemoIntake.tsx:977` | `intake.tsx` `ManifestRows` | ported | **ported** 2026-08-25 — exact local 10-row pages bound eager rendering without claiming D9 virtualization |
+| IN134 | Disposition `Badge` tones — valid=success, excluded=neutral, rejected=danger | `DemoIntake.tsx:996` | `intake-model.ts` `manifestStage` | exact | **ported** 2026-08-25 |
+| IN135 | Per-row `inputHash` first 10 chars | `DemoIntake.tsx:1001` | `intake.tsx` `ManifestRows` | exact | **ported** 2026-08-25 — full hash remains keyboard/touch reachable in row detail |
+| IN136 | Per-row parsed input rendered `key=value · key=value`, or `rejects: <ids>` when the row is not valid, or `—` | `DemoIntake.tsx:1004` | `intake-model.ts` `manifestStage` | exact | **ported** 2026-08-25 — clipped resting text has a keyboard/touch-reachable full-value detail |
 | IN137 | "Compare with a prior intake" (outline, `GitCompare` `dsIcon.md`) | `DemoIntake.tsx:388` | — | missing | **OPEN — operator call** |
 | IN138 | Run verb: `Start N runs` (primary, `Play` `dsIcon.md`, disabled on block or already-applied) vs `Run N rows` (primary, no icon) | `DemoIntake.tsx:391` | `intake.tsx:996` | divergent | **OPEN — operator call** |
-| IN139 | Rerun stage empty state "No prior intake of this source" + "…This source has not been imported before, so there is nothing to compare it with — and nothing is invented to fill the gap." vs rendering nothing at all when `rerun` is absent | `DemoIntake.tsx:1031` | `intake.tsx:1218` | divergent | **OPEN — operator call** |
+| IN139 | Rerun stage empty state "No prior intake of this source" + "…This source has not been imported before, so there is nothing to compare it with — and nothing is invented to fill the gap." | `DemoIntake.tsx:1031` | `intake.tsx` `RerunStageView` | exact | **ported** 2026-08-25 |
 | IN140 | Rerun header banner `Compared with <planId>, made <YYYY-MM-DD>` vs "This file has already been enqueued, with this exact plan" / "This file has run before, and the plan has changed since" | `DemoIntake.tsx:1040` | `intake.tsx:876` | divergent | ruled: D171 |
 | IN141 | Rerun verdict prose (3 arms — contract changed = "a rerun is a MIGRATION, not a replay"; mapping changed; identical) vs a per-axis `was… → now…` digest list | `demo-data-intake.ts:886` | `intake.tsx:888` | divergent | ruled: D171 |
-| IN142 | Rerun chips `unchanged` / `added` / `removed` / `mapping` / `contract` with tone flips | `DemoIntake.tsx:1045` | — | missing | unserved: `RerunDiffSchema` carries no per-item counts — UNBOOKED |
-| IN143 | Two rerun `Well`s: "In this plan, not in &lt;planId&gt;" / "In &lt;planId&gt;, not here", each listing `<itemId> — <label>` or "nothing" | `DemoIntake.tsx:1059` | — | missing | unserved: `RerunDiffSchema` has no `added`/`removed` item lists — UNBOOKED |
+| IN142 | Rerun chips `unchanged` / `added` / `removed` / `mapping` / `contract` with tone flips | `DemoIntake.tsx:1045` | `intake.tsx` `RerunStageView` | ported | **ported** 2026-08-25 — `changed inputs` is an additional hash-only count required by the served diff |
+| IN143 | Two rerun `Well`s: "In this plan, not in &lt;planId&gt;" / "In &lt;planId&gt;, not here", each listing `<itemId> — <label>` or "nothing" | `DemoIntake.tsx` `RerunMembership` | divergent | **ported** 2026-08-25 — exact local 10-row pages list stable item id + input-hash prefix with full detail reachable; an operator-facing item label has no served producer |
 | IN144 | Closing rerun banner "Reruns never relabel replayed data as newly observed" (`TriangleAlert` `dsIcon.lg`) + "…Anything it replays is marked as replayed on the receipt; only a value actually re-read from a system is recorded as observed." | `DemoIntake.tsx:1085` | — | missing | **OPEN — operator call** |
 | IN145 | Rerun axis vocabulary "the file" / "the mapping" / "the workflow's mappable fields" / "the workflow contract" / "the input schema" | — | `intake.tsx:857` | extra | ruled: D171 |
 | IN146 | Rerun meta `manifest <8>…` / `ran <clock>` / `N of M rows ran` | — | `intake.tsx:872` | extra | ruled: D171 |
@@ -1010,7 +1015,7 @@ The two surfaces share a vocabulary and almost nothing else structurally. The de
 | IN154 | Read-failure banner "This intake session could not be read" | — | `intake.tsx:1177` | extra | ruled: D173 |
 | IN155 | Run-wide constants rendered read-only | — | `intake.tsx:934` (count only; nothing renders them) | missing | ruled: D173 (D173's own text says "CONSTANTS RENDER READ-ONLY"; the surface renders none) |
 
-**Counts:** exact 4 · divergent 61 · missing 56 · extra 34 · OPEN 66
+**Counts:** exact 10 · divergent 64 · missing 47 · extra 34 · OPEN 57
 
 ## 7. Phone capture — `DemoCapture.tsx` ↔ `phone/**` + `surfaces/capture-start.tsx`
 
@@ -1144,7 +1149,7 @@ archivable run by name in a scrolling `Well`; the rebuild's reviewed plan report
 | VB16 | `SectionLabel` `Must be terminalized or resolved first` → rebuild `<workflowLabel> — what a bump would refuse to bury` | `DemoVersionBump.tsx:206` | `archive.tsx:2404` | divergent | **OPEN — operator call** |
 | VB17 | `BlockerTable` `TH` set — demo `Run` / `Status` / `Why` / `<resolutionHead>`; rebuild `Run` / `State` / `What has to happen` | `DemoVersionBump.tsx:313-316` | `archive.tsx:2194-2196` | divergent | **OPEN — operator call** (the `Why` column is gone) |
 | VB18 | blocker `Run` cell — demo two lines, the run title over `<panel> · <day>`; rebuild the `traceId` alone, numeric | `DemoVersionBump.tsx:322-329` | `archive.tsx:2202` | divergent | unserved: `WorkflowVersionStateWire.blockers[]` carries `runId` / `traceId` / `runState` and no title, panel or day |
-| VB19 | blocker `Status` cell — demo a `StatusPill size="sm"`; rebuild the raw `runState` word | `DemoVersionBump.tsx:331` | `archive.tsx:2203` | divergent | **OPEN — operator call** (`dsStatusOf` is available on this surface) |
+| VB19 | blocker `Status` cell — a `StatusPill size="sm"` through the total authority-state fold; `terminal` fails loud because it cannot be a blocker | `DemoVersionBump.tsx:331` | `archive.tsx:2286`, `archive-model.ts:89-103` | exact | — |
 | VB20 | blocker `Why` cell (`max-w-[260px]`) | `DemoVersionBump.tsx:333` | — | missing | unserved: no `why` on `WorkflowVersionStateWire.blockers[]` |
 | VB21 | blocker resolution cell — demo prints the SERVED `requiredResolution`; rebuild derives three sentences client-side from `runState` | `DemoVersionBump.tsx:334` | `archive.tsx:2204-2210` | divergent | unserved: no `requiredResolution` on `WorkflowVersionStateWire.blockers[]` |
 | VB22 | the resolution column head is PARAMETERISED — `What has to happen` for blockers, `What a MAJOR bump would have demanded` for the minor arm's unaffected list | `DemoVersionBump.tsx:207,219` | `archive.tsx:2196` | divergent | **OPEN — operator call** (follows VB1) |
@@ -1180,9 +1185,10 @@ archivable run by name in a scrolling `Well`; the rebuild's reviewed plan report
 | VB52 | the apply-time rules — *"Applying archives every prior-version run in scope. It cannot be undone"* and *"A relaunch from the archive later starts a FRESH run on the current version"* | — | `archive.tsx:2423-2424` | extra | ruled: D179 |
 | VB53 | the plan's blocker table is rendered once, under the reviewed plan, instead of once per workflow | — | `archive.tsx:2395-2408,2452` | extra | ruled: D179 |
 
-**Counts:** 53 rows — exact 2 · divergent 30 · missing 13 · extra 8 · **OPEN 39 marks** across
-**roughly 20 distinct questions** — VB13, VB22, VB23, VB26, VB30, VB31, VB33 and VB45 all follow
-VB1's arm question, and VB4–VB10 are one "what shape is the authoring step" question.
+**Counts:** 53 rows — exact 3 · divergent 29 · missing 13 · extra 8 · **OPEN 38 marks** across
+three numbered decision groups below: MAJOR/MINOR behavior (2), the reviewed plan naming its runs
+(12), and the authoring shape/copy decision (31). VB13, VB22, VB23, VB26, VB30, VB31, VB33 and
+VB45 all follow the first group rather than asking eight more copies of it.
 
 ---
 
@@ -1371,23 +1377,24 @@ This is the highest-fidelity region in the whole audit, and it is high-fidelity 
 
 | # | Region | Rows | exact | divergent | missing | extra | OPEN marks |
 |---|--------|-----:|------:|----------:|--------:|------:|-----------:|
-| 1 | Archive | 250 | 96 | 100 | 24 | 30 | 71 |
-| 2 | Activity report | 117 | 57 | 21 | 12 | 27 | 8 |
-| 3 | Workflow Explorer | 182 | 54 | 42 | 34 | 52 | 31 |
+| 1 | Archive | 250 | 106 | 94 | 20 | 30 | 61 |
+| 2 | Activity report | 117 | 57 | 21 | 12 | 27 | 7 |
+| 3 | Workflow Explorer | 182 | 55 | 42 | 33 | 52 | 30 |
 | 4 | UI catalog | 69 | 0 | 0 | 39 | 30 | 6 |
 | 5 | Settings + storage doctor | 72 | 2 | 8 | 48 | 14 | 15 |
-| 6 | Data intake | 155 | 4 | 61 | 56 | 34 | 66 |
+| 6 | Data intake | 155 | 10 | 64 | 47 | 34 | 57 |
 | 7 | Phone capture | 62 | 1 | 3 | 20 | 38 | 6 |
-| 8 | Version-bump dialog | 53 | 2 | 30 | 13 | 8 | 39 |
+| 8 | Version-bump dialog | 53 | 3 | 29 | 13 | 8 | 38 |
 | 9 | Design-system primitives | 159 | 119 | 13 | 12 | 15 | 18 |
-| | **Total** | **1119** | **335** | **278** | **258** | **248** | **260** |
+| | **Total** | **1119** | **353** | **274** | **244** | **248** | **238** |
 
 **How to read the spread.** The two ends are the interesting part. The design system is 75% `exact`
 because it was COPIED rather than re-implemented; the UI catalog is 0% `exact` because the two files
 paired under that name are not the same surface at all. Everything between is a port whose
-divergences are mostly ruled — the 260 OPEN marks collapse to **roughly 60 distinct questions**,
-because a single decision (the bump's arms, the specimen page, the Settings container) drags a
-dozen rows behind it.
+divergences are mostly ruled. The 238 OPEN marks map to **30 unresolved numbered decision groups**
+below: 35 numbered groups total, less four resolved groups (13–15 and 22) and one doc/code
+inconsistency that requires repair rather than an operator ruling (19). A single decision (the
+bump's arms, the specimen page, the Settings container) can still drag a dozen rows behind it.
 
 **Parity blind spots found while doing this.** `tests/parity/references/` has scenes for archive,
 activity, explorer, catalog, intake and capture, and **none for Settings, none for the version-bump
@@ -1449,17 +1456,15 @@ Each entry is one question for the operator, with every row it settles. `→` na
 
 **Records that are false or stale at HEAD — fix the record or fix the code**
 
-13. `docs/findings/queue-rows.md:221` says *"`dryRun` LANDED on `QueueBaseFields` … and the archived
-    detail draws it."* It does not — `dryRun`, `priority`, `warnings`, `displayName` and `subtitle`
-    are all served on `detail.row` and read by nothing in `archive.tsx`. → AR62, AR67, AR95, AR96,
-    AR121, AR123
-14. `archive.tsx:386-388` says *"The demo's `major`/`minor` word has no counterpart on this wire."*
-    D223 put `changeRecord.value.kind` on `ArchiveSweepWire`, so the sweep badge, its `sr-only`
-    summary, the popover description and the Archived-by card all print the SCOPE on a dead premise.
+13. **RESOLVED 2026-08-25 (`3d461962`, `d1f87916`).** The index now serves `dryRun` and `warnings`;
+    the list/detail draw them with the already-served `priority`, `displayName` and `subtitle`.
+    → AR62, AR67, AR95, AR96, AR121, AR123
+14. **RESOLVED 2026-08-25 (`d1f87916`).** The stale comment is gone and every sweep location folds
+    `changeRecord.value.kind`; a generation-1 absence stays named rather than guessed.
     → AR77, AR78, AR91, AR129
-15. `ref operator-trust` §5.7 rules the Explorer's `Version registry` action absent *"because no
-    version-registry surface exists in this tree"*; `archive.tsx:2351` renders
-    `<Table label="Workflow version registry">`. → EX5
+15. **RESOLVED 2026-08-25 (`4e09fb49`).** The Explorer's `Version registry` action reaches the
+    Archive's actual `Versions & bumps` view through `?archive=&archiveView=versions`; the route owns
+    the visible Archive view, so no local panel impersonates the registry. → EX5
 16. `explorer.tsx:8-10` claims `skippedAboveBoundary` was ported; `explorer-model.ts` exports no such
     function and no early-skip mark is drawn. → EX180
 17. `src/dashboard/DESIGN.md` is ported verbatim and declared binding, and at `:112`, `:690`, `:691`
@@ -1482,11 +1487,11 @@ Each entry is one question for the operator, with every row it settles. `→` na
     with `aria-label` and a `useDsEnterTransition` translate/opacity enter (`activity.tsx:1095`,
     `archive.tsx:2168`, `explorer.tsx:1475`). Consistent, and nowhere ruled. → AC12, AR9
 21. **`overflow-x-auto` wrappers.** The rebuild wraps tables the demo leaves bare. → AC62, AC77, AR225
-22. **Raw wire enums where the demo prints a label.** The archive's status filter and rows, the bump's
-    blocker table, and the Activity caveats all print `awaiting-approval` / `blocked` / `partial`
-    where the demo prints `Review` / `Write parked` / `Parked` — and `status-model.ts:73` maps
-    `blocked → parked`, so the Activity caveat contradicts every pill on its own page. → AC24, AR27,
-    VB19
+22. **Raw wire enums where the demo prints a label — archive arms resolved 2026-08-25
+    (`d1f87916`), Activity resolved in this unit (`4da19fd7`).** The archive filter, bump blocker table and
+    Activity caveat now use the shared status vocabulary. The Activity prose keeps `waiting on you`
+    and renders the parked arm as `write parked`, while the pill remains `Write parked`. → AC24
+    (**resolved**), AR27 (**resolved**), VB19 (**resolved**)
 23. **Async states the demo has no counterpart for** — `Skeleton` panes and `Refusal` panes on the
     archive and Activity. Honest additions; nowhere ruled as a convention. → AR244, AR245
 24. **Two names per row in the Explorer** — the rebuild prints the node LABEL beside the id, and adds
@@ -1550,7 +1555,7 @@ Notation per `.claude/skills/custom-update-plan/SKILL.md` §Notation — `FE` / 
 - [ ] FE the archive index is VIRTUALISED — `@tanstack/react-virtual` is not a dependency of this repo, the row/section pixel constants, the spacer rows and the one flat item list are all absent, and each sweep still gets its own `<TBody>`, while `archive.tsx:12-19` argues the demo's 800-row case (fidelity-3 AR32–AR35, AR51)
 - [ ] FE the archive index draws the facts its own detail already holds — `dryRun`, `warnings`, `displayName`, `subtitle` and `priority` are served on `detail.row` and read by nothing (fidelity-3 AR62, AR67, AR95, AR96, AR121, AR123)
 - [ ] FE the sweep head prints the bump KIND — `changeRecord.value.kind` has ridden `ArchiveSweepWire` since D223 (fidelity-3 AR77, AR78, AR91, AR129)
-- [ ] FE every closed-enum status renders through its ds label — the archive filter and rows, the bump blocker table and the Activity caveats print raw wire enums, and `status-model.ts:73` maps `blocked → parked` so the caveat contradicts its own page's pills (fidelity-3 AC24, AR27, VB19)
+- [x] FE every closed-enum status renders through its ds label — the archive filter and rows, the bump blocker table and the Activity caveat all use the shared wire→display fold; the Activity prose renders `waiting on you or write parked` and the pill's exact label remains `Write parked` (fidelity-3 AC24, AR27, VB19)
 - [ ] FE the intake review gate — `Run` is live beside unresolved rejections, which `ref data-intake-and-edit-data` §2.2 step 4 and §7 vector 4 both say it is not, and the courtesy blocker list never names `unresolved-rejections` (fidelity-3 IN118–IN120)
 - [ ] FE the version bump's MAJOR/MINOR arms behave, or the field stops claiming they do — nothing branches on `VersionBumpChangeRecordSchema.kind`, so a `minor` bump archives every prior-version run (fidelity-3 VB1)
 - [ ] FE the reviewed bump plan names the runs it would archive, not their count (fidelity-3 VB25)

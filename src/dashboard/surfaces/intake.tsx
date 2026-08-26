@@ -44,6 +44,8 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import {
   CheckCircle2,
   FileSpreadsheet,
+  GitCompare,
+  Info,
   ListChecks,
   RotateCcw,
   Table2,
@@ -51,6 +53,7 @@ import {
 import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
 import type { CommandResult } from "../../domain/commands.js";
+import { settleCommandResult } from "../app/command-result.js";
 import type {
   DetectedColumnSchema,
   ColumnBindingSchema,
@@ -69,11 +72,16 @@ import {
   Dropzone,
   EmptyState,
   Field,
+  IconButton,
   Input,
+  KeyValueList,
   MetaLine,
   Panel,
   PanelBody,
   PanelHeader,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Refusal,
   SectionLabel,
   Select,
@@ -89,6 +97,7 @@ import {
   TH,
   THead,
   TR,
+  Well,
   dsIcon,
   dsMotion,
   dsText,
@@ -97,7 +106,28 @@ import {
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { CaptureStart } from "./capture-start.js";
-import { fmtClock } from "./format.js";
+import { fmtClock, pluralize, shortHash } from "./format.js";
+import {
+  correctionText,
+  headerCandidateOptionLabel,
+  intakeTab,
+  type IntakeTab,
+  type IntakeListPageController,
+  layoutFingerprint,
+  layoutMetaItems,
+  manifestIdentifierFacts,
+  manifestRowDetailFacts,
+  manifestStage,
+  type ManifestStageRow,
+  type RerunChangedInput,
+  type RerunMembershipRow,
+  rerunIdentifierFacts,
+  rerunMembershipDetailFacts,
+  rerunStage,
+  sourceLabel,
+  suggestionProposalText,
+  useIntakeListPage,
+} from "./intake-model.js";
 
 type DetectedColumn = z.infer<typeof DetectedColumnSchema>;
 type ColumnBinding = z.infer<typeof ColumnBindingSchema>;
@@ -122,14 +152,6 @@ const REJECT_CODE_LABEL: Record<RowReject["code"], string> = {
   "workflow-schema": "row rejected by the workflow",
   "duplicate-identity": "duplicate person",
   "cross-field": "fields disagree",
-};
-
-/** Why a column was proposed — §2.5's scorer, said out loud. */
-const SUGGESTION_WHY_LABEL: Record<Suggestion["why"][number], string> = {
-  "alias-exact": "known header",
-  "label-exact": "matches the field label",
-  "token-overlap": "words in common",
-  "samples-parse": "its values parse",
 };
 
 /* ── command plumbing ─────────────────────────────────────────────────────── */
@@ -162,12 +184,19 @@ type CommandProblem =
   | { readonly kind: "conflict"; readonly currentVersion: number; readonly message: string }
   | { readonly kind: "transport"; readonly message: string };
 
+/**
+ * D253 / Track D row D3 — WHETHER the command landed is the fold's answer, not
+ * this surface's. What stays here is the PRESENTATION vocabulary: this
+ * workspace draws a rejection as a `Refusal` with a code chip and a conflict as
+ * a warning `Banner` whose meta line carries the version, so the two refusals
+ * keep their own facts and a transport failure keeps its own arm beside them.
+ */
 function problemOf(result: CommandResult): CommandProblem | undefined {
-  if (result.state === "rejected") return { kind: "rejected", code: result.code, message: result.message };
-  if (result.state === "conflict") {
-    return { kind: "conflict", currentVersion: result.currentVersion, message: result.message };
-  }
-  return undefined;
+  const settlement = settleCommandResult(result);
+  if (settlement.kind === "applied") return undefined;
+  return settlement.reason === "rejected"
+    ? { kind: "rejected", code: settlement.code, message: settlement.message }
+    : { kind: "conflict", currentVersion: settlement.currentVersion, message: settlement.message };
 }
 
 /**
@@ -276,7 +305,7 @@ function SourceBand({
         <FileSpreadsheet aria-hidden className={cn(dsIcon.lg, "text-[color:var(--ds-fg-muted)]")} />
         <span className="flex min-w-0 flex-col">
           <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>
-            {session.sourceName ?? "(this session predates file names)"}
+            {sourceLabel(session)}
           </span>
           <MetaLine
             items={[
@@ -320,7 +349,7 @@ function SourceBand({
             {settled === null && <option value="">Pick the row that holds the headers</option>}
             {session.headerCandidates.map((candidate) => (
               <option key={candidate.rowIndex} value={String(candidate.rowIndex)}>
-                {`row ${String(candidate.rowIndex + 1)} — ${candidate.cells.filter((cell) => cell.length > 0).slice(0, 6).join(" · ")}`}
+                {headerCandidateOptionLabel(candidate)}
               </option>
             ))}
           </Select>
@@ -351,19 +380,15 @@ function SourceBand({
             </span>
           }
         >
-          {`${String(session.bindings.length)} bound ${plural(session.bindings.length, "column")}, `
-            + `${String(session.corrections.length)} ${plural(session.corrections.length, "correction")} and `
-            + `${String(session.exclusions.length)} ${plural(session.exclusions.length, "exclusion")} `
+          {`${String(session.bindings.length)} bound ${pluralize(session.bindings.length, "column")}, `
+            + `${String(session.corrections.length)} ${pluralize(session.corrections.length, "correction")} and `
+            + `${String(session.exclusions.length)} ${pluralize(session.exclusions.length, "exclusion")} `
             + "name rows and columns under the current header row, so re-reading the file drops them."}
         </Banner>
         </Arriving>
       )}
     </section>
   );
-}
-
-function plural(count: number, word: string): string {
-  return count === 1 ? word : `${word}s`;
 }
 
 /** Why the header row is what it is — the discovery reason, in words. */
@@ -601,7 +626,7 @@ function SuggestionCell({
             </span>
             <MetaLine
               items={[
-                proposal.why.map((why) => SUGGESTION_WHY_LABEL[why]).join(", "),
+                suggestionProposalText(proposal),
                 proposal.ambiguous ? "another column scores the same — check both" : undefined,
               ]}
             />
@@ -671,7 +696,7 @@ function ValidationReview({
         ]}
       />
 
-      {rows.length === 0 && validation.excluded.length === 0 ? (
+      {rows.length === 0 && validation.excluded.length === 0 && session.corrections.length === 0 ? (
         <EmptyState
           icon={<CheckCircle2 aria-hidden className={dsIcon.lg} />}
           title={`All ${String(validation.validRows)} rows are runnable`}
@@ -679,22 +704,58 @@ function ValidationReview({
         />
       ) : (
         <>
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-            Every rejected row is fixed or excluded before this file can run — there is deliberately
-            no way to ignore one. An exclusion is durable and keeps the reason it was made with.
-          </span>
-          {rows.map(([sourceRow, rejects]) => (
-            <RejectedRow
-              key={sourceRow}
-              sourceRow={sourceRow}
-              rejects={rejects}
-              locked={locked}
-              pending={pending}
-              labelOf={labelOf}
-              onCorrect={onCorrect}
-              onExclude={onExclude}
-            />
-          ))}
+          {rows.length > 0 && (
+            <>
+              <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                Every rejected row is fixed or excluded before this file can run — there is
+                deliberately no way to ignore one. An exclusion is durable and keeps the reason it
+                was made with.
+              </span>
+              {rows.map(([sourceRow, rejects]) => (
+                <RejectedRow
+                  key={sourceRow}
+                  sourceRow={sourceRow}
+                  rejects={rejects}
+                  locked={locked}
+                  pending={pending}
+                  labelOf={labelOf}
+                  onCorrect={onCorrect}
+                  onExclude={onExclude}
+                />
+              ))}
+            </>
+          )}
+
+          {/*
+            * IN121 / `DemoIntake.tsx:917-922` — what the operator has already
+            * fixed, listed rather than counted.
+            *
+            * A correction MOVES a row out of the rejection list, so the
+            * previous shape hid its own successes: correct the last bad cell
+            * and every trace of the work vanished behind "all rows are
+            * runnable", while the manifest still recorded each one. It sits
+            * where the demo puts it — after the rejections, before the
+            * exclusions — and it is drawn as the exclusions' twin, because
+            * the two are the same kind of thing: a durable, dated decision
+            * this operator made about one source row.
+            */}
+          {session.corrections.length > 0 && (
+            <section aria-label="Corrected cells" className="flex flex-col gap-[var(--ds-space-tight)]">
+              <SectionLabel>Corrections</SectionLabel>
+              {session.corrections.map((correction) => (
+                <span
+                  key={`${String(correction.sourceRow)}:${correction.field}`}
+                  className="flex flex-wrap items-baseline gap-[var(--ds-space-snug)]"
+                >
+                  <Chip label="row">{String(correction.sourceRow)}</Chip>
+                  <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg-secondary)]")}>
+                    {correctionText(correction, labelOf(correction.field))}
+                  </span>
+                  <MetaLine items={[fmtClock(correction.correctedAt)]} />
+                </span>
+              ))}
+            </section>
+          )}
 
           {validation.excluded.length > 0 && (
             <section aria-label="Excluded rows" className="flex flex-col gap-[var(--ds-space-tight)]">
@@ -795,6 +856,15 @@ function RejectedRow({
           </span>
           <MetaLine
             items={[
+              /*
+               * IN106 / `DemoIntake.tsx:844` — the raw code, under the reason
+               * it names. The badge above spells the SAME code in the
+               * operator's words, and a re-worded label is not a thing anyone
+               * can quote back to us: a `Refusal` on this surface always
+               * carries its code for exactly that reason, and a rejection is
+               * the same kind of sentence one row down.
+               */
+              `code ${reject.code}`,
               "column" in reject ? `column ${reject.column.header}` : undefined,
               "field" in reject ? reject.field : undefined,
               rejectRawText(reject) === undefined ? undefined : `value ${rejectRawText(reject) ?? ""}`,
@@ -852,49 +922,304 @@ function RejectedRow({
   );
 }
 
-/* ── rerun ────────────────────────────────────────────────────────────────── */
+/* ── manifest + rerun stages ─────────────────────────────────────────────── */
 
-const RERUN_AXIS_LABEL: Record<string, string> = {
-  "source-artifact": "the file",
-  mapping: "the mapping",
-  "intake-projection": "the workflow's mappable fields",
-  "workflow-contract": "the workflow contract",
-  "canonical-input-schema": "the input schema",
-};
+function EvidencePager<T>({
+  label,
+  page,
+}: {
+  label: string;
+  page: IntakeListPageController<T>;
+}) {
+  if (page.pageCount === 1) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-tight)]">
+      <span aria-live="polite" className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
+        {`Showing ${String(page.firstItem)}–${String(page.lastItem)} of ${String(page.totalItems)}`}
+      </span>
+      <div role="group" aria-label={`${label} pages`} className="flex gap-[var(--ds-space-tight)]">
+        <Button
+          size="sm"
+          variant="secondary"
+          className="min-h-[44px]"
+          disabled={page.pageIndex === 0}
+          onClick={() => page.goToPage(page.pageIndex - 1)}
+        >
+          Previous
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="min-h-[44px]"
+          disabled={page.pageIndex === page.pageCount - 1}
+          onClick={() => page.goToPage(page.pageIndex + 1)}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}
 
-/**
- * "These exact bytes have run before" — §7 vector #11, shown BEFORE the second
- * enqueue rather than discovered after it. `same-plan` is the more dangerous
- * reading of the two, so it gets a warning rather than a reassurance: it means
- * running again would file the same rows a second time.
- */
-function RerunBanner({ rerun }: { rerun: NonNullable<IntakeSessionWire["rerun"]> }) {
-  const meta = [`manifest ${rerun.intakeManifestId.slice(0, 8)}…`, `ran ${fmtClock(rerun.createdAt)}`,
-    `${String(rerun.totals.valid)} of ${String(rerun.totals.sourceRows)} rows ran`];
-  if (rerun.diff.kind === "same-plan") {
+function ManifestRows({ manifestId, rows }: { manifestId: string; rows: readonly ManifestStageRow[] }) {
+  const page = useIntakeListPage(`manifest:${manifestId}:source-rows`, rows);
+  return (
+    <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
+      <div className="max-w-full overflow-x-auto">
+        <Table label="Source row dispositions" className="min-w-[52rem]">
+          <THead>
+            <TR>
+              <TH align="right">Row</TH>
+              <TH>Disposition</TH>
+              <TH>Item</TH>
+              <TH>Input hash</TH>
+              <TH>Parsed input</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {page.items.map((row) => (
+              <TR key={row.sourceRow}>
+                <TD numeric align="right">{String(row.sourceRow)}</TD>
+                <TD><Badge tone={row.tone}>{row.disposition}</Badge></TD>
+                <TD numeric>{row.itemId ?? "—"}</TD>
+                <TD numeric>{row.inputHash === undefined ? "—" : row.inputHash.slice(0, 10)}</TD>
+                <TD className="max-w-[var(--ds-w-member-detail)]">
+                  <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+                    <span className="min-w-0 flex-1 truncate">{row.parsedInput}</span>
+                    <IdentifierPopover
+                      label={`Show full evidence for source row ${String(row.sourceRow)}`}
+                      title={`Source row ${String(row.sourceRow)} evidence`}
+                      facts={manifestRowDetailFacts(row)}
+                    />
+                  </div>
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </div>
+      <EvidencePager label="Source row dispositions" page={page} />
+    </div>
+  );
+}
+
+function ManifestStageView({ session }: { session: IntakeSessionWire }) {
+  const stage = manifestStage(session);
+  if (stage.kind === "unavailable") {
     return (
-      <Banner tone="warning" title="This file has already been enqueued, with this exact plan">
-        <span className="flex flex-col gap-[var(--ds-space-tight)]">
-          <span>Running it again would file the same rows a second time. Nothing has changed since.</span>
-          <MetaLine items={meta} />
-        </span>
-      </Banner>
+      <EmptyState
+        title="No manifest identity is available"
+        description="This older intake session was created before manifest identities were reserved. No manifest is invented for it."
+      />
+    );
+  }
+  if (stage.kind === "reserved") {
+    return (
+      <section className="flex flex-col gap-[var(--ds-space-cozy)]">
+        <Banner tone="info" title="Manifest identity reserved">
+          This identity is reserved for this session. It is not a committed manifest, and no runs have been enqueued.
+        </Banner>
+        <div className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
+          <KeyValueList items={[{ key: "reserved plan id", value: stage.manifestId }]} className="min-w-0 flex-1" />
+          <IdentifierPopover
+            label="Show full reserved manifest identifier"
+            title="Reserved manifest identifier"
+            facts={manifestIdentifierFacts(session)}
+          />
+        </div>
+      </section>
     );
   }
   return (
-    <Banner tone="info" title="This file has run before, and the plan has changed since">
-      <span className="flex flex-col gap-[var(--ds-space-tight)]">
-        <ul className="flex flex-col gap-[var(--ds-space-hair)]">
-          {rerun.diff.changes.map((change) => (
-            <li key={change.what} className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
-              {`${RERUN_AXIS_LABEL[change.what] ?? change.what} moved — `}
-              <span className={dsText.nums}>{`${change.was.slice(0, 10)}… → ${change.now.slice(0, 10)}…`}</span>
-            </li>
+    <section className="flex flex-col gap-[var(--ds-space-cozy)]">
+      <Banner tone="success" title={`${String(stage.rows.filter((row) => row.disposition === "valid").length)} of ${String(stage.rows.length)} source rows will run`}>
+        Every source row below has exactly one disposition. The counts are derived from those dispositions, never summed from the
+        rejection history — a row that was rejected and then corrected is counted once, as valid.
+      </Banner>
+      <div className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
+        <KeyValueList items={stage.facts} className="min-w-0 flex-1" />
+        <IdentifierPopover
+          label="Show full manifest identifiers"
+          title="Manifest identifiers"
+          facts={manifestIdentifierFacts(session)}
+        />
+      </div>
+      <ManifestRows manifestId={stage.manifestId} rows={stage.rows} />
+    </section>
+  );
+}
+
+function RerunMembership({
+  label,
+  owner,
+  rows,
+}: {
+  label: string;
+  owner: string;
+  rows: readonly RerunMembershipRow[];
+}) {
+  const page = useIntakeListPage(owner, rows);
+  return (
+    <Well className="flex flex-col gap-[var(--ds-space-tight)]">
+      <SectionLabel>{label}</SectionLabel>
+      {rows.length === 0 ? (
+        <span className={cn(dsText.body, "text-[color:var(--ds-fg-faint)]")}>nothing</span>
+      ) : page.items.map((row) => (
+        <div key={row.itemId} className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+          <span className={cn(dsText.body, dsText.nums, "min-w-0 flex-1 break-all text-[color:var(--ds-fg-secondary)]")}>
+            {row.itemId} · input {shortHash(row.inputHash)}…
+          </span>
+          <IdentifierPopover
+            label={`Show full membership evidence for item ${row.itemId}`}
+            title="Rerun membership evidence"
+            facts={rerunMembershipDetailFacts(row)}
+          />
+        </div>
+      ))}
+      <EvidencePager label={label} page={page} />
+    </Well>
+  );
+}
+
+function ChangedInputRows({
+  manifestId,
+  rows,
+}: {
+  manifestId: string;
+  rows: readonly RerunChangedInput[];
+}) {
+  const page = useIntakeListPage(`rerun:${manifestId}:changed-inputs`, rows);
+  return (
+    <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
+      <div className="max-w-full overflow-x-auto">
+        <Table label="Changed input hashes" className="min-w-[44rem]">
+          <THead>
+            <TR><TH>Item</TH><TH>Previous input hash</TH><TH>Current input hash</TH></TR>
+          </THead>
+          <TBody>
+            {page.items.map((change) => (
+              <TR key={change.itemId}>
+                <TD numeric>{change.itemId}</TD>
+                <TD numeric>{change.beforeInputHash}</TD>
+                <TD numeric>{change.afterInputHash}</TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </div>
+      <EvidencePager label="Changed input hashes" page={page} />
+    </div>
+  );
+}
+
+function RerunStageView({ session }: { session: IntakeSessionWire }) {
+  const stage = rerunStage(session);
+  if (stage.kind === "none") {
+    return (
+      <EmptyState
+        title="No prior intake of this source"
+        description="A rerun diff compares this plan with an earlier intake of the same file. This source has not been imported before, so there is nothing to compare it with — and nothing is invented to fill the gap."
+      />
+    );
+  }
+  if (stage.kind === "same-plan") {
+    return (
+      <section className="flex flex-col gap-[var(--ds-space-cozy)]">
+        <Banner tone="warning" title="This file has already been enqueued, with this exact plan">
+          Running it again would file the same rows a second time. Nothing has changed since.
+        </Banner>
+        <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+          <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${fmtClock(stage.createdAt)}`]} />
+          <IdentifierPopover
+            label="Show full prior manifest identifier"
+            title="Prior manifest identifier"
+            facts={rerunIdentifierFacts(stage)}
+          />
+        </div>
+      </section>
+    );
+  }
+  return (
+    <section className="flex flex-col gap-[var(--ds-space-cozy)]">
+      <Banner tone="info" title={`Compared with ${shortHash(stage.manifestId)}…, made ${fmtClock(stage.createdAt)}`}>
+        This file has run before, and the plan has changed since. The exact changed axes and membership are below.
+      </Banner>
+      <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+        <MetaLine items={[`prior manifest ${shortHash(stage.manifestId)}…`, `${String(stage.axes.length)} changed axes`]} />
+        <IdentifierPopover
+          label="Show full prior manifest and changed-axis hashes"
+          title="Prior manifest and changed axes"
+          facts={rerunIdentifierFacts(stage)}
+        />
+      </div>
+      <div className="flex flex-wrap gap-[var(--ds-space-tight)]">
+        {stage.axes.map((axis) => (
+          <Chip key={axis.label} label={axis.label} tone="info">
+            {`${shortHash(axis.was)}… → ${shortHash(axis.now)}…`}
+          </Chip>
+        ))}
+        {stage.unchanged !== undefined && <Chip label="unchanged">{String(stage.unchanged)}</Chip>}
+        <Chip label="added" tone={stage.added.length > 0 ? "info" : "neutral"}>{String(stage.added.length)}</Chip>
+        <Chip label="removed" tone={stage.removed.length > 0 ? "warning" : "neutral"}>{String(stage.removed.length)}</Chip>
+        <Chip label="mapping">{stage.mapping}</Chip>
+        <Chip label="contract" tone={stage.contract === "changed" ? "warning" : "neutral"}>{stage.contract}</Chip>
+        <Chip label="changed inputs" tone={stage.changedInputs.length > 0 ? "info" : "neutral"}>{String(stage.changedInputs.length)}</Chip>
+      </div>
+      <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] min-[640px]:grid-cols-2">
+        <RerunMembership
+          label={`In this plan, not in ${shortHash(stage.manifestId)}…`}
+          owner={`rerun:${stage.manifestId}:added`}
+          rows={stage.added}
+        />
+        <RerunMembership
+          label={`In ${shortHash(stage.manifestId)}…, not here`}
+          owner={`rerun:${stage.manifestId}:removed`}
+          rows={stage.removed}
+        />
+      </div>
+      {stage.changedInputs.length > 0 && <ChangedInputRows manifestId={stage.manifestId} rows={stage.changedInputs} />}
+    </section>
+  );
+}
+
+/**
+ * The complete identifier behind a dense, eye-scan-friendly value. Popover is
+ * the design system's accessible home for load-bearing detail that would make
+ * the resting surface noisy; the body wraps opaque tokens instead of clipping
+ * them again as `KeyValueList` correctly does in dense lists.
+ */
+function IdentifierPopover({
+  label,
+  title,
+  facts,
+}: {
+  label: string;
+  title: string;
+  facts: readonly { key: string; value: string }[];
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <IconButton
+          size="xs"
+          className="size-[44px] shrink-0"
+          label={label}
+          icon={<Info aria-hidden className={dsIcon.sm} />}
+        />
+      </PopoverTrigger>
+      <PopoverContent title={title} width="lg" align="start">
+        <dl className="flex flex-col gap-[var(--ds-space-base)]">
+          {facts.map((fact) => (
+            <div key={fact.key} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+              <dt className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{fact.key}</dt>
+              <dd className={cn(dsText.body, dsText.nums, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
+                {fact.value}
+              </dd>
+            </div>
           ))}
-        </ul>
-        <MetaLine items={meta} />
-      </span>
-    </Banner>
+        </dl>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -939,6 +1264,7 @@ function OutcomeBand({
 
   const validated = validation.state === "validated";
   const rejectedRows = validated ? new Set(validation.rejected.map((entry) => entry.sourceRow)).size : 0;
+  const fingerprint = layoutFingerprint(session);
 
   return (
     <div
@@ -969,6 +1295,23 @@ function OutcomeBand({
               : "This mapping has not been validated, so nothing is known about its rows yet."}
           </span>
         )}
+        {/*
+          * IN8 / IN9 / `DemoIntake.tsx:355-358` — the layout every decision on
+          * this screen is fenced against, echoed where the deciding buttons
+          * are. `faint` because it is a standing note about the session, not a
+          * fact about what is about to happen; `MetaLine`'s own docstring
+          * names this exact line as one of the seven it was extracted for.
+          */}
+        <span className="flex items-center gap-[var(--ds-space-snug)]">
+          <MetaLine tone="faint" items={layoutMetaItems(session)} />
+          {fingerprint !== undefined && (
+            <IdentifierPopover
+              label="Show full layout fingerprint"
+              title="Layout fingerprint"
+              facts={[{ key: "fingerprint", value: fingerprint }]}
+            />
+          )}
+        </span>
       </span>
 
       <span className="flex-1" />
@@ -1055,7 +1398,7 @@ export function IntakeWorkspace({
    * exists to produce, and landing back on the grid would hide it behind a tab.
    * What the operator clicked always wins afterwards.
    */
-  const [tab, setTab] = useState<"mapping" | "review" | undefined>(undefined);
+  const [tab, setTab] = useState<IntakeTab | undefined>(undefined);
   const [dryRun, setDryRun] = useState(false);
 
   useEffect(() => {
@@ -1144,9 +1487,11 @@ export function IntakeWorkspace({
               setPending(null);
               setResource({ state: "loaded", session: next });
               // Validation's whole point is the review, so land on it. The
-              // enqueue deliberately does NOT navigate: the operator is handed
-              // the manifest and leaves when they have read it.
+              // Enqueue hands the operator the committed manifest. The stage
+              // is not a prediction: it mounts only after the re-read serves
+              // the terminal projection from authority.
               if (command.type === "validate-intake") setTab("review");
+              if (command.type === "enqueue-intake-manifest") setTab("manifest");
             },
             (caught: unknown) => {
               setPending(null);
@@ -1215,52 +1560,28 @@ export function IntakeWorkspace({
           onInspect={(selection) => issue(session, { type: "inspect-intake", payload: selection }, "inspect")}
         />
 
-        {session.rerun !== undefined && <RerunBanner rerun={session.rerun} />}
-
-        {session.state === "enqueued" && (
-          <Banner
-            tone="success"
-            title="This file has been enqueued"
-            action={
-              <Button size="sm" onClick={onEnqueued}>
-                Show the runs
-              </Button>
-            }
-          >
-            <span className="flex flex-col gap-[var(--ds-space-tight)]">
-              <span>
-                Its rows are now runs in the queue. The manifest is the join — every run it minted
-                references it, which is what makes &quot;all of them ran&quot; a checkable claim.
-              </span>
-              <MetaLine
-                items={[
-                  session.intakeManifestId === undefined
-                    ? undefined
-                    : `manifest ${session.intakeManifestId}`,
-                  session.rerun === undefined
-                    ? undefined
-                    : `${String(session.rerun.totals.valid)} of ${String(session.rerun.totals.sourceRows)} rows`,
-                ]}
-              />
-            </span>
-          </Banner>
-        )}
-
         {problem !== null && <ProblemNotice problem={problem} onDismiss={() => setProblem(null)} />}
 
         <Tabs
           value={tab ?? (session.validation.state === "validated" ? "review" : "mapping")}
-          onValueChange={(next) => setTab(next === "review" ? "review" : "mapping")}
+          onValueChange={(next) => setTab(intakeTab(next))}
         >
           <TabList label="Intake stage">
-            <Tab value="mapping" count={session.bindings.length}>
+            <Tab value="mapping" count={session.bindings.length} className="min-h-[44px]">
               Mapping
             </Tab>
             <Tab
               value="review"
               count={session.validation.state === "validated" ? session.validation.rejected.length : undefined}
+              className="min-h-[44px]"
             >
               Review
+            </Tab>
+            <Tab value="manifest" icon={<CheckCircle2 aria-hidden className={dsIcon.sm} />} className="min-h-[44px]">
+              Manifest
+            </Tab>
+            <Tab value="rerun" icon={<GitCompare aria-hidden className={dsIcon.sm} />} className="min-h-[44px]">
+              Rerun diff
             </Tab>
           </TabList>
           <TabPanel value="mapping">
@@ -1306,6 +1627,17 @@ export function IntakeWorkspace({
                   `exclude:${String(sourceRow)}`,
                 )}
             />
+          </TabPanel>
+          <TabPanel value="manifest" className="p-[var(--ds-space-base)]">
+            <ManifestStageView session={session} />
+            {session.state === "enqueued" && (
+              <div className="mt-[var(--ds-space-cozy)] flex">
+                <Button size="sm" className="min-h-[44px]" onClick={onEnqueued}>Show the runs</Button>
+              </div>
+            )}
+          </TabPanel>
+          <TabPanel value="rerun" className="p-[var(--ds-space-base)]">
+            <RerunStageView session={session} />
           </TabPanel>
         </Tabs>
       </div>

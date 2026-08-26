@@ -4,7 +4,6 @@
  * this slice cannot yet serve is an explicit `unavailable` with its owning
  * milestone named — never a plausible placeholder.
  */
-import { z } from "zod";
 import type { CapabilityAvailability } from "../../../domain/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { workflowProjections } from "../../../base/workflow.js";
@@ -107,6 +106,27 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
       descriptorFingerprint: descriptor.contractFingerprint,
       availability: { state: "available" },
       role,
+      // D264 (amending D251) — the Run Modal's four start facts, projected
+      // from the SAME descriptor this process plans with. They used to be read
+      // off the bundle-safe descriptor tuple in the browser, which is what kept
+      // the whole composition root in the dashboard bundle; serving them here
+      // is what lets it leave. Each is passed through verbatim: `summary` and
+      // `inputRun` are omitted when the descriptor declares none, because their
+      // ABSENCE is the fact the modal renders, and `enqueue` is always declared
+      // so it is always served — the client no longer has a default to fall
+      // back to, which is the point.
+      start: {
+        ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
+        enqueue: descriptor.enqueue,
+        // C96 — the descriptor's own version, verbatim, for the modal footer's
+        // `{label} v{n}`. It is the same integer the run envelope and every
+        // archived row carry, so the footer names the shape the planner is
+        // about to enqueue rather than a second opinion about it.
+        version: descriptor.version,
+        ...(descriptor.surfaces.inputRun === undefined
+          ? {}
+          : { inputRun: descriptor.surfaces.inputRun }),
+      },
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({
       system,
@@ -129,5 +149,3 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     ],
   });
 }
-
-export const BootstrapDaySchema = z.iso.date();

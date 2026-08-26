@@ -37,6 +37,12 @@ import {
   type RunDetailSectionResponse,
   type RunDetailWire,
 } from "../../../src/domain/dashboard/run-detail.js";
+import {
+  DiagnosticBundleWireSchema,
+  type DiagnosticBundleWire,
+} from "../../../src/domain/dashboard/diagnostic-bundle.js";
+import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
+import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
 import {
   StartPlanResponseSchema,
@@ -68,6 +74,80 @@ const WORKFLOW_ID = personLookupDescriptor.id;
 
 const at = (minute: number, second = 0): string =>
   `2026-08-03T09:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}.000-07:00`;
+
+const FIXTURE_DIAGNOSTIC_REDACTION = {
+  fields: [
+    { key: "employeeName", state: "transformed", classification: "sensitive-hr", transform: "digest", value: "a".repeat(64) },
+    { key: "ucpathPassword", state: "redacted", classification: "secret", transform: "drop" },
+  ],
+  warnings: ["unclassified diagnostic field at index 3 dropped"],
+} as const;
+
+const FIXTURE_DIAGNOSTIC_ATTACHMENTS = [
+  {
+    kind: "screenshot",
+    artifactId: uuidOf(905),
+    mediaType: "image/png",
+    byteLength: 200,
+    digest: "1".repeat(64),
+    sensitivity: "redacted",
+    width: 1280,
+    height: 720,
+  },
+  {
+    kind: "accessibility-excerpt",
+    artifactId: uuidOf(906),
+    mediaType: "text/yaml",
+    byteLength: 128,
+    digest: "2".repeat(64),
+    sensitivity: "redacted",
+  },
+] as const;
+
+const FIXTURE_DIAGNOSTIC_IDENTITY = {
+  runId: uuidOf(4),
+  origin: { kind: "operator-request", requestedBy: "local-operator" },
+  capturedAt: at(35),
+  configFingerprint: CONFIG_FINGERPRINT,
+  descriptorFingerprint: CONTRACT_FINGERPRINT,
+  redaction: FIXTURE_DIAGNOSTIC_REDACTION,
+  attachments: FIXTURE_DIAGNOSTIC_ATTACHMENTS,
+} as const;
+
+/** E29's deterministic durable D137 row. The manifest route serves this canonical value exactly. */
+export const FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST: DiagnosticBundle = DiagnosticBundleSchema.parse({
+  bundleId: uuidOf(904),
+  runId: FIXTURE_DIAGNOSTIC_IDENTITY.runId,
+  origin: FIXTURE_DIAGNOSTIC_IDENTITY.origin,
+  createdAt: FIXTURE_DIAGNOSTIC_IDENTITY.capturedAt,
+  contentDigest: deriveDiagnosticContentDigest(FIXTURE_DIAGNOSTIC_IDENTITY),
+  configFingerprint: FIXTURE_DIAGNOSTIC_IDENTITY.configFingerprint,
+  descriptorFingerprint: FIXTURE_DIAGNOSTIC_IDENTITY.descriptorFingerprint,
+  redaction: FIXTURE_DIAGNOSTIC_IDENTITY.redaction,
+  attachments: FIXTURE_DIAGNOSTIC_IDENTITY.attachments,
+  retention: { kind: "pinned", reason: "fix" },
+});
+
+/** E29's strict browser projection of the durable row. */
+export const FIXTURE_DIAGNOSTIC_BUNDLE: DiagnosticBundleWire = DiagnosticBundleWireSchema.parse({
+  bundleId: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.bundleId,
+  capturedAt: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.createdAt,
+  byteSize: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments.reduce((total, attachment) => total + attachment.byteLength, 0),
+  contentDigest: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.contentDigest,
+  redaction: FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.redaction,
+  contents: [
+    {
+      ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments[0],
+      key: "Screenshot",
+      detail: "image/png · 200 bytes · 1280 × 720 px · redacted",
+    },
+    {
+      ...FIXTURE_DIAGNOSTIC_BUNDLE_MANIFEST.attachments[1],
+      key: "Accessibility excerpt",
+      detail: "text/yaml · 128 bytes · redacted",
+    },
+  ],
+});
 
 /* ── queue surfaces ──────────────────────────────────────────────────────── */
 
@@ -185,6 +265,9 @@ function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
     runNumber: input.seed === 4
       ? { state: "absent", reason: "enqueued before runs carried a workflow ordinal (D230)" }
       : { state: "present", value: input.seed },
+    // D269: the parity corpus predates run sessions and no surface reads the
+    // field yet; an absent arm keeps every frozen reference byte-identical.
+    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
     containment: kind === "member" ? "member" : "root",
     linkedRuns: [],
     facts: TERMINAL.has(input.status)
@@ -408,6 +491,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
    * attention chip counts), and a live worker carrying a standing `pause`
    * directive beside a state word that is still `idle`.
    */
+  workerPools: [],
   workerCards: [
     {
       workerId: "person-lookup-worker-1",
@@ -472,6 +556,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
   ],
   notifications: [
     {
+      kind: "notification",
       notificationId: uuidOf(801),
       actorId: "local-operator",
       severity: "warning",
@@ -481,6 +566,7 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       revision: 1,
     },
     {
+      kind: "notification",
       notificationId: uuidOf(802),
       actorId: "local-operator",
       severity: "info",
@@ -489,6 +575,28 @@ export const FIXTURE_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
       occurredAt: at(18),
       revision: 1,
     },
+  ],
+});
+
+/**
+ * A46's deterministic browser-proof profile. It is deliberately separate
+ * from the ordinary queue corpus, so adding the pinned safety state cannot
+ * redraw unrelated references. The strict parse proves the production wire
+ * accepts exactly the closed arm the browser receives.
+ */
+export const BACKFILL_GAP_DAY_WIRE: DashboardDayWire = DashboardDayWireSchema.parse({
+  ...FIXTURE_DAY_WIRE,
+  notifications: [
+    ...[803, 804, 805, 806, 807, 808].map((seed, index) => ({
+      kind: "backfill-gap",
+      notificationId: uuidOf(seed),
+      actorId: "local-operator",
+      severity: "error",
+      title: "Notification history is incomplete",
+      state: "pinned",
+      occurredAt: at(47 + index),
+    } as const)),
+    ...FIXTURE_DAY_WIRE.notifications,
   ],
 });
 
@@ -778,8 +886,8 @@ function failureDetail(runId: string, failureId: string, seed: number) {
     }],
     sameFingerprintSeen: 1,
     diagnosticBundle: {
-      state: "absent",
-      reason: "no diagnostic bundle was captured; automatic capture is a separate 2g slice",
+      state: "present",
+      bundleId: FIXTURE_DIAGNOSTIC_BUNDLE.bundleId,
     },
     occurredAt: at(35),
   };
@@ -1183,6 +1291,23 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
     // D219 — the served taxonomy fact. The corpus carries one standalone
     // workflow, so nothing here nests under anything.
     role: { kind: "standalone" },
+    // D264/D11/C96 — the Run Modal's four start facts, now SERVED rather than read
+    // off the bundled descriptor tuple. Projected from the descriptor exactly
+    // as `buildBootstrap` projects it, because a fixture that composed its own
+    // sentence here would photograph a modal no server can produce.
+    start: {
+      ...(personLookupDescriptor.summary === undefined
+        ? {}
+        : { summary: personLookupDescriptor.summary }),
+      enqueue: personLookupDescriptor.enqueue,
+      // C96's deliberate non-1 producer value. The start-run parity corpus
+      // observes this as `Person Lookup v7`, so a client that guesses or
+      // hardcodes v1 cannot agree with this fixture's bootstrap document.
+      version: 7,
+      ...(personLookupDescriptor.surfaces.inputRun === undefined
+        ? {}
+        : { inputRun: personLookupDescriptor.surfaces.inputRun }),
+    },
   }],
   systemInstances: [
     { system: "ucpath", prod: "available", test: { state: "available" } },
@@ -1243,6 +1368,14 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
     descriptorFingerprint: descriptor.contractFingerprint,
     availability: { state: "available" },
     role,
+    start: {
+      ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
+      enqueue: descriptor.enqueue,
+      version: descriptor.version,
+      ...(descriptor.surfaces.inputRun === undefined
+        ? {}
+        : { inputRun: descriptor.surfaces.inputRun }),
+    },
   })),
 });
 

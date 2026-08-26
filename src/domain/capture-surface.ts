@@ -145,6 +145,58 @@ export function isCapturePhoneAsset(path: string, phoneAssetPaths: ReadonlySet<s
   return path === CAPTURE_PHONE_ASSET_ENTRY || phoneAssetPaths.has(path);
 }
 
+/**
+ * The HOST a phone request arrives under, derived from the SAME config leaf the
+ * ingress resolver reads (`capture.ingress` / `capture.forwardedUrl`) — never a
+ * second leaf, so the gate and the QR can never disagree about which origin the
+ * phone is on.
+ *
+ * `forwarded` is the one shipped mode that names a real origin: the operator
+ * has put a tunnel or reverse proxy in front of this BFF and told the config
+ * its HTTPS URL, so a request forwarded from it carries that URL's host. The
+ * other two modes name no origin at all — `disabled` refuses every capture
+ * start, and `on-demand-ngrok`'s launcher is unbuilt (D175/D189), so its origin
+ * is not knowable until the tunnel is up. Both answer `undefined`, and the gate
+ * then admits every request, which is correct: with no ingress there is no
+ * phone origin to scope, and a gate keyed on a host nothing forwards under
+ * would refuse the operator's own loopback requests.
+ *
+ * It REFUSES a forwarded URL it cannot read a host out of rather than answering
+ * `undefined`: falling through would silently drop ref operator-trust §7's scope on the one
+ * path deliberately exposed to the public internet, which is the exact
+ * plausible-but-wrong outcome this program forbids. The config schema already
+ * requires `forwardedUrl` for this mode and requires it to be an HTTPS URL, so
+ * reaching either refusal means the resolver was handed something that never
+ * came through `ConfigSchema`.
+ */
+export function capturePhoneHostOf(
+  capture: { readonly ingress: string; readonly forwardedUrl?: string },
+): string | undefined {
+  if (capture.ingress !== "forwarded") return undefined;
+  const { forwardedUrl } = capture;
+  if (forwardedUrl === undefined) {
+    throw new Error(
+      "capture.ingress is \"forwarded\" with no forwardedUrl, so the phone-host scope gate has no "
+      + "host to bind; ref operator-trust \u00a77 refuses to serve an unscoped capture ingress",
+    );
+  }
+  let host: string;
+  try {
+    host = new URL(forwardedUrl).host;
+  } catch (cause) {
+    throw new Error(
+      `capture.forwardedUrl ${forwardedUrl} is not a URL, so the phone-host scope gate has no host to bind`,
+      { cause },
+    );
+  }
+  if (host === "") {
+    throw new Error(
+      `capture.forwardedUrl ${forwardedUrl} names no host, so the phone-host scope gate has nothing to bind`,
+    );
+  }
+  return host.toLowerCase();
+}
+
 /* ── the ingress ─────────────────────────────────────────────────────────── */
 
 export function deriveCaptureOriginDigest(origin: string): string {

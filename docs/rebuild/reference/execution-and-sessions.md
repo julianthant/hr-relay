@@ -4,19 +4,21 @@
 session contract (§2), the worker's claim/heartbeat/recovery lifecycle (§3), browser-session
 ownership and the content-level authentication proof (§4), the speed contract (§5), failure
 isolation (§6), the guards and the executed concurrency matrix (§7), a worked example (§8), the
-settled defaults (§9), and the two things this doc has DESIGNED and the tree has not yet built —
-the Duo ceremony lease (§10) and sessions plus the worker pool (§11). It is a REFERENCE spec: it
-states what holds, and where the code differs the as-built is stated in the section it amends.
+settled defaults (§9), the built Duo ceremony lease (§10), and sessions plus the worker pool (§11).
+Section 11 is deliberately split: its authority records and dashboard read view are built, while
+the pool process and parallel proof remain designed. It is a REFERENCE spec: it states what holds,
+and where the code differs the as-built is stated in the section it amends.
 
-**Status, verified against the tree 2026-08-21 (D252).** §1–§9 are BUILT and running. One worker
+**Status, verified against the tree 2026-08-25 (D252, D267, D269).** §1–§9 are BUILT and running. One worker
 owns one active run (`src/core/worker-loop.ts`), its browser sessions are callback leases keyed on
 the whole `(worker, system, instance, configFingerprint)` identity (`src/core/worker-sessions.ts`),
 the concrete factory launches Playwright's full Chromium with the Duo Autopilot extension and proves
 every close (`src/infra/browser/browser-session-factory.ts`), four systems are bound
 (`src/infra/browser/system-bindings.ts`), and D182's concurrency matrix executes the multi-worker
-cases against real `runWorkerLoop` instances over one authority database (§7.1). §10 and §11 are
-**DESIGNED, NOT BUILT** and say so in their own status blocks. The executor-lane and static
-per-system capacity design is retired and stays retired (§0).
+cases against real `runWorkerLoop` instances over one authority database (§7.1). §10 is built as
+the durable D267 ceremony lease and recovery contract; §11's authority records and dashboard read
+view are built, while its pool process and parallel proof remain designed. The executor-lane and
+static per-system capacity design is retired and stays retired (§0).
 
 Four dated Phase-1 stage blocks (1d's seam ratification, the 1f runtime, the 1f concrete factory and
 D125's bound) stood above §0 until 2026-08-21; their contracts are folded into §2, §4, §4.1 and §4.3
@@ -111,10 +113,10 @@ graph branches. Those uses do not describe executor capacity and are unaffected.
   browser session. A transaction may retain it across prepare → fence → commit → proof.
 - **Fresh-session boundary** — an authored workflow instruction that closes the current session for
   a named system before the next node and authenticates a new one.
-- **Session** (§11, designed, not built) — a dashboard-started GROUP of runs, and the only unit in
-  this list that names more than one run. It is not a browser session and not a worker; it is what
-  an operator starts when they dispatch a batch, and the thing a worker pool serves. Today the word
-  appears in this doc only as "browser session"; §11 is where the group sense is specified.
+- **Session** (§11) — a dashboard-started GROUP of runs, and the only unit in this list that names
+  more than one run. It is not a browser session and not a worker; D269 persists the authority
+  grouping and P4 renders its day-wire membership, while the process pool that serves it remains
+  unbuilt.
 
 ---
 
@@ -332,9 +334,18 @@ worker. (`src/core/provider-admission.ts`; `provider-admission.test.ts`, `provid
 
 **A browser session is a callback LEASE, not a handle a caller holds.**
 `WorkerSessionManager.withDriver(need, instance, signal, operation)` is the whole surface
-(`src/core/worker-sessions.ts:313`): it serializes use per system inside the worker, acquires or
+(`src/core/worker-sessions.ts`, `WorkerSessionManager.withDriver`): it serializes use per system inside the worker, acquires or
 reuses the resource, runs the callback with the concrete driver, and decides what happens next from
 how the callback ENDED. There is no `release("clean")` call for a caller to forget.
+
+Ref write-safety has one explicit specialization rather than weakening that general contract:
+`withTransactionDriver` gives only the write sequencer a one-way `retainAfterFence()` transition.
+Before the sequencer calls it, parent abort races acquisition/use and poison-closes exactly like
+`withDriver`. After a durable fence, parent abort is recorded and forwarded to the task, but the
+manager cannot return, reset, or close while the callback remains unsettled. Once it settles, the
+original cancellation/failure is raised and the ordinary poison-close runs exactly once. A callback
+that never settles therefore leaves its session and `attempting` intent process-owned until process
+loss makes ref write-safety §4 recovery the owner; it never becomes detached live I/O.
 
 - **Driver use is exclusive while held**, serialized per `(worker, system)`.
 - **A callback that RETURNS resets.** The resource re-navigates to the system's entry route and
@@ -348,6 +359,9 @@ how the callback ENDED. There is no `release("clean")` call for a caller to forg
   subject mismatch. If the poison-close itself cannot be proven, both failures are raised together
   in one `AggregateError` and the resource is RETAINED as poisoned — the next lease for that system
   refuses by name rather than inheriting an uncertain page.
+- **A fenced transaction callback cannot be abort-detached.** Its parent cancellation is retained
+  until actual callback settlement; deadline-first plus parent-abort preserves the callback failure
+  first and the later cancellation second, while parent-first cancels the still-pending task bound.
 - **Reuse requires the COMPLETE identity** — this manager (the worker), the system, the resolved
   instance and the run's bound `configFingerprint` (D116) — plus agreement on the two launch
   properties, downloads and exclusivity. Any drift closes the old resource with an accepted proof
@@ -465,7 +479,7 @@ neutral reset asserts through `assertAuthenticatedApplication`.
 - [x] the login wait races Duo's rendered terminal refusal, so a dead ceremony refuses in ~9.5 s instead of burning the envelope (`waitForAuthenticatedLanding`, `src/infra/browser/ucsd-sso.ts:340`)
 - [x] the presented counter is `max(stored + 1, nowSec)`, monotonic across every profile sharing the credential (`duo-autopilot/src/sign-count.js`)
 - [x] the rule is pinned in THIS repo's gate, not the extension's offline lane (D244; `tests/unit/duo-sign-count.test.ts`)
-- [ ] the ceremonies themselves are not serialized — the arithmetic removes the counter GAP, the lease removes the RACE (§10)
+- [x] the ceremonies are serialized by §10's per-credential lease (D267, `cb7f17f8`) — the arithmetic removes the counter GAP, the lease removes the RACE
 > 2026-08-21 | docs-cohesion execution-and-sessions | verified against src/infra/browser/ucsd-sso.ts, duo-autopilot/src/sign-count.js and src/domain/config/schema.ts (sessionAcquireMs 60 000 vs duoApprovalSeconds 180); left: §10's lease
 <!-- /roadmap-status -->
 
@@ -686,8 +700,9 @@ risk register those guards answer.
 - [x] C5–C8, the control half — teardown, `closeAll` re-entry, an unprovable poison-close, and the bounded fleet soak (`tests/unit/architecture/worker-teardown-soak.test.ts`)
 - [x] C9–C10, the capture/intake half (`tests/unit/concurrency-matrix.test.ts`)
 - [x] every other test this table cites resolves at HEAD: `run-authority`, `claim-sweep-recovery`, `kuali-transaction-proof`, `architecture/ledger-projector`, `worker-sessions`, `worker-composition`, `worker-loop`, `capture-durability`, `intake-session`, `intake-command-arms`
-- [ ] the standing rule's next row: §10's lease and §11's pool are each a new surface two callers can reach, so each adds its row in the commit that lands it
-> 2026-08-21 | docs-cohesion execution-and-sessions | verified every cited test file exists and that composeWorkerRuntime still derives its id from phase1WorkerId while createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:368, :379)
+- [x] C11, the Duo ceremony lease — two real `runWorkerLoop`-equivalent `WorkerSessionManager`s over ONE authority database, the second's ceremony beginning after the first's verifier returned, plus the waiter refusal and the TTL takeover (`tests/unit/duo-ceremony-gate.test.ts`, `1c244a40`)
+- [ ] the standing rule's next row: §11's pool is a new surface two callers can reach, so it adds its row in the commit that lands it
+> 2026-08-25 | parallel-runs P3 follow-up | `composeWorkerRuntime` now requires a pool index and derives a distinct stable worker id; concurrent process admission is per worker process and duplicate identity reaches the authority lease. `createPhase1WorkerRuntimeExecutor` remains the explicitly one-worker compatibility arm
 <!-- /roadmap-status -->
 
 The table above names *risks*. This one names **cases**, and every row names the exact test that
@@ -713,11 +728,11 @@ Three rules decide what belongs here and how it is written.
    sampler that caps per-worker ownership at 1 also records the maximum number of workers holding
    work at once, and the soak asserts that maximum **equals the worker count**.
 
-`composeWorkerRuntime` cannot host these rows: it derives its id from `phase1WorkerId(workflowId)`,
-so two composed workers on one workflow collide on the authority worker LEASE by design, and
-`createPhase1WorkerRuntimeExecutor` refuses `desiredWorkers !== 1`. N-worker overlap is
-`runWorkerLoop` called N times with distinct `workerId`s against one shared database — which is
-exactly the shape §2 says a later phase spawns as processes.
+`composeWorkerRuntime` now accepts an explicit pool index and can host distinct worker identities;
+its process records coexist and aggregate into D181's restore observation. The matrix still drives
+`runWorkerLoop` directly because the dashboard process supervisor is unbuilt.
+`createPhase1WorkerRuntimeExecutor` continues to refuse `desiredWorkers !== 1` on its separately
+explicit compatibility path.
 
 **Dependency — claim, heartbeat, sweep, terminal authority**
 
@@ -834,8 +849,9 @@ Built and holding:
    when work starts, not whether it may be enqueued.
 6. Authentication is decided by CONTENT, and so is its refusal (§4.1, §4.2).
 
-Settled by ruling and not yet built — the design is in §10 and §11, and neither is re-openable
-without a new operator decision:
+Settled by ruling — §10 is built, while §11's authority and read view are built and its process
+supervisor/proof work remains explicit below. Neither ruling is re-openable without a new operator
+decision:
 
 7. **Every Duo ceremony is serialized per CREDENTIAL** (R12, §10). Not per worker, not per system,
    not per profile — the counter is per credential, so the lease is too.
@@ -849,106 +865,200 @@ without a new operator decision:
 <!-- roadmap: duo-lease -->
 
 <!-- roadmap-status: duo-lease -->
-- [ ] BE `duo_ceremony_leases` in authority, keyed on the CREDENTIAL, with acquire / release / expire and a generation
-- [ ] BE the `DuoCeremonyLeaseToken` the SSO helpers require, minted only by the lease store and unforgeable at runtime
-- [ ] BE bounded waiters that refuse by name before the acquisition envelope fires, naming the holder
-- [ ] BE the fresh-profile-once recovery, holding the lease across the retry and failing by name on the second refusal
-- [ ] BE the grace leaf, registered as a post-baseline optional leaf so an existing `config_snapshots` row still parses (D133)
-- [ ] BE the guard, with a violating fixture, registered in `guard-inventory.json` in the same commit
-- [ ] PROOF two workers' cold starts serialize (unit, manual clock) plus one live two-worker cold start
-- [ ] DOCS the decision — this section is its normative text; `reference/decisions.md` gets the pointer line in the same commit
-> 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified nothing named duo_ceremony_leases or a ceremony lease exists in src/, and defineVerifiedLoginRecipe (src/infra/browser/authenticated-application.ts:159) takes {system, verify, flow} and no token; the design below is R12 as ruled, written where the builder will read it
+- [x] BE `duo_ceremony_leases` in authority, keyed on the CREDENTIAL, with acquire / release / expire and a generation (`bfc7d318` — schema v16, `AuthorityDatabase.authority.duoCeremonyLeases`)
+- [x] BE the `DuoCeremonyLeaseToken` the SSO helpers require, minted only by the lease store and unforgeable at runtime (`bfc7d318` mint/retire, `cb7f17f8` the helpers assert it)
+- [x] BE bounded waiters that refuse by name before the acquisition envelope fires, naming the holder (`cb7f17f8` — `DuoCeremonyLeaseHeldError`, `src/core/duo-ceremony-gate.ts`)
+- [x] BE the fresh-profile-once recovery, holding the lease across the retry and failing by name on the second refusal (`cb7f17f8` — `WorkerSessionManager.#openAndLogin`, `PlaywrightWorkerSessionFactory.discardProfile`)
+- [x] BE the grace leaf, registered as a post-baseline optional leaf so an existing `config_snapshots` row still parses (D133) (`bfc7d318` — `timeouts.duoCeremonyLeaseGraceMs`, generation 3)
+- [x] BE the guard, with a violating fixture, registered in `guard-inventory.json` in the same commit (`37e747f0` — `duo-ceremony-lease`)
+- [x] PROOF two workers' cold starts serialize — unit, manual clock (`1c244a40`, `tests/unit/duo-ceremony-gate.test.ts`) AND the LIVE two-worker cold start, 2026-08-21: `live-a` / `live-b`, one credential, lease generations 3 → 4, no overlap, zero waiter refusals (§Live proof below)
+- [x] DOCS the decision — this section is its normative text; `reference/decisions.md` gets the pointer line in the same commit (D267)
+> 2026-08-21 | duo-lease E1 | built as-built in five commits (bfc7d318 store+token+leaf, cb7f17f8 gate+wiring+recovery, 37e747f0 guard, 1c244a40 proof, 23231b37 compose seam + manifest); the live two-worker cold start is the one box left open and is documented below
+> 2026-08-21 | duo-lease E2 | the LIVE two-worker cold start RAN against real UCPath SSO and real Duo — both workers `logged-in`, ceremonies serialized at generations 3 → 4 with no overlap; the record, both timings and the one harness change it needed are §Live proof below
 <!-- /roadmap-status -->
 
-**DESIGNED, NOT BUILT.** This section is the owning contract for the tree's `{#duo-lease}` node.
-Nothing below exists in `src/` yet; everything below is normative for the commit that builds it.
+**AS-BUILT (D267, 2026-08-21).** This section is the owning contract for the tree's `{#duo-lease}`
+node and the normative text of D267. Everything below exists in `src/` at the cited commits.
 
-**The hazard is present today.** Duo's WebAuthn signature counter is per CREDENTIAL and lives on
-Duo's side; Duo Autopilot's copy lives in `chrome.storage.local`, which is per browser PROFILE; and
-§1 partitions profiles per worker. One credential covers every UCSD system, so N profiles write one
-server-side counter and none can see another's copy. D243's arithmetic
-(`max(stored + 1, nowSec)`) removed the counter GAP; it did not remove the RACE (§4.2). Two
-ceremonies inside the same wall-clock second present the same floored value, the second does not
-ADVANCE, and Duo reads a non-advancing counter as a cloned key. That configuration exists the moment
-a second workflow has a worker — before any pool is built (§11).
+**The hazard this closes.** Duo's WebAuthn signature counter is per CREDENTIAL and lives on Duo's
+side; Duo Autopilot's copy lives in `chrome.storage.local`, which is per browser PROFILE; and §1
+partitions profiles per worker. One credential covers every UCSD system, so N profiles write one
+server-side counter and none can see another's copy. D243's arithmetic (`max(stored + 1, nowSec)`)
+removed the counter GAP; it did not remove the RACE (§4.2): two ceremonies inside the same wall-clock
+second present the same floored value, the second does not ADVANCE, and Duo reads a non-advancing
+counter as a cloned key — which BURNS the profile (D243: three further logins refused with counters
+more than a thousand ahead; only a fresh directory recovered). So the lease's job is to stop the
+FIRST refusal; its correctness bar is that no two ceremonies for one credential ever overlap.
 
-**Why this is prevented, never recovered from.** A refused assertion BURNS the profile: D243
-recorded a profile that stayed refused across three further logins presenting counters more than a
-thousand ahead, and only a freshly created profile recovered. Deleting the directory is the only
-remediation anybody has found. So the lease's job is to stop the FIRST refusal, and its correctness
-bar is that no two ceremonies for one credential ever overlap — not that a burned profile heals.
+**1. The lease is per CREDENTIAL** (`src/domain/duo-ceremony-lease.ts`, table `duo_ceremony_leases`,
+schema v16). The key is `duoCeremonyCredentialKey(config)` (`src/core/duo-ceremony-gate.ts`): with
+`features.duoWebAuthn` on (the shipped default) it is `resolveSecretFileIdentity("duoWebauthnCredential")`
+(`src/domain/secrets.ts`) — a SHA-256 over the credential file's PUBLIC `(rpId, credentialId)` pairs,
+never a secret byte, never interpolated into a message (the `no-secret-values-in-logs` guard refuses
+it); an unresolvable identity THROWS at worker boot. With the feature off (a hands-on Duo deployment)
+there is no Autopilot counter, one human approves one prompt at a time, and the human IS the
+credential, so the key derives from `config.actor.id`. Neither arm is a fallback for the other, and
+there is no per-worker key anywhere. ONE row per credential, UPDATED across generations (the row IS
+the lock), never deleted (`duo_ceremony_leases_never_deleted`); every mirrored column is pinned to
+the record by the integrity audit (`duo-ceremony-lease-columns-match-record`).
 
-**1. The lease is per CREDENTIAL, and that is the whole design decision.** Not per worker (a worker
-is not what Duo counts), not per system (one credential covers ucpath, crm, kuali and new-kronos),
-not per profile (a profile's copy of the counter is exactly what nobody else can see). The key is a
-stable identity DERIVED from the credential — a digest of the credential file's identity, resolved
-through `src/domain/secrets.ts`, never the secret itself and never interpolated into a message
-(ref clock-config-secrets §6). A credential whose identity cannot be resolved fails loud; it must
-never fall back to a per-worker key, because a per-worker key is the current behaviour wearing a
-lease's name.
+**2. The scope is "navigate to SSO" until the content verifier proves the session.** `defineVerifiedLoginRecipe`
+(`src/infra/browser/authenticated-application.ts`) is now `{system, verify, navigate, ceremony}`: it
+probes, runs `navigate`, probes again, and runs `ceremony` ONLY inside `context.duoCeremony.withCeremony`,
+with §4.1's `assertAuthenticatedApplication` INSIDE that scope — so the lease closes when the
+two-fact proof returns, on success or on failure. A warm profile whose probe answers
+`already-authenticated` never reaches `ceremony` and never takes the lease. All four store recipes
+(ucpath · crm · kuali · new-kronos) are this shape; `flow` no longer exists.
 
-**2. The scope is "navigate to SSO" until the content verifier proves the session.** It opens before
-the first navigation that can reach the Duo ceremony and closes when §4.1's two-fact proof returns,
-on success or on failure. It does NOT cover the whole login: a warm profile whose `probe()` answers
-`already-authenticated` (§4.1) never navigates to SSO and never takes the lease, so the common path
-costs one probe and no contention. It does NOT cover a run, a claim, or a driver lease — a worker
-holding the ceremony lease is inside ONE `withDriver` acquisition, and every other worker keeps
-executing.
+**3. TTL is `timeouts.sessionAcquireMs` plus `timeouts.duoCeremonyLeaseGraceMs`** (default 20 000 ms:
+`browser.closeProofMs` 15 000 + margin, covering the holder's proven cleanup after its envelope
+fires). The leaf is generation 3 in `snapshot-generations.ts`, so every stored `config_snapshots` row
+still parses (D133). A `held` row at or past `expiresAt` is taken over by `acquire` at `generation + 1`
+(`tookOver` names whom). The holder arms its own TTL deadline on the kernel scheduler and CANCELS an
+in-flight ceremony through the acquisition's abort channel (`DuoCeremonyLeaseExpiredError`); a release
+that finds the row at a later generation is REPORTED by the store (`superseded`, never written over
+the successor) and thrown loud by the gate. At the shipped defaults the holder's envelope (60 s)
+always fires before its TTL (80 s), so takeover of a live process's lease is unreachable by
+construction; the arms exist for the clock-skewed and crashed cases.
 
-**3. TTL is `timeouts.sessionAcquireMs` plus a named grace, and the grace is a new config leaf.**
-The holder's own acquisition envelope is `sessionAcquireMs` (§4.3), so a TTL equal to it would let a
-waiter take the lease at the instant the holder is running its proven cleanup. The grace is a
-declared leaf (`timeouts.duoCeremonyLeaseGraceMs`), not a literal in the store — and because a
-required leaf is a durable-schema change, it registers in `src/domain/config/snapshot-generations.ts`
-as a post-baseline leaf so every existing `config_snapshots` row still parses (D133). A lease past
-its TTL is takeable by a waiter at the next generation; the previous holder's envelope has already
-fired by construction, and a holder that finds its own generation superseded must abandon and
-poison-close rather than present an assertion (§4's poison rule) — presenting one would be exactly
-the overlapping ceremony the lease exists to prevent.
+**Known window: a monotonic cancel racing a wall-clock takeover across sleep (review finding 2,
+2026-08-21).** The holder's own TTL cancel is armed on the kernel scheduler against
+`clock.monotonicMs()` (`performance.now()`); takeover, at the store, compares `expiresAt` — a wall-
+clock ISO instant — against `Date.parse(request.now)`. The two clocks agree while the process stays
+awake, and they diverge across a macOS sleep: `performance.now()` pauses (or at least does not track
+wall time 1:1) for the duration of the sleep, while `Date.now()`/`Date.parse` keep advancing. So a
+holder (process A) that suspends mid-ceremony can wake to find its own monotonic deadline has not
+yet fired — its scheduled TTL cancel is still pending — while the WALL-CLOCK `expiresAt` it armed
+before sleeping is long past. A waiter (process B), which only ever reads wall-clock time through
+`acquire`, sees the row past `expiresAt` and takes over at `generation + 1` the moment it next polls.
+A's resumed browser then still presents an assertion under the superseded generation 1 token; A
+learns only when its own `#release` runs and the store reports `superseded`
+(`DuoCeremonyLeaseExpiredError`'s message names the generation that overtook it). This is a genuine
+consequence of using two different clocks for the same lease's two halves — the holder's cancel MUST
+be monotonic (a wall-clock deadline is not safe to schedule against, ref clock-config-secrets), and
+takeover MUST be wall-clock (the row is read by a different process with its own monotonic origin,
+so a monotonic `expiresAt` would be meaningless to it). The spec accepts this window rather than
+resolving it: it is bounded by how long a sleep can last before a worker's next scheduled action
+would have fired anyway, it is the SAME class of "TTL fires while ceremony is in flight" the
+`DuoCeremonyLeaseExpiredError` arm already exists to cancel and report, and neither clock is a
+candidate for the other's job. No clock changes; this paragraph is the record that the window is
+known and named.
 
-**4. Waiters are bounded and refuse by NAME, before the envelope fires.** A waiter's budget is what
-remains of its own `sessionAcquireMs` envelope minus the grace, so the lease refuses FIRST and the
-operator reads *"another worker holds the Duo ceremony for this credential"* with the holder's
-worker id, system and `expiresAt` — instead of §4.3's hands-on-approval message, which would be a
-real cause and the wrong one (§4.2's mis-attribution, one layer up). The refusal is a typed failure,
-never a retry loop: a worker that waits, refuses, and immediately re-queues would be a busy-wait
-against a resource whose whole point is that it is scarce.
+**4. Waiters are bounded and refuse by NAME, before the envelope fires.** The gate polls `acquire`
+every `DUO_CEREMONY_LEASE_POLL_MS` (250 ms — a cadence, not an outcome) with a budget of the
+remaining envelope MINUS the grace, and at the budget throws `DuoCeremonyLeaseHeldError` naming the
+holder's worker id, system, generation and `expiresAt` — 20 s before §4.3's message could have
+blamed hands-on approval. No retry loop: the acquisition fails, the opened context is closed with
+proof, and the lease is left to its holder.
 
-**5. Recovery is a FRESH profile, once, under the same lease.** On the terminal refusal §4.2 already
-observes, the worker poison-closes (proving closure — the directory cannot be touched while a
-context may hold it), recreates a fresh profile and retries the ceremony ONCE. The lease is HELD
-across the retry, not released: releasing it would let another worker start a ceremony against a
-credential that has just seen a cloned-key signal. "Fresh" means the burned directory is removed and
-recreated, because §1's path is a pure function of the session identity — adding a disambiguating
-segment instead would leak a directory per refusal and make the path stop describing the identity. A
-second refusal fails loud naming the profile directory, and does not delete a third time.
+**5. Recovery is a FRESH profile, once, under the same lease.** `waitForAuthenticatedLanding` throws
+the distinct `DuoTerminalRefusalError` on §4.2's terminal refusal (both the raced arm and the
+post-timeout diagnosis). The gate keeps the lease across the FIRST such refusal; `WorkerSessionManager.#openAndLogin`
+then poison-closes with proof, calls `factory.discardProfile` (the SAME path removed and recreated,
+refusing anything outside the rebuild's profile namespace), and runs the login ONCE more under the
+held token. A second refusal fails loud naming the profile directory and does not delete a third
+time; a factory without `discardProfile` refuses the recovery by name; `gate.dispose()` in `finally`
+releases whatever a recovery that died between the two attempts still held.
 
-**6. The token is unforgeable, and the SSO helpers require it.** `defineVerifiedLoginRecipe` — the
-one wrapper every recipe is built by (§4.1) — is the ONE acquirer: it probes, acquires the lease
-when the probe says a ceremony is needed, hands a `DuoCeremonyLeaseToken` to the flow, and releases
-in a `finally`. The token is minted only by the lease store, in `MutationCapability`'s shape and for
-the same reason (a module-private `WeakSet`, one permitted minting caller, `assert…` at the
-consumer): a rule that can be satisfied by a caller's claim is not a rule. The helpers in
-`src/infra/browser/ucsd-sso.ts` that drive the SSO form and the Duo assertion take the token as a
-parameter, so a recipe that bypassed the wrapper could not reach SSO at all — the enforcement is
-structural first and a guard second.
+**6. The token is unforgeable, and the SSO helpers require it.** `src/base/duo-ceremony-lease.ts`
+holds the declare-only brand, the module-private minted/retired `WeakSet`s, `mint`/`retire` (one
+permitted caller: the lease store in `authority-database.ts`) and `assertDuoCeremonyLeaseToken`;
+`waitForSsoForm`, `fillSsoCredentials`, `submitSsoForm` and `waitForAuthenticatedLanding` take the
+token and assert it (minted, not retired, minted for this system) before touching the page — the
+click in `submitSsoForm` is where the assertion is PRESENTED. The wrapper is the ONE caller of
+`withCeremony`; the gate (`src/core/duo-ceremony-gate.ts`) is the one caller of `acquire`/`release`.
 
-**7. The guard, with a violating fixture.** A new architecture guard, registered in
-`docs/rebuild/guard-inventory.json` in the same commit (both directions, per the house rule):
-no path may reach an SSO navigation or the Duo assertion without presenting a token; the token may
-be conjured by `as`/`satisfies` nowhere outside the lease module; and `defineVerifiedLoginRecipe` is
-the only acquirer. The fixture carries the shipped shape of a recipe that navigates without a token,
-so a walker that resolved nothing cannot report the tree clean.
+**7. The guard** `duo-ceremony-lease` (`tests/unit/architecture/duo-ceremony-lease.test.ts`, registered
+in `guard-inventory.json` in `37e747f0`): mint/retire named only by their module and the store; the brand
+conjured by `as`/`satisfies` nowhere else; `withCeremony` called only by the wrapper; every store
+recipe in the `{navigate, ceremony}` shape presenting `token` to every SSO helper. Each arm runs
+against `fixtures/duo-lease-recipe-violation.ts`, the exact pre-lease recipe shape.
 
-**8. Proof.** Two workers cold-starting one credential serialize — a unit case on the manual clock
-where the second's ceremony provably begins after the first's verifier returned — plus one live
-two-worker cold start recorded. And §7.1 gains a row in the same commit: a lease two callers can
-reach is exactly what the standing rule is about.
+**8. Proof.** `tests/unit/duo-ceremony-gate.test.ts` (`1c244a40`): two real `WorkerSessionManager`s over
+ONE authority database, fake factories running the REAL wrapper, manual clock — B's ceremony begins
+strictly after A's verifier returned; the waiter refusal at exactly the budget (40 s of a 60 s
+envelope) naming A; TTL takeover at generation 2 with A's in-flight ceremony cancelled and A's late
+release thrown as superseded; the three recovery arms plus an ordinary-failure control. §7.1 carries
+the row. **The LIVE two-worker cold start has now been run** — §Live proof below is its record.
+
+### Live proof (2026-08-21) — two cold workers, one credential, serialized ceremonies
+
+Two `scripts/live-browser-login-smoke.ts` PROCESSES, launched in the same second against real UCPath
+SSO and real Duo, each `--cold` (its own profile home removed first) and each under its own worker id:
+
+```
+npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --cold --worker live-a &
+npx tsx --env-file=.env scripts/live-browser-login-smoke.ts ucpath --cold --worker live-b &
+wait
+```
+
+Every instant below is UTC and comes from one of two independent sources: each smoke's own stdout
+(timestamped per line as it was written) and a 150 ms sampler reading `duo_ceremony_leases` out of the
+one authority database both processes shared.
+
+| | `live-b` | `live-a` |
+| --- | --- | --- |
+| process start (`--cold` clear) | 20:49:35.554 | 20:49:35.553 |
+| navigate to SSO (hop 01) | 20:49:36.868 | 20:49:36.868 |
+| lease ACQUIRED | **20:49:37.401** (generation 3) | **20:49:58.261** (generation 4) |
+| Duo hop (`api-….duosecurity.com`) | 20:49:41.783 | 20:50:03.325 |
+| lease RELEASED (the verifier returned) | **20:49:58.033** | **20:50:12.451** |
+| ceremony held | **20.632 s** | **14.190 s** |
+| `[session] … login=logged-in` | +22.5 s | +36.9 s |
+| login + neutral reset verified · closed | 23.2 s · 23.3 s | 37.2 s · 37.3 s |
+
+**The serialization, stated as the thing under proof: the second ceremony began after the first
+ended.** `live-a` navigated to SSO at 20:49:36.868 and then did nothing for 21.7 s — its next
+navigation is 20:49:58.574 — because §2's scope puts everything from the SSO form to the content
+verifier inside `withCeremony`. `live-b` released at 20:49:58.033 and `live-a` acquired at
+20:49:58.261: **228 ms later, inside the 250 ms `DUO_CEREMONY_LEASE_POLL_MS` cadence, with zero
+overlap.** Neither process printed a `DuoCeremonyLeaseHeldError` — `live-a` waited ≈20.6 s against a
+budget of the 60 s envelope minus the 20 s grace, so §4's refusal was never close to firing — and both
+ended `logged-in` with both halves of §4.1's proof on the login AND on the neutral reset (a non-empty
+`PS_TOKEN` for `universityofcalifornia.edu`; the TritON and PeopleSoft signon forms absent).
+
+**The row is per CREDENTIAL and the row IS the lock.** One row throughout, under the same credential
+key for both workers (the SHA-256 over the credential file's public `(rpId, credentialId)` pairs —
+never printed here and never logged by the runtime), `version` 5 → 8 across the four transitions,
+holder `live-b` at generation 3 then `live-a` at generation 4, both `released`, nothing deleted. No
+takeover happened and none should have: each holder's `expiresAt` (acquire + 80 s) stood ~60 s past its
+own release, which is §3's "unreachable by construction at the shipped defaults", observed.
+
+**What the serialization cost, against a solo baseline taken minutes earlier.** The same smoke alone,
+cold (`live-a`, 20:47:48), reported `logged-in` at +19.1 s / 19.6 s total with its ceremony held 17.1 s
+(generation 2, 20:47:50.382 → 20:48:07.485). So the pair cost the WAITER ~17.6 s over its solo number
+and the holder nothing — the intended trade: a Duo ceremony is ~14–21 s, and one worker pays that once
+instead of both burning a profile.
+
+**Two harness facts this run established, because a proof nobody else can re-run is not one.**
+
+1. **The `live-smoke` runtime lock is per ROLE, so two smokes could not run side by side as the how-to
+   described.** `acquireRuntimeProcessLock` refuses a second LIVE holder of a name by design, and the
+   name is a closed enum. The smoke now scopes its lock ROOT by worker id
+   (`.tracker-rebuild/locks/live-smoke/<workerId>/live-smoke.lock.json`), so two processes under ONE
+   worker id — one profile directory, one `--cold` clear of it — still refuse each other, while two
+   DIFFERENT worker ids serialize only on the ceremony lease, which is the thing under proof. What that
+   gives up is named in the script beside the change: two differently-named smokes may open the
+   authority database together, so the database must already be at the current schema — run ONE cold
+   smoke first, which is also how this proof's `state.db` was created and migrated.
+2. **A fresh checkout needs the EXTENSION's packaged credential, not only the runtime one.** Duo
+   Autopilot imports `duo-autopilot/credentials/duo-webauthn.json` (gitignored) into
+   `chrome.storage.local` on a cold profile, while `config.paths.duoCredential`
+   (`.auth/duo-webauthn.json`) is the separate file the smoke's own precondition checks. With the
+   packaged file missing the ceremony gets no auto-answer, nothing refuses, and the acquisition burns
+   the whole 60 s `sessionAcquireMs` envelope — observed once at 20:46 in this worktree. That is NOT
+   §4.2's terminal refusal: no assertion was ever presented, so no profile was burned, and the lease
+   was still acquired and released correctly across the failure (generation 1, 20:46:10.282 →
+   20:47:08.214). One note for whoever re-runs this: that failure leaves `main()` through the
+   top-level catch, which is past the `processLock.release()` / `database.close()` at the end of
+   `main`, so the lock file stays marked held by a now-dead pid. Harmless — `acquireRuntimeProcessLock`
+   refuses only a LIVE pid and the next acquire advances the generation — but it is why a held-looking
+   lock file after a failed smoke is not evidence of a running smoke.
 
 **What this does not do.** It does not serialize logins (a warm reuse and any non-Duo authentication
 are untouched), it does not serialize runs or claims, and it does not make a burned profile
-recoverable. It also does not remove D243's arithmetic: the floor stays, because two ceremonies
-separated in TIME still need a counter that advances across profiles.
+recoverable. D243's arithmetic stays: two ceremonies separated in TIME still need a counter that
+advances across profiles.
 
 ---
 
@@ -957,17 +1067,24 @@ separated in TIME still need a counter that advances across profiles.
 
 <!-- roadmap-status: parallel-runs -->
 - [ ] BE the worker pool — N workers per workflow, spawned and stopped from the dashboard
-- [ ] BE pool-indexed worker ids: `phase1WorkerId(workflowId)` derives ONE id per workflow, so two composed workers collide on the authority worker lease by design (`src/core/worker-loop.ts:368`)
-- [ ] BE the projection serves a worker-POOL version — `spawn-worker` and `plan-worker-count` target `{workflowId, expectedVersion}` while `WorkerCardWire.revision` is ONE worker's row, so the control has no honest CAS basis today
-- [ ] BE a durable session record and its grouping, membership derived from authority (B4's bulk dispatch is the seed)
-- [ ] FE the session view — worker cards show membership and what each worker is doing, read from authority
+- [x] BE pool-indexed worker ids: the CLI requires a positive pool index and composition carries `<workflow>-worker-<index>` into the authority lease; distinct indices retain distinct rows and duplicate ownership is refused
+- [x] BE the projection serves a worker-POOL version — `worker_pools` (schema v17) is the CAS basis: `plan-worker-count` and `spawn-worker` target `{workflowId, expectedVersion}` where `expectedVersion` is the POOL row's version (0 for an unplanned workflow), the kernel refuses a stale one with `conflict` naming the current version BEFORE the runtime seam, and the day wire serves `workerPools[]` (`93b7b18e` store · `b4f30ea0` kernel · `24b04dfa` wire — D269)
+- [x] BE a durable session record and its grouping, membership derived from authority — `run_sessions` (schema v17, insert-only, member-less) written by `fanOutQueuedRuns` BEFORE its first member; every run row carries `sessionId` (`tasks.session_id`, read forward) and `runs.listBySession` IS the membership; a retry inherits its session; the queue row serves `session` (`93b7b18e` · `57f2bb9c` · `24b04dfa` — D269)
+- [x] FE the session view — worker cards show authority membership and what each worker is doing; groups exact queue-row session ids, joins the claiming card by exact `runId`, preserves absent reasons and distinguishes declared pool size from non-terminal authority worker cards (`97a55b07`)
 - [ ] PROOF two separations dry-run scenarios in parallel, recorded; plus a §7.1 row in the same commit
-- [ ] needs §10 first — the pool multiplies the hazard the lease removes
+- [x] needs §10 first — the pool multiplies the hazard the lease removes (§10 landed, D267)
 > 2026-08-21 | docs-cohesion execution-and-sessions | DESIGNED, NOT BUILT — verified the five kernel command arms exist and validate (src/domain/commands.ts:181), createDashboardWorkerSupervisor refuses spawn BY NAME (src/server/dashboard/compose.ts:322) and createPhase1WorkerRuntimeExecutor refuses desiredWorkers !== 1 (src/core/worker-loop.ts:379)
+> 2026-08-21 | parallel-runs P12 | the AUTHORITY half is built (D269): schema v17 `worker_pools` + `run_sessions` + `tasks.session_id` (93b7b18e), the pool CAS in the kernel (b4f30ea0), the session written at every fan-out and inherited by retry (57f2bb9c), the day wire's `workerPools[]` block and the row's `session` (24b04dfa); left: the pool PROCESS (spawn + pool-indexed ids, P3), the FE session view (P4), the parallel PROOF
+> 2026-08-25 | parallel-runs P3 | pool-indexed identity is built: `worker <workflow> --pool-index N` validates positive N, derives the stable id and starts authority under that lease identity. The dashboard process supervisor, FE session view and parallel proof remain unbuilt
+> 2026-08-25 | parallel-runs P3 review | worker processes use per-start durable records aggregated into D181's unchanged restore arm; distinct indices coexist and duplicate identity reaches authority. Singleton admission is an atomic filesystem claim (16 synchronized processes admit one), generation 1 is reserved for never-run so first start is 2, restore holds exclusive admission through staged checksum verification and swap, runtime starts check before/after their record, and ownership binds PID to OS process birth (Darwin C/UTC epoch seconds, with honest one-second resolution). Pool supervision, FE and parallel proof remain unbuilt
+> 2026-08-25 | parallel-runs P4 | the FE session view reads only the D269 day wire (`97a55b07`): `QueueSurface.session.sessionId` groups membership, `WorkerCard.currentRun.runId` joins a claiming worker, and the absent session arm retains its served reason. Pool declaration and non-terminal authority worker cards remain separate facts; no process command is exposed
 <!-- /roadmap-status -->
 
-**DESIGNED, NOT BUILT.** This section is the owning contract for the tree's `{#parallel-runs}` node.
-It defines the SESSION unit §1 names and the pool that serves one.
+**AUTHORITY HALF AS-BUILT (D269, 2026-08-21); POOL-INDEXED IDENTITY AND FE VIEW AS-BUILT
+(P3/P4, 2026-08-25); the dashboard process supervisor and parallel PROOF remain DESIGNED, NOT
+BUILT.** This section is the owning contract for the tree's `{#parallel-runs}` node and the normative
+text of D269. Points 1, 4, 5 and 6 carry the built authority, identity and view; process reconciliation
+plus points 2 and 8 remain design.
 
 **1. A session is a dashboard-started group of runs.** It is not a browser session (§1), not a
 worker, and not a workflow. It is what an operator starts when they dispatch a batch — ten I-9
@@ -976,6 +1093,35 @@ is DURABLE: it has an id, a workflow, the actor who started it, its creation ins
 membership. Membership is DERIVED from authority — a run row carries its session id — never held in
 a supervisor's memory, because a supervisor's memory does not survive the process and a session an
 operator can see after a restart is the entire point.
+
+_As-built (D269):_ `run_sessions` (schema v17, `93b7b18e`) is the row — `RunSessionRecord
+{sessionId, workflow, origin, startedAt, createdAt}`, insert-only by trigger (UPDATE and DELETE
+abort, the archive tables' shape), and it holds **no member list**: `RunRecord.sessionId` (the
+mirrored, nullable `tasks.session_id` column, indexed) is the membership and `runs.listBySession`
+is how it is read, so a session can never claim a run the run table does not show and a restart
+loses nothing. **One session per fan-out, N ≥ 1** — there is no threshold, because a minimum would
+put a judgment call where a rule belongs: `fanOutQueuedRuns` (`57f2bb9c`) inserts the session row
+BEFORE its first member inside the caller's transaction, so a refusal on run 39 of 40 unwinds the
+session with everything else, and `runs.enqueue` refuses a member that names a session authority
+never wrote or another workflow's session. The four fan-out callers mint the id and name the
+`origin`: `start-run` (`{start-plan, startPlanId, actorId}`), `enqueue-intake-manifest`
+(`{intake-manifest, intakeManifestId, actorId}`), `relaunch-archived-run` (`{archive-relaunch,
+archivedRunId, actorId}`) and the capture handoff (`{capture-handoff, captureSessionId,
+intakeManifestId}` — NO actor, because the capture session row records none and `local-operator`
+there would be a value nobody recorded; its id folds from the same stable key as its run and
+manifest so a D174 replay names the same group). **A retry mints no session: it inherits the
+retried run's** — it is the same item's next attempt (D221), so the group the operator started keeps
+reporting the item it contains; a retry of an ungrouped (pre-v17) run stays ungrouped. Pre-v17 rows
+carry no `sessionId` and are read forward as "no session" (D133); nothing back-fills a group nobody
+started. The queue's absence reason covers BOTH durable cases — *"this run predates D269 session
+grouping, or retries a run that does"* — rather than claiming every absent row was itself enqueued
+before v17. **Archive schema generation 4 freezes that required QueueSurface `session` arm.** A
+generation-1/2/3 archived row has no key and reads forward as *"no session recorded (archived before
+D269)"*; the archive read arm adds that sentence only to the served wire, never to stored JSON or
+its `contentDigest`, while a generation-4 record without the arm refuses. The LIVE QueueSurface
+schema remains required. D235's bulk strip is NOT a session producer: a bulk `retry` re-dispatches
+members of the groups they already belong to, one child transaction each, and `bulkCommandId` never
+reaches the kernel.
 
 **2. Every workflow follows the SAME browser-profile recipe; each worker owns its own profile
 directory.** Nothing new is needed here and nothing may be special-cased: §1's path already
@@ -991,32 +1137,70 @@ certainly not a peer's assertion — is the only statement one process may make 
 Sessions do not share information with each other either; two sessions of the same workflow are two
 groups of rows over one queue.
 
-**4. The pool's first concrete change is the worker ID.** `phase1WorkerId(workflowId)` returns
-`${workflowId}-worker-1`, and `composeWorkerRuntime` derives its id from it — which is exactly why
-§7.1 says two composed workers on one workflow collide on the authority worker LEASE by design, and
-why its N-worker rows call `runWorkerLoop` directly with distinct ids. So the pool mints
-pool-indexed ids, and the lease refusal that today blocks a second process becomes the thing that
-proves each pool member is singular. `createPhase1WorkerRuntimeExecutor`'s `desiredWorkers !== 1`
-refusal is replaced by a reconciliation against the pool's declared size; until then it must keep
-refusing, because acknowledging a count the runtime cannot produce is an acknowledgement of an
-effect that did not happen.
+**4. The pool's first concrete change is the worker ID.** The pool mints pool-indexed ids, and the
+authority lease refusal proves each pool member is singular. D181's process-lock layer must not
+preempt that identity check: each worker start has its own durable process record, while observation
+strictly aggregates all records (plus the old root-level `workers.lock.json`) into the existing
+single `processLocks.workers` restore arm. Any live worker blocks restore; malformed records refuse;
+every start/restart advances the aggregate generation beyond the reserved never-run generation 1.
+The singleton server uses an atomic hard-link claim, and every new process/restore owner is identified
+by PID plus OS process birth rather than PID occupancy alone; Darwin normalizes `ps` to C/UTC epoch
+seconds and retains the kernel stamp's one-second resolution. `createPhase1WorkerRuntimeExecutor` keeps
+refusing `desiredWorkers !== 1` until the unbuilt supervisor reconciles the declared pool size.
+
+_As-built (2026-08-25):_ `poolWorkerId(workflowId, poolIndex)` derives
+`${workflowId}-worker-${poolIndex}` from a branded `PositiveInt`. The CLI requires
+`--pool-index <positive-int>` with no default, and `composeWorkerRuntime` uses that derived id for
+the loop, browser-profile partition and `workerLeases.start`. Thus indices 1 and 2 retain distinct
+stable lease rows, while a second process given the same index reaches the existing live-lease
+conflict. `phase1WorkerId` remains only on the explicitly single-worker runtime-executor
+compatibility arm; assigning and launching N members belongs to the unbuilt dashboard supervisor.
 
 **5. The spawn control needs a CAS basis before it needs a button.** `spawn-worker` and
-`plan-worker-count` target `{workflowId, expectedVersion}` (`src/domain/commands.ts:181`), and the
-projection serves no pool version — `WorkerCardWire.revision` is one worker's row. A frontend that
-guessed an `expectedVersion` would be inventing the exact fact the CAS exists to check, which is why
-there is no `+ Add workers` control today and why the pool version is a prerequisite of the control
-rather than a detail of it. The dashboard's supervisor keeps refusing spawn BY NAME
-(*"the dashboard process does not launch browser workers; start worker X with `npm run cli worker
-<workflowId>`"*) until a real process effect exists — a refusal, not a stub, so no acknowledgement
-can claim an effect that did not happen.
+`plan-worker-count` target `{workflowId, expectedVersion}` (`src/domain/commands.ts`), and until
+D269 the projection served no pool version — `WorkerCardWire.revision` is one worker's row. A
+frontend that guessed an `expectedVersion` would be inventing the exact fact the CAS exists to
+check, which is why there is no `+ Add workers` control today and why the pool version is a
+prerequisite of the control rather than a detail of it. The dashboard's supervisor keeps refusing
+spawn BY NAME (*"the dashboard process does not launch browser workers; start worker X with `npm
+run cli worker <workflowId> --pool-index <positive-int>`"*) until a real process effect exists — a
+refusal, not a stub, so no
+acknowledgement can claim an effect that did not happen.
+
+_As-built (D269):_ `worker_pools` (schema v17, `93b7b18e`) is the basis — `WorkerPoolRecord
+{workflow, desiredWorkers, plannedBy, plannedAt, version, createdAt, updatedAt}`, one row per
+workflow keyed on the workflow id, UPDATED under a version CAS (a pool is a standing declaration,
+not a history) and never deleted. **A workflow with no row is at version 0**: nothing seeds rows at
+boot (a `desiredWorkers` nobody planned would be a fabricated operator intent, and the composed
+runtime's single worker is a fact about the PROCESS, not this table), so `expectedVersion` on both
+arms is `NonNegativeInt` and 0 is the honest basis for the first plan, which creates the row at 1.
+The kernel (`b4f30ea0`) CAS-checks the pool version FIRST on both arms and answers a stale one with
+`conflict` naming the current version (`CommandResult.conflict.currentVersion` and
+`versionChanges.before` admit 0 for exactly this target); `plan-worker-count` then consults the
+runtime seam — which still refuses any count but one until part 4's reconciliation lands — and only
+then writes `desiredWorkers` under CAS, reporting a `worker-pool` target with its version change, so
+the pool never records a count the runtime refused; `spawn-worker` stays refused by the supervisor,
+past a true check rather than a guessed version. The day wire (`24b04dfa`) serves
+`workerPools[] {workflowId, desiredWorkers, version, plannedBy, plannedAt}` — authority rows only,
+in workflow order; a workflow absent from the list has no row and its basis is 0 — read whole on
+every snapshot exactly as `workerCards` are. It is a SNAPSHOT-level block by construction: the D4
+day patch stream carries queue-row splices and nothing else, so a changed pool reaches the client on
+the next snapshot, never through a patch — the same shape the cards and the inbox already have.
+`desiredWorkers` is a declaration; what is actually running is the worker leases (§3), kept apart
+for the reason the lease separates `control` from `lifecycle`.
 
 **6. What the dashboard shows.** The session and its workers: membership, per-member run state, and
 what each worker is doing — every value read from authority through the ONE projection
-(ref dashboard-surfaces). The worker cards exist already (§4's D248 as-built); what they lack is a
-session to belong to. Two honesty rules carry over unchanged: a browser tile still reads
-`Not checked` because nothing probes a live session, and a wait reason is drawn only where a real
-holder can be named — which, once §10 lands, is exactly one place.
+(ref dashboard-surfaces). _As-built (P4, `97a55b07`):_ the Session Panel groups every day
+`QueueSurface` whose `session` is `{present, sessionId}` by that exact id, retaining row order and
+its served run status. A worker is shown on that member only where its authority
+`WorkerCard.currentRun.runId` exactly equals the row's `runId`; an absent session arm remains outside
+the group with its served `reason`, never a guessed session. A pool row is a declaration only:
+`desiredWorkers` is shown alongside non-terminal authority worker-card facts, and a missing
+`workerPools[]` row reads as no declaration rather than version 0 or a target of one. The two
+honesty rules carry over unchanged: a browser tile still reads `Not checked` because nothing probes
+a live session, and a wait reason is drawn only where a real holder can be named — which, once §10
+lands, is exactly one place.
 
 **7. This does not weaken any per-run invariant.** One worker still owns one active item (§0.3);
 a parked run still owns no browser resources (§2.1); the write fence is still per permanent key

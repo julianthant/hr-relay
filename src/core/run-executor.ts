@@ -127,6 +127,7 @@ import {
   taskSpanPath,
   type SpanEmitter,
 } from "./span-emitter.js";
+import { redactObservedDataPoints } from "./observed-data.js";
 import { createTaskProvenanceCollector } from "./task-provenance.js";
 import { buildTerminalAuthorization } from "./terminal-authorization.js";
 import type { WorkerSessionManager } from "./worker-sessions.js";
@@ -196,8 +197,9 @@ export class WriteParkedError extends Error {
     intentGeneration: number;
     parkCode: WriteIntentParkCode;
     message: string;
+    cause?: unknown;
   }>) {
-    super(input.message);
+    super(input.message, input.cause === undefined ? undefined : { cause: input.cause });
     this.name = "WriteParkedError";
     this.writeIntentId = input.writeIntentId;
     this.intentGeneration = input.intentGeneration;
@@ -909,6 +911,7 @@ export async function executeClaimedRun(
       scope: RuntimeScope,
       need: SessionNeed | undefined,
       capabilityWiring: TaskCapabilityWiring,
+      spanPath: string,
     ): Promise<RunCheckpointRecord> => {
       const contract: AnyReadTaskContract = node.uses;
       const bound: unknown = node.bind(scope);
@@ -948,6 +951,32 @@ export async function executeClaimedRun(
           }),
         },
         clock,
+        /*
+         * D270 — the observed log. Every recorded batch is emitted on THIS
+         * task's span at record time, redacted by the declared classification
+         * of its `(taskId, field)` leaf. At record time, not at finalization:
+         * a task that throws after reading the page has still read the page,
+         * and its observations are exactly what the operator needs to see.
+         *
+         * An undeclared leaf throws out of `redactObservedDataPoints`, inside
+         * `ctx.recordData`, which fails the task by name — the intended loud
+         * failure, and the same rule D140 gave the receipt. Nothing else here
+         * may throw into a good read: the emitter is synchronous and the
+         * points are already schema-parsed.
+         */
+        onRecord: ({ recordedAt, points }) => {
+          emit({
+            t: "data.observed",
+            ts: recordedAt,
+            ...runSpanIdentity,
+            spanPath,
+            parentSpanPath: runSpanIdentity.spanPath,
+            nodeId: String(node.id),
+            taskId: contract.id,
+            observedAt: recordedAt,
+            points: redactObservedDataPoints(contract.id, points),
+          });
+        },
       });
 
       const controller = new AbortController();
@@ -1190,7 +1219,7 @@ export async function executeClaimedRun(
           ...(need === undefined ? {} : { system: need.system }),
         });
         try {
-          const record = await invokeTask(node, task, scope, need, capabilityWiring);
+          const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath);
           if (declaredProjections.length === 0) {
             deps.authority.authority.runCheckpoints.insert(record);
           } else {

@@ -13,6 +13,11 @@ import {
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import {
+  DiagnosticBundleWireSchema,
+  type DiagnosticBundleWire,
+} from "../../domain/dashboard/diagnostic-bundle.js";
+import { DiagnosticBundleIdSchema } from "../../domain/ids.js";
 import { RunAdvisoryWireSchema, type RunAdvisoryWire } from "../../domain/dashboard/advisory.js";
 import {
   ArchiveIndexWireSchema,
@@ -29,7 +34,12 @@ import {
 } from "../../domain/dashboard/explorer.js";
 import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
-import { WIRE_ERROR_BODY, httpError, schemaError } from "./errors.js";
+import {
+  WIRE_ERROR_BODY,
+  diagnosticBundleIdentityError,
+  httpError,
+  schemaError,
+} from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 
 function parseOrThrow<Schema extends z.ZodType>(schema: Schema, context: string, body: unknown): z.output<Schema> {
@@ -70,6 +80,10 @@ export interface DashboardQueries {
   dashboardDay(day: string): Promise<DashboardDayWire>;
   runDetail(runId: string): Promise<RunDetailWire>;
   runSection(runId: string, section: string, cursor?: string): Promise<RunDetailSectionResponse>;
+  /** One D137 bundle, read by its exact durable id only after the operator asks. */
+  diagnosticBundle(bundleId: string): Promise<DiagnosticBundleWire>;
+  /** The browser downloads the server's canonical durable manifest; no UI reconstruction. */
+  diagnosticBundleManifestUrl(bundleId: string): string;
   /** Ref dashboard-surfaces §2.5's read-only doctor, run on demand from Settings (2i-D). */
   storageDoctor(): Promise<StorageDoctorWire>;
   /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back (2i-E3). */
@@ -163,6 +177,25 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         RunDetailSectionResponseSchema,
         `GET /api/v1/runs/${runId}/${section}`,
         await transport.requestJson(`/api/v1/runs/${encodeURIComponent(runId)}/${encodeURIComponent(section)}${query}`),
+      );
+    },
+    async diagnosticBundle(bundleId: string): Promise<DiagnosticBundleWire> {
+      const parsedBundleId = DiagnosticBundleIdSchema.parse(bundleId);
+      const path = `/api/v1/diagnostic-bundles/${encodeURIComponent(parsedBundleId)}`;
+      const bundle = parseOrThrow(
+        DiagnosticBundleWireSchema,
+        `GET ${path}`,
+        await transport.requestJson(path),
+      );
+      if (bundle.bundleId !== parsedBundleId) {
+        throw diagnosticBundleIdentityError(`GET ${path}`, parsedBundleId);
+      }
+      return bundle;
+    },
+    diagnosticBundleManifestUrl(bundleId: string): string {
+      const parsedBundleId = DiagnosticBundleIdSchema.parse(bundleId);
+      return transport.resolveUrl(
+        `/api/v1/diagnostic-bundles/${encodeURIComponent(parsedBundleId)}/manifest`,
       );
     },
     async storageDoctor(): Promise<StorageDoctorWire> {

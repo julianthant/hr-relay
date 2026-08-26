@@ -6,8 +6,10 @@
  * Ported from the operator's rebuild demo — legacy `hr-automation`
  * @1bffbd658db34ce84a08e69484db3a40b3658d6e,
  * `src/dashboard/components/dev/rebuild-demo/DemoExplorer.tsx` (with
- * `demo-explorer-wire.ts` for `dryRunPosture`, `contractTotals`,
- * `NODE_KIND_LABEL`, `laneOf`'s connector rule and `skippedAboveBoundary`).
+ * `demo-explorer-wire.ts` for `dryRunPosture`, `contractTotals` and `NODE_KIND_LABEL` —
+ * `explorer-model.ts` exports none of `laneOf`'s connector rule or `skippedAboveBoundary`; no lane
+ * concept exists here (`Connector` draws between every consecutive pair, ledger 3 EX181) and no
+ * per-node dry-run-skip mark is drawn (ledger 3 EX77/EX180; `docs/findings/explorer.md`)).
  * Copied with provenance and adapted to THIS repository's served wire; nothing
  * here reaches the legacy repository at runtime and nothing may (D93/D94).
  *
@@ -48,6 +50,7 @@ import {
   ArrowDownToLine,
   ArrowLeft,
   ArrowUpFromLine,
+  Eye,
   FileCode2,
   Info,
   Lock,
@@ -1413,10 +1416,13 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
 export function WorkflowExplorer({
   workflowId,
   onWorkflow,
+  onVersionRegistry,
   onClose,
 }: {
   workflowId: string;
   onWorkflow: (next: string) => void;
+  /** Opens Archive's real Versions & bumps view through the dashboard route. */
+  onVersionRegistry: () => void;
   onClose: () => void;
 }) {
   const client = useDashboardClient();
@@ -1492,6 +1498,20 @@ export function WorkflowExplorer({
             onClick={onClose}
           >
             Back to the dashboard
+          </Button>
+        }
+        actions={
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "relative touch-manipulation",
+              "after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']",
+            )}
+            icon={<Eye aria-hidden className={dsIcon.md} />}
+            onClick={onVersionRegistry}
+          >
+            Version registry
           </Button>
         }
       />

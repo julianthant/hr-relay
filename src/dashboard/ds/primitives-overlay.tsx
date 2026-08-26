@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type Ref,
   type ReactNode,
 } from "react";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
@@ -631,6 +632,7 @@ export function PopoverContent({
   hideTitle,
   hideClose,
   className,
+  surfaceRef,
   children,
 }: {
   title: string;
@@ -642,6 +644,7 @@ export function PopoverContent({
   hideTitle?: boolean;
   hideClose?: boolean;
   className?: string;
+  surfaceRef?: Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
   return (
@@ -655,6 +658,7 @@ export function PopoverContent({
         hideTitle={hideTitle}
         hideClose={hideClose}
         className={className}
+        surfaceRef={surfaceRef}
       >
         {children}
       </PopoverSurface>
@@ -682,6 +686,7 @@ function PopoverSurface({
   hideTitle,
   hideClose,
   className,
+  surfaceRef,
   children,
 }: {
   title: string;
@@ -692,6 +697,7 @@ function PopoverSurface({
   hideTitle?: boolean;
   hideClose?: boolean;
   className?: string;
+  surfaceRef?: Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
   const entered = useEntered();
@@ -707,6 +713,7 @@ function PopoverSurface({
       aria-label={title}
     >
       <FloatingSurface
+        ref={surfaceRef}
         className={cn(
           POPOVER_WIDTH[width],
           "max-w-[calc(100vw-var(--ds-space-section))] outline-none",

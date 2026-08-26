@@ -3,9 +3,10 @@
 Records about the BFF's span-fold/projection layer — cases where a served surface
 disagrees with what the on-disk streams and authority actually hold.
 
-No open record demands work. Both records below carry a dated decision: the `span.patched` channel
-was RETIRED (D254) and the span-fold duplicate was FIXED at the fold (D255), with its one remaining
-half — the write sequencer's beat-span identity — deferred against a named trigger.
+No open record demands work. All three records below carry a dated decision: the `span.patched`
+channel was RETIRED (D254), the span-fold duplicate was FIXED at the fold (D255) with its one
+remaining half — the write sequencer's beat-span identity — deferred against a named trigger, and
+the run-detail panel's second status derivation was FIXED by **D268**.
 
 _(The 2026-08-14 "`span.patched` has a declared vocabulary and no emitter" record was CLOSED
 2026-08-20 by **D254**, an operator ruling: the channel is retired rather than built. The
@@ -105,3 +106,32 @@ attempt. D214's identity fix never reached it.
   node's own path, which needs the executor to hand the sequencer the node span path it already
   computes. NOT a `#<generation>` suffix: `nodeIdOfTaskSpanPath` reads everything before the last
   `#` of the last segment, so that would attribute the span to a node called `prepare`.
+
+## ~~The run-detail panel derives a run's status a second time, and answers a different word~~ FIXED
+
+**Recorded:** 2026-08-20 (the architecture audit, C1/C2) · **Status:** FIXED 2026-08-21 by **D268**
+(`81bfed73`) · **Owning doc:** ref dashboard-surfaces §2.3
+
+**Symptom.** Two surfaces, one fact, two answers. `queries/run-detail.ts`'s private `statusOf`
+lacked the `row.ended` and `row.claimedBy` arms the projector's `#status` has and inlined its own
+copy of the outcome map, so a run whose `span.ended` had folded before its terminal transaction
+committed read `done` in its queue row and `queued` in the panel that row opens. One level down,
+`TASK_OUTCOME_PIPELINE` mapped `cancelled|discarded|superseded` to `blocked` while
+`TASK_OUTCOME_STEP` mapped them to `cancelled` — one folded span, two words, two panels.
+
+**Why nothing caught it.** Both derivations were internally consistent and separately tested; no
+test compared the pair, which is the only comparison that can see this class of defect. The window
+the RUN-level half needs is not one the executor's own ordering produces — `run-executor.ts` settles
+the terminal CAS before a worker emits its run span, so the fold lags authority rather than leading
+it, and the divergence is representable only through the test harness. The TASK-level half needed no
+window at all: `TASK_OUTCOME_PIPELINE`/`TASK_OUTCOME_STEP` disagreed unconditionally, for every
+folded span, regardless of timing.
+
+**Disposition.** `deriveRunStatus`, `taskStateOf` and `panelKindOf` are one implementation each in
+`src/server/dashboard/run-status.ts`, read by the projector and the run-detail query alike; the
+unified task vocabulary keeps `cancelled` on D123's rule and `PipelineStepWireSchema.state` gains
+that arm. `tests/unit/server/run-status-derivation.test.ts` asserts the two surfaces against each
+other, not only against literals. The third fold of `row.taskSpans` (`archive.ts`'s `foldAttempts`)
+was deliberately left alone: it counts RAW span outcomes rather than mapping them to a display word,
+so it shares no vocabulary with the two that diverged — unifying the folds themselves is Track D
+row D8.

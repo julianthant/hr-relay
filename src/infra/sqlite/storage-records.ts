@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { DuoCeremonyLeaseRecordSchema } from "../../domain/duo-ceremony-lease.js";
+import { RunSessionRecordSchema } from "../../domain/run/session.js";
+import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
 import type { AuthorityTableName } from "../../domain/authority.js";
 import { IntakePlanManifestSchema } from "../../domain/intake/manifest.js";
 import { IntakeSessionSchema } from "../../domain/intake/session.js";
@@ -268,6 +271,11 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   version_bump_applications: VersionBumpApplicationStorageRecordSchema,
   archived_runs: ArchivedRunStorageRecordSchema,
   archive_relaunches: ArchiveRelaunchStorageRecordSchema,
+  /** D267 / ref execution-and-sessions §10 — the per-credential Duo ceremony lease. */
+  duo_ceremony_leases: DuoCeremonyLeaseRecordSchema,
+  /** D269 / ref execution-and-sessions §11 — the per-workflow pool declaration and the run session. */
+  worker_pools: WorkerPoolRecordSchema,
+  run_sessions: RunSessionRecordSchema,
 } satisfies Record<AuthorityRecordTableName, z.ZodType>);
 
 export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;

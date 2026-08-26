@@ -42,6 +42,7 @@ import {
   ProviderAdmissionIdSchema,
   ProviderCapabilityIdSchema,
   RunIdSchema,
+  RunSessionIdSchema,
   TraceIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
@@ -90,6 +91,24 @@ import {
   type WorkerLeaseRecord,
 } from "../../domain/run/worker.js";
 import {
+  DuoCeremonyLeaseAcquireRequestSchema,
+  DuoCeremonyLeaseRecordSchema,
+  DuoCeremonyLeaseReleaseOutcomeSchema,
+  DuoCeremonyLeaseTakeoverSchema,
+  isDuoCeremonyLeaseLive,
+  type DuoCeremonyLeaseAcquireRequest,
+  type DuoCeremonyLeaseRecord,
+  type DuoCeremonyLeaseReleaseOutcome,
+} from "../../domain/duo-ceremony-lease.js";
+import { RunSessionRecordSchema, type RunSessionRecord } from "../../domain/run/session.js";
+import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../domain/run/worker-pool.js";
+import {
+  isDuoCeremonyLeaseToken,
+  mintDuoCeremonyLeaseToken,
+  retireDuoCeremonyLeaseToken,
+  type DuoCeremonyLeaseToken,
+} from "../../base/duo-ceremony-lease.js";
+import {
   RunClaimOutcomeSchema,
   RunClaimRequestSchema,
   RunClaimSweepOutcomeSchema,
@@ -109,6 +128,8 @@ import {
   StartPlanConsumeRequestSchema,
   WorkerControlRequestSchema,
   WorkerLifecycleRequestSchema,
+  WorkerPoolPlanOutcomeSchema,
+  WorkerPoolPlanRequestSchema,
   WorkerStartOutcomeSchema,
   WorkerStartRequestSchema,
   WorkerSweepRequestSchema,
@@ -117,6 +138,7 @@ import {
   type RunHeartbeatOutcome,
   type RunUpdateOutcome,
   type StartPlanConsumeOutcome,
+  type WorkerPoolPlanOutcome,
   type WorkerStartOutcome,
   type WorkerUpdateOutcome,
 } from "./run-store-contracts.js";
@@ -142,6 +164,7 @@ import {
   NotificationRecordOutcomeSchema,
   NotificationRecordSchema,
   NotificationStateRequestSchema,
+  requireMutableNotification,
   type NotificationRecord,
   type NotificationRecordOutcome,
 } from "../../domain/notifications.js";
@@ -440,6 +463,12 @@ type RunRepository = Readonly<{
   nextWorkflowRunNumber(workflow: string): number;
   listByWorker(workerId: string): readonly RunRecord[];
   /**
+   * D269 — the MEMBERSHIP of a run session, derived from the run rows that
+   * carry the id (`tasks.session_id`). There is no stored member list to
+   * disagree with this; a session IS the set this returns, oldest first.
+   */
+  listBySession(sessionId: string): readonly RunRecord[];
+  /**
    * D262 — every run currently parked at an operator gate.
    *
    * The needs-you notification watch reads this and nothing else: a park is a
@@ -617,6 +646,30 @@ type StartPlanRepository = Readonly<{
   consume(input: unknown): StartPlanConsumeOutcome;
 }>;
 
+/**
+ * D269 (ref execution-and-sessions §11.5): the per-workflow worker POOL
+ * declaration. `plan` is a CAS over `(workflow, version)` where a workflow
+ * with no row is at version 0 — the first plan creates it — and a stale
+ * `expectedVersion` answers `conflict` naming the current version rather than
+ * applying over it. Never deleted; `list` is what the day wire serves.
+ */
+type WorkerPoolRepository = Readonly<{
+  plan(input: unknown): WorkerPoolPlanOutcome;
+  get(workflow: string): WorkerPoolRecord | undefined;
+  list(): readonly WorkerPoolRecord[];
+}>;
+
+/**
+ * D269 (ref execution-and-sessions §11.1): the durable run SESSION — a
+ * dashboard-started group. Insert-only and member-less: `runs.listBySession`
+ * is the membership, derived from the run rows that carry the id.
+ */
+type RunSessionRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<RunSessionRecord>;
+  get(sessionId: string): RunSessionRecord | undefined;
+  listByWorkflow(workflow: string): readonly RunSessionRecord[];
+}>;
+
 type WorkerLeaseRepository = Readonly<{
   start(input: unknown): WorkerStartOutcome;
   get(workerId: string): WorkerLeaseRecord | undefined;
@@ -748,6 +801,29 @@ type OcrExtractionRepository = Readonly<{
   findByDocument(sourceSha256: string): readonly z.infer<typeof AdmittedExtractionSchema>[];
 }>;
 
+/**
+ * D267 (ref execution-and-sessions §10): the Duo ceremony lease — ONE ceremony
+ * at a time per credential. `acquire` answers `held` naming the live holder,
+ * takes over an expired row at the next generation, and is the ONLY minter of
+ * the `DuoCeremonyLeaseToken` the SSO helpers require; `release` retires that
+ * token whether or not the row still carries the token's generation, and
+ * REPORTS supersession rather than writing over a successor.
+ */
+export type DuoCeremonyLeaseAcquireOutcome =
+  | Readonly<{
+    state: "acquired";
+    lease: DuoCeremonyLeaseRecord;
+    token: DuoCeremonyLeaseToken;
+    tookOver: z.infer<typeof DuoCeremonyLeaseTakeoverSchema> | null;
+  }>
+  | Readonly<{ state: "held"; holder: DuoCeremonyLeaseRecord }>;
+
+export type DuoCeremonyLeaseRepository = Readonly<{
+  acquire(input: unknown): DuoCeremonyLeaseAcquireOutcome;
+  release(input: Readonly<{ token: unknown; now: string }>): DuoCeremonyLeaseReleaseOutcome;
+  get(credentialKey: string): DuoCeremonyLeaseRecord | undefined;
+}>;
+
 export type AuthorityRepositories = Readonly<{
   runs: RunRepository;
   terminalAuthorizations: TerminalAuthorizationRepository;
@@ -766,6 +842,9 @@ export type AuthorityRepositories = Readonly<{
   providerAdmissions: ProviderAdmissionRepository;
   startPlans: StartPlanRepository;
   workerLeases: WorkerLeaseRepository;
+  duoCeremonyLeases: DuoCeremonyLeaseRepository;
+  workerPools: WorkerPoolRepository;
+  runSessions: RunSessionRepository;
   commands: CommandRepository;
   commandAudits: CommandAuditRepository;
   dependencies: DependencyRepository;
@@ -910,7 +989,7 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
 const INVARIANT_QUERIES = Object.freeze([
   {
     name: "run-columns-match-record",
-    sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber')",
+    sql: "SELECT count(*) AS count FROM tasks WHERE workflow <> json_extract(record_json, '$.envelope.workflow') OR item_id <> json_extract(record_json, '$.envelope.itemId') OR state <> json_extract(record_json, '$.lifecycle.state') OR priority <> json_extract(record_json, '$.envelope.priority') OR attempt <> json_extract(record_json, '$.envelope.attempt') OR version <> json_extract(record_json, '$.version') OR claim_generation <> json_extract(record_json, '$.claimGeneration') OR run_number IS NOT json_extract(record_json, '$.runNumber') OR session_id IS NOT json_extract(record_json, '$.sessionId')",
   },
   {
     name: "run-claim-owner-matches-record",
@@ -1123,6 +1202,10 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "provider-active-reservations-match",
     sql: "SELECT count(*) AS count FROM provider_budget_counters AS counter WHERE counter.active_reservations <> (SELECT count(*) FROM provider_admissions AS admission WHERE admission.capability = counter.capability AND admission.state = 'reserved')",
+  },
+  {
+    name: "duo-ceremony-lease-columns-match-record",
+    sql: "SELECT count(*) AS count FROM duo_ceremony_leases WHERE record_key <> json_extract(record_json, '$.credentialKey') OR generation <> json_extract(record_json, '$.generation') OR holder_worker_id <> json_extract(record_json, '$.holder.workerId') OR holder_system <> json_extract(record_json, '$.holder.system') OR state <> json_extract(record_json, '$.state') OR expires_at <> json_extract(record_json, '$.expiresAt') OR version <> json_extract(record_json, '$.version')",
   },
   {
     name: "worker-lease-columns-match-record",
@@ -2404,6 +2487,7 @@ export class AuthorityDatabase implements Disposable {
           if (existing === undefined) {
             throw new Error(`notification fold found no row for ${request.actorId} fingerprint ${request.dedupeFingerprint}`);
           }
+          requireMutableNotification(existing);
           if (Date.parse(request.seenAt) < Date.parse(existing.lastSeenAt)) {
             throw new Error(`notification ${existing.notificationId} cannot fold an observation older than its last seen instant`);
           }
@@ -2430,6 +2514,7 @@ export class AuthorityDatabase implements Disposable {
         return this.#authorityWrite("notifications", () => {
           const existing = this.#readRecord("notifications", request.notificationId, NotificationRecordSchema);
           if (existing === undefined) throw new Error(`notification ${request.notificationId} does not exist`);
+          requireMutableNotification(existing);
           if (existing.version !== request.expectedVersion) {
             throw new Error(`notification ${request.notificationId} is at version ${String(existing.version)}, not ${String(request.expectedVersion)}`);
           }
@@ -2806,6 +2891,11 @@ export class AuthorityDatabase implements Disposable {
       intakeSessions: Object.freeze({
         create: (input: unknown) => {
           const record = IntakeSessionSchema.parse(input);
+          if (record.reservedManifestId === undefined) {
+            throw new Error(
+              `intake session ${record.intakeSessionId} cannot be created with reserved manifest id absent`,
+            );
+          }
           if (record.state !== "mapping" || record.version !== 1) {
             throw new Error(
               `intake session ${record.intakeSessionId} must be created in mapping state at version 1`,
@@ -2828,6 +2918,26 @@ export class AuthorityDatabase implements Disposable {
         update: (input: unknown) => {
           const record = IntakeSessionSchema.parse(input);
           return this.#authorityWrite("intake_sessions", () => {
+            const current = this.#readRecord(
+              "intake_sessions",
+              record.intakeSessionId,
+              IntakeSessionSchema,
+            );
+            if (
+              current !== undefined
+              && current.reservedManifestId !== record.reservedManifestId
+            ) {
+              const currentReservation = current.reservedManifestId === undefined
+                ? "absent"
+                : current.reservedManifestId;
+              const nextReservation = record.reservedManifestId === undefined
+                ? "absent"
+                : record.reservedManifestId;
+              throw new Error(
+                `intake session ${record.intakeSessionId} cannot change reserved manifest id from `
+                + `${currentReservation} to ${nextReservation}`,
+              );
+            }
             const outcome = this.#database.prepare(`
               UPDATE intake_sessions SET record_json = ?, state = ?, updated_at = ?
               WHERE record_key = ? AND json_extract(record_json, '$.version') = ?
@@ -3109,6 +3219,9 @@ export class AuthorityDatabase implements Disposable {
       providerAdmissions: this.#buildProviderAdmissionRepository(),
       startPlans: this.#buildStartPlanRepository(),
       workerLeases: this.#buildWorkerLeaseRepository(),
+      duoCeremonyLeases: this.#buildDuoCeremonyLeaseRepository(),
+      workerPools: this.#buildWorkerPoolRepository(),
+      runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
         insert: (input: unknown) => {
           const record = CommandRequestSchema.parse(input);
@@ -3935,15 +4048,15 @@ export class AuthorityDatabase implements Disposable {
         ? this.#database.prepare(`
           INSERT INTO tasks (
             record_key, workflow, item_id, state, priority, attempt, not_before,
-            owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, version,
+            owner_worker_id, claim_generation, heartbeat_at, parent_run_id, run_number, session_id, version,
             record_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
         : this.#database.prepare(`
           UPDATE tasks SET
             workflow = ?, item_id = ?, state = ?, priority = ?, attempt = ?, not_before = ?,
             owner_worker_id = ?, claim_generation = ?, heartbeat_at = ?, parent_run_id = ?,
-            run_number = ?, version = ?, record_json = ?
+            run_number = ?, session_id = ?, version = ?, record_json = ?
           WHERE record_key = ? AND version = ?
         `);
       const shared = [
@@ -3961,6 +4074,10 @@ export class AuthorityDatabase implements Disposable {
         // every later UPDATE unchanged. A row that names no ordinal keeps
         // naming none — an update is not the moment to invent one.
         record.runNumber ?? null,
+        // D269: the same read-forward shape — NULL for every run enqueued
+        // before schema v17 and for a run no fan-out grouped; never minted on
+        // an update.
+        record.sessionId ?? null,
         record.version,
       ] as const;
       const result = mode === "insert"
@@ -4067,6 +4184,30 @@ export class AuthorityDatabase implements Disposable {
            * historical row, a fixture built before v15), and a writer that
            * minted one here would be back-filling.
            */
+          /*
+           * D269 — a run that names a session names a row authority wrote.
+           * The fan-out inserts the session BEFORE its first member inside this
+           * same transaction, so a member enqueued without it is a caller
+           * defect, refused here by name rather than left as a dangling id the
+           * session view would have to explain away. A record with NO session
+           * is accepted unconditionally: that is the read-forward shape (a
+           * replayed pre-v17 row) and the shape of a run no fan-out grouped.
+           */
+          if (record.sessionId !== undefined) {
+            const session = this.#readRecord("run_sessions", record.sessionId, RunSessionRecordSchema);
+            if (session === undefined) {
+              throw new Error(
+                `run ${record.envelope.runId} names session ${record.sessionId}, which authority never wrote; `
+                + "a session row is inserted before its first member, never after",
+              );
+            }
+            if (session.workflow !== record.envelope.workflow) {
+              throw new Error(
+                `run ${record.envelope.runId} of ${record.envelope.workflow} names session ${record.sessionId}, `
+                + `which groups ${session.workflow}; a session groups runs of one workflow`,
+              );
+            }
+          }
           if (record.runNumber !== undefined) {
             const nextNumber = this.#nextWorkflowRunNumber(record.envelope.workflow);
             if (record.runNumber < nextNumber) {
@@ -4126,6 +4267,9 @@ export class AuthorityDatabase implements Disposable {
         `).all(WorkerIdSchema.parse(workerId));
         return Object.freeze(rows.map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json)));
       },
+      listBySession: (sessionId: string) => Object.freeze(this.#database.prepare(`
+        SELECT record_json FROM tasks WHERE session_id = ? ORDER BY created_at, record_key
+      `).all(RunSessionIdSchema.parse(sessionId)).map((row) => parseJsonRecord(RunRecordSchema, JsonRowSchema.parse(row).record_json))),
       /**
        * D262. `tasks_heartbeat_idx ON tasks(state, heartbeat_at)` leads on
        * `state`, so this is an index scan over a set that is almost always
@@ -5126,6 +5270,192 @@ export class AuthorityDatabase implements Disposable {
       const changes = sqliteChanges(result.changes);
       if (changes !== 1) throw new Error(`worker lease ${record.workerId} ${mode} affected ${String(changes)} rows`);
       return { result: undefined, changes };
+    });
+  }
+
+  #readDuoCeremonyLease(credentialKey: string): DuoCeremonyLeaseRecord | undefined {
+    return this.#readRecord("duo_ceremony_leases", credentialKey, DuoCeremonyLeaseRecordSchema);
+  }
+
+  #writeDuoCeremonyLease(record: DuoCeremonyLeaseRecord, mode: "insert" | "update"): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("duo_ceremony_leases", () => {
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO duo_ceremony_leases (
+            record_key, generation, holder_worker_id, holder_system, state, expires_at,
+            version, record_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          record.credentialKey, record.generation, record.holder.workerId, record.holder.system,
+          record.state, record.expiresAt, record.version, json, record.createdAt,
+        )
+        : this.#database.prepare(`
+          UPDATE duo_ceremony_leases SET
+            generation = ?, holder_worker_id = ?, holder_system = ?, state = ?, expires_at = ?,
+            version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `).run(
+          record.generation, record.holder.workerId, record.holder.system, record.state,
+          record.expiresAt, record.version, json, record.credentialKey, record.version - 1,
+        );
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) {
+        throw new Error(`Duo ceremony lease generation ${String(record.generation)} ${mode} affected ${String(changes)} rows`);
+      }
+      return { result: undefined, changes };
+    });
+  }
+
+  #buildDuoCeremonyLeaseRepository(): DuoCeremonyLeaseRepository {
+    return Object.freeze({
+      acquire: (input: unknown): DuoCeremonyLeaseAcquireOutcome => {
+        const request: DuoCeremonyLeaseAcquireRequest = DuoCeremonyLeaseAcquireRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const nowMs = Date.parse(request.now);
+          const existing = this.#readDuoCeremonyLease(request.credentialKey);
+          if (existing !== undefined && isDuoCeremonyLeaseLive(existing, nowMs)) {
+            return Object.freeze({ state: "held" as const, holder: existing });
+          }
+          const tookOver = existing !== undefined && existing.state === "held"
+            ? DuoCeremonyLeaseTakeoverSchema.parse({ generation: existing.generation, holder: existing.holder })
+            : null;
+          const lease = DuoCeremonyLeaseRecordSchema.parse({
+            credentialKey: request.credentialKey,
+            generation: (existing?.generation ?? 0) + 1,
+            holder: { workerId: request.workerId, system: request.system },
+            state: "held",
+            acquiredAt: request.now,
+            expiresAt: new Date(nowMs + request.ttlMs).toISOString(),
+            version: (existing?.version ?? 0) + 1,
+            createdAt: existing?.createdAt ?? request.now,
+            updatedAt: request.now,
+          });
+          this.#writeDuoCeremonyLease(lease, existing === undefined ? "insert" : "update");
+          const token = mintDuoCeremonyLeaseToken({
+            credentialKey: lease.credentialKey,
+            generation: lease.generation,
+            holder: lease.holder,
+            expiresAt: lease.expiresAt,
+          });
+          return Object.freeze({ state: "acquired" as const, lease, token, tookOver });
+        });
+      },
+      release: (input: Readonly<{ token: unknown; now: string }>): DuoCeremonyLeaseReleaseOutcome => {
+        if (!isDuoCeremonyLeaseToken(input.token)) {
+          throw new Error("Duo ceremony lease token was not minted by the Duo ceremony lease store; refusing to release");
+        }
+        const token = input.token;
+        const now = IsoInstantSchema.parse(input.now);
+        return this.withAuthorityTransaction(() => {
+          // Retire FIRST: a token whose release is attempted twice, or whose
+          // row has moved on, must refuse at the next helper either way.
+          retireDuoCeremonyLeaseToken(token);
+          const current = this.#readDuoCeremonyLease(token.credentialKey);
+          if (current === undefined) {
+            throw new Error(`Duo ceremony lease generation ${String(token.generation)} has no row to release; the token names a lease authority never wrote`);
+          }
+          if (current.generation !== token.generation || current.state !== "held") {
+            return DuoCeremonyLeaseReleaseOutcomeSchema.parse({ state: "superseded", current });
+          }
+          const released = DuoCeremonyLeaseRecordSchema.parse({
+            ...current,
+            state: "released",
+            releasedAt: now,
+            version: current.version + 1,
+            updatedAt: now,
+          });
+          this.#writeDuoCeremonyLease(released, "update");
+          return DuoCeremonyLeaseReleaseOutcomeSchema.parse({ state: "released", lease: released });
+        });
+      },
+      get: (credentialKey: string) => this.#readDuoCeremonyLease(FingerprintSchema.parse(credentialKey)),
+    });
+  }
+
+  #writeWorkerPool(record: WorkerPoolRecord, mode: "insert" | "update"): void {
+    const json = canonicalJsonStringify(record);
+    this.#authorityWrite("worker_pools", () => {
+      const result = mode === "insert"
+        ? this.#database.prepare(`
+          INSERT INTO worker_pools (record_key, desired_workers, version, record_json, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(record.workflow, record.desiredWorkers, record.version, json, record.createdAt)
+        : this.#database.prepare(`
+          UPDATE worker_pools SET desired_workers = ?, version = ?, record_json = ?
+          WHERE record_key = ? AND version = ?
+        `).run(record.desiredWorkers, record.version, json, record.workflow, record.version - 1);
+      const changes = sqliteChanges(result.changes);
+      if (changes !== 1) {
+        throw new Error(`worker pool ${record.workflow} ${mode} affected ${String(changes)} rows`);
+      }
+      return { result: undefined, changes };
+    });
+  }
+
+  #buildWorkerPoolRepository(): WorkerPoolRepository {
+    const read = (workflow: string): WorkerPoolRecord | undefined =>
+      this.#readRecord("worker_pools", WorkflowIdSchema.parse(workflow), WorkerPoolRecordSchema);
+    return Object.freeze({
+      plan: (input: unknown): WorkerPoolPlanOutcome => {
+        const request = WorkerPoolPlanRequestSchema.parse(input);
+        return this.withAuthorityTransaction(() => {
+          const existing = read(request.workflow);
+          const currentVersion = workerPoolVersion(existing);
+          if (currentVersion !== request.expectedVersion) {
+            return WorkerPoolPlanOutcomeSchema.parse({
+              state: "conflict",
+              currentVersion,
+              message: existing === undefined
+                ? `worker pool ${request.workflow} has no row yet (version 0), not version ${String(request.expectedVersion)}`
+                : `worker pool ${request.workflow} is at version ${String(currentVersion)}, not ${String(request.expectedVersion)}`,
+            });
+          }
+          const pool = WorkerPoolRecordSchema.parse({
+            workflow: request.workflow,
+            desiredWorkers: request.desiredWorkers,
+            plannedBy: request.requestedBy,
+            plannedAt: request.now,
+            version: currentVersion + 1,
+            createdAt: existing?.createdAt ?? request.now,
+            updatedAt: request.now,
+          });
+          this.#writeWorkerPool(pool, existing === undefined ? "insert" : "update");
+          return WorkerPoolPlanOutcomeSchema.parse({ state: "applied", pool });
+        });
+      },
+      get: read,
+      list: () => Object.freeze(this.#database.prepare(`
+        SELECT record_json FROM worker_pools ORDER BY record_key
+      `).all().map((row) => parseJsonRecord(WorkerPoolRecordSchema, JsonRowSchema.parse(row).record_json))),
+    });
+  }
+
+  #buildRunSessionRepository(): RunSessionRepository {
+    return Object.freeze({
+      insert: (input: unknown) => {
+        const record = RunSessionRecordSchema.parse(input);
+        const json = canonicalJsonStringify(record);
+        return this.#authorityWrite("run_sessions", () => {
+          const existing = this.#readRecord("run_sessions", record.sessionId, RunSessionRecordSchema);
+          if (existing !== undefined) {
+            if (canonicalJsonStringify(existing) !== json) {
+              throw new Error(`run session ${record.sessionId} already exists with different content`);
+            }
+            return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+          }
+          const result = this.#database.prepare(`
+            INSERT INTO run_sessions (record_key, workflow, started_at, record_json, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(record.sessionId, record.workflow, record.startedAt, json, record.createdAt);
+          return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
+        });
+      },
+      get: (sessionId: string) =>
+        this.#readRecord("run_sessions", RunSessionIdSchema.parse(sessionId), RunSessionRecordSchema),
+      listByWorkflow: (workflow: string) => Object.freeze(this.#database.prepare(`
+        SELECT record_json FROM run_sessions WHERE workflow = ? ORDER BY started_at, record_key
+      `).all(WorkflowIdSchema.parse(workflow)).map((row) => parseJsonRecord(RunSessionRecordSchema, JsonRowSchema.parse(row).record_json))),
     });
   }
 

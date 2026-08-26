@@ -14,7 +14,9 @@ import type {
 } from "../base/session.js";
 import type { BrowserDriver } from "../base/task.js";
 import type { Clock } from "../domain/clock.js";
+import { DuoTerminalRefusalError } from "../infra/browser/login-contract.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
+import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "./duo-ceremony-gate.js";
 import {
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
@@ -114,7 +116,20 @@ export interface WorkerSessionManagerOptions {
    * exactly the defect this closes. Non-positive values fail loud.
    */
   readonly acquireDeadlineMs: number;
+  /**
+   * D267 (ref execution-and-sessions §10): the per-credential Duo ceremony
+   * lease. Required, with no default: a manager built without it would hand
+   * every login recipe no gate, and the recipe's ceremony half could not run —
+   * which is the correct refusal, made at construction instead of mid-login.
+   */
+  readonly duoCeremony: DuoCeremonyGateFactory;
   readonly onEvent?: (event: WorkerSessionEvent) => void;
+}
+
+/** What `#acquireBounded` knows about its own envelope, handed down to the lease gate. */
+interface AcquisitionEnvelope {
+  readonly deadlineMonotonicMs: number;
+  readonly cancel: (reason: Error) => void;
 }
 
 function browserStoreFor(
@@ -237,6 +252,90 @@ export interface RunConfigFingerprintBinding {
 }
 
 /**
+ * One-way ownership transition for ref write-safety's durable fence.
+ * Before this arm is called, parent cancellation has ordinary `withDriver`
+ * semantics. Afterwards cancellation is retained until the callback settles.
+ */
+export interface TransactionDriverLeaseOwnership {
+  retainAfterFence(): void;
+}
+
+class TransactionDriverLeaseOwnershipState implements TransactionDriverLeaseOwnership {
+  #retained = false;
+  #cancellation: Error | undefined;
+
+  retainAfterFence(): void {
+    if (this.#retained) throw new Error("transaction driver lease was retained after its fence more than once");
+    if (this.#cancellation !== undefined) throw this.#cancellation;
+    this.#retained = true;
+  }
+
+  retainCancellation(error: Error): boolean {
+    this.#cancellation ??= error;
+    return this.#retained;
+  }
+
+  cancellation(): Error | undefined {
+    return this.#cancellation;
+  }
+
+  retained(): boolean {
+    return this.#retained;
+  }
+}
+
+function containsFailure(root: unknown, target: unknown, seen = new Set<unknown>()): boolean {
+  if (root === target) return true;
+  if (root === null || typeof root !== "object" || seen.has(root)) return false;
+  seen.add(root);
+  if (root instanceof AggregateError) {
+    return root.errors.some((error: unknown) => containsFailure(error, target, seen));
+  }
+  return root instanceof Error && containsFailure(root.cause, target, seen);
+}
+
+async function waitForTransactionOperation<Result>(
+  start: (ownership: TransactionDriverLeaseOwnership) => Promise<Result>,
+  signal: AbortSignal,
+  system: BrowserSystemId,
+): Promise<Result> {
+  if (signal.aborted) throw signal.reason instanceof Error ? signal.reason : abortError(system);
+  const ownership = new TransactionDriverLeaseOwnershipState();
+  let removeAbort = (): void => undefined;
+  const aborted = new Promise<never>((_resolve, reject) => {
+    const listener = (): void => {
+      const reason = signal.reason instanceof Error
+        ? signal.reason
+        : new Error(`${system} transaction driver lease was aborted during use`);
+      if (!ownership.retainCancellation(reason)) reject(reason);
+    };
+    signal.addEventListener("abort", listener, { once: true });
+    removeAbort = (): void => signal.removeEventListener("abort", listener);
+  });
+  const operation = Promise.resolve().then(() => start(ownership));
+  try {
+    const result = await Promise.race([operation, aborted]);
+    const cancellation = ownership.cancellation();
+    if (cancellation !== undefined) throw cancellation;
+    return result;
+  } catch (operationError) {
+    const cancellation = ownership.cancellation();
+    if (ownership.retained()
+      && cancellation !== undefined
+      && !containsFailure(operationError, cancellation)) {
+      throw new AggregateError(
+        [operationError, cancellation],
+        `${system} transaction operation failed after its retained parent cancellation`,
+        { cause: operationError },
+      );
+    }
+    throw operationError;
+  } finally {
+    removeAbort();
+  }
+}
+
+/**
  * The ONE bind/execute/release discipline every run-scoped driver-lease window
  * uses (worker loop and tests alike). A bind failure throws BEFORE `operation`
  * runs — a second concurrent run binding, or a malformed fingerprint, is a
@@ -263,6 +362,7 @@ export class WorkerSessionManager {
   readonly #clock: Clock;
   readonly #scheduler: MonotonicDeadlineScheduler;
   readonly #acquireDeadlineMs: number;
+  readonly #duoCeremony: DuoCeremonyGateFactory;
   readonly #onEvent: (event: WorkerSessionEvent) => void;
   readonly #resources = new Map<BrowserSystemId, WorkerBrowserResource>();
   readonly #poisoned = new Set<BrowserSystemId>();
@@ -279,6 +379,7 @@ export class WorkerSessionManager {
     this.#clock = options.clock;
     this.#scheduler = options.scheduler;
     this.#acquireDeadlineMs = z.number().int().positive().parse(options.acquireDeadlineMs);
+    this.#duoCeremony = options.duoCeremony;
     this.#onEvent = options.onEvent ?? (() => undefined);
   }
 
@@ -317,6 +418,37 @@ export class WorkerSessionManager {
     operation: (driver: BrowserDriver) => Promise<Result>,
   ): Promise<Result> {
     const need = SessionNeedSchema.parse(needInput);
+    return this.#withDriverLease(need, instance, signal, (driver) => waitForOperation(
+      Promise.resolve().then(() => operation(driver)),
+      signal,
+      need.system,
+    ));
+  }
+
+  async withTransactionDriver<Result>(
+    needInput: SessionNeed,
+    instance: string | undefined,
+    signal: AbortSignal,
+    operation: (driver: BrowserDriver, ownership: TransactionDriverLeaseOwnership) => Promise<Result>,
+  ): Promise<Result> {
+    const need = SessionNeedSchema.parse(needInput);
+    if (need.access !== "transaction") {
+      throw new Error(`${need.system} retained driver lease requires transaction access`);
+    }
+    return this.#withDriverLease(need, instance, signal, (driver) =>
+      waitForTransactionOperation(
+        (ownership) => operation(driver, ownership),
+        signal,
+        need.system,
+      ));
+  }
+
+  async #withDriverLease<Result>(
+    need: SessionNeed,
+    instance: string | undefined,
+    signal: AbortSignal,
+    use: (driver: BrowserDriver) => Promise<Result>,
+  ): Promise<Result> {
     if (this.#closingReason !== undefined) {
       throw new Error(
         `${need.system} driver lease cannot start while worker sessions are closing for ${this.#closingReason}`,
@@ -334,11 +466,7 @@ export class WorkerSessionManager {
       }
       const resource = await this.#acquireBounded(need, instance, configFingerprint, signal);
       try {
-        const result = await waitForOperation(
-          Promise.resolve().then(() => operation(resource.driver)),
-          signal,
-          need.system,
-        );
+        const result = await use(resource.driver);
         try {
           await resource.reset({ signal });
           this.#emit({
@@ -456,8 +584,9 @@ export class WorkerSessionManager {
     if (signal.aborted) forwardAbort();
     signal.addEventListener("abort", forwardAbort, { once: true });
     let expiry: Error | undefined;
+    const deadlineMonotonicMs = this.#clock.monotonicMs() + this.#acquireDeadlineMs;
     const handle = this.#scheduler.schedule(
-      this.#clock.monotonicMs() + this.#acquireDeadlineMs,
+      deadlineMonotonicMs,
       () => {
         expiry = acquisitionDeadlineError(need.system, this.#acquireDeadlineMs);
         acquisition.abort(expiry);
@@ -465,7 +594,10 @@ export class WorkerSessionManager {
     );
     // The acquisition runs under the ACQUISITION signal, so a cooperative
     // login recipe aborts itself at the bound instead of only being raced.
-    const started = this.#getOrStart(need, instance, configFingerprint, acquisition.signal);
+    const started = this.#getOrStart(need, instance, configFingerprint, acquisition.signal, {
+      deadlineMonotonicMs,
+      cancel: (reason) => acquisition.abort(reason),
+    });
     try {
       return await waitForAcquisition(started, acquisition.signal, need.system);
     } catch (error) {
@@ -528,6 +660,7 @@ export class WorkerSessionManager {
     instance: string | undefined,
     configFingerprint: Fingerprint,
     signal: AbortSignal,
+    envelope: AcquisitionEnvelope,
   ): Promise<WorkerBrowserResource> {
     if (this.#poisoned.has(need.system)) {
       throw new Error(`${need.system} browser session has an unresolved failed-close proof`);
@@ -553,7 +686,7 @@ export class WorkerSessionManager {
     }
     const pending = this.#starting.get(need.system);
     if (pending !== undefined) return pending;
-    const started = this.#openAndLogin(need, instance, configFingerprint, signal);
+    const started = this.#openAndLogin(need, instance, configFingerprint, signal, envelope);
     this.#starting.set(need.system, started);
     try {
       return await started;
@@ -562,11 +695,90 @@ export class WorkerSessionManager {
     }
   }
 
+  /**
+   * D267 §10.5 — ONE acquisition, with the fresh-profile-once recovery around
+   * it. The Duo ceremony gate is opened here and HELD across the retry: a
+   * terminal refusal poison-closes the resource (proof required — the
+   * directory cannot be touched while a context may hold it), the factory
+   * removes and recreates the SAME profile path, and the login runs once more
+   * under the lease the gate still holds. A second refusal fails loud naming
+   * the directory and never deletes a third time; every other login failure
+   * takes the ordinary path. `dispose` in `finally` releases whatever the
+   * gate still holds, so a recovery that dies between the two attempts cannot
+   * strand the credential.
+   */
   async #openAndLogin(
     need: SessionNeed,
     instance: string | undefined,
     configFingerprint: Fingerprint,
     signal: AbortSignal,
+    envelope: AcquisitionEnvelope,
+  ): Promise<WorkerBrowserResource> {
+    const gate = this.#duoCeremony.openGate({
+      workerId: this.#workerId,
+      system: need.system,
+      envelopeDeadlineMonotonicMs: envelope.deadlineMonotonicMs,
+      cancelCeremony: envelope.cancel,
+      signal,
+    });
+    // Finding 1 (ref execution-and-sessions §10.4): the settlement is captured as DATA, exactly as
+    // the gate's own `withCeremony` does, rather than reached through `try { … } finally { gate.dispose() }`.
+    // A plain `finally` cannot hand `dispose()` the error it is unwinding, so a release failure there
+    // would silently REPLACE this call's own thrown error instead of preserving it as `cause`.
+    let settled: Readonly<{ state: "returned"; value: WorkerBrowserResource }> | Readonly<{ state: "threw"; error: unknown }>;
+    try {
+      let value: WorkerBrowserResource;
+      try {
+        value = await this.#openAndLoginOnce(need, instance, configFingerprint, signal, gate);
+      } catch (error) {
+        if (!(error instanceof DuoTerminalRefusalError) || !gate.retainedForRecovery()) throw error;
+        const discardProfile = this.#factory.discardProfile;
+        if (discardProfile === undefined) {
+          throw new Error(
+            `${need.system}: Duo refused the WebAuthn assertion and this session factory cannot discard the burned `
+            + "browser profile (no discardProfile), so the fresh-profile-once recovery (ref execution-and-sessions §10.5) "
+            + "is unavailable; the ceremony lease is released and this login fails",
+            { cause: error },
+          );
+        }
+        const { profileDirectory } = await discardProfile.call(this.#factory, {
+          workerId: this.#workerId,
+          system: need.system,
+          ...(instance === undefined ? {} : { instance }),
+          configFingerprint,
+        });
+        try {
+          value = await this.#openAndLoginOnce(need, instance, configFingerprint, signal, gate);
+        } catch (retryError) {
+          if (retryError instanceof DuoTerminalRefusalError) {
+            throw new Error(
+              `${need.system}: Duo refused the WebAuthn assertion AGAIN on a freshly created profile at `
+              + `${profileDirectory}; the directory is not deleted a third time. The credential's counter needs a human `
+              + "(ref execution-and-sessions §10.5; §4.2 names the cause)",
+              { cause: retryError },
+            );
+          }
+          throw retryError;
+        }
+      }
+      settled = { state: "returned", value };
+    } catch (error) {
+      settled = { state: "threw", error };
+    }
+    if (settled.state === "returned") {
+      gate.dispose();
+      return settled.value;
+    }
+    gate.dispose(settled.error);
+    throw settled.error;
+  }
+
+  async #openAndLoginOnce(
+    need: SessionNeed,
+    instance: string | undefined,
+    configFingerprint: Fingerprint,
+    signal: AbortSignal,
+    gate: DuoCeremonyGateHandle,
   ): Promise<WorkerBrowserResource> {
     const store = browserStoreFor(this.#stores, need.system);
     const exclusive = store.session.exclusive === true;
@@ -582,6 +794,7 @@ export class WorkerSessionManager {
       acceptDownloads: need.acceptDownloads === true,
       exclusive,
       signal,
+      duoCeremony: gate,
     });
     let login: LoginResult;
     try {

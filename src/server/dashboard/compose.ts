@@ -23,7 +23,7 @@
  *   semantics), but the dashboard process launching browser-worker OS
  *   processes is ref execution-and-sessions's live worker lane (doc 02 §Phase summary assigns the operator
  *   worker-control surface to 2i / the 1i live slice). The refusal names the
- *   real Phase-1 path: `npm run cli worker <workflow-id>`;
+ *   real manual path: `npm run cli worker <workflow-id> --pool-index <positive-int>`;
  * - `refresh-browser` / `reopen-browser`: reaching a live worker's session set
  *   from this process is the same live-lane work; acknowledging an effect
  *   that did not happen is exactly what the executor refuses to do.
@@ -75,6 +75,7 @@ import { createSpanJsonlWriter } from "../../infra/events/span-jsonl-writer.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
 import { createNotificationInbox } from "../../services/notifications/inbox.js";
+import { createBackfillGapNotifier } from "../../services/notifications/backfill-gap.js";
 import { createBackupHealthNotifier } from "../../services/notifications/storage-health.js";
 import {
   GateParkObservationSchema,
@@ -109,6 +110,7 @@ import type {
 } from "./queries/run-detail.js";
 import { describeProofShape } from "../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
+import { capturePhoneHostOf } from "../../domain/capture-surface.js";
 
 
 /**
@@ -163,7 +165,7 @@ function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDe
 }
 
 /**
- * D252 — every node that can produce a Data-section value, with the four facts
+ * D252/L3 — every ordinary task and every real transaction role, with the facts
  * the rail's origin line draws: the step's label, whether its task READS or
  * WRITES, the system it runs against, and the reuse bound its own contract
  * declares per field.
@@ -179,7 +181,9 @@ function writeContractViewsOf(descriptor: AnyWorkflowDescriptor): readonly RunDe
  * itself calls, and `feeds` through `reachableCommits` for the same reason —
  * the sentence the operator reads is the rule the executor applies.
  *
- * Only the field paths a Data entry can actually carry are resolved, which is
+ * Probe/prepare/commit/verify each retain their invoked task id; this is what
+ * lets an observed row resolve system without treating the transaction node's
+ * commit as every beat. Only the field paths a Data entry can actually carry are resolved, which is
  * exactly `details[].source` ∪ `capabilities.editData.fields`: a bound for a
  * path no surface serves is a fact nobody reads.
  */
@@ -213,7 +217,6 @@ export function dataOriginViewsOf(module: {
 
   return nodes.flatMap((node) => {
     if (node.kind !== "task" && node.kind !== "transaction") return [];
-    const contract = node.kind === "task" ? node.uses : node.commit.uses;
     const paths = declaredPaths.get(String(node.id));
     const feeds = reachableCommits(nodes, node.id, commitNodeIds).map((sink) => {
       const target = nodes.find((candidate) => String(candidate.id) === String(sink.nodeId));
@@ -222,27 +225,40 @@ export function dataOriginViewsOf(module: {
         label: target === undefined ? String(sink.nodeId) : runtimeNodeLabel(target),
       };
     });
-    return [{
-      nodeId: String(node.id),
-      step: runtimeNodeLabel(node),
-      dir: contract.effect === "read" ? "read" as const : "write" as const,
-      ...(systemByTaskId.has(String(contract.id))
-        ? { system: systemByTaskId.get(String(contract.id)) }
-        : {}),
-      ...(contract.effect === "read" && paths !== undefined
-        ? {
-          freshness: [...paths].sort().map((fieldPath) => {
-            const bound = resolveFreshnessBound(contract.freshness, fieldPath);
-            return {
-              fieldPath,
-              maxAge: Number.isFinite(bound.maxAgeMs) ? bound.maxAgeMs : "unbounded" as const,
-              override: bound.override,
-            };
-          }),
-        }
-        : {}),
-      feeds,
-    }];
+    const contracts = node.kind === "task"
+      ? [{ role: "task" as const, contract: node.uses }]
+      : [
+        { role: "probe" as const, contract: node.commit.uses.writeSafety.idempotency.probe },
+        { role: "prepare" as const, contract: node.prepare.uses },
+        { role: "commit" as const, contract: node.commit.uses },
+        ...(node.commit.uses.writeSafety.completion.kind === "receipt"
+          ? []
+          : [{ role: "verify" as const, contract: node.commit.uses.writeSafety.completion.verify }]),
+      ];
+    return contracts.map(({ role, contract }) => {
+      const taskId = "id" in contract ? String(contract.id) : String(contract.taskId);
+      return {
+        nodeId: String(node.id),
+        step: runtimeNodeLabel(node),
+        taskId,
+        role,
+        dir: contract.effect === "read" ? "read" as const : "write" as const,
+        ...(systemByTaskId.has(taskId) ? { system: systemByTaskId.get(taskId) } : {}),
+        ...(role === "task" && "freshness" in contract && paths !== undefined
+          ? {
+            freshness: [...paths].sort().map((fieldPath) => {
+              const bound = resolveFreshnessBound(contract.freshness, fieldPath);
+              return {
+                fieldPath,
+                maxAge: Number.isFinite(bound.maxAgeMs) ? bound.maxAgeMs : "unbounded" as const,
+                override: bound.override,
+              };
+            }),
+          }
+          : {}),
+        feeds,
+      };
+    });
   });
 }
 
@@ -265,7 +281,7 @@ export interface DashboardComposeInput {
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
 /** Ref dashboard-surfaces §2.5: a dirty store gets a coalesced verified backup at least every 15 minutes. */
-export const AUTHORITY_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
+const AUTHORITY_BACKUP_INTERVAL_MS = 15 * 60 * 1000;
 /**
  * Three intervals — one slow or missed cycle must not flap the Settings
  * indicator, while a genuinely stalled backup lane still reads stale well
@@ -280,7 +296,7 @@ export const AUTHORITY_BACKUP_MAX_AGE_MS = 45 * 60 * 1000;
  * (legacy `provider-limits.ts` priority-1 tier-1), never a default minted
  * inside the secrets reader.
  */
-export const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
+const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
 
 /**
  * D218: how often the dashboard tails `spans/*.jsonl` for lines other
@@ -289,7 +305,7 @@ export const ADVISORY_GEMINI_MODEL_ID = "gemini-3-flash-preview";
  * command-emitted lines don't wait for it (the command service ticks the
  * tail itself after emitting).
  */
-export const SPAN_TAIL_POLL_MS = 250;
+const SPAN_TAIL_POLL_MS = 250;
 
 /**
  * D262: how often the needs-you watch re-derives the parked-at-gate set from
@@ -324,7 +340,7 @@ export function createDashboardWorkerSupervisor(): WorkerProcessSupervisor {
     spawnWorker: (input: Readonly<{ workflowId: string; workerId: string }>): never => {
       throw new Error(
         `the dashboard process does not launch browser workers (ref execution-and-sessions live lane); start `
-        + `worker ${input.workerId} with: npm run cli worker ${input.workflowId}`,
+        + `worker ${input.workerId} with: npm run cli worker ${input.workflowId} --pool-index <positive-int>`,
       );
     },
   });
@@ -446,6 +462,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ids,
     actorId: LOCAL_OPERATOR_ACTOR_ID,
   });
+  const backfillGapNotifier = createBackfillGapNotifier({ inbox });
   const backupNotifier = createBackupHealthNotifier({ inbox });
   const publishBackupHealth = async (): Promise<void> => {
     try {
@@ -556,6 +573,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
+      listWorkerPools: () => database.authority.workerPools.list(),
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
@@ -728,6 +746,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: {
       getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
       findIntakeManifestsBySource: (sourceSha256) =>
         database.authority.intakeManifests.findBySource(sourceSha256),
     },
@@ -815,7 +834,13 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       },
     };
 
-  const hub = createDashboardStreamHub({ projection });
+  const hub = createDashboardStreamHub({ projection, backfillGaps: backfillGapNotifier });
+
+  // Ref operator-trust §7's phone-origin scope: the host the gate below binds, read from
+  // the SAME `capture` leaf `createCaptureIngressResolver` reads. It throws
+  // rather than answering `undefined` for a forwarded ingress it cannot read a
+  // host out of — an unscoped internet-facing ingress is not a degraded mode.
+  const capturePhoneHost = capturePhoneHostOf(resolved.config.capture);
 
   const app = createDashboardApp({
     bootstrap: {
@@ -840,6 +865,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     },
     projection,
     runDetail: runDetailDeps,
+    diagnosticBundles: {
+      authority: database.authority.diagnosticBundles,
+      artifacts,
+    },
     archive: archiveDeps,
     commands,
     startPlans,
@@ -876,6 +905,28 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       listScenarioSources: () => readScenarioSources(EXPLORER_SOURCE_ROOT),
     },
     uiCatalog: { readCatalogJson: () => readCommittedUiCatalog(EXPLORER_SOURCE_ROOT) },
+    /**
+     * Ref operator-trust §7's phone-origin scope, WIRED (Track D row D2, audit C4).
+     *
+     * The gate had been composed since D174 with `capturePhoneHost` supplied
+     * nowhere, so it compiled and could never fire — D189 item 3 recorded it as
+     * exactly D181's shape and handed row D2 the choice of wiring or deleting
+     * it. Wiring is the honest half: `capture.ingress: "forwarded"` is a mode
+     * an operator can set TODAY (a tunnel or reverse proxy in front of this
+     * BFF), and the moment they do, a request arriving on that origin must be
+     * held to the closed capture route union. Deleting the gate would leave
+     * that operator's phone origin able to reach the whole dashboard, and
+     * would put the scope check in the same future commit that opens the door.
+     *
+     * The host is DERIVED from the one config leaf the ingress resolver reads,
+     * so the gate and the QR can never name two different origins. The other
+     * two modes name no origin and supply nothing — see `capturePhoneHostOf`.
+     * `capturePhoneAssetPaths` stays absent on purpose: this BFF serves no
+     * bytes at all (D189, doc 04 `{#def-byte-path}`), so the phone page's own
+     * asset closure does not exist yet and an invented set would be a scope
+     * claim about files nothing produces.
+     */
+    ...(capturePhoneHost === undefined ? {} : { capturePhoneHost }),
   });
 
   const server = await startDashboardHttpServer({ app, port: input.isolation.backendPort });

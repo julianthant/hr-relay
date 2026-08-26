@@ -221,6 +221,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),
+      listWorkerPools: () => database.authority.workerPools.list(),
       isArchived: (runId) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId) => database.authority.failures.get(failureId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
@@ -306,6 +307,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: {
       getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
       findIntakeManifestsBySource: (sourceSha256) =>
         database.authority.intakeManifests.findBySource(sourceSha256),
     },

@@ -333,6 +333,7 @@ does today.
 - [x] beats ②–⑥ run inside ONE `sessions.withDriver` exclusive transaction lease, so a navigating probe can never destroy a staged form (`write-sequencer.ts:1492-1514`)
 - [x] beat ④'s fence is `writeIntents.fenceAttempt` for an unseen key and `refenceRetryable({expectedVersion, …})` for a retryable one — an optimistic-lock CAS, never a blind update (`write-sequencer.ts:1596-1607`)
 - [x] beat ⑤'s `MutationCapability` is minted by this module and nothing else, over a module-private WeakSet, and a driver asserts it before resolving a locator (`src/base/mutation-capability.ts`)
+- [x] observed probe/prepare/commit/verify beats use explicit task roles; commit `recordData` is stamped at call time but its fallible emission waits until the callback actually settles, outside fence→external-click; neither task deadline nor parent cancellation can release that lane or its transaction session after `retainAfterFence()`
 - [x] beat ⑦ is ONE outer authority transaction over claim revalidation, the four-row primitive, the `TransactionOutcome` checkpoint, both outboxes and the run transition (`executeSequencedWriteCommit`, `write-sequencer.ts:512`)
 - [x] the post-fence park raises `WriteParkedError` and the interpreter has its typed arm; recovery has scheduling priority over claim expiry, and D200's lease-as-evidence sweep releases a claim no live process answers for
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/core/write-sequencer.ts`, `src/core/write-recovery.ts`, `src/base/mutation-capability.ts`, `src/infra/sqlite/migrations.ts:300-327`; left: nothing in the kernel — what remains is per-workflow (§3.2)
@@ -418,8 +419,8 @@ flowchart TD
 | **② Prepare** | Acquire the context-exclusive transaction lease and run the prepare contract. The parsed commit input is already frozen; prepare output is preview and span data only. A retry may restart from beat ① on a fresh or reset lease before any fence. | no write intent | prepare failure or timeout ⇒ release the poisoned page; there is no external side effect to recover |
 | **③ Binding proof** | Resolve the commit contract's required `SubjectBindingSpec`. A person or artifact scope executes its semantic observation after preparation on this exact page and builds `SubjectProof`; an explicitly unscoped scope validates the allowlisted reason plus the exact staged page state and builds `UnscopedBindingProof`. Both parse as `WriteBindingProof`, and the digest is derived immediately. | the proof is not yet authority, but is held for the fence transaction and the evidence bundle | mismatch, unknown, a missing or stale observation, an unregistered unscoped reason, the wrong system or page state, or a schema failure ⇒ no fence, no click; close or poison the page and emit a structured binding failure |
 | **④ Fence** | Check `probeToFenceMaxMs` against the monotonic clock **and** that the binding proof was created after prepare for this run/attempt/lease. `fenceAttempt` INSERTs the unseen key; `refenceRetryable({expectedVersion, …})` CASes a `retryable` row to `attempting` with `generation + 1` and `version + 1`. The intent record, its immutable attempt row and the `write.attempting` span outbox commit together. The `idempotency_key_digest` UNIQUE constraint is the same-key mutex. | durable intent + attempt + binding proof + span outbox | an elapsed budget throws `StagedPageDiscardedError` — no click; a lost CAS throws `FenceLostRaceError` — no click; there is no generic retry after a won fence |
-| **⑤ External commit** | The external-write helper requires the unforgeable `MutationCapability` bound to the open intent generation **and** the binding-proof digest. The sequencer mints it here and nowhere else. | live HR side effect | a missing or mismatched capability, generation or binding digest ⇒ the driver throws BEFORE resolving its locator |
-| **⑥ Capture / verify** | Extract `proofFromOutput`, or run the declared verifier on the retained transaction page; every completion kind parses through its `proofSchema`. | the proof remains in memory | absent, ambiguous, unknown, a throw or a schema failure parks intent-first then run (`parked-write`); no arm can return unvalidated proof |
+| **⑤ External commit** | The external-write helper requires the unforgeable `MutationCapability` bound to the open intent generation **and** the binding-proof digest. The sequencer mints it here and nowhere else. Immediately after the durable fence it crosses `withTransactionDriver`'s one-way `retainAfterFence()` boundary. Its bounded invocation retains a separate callback-settlement promise: task deadline and parent cancellation request abort, but cannot release the transaction lease, flush commit observations, or park while a non-cooperative callback is still in flight. | live HR side effect; the intent remains `attempting` throughout an unsettled callback | a missing or mismatched capability, generation or binding digest ⇒ the driver throws BEFORE resolving its locator; a settled timeout/error/cancellation parks, while a callback that never settles remains process-owned until process loss makes §4 recovery the sole owner |
+| **⑥ Capture / verify** | Extract `proofFromOutput`, or resolve and bind the declared verifier, open its span, and run it on the retained transaction page; every completion kind parses through its `proofSchema`. The whole verifier setup and execution is already post-fence. | the proof remains in memory | verifier lookup/input binding/start-span emission, absent, ambiguous, unknown, a throw or a schema failure all become `PostFenceWriteFailure` and park intent-first then run (`parked-write`); no arm can escape raw or return unvalidated proof |
 | **⑦ Atomic durable commit** | ONE authority transaction revalidates the current run claim and intent generation, marks intent and attempt committed, writes the schema-valid `TransactionOutcome` checkpoint, the immutable ledger outbox row (carrying the binding-proof digest and the exact fenced subject or its explicit absence), the same-trace terminal-span outbox row, any evidence-receipt ref the active trust service requires, and the run transition. The JSONL ledger and span projectors run afterward. | every authority row and outbox durable together | a transaction failure leaves the intent `attempting` and enters recovery; a trace, subject or claim mismatch fails before any mutation; projector lag is repairable and never changes a write outcome |
 
 **Ordering invariant:** stable commit input and the live probe exist before page preparation; a
@@ -428,6 +429,27 @@ stores that proof and happens-before the click; the click happens-before landing
 proof validation happens-before the single ⑦ transaction. The ledger and span JSONL files are
 projections of durable outboxes, not additional commit beats. This generalizes oath-upload's
 "marker durable before the POST" (`handler.ts:306-309`) into the kernel.
+
+**Instrumentation does not occupy ④→⑤.** Probe, prepare and verify observations emit synchronously
+at `ctx.recordData`. Commit is different because a legal task may record a staged/page fact before
+calling `driver.commit`. The collector validates and freezes that batch and reads the Clock once at
+the call, but buffers delivery until the whole commit callback settles. Only then does it emit the
+prebuilt `transaction.fenced` event, redact and emit commit batches in call order, and end the
+commit span. Thus a throwing span writer can park an already-fenced attempt after the external call,
+but cannot prevent that call. The event's `observedAt` remains the record instant; the delay is
+delivery-only and is the explicit D270 exception. A deadline or parent abort is only a cancellation
+request after the fence: the sequencer retains the callback's actual settlement separately and the
+session manager's one-way `retainAfterFence()` arm forbids emit, park, return, reset, or close before
+that settlement. If a callback ignores abort forever, the live
+execution and its lease stay owned rather than detaching uncertain I/O; after process loss, the
+durable `attempting` intent is owned by §4 recovery. Dry-run executes only probe + prepare and emits
+no fence, commit or verifier beat.
+
+A terminal span failure is always secondary to the task failure it was trying to report. The
+sequencer retains both in a primary-first `AggregateError` whose cause is the original task error;
+a post-fence `WriteParkedError` carries the `PostFenceWriteFailure` and that aggregate through its
+cause chain. This keeps parking fail-loud without rewriting a real browser/task failure as an
+instrumentation failure.
 
 **The durable shape, as built.** The three tables are JSON-record tables, not the wide-column sketch
 Phase 0 drew (`src/infra/sqlite/migrations.ts:300-327`). What carries the invariants is the schema

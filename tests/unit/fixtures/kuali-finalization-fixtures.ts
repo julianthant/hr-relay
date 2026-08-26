@@ -13,6 +13,7 @@
  * live-verified READ-ONLY on 2026-08-12 and nothing has ever been written to it
  * by this repository; no real EID, action id or document number belongs here.
  */
+import { fixtureDuoCeremonyGates } from "./duo-ceremony-fixtures.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -349,6 +350,7 @@ export function finalizationHarness(options: Readonly<{
     clock,
     scheduler: new ManualScheduler(clock),
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
+    duoCeremony: fixtureDuoCeremonyGates(clock),
   });
   const emitter = recordingEmitter();
   const ids = sequentialIdFactory("b");

@@ -60,6 +60,7 @@ import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createLedgerReadThrough } from "../../../src/infra/ledger/ledger-read-through.js";
+import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 
 /* ── the pinned instant (aligned with the fixture corpus) ────────────────── */
 
@@ -738,6 +739,7 @@ export async function startSeededServer(
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
+      listWorkerPools: () => database.authority.workerPools.list(),
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
@@ -764,6 +766,41 @@ export async function startSeededServer(
 
   const runIds = seed({ database, spans, notes });
 
+  const trust = createReceiptService({ database, descriptors: [personLookupDescriptor] });
+
+  /**
+   * THE DONE RUN'S EVIDENCE RECEIPT IS PART OF THE SEED, not a side effect of
+   * whoever loaded a page first.
+   *
+   * The queue row's D7 outcome chips come from `#facts` in
+   * `run-queue-projection.ts`, which looks a receipt UP (`getReceipt`) and never
+   * derives one — D141 makes derivation an act that writes an authority row, and
+   * a projection may not write. The only thing that derives one here is the
+   * panel's own `GET /api/v1/runs/:runId/receipt`, and that request lands AFTER
+   * the day snapshot `/events/v1` built for the page it is opening. So without
+   * this line the row's chips depend on whether an EARLIER page load against
+   * this same server happened to derive the receipt first, and the seeded server
+   * lives for a whole Playwright worker — which Playwright replaces after any
+   * failed test. That is exactly how the corpus came to hold two references for
+   * ONE state that disagree: `run-receipt-populated--graphite-warm` (captured
+   * first, on a cold server) records the row with no chips, and
+   * `--paper-ink` (captured second, on the warm one) records them.
+   *
+   * Deriving it here through the production `ReceiptService` — the same thing
+   * `tests/perf/dashboard-fixture.ts` does — makes the state determinate and
+   * matches what the state CLAIMS to be: a run whose receipt is populated and on
+   * screen. The assertion is the point: a seed that silently produced a
+   * receipt with no output facts would photograph an empty row and call it a
+   * populated receipt.
+   */
+  const doneReceipt = trust.ensureReceipt(runIds.doneRun);
+  if (doneReceipt.output.length === 0) {
+    throw new Error(
+      `the seeded done run ${runIds.doneRun} derived an evidence receipt with no output fact; `
+      + "the run-receipt-populated state photographs a queue row that states what the run produced",
+    );
+  }
+
   const runDetailDeps = {
     stateRoot,
     projection,
@@ -778,7 +815,7 @@ export async function startSeededServer(
       resolve: (workflowId: string) =>
         (workflowId === personLookupDescriptor.id ? personLookupDescriptor : undefined),
     },
-    trust: createReceiptService({ database, descriptors: [personLookupDescriptor] }),
+    trust,
   };
 
   const kernel = createCommandKernel({
@@ -830,7 +867,7 @@ export async function startSeededServer(
     configSnapshotId: CONFIG_SNAPSHOT_ID,
     plannedBy: "local-operator",
   });
-  const hub = createDashboardStreamHub({ projection });
+  const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
 
   const app = createDashboardApp({
     intake: UNWIRED_INTAKE_SERVICE,

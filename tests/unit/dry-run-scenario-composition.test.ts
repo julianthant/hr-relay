@@ -302,6 +302,10 @@ describe("dry-run scenario production composition boundary", () => {
       ids: sequentialIdFactory("e"),
       sessionFactory: sessions.factory,
       processId: 4242,
+      processIdentityObserver: (pid) => ({
+        state: "alive",
+        identity: { platform: "darwin", startToken: `synthetic-${String(pid)}` },
+      }),
       write: () => undefined,
     });
     const scenarioCase = TEST_MANIFEST.cases[0];
@@ -372,6 +376,10 @@ describe("dry-run scenario production composition boundary", () => {
       ids: sequentialIdFactory("a"),
       sessionFactory: sessions.factory,
       processId: 4243,
+      processIdentityObserver: (pid) => ({
+        state: "alive",
+        identity: { platform: "darwin", startToken: `synthetic-${String(pid)}` },
+      }),
       write: (line) => lines.push(line),
     });
     const scenarioCase = FAILED_TEST_MANIFEST.cases[0];

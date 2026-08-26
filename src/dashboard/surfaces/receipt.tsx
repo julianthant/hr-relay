@@ -2,13 +2,13 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx
  *
- * The 1i Receipt PLACEHOLDER (doc 01 §Integration amendment — Phase 1's share): the demo receipt's frame, verdict
- * band and absence treatments, fed only by what the 1g wire serves — the
+ * The demo receipt's frame, verdict band and absence treatments, fed by what the wire serves — the
  * terminal outcome and the receipt section resource (a pointer, or an explicit
- * missing / purged / error state). The full `RunEvidenceReceipt` body the demo
- * renders (writes with read-backs, per-member confirmations, completion
- * criteria, observations, decisions, reuse lanes, warnings) is fixture-fed and
- * lands with the trust surfaces in 2g; nothing here fabricates a line of it.
+ * missing / purged / error state). 2g landed the full `RunEvidenceReceipt` body: it renders in
+ * `trust.tsx`'s `ReceiptEvidenceBody` (input / observations / decisions / actions / verification /
+ * output / reuse / warnings), which this surface mounts once the resource resolves to a real
+ * receipt. This file owns the frame around it, not the body — the same false-deferral shape D251
+ * found on the picker (ledger 2 D39).
  *
  * The verdict word is read from `DS_STATUS`, never restated — a chip saying
  * `Done` beside a receipt saying `Verified done` was two names for one
@@ -23,6 +23,7 @@ import { Banner, DS_STATUS, EmptyState, MetaLine, SectionLabel, dsIcon, dsText }
 import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import { fmtClock } from "./format.js";
+import { testInstanceSystems } from "./test-instance-hazard.js";
 import type { OutcomeWire, TerminalOutcomeResult } from "./status-model.js";
 
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
@@ -59,7 +60,7 @@ export function ReceiptView({
   receipt: ReceiptSectionPayload;
   resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
 }) {
-  const testSystems = resolvedInstances.filter(({ instance }) => instance === "test").map(({ system }) => system);
+  const testSystems = testInstanceSystems(resolvedInstances);
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-loose)] p-[var(--ds-space-cozy)]">
@@ -73,7 +74,7 @@ export function ReceiptView({
       )}
 
       {testSystems.length > 0 && (
-        <Banner tone="warning" title={`Written to the TEST instance of ${testSystems.join(", ").toUpperCase()} — this is not a filing`}>
+        <Banner tone="warning" title={`Written to the TEST instance of ${testSystems.join(", ")} — this is not a filing`}>
           Everything below really happened, on a test system. Nothing on this receipt changed a production record, and the
           confirmation numbers are test-instance numbers.
         </Banner>
@@ -81,7 +82,18 @@ export function ReceiptView({
 
       {receipt.state === "available" && (
         <ReceiptSection label="Receipt">
-          <MetaLine items={[`receipt ${receipt.value.receiptId}`, `run ${receipt.value.runId}`]} />
+          {/* The receipt's own `failure` id: a failed run's receipt names the
+              failure record beside it rather than leaving the operator to
+              find it. It is served (`RunEvidenceReceiptSchema.failure`) and
+              was drawn nowhere; the demo has no counterpart because the
+              demo's receipts never fail. */}
+          <MetaLine
+            items={[
+              `receipt ${receipt.value.receiptId}`,
+              `run ${receipt.value.runId}`,
+              receipt.value.failure.state === "present" && `failure ${receipt.value.failure.value}`,
+            ]}
+          />
           <ReceiptEvidenceBody receipt={receipt.value} />
         </ReceiptSection>
       )}

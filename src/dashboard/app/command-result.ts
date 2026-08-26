@@ -19,14 +19,59 @@
  * server says what to: its `currentVersion` is the only number that tells you to
  * refresh, so it is in the text. A `rejected` carries the kernel's own sentence,
  * which already names what it refused and why — this fold never rewrites it.
+ *
+ * ## What the fold decides, and what it does not (Track D row D3)
+ *
+ * It decides ONE thing: whether the command LANDED. That question has exactly
+ * one right answer per result and so it has exactly one implementation, here.
+ *
+ * It does NOT decide how a refusal is drawn. Nine command surfaces draw one
+ * nine ways — a `danger` toast with a single description slot, a `Refusal` with
+ * its own `code` chip, a `Banner` whose meta line carries the version — and a
+ * fold that flattened all of that into one string would force six of them to
+ * take the union apart again to get their facts back, which is the hand
+ * enumeration this decision exists to delete. So a refusal carries BOTH:
+ *
+ * - `problem` — the composed one-slot sentence, for a surface with one text
+ *   slot to spend (`top-bar.tsx`, `context-rail.tsx`, and any new caller that
+ *   has nowhere to put a code or a version).
+ * - `message` / `code` / `currentVersion` — the server's own facts, verbatim
+ *   and per-arm, for a surface that lays the refusal out in its own components.
+ *   `message` is the server's sentence UNCOMPOSED; on a `rejected` it is
+ *   identical to `problem`, because there is nothing to add to a sentence that
+ *   already names what was refused and why.
+ *
+ * Reading a fact off the settlement is the point. Re-deriving the VERDICT from
+ * `result.state` is what `command-result-exhaustive.test.ts` refuses.
  */
 import type { CommandResult } from "../../domain/commands.js";
+
+/** The kernel's own rejection vocabulary, taken from the wire union rather than restated. */
+type CommandRejectionCode = Extract<CommandResult, { state: "rejected" }>["code"];
 
 export type CommandSettlement =
   /** The command landed — `already-applied` is a replay of the same landing. */
   | { readonly kind: "applied"; readonly replayed: boolean }
-  /** The command did NOT land. `problem` is what the operator reads. */
-  | { readonly kind: "refused"; readonly reason: "conflict" | "rejected"; readonly problem: string };
+  /**
+   * A CAS refusal: the target moved under the surface that was looking at it.
+   * There is no code — the server sent none — and `currentVersion` is the only
+   * number that tells the operator what to do about it.
+   */
+  | {
+    readonly kind: "refused";
+    readonly reason: "conflict";
+    readonly problem: string;
+    readonly message: string;
+    readonly currentVersion: number;
+  }
+  /** A kernel refusal: its own sentence, and the code a bug report quotes. */
+  | {
+    readonly kind: "refused";
+    readonly reason: "rejected";
+    readonly problem: string;
+    readonly message: string;
+    readonly code: CommandRejectionCode;
+  };
 
 export function settleCommandResult(result: CommandResult): CommandSettlement {
   switch (result.state) {
@@ -43,8 +88,16 @@ export function settleCommandResult(result: CommandResult): CommandSettlement {
         // same stale `expectedVersion` and be refused identically.
         problem: `${result.message} The server is now at version ${String(result.currentVersion)} — `
           + "reopen the run to see what changed before re-applying.",
+        message: result.message,
+        currentVersion: result.currentVersion,
       };
     case "rejected":
-      return { kind: "refused", reason: "rejected", problem: result.message };
+      return {
+        kind: "refused",
+        reason: "rejected",
+        problem: result.message,
+        message: result.message,
+        code: result.code,
+      };
   }
 }

@@ -14,13 +14,24 @@ import {
   SpanNotRunReasonSchema as ExecutorNotRunReasonSchema,
   SpanOutcomeSchema,
 } from "../../../src/core/span-emitter.js";
+import { ObservedDataPointSchema } from "../../../src/core/span-emitter.js";
+import { ContractFieldPathSchema } from "../../../src/domain/contracts/base.js";
 import { TimelineNotRunReasonSchema } from "../../../src/domain/dashboard/run-detail.js";
+import {
+  DataClassificationSchema,
+  EvidenceTransformSchema,
+  evidenceTransformAllowed,
+  redactValue,
+} from "../../../src/domain/redaction.js";
 import { TerminalNotRunReasonSchema } from "../../../src/domain/run/result.js";
-import { BrowserSystemIdSchema } from "../../../src/domain/ids.js";
+import { BrowserSystemIdSchema, TaskIdSchema } from "../../../src/domain/ids.js";
 import { RequeueCauseSchema, RunOutcomeSchema } from "../../../src/domain/run/record.js";
 import {
   NoteWireSchema,
   SpanBrowserSystemSchema,
+  SpanDataClassificationSchema,
+  SpanFieldPathSchema,
+  SpanTaskIdSchema,
   SpanEventWireSchema,
   SpanNotRunReasonSchema,
   SpanOutcomeWireSchema,
@@ -53,11 +64,36 @@ const QUEUED = {
   configSnapshotId: SNAPSHOT_ID,
 } as const;
 
+
+/**
+ * Every legal `(classification, transform)` pair, produced through the ONE
+ * shared transform implementation. D215's lesson is that a parity claim is only
+ * as wide as its cases, so the `data.observed` arm is walked over the PRODUCT
+ * of the redaction table rather than over a sampled shape: an arm the kernel
+ * can emit and the wire leaf cannot parse is exactly the fork that killed a
+ * live worker once already.
+ */
+const REDACTED_VALUES = DataClassificationSchema.options.flatMap((classification) =>
+  EvidenceTransformSchema.options
+    .filter((transform) => evidenceTransformAllowed(classification, transform))
+    .map((transform) => ({
+      key: "observed",
+      ...redactValue(classification, transform, "10456712"),
+    })));
+
 describe("span wire leaf parity with the domain vocabulary", () => {
   it("pins the leaf's restated enums to their domain owners", () => {
     assert.deepEqual(SpanBrowserSystemSchema.options, BrowserSystemIdSchema.options);
     assert.deepEqual(SpanRequeueCauseSchema.options, RequeueCauseSchema.options);
     assert.deepEqual(SpanOutcomeWireSchema.options, SpanOutcomeSchema.options);
+    // D270 — the observed-point leaf restates three more domain vocabularies.
+    assert.deepEqual(SpanDataClassificationSchema.options, DataClassificationSchema.options);
+    assert.equal(SpanTaskIdSchema.parse("workflow:separations/match-identity"), "workflow:separations/match-identity");
+    assert.throws(() => SpanTaskIdSchema.parse("Not/A-Task"));
+    assert.throws(() => TaskIdSchema.parse("Not/A-Task"));
+    assert.equal(SpanFieldPathSchema.parse("selection.status"), "selection.status");
+    assert.throws(() => SpanFieldPathSchema.parse("Selection.Status"));
+    assert.throws(() => ContractFieldPathSchema.parse("Selection.Status"));
     // The run-outcome union is the wire union minus the task-only `skipped`.
     assert.deepEqual([...RunOutcomeSchema.options, "skipped"].sort(), [...SpanOutcomeWireSchema.options].sort());
   });
@@ -110,10 +146,113 @@ describe("span wire leaf parity with the domain vocabulary", () => {
         t: "transaction.previewed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
         node: "clear-pending", subject, externalCommit: "none",
       })),
+      {
+        t: "transaction.fenced", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
+        spanPath: `${TRACE}/clear-pending/commit`, parentSpanPath: TRACE,
+        node: "clear-pending", taskId: "ucpath/delete-pending-terminations",
+      },
+      /*
+       * D270 — the observed-log arm, walked over every DIRECTION and every
+       * legal `(classification, transform)` pair, plus a point whose value is a
+       * populated object (many leaves under one recorded field).
+       */
+      ...(["read", "write"] as const).map((direction) => ({
+        t: "data.observed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
+        spanPath: `${TRACE}/searching#1.1`, parentSpanPath: TRACE,
+        nodeId: "searching", taskId: "ucpath/search-person-org",
+        observedAt: BASE.ts,
+        points: [
+          { direction, field: "results", values: REDACTED_VALUES },
+          {
+            direction,
+            field: "selection",
+            values: [
+              { key: "selection.status", ...redactValue("safe-diagnostic", "allow", "resolved") },
+              { key: "selection.eid", ...redactValue("direct-identifier", "last4", "10456712") },
+            ],
+          },
+        ],
+      })),
     ];
     for (const event of executorEvents) {
       ExecutorSpanEventSchema.parse(event);
       SpanEventWireSchema.parse({ ...event, pid: BASE.pid });
+    }
+  });
+});
+
+describe("the transaction fence beat", () => {
+  const FENCED = {
+    t: "transaction.fenced",
+    ts: BASE.ts,
+    workflow: BASE.workflow,
+    ...RUN_IDENTITY,
+    spanPath: `${TRACE}/clear-pending/commit`,
+    parentSpanPath: TRACE,
+    node: "clear-pending",
+    taskId: "ucpath/delete-pending-terminations",
+  } as const;
+
+  it("round-trips through both strict parity twins", () => {
+    ExecutorSpanEventSchema.parse(FENCED);
+    SpanEventWireSchema.parse({ ...FENCED, pid: BASE.pid });
+  });
+
+  it("refuses a missing task role and a fabricated page-data field", () => {
+    assert.throws(() => ExecutorSpanEventSchema.parse({ ...FENCED, taskId: undefined }));
+    assert.throws(() => SpanEventWireSchema.parse({ ...FENCED, pid: BASE.pid, points: [] }));
+  });
+});
+
+describe("the observed-log arm (D270)", () => {
+  const OBSERVED = {
+    t: "data.observed", ts: BASE.ts, workflow: BASE.workflow, ...RUN_IDENTITY,
+    spanPath: `${TRACE}/searching#1.1`,
+    nodeId: "searching", taskId: "ucpath/search-person-org", observedAt: BASE.ts,
+    points: [{ direction: "read", field: "results", values: [
+      { key: "results", ...redactValue("sensitive-hr", "count", []) },
+    ] }],
+  } as const;
+
+  it("round-trips through the kernel union and the wire leaf", () => {
+    ExecutorSpanEventSchema.parse(OBSERVED);
+    SpanEventWireSchema.parse({ ...OBSERVED, pid: BASE.pid });
+  });
+
+  it("refuses an event with no points — an emission describes an observation that happened", () => {
+    assert.throws(() => ExecutorSpanEventSchema.parse({ ...OBSERVED, points: [] }));
+    assert.throws(() => SpanEventWireSchema.parse({ ...OBSERVED, points: [], pid: BASE.pid }));
+  });
+
+  it("refuses a point with no values, and a point carrying a system (D106/D252)", () => {
+    assert.throws(() => ObservedDataPointSchema.parse({ direction: "read", field: "results", values: [] }));
+    assert.throws(() => ObservedDataPointSchema.parse({
+      direction: "read", field: "results", system: "ucpath",
+      values: [{ key: "results", ...redactValue("sensitive-hr", "count", []) }],
+    }));
+    assert.throws(() => SpanEventWireSchema.parse({
+      ...OBSERVED, pid: BASE.pid,
+      points: [{ ...OBSERVED.points[0], system: "ucpath" }],
+    }));
+  });
+
+  it("refuses a raw value where a redacted one belongs", () => {
+    assert.throws(() => SpanEventWireSchema.parse({
+      ...OBSERVED, pid: BASE.pid,
+      points: [{ direction: "read", field: "results", values: [{ key: "results", value: "Ada Lovelace" }] }],
+    }));
+  });
+
+  it("refuses malformed last4 and digest outputs in the kernel schema twin", () => {
+    for (const value of [
+      { key: "selection.eid", state: "transformed", classification: "direct-identifier", transform: "last4", value: "10456712" },
+      { key: "selection.eid", state: "transformed", classification: "direct-identifier", transform: "digest", value: "10456712" },
+    ]) {
+      assert.throws(() => ObservedDataPointSchema.parse({
+        direction: "read",
+        field: "selection.eid",
+        values: [value],
+      }));
     }
   });
 });

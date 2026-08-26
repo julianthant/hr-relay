@@ -560,7 +560,9 @@ reaches no surface until someone decides how it is classified, rather than relyi
 someone has to remember to update. Subject identity travels as a digest plus an already-redacted
 display suffix, the page as `urlRedacted`/`titleRedacted`. `sameFingerprintSeen` is §2.1's "same
 failure seen before" as a count — what the operator acts on, answerable without projecting other
-runs' subjects onto this panel. An absent diagnostic bundle names the slice that will fill it.
+runs' subjects onto this panel. An absent diagnostic bundle names why there is no action; a present
+id opens E29's exact-id readback, which verifies the attachment index and each stored digest before
+it returns its strict wire or the canonical durable manifest.
 
 The receipt section serves the WHOLE `RunEvidenceReceipt`: §2.2 puts redaction at capture time, every
 value already carries its classification and transform, and a second wire projection could only lose
@@ -689,6 +691,16 @@ system-driver layer fills in. Absent, the bundle carries structured evidence onl
 fabricated screenshot. `FailureRecord.summary` is deliberately not copied into the bundle: it is
 free text that can carry a name or an EID, it already lives in the failure row the bundle joins to,
 and duplicating it into an exportable artifact widens the blast radius for nothing.
+
+**E29 readback.** `GET /api/v1/diagnostic-bundles/:bundleId` accepts only the stored UUID and joins
+the D137 row to its exact attachment index. It recomputes the bundle digest, drains every referenced
+content-addressed artifact, and compares each byte count and digest before serving captured time,
+total attachment bytes, redaction facts, and the strict content list. Missing ids answer
+`TARGET_NOT_FOUND`; a malformed index, digest, or artifact answers the typed
+`DIAGNOSTIC_BUNDLE_CORRUPT` failure instead of serving a plausible record. The companion
+`/manifest` route sends the canonical durable bundle JSON with attachment disposition; the browser
+does not reconstruct an export. It is deliberately a bundle metadata/export surface, **not** the
+unserved generic artifact-byte route in ref frontend-backend-integration §3.6.
 
 ### 2.3 `RunEvidenceReceipt`
 
@@ -1041,6 +1053,105 @@ tier — it is D6's envelope fact, already on the queue row, said again where an
 outcome. `terminalOutcomeText` (`src/dashboard/surfaces/log-panel-model.ts:67-72`) is a pure
 exported function for the reason D187 taught: this tree renders no React in the unit lane, so an
 operator-facing sentence is only as pinned as the parity corpus unless it is extracted.
+
+#### 2.3.8 The demo's `receiptInvariant` Banner is structurally unnecessary here (ledger 2 D11)
+
+<!-- roadmap: track-b -->
+
+**Answered 2026-08-21.** The demo's Receipt renders a `receiptInvariant` Banner that fires when a
+receipt claims `result: "verified-done"` without `confidence: "verified"` — a defensive display for
+a pairing the demo's own data could carry. The question ledger 2 D11 left open was whether this
+tree's receipt can hold that pairing at all; it cannot, at two independent layers, so the Banner has
+no case to ever draw.
+
+**The authority layer.** `evidence_receipts`' DDL carries `CHECK (result <> 'verified-done' OR
+confidence = 'verified')` (`src/infra/sqlite/migrations.ts:167`) — SQLite refuses the INSERT before
+the row exists.
+
+**The domain layer, independently.** `RunEvidenceReceiptSchema`'s `superRefine`
+(`src/domain/trust/evidence.ts:123,162`) rejects the same pairing at PARSE time: `if
+(receipt.result === "verified-done") { if (receipt.confidence !== "verified") context.addIssue(...)
+}`. This is the schema the wire and every in-process consumer read through — it makes the pair
+unrepresentable before a byte reaches the database, not merely after.
+
+Both checks encode the SAME invariant `receiptInvariant` exists to warn about, so no receipt this
+tree can construct — durable or in-memory — ever reaches `receipt.tsx`/`trust.tsx`'s
+`ReceiptEvidenceBody` in the state the Banner is for. Building the Banner would be dead code: a
+warning for a state the type system and the database both already refuse to let exist. This is
+distinct from D238's `rehearsal`/`verified-done` refinement (§2.3.7) — that pair is about a DIFFERENT
+mismatch (a dry run wearing the verified label) enforced on `OutcomeWireSchema`, one layer out on
+the dashboard wire; this one is about `result`/`confidence` on the receipt itself, enforced at
+authority and at the domain schema both.
+
+#### 2.3.9 The declaration is the OBSERVED LOG's redaction too (D270)
+
+<!-- roadmap: observed-logs -->
+
+**Ratified 2026-08-21; transaction lane completed 2026-08-25.** §2.3.1's table stopped being a
+receipt-only contract. Every point a task records through `ctx.recordData` is captured and stamped
+at record time for a `data.observed` event (`03a` §Observed logs), and each leaf is pushed through
+`redactEvidenceLeaf` — the SAME function, over the SAME table, that the receipt uses. There is
+deliberately no second redaction implementation: a log that leaked a value the receipt would have
+dropped is the same defect from a different surface, and the two channels are then provably
+consistent about one leaf rather than consistent by review.
+
+Probe, prepare and verify redact and emit synchronously. Commit is the only delivery exception:
+its points and one Clock instant are frozen in `ctx.recordData`, then redaction and emission wait
+until the callback settles. A commit task may legally record a page fact before invoking its
+driver, so synchronous delivery there would put the fallible span writer between a durable fence
+and the external click. The flush emits the kernel's strict `transaction.fenced` arm first, then
+the commit batches in call order; an undeclared commit leaf parks rather than preventing the click.
+
+Three consequences follow, and each is enforced rather than described.
+
+**The refusal message is channel-neutral.** `classifyEvidenceLeaf` used to end *"a receipt never
+drops a leaf silently"*; it now names both channels, because the author it is talking to may never
+have opened a receipt.
+
+**A leaf is undeclared until somebody declares it, fixtures included.** The executor's own fixture
+contracts borrow the manifest-known id `ocr/extract-form-page` — they must, because
+`resolveTaskImplFingerprint` fails loud on an id the generated build manifest does not carry — and
+their six test-local paths are DECLARED rather than exempted. A fixture bypass would mean the
+refusal is never exercised by a composed run, and the executor's fixtures are the only composed runs
+the unit lane has. The two person identifiers there carry the same `last4` as everywhere else, so a
+fixture cannot become the surface that proves a raw identifier reaches a stream.
+
+The write-sequencer corpus injects its fixed implementation fingerprint instead. Its five sealed
+task contracts export their exact ids as `WRITE_FIXTURE_TASK_IDS`; the orphan-classification guard
+adds only that derived set to the manifest/runtime baseline. Its probe/prepare/commit/verify leaves
+remain ordinary declarations and pass through the production refusal — the set is accounting for
+an executable test runtime, not a redaction bypass.
+
+**Presentation preserves the arm boundary.** The dashboard's combined log renderer reads the strict
+row union in its served sequence: only `data.observed` supplies direction, redacted value facts and
+any browser system its exact descriptor origin declares. `transaction.fenced` is the durable authority beat preceding a commit batch,
+not a page observation, so the surface does not manufacture a system chip, read/write arrow or value
+pill for it. A note remains prose. This keeps a redacted page fact, an authority fact and an operator
+message distinguishable even when their clocks are equal.
+
+**The orphan rule's baseline widened to the build manifest.** `evidence-receipt.test.ts` used to
+refuse a `task-output` scope naming a task no registered descriptor composes. That is the wrong
+baseline once the emission exists: the executor runs whatever a composed descriptor names, so a
+registered task that no descriptor composes YET is not an orphan — a DELETED one is, and the wider
+rule still catches it. D184's rot check is intact.
+
+**Transaction roles do not borrow declarations.** The four idempotency probes and four post-fence
+verifiers each have their own task scope in §2.3.1's table. UCPath EIDs use `last4`; states, dates,
+document numbers and transaction numbers are transaction facts and use `allow`. A verifier is the
+landing authority and cannot inherit its probe's declaration merely because their shapes happen to
+match.
+
+##### What is recorded and still NOT classified
+
+Every one of the eighteen task nodes across the five registered descriptors was already declared, so
+the original emission added no production declaration. The transaction lane now declares its eight
+roles. Five descriptor-less `recordData` call sites remain unclassified: four data-service tasks and
+one OCR task. They are listed rather than guessed at because no run can reach them yet:
+
+| Task | Why it is not declared here |
+|---|---|
+| `extraction/extract-spreadsheet` · `extraction/extract-pdf-pages` · `normalization/read-contact-advice` · `roster/match-spreadsheet` | wired into no descriptor, so no run can reach them; declaring a shape nothing has executed would be a guess. |
+| `ocr/extract-form-page` — its OWN output leaves | same, plus a real finding: the task records `pageFingerprint` and `hasRecord`, and `AdmittedExtractionSchema` carries neither, so `finalizeRead` would refuse it (`task provenance path … does not exist in the output`) the first time a descriptor composed it. Declaring `AdmittedExtraction`'s leaves would hide that; it is recorded here instead, unowned, for whoever wires the OCR route. |
 
 ### 2.4 Rerun transparency
 
@@ -1798,8 +1909,12 @@ the ⓘ saying so in as many words — **superseded by §5.9 (D227), which serve
 and counts fields**; the graph header omits the demo's file-count segment (a per-run
 fact, not a registry one); no lane dividers exist because no lane fact exists on the descriptor
 (a descriptor-authored phase would sit inside §5.3's closed editable set once Phase B exists); and
-the demo's `Version registry` header action is absent because no version-registry surface exists in
-this tree. The conditional-node line printed "runs when the descriptor's own when() predicate
+the demo's `Version registry` header action now opens the actual Archive registry — `4e09fb49` gives
+the Explorer the matching `ghost` button with the `Eye` icon and moves Archive's view selection into
+the dashboard route as `?archive=&archiveView=versions`. `archive.tsx` renders `<Table label="Workflow
+version registry">` inside that selected `Versions & bumps` view (`D179/D223`); the Explorer's door
+therefore replaces its takeover with the destination it names, rather than creating a local registry
+or leaving the operator one click short (ledger 3 EX5). The conditional-node line printed "runs when the descriptor's own when() predicate
 holds" — honest, and less than the demo's authored sentence — and the recorded fix named an authored
 `whenLabel` / node `purpose` / workflow `summary`. **Two thirds of that landed and one third was
 refused**: `purpose` and `summary` are authored data (§5.9, D229), while `whenLabel` is refused

@@ -69,6 +69,7 @@ import {
 } from "../ds/ui.js";
 import { systemClock } from "../../domain/clock.js";
 import type { CommandResult } from "../../domain/commands.js";
+import { settleCommandResult } from "../app/command-result.js";
 import {
   inputRunParserLabel,
   inputRunSeparatorLabel,
@@ -102,6 +103,7 @@ import {
 import { type InstanceChoice, type SystemInstancePrimitive } from "./run-start-kit-model.js";
 import { testSystemsOf } from "./run-start-kit-model.js";
 import { ENQUEUE_POLICY_MEANING, ENQUEUE_POLICY_REASON } from "./run-start-model.js";
+import { versionTag } from "./format.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
 const SOURCE_SURFACE = "run-start";
@@ -152,6 +154,14 @@ export interface RunStartWorkflow {
    * the server would ignore.
    */
   readonly enqueue: EnqueuePolicy;
+  /**
+   * The descriptor's own version, served on the boot document's start block
+   * (C96). The footer prints `{label} v{n}` because a confirmation dialog owes
+   * the operator the one thing the label cannot say — WHICH shape of this
+   * workflow is about to run — and it is the same integer every archived row's
+   * token tooltip carries, so the two agree by construction.
+   */
+  readonly version: number;
   /** the descriptor's declared typed-input surface, or why there is none */
   readonly inputRun:
     | { readonly state: "present"; readonly surface: InputRunSurface }
@@ -770,7 +780,12 @@ export function RunStartDialog({
     return keys;
   }, [plan, result]);
 
-  const applied = result?.state === "applied" || result?.state === "already-applied";
+  // D253 / Track D row D3 — "did the start land" is the ONE fold's question,
+  // and a replay of the same landing IS a landing: the plan token is single-use,
+  // so `already-applied` means this dialog's own send arrived twice, never that
+  // nothing was enqueued. `EnqueueResultBanner` still draws the four arms apart,
+  // because what the operator READS about a refusal is not the same question.
+  const applied = result !== null && settleCommandResult(result).kind === "applied";
   const blockedReason = inputRun.state !== "present"
     ? inputRun.reason
     : preview.problem !== null
@@ -1024,7 +1039,11 @@ export function RunStartDialog({
             <MetaLine
               tone="faint"
               items={[
-                workflow?.label,
+                // `{label} v{n}` — the demo's own footer item 1
+                // (`DemoRunStart.tsx:946`). The version is what separates two
+                // runs of one workflow started a descriptor bump apart, and
+                // this dialog is the last screen before one is enqueued.
+                workflow === undefined ? undefined : `${workflow.label} ${versionTag(workflow.version)}`,
                 blockedReason ?? (plan === null ? undefined : `${String(plan.planned.length)} to create`),
               ].filter((item): item is string => item !== undefined)}
             />

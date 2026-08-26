@@ -16,6 +16,7 @@
  * itself writes — because "nothing was committed" is a statement about durable
  * rows, and a function that returned proves nothing.
  */
+import { fixtureDuoCeremonyGates } from "./fixtures/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -119,6 +120,7 @@ function harness(): Harness {
       scheduler,
       taskDeadlineMs: 60_000,
       sessionAcquireMs: 20_000,
+      duoCeremony: fixtureDuoCeremonyGates(clock),
       heartbeatIntervalMs: 600_000,
       idleRepollMs: 1_000,
       log,

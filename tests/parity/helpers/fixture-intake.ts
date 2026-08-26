@@ -41,6 +41,8 @@ import { personLookupIntake } from "../../../src/workflows/person-lookup/module.
 export const FIXTURE_INTAKE_IDS = Object.freeze({
   mapping: "7f1c9d20-4b6e-4a51-9c33-0b21d7e5a840",
   validated: "9a34be71-2c08-4d19-88f5-6e0b7c214d95",
+  manifest: "0cda04a1-7fd8-4a3f-8a18-1f986c718d84",
+  rerun: "55b3413d-1e04-47bb-b7cf-22e0371bbd99",
 });
 const FIXTURE_INTAKE_SHA256 = "3c9a71e0f2b84d5619ac7e0d5f4b2a18c6d3e9074b1f8a25c0e6d3b97a54f281";
 const FIXTURE_INTAKE_ARTIFACT_ID = "b48e2c17-9d05-4e63-8a72-1f5c0d9b4e33";
@@ -178,7 +180,82 @@ export const FIXTURE_INTAKE_VALIDATED = sessionWire({
   validated: true,
 });
 
+const FIXTURE_MANIFEST_ID = "7b92095b-bb90-4ca2-b373-8402790fb7f8";
+const FIXTURE_MANIFEST_CREATED_AT = "2026-08-03T10:04:00.000-07:00";
+const [FIRST_VALID, SECOND_VALID, THIRD_VALID] = VALIDATION.valid;
+if (FIRST_VALID === undefined || SECOND_VALID === undefined || THIRD_VALID === undefined) {
+  throw new Error("the intake parity fixture requires three valid rows for the manifest and rerun stages");
+}
+
+const FIXTURE_MANIFEST = {
+  manifestId: FIXTURE_MANIFEST_ID,
+  mappingFingerprint: LAYOUT_FINGERPRINT,
+  mappingSnapshotHash: FIXTURE_INTAKE_SHA256,
+  intakeProjectionFingerprint: FIXTURE_INTAKE_SHA256,
+  workflowContractFingerprint: FIXTURE_INTAKE_SHA256,
+  canonicalInputSchemaHash: FIXTURE_INTAKE_SHA256,
+  createdAt: FIXTURE_MANIFEST_CREATED_AT,
+  totals: {
+    sourceRows: DATA_ROWS.length,
+    valid: VALIDATION.valid.length,
+    rejected: DATA_ROWS.length - VALIDATION.valid.length,
+    rejectionEvents: VALIDATION.rejected.length,
+    excluded: 0,
+    corrected: 0,
+  },
+  sourceRowDispositions: DATA_ROWS.map((_, index) => {
+    const sourceRow = index + 1;
+    const valid = VALIDATION.valid.find((row) => row.sourceRow === sourceRow);
+    return valid === undefined
+      ? { sourceRow, disposition: "rejected" as const, currentRejectIds: [...(VALIDATION.currentRejects.get(sourceRow) ?? [])] }
+      : { sourceRow, disposition: "valid" as const, itemId: valid.itemId, currentRejectIds: [] };
+  }),
+  validRows: VALIDATION.valid,
+};
+
+/** A committed identity and immutable terminal projection for the Manifest tab. */
+export const FIXTURE_INTAKE_MANIFEST = IntakeSessionWireSchema.parse({
+  ...FIXTURE_INTAKE_VALIDATED,
+  intakeSessionId: FIXTURE_INTAKE_IDS.manifest,
+  state: "enqueued",
+  expectedVersion: 5,
+  reservedManifestId: FIXTURE_MANIFEST_ID,
+  intakeManifestId: FIXTURE_MANIFEST_ID,
+  manifest: FIXTURE_MANIFEST,
+  rerun: {
+    intakeManifestId: FIXTURE_MANIFEST_ID,
+    createdAt: FIXTURE_MANIFEST_CREATED_AT,
+    totals: FIXTURE_MANIFEST.totals,
+    diff: { kind: "same-plan" },
+  },
+});
+
+/** A validated candidate with prior-plan evidence for the Rerun diff tab. */
+export const FIXTURE_INTAKE_RERUN = IntakeSessionWireSchema.parse({
+  ...FIXTURE_INTAKE_VALIDATED,
+  intakeSessionId: FIXTURE_INTAKE_IDS.rerun,
+  reservedManifestId: "d94663c1-8b04-48d7-abfa-d78fa46fd2cf",
+  rerun: {
+    intakeManifestId: FIXTURE_MANIFEST_ID,
+    createdAt: FIXTURE_MANIFEST_CREATED_AT,
+    totals: FIXTURE_MANIFEST.totals,
+    diff: {
+      kind: "changed",
+      changes: [{ what: "mapping", was: "a".repeat(64), now: "b".repeat(64) }],
+      added: [FIRST_VALID],
+      removed: [SECOND_VALID],
+      changedInputs: [{
+        itemId: THIRD_VALID.itemId,
+        beforeInputHash: "c".repeat(64),
+        afterInputHash: "d".repeat(64),
+      }],
+    },
+  },
+});
+
 export const FIXTURE_INTAKE_SESSIONS: Readonly<Record<string, IntakeSessionWire>> = Object.freeze({
   [FIXTURE_INTAKE_IDS.mapping]: FIXTURE_INTAKE_MAPPING,
   [FIXTURE_INTAKE_IDS.validated]: FIXTURE_INTAKE_VALIDATED,
+  [FIXTURE_INTAKE_IDS.manifest]: FIXTURE_INTAKE_MANIFEST,
+  [FIXTURE_INTAKE_IDS.rerun]: FIXTURE_INTAKE_RERUN,
 });

@@ -17,6 +17,8 @@
  * EVERY return path, so the early "already authenticated" branch is pinned here
  * exactly as hard as the full login.
  */
+import { fixtureDuoCeremonyGate } from "./fixtures/duo-ceremony-fixtures.js";
+import type { BrowserSystemId } from "../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
@@ -81,7 +83,11 @@ const NO_SIGN_IN_FORMS = {
   "communities-login": { count: 0 },
 } as const;
 
-function contextFor(script: FakePageScript, signal = new AbortController().signal): {
+function contextFor(
+  script: FakePageScript,
+  signal = new AbortController().signal,
+  system: BrowserSystemId = "ucpath",
+): {
   context: SystemLoginContext;
   harness: ReturnType<typeof fakeLoginPage>;
   evidence: () => readonly AuthenticatedApplicationEvidence[];
@@ -99,9 +105,15 @@ function contextFor(script: FakePageScript, signal = new AbortController().signa
       signal,
       credentials: CREDENTIALS,
       recordEvidence: (evidence) => recorded.push(evidence),
+      // D267: a REAL gate over a throwaway authority database — the only way a
+      // recipe test can hold a token the SSO helpers accept.
+      duoCeremony: fixtureDuoCeremonyGate(system),
     },
   };
 }
+
+const crmContextFor = (script: FakePageScript, signal?: AbortSignal): ReturnType<typeof contextFor> =>
+  contextFor(script, signal, "crm");
 
 describe("ucpath landing verification", () => {
   it("requires a PeopleSoft application route, not just the UC host", () => {
@@ -554,7 +566,7 @@ describe("crm login recipe", () => {
   } as const;
 
   it("selects Active Directory only when the control disagrees", async () => {
-    const preselected = contextFor({
+    const preselected = crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
@@ -570,7 +582,7 @@ describe("crm login recipe", () => {
     assert.equal(preselected.harness.actions().includes("select:login-type-select"), false);
     assert.equal(preselected.evidence().length, 1);
 
-    const wrongType = contextFor({
+    const wrongType = crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
@@ -586,7 +598,7 @@ describe("crm login recipe", () => {
     assert.equal(wrongType.harness.actions().includes("select:login-type-select"), true);
 
     // Absent control: a genuinely valid rendering, so it is not a failure.
-    const absent = contextFor({
+    const absent = crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
@@ -605,7 +617,7 @@ describe("crm login recipe", () => {
     // The live 2026-08-03 failure: TritON defaults to Business Systems, the
     // credentials go to the wrong realm, and Shibboleth answers "the username
     // you entered cannot be identified" — a whole Duo window later.
-    const { context, harness } = contextFor({
+    const { context, harness } = crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {
@@ -627,7 +639,7 @@ describe("crm login recipe", () => {
   });
 
   it("fails loud when a present login-type control cannot be set", async () => {
-    const { context } = contextFor({
+    const { context } = crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: { "login-type-select": { failWith: "detached" } },
@@ -642,7 +654,7 @@ describe("crm login recipe", () => {
   });
 
   it("treats the Communities login page as unauthenticated, not as a landing", async () => {
-    const { context } = contextFor({
+    const { context } = crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: "https://act-crm.my.site.com/hr/login" },
       elements: {
@@ -662,7 +674,7 @@ describe("crm login recipe", () => {
   });
 
   it("refuses a Communities landing with no Salesforce session", async () => {
-    const { context } = contextFor({
+    const { context } = crmContextFor({
       url: "about:blank",
       navigation: { [CRM_ENTRY]: SSO },
       elements: {

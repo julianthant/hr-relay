@@ -28,16 +28,14 @@
  * rebuild that itself fails leaves the projection loudly degraded (health
  * carries the exact error); it never serves a half-folded day as healthy.
  *
- * Closed vocabulary mappings this projector owns (noted, not silent):
- * - run outcome → queue status: `done→done`, `failed→failed`,
- *   `cancelled|discarded|superseded→cancelled`; `interrupted` maps to
- *   `blocked` (the run stopped without a settled verdict — ref write-safety recovery
- *   will requeue or settle it; calling it cancelled or failed would claim a
- *   verdict nobody reached).
- * - task outcome → pipeline state: `done→done`, `failed→failed`,
- *   `skipped→skipped`, `cancelled→blocked` (the landed 1b pipeline enum has
- *   no `cancelled`; `blocked` is "stopped incomplete", the nearest state that
- *   does not claim success or failure).
+ * Closed vocabulary mappings, and where they live (D268). This projector no
+ * longer OWNS them: `deriveRunStatus` (run → status), `taskStateOf` (task span
+ * → step state) and `panelKindOf` are one implementation each in
+ * `../run-status.ts`, which the run-detail query reads too — a queue row and
+ * the panel that opens from it cannot report a run differently, because there
+ * is one function. The task map changed shape when it moved: a
+ * `cancelled|discarded|superseded` span now reads `cancelled` on the chip as
+ * well as on the timeline step, where the pipeline used to say `blocked`.
  */
 import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
@@ -75,12 +73,15 @@ import { sha256Hex } from "../../../domain/sha256.js";
 import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../events/types.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import type { WorkerLeaseRecord } from "../../../domain/run/worker.js";
+import type { WorkerPoolRecord } from "../../../domain/run/worker-pool.js";
 import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
 import type { ProjectionRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readEventStreamLinesFrom, type EventStreamFileCursor, type EventStreamLine } from "../../../infra/events/jsonl-streams.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../support.js";
+import { deriveRunStatus, panelKindOf, taskStateOf, type TaskExecutionState } from "../run-status.js";
+import { ProjectionDegradedError, TargetNotFoundError } from "../../failures.js";
 
 /* ── the persisted fold shape (internal, versioned by its own schema hash) ─ */
 
@@ -184,6 +185,8 @@ export interface RunQueueProjectionDeps {
      */
     listLiveWorkerLeases(): readonly WorkerLeaseRecord[];
     getWorkerLease(workerId: string): WorkerLeaseRecord | undefined;
+    /** D269: every workflow's pool declaration — the spawn control's CAS basis, served from authority. */
+    listWorkerPools(): readonly WorkerPoolRecord[];
     /**
      * D179/D80: whether a version bump has archived this run. Ref dashboard-surfaces §10.1 is
      * explicit that archived rows are excluded ONCE, inside the projection,
@@ -246,6 +249,26 @@ export interface RunQueueProjectionHealth {
   readonly lastError?: string;
 }
 
+export type ProjectedRunLogEvent = Extract<SpanEventWire, { t: "data.observed" | "transaction.fenced" }>;
+
+export interface ProjectedRunLogEntry {
+  readonly line: EventStreamLine;
+  readonly event: ProjectedRunLogEvent;
+  /** Append-fold revision within this projection generation. */
+  readonly revision: number;
+}
+
+export interface ProjectedRunLogSnapshot {
+  readonly projectionGeneration: number;
+  readonly snapshotRevision: number;
+  readonly entries: readonly ProjectedRunLogEntry[];
+}
+
+interface ParsedSpanLine {
+  readonly line: EventStreamLine;
+  readonly event: SpanEventWire;
+}
+
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
 function deterministicProjectionKey(runId: string): Fingerprint {
@@ -258,21 +281,6 @@ function surfaceKindOf(shape: RunQueuedWire["shape"]): "single" | "preview" | "o
   return shape;
 }
 
-function panelKindOf(shape: RunQueuedWire["shape"]): "run" | "member" | "group" {
-  if (shape === "operation") return "group";
-  if (shape === "operation-member") return "member";
-  return "run";
-}
-
-const RUN_OUTCOME_STATUS = {
-  done: "done",
-  failed: "failed",
-  cancelled: "cancelled",
-  discarded: "cancelled",
-  superseded: "cancelled",
-  interrupted: "blocked",
-} as const;
-
 /**
  * What the run's evidence receipt says about its warnings, before either
  * consumer renders it (D22/D126). `unread` is a run with NO derived receipt —
@@ -281,6 +289,16 @@ const RUN_OUTCOME_STATUS = {
  * count: an aggregate that folded `unread` into `none` would report a run
  * nobody checked as a run that came back clean.
  */
+/**
+ * The receipt a row reads, or `undefined` for a row whose receipt was never
+ * derived. It is read ONCE per surface (D5): `#facts` and `#warnings` each used
+ * to call `getReceipt` for themselves, which was two authority statements per
+ * terminal row on every day wire and every resnapshot for one row's worth of
+ * facts. Passing the value keeps both readings of one receipt provably the same
+ * receipt, which re-reading never guaranteed.
+ */
+type ReceiptView = RunEvidenceReceipt;
+
 type WarningVerdict =
   | { kind: "not-terminal"; status: QueueSurfaceWire["status"] }
   | { kind: "unread" }
@@ -339,22 +357,13 @@ interface LinkedRunView {
   readonly status: string;
 }
 
-const TASK_OUTCOME_PIPELINE = {
-  done: "done",
-  failed: "failed",
-  skipped: "skipped",
-  cancelled: "blocked",
-  discarded: "blocked",
-  interrupted: "blocked",
-  superseded: "blocked",
-} as const;
-
 /* ── the projection ──────────────────────────────────────────────────────── */
 
 export class RunQueueProjection {
   readonly #deps: RunQueueProjectionDeps;
   readonly #rows = new Map<string, RunFoldRecord>();
   readonly #workers = new Map<string, WorkerFold>();
+  readonly #runLogs = new Map<string, ProjectedRunLogEntry[]>();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
   readonly #notifiedStatus = new Map<string, string>();
   readonly #foldSchemaHash: Fingerprint;
@@ -401,6 +410,24 @@ export class RunQueueProjection {
   }
 
   /**
+   * Observed/fenced rows indexed by the append-time disk tail. A logs query
+   * never reconstructs this list from run-instant partitions.
+   */
+  runLogSnapshot(runId: string): ProjectedRunLogSnapshot {
+    if (this.#health.state === "degraded") {
+      throw new ProjectionDegradedError(
+        `the run/queue projection is degraded and refuses to serve observed logs: ${this.#health.lastError ?? "unknown"}`,
+      );
+    }
+    const entries = this.#runLogs.get(runId) ?? [];
+    return Object.freeze({
+      projectionGeneration: this.#generationValue,
+      snapshotRevision: entries.at(-1)?.revision ?? 0,
+      entries: Object.freeze([...entries]),
+    });
+  }
+
+  /**
    * Fold ONE already-durable event. Never throws: a fold failure degrades the
    * projection and schedules the guarded rebuild instead of blocking the
    * caller. Production ingest reaches this fold only through `ingestFromDisk`
@@ -434,9 +461,10 @@ export class RunQueueProjection {
       this.#spanCursors = tail.cursors;
       if (tail.lines.length === 0) return;
       const events = this.#parseSpanLines(tail.lines);
-      for (const event of events) {
+      for (const { event, line } of events) {
         const affected = this.#fold(event);
         this.#cursorValue += 1;
+        this.#recordRunLog(event, line);
         this.#persist(affected.runIds);
         this.#notify(affected);
       }
@@ -461,10 +489,10 @@ export class RunQueueProjection {
    * per-run order still comes from each file's append order, since the sort
    * is stable and one run's spans ride one workflow's files.
    */
-  #parseSpanLines(lines: readonly EventStreamLine[]): readonly SpanEventWire[] {
+  #parseSpanLines(lines: readonly EventStreamLine[]): readonly ParsedSpanLine[] {
     const events = lines.map((line) => {
       try {
-        return SpanEventWireSchema.parse(JSON.parse(line.text));
+        return { line, event: SpanEventWireSchema.parse(JSON.parse(line.text)) };
       } catch (error) {
         throw new Error(
           `corrupt span line ${line.file.path}:${String(line.lineNumber)}: ${error instanceof Error ? error.message : String(error)}`,
@@ -472,7 +500,14 @@ export class RunQueueProjection {
         );
       }
     });
-    return events.sort((a, b) => a.ts.localeCompare(b.ts));
+    return events.sort((a, b) => a.event.ts.localeCompare(b.event.ts));
+  }
+
+  #recordRunLog(event: SpanEventWire, line: EventStreamLine): void {
+    if (event.t !== "data.observed" && event.t !== "transaction.fenced") return;
+    const entries = this.#runLogs.get(event.runId) ?? [];
+    if (!this.#runLogs.has(event.runId)) this.#runLogs.set(event.runId, entries);
+    entries.push(Object.freeze({ event, line, revision: this.#cursorValue }));
   }
 
   /** The `rebuild-from-native-jsonl` recovery class: clear, re-read, re-fold. */
@@ -482,10 +517,14 @@ export class RunQueueProjection {
       const events = this.#parseSpanLines(whole.lines);
       this.#rows.clear();
       this.#workers.clear();
+      this.#runLogs.clear();
       this.#notifiedStatus.clear();
       const touched = new Set<string>();
-      for (const event of events) {
+      this.#cursorValue = 0;
+      for (const { event, line } of events) {
         for (const runId of this.#fold(event).runIds) touched.add(runId);
+        this.#cursorValue += 1;
+        this.#recordRunLog(event, line);
       }
       this.#deps.projectionStore.withProjectionTransaction((repositories) => {
         repositories.runsView.clear();
@@ -496,7 +535,7 @@ export class RunQueueProjection {
       // together with `live` so the two ingest paths can never overlap.
       this.#spanCursors = whole.cursors;
       this.#generationValue = Math.max(this.#generationValue + 1, Math.trunc(this.#deps.clock.nowMs()));
-      this.#cursorValue = 1;
+      this.#cursorValue = Math.max(1, this.#cursorValue);
       this.#health = { state: "live" };
       const change: RunQueueProjectionChange = { kind: "generation", cursor: this.cursor() };
       for (const listener of this.#listeners) listener(change);
@@ -669,6 +708,25 @@ export class RunQueueProjection {
      */
     if (event.t === "transaction.previewed") return { runIds: [], workerChanged: false };
 
+    /**
+     * The durable-fence beat is transaction detail, not a task settlement.
+     * `#recordRunLog` indexes it for the run-detail query; this QUEUE fold
+     * ignores it explicitly so it cannot masquerade as task settlement.
+     */
+    if (event.t === "transaction.fenced") return { runIds: [], workerChanged: false };
+
+    /**
+     * D270 — `data.observed`. The queue row's vocabulary is task spans and
+     * terminal outcomes; a recorded page observation is neither, and folding it
+     * into a span it is not would be D123's collapse by another route. It is
+     * therefore IGNORED BY THE QUEUE FOLD rather than by falling through, while
+     * `#recordRunLog` retains it in the append-time per-run log index. Keeping
+     * those jobs separate prevents an observation from becoming queue state and
+     * prevents the logs GET from reconstructing append partitions from record
+     * time.
+     */
+    if (event.t === "data.observed") return { runIds: [], workerChanged: false };
+
     // span.ended
     if (event.kind === "task") {
       const row = this.#row(event.runId, event.t);
@@ -825,7 +883,7 @@ export class RunQueueProjection {
   #authorityRun(runId: string): RunRecord {
     const record = this.#deps.authority.getRun(runId);
     if (record === undefined) {
-      throw new Error(
+      throw new TargetNotFoundError(
         `run ${runId} exists in the span stream but not in authority; the projection refuses to render an unaccounted run`,
       );
     }
@@ -833,14 +891,7 @@ export class RunQueueProjection {
   }
 
   #status(row: RunFoldRecord, authority: RunRecord): z.infer<typeof QueueSurfaceWireSchema>["status"] {
-    const { lifecycle } = authority;
-    if (lifecycle.state === "terminal") return RUN_OUTCOME_STATUS[lifecycle.outcome];
-    if (row.ended !== undefined) return RUN_OUTCOME_STATUS[row.ended.outcome];
-    if (lifecycle.state === "parked-write") return "blocked";
-    if (lifecycle.state === "parked-gate" || row.openGates.length > 0) return "awaiting-approval";
-    if (lifecycle.state === "claimed" || lifecycle.state === "validating" || lifecycle.state === "running") return "running";
-    if (row.claimedBy !== undefined) return "running";
-    return "queued";
+    return deriveRunStatus(row, authority);
   }
 
   /**
@@ -973,9 +1024,8 @@ export class RunQueueProjection {
    * report needs the three absences KEPT APART, and reason-string matching
    * would be a second classifier wearing a comparison.
    */
-  #warningVerdict(runId: string, status: QueueSurfaceWire["status"]): WarningVerdict {
+  #warningVerdict(status: QueueSurfaceWire["status"], receipt: ReceiptView | undefined): WarningVerdict {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) return { kind: "not-terminal", status };
-    const receipt = this.#deps.authority.getReceipt(runId);
     if (receipt === undefined) return { kind: "unread" };
     const first = receipt.warnings[0];
     if (first === undefined) return { kind: "none" };
@@ -983,10 +1033,10 @@ export class RunQueueProjection {
   }
 
   #warnings(
-    runId: string,
     status: QueueSurfaceWire["status"],
+    receipt: ReceiptView | undefined,
   ): { state: "present"; count: number; first: string } | { state: "absent"; reason: string } {
-    const verdict = this.#warningVerdict(runId, status);
+    const verdict = this.#warningVerdict(status, receipt);
     switch (verdict.kind) {
       case "not-terminal":
         return { state: "absent", reason: `run is ${verdict.status} and has not produced a terminal result` };
@@ -1043,11 +1093,9 @@ export class RunQueueProjection {
       if (bucket === undefined) executionsByNode.set(key, [span]);
       else bucket.push(span);
     }
-    const stepState = (span: z.infer<typeof TaskSpanFoldSchema> | undefined): "pending" | "active" | "done" | "failed" | "skipped" | "blocked" => {
-      if (span === undefined) return "pending";
-      if (span.outcome === undefined) return "active";
-      return TASK_OUTCOME_PIPELINE[span.outcome];
-    };
+    const stepState = (
+      span: z.infer<typeof TaskSpanFoldSchema> | undefined,
+    ): "pending" | TaskExecutionState => (span === undefined ? "pending" : taskStateOf(span.outcome));
     /**
      * The measured half of a step, in the same shape the run-detail timeline
      * computes it (`spanDuration` there) — and with the same refusals. A span
@@ -1116,6 +1164,13 @@ export class RunQueueProjection {
       : { state: "present", value: authority.runNumber };
   }
 
+  /** D269: membership is the run row's own field — never a lookup in a stored member list. */
+  #session(authority: RunRecord): { state: "present"; sessionId: string } | { state: "absent"; reason: string } {
+    return authority.sessionId === undefined
+      ? { state: "absent", reason: "this run predates D269 session grouping, or retries a run that does" }
+      : { state: "present", sessionId: authority.sessionId };
+  }
+
   /**
    * How this row is contained by its parent.
    *
@@ -1174,6 +1229,21 @@ export class RunQueueProjection {
    * `#subjectTitle`-or-composed-title rule their rows draw, so a preview can
    * never name somebody the group does not contain or spell a subject two ways.
    * The count in the `+N more` tail comes off the same list as the rollup.
+   *
+   * D5 (ref frontend-backend-integration §7.4, audit P2): the SLICE happens before the JOIN.
+   * Deciding which members exist is a Map lookup per id and costs nothing;
+   * NAMING one is an authority `getRun` plus a checkpoint read, and a
+   * 108-member operation resolved all 108 to print three — 216 SQLite
+   * statements per group row, on every day wire and every resnapshot. Only the
+   * members that can appear are named; the `+N more` tail still counts the
+   * whole seen set, because the count is what the rollup is about.
+   *
+   * One consequence is deliberate and worth naming: `#authorityRun` refuses a
+   * member the span stream knows and authority does not, and that refusal now
+   * fires for the named few rather than for all of them. Nothing is weakened —
+   * the member's OWN row runs the same join through `#surface`, so an
+   * unaccounted run is still refused where it is rendered; the preview simply
+   * stops re-proving it 108 times.
    */
   #memberPreview(
     memberIds: readonly string[],
@@ -1181,21 +1251,20 @@ export class RunQueueProjection {
     if (memberIds.length === 0) {
       return { state: "absent", reason: "this group has fanned out to no members yet" };
     }
-    const titles: string[] = [];
+    const seen: { readonly memberId: string; readonly member: RunFoldRecord }[] = [];
     for (const memberId of memberIds) {
       const member = this.#rows.get(memberId);
-      if (member === undefined) continue;
-      const memberAuthority = this.#authorityRun(memberId);
-      titles.push(this.#subjectTitle(member.queued.workflow, memberAuthority) ?? member.queued.title);
+      if (member !== undefined) seen.push({ memberId, member });
     }
-    const shown = titles.slice(0, MEMBER_PREVIEW_LIMIT);
-    if (shown.length === 0) {
+    if (seen.length === 0) {
       return {
         state: "absent",
         reason: `this group names ${String(memberIds.length)} member(s) the span fold has not seen, so none can be named`,
       };
     }
-    const remaining = titles.length - shown.length;
+    const shown = seen.slice(0, MEMBER_PREVIEW_LIMIT).map(({ memberId, member }) =>
+      this.#subjectTitle(member.queued.workflow, this.#authorityRun(memberId)) ?? member.queued.title);
+    const remaining = seen.length - shown.length;
     return {
       state: "present",
       value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", "),
@@ -1221,13 +1290,12 @@ export class RunQueueProjection {
    * COUNTED into the absent reason rather than silently swallowed.
    */
   #facts(
-    runId: string,
     status: QueueSurfaceWire["status"],
+    receipt: ReceiptView | undefined,
   ): { state: "present"; value: readonly { label: string; value: string }[] } | { state: "absent"; reason: string } {
     if (!TERMINAL_QUEUE_STATUSES.has(status)) {
       return { state: "absent", reason: `run is ${status} and has not produced a terminal result` };
     }
-    const receipt = this.#deps.authority.getReceipt(runId);
     if (receipt === undefined) {
       return {
         state: "absent",
@@ -1264,6 +1332,15 @@ export class RunQueueProjection {
     const { queued } = row;
     const shape = queued.shape;
     const status = this.#status(row, authority);
+    /**
+     * D5: ONE receipt read per row, for the two consumers that need it.
+     * A non-terminal row reads none at all — neither consumer has anything to
+     * say about a run that has not produced a terminal result — which is the
+     * same condition each of them tested for itself before.
+     */
+    const receipt = TERMINAL_QUEUE_STATUSES.has(status)
+      ? this.#deps.authority.getReceipt(queued.runId)
+      : undefined;
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
     /**
      * The children a group COUNTS, which is not every child it spawned. The
@@ -1320,9 +1397,10 @@ export class RunQueueProjection {
        */
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
+      session: this.#session(authority),
       containment: this.#containment(queued),
       linkedRuns: this.#linkedRuns(row),
-      facts: this.#facts(queued.runId, status),
+      facts: this.#facts(status, receipt),
       startedAt: queued.ts,
       updatedAt: authority.updatedAt,
       endedAt: this.#endedAt(row, authority, status),
@@ -1347,7 +1425,7 @@ export class RunQueueProjection {
         : { state: "present", value: queued.subtitle },
       status,
       liveMessage: this.#liveMessage(authority, status),
-      warnings: this.#warnings(queued.runId, status),
+      warnings: this.#warnings(status, receipt),
       pipeline: this.#pipeline(row),
       panelKind: panelKindOf(shape),
       availableSections: [
@@ -1404,7 +1482,7 @@ export class RunQueueProjection {
 
   buildDashboardDayWire(day: string): DashboardDayWire {
     if (this.#health.state === "degraded") {
-      throw new Error(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
+      throw new ProjectionDegradedError(`the run/queue projection is degraded and refuses to serve counts: ${this.#health.lastError ?? "unknown"}`);
     }
     const parsedDay = z.iso.date().parse(day);
     const surfaces: QueueSurfaceWire[] = [];
@@ -1515,6 +1593,19 @@ export class RunQueueProjection {
         .map(([statusKey, count]) => ({ status: statusKey, count })),
       queueSurfaces: surfaces,
       workerCards,
+      /**
+       * D269 — the pool block is AUTHORITY's, read whole on every snapshot
+       * exactly as the cards are: one entry per workflow that has a row, in
+       * workflow order, carrying the version the spawn control must cite.
+       * Snapshot-only by construction (the day patch carries row splices).
+       */
+      workerPools: this.#deps.authority.listWorkerPools().map((pool) => ({
+        workflowId: pool.workflow,
+        desiredWorkers: pool.desiredWorkers,
+        version: pool.version,
+        plannedBy: pool.plannedBy,
+        plannedAt: pool.plannedAt,
+      })),
       notifications: this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)
         .map((record) => notificationWireOf(record, this.#deps.clock.nowMs()))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
@@ -1537,7 +1628,7 @@ export class RunQueueProjection {
    */
   buildActivityReportWire(from: string, to: string): ActivityReportWire {
     if (this.#health.state === "degraded") {
-      throw new Error(
+      throw new ProjectionDegradedError(
         `the run/queue projection is degraded and refuses to serve activity aggregates: ${this.#health.lastError ?? "unknown"}`,
       );
     }
@@ -1598,7 +1689,10 @@ export class RunQueueProjection {
         // D22/D126 read through the SAME verdict the queue row's chip renders.
         // A run whose receipt was never derived is counted as unread, never as
         // read-back: this is the report's `unmeasuredRuns`, one axis over.
-        const verdict = this.#warningVerdict(surface.runId, surface.status);
+        const verdict = this.#warningVerdict(
+          surface.status,
+          TERMINAL_QUEUE_STATUSES.has(surface.status) ? this.#deps.authority.getReceipt(surface.runId) : undefined,
+        );
         const arm = verdict.kind === "present" ? "warnings" : verdict.kind === "none" ? "readBack" : "warningsUnknown";
         counts.completion[arm] += 1;
         completion[arm] += 1;

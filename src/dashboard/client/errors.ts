@@ -66,6 +66,14 @@ export function schemaError(context: string, cause: unknown): DashboardClientErr
   });
 }
 
+export function diagnosticBundleIdentityError(context: string, requestedBundleId: string): DashboardClientError {
+  return new DashboardClientError({
+    kind: "schema",
+    code: "DIAGNOSTIC_BUNDLE_IDENTITY_MISMATCH",
+    message: `${context}: DIAGNOSTIC_BUNDLE_IDENTITY_MISMATCH: response does not belong to requested diagnostic bundle ${requestedBundleId}`,
+  });
+}
+
 export function networkError(context: string, cause: unknown): DashboardClientError {
   return new DashboardClientError({
     kind: "network",

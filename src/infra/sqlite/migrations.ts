@@ -3,7 +3,7 @@ import type { TableName, TableSpec } from "../../domain/authority.js";
 import { AUTHORITY_TABLE_REGISTRY, TableNameSchema } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 16;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 18;
 
 /** The run lifecycle states in which exactly one worker owns the row (ref workflow-model §4). */
 const CLAIMED_STATE_SQL_LIST = "('claimed','validating','running')";
@@ -455,6 +455,62 @@ export const SQLITE_TABLE_DDL = deepFreeze({
       created_at TEXT NOT NULL
     ) STRICT
   `,
+  /**
+   * D267 (ref execution-and-sessions §10) — the Duo ceremony lease: ONE row per
+   * credential identity, UPDATED in place across generations. It is the second
+   * authority row (after notifications) that is updated rather than appended,
+   * and for a similar reason: the row IS the lock, and a lock that left a row
+   * behind per ceremony would be a ledger of ceremonies, not a lease. Every
+   * mirrored column is pinned to the record's own value by the integrity audit.
+   */
+  duo_ceremony_leases: `
+    CREATE TABLE duo_ceremony_leases (
+      record_key TEXT PRIMARY KEY,
+      generation INTEGER NOT NULL CHECK (generation >= 1),
+      holder_worker_id TEXT NOT NULL,
+      holder_system TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('held', 'released')),
+      expires_at TEXT NOT NULL,
+      version INTEGER NOT NULL CHECK (version >= 1),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  /**
+   * D269 (ref execution-and-sessions §11.5) — the per-workflow worker POOL
+   * declaration, the CAS basis `plan-worker-count` / `spawn-worker` cite. One
+   * row per workflow, updated under a version CAS (a pool is a standing
+   * declaration, not a history), never deleted: a row that vanished would read
+   * as "nothing was ever planned", which is a different fact from the one it
+   * replaced. `desired_workers` and `version` are mirrored so a pool can be
+   * listed without parsing every record; the integrity audit pins them.
+   */
+  worker_pools: `
+    CREATE TABLE worker_pools (
+      record_key TEXT PRIMARY KEY,
+      desired_workers INTEGER NOT NULL CHECK (desired_workers >= 1),
+      version INTEGER NOT NULL CHECK (version >= 1),
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
+  /**
+   * D269 (ref execution-and-sessions §11.1) — a dashboard-started GROUP of
+   * runs. Insert-only by trigger (a group that could be rewritten would be a
+   * weaker record than the runs it names) and it holds NO member list:
+   * membership is `tasks.session_id`, so the group is derived from the run
+   * table and can never claim a run that table does not show. `workflow` is
+   * mirrored for the per-workflow listing.
+   */
+  run_sessions: `
+    CREATE TABLE run_sessions (
+      record_key TEXT PRIMARY KEY,
+      workflow TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      record_json TEXT NOT NULL CHECK (json_valid(record_json)),
+      created_at TEXT NOT NULL
+    ) STRICT
+  `,
   spans: jsonRecordTable("spans"),
   gates: jsonRecordTable("gates"),
   notes: jsonRecordTable("notes"),
@@ -512,6 +568,9 @@ const POST_V1_TABLE_ORDER = [
   "version_bump_applications",
   "archived_runs",
   "archive_relaunches",
+  "duo_ceremony_leases",
+  "worker_pools",
+  "run_sessions",
   "dry_run_scenario_results",
 ] as const satisfies readonly TableName[];
 
@@ -1071,8 +1130,59 @@ export const SQLITE_MIGRATIONS = deepFreeze([
     ],
   },
   {
-    // Ref guards-and-tests §10.6 — durable, insert-only dry-run scenario evidence.
+    /*
+     * D267 (ref execution-and-sessions §10) — the Duo ceremony lease. One row
+     * per credential identity; `generation` advances on every acquisition and
+     * `state` moves held → released → held … as ceremonies serialize. Nothing
+     * is ever deleted (a lease row that vanished would read as a free
+     * credential), so the delete trigger aborts; updates are the design.
+     */
     version: 16,
+    statements: [
+      SQLITE_TABLE_DDL.duo_ceremony_leases,
+      "CREATE INDEX duo_ceremony_leases_state_idx ON duo_ceremony_leases(state, expires_at)",
+      `CREATE TRIGGER duo_ceremony_leases_never_deleted
+        BEFORE DELETE ON duo_ceremony_leases
+        BEGIN SELECT RAISE(ABORT, 'duo_ceremony_leases rows are never deleted'); END`,
+    ],
+  },
+  {
+    /*
+     * D269 (ref execution-and-sessions §11) — the worker POOL declaration, the
+     * run SESSION, and the run row's membership column.
+     *
+     * `worker_pools` is updated under a version CAS and never deleted.
+     * `run_sessions` is insert-only: both UPDATE and DELETE abort, exactly as
+     * the archive tables do, because a group that can be rewritten is a weaker
+     * record than the runs it names. `tasks.session_id` is a MIRRORED, NULLABLE
+     * column (D230's `run_number` shape, `ALTER TABLE ADD COLUMN`): every
+     * pre-v17 row keeps NULL, which D133 reads forward as "no session" — a
+     * group back-filled onto those rows would be one nobody started. The index
+     * is what makes "every member of session S" a lookup rather than a scan.
+     */
+    version: 17,
+    statements: [
+      SQLITE_TABLE_DDL.worker_pools,
+      `CREATE TRIGGER worker_pools_never_deleted
+        BEFORE DELETE ON worker_pools
+        BEGIN SELECT RAISE(ABORT, 'worker_pools rows are never deleted'); END`,
+      SQLITE_TABLE_DDL.run_sessions,
+      "CREATE INDEX run_sessions_workflow_idx ON run_sessions(workflow, started_at)",
+      `CREATE TRIGGER run_sessions_never_updated
+        BEFORE UPDATE ON run_sessions
+        BEGIN SELECT RAISE(ABORT, 'run_sessions rows are immutable'); END`,
+      `CREATE TRIGGER run_sessions_never_deleted
+        BEFORE DELETE ON run_sessions
+        BEGIN SELECT RAISE(ABORT, 'run_sessions rows are never deleted'); END`,
+      "ALTER TABLE tasks ADD COLUMN session_id TEXT",
+      "CREATE INDEX tasks_session_id_idx ON tasks(session_id)",
+    ],
+  },
+  {
+    // Ref guards-and-tests §10.6 — durable, insert-only dry-run scenario evidence.
+    // This branch originally allocated v16 concurrently with D267/D269. The
+    // merged append-only history places its new table after those rows as v18.
+    version: 18,
     statements: [
       SQLITE_TABLE_DDL.dry_run_scenario_results,
       `CREATE TRIGGER dry_run_scenario_results_immutable_update

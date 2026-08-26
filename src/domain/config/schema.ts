@@ -194,6 +194,17 @@ export const ConfigSchema = z.strictObject({
      * who hits it knows exactly which one to move.
      */
     sessionAcquireMs: z.number().int().positive(),
+    /**
+     * D267 (ref execution-and-sessions §10.3): the Duo ceremony lease's TTL is
+     * `sessionAcquireMs` PLUS this grace. A TTL equal to the envelope would let
+     * a waiter take the lease at the instant the holder is running its proven
+     * cleanup; the grace covers that cleanup (`browser.closeProofMs`, 15 000 ms,
+     * plus margin). A waiter's budget is its remaining envelope MINUS this
+     * grace, so the lease refuses by name before the envelope fires. It is a
+     * post-baseline leaf: generation 3 in `snapshot-generations.ts`, so a
+     * stored `config_snapshots` row without it still parses (D133).
+     */
+    duoCeremonyLeaseGraceMs: z.number().int().positive(),
     transactionMs: z.number().int().positive(),
     duoApprovalSeconds: z.number().int().positive(),
     duoApprovalCrmSeconds: z.number().int().positive(),
@@ -204,6 +215,7 @@ export const ConfigSchema = z.strictObject({
     ukgNavigationMs: 60_000,
     taskMs: 180_000,
     sessionAcquireMs: 60_000,
+    duoCeremonyLeaseGraceMs: 20_000,
     transactionMs: 300_000,
     duoApprovalSeconds: 180,
     duoApprovalCrmSeconds: 60,
@@ -241,6 +253,24 @@ export const ConfigSchema = z.strictObject({
     backoffCapMs: 60_000,
     maxValidationRetries: 1,
   }),
+  /**
+   * `ingress`/`forwardedUrl` also derive `capturePhoneHost`, the ONE Host the
+   * BFF's phone-request gate (ref operator-trust §7, D174) recognizes — a request whose `Host`
+   * header matches it may reach only ref data-intake-and-edit-data §5.1's closed capture-phone route
+   * union, and everything else answers the same `ROUTE_NOT_FOUND` an unrouted
+   * path gets.
+   *
+   * DESIGN CAVEAT (ref frontend-backend-integration §6.9): the gate reads `Host` alone. A reverse proxy that
+   * rewrites `Host` to the upstream — e.g. nginx's default `proxy_set_header
+   * Host $host` pointing at the BFF's own hostname — makes the gate INERT: a
+   * phone request would arrive already wearing the operator's Host and pass
+   * straight through the gate as if it were an operator. Whichever ingress
+   * slice (doc 04's `{#def-byte-path}`) sits in front of production must either
+   * preserve the phone's ORIGINAL Host end to end, or the gate must be taught
+   * to read `X-Forwarded-Host` deliberately (a header only trustworthy behind
+   * a proxy configured to set it, never from an arbitrary caller) — neither is
+   * implemented here; this dev-mode gate is Host-only by design.
+   */
   capture: z.strictObject({
     ingress: z.enum(["disabled", "on-demand-ngrok", "forwarded"]),
     forwardedUrl: HttpsUrlSchema.optional(),

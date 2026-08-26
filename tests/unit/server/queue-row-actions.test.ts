@@ -82,6 +82,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     dryRun: facts.dryRun,
     priority: "interactive",
     runNumber: { state: "present", value: 1 },
+    session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
     // A delegated child of a non-operation parent is `linked`: it keeps its own
     // row, so `executeRetry` refusing it is the shape this fixture exercises.
     containment: facts.isChild ? "linked" : "root",

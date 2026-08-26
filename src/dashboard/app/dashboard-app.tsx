@@ -21,8 +21,6 @@ import {
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
-import { InputRunSurfaceSchema } from "../../domain/workflow/ingress.js";
-import { WORKFLOW_DESCRIPTORS } from "../../workflows/descriptor-registry.js";
 import { FileSpreadsheet, PanelRight } from "lucide-react";
 import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -39,7 +37,7 @@ import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
 import { LogPanel } from "../surfaces/log-panel.js";
 import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-model.js";
-import { QueuePanel, type QueueFilterScope, type QueueViewState } from "../surfaces/queue.js";
+import { QueuePanel, type QueueFilterScope, type QueueHandlers, type QueueViewState } from "../surfaces/queue.js";
 import {
   attentionRunIds,
   queueRowTitle,
@@ -50,6 +48,7 @@ import {
 import { ConfirmCommandDialog, type ActionTarget, type PendingCommand } from "../surfaces/actions.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
 import { composeCommandRequest, composeStopWorkerCommand, type CommandAction } from "./command-dispatch.js";
+import { settleCommandResult } from "./command-result.js";
 import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
 import {
@@ -82,8 +81,13 @@ import {
   type WorkerCardWire,
 } from "../surfaces/shell-model.js";
 import { StorageBanner } from "../surfaces/settings.js";
-import { TopBar } from "../surfaces/top-bar.js";
-import { serverLocalDay, type ShellView } from "../surfaces/top-bar-model.js";
+import { TopBar, type NavControls } from "../surfaces/top-bar.js";
+import {
+  serverLocalDay,
+  type DayCountWire,
+  type NotificationRowWire,
+  type ShellView,
+} from "../surfaces/top-bar-model.js";
 import { usePanelSections } from "./use-panel-sections.js";
 import {
   canGoBack,
@@ -124,8 +128,20 @@ import {
  * `sections["identity-gate"]` beside the packet they are about. Each payload is
  * composable only where its evidence is.
  */
+/**
+ * The stable empties the three `memo`'d panels are handed when the day has not
+ * loaded (D4). `?? []` in a prop slot mints a fresh array on every render, so
+ * under `memo` it is a prop that can never compare equal — the wrapper would
+ * be pure overhead for exactly the state (still loading) where the most
+ * renders happen. `dashboard-memo-prop-stability` refuses the literal form.
+ */
+const NO_SURFACES: readonly QueueSurfaceWire[] = Object.freeze([]);
+const NO_NOTIFICATIONS: readonly NotificationRowWire[] = Object.freeze([]);
+const NO_DAY_COUNTS: readonly DayCountWire[] = Object.freeze([]);
+const NO_ACTION_DESCRIPTORS: readonly ActionDescriptorWire[] = Object.freeze([]);
+
 function servedActions(surface: QueueSurfaceWire | undefined): readonly ActionDescriptorWire[] {
-  return surface?.actions ?? [];
+  return surface?.actions ?? NO_ACTION_DESCRIPTORS;
 }
 
 /** The closed tab vocabulary, so a `?section=` value is validated, not trusted. */
@@ -507,14 +523,24 @@ function LoadedApp({
     return workflows.map((entry): RunStartWorkflow => {
       const workflowId = String(entry.id);
       /**
-       * The descriptor the browser already holds. D251's three modal facts —
-       * `summary`, `enqueue` and the typed-input surface (with D250's declared
-       * examples riding on it) — are all plain data on `AnyWorkflowDescriptor`,
-       * so none of them grows a wire: serving a fact the bundle already carries
-       * would give this surface two sources for one value.
+       * D264 (amending D251) — the four modal facts, SERVED.
+       *
+       * They used to be read off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple
+       * right here, on the argument that serving a fact the bundle already
+       * carries would give this surface two sources for one value. The argument
+       * was right about the two sources and wrong about the price: holding that
+       * tuple is what put every registered workflow's whole descriptor closure
+       * in the browser bundle, for three plain-data fields. They now ride on the
+       * boot document's own workflow entry, projected at the composition root
+       * from the same descriptor the daemon plans with — one source still, and
+       * `dashboard-wire-boundary`'s registry-reach arm holds the tuple out.
+       *
+       * Nothing is re-parsed and nothing is defaulted: `parseWorkflows` already
+       * put this whole block through `WorkflowBootstrapPrimitiveSchema`, and the
+       * old `?? "reject-active"` stood in for a fact the server always had, so
+       * a served `enqueue` is now simply required.
        */
-      const descriptor = WORKFLOW_DESCRIPTORS.find((d) => d.id === workflowId);
-      const declared = descriptor?.surfaces.inputRun;
+      const start = entry.start;
       return {
         workflowId,
         label: entry.label,
@@ -523,17 +549,15 @@ function LoadedApp({
         // groups by the same rule the rail does, and neither infers it.
         role: entry.role,
         code: entry.code,
-        ...(descriptor?.summary === undefined ? {} : { summary: descriptor.summary }),
-        // A workflow the bundle cannot resolve has no declared policy to state,
-        // and `reject-active` is the fail-closed reading of "we do not know".
-        // It cannot happen — the boot list IS the registry — but a substituted
-        // `allow-parallel` would be the dangerous guess, so the safe arm is the
-        // one written down.
-        enqueue: descriptor?.enqueue ?? "reject-active",
+        ...(start.summary === undefined ? {} : { summary: start.summary }),
+        enqueue: start.enqueue,
+        // C96 — the footer's `{label} v{n}`. Served for D264's reason: reading
+        // it off a descriptor is what used to put the registry in this bundle.
+        version: start.version,
         inputRun:
-          declared === undefined
+          start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
-            : { state: "present", surface: InputRunSurfaceSchema.parse(declared) },
+            : { state: "present", surface: start.inputRun },
         systemInstances,
       };
     });
@@ -544,14 +568,26 @@ function LoadedApp({
     [startWorkflows, activeWorkflowId],
   );
 
-  const viewState: QueueViewState = {
-    ...(route.run === undefined ? {} : { selectedRunId: route.run }),
-    openWells,
-    selectMode,
-    bulkIds,
-    panelWorkflowId: activeWorkflowId,
-    nowIso,
-  };
+  /**
+   * ONE object per CHANGE, not one per render (D4).
+   *
+   * `QueuePanel` is `memo`'d, so a freshly built `state` object would defeat
+   * the wrapper on its own — it is the single prop most likely to do so,
+   * because it is the only composed one. `nowIso` is in the dependency list
+   * and ticks once a second (D256), which is the floor the panel redraws at by
+   * design; everything else here moves only when the operator moves it.
+   */
+  const viewState = useMemo(
+    (): QueueViewState => ({
+      ...(route.run === undefined ? {} : { selectedRunId: route.run }),
+      openWells,
+      selectMode,
+      bulkIds,
+      panelWorkflowId: activeWorkflowId,
+      nowIso,
+    }),
+    [route.run, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
+  );
 
   /**
    * What `Select all in view` may take: the TOP-LEVEL rows drawn on screen, in
@@ -643,10 +679,15 @@ function LoadedApp({
       client.executeCommand(composed.request).then(
         (result) => {
           // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4),
-          // and the server's own sentence is printed verbatim — it is the only
-          // party that knows which version is live now.
-          if (result.state === "conflict" || result.state === "rejected") {
-            toast({ tone: "danger", title: "Nothing was recorded", description: result.message });
+          // and WHETHER one of them landed is decided ONCE, by the fold (D253,
+          // Track D row D3) — this callback reads the verdict rather than
+          // re-taking the union apart. The description is still the server's
+          // own sentence verbatim: it is the only party that knows which
+          // version is live now, and neither refusal changes what this toast
+          // says about the command it answers.
+          const settlement = settleCommandResult(result);
+          if (settlement.kind === "refused") {
+            toast({ tone: "danger", title: "Nothing was recorded", description: settlement.message });
             return;
           }
           toast({ tone: "success", title: action.label, description: "Recorded." });
@@ -728,8 +769,12 @@ function LoadedApp({
         { actorId: boot.actor.id, source: "session-panel" },
       )).then(
         (result) => {
-          if (result.state === "conflict" || result.state === "rejected") {
-            toast({ tone: "danger", title: "Nothing was recorded", description: result.message });
+          // The same ONE fold (D253) — a stop the kernel refused must never
+          // look like one that landed, and "did it land" has exactly one
+          // implementation in this bundle.
+          const settlement = settleCommandResult(result);
+          if (settlement.kind === "refused") {
+            toast({ tone: "danger", title: "Nothing was recorded", description: settlement.message });
             return;
           }
           toast({
@@ -820,6 +865,62 @@ function LoadedApp({
    * `bandOf`. Both are computed from the same `surfaces`/`sort` the panel below
    * renders, so a keyboard walk and a scroll cannot disagree.
    */
+  /**
+   * THE QUEUE'S HANDLERS, as ONE object that outlives a render (D4).
+   *
+   * This used to be an inline `handlers={{…}}` literal with five closures in
+   * it, so `QueuePanel`'s `memo` would have compared unequal on every render
+   * for a prop whose CONTENTS had not moved. The bodies are unchanged; only
+   * where they are built has.
+   */
+  const queueHandlers = useMemo(
+    (): QueueHandlers => ({
+      onSelect: selectRun,
+      /*
+        LIVE. `actionsOf` at the call site reads the row's own served
+        `actions[]`, so every control the server describes routes through
+        `runAction` → `composeCommandRequest` → the one command client. A row
+        served an empty list still draws nothing, with no branch here.
+      */
+      onAction: runAction,
+      onToggleWell: (runId) => {
+        const next = new Set(openWells);
+        if (next.has(runId)) next.delete(runId);
+        else next.add(runId);
+        onWells(next);
+      },
+      onToggleBulk: (runId) => {
+        const next = new Set(bulkIds);
+        if (next.has(runId)) next.delete(runId);
+        else next.add(runId);
+        onBulkIds(next);
+      },
+      /*
+        A parent can belong to ANOTHER workflow, so the jump moves the panel and
+        then selects — selecting alone would open a run the queue beside it is
+        scoped away from.
+      */
+      onOpenParent: (runId) => {
+        const parent = dayWire?.queueSurfaces.find((s) => String(s.runId) === runId);
+        if (parent !== undefined) setActiveWorkflowId(String(parent.workflowId));
+        selectRun(runId);
+      },
+      /*
+        THE FORWARD ROUTE (D231). Same two moves as the parent jump — switch the
+        panel, then select — but it never searches the day payload: the served
+        link carries its own `workflowId`, which is the whole reason the wire
+        serves the link rather than a bare id. A child that ran on another day is
+        exactly the case a lookup would fail silently on, and it is the case the
+        chip exists for.
+      */
+      onOpenLinked: (link) => {
+        setActiveWorkflowId(String(link.workflowId));
+        selectRun(String(link.runId));
+      },
+    }),
+    [selectRun, runAction, openWells, onWells, bulkIds, onBulkIds, dayWire, setActiveWorkflowId],
+  );
+
   const keyboardOrder = useMemo(
     () => visibleRunIds(surfaces, sort, nowIso),
     [surfaces, sort, nowIso],
@@ -894,6 +995,7 @@ function LoadedApp({
         ...route,
         intake: undefined,
         archive: undefined,
+        archiveView: undefined,
         activity: undefined,
         explore: undefined,
         catalog: undefined,
@@ -914,6 +1016,76 @@ function LoadedApp({
 
   const navBackTo = navDestinationLabel(navHistory, "back", nameRun, workflowLabelOf);
   const navForwardTo = navDestinationLabel(navHistory, "forward", nameRun, workflowLabelOf);
+  /** The bar's history controls, as ONE object per change rather than per render (D4). */
+  const nav = useMemo(
+    (): NavControls => ({
+      canBack: canGoBack(navHistory),
+      canForward: canGoForward(navHistory),
+      ...(navBackTo === undefined ? {} : { backTo: navBackTo }),
+      ...(navForwardTo === undefined ? {} : { forwardTo: navForwardTo }),
+      onBack: () => travel("back"),
+      onForward: () => travel("forward"),
+    }),
+    [navHistory, navBackTo, navForwardTo, travel],
+  );
+
+  /**
+   * THE `memo` BOUNDARY'S PROPS (D4).
+   *
+   * `TopBar` and `LogPanel` are `memo`'d, so each of these used to be written
+   * inline in a prop slot and each was a fresh reference on every render:
+   * `dayWire?.queueSurfaces ?? []` mints an array whenever the day has not
+   * loaded, `SettingsSectionPrimitiveSchema.array().parse(…)` mints one AND
+   * re-runs a zod parse on every render of the whole app, and an inline
+   * `onDay`/`nav` closes over the route. Naming them here is what makes the
+   * wrappers below real rather than decorative;
+   * `dashboard-memo-prop-stability` refuses the inline forms.
+   */
+  const daySurfaces = useMemo(
+    (): readonly QueueSurfaceWire[] => dayWire?.queueSurfaces ?? NO_SURFACES,
+    [dayWire],
+  );
+  const dayNotifications = useMemo(
+    // The boot document composes this array from zod parts, so it infers as
+    // `unknown[]` at the wire; the day payload is already parsed whole.
+    (): readonly NotificationRowWire[] => dayWire?.notifications ?? NO_NOTIFICATIONS,
+    [dayWire],
+  );
+  const dayMonthCounts = useMemo(
+    (): readonly DayCountWire[] => dayWire?.monthCounts ?? NO_DAY_COUNTS,
+    [dayWire],
+  );
+  // Same story as `systemInstances`: the boot document composes this array from
+  // zod parts so it infers as `unknown[]`; re-parsing is the check bootstrap's
+  // own refinement makes, not a cast past one. It is done ONCE per boot
+  // document here rather than once per render of the app.
+  const settingsSections = useMemo(
+    () => SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections),
+    [boot.settingsSections],
+  );
+  const onSelectDay = useCallback(
+    (next: string): void => setRoute({ ...route, day: next }),
+    [route, setRoute],
+  );
+
+  /**
+   * The open panel's ROW and its served controls, resolved ONCE.
+   *
+   * Both used to be written inline, and the `find` ran twice per render over
+   * the whole day. Since D4's patch-splice an untouched row keeps its
+   * reference through an SSE patch, so this memo returns the SAME surface
+   * across a patch for any OTHER run — which is exactly what lets `LogPanel`'s
+   * `memo` skip a 2,000-line subtree during a bulk run.
+   */
+  const openPanelSurface = useMemo(
+    (): QueueSurfaceWire | undefined =>
+      detailValue === undefined
+        ? undefined
+        : dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId),
+    [dayWire, detailValue],
+  );
+  const openPanelActions = useMemo(() => servedActions(openPanelSurface), [openPanelSurface]);
+  const onDetailEdited = useCallback((): void => setDetailNonce((nonce) => nonce + 1), []);
 
   const ready = dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
@@ -941,7 +1113,15 @@ function LoadedApp({
    */
   const onShellView = useCallback(
     (next: ShellView): void => {
-      const base = { ...route, intake: undefined, archive: undefined, activity: undefined, explore: undefined, catalog: undefined };
+      const base = {
+        ...route,
+        intake: undefined,
+        archive: undefined,
+        archiveView: undefined,
+        activity: undefined,
+        explore: undefined,
+        catalog: undefined,
+      };
       if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
       else if (next === "activity") setRoute({ ...base, activity: "" });
       else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
@@ -959,33 +1139,23 @@ function LoadedApp({
       <TopBar
         view={shellView}
         onView={onShellView}
-        daySurfaces={dayWire?.queueSurfaces ?? []}
+        daySurfaces={daySurfaces}
         workflowLabelOf={workflowLabelOf}
         onOpenRun={selectRun}
-        notifications={dayWire?.notifications ?? []}
+        notifications={dayNotifications}
         actorId={boot.actor.id}
         nowIso={nowIso}
         storage={boot.storage}
-        // Same story as `systemInstances` below: the boot document composes
-        // this array from zod parts so it infers as `unknown[]`; re-parsing is
-        // the check bootstrap's own refinement makes, not a cast past one.
-        settingsSections={SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections)}
+        settingsSections={settingsSections}
         settingsOpen={settingsOpen}
         onSettingsOpen={setSettingsOpen}
         day={day}
         today={today}
-        monthCounts={dayWire?.monthCounts ?? []}
-        onDay={(next) => setRoute({ ...route, day: next })}
+        monthCounts={dayMonthCounts}
+        onDay={onSelectDay}
         theme={theme}
         onToggleTheme={onToggleTheme}
-        nav={{
-          canBack: canGoBack(navHistory),
-          canForward: canGoForward(navHistory),
-          ...(navBackTo === undefined ? {} : { backTo: navBackTo }),
-          ...(navForwardTo === undefined ? {} : { forwardTo: navForwardTo }),
-          onBack: () => travel("back"),
-          onForward: () => travel("forward"),
-        }}
+        nav={nav}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -1060,9 +1230,11 @@ function LoadedApp({
             <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
               <ArchiveWorkspace
                 selection={route.archive ?? ARCHIVE_INDEX}
+                view={route.archiveView ?? "runs"}
                 actorId={boot.actor.id}
                 onSelection={(next) => setRoute({ ...route, archive: next })}
-                onClose={() => setRoute({ ...route, archive: undefined })}
+                onView={(next) => setRoute({ ...route, archiveView: next })}
+                onClose={() => setRoute({ ...route, archive: undefined, archiveView: undefined })}
               />
             </div>
           ) : takeover === "activity" ? (
@@ -1101,6 +1273,15 @@ function LoadedApp({
               <WorkflowExplorer
                 workflowId={route.explore ?? activeWorkflowId}
                 onWorkflow={(next) => setRoute({ ...route, explore: next })}
+                onVersionRegistry={() => setRoute({
+                  ...route,
+                  intake: undefined,
+                  archive: ARCHIVE_INDEX,
+                  archiveView: "versions",
+                  activity: undefined,
+                  explore: undefined,
+                  catalog: undefined,
+                })}
                 onClose={() => setRoute({ ...route, explore: undefined })}
               />
             </div>
@@ -1222,52 +1403,7 @@ function LoadedApp({
               <QueuePanel
                 surfaces={surfaces}
                 state={viewState}
-                handlers={{
-                  onSelect: selectRun,
-                  /*
-                    LIVE. `actionsOf` below reads the row's own served
-                    `actions[]`, so every control the server describes routes
-                    through `runAction` → `composeCommandRequest` → the one
-                    command client. A row served an empty list still draws
-                    nothing, with no branch here.
-                  */
-                  onAction: runAction,
-                  onToggleWell: (runId) => {
-                    const next = new Set(openWells);
-                    if (next.has(runId)) next.delete(runId);
-                    else next.add(runId);
-                    onWells(next);
-                  },
-                  onToggleBulk: (runId) => {
-                    const next = new Set(bulkIds);
-                    if (next.has(runId)) next.delete(runId);
-                    else next.add(runId);
-                    onBulkIds(next);
-                  },
-                  /*
-                    A parent can belong to ANOTHER workflow, so the jump moves
-                    the panel and then selects — selecting alone would open a
-                    run the queue beside it is scoped away from.
-                  */
-                  onOpenParent: (runId) => {
-                    const parent = dayWire?.queueSurfaces.find((s) => String(s.runId) === runId);
-                    if (parent !== undefined) setActiveWorkflowId(String(parent.workflowId));
-                    selectRun(runId);
-                  },
-                  /*
-                    THE FORWARD ROUTE (D231). Same two moves as the parent jump
-                    — switch the panel, then select — but it never searches the
-                    day payload: the served link carries its own `workflowId`,
-                    which is the whole reason the wire serves the link rather
-                    than a bare id. A child that ran on another day is exactly
-                    the case a lookup would fail silently on, and it is the case
-                    the chip exists for.
-                  */
-                  onOpenLinked: (link) => {
-                    setActiveWorkflowId(String(link.workflowId));
-                    selectRun(String(link.runId));
-                  },
-                }}
+                handlers={queueHandlers}
                 actionsOf={servedActions}
                 workflowLabelOf={workflowLabelOf}
                 parentOf={parentOf}
@@ -1286,7 +1422,7 @@ function LoadedApp({
                 <LogPanel
                   detail={detailValue}
                   sections={sections}
-                  surface={dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId)}
+                  surface={openPanelSurface}
                   /*
                     The WHOLE served list, not a placement slice: the prop's
                     contract is "every action the server served for this run"
@@ -1295,7 +1431,7 @@ function LoadedApp({
                     again to `outcome` intersected the two, so only a descriptor
                     carrying BOTH placements could ever have arrived.
                   */
-                  actions={servedActions(dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId))}
+                  actions={openPanelActions}
                   onAction={runAction}
                   tab={effectiveTab}
                   onTab={onTab}
@@ -1303,7 +1439,7 @@ function LoadedApp({
                   currentAppVersion={boot.appVersion}
                   servedDescriptorHash={workflowShapeOf(detailValue.header.workflowId)}
                   actorId={boot.actor.id}
-                  onDetailEdited={() => setDetailNonce((nonce) => nonce + 1)}
+                  onDetailEdited={onDetailEdited}
                   aiAdvisory={advisoryAvailability}
                   /* The SAME instant `viewState.nowIso` dates the queue's rows
                      from, so a waiting run's age is one number wherever it is
@@ -1350,6 +1486,8 @@ function LoadedApp({
 
       <SessionPanel
         workerCards={dayWire?.workerCards ?? []}
+        queueSurfaces={dayWire?.queueSurfaces ?? []}
+        workerPools={dayWire?.workerPools ?? []}
         workflows={workflows}
         counts={dayWire?.workflowCounts ?? []}
         nowIso={nowIso}

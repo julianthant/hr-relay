@@ -46,6 +46,30 @@
  *     same shared domain contracts is the most likely place for the next
  *     breach — which would have been completely unguarded.
  *
+ * (15) The registry stays OUT of the bundle (D264, amending D251): no *.html
+ *     entry's closure may reach `src/workflows/**` or `src/control/**`.
+ *
+ *     D251 let the Run Modal read `summary`, `enqueue` and `surfaces.inputRun`
+ *     off the bundle-safe `WORKFLOW_DESCRIPTORS` tuple, because those three are
+ *     plain data and serving a fact the bundle already carries would give one
+ *     surface two sources for one value. The two-sources argument was right;
+ *     the price was never measured. A descriptor's plain data does not travel
+ *     alone — the tuple pulls every registered workflow's whole graph, its node
+ *     specs, its task contracts and the `src/base/**` builders that mint them,
+ *     so the browser downloaded the composition root to render three fields.
+ *     D264 serves the three (`WorkflowStartWireSchema`) and this arm holds the
+ *     tuple out; measured at the change, the operator bundle fell from
+ *     1,114,214 bytes to 753,197.
+ *
+ *     It is a CLOSURE arm rather than a lint on import lines for the same
+ *     reason as (13) and (14): the dangerous version is transitive, and one
+ *     shared helper re-exporting a descriptor would put the whole tuple back
+ *     with nothing in the diff that reads like a registry import.
+ *     `src/domain/**` and `src/base/**` stay reachable on purpose — a
+ *     descriptor's CONTRACTS are what keep the daemon and the dashboard one
+ *     product, and it is the composed tuple, not the contracts, that may not
+ *     ship.
+ *
  * (14) Phone-bundle scope (ref operator-trust §7, D175): the `capture.html` entry's import
  *     closure may not reach `src/dashboard/surfaces/**`, `src/dashboard/client/**`
  *     or `src/dashboard/app/**`. The capture ingress is the ONE exception to the
@@ -301,6 +325,29 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     for (const root of forbidden) {
       expect([...operator].some((file) => file.startsWith(root)), root).toBe(true);
     }
+  });
+
+  it("reaches no workflow registry from any dashboard entry", () => {
+    // `src/workflows/**` is the descriptor tuple and every descriptor it names;
+    // `src/control/**` is the composition root the tuple is the browser's view
+    // of. Either one inside a bundle closure is the same defect.
+    const forbidden = ["src/workflows/", "src/control/"];
+    const violations: string[] = [];
+    for (const entry of dashboardEntries()) {
+      for (const file of bundleClosure(entry)) {
+        if (forbidden.some((root) => file.startsWith(root))) {
+          violations.push(`${entry}: reaches ${file}`);
+        }
+      }
+    }
+    expect(violations.sort(), "no dashboard bundle may carry the workflow registry").toEqual([]);
+
+    // Non-vacuous: the walker really does resolve INTO `src/workflows/**` when
+    // something imports it, so the empty result above is a fact about the
+    // dashboard's closure and not about a walker that resolves nothing.
+    const registry = bundleClosure("src/workflows/descriptor-registry.ts");
+    expect([...registry].filter((file) => file.startsWith("src/workflows/")).length)
+      .toBeGreaterThan(1);
   });
 
   it("branches on no concrete workflow id anywhere under src/dashboard", () => {

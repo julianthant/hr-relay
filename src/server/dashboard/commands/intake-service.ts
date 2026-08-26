@@ -39,7 +39,11 @@ import {
   type IntakeSession,
 } from "../../../domain/intake/session.js";
 import { currentRerunState } from "../../../domain/intake/enqueue.js";
-import { rerunDiff, type IntakePlanManifest } from "../../../domain/intake/manifest.js";
+import {
+  IntakeManifestTerminalProjectionSchema,
+  rerunDiff,
+  type IntakePlanManifest,
+} from "../../../domain/intake/manifest.js";
 import {
   resolveInspectSelection,
   type IntakeParse,
@@ -51,6 +55,7 @@ import { validateIntakeRows } from "../../../domain/intake/validate.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../domain/intake/wire.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import type { PreparedIntakeParser } from "../../intake/intake-parser.js";
+import { TargetNotFoundError } from "../../failures.js";
 
 /**
  * The upload cap. A roster export is tens of kilobytes to a few megabytes;
@@ -62,6 +67,13 @@ export const INTAKE_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 /**
  * What the grid edge can actually read. The zip magic still overrides a lying
  * media type downstream — this list is the declared contract, not the proof.
+ *
+ * It stays EXPORTED beside `INTAKE_UPLOAD_MAX_BYTES` with no importer in this
+ * tree on purpose (Track D row D2 kept it where it un-exported eleven other
+ * dead exports): the Dropzone's accept list and size cap are client literals
+ * today, and serving both from here is a NAMED open wire task
+ * (ref dashboard-surfaces §9.7.1, the `FE the intake Dropzone` row in
+ * `docs/roadmap/roadmap.md`). An unlanded consumer is not dead code.
  */
 export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
   "text/csv",
@@ -69,7 +81,7 @@ export const INTAKE_UPLOAD_MEDIA_TYPES = Object.freeze([
   "application/vnd.ms-excel",
 ] as const);
 
-export const IntakeUploadRequestSchema = z.strictObject({
+const IntakeUploadRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   mediaType: z.enum(INTAKE_UPLOAD_MEDIA_TYPES),
   /**
@@ -95,6 +107,7 @@ export interface IntakeServiceDependencies {
   }>;
   readonly authorityRead: Readonly<{
     getIntakeSession(intakeSessionId: string): IntakeSession | undefined;
+    getIntakeManifest(manifestId: string): IntakePlanManifest | undefined;
     findIntakeManifestsBySource(sourceSha256: string): readonly IntakePlanManifest[];
   }>;
   readonly artifacts: ContentAddressedArtifactWriter;
@@ -134,7 +147,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
   const requireProjection = (workflow: string) => {
     const projection = dependencies.projections.resolve(workflow);
     if (projection === undefined) {
-      throw new Error(
+      throw new TargetNotFoundError(
         `workflow ${workflow} is not registered for spreadsheet intake; it declares no intake projection`,
       );
     }
@@ -143,7 +156,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
 
   const requireDescriptor = (workflow: string): AnyWorkflowDescriptor => {
     const descriptor = dependencies.descriptors.resolve(workflow);
-    if (descriptor === undefined) throw new Error(`workflow ${workflow} is not registered`);
+    if (descriptor === undefined) throw new TargetNotFoundError(`workflow ${workflow} is not registered`);
     return descriptor;
   };
 
@@ -160,6 +173,9 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
     );
     const layout = parse.layout;
     const readAt = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+    const planning = workflowPlanning(descriptor);
+    const deriveCurrentItemId = (parsedInput: Parameters<typeof planning.matchKey>[0]) =>
+      ItemIdSchema.parse(deriveItemId(session.workflow, planning.matchKey(parsedInput)));
     const suggestions = layout === null
       ? []
       : suggestBindings({
@@ -175,7 +191,6 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
     const validation = session.validation.state === "none" || layout === null
       ? { state: "none" as const }
       : (() => {
-        const planning = workflowPlanning(descriptor);
         const outcome = validateIntakeRows({
           workflow: session.workflow,
           sourceSha256: session.artifact.sha256,
@@ -187,8 +202,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
           corrections: session.corrections,
           excludedRows: session.exclusions.map((entry) => entry.sourceRow),
           readAt: session.validation.readAt,
-          deriveItemId: (parsedInput) =>
-            ItemIdSchema.parse(deriveItemId(session.workflow, planning.matchKey(parsedInput))),
+          deriveItemId: deriveCurrentItemId,
         });
         return {
           state: "validated" as const,
@@ -200,20 +214,67 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         };
       })();
 
+    const committedManifest = (() => {
+      if (session.intakeManifestId === undefined) return undefined;
+      const committed = dependencies.authorityRead.getIntakeManifest(session.intakeManifestId);
+      if (committed === undefined) {
+        throw new Error(
+          `enqueued intake session ${session.intakeSessionId} names missing manifest ${session.intakeManifestId}`,
+        );
+      }
+      return committed;
+    })();
+    const terminalManifest = committedManifest === undefined
+      ? undefined
+      : IntakeManifestTerminalProjectionSchema.parse({
+        manifestId: committedManifest.manifestId,
+        mappingFingerprint: committedManifest.mappingFingerprint,
+        mappingSnapshotHash: committedManifest.mappingSnapshotHash,
+        intakeProjectionFingerprint: committedManifest.intakeProjectionFingerprint,
+        workflowContractFingerprint: committedManifest.workflowContractFingerprint,
+        canonicalInputSchemaHash: committedManifest.canonicalInputSchemaHash,
+        createdAt: committedManifest.createdAt,
+        totals: committedManifest.totals,
+        sourceRowDispositions: committedManifest.sourceRowDispositions,
+        validRows: committedManifest.validRows,
+      });
+
     /**
      * Ref data-intake-and-edit-data §7 vector #11 (D171): these exact bytes may have run before. The
-     * LATEST manifest for this (digest, workflow) pair is what a rerun would be
-     * compared against, and the diff is computed against the session's CURRENT
-     * mapping — so an operator who re-uploads last week's export sees whether
-     * anything moved before they enqueue it a second time.
+     * committed manifest is the only comparison authority for an enqueued
+     * session. An open session uses the latest earlier manifest for this
+     * (digest, workflow) pair, excluding its own reservation and anything
+     * created after the session.
      */
     const rerun = ((): unknown => {
-      if (layout === null) return undefined;
-      const prior = dependencies.authorityRead
-        .findIntakeManifestsBySource(session.artifact.sha256)
-        .filter((manifest) => manifest.workflow === session.workflow)
-        .at(-1);
+      const sessionCreatedAtMs = Date.parse(session.createdAt);
+      const prior = committedManifest ?? (() => {
+        const eligible = dependencies.authorityRead
+          .findIntakeManifestsBySource(session.artifact.sha256)
+          .filter((candidate) =>
+            candidate.workflow === session.workflow
+            && candidate.manifestId !== session.reservedManifestId
+            && Date.parse(candidate.createdAt) <= sessionCreatedAtMs);
+        if (eligible.length === 0) return undefined;
+
+        const latestCreatedAtMs = Math.max(...eligible.map((candidate) => Date.parse(candidate.createdAt)));
+        const latest = eligible.filter((candidate) => Date.parse(candidate.createdAt) === latestCreatedAtMs);
+        if (latest.length !== 1) {
+          const candidateIds = latest.map((candidate) => candidate.manifestId).sort();
+          throw new Error(
+            `intake session ${session.intakeSessionId} cannot select a unique prior manifest at `
+            + `${new Date(latestCreatedAtMs).toISOString()}: candidates ${candidateIds.join(", ")}`,
+          );
+        }
+        return latest[0];
+      })();
       if (prior === undefined) return undefined;
+      if (layout === null) {
+        throw new Error(
+          `intake session ${session.intakeSessionId} cannot compare prior manifest ${prior.manifestId}: `
+          + "the current intake layout is missing",
+        );
+      }
       return {
         intakeManifestId: prior.manifestId,
         createdAt: prior.createdAt,
@@ -222,8 +283,10 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
           session,
           layout,
           projection,
+          readAt: session.validation.state === "validated" ? session.validation.readAt : session.updatedAt,
           workflowContractFingerprint: descriptor.contractFingerprint,
           canonicalInputSchemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"),
+          deriveItemId: deriveCurrentItemId,
         })),
       };
     })();
@@ -236,7 +299,9 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       ...(session.sourceName === undefined ? {} : { sourceName: session.sourceName }),
       state: session.state,
       expectedVersion: session.version,
+      ...(session.reservedManifestId === undefined ? {} : { reservedManifestId: session.reservedManifestId }),
       ...(session.intakeManifestId === undefined ? {} : { intakeManifestId: session.intakeManifestId }),
+      ...(terminalManifest === undefined ? {} : { manifest: terminalManifest }),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       sheets: parse.sheets,
@@ -286,6 +351,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         if (open !== undefined) return { state: "joined" as const, session: open };
         const record = IntakeSessionSchema.parse({
           intakeSessionId: dependencies.ids.uuid(),
+          reservedManifestId: dependencies.ids.uuid(),
           actorId: dependencies.actorId,
           workflow: request.workflow,
           artifact,
@@ -310,7 +376,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
 
     async read(intakeSessionId) {
       const session = dependencies.authorityRead.getIntakeSession(intakeSessionId);
-      if (session === undefined) throw new Error(`intake session ${intakeSessionId} does not exist`);
+      if (session === undefined) throw new TargetNotFoundError(`intake session ${intakeSessionId} does not exist`);
       return buildWire(session);
     },
 

@@ -78,6 +78,7 @@ import {
   captureFixtureDescriptor,
   handBuiltCaptureBinding,
 } from "../fixtures/capture-intake-fixtures.js";
+import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { archiveQueryDeps } from "../../fixtures/archive-seams.js";
@@ -210,6 +211,7 @@ function surface(options: SurfaceOptions = {}): Surface {
       listNotifications: () => [],
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
+      listWorkerPools: () => database.authority.workerPools.list(),
       isArchived: (runId: string) => database.authority.archivedRuns.isArchived(runId),
       getFailure: (failureId: string) => database.authority.failures.get(failureId),
       getReceipt: (runId: string) => database.authority.evidenceReceipts.findByRun(runId),
@@ -297,7 +299,7 @@ function surface(options: SurfaceOptions = {}): Surface {
     configSnapshotId: UUID_1,
     plannedBy: LOCAL_OPERATOR_ACTOR_ID,
   });
-  const hub = createDashboardStreamHub({ projection });
+  const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
   cleanups.push(() => hub.close());
 
   const app = createDashboardApp({

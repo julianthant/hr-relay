@@ -33,6 +33,7 @@ import {
 } from "../ids.js";
 import { ServedHeaderCandidateSchema, HeaderDiscoverySchema } from "./header-discovery.js";
 import {
+  IntakeManifestTerminalProjectionSchema,
   IntakeManifestTotalsSchema,
   RerunDiffSchema,
   RowRejectSchema,
@@ -82,6 +83,16 @@ export const IntakeRerunWireSchema = z.strictObject({
 });
 export type IntakeRerunWire = z.infer<typeof IntakeRerunWireSchema>;
 
+/**
+ * The immutable terminal manifest an operator may inspect. This is never a
+ * preflight prediction: before enqueue only the separately served reservation
+ * exists, so the surface cannot claim a manifest has already been written.
+ * Its field schemas and row refinements are owned beside the durable manifest,
+ * so this reviewed projection cannot drift into a second totals contract.
+ */
+export const IntakeManifestWireSchema = IntakeManifestTerminalProjectionSchema;
+export type IntakeManifestWire = z.infer<typeof IntakeManifestWireSchema>;
+
 export const IntakeSessionWireSchema = z.strictObject({
   wireVersion: z.literal(1),
   intakeSessionId: IntakeSessionIdSchema,
@@ -92,8 +103,12 @@ export const IntakeSessionWireSchema = z.strictObject({
   state: IntakeSessionStateSchema,
   /** The CAS token every intake command target carries. */
   expectedVersion: PositiveIntSchema,
+  /** Absent only on a durable session created before manifest identities were reserved at upload. */
+  reservedManifestId: IntakeManifestIdSchema.optional(),
   /** Set exactly when the session enqueued; the manifest is the rerun authority. */
   intakeManifestId: IntakeManifestIdSchema.optional(),
+  /** Present only after authority committed the immutable manifest. */
+  manifest: IntakeManifestWireSchema.optional(),
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
 
@@ -119,5 +134,67 @@ export const IntakeSessionWireSchema = z.strictObject({
   validation: IntakeValidationWireSchema,
   /** Absent when these bytes have never been enqueued for this workflow. */
   rerun: IntakeRerunWireSchema.optional(),
+}).superRefine((session, context) => {
+  if (session.state === "enqueued" && session.intakeManifestId === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["intakeManifestId"],
+      message: "an enqueued session names the manifest it fanned out as",
+    });
+  }
+  if (session.state !== "enqueued" && session.intakeManifestId !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["intakeManifestId"],
+      message: "only an enqueued session carries a manifest id",
+    });
+  }
+  if (session.state === "enqueued" && session.manifest === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["manifest"],
+      message: "an enqueued session serves the immutable manifest it committed",
+    });
+  }
+  if (session.state !== "enqueued" && session.manifest !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["manifest"],
+      message: "a manifest exists only after the session enqueues",
+    });
+  }
+  if (
+    session.manifest !== undefined
+    && session.intakeManifestId !== undefined
+    && session.manifest.manifestId !== session.intakeManifestId
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["manifest", "manifestId"],
+      message: "the terminal manifest matches the session's committed manifest id",
+    });
+  }
+  if (
+    session.rerun !== undefined
+    && session.intakeManifestId !== undefined
+    && session.rerun.intakeManifestId !== session.intakeManifestId
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["rerun", "intakeManifestId"],
+      message: "the terminal rerun matches the session's committed manifest id",
+    });
+  }
+  if (
+    session.reservedManifestId !== undefined
+    && session.intakeManifestId !== undefined
+    && session.reservedManifestId !== session.intakeManifestId
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["intakeManifestId"],
+      message: "an enqueued session consumes its reserved manifest id exactly",
+    });
+  }
 });
 export type IntakeSessionWire = z.infer<typeof IntakeSessionWireSchema>;

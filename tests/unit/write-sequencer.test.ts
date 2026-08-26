@@ -8,10 +8,12 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
 import { TaskError } from "../../src/base/errors.js";
 import type { WriteSequencerContext } from "../../src/core/run-executor.js";
 import {
   createWriteSequencer,
+  invokeBoundedTask,
   StagedPageDiscardedError,
   WriteParkedError,
   type ProductionWriteSequencer,
@@ -20,6 +22,8 @@ import {
 } from "../../src/core/write-sequencer.js";
 import { withBoundRunConfigFingerprint, type WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
+import { TaskIdSchema } from "../../src/domain/ids.js";
+import { classifyEvidenceLeaf } from "../../src/domain/trust/evidence-classification.js";
 import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -47,6 +51,7 @@ import {
   WRITE_FIXTURE_NOW,
   WRITE_FIXTURE_OBSERVATION,
   WRITE_FIXTURE_RUN_ID,
+  WRITE_FIXTURE_SECRET_CANARY,
   WRITE_FIXTURE_STAGED_STATE,
   unknownProbeVerdict,
   WRITE_FIXTURE_WORKER_ID,
@@ -61,6 +66,66 @@ import {
   type WriteFixtureWorld,
 } from "./fixtures/write-sequencer-fixtures.js";
 
+describe("bounded transaction task recording", () => {
+  it("publishes a whole recordData call before a later throw and reads the wall clock once", async () => {
+    const baseClock = manualClock(new Date(WRITE_FIXTURE_NOW));
+    let wallClockReads = 0;
+    const clock: TestClock = {
+      ...baseClock,
+      now(): Date {
+        wallClockReads += 1;
+        return baseClock.now();
+      },
+    };
+    const batches: { recordedAt: string; fields: readonly string[] }[] = [];
+
+    await assert.rejects(
+      invokeBoundedTask(
+        {
+          clock,
+          scheduler: new ManualScheduler(clock),
+          taskDeadlineMs: 60_000,
+          log: recordingLogger().log,
+        },
+        TaskIdSchema.parse("ucpath/read-write-fixture-probe"),
+        new AbortController().signal,
+        async (_signal, recordData) => {
+          recordData([
+            { direction: "read", field: "state", value: "absent" },
+            { direction: "read", field: "eid", value: WRITE_FIXTURE_EID },
+          ]);
+          assert.equal(batches.length, 1, "record-time sink runs before task continuation");
+          throw new Error("later probe failure");
+        },
+        (batch) => batches.push({
+          recordedAt: batch.recordedAt,
+          fields: batch.points.map(({ field }) => field),
+        }),
+      ),
+      /later probe failure/u,
+    );
+
+    assert.deepEqual(batches, [{ recordedAt: WRITE_FIXTURE_NOW, fields: ["state", "eid"] }]);
+    assert.equal(wallClockReads, 1, "one recordData call owns one instant, not one per point or field");
+  });
+
+  it("declares every production probe and post-fence verifier point by its own task role", () => {
+    const roles = [
+      ["ucpath/match-existing-termination", ["state", "emplId", "effectiveDate"]],
+      ["ucpath/match-pending-terminations", ["state", "emplId"]],
+      ["kuali/match-separation-finalization", ["state", "documentNumber", "transactionNumber"]],
+      ["ucpath/verify-termination", ["state", "emplId", "effectiveDate"]],
+      ["ucpath/verify-pending-terminations-cleared", ["state", "emplId"]],
+      ["kuali/verify-separation-finalization", ["state", "documentNumber", "transactionNumber"]],
+    ] as const;
+
+    for (const [taskId, paths] of roles) {
+      const scope = { kind: "task-output" as const, taskId: TaskIdSchema.parse(taskId) };
+      for (const path of paths) assert.doesNotThrow(() => classifyEvidenceLeaf(scope, path), `${taskId}:${path}`);
+    }
+  });
+});
+
 const disposers: (() => void)[] = [];
 afterEach(() => {
   for (const dispose of disposers.splice(0)) dispose();
@@ -72,6 +137,7 @@ interface Harness {
   readonly clock: TestClock;
   readonly manager: WorkerSessionManager;
   readonly sessions: ReturnType<typeof writeFixtureSessions>;
+  readonly scheduler: ManualScheduler;
   readonly emitter: ReturnType<typeof recordingEmitter>;
   readonly ids: ReturnType<typeof sequentialIdFactory>;
   readonly sequencer: ProductionWriteSequencer;
@@ -87,6 +153,7 @@ interface Harness {
 function harness(options: Readonly<{
   hooks?: WriteSequencerHooks;
   commitHooks?: AuthorityWriteCommitHooks;
+  emitterThrowsOn?: "data.observed" | "failed-task-span" | "transaction.fenced" | "verify-start";
 }> = {}): Harness {
   const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
   const root = mkdtempSync(join(tmpdir(), "hrauto-write-sequencer-"));
@@ -104,15 +171,40 @@ function harness(options: Readonly<{
   const sessions = writeFixtureSessions(world);
   const manager = writeFixtureSessionManager(sessions, registry, clock);
   const emitter = recordingEmitter();
+  const spanSink = {
+    emit(event: Parameters<typeof emitter.emitter.emit>[0]): void {
+      const throwOnFailedTaskSpan = options.emitterThrowsOn === "failed-task-span"
+        && event.t === "span.ended"
+        && event.kind === "task"
+        && event.outcome === "failed";
+      const throwOnVerifyStart = options.emitterThrowsOn === "verify-start"
+        && event.t === "span.started"
+        && event.kind === "task"
+        && event.spanPath.endsWith("/verify");
+      const throwOnEventArm = options.emitterThrowsOn !== undefined
+        && options.emitterThrowsOn !== "failed-task-span"
+        && options.emitterThrowsOn !== "verify-start"
+        && event.t === options.emitterThrowsOn;
+      if (throwOnEventArm || throwOnFailedTaskSpan || throwOnVerifyStart) {
+        const failureArm = throwOnFailedTaskSpan
+          ? "failed-task-span"
+          : throwOnVerifyStart ? "verify-start" : event.t;
+        world.events.push(`emitter-throw:${failureArm}`);
+        throw new Error(`injected ${failureArm} writer failure`);
+      }
+      emitter.emitter.emit(event);
+    },
+  };
   const ids = sequentialIdFactory("c");
+  const scheduler = new ManualScheduler(clock);
   const sequencer = createWriteSequencer({
     stores: registry,
     authority: database,
     sessions: manager,
-    emitter: emitter.emitter,
+    emitter: spanSink,
     clock,
     ids,
-    scheduler: new ManualScheduler(clock),
+    scheduler,
     taskDeadlineMs: 60_000,
     operator: "local-operator",
     log: recordingLogger().log,
@@ -131,7 +223,7 @@ function harness(options: Readonly<{
       context.run.envelope.configFingerprint,
       () => sequencer.executeDryRun(context),
     );
-  return { world, database, clock, manager, sessions, emitter, ids, sequencer, execute, executeDryRun };
+  return { world, database, clock, manager, sessions, scheduler, emitter, ids, sequencer, execute, executeDryRun };
 }
 
 function claimRunning(
@@ -319,16 +411,138 @@ describe("the seven-beat happy path", () => {
     assert.ok(current.version > run.version);
     assert.deepEqual(h.sessions.closeReasons(), []);
 
-    // Prepare and commit sub-spans were emitted around the beats.
+    // Every task role is opened and closed; the receipt arm has no verifier.
     assert.deepEqual(
       h.emitter.events().map((event) => [event.t, event.spanPath]),
       [
+        ["span.started", "wf-090000-2222/submit-write/probe"],
+        ["data.observed", "wf-090000-2222/submit-write/probe"],
+        ["span.ended", "wf-090000-2222/submit-write/probe"],
         ["span.started", "wf-090000-2222/submit-write/prepare"],
+        ["data.observed", "wf-090000-2222/submit-write/prepare"],
         ["span.ended", "wf-090000-2222/submit-write/prepare"],
         ["span.started", "wf-090000-2222/submit-write/commit"],
+        ["transaction.fenced", "wf-090000-2222/submit-write/commit"],
+        ["data.observed", "wf-090000-2222/submit-write/commit"],
         ["span.ended", "wf-090000-2222/submit-write/commit"],
       ],
     );
+  });
+
+  it("streams the save-verify transaction as ordered probe, stage, fence, click, and read-back beats", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
+
+    await h.execute(contextFor(run, claim, writeFixtureSaveDescriptor));
+
+    assert.deepEqual(
+      h.emitter.events().map((event) => [
+        event.t,
+        event.spanPath,
+        event.t === "data.observed" ? event.taskId : "",
+      ]),
+      [
+        ["span.started", "wf-090000-2222/submit-write/probe", ""],
+        ["data.observed", "wf-090000-2222/submit-write/probe", "ucpath/read-write-fixture-probe"],
+        ["span.ended", "wf-090000-2222/submit-write/probe", ""],
+        ["span.started", "wf-090000-2222/submit-write/prepare", ""],
+        ["data.observed", "wf-090000-2222/submit-write/prepare", "ucpath/fill-write-fixture"],
+        ["span.ended", "wf-090000-2222/submit-write/prepare", ""],
+        ["span.started", "wf-090000-2222/submit-write/commit", ""],
+        ["transaction.fenced", "wf-090000-2222/submit-write/commit", ""],
+        ["data.observed", "wf-090000-2222/submit-write/commit", "ucpath/save-write-fixture"],
+        ["span.ended", "wf-090000-2222/submit-write/commit", ""],
+        ["span.started", "wf-090000-2222/submit-write/verify", ""],
+        ["data.observed", "wf-090000-2222/submit-write/verify", "ucpath/read-write-fixture-verify"],
+        ["span.ended", "wf-090000-2222/submit-write/verify", ""],
+      ],
+    );
+
+    const observed = h.emitter.events().filter((event) => event.t === "data.observed");
+    assert.equal(observed.length, 4, "one recordData call from every executed task role");
+    for (const event of observed) {
+      assert.equal(event.runId, WRITE_FIXTURE_RUN_ID);
+      assert.equal(event.nodeId, WRITE_FIXTURE_NODE_ID);
+      assert.equal(event.attempt, 1);
+      assert.equal(event.observedAt, event.ts, "the event reuses its record-time instant");
+    }
+    const probe = observed.find((event) => event.taskId === "ucpath/read-write-fixture-probe");
+    assert.ok(probe);
+    const probeValues = new Map(probe.points.flatMap((point) => point.values.map((value) => [value.key, value])));
+    assert.equal(probeValues.get("eid")?.transform, "last4");
+    assert.deepEqual(probeValues.get("secretCanary"), {
+      key: "secretCanary",
+      state: "redacted",
+      classification: "secret",
+      transform: "drop",
+    });
+    const bytes = JSON.stringify(h.emitter.events());
+    assert.equal(bytes.includes(WRITE_FIXTURE_SECRET_CANARY), false, "raw secret never reaches the span sink");
+    assert.equal(bytes.includes(WRITE_FIXTURE_EID), false, "raw person identifier never reaches the span sink");
+  });
+
+  it("keeps a probe observation emitted when that task throws later", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.probeThrowsAfterRecord = new Error("probe failed after observing the page");
+
+    await assert.rejects(h.execute(contextFor(run, claim)), /probe failed after observing the page/u);
+
+    assert.deepEqual(h.emitter.events().map((event) => [
+      event.t,
+      "outcome" in event ? event.outcome : "",
+    ]), [
+      ["span.started", ""],
+      ["data.observed", ""],
+      ["span.ended", "failed"],
+    ]);
+    assert.equal(intentByKey(h.database), undefined, "a pre-fence throw creates no intent");
+  });
+
+  it("preserves a probe task error first when its failed-span writer also throws", async () => {
+    const h = harness({ emitterThrowsOn: "failed-task-span" });
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.probeThrowsAfterRecord = new Error("PRIMARY_PROBE_TASK_FAILURE");
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim)),
+      (error: unknown) => {
+        assert.ok(error instanceof AggregateError);
+        assert.equal(error.cause, h.world.probeThrowsAfterRecord);
+        assert.deepEqual(
+          error.errors.map((entry: unknown) => entry instanceof Error ? entry.message : String(entry)),
+          ["PRIMARY_PROBE_TASK_FAILURE", "injected failed-task-span writer failure"],
+        );
+        return true;
+      },
+    );
+
+    assert.equal(intentByKey(h.database), undefined);
+    assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
+  });
+
+  it("fails an undeclared transaction observation by task and field before staging", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.recordUndeclaredProbeField = true;
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim)),
+      /no declared evidence classification.*ucpath\/read-write-fixture-probe.*undeclaredProbeField/u,
+    );
+
+    assert.deepEqual(h.world.events, ["probe"]);
+    assert.equal(
+      h.emitter.events().filter((event) => event.t === "data.observed").length,
+      1,
+      "the earlier valid batch remains; the undeclared batch emits nothing",
+    );
+    assert.equal(intentByKey(h.database), undefined);
   });
 
   it("replays its own settled checkpoint byte-exact without re-clicking", async () => {
@@ -486,6 +700,233 @@ describe("beat ① — durable same-key dedupe (D18)", () => {
 });
 
 describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, never silent)", () => {
+  it("keeps the commit lane and session owned until a deadline-ignoring callback actually settles", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    let releaseCallback = (): void => undefined;
+    const callbackMaySettle = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let reportCallbackInFlight = (): void => undefined;
+    const callbackInFlight = new Promise<void>((resolve) => {
+      reportCallbackInFlight = resolve;
+    });
+    h.world.afterCommitClickBeforeTaskSettlement = async () => {
+      reportCallbackInFlight();
+      await callbackMaySettle;
+    };
+
+    const execution = h.execute(contextFor(run, claim));
+    await callbackInFlight;
+    const [commitDeadline] = h.scheduler.pending();
+    assert.ok(commitDeadline, "the in-flight commit owns its immutable task deadline");
+    commitDeadline.fire();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(
+      h.emitter.events()
+        .filter((event) => event.spanPath.endsWith("/commit"))
+        .map((event) => event.t),
+      ["span.started"],
+      "deadline alone cannot flush the fenced commit lane before callback settlement",
+    );
+    assert.equal(intentByKey(h.database)?.status, "attempting", "the unsettled write remains recovery-visible");
+    assert.deepEqual(h.sessions.closeReasons(), [], "the callback's transaction session remains open");
+
+    releaseCallback();
+    await assert.rejects(execution, /exceeded its immutable 60000ms task deadline/u);
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
+  });
+
+  it("retains a parent-aborted transaction lease until its non-cooperative commit callback settles", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    let releaseCallback = (): void => undefined;
+    const callbackMaySettle = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let reportCallbackInFlight = (): void => undefined;
+    const callbackInFlight = new Promise<void>((resolve) => {
+      reportCallbackInFlight = resolve;
+    });
+    h.world.afterCommitClickBeforeTaskSettlement = async () => {
+      reportCallbackInFlight();
+      await callbackMaySettle;
+    };
+    const parent = new AbortController();
+    const parentFailure = new Error("operator cancelled while the external callback was in flight");
+    let executionSettled = false;
+    const execution = h.execute({
+      ...contextFor(run, claim),
+      signal: parent.signal,
+    }).then(
+      (value) => ({ state: "fulfilled" as const, value }),
+      (error: unknown) => ({ state: "rejected" as const, error }),
+    ).finally(() => {
+      executionSettled = true;
+    });
+
+    await callbackInFlight;
+    parent.abort(parentFailure);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(
+      h.emitter.events()
+        .filter((event) => event.spanPath.endsWith("/commit"))
+        .map((event) => event.t),
+      ["span.started"],
+      "parent abort cannot flush the commit lane before callback settlement",
+    );
+    assert.equal(intentByKey(h.database)?.status, "attempting");
+    assert.deepEqual(h.sessions.closeReasons(), [], "the retained transaction session remains open");
+    assert.equal(executionSettled, false, "the fenced execution remains owned while its callback is in flight");
+    assert.deepEqual(h.scheduler.pending(), [], "parent-first cancellation cancels the later task deadline");
+
+    releaseCallback();
+    const outcome = await execution;
+    assert.equal(outcome.state, "rejected");
+    if (outcome.state !== "rejected") return;
+    assert.ok(outcome.error instanceof WriteParkedError);
+    assert.match(outcome.error.message, /operator cancelled while the external callback was in flight/u);
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+    assert.deepEqual(h.sessions.closeReasons(), ["poisoned"], "post-settlement failure poisons exactly once");
+  });
+
+  it("keeps a deadline failure primary when parent abort follows during retained callback settlement", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    let releaseCallback = (): void => undefined;
+    const callbackMaySettle = new Promise<void>((resolve) => {
+      releaseCallback = resolve;
+    });
+    let reportCallbackInFlight = (): void => undefined;
+    const callbackInFlight = new Promise<void>((resolve) => {
+      reportCallbackInFlight = resolve;
+    });
+    h.world.afterCommitClickBeforeTaskSettlement = async () => {
+      reportCallbackInFlight();
+      await callbackMaySettle;
+    };
+    const parent = new AbortController();
+    const parentFailure = new Error("parent abort followed the commit deadline");
+    const execution = h.execute({
+      ...contextFor(run, claim),
+      signal: parent.signal,
+    }).then(
+      (value) => ({ state: "fulfilled" as const, value }),
+      (error: unknown) => ({ state: "rejected" as const, error }),
+    );
+
+    await callbackInFlight;
+    const [commitDeadline] = h.scheduler.pending();
+    assert.ok(commitDeadline);
+    commitDeadline.fire();
+    await new Promise((resolve) => setImmediate(resolve));
+    parent.abort(parentFailure);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(
+      h.emitter.events()
+        .filter((event) => event.spanPath.endsWith("/commit"))
+        .map((event) => event.t),
+      ["span.started"],
+    );
+    assert.equal(intentByKey(h.database)?.status, "attempting");
+    assert.deepEqual(h.sessions.closeReasons(), []);
+
+    releaseCallback();
+    const outcome = await execution;
+    assert.equal(outcome.state, "rejected");
+    if (outcome.state !== "rejected") return;
+    assert.ok(outcome.error instanceof WriteParkedError);
+    assert.ok(outcome.error.cause instanceof Error);
+    assert.ok(outcome.error.cause.cause instanceof AggregateError);
+    const [deadlineFailure, retainedParentFailure] = z.array(z.unknown()).parse(
+      outcome.error.cause.cause.errors,
+    );
+    assert.ok(deadlineFailure instanceof Error);
+    assert.match(deadlineFailure.message, /exceeded its immutable 60000ms task deadline/u);
+    assert.equal(retainedParentFailure, parentFailure);
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.deepEqual(h.sessions.closeReasons(), ["poisoned"]);
+  });
+
+  it("invokes the external commit before a fence-event writer failure when recordData runs pre-click", async () => {
+    const h = harness({ emitterThrowsOn: "transaction.fenced" });
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.commitRecordsBeforeClick = true;
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim)),
+      (error: unknown) => error instanceof WriteParkedError && error.parkCode === "unknown",
+    );
+
+    assert.ok(
+      h.world.events.indexOf("commit-click:ucpath.write-fixture.save-submit")
+        < h.world.events.indexOf("emitter-throw:transaction.fenced"),
+      "the external click must precede the first fallible post-fence span write",
+    );
+    assert.equal(intentByKey(h.database)?.status, "parked");
+  });
+
+  it("parks by task and field when a buffered commit observation is undeclared", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.recordUndeclaredCommitField = true;
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim)),
+      (error: unknown) => error instanceof WriteParkedError
+        && /ucpath\/submit-write-fixture.*undeclaredCommitField/u.test(error.message),
+    );
+
+    assert.ok(h.world.events.includes("commit-click:ucpath.write-fixture.save-submit"));
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.equal(JSON.stringify(h.emitter.events()).includes("RAW_UNDECLARED_COMMIT"), false);
+  });
+
+  it("parks with the commit error first when post-settlement fence emission also throws", async () => {
+    const h = harness({ emitterThrowsOn: "transaction.fenced" });
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.commitThrows = new Error("PRIMARY_COMMIT_TASK_FAILURE");
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim)),
+      (error: unknown) => {
+        assert.ok(error instanceof WriteParkedError);
+        assert.match(error.message, /PRIMARY_COMMIT_TASK_FAILURE/u);
+        assert.ok(error.cause instanceof Error);
+        assert.ok(error.cause.cause instanceof AggregateError);
+        assert.equal(error.cause.cause.cause, h.world.commitThrows);
+        assert.deepEqual(
+          error.cause.cause.errors.map((entry: unknown) => entry instanceof Error ? entry.message : String(entry)),
+          ["PRIMARY_COMMIT_TASK_FAILURE", "injected transaction.fenced writer failure"],
+        );
+        return true;
+      },
+    );
+
+    assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")));
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.equal(
+      h.database.authority.runCheckpoints.latest(
+        WRITE_FIXTURE_WORKFLOW_ID,
+        WRITE_FIXTURE_ITEM_ID,
+        WRITE_FIXTURE_NODE_ID,
+      ),
+      undefined,
+      "a dual failure never reports a committed side effect",
+    );
+  });
+
   it("parks intent and run when the commit impl throws after the fence", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);
@@ -544,6 +985,37 @@ describe("beat ⑤/⑥ — post-fence uncertainty durably parks (never done, nev
       (error: unknown) => error instanceof WriteParkedError && error.parkCode === "unknown",
     );
     assert.equal(intentByKey(h2.database)?.status, "parked");
+  });
+
+  it("parks a post-click verifier when its start-span writer fails", async () => {
+    const h = harness({ emitterThrowsOn: "verify-start" });
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+
+    await assert.rejects(
+      h.execute(contextFor(run, claim, writeFixtureSaveDescriptor)),
+      (error: unknown) => {
+        assert.ok(error instanceof WriteParkedError);
+        assert.ok(error.cause instanceof Error);
+        assert.equal(error.cause.name, "PostFenceWriteFailure");
+        assert.ok(error.cause.cause instanceof Error);
+        assert.match(error.cause.cause.message, /injected verify-start writer failure/u);
+        return true;
+      },
+    );
+
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+    assert.ok(!h.world.events.includes("verify"), "failed verifier setup cannot invoke the read-back task");
+    assert.equal(
+      h.database.authority.runCheckpoints.latest(
+        WRITE_FIXTURE_WORKFLOW_ID,
+        WRITE_FIXTURE_ITEM_ID,
+        WRITE_FIXTURE_NODE_ID,
+      ),
+      undefined,
+      "a verifier setup failure cannot falsely report the external side effect",
+    );
   });
 });
 
@@ -715,6 +1187,14 @@ describe("dry-run — structurally zero intent, zero fence, zero commit", () => 
       "match",
     );
     assert.deepEqual(h.world.events, ["probe", "prepare", `subject-read:${WRITE_FIXTURE_OBSERVATION}`]);
+    assert.deepEqual(h.emitter.events().map((event) => [event.t, event.spanPath]), [
+      ["span.started", "wf-090000-2222/submit-write/probe"],
+      ["data.observed", "wf-090000-2222/submit-write/probe"],
+      ["span.ended", "wf-090000-2222/submit-write/probe"],
+      ["span.started", "wf-090000-2222/submit-write/prepare"],
+      ["data.observed", "wf-090000-2222/submit-write/prepare"],
+      ["span.ended", "wf-090000-2222/submit-write/prepare"],
+    ], "dry-run reports probe and stage only; it fabricates no fence, click, or read-back");
     assert.equal(intentByKey(h.database), undefined, "zero intents");
     assert.ok(!h.world.events.some((event) => event.startsWith("commit-click")), "zero clicks");
     const minted = h.ids.minted();

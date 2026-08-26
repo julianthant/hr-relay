@@ -18,6 +18,12 @@
  * durations are. The `--ds-w-archive-*` width tokens exist for exactly that
  * alignment; two grids cannot be made to agree by choosing better numbers.
  *
+ * This table is NOT virtualised. `@tanstack/react-virtual` is not a dependency here, there are
+ * no row/section pixel constants, no `overscan`, no spacer rows and no flat item list — each
+ * sweep gets its own `<TBody>` and the browser lays out every row of every sweep. The demo's
+ * `useVirtualizer` handles its own 800-row case; whether this table needs the same machinery at
+ * that scale is undecided (Track D row D9; `03a-finish-the-dashboard.md` OPEN question 1).
+ *
  * ## Two views, and the list keeps its detail beside it
  *
  * `Archived runs` is a table + the selected run's stored snapshot, side by
@@ -39,15 +45,13 @@
  *
  * ## What this surface will not invent
  *
- * The demo renders a few facts this wire still does not carry — a dry-run flag
- * and a resolved instance per LIST row, and a short workflow code. Each is
- * recorded in the findings ledger rather than approximated here: a
- * plausible-but-wrong value on a record whose whole job is to be trustworthy
- * is the one thing this surface must never produce. What HAS landed since that
- * sentence was written is D223's five tabs off the frozen sections, the
- * described capture tiles, the per-attempt history, Export, and charter §25's
- * change record — the last of which is authored in the bump dialog, because
- * the only person who can say why a version moved is the one moving it.
+ * Every list hazard this archive can prove is copied from the frozen row:
+ * resolved instances, rehearsal state and the recorded warning set. The row
+ * draws those facts directly and folds every absence union by name; it never
+ * reconstructs one from a workflow id, title or current descriptor. That same
+ * rule governs the detail header and relaunch cautions: a plausible value on a
+ * record whose whole job is to be trustworthy is the one thing this surface
+ * must never produce.
  *
  * ## The bump is on this page on purpose
  *
@@ -72,6 +76,7 @@ import {
   ChevronRight,
   CircleAlert,
   FileClock,
+  FlaskConical,
   Info,
   Lock,
   RotateCw,
@@ -127,7 +132,6 @@ import {
   TimelineSteps,
   Well,
   type DsSortDirection,
-  type DsStatus,
   type DsStep,
   dsFocus,
   dsIcon,
@@ -158,14 +162,28 @@ import type { CommandResult, VersionScope } from "../../domain/commands.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
-import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural } from "./format.js";
+import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural, shortHash } from "./format.js";
+import { testInstanceSystems } from "./test-instance-hazard.js";
 import { dsStatusOf } from "./status-model.js";
 import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
-import { ARCHIVE_INDEX, archivedRunTouchedTest } from "./archive-model.js";
+import {
+  ARCHIVE_INDEX,
+  type ArchiveView,
+  archiveBumpKind,
+  archivePriorityTone,
+  archiveStatusLabel,
+  archiveSweepVersionRange,
+  archiveWarningChip,
+  archivedRelaunchCautions,
+  archivedRelaunchHeadline,
+  archivedRunHeading,
+  archivedRunTouchedTest,
+  blockerStatusOf,
+} from "./archive-model.js";
+import { settleCommandResult } from "../app/command-result.js";
 
 const SOURCE_SURFACE = "archive";
 
-type ArchiveView = "runs" | "versions";
 type ArchiveTab = "summary" | "logs" | "data" | "people" | "evidence";
 
 /**
@@ -181,10 +199,6 @@ const DRIFT_TEXT: Record<string, string> = {
 
 function driftWords(drift: readonly string[]): string {
   return drift.map((reason) => DRIFT_TEXT[reason] ?? reason).join(" · ");
-}
-
-function shortHash(value: string): string {
-  return value.slice(0, 8);
 }
 
 /* ── the query ───────────────────────────────────────────────────────────── */
@@ -241,13 +255,6 @@ function queryIsFiltered(query: ArchiveQuery): boolean {
 }
 
 /* the test-instance predicate lives in `archive-model.ts` — see the note there */
-
-/** The systems whose TEST instance this run resolved, for the hazard's title. */
-function testInstanceSystems(entry: ArchiveEntryWire): readonly string[] {
-  return entry.resolvedInstances
-    .filter((resolved) => resolved.instance === "test")
-    .map((resolved) => resolved.system);
-}
 
 /**
  * A run's measured duration, or an explicit absence. `endedAt` is served in
@@ -383,9 +390,10 @@ function scopeWord(scope: ArchiveSweepWire["scope"]): string {
 /**
  * The sweep's NAME, as the demo's `ec v3.1 → v4.0` reads: the identities it
  * moved every prior run onto, then the version it was applied for. The demo's
- * `major`/`minor` word has no counterpart on this wire (see
- * `docs/findings/archive.md`), so the badge carries the SCOPE, which is the
- * fact D179 does record.
+ * `major`/`minor` word DOES have a counterpart on this wire — `changeRecord.value.kind`
+ * (`ArchiveSweepWireSchema`, `src/domain/dashboard/archive.ts`, D223). The
+ * sibling view-model folds that union once for the badge, accessible summary,
+ * popover and Archived-by card; this name remains only the version identity.
  */
 function sweepNameLabel(sweep: ArchiveSweepWire): string {
   const identities = sweep.appliedIdentities
@@ -412,6 +420,46 @@ function ArchiveStatusLead({ children }: { children?: ReactNode }) {
   );
 }
 
+/** The exact warning count and first sentence copied off the frozen row. */
+function ArchiveWarningCount({ warnings }: { warnings: ArchiveEntryWire["warnings"] }) {
+  const chip = archiveWarningChip(warnings);
+  if (chip.state === "absent") return null;
+  return (
+    <span
+      aria-label={plural(chip.count, "warning")}
+      title={chip.title}
+      className={cn(
+        "inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[var(--ds-space-tight)] rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]",
+        "border-[color:var(--ds-status-done-warnings-border)] bg-[var(--ds-status-done-warnings-bg)] text-[color:var(--ds-status-done-warnings-fg)]",
+        dsText.meta,
+        dsText.nums,
+        dsText.flush,
+      )}
+    >
+      <TriangleAlert aria-hidden className={dsIcon.sm} />
+      {chip.count}
+    </span>
+  );
+}
+
+/** A list-row rehearsal mark: compact, but never reduced to color alone. */
+function ArchiveDryRunMark() {
+  return (
+    <span
+      title="Dry run — this rehearsal reads the systems and writes nothing."
+      className={cn(
+        "inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[var(--ds-space-tight)] rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]",
+        "border-[color:var(--ds-info-border)] bg-[var(--ds-info-bg)] text-[color:var(--ds-info-fg)]",
+        dsText.meta,
+        dsText.flush,
+      )}
+    >
+      <FlaskConical aria-hidden className={dsIcon.sm} />
+      dry run
+    </span>
+  );
+}
+
 function ArchiveRow({
   entry,
   selected,
@@ -429,6 +477,7 @@ function ArchiveRow({
         <span className="inline-flex min-w-0 items-center gap-[var(--ds-space-snug)]">
           <ArchiveStatusLead />
           <StatusPill status={dsStatusOf(entry.status)} size="sm" hideIcon />
+          <ArchiveWarningCount warnings={entry.warnings} />
         </span>
       </TD>
       <TD className="min-w-0">
@@ -465,6 +514,7 @@ function ArchiveRow({
               className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-status-waiting-fg)]")}
             />
           )}
+          {entry.dryRun && <ArchiveDryRunMark />}
           {/*
             The second hazard a LIST row can now name: this run resolved a TEST
             instance of at least one system, so whatever it reports it did, it
@@ -475,7 +525,7 @@ function ArchiveRow({
           */}
           {archivedRunTouchedTest(entry) && (
             <TriangleAlert
-              aria-label={`touched a test instance of ${testInstanceSystems(entry).join(", ")}`}
+              aria-label={`touched a test instance of ${testInstanceSystems(entry.resolvedInstances).join(", ")}`}
               className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-status-waiting-fg)]")}
             />
           )}
@@ -522,9 +572,16 @@ function SweepSectionRow({
   const count = section.entries.length;
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const cell = "bg-[var(--ds-surface-2)] border-b border-[color:var(--ds-border)]";
-  const summary = sweep === undefined
-    ? `${applicationId} — the index carries no sweep record, ${plural(count, "run")}`
-    : `${sweepNameLabel(sweep)}, ${scopeWord(sweep.scope)} scope, ${plural(count, "run")}`;
+  const kind = sweep === undefined ? undefined : archiveBumpKind(sweep.changeRecord);
+  const summary = (() => {
+    if (sweep === undefined) {
+      return `${applicationId} — the index carries no sweep record, ${plural(count, "run")}`;
+    }
+    const sweepKind = archiveBumpKind(sweep.changeRecord);
+    return sweepKind.state === "present"
+      ? `${sweepNameLabel(sweep)}, ${sweepKind.kind} bump — ${scopeWord(sweep.scope)} scope, ${plural(count, "run")}`
+      : `${sweepNameLabel(sweep)}, bump kind unrecorded — ${sweepKind.reason}, ${plural(count, "run")}`;
+  })();
 
   return (
     <TR interactive onClick={onToggle} className={cn("h-auto", dsMotion.fast)}>
@@ -549,10 +606,16 @@ function SweepSectionRow({
           <span className="sr-only">{summary}</span>
           {sweep === undefined ? (
             <span aria-hidden className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>no record</span>
+          ) : kind?.state === "present" ? (
+            <Badge tone={kind.tone} title={kind.label}>{kind.kind}</Badge>
           ) : (
-            <Badge tone={sweep.scope.kind === "application" ? "warning" : "neutral"}>
-              {scopeWord(sweep.scope)}
-            </Badge>
+            <span
+              aria-hidden
+              title={kind?.reason}
+              className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}
+            >
+              kind unrecorded
+            </span>
           )}
         </button>
       </TD>
@@ -599,7 +662,7 @@ function SweepSectionRow({
             </PopoverTrigger>
             <PopoverContent
               title={sweep === undefined ? "Sweep record missing" : sweepNameLabel(sweep)}
-              description={sweep === undefined ? undefined : `${scopeWord(sweep.scope)} scope`}
+              description={kind?.state === "present" ? kind.label : undefined}
               width="lg"
               align="end"
             >
@@ -742,7 +805,7 @@ function ArchiveListPanel({
   }, [wire.entries]);
 
   const statuses = useMemo(() => {
-    const seen = new Set<string>();
+    const seen = new Set<ArchiveEntryWire["status"]>();
     for (const entry of wire.entries) seen.add(entry.status);
     return [...seen];
   }, [wire.entries]);
@@ -849,7 +912,7 @@ function ArchiveListPanel({
         >
           <option value="all">Any outcome</option>
           {statuses.map((status) => (
-            <option key={status} value={status}>{status}</option>
+            <option key={status} value={status}>{archiveStatusLabel(status)}</option>
           ))}
         </Select>
         {/*
@@ -1038,14 +1101,24 @@ function SweepRecordCard({ sweep, applicationId }: { sweep: ArchiveSweepWire | u
       </Banner>
     );
   }
+  const kind = archiveBumpKind(sweep.changeRecord);
+  const versionRange = archiveSweepVersionRange(sweep);
   return (
     <Card>
       <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
           <SectionLabel>Archived by</SectionLabel>
+          {kind.state === "present" ? (
+            <Badge tone={kind.tone}>{kind.label}</Badge>
+          ) : (
+            <Badge tone="neutral" title={kind.reason}>kind unrecorded</Badge>
+          )}
           <Badge tone={sweep.scope.kind === "application" ? "warning" : "neutral"}>{scopeWord(sweep.scope)}</Badge>
-          <span className={cn(dsText.meta, dsText.nums, "ml-auto text-[color:var(--ds-fg)]")}>
-            → {sweep.targetVersion}
+          <span
+            className={cn(dsText.meta, dsText.nums, "ml-auto text-[color:var(--ds-fg)]")}
+            title={versionRange.state === "absent" ? versionRange.reason : undefined}
+          >
+            {versionRange.state === "present" ? versionRange.text : `→ ${versionRange.target}`}
           </span>
         </div>
         <p className={cn(dsText.body, "text-[color:var(--ds-fg)]")}>{sweepNameLabel(sweep)}</p>
@@ -1123,11 +1196,12 @@ function ArchivedRunDetail({
   }, [detail, toast]);
 
   const row = detail.row;
-  const status: DsStatus = dsStatusOf(row.status);
+  const status = dsStatusOf(row.status);
+  const heading = archivedRunHeading(row);
   const seconds = row.endedAt.state === "present"
     ? elapsedSecondsBetween(row.startedAt, row.endedAt.value)
     : undefined;
-  const testInstances = row.resolvedInstances.filter((resolved) => resolved.instance === "test");
+  const testInstances = testInstanceSystems(row.resolvedInstances);
   const evidenceCount = detail.evidence.artifactIds.length
     + detail.evidence.checkpointNodeIds.length
     + detail.evidence.writeIntentIds.length;
@@ -1159,12 +1233,12 @@ function ArchivedRunDetail({
   });
 
   return (
-    <Panel className="min-h-0" aria-label={`Archived run ${detail.detail.header.title}`}>
+    <Panel className="min-h-0" aria-label={`Archived run ${heading.title}`}>
       <PanelHeader
-        title={detail.detail.header.title}
-        subtitle={detail.workflowCode.state === "present"
-          ? `${detail.workflowLabel} · code ${detail.workflowCode.value} · archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`
-          : `${detail.workflowLabel} · archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`}
+        title={heading.title}
+        subtitle={heading.subtitle.state === "present"
+          ? `${heading.subtitle.value} · archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`
+          : `archived ${fmtClock(detail.archivedAt)} by ${detail.archivedBy}`}
         icon={<FileClock aria-hidden className={dsIcon.lg} />}
         meta={<StatusPill status={status} size="sm" />}
         actions={(
@@ -1188,7 +1262,7 @@ function ArchivedRunDetail({
         <div className="px-[var(--ds-space-cozy)] pt-[var(--ds-space-cozy)]">
           <Banner
             tone="success"
-            title="A fresh run was enqueued on the current version"
+            title={archivedRelaunchHeadline(detail)}
             action={<Button size="sm" variant="ghost" onClick={onDismiss}>Dismiss</Button>}
           >
             <span className={dsText.body}>
@@ -1232,10 +1306,16 @@ function ArchivedRunDetail({
             </Chip>
             <Chip label="trace">{detail.detail.header.traceId}</Chip>
             <Chip label="by">{row.actorId}</Chip>
+            <Chip label="priority" tone={archivePriorityTone(row.priority)}>{row.priority}</Chip>
             <Chip label="attempt">{String(detail.detail.header.attempt)}</Chip>
+            {row.dryRun && (
+              <Chip tone="info" icon={<FlaskConical aria-hidden className={dsIcon.sm} />}>
+                dry run — wrote nothing
+              </Chip>
+            )}
             {testInstances.length > 0 && (
               <Chip tone="warning" icon={<TriangleAlert aria-hidden className={dsIcon.sm} />}>
-                test instance · {testInstances.map((resolved) => resolved.system).join(", ")}
+                test instance · {testInstances.join(", ")}
               </Chip>
             )}
             {detail.relaunch.state === "available"
@@ -1246,6 +1326,8 @@ function ArchivedRunDetail({
 
           <MetaLine
             items={[
+              detail.workflowLabel,
+              ...(detail.workflowCode.state === "present" ? [`code ${detail.workflowCode.value}`] : []),
               `started ${fmtClock(row.startedAt)}`,
               row.endedAt.state === "present" ? `ended ${fmtClock(row.endedAt.value)}` : row.endedAt.reason,
               seconds === undefined ? "duration unknown" : `ran ${fmtElapsed(seconds)}`,
@@ -2025,6 +2107,7 @@ function RelaunchConfirmDialog({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const cautions = detail === undefined ? [] : archivedRelaunchCautions(detail.row);
   return (
     <Dialog open={detail !== undefined} onOpenChange={(open) => { if (!open) onCancel(); }}>
       {detail !== undefined && detail.relaunch.state === "available" && (
@@ -2128,6 +2211,7 @@ function RelaunchConfirmDialog({
               <SectionLabel className="mb-[var(--ds-space-snug)]">Decide these, rather than discover them</SectionLabel>
               <BulletList
                 items={[
+                  ...cautions,
                   `The fresh run executes v${String(detail.relaunch.current.descriptorVersion)}, whose shape moved — its steps and its written fields are not this record's.`,
                   "Nothing here is undone. The archived row stays exactly as it ended, and this relaunch is recorded against it.",
                 ]}
@@ -2200,7 +2284,7 @@ function BlockerTable({ blockers }: { blockers: WorkflowVersionStateWire["blocke
           {blockers.map((blocker) => (
             <TR key={blocker.runId}>
               <TD numeric>{blocker.traceId}</TD>
-              <TD>{blocker.runState}</TD>
+              <TD><StatusPill status={blockerStatusOf(blocker.runState)} size="sm" /></TD>
               <TD>
                 {blocker.runState === "parked-write"
                   ? "Resolve the parked write present or absent — an unresolved possible-submit is never archived."
@@ -2496,19 +2580,23 @@ function VersionsView({
 
 export function ArchiveWorkspace({
   selection,
+  view,
   actorId,
   onSelection,
+  onView,
   onClose,
 }: {
   /** `""` is the ledger; anything else is an archived run id. */
   selection: string;
+  /** The dashboard route owns which of Archive's two real views is visible. */
+  view: ArchiveView;
   actorId: string;
   onSelection: (next: string) => void;
+  onView: (next: ArchiveView) => void;
   onClose: () => void;
 }) {
   const client = useDashboardClient();
   const enter = useDsEnterTransition();
-  const [view, setView] = useState<ArchiveView>("runs");
   const [index, setIndex] = useState<AsyncResource<ArchiveIndexWire>>(LOADING);
   const [detail, setDetail] = useState<AsyncResource<ArchivedRunDetailWire>>(LOADING);
   const [query, setQuery] = useState<ArchiveQuery>(EMPTY_ARCHIVE_QUERY);
@@ -2565,7 +2653,10 @@ export function ArchiveWorkspace({
           // Any applied command changes what the ledger holds, so the index is
           // re-read rather than patched: this surface has no live stream and a
           // client-side splice would be a second projection of the archive.
-          if (next.state === "applied" || next.state === "already-applied") setNonce((value) => value + 1);
+          // "Applied" is the ONE fold's verdict (D253, Track D row D3) — a
+          // re-read triggered by a refused command would show the operator an
+          // unchanged index as though it were the result of their click.
+          if (settleCommandResult(next).kind === "applied") setNonce((value) => value + 1);
         },
         (error: unknown) => {
           setBusy(false);
@@ -2642,7 +2733,11 @@ export function ArchiveWorkspace({
         detail={detail.value}
         sweep={sweepOfDetail}
         busy={busy}
-        relaunched={relaunched === detail.value.runId && result?.state === "applied"}
+        relaunched={
+          relaunched === detail.value.runId
+          && result !== undefined
+          && settleCommandResult(result).kind === "applied"
+        }
         onRelaunch={() => setConfirming(true)}
         onDismiss={() => setRelaunched(undefined)}
       />
@@ -2719,7 +2814,7 @@ export function ArchiveWorkspace({
               size="sm"
               variant={view === "runs" ? "secondary" : "ghost"}
               aria-pressed={view === "runs"}
-              onClick={() => setView("runs")}
+              onClick={() => onView("runs")}
             >
               Archived runs
             </Button>
@@ -2727,7 +2822,7 @@ export function ArchiveWorkspace({
               size="sm"
               variant={view === "versions" ? "secondary" : "ghost"}
               aria-pressed={view === "versions"}
-              onClick={() => setView("versions")}
+              onClick={() => onView("versions")}
             >
               Versions & bumps
             </Button>

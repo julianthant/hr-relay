@@ -101,6 +101,15 @@ const EVERY_EVENT = [
   },
   { kind: "storage-degraded", concern: "backup", state: "failed", diagnosticFingerprint: HASH_C },
   { kind: "verified-done", runId: UUID_2, workflowId: "person-lookup" },
+  {
+    kind: "backfill-gap",
+    detector: "server-resume",
+    reason: "cursor-expired",
+    topic: "dashboard-day",
+    requestedCursor: "pc:1",
+    currentCursor: "pc:4",
+    projectionGeneration: 1,
+  },
 ] as const;
 
 describe("notification-durability: every closed trigger commits a durable item", () => {
@@ -127,6 +136,7 @@ describe("notification-durability: every closed trigger commits a durable item",
       ["repeating-failure", "repeating", "ping"],
       ["storage-degraded", "storage", "ping"],
       ["verified-done", "verified-done", "inbox"],
+      ["backfill-gap", "backfill-gap", "ping"],
     ]);
     assert.equal(inbox.list(LOCAL_OPERATOR_ACTOR_ID, "unread").length, EVERY_EVENT.length);
   });
@@ -136,7 +146,7 @@ describe("notification-durability: every closed trigger commits a durable item",
     assert.equal(new Set(fingerprints).size, EVERY_EVENT.length);
     assert.deepEqual(
       EVERY_EVENT.map((event) => projectNotificationTrigger(event).links[0]?.kind),
-      ["failure", "failure", "run", "run", "failure", "storage", "run"],
+      ["failure", "failure", "run", "run", "failure", "storage", "run", undefined],
     );
     // The occurrence never enters the identity: a second firing of the same
     // repeating alert with a higher count folds into the same row.

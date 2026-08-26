@@ -214,22 +214,22 @@ B21, B23, B25, B26, B30, B32, B63, B90, B105, B111).
 | # | Element | Demo | Rebuild | Verdict | Reason |
 |---|---|---|---|---|---|
 | B64 | stream wrapper, no scroller of its own | `pb-2 pt-1` `:1072` | `pb-base pt-tight` `:1101` | exact | |
-| B65 | **the stream is GROUPED BY STEP, with a sticky per-step heading** (`sticky top-[var(--ds-panel-head-h,0px)] … text-[11px] font-semibold` + a hairline rule) | `:1060-1065,1082-1085` | absent — one flat list | missing | **OPEN — operator call.** The rebuild publishes `--ds-panel-head-h` (`:1586-1601`) whose stated purpose is *"the log stream's step dividers … land BELOW it"*, and there are no dividers to land. Notes carry `sequence`; the timeline carries per-node steps |
+| B65 | **the stream is GROUPED BY STEP, with a sticky per-step heading** (`sticky top-[var(--ds-panel-head-h,0px)] … text-[11px] font-semibold` + a hairline rule) | `:1060-1065,1082-1085` | contiguous producing rows group under their served `step · task`; notes retain no fabricated producer heading | exact | the heading uses the published `--ds-panel-head-h`, spans the whole contiguous producer run, and preserves server sequence order |
 | B66 | line row `flex items-start gap-snug px-cozy pl-5 py-hair` | `:1095` | `:1119-1123` | exact | |
 | B67 | line timestamp cell (`mt-hair shrink-0` micro/nums muted) | `:1096` | `:1125-1133` | exact | |
 | B68 | line icon cell (`mt-hair w-3.5 shrink-0 text-center`) | `:1097-1099` | `:1134-1136` | exact | |
-| B69 | line ICON VOCABULARY | 9-kind `LINE_ICON` — `nav`/`search`/`read`/`write`/`ok`/`error`/`warn`/`pause`/`event`, with the `--ds-read-*` / `--ds-write-*` DIRECTION hues `:190-215` | 3-level `NOTE_ICON` — `info`/`warning`/`error` `:981-985` | divergent | `unserved:` a note carries a `level`, not a kind; nothing records nav/search/read/write/ok/pause/event on a note |
-| B70 | line TONE | partial `LINE_TONE` over ok/error/warn, default `text-secondary-foreground` `:228-232,1100` | total `NOTE_TONE` over the three levels `:975-979` | divergent | same as B69 |
+| B69 | line ICON VOCABULARY | 9-kind `LINE_ICON` — `nav`/`search`/`read`/`write`/`ok`/`error`/`warn`/`pause`/`event`, with the `--ds-read-*` / `--ds-write-*` DIRECTION hues `:190-215` | note level icons; observed rows use their served read/write direction glyph and hue; a mixed observed batch uses neutral database; fence uses an authority-fence glyph | divergent | `unserved:` note kinds remain only levels and no wire arm serves nav/search/ok/pause/event; the served row kinds no longer pretend otherwise |
+| B70 | line TONE | partial `LINE_TONE` over ok/error/warn, default `text-secondary-foreground` `:228-232,1100` | note levels retain their own tone; observed direction uses the Context rail's read/write hues; fence stays neutral | divergent | exact for the wire's independent note / observation / fence semantics, divergent from the demo's unavailable general kind vocabulary |
 | B71 | `pause` line row tint (`bg-info/6`) | `:1095` | absent | missing | same as B69 |
-| B72 | per-line `SystemChip` | `:1101` | absent | missing | `unserved:` a note carries no system |
-| B73 | per-line read/write `Pill` chips (`ArrowDownToLine`/`ArrowUpFromLine`, `h-[--ds-h-xs]`, read/write token trio, label + `dsText.nums` value) | `:234-258,1103` | absent | missing | `unserved:` a note carries no field/value pairs |
-| B74 | per-line `attempt N` badge | `:1104-1106` | absent | missing | `unserved:` a note carries no attempt |
+| B72 | per-line `SystemChip` | `:1101` | exact `SystemChip` on observed rows only | divergent | a note has no system and an authority fence is deliberately not presented as a page observation; neither receives an invented chip |
+| B73 | per-line read/write `Pill` chips (`ArrowDownToLine`/`ArrowUpFromLine`, `h-[--ds-h-xs]`, read/write token trio, label + `dsText.nums` value) | `:234-258,1103` | exact direction pills for each served redacted observation fact | divergent | notes have no facts; a fence has no fabricated page fact; the pill label/value search reaches the strict wire's field/key and redacted value |
+| B74 | per-line `attempt N` badge | `:1104-1106` | exact on observed and fenced rows | divergent | note attempts are unserved and remain absent rather than defaulted |
 | B75 | per-line duration | `:1107` | absent | missing | `unserved:` a note carries no duration |
 | B76 | search dimming `opacity-35` on a non-match | `:1092,1095` | `:1116,1122` | exact | |
 | B77 | search hit highlight | `rounded-sm bg-info/15` `:1100` | `dsRadius.xs bg-[--ds-info-bg]` `:1142` | exact | |
-| B78 | search PREDICATE | text OR any pill's `label value` `:1046-1048` | `note.message` only `:1049-1050` | divergent | same as B73 — there are no pills to match |
+| B78 | search PREDICATE | text OR any pill's `label value` `:1046-1048` | note prose OR an observed pill's served label/value | exact | fence rows have no invented searchable page detail |
 | B79 | empty-stream state | (none — a fixture always has lines) | `EmptyState` "No log lines yet" `:1107-1111` | extra | **OPEN — operator call** (defensible, uncited) |
-| B80 | `More lines follow.` | (none — the demo pages nothing) | `:1156-1165` | extra | **OPEN — operator call** (the wire pages via `nextCursor`; the sentence is honest but uncited, and it is not a control) |
+| B80 | `More lines follow.` | (none — the demo pages nothing) | `Load more lines` appends the immutable next cursor snapshot | extra | `ruled:` the strict wire pages through `nextCursor`; the explicit control is a truthful pagination affordance, not a demo-text port |
 | B81 | `live — streaming` pulse line | `:1137-1142` | absent | missing | `ruled:` port rule-(c) — fixture-only (`row.id === "pl-daniel"`) |
 | B82 | floor bar `sticky bottom-0 mt-auto flex items-center gap-snug border-t … px-cozy py-snug` | `:1147` | `:1171-1176` (adds `flex-wrap`) | exact | |
 | B83 | the search control | raw `<input class="w-40 …">` + an `sr-only <label htmlFor>` `:1148-1157` | the `SearchInput` DS primitive, `aria-label`, an `onClear`, `w-48` `:1178-1185` | divergent | **OPEN — operator call** (DS alignment plus a clear affordance the demo lacks; one width step wider) |
@@ -271,7 +271,7 @@ B21, B23, B25, B26, B30, B32, B63, B90, B105, B111).
 | B114 | `ParkResolveDialog` mounted at the REGION, not beside the record | `:2748-2754` | `:2040-2045` | exact | |
 | B115 | `IdentityApproveDialog` mounted at the region | (no counterpart) | `:2034-2039` | extra | `ruled: D226` |
 
-**R-B counts — 114 elements (B101 forwards to R-E): 48 exact · 24 divergent · 27 missing · 15 extra.**
+**R-B counts — 114 elements (B101 forwards to R-E): 50 exact · 26 divergent · 23 missing · 15 extra.**
 
 **Since 08-14.** R5's 17 header findings all hold at HEAD — none regressed. What CHANGED under the
 panel since the wave: D225 replaced the per-event strip with the categorical `StepStrip` (B45, B51,
@@ -281,11 +281,10 @@ and `efab4e1` moved the panel's clock to the served one (B23). Five ledger rows 
 "booked" were dispositioned on 2026-08-20 with named missing producers, and they are the reason
 B32, B63, B90, B111 and B112 are absences rather than defects.
 
-**OPEN in R-B (11 questions):** B41 the non-focusable timeline segment (and the dead
+**OPEN in R-B (9 questions):** B41 the non-focusable timeline segment (and the dead
 `group-focus-within` behind it) · B44 the untimed-segment dim · B50 the hover card's `Status` row ·
 B57 the orphan-gate segment · B60 the axis's `working` total · B61 the axis's `waiting on you` half ·
-B65 the stream's step grouping and sticky headings · B79 the empty-stream state · B80
-`More lines follow.` · B83 the search control · B87 the live/idle dot (= A49) · B91 `open {age}` on
+B79 the empty-stream state · B83 the search control · B87 the live/idle dot (= A49) · B91 `open {age}` on
 the decision card. Plus one recorded TENSION, not an OPEN: B45, where D225's `since <clock>`
 contradicts the demo's own argument for the age.
 
@@ -483,14 +482,14 @@ never corrected — so the first finding of this region is that its own deferral
 | D22 | `action.detail` | `:177` | absent | missing | `unserved:` no detail on the action entry |
 | D23 | `Per-person confirmations (N)` — the four-column `Table` (Person / EID / Confirmation / Read back) with the `verified` / `none to read` / `unverified` arms, and the D17 note beneath it | `:282-330` | absent | missing | `unserved:` no `members` on the receipt, and no `operation`-shaped workflow exists — the same producer B111 and the member-roster ledger row wait on |
 | D24 | `Completion criteria` — per criterion a `Check`/`X`/`CircleAlert`, `{criterion} — {result}`, `{method} → {observed} · {clock}`, and the note | `:332-368` | `Verification` — one `FactRow`: `{obligation}` · `{verdict}` · `required` `trust.tsx:239-253` | divergent | `unserved:` `VerificationEvidenceSchema` carries `{id, obligation, mandatory, verdict, evidence[]}` — no method, observed, instant or note. The ICON, however, is a pure port over the served verdict and is simply absent — **OPEN** |
-| D25 | `What was read` — the observations `Table` (Field / Value / System / Observed) plus the per-read action rows | `:370-411` | `Observations` — a `FactsSection` of `FactRow`s printing `{field}` · `{value}` · `{source.kind}` `trust.tsx:211` | divergent | **OPEN — operator call, and this one is SERVED-AND-DROPPED.** `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry `taskId` AND `observedAt` (`evidence.ts:25-26`); `trust.tsx` prints `source.kind` alone. The demo's `System` and `Observed` columns are both derivable from the bytes already on the wire |
+| D25 | `What was read` — the observations `Table` (Field / Value / System / Observed) plus the per-read action rows | `:370-411` | `Observations` — a `FactsSection` of `FactRow`s printing `{field}` · `{value}` · `{source.kind}` `trust.tsx:211` | PORTED | `ported cf2ee74a` — was: **OPEN, SERVED-AND-DROPPED**. `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry `taskId` AND `observedAt` (`evidence.ts:25-26`); `trust.tsx` prints `source.kind` alone. The demo's `System` and `Observed` columns are both derivable from the bytes already on the wire. **Closed** by `evidenceSourceMeta` (`trust-model.ts`), a TOTAL fold over the six source arms — the facts ride the per-ENTRY fact rather than a section footer, because this tree's facts are per-entry and a footer would have to pick one to speak for the rest |
 | D26 | `What was decided, and why` — `{key}: {outcome}` + `decided by the operator \| decided by rule · {clock}` + the reason | `:413-429` | `Decisions` — `{kind} — {outcome}` · reason `trust.tsx:213-224` | divergent | `unserved:` `DecisionEvidenceSchema` has no `by` and no `at`. Derivable one hop away for a GATE — D204's `gate-result` source arm carries `resolvedBy`/`resolvedAt` and the decision cites it through `evidence[]` — which makes this a derivation, not an observation |
-| D27 | `The input this run was given` — a `KeyValueList` with `· redacted at capture`, and an `input hash {…}` `MetaLine` | `:431-439` | `Input` — a `FactsSection` printing `redacted — {classification}` for a redacted value `trust.tsx:210` | divergent | the redaction treatment is exact-equivalent (and stronger — it names the classification). **The `input hash` line is OPEN and SERVED-AND-DROPPED**: `EvidenceSourceSchema`'s `input` arm carries `inputFingerprint` (`evidence.ts:24`) |
+| D27 | `The input this run was given` — a `KeyValueList` with `· redacted at capture`, and an `input hash {…}` `MetaLine` | `:431-439` | `Input` — a `FactsSection` printing `redacted — {classification}` for a redacted value `trust.tsx:210` | divergent | the redaction treatment is exact-equivalent (and stronger — it names the classification). The `input hash` line was **OPEN, SERVED-AND-DROPPED** (`EvidenceSourceSchema`'s `input` arm carries `inputFingerprint`, `evidence.ts:24`) and is `ported cf2ee74a` — it rides the same `evidenceSourceMeta` line as D25, cut through `shortHash` |
 | D28 | `Fresh or replayed` — `{lane} — {label} · {age}` + the detail sentence | `:441-453` | `Reused evidence` — `{kind}` · `{age} old` · `limit {age}` `trust.tsx:257-268` | divergent | `unserved:` `ReuseEvidenceSchema` carries `{id, kind, source, ageMs, freshnessLimitMs}` — `kind` is the demo's `lane`; there is no label and no detail. The rebuild ADDS the limit, which the demo does not print |
 | D29 | `What remains uncertain` — `CircleAlert` + the text + the explicit "load-bearing — this is why the run cannot read as done" / "declared non-load-bearing — it cannot change the transaction or the core result" sentence | `:455-473` | `Warnings` — `{code}` · summary · a `load-bearing` meta word `trust.tsx:270-282` | divergent | **OPEN — operator call**: the icon is gone and the demo's two full sentences collapse to one word, on the section whose whole job is saying what is still uncertain |
 | D30 | the receipt `note` paragraph | `:475-477` | absent | missing | `unserved:` no `note` on the receipt |
-| D31 | the FINGERPRINT footer — `border-t pt-base`, the `Fingerprint` glyph, and `trace` / `descriptor` / `config` Chips | `:479-484` | absent | missing | **OPEN — operator call, SERVED-AND-DROPPED.** `traceId`, `descriptorFingerprint` and `configFingerprint` are all on `RunEvidenceReceiptSchema` (`evidence.ts:129,135-136`), and D199's whole argument is that the receipt's `descriptorFingerprint` is a fact about THAT RUN. The provenance bar prints two of the three; the receipt — the artifact read months later — prints none |
-| D32 | the receipt's own `failure` id | (no counterpart — the demo has none) | absent | missing | `unserved`-inverse: `RunEvidenceReceiptSchema.failure` is served and drawn nowhere. **OPEN — operator call** (a failed run's receipt does not name the failure record beside it) |
+| D31 | the FINGERPRINT footer — `border-t pt-base`, the `Fingerprint` glyph, and `trace` / `descriptor` / `config` Chips | `:479-484` | absent | PORTED | `ported cf2ee74a` — was: **OPEN, SERVED-AND-DROPPED**. `traceId`, `descriptorFingerprint` and `configFingerprint` are all on `RunEvidenceReceiptSchema` (`evidence.ts:129,135-136`), and D199's whole argument is that the receipt's `descriptorFingerprint` is a fact about THAT RUN. The provenance bar prints two of the three; the receipt — the artifact read months later — printed none. **Closed** by `ReceiptFingerprints` (`trust.tsx`), the demo's footer element for element: last, under a subtle rule, `Fingerprint` glyph, three chips. The two hashes cut through `shortHash` (the product's ONE id length) with the whole value on the chip's `title`; the trace id is legible and prints whole |
+| D32 | the receipt's own `failure` id | (no counterpart — the demo has none) | absent | PORTED | `ported cf2ee74a` — was: **OPEN**, `unserved`-inverse (`RunEvidenceReceiptSchema.failure` is served and was drawn nowhere, so a failed run's receipt did not name the failure record beside it). **Closed** on the receipt's identity `MetaLine` (`receipt.tsx`), beside `receipt {id} · run {id}` |
 | D33 | SECTION ORDER | verdict → invariant → test → dry-run → subject → writes → members → criteria → reads → decisions → input → reuse → warnings → note → fingerprints | input → observations → decisions → actions → verification → output → reuse → warnings → trailing meta | divergent | `ruled:` stated `trust.tsx:14-15` — "the receipt's schema order IS the narrative order". Note it inverts the demo's: the demo opens on the WRITE and closes on the input; this opens on the input |
 | D34 | an `Output` facts section | (no counterpart — the demo's equivalent is the writes block) | `trust.tsx:255` | extra | `ruled:` `RunEvidenceReceiptSchema.output` |
 | D35 | empty sections omitted rather than explained | throughout | `trust.tsx:16-17` | exact | D24 restraint |
@@ -500,17 +499,17 @@ never corrected — so the first finding of this region is that its own deferral
 | D39 | `receipt.tsx`'s own header comment | — | `:5-11` calls itself "the 1i Receipt PLACEHOLDER" and says the full body "lands with the trust surfaces in 2g" | — | **OPEN — operator call (a stale claim, not an element).** 2g landed; `ReceiptEvidenceBody` renders input/observations/decisions/actions/verification/output/reuse/warnings. The sentence is the same false-deferral shape D251 found on the picker and f.1 found on the park cards |
 
 **R-D counts — 39 rows: 9 exact · 15 divergent · 12 missing · 3 extra** (D39 is a comment, counted
-in none of the four).
+in none of the four). Four rows moved to PORTED on 2026-08-21, `cf2ee74a`; the counts above are the
+AUDIT's, kept as taken.
 
 **Since 08-14:** the whole region is new to the ledger. What moved at HEAD: 2g's
 `ReceiptEvidenceBody` replaced the 1i placeholder body (D5–D9, D24–D29 all describe a real body
 rather than an empty frame), and D199 put the run's OWN `descriptorFingerprint` on the receipt —
 which is what makes D31 a served-and-dropped finding rather than a wire gap.
 
-**OPEN in R-D (10 questions), and three of them are SERVED-AND-DROPPED — the receipt is not
-printing bytes it already holds:** D25 the observation's `taskId` + `observedAt` · D27 the
-`inputFingerprint` · D31 the `trace` / `descriptor` / `config` footer · D32 the receipt's `failure`
-id. Plus: D8 the confidence Chip and its three sentences · D9 the scattered identity line · D11 the
+**OPEN in R-D — 10 questions at audit; the four SERVED-AND-DROPPED ones are CLOSED (`cf2ee74a`,
+2026-08-21, unit F1): D25 the observation's `taskId` + `observedAt` · D27 the `inputFingerprint` ·
+D31 the `trace` / `descriptor` / `config` footer · D32 the receipt's `failure` id.** Still open: D8 the confidence Chip and its three sentences · D9 the scattered identity line · D11 the
 invariant Banner · D13 the dry-run Banner · D17 the commit/prepare Badge · D24 the criterion icon ·
 D29 the uncertainty icon and its two full sentences · D39 the stale placeholder comment.
 
@@ -545,32 +544,32 @@ D29 the uncertainty icon and its two full sentences · D39 the stale placeholder
 | E16 | `What had already happened when it failed` — the four-column progress `Table` (Step / State / System / What it left behind) with the `done` / `FAILED HERE` / `never ran` vocabulary | `:60-64,286-310` | absent | missing | `unserved:` `FailureDetailWireSchema` carries no progress ledger. The facts exist elsewhere (`timeline.steps` states, and `writeState` per action on the receipt) — the producer is a projection joining them, not a new observation |
 | E17 | `Classification` `KeyValueList` — `Fingerprint` | `:316` | in the Cause-chain `MetaLine`, truncated to 12 chars + `…` (`trust.tsx:166`) | divergent | ruled by nothing; the truncation is sensible and uncited — folded into E20 |
 | E18 | `Classification` — `Code` | `:317` | the body `MetaLine` (E5) | divergent | see E5 |
-| E19 | `Classification` — `Occurred {clock}` | `:318` | absent; the rebuild prints `failed {completedAt}` off the OUTCOME instead (`log-panel.tsx:743`) | divergent | **OPEN — operator call, SERVED-AND-DROPPED.** `FailureDetailWireSchema.occurredAt` is required and drawn nowhere; the run's terminal instant is a DIFFERENT moment from the failure's |
-| E20 | `Classification` — `Run: {traceId} · attempt {N}` | `:319` | absent | missing | **OPEN — SERVED-AND-DROPPED**: `traceId` and `attempt` are both required on `FailureDetailWireSchema` |
+| E19 | `Classification` — `Occurred {clock}` | `:318` | absent; the rebuild prints `failed {completedAt}` off the OUTCOME instead (`log-panel.tsx:743`) | PORTED | `ported df5ea509` — was: **OPEN, SERVED-AND-DROPPED**. `FailureDetailWireSchema.occurredAt` is required and was drawn nowhere; the run's terminal instant is a DIFFERENT moment from the failure's. **Closed** as `occurred {clock}` on the body's first `MetaLine`, in the demo's position (after `code`). The panel's `failed {completedAt}` STAYS: both are true and each is now named for what it dates |
+| E20 | `Classification` — `Run: {traceId} · attempt {N}` | `:319` | absent | PORTED | `ported df5ea509` — was: **OPEN, SERVED-AND-DROPPED** (`traceId` and `attempt` are both required on `FailureDetailWireSchema`). **Closed** as `run {traceId} · attempt {N}`, the demo's `Run` row, before `node`/`task` as the demo has it |
 | E21 | `Classification` — `Node` / `Task` | `:320-321` | the body `MetaLine`, as `node {id}` / `task {id}` (`trust.tsx:116-117`) | exact | same facts, one line instead of two rows |
 | E22 | `Classification` — `Subject expected` / `Subject observed` (the observed row in danger tone) | `:322-325` | a `MetaLine` pair using `displayRedacted ?? digest` (`trust.tsx:122-131`) | divergent | `ruled:` the redaction rule stated `trust.tsx:11-13` — subject identity prefers the served `displayRedacted`; the demo's danger tone on the observed row is NOT ported (**OPEN**, minor) |
 | E23 | `Classification` — `Screen` / `Page state` | `:326-327` | the `MetaLine` at `trust.tsx:135-136` | exact | |
-| E24 | `Classification` — `URL (redacted)` | `:328` | absent | missing | **OPEN — SERVED-AND-DROPPED**: `page.urlRedacted` is on the wire (`run-detail.ts`) and drawn nowhere. `page.titleRedacted` is served too and has no demo counterpart — an unconsumed field either way |
-| E25 | `Classification` — `Failed action: {operation} on {elementId} · step {N}` | `:329-338` | `during {operation}` + `step {N}`; `elementId` is dropped (`trust.tsx:137-138`) | divergent | **OPEN — SERVED-AND-DROPPED**: `action.elementId` is on the wire |
+| E24 | `Classification` — `URL (redacted)` | `:328` | absent | PORTED | `ported df5ea509` — was: **OPEN, SERVED-AND-DROPPED** (`page.urlRedacted` on the wire and drawn nowhere; `page.titleRedacted` served with no demo counterpart). **Closed** — BOTH halves of the served `page` block draw, as `title (redacted) {…}` / `url (redacted) {…}`. The parenthetical is the demo's own word and is load-bearing: these were redacted AT CAPTURE, so what prints is the whole of what the record holds |
+| E25 | `Classification` — `Failed action: {operation} on {elementId} · step {N}` | `:329-338` | `during {operation}` + `step {N}`; `elementId` is dropped (`trust.tsx:137-138`) | PORTED | `ported df5ea509` — was: **OPEN, SERVED-AND-DROPPED** (`action.elementId` is on the wire). **Closed** as `on {elementId}` beside `during {operation}`. The demo's `{operation ?? "action"}` fallback is NOT ported: an unserved half drops out of the line rather than being spoken for. The fixture corpus carries no `elementId`, so the arm is drawn and unphotographed |
 | E26 | `subject.note` paragraph | `:341-343` | absent | missing | `unserved:` no note on the subject union; `proofRef` is served and also undrawn |
 | E27 | `Cause chain` as an ordered `<ol>` with a `w-14` caps LAYER column, the text, and a per-cause clock | `:346-359` | a `TrustSection` of `FactRow`s: `primary — {code}` / `secondary — {code}` · summary · a `transient` meta (`trust.tsx:154-163`) | divergent | `unserved:` `FailureCauseSchema` carries `{code, summary, role, transient}` — no layer, no instant. The ROLE is the rebuild's own axis and is a real improvement; the `<ol>` ordering is lost |
-| E28 | the `Diagnostic bundle {id}` BUTTON (`Package` glyph) | `:361-364` | a text fragment in the Cause-chain `MetaLine` — `diagnostic bundle {id}`, or `no diagnostic bundle — {reason}` (`trust.tsx:167-169`) | divergent | the ABSENT arm is exact and stronger than the demo's (which has no absent arm). The button is missing because there is nothing to open — see E29 |
-| E29 | `BundleDialog` — `lg`, `Diagnostic bundle {id}` title, the `Captured {clock} · {size} · content-addressed, redacted at capture time` description, the explanatory paragraph, the per-content `Check` + key + detail list, the `Redacted at capture, never at render` info Banner, `Close` + `Download the manifest` | `:66-108` | absent | missing | `unserved:` the wire serves a `bundleId` and nothing else — no `capturedAt`, no size, no contents index, no redaction list, and no download route. D137 writes all of it durably; the producer is the route that reads it back |
+| E28 | the `Diagnostic bundle {id}` BUTTON (`Package` glyph) | `:361-364` | `FailureDetailBody`'s exact labeled secondary action, with the existing explicit absent sentence | exact | `ported Track F ledger 2 E29` — the button opens only from the `present` bundle-id arm; the absent arm stays explicit and does not pretend a package exists |
+| E29 | `BundleDialog` — `lg`, `Diagnostic bundle {id}` title, the `Captured {clock} · {size} · content-addressed, redacted at capture time` description, the explanatory paragraph, the per-content `Check` + key + detail list, the `Redacted at capture, never at render` info Banner, `Close` + `Download the manifest` | `:66-108` | `GET /api/v1/diagnostic-bundles/:bundleId` reads the exact durable D137 row and verified attachment bytes; `…/manifest` downloads its canonical durable JSON | exact | `ported Track F ledger 2 E29` — strict wire serves captured clock, recorded attachment-byte total, re-derived content digest, attachment identity/details and the capture-time redaction facts; missing, corrupt and mismatched rows leave as typed route errors rather than a guessed bundle |
 | E30 | `Seen {N}× in {window} — last {trace} at {clock}. {note}` / `First time this fingerprint has been seen.` | `:365-376` | `same failure seen {N} times`, in the body `MetaLine`, drawn only when `> 1` (`trust.tsx:118`) | divergent | `ruled:` ref operator-trust D141 — `sameFingerprintSeen` renders as a COUNT, never a list of other runs, stated `trust.tsx:9`. The demo's `lastTrace` is exactly the list D141 refuses. **The `First time…` arm is a separate OPEN**: silence and "seen once" read the same |
 | E31 | `This failure happened on a member row, not on this one.` | `:379-383` | absent | missing | `unserved:` no member rows (same producer as B111) |
 | E32 | `What the run said` — the run's own `error`-level notes, clock + message, beneath the record | (no counterpart) | `log-panel.tsx:755-773` | extra | `ruled:` stated `:685-695` — 1i served the record's identity and the surrounding facts before the ref operator-trust projection landed; it stayed because the stream's own words are the evidence for the summary |
 | E33 | `FailureAdvisoryPanel` — the `AI advisory` section, its `Explain this failure` button, the availability refusal | (no counterpart) | `log-panel.tsx:747` + `advisory.tsx` | extra | `ruled: D178` — below the record's own remediation, never above it, stated `:745-746` |
 | E34 | the record's non-`available` arms (`error` → code + message; `missing`/`purged` → the reason) | (no counterpart) | `log-panel.tsx:749-753` | extra | `ruled: D184/D198` declared-absence pattern |
 
-**R-E counts — 34 elements: 7 exact · 15 divergent · 8 missing · 4 extra.**
+**R-E counts — 34 elements: 9 exact · 14 divergent · 7 missing · 4 extra.** (Four rows moved to PORTED on 2026-08-21, `df5ea509`; E28/E29 moved to exact on 2026-08-25.)
 
 **Since 08-14:** first audit. The body itself is 2g/2i-A work (`FailureDetailBody`, D140/D142) that
 post-dates the 1i frame; nothing in this region regressed during the fidelity wave, and nothing in
 the fidelity wave audited it.
 
-**OPEN in R-E (12 questions), including four SERVED-AND-DROPPED:** E19 `occurredAt` · E20
-`traceId` + `attempt` · E24 `page.urlRedacted` (and the never-consumed `page.titleRedacted`) ·
-E25 `action.elementId`. Plus: E4 the head says a category where the demo says the fact · E5 the
+**OPEN in R-E — 12 questions at audit; the four SERVED-AND-DROPPED ones are CLOSED (`df5ea509`,
+2026-08-21, unit F1): E19 `occurredAt` · E20 `traceId` + `attempt` · E24 `page.urlRedacted` and
+`page.titleRedacted` · E25 `action.elementId`.** Still open: E4 the head says a category where the demo says the fact · E5 the
 `code` Chip · E6 the missing `permanent` arm · E8 the write-state block's frame and label · E9 its
 three tones · E11 `What is safe to retry` vs `What to do` · E15 **the whole disclosure** — the
 diagnostic record is always expanded into the log stream · E22 the observed-subject danger tone ·
@@ -666,12 +665,12 @@ corpus in four states.
 | Region | Elements | exact | divergent | missing | extra | OPEN |
 |---|---:|---:|---:|---:|---:|---:|
 | R-A run identity | 49 | 23 | 14 | 4 | 8 | 7 |
-| R-B log panel | 114 | 48 | 24 | 27 | 15 | 11 |
+| R-B log panel | 114 | 50 | 26 | 23 | 15 | 9 |
 | R-C context rail | 76 | 31 | 18 | 17 | 10 | 9 |
 | R-D receipt | 39 | 9 | 15 | 12 | 3 | 12 |
 | R-E failure record | 34 | 7 | 15 | 8 | 4 | 13 |
 | R-F park + ceremonies | 36 | 6 | 11 | 7 | 12 | 2 |
-| **total** | **348** | **124** | **97** | **75** | **52** | **54** |
+| **total** | **348** | **126** | **99** | **71** | **52** | **52** |
 
 `exact` is 36 % of the surface. Of the 97 divergences and 75 absences, **119 carry a citation**
 (a D-number, an R-finding as-built, a named missing producer, or a stated in-code argument) and
@@ -692,25 +691,26 @@ OPEN questions between them. That is the honest headline: the wave audited what 
 for, and `DemoRunIdentity.tsx`, `DemoReceipt.tsx`, `DemoEvidence.tsx` and `DemoFailure.tsx` were
 never opened.
 
-### OPEN — operator call (54)
+### OPEN — operator call (54 at audit; 46 after unit F1 closed the eight served-and-dropped rows)
 
-**Served-and-dropped (8) — the wire already carries the bytes and no pixel shows them.** These are
-the cheapest to close and the most surprising to leave:
+**Served-and-dropped (8) — ALL EIGHT CLOSED 2026-08-21, unit F1 (`cf2ee74a` the receipt four,
+`df5ea509` the failure four).** They were the cheapest to close and the most surprising to leave;
+each entry below keeps the audit's sentence and names what now draws it:
 
-1. **D25** the observation's `taskId` and `observedAt` — `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry both; the receipt prints `source.kind` alone.
-2. **D27** the `inputFingerprint` — served on the `input` source arm; the demo's `input hash` line is absent.
-3. **D31** the receipt's `traceId` / `descriptorFingerprint` / `configFingerprint` footer — all three on `RunEvidenceReceiptSchema`; the artifact read months later prints none.
-4. **D32** the receipt's `failure` id — served, drawn nowhere.
-5. **E19** the failure's `occurredAt` — required on the wire; the record prints the RUN's terminal instant instead, which is a different moment.
-6. **E20** the failure's `traceId` + `attempt` — both required, both absent.
-7. **E24** `page.urlRedacted` — served, absent (and `page.titleRedacted` is served and consumed by nobody).
-8. **E25** `action.elementId` — served, absent.
+1. ~~**D25** the observation's `taskId` and `observedAt` — `EvidenceSourceSchema`'s `system` and `checkpoint` arms carry both; the receipt prints `source.kind` alone.~~ → `evidenceSourceMeta`, a total fold over the six source arms (`trust-model.ts`).
+2. ~~**D27** the `inputFingerprint` — served on the `input` source arm; the demo's `input hash` line is absent.~~ → the same fold's `input` arm, cut through `shortHash`.
+3. ~~**D31** the receipt's `traceId` / `descriptorFingerprint` / `configFingerprint` footer — all three on `RunEvidenceReceiptSchema`; the artifact read months later prints none.~~ → `ReceiptFingerprints`, the demo's footer element for element.
+4. ~~**D32** the receipt's `failure` id — served, drawn nowhere.~~ → the receipt's identity `MetaLine`.
+5. ~~**E19** the failure's `occurredAt` — required on the wire; the record prints the RUN's terminal instant instead, which is a different moment.~~ → `occurred {clock}`, printed BESIDE the run's `failed {clock}`; both are true and each is now named for what it dates.
+6. ~~**E20** the failure's `traceId` + `attempt` — both required, both absent.~~ → `run {trace} · attempt {N}`, in the demo's position.
+7. ~~**E24** `page.urlRedacted` — served, absent (and `page.titleRedacted` is served and consumed by nobody).~~ → both halves draw, as `title (redacted)` / `url (redacted)`.
+8. ~~**E25** `action.elementId` — served, absent.~~ → `on {elementId}`, with no `"action"` stand-in for an absent operation.
 
 **Structural / behavioural (7):**
 
 9. **E15** the failure record has NO disclosure — the demo hides the progress ledger, the classification, the cause chain and the bundle behind `Show the diagnostic record`, on the stated argument that a 400px dump expanded into a log stream buries the lines after it. The `run-failed` reference shows exactly that shape.
 10. **B41** the timeline segment is a non-focusable `<span>`, not the demo's `<button>` — so the member disclosure's `group-focus-within:block` can never fire, and the hover tint and focus ring are gone.
-11. **B65** the log stream is a FLAT list — the demo groups by step with a sticky heading, and the rebuild publishes `--ds-panel-head-h` whose stated purpose is to make those headings land below the head.
+11. ~~**B65** the log stream is a FLAT list.~~ Ported 2026-08-25: contiguous producer rows now carry a sticky `step · task` heading under `--ds-panel-head-h`; notes remain ungrouped rather than taking a fabricated step.
 12. **C4** `dataExpanded` is owned by two components; collapsing an expanded rail and re-opening it gives a wide rail whose header says `Run data` and whose control offers `Widen`.
 13. **C51** the step group lost the `Well`, the recessed band and the row dividers R6 f.1 named beside the levels.
 14. **C55 / C57** a refusal is one uncoded red span, and nothing says the operator's edits survived it.
@@ -718,7 +718,7 @@ the cheapest to close and the most surprising to leave:
 
 **Words and glyphs (24):** A3 the `wf ` noun · A13 the `·` separator · A38/A41 the placeholder and `subject` fallbacks · B44 the untimed-segment dim · B50 the hover card's `Status` row · B60 the axis's `working` total · B61 the axis's `waiting on you` half · B83 the search control's DS swap and width · B87/A49 the floor bar's live/idle dot · B91 `open {age}` on the decision card · C16 the Data section's accessible name · C21 the ⓘ bullet that now understates the surface · C32 `written` vs `write` · D8 the confidence Chip and its three sentences · D9 the scattered receipt identity line · D13 the dry-run Banner · D17 the commit/prepare Badge · D24 the criterion icon · D29 the uncertainty icon and its two sentences · E4 the head's category vs the run's own summary · E5 the `code` Chip · E6 the missing `permanent` arm · E8/E9 the write-state block's frame, label and tones · E11 `What is safe to retry` vs `What to do` · E22 the observed-subject danger tone · E30's `First time this fingerprint has been seen.` arm.
 
-**Rebuild-only additions with no citation (8):** A18 the `Config` row · A19 the `Attempt` row · A35/A37/A47 the rename error affordance · B79 the empty-stream state · B80 `More lines follow.` · C70 the duplicated blocked-reason sentence · C71 `Saving…` · F22 the park footer's meta slot · F35 the duplicated `RefusedNotice`.
+**Rebuild-only additions with no citation (8):** A18 the `Config` row · A19 the `Attempt` row · A35/A37/A47 the rename error affordance · B79 the empty-stream state · B80 the cursor-backed `Load more lines` control · C70 the duplicated blocked-reason sentence · C71 `Saving…` · F22 the park footer's meta slot · F35 the duplicated `RefusedNotice`.
 
 **Stale claims in code (2):** D11's missing invariant Banner (the schema may already make it
 unrepresentable — nobody wrote that down) · **D39** `receipt.tsx`'s header still calls itself the
@@ -743,8 +743,8 @@ contradicts the demo's own argument that the AGE is the comparable number.
 - [ ] BE the receipt's action entry carries what proved the write — target, system, the written
       values, the confirmation number and the read-back verdict beside the write it proves
       (R-D D16-D22); today `ActionEvidenceSchema` is `{taskId, kind, writeState, occurredAt}`
-- [ ] BE a diagnostic bundle is READABLE — `capturedAt`, size, the contents index and the redaction
-      list, plus the route the `BundleDialog` opens (R-E E29); D137 writes all of it durably
+- [x] BOTH a diagnostic bundle is READABLE — `capturedAt`, recorded attachment-byte size, the contents
+      index, redaction list and exact-id manifest route now power the `BundleDialog` (R-E E28/E29)
 - [ ] FE the run-detail vocabulary sweep — 24 words and glyphs the re-audit found off the demo
       (R-A/B/C/D/E "Words and glyphs"), each reverted or recorded
 ```
@@ -758,7 +758,7 @@ contradicts the demo's own argument that the AGE is the comparable number.
       `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` — each becomes ported, or a recorded
       divergence with its argument
 - [ ] FE B2b the 8 served-and-dropped facts (R-D + R-E) — no wire moves
-- [ ] FE B2c the 7 structural findings (R-E E15 · R-B B41/B65/B57 · R-C C4/C51/C55+C57)
+- [ ] FE B2c the 6 structural findings (R-E E15 · R-B B41/B57 · R-C C4/C51/C55+C57)
 - [ ] FE B2d the 8 uncited rebuild-only additions — kept with a stated argument, or removed
 - [ ] DOCS B2e `receipt.tsx`'s header stops calling itself the 1i placeholder (R-D D39), and the
       D11 invariant question is answered in the owning doc
@@ -769,12 +769,13 @@ contradicts the demo's own argument that the AGE is the comparable number.
 node's `FE` line and adds the demo's own line anatomy as the target:
 
 ```
-- [ ] FE the stream is GROUPED BY STEP with a sticky heading — the demo's three-level shape, and
-      the reason `--ds-panel-head-h` is published at all (R-B B65)
-- [ ] BOTH a log line carries its own facts, not just a level — the demo's nine-kind icon
-      vocabulary with its read/write direction hues, the per-line `SystemChip`, the read/write
-      `Pill` chips, the attempt badge and the duration (R-B B69-B75); the search predicate widens
-      to match a pill's label and value with them (R-B B78)
+- [x] FE the stream is GROUPED BY its served producer with a sticky heading — the demo's structural
+      shape, and the reason `--ds-panel-head-h` is published at all (R-B B65)
+- [x] FE observed rows carry their served system, read/write pills and attempt badge; search widens
+      to a pill's label and value, while notes stay prose and a fence receives no fabricated page fact
+      (R-B B69-B74, B78)
+- [ ] BOTH the demo's unserved general line kinds and duration (R-B B69-B75) — `pause` still has no
+      wire kind, and no log row carries an honest duration
 - [ ] FE the `pause` line's own row tint (R-B B71) and the floor bar's live/idle dot (R-B B87)
 - [ ] BE the timeline hover card's `System` row and its key lines (R-B B52/B54) — the same
       provenance points this node emits, read one level up

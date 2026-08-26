@@ -142,8 +142,10 @@ export function subscribeDashboardDay(deps: DashboardDaySubscriptionDeps): Dashb
   function connect(withResume: boolean): void {
     if (closed) return;
     const lastEventId = withResume ? lastCursorId : undefined;
+    const lastProjectionGeneration = lastEventId === undefined ? undefined : generation;
     stream = deps.transport.openStream(`/events/v1?topics=dashboard-day:${day}`, {
       ...(lastEventId === undefined ? {} : { lastEventId }),
+      ...(lastProjectionGeneration === undefined ? {} : { lastProjectionGeneration }),
       onMessage: (message) => {
         if (closed) return;
         let envelope: DashboardStreamEnvelope;

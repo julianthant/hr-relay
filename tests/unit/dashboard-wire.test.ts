@@ -40,6 +40,7 @@ const QUEUE = {
   dryRun: false,
 priority: "interactive",
 runNumber: { state: "present", value: 1 },
+session: { state: "absent", reason: "fixture row predates run sessions (D269)" },
 containment: "root",
 linkedRuns: [],
 facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
@@ -86,6 +87,7 @@ const DAY = {
   workflowCounts: [{ workflowId: "onboarding", count: 1, statusCounts: [{ status: "running", count: 1 }] }],
   statusCounts: [{ status: "running", count: 1 }],
   queueSurfaces: [QUEUE],
+  workerPools: [],
   workerCards: [{
     workerId: "ucpath-worker",
     workflowId: "onboarding",
@@ -97,7 +99,7 @@ const DAY = {
     leaseVersion: 3,
     revision: 1,
   }],
-  notifications: [{ notificationId: NOTIFICATION_1, actorId: "local-operator", severity: "info", title: "Run started", state: "unread", occurredAt: NOW, revision: 1 }],
+  notifications: [{ kind: "notification", notificationId: NOTIFICATION_1, actorId: "local-operator", severity: "info", title: "Run started", state: "unread", occurredAt: NOW, revision: 1 }],
 };
 
 const DETAIL = {
@@ -151,6 +153,24 @@ const WORKFLOW_PRIMITIVE = {
   descriptorFingerprint: HASH_A,
   availability: { state: "available" },
   role: { kind: "standalone" },
+  // D264/D11 — the served start block. It carries the typed-input door on
+  // purpose: the strict-boundary arm below walks whatever this literal reaches,
+  // so an inputRun-less primitive would leave `InputRunSurfaceSchema` and its
+  // parser spec unwalked by the very test that exists to walk them.
+  start: {
+    summary: "Look one person up in UCPath and CRM.",
+    enqueue: "reject-active",
+    // C96: keep this non-1 so the wire fixture never makes a guessed default
+    // appear equivalent to a producer-supplied descriptor version.
+    version: 7,
+    inputRun: {
+      placeholder: "Enter EIDs or names, semicolon-separated",
+      parser: {
+        split: { kind: "delimited", delimiters: [";", "\n"] },
+        rules: [{ when: { kind: "otherwise" }, emit: "query" }],
+      },
+    },
+  },
 };
 
 const BOOTSTRAP = {

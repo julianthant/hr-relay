@@ -10,6 +10,8 @@
  * (ref frontend-backend-integration §4) held in the one place the browser already persists for us.
  */
 
+import type { ArchiveView } from "../surfaces/archive-model.js";
+
 export interface AppRouteState {
   readonly day?: string;
   readonly run?: string;
@@ -47,6 +49,12 @@ export interface AppRouteState {
    */
   readonly archive?: string;
   /**
+   * The Archive's visible view. It travels with `archive` so a door from
+   * another takeover can land on the actual Version registry rather than on
+   * the Archive ledger and asking the operator to take a second action.
+   */
+  readonly archiveView?: ArchiveView;
+  /**
    * The Activity report (2i-G, D180) as `from..to`. The RANGE is in the URL
    * because a report is a thing people cite: "the numbers I was looking at"
    * has to survive being pasted into a message. An empty value means the
@@ -73,6 +81,7 @@ export function parseRoute(search: string): AppRouteState {
   const explore = params.get("explore");
   const catalog = params.get("catalog");
   const archive = params.get("archive");
+  const archiveView = params.get("archiveView");
   const activity = params.get("activity");
   const route: {
     day?: string;
@@ -83,6 +92,7 @@ export function parseRoute(search: string): AppRouteState {
     explore?: string;
     catalog?: string;
     archive?: string;
+    archiveView?: ArchiveView;
     activity?: string;
   } = { start: params.get("start") === "1" };
   if (day !== null && DAY_PATTERN.test(day)) route.day = day;
@@ -95,7 +105,10 @@ export function parseRoute(search: string): AppRouteState {
   if (catalog !== null) route.catalog = catalog;
   // Both of these follow `catalog`: an EMPTY value is meaningful (the index,
   // and the default range), so presence is what opens the surface.
-  if (archive !== null) route.archive = archive;
+  if (archive !== null) {
+    route.archive = archive;
+    if (archiveView === "runs" || archiveView === "versions") route.archiveView = archiveView;
+  }
   if (activity !== null) route.activity = activity;
   return route;
 }
@@ -112,7 +125,10 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.intake !== undefined) params.set("intake", route.intake);
   if (route.explore !== undefined) params.set("explore", route.explore);
   if (route.catalog !== undefined) params.set("catalog", route.catalog);
-  if (route.archive !== undefined) params.set("archive", route.archive);
+  if (route.archive !== undefined) {
+    params.set("archive", route.archive);
+    if (route.archiveView !== undefined) params.set("archiveView", route.archiveView);
+  }
   if (route.activity !== undefined) params.set("activity", route.activity);
   const query = params.toString();
   return query.length === 0 ? "" : `?${query}`;

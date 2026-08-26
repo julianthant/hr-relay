@@ -53,6 +53,7 @@ import {
   PeoplePageSchema,
   type ContextDataSectionWire,
 } from "../../../domain/dashboard/run-detail.js";
+import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../domain/dashboard/projection.js";
 
 /** The frozen log page's own shape — one place, so the loop and the parse agree. */
 type FrozenNotePage = z.infer<typeof NotePageSchema>;
@@ -81,8 +82,17 @@ function archivedWorkflowCode(
       + "which predates D242's frozen workflow short code; no code was recorded for this run",
   };
 }
+
+function archivedQueueRow(
+  row: Readonly<Record<string, unknown>> & { readonly session?: unknown },
+): QueueSurfaceWire {
+  return QueueSurfaceWireSchema.parse(row.session === undefined
+    ? { ...row, session: { state: "absent", reason: "no session recorded (archived before D269)" } }
+    : row);
+}
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
-import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "./run-detail.js";
+import { buildRunDetail, buildRunSection, createRunNoteScanCache, type RunDetailQueryDeps } from "./run-detail.js";
+import { TargetNotFoundError } from "../../failures.js";
 
 export interface ArchiveQueryDeps {
   readonly clock: Clock;
@@ -177,6 +187,12 @@ export function buildArchiveIndex(deps: ArchiveQueryDeps): ArchiveIndexWire {
         // Copied off the FROZEN row, never re-derived: the index and the
         // detail must name the same instances, and the detail reads `row`.
         resolvedInstances: record.row.resolvedInstances,
+        // The same copy, for the same reason. Both facts are already in this
+        // record — the detail has drawn them since D179 — so serving them on
+        // the index adds no authority read and cannot diverge from the run's
+        // own page.
+        dryRun: record.row.dryRun,
+        warnings: record.row.warnings,
         archiveFingerprint: record.contentDigest,
       })),
       sweeps: repositories.versionBumpApplications.list().map((application) => ({
@@ -241,7 +257,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
   return deps.authority.withAuthorityTransaction((repositories) => {
     const record = repositories.archivedRuns.get(runIdInput);
     if (record === undefined) {
-      throw new Error(`archived run ${runIdInput} does not exist`);
+      throw new TargetNotFoundError(`archived run ${runIdInput} does not exist`);
     }
     /**
      * The ONLY registry read on this path, and it decides an AFFORDANCE, not
@@ -266,7 +282,7 @@ export function buildArchivedRunDetail(deps: ArchiveQueryDeps, runIdInput: strin
       archivedAt: record.archivedAt,
       archivedBy: record.archivedBy,
       archiveFingerprint: record.contentDigest,
-      row: record.row,
+      row: archivedQueueRow(record.row),
       detail: record.detail,
       receipt: record.receipt,
       failure: record.failure,
@@ -348,7 +364,7 @@ export function createArchiveSnapshotSource(deps: RunDetailQueryDeps): ArchiveSn
     snapshot(runId: string): ArchiveRunSnapshot {
       const row = deps.projection.queueSurface(runId);
       if (row === undefined) {
-        throw new Error(
+        throw new TargetNotFoundError(
           `run ${runId} has no span fold; refusing to archive a run the projection cannot render, `
           + "because an archived row that could not be built now can never be built later",
         );
@@ -391,7 +407,7 @@ const FROZEN_LOG_PAGE_LIMIT = 500;
 function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): ArchivedProjectionSections {
   const fold = deps.projection.runFold(runId);
   if (fold === undefined) {
-    throw new Error(`run ${runId} has no span fold; its sections cannot be frozen`);
+    throw new TargetNotFoundError(`run ${runId} has no span fold; its sections cannot be frozen`);
   }
   return ArchivedProjectionSectionsSchema.parse({
     logs: { state: "present", value: freezeLogs(deps, runId) },
@@ -402,7 +418,7 @@ function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): Arch
 }
 
 /**
- * EVERY note line, walked through the section's own cursor.
+ * EVERY combined log row, walked through the section's own cursor over ONE scan.
  *
  * The archived page reports `end-of-page` because it genuinely is the end —
  * there is no archived section endpoint to fetch a second page from, so a
@@ -411,16 +427,35 @@ function freezeProjectionSections(deps: RunDetailQueryDeps, runId: string): Arch
  */
 function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
   const notes: FrozenNotePage["notes"][number][] = [];
+  const rows: NonNullable<FrozenNotePage["rows"]> = [];
   let cursor: string | undefined;
+  /**
+   * D5/L3 (audit P3): ONE immutable combined-log snapshot for the whole page walk.
+   *
+   * Every page below is still served by the production `buildRunSection` — the
+   * freeze does not re-derive a payload the live panel would have shown
+   * differently, which is the whole reason it goes through this seam — but each
+   * call used to re-open and re-parse the same partitions to slice a different
+   * 200 lines out of the same list, up to `FROZEN_LOG_PAGE_LIMIT` times per
+   * run, once per run in a version bump. The cache lives for exactly this
+   * freeze, so nothing long-lived can serve a page from a corpus a worker has
+   * since appended to.
+   */
+  const noteScan = createRunNoteScanCache();
   for (let page = 0; page < FROZEN_LOG_PAGE_LIMIT; page += 1) {
-    const section = buildRunSection(deps, runId, "logs", cursor);
+    const section = buildRunSection(deps, runId, "logs", cursor, noteScan);
     if (section.section !== "logs") {
       throw new Error(`the logs section of run ${runId} came back as ${section.section}`);
     }
     notes.push(...section.payload.notes);
+    if (section.payload.rows === undefined) {
+      throw new Error(`live logs for run ${runId} omitted combined rows; this build refuses to archive a pre-L3 shape`);
+    }
+    rows.push(...section.payload.rows);
     if (section.payload.nextCursor.state === "absent") {
       return NotePageSchema.parse({
         runId,
+        rows,
         notes,
         nextCursor: { state: "absent", reason: "end-of-page" },
       });

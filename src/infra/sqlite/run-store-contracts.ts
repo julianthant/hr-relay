@@ -14,6 +14,7 @@ import {
   IsoInstantSchema,
   ItemIdSchema,
   NodeIdSchema,
+  NonNegativeIntSchema,
   PositiveIntSchema,
   RunIdSchema,
   StartPlanIdSchema,
@@ -27,6 +28,7 @@ import {
   WorkerLeaseRecordSchema,
   WorkerLifecycleSchema,
 } from "../../domain/run/worker.js";
+import { WorkerPoolRecordSchema } from "../../domain/run/worker-pool.js";
 import { RunDisplayNameSchema } from "../../domain/commands.js";
 import { CheckpointPatchSchema } from "../../domain/workflow/checkpoint.js";
 import {
@@ -296,6 +298,34 @@ export const WorkerSweepRequestSchema = z.strictObject({
   staleBefore: IsoInstantSchema,
   now: IsoInstantSchema,
 });
+
+/* ── worker pools (ref execution-and-sessions §11.5, D269) ───────────────── */
+
+/**
+ * `expectedVersion` is the POOL's version — the row's, or **0 when no row
+ * exists yet** (`workerPoolVersion`). Zero is a legitimate basis rather than a
+ * placeholder: the first plan creates the row at version 1, and a caller that
+ * cites 0 against an existing row is told the current version by name.
+ */
+export const WorkerPoolPlanRequestSchema = z.strictObject({
+  workflow: WorkflowIdSchema,
+  expectedVersion: NonNegativeIntSchema,
+  desiredWorkers: PositiveIntSchema,
+  requestedBy: ActorIdSchema,
+  now: IsoInstantSchema,
+});
+export type WorkerPoolPlanRequest = z.infer<typeof WorkerPoolPlanRequestSchema>;
+
+export const WorkerPoolPlanOutcomeSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("applied"), pool: WorkerPoolRecordSchema }),
+  z.strictObject({
+    state: z.literal("conflict"),
+    /** 0 when the workflow has no pool row — the basis the caller should have cited. */
+    currentVersion: NonNegativeIntSchema,
+    message: z.string().min(1),
+  }),
+]);
+export type WorkerPoolPlanOutcome = z.infer<typeof WorkerPoolPlanOutcomeSchema>;
 
 export type RunClaimRequest = z.infer<typeof RunClaimRequestSchema>;
 export type RunHeartbeatRequest = z.infer<typeof RunHeartbeatRequestSchema>;

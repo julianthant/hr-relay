@@ -51,6 +51,7 @@ import {
 import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
 import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../src/domain/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
+import { DiagnosticBundleWireSchema } from "../../../src/domain/dashboard/diagnostic-bundle.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { DashboardStreamEnvelopeSchema, DashboardTopicPatchSchema, DashboardTopicSnapshotSchema } from "../../../src/domain/dashboard/subscription.js";
@@ -570,7 +571,7 @@ const BOOTSTRAP = {
 };
 const DAY = {
   day: "2026-07-31", descriptorHash: HASH_A, projectionGeneration: 1, snapshotCursor: "pc:1",
-  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], notifications: [],
+  monthCounts: [], workflowCounts: [], statusCounts: [], queueSurfaces: [], workerCards: [], workerPools: [], notifications: [],
 };
 const DETAIL = {
   runId: UUID_1, rowRevision: 1, panelKind: "run",
@@ -1351,6 +1352,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "KnowledgeRecord", schema: KnowledgeRecordSchema, fixtures: [KNOWLEDGE] },
   { name: "FixRecord", schema: FixRecordSchema, fixtures: [FIX] },
   { name: "FrontendBootstrap", schema: FrontendBootstrapWireSchema, fixtures: [BOOTSTRAP] },
+  { name: "DiagnosticBundleWire", schema: DiagnosticBundleWireSchema, fixtures: [{ bundleId: UUID_1, capturedAt: NOW, byteSize: 0, contentDigest: HASH_A, redaction: { fields: [], warnings: [] }, contents: [] }] },
   { name: "DashboardDay", schema: DashboardDayWireSchema, fixtures: [DAY] },
   { name: "RunDetail", schema: RunDetailWireSchema, fixtures: [DETAIL] },
   { name: "RunDetailSectionResponse", schema: RunDetailSectionResponseSchema, fixtures: [{ section: "logs", payload: { runId: UUID_1, notes: [], nextCursor: { state: "absent", reason: "end-of-page" } } }] },
