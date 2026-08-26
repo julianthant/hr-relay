@@ -712,21 +712,54 @@ describe("stop-worker", () => {
     });
   });
 
-  it("clears the in-flight guard when the durable stop request itself throws, so a retry can stop", async () => {
+  it("marks the record stop-uncertain when the durable stop channel throws — a possibly-landed directive is never masked as running", async () => {
     const { harness, target } = await runningHarness();
     harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => {
       throw new Error("directive store unavailable");
     };
 
+    // A throw AFTER the durable directive landed is indistinguishable from
+    // one before it: the record must not revert to plain "running".
     await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
-      .rejects.toThrow(/directive store unavailable/);
-    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "running" });
+      .rejects.toThrow(/is UNCERTAIN: the durable stop channel threw \(directive store unavailable\)/);
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "stop-uncertain",
+      pid: harness.children[0]?.pid,
+      bornAt: NOW,
+      leaseStartedAt: NOW,
+      at: NOW,
+      cause: "directive store unavailable",
+    });
 
+    // A retry does NOT double-write the durable directive…
     harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => ({
       requestedAt: harness.clock.now().toISOString(),
     });
     await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
-      .resolves.toMatchObject({ command: "stop-worker", state: "acknowledged" });
+      .rejects.toThrow(/stop-worker refused: .*durable stop directive is UNCERTAIN/);
+    expect(harness.gracefulRequests).toHaveLength(1);
+    // …plan coverage refuses to attest a healthy member over a possibly-landed
+    // stop, and pause/resume refuse the same way.
+    await expect(harness.supervisor.execute(planRequest(1, [target], [])))
+      .rejects.toThrow(/plan-worker-count refused: .*durable stop directive is UNCERTAIN/);
+    await expect(harness.supervisor.execute({ command: "pause-worker", member: target }))
+      .rejects.toThrow(/pause-worker refused: .*durable stop directive is UNCERTAIN/);
+
+    // The child's REAL exit resolves the uncertainty. "stopped" is claimed
+    // only for an observed stop escalation, and this supervisor never
+    // observed one — the exit is OS-reported crash evidence.
+    harness.children[0]?.emitExit(0, null);
+    harness.leases.delete(target.workerId);
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "exited",
+      pid: harness.children[0]?.pid,
+      outcome: "crashed",
+      exitCode: 0,
+      signal: null,
+      at: NOW,
+      reportedBy: "os",
+      observedStop: [],
+    });
   });
 
   it("refuses a second stop while an escalation is already in flight", async () => {

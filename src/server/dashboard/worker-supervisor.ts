@@ -149,7 +149,7 @@ export function workerCliArgv(member: WorkerPoolMember): readonly string[] {
  */
 interface MemberRecord {
   readonly member: WorkerPoolMember;
-  state: "awaiting-birth" | "running" | "stopping" | "kill-undelivered" | "exited";
+  state: "awaiting-birth" | "running" | "stopping" | "stop-uncertain" | "kill-undelivered" | "exited";
   readonly child: SpawnedWorkerHandle;
   pid: number | undefined;
   bornAt?: string;
@@ -160,6 +160,12 @@ interface MemberRecord {
    * blocked until the child's REAL exit event is observed.
    */
   killUndelivered?: { at: string; cause: string };
+  /**
+   * Set when the durable stop channel THREW mid-request: whether the stop
+   * directive landed is unknown, so the record refuses plans, re-stops,
+   * pause and resume until the child's real exit is observed.
+   */
+  stopUncertain?: { at: string; cause: string };
   /**
    * Set SYNCHRONOUSLY when a stop begins, before the durable graceful-stop
    * request is awaited: `state` only becomes "stopping" after that await, so
@@ -203,6 +209,14 @@ export const WorkerChildEvidenceSchema = z.discriminatedUnion("state", [
       stage: z.enum(["graceful-stop-requested", "sigterm-sent", "sigkill-sent"]),
       at: IsoInstantSchema,
     })).min(1),
+  }),
+  z.strictObject({
+    state: z.literal("stop-uncertain"),
+    pid: z.number().int().positive(),
+    bornAt: IsoInstantSchema,
+    leaseStartedAt: IsoInstantSchema,
+    at: IsoInstantSchema,
+    cause: z.string().min(1),
   }),
   z.strictObject({
     state: z.literal("kill-undelivered"),
@@ -495,6 +509,13 @@ export function createDashboardWorkerProcessSupervisor(
         + "until its real exit lands",
       );
     }
+    if (record.state === "stop-uncertain") {
+      throw new Error(
+        `${command} refused: worker ${member.workerId}'s durable stop directive is UNCERTAIN — the stop `
+        + `channel threw mid-request (${record.stopUncertain?.cause ?? "unknown cause"}); the directive may `
+        + "have landed, so nothing is re-initiated until the child's exit is observed",
+      );
+    }
     if (record.state === "exited") {
       const exit = record.exit;
       throw new Error(
@@ -548,13 +569,29 @@ export function createDashboardWorkerProcessSupervisor(
     let durable: Readonly<{ requestedAt: string }> | undefined;
     try {
       durable = await deps.gracefulStop.request(record.member);
-    } finally {
-      // A throw from the durable request propagates untouched; this only
-      // releases the in-flight flag when no durable acknowledgement exists —
-      // nothing was written, and a stuck flag would brick the stop path.
-      if (durable === undefined) record.stopInFlight = false;
+    } catch (error) {
+      const cause = error instanceof Error ? error.message : String(error);
+      // A throw AFTER the durable directive landed is indistinguishable from
+      // one before it. Releasing the flag and reverting to plain "running"
+      // would let a plan attest a healthy member over a possibly-landed stop
+      // and let a retry double-write the directive — instead the record
+      // enters stop-uncertain, which refuses plans, re-stops, pause and
+      // resume until the child's real exit is observed. (An exit that landed
+      // during the request keeps its own evidence.)
+      record.stopInFlight = false;
+      if (record.state === "running") {
+        record.state = "stop-uncertain";
+        record.stopUncertain = { at: instant(), cause };
+      }
+      throw new Error(
+        `graceful stop for ${record.member.workerId} is UNCERTAIN: the durable stop channel threw `
+        + `(${cause}); the directive may or may not have landed, so this worker refuses plan coverage `
+        + "and further stop commands until its exit is observed",
+        { cause: error },
+      );
     }
     if (durable === undefined) {
+      record.stopInFlight = false;
       throw new Error(
         `graceful stop for ${record.member.workerId} produced no durable acknowledgement; `
         + "the stop directive channel returned nothing",
@@ -634,6 +671,12 @@ export function createDashboardWorkerProcessSupervisor(
           + "alive — its spawn-abort SIGKILL was not delivered and no exit has been observed; a plan cannot "
           + "truthfully cover a possibly-live unproven child",
         );
+      case "stop-uncertain":
+        throw new Error(
+          `plan-worker-count refused: worker ${member.workerId}'s durable stop directive is UNCERTAIN `
+          + `(the stop channel threw mid-request: ${record.stopUncertain?.cause ?? "unknown cause"}); `
+          + "a plan cannot attest a member whose stop may have landed",
+        );
       case "running":
         if (initiateStopForRunning) {
           const escalation = canonicalEscalation();
@@ -711,6 +754,13 @@ export function createDashboardWorkerProcessSupervisor(
           + "truthfully cover a possibly-live unproven child",
         );
       }
+      if (record.state === "stop-uncertain") {
+        throw new Error(
+          `plan-worker-count refused: worker ${member.workerId}'s durable stop directive is UNCERTAIN `
+          + `(the stop channel threw mid-request: ${record.stopUncertain?.cause ?? "unknown cause"}); `
+          + "a plan cannot attest a member whose stop may have landed",
+        );
+      }
       if (record.state === "running" && record.stopInFlight) {
         throw new Error(
           `plan-worker-count refused: worker ${member.workerId} has a stop in flight whose durable `
@@ -777,6 +827,22 @@ export function createDashboardWorkerProcessSupervisor(
           bornAt: record.bornAt,
           observedStop: record.observedStop,
         });
+      case "stop-uncertain": {
+        if (record.stopUncertain === undefined) {
+          throw new Error(
+            `worker ${record.member.workerId} is recorded stop-uncertain without its channel-throw evidence; `
+            + "the supervisor registry is corrupt",
+          );
+        }
+        return WorkerChildEvidenceSchema.parse({
+          state: "stop-uncertain",
+          pid: record.pid,
+          bornAt: record.bornAt,
+          leaseStartedAt: record.leaseStartedAt,
+          at: record.stopUncertain.at,
+          cause: record.stopUncertain.cause,
+        });
+      }
       case "kill-undelivered": {
         if (record.killUndelivered === undefined) {
           throw new Error(
