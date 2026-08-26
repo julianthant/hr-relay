@@ -3,12 +3,14 @@ import { describe, it } from "vitest";
 import {
   optionalSecret,
   optionalSecretFamily,
+  optionalTestTargetEidSecret,
   inspectSecret,
   requireSecret,
   requireSecretFamily,
   requireSecretFile,
   SECRET_FAMILY_SPECS,
   SECRET_SPECS,
+  TEST_TARGET_EID_SECRET_SPECS,
   validateDescriptorSecrets,
 } from "../../src/domain/secrets.js";
 import {
@@ -82,6 +84,36 @@ describe("closed secret access", () => {
     assert.equal(new Set(environmentSpecs.map(({ env }) => env)).size, environmentSpecs.length);
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ name }) => name)).size, SECRET_FAMILY_SPECS.length);
     assert.equal(new Set(SECRET_FAMILY_SPECS.map(({ envPrefix }) => envPrefix)).size, SECRET_FAMILY_SPECS.length);
+    assert.equal(
+      new Set(TEST_TARGET_EID_SECRET_SPECS.map(({ name }) => name)).size,
+      TEST_TARGET_EID_SECRET_SPECS.length,
+    );
+    assert.equal(
+      new Set(TEST_TARGET_EID_SECRET_SPECS.map(({ env }) => env)).size,
+      TEST_TARGET_EID_SECRET_SPECS.length,
+    );
+  });
+
+  it("reads a registered test-target EID without retaining an invalid value in its error", () => {
+    const envKey = "HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID";
+    assert.equal(optionalTestTargetEidSecret(
+      "separationsKualiFinalizationCanaryEid",
+      { [envKey]: " 10800000 " },
+    ), "10800000");
+    assert.equal(optionalTestTargetEidSecret("separationsKualiFinalizationCanaryEid", {}), undefined);
+
+    const eidCanary = "CANARY_DIRECT_IDENTIFIER";
+    assert.throws(
+      () => optionalTestTargetEidSecret(
+        "separationsKualiFinalizationCanaryEid",
+        { [envKey]: eidCanary },
+      ),
+      (error: unknown) => {
+        assert.match(String(error), /separationsKualiFinalizationCanaryEid.*registered environment source/);
+        assert.equal(String(error).includes(eidCanary), false);
+        return true;
+      },
+    );
   });
 
   it("does not accept an arbitrary secret-file path", () => {

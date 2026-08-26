@@ -41,7 +41,7 @@ function stateRoot(): string {
   return root;
 }
 
-const KEY = "kuali:doc-4489:timekeeper-annotation";
+const KEY = "kuali:4444|finalization|T009000001";
 const TERMINATION_KEY = "ucpath:termination|10800000|06/11/2026";
 const SWEEP_KEY = "ucpath:pending-terminations|10800000";
 
@@ -58,20 +58,20 @@ function at(system: string, date: string, sequence: number): LedgerLinePointer {
  * passed to the function it exercises.
  */
 const ENTRY_PAYLOAD_BASE = {
-  workflowId: "kuali-timekeeper-annotation",
+  workflowId: "separations-kuali-finalization",
   itemId: UUID_4,
   system: "kuali",
   idempotencyKey: KEY,
   idempotencyKeyDigest: deriveIdempotencyKeyDigest("kuali", KEY),
   writeIntentId: "aa11bb22-0001-4000-8000-aa11bb220001",
   intentGeneration: 1,
-  proof: { schemaHash: HASH_A, value: { readBack: "TK-2026" } },
+  proof: { schemaHash: HASH_A, value: { source: "reload-read-back", transactionNumber: "T009000001" } },
   completionKind: "save-verify",
   proofSource: "normal-output",
   bindingProofDigest: HASH_B,
   subject: { state: "absent" },
   runId: "aa11bb22-0002-4000-8000-aa11bb220002",
-  traceId: "kt-090400-aa11",
+  traceId: "sf-090400-aa11",
   attempt: 1,
   operator: "local-operator",
   instance: "prod",

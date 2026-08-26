@@ -32,16 +32,17 @@ import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { RunDryRunPreviewResultSchema } from "../../src/domain/run/result.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { kualiTimekeeperAnnotationDescriptor } from "../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import {
-  kualiClaimRunning,
-  kualiContext,
-  kualiDurableFootprint,
-  kualiHarness,
-  kualiQueuedRun,
-  KUALI_TIMEKEEPER_VALUE,
-  type KualiHarness,
-} from "./fixtures/kuali-transaction-fixtures.js";
+  FINALIZATION_FIELDS,
+  finalizationClaimRunning,
+  finalizationContext,
+  finalizationDurableFootprint,
+  finalizationHarness,
+  finalizationPreviewDependencies,
+  finalizationQueuedRun,
+  type FinalizationHarness,
+} from "./fixtures/kuali-finalization-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "./fixtures/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "./fixtures/phase1f-run-fixtures.js";
 import {
@@ -63,7 +64,7 @@ import {
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
-const kualiOpen: KualiHarness[] = [];
+const kualiOpen: FinalizationHarness[] = [];
 
 afterEach(() => {
   for (const open of kualiOpen.splice(0)) open.dispose();
@@ -253,18 +254,28 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
   });
 
   /**
-   * The receipt arm runs on the REAL `kuali-timekeeper-annotation` workflow and
+   * The receipt arm runs on the REAL `separations-kuali-finalization` workflow and
    * the REAL sequencer, because a receipt is only meaningful over a workflow
    * whose evidence classifications actually exist — the fixture graph declares
    * none, and adding them would put test data in a production declaration.
    */
   it("derives a receipt that says unknown and none, and never verified-done", async () => {
-    const k = kualiHarness();
+    const k = finalizationHarness();
     kualiOpen.push(k);
-    const { run, claim } = kualiClaimRunning(k.database, k.clock, kualiQueuedRun({ dryRun: true }));
-    const preview = await k.bound(() => k.sequencer.executeDryRun(kualiContext(run, claim, true)));
+    const { run, claim } = finalizationClaimRunning(
+      k.database,
+      k.clock,
+      finalizationQueuedRun({ dryRun: true }),
+    );
+    const preview = await k.bound(() => k.sequencer.executeDryRun(finalizationContext(run, claim, true)));
 
-    const built = buildRunPreviewResult(kualiTimekeeperAnnotationDescriptor, run, preview, [], k.clock);
+    const built = buildRunPreviewResult(
+      separationsKualiFinalizationDescriptor,
+      run,
+      preview,
+      finalizationPreviewDependencies(run),
+      k.clock,
+    );
     assert.equal(built.record.resultSchemaHash, PREVIEW_RESULT_SCHEMA_HASH);
 
     const terminal = {
@@ -272,7 +283,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
       lifecycle: { state: "terminal", outcome: "done", endedAt: built.record.createdAt },
     };
     const { receipt } = deriveRunEvidenceReceipt({
-      descriptor: kualiTimekeeperAnnotationDescriptor,
+      descriptor: separationsKualiFinalizationDescriptor,
       run: terminal,
       result: built.record,
       checkpoints: [],
@@ -315,18 +326,27 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
    * not improve because the probe settled it early.
    */
   it("derives an already-present preview's receipt, naming the probe rather than a subject", async () => {
-    // A document whose persisted timekeeper name ALREADY equals the value this
-    // run would write is exactly the `already-present` subject: beat ①'s probe
-    // reads it back and settles the node before a page is staged.
-    const k = kualiHarness({ persistedTimekeeperName: KUALI_TIMEKEEPER_VALUE });
+    // A document whose persisted finalization ALREADY equals all twelve values
+    // this run would write is exactly the `already-present` subject.
+    const k = finalizationHarness({ persistedFinalization: FINALIZATION_FIELDS });
     kualiOpen.push(k);
-    const { run, claim } = kualiClaimRunning(k.database, k.clock, kualiQueuedRun({ dryRun: true }));
-    const preview = await k.bound(() => k.sequencer.executeDryRun(kualiContext(run, claim, true)));
+    const { run, claim } = finalizationClaimRunning(
+      k.database,
+      k.clock,
+      finalizationQueuedRun({ dryRun: true }),
+    );
+    const preview = await k.bound(() => k.sequencer.executeDryRun(finalizationContext(run, claim, true)));
 
     assert.equal(preview.probe.state, "present");
     assert.equal(preview.outcome.state, "already-present");
 
-    const built = buildRunPreviewResult(kualiTimekeeperAnnotationDescriptor, run, preview, [], k.clock);
+    const built = buildRunPreviewResult(
+      separationsKualiFinalizationDescriptor,
+      run,
+      preview,
+      finalizationPreviewDependencies(run),
+      k.clock,
+    );
     assert.equal(built.record.resultSchemaHash, PREVIEW_RESULT_SCHEMA_HASH);
 
     const terminal = {
@@ -334,7 +354,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
       lifecycle: { state: "terminal", outcome: "done", endedAt: built.record.createdAt },
     };
     const { receipt } = deriveRunEvidenceReceipt({
-      descriptor: kualiTimekeeperAnnotationDescriptor,
+      descriptor: separationsKualiFinalizationDescriptor,
       run: terminal,
       result: built.record,
       checkpoints: [],
@@ -365,7 +385,7 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
     // asserts absence against the database: an already-present PREVIEW records
     // neither the observed-present intent nor the settlement checkpoint a real
     // already-present run would.
-    const footprint = kualiDurableFootprint(k);
+    const footprint = finalizationDurableFootprint(k);
     assert.equal(footprint.intent, undefined);
     assert.equal(footprint.checkpoint, undefined);
     assert.deepEqual(footprint.outboxes, []);
@@ -459,26 +479,34 @@ describe("D210 — a dry run previews its transaction node and ends there", () =
    * real HR write, and the preview arm landing does not retire it.
    */
   it("keeps executeTransaction refusing a dry run, with zero durable footprint", async () => {
-    const k = kualiHarness();
+    const k = finalizationHarness();
     kualiOpen.push(k);
-    const { run, claim } = kualiClaimRunning(k.database, k.clock, kualiQueuedRun({ dryRun: true }));
+    const { run, claim } = finalizationClaimRunning(
+      k.database,
+      k.clock,
+      finalizationQueuedRun({ dryRun: true }),
+    );
 
     await assert.rejects(
-      k.bound(() => k.sequencer.executeTransaction(kualiContext(run, claim, true))),
+      k.bound(() => k.sequencer.executeTransaction(finalizationContext(run, claim, true))),
       /the sequencer never substitutes a real write for a preview/,
     );
-    const footprint = kualiDurableFootprint(k);
+    const footprint = finalizationDurableFootprint(k);
     assert.equal(footprint.intent, undefined);
     assert.equal(footprint.checkpoint, undefined);
     assert.deepEqual(footprint.outboxes, []);
-    assert.equal(k.world.persistedTimekeeperName, "");
+    assert.equal(k.world.persistedFinalization, undefined);
   });
 
   it("refuses a preview of a transaction node that declares no dry-run arm", async () => {
-    const k = kualiHarness();
+    const k = finalizationHarness();
     kualiOpen.push(k);
-    const { run, claim } = kualiClaimRunning(k.database, k.clock, kualiQueuedRun({ dryRun: true }));
-    const context = kualiContext(run, claim, true);
+    const { run, claim } = finalizationClaimRunning(
+      k.database,
+      k.clock,
+      finalizationQueuedRun({ dryRun: true }),
+    );
+    const context = finalizationContext(run, claim, true);
     const node = { ...context.node, dryRun: "unsupported" as const };
 
     await assert.rejects(

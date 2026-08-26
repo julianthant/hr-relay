@@ -423,30 +423,23 @@ Module binds exactly `[ucpathStore, crmStore, personLookupStore]`.
 | `active-status` (`always-rerun`) | `workflow:person-lookup/read-active-status` (read) | `personLookupStore.readActiveStatus` | none — pure fold over `searching` + `cross-verify` outputs |
 | `crm-dates` (conditional on `input.includeCrmDates`) | `crm/read-onboarding-dates` (read) | `crmStore.readOnboardingDates` | crm |
 
-### `kuali-timekeeper-annotation` (`src/workflows/kuali-timekeeper-annotation/`)
+### Retired annotation proof (D266)
 
-> **RETIRED by D266 (2026-08-21)** — dismantled in the `workflow-tree` code unit together with the four
-> `kuali/*-timekeeper-annotation` tasks below; this section describes the tree at HEAD until that lands.
-
-Module binds exactly `[kualiStore]`. ONE transaction node, `annotate-timekeeper`, whose beats (ref write-safety
-§13) each call a `kualiStore` task:
-
-| Beat | Contract | Store task | Role |
-|---|---|---|---|
-| ① pre-fence probe (`probePolicy:"always"`) | `kuali/read-timekeeper-annotation` (read) | `kualiStore.readTimekeeperAnnotation` | already-present idempotency check |
-| ② prepare (`dryRun:"stop-after-prepare"` stops here) | `kuali/fill-timekeeper-annotation` (prepare) | `kualiStore.fillTimekeeperAnnotation` | stage the value, prove read-back, zero save |
-| ③ subject binding | kernel-owned, not a store task | write sequencer's `read(observationId)` off the driver | re-observes the subject on the exact page the fence binds to |
-| ⑤ commit | `kuali/save-timekeeper-annotation` (commit) | `kualiStore.saveTimekeeperAnnotation` | the one external write, under a minted `MutationCapability` |
-| ⑥ verify | `kuali/verify-timekeeper-annotation` (read) | `kualiStore.verifyTimekeeperAnnotation` | reload read-back — the only landing proof |
+`kuali-timekeeper-annotation` is no longer a workflow or a store family. D266 removed its four
+`kuali/*-timekeeper-annotation` tasks and contracts and re-homed the useful proof shape in
+`tests/scenario/workflows/separations-kuali-finalization/`: T1a exercises the real finalization
+sequencer over authority, and T1b declares the live dry-run checkpoints and zero write-safety
+deltas. The 2026-08-04 controlled commit remains historical evidence in ref write-safety §3.4; it
+is not a current store inventory entry.
 
 ### `separations` (`src/workflows/separations/`) — the COMPOSITION
 
 Module binds **four** stores: `[kualiStore, ucpathStore, newKronosStore, separationsStore]`. That is
 §3's "one descriptor over reused tasks" made concrete — the composed graph consumes the tasks the
-five sub-workflow descriptors made provable, and those descriptors stay as the harnesses that proved
-them.
+five harness descriptors made provable, and those harnesses live inside the timeline-step folders
+they prove.
 
-Eighteen nodes: eight browser reads and folds, one ALWAYS-GATE, and three transaction nodes in doc
+Nineteen nodes: reads and folds, one ALWAYS-GATE, and three transaction nodes in doc
 09's order.
 
 | Node | Contract | Store task | System |

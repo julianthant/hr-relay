@@ -51,7 +51,7 @@ import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js"
 import { SECRET_SPECS } from "../../../src/domain/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { kualiTimekeeperAnnotationDescriptor } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { separationsIdentityCheckDescriptor } from "../../../src/workflows/separations/identity-check/descriptor.js";
 import {
   GATE_RESOLVED_AT,
@@ -69,7 +69,7 @@ import { WRITE_FIXTURE_TASK_IDS } from "../fixtures/write-sequencer-fixtures.js"
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
   return buildRunEvidenceReceipt({
-    descriptor: kualiTimekeeperAnnotationDescriptor,
+    descriptor: separationsKualiFinalizationDescriptor,
     run: evidence.run,
     result: evidence.result,
     checkpoints: evidence.checkpoints,
@@ -237,12 +237,12 @@ describe("evidence receipt — strictness", () => {
     const evidence = kualiReceiptEvidence();
     const run = evidence.run as { lifecycle: unknown };
     assert.throws(() => buildRunEvidenceReceipt({
-      descriptor: kualiTimekeeperAnnotationDescriptor,
+      descriptor: separationsKualiFinalizationDescriptor,
       ...evidence,
       run: { ...run, lifecycle: { state: "queued" } },
     }), /a receipt states a settled verdict|only a terminal/);
     assert.throws(() => buildRunEvidenceReceipt({
-      descriptor: kualiTimekeeperAnnotationDescriptor,
+      descriptor: separationsKualiFinalizationDescriptor,
       ...evidence,
       run: {
         ...run,
@@ -250,7 +250,7 @@ describe("evidence receipt — strictness", () => {
       },
     }), /interrupted/);
     assert.throws(() => buildRunEvidenceReceipt({
-      descriptor: WORKFLOW_DESCRIPTORS.find(({ id }) => id === "person-lookup") ?? kualiTimekeeperAnnotationDescriptor,
+      descriptor: WORKFLOW_DESCRIPTORS.find(({ id }) => id === "person-lookup") ?? separationsKualiFinalizationDescriptor,
       ...evidence,
     }), /refusing to explain a run with another workflow's graph/);
   });
@@ -424,7 +424,7 @@ describe("evidence receipt — strictness", () => {
       },
     });
     const rederived = buildRunEvidenceReceipt({
-      descriptor: kualiTimekeeperAnnotationDescriptor,
+      descriptor: separationsKualiFinalizationDescriptor,
       ...underMovedClosure(),
     });
     assert.equal(rederived.descriptorFingerprint, movedClosure);
@@ -434,7 +434,7 @@ describe("evidence receipt — strictness", () => {
       "a closure move changed a fact about the run",
     );
     assert.throws(() => buildRunEvidenceReceipt({
-      descriptor: kualiTimekeeperAnnotationDescriptor,
+      descriptor: separationsKualiFinalizationDescriptor,
       ...underMovedClosure({ descriptorVersion: 2 }),
     }), /descriptor-version moved/);
   });

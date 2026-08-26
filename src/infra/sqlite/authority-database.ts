@@ -186,6 +186,11 @@ import {
   type RunEvidenceReceipt,
 } from "../../domain/trust/evidence.js";
 import {
+  DryRunScenarioResultSchema,
+  type DryRunScenarioResult,
+} from "../../domain/trust/dry-run-scenario-result.js";
+import { DryRunWriteSafetyCountsSchema } from "../../domain/trust/dry-run-scenario.js";
+import {
   FixRecordSchema,
   KnowledgeRecordSchema,
   type FixRecord,
@@ -370,6 +375,13 @@ type WriteIntentRepository = Readonly<{
    * therefore correctly absent here: no run fenced it.
    */
   listByRun(runId: string): readonly z.infer<typeof WriteIntentRecordSchema>[];
+  /**
+   * T1b dry-run evidence, scoped through THIS run's intent rows. Attempts and
+   * durable outbox rows have no run id of their own, so both counts join via
+   * `write_intent_id`; a global table count would make another run's write look
+   * like this rehearsal's violation.
+   */
+  countDryRunEvidenceByRun(runId: string): z.infer<typeof DryRunWriteSafetyCountsSchema>;
 }>;
 
 export interface AuthorityWriteCommitHooks {
@@ -549,6 +561,13 @@ type EvidenceReceiptRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<RunEvidenceReceipt>;
   get(receiptId: string): RunEvidenceReceipt | undefined;
   findByRun(runId: string): RunEvidenceReceipt | undefined;
+}>;
+
+/** Ref guards-and-tests §10.6. Citable scenario evidence is insert-only. */
+type DryRunScenarioResultRepository = Readonly<{
+  insert(input: unknown): ImmutableInsertResult<DryRunScenarioResult>;
+  get(resultId: string): DryRunScenarioResult | undefined;
+  list(): readonly DryRunScenarioResult[];
 }>;
 
 /**
@@ -813,6 +832,7 @@ export type AuthorityRepositories = Readonly<{
   runTerminalOutbox: RunTerminalOutboxRepository;
   diagnosticBundles: DiagnosticBundleRepository;
   evidenceReceipts: EvidenceReceiptRepository;
+  dryRunScenarioResults: DryRunScenarioResultRepository;
   intakeSessions: IntakeSessionRepository;
   intakeManifests: IntakeManifestRepository;
   ocrExtractions: OcrExtractionRepository;
@@ -1263,6 +1283,23 @@ const INVARIANT_QUERIES = Object.freeze([
   {
     name: "evidence-receipt-columns-match-record",
     sql: "SELECT count(*) AS count FROM evidence_receipts WHERE record_key IS NOT json_extract(record_json, '$.receiptId') OR run_id IS NOT json_extract(record_json, '$.runId') OR workflow IS NOT json_extract(record_json, '$.workflowId') OR attempt IS NOT json_extract(record_json, '$.attempt') OR result IS NOT json_extract(record_json, '$.result') OR confidence IS NOT json_extract(record_json, '$.confidence') OR failure_id IS NOT json_extract(record_json, '$.failure.value')",
+  },
+  {
+    name: "dry-run-scenario-result-columns-match-record",
+    sql: "SELECT count(*) AS count FROM dry_run_scenario_results WHERE record_key IS NOT json_extract(record_json, '$.resultId') OR scenario_id IS NOT json_extract(record_json, '$.scenarioId') OR workflow IS NOT json_extract(record_json, '$.workflow') OR subject_label IS NOT json_extract(record_json, '$.subjectLabel') OR manifest_digest IS NOT json_extract(record_json, '$.manifestDigest') OR verdict IS NOT json_extract(record_json, '$.verdict') OR execution_state IS NOT json_extract(record_json, '$.execution.state') OR run_id IS NOT json_extract(record_json, '$.execution.runId') OR trace_id IS NOT json_extract(record_json, '$.execution.traceId') OR wall_time_ms IS NOT json_extract(record_json, '$.wallTimeMs') OR created_at IS NOT json_extract(record_json, '$.recordedAt')",
+  },
+  {
+    name: "started-dry-run-scenario-result-binds-run",
+    sql: `
+      SELECT count(*) AS count FROM dry_run_scenario_results AS result
+      LEFT JOIN tasks AS run ON run.record_key = result.run_id
+      WHERE result.execution_state = 'started' AND (
+        run.record_key IS NULL
+        OR result.workflow IS NOT run.workflow
+        OR result.trace_id IS NOT json_extract(run.record_json, '$.envelope.traceId')
+        OR json_extract(run.record_json, '$.envelope.dryRun') IS NOT 1
+      )
+    `,
   },
   {
     name: "knowledge-and-fix-columns-match-record",
@@ -3004,6 +3041,61 @@ export class AuthorityDatabase implements Disposable {
           return parseJsonRecord(RunEvidenceReceiptSchema, JsonRowSchema.parse(row).record_json);
         },
       }),
+      dryRunScenarioResults: Object.freeze({
+        insert: (input: unknown) => {
+          const record = DryRunScenarioResultSchema.parse(input);
+          const json = canonicalJsonStringify(record);
+          return this.#authorityWrite("dry_run_scenario_results", () => {
+            const existing = this.#readRecord(
+              "dry_run_scenario_results",
+              record.resultId,
+              DryRunScenarioResultSchema,
+            );
+            if (existing !== undefined) {
+              if (canonicalJsonStringify(existing) !== json) {
+                throw new Error(`dry-run scenario result ${record.resultId} already exists with different content`);
+              }
+              return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
+            }
+            if (record.execution.state === "started") {
+              const run = this.#readRecord("tasks", record.execution.runId, RunRecordSchema);
+              if (run === undefined
+                || run.envelope.dryRun !== true
+                || run.envelope.workflow !== record.workflow
+                || run.envelope.traceId !== record.execution.traceId) {
+                throw new Error(
+                  `dry-run scenario result ${record.resultId} does not match its dry-run execution`,
+                );
+              }
+            }
+            const result = this.#database.prepare(`
+              INSERT INTO dry_run_scenario_results
+                (record_key, scenario_id, workflow, subject_label, manifest_digest, verdict,
+                 execution_state, run_id, trace_id, wall_time_ms, record_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              record.resultId, record.scenarioId, record.workflow, record.subjectLabel,
+              record.manifestDigest, record.verdict, record.execution.state,
+              record.execution.state === "started" ? record.execution.runId : null,
+              record.execution.state === "started" ? record.execution.traceId : null,
+              record.wallTimeMs, json, record.recordedAt,
+            );
+            return {
+              result: Object.freeze({ state: "inserted" as const, record }),
+              changes: sqliteChanges(result.changes),
+            };
+          });
+        },
+        get: (resultId: string) => this.#readRecord(
+          "dry_run_scenario_results",
+          resultId,
+          DryRunScenarioResultSchema,
+        ),
+        list: () => Object.freeze(this.#database.prepare(`
+          SELECT record_json FROM dry_run_scenario_results ORDER BY created_at, record_key
+        `).all().map((row) =>
+          parseJsonRecord(DryRunScenarioResultSchema, JsonRowSchema.parse(row).record_json))),
+      }),
       knowledgeRecords: Object.freeze({
         insert: (input: unknown) => {
           const record = KnowledgeRecordSchema.parse(input);
@@ -3641,6 +3733,28 @@ export class AuthorityDatabase implements Disposable {
             WriteIntentRecordSchema,
             JsonRowSchema.parse(row).record_json,
           )));
+        },
+        countDryRunEvidenceByRun: (runId: string) => {
+          const parsedRunId = RunIdSchema.parse(runId);
+          const count = (sql: string): number => CountRowSchema.parse(
+            this.#database.prepare(sql).get(parsedRunId),
+          ).count;
+          return DryRunWriteSafetyCountsSchema.parse({
+            writeIntents: count(`
+              SELECT count(*) AS count FROM write_intents
+              WHERE json_extract(record_json, '$.runId') = ?
+            `),
+            writeAttempts: count(`
+              SELECT count(*) AS count FROM write_attempts AS attempt
+              JOIN write_intents AS intent ON intent.record_key = attempt.write_intent_id
+              WHERE json_extract(intent.record_json, '$.runId') = ?
+            `),
+            durableOutbox: count(`
+              SELECT count(*) AS count FROM durable_outbox AS outbox
+              JOIN write_intents AS intent ON intent.record_key = outbox.write_intent_id
+              WHERE json_extract(intent.record_json, '$.runId') = ?
+            `),
+          });
         },
       }),
       writeAttempts: Object.freeze({

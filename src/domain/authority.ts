@@ -11,6 +11,7 @@ export const AuthorityTableNameSchema = z.enum([
   "diagnostic_bundles",
   "diagnostic_attachments",
   "evidence_receipts",
+  "dry_run_scenario_results",
   "knowledge_records",
   "fix_records",
   "ledger_partitions",

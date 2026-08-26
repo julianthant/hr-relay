@@ -631,14 +631,10 @@ function TypedInput({
  * whole workflow to default to" rather than a step chosen on the operator's
  * behalf.
  *
- * **Neither is a PROVING workflow** (D241), on the same argument one step
- * further out: it proves the write kernel rather than doing HR work, so a
- * dialog that opened on it would propose test equipment as the day's default.
- * The auto-pick set is therefore exactly the rail's set — the main workflows,
+ * The auto-pick set is exactly the rail's set — the main workflows,
  * compositions and standalones — so the two surfaces cannot disagree about
- * what counts as a workflow to start. It stays startable, from its own panel
- * and from the picker's `Test equipment` group, because a proof nobody can
- * re-run is not a standing proof.
+ * what counts as a workflow to start. Harnesses remain explicitly startable
+ * from their own panels and from the picker's nested entries.
  */
 function defaultWorkflowId(
   workflows: readonly RunStartWorkflow[],

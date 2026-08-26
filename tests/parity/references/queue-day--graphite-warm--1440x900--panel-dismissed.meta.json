@@ -4,7 +4,7 @@
   "theme": "graphite-warm",
   "adapter": "fixture",
   "fixtureId": "queue-day",
-  "descriptorHash": "133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9",
+  "descriptorHash": "ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b",
   "appVersion": "0.1.0",
   "capturedAt": "2026-08-03",
   "variant": "panel-dismissed"

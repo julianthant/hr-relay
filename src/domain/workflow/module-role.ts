@@ -65,17 +65,6 @@ export const WorkflowModuleRoleSchema = z.discriminatedUnion("kind", [
     of: WorkflowIdSchema,
     step: TimelineCategoryKeySchema,
   }),
-  /**
-   * A workflow registered to prove PROGRAM MACHINERY — a kernel capability, a
-   * driver, a write path — rather than to run daily HR work, and belonging to
-   * no composition (ref workflow-model §1.2.1, D220). `kuali-timekeeper-annotation` is the
-   * type specimen: it exists to carry the D135 controlled-transaction proof,
-   * and it stays registered and startable because a kernel change may need the
-   * proof re-run. Unlike `chunk-harness` it carries no `of` — there is nothing
-   * for it to be a step of, and pointing it at a composition would be a lie
-   * the registry validates against.
-   */
-  z.strictObject({ kind: z.literal("proving") }),
 ]);
 export type WorkflowModuleRole = z.infer<typeof WorkflowModuleRoleSchema>;
 

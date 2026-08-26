@@ -27,7 +27,6 @@ import {
 import type { WorkflowModuleRole } from "../domain/workflow/module-role.js";
 import { workflowSourceFolder } from "../domain/workflow/source-layout.js";
 import { taskStoreRegistry } from "../stores/index.js";
-import { kualiTimekeeperAnnotationModule } from "../workflows/kuali-timekeeper-annotation/module.js";
 import { personLookupModule } from "../workflows/person-lookup/module.js";
 import { separationsIdentityCheckModule } from "../workflows/separations/identity-check/module.js";
 import { separationsKronosTimecardModule } from "../workflows/separations/kronos-timecard/module.js";
@@ -38,7 +37,6 @@ import { separationsUcpathTerminationModule } from "../workflows/separations/ucp
 
 export const WORKFLOW_MODULES = Object.freeze([
   personLookupModule,
-  kualiTimekeeperAnnotationModule,
   separationsKronosTimecardModule,
   separationsKualiReadModule,
   separationsIdentityCheckModule,
@@ -153,10 +151,9 @@ export const INTAKE_PROJECTIONS = intakeProjectionRegistry(WORKFLOW_MODULES);
  * The same shape for a photographed DOCUMENT source (D174, ref data-intake-and-edit-data §5.1).
  *
  * A capture handoff may only reach a workflow that has DECLARED how a bundle
- * becomes its input. None has: `person-lookup` is identified by an employee id
- * or a name and `kuali-timekeeper-annotation` by a document number, and
- * neither is derivable from a photograph without an OCR-backed workflow that
- * does not exist yet. So this registry is empty on purpose and the handoff
+ * becomes its input. None has: the registered workflows require structured
+ * identifiers and fields that no capture binding currently extracts. So this
+ * registry is empty on purpose and the handoff
  * refuses by name — exactly how `INTAKE_PROJECTIONS` stood between D170 and
  * D172, and for the same reason: an invented binding would put a
  * plausible-but-wrong canonical input into a real run.

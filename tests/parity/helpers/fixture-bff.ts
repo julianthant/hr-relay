@@ -17,6 +17,8 @@ import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
 } from "../../../src/domain/dashboard/subscription.js";
+import type { FrontendBootstrapWire } from "../../../src/domain/dashboard/bootstrap.js";
+import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
 import {
   FIXTURE_BOOTSTRAP,
@@ -31,7 +33,6 @@ import {
   FIXTURE_SECTIONS,
   FIXTURE_START_PLAN,
 } from "./fixture-day.js";
-import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
 import { FIXTURE_INTAKE_MAPPING, FIXTURE_INTAKE_SESSIONS } from "./fixture-intake.js";
 import { FIXTURE_EXPLORER_WIRE, FIXTURE_UI_CATALOG_WIRE } from "./fixture-explorer.js";
 import {
@@ -58,11 +59,25 @@ import {
 
 /* ── SSE envelopes ───────────────────────────────────────────────────────── */
 
-export function fixtureHelloEnvelope(): DashboardStreamEnvelope {
+export interface FixtureDashboardProfile {
+  /** Every bootstrap fact the browser reads before it selects a route. */
+  readonly bootstrap: FrontendBootstrapWire;
+  /** The corresponding day snapshot, including the same descriptor-set hash. */
+  readonly day: DashboardDayWire;
+  readonly descriptorHash: string;
+}
+
+const DEFAULT_DASHBOARD_PROFILE: FixtureDashboardProfile = Object.freeze({
+  bootstrap: FIXTURE_BOOTSTRAP,
+  day: FIXTURE_DAY_WIRE,
+  descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+});
+
+export function fixtureHelloEnvelope(profile: FixtureDashboardProfile = DEFAULT_DASHBOARD_PROFILE): DashboardStreamEnvelope {
   return DashboardStreamEnvelopeSchema.parse({
     type: "hello",
     wireVersion: 1,
-    descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+    descriptorHash: profile.descriptorHash,
     projectionGeneration: 1,
     cursor: "pc:1",
   });
@@ -103,10 +118,14 @@ const CaptureOrderProbeSchema = z.looseObject({
   orderedPhotoIds: z.array(z.string().min(1)).min(1),
 });
 
-export function createFixtureBff(dayWire: DashboardDayWire = FIXTURE_DAY_WIRE): { app: Hono } {
+export function createFixtureBff(
+  input: Readonly<{ profile?: FixtureDashboardProfile; dayWire?: DashboardDayWire }> = {},
+): { app: Hono } {
   const app = new Hono();
+  const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
+  const dayWire = input.dayWire ?? profile.day;
 
-  app.get("/api/v1/bootstrap", (c) => c.json(FIXTURE_BOOTSTRAP as unknown));
+  app.get("/api/v1/bootstrap", (c) => c.json(profile.bootstrap as unknown));
 
   app.get("/api/v1/dashboard", (c) => {
     const day = c.req.query("day");
@@ -340,13 +359,18 @@ async function serveStatic(distDir: string, pathname: string, res: ServerRespons
   }
 }
 
-function serveSse(res: ServerResponse, open: Set<ServerResponse>, dayWire: DashboardDayWire): void {
+function serveSse(
+  res: ServerResponse,
+  open: Set<ServerResponse>,
+  profile: FixtureDashboardProfile,
+  dayWire: DashboardDayWire,
+): void {
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache",
     connection: "keep-alive",
   });
-  res.write(sseSerialize(fixtureHelloEnvelope()));
+  res.write(sseSerialize(fixtureHelloEnvelope(profile)));
   res.write(sseSerialize(fixtureSnapshotEnvelope(dayWire)));
   res.write(sseSerialize(fixtureHealthEnvelope()));
   const heartbeat = setInterval(() => {
@@ -373,21 +397,27 @@ export interface FixtureServer {
 }
 
 export async function startFixtureServer(
-  input: Readonly<{ distDir: string; bundle: ParityBundleProof; dayWire?: DashboardDayWire }>,
+  input: Readonly<{
+    distDir: string;
+    bundle: ParityBundleProof;
+    profile?: FixtureDashboardProfile;
+    dayWire?: DashboardDayWire;
+  }>,
 ): Promise<FixtureServer> {
   // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
   // Asserted BEFORE a port is bound, so a stale `dist/dashboard` can never be
   // reached over HTTP — and never leaks a listening socket on refusal.
   assertServedBundle(input.distDir, input.bundle);
-  const dayWire = input.dayWire ?? FIXTURE_DAY_WIRE;
-  const { app } = createFixtureBff(dayWire);
+  const profile = input.profile ?? DEFAULT_DASHBOARD_PROFILE;
+  const dayWire = input.dayWire ?? profile.day;
+  const { app } = createFixtureBff({ profile, dayWire });
   const openStreams = new Set<ServerResponse>();
 
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
       if (url.pathname === "/events/v1") {
-        serveSse(res, openStreams, dayWire);
+        serveSse(res, openStreams, profile, dayWire);
         return;
       }
       if (url.pathname.startsWith("/api/")) {

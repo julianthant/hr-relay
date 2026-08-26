@@ -13,8 +13,7 @@
  * writes and have no whole plan to show (rule 3: a harness IMPORTS these
  * fragments rather than restating them).
  */
-import { defineOperatorGateNode, defineTaskNode } from "../../../base/flow.js";
-import { defineWorkflowStepNodes } from "../../../base/workflow.js";
+import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
 import { SeparationsMatchIdentity } from "../../../domain/contracts/separations/match-identity.js";
 import { SeparationsMatchSeparationSubject } from "../../../domain/contracts/separations/match-separation-subject.js";
 import { SeparationsVerifyIdentityApproval } from "../../../domain/contracts/separations/verify-identity-approval.js";
@@ -28,6 +27,8 @@ export const COMPARISON_NODE = "comparison";
 export const GATE_NODE = "identity-approval";
 export const APPROVAL_NODE = "approval";
 
+const nodes = defineWorkflowStepNodeFactory(IDENTITY_CHECK_STEP);
+
 /**
  * Every graph that applies this node binds `keepNonHdh: true` and runs it
  * UNCONDITIONALLY — chunk 3's two sharpest choices. Legacy searches only when
@@ -38,17 +39,17 @@ export const APPROVAL_NODE = "approval";
  * pick a preferred candidate; here the point is to SHOW the operator every
  * person this name resolves to.
  */
-export const nameSearchNode = defineTaskNode(IDENTITY_CHECK_STEP, NAME_SEARCH_NODE, SearchPersonOrg, {
+export const nameSearchNode = nodes.task(NAME_SEARCH_NODE, SearchPersonOrg, {
   label: "Name Search",
   replay: "checkpoint",
 });
 
-export const subjectNode = defineTaskNode(IDENTITY_CHECK_STEP, SUBJECT_NODE, SeparationsMatchSeparationSubject, {
+export const subjectNode = nodes.task(SUBJECT_NODE, SeparationsMatchSeparationSubject, {
   label: "Separation Subject",
   replay: "checkpoint",
 });
 
-export const comparisonNode = defineTaskNode(IDENTITY_CHECK_STEP, COMPARISON_NODE, SeparationsMatchIdentity, {
+export const comparisonNode = nodes.task(COMPARISON_NODE, SeparationsMatchIdentity, {
   label: "Identity Comparison",
   replay: "checkpoint",
 });
@@ -60,7 +61,7 @@ export const comparisonNode = defineTaskNode(IDENTITY_CHECK_STEP, COMPARISON_NOD
  * `gate_results` is the typed `resolve-gate` command, which parses this exact
  * schema and CASes the run version.
  */
-export const identityApprovalGate = defineOperatorGateNode(IDENTITY_CHECK_STEP, GATE_NODE, {
+export const identityApprovalGate = nodes.operatorGate(GATE_NODE, {
   label: "Identity Approval",
   statusKey: "awaitingIdentityApproval",
   result: IdentityApprovalResultSchema,
@@ -71,13 +72,13 @@ export const identityApprovalGate = defineOperatorGateNode(IDENTITY_CHECK_STEP, 
  * gate result against re-derived evidence, and a replayed checkpoint would be
  * the previous comparison's ANSWER standing in for the comparison.
  */
-export const approvalNode = defineTaskNode(IDENTITY_CHECK_STEP, APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
+export const approvalNode = nodes.task(APPROVAL_NODE, SeparationsVerifyIdentityApproval, {
   label: "Approval Check",
   replay: "always-rerun",
 });
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const IDENTITY_CHECK_STEP_NODES = defineWorkflowStepNodes(IDENTITY_CHECK_STEP, [
+export const IDENTITY_CHECK_STEP_NODES = nodes.category([
   nameSearchNode,
   subjectNode,
   comparisonNode,

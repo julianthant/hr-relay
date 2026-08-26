@@ -93,11 +93,12 @@ opinion.
 
 ### The honest state at HEAD (2026-08-21)
 
-**Phase 3 is one order done and one in flight.** `src/workflows/` holds nine descriptor directories:
-`person-lookup` (order 0, as-built and **live-proven** by D74 — run `4ebf7275`, trace `pl-000619-4ebf`),
-`kuali-timekeeper-annotation` (not a legacy migration at all — it is the purpose-built one-node
-workflow that carries the Phase-2 controlled transaction proof, D135), and the seven that compose
-separations. The tree's own marker reads *separations 8 / 9*. Eight migration orders have not started.
+**Phase 3 is one order done and one in flight.** `src/workflows/` has two rail-level folders:
+`person-lookup` (order 0, as-built and **live-proven** by D74 — run `4ebf7275`, trace `pl-000619-4ebf`)
+and `separations`, whose six timeline-step folders hold five independently startable harnesses.
+D266 dismantled the former annotation proof workflow into the Kuali-finalization T1 scenario pair;
+its D135 controlled-transaction result remains historical evidence. The tree's own marker reads
+*separations 8 / 9*. Eight migration orders have not started.
 
 **Zero of the fifteen legacy workflow directories are closed**, and one of those zeros is instructive:
 `legacy-workflow-person-lookup` is still `open` even though order 0 shipped and ran live, because

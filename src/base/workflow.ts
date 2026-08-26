@@ -97,7 +97,6 @@ import type {
   StepProjection,
   SurfaceShape,
   TimelineCategoryProjection,
-  TimelineCategorySpec,
   VerdictDefinition,
   WorkflowActionPolicy,
   WorkflowCategory,
@@ -110,7 +109,12 @@ import {
   assertSchemaOffersPath,
   assertSchemaOwnsPath,
 } from "../validation/contract-boundary.js";
-import type { AnyNodeEntry, BuiltFlow, NodeFragmentOf, OutputsOf, WorkflowResultSpec } from "./flow.js";
+import type {
+  AnyNodeEntry,
+  BuiltFlow,
+  OutputsOf,
+  WorkflowResultSpec,
+} from "./flow.js";
 
 /* ── the authored halves that stay typed over the graph ──────────────────── */
 
@@ -205,47 +209,6 @@ export function defineWorkflowStep<const Key extends string>(
   step: Readonly<{ key: Key; label: string }>,
 ): WorkflowStepOf<Key> {
   return Object.freeze(WorkflowStepOfSchema(step.key).parse(step));
-}
-
-/**
- * D265 §1.2.2 rule 2, the other half — the step's timeline CATEGORY, derived
- * from the folder's own node fragments rather than declared by hand.
- *
- * A step folder's `nodes.ts` defines its node fragments (`defineTaskNode` and
- * kin, `src/base/flow.ts`) and exports exactly one of these; the composition's
- * `timeline` is the list of the six. The key and label come from the folder's
- * `step.ts`, the member ids from the fragments' own declared ids — so a
- * category cannot spell the step's key differently from the folder it is.
- *
- * OWNERSHIP is checked here, not assumed: every fragment carries the step that
- * owns it, so a category claiming ANOTHER folder's fragment is a type error
- * (`NodeFragmentOf<Key>` is branded by the step's literal key) and, where that
- * literal is gone, the load-time refusal below names the fragment and both step
- * keys. Before it was structural, `defineWorkflowStepNodes(KUALI_EXTRACTION_STEP,
- * [actionNode, receiptNode])` compiled: the only downstream check is
- * `deriveTimeline`'s coverage/uniqueness pass, which knows nothing about which
- * folder a node belongs to, so the mis-filed node would have shipped under the
- * wrong step's heading. D225's exhaustiveness (every graph node in exactly one
- * category) is still checked by `defineWorkflowDescriptor`, which is where a
- * fragment left OUT of its folder's list fails loud.
- */
-export function defineWorkflowStepNodes<const Key extends string>(
-  step: WorkflowStepOf<Key>,
-  fragments: readonly NodeFragmentOf<NoInfer<Key>>[],
-): TimelineCategorySpec {
-  for (const fragment of fragments) {
-    if (fragment.step.key !== step.key) {
-      throw new Error(
-        `step "${step.key}" claims node fragment ${fragment.id}, which belongs to step "${fragment.step.key}"`,
-      );
-    }
-  }
-  const nodes = fragments.map((fragment) => fragment.id);
-  const repeated = nodes.find((id, index) => nodes.indexOf(id) !== index);
-  if (repeated !== undefined) {
-    throw new Error(`step "${step.key}" lists node fragment ${repeated} twice`);
-  }
-  return Object.freeze(TimelineCategorySpecSchema.parse({ key: step.key, label: step.label, nodes }));
 }
 
 /**

@@ -12,8 +12,7 @@
  * composition binds the filing from the reconciled folds; the harness in this
  * folder binds it from its own ingress (rule 3).
  */
-import { defineTaskNode, defineTransactionNode } from "../../../base/flow.js";
-import { defineWorkflowStepNodes } from "../../../base/workflow.js";
+import { defineWorkflowStepNodeFactory } from "../../../base/flow.js";
 import { SeparationsVerifyTerminationReceipt } from "../../../domain/contracts/separations/verify-termination-receipt.js";
 import { UcpathCreateTermination } from "../../../domain/contracts/ucpath/create-termination.js";
 import { UcpathDeletePendingTerminations } from "../../../domain/contracts/ucpath/delete-pending-terminations.js";
@@ -25,6 +24,8 @@ export const SWEEP_NODE = "clear-pending";
 export const TERMINATION_NODE = "file-termination";
 export const RECEIPT_NODE = "receipt";
 
+const nodes = defineWorkflowStepNodeFactory(UCPATH_TRANSACTION_STEP);
+
 /**
  * `probePolicy: "always"`: the sweep's probe is one page read that the
  * termination's probe needs anyway, and paying it on the first attempt too is
@@ -35,7 +36,7 @@ export const RECEIPT_NODE = "receipt";
  * checkbox clicks. 90 s is ~5x that, and short enough that a stalled page
  * loses its selection rather than deleting on a stale probe.
  */
-export const clearPendingNode = defineTransactionNode(UCPATH_TRANSACTION_STEP, SWEEP_NODE, {
+export const clearPendingNode = nodes.transaction(SWEEP_NODE, {
   label: "Clear Pending Terminations",
   prepare: UcpathStagePendingTerminationSweep,
   commit: UcpathDeletePendingTerminations,
@@ -48,7 +49,7 @@ export const clearPendingNode = defineTransactionNode(UCPATH_TRANSACTION_STEP, S
  * The real HR write. Budget measured live 2026-08-13 (§9.7): ≈32.4 s of live
  * wizard staging on top of ≈17 s of probe, and 120 s is ~3.7x that.
  */
-export const fileTerminationNode = defineTransactionNode(UCPATH_TRANSACTION_STEP, TERMINATION_NODE, {
+export const fileTerminationNode = nodes.transaction(TERMINATION_NODE, {
   label: "File Termination",
   prepare: UcpathStageTermination,
   commit: UcpathCreateTermination,
@@ -63,13 +64,13 @@ export const fileTerminationNode = defineTransactionNode(UCPATH_TRANSACTION_STEP
  * for the check. It is a pure fold over a durable proof, so re-running it costs
  * nothing and reaches no browser.
  */
-export const receiptNode = defineTaskNode(UCPATH_TRANSACTION_STEP, RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
+export const receiptNode = nodes.task(RECEIPT_NODE, SeparationsVerifyTerminationReceipt, {
   label: "Termination Receipt",
   replay: "always-rerun",
 });
 
 /** The step's timeline category — key and label from `step.ts`, nodes from the fragments above. */
-export const UCPATH_TRANSACTION_STEP_NODES = defineWorkflowStepNodes(UCPATH_TRANSACTION_STEP, [
+export const UCPATH_TRANSACTION_STEP_NODES = nodes.category([
   clearPendingNode,
   fileTerminationNode,
   receiptNode,

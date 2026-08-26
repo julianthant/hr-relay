@@ -13,8 +13,8 @@
  *  2. **Trim every read.** Kuali inputs return whitespace-padded values (legacy
  *     `kuali/LESSONS.md:49-54`: doc #4241 returned `" 10772489"`).
  *  3. **A save is never proof.** `commit` returns only that the click happened
- *     AND that the mutation it issued carried the staged value. Landing proof
- *     comes exclusively from `readSavedTimekeeper`, which RELOADS first
+ *     AND that the mutation it issued carried the staged values. Landing proof
+ *     comes exclusively from `readSavedSeparationFinalization`, which RELOADS first
  *     (ref write-safety §13 OQ1 (a)).
  *  4. **The DOM holding the value is not Kuali holding the value.** A Kuali
  *     Build text gadget debounces into the document model; only the model is
@@ -50,27 +50,15 @@ import type { MutationCapability, UiActionProof } from "../../../domain/ui/drive
 import { UiActionProofSchema } from "../../../domain/ui/driver.js";
 import {
   KUALI_RRSS_DISPLAYED_EID,
-  KUALI_RRSS_DISPLAYED_TIMEKEEPER,
-  KUALI_RRSS_DOCUMENT_READY,
   KUALI_RRSS_EID_FIELD,
   KUALI_RRSS_SAVE_BUTTON,
   KUALI_RRSS_TIMEKEEPER_FIELD,
-  KUALI_RRSS_TIMEKEEPER_FORM_KEY,
-  KUALI_RRSS_TIMEKEEPER_STAGED,
   KualiActionIdSchema,
   KualiDocumentNumberSchema,
-  KualiDocumentViewSchema,
   KualiRrssDocumentDriverSchema,
-  KualiSavedTimekeeperProofSchema,
-  KualiTimekeeperNameSchema,
-  KualiTimekeeperReadBackSchema,
-  KualiTimekeeperStagingSchema,
 } from "../../../domain/ui/kuali-rrss-document.js";
 import type {
-  KualiDocumentView,
   KualiRrssDocumentDriver,
-  KualiTimekeeperReadBack,
-  KualiTimekeeperStaging,
 } from "../../../domain/ui/kuali-rrss-document.js";
 import {
   KUALI_BLANK_OPTION_TEXT,
@@ -433,25 +421,17 @@ const SubmitResponseSchema = z.object({
  * What the last successful staging on the page proved, retained so `commit` can
  * check the save's payload against it.
  *
- * It is a UNION because this store now has two write families that both click
- * the same one `Save` button. `commit` receives only an element id and a
- * capability, so without this it would have nothing to compare — and a Save
+ * `commit` receives only an element id and a capability, so without this it
+ * would have nothing to compare — and a Save
  * clicked with no staging behind it is exactly the no-op write the 2026-08-04
  * attempt performed.
  */
-type StagedExpectation =
-  | Readonly<{
-    kind: "timekeeper";
-    actionId: string;
-    documentNumber: string;
-    timekeeperName: string;
-  }>
-  | Readonly<{
-    kind: "finalization";
-    actionId: string;
-    documentNumber: string;
-    fields: KualiFinalizationFields;
-  }>;
+type StagedExpectation = Readonly<{
+  kind: "finalization";
+  actionId: string;
+  documentNumber: string;
+  fields: KualiFinalizationFields;
+}>;
 
 /** Every Kuali input read trims; a padded value is the norm, not an anomaly. */
 async function readTrimmedInput(page: Page, id: ElementId): Promise<string> {
@@ -503,15 +483,6 @@ async function readDisplayedEid(page: Page): Promise<string> {
  * commit re-checks the value on the wire, so an early or spurious re-render
  * cannot turn into a save that silently drops the field.
  */
-async function awaitModelCommit(
-  page: Page,
-  handle: ElementHandle<SVGElement | HTMLElement>,
-  documentNumber: string,
-): Promise<void> {
-  await stampModelProps(handle, documentNumber, "timekeeper");
-  await awaitModelPropsReplaced(page, handle, documentNumber, "timekeeper");
-}
-
 /**
  * Half one of the model-commit barrier: remember the control's CURRENT React
  * props object so a later replacement is observable.
@@ -649,9 +620,6 @@ function assertSubmitCarriedValue(
  * read-back — and that compares all twelve fields.
  */
 function stagedWireValues(expected: StagedExpectation): readonly (readonly [string, unknown])[] {
-  if (expected.kind === "timekeeper") {
-    return [[KUALI_RRSS_TIMEKEEPER_FORM_KEY, expected.timekeeperName]];
-  }
   const pairs: (readonly [string, unknown])[] = [];
   for (const field of KUALI_FINALIZATION_FIELD_NAMES) {
     if (!KUALI_RRSS_FINALIZATION_WIRE_ASSERTED.includes(field)) continue;
@@ -861,7 +829,11 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
   async function openDocument(input: Readonly<{
     actionId: string;
     documentNumber: string;
-  }>): Promise<KualiDocumentView> {
+  }>): Promise<Readonly<{
+    actionId: string;
+    documentNumber: string;
+    observedEid: string;
+  }>> {
     const actionId = KualiActionIdSchema.parse(input.actionId);
     const expectedNumber = KualiDocumentNumberSchema.parse(input.documentNumber);
     // A navigation discards Kuali's in-page form model, so anything staged
@@ -879,14 +851,11 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         + "action ids are not stable across workflow steps — refusing to act on a different document",
       );
     }
-    return KualiDocumentViewSchema.parse({
-      pageStateId: KUALI_RRSS_DOCUMENT_READY,
+    return {
       actionId,
       documentNumber: observedNumber,
       observedEid: await readDisplayedEid(page),
-      currentTimekeeperName: await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD),
-      observedAt: now(),
-    });
+    };
   }
 
   /* ── The separation-document read (2i chunk 2) ─────────────────────────── */
@@ -1173,119 +1142,6 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
         observedAt: now(),
       }),
     });
-  }
-
-  async function stageTimekeeperName(input: Readonly<{
-    actionId: string;
-    documentNumber: string;
-    timekeeperName: string;
-  }>): Promise<KualiTimekeeperStaging> {
-    const timekeeperName = KualiTimekeeperNameSchema.parse(input.timekeeperName);
-    staged = undefined;
-    const view = await openDocument(input);
-    const field = await exactlyOne(page, KUALI_RRSS_TIMEKEEPER_FIELD);
-    await field.fill(timekeeperName, { timeout: FIELD_TIMEOUT_MS });
-    // `fillWithVerify` (legacy navigate.ts:16-39): Kuali controls silently drop
-    // a `fill()` often enough that an unverified staging is worthless. One
-    // retry through key events, then throw — never "assume it took".
-    let displayed = await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD);
-    if (displayed !== timekeeperName) {
-      await field.clear({ timeout: FIELD_TIMEOUT_MS });
-      await field.pressSequentially(timekeeperName, { delay: 30, timeout: FIELD_TIMEOUT_MS });
-      displayed = await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD);
-    }
-    if (displayed !== timekeeperName) {
-      throw new Error(
-        `Kuali document ${view.documentNumber} did not accept the staged timekeeper value; `
-        + "the field reads back differently after two attempts — refusing to reach the fence",
-      );
-    }
-    // The DOM having the value is NOT the same as Kuali having it: the gadget
-    // debounces into the document model, and only what is in the model reaches
-    // the save mutation. Wait for the commit before anything may fence.
-    const handle = await field.elementHandle({ timeout: FIELD_TIMEOUT_MS });
-    if (handle === null) {
-      throw new Error(
-        `Kuali document ${view.documentNumber} lost the timekeeper control between staging and the `
-        + "model-commit barrier; refusing to reach the fence",
-      );
-    }
-    try {
-      await awaitModelCommit(page, handle, view.documentNumber);
-    } finally {
-      await handle.dispose();
-    }
-    // The commit must not have rewritten the control — a model that took a
-    // DIFFERENT value than we typed is a staging we cannot stand behind.
-    const settled = await readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD);
-    if (settled !== timekeeperName) {
-      throw new Error(
-        `Kuali document ${view.documentNumber} shows ${JSON.stringify(settled)} in the timekeeper field `
-        + `after its model commit, not the staged ${JSON.stringify(timekeeperName)}; refusing to reach the fence`,
-      );
-    }
-    // The Save button must already resolve uniquely BEFORE the fence: a page
-    // that cannot name exactly one Save is a page we must not fence on.
-    await exactlyOne(page, KUALI_RRSS_SAVE_BUTTON);
-    staged = {
-      kind: "timekeeper",
-      actionId: view.actionId,
-      documentNumber: view.documentNumber,
-      timekeeperName,
-    };
-    return KualiTimekeeperStagingSchema.parse({
-      pageStateId: KUALI_RRSS_TIMEKEEPER_STAGED,
-      actionId: view.actionId,
-      documentNumber: view.documentNumber,
-      observedEid: view.observedEid,
-      previousTimekeeperName: view.currentTimekeeperName,
-      stagedTimekeeperName: settled,
-      observedAt: now(),
-    });
-  }
-
-  async function readSavedTimekeeper(input: Readonly<{
-    actionId: string;
-    documentNumber: string;
-    timekeeperName: string;
-  }>): Promise<KualiTimekeeperReadBack> {
-    const expected = KualiTimekeeperNameSchema.parse(input.timekeeperName);
-    try {
-      // The reload IS the proof mechanism. Reading the in-memory field would
-      // report the staged value whether or not the save landed.
-      await page.reload({ waitUntil: "domcontentloaded", timeout: NAVIGATION_TIMEOUT_MS });
-      const view = await openDocument(input);
-      if (view.currentTimekeeperName === expected) {
-        return KualiTimekeeperReadBackSchema.parse({
-          state: "present",
-          proof: KualiSavedTimekeeperProofSchema.parse({
-            kind: "kuali-saved-timekeeper",
-            actionId: view.actionId,
-            documentNumber: view.documentNumber,
-            timekeeperName: expected,
-            observedEid: view.observedEid,
-            source: "reload-read-back",
-          }),
-          observedAt: now(),
-        });
-      }
-      return KualiTimekeeperReadBackSchema.parse({
-        state: "absent",
-        actionId: view.actionId,
-        documentNumber: view.documentNumber,
-        observedEid: view.observedEid,
-        observedTimekeeperName: view.currentTimekeeperName,
-        observedAt: now(),
-      });
-    } catch (error) {
-      // A failed check is NOT "found nothing". Everything that throws becomes
-      // `unknown`, which parks — it can never become retry authority.
-      return KualiTimekeeperReadBackSchema.parse({
-        state: "unknown",
-        reason: `Kuali reload read-back failed: ${error instanceof Error ? error.message : "non-Error thrown"}`,
-        observedAt: now(),
-      });
-    }
   }
 
   /* ── The finalization write (chunk 5) ──────────────────────────────────── */
@@ -1637,9 +1493,6 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       return matched;
     }
     if (id === KUALI_RRSS_DISPLAYED_EID) return readDisplayedEid(page);
-    if (id === KUALI_RRSS_DISPLAYED_TIMEKEEPER) {
-      return readTrimmedInput(page, KUALI_RRSS_TIMEKEEPER_FIELD);
-    }
     throw new Error(`Kuali driver has no observation recipe for ${id}`);
   }
 
@@ -1694,10 +1547,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     system: "kuali" as const,
     read,
     readActionListForDocument,
-    openDocument,
     readSeparationDocument,
-    stageTimekeeperName,
-    readSavedTimekeeper,
     stageSeparationFinalization,
     readSavedSeparationFinalization,
     commit,

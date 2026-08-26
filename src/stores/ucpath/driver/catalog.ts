@@ -21,43 +21,29 @@ const KUALI_SOURCE_LINK = "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGIS
 const NEW_KRONOS_SOURCE_LINK = "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY";
 const CRM_RECORD_TASK = TaskIdSchema.parse("crm/read-onboarding-record");
 const CRM_DATES_TASK = TaskIdSchema.parse("crm/read-onboarding-dates");
-/**
- * Kuali's write surface is used by the whole transaction pair plus both of its
- * reads. The Save button is deliberately attributed to the COMMIT task alone —
- * the catalog is what an operator reads to answer "what can click this?", and
- * naming the prepare task there would be a lie.
- */
-const KUALI_PROBE_TASK = TaskIdSchema.parse("kuali/read-timekeeper-annotation");
-const KUALI_VERIFY_TASK = TaskIdSchema.parse("kuali/verify-timekeeper-annotation");
-const KUALI_FILL_TASK = TaskIdSchema.parse("kuali/fill-timekeeper-annotation");
-const KUALI_SAVE_TASK = TaskIdSchema.parse("kuali/save-timekeeper-annotation");
-const KUALI_ALL_TASKS = [KUALI_PROBE_TASK, KUALI_VERIFY_TASK, KUALI_FILL_TASK, KUALI_SAVE_TASK];
-/**
- * The separation READ shares one screen with the write surface, so Kuali's
- * attribution cannot split by screen the way New Kronos's does — it splits by
- * FACT. Three of the write surface's facts are genuinely shared (the EID field
- * and its observation, which the read reports as the document's subject, and
- * the timekeeper field and its observation, which the read reports as the form
- * state); the fourteen fields the read added belong to it alone; and the Save
- * button still belongs to the commit task alone, because the catalog is what an
- * operator reads to answer "what can click this?".
- */
+const KUALI_SEARCH_TASK = TaskIdSchema.parse("kuali/search-separation-action");
 const KUALI_READ_TASK = TaskIdSchema.parse("kuali/read-separation-document");
+const KUALI_MATCH_FINALIZATION_TASK = TaskIdSchema.parse("kuali/match-separation-finalization");
+const KUALI_STAGE_FINALIZATION_TASK = TaskIdSchema.parse("kuali/stage-separation-finalization");
+const KUALI_SAVE_FINALIZATION_TASK = TaskIdSchema.parse("kuali/save-separation-finalization");
+const KUALI_VERIFY_FINALIZATION_TASK = TaskIdSchema.parse("kuali/verify-separation-finalization");
+
+const KUALI_DOCUMENT_READERS = [
+  KUALI_READ_TASK,
+  KUALI_MATCH_FINALIZATION_TASK,
+  KUALI_STAGE_FINALIZATION_TASK,
+  KUALI_VERIFY_FINALIZATION_TASK,
+];
+/**
+ * Kuali attribution splits by FACT. The separation reader and finalization
+ * probe/stage/verifier share one RRSS document; the Action List belongs only to
+ * the search task; and Save belongs only to the commit task because naming a
+ * prepare or verifier beside it would lie about which task can click.
+ */
 const KUALI_READ_ONLY_FACTS: readonly string[] = [
   "kuali.rrss-document.employee-name-field",
-  "kuali.rrss-document.last-day-worked-field",
-  "kuali.rrss-document.separation-date-field",
   "kuali.rrss-document.termination-type-field",
   "kuali.rrss-document.location-field",
-  "kuali.rrss-document.request-acknowledged-checkbox",
-  "kuali.rrss-document.timekeeper-comments-field",
-  "kuali.rrss-document.termination-effective-date-field",
-  "kuali.rrss-document.department-field",
-  "kuali.rrss-document.payroll-title-code-field",
-  "kuali.rrss-document.payroll-title-field",
-  "kuali.rrss-document.submitted-template-checkbox",
-  "kuali.rrss-document.transaction-number-field",
-  "kuali.rrss-document.final-pay-student-radio",
   "kuali.rrss-document.separation-ready",
   "kuali.rrss-document.displayed-number",
   "kuali.rrss-document.displayed-form-type",
@@ -65,12 +51,18 @@ const KUALI_READ_ONLY_FACTS: readonly string[] = [
 
 function kualiTaskUses(id: string): TaskId[] {
   if (KUALI_READ_ONLY_FACTS.includes(id)) return [KUALI_READ_TASK];
-  if (id === "kuali.rrss-document.save-button") return [KUALI_SAVE_TASK];
-  if (id === "kuali.rrss-document.timekeeper-staged") return [KUALI_FILL_TASK, KUALI_SAVE_TASK];
-  if (id === "kuali.rrss-document.timekeeper-field" || id === "kuali.rrss-document.displayed-timekeeper") {
-    return [KUALI_PROBE_TASK, KUALI_VERIFY_TASK, KUALI_FILL_TASK, KUALI_READ_TASK];
+  if (id.startsWith("kuali.action-list")) return [KUALI_SEARCH_TASK];
+  if (id === "kuali.rrss-document") {
+    return [...KUALI_DOCUMENT_READERS, KUALI_SAVE_FINALIZATION_TASK];
   }
-  return [...KUALI_ALL_TASKS, KUALI_READ_TASK];
+  if (id === "kuali.rrss-document.save-button") return [KUALI_SAVE_FINALIZATION_TASK];
+  if (id === "kuali.rrss-document.finalization-staged") {
+    return [KUALI_STAGE_FINALIZATION_TASK, KUALI_SAVE_FINALIZATION_TASK];
+  }
+  if (id === "kuali.rrss-document.displayed-transaction-number") {
+    return [KUALI_MATCH_FINALIZATION_TASK, KUALI_VERIFY_FINALIZATION_TASK];
+  }
+  return [...KUALI_DOCUMENT_READERS];
 }
 /**
  * New Kronos is read-only, and its two screens split cleanly by task: the search

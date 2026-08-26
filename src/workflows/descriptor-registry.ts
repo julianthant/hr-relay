@@ -12,7 +12,6 @@
  * entry here is the exact object `WORKFLOW_MODULES` composes, in the same
  * order, so the two tuples cannot drift.
  */
-import { kualiTimekeeperAnnotationDescriptor } from "./kuali-timekeeper-annotation/descriptor.js";
 import { personLookupDescriptor } from "./person-lookup/descriptor.js";
 import { separationsIdentityCheckDescriptor } from "./separations/identity-check/descriptor.js";
 import { separationsKronosTimecardDescriptor } from "./separations/kronos-timecard/descriptor.js";
@@ -23,7 +22,6 @@ import { separationsDescriptor } from "./separations/descriptor.js";
 
 export const WORKFLOW_DESCRIPTORS = Object.freeze([
   personLookupDescriptor,
-  kualiTimekeeperAnnotationDescriptor,
   separationsKronosTimecardDescriptor,
   separationsKualiReadDescriptor,
   separationsIdentityCheckDescriptor,

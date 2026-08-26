@@ -83,49 +83,61 @@ export const EVIDENCE_OBLIGATIONS: readonly EvidenceObligation[] = Object.freeze
     summary: "UCPath resolved exactly one person; an ambiguous or empty search is not a selection",
   },
 
-  /* kuali-timekeeper-annotation: the operator authorized ONE value on ONE
-     document for ONE person. All three are answerable from durable facts. */
+  /* separations-kuali-finalization: the operator authorized one twelve-field
+     finalization on one document for one person. These obligations bind the
+     durable reload proof back to the ingress rather than trusting the click. */
   {
     rule: "all-equal",
-    workflowId: "kuali-timekeeper-annotation",
-    obligation: "write.value-matches-request",
+    workflowId: "separations-kuali-finalization",
+    obligation: "write.timekeeper-matches-request",
     mandatory: true,
     sources: [
       { kind: "workflow-input", path: "timekeeperName" },
-      { kind: "node-output", nodeId: "annotate-timekeeper", path: "savedState.timekeeperName" },
+      { kind: "node-output", nodeId: "finalize-kuali", path: "savedState.fields.timekeeperName" },
     ],
-    summary: "the value the document now holds is byte-identical to the value that was requested",
+    summary: "the finalization proof holds the exact timekeeper name that was requested",
   },
   {
     rule: "all-equal",
-    workflowId: "kuali-timekeeper-annotation",
+    workflowId: "separations-kuali-finalization",
     obligation: "identity.eid-agrees-across-sources",
     mandatory: true,
     sources: [
       { kind: "workflow-input", path: "emplId" },
-      { kind: "node-output", nodeId: "annotate-timekeeper", path: "savedState.observedEid" },
+      { kind: "node-output", nodeId: "finalize-kuali", path: "savedState.observedEid" },
     ],
-    summary: "the document the write landed on displays the EID the operator named",
+    summary: "the finalized document displays the EID the operator approved",
   },
   {
     rule: "all-equal",
-    workflowId: "kuali-timekeeper-annotation",
+    workflowId: "separations-kuali-finalization",
     obligation: "write.document-matches-request",
     mandatory: true,
     sources: [
       { kind: "workflow-input", path: "documentNumber" },
-      { kind: "node-output", nodeId: "annotate-timekeeper", path: "savedState.documentNumber" },
+      { kind: "node-output", nodeId: "finalize-kuali", path: "savedState.documentNumber" },
     ],
-    summary: "the document number the page proved is the document number that was requested",
+    summary: "the reload proof names the document that was requested",
+  },
+  {
+    rule: "all-equal",
+    workflowId: "separations-kuali-finalization",
+    obligation: "write.transaction-matches-request",
+    mandatory: true,
+    sources: [
+      { kind: "workflow-input", path: "transactionNumber" },
+      { kind: "node-output", nodeId: "finalize-kuali", path: "savedState.fields.transactionNumber" },
+    ],
+    summary: "the reload proof holds the UCPath transaction number that was requested",
   },
   {
     rule: "equals-literal",
-    workflowId: "kuali-timekeeper-annotation",
+    workflowId: "separations-kuali-finalization",
     obligation: "write.proof-is-a-read-back",
     mandatory: true,
-    sources: [{ kind: "node-output", nodeId: "annotate-timekeeper", path: "savedState.source" }],
+    sources: [{ kind: "node-output", nodeId: "finalize-kuali", path: "savedState.source" }],
     literal: "reload-read-back",
-    summary: "the saved value was proved by reloading the document and reading it back, not by a click",
+    summary: "the finalization was proved by reloading the document and reading it back, not by a click",
   },
 ].map((entry) => Object.freeze(EvidenceObligationSchema.parse(entry))));
 

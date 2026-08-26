@@ -1,7 +1,7 @@
 # run-running--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: run-running
-# descriptorHash: 133518350fbc3fae96c4d2ba9f7603071952db75aca79c610a759bc35c397fc9
+# descriptorHash: ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -187,7 +187,7 @@
       - tab "Receipt"
     - text: 9:52 AM Searching UCPath directory for Battistessa, Johnnie 9:53 AM 2 candidates returned from person search 9:54 AM Selecting the exact name match
     - searchbox "Search logs"
-    - text: wf 13351835
+    - text: wf ff645d02
     - button "Run provenance"
   - complementary "Run data":
     - text: Run data

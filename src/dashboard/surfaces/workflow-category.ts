@@ -26,8 +26,9 @@
  *
  * D219 (2026-08-14) adds the second half of the same rule, in the same module
  * and for the same reason: MEMBERSHIP. A chunk harness is a step of its
- * composition, never a peer workflow, so inside its category group it renders
- * nested under its composition's entry rather than beside it. Both facts the
+ * composition, never a peer workflow, so it renders nested under its
+ * composition's entry rather than beside it, whatever HR category the harness
+ * itself carries. Both facts the
  * rule reads — `categoryId` and `role` — are served raw; both display
  * decisions are here; and every workflow-listing surface (the rail, the Run
  * Modal's picker over BOTH its lists, and the Explorer) calls this one
@@ -63,29 +64,6 @@ const WORKFLOW_CATEGORY_DISPLAY: Record<WorkflowCategory, CategoryDisplay> = {
 
 /** what a category this build has no heading for is worth in the sort */
 const UNLISTED_ORDER = Number.MAX_SAFE_INTEGER;
-
-/**
- * The heading a PROVING workflow renders under, on every surface that lists
- * one (ref dashboard-surfaces §Shell, D241).
- *
- * D220 dropped proving workflows from the rail and left them where they were
- * everywhere else — which meant `kuali-timekeeper-annotation` still headed the
- * Run Modal's picker and the Explorer under **Operations**, beside the daily HR
- * work it is not. The operator's words were *"a crash test dummy is not a
- * workflow … maybe it belongs in a different category, perhaps in test."*
- *
- * A descriptor's `category` answers *which HR area does this touch* — and for
- * a workflow that exists to prove the write kernel, that is the wrong question
- * with a plausible answer, which is the worst combination: `operations` is not
- * false, it just does not say the thing the operator needs to know before
- * starting a run. The MODULE's role answers the right one, so the role decides
- * the heading here and the category is not consulted. That keeps the fact where
- * D219 put it — no rail-side or picker-side id list, which is the
- * workflow-specific customization the role model exists to avoid.
- *
- * It sorts LAST, after every unlisted category, because equipment is not work.
- */
-const PROVING_GROUP_LABEL = "Test equipment";
 
 function displayOf(categoryId: string): CategoryDisplay | undefined {
   return Object.hasOwn(WORKFLOW_CATEGORY_DISPLAY, categoryId)
@@ -138,9 +116,9 @@ export interface WorkflowHarnessMarking {
    */
   readonly ofLabel: string | undefined;
   /**
-   * `true` when this entry is rendered UNDER its composition's entry in this
-   * group, `false` when it is rendered at top level because the composition is
-   * not in this group (see the orphan rule on `groupWorkflowsByCategory`).
+   * `true` when this entry is rendered UNDER its composition's entry, `false`
+   * when it is rendered at top level because the composition is not in this
+   * list (see the orphan rule on `groupWorkflowsByCategory`).
    */
   readonly nested: boolean;
 }
@@ -195,16 +173,15 @@ function markingFor(
 }
 
 /**
- * Group any list of served workflows by each entry's OWN `categoryId`, in the
- * display order above, and nest each chunk harness under its composition. THE
+ * Nest each chunk harness under its composition, then group the resulting
+ * roots by category in the display order above. THE
  * one rule — the Workflow Panel's rail, the Run Modal's picker (its startable
  * AND its "not startable" lists) and the Explorer all call it, over different
  * lists, so no two surfaces can drift into two orders or disagree about what
  * is a step and what is a workflow (ref dashboard-surfaces §Shell, D219).
  *
- *  - membership is the entry's `categoryId`, with ONE exception: an entry whose
- *    role is `proving` is grouped by its ROLE under `Test equipment`, appended
- *    last, and never under the HR category its descriptor declares (D241);
+ *  - a top-level entry's membership is its own `categoryId`; once a harness
+ *    nests, its composition's category owns its placement;
  *  - listed categories come first in display order, then any unlisted category
  *    in first-seen order;
  *  - a category with no entries is DROPPED rather than rendered as an empty
@@ -216,12 +193,11 @@ function markingFor(
  * ## The orphan rule, stated because the alternative is a lie
  *
  * A harness whose composition is not in the list this was called with — a
- * filtered list that kept the harness and dropped the composition, or (today,
- * really) `separations-kronos-timecard`, which files itself under
- * `timekeeping` while its composition files itself under `separation` — has
+ * filtered list that kept the harness and dropped the composition — has
  * nowhere to nest. Neither tempting answer is available: nesting it under
- * nothing and dropping it silently loses a served workflow, and rendering it as
- * a plain peer says it is a workflow of its own, which D219 decided it is not.
+ * nothing and dropping it silently loses a served workflow, and rendering it
+ * as a plain peer says it is a workflow of its own, which D219 decided it is
+ * not.
  * So it renders at TOP LEVEL and still carries its harness marking with
  * `nested: false` — its harness identity comes from its own role, not from
  * whether its composition happens to be beside it. A surface renders the
@@ -240,47 +216,38 @@ export function groupWorkflowsByCategory<Entry extends WorkflowGroupingFacts>(
   const labelById = new Map<string, string>();
   for (const workflow of workflows) labelById.set(workflow.id, workflow.label);
 
-  // A proving workflow's HEADING comes from its role, not its category
-  // (D241) — see `PROVING_GROUP_LABEL`. It is lifted out before the category
-  // pass so it cannot also appear under the HR area its descriptor files
-  // itself under; one entry, one group.
-  const proving = workflows.filter((workflow) => workflow.role.kind === "proving");
-  const byCategory = new Map<string, Entry[]>();
+  const byCategory = new Map<string, WorkflowGroupEntry<Entry>[]>();
   const seenOrder: string[] = [];
-  for (const workflow of workflows) {
-    if (workflow.role.kind === "proving") continue;
-    let bin = byCategory.get(workflow.categoryId);
+  for (const node of nestHarnesses(workflows, labelById)) {
+    const categoryId = node.entry.categoryId;
+    let bin = byCategory.get(categoryId);
     if (bin === undefined) {
       bin = [];
-      byCategory.set(workflow.categoryId, bin);
-      seenOrder.push(workflow.categoryId);
+      byCategory.set(categoryId, bin);
+      seenOrder.push(categoryId);
     }
-    bin.push(workflow);
+    bin.push(node);
   }
-  const groups = seenOrder
+  return seenOrder
     .map((categoryId, seen) => ({ categoryId, seen, display: displayOf(categoryId) }))
     .sort((a, b) => (a.display?.order ?? UNLISTED_ORDER) - (b.display?.order ?? UNLISTED_ORDER) || a.seen - b.seen)
     .map(({ categoryId, display }) => ({
       label: display?.label ?? categoryId,
-      entries: nestHarnesses(byCategory.get(categoryId) ?? [], labelById),
+      entries: byCategory.get(categoryId) ?? [],
     }));
-  // Appended, never inserted: equipment sorts after work, and an empty
-  // equipment group DROPS exactly as an empty category does.
-  if (proving.length > 0) {
-    groups.push({ label: PROVING_GROUP_LABEL, entries: nestHarnesses(proving, labelById) });
-  }
-  return groups;
 }
 
-/** ONE category's entries, with each harness moved under its composition. */
+/** The whole listing, with each harness moved under its composition before category placement. */
 function nestHarnesses<Entry extends WorkflowGroupingFacts>(
-  bin: readonly Entry[],
+  workflows: readonly Entry[],
   labelById: ReadonlyMap<string, string>,
 ): readonly WorkflowGroupEntry<Entry>[] {
-  const compositions = new Set(bin.filter((entry) => entry.role.kind === "composition").map((entry) => entry.id));
+  const compositions = new Set(
+    workflows.filter((entry) => entry.role.kind === "composition").map((entry) => entry.id),
+  );
   const members = new Map<string, WorkflowGroupEntry<Entry>[]>();
   const topLevel: Entry[] = [];
-  for (const workflow of bin) {
+  for (const workflow of workflows) {
     const nestUnder = workflow.role.kind === "chunk-harness" && compositions.has(String(workflow.role.of))
       ? String(workflow.role.of)
       : undefined;

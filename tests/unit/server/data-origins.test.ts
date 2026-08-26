@@ -28,9 +28,9 @@ describe("dataOriginViewsOf (D252)", () => {
   });
 
   it("reads a TRANSACTION node's commit contract as `write` — the arm a read-only tree would leave unreachable", () => {
-    const origins = dataOriginViewsOf(moduleFor("kuali-timekeeper-annotation"));
+    const origins = dataOriginViewsOf(moduleFor("separations-kuali-finalization"));
     const write = origins.find((origin) => origin.dir === "write");
-    assert.ok(write, "kuali-timekeeper-annotation declares a transaction node and must produce a write origin");
+    assert.ok(write, "separations-kuali-finalization declares a transaction node and must produce a write origin");
     assert.equal(write.system, "kuali");
     // A commit contract declares no freshness policy — a write is not a fact
     // anyone reuses, so there is no bound to state.
@@ -38,15 +38,15 @@ describe("dataOriginViewsOf (D252)", () => {
   });
 
   it("resolves every real transaction beat from the registered module's task declarations", () => {
-    const origins = dataOriginViewsOf(moduleFor("kuali-timekeeper-annotation"))
-      .filter((origin) => origin.nodeId === "annotate-timekeeper")
+    const origins = dataOriginViewsOf(moduleFor("separations-kuali-finalization"))
+      .filter((origin) => origin.nodeId === "finalize-kuali")
       .map(({ role, taskId, dir, system }) => ({ role, taskId, dir, system }));
 
     assert.deepEqual(origins, [
-      { role: "probe", taskId: "kuali/read-timekeeper-annotation", dir: "read", system: "kuali" },
-      { role: "prepare", taskId: "kuali/fill-timekeeper-annotation", dir: "write", system: "kuali" },
-      { role: "commit", taskId: "kuali/save-timekeeper-annotation", dir: "write", system: "kuali" },
-      { role: "verify", taskId: "kuali/verify-timekeeper-annotation", dir: "read", system: "kuali" },
+      { role: "probe", taskId: "kuali/match-separation-finalization", dir: "read", system: "kuali" },
+      { role: "prepare", taskId: "kuali/stage-separation-finalization", dir: "write", system: "kuali" },
+      { role: "commit", taskId: "kuali/save-separation-finalization", dir: "write", system: "kuali" },
+      { role: "verify", taskId: "kuali/verify-separation-finalization", dir: "read", system: "kuali" },
     ]);
   });
 

@@ -146,25 +146,17 @@ describe("Phase 1f Person Lookup task implementations", () => {
         // The extraction service store lands before any descriptor consumes it.
         "extraction/extract-pdf-pages",
         "extraction/extract-spreadsheet",
-        // Phase 2's Kuali transaction pair and its two reads share the one
-        // runtime index; a second workflow does not get a second registry.
-        "kuali/fill-timekeeper-annotation",
-        // Separations chunk 5a's finalization family — the second Kuali write,
-        // a sibling of the other two on the SAME driver declaration. Its
-        // descriptor lands in 5b, and a store contract may legitimately precede
-        // the descriptor that consumes it.
+        // Separations chunk 5's finalization family shares the SAME driver
+        // declaration as the separation form read.
         "kuali/match-separation-finalization",
         // Separations chunk 2's Kuali passage: ONE task for the whole
         // separation form (D194), a sibling of the write family on the SAME
         // driver declaration rather than a second store.
         "kuali/read-separation-document",
-        "kuali/read-timekeeper-annotation",
         "kuali/save-separation-finalization",
-        "kuali/save-timekeeper-annotation",
-      "kuali/search-separation-action",
+        "kuali/search-separation-action",
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization",
-        "kuali/verify-timekeeper-annotation",
         // Separations chunk 1's New Kronos passage: one task per PAGE VISIT
         // (D194), which is why the timecard's navigate/subject/range/read are
         // one entry and not four.

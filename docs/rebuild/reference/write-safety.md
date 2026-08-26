@@ -7,10 +7,11 @@ highest-stakes contract in the rebuild. The operator's non-negotiable (ref chart
 2026-07-18): *"you have to be very sure they were completed"* — completion is **FAIL-CLOSED
 everywhere**, and an unknown or unverifiable result is **never** treated as done.
 
-**Status: binding contract, as-built through 2026-08-20.** The kernel write sequence is built and
-proven end to end against a real external write (§3.4, D135, 2026-08-04). Four commit contracts
-exist — two Kuali, two UCPath — and their `recoveryAbsence` policies differ on measurement, not on
-convenience (§4.2). The identity-approval gate is built, live-proved and served through all three
+**Status: binding contract, as-built through 2026-08-25.** The kernel write sequence is built and
+proven end to end against a real external write (§3.4, D135, 2026-08-04). Three current commit
+contracts exist — Kuali finalization and two UCPath writes — after D266 retired the annotation-only
+proof contract; their `recoveryAbsence` policies differ on measurement, not convenience (§4.2).
+The identity-approval gate is built, live-proved and served through all three
 of its ceremonies (§14.9, §14.11). What is NOT proven is per-workflow: **each workflow with a write
 owes its own controlled-commit proof at its own migration** (§3.2), and separations owes three of
 them (doc 03b).
@@ -282,11 +283,11 @@ pass because a shared schema change is code work with its own gate.
 > 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/write-safety.ts`'s empty `REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` and the absence of any `onbase`/`servicenow` contract; left: both write families
 <!-- /roadmap-status -->
 
-Four commit contracts exist. Every row below is read off the contract, not off the design.
+Three current commit contracts exist. Every row below is read off the contract, not off the design;
+the retired annotation contract and its measured window remain §3.4 history.
 
 | contract | completion | probe | key | `recoveryAbsence` |
 |---|---|---|---|---|
-| `kuali/save-timekeeper-annotation` | `save-verify` → `kuali/verify-timekeeper-annotation` | `kuali/read-timekeeper-annotation` | `kuali:<doc>\|<actionId>\|timekeeper-name\|<eid>\|<value>` | **`stabilized`** 30 000 ms / 2 reads / 5 000 ms (D135, measured) |
 | `kuali/save-separation-finalization` | `save-verify` → `kuali/verify-separation-finalization` | `kuali/match-separation-finalization` | `kuali:<doc>\|finalization\|<T-number>` | **`stabilized`**, the same numbers, INHERITED under §4.2's mechanism rule (D207) |
 | `ucpath/create-termination` | `save-verify` → `ucpath/verify-termination` | `ucpath/match-existing-termination` | `ucpath:termination\|<eid>\|<effectiveDate>` | **`operator-only`** — no UCPath window has ever been measured |
 | `ucpath/delete-pending-terminations` | `save-verify` → `ucpath/verify-pending-terminations-cleared` | `ucpath/match-pending-terminations` | `ucpath:pending-terminations-clear\|<eid>` | **`operator-only`** — worse than its sibling: this control DELETES rows |
@@ -540,9 +541,14 @@ question; conflating the two is what produced the gap.
 **The interpreter registers the row it did not write.** `src/core/run-executor.ts` reads back the
 exact `run_checkpoints` row beat ⑦ committed and refuses if it is absent, or if it does not project
 to the very settlement the sequencer just reported. It never mints a checkpoint from the value it
-was handed. `tests/unit/transaction-terminal-dependency.test.ts` drives a queued
-`kuali-timekeeper-annotation` run through the real interpreter, real sequencer and real authority to
-terminal `done`, and derives its evidence receipt from the result.
+was handed. `tests/unit/separations-kuali-finalization-terminal-proof.test.ts` drives the CURRENT
+`separations-kuali-finalization` descriptor from authenticated pre-gate fixture checkpoints through
+the real approval check, interpreter, Kuali store tasks, write sequencer and authority to terminal
+`done`; it then proves both `buildRunEvidenceReceipt` and the authority-backed receipt service derive
+the verified read-back obligations from those rows. Independent controls hide beat ⑦'s row from the
+interpreter and bypass the interpreter entirely, and both refuse the terminal/receipt claim. The
+deleted `tests/unit/transaction-terminal-dependency.test.ts` proof against the retired
+`kuali-timekeeper-annotation` workflow is historical pre-D266 evidence, not the current owner.
 
 **Why `TransactionOutcomeSchema` sits in `write-safety-primitives.ts`.** A descriptor's terminal
 `build` must hash the schema, and a descriptor closure may not reach a Node built-in;
@@ -679,7 +685,7 @@ reserved for an independently verified real completion (ref operator-trust).
 - [x] the propagation window measured over four operator-authorized write/restore cycles on real doc **4490**, moving `kuali/save-timekeeper-annotation`'s `recoveryAbsence` from `operator-only` to `stabilized`
 - [x] D128's "the step does not own the field" conclusion is WITHDRAWN — Kuali's own `ActionPage` query reports that step's `sectionSettings` as `edit`; the two real causes were driver defects in THIS repository (the gadget debounce, and `commit` returning at request time)
 - [x] the proof is RECORDED and is not re-runnable — re-running it would be a second real HR write
-> 2026-08-21 | docs-cohesion write-safety | verified against `src/domain/contracts/kuali/save-timekeeper-annotation.ts:108-130`, `src/stores/kuali/`, `docs/rebuild/02-prove-writes-build-the-tails.md` §Transaction proof; left: nothing in this proof — every remaining write owes its own (§3.2)
+> 2026-08-25 | D266 reconciliation | the source contract and test workflow are retired; the dated rows in doc 02 and this section remain the immutable evidence of record. Current Kuali proof ownership is `kuali/save-separation-finalization` and its migration (§3.2)
 <!-- /roadmap-status -->
 
 This is the evidence doc 02 points at for the measured numbers and the durable row ids. Doc 02 owns
@@ -1214,7 +1220,6 @@ system-prefixed so two systems can never collide on one string:
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` |
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear\|<emplId>` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` |
-| `kuali/save-timekeeper-annotation` | `kuali:<documentNumber>\|<actionId>\|timekeeper-name\|<emplId>\|<timekeeperName>` |
 
 A key **never** incorporates run position, attempt number, array index, or the OCR fan-out index —
 that is the doc1/doc2 (E2E-015) shared-id fallback, banned in the fan-out
@@ -1224,7 +1229,8 @@ The digest the row is UNIQUE on is `sha256("hrauto:permanent-write-key:v1" ‖ s
 `WriteIntentRecordSchema` re-derives it from the row's own fields, so a stored row cannot claim a
 key it does not hold.
 
-**The timekeeper key includes the VALUE, and that is deliberate.** `…|timekeeper-name|<eid>|<value>`
+**Historical D135 note — the retired timekeeper key included the VALUE deliberately.**
+`…|timekeeper-name|<eid>|<value>`
 means writing a different annotation is a different transaction — which is exactly right for a
 benign restorable field, and exactly wrong as a template for a termination. §3.4 records the
 consequence: a parked intent from an earlier attempt could not be resolved, so the successful commit
@@ -1471,9 +1477,11 @@ the lease discipline beats ②–⑥ run inside.
 `task-driver-boundary` holds it, and the capability became runtime-unforgeable at D127 — a
 module-private WeakSet is a stronger statement than an import walk.
 `dry-run-composition-submit-free` retired at the same decision into `write-safety-contract` plus the
-executable scenario `kuali-timekeeper-annotation/dry-run-preview`, which runs the REAL sequencer over
-a REAL authority database and asserts DURABLE absence rather than inspecting a composition for the
-absence of a call.
+executable scenario `separations-kuali-finalization/dry-run-preview`. Its T1a arm runs the REAL
+sequencer over a REAL authority database and proves no write intent, transaction checkpoint or
+write outbox; its sibling T1b manifest declares truthful BEFORE/AFTER deltas of zero for
+`write_intents`, `write_attempts` and `durable_outbox` while allowing the ordinary upstream
+`run_checkpoints`, gate result and terminal-preview rows a dry run really writes.
 
 **One designed guard was never built, and it is worth naming rather than leaving in a list as if it
 were.** "Idempotency key hygiene" — an AST check that an `idempotency.key` body never references

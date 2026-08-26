@@ -2,11 +2,10 @@
  * The Kuali semantic UI registry — the closed set of screens, elements, page
  * states, and observations the Kuali driver may resolve.
  *
- * Three elements, and only three: the EID field (the write's SUBJECT), the
- * timekeeper field (what the write changes), and the Save button (the external
- * commit). Everything else on an RRSS Separation Request Form is deliberately
- * absent — this registry exists to serve Phase 2's transaction proof, and an
- * element nobody uses is an element nobody verifies.
+ * The RRSS document vocabulary is shared by the separation read and its Kuali
+ * finalization write. The timekeeper field and Save button retain their exact
+ * live-verified recipes because finalization stages that field and commits all
+ * twelve fields through that button.
  *
  * Every element is a legacy PORT with exact provenance (legacy commit, path,
  * key, source line, blob) plus its own live read-only re-verification on
@@ -59,13 +58,11 @@ import {
 } from "../../../domain/ui/kuali-action-list.js";
 import {
   KUALI_RRSS_DISPLAYED_EID,
-  KUALI_RRSS_DISPLAYED_TIMEKEEPER,
   KUALI_RRSS_DOCUMENT_READY,
   KUALI_RRSS_DOCUMENT_SCREEN,
   KUALI_RRSS_EID_FIELD,
   KUALI_RRSS_SAVE_BUTTON,
   KUALI_RRSS_TIMEKEEPER_FIELD,
-  KUALI_RRSS_TIMEKEEPER_STAGED,
 } from "../../../domain/ui/kuali-rrss-document.js";
 import {
   KUALI_RRSS_DEPARTMENT_FIELD,
@@ -98,12 +95,12 @@ const KUALI_SELECTOR_BLOB = "1c55c7d307891e07951ca38a89548418bdc23f49";
 const FIXTURE_EVIDENCE = "evidence/ui/kuali/rrss-document.fixture.json";
 const LIVE_EVIDENCE = "evidence/ui/kuali/rrss-document.live.json";
 const IDENTITY_SCENARIO = "ui/kuali-rrss-document-identity";
-const WRITE_SURFACE_SCENARIO = "ui/kuali-rrss-timekeeper-write-surface";
+const SHARED_FINALIZATION_CONTROLS_SCENARIO = "ui/kuali-rrss-shared-finalization-controls";
 
 /**
  * The separation READ surface carries its own evidence pair and its own
  * verification date, because a manifest states ONE `verifiedAt` and the audit
- * compares it per fact. The write's three elements were live-verified
+ * compares it per fact. The three original shared elements were live-verified
  * 2026-08-04; the fourteen read elements below were live-verified 2026-08-12.
  * Folding both into one manifest would have to lie about one of them.
  */
@@ -478,8 +475,8 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       effect: "prepare",
       sensitivity: "hr",
       locator: { kind: "role-exact-name", role: "textbox", name: "Timekeeper Name:*", exact: true },
-      requiredStates: [KUALI_RRSS_DOCUMENT_READY, KUALI_RRSS_TIMEKEEPER_STAGED],
-      verification: verification(WRITE_SURFACE_SCENARIO, TIMEKEEPER_PORT_KEY),
+      requiredStates: [KUALI_RRSS_DOCUMENT_READY, KUALI_RRSS_FINALIZATION_STAGED],
+      verification: verification(SHARED_FINALIZATION_CONTROLS_SCENARIO, TIMEKEEPER_PORT_KEY),
       provenance: provenance(TIMEKEEPER_PORT_KEY, 138),
       supersedes: [],
     },
@@ -493,8 +490,8 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       effect: "external-commit",
       sensitivity: "restricted",
       locator: { kind: "role-exact-name", role: "button", name: "Save", exact: true },
-      requiredStates: [KUALI_RRSS_TIMEKEEPER_STAGED],
-      verification: verification(WRITE_SURFACE_SCENARIO, SAVE_PORT_KEY),
+      requiredStates: [KUALI_RRSS_FINALIZATION_STAGED],
+      verification: verification(SHARED_FINALIZATION_CONTROLS_SCENARIO, SAVE_PORT_KEY),
       provenance: provenance(
         SAVE_PORT_KEY,
         223,
@@ -763,25 +760,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       verification: verification(IDENTITY_SCENARIO, EID_PORT_KEY),
     },
     {
-      id: KUALI_RRSS_TIMEKEEPER_STAGED,
-      system: "kuali",
-      screen: KUALI_RRSS_DOCUMENT_SCREEN,
-      label: "RRSS document with an unsaved staged timekeeper value",
-      searchTerms: ["kuali rrss document timekeeper staged state"],
-      sensitivity: "restricted",
-      // Structural evidence only. That the field holds the STAGED value is
-      // proved by the prepare task's read-back (`fillWithVerify` discipline),
-      // not by a page-state rule — a value-dependent state id would be a
-      // different state per value and could not be registered at all.
-      evidence: [
-        { kind: "action-view-url", space: KUALI_RRSS_SPACE_ID },
-        { kind: "element", element: KUALI_RRSS_TIMEKEEPER_FIELD },
-        { kind: "element", element: KUALI_RRSS_SAVE_BUTTON },
-      ],
-      timeoutMs: 30_000,
-      verification: verification(WRITE_SURFACE_SCENARIO, TIMEKEEPER_PORT_KEY),
-    },
-    {
       id: KUALI_RRSS_SEPARATION_READY,
       system: "kuali",
       screen: KUALI_RRSS_DOCUMENT_SCREEN,
@@ -874,18 +852,6 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       verification: verification(IDENTITY_SCENARIO, EID_PORT_KEY),
     },
     {
-      id: KUALI_RRSS_DISPLAYED_TIMEKEEPER,
-      system: "kuali",
-      screen: KUALI_RRSS_DOCUMENT_SCREEN,
-      label: "Displayed RRSS document timekeeper name",
-      searchTerms: ["authoritative kuali rrss displayed timekeeper name"],
-      sensitivity: "hr",
-      valueType: "text",
-      read: { kind: "input-value", element: KUALI_RRSS_TIMEKEEPER_FIELD, trim: true, valueType: "text" },
-      authoritativeFor: ["completion"],
-      verification: verification(WRITE_SURFACE_SCENARIO, TIMEKEEPER_PORT_KEY),
-    },
-    {
       id: KUALI_RRSS_DISPLAYED_NUMBER,
       system: "kuali",
       screen: KUALI_RRSS_DOCUMENT_SCREEN,
@@ -953,15 +919,13 @@ export const KUALI_UI_REGISTRY = deepFreeze(KualiUiRegistrySchema.parse({
       assertions: ["recipe-resolves", "exactly-one-visible"],
     },
     {
-      id: WRITE_SURFACE_SCENARIO,
+      id: SHARED_FINALIZATION_CONTROLS_SCENARIO,
       kind: "ui-verification",
-      title: "The Kuali timekeeper write surface resolves to exactly one field and one Save",
+      title: "The Kuali finalization controls resolve to exactly one timekeeper field and one Save",
       system: "kuali",
       semanticIds: [
         KUALI_RRSS_TIMEKEEPER_FIELD,
         KUALI_RRSS_SAVE_BUTTON,
-        KUALI_RRSS_TIMEKEEPER_STAGED,
-        KUALI_RRSS_DISPLAYED_TIMEKEEPER,
       ],
       fixtureEvidenceRef: FIXTURE_EVIDENCE,
       liveReadOnlyEvidenceRef: LIVE_EVIDENCE,

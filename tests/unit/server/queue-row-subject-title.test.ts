@@ -19,7 +19,7 @@ import { afterEach, describe, it } from "vitest";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
 import { personLookupDescriptor } from "../../../src/workflows/person-lookup/descriptor.js";
-import { kualiTimekeeperAnnotationDescriptor } from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+import { separationsKualiFinalizationDescriptor } from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { resolveSubjectTitle } from "../../../src/server/dashboard/projectors/run-subject-title.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { HASH_A, HASH_B, NOW } from "../fixtures/phase1c-contract-fixtures.js";
@@ -134,10 +134,10 @@ describe("the subject-derived queue-row title (ref dashboard-surfaces §1.2)", (
   });
 
   it("keeps the start-input title forever for a workflow that declares no subject leaf", () => {
-    // A COMPLETE declared state, not a gap: `kuali-timekeeper-annotation`'s
+    // A COMPLETE declared state, not a gap: the Kuali finalization harness's
     // subject IS its document, so it declares nothing and its rows are titled
     // by their start input for the whole life of the run.
-    const w = world(kualiTimekeeperAnnotationDescriptor);
+    const w = world(separationsKualiFinalizationDescriptor);
     seedRun(w, 4);
     w.authority.putCheckpoint(searchingCheckpoint(4, RESOLVED) as never);
     assert.equal(rowOf(w, 4).title, "EID 10873698");

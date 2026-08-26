@@ -39,7 +39,7 @@
     {
       "semanticId": "kuali.rrss-document.timekeeper-field",
       "screen": "kuali.rrss-document",
-      "scenarioId": "ui/kuali-rrss-timekeeper-write-surface",
+      "scenarioId": "ui/kuali-rrss-shared-finalization-controls",
       "portMapRows": [
         {
           "system": "kuali",
@@ -53,7 +53,7 @@
     {
       "semanticId": "kuali.rrss-document.save-button",
       "screen": "kuali.rrss-document",
-      "scenarioId": "ui/kuali-rrss-timekeeper-write-surface",
+      "scenarioId": "ui/kuali-rrss-shared-finalization-controls",
       "portMapRows": [
         {
           "system": "kuali",
@@ -79,20 +79,6 @@
       "capturedValue": false
     },
     {
-      "semanticId": "kuali.rrss-document.timekeeper-staged",
-      "screen": "kuali.rrss-document",
-      "scenarioId": "ui/kuali-rrss-timekeeper-write-surface",
-      "portMapRows": [
-        {
-          "system": "kuali",
-          "legacyKey": "timekeeperTasks.timekeeperName()"
-        }
-      ],
-      "assertion": "recipe-resolves",
-      "matchedCount": 1,
-      "capturedValue": false
-    },
-    {
       "semanticId": "kuali.rrss-document.displayed-eid",
       "screen": "kuali.rrss-document",
       "scenarioId": "ui/kuali-rrss-document-identity",
@@ -100,20 +86,6 @@
         {
           "system": "kuali",
           "legacyKey": "separationForm.eid()"
-        }
-      ],
-      "assertion": "recipe-resolves",
-      "matchedCount": 1,
-      "capturedValue": false
-    },
-    {
-      "semanticId": "kuali.rrss-document.displayed-timekeeper",
-      "screen": "kuali.rrss-document",
-      "scenarioId": "ui/kuali-rrss-timekeeper-write-surface",
-      "portMapRows": [
-        {
-          "system": "kuali",
-          "legacyKey": "timekeeperTasks.timekeeperName()"
         }
       ],
       "assertion": "recipe-resolves",

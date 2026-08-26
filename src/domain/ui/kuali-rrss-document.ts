@@ -1,11 +1,9 @@
 /**
  * Kuali Build — the RRSS Separation Request Form document surface.
  *
- * This is the semantic vocabulary Phase 2's transaction proof writes against:
- * one screen (an Action-List document opened by its deep link), the three
- * elements the write touches, the two page states the kernel binds, and the two
- * authoritative observations — the displayed EID (the SUBJECT of the write) and
- * the displayed timekeeper name (the COMPLETION read-back).
+ * This is the semantic vocabulary the separation read and finalization write
+ * use: one document screen, its shared controls, and authoritative observations
+ * including the displayed EID that binds every write to its subject.
  *
  * Two facts shape every recipe below and are not negotiable (doc 03c §Live probe status /
  * ref write-safety §13 OQ1, the operator-authorized 2026-07-23 live probe, D78):
@@ -33,19 +31,12 @@
  */
 import { z } from "zod";
 import {
-  EidSchema,
   ElementIdSchema,
-  IsoInstantSchema,
   ObservationIdSchema,
   PageStateIdSchema,
   ScreenIdSchema,
 } from "../ids.js";
 import type { ElementId, ObservationId } from "../ids.js";
-import {
-  KualiActionIdSchema,
-  KualiDocumentNumberSchema,
-  KualiTimekeeperNameSchema,
-} from "./kuali-document-identity.js";
 import { ReadActionListForDocumentOperationSchema } from "./kuali-action-list.js";
 import { ReadSeparationDocumentOperationSchema } from "./kuali-separation-document.js";
 import {
@@ -63,15 +54,9 @@ export const KUALI_RRSS_TIMEKEEPER_FIELD = ElementIdSchema.parse(
 export const KUALI_RRSS_SAVE_BUTTON = ElementIdSchema.parse("kuali.rrss-document.save-button");
 
 export const KUALI_RRSS_DOCUMENT_READY = PageStateIdSchema.parse("kuali.rrss-document.ready");
-export const KUALI_RRSS_TIMEKEEPER_STAGED = PageStateIdSchema.parse(
-  "kuali.rrss-document.timekeeper-staged",
-);
 
 export const KUALI_RRSS_DISPLAYED_EID = ObservationIdSchema.parse(
   "kuali.rrss-document.displayed-eid",
-);
-export const KUALI_RRSS_DISPLAYED_TIMEKEEPER = ObservationIdSchema.parse(
-  "kuali.rrss-document.displayed-timekeeper",
 );
 
 /**
@@ -86,93 +71,6 @@ export {
   KualiDocumentNumberSchema,
   KualiTimekeeperNameSchema,
 } from "./kuali-document-identity.js";
-
-/**
- * The typed saved-state proof for ref write-safety's `save-verify` completion arm.
- *
- * It names the exact document identity, the exact persisted value, and the
- * subject the page displayed. It carries NO "clicked ok" flag by design — the
- * only thing that promotes a claim to proof is a reload read-back that returns
- * this shape with `source:"reload-read-back"`.
- */
-export const KualiSavedTimekeeperProofSchema = z.strictObject({
-  kind: z.literal("kuali-saved-timekeeper"),
-  actionId: KualiActionIdSchema,
-  documentNumber: KualiDocumentNumberSchema,
-  timekeeperName: KualiTimekeeperNameSchema,
-  observedEid: EidSchema,
-  source: z.literal("reload-read-back"),
-});
-export type KualiSavedTimekeeperProof = z.infer<typeof KualiSavedTimekeeperProofSchema>;
-
-/** What `openDocument` proves before anything else is allowed to touch the page. */
-export const KualiDocumentViewSchema = z.strictObject({
-  pageStateId: z.literal(KUALI_RRSS_DOCUMENT_READY),
-  actionId: KualiActionIdSchema,
-  documentNumber: KualiDocumentNumberSchema,
-  observedEid: EidSchema,
-  /** The timekeeper value the document currently displays; "" when the field is empty. */
-  currentTimekeeperName: z.string(),
-  observedAt: IsoInstantSchema,
-});
-export type KualiDocumentView = z.infer<typeof KualiDocumentViewSchema>;
-
-/**
- * What `stageTimekeeperName` proves. The staged value is read BACK out of the
- * live input before the driver returns — the legacy `fillWithVerify` discipline
- * (`kuali/navigate.ts:16-39`), which exists because Kuali inputs silently
- * ignore `fill()` on some controls. A staged value that does not read back is a
- * throw, never a "probably fine".
- */
-export const KualiTimekeeperStagingSchema = z.strictObject({
-  pageStateId: z.literal(KUALI_RRSS_TIMEKEEPER_STAGED),
-  actionId: KualiActionIdSchema,
-  documentNumber: KualiDocumentNumberSchema,
-  observedEid: EidSchema,
-  previousTimekeeperName: z.string(),
-  stagedTimekeeperName: KualiTimekeeperNameSchema,
-  observedAt: IsoInstantSchema,
-});
-export type KualiTimekeeperStaging = z.infer<typeof KualiTimekeeperStagingSchema>;
-
-/**
- * The reload read-back. `state:"absent"` means the reloaded document
- * deterministically displays a DIFFERENT value — a real, evidenced negative.
- * `unknown` covers every "the check itself failed" case; there is no boolean.
- */
-export const KualiTimekeeperReadBackSchema = z.discriminatedUnion("state", [
-  z.strictObject({
-    state: z.literal("present"),
-    proof: KualiSavedTimekeeperProofSchema,
-    observedAt: IsoInstantSchema,
-  }),
-  z.strictObject({
-    state: z.literal("absent"),
-    actionId: KualiActionIdSchema,
-    documentNumber: KualiDocumentNumberSchema,
-    observedEid: EidSchema,
-    observedTimekeeperName: z.string(),
-    observedAt: IsoInstantSchema,
-  }),
-  z.strictObject({
-    state: z.literal("unknown"),
-    reason: z.string().min(1),
-    observedAt: IsoInstantSchema,
-  }),
-]);
-export type KualiTimekeeperReadBack = z.infer<typeof KualiTimekeeperReadBackSchema>;
-
-const OpenDocumentOperationSchema = z.custom<(
-  input: Readonly<{ actionId: string; documentNumber: string }>,
-) => Promise<KualiDocumentView>>((value) => typeof value === "function");
-
-const StageTimekeeperOperationSchema = z.custom<(
-  input: Readonly<{ actionId: string; documentNumber: string; timekeeperName: string }>,
-) => Promise<KualiTimekeeperStaging>>((value) => typeof value === "function");
-
-const ReadSavedTimekeeperOperationSchema = z.custom<(
-  input: Readonly<{ actionId: string; documentNumber: string; timekeeperName: string }>,
-) => Promise<KualiTimekeeperReadBack>>((value) => typeof value === "function");
 
 const ReadObservationOperationSchema = z.custom<(
   id: ObservationId,
@@ -205,8 +103,8 @@ const ReadSeparationDocumentOperation = ReadSeparationDocumentOperationSchema;
  * `DriverDeclaration` for the same store is exactly what the task/driver
  * boundary forbids, so a sibling task family extends this surface rather than
  * minting its own. Its schemas live in `kuali-separation-finalization.ts`
- * because the staged-variables model is an order of magnitude wider than the
- * timekeeper write's one field — not because it is a separate driver.
+ * because the staged-variables model is an order of magnitude wider than this
+ * shared document vocabulary — not because it is a separate driver.
  */
 const StageSeparationFinalizationOperation = StageSeparationFinalizationOperationSchema;
 const ReadSavedSeparationFinalizationOperation = ReadSavedSeparationFinalizationOperationSchema;
@@ -219,19 +117,16 @@ const CommitOperationSchema = z.custom<(
 /**
  * Kuali's task-facing semantic surface.
  *
- * `read` is not a task convenience — it is the seam the KERNEL calls at ref write-safety
- * beat ③ to observe the subject on the exact staged page. `commit` is the only
- * method that can click Save, and it requires the unforgeable
+ * `read` is the seam the kernel calls at ref write-safety beat ③ to observe the
+ * subject on the exact staged page. `commit` is the only method that can click
+ * Save, and it requires the unforgeable
  * `MutationCapability` the fenced write sequencer alone mints.
  */
 export const KualiRrssDocumentDriverSchema = z.strictObject({
   system: z.literal("kuali"),
   read: ReadObservationOperationSchema,
   readActionListForDocument: ReadActionListForDocumentOperation,
-  openDocument: OpenDocumentOperationSchema,
   readSeparationDocument: ReadSeparationDocumentOperation,
-  stageTimekeeperName: StageTimekeeperOperationSchema,
-  readSavedTimekeeper: ReadSavedTimekeeperOperationSchema,
   stageSeparationFinalization: StageSeparationFinalizationOperation,
   readSavedSeparationFinalization: ReadSavedSeparationFinalizationOperation,
   commit: CommitOperationSchema,

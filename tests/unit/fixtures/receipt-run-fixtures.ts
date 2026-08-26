@@ -8,26 +8,24 @@
  *    `a1ZVr000004Xoq9MAC`. This one is seeded through the REAL authority
  *    database and the REAL D110/D114 terminalization — nothing is hand-built.
  *
- * 2. **The controlled Kuali timekeeper commit** (ref write-safety §15): doc 4489, EID
- *    10001828, value `PROBE-VERIFIED-0804`, intent
- *    `d1254233-dd33-4bc5-afaf-c2bf52ea693f` committed with a `subject-match`
- *    binding proof and a `reload-read-back` completion proof.
+ * 2. **A deterministic separations Kuali finalization**: the real chunk-5
+ *    descriptor, save contract, transaction node, twelve-field reload proof,
+ *    and fenced write records over synthetic identifiers.
  *
- *    Its terminal RESULT now comes from the REAL `buildRunResult` over the real
- *    stored transaction checkpoint — D144 closed the gap that used to force a
- *    hand-assembled record here. The value, the dependency identities and every
- *    digest are the descriptor factory's own. The whole path, from a queued run
- *    to `done` to a receipt, is driven end to end by
- *    `tests/unit/transaction-terminal-dependency.test.ts`; this fixture exists
- *    to give the receipt assertions the exact durable rows the LIVE 2026-08-04
- *    commit left behind, with the ids and instants that run actually had.
+ *    Its terminal result comes from the REAL `buildRunResult` over the real
+ *    transaction checkpoint. The dependency identities and every digest are
+ *    the descriptor factory's own; only process-edge ids and values are
+ *    deterministic test data.
  */
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { CrmReadOnboardingRecord } from "../../../src/domain/contracts/crm/read-onboarding-record.js";
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import { SearchPersonOrg } from "../../../src/domain/contracts/ucpath/search-person-org.js";
-import { KualiSaveTimekeeperAnnotation } from "../../../src/domain/contracts/kuali/save-timekeeper-annotation.js";
+import {
+  KualiSaveSeparationFinalization,
+  kualiFinalizationIdempotencyKey,
+} from "../../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { RunTerminalOutboxRecordSchema } from "../../../src/domain/run/terminal-outbox.js";
 import { RunCheckpointRecordSchema } from "../../../src/domain/workflow/checkpoint.js";
 import {
@@ -46,16 +44,26 @@ import {
   personLookupDescriptor,
 } from "../../../src/workflows/person-lookup/descriptor.js";
 import {
-  KualiTimekeeperAnnotationCanonicalInput,
-  kualiTimekeeperAnnotationDescriptor,
-} from "../../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
+  SeparationsKualiFinalizationCanonicalInput,
+  separationsKualiFinalizationDescriptor,
+} from "../../../src/workflows/separations/kuali-finalization/descriptor.js";
 import {
   SeparationsIdentityCheckCanonicalInput,
   separationsIdentityCheckDescriptor,
 } from "../../../src/workflows/separations/identity-check/descriptor.js";
 import { SeparationsVerifyIdentityApproval } from "../../../src/domain/contracts/separations/verify-identity-approval.js";
+import { SeparationsMatchDepartmentOption } from "../../../src/domain/contracts/separations/match-department-option.js";
 import { IdentityApprovalResultSchema } from "../../../src/domain/separations/identity-approval.js";
 import { GateResultRecordSchema } from "../../../src/domain/gates.js";
+import {
+  FINALIZATION_ACTION_ID,
+  FINALIZATION_DOCUMENT,
+  FINALIZATION_EID,
+  FINALIZATION_FIELDS,
+  FINALIZATION_RUN_INPUT,
+  FINALIZATION_SCOPE_OUTPUTS,
+  FINALIZATION_VARIABLES,
+} from "./kuali-finalization-fixtures.js";
 
 /* ── person-lookup: the live Phase-1 exit run ────────────────────────────── */
 
@@ -305,27 +313,31 @@ export function seedPersonLookupExitRun(database: AuthorityDatabase): SeededExit
   return { run: terminal, checkpoints: [searching, crossVerify, activeStatus] };
 }
 
-/* ── kuali: the controlled transaction proof ─────────────────────────────── */
+/* ── separations-kuali-finalization: deterministic receipt evidence ──────── */
 
 export const KUALI_RUN_ID = "d1254233-dd33-4bc5-afaf-c2bf52ea693f";
 export const KUALI_INTENT_ID = "9c1e4b2a-7d55-4a11-9f6e-2b8c0d3f1a77";
 export const KUALI_TRACE_ID = "kt-170848-d125";
 export const KUALI_ITEM_ID = "44894489-4489-4489-8489-448944894489";
-export const KUALI_ACTION_ID = "6a712bf32ff7fb799788a79e";
-export const KUALI_DOCUMENT_NUMBER = "4489";
-export const KUALI_EID = "10001828";
-export const KUALI_VALUE = "PROBE-VERIFIED-0804";
-export const KUALI_FENCED_AT = "2026-08-04T17:08:48.805Z";
-export const KUALI_CONFIRMED_AT = "2026-08-04T17:08:54.867Z";
-export const KUALI_IDEMPOTENCY_KEY =
-  `kuali:${KUALI_DOCUMENT_NUMBER}|${KUALI_ACTION_ID}|timekeeper-name|${KUALI_EID}|${KUALI_VALUE}`;
-
-const KUALI_SAVED_PROOF = Object.freeze({
-  kind: "kuali-saved-timekeeper",
+export const KUALI_ACTION_ID = FINALIZATION_ACTION_ID;
+export const KUALI_DOCUMENT_NUMBER = FINALIZATION_DOCUMENT;
+export const KUALI_EID = FINALIZATION_EID;
+export const KUALI_VALUE = FINALIZATION_VARIABLES.timekeeperName;
+export const KUALI_FENCED_AT = "2026-08-14T17:08:48.805Z";
+export const KUALI_CONFIRMED_AT = "2026-08-14T17:08:54.867Z";
+export const KUALI_IDEMPOTENCY_KEY = kualiFinalizationIdempotencyKey({
   actionId: KUALI_ACTION_ID,
   documentNumber: KUALI_DOCUMENT_NUMBER,
-  timekeeperName: KUALI_VALUE,
+  emplId: KUALI_EID,
+  variables: FINALIZATION_VARIABLES,
+});
+
+const KUALI_SAVED_PROOF = Object.freeze({
+  kind: "kuali-saved-finalization",
+  actionId: KUALI_ACTION_ID,
+  documentNumber: KUALI_DOCUMENT_NUMBER,
   observedEid: KUALI_EID,
+  fields: FINALIZATION_FIELDS,
   source: "reload-read-back",
 });
 
@@ -333,7 +345,7 @@ const KUALI_SUBJECT_EVIDENCE = Object.freeze({
   kind: "person",
   identifierKind: "eid",
   bindingDigest: "d77e42b6".padEnd(64, "0"),
-  displaySuffix: "5513",
+  displaySuffix: String(KUALI_EID).slice(-4),
 });
 
 const KUALI_BINDING_PROOF = Object.freeze({
@@ -343,14 +355,14 @@ const KUALI_BINDING_PROOF = Object.freeze({
   runId: KUALI_RUN_ID,
   attempt: 1,
   leaseId: "1b9d7e40-5c33-4a28-8f77-0c6e2a5b9d81",
-  taskId: "kuali/save-timekeeper-annotation",
+  taskId: "kuali/save-separation-finalization",
   observationId: "kuali.rrss-document.displayed-eid",
-  pageStateId: "kuali.rrss-document.timekeeper-staged",
+  pageStateId: "kuali.rrss-document.finalization-staged",
   expected: KUALI_SUBJECT_EVIDENCE,
   observed: KUALI_SUBJECT_EVIDENCE,
   match: "match",
   observedAt: KUALI_FENCED_AT,
-  afterPrepareSpanPath: "annotate-timekeeper/prepare",
+  afterPrepareSpanPath: "finalize-kuali/prepare",
 });
 
 export interface KualiReceiptEvidence {
@@ -366,12 +378,12 @@ export interface KualiReceiptEvidence {
  * dependency. See this module's header for what is real and what stands in.
  */
 export function kualiReceiptEvidence(): KualiReceiptEvidence {
-  const descriptor = kualiTimekeeperAnnotationDescriptor;
+  const descriptor = separationsKualiFinalizationDescriptor;
   const proofSchemaHash = deriveSchemaHash(
-    KualiSaveTimekeeperAnnotation.writeSafety.completion.proofSchema,
+    KualiSaveSeparationFinalization.writeSafety.completion.proofSchema,
     "output",
   );
-  const outputSchemaHash = deriveSchemaHash(KualiSaveTimekeeperAnnotation.output, "output");
+  const outputSchemaHash = deriveSchemaHash(KualiSaveSeparationFinalization.output, "output");
   const outcome = TransactionOutcomeSchema.parse({
     disposition: "committed",
     proofSource: "normal-output",
@@ -382,7 +394,7 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
   const transactionCheckpoint = RunCheckpointRecordSchema.parse({
     workflowId: descriptor.id,
     itemId: KUALI_ITEM_ID,
-    nodeId: "annotate-timekeeper",
+    nodeId: "finalize-kuali",
     attempt: 1,
     claimGeneration: 1,
     runId: KUALI_RUN_ID,
@@ -394,19 +406,70 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
     contractFingerprint: descriptor.contractFingerprint,
     implFingerprint: IMPL_FINGERPRINT,
     provenance: provenance(
-      ["disposition", "proofSource", "proof", "output"],
+      [
+        "output.savedState.kind",
+        "output.savedState.actionId",
+        "output.savedState.documentNumber",
+        "output.savedState.observedEid",
+        ...Object.keys(FINALIZATION_FIELDS).map((field) => `output.savedState.fields.${field}`),
+        "output.savedState.source",
+      ],
       "live",
       KUALI_CONFIRMED_AT,
     ),
     writtenAt: KUALI_CONFIRMED_AT,
   });
+  const dependencyCheckpoint = (input: Readonly<{
+    nodeId: "approval" | "department-option";
+    schema: Parameters<typeof deriveSchemaHash>[0];
+    value: unknown;
+    paths: readonly string[];
+  }>) => RunCheckpointRecordSchema.parse({
+    workflowId: descriptor.id,
+    itemId: KUALI_ITEM_ID,
+    nodeId: input.nodeId,
+    attempt: 1,
+    claimGeneration: 1,
+    runId: KUALI_RUN_ID,
+    output: {
+      schemaHash: deriveSchemaHash(input.schema, "output"),
+      value: input.value,
+    },
+    descriptorVersion: descriptor.version,
+    contractFingerprint: descriptor.contractFingerprint,
+    implFingerprint: IMPL_FINGERPRINT,
+    provenance: provenance(input.paths, "derived", KUALI_FENCED_AT),
+    writtenAt: KUALI_FENCED_AT,
+  });
+  const approvalCheckpoint = dependencyCheckpoint({
+    nodeId: "approval",
+    schema: SeparationsVerifyIdentityApproval.output,
+    value: FINALIZATION_SCOPE_OUTPUTS.approval,
+    paths: [
+      "documentNumber",
+      "approved.emplId",
+      "approved.chosenFrom",
+      "approved.evidenceDigest",
+      "approved.ucpathName",
+      "approved.nameTier",
+      "approved.approvalShape",
+      "jobs.disposition",
+      "jobs.rowCount",
+      "jobs.activeRowCount",
+      "jobs.inactiveRowCount",
+      "jobs.unknownRowCount",
+      "jobs.rows",
+      "jobs.unreadableCells",
+    ],
+  });
+  const departmentCheckpoint = dependencyCheckpoint({
+    nodeId: "department-option",
+    schema: SeparationsMatchDepartmentOption.output,
+    value: FINALIZATION_SCOPE_OUTPUTS["department-option"],
+    paths: ["option", "departmentCode", "optionDescription", "ucpathDepartment", "observedOptionCount"],
+  });
 
-  const canonicalInput = {
-    actionId: KUALI_ACTION_ID,
-    documentNumber: KUALI_DOCUMENT_NUMBER,
-    emplId: KUALI_EID,
-    timekeeperName: KUALI_VALUE,
-  };
+  const canonicalInput = { ...FINALIZATION_RUN_INPUT };
   const run = {
     envelope: {
       runId: KUALI_RUN_ID,
@@ -427,7 +490,7 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
     input: {
       raw: canonicalInput,
       parsed: {
-        schemaHash: deriveSchemaHash(KualiTimekeeperAnnotationCanonicalInput, "output"),
+        schemaHash: deriveSchemaHash(SeparationsKualiFinalizationCanonicalInput, "output"),
         value: canonicalInput,
       },
       ingressSchemaHash: INGRESS_SCHEMA_HASH,
@@ -446,7 +509,11 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
   const built = buildRunResult(
     descriptor,
     { ...run, lifecycle: RUNNING_LIFECYCLE, version: 4 },
-    [{ state: "resolved", nodeId: "annotate-timekeeper", checkpoint: transactionCheckpoint }],
+    [
+      { state: "resolved", nodeId: "approval", checkpoint: approvalCheckpoint },
+      { state: "resolved", nodeId: "department-option", checkpoint: departmentCheckpoint },
+      { state: "resolved", nodeId: "finalize-kuali", checkpoint: transactionCheckpoint },
+    ],
     manualClock(new Date(KUALI_CONFIRMED_AT)),
   );
   const result = built.record;
@@ -457,7 +524,7 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
     writeIntentId: KUALI_INTENT_ID,
     workflowId: descriptor.id,
     itemId: KUALI_ITEM_ID,
-    taskId: "kuali/save-timekeeper-annotation",
+    taskId: "kuali/save-separation-finalization",
     system: "kuali",
     idempotencyKey: KUALI_IDEMPOTENCY_KEY,
     idempotencyKeyDigest: deriveIdempotencyKeyDigest("kuali", KUALI_IDEMPOTENCY_KEY),
@@ -496,7 +563,7 @@ export function kualiReceiptEvidence(): KualiReceiptEvidence {
   return {
     run,
     result,
-    checkpoints: [transactionCheckpoint],
+    checkpoints: [approvalCheckpoint, departmentCheckpoint, transactionCheckpoint],
     writes: [{ intent, attempts: [attempt] }],
   };
 }
@@ -512,7 +579,7 @@ const RUNNING_LIFECYCLE = Object.freeze({
   workerId: "kuali-receipt-worker-1",
   claimedAt: KUALI_FENCED_AT,
   heartbeatAt: KUALI_CONFIRMED_AT,
-  currentNodeId: "annotate-timekeeper",
+  currentNodeId: "finalize-kuali",
 });
 
 /* ── separations-identity-check: the gated run (D204) ────────────────────── */

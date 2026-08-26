@@ -96,9 +96,9 @@ declared how a bundle becomes its input.**
 
 **The decision that deferred it: D174** (round 41, 2026-08-09). The handoff seam was built with an
 explicitly EMPTY registry rather than a plausible first binding, and the registry's own comment says
-why: `person-lookup` is identified by an employee id or a name, `kuali-timekeeper-annotation` by a
-document number, and neither is derivable from a photograph without an OCR-backed workflow that does
-not exist. This is `INTAKE_PROJECTIONS` between D170 and D172 for the same reason — an invented
+why: `person-lookup` is identified by an employee id or a name, while `separations` needs a Kuali
+document number plus workflow constants, and neither is derivable from a photograph without an
+OCR-backed workflow that does not exist. This is `INTAKE_PROJECTIONS` between D170 and D172 for the same reason — an invented
 binding puts a plausible-but-wrong canonical input into a real run.
 
 **Its trigger: the first OCR-consuming workflow, order 3.** The OCR pipeline workflow migrates at
@@ -315,12 +315,12 @@ serves the rerun command).
 
 <!-- roadmap-status: def-propagation -->
 - [x] **Kuali is measured and closed** — four operator-authorized write/restore cycles on real doc 4490, 2026-08-04: worst observed fence→trustworthy-negative ≈ 3.3 s (D135)
-- [x] `kuali/save-timekeeper-annotation` carries `stabilized` with `minSinceFenceMs: 30_000`, two reads 5 s apart, `requireSameSourceState` (`src/domain/contracts/kuali/save-timekeeper-annotation.ts:119-126`)
-- [x] `kuali/save-separation-finalization` reuses it under D207's mechanism-transfer rule (`:135-142`) — **provisionally**, until its own controlled-commit proof confirms
+- [x] D135's retired annotation contract measured the Kuali mechanism window: `minSinceFenceMs: 30_000`, two reads 5 s apart, `requireSameSourceState`; the evidence remains ref write-safety §3.4 history
+- [x] `kuali/save-separation-finalization` reuses that window under D207's mechanism-transfer rule — **provisionally**, until its own controlled-commit proof confirms
 - [ ] the separations finalization's own controlled commit, which is what turns that provisional transfer into a measurement
 - [ ] **UCPath is unmeasured** — both termination contracts are `operator-only` with the refusal to guess stated in the contract (`create-termination.ts:105-112`, `delete-pending-terminations.ts:94-99`)
 - [ ] **ServiceNow is unmeasured** — no commit contract exists for it yet; its window is measured at its own live probe
-> 2026-08-20 | docs-cohesion 04 | verified against the four commit contracts' `recoveryAbsence` blocks under src/domain/contracts/{kuali,ucpath}/; left: the UCPath measurement (order 7) and the separations confirmation
+> 2026-08-25 | D266 reconciliation | verified against the three current commit contracts' `recoveryAbsence` blocks under src/domain/contracts/{kuali,ucpath}/ and §3.4's historical Kuali measurement; left: the UCPath measurement (order 7) and the separations confirmation
 <!-- /roadmap-status -->
 
 **What the deferral is.** When a write's fence lands and the read-back afterwards says the value is

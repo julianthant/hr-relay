@@ -33,9 +33,9 @@
  *
  * The commit arms drive the task against a `commit` stub rather than through
  * the write sequencer. That is on purpose: the capability's unforgeability is
- * the DRIVER's invariant and is already pinned by
- * `tests/unit/kuali-transaction-proof.test.ts`, while what these arms falsify is
- * the TASK's mapping of the driver's answers onto durable error codes.
+ * the DRIVER's invariant and is pinned by the sequencer-driven cases below,
+ * while what these arms falsify is the TASK's mapping of the driver's answers
+ * onto durable error codes.
  */
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -51,6 +51,7 @@ import type { RunRecord } from "../../../../src/domain/run/record.js";
 import { RunDryRunPreviewResultSchema } from "../../../../src/domain/run/result.js";
 import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
+import { KualiSaveSeparationFinalization } from "../../../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { SeparationsMatchDepartmentOption } from "../../../../src/domain/contracts/separations/match-department-option.js";
 import { SeparationsVerifyIdentityApproval } from "../../../../src/domain/contracts/separations/verify-identity-approval.js";
 import {
@@ -714,13 +715,26 @@ describe("separations-kuali-finalization scenarios", () => {
       finalizationContext(run, claim),
     ));
 
-    assert.equal(Reflect.get(outcome as object, "disposition"), "committed");
+    const settled = z.strictObject({
+      disposition: z.literal("committed"),
+      proofSource: z.literal("normal-output"),
+      proof: KualiSaveSeparationFinalization.writeSafety.completion.proofSchema,
+      output: KualiSaveSeparationFinalization.output,
+    }).parse(outcome);
+    const expectedProof = {
+      kind: "kuali-saved-finalization" as const,
+      actionId: FINALIZATION_RUN_INPUT.actionId,
+      documentNumber: FINALIZATION_RUN_INPUT.documentNumber,
+      observedEid: FINALIZATION_RUN_INPUT.emplId,
+      fields: FINALIZATION_FIELDS,
+      source: "reload-read-back" as const,
+    };
+    assert.equal(settled.disposition, "committed");
+    assert.equal(settled.proofSource, "normal-output", "the post-save verifier supplied the proof");
+    assert.deepEqual(settled.proof, expectedProof);
+    assert.deepEqual(settled.output, { savedState: expectedProof });
     // §4e beat 4: every written field, against the EXACT staged variables.
     assert.deepEqual(h.world.persistedFinalization, FINALIZATION_FIELDS);
-    assert.deepEqual(
-      Reflect.get(Reflect.get(outcome as object, "proof") as object, "fields"),
-      FINALIZATION_FIELDS,
-    );
     assert.equal(
       h.world.events.filter((event) => event.startsWith("commit:")).length, 1, "exactly one click",
     );

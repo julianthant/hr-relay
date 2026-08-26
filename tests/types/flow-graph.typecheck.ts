@@ -18,9 +18,9 @@
  * substitute — this file uses the REAL contract factory and the REAL builder.
  */
 import { z } from "zod";
-import { defineOperatorGateNode, defineTaskNode, defineTransactionNode, flow } from "../../src/base/flow.js";
+import { defineWorkflowStepNodeFactory, flow } from "../../src/base/flow.js";
 import type { AnyNodeEntry, NodeEntry, OutputsOf } from "../../src/base/flow.js";
-import { defineWorkflowStep, defineWorkflowStepNodes } from "../../src/base/workflow.js";
+import { defineWorkflowStep } from "../../src/base/workflow.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
 import {
   DelegationEdgeIdSchema,
@@ -627,15 +627,17 @@ negatives.build({
 
 const fragmentStep = defineWorkflowStep({ key: "identity-check", label: "Identity check" });
 const otherFragmentStep = defineWorkflowStep({ key: "job-summary", label: "Job summary" });
-const readContactFragment = defineTaskNode(fragmentStep, "read-contact", readCrmContact, {
+const fragmentNodes = defineWorkflowStepNodeFactory(fragmentStep);
+const otherFragmentNodes = defineWorkflowStepNodeFactory(otherFragmentStep);
+const readContactFragment = fragmentNodes.task("read-contact", readCrmContact, {
   label: "Read contact",
   replay: "checkpoint",
 });
-const approvalFragment = defineOperatorGateNode(fragmentStep, "approval", {
+const approvalFragment = fragmentNodes.operatorGate("approval", {
   label: "Approve",
   result: z.object({ approved: z.boolean() }),
 });
-const terminationFragment = defineTransactionNode(fragmentStep, "terminate", {
+const terminationFragment = fragmentNodes.transaction("terminate", {
   label: "Terminate",
   prepare: fillTermination,
   commit: submitTermination,
@@ -645,7 +647,7 @@ const terminationFragment = defineTransactionNode(fragmentStep, "terminate", {
 });
 
 // @ts-expect-error a workflow step cannot claim a fragment owned by another step folder
-defineWorkflowStepNodes(otherFragmentStep, [readContactFragment]);
+otherFragmentNodes.category([readContactFragment]);
 
 const explicitlyWidenedFragment = readContactFragment.wire<
   typeof WORKFLOW_INPUT,

@@ -45,28 +45,6 @@ export const FIXTURE_GRAPH_CLAIMS: readonly ScenarioCoverageClaim[] = Object.fre
 ]);
 
 /**
- * kuali-timekeeper-annotation is one transaction node, so it derives exactly
- * the four transaction paths. Unlike the fixture graph, all four are walked by
- * the REAL write sequencer over the real authority database — a pure walk
- * cannot observe "zero rows in write_intents", which is the whole point of the
- * dry-run and subject-mismatch arms.
- */
-export const KUALI_TIMEKEEPER_CLAIMS: readonly ScenarioCoverageClaim[] = Object.freeze([
-  claim("kuali-timekeeper-annotation/dry-run-preview", [
-    "transaction:annotate-timekeeper/dry-run",
-  ]),
-  claim("kuali-timekeeper-annotation/subject-mismatch", [
-    "transaction:annotate-timekeeper/subject-mismatch",
-  ]),
-  claim("kuali-timekeeper-annotation/committed", [
-    "transaction:annotate-timekeeper/committed",
-  ]),
-  claim("kuali-timekeeper-annotation/already-present", [
-    "transaction:annotate-timekeeper/already-present",
-  ]),
-]);
-
-/**
  * separations-kronos-timecard is two read steps with no branch, no gate, no
  * delegation and no transaction, so the graph derives ZERO coverage points —
  * and an empty claim list is the correct answer, not a missing one. The
@@ -208,7 +186,6 @@ export const SCENARIO_COVERAGE_CLAIMS: Readonly<Record<string, readonly Scenario
   Object.freeze({
     "person-lookup": PERSON_LOOKUP_CLAIMS,
     "fixture-graph": FIXTURE_GRAPH_CLAIMS,
-    "kuali-timekeeper-annotation": KUALI_TIMEKEEPER_CLAIMS,
     "separations-kronos-timecard": SEPARATIONS_KRONOS_TIMECARD_CLAIMS,
     "separations-kuali-read": SEPARATIONS_KUALI_READ_CLAIMS,
     "separations-identity-check": SEPARATIONS_IDENTITY_CHECK_CLAIMS,

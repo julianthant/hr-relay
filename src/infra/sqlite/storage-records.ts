@@ -54,6 +54,7 @@ import {
   DiagnosticBundleSchema,
 } from "../../domain/trust/diagnostic.js";
 import { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
+import { DryRunScenarioResultSchema } from "../../domain/trust/dry-run-scenario-result.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
 import { FixRecordSchema, KnowledgeRecordSchema } from "../../domain/trust/knowledge.js";
 
@@ -231,6 +232,7 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   diagnostic_bundles: DiagnosticBundleSchema,
   diagnostic_attachments: DiagnosticAttachmentStorageRecordSchema,
   evidence_receipts: RunEvidenceReceiptSchema,
+  dry_run_scenario_results: DryRunScenarioResultSchema,
   knowledge_records: KnowledgeRecordSchema,
   fix_records: FixRecordSchema,
   ledger_partitions: LedgerPartitionRecordSchema,

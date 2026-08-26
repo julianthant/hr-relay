@@ -28,7 +28,6 @@ import {
   resolveInstances,
   supportsDryRun,
 } from "../../src/services/start/plan.js";
-import { kualiTimekeeperAnnotationDescriptor } from "../../src/workflows/kuali-timekeeper-annotation/descriptor.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import { separationsUcpathTerminationDescriptor } from "../../src/workflows/separations/ucpath-transaction/descriptor.js";
 import { separationsDescriptor } from "../../src/workflows/separations/descriptor.js";
@@ -247,16 +246,15 @@ describe("start planning", () => {
    * support is a property of what the graph WRITES, never of whether an
    * operator can paste a line into a textbox.
    *
-   * Three of these four still carry `surfaces: {}` and are previewable anyway,
+   * Two of these three still carry `surfaces: {}` and are previewable anyway,
    * which is the original claim. **`separations` now carries a typed box (D261)
    * and is previewable for exactly the same reason** — the surface changed and
    * the derivation did not — so it is asserted from the other side: the point
    * is the INDEPENDENCE of the two, and a list where every member lacked a
    * surface could no longer show it.
    */
-  it("makes all four registered write workflows dry-startable through the graph (D209)", () => {
+  it("makes all three registered write workflows dry-startable through the graph (D209)", () => {
     for (const descriptor of [
-      kualiTimekeeperAnnotationDescriptor,
       separationsUcpathTerminationDescriptor,
       separationsKualiFinalizationDescriptor,
       // The composition, whose three transaction nodes each declare the arm —
@@ -274,7 +272,6 @@ describe("start planning", () => {
       assert.equal(support.state === "supported" ? support.stopsAt : "", String(firstTransaction.id));
     }
     // The independence, stated in both directions on the shipped set.
-    assert.deepEqual(kualiTimekeeperAnnotationDescriptor.surfaces, {});
     assert.deepEqual(separationsUcpathTerminationDescriptor.surfaces, {});
     assert.deepEqual(separationsKualiFinalizationDescriptor.surfaces, {});
     assert.notEqual(separationsDescriptor.surfaces.inputRun, undefined, "D261 gave separations a box");

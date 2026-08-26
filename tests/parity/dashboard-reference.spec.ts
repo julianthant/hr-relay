@@ -21,6 +21,9 @@ import {
   FIXTURE_DAY,
   FIXTURE_DESCRIPTOR_HASH,
   FIXTURE_IDS,
+  FIXTURE_START_PICKER_BOOTSTRAP,
+  FIXTURE_START_PICKER_DAY_WIRE,
+  FIXTURE_START_PICKER_DESCRIPTOR_HASH,
 } from "./helpers/fixture-day.js";
 import {
   PARITY_THEMES,
@@ -80,7 +83,7 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
     selector must never be read without.
   */
   { id: "explorer-graph", route: { day: FIXTURE_DAY, explore: FIXTURE_EXPLORER_WORKFLOW_ID } },
-  { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "kuali-timekeeper-annotation" } },
+  { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "separations-kuali-finalization" } },
   { id: "catalog-search", route: { day: FIXTURE_DAY, catalog: FIXTURE_CATALOG_QUERY } },
   /*
     The archive model's three operator states (2i-G, D179). `archive-ledger`
@@ -103,6 +106,7 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
 ];
 
 let server: FixtureServer;
+let startPickerServer: FixtureServer;
 /**
  * Adapter #2, started for exactly one state (2j). The reference corpus is
  * otherwise the deterministic fixture adapter, and the whole reason this one
@@ -125,11 +129,21 @@ test.beforeAll(async () => {
   // is not in the working tree.
   ensureParityBundle();
   server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+  startPickerServer = await startFixtureServer({
+    distDir: PARITY_DIST_DIR,
+    bundle: { proof: "working-tree" },
+    profile: {
+      bootstrap: FIXTURE_START_PICKER_BOOTSTRAP,
+      day: FIXTURE_START_PICKER_DAY_WIRE,
+      descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+    },
+  });
   seeded = await startSeededServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
 });
 
 test.afterAll(async () => {
   await server.close();
+  await startPickerServer.close();
   await seeded.close();
 });
 
@@ -153,6 +167,77 @@ async function dismissWorkflowWindow(page: import("@playwright/test").Page): Pro
   await page.mouse.click(viewport.width / 2, 100);
   await page.waitForTimeout(120);
 }
+
+/**
+ * The ordinary Start Run fixture stays intentionally small: it proves the
+ * Person Lookup input/plan flow. This profile proves the OTHER thing the
+ * picker owns — the served registry's composition and its unavailable harness
+ * steps — with the real seven modules, including the timekeeping-category
+ * Kronos harness. Separations has its typed-input door, while the harnesses
+ * honestly disclose below it: none has enough independent input for this
+ * dialog to invent a box. Their parent is therefore absent from that filtered
+ * list and every row keeps the explicit raw composition id rather than
+ * fabricating a label the filtered list does not supply (the grouping rule's
+ * orphan arm).
+ */
+test.describe("start-run picker hierarchy", () => {
+  for (const viewport of PARITY_VIEWPORTS) {
+    for (const theme of PARITY_THEMES) {
+      test(`${theme.name} @ ${viewport.name}`, async ({ page }) => {
+        const errors = failOnPageErrors(page);
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await installTheme(page, theme satisfies ParityTheme);
+        await gotoAppState(page, startPickerServer.baseUrl, { day: FIXTURE_DAY, start: true });
+        await assertThemeApplied(page, theme satisfies ParityTheme);
+        await page.waitForTimeout(120);
+
+        const picker = page.getByRole("navigation", { name: "Workflow" });
+        await expect(picker.getByRole("button", { name: "Separation sp" })).toBeVisible();
+        const unavailable = page.getByRole("button", { name: "5 not startable" });
+        await expect(unavailable).toHaveAttribute("aria-expanded", "false");
+        await unavailable.click();
+        await expect(unavailable).toHaveAttribute("aria-expanded", "true");
+
+        for (const label of [
+          "Separation Timecard",
+          "Separation Document",
+          "Identity Check",
+          "UCPath Termination",
+          "Kuali Finalization",
+        ]) {
+          await expect(page.getByText(label, { exact: true })).toBeVisible();
+        }
+        await expect(
+          page.getByTitle("A proving harness of separations — a step of that workflow, not a workflow of its own"),
+        ).toHaveCount(5);
+        // The parent is startable while its harnesses are not, so the blocked
+        // list is an honest orphan view. Kronos retains its own HR category
+        // instead of pretending a missing blocked-list parent exists.
+        await expect(page.getByText("Timekeeping", { exact: true })).toBeVisible();
+        // The blocked disclosure has a deliberate fixed height. Keep the
+        // semantic reference over every harness above, then photograph its
+        // lower edge too: this puts the cross-category Kronos step in pixels,
+        // rather than leaving the most important row only in the a11y tree.
+        await page.getByText("Separation Timecard", { exact: true }).scrollIntoViewIfNeeded();
+
+        await assertShellGeometry(page, `start-run-separations @ ${viewport.name} ${theme.name}`);
+        expect(errors, "page errors while rendering the separations picker").toEqual([]);
+
+        await captureParityPair(page, REFERENCES, {
+          stateId: "start-run-separations",
+          viewport: viewport.name,
+          theme: theme.name,
+          adapter: "fixture",
+          fixtureId: "start-run-separations",
+          descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH,
+          appVersion: FIXTURE_APP_VERSION,
+          capturedAt: FIXTURE_DAY,
+          variant: "default",
+        });
+      });
+    }
+  }
+});
 
 /**
  * Dismiss the window on a QUEUE view — where `y=100` is a live control.

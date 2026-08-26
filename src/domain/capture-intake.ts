@@ -11,10 +11,9 @@
  * refuses a binding built over a copy of the descriptor's input schema, and a
  * workflow that declares none cannot receive a capture handoff at all.
  *
- * NO REGISTERED WORKFLOW DECLARES ONE. `person-lookup` is identified by an
- * employee id or a name and `kuali-timekeeper-annotation` by a document
- * number; neither can be produced from a photograph without an OCR-backed
- * workflow that does not exist yet. Inventing a binding for either would put
+ * NO REGISTERED WORKFLOW DECLARES ONE. Their structured identifiers and fields
+ * cannot be produced from a photograph without an OCR-backed workflow binding
+ * that does not exist yet. Inventing a binding would put
  * a fabricated canonical input into a real run, so the handoff REFUSES BY NAME
  * instead — the same shape D170 used for intake projections before D172 gave
  * intake its first real consumer.

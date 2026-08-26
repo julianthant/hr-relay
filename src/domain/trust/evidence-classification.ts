@@ -145,14 +145,10 @@ const gateResult = (workflowId: string, gateId: string): EvidenceValueScope => (
 
 const PERSON_LOOKUP_INPUT = workflowInput("person-lookup");
 const PERSON_LOOKUP_RESULT = workflowResult("person-lookup");
-const KUALI_INPUT = workflowInput("kuali-timekeeper-annotation");
-const KUALI_RESULT = workflowResult("kuali-timekeeper-annotation");
 const SEARCH = taskOutput("ucpath/search-person-org");
 const CRM_RECORD = taskOutput("crm/read-onboarding-record");
 const CRM_DATES = taskOutput("crm/read-onboarding-dates");
 const ACTIVE_STATUS = taskOutput("workflow:person-lookup/read-active-status");
-const KUALI_FILL = taskOutput("kuali/fill-timekeeper-annotation");
-const KUALI_SAVE = taskOutput("kuali/save-timekeeper-annotation");
 const KRONOS_TIMECARD_INPUT = workflowInput("separations-kronos-timecard");
 const KRONOS_TIMECARD_RESULT = workflowResult("separations-kronos-timecard");
 const KRONOS_SEARCH = taskOutput("new-kronos/search-employee");
@@ -461,24 +457,6 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     "crmDates.dates.completedOn.state", "crmDates.dates.completedOn.value",
     "crmDates.dates.completedOn.reason"),
   ...person(PERSON_LOOKUP_RESULT, "crmDates.dates.emplId"),
-
-  /* kuali-timekeeper-annotation ingress */
-  ...open(KUALI_INPUT, "actionId", "documentNumber"),
-  ...person(KUALI_INPUT, "emplId", "timekeeperName"),
-
-  /* kuali/fill-timekeeper-annotation (prepare) */
-  ...open(KUALI_FILL, "stagedPageState", "actionId", "documentNumber", "observedAt"),
-  ...person(KUALI_FILL, "observedEid", "previousTimekeeperName", "stagedTimekeeperName"),
-
-  /* kuali/save-timekeeper-annotation (commit) */
-  ...open(KUALI_SAVE, "savedState.kind", "savedState.actionId", "savedState.documentNumber",
-    "savedState.source"),
-  ...person(KUALI_SAVE, "savedState.timekeeperName", "savedState.observedEid"),
-
-  /* kuali terminal result */
-  ...open(KUALI_RESULT, "disposition", "saved.kind", "saved.actionId", "saved.documentNumber",
-    "saved.source"),
-  ...person(KUALI_RESULT, "saved.timekeeperName", "saved.observedEid"),
 
   /* separations-kronos-timecard ingress. The window bounds are dates ABOUT the
      read, not about the person, so they are open; the EID and the expected
