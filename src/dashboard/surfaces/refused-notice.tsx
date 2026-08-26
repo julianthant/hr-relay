@@ -75,7 +75,8 @@ export function RefusedNotice({
     <Refusal
       title={REFUSED_NOTICE_TITLE}
       code={refusal.code}
-      outcome={copy.outcome}
+      meta={[copy.segments[0]]}
+      outcome={copy.segments[1]}
       className={enterClass}
       {...entering}
     >

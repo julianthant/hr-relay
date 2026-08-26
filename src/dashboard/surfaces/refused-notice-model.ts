@@ -73,7 +73,14 @@ export const REFUSED_NOTICE_TITLE = "Nothing was recorded";
 
 /** The composed copy one arm of the notice draws. */
 export interface RefusedNoticeCopy {
-  /** the coded arm's `outcome` — what was NOT done, in the product's own words */
+  /**
+   * the coded arm's `MetaLine` segments — the standing fact, then what was not
+   * done. Two segments, not one `·`-joined string: `MetaLine`'s separators are
+   * `aria-hidden`, while a literal middle dot inside one segment is read aloud.
+   * The VISIBLE line is unchanged — the joined form remains the ratified copy.
+   */
+  readonly segments: readonly [standing: string, outcome: string];
+  /** the joined coded line, byte-identical to the ratified pre-merge strings */
   readonly outcome: string;
   /** the uncoded arm's sentence, printed AFTER the server's own message */
   readonly uncoded: string;
@@ -88,8 +95,10 @@ export interface RefusedNoticeCopy {
  */
 export function refusedNoticeCopy(ceremony: RefusedCeremony): RefusedNoticeCopy {
   const standing = STANDING[ceremony];
+  const untouched = "your answer below is untouched";
   return {
-    outcome: `${standing.clause} · your answer below is untouched`,
+    segments: [standing.clause, untouched],
+    outcome: `${standing.clause} · ${untouched}`,
     uncoded:
       `${standing.sentence} and your answer below is untouched — but the server sent no `
       + "refusal code, so there is nothing here to quote in a bug report.",
