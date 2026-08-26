@@ -20,7 +20,13 @@ import type { TaskStoreRegistry } from "../base/store.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
-import { BrowserSessionIdSchema, PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
+import {
+  BrowserSessionIdSchema,
+  IsoInstantSchema,
+  PositiveIntSchema,
+  WorkerIdSchema,
+  WorkflowIdSchema,
+} from "../domain/ids.js";
 import type { BrowserSessionId, PositiveInt, WorkerId, WorkflowId } from "../domain/ids.js";
 import { WorkerDirectiveSchema, type WorkerDirective } from "../domain/run/worker.js";
 import type {
@@ -402,7 +408,17 @@ export const WorkerPoolMemberSchema = z.strictObject({
 });
 export type WorkerPoolMember = z.infer<typeof WorkerPoolMemberSchema>;
 
-export const WorkerStopEscalationSchema = z.tuple([
+/**
+ * The canonical bounded-stop escalation ORDER. The policy below states the
+ * plan (stages and their timeouts, declared up front); observed stages record
+ * what actually happened, one timestamped record per stage AS IT OCCURS.
+ */
+export const WORKER_STOP_ESCALATION_STAGES = Object.freeze(
+  ["graceful-stop-requested", "sigterm-sent", "sigkill-sent"] as const,
+);
+
+/** The stop POLICY: what will be tried and for how long — a plan, not a claim. */
+export const WorkerStopEscalationPolicySchema = z.tuple([
   z.strictObject({
     stage: z.literal("graceful-stop-requested"),
     timeoutMs: z.literal(WORKER_GRACEFUL_STOP_TIMEOUT_MS),
@@ -413,7 +429,51 @@ export const WorkerStopEscalationSchema = z.tuple([
   }),
   z.strictObject({ stage: z.literal("sigkill-sent") }),
 ]);
-export type WorkerStopEscalation = Readonly<z.infer<typeof WorkerStopEscalationSchema>>;
+export type WorkerStopEscalationPolicy = Readonly<z.infer<typeof WorkerStopEscalationPolicySchema>>;
+
+/** One OBSERVED escalation stage: it happened, at this instant. */
+export const WorkerStopObservedStageSchema = z.strictObject({
+  stage: z.enum(WORKER_STOP_ESCALATION_STAGES),
+  at: IsoInstantSchema,
+});
+export type WorkerStopObservedStage = z.infer<typeof WorkerStopObservedStageSchema>;
+
+/**
+ * The timestamped observation record: a strict PREFIX of the escalation order
+ * (graceful first, no skipped stage, no repeats) with non-decreasing
+ * timestamps. A sequence that jumps past the graceful stage, inverts the
+ * order, or time-travels is refused at the schema — an illegal transition can
+ * never be acknowledged.
+ */
+export const WorkerStopObservedStagesSchema = z
+  .array(WorkerStopObservedStageSchema)
+  .min(1)
+  .max(WORKER_STOP_ESCALATION_STAGES.length)
+  .superRefine((observed, context) => {
+    for (const [index, record] of observed.entries()) {
+      const expected = WORKER_STOP_ESCALATION_STAGES[index];
+      if (record.stage !== expected) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "stage"],
+          message: `observed stop stages must follow the escalation policy in order: position `
+            + `${String(index + 1)} must be ${String(expected)}, saw ${record.stage}`,
+        });
+        return;
+      }
+      const previous = observed[index - 1];
+      if (previous !== undefined && Date.parse(record.at) < Date.parse(previous.at)) {
+        context.addIssue({
+          code: "custom",
+          path: [index, "at"],
+          message: `observed stage ${record.stage} at ${record.at} precedes ${previous.stage} at `
+            + `${previous.at}; escalation observations must carry non-decreasing timestamps`,
+        });
+        return;
+      }
+    }
+  });
+export type WorkerStopObservedStages = z.infer<typeof WorkerStopObservedStagesSchema>;
 
 /**
  * Durable supervisor ownership of a pool member. `external` is reportable so a
@@ -440,7 +500,9 @@ export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("st
     member: WorkerPoolMemberSchema,
     stage: z.literal("graceful-stop-requested"),
     ownership: WorkerPoolOwnershipSchema,
-    escalation: WorkerStopEscalationSchema,
+    escalation: WorkerStopEscalationPolicySchema,
+    /** Recorded AS THEY OCCUR: a later reconciliation may report escalations that happened since. */
+    observed: WorkerStopObservedStagesSchema,
   }),
 ]);
 export type WorkerPoolMemberReconciliationFact = z.infer<typeof WorkerPoolMemberReconciliationFactSchema>;
@@ -468,8 +530,10 @@ const WorkerStopAcknowledgementSchema = z.strictObject({
   state: z.literal("acknowledged"),
   member: WorkerPoolMemberSchema,
   ownership: WorkerPoolOwnershipSchema,
-  stage: z.literal("graceful-stop-requested"),
-  escalation: WorkerStopEscalationSchema,
+  /** The POLICY echoed back: stages that WILL be tried, with their bounds. */
+  escalation: WorkerStopEscalationPolicySchema,
+  /** What actually happened so far. The initial acknowledgement may contain only the graceful request. */
+  observed: WorkerStopObservedStagesSchema,
 });
 
 const WorkerPauseAcknowledgementSchema = z.strictObject({
@@ -540,7 +604,7 @@ export interface WorkerPoolSpawnRequest {
 export interface WorkerPoolStopRequest {
   readonly command: "stop-worker";
   readonly member: WorkerPoolMember;
-  readonly escalation: WorkerStopEscalation;
+  readonly escalation: WorkerStopEscalationPolicy;
 }
 
 export interface WorkerPoolPauseRequest {
@@ -637,8 +701,8 @@ function poolMemberFromWorkerId(workflowId: WorkflowId, workerId: WorkerId): Wor
   return member;
 }
 
-function workerStopEscalation(): WorkerStopEscalation {
-  const escalation = WorkerStopEscalationSchema.parse([
+function workerStopEscalation(): WorkerStopEscalationPolicy {
+  const escalation = WorkerStopEscalationPolicySchema.parse([
     { stage: "graceful-stop-requested", timeoutMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS },
     { stage: "sigterm-sent", timeoutMs: WORKER_SIGTERM_TIMEOUT_MS },
     { stage: "sigkill-sent" },
@@ -801,6 +865,17 @@ export function createWorkerPoolRuntimeExecutor(
       })));
       requireSameMember("stop-worker", member, acknowledgement.member);
       requireDurableOwnership("stop-worker", acknowledgement.member, acknowledgement.ownership);
+      const futureStages = acknowledgement.observed.slice(1);
+      if (futureStages.length > 0) {
+        // The schema pins observation order; this pins TIME: at the initial
+        // acknowledgement only the graceful request has happened. TERM/KILL
+        // are recorded through later reconciliation facts as they occur.
+        throw new Error(
+          `stop-worker for ${member.workerId} may acknowledge only the observed graceful-stop-requested stage; `
+          + `future stages (${futureStages.map(({ stage }) => stage).join(", ")}) are recorded as they occur, `
+          + "not promised in advance",
+        );
+      }
       return { state: "accepted" };
     },
     async pauseWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
