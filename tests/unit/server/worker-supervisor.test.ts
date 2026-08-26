@@ -98,6 +98,12 @@ interface Harness {
   readonly leases: Map<WorkerId, WorkerLeaseBirthFact>;
   /** The next spawner behavior; default mints a fake child at the next pid. */
   nextSpawn: (request: WorkerProcessSpawnRequest) => FakeWorkerChild;
+  /** The lease probe behavior; default reads the `leases` map. */
+  observeLease: (workerId: WorkerId) => WorkerLeaseBirthFact | undefined;
+  /** The graceful-stop channel behavior; default acknowledges at the current wall clock. */
+  nextGracefulStop: (
+    target: WorkerPoolMember,
+  ) => Promise<Readonly<{ requestedAt: string }>> | Readonly<{ requestedAt: string }>;
 }
 
 const LAUNCH = Object.freeze({
@@ -138,6 +144,8 @@ function openHarness(overrides?: Readonly<{
       }
       return child;
     },
+    observeLease: (workerId): WorkerLeaseBirthFact | undefined => leases.get(workerId),
+    nextGracefulStop: (): Readonly<{ requestedAt: string }> => ({ requestedAt: clock.now().toISOString() }),
     supervisor: createDashboardWorkerProcessSupervisor({
       launch: {
         command: overrides?.launchCommand ?? LAUNCH.command,
@@ -150,11 +158,11 @@ function openHarness(overrides?: Readonly<{
         children.push(child);
         return child;
       },
-      leases: { observe: (workerId) => leases.get(workerId) },
+      leases: { observe: (workerId) => harness.observeLease(workerId) },
       gracefulStop: {
         request: (target) => {
           gracefulRequests.push(target);
-          return { requestedAt: clock.now().toISOString() };
+          return harness.nextGracefulStop(target);
         },
       },
       clock,
@@ -257,6 +265,116 @@ describe("spawn-worker", () => {
       .rejects.toThrow(/process errored before proving its lease birth: spawn ENOENT/);
     harness.children[0]?.emitError(new Error("spawn ENOENT"));
     await expectation;
+  });
+
+  it("records crash evidence, kills the child, and frees the slot on a pre-birth process error", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/process errored before proving its lease birth: spawn EACCES/);
+    harness.children[0]?.emitError(new Error("spawn EACCES"));
+    await expectation;
+
+    expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "exited",
+      pid: harness.children[0]?.pid,
+      outcome: "crashed",
+      exitCode: null,
+      signal: null,
+      at: NOW,
+      observedStop: [],
+    });
+    // The slot is NOT bricked: an explicit new spawn-worker replaces the record.
+    harness.nextSpawn = (request): FakeWorkerChild => {
+      const replacement = new FakeWorkerChild(4002);
+      harness.leases.set(request.member.workerId, { processId: 4002, startedAt: NOW });
+      return replacement;
+    };
+    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .resolves.toMatchObject({ command: "spawn-worker", state: "acknowledged" });
+    expect(harness.spawnRequests).toHaveLength(2);
+  });
+
+  it("records crash evidence without attempting a kill when the errored child never got a pid", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    harness.nextSpawn = (): FakeWorkerChild => new FakeWorkerChild(undefined);
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/process errored before proving its lease birth: spawn ENOENT/);
+    harness.children[0]?.emitError(new Error("spawn ENOENT"));
+    await expectation;
+
+    expect(harness.children[0]?.signalsSent).toEqual([]);
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "exited",
+      outcome: "crashed",
+      exitCode: null,
+      signal: null,
+      at: NOW,
+      observedStop: [],
+    });
+    expect(harness.faults).toHaveLength(0);
+  });
+
+  it("forwards a post-birth process error to the fault sink instead of letting it vanish", async () => {
+    const harness = openHarness();
+    const target = member(1);
+    await harness.supervisor.execute({ command: "spawn-worker", member: target });
+
+    harness.children[0]?.emitError(new Error("kill EPERM"));
+
+    expect(harness.faults).toHaveLength(1);
+    expect(harness.faults[0]?.message).toMatch(
+      new RegExp(`worker ${target.workerId} \\(pid ${String(harness.children[0]?.pid)}\\) process errored after`),
+    );
+    expect(harness.faults[0]?.message).toMatch(/kill EPERM/);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "running" });
+  });
+
+  it("kills the child and rejects when a birth probe throws on a scheduler tick", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/birth probe threw before proving its lease birth: lease store unreadable/);
+
+    harness.observeLease = (): WorkerLeaseBirthFact | undefined => {
+      throw new Error("lease store unreadable");
+    };
+    harness.clock.advanceMonotonic(250);
+    const poll = harness.scheduler.pending()[0];
+    if (poll === undefined) throw new Error("expected a scheduled birth poll");
+    poll.fire();
+    await expectation;
+
+    expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
+    expect(harness.scheduler.pending()).toHaveLength(0);
+    // The killed child's real exit still lands as evidence and frees the slot.
+    harness.children[0]?.emitExit(null, "SIGKILL");
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "exited",
+      outcome: "crashed",
+      signal: "SIGKILL",
+    });
+  });
+
+  it("routes an undelivered spawn-abort SIGKILL to the fault sink and words the rejection honestly", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const child = new FakeWorkerChild(4321);
+    child.killResult = false;
+    harness.nextSpawn = (): FakeWorkerChild => child;
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/proved no lease birth within 10000ms; the unproved child was NOT killed \(SIGKILL was not delivered\)/);
+
+    harness.clock.advanceMonotonic(10_000);
+    const poll = harness.scheduler.pending()[0];
+    if (poll === undefined) throw new Error("expected a scheduled birth poll");
+    poll.fire();
+    await expectation;
+
+    expect(harness.faults).toHaveLength(1);
+    expect(harness.faults[0]?.message).toMatch(/spawn-abort SIGKILL was not delivered/);
   });
 
   it("propagates a synchronous spawner failure and leaves no phantom record", async () => {

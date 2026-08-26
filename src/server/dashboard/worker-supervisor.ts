@@ -267,6 +267,21 @@ export function createDashboardWorkerProcessSupervisor(
         pollHandle?.cancel();
         outcome();
       };
+      /**
+       * Abort an unproved spawn: SIGKILL the child (when the OS gave it a
+       * pid) and say honestly whether the kill was delivered. An undelivered
+       * abort goes to the fault sink — the child may still be alive, and the
+       * rejection must never claim a kill that did not happen.
+       */
+      const killUnprovenChild = (): string => {
+        if (record.pid === undefined) return "the child has no pid to kill";
+        if (child.kill("SIGKILL")) return "the unproved child was killed";
+        deps.onFault(new Error(
+          `worker ${member.workerId} (pid ${String(record.pid)}) spawn-abort SIGKILL was not delivered; `
+          + "the unproved child may still be alive",
+        ));
+        return "the unproved child was NOT killed (SIGKILL was not delivered)";
+      };
       child.onExit((exitCode, signal) => {
         onChildExit(record, exitCode, signal);
         settle(() => {
@@ -277,45 +292,79 @@ export function createDashboardWorkerProcessSupervisor(
         });
       });
       child.onError((error) => {
+        if (settled) {
+          // The birth already settled: this is a live child's process error
+          // (e.g. a failed signal delivery). It has no command to reject, so
+          // the fault sink is the only honest place for it.
+          deps.onFault(new Error(
+            `worker ${member.workerId} (pid ${String(record.pid)}) process errored after its lease `
+            + `birth settled: ${error.message}`,
+          ));
+          return;
+        }
+        // A pre-birth process error (spawn ENOENT is the common case) leaves
+        // no exit event to transition the record: without evidence here the
+        // record would stay awaiting-birth forever and brick the worker slot.
+        const killed = killUnprovenChild();
+        if (record.state === "awaiting-birth") {
+          record.exit = { exitCode: null, signal: null, at: instant(), outcome: "crashed" };
+          record.state = "exited";
+        }
         settle(() => {
           reject(new Error(
             `spawn-worker failed: worker ${member.workerId} process errored before proving its lease `
-            + `birth: ${error.message}`,
+            + `birth: ${error.message}; ${killed}`,
           ));
         });
       });
       const deadline = deps.clock.monotonicMs() + deps.birth.timeoutMs;
       const poll = (): void => {
         if (settled) return;
-        const fact = deps.leases.observe(member.workerId);
-        if (fact !== undefined) {
-          if (child.pid !== undefined && fact.processId === child.pid) {
+        try {
+          const fact = deps.leases.observe(member.workerId);
+          if (fact !== undefined) {
+            if (child.pid !== undefined && fact.processId === child.pid) {
+              const proved = WorkerLeaseBirthFactSchema.parse(fact);
+              settle(() => {
+                resolve(proved);
+              });
+              return;
+            }
+            const killed = killUnprovenChild();
             settle(() => {
-              resolve(WorkerLeaseBirthFactSchema.parse(fact));
+              reject(new Error(
+                `spawn-worker failed: worker ${member.workerId} lease is owned by pid `
+                + `${String(fact.processId)}, not the spawned child pid ${String(child.pid)}; the identity is `
+                + `externally held and ${killed}`,
+              ));
             });
             return;
           }
-          child.kill("SIGKILL");
+          if (deps.clock.monotonicMs() >= deadline) {
+            const killed = killUnprovenChild();
+            settle(() => {
+              reject(new Error(
+                `spawn-worker failed: worker ${member.workerId} (pid ${String(child.pid)}) proved no lease `
+                + `birth within ${String(deps.birth.timeoutMs)}ms; ${killed}`,
+              ));
+            });
+            return;
+          }
+          pollHandle = deps.scheduler.schedule(deps.clock.monotonicMs() + deps.birth.pollMs, poll);
+        } catch (error) {
+          // A birth probe that throws (the lease store unreadable, a corrupt
+          // birth fact) on a scheduler tick would otherwise escape into the
+          // scheduler, never re-schedule, and leave the spawn pending forever
+          // with the child alive and unsupervised.
+          const probe = error instanceof Error ? error : new Error(String(error));
+          const killed = killUnprovenChild();
           settle(() => {
             reject(new Error(
-              `spawn-worker failed: worker ${member.workerId} lease is owned by pid `
-              + `${String(fact.processId)}, not the spawned child pid ${String(child.pid)}; the identity is `
-              + "externally held and the unproved child was killed",
+              `spawn-worker failed: worker ${member.workerId} (pid ${String(record.pid)}) birth probe `
+              + `threw before proving its lease birth: ${probe.message}; ${killed}`,
             ));
           });
-          return;
         }
-        if (deps.clock.monotonicMs() >= deadline) {
-          child.kill("SIGKILL");
-          settle(() => {
-            reject(new Error(
-              `spawn-worker failed: worker ${member.workerId} (pid ${String(child.pid)}) proved no lease `
-              + `birth within ${String(deps.birth.timeoutMs)}ms; the unproved child was killed`,
-            ));
-          });
-          return;
-        }
-        pollHandle = deps.scheduler.schedule(deps.clock.monotonicMs() + deps.birth.pollMs, poll);
       };
       poll();
     });
