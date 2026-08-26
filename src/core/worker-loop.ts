@@ -415,11 +415,21 @@ export const WorkerStopEscalationSchema = z.tuple([
 ]);
 export type WorkerStopEscalation = Readonly<z.infer<typeof WorkerStopEscalationSchema>>;
 
+/**
+ * Durable supervisor ownership of a pool member. `external` is reportable so a
+ * supervisor can tell the truth about a process it did not start — and every
+ * mutating control REFUSES it by name: only a member the supervisor durably
+ * owns may be planned over, spawned, stopped, paused, resumed, or have its
+ * browser controlled.
+ */
+export const WorkerPoolOwnershipSchema = z.enum(["supervised", "external"]);
+export type WorkerPoolOwnership = z.infer<typeof WorkerPoolOwnershipSchema>;
+
 export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("stage", [
   z.strictObject({
     member: WorkerPoolMemberSchema,
     stage: z.literal("running"),
-    ownership: z.enum(["supervised", "external"]),
+    ownership: WorkerPoolOwnershipSchema,
   }),
   z.strictObject({
     member: WorkerPoolMemberSchema,
@@ -429,6 +439,7 @@ export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("st
   z.strictObject({
     member: WorkerPoolMemberSchema,
     stage: z.literal("graceful-stop-requested"),
+    ownership: WorkerPoolOwnershipSchema,
     escalation: WorkerStopEscalationSchema,
   }),
 ]);
@@ -448,6 +459,7 @@ const WorkerSpawnAcknowledgementSchema = z.strictObject({
   command: z.literal("spawn-worker"),
   state: z.literal("acknowledged"),
   member: WorkerPoolMemberSchema,
+  ownership: WorkerPoolOwnershipSchema,
   stage: z.literal("started"),
 });
 
@@ -455,6 +467,7 @@ const WorkerStopAcknowledgementSchema = z.strictObject({
   command: z.literal("stop-worker"),
   state: z.literal("acknowledged"),
   member: WorkerPoolMemberSchema,
+  ownership: WorkerPoolOwnershipSchema,
   stage: z.literal("graceful-stop-requested"),
   escalation: WorkerStopEscalationSchema,
 });
@@ -463,6 +476,7 @@ const WorkerPauseAcknowledgementSchema = z.strictObject({
   command: z.literal("pause-worker"),
   state: z.literal("acknowledged"),
   member: WorkerPoolMemberSchema,
+  ownership: WorkerPoolOwnershipSchema,
   stage: z.literal("pause-requested"),
 });
 
@@ -470,6 +484,7 @@ const WorkerResumeAcknowledgementSchema = z.strictObject({
   command: z.literal("resume-worker"),
   state: z.literal("acknowledged"),
   member: WorkerPoolMemberSchema,
+  ownership: WorkerPoolOwnershipSchema,
   stage: z.literal("resume-requested"),
 });
 
@@ -477,6 +492,7 @@ const WorkerRefreshAcknowledgementSchema = z.strictObject({
   command: z.literal("refresh-browser"),
   state: z.literal("acknowledged"),
   member: WorkerPoolMemberSchema,
+  ownership: WorkerPoolOwnershipSchema,
   browserSessionId: BrowserSessionIdSchema,
   stage: z.literal("refreshed"),
 });
@@ -485,6 +501,7 @@ const WorkerReopenAcknowledgementSchema = z.strictObject({
   command: z.literal("reopen-browser"),
   state: z.literal("acknowledged"),
   member: WorkerPoolMemberSchema,
+  ownership: WorkerPoolOwnershipSchema,
   browserSessionId: BrowserSessionIdSchema,
   stage: z.literal("reopened"),
 });
@@ -647,6 +664,19 @@ function requireSameMember(
   }
 }
 
+function requireDurableOwnership(
+  command: WorkerSupervisorRequest["command"],
+  member: WorkerPoolMember,
+  ownership: WorkerPoolOwnership,
+): void {
+  if (ownership !== "supervised") {
+    throw new Error(
+      `${command} touches externally owned member ${member.workerId} at index ${String(member.poolIndex)}; `
+      + "a mutating control requires durable supervisor ownership of the member it acts on",
+    );
+  }
+}
+
 function requireSupervisorAcknowledgement(command: WorkerSupervisorRequest["command"], value: unknown): unknown {
   if (value === undefined) {
     throw new Error(`${command} supervisor acknowledgement is required; refusing to accept an unproved effect`);
@@ -727,6 +757,9 @@ export function createWorkerPoolRuntimeExecutor(
           );
         }
         requireSameMember("plan-worker-count", expected, fact.member);
+        if (fact.stage !== "unmet") {
+          requireDurableOwnership("plan-worker-count", fact.member, fact.ownership);
+        }
         if (offset < desiredWorkers && fact.stage === "graceful-stop-requested") {
           throw new Error(
             `plan-worker-count cannot stop desired member ${fact.member.workerId} at index ${String(offset + 1)}`,
@@ -751,6 +784,7 @@ export function createWorkerPoolRuntimeExecutor(
         member,
       })));
       requireSameMember("spawn-worker", member, acknowledgement.member);
+      requireDurableOwnership("spawn-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
     async stopWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
@@ -766,6 +800,7 @@ export function createWorkerPoolRuntimeExecutor(
         escalation,
       })));
       requireSameMember("stop-worker", member, acknowledgement.member);
+      requireDurableOwnership("stop-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
     async pauseWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
@@ -779,6 +814,7 @@ export function createWorkerPoolRuntimeExecutor(
         member,
       })));
       requireSameMember("pause-worker", member, acknowledgement.member);
+      requireDurableOwnership("pause-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
     async resumeWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
@@ -792,6 +828,7 @@ export function createWorkerPoolRuntimeExecutor(
         member,
       })));
       requireSameMember("resume-worker", member, acknowledgement.member);
+      requireDurableOwnership("resume-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
     async refreshBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
@@ -806,6 +843,7 @@ export function createWorkerPoolRuntimeExecutor(
         browserSessionId: command.target.browserSessionId,
       })));
       requireSameMember("refresh-browser", member, acknowledgement.member);
+      requireDurableOwnership("refresh-browser", acknowledgement.member, acknowledgement.ownership);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
         throw new Error(
           `refresh-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
@@ -826,6 +864,7 @@ export function createWorkerPoolRuntimeExecutor(
         browserSessionId: command.target.browserSessionId,
       })));
       requireSameMember("reopen-browser", member, acknowledgement.member);
+      requireDurableOwnership("reopen-browser", acknowledgement.member, acknowledgement.ownership);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
         throw new Error(
           `reopen-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
@@ -872,6 +911,7 @@ export function createPhase1WorkerRuntimeExecutor(
         supervisor.spawnWorker(member),
       ));
       requireSameMember("spawn-worker", member, acknowledgement.member);
+      requireDurableOwnership("spawn-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
     refreshBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
@@ -893,6 +933,7 @@ export function createPhase1WorkerRuntimeExecutor(
         })),
       ));
       requireSameMember("refresh-browser", member, acknowledgement.member);
+      requireDurableOwnership("refresh-browser", acknowledgement.member, acknowledgement.ownership);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
         throw new Error(
           `refresh-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
@@ -920,6 +961,7 @@ export function createPhase1WorkerRuntimeExecutor(
         })),
       ));
       requireSameMember("reopen-browser", member, acknowledgement.member);
+      requireDurableOwnership("reopen-browser", acknowledgement.member, acknowledgement.ownership);
       if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
         throw new Error(
           `reopen-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `

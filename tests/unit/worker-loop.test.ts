@@ -343,7 +343,7 @@ describe("pool-capable worker runtime executor seam", () => {
                 workerId: "person-lookup-worker-2",
               },
               stage: "running",
-              ownership: "external",
+              ownership: "supervised",
             },
             {
               member: {
@@ -410,6 +410,7 @@ describe("pool-capable worker runtime executor seam", () => {
               workerId: "person-lookup-worker-2",
             },
             stage: "graceful-stop-requested",
+            ownership: "supervised",
             escalation: [
               { stage: "graceful-stop-requested", timeoutMs: 120_000 },
               { stage: "sigterm-sent", timeoutMs: 30_000 },
@@ -423,6 +424,7 @@ describe("pool-capable worker runtime executor seam", () => {
               workerId: "person-lookup-worker-3",
             },
             stage: "graceful-stop-requested",
+            ownership: "supervised",
             escalation: [
               { stage: "graceful-stop-requested", timeoutMs: 120_000 },
               { stage: "sigterm-sent", timeoutMs: 30_000 },
@@ -454,6 +456,7 @@ describe("pool-capable worker runtime executor seam", () => {
         return {
           command: "spawn-worker",
           state: "acknowledged",
+          ownership: "supervised",
           member: {
             workflowId: WORKFLOW_ID,
             poolIndex: 2,
@@ -490,6 +493,7 @@ describe("pool-capable worker runtime executor seam", () => {
         return {
           command: "stop-worker",
           state: "acknowledged",
+          ownership: "supervised",
           member: {
             workflowId: WORKFLOW_ID,
             poolIndex: 2,
@@ -535,6 +539,7 @@ describe("pool-capable worker runtime executor seam", () => {
         return {
           command: "pause-worker",
           state: "acknowledged",
+          ownership: "supervised",
           member: {
             workflowId: WORKFLOW_ID,
             poolIndex: 1,
@@ -570,6 +575,7 @@ describe("pool-capable worker runtime executor seam", () => {
         return {
           command: "resume-worker",
           state: "acknowledged",
+          ownership: "supervised",
           member: {
             workflowId: WORKFLOW_ID,
             poolIndex: 3,
@@ -605,6 +611,7 @@ describe("pool-capable worker runtime executor seam", () => {
         return {
           command: "refresh-browser",
           state: "acknowledged",
+          ownership: "supervised",
           member: {
             workflowId: WORKFLOW_ID,
             poolIndex: 2,
@@ -642,6 +649,7 @@ describe("pool-capable worker runtime executor seam", () => {
         return {
           command: "reopen-browser",
           state: "acknowledged",
+          ownership: "supervised",
           member: {
             workflowId: WORKFLOW_ID,
             poolIndex: 3,
@@ -671,6 +679,81 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
+  it("refuses a plan acknowledgement reporting a running member under external ownership", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 2,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          { member: poolMemberFixture(2), stage: "running", ownership: "external" },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 2 },
+    });
+
+    await assert.rejects(
+      () => executor.planWorkerCount({ command: plan, now: requestedAt }),
+      /plan-worker-count touches externally owned member person-lookup-worker-2/,
+    );
+  });
+
+  it("refuses a stop acknowledgement for an externally owned member", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "external",
+        stage: "graceful-stop-requested",
+        escalation: STOP_ESCALATION,
+      }),
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.stopWorker({ command: stop, now: requestedAt }),
+      /stop-worker touches externally owned member person-lookup-worker-2/,
+    );
+  });
+
+  it("refuses a spawn acknowledgement for a member an external process already owns", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "spawn-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "external",
+        stage: "started",
+      }),
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    await assert.rejects(
+      () => executor.spawnWorker({ command: spawn, now: requestedAt }),
+      /spawn-worker touches externally owned member person-lookup-worker-2/,
+    );
+  });
+
   it("names the authoritative excess members in a scale-down plan request", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
@@ -682,8 +765,8 @@ describe("pool-capable worker runtime executor seam", () => {
           desiredWorkers: 1,
           members: [
             { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
-            { member: poolMemberFixture(2), stage: "graceful-stop-requested", escalation: STOP_ESCALATION },
-            { member: poolMemberFixture(3), stage: "graceful-stop-requested", escalation: STOP_ESCALATION },
+            { member: poolMemberFixture(2), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION },
+            { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION },
           ],
         };
       },
@@ -717,7 +800,7 @@ describe("pool-capable worker runtime executor seam", () => {
         desiredWorkers: 1,
         members: [
           { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
-          { member: poolMemberFixture(2), stage: "graceful-stop-requested", escalation: STOP_ESCALATION },
+          { member: poolMemberFixture(2), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION },
           // person-lookup-worker-3 silently omitted: its stop is never covered.
         ],
       }),
@@ -748,6 +831,7 @@ describe("pool-capable worker runtime executor seam", () => {
         return {
           command: "spawn-worker",
           state: "acknowledged",
+          ownership: "supervised",
           member: poolMemberFixture(2),
           stage: "started",
         };
@@ -805,6 +889,7 @@ describe("pool-capable worker runtime executor seam", () => {
         return {
           command: "spawn-worker",
           state: "acknowledged",
+          ownership: "supervised",
           member: poolMemberFixture(2),
           stage: "started",
         };
@@ -832,6 +917,7 @@ describe("pool-capable worker runtime executor seam", () => {
       execute: () => effect.then(() => ({
         command: "spawn-worker",
         state: "acknowledged",
+        ownership: "supervised",
         member: poolMemberFixture(2),
         stage: "started",
       })),
@@ -973,7 +1059,7 @@ describe("pool-capable worker runtime executor seam", () => {
         state: "acknowledged",
         desiredWorkers: 2,
         members: [
-          { member: poolMemberFixture(1), stage: "graceful-stop-requested", escalation: STOP_ESCALATION },
+          { member: poolMemberFixture(1), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION },
           { member: poolMemberFixture(2), stage: "running", ownership: "supervised" },
         ],
       },
@@ -1019,6 +1105,7 @@ describe("pool-capable worker runtime executor seam", () => {
       acknowledgement: {
         command: "spawn-worker",
         state: "acknowledged",
+        ownership: "supervised",
         member: poolMemberFixture(2),
         stage: "started",
       },
@@ -1035,6 +1122,7 @@ describe("pool-capable worker runtime executor seam", () => {
       acknowledgement: {
         command: "stop-worker",
         state: "acknowledged",
+        ownership: "supervised",
         member: poolMemberFixture(2),
         stage: "graceful-stop-requested",
         escalation: STOP_ESCALATION,
@@ -1052,6 +1140,7 @@ describe("pool-capable worker runtime executor seam", () => {
       acknowledgement: {
         command: "pause-worker",
         state: "acknowledged",
+        ownership: "supervised",
         member: poolMemberFixture(2),
         stage: "pause-requested",
       },
@@ -1068,6 +1157,7 @@ describe("pool-capable worker runtime executor seam", () => {
       acknowledgement: {
         command: "resume-worker",
         state: "acknowledged",
+        ownership: "supervised",
         member: poolMemberFixture(2),
         stage: "resume-requested",
       },
@@ -1084,6 +1174,7 @@ describe("pool-capable worker runtime executor seam", () => {
       acknowledgement: {
         command: "refresh-browser",
         state: "acknowledged",
+        ownership: "supervised",
         member: poolMemberFixture(1),
         browserSessionId: UUID_5,
         stage: "refreshed",
@@ -1101,6 +1192,7 @@ describe("pool-capable worker runtime executor seam", () => {
       acknowledgement: {
         command: "reopen-browser",
         state: "acknowledged",
+        ownership: "supervised",
         member: poolMemberFixture(2),
         browserSessionId: ITEM_ID,
         stage: "reopened",
@@ -1180,6 +1272,7 @@ describe("phase-1 worker runtime executor seam", () => {
         return {
           command: "spawn-worker",
           state: "acknowledged",
+          ownership: "supervised",
           member: input,
           stage: "started",
         };
@@ -1212,6 +1305,7 @@ describe("phase-1 worker runtime executor seam", () => {
       spawnWorker: (input) => Promise.resolve({
         command: "spawn-worker",
         state: "acknowledged",
+        ownership: "supervised",
         member: input,
         stage: "started",
       }),
