@@ -64,6 +64,86 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a reason that lives only on `title` is a fact the product does not have, and the
+  two places this modal kept one had already stopped being the same code (D272 items 8–9, unit F5,
+  ledger 1 rows C48/C81).** `LockedValue` puts its `reason` on `title`, so both of the Run Modal's
+  locked values — the parser CONSTANTS under *How this run is shaped* and the active-run policy in
+  the rail — stated why they were locked to a mouse and to nobody else. It was invisible on the
+  1440x900 parity reference for months and no gate could see it: the reason WAS in the props, the
+  prop WAS rendered, and the test that would have caught it is the one that strips `title=` before
+  asserting. That strip is now the assertion (`run-start-kit-render.test.ts`) — **when a fact is
+  supposed to be reachable without a pointer, the test has to remove the pointer first**, exactly
+  the way the touch-target guards measure a real hit box rather than a class list. The other half is
+  that the two sites were a hand-rolled pair: identical label span, identical `LockedValue`, and only
+  one of them was ever going to be re-read. They are one `LockedFact` now, and the second render case
+  exists to say so.
+
+  Three more from the same port. **A stale-result clear belongs to the REQUEST, not to each
+  control's `onChange`.** The demo calls `setResult(null)` from inside every control it draws
+  (`DemoRunStart.tsx:882,893`) and the rebuild had copied only half of that — the three controls
+  cleared the plan and left the settled result banner standing over a request that no longer existed.
+  Enumerating the missing calls would have fixed today's three and not tomorrow's fourth, so the
+  invalidation is derived from ONE `startRequestFingerprint` covering every field the server binds
+  the plan token to; a control added later cannot forget a line that does not exist. Its negative
+  control is instance-key ORDER, which must NOT re-plan — a `useState` artefact is not an operator
+  decision, and re-fingerprinting on it would throw away a live token for nothing. **A group's
+  numbers are a reading path, so a group that is not drawn may not keep its number**: the rail always
+  drew *02 Safety & mode* with a disabled Dry run reading "not declared by this workflow" and froze
+  Destination at `03`, which left a gap at every workflow that declares no flags. `DESIGN.md:305`'s
+  offer-disabled rule is written for an OPTION inside a control, not for the group around it —
+  `runControlGroups` decides both membership and numbering in one fold, and contiguity is asserted
+  rather than the two literal lists. And **a banner whose state has no exit is not an honest state**:
+  the `conflict` arm named a moved contract while D253 refuses a re-send of the same envelope
+  identically, so the operator was told what happened and given nothing to do about it. The demo's
+  own cure ports directly (`Reload the form`) because the rebuild has the same one — drop the spent
+  plan token, return to Input, and let the next `POST /start-plans` read the version the server
+  actually serves.
+
+  What is NOT drawn, and stays a `builds:` line rather than a plausible constant: the plan card is
+  the demo's shape with only the fields `StartPlanResponse.planned[]` serves — no role, panel,
+  containment, born-as status or note — and the applied/rejected banners keep their client-authored
+  titles because `CommandResult` serves no headline, detail, settlement clock or actor. C28's
+  `"No workflow"` title and C94's zero-system Well keep their honest empty states unchanged, which is
+  the half of D272 item 9 that is a decision to change nothing.
+
+  **Amended 2026-08-26 (unit F5b, the review of the ports above).** Nine findings, and four things
+  generalize. **An invalidation rule holds only for state that has already LANDED.** C109's
+  fingerprint effect was correct and complete, and it could still be beaten: an in-flight
+  `submitStartPlan` / `executeCommand` that settled AFTER the edit re-landed its answer on top of the
+  state the effect had just cleared, and the operator was looking at a plan for text that was no
+  longer in the box. Every dispatch now captures the fingerprint it was made for and drops a
+  settlement whose identity has moved — and the ref that answers "what is the request now" is updated
+  in the SAME effect that does the clearing, which is what makes the ordering self-healing: whichever
+  of the two wins the race, nothing stale survives it. Dropping a superseded `applied` costs no
+  record, because `applied` is a receipt that the request was accepted and the queue changes only
+  from the authoritative projection (ref frontend-backend-integration §0.5) — this surface never was
+  where an enqueued run is kept. **Clearing a settled banner without clearing the STAGE it is the
+  content of leaves the rail naming a step over an empty region**, and the control that was just
+  pressed unmounts under the operator's focus, which lands on `document.body` and restarts the dialog
+  at its first control on the next Tab. `Close`, `Dismiss` and `Reload the form` are one
+  `returnToInput` now — C72 rules the WORD on the button, not the act behind it, and after all three
+  the plan token in the form is spent. **A `title` is not a second rendering of a fact, it is a
+  second READING of it**: `LockedFact` was passing its reason to `LockedValue` (which puts it on
+  `title`) *and* drawing the `<p>` that exists to replace that tooltip, so a screen reader said the
+  same sentence twice — the fix to C48/C81 had left the defect it removed still in the props. The
+  pin is a count, not a presence: the reason must occur exactly ONCE. And **`Chip`'s own docstring
+  was the review finding**: "if a fact cannot survive truncation it is not a chip — put it on the
+  row's `MetaLine`, where it can wrap." A plan row's match key and trace id are exactly that, and
+  they were chips, recovering the cut on `title` alone. The two assertions that catch it are the
+  absent `title=` and the absent `whitespace-nowrap`, because a fact moved into a second clipped
+  token would pass the first one on its own.
+
+  The other half is a lane. `run-start-dialog.test.ts` is the SECOND file in the unit lane to render
+  and press React (`session-panel-pool-press.test.ts` was the first), for the same reason: the folds
+  were pinned and the WIRING between them was not, so deleting C109's whole `useEffect` and re-adding
+  C107's removed `stage === "input" &&` gate both stayed green across the entire suite. An absence —
+  a gate that is deliberately not there — cannot be pinned by any fold. Two mechanics are worth
+  copying. **Never hand a DOM node to `assert.equal`**: `assert.equal(element, null)` spends the whole
+  test budget inside `util.inspect` walking a live tree and takes the worker process out with it, so
+  the only report is `Worker exited unexpectedly` — compare identities to a boolean first. And **a
+  `click()` in jsdom moves no focus**, so a focus assertion after a press is vacuous unless the press
+  helper calls `focus()` the way a pointer or a Tab would.
+
 - **2026-08-26: a control the server derives must be NAMED by the surface, and a summary flag beside
   the list it summarises is a second source for one fact (D271, Session Panel pool controls).** The
   panel's scale-down is a `plan-worker-count` carrying one number, and the kernel derives which
