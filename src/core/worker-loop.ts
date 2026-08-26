@@ -549,14 +549,31 @@ export type WorkerSupervisorRequest =
   | WorkerPoolRefreshRequest
   | WorkerPoolReopenRequest;
 
+/**
+ * The pool supervisor's ONE effect seam. `execute` may return the
+ * acknowledgement synchronously or as a promise of it: the runtime executor
+ * AWAITS the result before validating, so a process/browser effect is proved
+ * settled before anything is acknowledged — success is never fabricated ahead
+ * of the effect, and a failed effect rejects the command instead of
+ * acknowledging it.
+ */
 export interface WorkerPoolProcessSupervisor {
   execute(request: WorkerSupervisorRequest): unknown;
 }
 
+/**
+ * Every pool control is awaitable: the acknowledgement settles only after the
+ * supervisor's effect settled (the kernel's synchronous Phase-1 seam keeps
+ * `createPhase1WorkerRuntimeExecutor`, which refuses pending effects instead).
+ */
 export interface WorkerPoolRuntimeExecutor extends WorkerRuntimeExecutor {
-  stopWorker(context: WorkerRuntimeContext): unknown;
-  pauseWorker(context: WorkerRuntimeContext): unknown;
-  resumeWorker(context: WorkerRuntimeContext): unknown;
+  planWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
+  spawnWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  refreshBrowser(context: WorkerRuntimeContext): Promise<unknown>;
+  reopenBrowser(context: WorkerRuntimeContext): Promise<unknown>;
+  stopWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  pauseWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  resumeWorker(context: WorkerRuntimeContext): Promise<unknown>;
 }
 
 function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember {
@@ -619,6 +636,22 @@ function requireSupervisorAcknowledgement(command: WorkerSupervisorRequest["comm
   if (value === undefined) {
     throw new Error(`${command} supervisor acknowledgement is required; refusing to accept an unproved effect`);
   }
+  if (
+    typeof value === "object"
+    && value !== null
+    && "then" in value
+    && typeof value.then === "function"
+  ) {
+    // The kernel consumes this seam inside its synchronous authority
+    // transaction, so a pending effect can never be awaited here. Refusing is
+    // the only honest answer: acknowledging now would fabricate a success the
+    // process has not proved. An asynchronous supervisor belongs behind the
+    // awaitable `WorkerPoolProcessSupervisor.execute` seam instead.
+    throw new Error(
+      `${command} supervisor returned a pending promise; the synchronous phase-1 seam cannot prove the effect `
+      + "before acknowledging it — use the pool contract's awaitable execute seam",
+    );
+  }
   return value;
 }
 
@@ -631,7 +664,7 @@ export function createWorkerPoolRuntimeExecutor(
   supervisor: WorkerPoolProcessSupervisor,
 ): WorkerPoolRuntimeExecutor {
   return Object.freeze({
-    planWorkerCount(context: WorkerRuntimeContext): z.input<typeof WorkerPlanAcknowledgementSchema> {
+    async planWorkerCount(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerPlanAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "plan-worker-count") {
         throw new Error(`planWorkerCount received a ${command.type} command`);
@@ -641,7 +674,7 @@ export function createWorkerPoolRuntimeExecutor(
         { length: desiredWorkers },
         (_, offset) => poolMember(command.target.workflowId, offset + 1),
       );
-      const acknowledgement = WorkerPoolReconciliationAcknowledgementSchema.parse(supervisor.execute({
+      const acknowledgement = WorkerPoolReconciliationAcknowledgementSchema.parse(await supervisor.execute({
         command: "plan-worker-count",
         workflowId: command.target.workflowId,
         desiredWorkers,
@@ -676,27 +709,27 @@ export function createWorkerPoolRuntimeExecutor(
       }
       return { state: "accepted", workerIds: members.map(({ workerId }) => workerId) };
     },
-    spawnWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+    async spawnWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "spawn-worker") {
         throw new Error(`spawnWorker received a ${command.type} command`);
       }
       const member = poolMemberFromWorkerId(command.target.workflowId, command.payload.workerId);
-      const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(supervisor.execute({
+      const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(await supervisor.execute({
         command: "spawn-worker",
         member,
       }));
       requireSameMember("spawn-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
-    stopWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+    async stopWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "stop-worker") {
         throw new Error(`stopWorker received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
       const escalation = workerStopEscalation();
-      const acknowledgement = WorkerStopAcknowledgementSchema.parse(supervisor.execute({
+      const acknowledgement = WorkerStopAcknowledgementSchema.parse(await supervisor.execute({
         command: "stop-worker",
         member,
         escalation,
@@ -704,39 +737,39 @@ export function createWorkerPoolRuntimeExecutor(
       requireSameMember("stop-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
-    pauseWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+    async pauseWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "pause-worker") {
         throw new Error(`pauseWorker received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerPauseAcknowledgementSchema.parse(supervisor.execute({
+      const acknowledgement = WorkerPauseAcknowledgementSchema.parse(await supervisor.execute({
         command: "pause-worker",
         member,
       }));
       requireSameMember("pause-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
-    resumeWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+    async resumeWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "resume-worker") {
         throw new Error(`resumeWorker received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerResumeAcknowledgementSchema.parse(supervisor.execute({
+      const acknowledgement = WorkerResumeAcknowledgementSchema.parse(await supervisor.execute({
         command: "resume-worker",
         member,
       }));
       requireSameMember("resume-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
-    refreshBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+    async refreshBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "refresh-browser") {
         throw new Error(`refreshBrowser received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(supervisor.execute({
+      const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(await supervisor.execute({
         command: "refresh-browser",
         member,
         browserSessionId: command.target.browserSessionId,
@@ -750,13 +783,13 @@ export function createWorkerPoolRuntimeExecutor(
       }
       return { state: "accepted" };
     },
-    reopenBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+    async reopenBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "reopen-browser") {
         throw new Error(`reopenBrowser received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
-      const acknowledgement = WorkerReopenAcknowledgementSchema.parse(supervisor.execute({
+      const acknowledgement = WorkerReopenAcknowledgementSchema.parse(await supervisor.execute({
         command: "reopen-browser",
         member,
         browserSessionId: command.target.browserSessionId,

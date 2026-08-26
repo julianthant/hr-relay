@@ -317,7 +317,7 @@ describe("pool-capable worker runtime executor seam", () => {
     source: "dashboard",
   };
 
-  it("plans three deterministic members only after the supervisor acknowledges their lifecycle facts", () => {
+  it("plans three deterministic members only after the supervisor acknowledges their lifecycle facts", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
@@ -366,7 +366,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 3 },
     });
 
-    assert.deepEqual(executor.planWorkerCount({ command: plan, now: requestedAt }), {
+    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
       state: "accepted",
       workerIds: [
         "person-lookup-worker-1",
@@ -386,7 +386,7 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
-  it("acknowledges scale-down by selecting higher member indices for bounded stop", () => {
+  it("acknowledges scale-down by selecting higher member indices for bounded stop", async () => {
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -439,13 +439,13 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 1 },
     });
 
-    assert.deepEqual(executor.planWorkerCount({ command: plan, now: requestedAt }), {
+    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
       state: "accepted",
       workerIds: ["person-lookup-worker-1"],
     });
   });
 
-  it("spawns only the explicit pool member acknowledged as started", () => {
+  it("spawns only the explicit pool member acknowledged as started", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
@@ -470,7 +470,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { workerId: "person-lookup-worker-2" },
     });
 
-    assert.deepEqual(executor.spawnWorker({ command: spawn, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.spawnWorker({ command: spawn, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "spawn-worker",
       member: {
@@ -481,7 +481,7 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
-  it("requests a bounded graceful stop for the explicit member", () => {
+  it("requests a bounded graceful stop for the explicit member", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
@@ -510,7 +510,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
     });
 
-    assert.deepEqual(executor.stopWorker({ command: stop, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.stopWorker({ command: stop, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "stop-worker",
       member: {
@@ -526,7 +526,7 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
-  it("acknowledges pause only at the explicit member's requested stage", () => {
+  it("acknowledges pause only at the explicit member's requested stage", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
@@ -550,7 +550,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
     });
 
-    assert.deepEqual(executor.pauseWorker({ command: pause, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.pauseWorker({ command: pause, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "pause-worker",
       member: {
@@ -561,7 +561,7 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
-  it("acknowledges resume only at the explicit member's requested stage", () => {
+  it("acknowledges resume only at the explicit member's requested stage", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
@@ -585,7 +585,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-3", expectedVersion: 1 },
     });
 
-    assert.deepEqual(executor.resumeWorker({ command: resume, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.resumeWorker({ command: resume, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "resume-worker",
       member: {
@@ -596,7 +596,7 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
-  it("acknowledges refresh only after the explicit member session is refreshed", () => {
+  it("acknowledges refresh only after the explicit member session is refreshed", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
@@ -621,7 +621,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-2", browserSessionId: ITEM_ID, expectedVersion: 1 },
     });
 
-    assert.deepEqual(executor.refreshBrowser({ command: refresh, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.refreshBrowser({ command: refresh, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "refresh-browser",
       member: {
@@ -633,7 +633,7 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
-  it("acknowledges reopen only after the explicit member session is reopened", () => {
+  it("acknowledges reopen only after the explicit member session is reopened", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
       execute: (request) => {
@@ -658,7 +658,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-3", browserSessionId: ITEM_ID, expectedVersion: 1 },
     });
 
-    assert.deepEqual(executor.reopenBrowser({ command: reopen, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.reopenBrowser({ command: reopen, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "reopen-browser",
       member: {
@@ -670,7 +670,92 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
-  it("refuses a plan above the proved three-member cap before calling the supervisor", () => {
+  it("awaits an asynchronous supervisor effect before acknowledging a spawn", async () => {
+    let effectProved = false;
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: async () => {
+        await new Promise((resolve) => setImmediate(resolve));
+        effectProved = true;
+        return {
+          command: "spawn-worker",
+          state: "acknowledged",
+          member: poolMemberFixture(2),
+          stage: "started",
+        };
+      },
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    const acknowledged = await executor.spawnWorker({ command: spawn, now: requestedAt });
+    assert.equal(effectProved, true, "the acknowledgement settled before the supervisor proved the effect");
+    assert.deepEqual(acknowledged, { state: "accepted" });
+  });
+
+  it("never settles the acknowledgement before the supervisor's effect settles", async () => {
+    let release: (() => void) | undefined;
+    const effect = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => effect.then(() => ({
+        command: "spawn-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        stage: "started",
+      })),
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    let settled = false;
+    const acknowledging = (async () => executor.spawnWorker({ command: spawn, now: requestedAt }))();
+    const watched = acknowledging.then(
+      (value) => {
+        settled = true;
+        return value;
+      },
+      (error: unknown) => {
+        settled = true;
+        throw error;
+      },
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false, "the spawn was acknowledged while the process effect was still pending");
+    release?.();
+    assert.deepEqual(await watched, { state: "accepted" });
+  });
+
+  it("propagates a failed asynchronous effect instead of fabricating success", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => Promise.reject(new Error("spawn failed: EAGAIN forking person-lookup-worker-2")),
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    await assert.rejects(
+      () => executor.spawnWorker({ command: spawn, now: requestedAt }),
+      /EAGAIN forking person-lookup-worker-2/,
+    );
+  });
+
+  it("refuses a plan above the proved three-member cap before calling the supervisor", async () => {
     let calls = 0;
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => {
@@ -686,7 +771,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 4 },
     });
 
-    assert.throws(
+    await assert.rejects(
       () => executor.planWorkerCount({ command: plan, now: requestedAt }),
       /worker pool size must not exceed 3/,
     );
@@ -697,7 +782,7 @@ describe("pool-capable worker runtime executor seam", () => {
     { workerId: "person-lookup-worker", message: /explicit positive pool index/ },
     { workerId: "person-lookup-worker-4", message: /worker pool size must not exceed 3/ },
     { workerId: "onboarding-worker-1", message: /not a pool member of workflow person-lookup/ },
-  ])("refuses noncanonical spawn identity $workerId before calling the supervisor", ({ workerId, message }) => {
+  ])("refuses noncanonical spawn identity $workerId before calling the supervisor", async ({ workerId, message }) => {
     let calls = 0;
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => {
@@ -713,7 +798,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { workerId },
     });
 
-    assert.throws(() => executor.spawnWorker({ command: spawn, now: requestedAt }), message);
+    await assert.rejects(() => executor.spawnWorker({ command: spawn, now: requestedAt }), message);
     assert.equal(calls, 0);
   });
 
@@ -782,7 +867,7 @@ describe("pool-capable worker runtime executor seam", () => {
       },
       message: /must select excess member person-lookup-worker-2 for bounded graceful stop/,
     },
-  ])("refuses a plan acknowledgement with $name", ({ desiredWorkers, acknowledgement, message }) => {
+  ])("refuses a plan acknowledgement with $name", async ({ desiredWorkers, acknowledgement, message }) => {
     const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement });
     const plan = workerBrowserCommand({
       ...envelope,
@@ -792,7 +877,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers },
     });
 
-    assert.throws(() => executor.planWorkerCount({ command: plan, now: requestedAt }), message);
+    await assert.rejects(() => executor.planWorkerCount({ command: plan, now: requestedAt }), message);
   });
 
   it.each([
@@ -896,29 +981,29 @@ describe("pool-capable worker runtime executor seam", () => {
       },
       message: /requested member person-lookup-worker-1 at index 1.*acknowledged person-lookup-worker-2 at index 2/,
     },
-  ])("refuses mismatched $type acknowledgement facts", ({ type, command: request, acknowledgement, message }) => {
+  ])("refuses mismatched $type acknowledgement facts", async ({ type, command: request, acknowledgement, message }) => {
     const command = workerBrowserCommand(request);
     const context = { command, now: requestedAt };
     const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement });
 
     switch (type) {
       case "spawn-worker":
-        assert.throws(() => executor.spawnWorker(context), message);
+        await assert.rejects(() => executor.spawnWorker(context), message);
         break;
       case "stop-worker":
-        assert.throws(() => executor.stopWorker(context), message);
+        await assert.rejects(() => executor.stopWorker(context), message);
         break;
       case "pause-worker":
-        assert.throws(() => executor.pauseWorker(context), message);
+        await assert.rejects(() => executor.pauseWorker(context), message);
         break;
       case "resume-worker":
-        assert.throws(() => executor.resumeWorker(context), message);
+        await assert.rejects(() => executor.resumeWorker(context), message);
         break;
       case "refresh-browser":
-        assert.throws(() => executor.refreshBrowser(context), message);
+        await assert.rejects(() => executor.refreshBrowser(context), message);
         break;
       case "reopen-browser":
-        assert.throws(() => executor.reopenBrowser(context), message);
+        await assert.rejects(() => executor.reopenBrowser(context), message);
         break;
     }
   });
@@ -993,6 +1078,29 @@ describe("phase-1 worker runtime executor seam", () => {
     assert.throws(
       () => executor.refreshBrowser({ command: refresh, now: requestedAt }),
       /refusing to acknowledge an effect that did not happen/,
+    );
+  });
+
+  it("refuses a pending phase-1 supervisor promise instead of acknowledging an unproved spawn", () => {
+    const executor = createPhase1WorkerRuntimeExecutor({
+      spawnWorker: (input) => Promise.resolve({
+        command: "spawn-worker",
+        state: "acknowledged",
+        member: input,
+        stage: "started",
+      }),
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: EXECUTOR_WORKER_ID },
+    });
+
+    assert.throws(
+      () => executor.spawnWorker({ command: spawn, now: requestedAt }),
+      /pending promise/,
     );
   });
 
