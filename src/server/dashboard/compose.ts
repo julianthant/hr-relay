@@ -17,17 +17,21 @@
  *   documented requirement — the resolution executes INSIDE the kernel's
  *   authority transaction and `commitWriteAttempt` nests on that connection).
  *
- * Deliberately typed-but-unwired in this process (each fails loud by name):
- * - the worker process supervisor's `spawn-worker`: ref dashboard-surfaces's Phase-1f
- *   ratification activates the command ARM (validation, journal, refusal
- *   semantics), but the dashboard process launching browser-worker OS
- *   processes is ref execution-and-sessions's live worker lane (doc 02 §Phase summary assigns the operator
- *   worker-control surface to 2i / the 1i live slice). The refusal names the
- *   real manual path: `npm run cli worker <workflow-id> --pool-index <positive-int>`;
- * - `refresh-browser` / `reopen-browser`: reaching a live worker's session set
- *   from this process is the same live-lane work; acknowledging an effect
- *   that did not happen is exactly what the executor refuses to do.
+ * Wired as of W3 (ref execution-and-sessions §11, D271): the REAL worker
+ * process supervisor. The dashboard launches browser-worker OS processes as
+ * exact argv children of the worker CLI, proves each birth against the durable
+ * worker lease, and settles every worker-pool command through the kernel's
+ * async pool seam (`executeWorkerPool`) — no acknowledgement before process
+ * evidence, and the graceful-stop channel writes the durable lease directive
+ * at the command's own `now`.
+ *
+ * Deliberately typed-but-unwired in this process (fails loud by name):
+ * - `refresh-browser` / `reopen-browser`: a worker-owned browser session lives
+ *   in the CHILD process and this supervisor has no cross-process channel into
+ *   it yet; acknowledging an effect that did not happen is exactly what the
+ *   supervisor refuses to do.
  */
+import { spawn as spawnChildProcess } from "node:child_process";
 import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -42,8 +46,16 @@ import {
 } from "../../control/workflow-registry.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel, type AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { reachableCommits, resolveFreshnessBound } from "../../domain/workflow/checkpoint.js";
-import { createCommandKernel, type WorkerRuntimeExecutor, type WriteResolutionExecutor } from "../../core/command-kernel.js";
-import { createPhase1WorkerRuntimeExecutor, type WorkerProcessSupervisor } from "../../core/worker-loop.js";
+import { createCommandKernel, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../core/command-kernel.js";
+import { createWorkerPoolRuntimeExecutor } from "../../core/worker-loop.js";
+import type { MonotonicDeadlineScheduler } from "../../core/deadline-scheduler.js";
+import { isLiveWorker } from "../../domain/run/worker.js";
+import {
+  createDashboardWorkerProcessSupervisor,
+  type DashboardWorkerProcessSupervisor,
+  type WorkerCliLaunchSpec,
+  type WorkerProcessSpawner,
+} from "./worker-supervisor.js";
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
@@ -276,6 +288,20 @@ export interface DashboardComposeInput {
   /** Where package.json and the state root resolve from. */
   readonly repoRoot?: string;
   readonly startPlanTtlMs?: number;
+  /**
+   * The worker process edges (W3). Production composes the real
+   * `child_process` spawner, the node+tsx CLI launch spec, the real timer
+   * scheduler and a structured stderr fault sink; a test injects fakes HERE so
+   * it exercises the same composition value production runs.
+   */
+  readonly workerProcess?: Readonly<{
+    spawn?: WorkerProcessSpawner;
+    launch?: WorkerCliLaunchSpec;
+    birth?: Readonly<{ pollMs: number; timeoutMs: number }>;
+    scheduler?: MonotonicDeadlineScheduler;
+    /** Receives one structured JSON line per supervisor fault; default writes to stderr. */
+    faultSink?: (line: string) => void;
+  }>;
 }
 
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
@@ -325,25 +351,129 @@ export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint 
 }
 
 /**
- * The dashboard process's `WorkerProcessSupervisor`: ref dashboard-surfaces §Phase-1f
- * activates the worker-browser command ARMS (schema, authority validation,
- * journal, typed refusals), while the process effects behind spawn and
- * refresh/reopen belong to ref execution-and-sessions's live worker lane (doc 02 §Phase summary: the operator
- * worker-control surface is 2i / the 1i live slice). Until that lane lands,
- * each effect refuses BY NAME — a thrown supervisor error unwinds the whole
- * command, so no acknowledgement can claim an effect that did not happen.
- * `refreshBrowser`/`reopenBrowser` stay undefined on purpose: the Phase-1
- * executor's own "requires the 1g browser supervisor" refusal is the arm.
+ * Birth-proof polling for a spawned worker child: the CLI cold start (tsx,
+ * the workflow registry import closure, the authority open and lease write)
+ * is seconds; a child that has not proved its lease inside the bound is
+ * killed and the spawn command rejects loudly rather than waiting forever.
  */
-export function createDashboardWorkerSupervisor(): WorkerProcessSupervisor {
-  return Object.freeze({
-    spawnWorker: (input: Readonly<{ workflowId: string; workerId: string }>): never => {
-      throw new Error(
-        `the dashboard process does not launch browser workers (ref execution-and-sessions live lane); start `
-        + `worker ${input.workerId} with: npm run cli worker ${input.workflowId} --pool-index <positive-int>`,
-      );
+const WORKER_BIRTH_POLL_MS = 250;
+const WORKER_BIRTH_TIMEOUT_MS = 60_000;
+
+export interface WorkerProcessControlInput {
+  readonly database: AuthorityDatabase;
+  readonly clock: Clock;
+  readonly scheduler: MonotonicDeadlineScheduler;
+  readonly launch: WorkerCliLaunchSpec;
+  readonly spawn: WorkerProcessSpawner;
+  readonly birth: Readonly<{ pollMs: number; timeoutMs: number }>;
+  readonly onFault: (error: Error) => void;
+}
+
+/**
+ * W3 (ref execution-and-sessions §11, D271): the dashboard's REAL worker
+ * process control, one composition value shared by production and the
+ * composition tests so a test can never prove a wiring the product does not
+ * have. It binds the D271 supervisor's three authority edges to the ONE
+ * `AuthorityDatabase` this process serves from:
+ *
+ * - the lease probe reads the LIVE worker lease (birth is proved against the
+ *   child's own durable lease write — §11.3's only coordination channel);
+ * - the graceful-stop channel writes the durable `stop` directive at EXACTLY
+ *   the kernel command's `now` (`directive.requestedAt`), in its own authority
+ *   transaction, and resolves with that durable instant — closing the W1/W2
+ *   gap where a channel stamping its own clock would always postdate the
+ *   kernel's observed-stage bound;
+ * - the kernel adoption wraps the supervisor in the awaitable pool executor,
+ *   so no worker-pool command is acknowledged before process evidence.
+ */
+export function composeWorkerProcessControl(input: WorkerProcessControlInput): Readonly<{
+  supervisor: DashboardWorkerProcessSupervisor;
+  workerRuntime: WorkerPoolRuntimeAdoption;
+}> {
+  const supervisor = createDashboardWorkerProcessSupervisor({
+    launch: input.launch,
+    spawn: input.spawn,
+    leases: {
+      observe: (workerId) => {
+        const lease = input.database.authority.workerLeases.get(workerId);
+        if (lease === undefined || !isLiveWorker(lease)) return undefined;
+        return { processId: lease.processId, startedAt: lease.lifecycle.startedAt };
+      },
     },
+    gracefulStop: {
+      request: (member, directive) => input.database.withAuthorityTransaction((repositories) => {
+        const lease = repositories.workerLeases.get(member.workerId);
+        if (lease === undefined) {
+          throw new Error(
+            `graceful stop for ${member.workerId} found no worker lease; the durable directive has nowhere to land`,
+          );
+        }
+        if (!isLiveWorker(lease)) {
+          throw new Error(
+            `graceful stop for ${member.workerId} found the lease ${lease.lifecycle.state}; `
+            + "a stopped lease takes no directive",
+          );
+        }
+        const outcome = repositories.workerLeases.control({
+          workerId: member.workerId,
+          expectedVersion: lease.version,
+          control: {
+            directive: "stop",
+            requestedAt: directive.requestedAt,
+            requestedBy: directive.requestedBy,
+            ...(directive.reason === undefined ? {} : { reason: directive.reason }),
+          },
+          now: directive.requestedAt,
+        });
+        if (outcome.state !== "applied") {
+          throw new Error(
+            `graceful stop for ${member.workerId} could not write the durable directive: ${outcome.message}`,
+          );
+        }
+        return Object.freeze({ requestedAt: directive.requestedAt });
+      }),
+    },
+    clock: input.clock,
+    scheduler: input.scheduler,
+    birth: input.birth,
+    onFault: input.onFault,
   });
+  return Object.freeze({
+    supervisor,
+    workerRuntime: Object.freeze({ pool: createWorkerPoolRuntimeExecutor(supervisor) }),
+  });
+}
+
+/**
+ * The production process boundary: `node:child_process.spawn` over the exact
+ * argv array — never a shell, never a PATH lookup (the supervisor refuses a
+ * non-absolute command). `stdio: "inherit"` keeps the worker's structured
+ * stdout/stderr lines visible in the dashboard's terminal instead of
+ * swallowing them; durable evidence still flows through spans, notes and
+ * authority. The child inherits this process's environment — the same
+ * `.env`-loaded one the CLI itself runs under.
+ */
+function realWorkerProcessSpawner(): WorkerProcessSpawner {
+  return (request) => {
+    const child = spawnChildProcess(request.command, [...request.args], {
+      cwd: request.cwd,
+      stdio: "inherit",
+    });
+    return Object.freeze({
+      pid: child.pid,
+      kill: (signal: "SIGTERM" | "SIGKILL"): boolean => child.kill(signal),
+      onExit: (listener: (code: number | null, signal: string | null) => void): void => {
+        child.on("exit", (code, signal) => {
+          listener(code, signal);
+        });
+      },
+      onError: (listener: (error: Error) => void): void => {
+        child.on("error", (error) => {
+          listener(error);
+        });
+      },
+    });
+  };
 }
 
 export async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
@@ -604,8 +734,8 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
 
   /**
    * D218: the ONE live span feed is the disk tail. The worker is a separate
-   * OS process (`createDashboardWorkerSupervisor` refuses to even spawn one
-   * here), so its task spans exist only as lines in `spans/*.jsonl` — the
+   * OS process (spawned by this process's supervisor as of W3, but still its
+   * own process), so its task spans exist only as lines in `spans/*.jsonl` — the
    * old in-process writer hook folded this process's own emissions and
    * nothing else, which served an empty timeline (and empty pipeline chips
    * and dataFacts) for every run enqueued after boot. The boot rebuild above
@@ -616,9 +746,38 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
   const spanTailTimer = setInterval(() => projection.ingestFromDisk(), SPAN_TAIL_POLL_MS);
   spanTailTimer.unref();
 
-  const workerRuntime: WorkerRuntimeExecutor = createPhase1WorkerRuntimeExecutor(
-    createDashboardWorkerSupervisor(),
-  );
+  /**
+   * W3: the REAL worker process control. Faults observed outside a command
+   * (an escalation signal that could not be delivered, a process error after
+   * birth, still-live children at close) reach the structured failure path as
+   * one JSON line each — never console, never dropped.
+   */
+  const supervisorFaultSink = input.workerProcess?.faultSink ?? ((line: string): void => {
+    process.stderr.write(`${line}\n`);
+  });
+  const reportSupervisorFault = (error: Error): void => {
+    supervisorFaultSink(JSON.stringify({
+      ts: clock.now().toISOString(),
+      level: "error",
+      source: "worker-supervisor",
+      message: error.message,
+    }));
+  };
+  const workerControl = composeWorkerProcessControl({
+    database,
+    clock,
+    scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
+    launch: input.workerProcess?.launch ?? {
+      // The exact worker CLI as `npm run cli -- worker …` runs it, spawned as
+      // an argv array: this node binary, tsx's loader, this repo's entry.
+      command: process.execPath,
+      prefixArgs: Object.freeze(["--import", "tsx", join(repoRoot, "src", "cli.ts")]),
+      cwd: repoRoot,
+    },
+    spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(),
+    birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
+    onFault: reportSupervisorFault,
+  });
   // Ref write-safety §4.1's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
   const writeResolution: WriteResolutionExecutor = createWriteResolutionExecutor({
@@ -706,7 +865,7 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     appVersion,
     descriptors,
     writeResolution,
-    workerRuntime,
+    workerRuntime: workerControl.workerRuntime,
     intakeParser,
     intakeProjections,
     // D171: the identity an intake fan-out stamps its runs with — the SAME
@@ -940,6 +1099,21 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
       clearInterval(spanTailTimer);
       clearInterval(backupTimer);
       clearInterval(gateParkTimer);
+      /**
+       * W3 shutdown ordering: the supervisor closes AFTER ingress stopped
+       * accepting worker commands (`server.close()` above) and BEFORE the
+       * database closes and the process lock releases — its close() cancels
+       * every armed escalation timer and refuses further commands, and the
+       * evidence of every still-live child goes to the structured fault path.
+       * This supervisor never pretends a child stopped: a live worker keeps
+       * running (its lease, not this process, owns its lifecycle), and the
+       * operator can read exactly what was left running.
+       */
+      for (const evidence of workerControl.supervisor.close()) {
+        reportSupervisorFault(new Error(
+          `dashboard shutdown leaves a worker child ${evidence.state}: ${JSON.stringify(evidence)}`,
+        ));
+      }
       // Ref dashboard-surfaces §2.5's graceful-drain trigger: one final verified backup while
       // the database is still open. A failure surfaces AFTER cleanup — loud
       // to the stopper, never a half-closed process.

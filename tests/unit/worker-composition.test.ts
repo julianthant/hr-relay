@@ -26,7 +26,7 @@ import {
   observeProcessIdentity,
   observeRuntimeLockSnapshot,
 } from "../../src/infra/sqlite/runtime-process-locks.js";
-import { createDashboardWorkerSupervisor } from "../../src/server/dashboard/compose.js";
+import type { WorkerProcessSupervisor } from "../../src/core/worker-loop.js";
 import {
   composeWorkerRuntime,
   createTimeoutDeadlineScheduler,
@@ -577,7 +577,26 @@ describe("worker composition helpers", () => {
   });
 });
 
-/* ── the kernel's worker-browser arms, as the dashboard composes them ────── */
+/* ── the kernel's SYNCHRONOUS Phase-1 worker-browser arms ────────────────── */
+
+/**
+ * The dashboard composition adopted the async pool seam as of W3 (see
+ * `tests/unit/server/worker-pool-composition.test.ts` for the composed
+ * truth). The synchronous Phase-1 seam remains the kernel's contract for a
+ * composition WITHOUT a process supervisor, and this refusing supervisor pins
+ * its fail-loud shape: a spawn effect nobody can perform refuses by name and
+ * unwinds the whole command.
+ */
+function refusingWorkerSupervisor(): WorkerProcessSupervisor {
+  return Object.freeze({
+    spawnWorker: (input: Readonly<{ workflowId: string; workerId: string }>): never => {
+      throw new Error(
+        `this composition does not launch browser workers; start worker ${input.workerId} with: `
+        + `npm run cli worker ${input.workflowId} --pool-index <positive-int>`,
+      );
+    },
+  });
+}
 
 function kernelHarness(): { database: AuthorityDatabase; kernel: CommandKernel; clock: TestClock } {
   const root = mkdtempSync(join(tmpdir(), "hrauto-worker-arms-"));
@@ -608,8 +627,7 @@ function kernelHarness(): { database: AuthorityDatabase; kernel: CommandKernel; 
         throw new Error("unused in this suite");
       },
     },
-    // EXACTLY what src/server/dashboard/compose.ts composes.
-    workerRuntime: createPhase1WorkerRuntimeExecutor(createDashboardWorkerSupervisor()),
+    workerRuntime: createPhase1WorkerRuntimeExecutor(refusingWorkerSupervisor()),
   });
   return { database, kernel, clock };
 }
@@ -690,7 +708,7 @@ describe("dashboard-composed worker-browser command arms", () => {
     assert.equal(harness.database.authority.workerPools.get(WORKFLOW_ID), undefined);
   });
 
-  it("keeps spawn-worker unavailable in the dashboard process and names the CLI path", () => {
+  it("refuses a spawn the composed supervisor cannot perform, unwinding the whole command", () => {
     const harness = kernelHarness();
     const commandId = nextCommandId();
     assert.throws(
@@ -700,7 +718,7 @@ describe("dashboard-composed worker-browser command arms", () => {
         target: { workflowId: WORKFLOW_ID, expectedVersion: 0 },
         payload: { workerId: EXECUTOR_WORKER_ID },
       }),
-      /does not launch browser workers .*cli worker person-lookup/s,
+      /does not launch browser workers.*cli worker person-lookup/s,
     );
     // A thrown supervisor error unwinds the command: no journal row, no lease.
     assert.equal(harness.database.authority.commands.get(commandId), undefined);
