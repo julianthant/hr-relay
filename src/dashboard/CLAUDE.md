@@ -64,6 +64,48 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a reason that lives only on `title` is a fact the product does not have, and the
+  two places this modal kept one had already stopped being the same code (D272 items 8–9, unit F5,
+  ledger 1 rows C48/C81).** `LockedValue` puts its `reason` on `title`, so both of the Run Modal's
+  locked values — the parser CONSTANTS under *How this run is shaped* and the active-run policy in
+  the rail — stated why they were locked to a mouse and to nobody else. It was invisible on the
+  1440x900 parity reference for months and no gate could see it: the reason WAS in the props, the
+  prop WAS rendered, and the test that would have caught it is the one that strips `title=` before
+  asserting. That strip is now the assertion (`run-start-kit-render.test.ts`) — **when a fact is
+  supposed to be reachable without a pointer, the test has to remove the pointer first**, exactly
+  the way the touch-target guards measure a real hit box rather than a class list. The other half is
+  that the two sites were a hand-rolled pair: identical label span, identical `LockedValue`, and only
+  one of them was ever going to be re-read. They are one `LockedFact` now, and the second render case
+  exists to say so.
+
+  Three more from the same port. **A stale-result clear belongs to the REQUEST, not to each
+  control's `onChange`.** The demo calls `setResult(null)` from inside every control it draws
+  (`DemoRunStart.tsx:882,893`) and the rebuild had copied only half of that — the three controls
+  cleared the plan and left the settled result banner standing over a request that no longer existed.
+  Enumerating the missing calls would have fixed today's three and not tomorrow's fourth, so the
+  invalidation is derived from ONE `startRequestFingerprint` covering every field the server binds
+  the plan token to; a control added later cannot forget a line that does not exist. Its negative
+  control is instance-key ORDER, which must NOT re-plan — a `useState` artefact is not an operator
+  decision, and re-fingerprinting on it would throw away a live token for nothing. **A group's
+  numbers are a reading path, so a group that is not drawn may not keep its number**: the rail always
+  drew *02 Safety & mode* with a disabled Dry run reading "not declared by this workflow" and froze
+  Destination at `03`, which left a gap at every workflow that declares no flags. `DESIGN.md:305`'s
+  offer-disabled rule is written for an OPTION inside a control, not for the group around it —
+  `runControlGroups` decides both membership and numbering in one fold, and contiguity is asserted
+  rather than the two literal lists. And **a banner whose state has no exit is not an honest state**:
+  the `conflict` arm named a moved contract while D253 refuses a re-send of the same envelope
+  identically, so the operator was told what happened and given nothing to do about it. The demo's
+  own cure ports directly (`Reload the form`) because the rebuild has the same one — drop the spent
+  plan token, return to Input, and let the next `POST /start-plans` read the version the server
+  actually serves.
+
+  What is NOT drawn, and stays a `builds:` line rather than a plausible constant: the plan card is
+  the demo's shape with only the fields `StartPlanResponse.planned[]` serves — no role, panel,
+  containment, born-as status or note — and the applied/rejected banners keep their client-authored
+  titles because `CommandResult` serves no headline, detail, settlement clock or actor. C28's
+  `"No workflow"` title and C94's zero-system Well keep their honest empty states unchanged, which is
+  the half of D272 item 9 that is a decision to change nothing.
+
 - **2026-08-26: a control the server derives must be NAMED by the surface, and a summary flag beside
   the list it summarises is a second source for one fact (D271, Session Panel pool controls).** The
   panel's scale-down is a `plan-worker-count` carrying one number, and the kernel derives which
