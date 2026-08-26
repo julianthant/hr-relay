@@ -64,6 +64,40 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: `aria-label` on a bare `<span>` names nothing, and the class that reveals a
+  disclosure is dead the moment its group loses its last focusable child (D273 item 2, unit F6).**
+  The run-detail timeline's segments were `<span aria-label={stepAriaLabel(step)}>`. Two independent
+  failures rode in that one element and neither could show up in a diff, a typecheck or a fold test.
+  HTML-AAM computes no accessible name for a generic element with no role, so the sentence the code
+  so carefully composed — *"Find person — done, took 4s"* — reached nobody; and the member
+  disclosure below it opens on `group-focus-within:block`, which cannot fire in a group whose only
+  interactive child was replaced by a span, so **the whole D225 grouping was pointer-only.** The
+  first defect made the second invisible: an audit reading the markup sees an `aria-label` and
+  concludes the fact is reachable. Three things travel. **A disclosure trigger is a control** —
+  the demo's own note (`DemoLogPanel.tsx:574-619`) is that the segment takes a hover tint and
+  deliberately no press dip, because it discloses rather than commits, and that is still a
+  `<button type="button">`. **`group-focus-within` is a claim about a SIBLING**, so it silently
+  decays when an unrelated element changes tag — grep for the class when you convert any element
+  inside a `group`. And **a wait may not vanish for want of a slot**: the same pass restored the
+  orphan-gate segment (B57), whose whole reason for existing is that `gate.openedAt` is served
+  whether or not any step happens to carry the `blocked` state, and a surface holding a fact it does
+  not draw is the fail-loud rule's failure mode in display form. The same commit's other half is
+  the axis (B60/B61): it printed the first→last event SPAN under the word `elapsed`, so a run parked
+  for an hour after four seconds of work reported an hour of work — **two numbers that are both
+  real are not interchangeable, and the label is what decides which one you owe.** It names the
+  measured WORKING sum and the WAITING age separately now, and a half with nothing behind it does
+  not print: `workingSec` is `undefined` rather than `0` when nothing was measured, because *"did no
+  work"* and *"nothing measured it"* are different claims and only one of them is true.
+
+  **The proof lane, and its gap.** The three decisions are pure exported folds
+  (`timelineSegmentUnmeasured`, `timelineHasOrphanGate`, `timelineAxisTotals`) and the MARKUP half
+  is a `renderToStaticMarkup` test, because no fold can see whether the component consumed it —
+  each was run against a mutation of the code it pins. Worth knowing for the next pass:
+  **`tests/parity/helpers/fixture-day.ts` serves no `timeline.steps` at all**, so every parity
+  reference photographs the read-forward per-EVENT strip and D225's categorical strip — the one this
+  work changed — has never been in a screenshot. That is why the render test is the load-bearing
+  proof here and not a belt-and-braces extra.
+
 - **2026-08-26: a control the server derives must be NAMED by the surface, and a summary flag beside
   the list it summarises is a second source for one fact (D271, Session Panel pool controls).** The
   panel's scale-down is a `plan-worker-count` carrying one number, and the kernel derives which
