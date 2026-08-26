@@ -47,6 +47,56 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
 
 ## Lessons learned
 
+- **2026-08-26: a control the server derives must be NAMED by the surface, and a summary flag beside
+  the list it summarises is a second source for one fact (D271, Session Panel pool controls).** The
+  panel's scale-down is a `plan-worker-count` carrying one number, and the kernel derives which
+  members that stops — canonical indices `N+1..MAX`, whose running ones must each be covered by a
+  bounded graceful stop. There is no wire arm carrying explicit indices, so D271's *"a scale-down
+  names the explicit member indices"* is honoured by the SURFACE naming them from the same
+  derivation and making the operator confirm that list, not by inventing a payload. Three things
+  travel. **When the bundle must restate a kernel constant** — `src/dashboard/**` cannot import
+  `src/core` — restate it and PIN it: `SESSION_POOL_MAX_WORKERS` and `poolMemberWorkerId` are
+  asserted equal to `MAX_WORKERS_PER_POOL` and `poolWorkerId` in `worker-pool-controls.test.ts`, so
+  raising the cap on one side alone fails a test instead of offering a size the supervisor refuses.
+  **A derived list beats a derived flag**: the intent first carried a `scaleDown` boolean beside its
+  `excess` list, and the button rendered from the flag while the sentence rendered from the list —
+  which is how *"Stop 0 members and plan 1"* was drawn, in danger red, for a plan that stops
+  nothing. The flag is gone; everything the popover says now comes off `excess.filter(running)`.
+  And **the CAS basis travels with the view, never re-read at the composer**: `expectedVersion` is
+  the pool version the operator was looking at (`0` for a workflow with no row), so a stale basis
+  produces the `conflict` the CAS exists for — drawn in the band with the live version, never
+  retried, because the decision was made against a count that has since moved.
+
+  What is NOT served, and therefore not drawn: per-worker supervisor ownership
+  (`supervised` / `external`), the stop escalation policy and its observed stages, and any
+  "awaiting birth" phase. The panel says so in the band's authority-details popover rather than
+  hiding controls it cannot justify hiding — **absence of a fact is not permission to guess the
+  control's outcome**, and the server's refusal by name stays the authority. The same rule made the
+  thrown-post arm `unknown` rather than "nothing was sent" (unit F2d): once the envelope is on the
+  wire, the process effect may already have run.
+
+  **Amended 2026-08-26 (unit W4b, the review of the controls above).** Nine findings, and four
+  things generalize. **The unit lane MAY render and press React — when the claim is a dispatched
+  payload rather than a pixel.** Every fold under these controls was pinned and the WIRING between
+  them was not: nothing could see which `expectedVersion` `shell.tsx` hands the composer on a press,
+  or how many presses it takes to send one, and both have been wrong here before.
+  `session-panel-pool-press.test.ts` mounts the real panel under `jsdom` (declared per-file; Radix's
+  positioner takes two measurement-free stubs) and presses the real buttons. The standing rule that
+  behaviour belongs to the parity lane still holds for anything about layout — a payload is not
+  layout. **A touch floor taken as `min-h` costs none of the containment argument an `::after`
+  overlay costs**, because a control in a flex row grows the ROW; that is why the queue member
+  toggle needed two lessons about clipping and reach and these controls needed none. It is still
+  MEASURED in a real engine (`tests/parity/pool-control-touch-target.spec.ts`), with the
+  fine-pointer case in the same file as its negative control — the same measurement returning 24px
+  proves neither assertion is vacuous and that the coarse rules are gated. **`AuthorityDetails` is
+  drawn for a `flex-1 truncate` host**: its 44px target hangs on a negative margin over the value's
+  truncation point, so a control put beside a content-width label sits on the label's own text. That
+  is why the live worker card's identity route rides its SUBLINE — the header label is content-width
+  — while the unmet and retained cards, whose labels are `flex-1`, carry it in the header. And **a
+  popover that recovers a clipped value can clip it again**: the fact list was `nums` + `break-all`
+  for everyone, which is right for a 40-character id and renders a sentence as `this i / ndex`, so a
+  fact declares its `kind`.
+
 - **2026-08-26: a `<label for>` names an `<input>` and does NOT name a `<button role="checkbox">`, so
   the DS `Checkbox` ships every one of its controls nameless.** Intake's rejection acknowledgement —
   the gate that holds the plan closed until the operator has seen every non-valid row — resolved with

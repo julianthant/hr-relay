@@ -59,8 +59,14 @@ import {
 } from "../surfaces/actions-model.js";
 import { fmtClock } from "../surfaces/format.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
-import { composeCommandRequest, composeStopWorkerCommand, type CommandAction } from "./command-dispatch.js";
-import { commandFailureToast, settleCommandResult } from "./command-result.js";
+import {
+  composeCommandRequest,
+  composePlanWorkerCountCommand,
+  composeSpawnWorkerCommand,
+  composeStopWorkerCommand,
+  type CommandAction,
+} from "./command-dispatch.js";
+import { commandFailureToast, settleCommandResult, type CommandSettlement } from "./command-result.js";
 import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
 import {
@@ -875,6 +881,39 @@ function LoadedApp({
   );
 
   /**
+   * The Session Panel's POOL controls (D271) — `plan-worker-count` and
+   * `spawn-worker`, posted through the same one command route.
+   *
+   * They differ from `stopWorker` above in where the answer lands, and
+   * deliberately so. A stop is about one worker and a toast can carry its
+   * whole verdict; a pool refusal is about a NUMBER the operator was looking
+   * at — a CAS `conflict` names the version the pool actually holds, and that
+   * sentence belongs beside the control that used the stale one, not in a
+   * corner that dismisses. So these two RETURN the settlement (folded here,
+   * once, through `settleCommandResult` — D253) and the panel draws both
+   * refusal arms verbatim in the group they were issued for. A transport
+   * failure is not folded into a settlement: it rejects, and the panel says
+   * the request never reached the kernel, because "the server refused" and
+   * "nothing was sent" are different things an operator does different things
+   * about.
+   */
+  const planWorkerCount = useCallback(
+    (plan: Readonly<{ workflowId: string; desiredWorkers: number; expectedVersion: number }>): Promise<CommandSettlement> =>
+      client
+        .executeCommand(composePlanWorkerCountCommand(plan, { actorId: boot.actor.id, source: "session-panel" }))
+        .then((result) => settleCommandResult(result)),
+    [boot.actor.id, client],
+  );
+
+  const spawnWorker = useCallback(
+    (member: Readonly<{ workflowId: string; workerId: string; expectedVersion: number }>): Promise<CommandSettlement> =>
+      client
+        .executeCommand(composeSpawnWorkerCommand(member, { actorId: boot.actor.id, source: "session-panel" }))
+        .then((result) => settleCommandResult(result)),
+    [boot.actor.id, client],
+  );
+
+  /**
    * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
    * `RebuildDemo.tsx:226-252` (`runAction`).
    *
@@ -1585,6 +1624,8 @@ function LoadedApp({
         connection={connection}
         appVersion={boot.appVersion}
         onStopWorker={stopWorker}
+        onPlanWorkerCount={planWorkerCount}
+        onSpawnWorker={spawnWorker}
       />
 
       <RunStartSurfaces
