@@ -79,6 +79,15 @@ export interface DashboardCommandServiceDeps {
 export interface DashboardCommandService {
   execute(input: unknown): CommandResult;
   /**
+   * The transport door (W3): the ONE entry the command route calls. It routes
+   * the worker-browser family through the kernel's async pool seam — the pool
+   * supervisor's process effects (spawn birth proof, durable stop directive)
+   * settle before the reply — and every other family through the synchronous
+   * `execute` path unchanged. Still one command path: both roads end in the
+   * same kernel, and this adds no emission or refusal vocabulary of its own.
+   */
+  submit(input: unknown): Promise<CommandResult>;
+  /**
    * D235: `BulkRunCommandRequest` in, the complete per-run vector out. It never
    * throws for a target's own outcome — a refusal, a conflict and an untyped
    * error are all VALUES the operator has to read — and it never answers with a
@@ -310,8 +319,24 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       return result;
   }
 
+  /**
+   * W3: family is sniffed from the envelope BEFORE execution because the two
+   * roads differ in shape (sync vs awaited pool effect), and only the family
+   * decides the road. Anything unparseable goes down the sync road, where the
+   * kernel's own exhaustive parse produces the real error.
+   */
+  const WorkerBrowserSniffSchema = z.strictObject({ family: z.literal("worker-browser") }).loose();
+
+  async function submit(input: unknown): Promise<CommandResult> {
+    if (WorkerBrowserSniffSchema.safeParse(input).success) {
+      return deps.kernel.executeWorkerPool(input);
+    }
+    return executeOne(input);
+  }
+
   return Object.freeze({
     execute: executeOne,
+    submit,
 
     /**
      * D235's loop. Every refusal below reaches NO target — it is a statement
