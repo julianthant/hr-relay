@@ -383,6 +383,7 @@ describe("pool-capable worker runtime executor seam", () => {
         { workflowId: WORKFLOW_ID, poolIndex: 2, workerId: "person-lookup-worker-2" },
         { workflowId: WORKFLOW_ID, poolIndex: 3, workerId: "person-lookup-worker-3" },
       ],
+      excessMembers: [],
     }]);
   });
 
@@ -668,6 +669,71 @@ describe("pool-capable worker runtime executor seam", () => {
       },
       browserSessionId: ITEM_ID,
     }]);
+  });
+
+  it("names the authoritative excess members in a scale-down plan request", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "plan-worker-count",
+          state: "acknowledged",
+          desiredWorkers: 1,
+          members: [
+            { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+            { member: poolMemberFixture(2), stage: "graceful-stop-requested", escalation: STOP_ESCALATION },
+            { member: poolMemberFixture(3), stage: "graceful-stop-requested", escalation: STOP_ESCALATION },
+          ],
+        };
+      },
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: ["person-lookup-worker-1"],
+    });
+    assert.deepEqual(requests, [{
+      command: "plan-worker-count",
+      workflowId: WORKFLOW_ID,
+      desiredWorkers: 1,
+      members: [poolMemberFixture(1)],
+      excessMembers: [poolMemberFixture(2), poolMemberFixture(3)],
+    }]);
+  });
+
+  it("refuses a scale-down acknowledgement that omits an authoritative excess member", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          { member: poolMemberFixture(2), stage: "graceful-stop-requested", escalation: STOP_ESCALATION },
+          // person-lookup-worker-3 silently omitted: its stop is never covered.
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planWorkerCount({ command: plan, now: requestedAt }),
+      /requires a bounded graceful stop acknowledgement for excess member person-lookup-worker-3 at index 3/,
+    );
   });
 
   it("refuses a supervisor that mutates the spawn request member after submission", async () => {

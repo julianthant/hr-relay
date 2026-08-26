@@ -504,7 +504,15 @@ export interface WorkerPoolPlanRequest {
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
   readonly desiredWorkers: PositiveInt;
+  /** The desired roster: canonical members at indices 1..desiredWorkers. */
   readonly members: readonly WorkerPoolMember[];
+  /**
+   * The AUTHORITATIVE excess set: every canonical index above `desiredWorkers`
+   * up to `MAX_WORKERS_PER_POOL`. A scale-down names these explicitly, and the
+   * acknowledgement must cover each of them with a bounded graceful stop —
+   * omitting one, or stopping a desired index instead, refuses.
+   */
+  readonly excessMembers: readonly WorkerPoolMember[];
 }
 
 export interface WorkerPoolSpawnRequest {
@@ -681,6 +689,15 @@ export function createWorkerPoolRuntimeExecutor(
         { length: desiredWorkers },
         (_, offset) => poolMember(command.target.workflowId, offset + 1),
       ));
+      // The authoritative excess set: pool identities are deterministic and
+      // capped at MAX_WORKERS_PER_POOL, so a plan for N workers names indices
+      // N+1..MAX as the EXACT members whose bounded graceful stop the
+      // acknowledgement must cover.
+      const excessMembers = Object.freeze(Array.from(
+        { length: MAX_WORKERS_PER_POOL - desiredWorkers },
+        (_, offset) => poolMember(command.target.workflowId, desiredWorkers + offset + 1),
+      ));
+      const roster = Object.freeze([...members, ...excessMembers]);
       // Snapshot the acknowledged ids BEFORE the supervisor sees the request:
       // the accepted plan names the original scalars, never a post-submission
       // rewrite (the frozen roster makes such a rewrite throw anyway).
@@ -690,6 +707,7 @@ export function createWorkerPoolRuntimeExecutor(
         workflowId: command.target.workflowId,
         desiredWorkers,
         members,
+        excessMembers,
       })));
       if (acknowledgement.desiredWorkers !== desiredWorkers) {
         throw new Error(
@@ -697,8 +715,17 @@ export function createWorkerPoolRuntimeExecutor(
           + String(acknowledgement.desiredWorkers),
         );
       }
-      for (const [offset, fact] of acknowledgement.members.entries()) {
-        const expected = poolMember(command.target.workflowId, offset + 1);
+      for (const [offset, expected] of roster.entries()) {
+        const fact = acknowledgement.members[offset];
+        if (fact === undefined) {
+          throw new Error(
+            offset < desiredWorkers
+              ? `plan-worker-count requires acknowledgement for desired member ${expected.workerId} `
+                + `at index ${String(offset + 1)}`
+              : `plan-worker-count requires a bounded graceful stop acknowledgement for excess member `
+                + `${expected.workerId} at index ${String(offset + 1)}`,
+          );
+        }
         requireSameMember("plan-worker-count", expected, fact.member);
         if (offset < desiredWorkers && fact.stage === "graceful-stop-requested") {
           throw new Error(
@@ -710,13 +737,6 @@ export function createWorkerPoolRuntimeExecutor(
             `plan-worker-count must select excess member ${fact.member.workerId} for bounded graceful stop`,
           );
         }
-      }
-      if (acknowledgement.members.length < desiredWorkers) {
-        const missing = members[acknowledgement.members.length];
-        throw new Error(
-          `plan-worker-count requires acknowledgement for desired member ${String(missing?.workerId)} `
-          + `at index ${String(acknowledgement.members.length + 1)}`,
-        );
       }
       return { state: "accepted", workerIds: [...plannedWorkerIds] };
     },
