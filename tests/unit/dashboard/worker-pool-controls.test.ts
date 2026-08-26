@@ -225,7 +225,6 @@ describe("a plan names the exact members it will stop", () => {
     assert.equal(intent.kind, "ready");
     if (intent.kind !== "ready") return;
 
-    assert.equal(intent.scaleDown, true);
     assert.equal(intent.expectedVersion, 4);
     assert.deepEqual(intent.excess.map((member) => member.workerId), [
       "person-lookup-worker-2",
@@ -246,14 +245,13 @@ describe("a plan names the exact members it will stop", () => {
     assert.equal(intent.kind, "ready");
     if (intent.kind !== "ready") return;
     assert.equal(intent.expectedVersion, 0);
-    assert.equal(intent.scaleDown, true);
     assert.deepEqual(
       intent.excess.filter((member) => member.running).map((member) => member.workerId),
       ["separations-worker-2"],
     );
   });
 
-  it("does not call a scale-UP a scale-down when nothing above the count is running", () => {
+  it("stops nothing when the count rises: there is no index above it", () => {
     const intent = planPoolIntent(
       groupFor(dayOf([cardOf({ workerId: "person-lookup-worker-1", workflowId: "person-lookup" })], [poolRow("person-lookup", 1, 3)]), "person-lookup"),
       3,
@@ -261,7 +259,6 @@ describe("a plan names the exact members it will stop", () => {
 
     assert.equal(intent.kind, "ready");
     if (intent.kind !== "ready") return;
-    assert.equal(intent.scaleDown, false);
     assert.deepEqual(intent.excess, []);
   });
 });

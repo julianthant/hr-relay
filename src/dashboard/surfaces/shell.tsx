@@ -1251,6 +1251,7 @@ export const SessionMembershipList = memo(function SessionMembershipList({ sessi
 function WorkerCard({
   card,
   workflowLabel,
+  memberLabel,
   queued,
   nowIso,
   membership,
@@ -1259,6 +1260,16 @@ function WorkerCard({
 }: {
   card: WorkerCardWire;
   workflowLabel: string;
+  /**
+   * What the card is CALLED inside its pool band. The band header already names
+   * the workflow, so repeating it on every card would spend the one prominent
+   * line on the fact the cards have in common instead of the one that tells
+   * them apart: `Member 2`. A card the pool contract cannot address is called
+   * by its served worker id, which is the honest identity and reads at a glance
+   * as the one card that is not a member. `workflowLabel` still carries every
+   * accessible name, so nothing loses the workflow it belongs to.
+   */
+  memberLabel?: string;
   queued: number;
   nowIso: string;
   membership: WorkerSessionMembership;
@@ -1296,7 +1307,7 @@ function WorkerCard({
         <div className="flex items-center gap-[var(--ds-space-base)]">
           <span aria-hidden className="size-2 shrink-0 rounded-full bg-[var(--ds-danger)]" />
           <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-semibold text-[color:var(--ds-fg)]")}>
-            {workflowLabel}
+            {memberLabel ?? workflowLabel}
           </span>
           <span className={cn(dsText.caps, "shrink-0 text-[color:var(--ds-danger)]")}>{tone.label}</span>
         </div>
@@ -1336,7 +1347,7 @@ function WorkerCard({
       <div className="flex items-center gap-[var(--ds-space-snug)]">
         <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
         <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
-          {workflowLabel}
+          {memberLabel ?? workflowLabel}
         </span>
         {queued > 0 && (
           <span
@@ -1633,6 +1644,15 @@ function PoolPlanControl({
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<number | undefined>(undefined);
   const intent = choice === undefined ? undefined : planPoolIntent(group, choice);
+  /**
+   * The members this plan will actually STOP — the excess indices that hold a
+   * running lease. The rest of the excess set is still named above (they are
+   * the indices the plan covers), but nothing is stopped for them: D271's
+   * visibly unmet declaration has no process to end.
+   */
+  const stopping = intent !== undefined && intent.kind === "ready"
+    ? intent.excess.filter((member) => member.running)
+    : [];
 
   return (
     <Popover
@@ -1693,9 +1713,9 @@ function PoolPlanControl({
             ) : (
               <>
                 <span className={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")}>
-                  {intent.scaleDown
+                  {intent.excess.some((member) => member.running)
                     ? "This plan stops these members, each after its current item settles:"
-                    : "Members above this count, reconciled by this plan:"}
+                    : "These indices are above the count. None is running, so this plan stops nothing:"}
                 </span>
                 <ul className={cn(dsText.meta, "flex flex-col gap-[var(--ds-space-hair)]")}>
                   {intent.excess.map((member) => (
@@ -1711,10 +1731,18 @@ function PoolPlanControl({
             )}
             <Button
               size="sm"
-              variant={intent.scaleDown ? "danger" : "primary"}
+              /*
+                The button says what the press DOES, and a stop is only in the
+                sentence when a member is actually running: "Stop 0 members"
+                names an act that does not happen, and a danger tone for a plan
+                that stops nothing spends the alarm where there is no hazard.
+                The declared count still drops — that is the plan itself, and
+                the list above says which indices it covers.
+              */
+              variant={stopping.length > 0 ? "danger" : "primary"}
               className="self-start"
               disabled={pending}
-              title={`Plan ${String(intent.desiredWorkers)} workers for ${workflowLabel} against pool version `
+              title={`Plan ${plural(intent.desiredWorkers, "worker")} for ${workflowLabel} against pool version `
                 + `${String(intent.expectedVersion)}`}
               onClick={() => {
                 setOpen(false);
@@ -1722,9 +1750,9 @@ function PoolPlanControl({
                 onPlan(intent);
               }}
             >
-              {intent.scaleDown
-                ? `Stop ${plural(intent.excess.filter((member) => member.running).length, "member")} and plan ${String(intent.desiredWorkers)}`
-                : `Plan ${String(intent.desiredWorkers)} workers`}
+              {stopping.length > 0
+                ? `Stop ${plural(stopping.length, "member")} and plan ${plural(intent.desiredWorkers, "worker")}`
+                : `Plan ${plural(intent.desiredWorkers, "worker")}`}
             </Button>
           </span>
         )}
@@ -1856,6 +1884,7 @@ function PoolGroupRow({
                 key={String(slot.membership.card.workerId)}
                 card={slot.membership.card}
                 workflowLabel={workflowLabel}
+                memberLabel={`Member ${String(slot.poolIndex)}`}
                 queued={queued}
                 nowIso={nowIso}
                 membership={membershipOf(slot.membership.card)}
@@ -1869,6 +1898,7 @@ function PoolGroupRow({
             key={String(card.workerId)}
             card={card}
             workflowLabel={workflowLabel}
+            memberLabel={String(card.workerId)}
             queued={queued}
             nowIso={nowIso}
             membership={membershipOf(card)}

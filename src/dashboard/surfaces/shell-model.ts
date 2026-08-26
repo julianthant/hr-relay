@@ -792,8 +792,13 @@ export type PoolPlanIntent =
     workflowId: string;
     desiredWorkers: number;
     expectedVersion: number;
-    /** True when this plan stops a running member or lowers a standing declaration. */
-    scaleDown: boolean;
+    /**
+     * The indices this plan covers above `desiredWorkers`, each carrying
+     * whether a RUNNING lease is served for it. The surface derives everything
+     * it says from this one list — how many members are stopped, and whether
+     * anything is stopped at all — rather than from a second summary flag that
+     * could disagree with the list under it.
+     */
     excess: readonly Readonly<{ poolIndex: number; workerId: string; running: boolean }>[];
   }>;
 
@@ -828,8 +833,6 @@ export function planPoolIntent(group: SessionPoolGroup, desiredWorkers: number):
     workflowId: group.workflowId,
     desiredWorkers,
     expectedVersion: group.expectedVersion,
-    scaleDown: excess.some((member) => member.running)
-      || (group.facts.state === "declared" && desiredWorkers < group.facts.desiredWorkers),
     excess,
   };
 }
