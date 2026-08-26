@@ -1539,8 +1539,15 @@ type PoolControlOutcome = Readonly<{
     | Readonly<{ kind: "pending" }>
     | Readonly<{ kind: "applied"; replayed: boolean }>
     | Readonly<{ kind: "refused"; settlement: Extract<CommandSettlement, { kind: "refused" }> }>
-    /** The POST itself failed — nothing reached the kernel, which is not a refusal. */
-    | Readonly<{ kind: "unsent"; message: string }>;
+    /**
+     * The post threw. NOT "nothing was recorded": the envelope was already on
+     * the wire, so a failed fetch may have failed after the kernel wrote the
+     * pool row and started the process (unit F2d's correction, and the rule
+     * `commandFailureToast` states for the toast route). The panel names the
+     * uncertainty and points at what resolves it — which for a pool command is
+     * the pool's own version and roster, not a run receipt.
+     */
+    | Readonly<{ kind: "unknown"; message: string }>;
 }>;
 
 /**
@@ -1571,12 +1578,15 @@ export function PoolOutcomeNotice({ outcome }: { outcome: PoolControlOutcome }) 
       />
     );
   }
-  if (outcome.state.kind === "unsent") {
+  if (outcome.state.kind === "unknown") {
     return (
-      <Banner tone="danger" title="Nothing was sent">
+      <Banner tone="danger" title="Result unknown — re-read the pool">
         <span className="flex flex-col gap-[var(--ds-space-tight)]">
-          <span>{outcome.state.message}</span>
-          <MetaLine items={[outcome.action, "the request did not reach the kernel"]} />
+          <span>
+            {outcome.state.message} This command may already have been recorded and its process effect may
+            already have run: read the pool version and the members below before sending it again.
+          </span>
+          <MetaLine items={[outcome.action, "the answer never reached this tab"]} />
         </span>
       </Banner>
     );
@@ -2018,7 +2028,7 @@ export function SessionPanel({
             [workflowId]: {
               basis,
               action,
-              state: { kind: "unsent", message: caught instanceof Error ? caught.message : String(caught) },
+              state: { kind: "unknown", message: caught instanceof Error ? caught.message : String(caught) },
             },
           }));
         },

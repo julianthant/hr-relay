@@ -45,3 +45,13 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 - **C.** Remove only the catalog count — solves wording while leaving unruled primitive behavior.
 **Recommendation.** A — no demonstrated operator, accessibility, or performance gain justifies broad primitive divergence.
 **Notes.** _(your notes here)_
+
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |

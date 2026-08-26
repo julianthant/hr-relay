@@ -45,3 +45,13 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 - **C.** Treat all live members as stopped when the dashboard restarts — simple, but false and directly conflicts with durable process observation.
 **Recommendation.** A — observation remains durable while control stays limited to proven supervisor ownership.
 **Notes.** _(your notes here)_
+
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |

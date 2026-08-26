@@ -2440,3 +2440,13 @@ stated here and carried to the plan.
 4. **`explain run`'s notifications absence reason went stale at D262** and can now tell an operator
    *"this run has none"* about a run that has a `gate-opened` row (§2.5). A one-line reason string on
    a trust surface, where a reader has no way to know it is old.
+
+## D273/D275/D276 trust-surface presentation boundary (2026-08-26)
+
+D273's receipt/failure ports render only served truth (including refusal, uncertainty and remediation)
+and retain the schema's unrepresentable invariant-banner absence; D275/D276 require the Explorer's
+contract-led demo vocabulary, reachable field-row affordance and deletion of structurally unreachable
+arms. The rejected alternatives are respectively fabricated/hidden evidence, surplus unsupported
+facts or an inaccurate edit association; the detailed grouped alternatives are normative in
+`ref dashboard-surfaces` §10. These are presentation requirements awaiting ports, not new trust
+facts, wire fields, or implementation claims.

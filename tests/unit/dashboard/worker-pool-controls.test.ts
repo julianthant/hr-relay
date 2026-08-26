@@ -371,17 +371,22 @@ describe("both refusal arms are drawn, verbatim", () => {
     assert.match(markup, /Spawn separations-worker-2/u);
   });
 
-  it("keeps a failed POST distinguishable from a refusal the server sent", () => {
+  it("never claims a thrown post recorded nothing — the envelope was already on the wire", () => {
     const markup = renderToStaticMarkup(createElement(PoolOutcomeNotice, {
       outcome: {
         basis: 4,
         action: "Plan 3 workers",
-        state: { kind: "unsent", message: "Failed to fetch" },
+        state: { kind: "unknown", message: "Failed to fetch" },
       },
     }));
 
-    assert.match(markup, /Nothing was sent/u);
-    assert.match(markup, /the request did not reach the kernel/u);
+    assert.match(markup, /Result unknown/u);
+    assert.match(markup, /Failed to fetch/u);
+    assert.match(markup, /may already have been recorded/u);
+    // Unit F2d's correction, on this surface: "nothing was recorded" is a
+    // negative this side cannot know once the request left, and an operator who
+    // believes it re-issues a plan whose processes already started.
     assert.doesNotMatch(markup, /Nothing was recorded/u);
+    assert.doesNotMatch(markup, /Nothing was sent/u);
   });
 });

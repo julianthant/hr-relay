@@ -45,7 +45,7 @@
  * reports "Done" over a partial result.
  */
 import { useMemo, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpDown, Ban, CheckSquare, RotateCcw, Square, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../domain/commands.js";
 import {
@@ -67,7 +67,11 @@ import {
 import { toolbarControl } from "./shell-model.js";
 import { QUEUE_SORTS, type QueueSortKey } from "./queue-model.js";
 import {
+  BULK_RESULT_OUTCOMES,
+  bulkClosingAssurance,
   bulkConfirmBody,
+  bulkResultCounts,
+  bulkUnavailableSentence,
   type BulkBatchOutcome,
   type BulkVerb,
   type BulkVerbPlan,
@@ -182,6 +186,7 @@ export function QueueToolbar({
   onSelectAll,
   onClearSelection,
   bulkPlans,
+  bulkUnavailable,
   onBulk,
   bulkOutcome,
   onDismissBulkOutcome,
@@ -206,6 +211,12 @@ export function QueueToolbar({
    * strip renders exactly these and derives no availability of its own.
    */
   bulkPlans: readonly BulkVerbPlan[];
+  /**
+   * Selected ids the day serves no row for. Read here rather than off a plan
+   * because the case that matters most — every selected row gone — leaves no
+   * plan at all, and the band must not then blame `actions[]` nobody read.
+   */
+  bulkUnavailable: readonly string[];
   onBulk: (plan: BulkVerbPlan) => void;
   /** the last batch's answer with the subjects it was sent for, kept until dismissed */
   bulkOutcome: BulkBatchOutcome | null;
@@ -223,14 +234,11 @@ export function QueueToolbar({
 }) {
   const allSelected = visibleIds.length > 0 && selectedCount === visibleIds.length;
   const vector = bulkOutcome?.response.state === "vector" ? bulkOutcome.response : undefined;
-  const buckets = useMemo(() => {
-    if (vector === undefined) return undefined;
-    const counts: Record<BulkRunCommandOutcome["outcome"], number> = {
-      applied: 0, conflict: 0, refused: 0, errored: 0,
-    };
-    for (const entry of vector.results) counts[entry.outcome] += 1;
-    return counts;
-  }, [vector]);
+  const buckets = useMemo(() => vector === undefined ? undefined : bulkResultCounts(vector), [vector]);
+  const assurance = useMemo(
+    () => vector === undefined ? undefined : bulkClosingAssurance(vector),
+    [vector],
+  );
 
   return (
     <div
@@ -312,7 +320,13 @@ export function QueueToolbar({
         <div
           className={cn(
             "flex items-center border-t bg-[var(--ds-recess-bg)]",
-            dsSize.hBar,
+            // `min-h`, not the fixed `dsSize.hBar`: the refusal sentence below
+            // is the one thing in this band that can outgrow a line, and it has
+            // to WRAP rather than clip — a truncated refusal is a reason the
+            // operator cannot finish reading and has no other route to. At rest
+            // (a plan's buttons, or a sentence that fits) the band measures
+            // exactly `--ds-h-bar` and nothing moves.
+            "min-h-[var(--ds-h-bar)] py-[var(--ds-space-tight)]",
             dsBorder.subtle,
             "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)]",
           )}
@@ -341,9 +355,24 @@ export function QueueToolbar({
             "select something first" is a caption on an absence.
           */}
           {selectedCount > 0 && bulkPlans.length === 0 && (
-            <span className={cn(dsText.meta, "ml-auto min-w-0 truncate text-[color:var(--ds-fg-muted)]")}>
-              None of the {selectedCount} selected {selectedCount === 1 ? "row serves" : "rows serve"} Cancel or
-              Retry, so there is nothing to apply to this selection.
+            /* NOT `truncate`. This is the band's only statement of WHY nothing
+               can be applied, and the ⓘ-and-popover route the rows use for a
+               clipped value does not exist on a toolbar — so a clipped sentence
+               here is a reason with no route to it at all, on any pointer. It
+               wraps instead, and the band's `min-h` lets it. */
+            <span className={cn(dsText.meta, "ml-auto min-w-0 leading-snug text-[color:var(--ds-fg-muted)]")}>
+              {selectedCount === bulkUnavailable.length
+                ? /* Every selected row has left the day. Saying they "serve
+                     neither verb" would be a claim about `actions[]` this
+                     screen never received — the honest sentence is that there
+                     are no rows here to act on. */
+                  `${bulkUnavailableSentence(bulkUnavailable.length, "present")}.`
+                : `None of the ${selectedCount - bulkUnavailable.length} selected `
+                  + `${selectedCount - bulkUnavailable.length === 1 ? "row still on this day serves" : "rows still on this day serve"} `
+                  + `Cancel or Retry, so there is nothing to apply to this selection.`
+                  + (bulkUnavailable.length === 0
+                    ? ""
+                    : ` A further ${bulkUnavailableSentence(bulkUnavailable.length, "present")}.`)}
             </span>
           )}
 
@@ -364,12 +393,15 @@ export function QueueToolbar({
                     */
                     variant={plan.verb === "cancel" ? "dangerGhost" : "outline"}
                     onClick={() => onBulk(plan)}
-                    title={
-                      plan.skipped.length === 0
+                    title={[
+                      plan.skipped.length === 0 && plan.unavailable.length === 0
                         ? `${plan.label} all ${plan.eligible.length} selected rows`
-                        : `${plan.label} ${plan.eligible.length} of ${selectedCount} selected rows — `
-                          + `${plan.skipped.length} do not serve it`
-                    }
+                        : `${plan.label} ${plan.eligible.length} of ${selectedCount} selected rows`,
+                      plan.skipped.length === 0 ? "" : `${plan.skipped.length} do not serve it`,
+                      plan.unavailable.length === 0
+                        ? ""
+                        : `${plan.unavailable.length} are no longer on this day`,
+                    ].filter((part) => part !== "").join(" — ")}
                     icon={<Icon aria-hidden className={dsIcon.sm} />}
                   >
                     {plan.label} {plan.eligible.length}
@@ -383,6 +415,17 @@ export function QueueToolbar({
                       */
                       <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
                         {" "}· {plan.skipped.length} skipped
+                      </span>
+                    )}
+                    {plan.unavailable.length > 0 && (
+                      /*
+                        And the same argument for the third bucket, kept as its
+                        own count rather than added to the skip: `3 + 1` under
+                        `6 selected` is the arithmetic the operator was left to
+                        do, and the two numbers have different explanations.
+                      */
+                      <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
+                        {" "}· {plan.unavailable.length} not on this day
                       </span>
                     )}
                   </Button>
@@ -413,13 +456,11 @@ export function QueueToolbar({
         >
           <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
             <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>
-              {vector === undefined ? "Nothing was sent" : `${vector.type} — result per run`}
+              {vector === undefined ? "Nothing was sent" : `${bulkOutcome.plan.label} — partial result`}
             </span>
             {vector !== undefined && buckets !== undefined && (
               <span className={cn(dsText.meta, dsText.nums, "flex flex-wrap items-center gap-[var(--ds-space-base)]")}>
-                {(["applied", "conflict", "refused", "errored"] as const)
-                  .filter((outcome) => buckets[outcome] > 0)
-                  .map((outcome, index) => (
+                {BULK_RESULT_OUTCOMES.map((outcome, index) => (
                     <span key={outcome} className="flex items-center gap-[var(--ds-space-base)]">
                       {index > 0 && <span aria-hidden className="text-[color:var(--ds-fg-faint)]">·</span>}
                       <span className={OUTCOME_TONE[outcome].text}>
@@ -428,9 +469,12 @@ export function QueueToolbar({
                     </span>
                   ))}
                 {vector.results.length < vector.requestedCount && (
-                  <span className="text-[color:var(--ds-danger)]">
-                    {vector.requestedCount - vector.results.length} not attempted
-                  </span>
+                  <>
+                    <span aria-hidden className="text-[color:var(--ds-fg-faint)]">·</span>
+                    <span className="text-[color:var(--ds-fg-muted)]">
+                      {vector.requestedCount - vector.results.length} not attempted
+                    </span>
+                  </>
                 )}
               </span>
             )}
@@ -503,10 +547,51 @@ export function QueueToolbar({
               with three outcomes is a discrepancy the operator would otherwise
               have to reconstruct from memory. */}
           {bulkOutcome.plan.skipped.length > 0 && (
+            <details className="mt-[var(--ds-space-snug)]">
+              <summary className={cn(dsText.meta, dsFocus, "cursor-pointer text-[color:var(--ds-fg-muted)]")}>
+                <span className={dsText.nums}>{bulkOutcome.plan.skipped.length}</span> selected{" "}
+                {bulkOutcome.plan.skipped.length === 1 ? "row" : "rows"} never offered {bulkOutcome.plan.label.toLowerCase()} —
+                nothing was attempted for {bulkOutcome.plan.skipped.length === 1 ? "it" : "them"}
+              </summary>
+              <div className="mt-[var(--ds-space-tight)] flex max-h-28 flex-col gap-[var(--ds-space-hair)] overflow-y-auto pl-[var(--ds-space-cozy)]">
+                {bulkOutcome.plan.skipped.map((row) => (
+                  <span key={row.runId} className={cn(dsText.meta, "flex min-w-0 items-center gap-[var(--ds-space-base)]")}>
+                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--ds-fg-muted)]" />
+                    <span className="min-w-0 truncate text-[color:var(--ds-fg-muted)]">{row.title}</span>
+                  </span>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* AND THE THIRD BUCKET SURVIVES THE SEND TOO. It has no titles to
+              list — the day served no row for these ids — so it names them by
+              the only identity it holds, which is still the run's own rather
+              than a plausible substitute for one. */}
+          {bulkOutcome.plan.unavailable.length > 0 && (
             <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
-              {bulkOutcome.plan.skipped.length} selected{" "}
-              {bulkOutcome.plan.skipped.length === 1 ? "row was" : "rows were"} left alone — the server serves no{" "}
-              {bulkOutcome.plan.verb} for {bulkOutcome.plan.skipped.map(({ title }) => title).join(", ")}.
+              {/* PAST tense: this is the batch's outcome, and the rows it names
+                  were already gone at the instant it was sent. The sentence
+                  carries "when this batch was sent" itself, so the two halves
+                  can no longer disagree about which moment they describe. */}
+              {bulkUnavailableSentence(bulkOutcome.plan.unavailable.length, "past")}:{" "}
+              <span className={dsText.nums}>{bulkOutcome.plan.unavailable.join(", ")}</span>
+            </p>
+          )}
+
+          {vector !== undefined && assurance !== undefined && (
+            <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] flex items-start gap-[var(--ds-space-snug)] leading-snug text-[color:var(--ds-fg-muted)]")}>
+              {assurance === "needs-review" ? (
+                <>
+                  <AlertTriangle aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-status-waiting-fg)]")} />
+                  Nothing was applied for conflicted, refused, errored, or unattempted rows. Open each one and look before you decide again — a conflict means the row changed under you.
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-success-fg)]")} />
+                  Every selected row that offered {bulkOutcome.plan.label.toLowerCase()} accepted it.
+                </>
+              )}
             </p>
           )}
         </div>

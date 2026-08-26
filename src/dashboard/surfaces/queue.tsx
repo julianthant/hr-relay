@@ -28,10 +28,11 @@
  * of two served instants — never a second opinion about what a run IS.
  */
 import { memo } from "react";
-import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
+import type { ReactNode } from "react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
+  Chip,
   IconButton,
   MetaLine,
   Popover,
@@ -70,6 +71,11 @@ import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import {
   BAND_LABEL,
   BAND_ORDER,
+  MEMBER_NAME_TOUCH_TARGET,
+  MEMBER_TOUCH_TARGET,
+  MEMBER_TOUCH_TARGET_HOST,
+  ROW_INFO_TOUCH_LINE,
+  ROW_INFO_TOUCH_TARGET,
   type LinkedRunWire,
   type MemberSurfaceWire,
   type OperationSurfaceWire,
@@ -77,12 +83,14 @@ import {
   type QueueSurfaceWire,
   bandOf,
   canViewAllMembers,
+  checkedByYouCount,
   orderMembers,
   partition,
   queueGateAge,
   queueRowAccessibleName,
   queueRowTitle,
   queueRowTitleTooltip,
+  rowInfoFacts,
   sortQueueBand,
   useAttentionAnnounce,
 } from "./queue-model.js";
@@ -101,6 +109,9 @@ export interface QueueViewState {
   /** bulk-selection mode: checkboxes on top-level rows */
   selectMode?: boolean;
   bulkIds?: ReadonlySet<string>;
+  /** Ephemeral operator triage. This is browser-local context, never a served
+   * member outcome or durable evidence; reload starts with an empty set. */
+  checkedIds?: ReadonlySet<string>;
   /**
    * The workflow this queue is scoped to. A row of that workflow does not
    * reprint its label — the panel header already said it. Left undefined by a
@@ -131,6 +142,8 @@ export interface QueueHandlers {
   onOpenRoster?: (runId: string) => void;
   /** add/remove a row from the bulk target set */
   onToggleBulk?: (runId: string) => void;
+  /** Mark a loaded member checked by you. This has no authority effect. */
+  onToggleChecked?: (runId: string) => void;
   /**
    * Jump to the run that delegated this one — the panel switch AND the
    * selection, because a parent can belong to another workflow and selecting it
@@ -161,6 +174,7 @@ export type QueueParentLookup = (
 export type QueueActionsOf = (surface: QueueSurfaceWire) => readonly ActionDescriptorWire[];
 
 const NO_ACTIONS: QueueActionsOf = () => [];
+const NO_CHECKED_IDS: ReadonlySet<string> = new Set();
 
 /* the band ordering and its sort vocabulary live in `queue-model.ts` — see the note there */
 export type { QueueSortKey };
@@ -398,30 +412,15 @@ const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
  *  - **What this run did not report** — an absent subtitle or live message
  *    arrives with the server's own reason, and that reason is a fact about THIS
  *    run, which is the one thing beyond the panel sentence the ⓘ may hold.
+ *  - **What a present fact SAYS IN FULL** — the fold that composes both lives
+ *    in `queue-model.ts` (`rowInfoFacts`), because a fact drawn as a chip is
+ *    clipped by design and this is the row's only hover-free route to the whole
+ *    value.
  *
  * It EXPLAINS; it never HIDES. Nothing load-bearing (status, counts, error,
- * trace, every command) moves in here from the row.
+ * trace, every command) moves in here from the row — it is the same values,
+ * unclipped, in the place DESIGN.md sanctions for detail.
  */
-function absentFacts(surface: QueueSurfaceWire): { label: string; reason: string }[] {
-  const facts: { label: string; reason: string }[] = [];
-  if (surface.subtitle.state === "absent") facts.push({ label: "Subtitle", reason: surface.subtitle.reason });
-  if (surface.liveMessage.state === "absent") facts.push({ label: "Live message", reason: surface.liveMessage.reason });
-  /*
-   * D230/§9 D7's two absences, in the one place ref dashboard-surfaces's second-batch delta
-   * says an operator reads them. Both are drawn on the ROW as nothing at all —
-   * a chip that is not there — and "nothing at all" is the state that cannot
-   * explain itself, which is what the ⓘ is for. Four distinct reasons hide
-   * behind an empty fact band and the server counts all four; collapsing them
-   * into a silent gap is the absence-versus-failure conflation this program
-   * bans.
-   */
-  if (surface.runNumber.state === "absent") facts.push({ label: "Run number", reason: surface.runNumber.reason });
-  if (surface.facts.state === "absent") facts.push({ label: "Outcome", reason: surface.facts.reason });
-  if (surface.surfaceKind === "operation" && surface.memberPreview.state === "absent") {
-    facts.push({ label: "Members", reason: surface.memberPreview.reason });
-  }
-  return facts;
-}
 
 /**
  * How this row is CONTAINED, in the product's own words (D231).
@@ -445,7 +444,7 @@ function RowInfo({
   surface: QueueSurfaceWire;
   workflowLabel: string;
 }) {
-  const facts = absentFacts(surface);
+  const facts = rowInfoFacts(surface);
   const panelName = PANEL_KIND_NAME[surface.panelKind];
   const containment = CONTAINMENT_EXPLANATION[surface.containment];
   return (
@@ -461,7 +460,13 @@ function RowInfo({
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") event.stopPropagation();
           }}
-          className="text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]"
+          className={cn(
+            "text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]",
+            // 20px of paint, and the row's only hover-free route to a clipped
+            // fact's whole value; the line it sits on grows with it
+            // (`ROW_INFO_TOUCH_LINE`), or the card's clip takes the height back.
+            ROW_INFO_TOUCH_TARGET,
+          )}
         />
       </PopoverTrigger>
       {/* `md`, not `lg`: a 380px surface in a 380px queue column is
@@ -476,9 +481,22 @@ function RowInfo({
             <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>{containment}</p>
           )}
           {facts.map((fact) => (
-            <p key={fact.label} className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
+            <p
+              key={`${fact.state}:${fact.label}`}
+              className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}
+            >
               <span className="font-semibold text-[color:var(--ds-fg)]">{fact.label}: </span>
-              {fact.reason}
+              {fact.state === "present" ? (
+                /* A PRESENT fact is the row's chip, UNCLIPPED — `break-words`
+                   rather than a second truncation, following
+                   `intake.tsx`'s `IdentifierPopover`: a popover that clipped
+                   the value again would be the hover surface's failure moved
+                   somewhere quieter. Monospace, because it is the same token
+                   the chip draws. */
+                <span className={cn(dsText.nums, "break-words text-[color:var(--ds-fg)]")}>{fact.text}</span>
+              ) : (
+                fact.text
+              )}
             </p>
           ))}
           <MetaLine items={[workflowLabel, surface.traceId]} tone="faint" />
@@ -767,25 +785,28 @@ function MemberWell({
 function MemberLine({
   surface,
   selected,
+  checked,
   onSelect,
+  onToggleChecked,
 }: {
   surface: MemberSurfaceWire;
   selected: boolean;
-  onSelect: (event: ReactMouseEvent) => void;
+  checked: boolean;
+  onSelect: () => void;
+  onToggleChecked?: () => void;
 }) {
   const status = dsStatusOf(surface.status);
   const spec = PROPOSED_STATUS[status];
   const Icon = spec.icon;
+  const selectionLabel = `${queueRowTitle(surface)} ${
+    surface.subtitle.state === "present" ? surface.subtitle.value : statusAccessibleName(status).toLowerCase()
+  }`;
   return (
-    <button
-      type="button"
+    <div
       data-demo-row-id={surface.runId}
       // A member line draws no status word at all — only the leading glyph —
-      // so this string is the whole of what an operator is told. It uses the
-      // ACCESSIBLE name: `done` alone cannot separate the verified done from
-      // the done-with-warnings (D22, amended 2026-08-04).
+      // so the row's title keeps the status distinction available on hover.
       title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
-      onClick={onSelect}
       className={cn(
         MEMBER_GRID,
         MEMBER_WELL_PAD,
@@ -795,15 +816,53 @@ function MemberLine({
         // through a row.
         "h-[var(--ds-h-member-line)] gap-x-[var(--ds-space-base)]",
         dsText.body,
-        "cursor-pointer",
-        dsFocus,
         dsMotion.fast,
         "hover:bg-[var(--ds-surface-3)]",
         selected && "bg-[var(--ds-surface-selected)]",
       )}
     >
       <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass)} />
-      <span className="min-w-0 truncate text-[color:var(--ds-fg)]">{queueRowTitle(surface)}</span>
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg)]",
+          // This cell is what clips the toggle's coarse-pointer overlay; the
+          // constant carries both its `truncate` and the gated escape.
+          MEMBER_TOUCH_TARGET_HOST,
+        )}
+      >
+        {/* Selection and local triage are sibling controls: nesting the latter
+            in a row button would create an invalid interactive hierarchy. */}
+        <button
+          type="button"
+          title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
+          aria-label={selectionLabel}
+          onClick={onSelect}
+          // The line is 44px on a coarse pointer and this button is the row's
+          // SELECTION — the only way into the member's panel — so it takes the
+          // whole height rather than the 16px its text paints.
+          className={cn("min-w-0 truncate text-left", MEMBER_NAME_TOUCH_TARGET, dsFocus)}
+        >
+          {queueRowTitle(surface)}
+        </button>
+        {checked && (
+          <span title="Marked checked by you" className="inline-flex shrink-0 items-center text-[color:var(--ds-success-fg)]">
+            <CheckCircle2 aria-hidden className={dsIcon.sm} />
+            <span className="sr-only">checked by you</span>
+          </span>
+        )}
+        {onToggleChecked !== undefined && (
+          <IconButton
+            size="sm"
+            className={MEMBER_TOUCH_TARGET}
+            label={checked ? `Mark ${queueRowTitle(surface)} unchecked` : `Mark ${queueRowTitle(surface)} checked by you`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleChecked();
+            }}
+            icon={<CheckCircle2 aria-hidden className={cn(dsIcon.sm, checked && "text-[color:var(--ds-success-fg)]")} />}
+          />
+        )}
+      </span>
       {surface.subtitle.state === "present" ? (
         <span
           className={cn(
@@ -832,7 +891,7 @@ function MemberLine({
           —
         </span>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -860,6 +919,8 @@ function GroupMemberList({
   handlers: QueueHandlers;
 }) {
   const ordered = orderMembers(members);
+  const checkedIds = state.checkedIds ?? NO_CHECKED_IDS;
+  const checkedCount = checkedByYouCount(ordered, checkedIds);
   const wellOpen = state.openWells.has(surface.runId);
   const canExpand = ordered.length > MEMBER_WELL_LINES;
   /**
@@ -930,6 +991,16 @@ function GroupMemberList({
           >
             <div className="col-span-3 flex min-w-0 flex-wrap items-center gap-[var(--ds-space-cozy)]">
               <RollupStrip rollup={surface.memberRollup} />
+              {checkedCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-success-fg)]"
+                  aria-label={`${checkedCount} of ${surface.memberRollup.total} checked by you`}
+                  title="How many loaded members you have marked checked"
+                >
+                  <CheckCircle2 aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
+                  <span className={dsText.nums}>{checkedCount}/{surface.memberRollup.total}</span>
+                </span>
+              )}
               {/* The payload can legitimately hold fewer member surfaces than
                   the rollup counts (the day query pages). Saying so is a fact
                   about this list; silently drawing a short list is not. */}
@@ -981,10 +1052,11 @@ function GroupMemberList({
           key={member.runId}
           surface={member}
           selected={state.selectedRunId === member.runId}
-          onSelect={(event) => {
-            event.stopPropagation();
-            handlers.onSelect(member.runId);
-          }}
+          checked={checkedIds.has(String(member.runId))}
+          onSelect={() => handlers.onSelect(member.runId)}
+          {...(handlers.onToggleChecked === undefined
+            ? {}
+            : { onToggleChecked: () => handlers.onToggleChecked?.(String(member.runId)) })}
         />
       ))}
     </MemberWell>
@@ -1118,13 +1190,9 @@ function FactChip({ fact, grow }: { fact: { label: string; value: string }; grow
       className={grow ? "max-w-full" : "shrink-0"}
       style={grow ? { flexGrow: 1, flexShrink: 0, flexBasis: "max-content" } : undefined}
     >
-      <span
-        title={`${fact.label} ${fact.value}`}
-        className={cn(rowChip("neutral"), "w-full max-w-full")}
-      >
-        <span className="text-[color:var(--ds-fg-faint)]">{fact.label}</span>
-        <span className={cn(dsClip.text, "min-w-0 text-[color:var(--ds-fg-secondary)]")}>{fact.value}</span>
-      </span>
+      <Chip label={fact.label} title={`${fact.label} ${fact.value}`} className="w-full max-w-full">
+        {fact.value}
+      </Chip>
     </span>
   );
 }
@@ -1261,10 +1329,17 @@ export function QueueRow({
             {/* The icon, title and status pill share one cross-axis centre. The
                 icon box matches the StatusBadge (`sm` = `--ds-h-xs`) so a taller
                 title line cannot leave the glyph floating above the pill. */}
-            <div className="col-start-1 row-start-1 flex h-[var(--ds-h-xs)] items-center">
+            <div className={cn("col-start-1 row-start-1 flex h-[var(--ds-h-xs)] items-center", ROW_INFO_TOUCH_LINE)}>
               <StatusIcon aria-hidden className={cn(dsIcon.md, "shrink-0", PROPOSED_STATUS[status].iconClass)} />
             </div>
-            <div className="col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center gap-x-[var(--ds-space-base)]">
+            <div
+              className={cn(
+                "col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center gap-x-[var(--ds-space-base)]",
+                // The ⓘ's 44px is taken by the LINE, not by the control — the
+                // same move `--ds-h-member-line` makes for the member toggle.
+                ROW_INFO_TOUCH_LINE,
+              )}
+            >
               <div className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
                 {/* Bulk selection is a TOP-LEVEL act: a member is acted on
                     through its group or on its own row, never half-selected

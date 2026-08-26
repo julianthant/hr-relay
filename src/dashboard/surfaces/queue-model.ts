@@ -21,6 +21,177 @@ import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import { elapsedSecondsBetween, fmtElapsed } from "./format.js";
 
 /**
+ * ONE ROW'S ⓘ CONTENT, as a fold rather than as JSX.
+ *
+ * Two kinds of entry and they must stay distinguishable, which is why `state`
+ * rides along instead of both arms being flattened into a sentence:
+ *
+ *   ABSENT — the server said it has no such fact, and said WHY. Four distinct
+ *     reasons hide behind an empty fact band and all four are counted; letting
+ *     them collapse into a silent gap is the absence-versus-failure conflation
+ *     this program bans (D230 / §9 D7).
+ *   PRESENT — the fact's own value, WHOLE. On the row it is a `Chip`, and a
+ *     chip is a single-line token that clips its paint; before this the only
+ *     route to the uncut value was the element's `title`, which a touch user
+ *     cannot summon and a keyboard user is never shown. DESIGN.md's rule is
+ *     explicit — load-bearing detail "goes in the UI or in a Popover
+ *     (click-to-open, keyboard- and touch-reachable), never in a hover-only
+ *     surface" — and every queue row already has that Popover, so the value
+ *     costs no new chrome. The `title` stays as the mouse's shortcut.
+ */
+export interface RowInfoFact {
+  readonly label: string;
+  readonly state: "absent" | "present";
+  /** the server's reason for the absence, or the fact's own full value */
+  readonly text: string;
+}
+
+export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] {
+  const facts: RowInfoFact[] = [];
+  const absent = (label: string, text: string): void => {
+    facts.push({ label, state: "absent", text });
+  };
+  if (surface.subtitle.state === "absent") absent("Subtitle", surface.subtitle.reason);
+  if (surface.liveMessage.state === "absent") absent("Live message", surface.liveMessage.reason);
+  if (surface.runNumber.state === "absent") absent("Run number", surface.runNumber.reason);
+  if (surface.facts.state === "absent") absent("Outcome", surface.facts.reason);
+  if (surface.surfaceKind === "operation" && surface.memberPreview.state === "absent") {
+    absent("Members", surface.memberPreview.reason);
+  }
+  if (surface.facts.state === "present") {
+    // In the order the server sent them — the same order the chips draw, so the
+    // popover reads as the row it was opened from rather than as a second list.
+    for (const fact of surface.facts.value) {
+      facts.push({ label: fact.label, state: "present", text: fact.value });
+    }
+  }
+  return facts;
+}
+
+/**
+ * THE 44px TOUCH FLOOR for a control that paints smaller than it.
+ *
+ * The member line's "checked by you" toggle is an `IconButton size="sm"` — 24px
+ * of paint, which is the WCAG 2.2 AA minimum (2.5.8) and the right size for a
+ * mouse on a dense operator table, and well under the 44px a finger needs.
+ * This grows the effective HIT AREA without touching the paint, the same
+ * `::after` overlay `surfaces/explorer.tsx` uses on its version-registry
+ * control.
+ *
+ * It is gated on `pointer: coarse` for a reason the fine-pointer case makes
+ * clear: member lines stack at a 28px pitch there, so a 44px overlay would
+ * reach 8px into the rows above and below and a click near a boundary would
+ * mark the WRONG member checked. On a coarse pointer `--ds-h-member-line` is
+ * 44px plus the `divide-y` hairline the line carries (`ds/tokens.css`), so the
+ * overlay fills its own line's CONTENT box exactly and can never reach a
+ * neighbour's — a bare 44px line leaves 43 and the overlay hangs half a pixel
+ * into the row above, which resolves to this toggle.
+ *
+ * The overlay only reaches that far because `MEMBER_TOUCH_TARGET_HOST` lifts
+ * the name cell's clip; this constant alone is 44px wide and 24px tall.
+ *
+ * IT IS ANCHORED TO THE TOGGLE'S LEFT EDGE, NOT CENTRED ON IT, and that is the
+ * horizontal half of the same containment argument. Centred, a 44px box over
+ * 24px of paint reaches ~10px each way, and 4px (`--ds-space-tight`) to the
+ * LEFT is the member's name — the row's selection button. On an unchecked line
+ * the last pixels of a truncated name hit-tested to this toggle, so a finger
+ * aiming at the name marked the member checked: the wrong act on the right row,
+ * which is the same defect the pitch fixed one axis over. Anchored left, the
+ * overlay spends its whole 44px going RIGHT, where the only thing under it is
+ * the line's subtitle cell — inert text that competes for no tap.
+ *
+ * `touch-manipulation` rides along because the same tap is otherwise held for
+ * ~300ms waiting to see whether it was a double-tap zoom.
+ */
+export const MEMBER_TOUCH_TARGET = [
+  "relative touch-manipulation",
+  "pointer-coarse:after:absolute pointer-coarse:after:left-0 pointer-coarse:after:top-1/2",
+  "pointer-coarse:after:size-11 pointer-coarse:after:-translate-y-1/2",
+  "pointer-coarse:after:content-['']",
+].join(" ");
+
+/**
+ * THE NAME BESIDE IT, which is the row's SELECTION and the only way into a
+ * member panel — and which painted one line of text, 16px to a finger, inside a
+ * line the coarse pitch had already grown to 44.
+ *
+ * `min-h`, not `h`: the button also carries `--ds-h-xs`-ish text metrics from
+ * `dsText.body` and a min-height cannot be lost to a height utility ordered
+ * after it. The line's content box is exactly 44px on a coarse pointer
+ * (`--ds-h-member-line` is `calc(44px + var(--ds-border-w))` and the well's
+ * `divide-y` hairline spends the border), so this fills the line and cannot
+ * reach past it — no overlay, nothing to un-clip, nothing to contain.
+ *
+ * Gated for the same reason everything else here is: at the fine-pointer 28px
+ * pitch a 44px name would overlap the lines above and below it.
+ */
+export const MEMBER_NAME_TOUCH_TARGET = "pointer-coarse:min-h-11";
+
+/**
+ * THE ROW ⓘ, which after unit F2 is the row's ONLY hover-free route to a
+ * clipped fact's full value — and which paints `--ds-h-xs`, 20px, less than
+ * half the floor. A control that guards the value a mouse can already read by
+ * hovering, and that a finger misses, is the hover-only failure moved rather
+ * than fixed.
+ *
+ * Centred here, unlike the member toggle: everything within the overlay's reach
+ * on the title line is inert — the title text, the workflow chip, the status
+ * chips — and the card underneath is the row's own select, which is where a
+ * near-miss already went.
+ *
+ * Its containment is the CARD's `overflow-hidden`, so it can never reach the
+ * row above; what that same box CAN do is clip the overlay back under the floor
+ * (the F2c failure, exactly), because the title line is only 20px tall and sits
+ * `--ds-space-snug` from the card's top edge. `ROW_INFO_TOUCH_LINE` is the
+ * other half: it grows the title line to 44px on a coarse pointer, so the
+ * overlay fills a box the card already holds.
+ */
+export const ROW_INFO_TOUCH_TARGET = [
+  "relative touch-manipulation",
+  "pointer-coarse:after:absolute pointer-coarse:after:left-1/2 pointer-coarse:after:top-1/2",
+  "pointer-coarse:after:size-11 pointer-coarse:after:-translate-x-1/2 pointer-coarse:after:-translate-y-1/2",
+  "pointer-coarse:after:content-['']",
+].join(" ");
+
+/**
+ * The 44px the ⓘ's overlay needs, taken by the LINE rather than by the control
+ * — the D-lesson the member pitch already carries. It goes on BOTH cells of the
+ * card's first grid row: the title line that holds the ⓘ, and the leading
+ * status-glyph box beside it, which is a fixed `--ds-h-xs` in a grid whose
+ * items are `items-start` and would otherwise leave the glyph floating at the
+ * top of a taller line.
+ */
+export const ROW_INFO_TOUCH_LINE = "pointer-coarse:min-h-11";
+
+/**
+ * THE OTHER HALF OF THE TOUCH TARGET, and the half that was silently missing.
+ *
+ * `MEMBER_TOUCH_TARGET` declares a 44px square and the engine handed a finger
+ * 44 x 24: the toggle sits inside the member line's name cell, that cell carries
+ * `truncate` for the name beside it, and `truncate` is `overflow: hidden` — which
+ * clips an absolutely-positioned descendant of a `relative` box INSIDE it. The
+ * overlay reached its full width because the cell is wide and its full height
+ * nowhere, because the cell is exactly as tall as the 24px of paint it contains.
+ *
+ * `overflow-y` cannot be un-clipped on its own — CSS computes the other axis to
+ * `auto` the moment the two differ, which would put a scroll container on the
+ * name cell. So the whole clip is lifted, under the coarse gate only:
+ *
+ * - Nothing in the cell needs clipping to lay out. The NAME truncates on its own
+ *   button (`min-w-0 truncate`), which is where the ellipsis has always been
+ *   painted; the cell's `truncate` contributes only `white-space: nowrap` (kept)
+ *   and an `overflow: hidden` that was clipping the target instead of any text.
+ * - It is `pointer-coarse:`-gated for the same reason the overlay is: on a fine
+ *   pointer the overlay does not exist, so there is nothing to un-clip, and the
+ *   parity corpus — which renders at `pointer: fine` — sees no change at all.
+ *
+ * `tests/parity/member-touch-target.spec.ts` measures both axes in a real engine
+ * against a real coarse pointer, because this is the second time this control
+ * has been 44px in the class list and smaller than that on screen.
+ */
+export const MEMBER_TOUCH_TARGET_HOST = "truncate pointer-coarse:overflow-visible";
+
+/**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * `demo-data.ts` `DEMO_SORTS` / `sortDemoRows` / `SORT_STATUS_RANK`.
  *
@@ -52,6 +223,24 @@ export type MemberSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "member
 export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
 
 export type PipelineStep = QueueSurfaceWire["pipeline"][number];
+
+/**
+ * Browser-local triage, deliberately not an authority projection. The caller
+ * owns the state lifetime (DashboardApp creates an empty set on every load),
+ * while this fold keeps the immutable set update shared and testable.
+ */
+export function toggleCheckedByYou(previous: ReadonlySet<string>, runId: string): ReadonlySet<string> {
+  const next = new Set(previous);
+  if (next.has(runId)) next.delete(runId);
+  else next.add(runId);
+  return next;
+}
+
+/** Only members present in this view count toward its local tally. A saved id
+ * from another operation cannot inflate a group it does not belong to. */
+export function checkedByYouCount(members: readonly MemberSurfaceWire[], checkedIds: ReadonlySet<string>): number {
+  return members.filter((member) => checkedIds.has(String(member.runId))).length;
+}
 
 /** One delegated child this row waits on and does NOT count (D231). */
 export type LinkedRunWire = QueueSurfaceWire["linkedRuns"][number];
