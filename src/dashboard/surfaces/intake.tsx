@@ -244,15 +244,12 @@ function ProblemNotice({ problem, onDismiss }: { problem: CommandProblem; onDism
   if (problem.kind === "conflict") {
     return (
       <Arriving>
-        <Refusal
-          title="This session moved while you were reading it"
-          code="version-conflict"
-          outcome="nothing was enqueued"
-          meta={[`now at version ${String(problem.currentVersion)}`]}
-          action={action}
-        >
-          {problem.message}
-        </Refusal>
+        <Banner tone="warning" title="This session moved while you were reading it" action={action}>
+          <span className="flex flex-col gap-[var(--ds-space-snug)]">
+            <span>{problem.message}</span>
+            <MetaLine items={[`now at version ${String(problem.currentVersion)}`, "nothing was enqueued"]} />
+          </span>
+        </Banner>
       </Arriving>
     );
   }
