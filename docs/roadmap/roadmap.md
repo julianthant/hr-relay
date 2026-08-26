@@ -528,7 +528,7 @@ builds:
 - [x] BOTH A46's exact-generation unreplayable-history trigger, stable no-churn permanent fact, authority-immutable Refusal and reachable 6+ pin mobile lane (`68dea43a`, `e108ff3f`, `a2d2a8e8`; fidelity ledger 1 A46)
 - [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
 - [x] BOTH a diagnostic bundle is readable — exact-id D137 readback plus `BundleDialog` and server manifest download (ledger 2 E28/E29)
-- [ ] BOTH the intake manifest + rerun-diff surface (ledger 3 IN15/IN16)
+- [x] BOTH the intake manifest + rerun-diff surface — terminal and preflight identities, manifest projection and rerun diff are fixture-rendered; no parity reference was re-frozen (ledger 3 IN123–IN143)
 - [ ] BOTH the operator half of phone capture (ledger 3 CP3–CP5)
 - [ ] PROOF the parity corpus re-frozen once over every change, with the three missing scenes (Settings · the version-bump dialog · a DS specimen page)
 

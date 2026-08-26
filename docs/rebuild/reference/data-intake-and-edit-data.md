@@ -1910,6 +1910,14 @@ and open-JSON leaves. The strict session wire refuses a terminal projection befo
 enqueued identity with no manifest, or any disagreement among reserved, committed,
 projected-manifest and projected-rerun ids.
 
+**The dashboard renders those as named stages, never one optimistic card.** The Manifest tab says
+`reserved plan id` while the session is still preflight, explicitly stating that it is not committed;
+only the enqueued arm renders the terminal id, all five fingerprints, derived totals and total
+source-row disposition table. The Rerun diff tab names a no-prior-manifest empty state, or renders
+changed axes, membership additions/removals and hash-only changed inputs. It does not synthesize an
+item label for membership rows: the served `ValidRow` carries identity and input evidence, not an
+operator label. (Track F IN123–IN143, 2026-08-25.)
+
 **One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
 inserted; `start-run` and this arm reach it with different plans and identical obligations — the
 descriptor's enqueue policy is evaluated against live authority per item, `supersede-active`
