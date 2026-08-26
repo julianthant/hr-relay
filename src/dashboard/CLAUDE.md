@@ -47,6 +47,34 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
 
 ## Lessons learned
 
+- **2026-08-26: a control the server derives must be NAMED by the surface, and a summary flag beside
+  the list it summarises is a second source for one fact (D271, Session Panel pool controls).** The
+  panel's scale-down is a `plan-worker-count` carrying one number, and the kernel derives which
+  members that stops — canonical indices `N+1..MAX`, whose running ones must each be covered by a
+  bounded graceful stop. There is no wire arm carrying explicit indices, so D271's *"a scale-down
+  names the explicit member indices"* is honoured by the SURFACE naming them from the same
+  derivation and making the operator confirm that list, not by inventing a payload. Three things
+  travel. **When the bundle must restate a kernel constant** — `src/dashboard/**` cannot import
+  `src/core` — restate it and PIN it: `SESSION_POOL_MAX_WORKERS` and `poolMemberWorkerId` are
+  asserted equal to `MAX_WORKERS_PER_POOL` and `poolWorkerId` in `worker-pool-controls.test.ts`, so
+  raising the cap on one side alone fails a test instead of offering a size the supervisor refuses.
+  **A derived list beats a derived flag**: the intent first carried a `scaleDown` boolean beside its
+  `excess` list, and the button rendered from the flag while the sentence rendered from the list —
+  which is how *"Stop 0 members and plan 1"* was drawn, in danger red, for a plan that stops
+  nothing. The flag is gone; everything the popover says now comes off `excess.filter(running)`.
+  And **the CAS basis travels with the view, never re-read at the composer**: `expectedVersion` is
+  the pool version the operator was looking at (`0` for a workflow with no row), so a stale basis
+  produces the `conflict` the CAS exists for — drawn in the band with the live version, never
+  retried, because the decision was made against a count that has since moved.
+
+  What is NOT served, and therefore not drawn: per-worker supervisor ownership
+  (`supervised` / `external`), the stop escalation policy and its observed stages, and any
+  "awaiting birth" phase. The panel says so in the band's authority-details popover rather than
+  hiding controls it cannot justify hiding — **absence of a fact is not permission to guess the
+  control's outcome**, and the server's refusal by name stays the authority. The same rule made the
+  thrown-post arm `unknown` rather than "nothing was sent" (unit F2d): once the envelope is on the
+  wire, the process effect may already have run.
+
 - **2026-08-26: a `<label for>` names an `<input>` and does NOT name a `<button role="checkbox">`, so
   the DS `Checkbox` ships every one of its controls nameless.** Intake's rejection acknowledgement —
   the gate that holds the plan closed until the operator has seen every non-valid row — resolved with
