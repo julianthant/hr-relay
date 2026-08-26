@@ -106,6 +106,44 @@ binding would contradict them.
   `"No workflow"` title and C94's zero-system Well keep their honest empty states unchanged, which is
   the half of D272 item 9 that is a decision to change nothing.
 
+  **Amended 2026-08-26 (unit F5b, the review of the ports above).** Nine findings, and four things
+  generalize. **An invalidation rule holds only for state that has already LANDED.** C109's
+  fingerprint effect was correct and complete, and it could still be beaten: an in-flight
+  `submitStartPlan` / `executeCommand` that settled AFTER the edit re-landed its answer on top of the
+  state the effect had just cleared, and the operator was looking at a plan for text that was no
+  longer in the box. Every dispatch now captures the fingerprint it was made for and drops a
+  settlement whose identity has moved — and the ref that answers "what is the request now" is updated
+  in the SAME effect that does the clearing, which is what makes the ordering self-healing: whichever
+  of the two wins the race, nothing stale survives it. Dropping a superseded `applied` costs no
+  record, because `applied` is a receipt that the request was accepted and the queue changes only
+  from the authoritative projection (ref frontend-backend-integration §0.5) — this surface never was
+  where an enqueued run is kept. **Clearing a settled banner without clearing the STAGE it is the
+  content of leaves the rail naming a step over an empty region**, and the control that was just
+  pressed unmounts under the operator's focus, which lands on `document.body` and restarts the dialog
+  at its first control on the next Tab. `Close`, `Dismiss` and `Reload the form` are one
+  `returnToInput` now — C72 rules the WORD on the button, not the act behind it, and after all three
+  the plan token in the form is spent. **A `title` is not a second rendering of a fact, it is a
+  second READING of it**: `LockedFact` was passing its reason to `LockedValue` (which puts it on
+  `title`) *and* drawing the `<p>` that exists to replace that tooltip, so a screen reader said the
+  same sentence twice — the fix to C48/C81 had left the defect it removed still in the props. The
+  pin is a count, not a presence: the reason must occur exactly ONCE. And **`Chip`'s own docstring
+  was the review finding**: "if a fact cannot survive truncation it is not a chip — put it on the
+  row's `MetaLine`, where it can wrap." A plan row's match key and trace id are exactly that, and
+  they were chips, recovering the cut on `title` alone. The two assertions that catch it are the
+  absent `title=` and the absent `whitespace-nowrap`, because a fact moved into a second clipped
+  token would pass the first one on its own.
+
+  The other half is a lane. `run-start-dialog.test.ts` is the SECOND file in the unit lane to render
+  and press React (`session-panel-pool-press.test.ts` was the first), for the same reason: the folds
+  were pinned and the WIRING between them was not, so deleting C109's whole `useEffect` and re-adding
+  C107's removed `stage === "input" &&` gate both stayed green across the entire suite. An absence —
+  a gate that is deliberately not there — cannot be pinned by any fold. Two mechanics are worth
+  copying. **Never hand a DOM node to `assert.equal`**: `assert.equal(element, null)` spends the whole
+  test budget inside `util.inspect` walking a live tree and takes the worker process out with it, so
+  the only report is `Worker exited unexpectedly` — compare identities to a boolean first. And **a
+  `click()` in jsdom moves no focus**, so a focus assertion after a press is vacuous unless the press
+  helper calls `focus()` the way a pointer or a Tab would.
+
 - **2026-08-26: a control the server derives must be NAMED by the surface, and a summary flag beside
   the list it summarises is a second source for one fact (D271, Session Panel pool controls).** The
   panel's scale-down is a `plan-worker-count` carrying one number, and the kernel derives which
