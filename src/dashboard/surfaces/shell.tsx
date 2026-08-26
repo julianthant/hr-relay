@@ -768,7 +768,15 @@ function AuthorityDetails({
 }: {
   label: string;
   title: string;
-  facts: readonly Readonly<{ label: string; value: string }>[];
+  /**
+   * `kind` decides the TYPESETTING, and it is not cosmetic. The default is an
+   * identifier: monospaced, and `break-all` so a 40-character id with no word
+   * boundary wraps instead of overflowing. Applied to a SENTENCE those two
+   * rules break words mid-syllable — `this i / ndex` — which is the popover
+   * clipping the value in a different way than the truncation it exists to
+   * undo. A fact whose value is prose says so.
+   */
+  facts: readonly Readonly<{ label: string; value: string; kind?: "id" | "prose" }>[];
   touchAlign?: "center" | "up" | "down";
   ownership?: AuthorityDetailsOwnership;
 }) {
@@ -804,7 +812,13 @@ function AuthorityDetails({
           {facts.map((fact) => (
             <div key={fact.label} className="min-w-0">
               <dt className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{fact.label}</dt>
-              <dd className={cn(dsText.body, dsText.nums, "select-text break-all text-[color:var(--ds-fg)]")}>
+              <dd
+                className={cn(
+                  dsText.body,
+                  "select-text text-[color:var(--ds-fg)]",
+                  fact.kind === "prose" ? "break-words" : cn(dsText.nums, "break-all"),
+                )}
+              >
                 {fact.value}
               </dd>
             </div>
@@ -1404,13 +1418,15 @@ function WorkerCard({
           title="Worker identity"
           facts={[
             { label: "Worker ID", value: String(card.workerId) },
-            { label: "Workflow", value: workflowLabel },
+            { label: "Workflow", value: workflowLabel, kind: "prose" as const },
             ...(card.currentRun.state === "present"
               ? [
                 { label: "Run ID", value: String(card.currentRun.runId) },
                 { label: "Trace ID", value: String(card.currentRun.traceId) },
               ]
-              : [{ label: "Current run", value: card.currentRun.reason }]),
+              // The subline this control sits on is `truncate`, so a long
+              // absence reason is clipped there and THIS is its only route.
+              : [{ label: "Current run", value: card.currentRun.reason, kind: "prose" as const }]),
           ]}
           touchAlign="up"
         />
@@ -1566,11 +1582,12 @@ export function UnmetMemberCard({
           label={`Show full worker identity for member ${String(poolIndex)}`}
           workerId={workerId}
           facts={[
-            { label: "Pool member", value: `Index ${String(poolIndex)}` },
+            { label: "Pool member", value: `Index ${String(poolIndex)}`, kind: "prose" },
             {
               label: "Worker lease",
               value: "None served — authority holds no lease for this index. "
                 + "Whether it never started or ended is a supervisor fact this projection does not serve.",
+              kind: "prose",
             },
           ]}
         />
@@ -1613,7 +1630,7 @@ function WorkerIdentityDetails({
 }: {
   label: string;
   workerId: string;
-  facts?: readonly Readonly<{ label: string; value: string }>[];
+  facts?: readonly Readonly<{ label: string; value: string; kind?: "id" | "prose" }>[];
 }) {
   return (
     <AuthorityDetails
