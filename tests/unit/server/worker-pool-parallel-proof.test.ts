@@ -100,12 +100,38 @@ const cleanups: (() => Promise<void> | void)[] = [];
 const liveRealChildren: ChildProcess[] = [];
 
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  // Each phase must run even if an earlier one throws (e.g. runtime.stop()
+  // rejecting) — otherwise a throwing cleanup phase aborts the SIGKILL loop,
+  // the db close, and the root sweep, leaking live stub children on the last
+  // test. Collect every phase's errors and rethrow aggregated at the end.
+  const errors: unknown[] = [];
+  for (const cleanup of cleanups.splice(0).reverse()) {
+    try {
+      await cleanup();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
   for (const child of liveRealChildren.splice(0)) {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
   }
-  for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const database of openDatabases.splice(0)) {
+    try {
+      database.close();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  for (const root of roots.splice(0)) {
+    try {
+      rmSync(root, { recursive: true, force: true });
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, `afterEach cleanup failed (${String(errors.length)} error(s))`);
+  }
 }, 30_000);
 
 /* ── shared command plumbing ─────────────────────────────────────────────── */
@@ -1121,6 +1147,8 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       );
       const shutdownLines = faultLines.filter((line) => line.includes("dashboard shutdown leaves a worker child"));
       assert.equal(shutdownLines.length, 1, faultLines.join("\n"));
+      const unexpectedLines = faultLines.filter((line) => !shutdownLines.includes(line));
+      assert.deepEqual(unexpectedLines, [], `no OTHER supervisor fault may reach the sink: ${faultLines.join("\n")}`);
       const parsed = JSON.parse(required(shutdownLines[0], "the shutdown fault line")) as {
         level: string; source: string; message: string;
       };
