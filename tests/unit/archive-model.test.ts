@@ -36,6 +36,8 @@ import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/server/dash
 import {
   ArchivedRunRecordSchema,
   CURRENT_ARCHIVE_SCHEMA_GENERATION,
+  VersionBumpApplicationSchema,
+  VersionBumpPlanSchema,
 } from "../../src/domain/archive/model.js";
 import { createLedgerReadThrough } from "../../src/infra/ledger/ledger-read-through.js";
 import { createLedgerProjector } from "../../src/infra/ledger/index.js";
@@ -50,6 +52,7 @@ import {
   ARCHIVED_RUN,
   ARCHIVED_RUN_WITH_SECTIONS,
   VERSION_BUMP_APPLICATION,
+  VERSION_BUMP_PLAN,
   VERSION_PLAN_ROW,
 } from "./fixtures/archive-fixtures.js";
 import { ledgerCommitFixture } from "./fixtures/ledger-projection-fixtures.js";
@@ -1141,5 +1144,102 @@ describe("D274 — bump kind semantics", () => {
     const majorStored = world.database.authority.versionPlans.get(major.versionPlanId);
     assert.equal(majorStored?.plan.candidates.length, 1);
     assert.equal(majorStored?.plan.blockers.length, 1);
+  });
+
+  it("refuses to apply a generation-1 plan that declares no bump kind, rather than guessing one", () => {
+    const world = createWorld();
+    // A stored generation-1 plan predates charter §25's change record: those
+    // bytes are on disk and nothing may back-fill them, so it names NO kind.
+    // Guessing major would archive runs nobody reviewed for archival; guessing
+    // minor would silently downgrade a sweep to a no-op.
+    const inserted = world.database.authority.versionPlans.insert(VERSION_PLAN_ROW);
+    assert.equal(inserted.state, "inserted");
+
+    const result = CommandResultSchema.parse(world.kernel.execute({
+      ...envelope(),
+      family: "version-archive",
+      type: "apply-version-bump",
+      target: { versionPlanId: VERSION_PLAN_ROW.versionPlanId, expectedVersion: VERSION_PLAN_ROW.version },
+      payload: { planFingerprint: VERSION_PLAN_ROW.planFingerprint },
+    }));
+    assert.equal(result.state, "rejected");
+    if (result.state !== "rejected") return;
+    assert.equal(result.code, "policy-refused");
+    assert.equal(result.message.includes("no bump kind"), true, result.message);
+    assert.equal(result.message.includes("re-plan"), true, result.message);
+
+    // Fail-closed: nothing archived, nothing applied, the plan not consumed.
+    assert.equal(world.database.authority.archivedRuns.list().length, 0);
+    assert.equal(world.database.authority.versionBumpApplications.list().length, 0);
+    assert.equal(
+      world.database.authority.versionPlans.get(VERSION_PLAN_ROW.versionPlanId)?.state,
+      "planned",
+    );
+  });
+
+  it("the boundary schemas make a minor bump that archives or blocks UNREPRESENTABLE", () => {
+    const minorRecord = {
+      kind: "minor",
+      what: "presentation moved inside the same shape",
+      why: "nothing about the run's shape changed",
+      commit: { state: "absent", reason: "authored in a test" },
+    };
+    const minorPlan = {
+      ...VERSION_BUMP_PLAN,
+      archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
+      changeRecord: minorRecord,
+    };
+    // A minor plan carrying a candidate — or a blocker — is a stored claim
+    // that a minor bump will archive or can be refused, which D274 forbids.
+    assert.equal(VersionBumpPlanSchema.safeParse(minorPlan).success, false);
+    assert.equal(
+      VersionBumpPlanSchema.safeParse({
+        ...minorPlan,
+        candidates: [],
+        blockers: VERSION_BUMP_PLAN.candidates.map((candidate) => ({ ...candidate, runState: "queued" })),
+      }).success,
+      false,
+    );
+    // The same plan with both lists empty is exactly what a minor bump is.
+    assert.equal(
+      VersionBumpPlanSchema.safeParse({ ...minorPlan, candidates: [], blockers: [] }).success,
+      true,
+    );
+
+    const minorApplication = {
+      ...VERSION_BUMP_APPLICATION,
+      archiveSchemaGeneration: CURRENT_ARCHIVE_SCHEMA_GENERATION,
+      changeRecord: minorRecord,
+    };
+    // A minor application that swept runs is a recorded contradiction.
+    assert.equal(VersionBumpApplicationSchema.safeParse(minorApplication).success, false);
+    assert.equal(
+      VersionBumpApplicationSchema.safeParse({ ...minorApplication, archivedRunIds: [] }).success,
+      true,
+    );
+  });
+
+  it("a major bump's archive set is EXACTLY the affected set — every prior-version terminal run, nothing else", () => {
+    const world = createWorld();
+    const priorA = startRun(world, "10873698", true);
+    const priorB = startRun(world, "10456712", true);
+    world.registry = V2;
+    const current = startRun(world, "10800000", true);
+
+    const result = apply(world, plan(world));
+    assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "major apply refused");
+
+    // The application row names exactly the two prior-version runs.
+    const applications = world.database.authority.versionBumpApplications.list();
+    assert.equal(applications.length, 1);
+    assert.deepEqual([...(applications[0]?.archivedRunIds ?? [])].sort(), [priorA, priorB].sort());
+    assert.equal(applications[0]?.changeRecord?.kind, "major");
+
+    // And the archive holds exactly those two — the current-version run stays.
+    assert.deepEqual(
+      world.database.authority.archivedRuns.list().map(({ runId }) => runId).sort(),
+      [priorA, priorB].sort(),
+    );
+    assert.equal(world.database.authority.archivedRuns.isArchived(current), false);
   });
 });
