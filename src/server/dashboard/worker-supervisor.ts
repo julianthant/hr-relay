@@ -289,6 +289,17 @@ export function createDashboardWorkerProcessSupervisor(
     record.state = "exited";
   };
 
+  /** The channel-throw cause of a stop-uncertain record; a missing one is registry corruption, never defaulted. */
+  const stopUncertainCause = (record: MemberRecord): string => {
+    if (record.stopUncertain === undefined) {
+      throw new Error(
+        `worker ${record.member.workerId} is recorded stop-uncertain without its channel-throw evidence; `
+        + "the supervisor registry is corrupt",
+      );
+    }
+    return record.stopUncertain.cause;
+  };
+
   const spawnWorker = async (member: WorkerPoolMember): Promise<WorkerSupervisorAcknowledgement> => {
     const existing = records.get(member.workerId);
     if (existing !== undefined && existing.state !== "exited") {
@@ -523,7 +534,7 @@ export function createDashboardWorkerProcessSupervisor(
     if (record.state === "stop-uncertain") {
       throw new Error(
         `${command} refused: worker ${member.workerId}'s durable stop directive is UNCERTAIN — the stop `
-        + `channel threw mid-request (${record.stopUncertain?.cause ?? "unknown cause"}); the directive may `
+        + `channel threw mid-request (${stopUncertainCause(record)}); the directive may `
         + "have landed, so nothing is re-initiated until the child's exit is observed",
       );
     }
@@ -587,9 +598,10 @@ export function createDashboardWorkerProcessSupervisor(
       // would let a plan attest a healthy member over a possibly-landed stop
       // and let a retry double-write the directive — instead the record
       // enters stop-uncertain, which refuses plans, re-stops, pause and
-      // resume until the child's real exit is observed. (An exit that landed
-      // during the request keeps its own evidence.)
-      record.stopInFlight = false;
+      // resume until the child's real exit is observed. stopInFlight stays
+      // true on purpose: a stop with an unknown durable outcome IS still in
+      // flight. (An exit that landed during the request keeps its own
+      // evidence.)
       if (record.state === "running") {
         record.state = "stop-uncertain";
         record.stopUncertain = { at: instant(), cause };
@@ -701,7 +713,7 @@ export function createDashboardWorkerProcessSupervisor(
       case "stop-uncertain":
         throw new Error(
           `plan-worker-count refused: worker ${member.workerId}'s durable stop directive is UNCERTAIN `
-          + `(the stop channel threw mid-request: ${record.stopUncertain?.cause ?? "unknown cause"}); `
+          + `(the stop channel threw mid-request: ${stopUncertainCause(record)}); `
           + "a plan cannot attest a member whose stop may have landed",
         );
       case "running":
@@ -784,7 +796,7 @@ export function createDashboardWorkerProcessSupervisor(
       if (record.state === "stop-uncertain") {
         throw new Error(
           `plan-worker-count refused: worker ${member.workerId}'s durable stop directive is UNCERTAIN `
-          + `(the stop channel threw mid-request: ${record.stopUncertain?.cause ?? "unknown cause"}); `
+          + `(the stop channel threw mid-request: ${stopUncertainCause(record)}); `
           + "a plan cannot attest a member whose stop may have landed",
         );
       }
