@@ -569,17 +569,135 @@ describe("the composed worker process control through the kernel pool door", () 
     assert.equal(replayed.state, "already-applied");
 
     // Evidence matching is EXACT: a stop with a different reason is a new
-    // request, not a replay — it falls through to the supervisor, which
-    // refuses the never-spawned worker by name.
-    await assert.rejects(
-      () => harness.kernel.executeWorkerPool({
-        ...envelope(harness, nextCommandId()),
-        type: "stop-worker",
-        target: { workerId: WORKER_1, expectedVersion: 2 },
-        reason: "different reason",
-      }),
-      /never spawned person-lookup-worker-1/,
-    );
+    // request, not a replay — it refuses TYPED, naming the drifted reason,
+    // never by falling through to an unrelated supervisor refusal.
+    const driftedId = nextCommandId();
+    const drifted = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, driftedId),
+      type: "stop-worker",
+      target: { workerId: WORKER_1, expectedVersion: 2 },
+      reason: "different reason",
+    });
+    assert.equal(drifted.state, "rejected");
+    if (drifted.state !== "rejected") throw new Error("unreachable");
+    assert.equal(drifted.code, "invalid-state");
+    assert.match(drifted.message, /"different reason"/);
+    assert.equal(harness.database.authority.commands.get(driftedId), undefined);
+  });
+
+  it("refuses a new same-identity stop against a dead lease's stale directive: invalid-state, never applied", async () => {
+    const harness = openControlHarness();
+    // A COMPLETED stop, all the way through the worker's own death: the lease
+    // carries the stop directive that stopped it and the lifecycle is stopped.
+    assert.equal(harness.database.authority.workerLeases.start({
+      workerId: WORKER_1, workflow: WORKFLOW, processId: 4242, requestedBy: "local-operator", now: NOW,
+    }).state, "started");
+    const stoppedNow = harness.clock.now().toISOString();
+    assert.equal(harness.database.authority.workerLeases.control({
+      workerId: WORKER_1,
+      expectedVersion: 1,
+      control: { directive: "stop", requestedAt: stoppedNow, requestedBy: "local-operator", reason: "shift over" },
+      now: stoppedNow,
+    }).state, "applied");
+    assert.equal(harness.database.authority.workerLeases.reportLifecycle({
+      workerId: WORKER_1,
+      leaseGeneration: 1,
+      lifecycle: { state: "stopped", startedAt: NOW, stoppedAt: stoppedNow, reason: "operator" },
+      now: stoppedNow,
+    }).state, "applied");
+
+    // A NEW stop naming the same actor and reason is NOT a re-delivery of
+    // anything: the dead lease's directive is stale evidence, and converging
+    // on it would journal "applied" for a command that stopped nothing. The
+    // honest answer is the sync path's own typed stopped-worker refusal.
+    harness.clock.advanceWall(30_000);
+    const commandId = nextCommandId();
+    const result = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, commandId),
+      type: "stop-worker",
+      target: { workerId: WORKER_1, expectedVersion: 3 },
+      reason: "shift over",
+    });
+    assert.equal(result.state, "rejected");
+    if (result.state !== "rejected") throw new Error("unreachable");
+    assert.equal(result.code, "invalid-state");
+    assert.match(result.message, /stopped worker starts a new lease generation/);
+    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
+  });
+
+  it("names the drifted evidence field on a near-miss stop instead of falling through unjournaled", async () => {
+    const harness = openControlHarness();
+    // The crashed delivery's durable footprint again — the lease is LIVE and
+    // carries a stop directive — but each incoming stop below drifts from
+    // that evidence in exactly one field. Every drift must refuse TYPED,
+    // naming the field, never surface as an unrelated supervisor refusal.
+    assert.equal(harness.database.authority.workerLeases.start({
+      workerId: WORKER_1, workflow: WORKFLOW, processId: 4242, requestedBy: "local-operator", now: NOW,
+    }).state, "started");
+    const crashedNow = harness.clock.now().toISOString();
+    assert.equal(harness.database.authority.workerLeases.control({
+      workerId: WORKER_1,
+      expectedVersion: 1,
+      control: { directive: "stop", requestedAt: crashedNow, requestedBy: "local-operator", reason: "shift over" },
+      now: crashedNow,
+    }).state, "applied");
+    harness.clock.advanceWall(30_000);
+
+    // Actor drift: same reason, a different requesting actor.
+    const actorDriftId = nextCommandId();
+    const actorDrift = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, actorDriftId),
+      requestedBy: "another-operator",
+      type: "stop-worker",
+      target: { workerId: WORKER_1, expectedVersion: 2 },
+      reason: "shift over",
+    });
+    assert.equal(actorDrift.state, "rejected");
+    if (actorDrift.state !== "rejected") throw new Error("unreachable");
+    assert.equal(actorDrift.code, "invalid-state");
+    assert.match(actorDrift.message, /requested by local-operator, not another-operator/);
+    assert.equal(harness.database.authority.commands.get(actorDriftId), undefined);
+
+    // Reason drift: same actor, a different (here: absent) reason.
+    const reasonDriftId = nextCommandId();
+    const reasonDrift = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, reasonDriftId),
+      type: "stop-worker",
+      target: { workerId: WORKER_1, expectedVersion: 2 },
+    });
+    assert.equal(reasonDrift.state, "rejected");
+    if (reasonDrift.state !== "rejected") throw new Error("unreachable");
+    assert.equal(reasonDrift.code, "invalid-state");
+    assert.match(reasonDrift.message, /"shift over", not no reason/);
+    assert.equal(harness.database.authority.commands.get(reasonDriftId), undefined);
+
+    // requestedAt after this delivery's now: the directive cannot be this
+    // command's own crashed effect, and the postdating must be named.
+    const future = new Date(Date.parse(harness.clock.now().toISOString()) + 60_000).toISOString();
+    assert.equal(harness.database.authority.workerLeases.control({
+      workerId: WORKER_1,
+      expectedVersion: 2,
+      control: { directive: "stop", requestedAt: future, requestedBy: "local-operator", reason: "shift over" },
+      now: harness.clock.now().toISOString(),
+    }).state, "applied");
+    const postdatedId = nextCommandId();
+    const postdated = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, postdatedId),
+      type: "stop-worker",
+      target: { workerId: WORKER_1, expectedVersion: 3 },
+      reason: "shift over",
+    });
+    assert.equal(postdated.state, "rejected");
+    if (postdated.state !== "rejected") throw new Error("unreachable");
+    assert.equal(postdated.code, "invalid-state");
+    assert.match(postdated.message, /requestedAt .* is after this delivery's now/);
+    assert.equal(harness.database.authority.commands.get(postdatedId), undefined);
+
+    // None of the refusals disturbed the durable evidence itself.
+    assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1)?.control, {
+      directive: "stop", requestedAt: future, requestedBy: "local-operator", reason: "shift over",
+    });
   });
 
   it("audits a stop with the directive write's own lease versions, not later unrelated bumps", async () => {

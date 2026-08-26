@@ -2431,8 +2431,21 @@ function applyWorkerPoolCommand(
  * original write's versions died with the crashed process). The directive's
  * `requestedAt` cannot be matched to anything this delivery knows — it was
  * minted from the crashed delivery's phase-A clock — so the identity match is
- * actor + reason, exact; a stop naming a different reason is a NEW request
- * and falls through to the supervisor's refusal.
+ * actor + reason, exact.
+ *
+ * The evidence binds only while the target is still live (`isLiveWorker` —
+ * a crashed B→C delivery's target is still live, at worst `stopping`): a
+ * DEAD lease's directive is the record of a stop that already completed, not
+ * of this command's effect, and converging on it would journal "applied" for
+ * a command that stopped nothing. A dead lease falls through to the sync
+ * path's own typed stopped-worker refusal.
+ *
+ * On a live lease the directive is a stop IN FLIGHT, so an identity
+ * near-miss has exactly one honest answer: a typed refusal NAMING the
+ * drifted field (actor, reason, or a postdated `requestedAt`). Falling
+ * through instead would hand the command to the supervisor, whose refusal
+ * ("a stop is already in flight", or after a restart "never spawned") names
+ * none of the mismatch and leaves the drift illegible.
  */
 function settleStopFromDurableEvidence(
   dependencies: CommandKernelDependencies,
@@ -2447,9 +2460,36 @@ function settleStopFromDurableEvidence(
   if (lease === undefined) return undefined;
   const { control } = lease;
   if (control.directive !== "stop") return undefined;
-  if (control.requestedBy !== request.requestedBy) return undefined;
-  if (control.reason !== request.reason) return undefined;
-  if (Date.parse(control.requestedAt) > Date.parse(now)) return undefined;
+  if (!isLiveWorker(lease)) return undefined;
+  const describeReason = (reason: string | undefined): string =>
+    reason === undefined ? "no reason" : `reason "${reason}"`;
+  if (control.requestedBy !== request.requestedBy) {
+    reject(
+      request,
+      "invalid-state",
+      `worker ${request.target.workerId}'s durable stop directive was `
+      + `requested by ${control.requestedBy}, not ${request.requestedBy}; `
+      + "a stop is already in flight under a different actor",
+    );
+  }
+  if (control.reason !== request.reason) {
+    reject(
+      request,
+      "invalid-state",
+      `worker ${request.target.workerId}'s durable stop directive names `
+      + `${describeReason(control.reason)}, not ${describeReason(request.reason)}; `
+      + "a stop is already in flight for a different reason",
+    );
+  }
+  if (Date.parse(control.requestedAt) > Date.parse(now)) {
+    reject(
+      request,
+      "invalid-state",
+      `worker ${request.target.workerId}'s durable stop directive is postdated: `
+      + `its requestedAt ${control.requestedAt} is after this delivery's now ${now}, `
+      + "so it cannot be this command's own crashed effect",
+    );
+  }
   const journal = repositories.commands.insert(request);
   if (journal.state === "existing") {
     throw new Error(
