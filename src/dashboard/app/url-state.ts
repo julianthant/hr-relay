@@ -155,6 +155,18 @@ export function routeToSearch(route: AppRouteState): string {
 }
 
 /**
+ * Whether pushing `next` would land on a DIFFERENT search string than the one
+ * already showing (unit F4b finding 2). `setRoute` used to push unconditionally,
+ * so re-pressing a door already open — the gear, the active nav entry, the
+ * Storage door — pushed an identical entry on top of the one already there:
+ * the URL never changed, but History gained a row, and the operator's first
+ * Back press landed them right back on the screen they were trying to leave.
+ */
+export function routeAdvancesHistory(next: AppRouteState, currentSearch: string): boolean {
+  return routeToSearch(next) !== currentSearch;
+}
+
+/**
  * Which takeover owns the main region, resolved in ONE place.
  *
  * Three keys can be present at once (a link may carry any combination), so the
