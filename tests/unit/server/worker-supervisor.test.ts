@@ -294,3 +294,52 @@ describe("spawn-worker", () => {
     expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
   });
 });
+
+/* ── crash evidence and the no-restart rule (D271) ───────────────────────── */
+
+describe("a crashed child", () => {
+  async function crashedHarness(): Promise<{ harness: Harness; target: WorkerPoolMember }> {
+    const harness = openHarness();
+    const target = member(1);
+    await harness.supervisor.execute({ command: "spawn-worker", member: target });
+    harness.clock.advanceWall(60_000);
+    harness.children[0]?.emitExit(1, null);
+    harness.leases.delete(target.workerId);
+    return { harness, target };
+  }
+
+  it("records exit code, signal and instant as crash evidence", async () => {
+    const { harness, target } = await crashedHarness();
+
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "exited",
+      pid: harness.children[0]?.pid,
+      outcome: "crashed",
+      exitCode: 1,
+      signal: null,
+      at: "2026-08-26T09:01:00.000Z",
+      observedStop: [],
+    });
+  });
+
+  it("is never restarted automatically — no new process until an explicit spawn command", async () => {
+    const { harness } = await crashedHarness();
+
+    expect(harness.spawnRequests).toHaveLength(1);
+    expect(harness.scheduler.pending()).toHaveLength(0);
+    expect(harness.faults).toHaveLength(0);
+  });
+
+  it("is replaced only by an explicit new spawn-worker command", async () => {
+    const { harness, target } = await crashedHarness();
+
+    const acknowledgement = await harness.supervisor.execute({ command: "spawn-worker", member: target });
+
+    expect(acknowledgement).toMatchObject({ command: "spawn-worker", state: "acknowledged" });
+    expect(harness.spawnRequests).toHaveLength(2);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "running",
+      pid: harness.children[1]?.pid,
+    });
+  });
+});
