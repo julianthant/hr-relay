@@ -20,9 +20,13 @@ write-safety work.
   declaration — satisfies coverage; there is no process to stop); every mutating control attests
   durable `supervised` ownership and refuses `external` by name; the stop escalation POLICY
   (stages + timeout bounds) is separated from timestamped OBSERVED stages (a strict prefix, ordered,
-  non-decreasing instants, none postdating the command's `now`), and an INITIATING stop or plan
+  non-decreasing instants, none postdating the command's `now` — a malformed `now` refuses by name
+  rather than letting `> NaN` silently unbound the check), and an INITIATING stop or plan
   acknowledgement is pinned to the graceful stage alone — later escalations are recorded as they
-  occur, never promised in advance; and the pool seam is awaitable, settling only after the process
+  occur, never promised in advance, while a plan fact the supervisor attests as `reconciling`
+  (schema-pinned `phase`) truthfully reports the policy-ordered escalation prefix that ALREADY
+  occurred, so a stop mid-escalation still has a legal honest fact; and the pool seam is awaitable,
+  settling only after the process
   effect settles, carrying distinct method names so it can never be mis-wired into the kernel's
   synchronous seam, while the synchronous phase-1 seam refuses a pending promise instead of
   acknowledging an unproved effect.
