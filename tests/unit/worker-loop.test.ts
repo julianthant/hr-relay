@@ -371,6 +371,42 @@ describe("pool-capable worker runtime executor seam", () => {
       ],
     }]);
   });
+
+  it("spawns only the explicit pool member acknowledged as started", () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "spawn-worker",
+          state: "acknowledged",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 2,
+            workerId: "person-lookup-worker-2",
+          },
+          stage: "started",
+        };
+      },
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    assert.deepEqual(executor.spawnWorker({ command: spawn, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "spawn-worker",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 2,
+        workerId: "person-lookup-worker-2",
+      },
+    }]);
+  });
 });
 
 describe("phase-1 worker runtime executor seam", () => {

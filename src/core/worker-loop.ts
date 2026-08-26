@@ -420,15 +420,29 @@ const WorkerPlanReconciliationAcknowledgementSchema = z.strictObject({
   members: z.array(WorkerPlanMemberFactSchema).min(1).max(MAX_WORKERS_PER_POOL),
 });
 
-interface WorkerPoolPlanRequest {
+const WorkerSpawnAcknowledgementSchema = z.strictObject({
+  command: z.literal("spawn-worker"),
+  state: z.literal("acknowledged"),
+  member: WorkerPoolMemberSchema,
+  stage: z.literal("started"),
+});
+
+export interface WorkerPoolPlanRequest {
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
   readonly desiredWorkers: PositiveInt;
   readonly members: readonly WorkerPoolMember[];
 }
 
+export interface WorkerPoolSpawnRequest {
+  readonly command: "spawn-worker";
+  readonly member: WorkerPoolMember;
+}
+
+export type WorkerSupervisorRequest = WorkerPoolPlanRequest | WorkerPoolSpawnRequest;
+
 export interface WorkerPoolProcessSupervisor {
-  execute(request: WorkerPoolPlanRequest): unknown;
+  execute(request: WorkerSupervisorRequest): unknown;
 }
 
 function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember {
@@ -438,6 +452,39 @@ function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember
     poolIndex: parsedIndex,
     workerId: poolWorkerId(workflowId, parsedIndex),
   });
+}
+
+function poolMemberFromWorkerId(workflowId: WorkflowId, workerId: WorkerId): WorkerPoolMember {
+  const prefix = `${workflowId}-worker-`;
+  if (!workerId.startsWith(prefix)) {
+    throw new Error(`worker ${workerId} is not a pool member of workflow ${workflowId}`);
+  }
+  const rawIndex = workerId.slice(prefix.length);
+  if (!/^[1-9]\d*$/.test(rawIndex)) {
+    throw new Error(`worker ${workerId} must carry an explicit positive pool index`);
+  }
+  const member = poolMember(workflowId, Number(rawIndex));
+  if (member.workerId !== workerId) {
+    throw new Error(`worker ${workerId} is not the canonical identity for pool index ${rawIndex}`);
+  }
+  return member;
+}
+
+function requireSameMember(
+  command: WorkerSupervisorRequest["command"],
+  expected: WorkerPoolMember,
+  acknowledged: WorkerPoolMember,
+): void {
+  if (
+    acknowledged.workflowId !== expected.workflowId
+    || acknowledged.poolIndex !== expected.poolIndex
+    || acknowledged.workerId !== expected.workerId
+  ) {
+    throw new Error(
+      `${command} requested member ${expected.workerId} at index ${String(expected.poolIndex)} but the supervisor `
+      + `acknowledged ${acknowledged.workerId} at index ${String(acknowledged.poolIndex)}`,
+    );
+  }
 }
 
 /**
@@ -481,8 +528,18 @@ export function createWorkerPoolRuntimeExecutor(
       }
       return { state: "accepted", workerIds: members.map(({ workerId }) => workerId) };
     },
-    spawnWorker(): never {
-      throw new Error("spawn-worker is not implemented by the pool runtime contract yet");
+    spawnWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "spawn-worker") {
+        throw new Error(`spawnWorker received a ${command.type} command`);
+      }
+      const member = poolMemberFromWorkerId(command.target.workflowId, command.payload.workerId);
+      const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(supervisor.execute({
+        command: "spawn-worker",
+        member,
+      }));
+      requireSameMember("spawn-worker", member, acknowledgement.member);
+      return { state: "accepted" };
     },
     refreshBrowser(): never {
       throw new Error("refresh-browser is not implemented by the pool runtime contract yet");
