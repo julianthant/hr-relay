@@ -493,3 +493,46 @@ describe("stop-worker", () => {
     });
   });
 });
+
+/* ── pause / resume attestation ──────────────────────────────────────────── */
+
+describe("pause-worker / resume-worker", () => {
+  it("attests durable ownership of a running child for pause", async () => {
+    const { harness, target } = await runningHarness();
+
+    await expect(harness.supervisor.execute({ command: "pause-worker", member: target })).resolves.toEqual({
+      command: "pause-worker",
+      state: "acknowledged",
+      member: target,
+      ownership: "supervised",
+      stage: "pause-requested",
+    });
+  });
+
+  it("attests durable ownership of a running child for resume", async () => {
+    const { harness, target } = await runningHarness();
+
+    await expect(harness.supervisor.execute({ command: "resume-worker", member: target })).resolves.toEqual({
+      command: "resume-worker",
+      state: "acknowledged",
+      member: target,
+      ownership: "supervised",
+      stage: "resume-requested",
+    });
+  });
+
+  it("refuses to pause a member it never spawned", async () => {
+    const harness = openHarness();
+
+    await expect(harness.supervisor.execute({ command: "pause-worker", member: member(1) }))
+      .rejects.toThrow(/never spawned .* never adopted or controlled/);
+  });
+
+  it("refuses to pause a child whose stop escalation is in flight", async () => {
+    const { harness, target } = await runningHarness();
+    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+
+    await expect(harness.supervisor.execute({ command: "pause-worker", member: target }))
+      .rejects.toThrow(/stop is already in flight/);
+  });
+});

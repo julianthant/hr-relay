@@ -430,6 +430,33 @@ export function createDashboardWorkerProcessSupervisor(
     });
   };
 
+  /**
+   * The kernel writes the durable pause/resume directive itself; this seam's
+   * duty is the OWNERSHIP attestation — proving the directive targets a child
+   * this supervisor durably owns and is not mid-stop, so a directive can never
+   * be acknowledged against an external or dead process.
+   */
+  const attestDirective = (
+    command: "pause-worker" | "resume-worker",
+    member: WorkerPoolMember,
+    stage: "pause-requested" | "resume-requested",
+  ): WorkerSupervisorAcknowledgement => {
+    const record = requireLiveOwnedChild(command, member);
+    if (record.state === "stopping") {
+      throw new Error(
+        `${command} refused: a stop is already in flight for ${member.workerId} `
+        + `(observed: ${record.observedStop.map(({ stage: observed }) => observed).join(" → ")})`,
+      );
+    }
+    return WorkerSupervisorAcknowledgementSchema.parse({
+      command,
+      state: "acknowledged",
+      member,
+      ownership: "supervised",
+      stage,
+    });
+  };
+
   return Object.freeze({
     async execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement> {
       switch (request.command) {
@@ -440,6 +467,10 @@ export function createDashboardWorkerProcessSupervisor(
             WorkerPoolMemberSchema.parse(request.member),
             WorkerStopEscalationPolicySchema.parse(request.escalation),
           );
+        case "pause-worker":
+          return attestDirective("pause-worker", WorkerPoolMemberSchema.parse(request.member), "pause-requested");
+        case "resume-worker":
+          return attestDirective("resume-worker", WorkerPoolMemberSchema.parse(request.member), "resume-requested");
         default:
           throw new Error(`worker supervisor cannot execute ${request.command} yet`);
       }
