@@ -11,14 +11,11 @@
  * rather than merely hidden.
  *
  * Port scope: the run-action renderers (footer, banner, park resolutions,
- * outcome, context menu) and the server-authored confirm dialog, typed against
- * the rebuild's `ActionDescriptorWire`. Still deferred with its surface:
- * `CommandResultFeed` + `toastAppliedCommandResult`. The reason they were once deferred on —
- * "until the app's real `CommandResult` wiring" — is spent: `settleCommandResult` (D253) is that
- * wiring, live since 2026-08-20, and all nine command-issuing surfaces settle through it. The
- * applied-result feed is ABSENT pending the operator's ruling on whether it is built at all
- * (`03a-finish-the-dashboard.md` OPEN question 24, ledger 1 B195/B196); the REFUSAL half is
- * already live and raises its own persistent toast from `park-resolve.tsx`.
+ * outcome, context menu), the server-authored confirm dialog, and the result
+ * feedback split. `settleCommandResult` (D253) decides every command verdict;
+ * applied settlements toast, while the two refusal settlements remain in the
+ * bounded persistent feed with their exact server facts. The demo's `settling`
+ * annotation remains absent because this command-result wire does not serve it.
  *
  * `ParkResolutions` and the park command split were deferred here on the claim
  * that "no park commands exist in the Phase-1 action vocabulary". That claim is
@@ -33,6 +30,7 @@ import { Fragment, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
+  Ban,
   CheckCircle2,
   ChevronsUp,
   CircleSlash,
@@ -48,6 +46,7 @@ import { cn } from "../lib/utils.js";
 import { IconActionButton } from "./icon-action-button.js";
 import {
   bannerPills,
+  type CommandResultFeedEntry,
   intentPill,
   outcomeAction,
   parkResolutions,
@@ -62,6 +61,7 @@ import {
   Dialog,
   DialogContent,
   DialogFooter,
+  IconButton,
   dsBorder,
   dsFocus,
   dsIcon,
@@ -90,6 +90,88 @@ export interface ActionTarget {
 export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => void;
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
+
+/**
+ * Persistent refusal context. It is a client-side feed of command answers,
+ * not a replacement for the durable audit trail; both refusal arms retain the
+ * exact server message from `settleCommandResult`.
+ */
+export function CommandResultFeed({
+  results,
+  onDismiss,
+  onRefreshRow,
+}: {
+  results: readonly CommandResultFeedEntry[];
+  onDismiss: (id: string) => void;
+  onRefreshRow: (entry: CommandResultFeedEntry) => void;
+}) {
+  if (results.length === 0) return null;
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 flex-col border-b bg-[var(--ds-recess-bg)]",
+        dsBorder.subtle,
+        "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
+      )}
+      aria-live="polite"
+      data-queue-command-result-feed=""
+    >
+      {results.map((entry) => {
+        const conflict = entry.settlement.reason === "conflict";
+        const tone = conflict
+          ? {
+            wrap: "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)]",
+            text: "text-[color:var(--ds-status-waiting-fg)]",
+            icon: <AlertTriangle aria-hidden className={dsIcon.md} />,
+            word: "Conflict",
+          }
+          : {
+            wrap: "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
+            text: "text-[color:var(--ds-danger)]",
+            icon: <Ban aria-hidden className={dsIcon.md} />,
+            word: "Rejected",
+          };
+        return (
+          <div key={entry.id} className={cn("border px-[var(--ds-space-base)] py-[var(--ds-space-snug)]", dsRadius.md, tone.wrap)}>
+            <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+              <span className={cn("inline-flex shrink-0", tone.text)}>{tone.icon}</span>
+              <span className={cn(dsText.caps, "shrink-0", tone.text)}>{tone.word}</span>
+              <span className={cn(dsText.body, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
+                {entry.actionLabel} — {entry.subject}
+              </span>
+              <span className={cn(dsText.micro, dsText.nums, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>
+                {entry.actionLabel} · {entry.clock} · {entry.actorId}
+              </span>
+              <IconButton
+                size="sm"
+                label="Dismiss this result"
+                onClick={() => onDismiss(entry.id)}
+                icon={<X aria-hidden className={dsIcon.sm} />}
+              />
+            </div>
+            <p className={cn(dsText.meta, "mt-[var(--ds-space-hair)] pl-5 leading-relaxed text-[color:var(--ds-fg-muted)]")}>
+              {entry.settlement.message}
+            </p>
+            {conflict ? (
+              <div className="mt-[var(--ds-space-tight)] flex items-center gap-[var(--ds-space-base)] pl-5">
+                <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-status-waiting-fg)]")}>
+                  row rev {entry.expectedVersion} → server {entry.settlement.currentVersion}
+                </span>
+                <Button size="sm" variant="outline" onClick={() => onRefreshRow(entry)}>
+                  Refresh this row
+                </Button>
+              </div>
+            ) : (
+              <p className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-hair)] pl-5 text-[color:var(--ds-danger)]")}>
+                code {entry.settlement.code} · {entry.subject} · {entry.workflowLabel}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 const ICONS: Record<ActionIconKey, ReactNode> = {
   retry: <RotateCcw aria-hidden className={dsIcon.md} />,
