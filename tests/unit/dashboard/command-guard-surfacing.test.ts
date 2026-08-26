@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "vitest";
 import { toastAppliedCommandResult } from "../../../src/dashboard/surfaces/actions-model.js";
-import { settleCommandResult } from "../../../src/dashboard/app/command-result.js";
+import { commandFailureToast, settleCommandResult } from "../../../src/dashboard/app/command-result.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 
 const COMMAND_ID = "1a000000-0000-4000-8000-000000000001";
@@ -109,11 +109,7 @@ function makeArms(recorded: Toasted[]): {
       });
     },
     onRejected: (caught: unknown): void => {
-      toast({
-        tone: "danger",
-        title: "Nothing was recorded",
-        description: caught instanceof Error ? caught.message : String(caught),
-      });
+      toast(commandFailureToast({ stage: "after-dispatch", caught }));
     },
   };
 }
@@ -142,10 +138,10 @@ describe("the two promise shapes, driven with the real guard and the real handle
     assert.equal(recorded.length, 1);
     const [only] = recorded;
     assert.equal(only?.tone, "danger");
-    assert.equal(only?.title, "Nothing was recorded");
-    assert.equal(
-      only?.description,
-      "an applied-command toast was composed for a refused settlement of Retry on Jordan Reyes",
+    assert.equal(only?.title, "Result unknown — check the run");
+    assert.match(
+      only?.description ?? "",
+      /an applied-command toast was composed for a refused settlement of Retry on Jordan Reyes/,
       "the guard names the action and the subject, and the operator must be able to read both",
     );
   });
@@ -156,10 +152,9 @@ describe("the two promise shapes, driven with the real guard and the real handle
     await Promise.reject(new Error("the BFF is not reachable"))
       .then(arms.onFulfilled)
       .catch(arms.onRejected);
-    assert.deepEqual(recorded, [{
-      tone: "danger",
-      title: "Nothing was recorded",
-      description: "the BFF is not reachable",
-    }]);
+    assert.deepEqual(recorded, [commandFailureToast({
+      stage: "after-dispatch",
+      caught: new Error("the BFF is not reachable"),
+    })]);
   });
 });
