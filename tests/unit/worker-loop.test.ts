@@ -402,6 +402,7 @@ describe("pool-capable worker runtime executor seam", () => {
         { workflowId: WORKFLOW_ID, poolIndex: 3, workerId: "person-lookup-worker-3" },
       ],
       excessMembers: [],
+      directive: { requestedAt: NOW, requestedBy: "local-operator" },
     }]);
   });
 
@@ -534,6 +535,7 @@ describe("pool-capable worker runtime executor seam", () => {
         workerId: "person-lookup-worker-2",
       },
       escalation: STOP_ESCALATION,
+      directive: { requestedAt: NOW, requestedBy: "local-operator" },
     }]);
   });
 
@@ -712,6 +714,7 @@ describe("pool-capable worker runtime executor seam", () => {
       command: "stop-worker",
       member: poolMemberFixture(2),
       escalation: STOP_ESCALATION,
+      directive: { requestedAt: NOW, requestedBy: "local-operator" },
     }]);
   });
 
@@ -1102,7 +1105,7 @@ describe("pool-capable worker runtime executor seam", () => {
 
     await assert.rejects(
       () => executor.stopPoolWorker({ command: stop, now: "not-an-instant" }),
-      /stop-worker for person-lookup-worker-2 received an unparseable command now "not-an-instant"/,
+      /stop-worker received an unparseable command now "not-an-instant"/,
     );
   });
 
@@ -1415,6 +1418,7 @@ describe("pool-capable worker runtime executor seam", () => {
       desiredWorkers: 1,
       members: [poolMemberFixture(1)],
       excessMembers: [poolMemberFixture(2), poolMemberFixture(3)],
+      directive: { requestedAt: NOW, requestedBy: "local-operator" },
     }]);
   });
 

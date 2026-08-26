@@ -16,12 +16,14 @@ import type { WorkerId } from "../../../src/domain/ids.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import {
   createWorkerPoolRuntimeExecutor,
+  WorkerStopDirectiveContextSchema,
   poolWorkerId,
   WORKER_GRACEFUL_STOP_TIMEOUT_MS,
   WORKER_SIGTERM_TIMEOUT_MS,
   WorkerPoolMemberSchema,
   WorkerStopEscalationPolicySchema,
   type WorkerPoolMember,
+  type WorkerStopDirectiveContext,
   type WorkerStopEscalationPolicy,
 } from "../../../src/core/worker-loop.js";
 import {
@@ -100,9 +102,10 @@ interface Harness {
   nextSpawn: (request: WorkerProcessSpawnRequest) => FakeWorkerChild;
   /** The lease probe behavior; default reads the `leases` map. */
   observeLease: (workerId: WorkerId) => WorkerLeaseBirthFact | undefined;
-  /** The graceful-stop channel behavior; default acknowledges at the current wall clock. */
+  /** The graceful-stop channel behavior; default echoes the directive's own requestedAt (a well-behaved channel). */
   nextGracefulStop: (
     target: WorkerPoolMember,
+    directive: WorkerStopDirectiveContext,
   ) => Promise<Readonly<{ requestedAt: string }>> | Readonly<{ requestedAt: string }>;
 }
 
@@ -145,7 +148,8 @@ function openHarness(overrides?: Readonly<{
       return child;
     },
     observeLease: (workerId): WorkerLeaseBirthFact | undefined => leases.get(workerId),
-    nextGracefulStop: (): Readonly<{ requestedAt: string }> => ({ requestedAt: clock.now().toISOString() }),
+    nextGracefulStop: (_target, directive): Readonly<{ requestedAt: string }> =>
+      ({ requestedAt: directive.requestedAt }),
     supervisor: createDashboardWorkerProcessSupervisor({
       launch: {
         command: overrides?.launchCommand ?? LAUNCH.command,
@@ -160,9 +164,9 @@ function openHarness(overrides?: Readonly<{
       },
       leases: { observe: (workerId) => harness.observeLease(workerId) },
       gracefulStop: {
-        request: (target) => {
+        request: (target, directive) => {
           gracefulRequests.push(target);
-          return harness.nextGracefulStop(target);
+          return harness.nextGracefulStop(target, directive);
         },
       },
       clock,
@@ -348,7 +352,7 @@ describe("spawn-worker", () => {
       .rejects.toThrow(/a replacement cannot run beside a possibly-live orphan/);
     expect(harness.spawnRequests).toHaveLength(1);
     // So are stop, pause and plan coverage — each refuses by name.
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/stop-worker refused: .*spawn-abort SIGKILL was not delivered/);
     await expect(harness.supervisor.execute({ command: "pause-worker", member: target }))
       .rejects.toThrow(/pause-worker refused: .*spawn-abort SIGKILL was not delivered/);
@@ -556,6 +560,26 @@ function stopPolicy(): WorkerStopEscalationPolicy {
   ]);
 }
 
+/** The kernel command's stop identity — `requestedAt` IS the command's now. */
+function stopDirective(at: string): WorkerStopDirectiveContext {
+  return WorkerStopDirectiveContextSchema.parse({ requestedAt: at, requestedBy: "local-operator" });
+}
+
+/** A stop-worker request minted at the harness clock's current instant, as the kernel's executor would. */
+function stopRequest(harness: Harness, target: WorkerPoolMember): {
+  command: "stop-worker";
+  member: WorkerPoolMember;
+  escalation: WorkerStopEscalationPolicy;
+  directive: WorkerStopDirectiveContext;
+} {
+  return {
+    command: "stop-worker",
+    member: target,
+    escalation: stopPolicy(),
+    directive: stopDirective(harness.clock.now().toISOString()),
+  };
+}
+
 async function runningHarness(): Promise<{ harness: Harness; target: WorkerPoolMember }> {
   const harness = openHarness();
   const target = member(1);
@@ -568,11 +592,7 @@ describe("stop-worker", () => {
     const { harness, target } = await runningHarness();
     harness.clock.advanceWall(5_000);
 
-    const acknowledgement = await harness.supervisor.execute({
-      command: "stop-worker",
-      member: target,
-      escalation: stopPolicy(),
-    });
+    const acknowledgement = await harness.supervisor.execute(stopRequest(harness, target));
 
     expect(harness.gracefulRequests).toEqual([target]);
     expect(acknowledgement).toEqual({
@@ -592,7 +612,7 @@ describe("stop-worker", () => {
   it("escalates to SIGTERM after the graceful bound and SIGKILL after the SIGTERM bound, recording each stage as it happens", async () => {
     const { harness, target } = await runningHarness();
     const stoppedAtMonotonic = harness.clock.monotonicMs();
-    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    await harness.supervisor.execute(stopRequest(harness, target));
     const child = harness.children[0];
     if (child === undefined) throw new Error("expected a spawned child");
     expect(child.signalsSent).toEqual([]);
@@ -636,7 +656,7 @@ describe("stop-worker", () => {
 
   it("never signals a child that exits gracefully before the bound — the deadline is cancelled", async () => {
     const { harness, target } = await runningHarness();
-    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    await harness.supervisor.execute(stopRequest(harness, target));
     const child = harness.children[0];
     if (child === undefined) throw new Error("expected a spawned child");
 
@@ -653,23 +673,24 @@ describe("stop-worker", () => {
     });
   });
 
-  it("records the DURABLE requestedAt in the graceful stage, not its own clock reading", async () => {
+  it("refuses a durable requestedAt that is not the command's now, and blocks the member until exit", async () => {
+    // The W1/W2 seam pin: the kernel bounds observed stages by the command's
+    // `now`, so a channel that lands the directive at any OTHER instant would
+    // record a stage the kernel must reject. The supervisor refuses it by name
+    // and blocks the member — the directive DID land, so nothing may attest or
+    // re-stop over it until the child's real exit is observed.
     const { harness, target } = await runningHarness();
     const durableAt = new Date(Date.parse(NOW) + 1234).toISOString();
     harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => ({ requestedAt: durableAt });
 
-    const acknowledgement = await harness.supervisor.execute({
-      command: "stop-worker",
-      member: target,
-      escalation: stopPolicy(),
-    });
-
-    expect(acknowledgement).toMatchObject({
-      observed: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:01.234Z" }],
-    });
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
+      .rejects.toThrow(/durable requestedAt 2026-08-26T09:00:01\.234Z that is not the command's now/);
     expect(harness.supervisor.memberEvidence(target)).toMatchObject({
-      observedStop: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:01.234Z" }],
+      state: "stop-uncertain",
+      cause: expect.stringContaining("landed at 2026-08-26T09:00:01.234Z, not the command's now") as unknown,
     });
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
+      .rejects.toThrow(/durable stop directive is UNCERTAIN/);
   });
 
   it("refuses a stop whose durable request raced the child's exit, preserving the exit evidence", async () => {
@@ -681,7 +702,7 @@ describe("stop-worker", () => {
       return { requestedAt: harness.clock.now().toISOString() };
     };
 
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/graceful stop for person-lookup-worker-1 raced: .*now exited/);
     expect(harness.supervisor.memberEvidence(target)).toEqual({
       state: "exited",
@@ -703,8 +724,8 @@ describe("stop-worker", () => {
       return { requestedAt: harness.clock.now().toISOString() };
     };
 
-    const first = harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
-    const second = harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    const first = harness.supervisor.execute(stopRequest(harness, target));
+    const second = harness.supervisor.execute(stopRequest(harness, target));
 
     await expect(second).rejects.toThrow(/a stop is already in flight for person-lookup-worker-1/);
     await expect(first).resolves.toMatchObject({ command: "stop-worker", state: "acknowledged" });
@@ -723,7 +744,7 @@ describe("stop-worker", () => {
 
     // A throw AFTER the durable directive landed is indistinguishable from
     // one before it: the record must not revert to plain "running".
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/is UNCERTAIN: the durable stop channel threw \(directive store unavailable\)/);
     expect(harness.supervisor.memberEvidence(target)).toEqual({
       state: "stop-uncertain",
@@ -738,7 +759,7 @@ describe("stop-worker", () => {
     harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => ({
       requestedAt: harness.clock.now().toISOString(),
     });
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/stop-worker refused: .*durable stop directive is UNCERTAIN/);
     expect(harness.gracefulRequests).toHaveLength(1);
     // …plan coverage refuses to attest a healthy member over a possibly-landed
@@ -778,7 +799,7 @@ describe("stop-worker", () => {
       throw new Error("directive store unavailable after exit");
     };
 
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/is UNCERTAIN: the durable stop channel threw \(directive store unavailable after exit\)/);
 
     // Never clobbered to stop-uncertain: the exit is real OS-reported evidence.
@@ -796,9 +817,9 @@ describe("stop-worker", () => {
 
   it("refuses a second stop while an escalation is already in flight", async () => {
     const { harness, target } = await runningHarness();
-    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    await harness.supervisor.execute(stopRequest(harness, target));
 
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/a stop is already in flight/);
     expect(harness.gracefulRequests).toHaveLength(1);
   });
@@ -806,7 +827,7 @@ describe("stop-worker", () => {
   it("refuses to stop a member it never spawned — external workers are not controlled", async () => {
     const harness = openHarness();
 
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: member(2), escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, member(2))))
       .rejects.toThrow(
         `stop-worker refused: this supervisor never spawned ${member(2).workerId}; `
         + "an externally started worker is never adopted or controlled",
@@ -819,7 +840,7 @@ describe("stop-worker", () => {
     const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", member: target });
     const settled = expect(pendingSpawn).rejects.toThrow(/exited/);
 
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(new RegExp(
         `stop-worker refused: worker ${target.workerId} \\(pid \\d+\\) has not proved its lease birth`,
       ));
@@ -837,13 +858,13 @@ describe("stop-worker", () => {
     const { harness, target } = await runningHarness();
     harness.children[0]?.emitExit(1, null);
 
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/already exited \(crashed, code 1, signal null\)/);
   });
 
   it("routes a failed escalation signal to the fault sink instead of recording an unsent stage", async () => {
     const { harness, target } = await runningHarness();
-    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    await harness.supervisor.execute(stopRequest(harness, target));
     const child = harness.children[0];
     if (child === undefined) throw new Error("expected a spawned child");
     child.killResult = false;
@@ -901,7 +922,7 @@ describe("pause-worker / resume-worker", () => {
 
   it("refuses to pause a child whose stop escalation is in flight", async () => {
     const { harness, target } = await runningHarness();
-    await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    await harness.supervisor.execute(stopRequest(harness, target));
 
     await expect(harness.supervisor.execute({ command: "pause-worker", member: target }))
       .rejects.toThrow(/stop is already in flight/);
@@ -910,13 +931,19 @@ describe("pause-worker / resume-worker", () => {
 
 /* ── plan-worker-count reconciliation (W1 exact-excess-coverage contract) ── */
 
-function planRequest(desired: number, members: readonly WorkerPoolMember[], excess: readonly WorkerPoolMember[]) {
+function planRequest(
+  desired: number,
+  members: readonly WorkerPoolMember[],
+  excess: readonly WorkerPoolMember[],
+  at: string = NOW,
+) {
   return {
     command: "plan-worker-count" as const,
     workflowId: WORKFLOW,
     desiredWorkers: PositiveIntSchema.parse(desired),
     members,
     excessMembers: excess,
+    directive: stopDirective(at),
   };
 }
 
@@ -928,7 +955,7 @@ describe("plan-worker-count", () => {
     harness.clock.advanceWall(2_000);
 
     const acknowledgement = await harness.supervisor.execute(
-      planRequest(1, [member(1)], [member(2), member(3)]),
+      planRequest(1, [member(1)], [member(2), member(3)], harness.clock.now().toISOString()),
     );
 
     expect(acknowledgement).toEqual({
@@ -958,7 +985,7 @@ describe("plan-worker-count", () => {
     const harness = openHarness();
     await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
     await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
-    await harness.supervisor.execute({ command: "stop-worker", member: member(2), escalation: stopPolicy() });
+    await harness.supervisor.execute(stopRequest(harness, member(2)));
     harness.clock.advanceMonotonic(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
     harness.clock.advanceWall(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
     harness.scheduler.pending()[0]?.fire();
@@ -1006,7 +1033,7 @@ describe("plan-worker-count", () => {
   it("reads a member whose stop completed as unmet/not-started, not crashed", async () => {
     const harness = openHarness();
     await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
-    await harness.supervisor.execute({ command: "stop-worker", member: member(1), escalation: stopPolicy() });
+    await harness.supervisor.execute(stopRequest(harness, member(1)));
     harness.children[0]?.emitExit(0, null);
     harness.leases.delete(member(1).workerId);
 
@@ -1163,7 +1190,7 @@ describe("close", () => {
     const harness = openHarness();
     await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
     await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
-    await harness.supervisor.execute({ command: "stop-worker", member: member(1), escalation: stopPolicy() });
+    await harness.supervisor.execute(stopRequest(harness, member(1)));
     expect(harness.scheduler.pending()).toHaveLength(1);
 
     const live = harness.supervisor.close();
@@ -1197,7 +1224,7 @@ describe("close", () => {
       new Promise((resolve) => {
         land = resolve;
       });
-    const pendingStop = harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    const pendingStop = harness.supervisor.execute(stopRequest(harness, target));
     const settled = expect(pendingStop).rejects.toThrow(/interrupted by close\(\): the durable stop directive landed/);
 
     // close() runs while the durable stop request is still in flight — its
@@ -1266,7 +1293,7 @@ describe("close", () => {
 
     await expect(harness.supervisor.execute({ command: "spawn-worker", member: member(2) }))
       .rejects.toThrow(/supervisor is closed/);
-    await expect(harness.supervisor.execute({ command: "stop-worker", member: member(1), escalation: stopPolicy() }))
+    await expect(harness.supervisor.execute(stopRequest(harness, member(1))))
       .rejects.toThrow(/supervisor is closed/);
     expect(harness.spawnRequests).toHaveLength(1);
     expect(harness.gracefulRequests).toHaveLength(0);

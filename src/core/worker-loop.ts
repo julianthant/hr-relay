@@ -21,6 +21,7 @@ import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import {
+  ActorIdSchema,
   BrowserSessionIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
@@ -590,6 +591,24 @@ export const WorkerSupervisorAcknowledgementSchema = z.discriminatedUnion("comma
 ]);
 export type WorkerSupervisorAcknowledgement = z.infer<typeof WorkerSupervisorAcknowledgementSchema>;
 
+/**
+ * The durable stop directive's identity, threaded from the kernel command that
+ * initiates a stop — a `stop-worker`, or a plan that stops an excess member.
+ * `requestedAt` is the COMMAND's `now`, the same instant
+ * `requireObservedNotAfterNow` bounds observed stages against: the injected
+ * graceful-stop channel writes the lease directive at EXACTLY this instant, so
+ * the recorded graceful stage can never postdate the acknowledgement that
+ * carries it (the W1/W2 seam gap this closes). `requestedBy`/`reason` are the
+ * command's own actor and reason — a directive is authority, and authority
+ * never carries a fabricated actor.
+ */
+export const WorkerStopDirectiveContextSchema = z.strictObject({
+  requestedAt: IsoInstantSchema,
+  requestedBy: ActorIdSchema,
+  reason: z.string().min(1).optional(),
+});
+export type WorkerStopDirectiveContext = z.infer<typeof WorkerStopDirectiveContextSchema>;
+
 export interface WorkerPoolPlanRequest {
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
@@ -603,6 +622,8 @@ export interface WorkerPoolPlanRequest {
    * omitting one, or stopping a desired index instead, refuses.
    */
   readonly excessMembers: readonly WorkerPoolMember[];
+  /** The stop identity for any excess member this plan gracefully stops. */
+  readonly directive: WorkerStopDirectiveContext;
 }
 
 export interface WorkerPoolSpawnRequest {
@@ -614,6 +635,8 @@ export interface WorkerPoolStopRequest {
   readonly command: "stop-worker";
   readonly member: WorkerPoolMember;
   readonly escalation: WorkerStopEscalationPolicy;
+  /** The durable stop directive's identity — the command's now/actor/reason. */
+  readonly directive: WorkerStopDirectiveContext;
 }
 
 export interface WorkerPoolPauseRequest {
@@ -724,6 +747,28 @@ function workerStopEscalation(): WorkerStopEscalationPolicy {
   ]);
   for (const stage of escalation) Object.freeze(stage);
   return Object.freeze(escalation);
+}
+
+/**
+ * The command's own now/actor/reason, parsed into the durable stop identity a
+ * stop's channel writes. A malformed `now` refuses HERE, before the supervisor
+ * is consulted — it would otherwise both unbound the observed-stage check and
+ * stamp garbage into a durable directive.
+ */
+function stopDirectiveContext(context: WorkerRuntimeContext): WorkerStopDirectiveContext {
+  const { command } = context;
+  const now = IsoInstantSchema.safeParse(context.now);
+  if (!now.success) {
+    throw new Error(
+      `${command.type} received an unparseable command now ${JSON.stringify(context.now)}; `
+      + "refusing to derive a durable stop directive from a malformed instant",
+    );
+  }
+  return WorkerStopDirectiveContextSchema.parse({
+    requestedAt: now.data,
+    requestedBy: command.requestedBy,
+    ...(command.reason === undefined ? {} : { reason: command.reason }),
+  });
 }
 
 function requireSameMember(
@@ -870,6 +915,7 @@ export function createWorkerPoolRuntimeExecutor(
         desiredWorkers,
         members,
         excessMembers,
+        directive: stopDirectiveContext(context),
       })));
       if (acknowledgement.desiredWorkers !== desiredWorkers) {
         throw new Error(
@@ -944,6 +990,7 @@ export function createWorkerPoolRuntimeExecutor(
         command: "stop-worker",
         member,
         escalation,
+        directive: stopDirectiveContext(context),
       })));
       requireSameMember("stop-worker", member, acknowledgement.member);
       requireDurableOwnership("stop-worker", acknowledgement.member, acknowledgement.ownership);
