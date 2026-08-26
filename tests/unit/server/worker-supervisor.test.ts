@@ -285,6 +285,22 @@ describe("spawn-worker", () => {
     expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
   });
 
+  it("rejects rather than claiming a child that exited in the same tick it proved birth", async () => {
+    const harness = openHarness();
+    const target = member(1);
+    const pending = harness.supervisor.execute({ command: "spawn-worker", member: target });
+    // The lease was published synchronously at spawn, so birth already
+    // resolved — but the exit lands before the acknowledgement continuation.
+    harness.children[0]?.emitExit(1, null);
+
+    await expect(pending).rejects.toThrow(/exited .*after proving its lease birth/);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "exited",
+      outcome: "crashed",
+      exitCode: 1,
+    });
+  });
+
   it("kills the child and rejects when the lease is owned by a different pid", async () => {
     const harness = openHarness({ publishLeaseOnSpawn: false });
     const target = member(1);

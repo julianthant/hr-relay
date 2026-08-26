@@ -320,6 +320,17 @@ export function createDashboardWorkerProcessSupervisor(
       poll();
     });
 
+    if (record.state !== "awaiting-birth") {
+      // The exit event landed between birth resolution and this continuation;
+      // promoting to running would erase the exit evidence and claim a child
+      // that is already dead.
+      const exit = record.exit;
+      throw new Error(
+        `spawn-worker failed: worker ${member.workerId} (pid ${String(record.pid)}) exited `
+        + `(code ${String(exit?.exitCode)}, signal ${String(exit?.signal)}) after proving its lease birth `
+        + "but before it could be acknowledged",
+      );
+    }
     record.state = "running";
     record.bornAt = instant();
     record.leaseStartedAt = birth.startedAt;
