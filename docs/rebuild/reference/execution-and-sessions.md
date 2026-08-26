@@ -701,8 +701,9 @@ risk register those guards answer.
 - [x] C9–C10, the capture/intake half (`tests/unit/concurrency-matrix.test.ts`)
 - [x] every other test this table cites resolves at HEAD: `run-authority`, `claim-sweep-recovery`, `kuali-transaction-proof`, `architecture/ledger-projector`, `worker-sessions`, `worker-composition`, `worker-loop`, `capture-durability`, `intake-session`, `intake-command-arms`
 - [x] C11, the Duo ceremony lease — two real `runWorkerLoop`-equivalent `WorkerSessionManager`s over ONE authority database, the second's ceremony beginning after the first's verifier returned, plus the waiter refusal and the TTL takeover (`tests/unit/duo-ceremony-gate.test.ts`, `1c244a40`)
-- [ ] the standing rule's next row: §11's pool is a new surface two callers can reach, so it adds its row in the commit that lands it
+- [x] the standing rule's §11 pool row: C12, the W5 two-child parallel proof over the composed kernel pool door, with REAL child processes (`tests/unit/server/worker-pool-parallel-proof.test.ts`)
 > 2026-08-25 | parallel-runs P3 follow-up | `composeWorkerRuntime` now requires a pool index and derives a distinct stable worker id; concurrent process admission is per worker process and duplicate identity reaches the authority lease. `createPhase1WorkerRuntimeExecutor` remains the explicitly one-worker compatibility arm
+> 2026-08-26 | W5 parallel proof | C12 landed: two real spawned worker children prove birth via their own durable leases under their own OS pids, the W3b per-workflow mutex is observed at the door (same workflow serializes, different workflows interleave), locks release at shutdown with close() evidence on the fault sink, and spawn ENOENT / undelivered signal / stop-channel throw each surface typed — never as an applied ack. Measured numbers in this section's 2026-08-26 as-built note
 <!-- /roadmap-status -->
 
 The table above names *risks*. This one names **cases**, and every row names the exact test that
@@ -729,10 +730,11 @@ Three rules decide what belongs here and how it is written.
    work at once, and the soak asserts that maximum **equals the worker count**.
 
 `composeWorkerRuntime` now accepts an explicit pool index and can host distinct worker identities;
-its process records coexist and aggregate into D181's restore observation. The matrix still drives
-`runWorkerLoop` directly because the dashboard process supervisor is unbuilt.
-`createPhase1WorkerRuntimeExecutor` continues to refuse `desiredWorkers !== 1` on its separately
-explicit compatibility path.
+its process records coexist and aggregate into D181's restore observation. The C1–C8 matrix still
+drives `runWorkerLoop` directly, which predates the dashboard process supervisor; the supervisor
+(§11, D271) has its own row below — C12 drives it through the composed kernel pool door with real
+child processes. `createPhase1WorkerRuntimeExecutor` continues to refuse `desiredWorkers !== 1` on
+its separately explicit compatibility path.
 
 **Dependency — claim, heartbeat, sweep, terminal authority**
 
@@ -755,6 +757,7 @@ explicit compatibility path.
 | C5 | Stop mid-run abandons rather than terminalizing, closes the interrupted lease as `poisoned`, LEAVES the row under its stale claim, and the recovery sweep — not the dying loop — releases it to a successor that drains it to `done` | `architecture/worker-teardown-soak.test.ts` |
 | C6 | `closeAll("worker-stop")` closes nothing while a driver callback is in flight; a SECOND concurrent `closeAll` throws by name; no new lease may start once teardown began | `architecture/worker-teardown-soak.test.ts` |
 | C7 | An operation failure whose poison-close cannot prove closure raises one `AggregateError` naming BOTH, retains the resource poisoned, refuses reuse, and worker-stop still names every failing system | `architecture/worker-teardown-soak.test.ts` |
+| C12 | The §11 pool door (D271/W5), with REAL child processes: two spawned worker CLIs supervised concurrently under one composed supervisor, each proving birth via its OWN durable lease under its OWN OS pid, with exact pool identities (`<workflowId>-worker-<n>` argv, workflow, pool index) and no cross-talk; the W3b per-workflow FIFO mutex observed at the door — a same-workflow command may not ENTER before its predecessor exits, while different workflows interleave inside each other's windows; concurrent stops settle applied, both children observe the durable directive and die (PID-proved), worker and server process locks record their release, and dashboard shutdown reports every still-live child to the structured sink; spawn ENOENT, an undelivered escalation signal and a durable stop-channel throw each surface as their typed refusal or fault, never an applied acknowledgement and never a journal row | `server/worker-pool-parallel-proof.test.ts` |
 | — | Exclusive driver use and login single-flight per `(worker,system)`; fresh-boundary close-before-open; abort-race poison-close; `closeAll("parked")` waits for an active callback; D116 fingerprint identity; D125 bounded acquisition | `worker-sessions.test.ts` |
 | — | Second live process on one worker id refused; stale lease reclaimed at boot; graceful mid-run stop; close-proof failure records the lease `crashed` | `worker-composition.test.ts` |
 | — | Single-worker drain; heartbeat renews exactly one claim; lost claim aborts without terminalizing; stop/pause directives between items | `worker-loop.test.ts` |
@@ -798,6 +801,20 @@ invariants, `quick_check` and the foreign-key scan all pass. That last read is t
 that only counted outcomes would report 30 clean runs over a corrupted claim index. The ledger
 projector is asked and must AGREE it has nothing to project — a read-only workflow mints no ledger
 entries, and asserting that is different from assuming it.
+
+**As-built (2026-08-26, W5).** C12's numbers, measured by
+`npx vitest run tests/unit/server/worker-pool-parallel-proof.test.ts --project unit` on an Apple M3
+Pro · 11 cores · 18 GB · node v26.1.0 · darwin-arm64 — three consecutive runs, all green, ranges
+across the three; a contended laptop, so read durations as ±15 % (the convention ref
+frontend-backend-integration §7.4 records for this machine). A REAL spawned
+child (node + tsx booting the stub worker CLI, opening the same authority database and writing its
+own lease) proves birth in **255–306 ms** of pool-door effect time at a 50 ms birth poll; the second
+same-pool spawn, submitted concurrently, acknowledges at **511–564 ms** because the W3b mutex
+serializes the whole first command ahead of it — and the mutex's own cost is the FIFO handoff gap
+between one command's door exit and the next's entry, measured at **0.65–0.77 ms**. Two concurrent
+stop commands acknowledge in **2 ms**, and both children observe the durable stop directive and exit
+within **54–56 ms** of submission (the stub polls its lease every 25 ms). The suite prints these as
+a `W5-MEASURED` line on every run, so re-measuring is re-running.
 
 **The standing rule.** A new execution or command surface that can be reached by two callers adds a
 row here in the commit that lands it, naming the test that executes it. A surface whose concurrency
