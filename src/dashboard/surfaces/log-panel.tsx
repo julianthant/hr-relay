@@ -39,6 +39,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -402,6 +403,16 @@ function StepStrip({
   const openedAt = gate.state === "open" ? gate.openedAt : undefined;
   const orphanGate = timelineHasOrphanGate(steps.map((step) => step.state), gate);
   const total = steps.length + (orphanGate ? 1 : 0);
+  const stripId = useId();
+  /**
+   * The disclosure opens on CSS (`group-hover`/`group-focus-within`), so
+   * nothing else in this component reads this value — it exists solely to
+   * keep `aria-expanded` truthful for the channel a screen reader actually
+   * has: keyboard focus. `onFocus`/`onBlur` are the same event pair
+   * `group-focus-within` itself keys on, so the attribute and the visible
+   * card open and close together for a keyboard user.
+   */
+  const [focusedIndex, setFocusedIndex] = useState<number | undefined>(undefined);
   return (
     <div className="flex items-stretch gap-[var(--ds-space-hair)]">
       {steps.map((step, index) => {
@@ -415,6 +426,7 @@ function StepStrip({
         // strip, orphan segment included, or the last real step misjudges its
         // own distance from the right edge.
         const anchorRight = total > 2 && index >= total - 2;
+        const disclosureId = `${stripId}-step-${String(index)}-card`;
         return (
           <div key={step.label} className="group relative min-w-0 flex-1 basis-0">
             <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
@@ -442,10 +454,20 @@ function StepStrip({
               disclosure trigger, not a command. Without the tint nobody
               discovers the detail card; with a dip it would promise a commit
               that never happens.
+
+              `aria-expanded`/`aria-controls` name the relationship a sighted
+              mouse user reads for free from the card appearing beside the
+              segment it belongs to (F6b unit): without them, a screen reader
+              user tabbing the strip hears "button" with no way to tell this
+              one discloses something, or which element it discloses.
             */}
             <button
               type="button"
               aria-label={stepAriaLabel(step, openedAt)}
+              aria-expanded={focusedIndex === index}
+              aria-controls={disclosureId}
+              onFocus={() => setFocusedIndex(index)}
+              onBlur={() => setFocusedIndex(undefined)}
               className={cn(
                 "mt-[var(--ds-space-tight)] block w-full",
                 "h-[var(--ds-h-timeline-bar)]",
@@ -487,6 +509,7 @@ function StepStrip({
             </div>
             {/* member disclosure — the grouping must hide nothing */}
             <div
+              id={disclosureId}
               className={cn(
                 "absolute top-full z-50 mt-1 hidden w-60 border p-2.5 text-left shadow-lg group-hover:block group-focus-within:block",
                 dsRadius.lg,
@@ -636,7 +659,17 @@ export function Timeline({ detail, nowIso }: { detail: RunDetailWire; nowIso: st
                   {event.label}
                 </span>
               </div>
+              {/*
+                `role="img"` so the label computes at all: a generic `<span>`
+                with no role takes no accessible name from `aria-label`
+                (HTML-AAM), the same defect the categorical strip's segment had
+                before it became a `<button>` (see `StepStrip` above). This bar
+                is decoration only — nothing here discloses on hover or focus —
+                so a role that says "this is one labelled graphic" is the
+                correct fix, not a control role.
+              */}
               <span
+                role="img"
                 aria-label={timelineEventLabel(event)}
                 className={cn(
                   "mt-[var(--ds-space-tight)] block w-full",
@@ -756,12 +789,17 @@ export function InlineDecision({
           what you match against everything else on screen. Printing the clock
           here while the outcome bar printed the age left neither surface
           carrying the pair, so comparing two waits meant reading two places.
+
+          NO `opacity-85`: `--ds-status-waiting-fg` is held to 4.5:1 against the
+          ladder's own surfaces (`tokens.css`), and stacking an opacity on top
+          of an already-audited foreground silently spends that headroom — this
+          meta line measured ~3.8:1 on the light theme's waiting card.
         */}
         <span
           className={cn(
             dsText.meta,
             dsText.nums,
-            "ml-auto shrink-0 whitespace-nowrap opacity-85 text-[color:var(--ds-status-waiting-fg)]",
+            "ml-auto shrink-0 whitespace-nowrap text-[color:var(--ds-status-waiting-fg)]",
           )}
         >
           open {decisionAge(gate.openedAt, nowIso)} · since {fmtClock(gate.openedAt)}
@@ -1276,6 +1314,47 @@ function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean })
   );
 }
 
+/**
+ * THE LIVENESS DOT (D273 item 4, ledger 2 rows A49/B87 —
+ * `DemoLogPanel.tsx:1183`). The stream above has no other cue for "lines are
+ * still arriving": an idle run and a working one whose next line is a minute
+ * away look identical, so the operator waits on a stream that finished.
+ * `surface.status` is the LIVE day-stream status, which is what makes this a
+ * liveness cue rather than a restatement of the detail fetch's last word
+ * (D256).
+ *
+ * It was `aria-hidden` over two shades of the SAME neutral token — the running
+ * mark is deliberately grey (`--ds-status-running-mark` ladder, see
+ * `tokens.css`: "Running... the only status whose icon moves, and the only
+ * differentiator it needs"), so an operator relying on colour alone could not
+ * tell a live stream from an idle one either. The house pattern for a
+ * hue-blind status cue is the one `DirectionRail` already uses beside it in
+ * this bundle: keep the colour, add the MOVEMENT the running row's own dot
+ * already carries (`animate-pulse`, same as the timeline's `active` mark), and
+ * pair an `sr-only` word so the fact survives no colour and no motion at all.
+ *
+ * Exported for the F6b render pin
+ * (`tests/unit/dashboard/run-detail-decision-cue.test.ts`): a colour-and-motion
+ * state has no fold to see whether the component composed the matching word.
+ */
+export function RunLivenessDot({ status }: { status: QueueSurfaceWire["status"] }) {
+  const live = status === "running";
+  return (
+    <span className="inline-flex shrink-0 items-center">
+      <span
+        aria-hidden
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          live
+            ? "animate-pulse bg-[var(--ds-status-running-mark)] motion-reduce:animate-none"
+            : "bg-[var(--ds-fg-faint)]",
+        )}
+      />
+      <span className="sr-only">{live ? "live" : "idle"}</span>
+    </span>
+  );
+}
+
 function LogsTab({
   detail,
   notes,
@@ -1511,24 +1590,7 @@ function LogsTab({
               currentAppVersion={currentAppVersion}
               servedDescriptorHash={servedDescriptorHash}
             />
-            {/*
-              THE LIVENESS DOT (D273 item 4, ledger 2 rows A49/B87 —
-              `DemoLogPanel.tsx:1183`). The stream above has no other cue for
-              "lines are still arriving": an idle run and a working one whose
-              next line is a minute away look identical, so the operator waits on
-              a stream that finished. `surface.status` is the LIVE day-stream
-              status, which is what makes this a liveness cue rather than a
-              restatement of the detail fetch's last word (D256).
-            */}
-            <span
-              aria-hidden
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                surface.status === "running"
-                  ? "bg-[var(--ds-status-running-mark)]"
-                  : "bg-[var(--ds-fg-faint)]",
-              )}
-            />
+            <RunLivenessDot status={surface.status} />
           </span>
         )}
       </div>

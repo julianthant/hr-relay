@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * D273 item 2, rendered — the markup half of the run-detail timeline ports.
  *
@@ -11,11 +12,18 @@
  * names the category's state, whether a homeless wait gets a segment, and which
  * words the axis prints — so `renderToStaticMarkup` is the right instrument,
  * exactly as `queue-gate-age.test.ts` uses it for the queue row's name.
+ *
+ * The F6b block below adds two claims `renderToStaticMarkup` cannot make: the
+ * read-forward strip's own segment (the categorical strip's un-ported sibling)
+ * and the disclosure button's `aria-expanded` actually FLIPPING on focus. The
+ * file takes `// @vitest-environment jsdom` for that half — `renderToStaticMarkup`
+ * runs identically under it, so nothing above this line changes behaviour.
  */
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { RunDetailWireSchema, type RunDetailWire } from "../../../src/domain/dashboard/run-detail.js";
 import { Timeline } from "../../../src/dashboard/surfaces/log-panel.js";
 
@@ -151,5 +159,73 @@ describe("B60/B61 — the axis prints both halves and no longer claims a span", 
     // zero seconds — nothing measured it.
     const html = render([step("Find person", "active")], NO_GATE);
     assert.equal(/working/u.test(html), false);
+  });
+});
+
+describe("F6b item 1 — the read-forward strip's segment names itself", () => {
+  it("computes an accessible name via role=\"img\", not a bare aria-label", () => {
+    // `steps: []` forces the un-categorical fallback strip — the one raw
+    // per-event bar the categorical `StepStrip` above never draws.
+    const html = render([], NO_GATE);
+    // A generic <span aria-label> computes NO accessible name (HTML-AAM): the
+    // regression this pins is the role vanishing while the label stays, which
+    // looks identical in every diff that does not grep for `role=`.
+    assert.match(html, /<span role="img" aria-label="searching — active"/u);
+  });
+});
+
+describe("F6b item 3 — the disclosure trigger names what it controls", () => {
+  let mounted: Root | undefined;
+
+  afterEach(async () => {
+    const root = mounted;
+    mounted = undefined;
+    if (root !== undefined) {
+      await act(async () => {
+        root.unmount();
+      });
+    }
+    document.body.replaceChildren();
+  });
+
+  it("pairs aria-controls with the member card's own id, both arms present statically", () => {
+    const html = render([step("Find person", "done", 4), step("Cross-verify", "active")], NO_GATE);
+    const controls = [...html.matchAll(/aria-controls="([^"]+)"/gu)].map((match) => match[1]);
+    assert.equal(controls.length, 2);
+    for (const id of controls) {
+      // Every controlled id names a real element in the same markup — an
+      // `aria-controls` pointing at nothing is as unreachable as none at all.
+      assert.match(html, new RegExp(`id="${String(id)}"`, "u"));
+    }
+    // Unfocused, unhovered: the disclosure has not opened yet.
+    assert.equal([...html.matchAll(/aria-expanded="(true|false)"/gu)].every((m) => m[1] === "false"), true);
+  });
+
+  it("flips aria-expanded to true on focus and back to false on blur", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mounted = root;
+
+    await act(async () => {
+      root.render(createElement(Timeline, {
+        detail: detailOf([step("Find person", "done", 4)], NO_GATE),
+        nowIso: NOW,
+      }));
+    });
+
+    const button = host.querySelector("button");
+    if (button === null) throw new Error("the strip rendered no disclosure button");
+    assert.equal(button.getAttribute("aria-expanded"), "false");
+
+    await act(async () => {
+      button.focus();
+    });
+    assert.equal(button.getAttribute("aria-expanded"), "true");
+
+    await act(async () => {
+      button.blur();
+    });
+    assert.equal(button.getAttribute("aria-expanded"), "false");
   });
 });

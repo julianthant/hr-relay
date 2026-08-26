@@ -15,7 +15,7 @@ import { describe, it } from "vitest";
 import type { z } from "zod";
 import { GateDecisionWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { InlineDecision } from "../../../src/dashboard/surfaces/log-panel.js";
+import { InlineDecision, RunLivenessDot } from "../../../src/dashboard/surfaces/log-panel.js";
 import { ContextRail } from "../../../src/dashboard/surfaces/context-rail.js";
 import { RunProvenanceBar } from "../../../src/dashboard/surfaces/run-identity.js";
 
@@ -52,6 +52,35 @@ describe("B91 — the open decision card prints the age AND the clock", () => {
     // here while the outcome bar printed only the age left neither surface
     // carrying the demo's pair.
     assert.match(html, /open 2m 30s · since /u);
+  });
+
+  it("F6b item 4 — carries no opacity-85 on the age/clock meta line", () => {
+    // `--ds-status-waiting-fg` is already held to 4.5:1 against this card's own
+    // background; stacking `opacity-85` on top of an audited foreground spends
+    // headroom the token ladder already accounted for, and measured ~3.8:1 on
+    // the light theme.
+    const html = renderToStaticMarkup(createElement(InlineDecision, {
+      gate: openGate(),
+      actions: [],
+      runId: RUN_ID,
+      onAction: () => undefined,
+      nowIso: NOW,
+    }));
+    assert.equal(/opacity-85/u.test(html), false);
+  });
+});
+
+describe("F6b item 2 — the liveness dot pairs its colour with a word", () => {
+  it("says `live` for a running surface and pulses rather than relying on hue alone", () => {
+    const html = renderToStaticMarkup(createElement(RunLivenessDot, { status: "running" }));
+    assert.match(html, /<span class="sr-only">live<\/span>/u);
+    assert.match(html, /animate-pulse/u);
+  });
+
+  it("says `idle` for every non-running status and does not pulse", () => {
+    const html = renderToStaticMarkup(createElement(RunLivenessDot, { status: "queued" }));
+    assert.match(html, /<span class="sr-only">idle<\/span>/u);
+    assert.equal(/animate-pulse/u.test(html), false);
   });
 });
 
