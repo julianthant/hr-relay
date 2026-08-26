@@ -201,4 +201,96 @@ describe("spawn-worker", () => {
   it("derives the argv tail from the member alone", () => {
     expect(workerCliArgv(member(3))).toEqual(["worker", "person-lookup", "--pool-index", "3"]);
   });
+
+  it("refuses a relative launch command at construction — PATH lookup is an ambiguity", () => {
+    expect(() => openHarness({ launchCommand: "npm" })).toThrow(/not an absolute path/);
+  });
+
+  it("refuses to spawn over a live lease it did not create — no adoption of external workers", async () => {
+    const harness = openHarness();
+    const target = member(1);
+    harness.leases.set(target.workerId, { processId: 999, startedAt: NOW });
+
+    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/externally started worker is never adopted/);
+    expect(harness.spawnRequests).toHaveLength(0);
+  });
+
+  it("refuses a second spawn while it already owns a live child for the member", async () => {
+    const harness = openHarness();
+    const target = member(1);
+    await harness.supervisor.execute({ command: "spawn-worker", member: target });
+    harness.leases.delete(target.workerId);
+
+    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/already owns a running child/);
+    expect(harness.spawnRequests).toHaveLength(1);
+  });
+
+  it("rejects with exit evidence when the child dies before proving birth", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/exited with code 1 signal null before proving its lease birth/);
+    harness.children[0]?.emitExit(1, null);
+    await expectation;
+
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "exited",
+      outcome: "crashed",
+      exitCode: 1,
+      signal: null,
+      at: NOW,
+    });
+  });
+
+  it("rejects on a process error before birth", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/process errored before proving its lease birth: spawn ENOENT/);
+    harness.children[0]?.emitError(new Error("spawn ENOENT"));
+    await expectation;
+  });
+
+  it("propagates a synchronous spawner failure and leaves no phantom record", async () => {
+    const harness = openHarness();
+    const target = member(1);
+    harness.nextSpawn = () => {
+      throw new Error("EAGAIN: process table full");
+    };
+
+    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/EAGAIN/);
+    expect(harness.supervisor.memberEvidence(target)).toBeUndefined();
+  });
+
+  it("kills the child and rejects when no lease birth is proved within the bound", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/proved no lease birth within 10000ms; the unproved child was killed/);
+
+    harness.clock.advanceMonotonic(10_000);
+    const poll = harness.scheduler.pending()[0];
+    if (poll === undefined) throw new Error("expected a scheduled birth poll");
+    poll.fire();
+    await expectation;
+    expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
+  });
+
+  it("kills the child and rejects when the lease is owned by a different pid", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/lease is owned by pid 777, not the spawned child/);
+
+    harness.leases.set(target.workerId, { processId: 777, startedAt: NOW });
+    harness.clock.advanceMonotonic(250);
+    const poll = harness.scheduler.pending()[0];
+    if (poll === undefined) throw new Error("expected a scheduled birth poll");
+    poll.fire();
+    await expectation;
+    expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
+  });
 });
