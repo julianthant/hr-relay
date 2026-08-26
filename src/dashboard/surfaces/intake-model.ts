@@ -18,7 +18,7 @@
  *
  * Provenance: `hr-automation@src/dashboard/components/dev/rebuild-demo/DemoIntake.tsx`.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { z } from "zod";
 import { canonicalJsonStringify, type JsonObject, type JsonValue } from "../../domain/canonical-json.js";
 import type { ServedHeaderCandidateSchema } from "../../domain/intake/header-discovery.js";
@@ -64,14 +64,32 @@ export type IntakeListPageController<T> = IntakeListPage<T> & Readonly<{
   goToPage: (pageIndex: number) => void;
 }>;
 
-/** A local rendering bound; D9's shared virtualization primitive remains unbuilt. */
-export function intakeListPage<T>(items: readonly T[], pageIndex: number): IntakeListPage<T> {
-  const pageCount = Math.max(1, Math.ceil(items.length / INTAKE_LIST_PAGE_SIZE));
+export type IntakeListSelection = Readonly<{
+  owner: string;
+  totalItems: number;
+  pageIndex: number;
+}>;
+
+function intakeListPageCount(totalItems: number): number {
+  if (!Number.isInteger(totalItems) || totalItems < 0) {
+    throw new Error(`intake list item count ${String(totalItems)} is not a non-negative integer`);
+  }
+  return Math.max(1, Math.ceil(totalItems / INTAKE_LIST_PAGE_SIZE));
+}
+
+function assertIntakeListPageIndex(totalItems: number, pageIndex: number): number {
+  const pageCount = intakeListPageCount(totalItems);
   if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pageCount) {
     throw new Error(
-      `intake list page ${String(pageIndex + 1)} is outside ${String(pageCount)} ${pageCount === 1 ? "page" : "pages"} for ${String(items.length)} ${items.length === 1 ? "item" : "items"}`,
+      `intake list page ${String(pageIndex + 1)} is outside ${String(pageCount)} ${pageCount === 1 ? "page" : "pages"} for ${String(totalItems)} ${totalItems === 1 ? "item" : "items"}`,
     );
   }
+  return pageCount;
+}
+
+/** A local rendering bound; D9's shared virtualization primitive remains unbuilt. */
+export function intakeListPage<T>(items: readonly T[], pageIndex: number): IntakeListPage<T> {
+  const pageCount = assertIntakeListPageIndex(items.length, pageIndex);
   const start = pageIndex * INTAKE_LIST_PAGE_SIZE;
   const pageItems = items.slice(start, start + INTAKE_LIST_PAGE_SIZE);
   return {
@@ -84,16 +102,40 @@ export function intakeListPage<T>(items: readonly T[], pageIndex: number): Intak
   };
 }
 
-/** Local component state for one immutable intake evidence list. */
+/** Reconcile a persisted page with the exact list owner and size now served. */
+export function intakeListPageForSelection<T>(
+  items: readonly T[],
+  owner: string,
+  selection: IntakeListSelection,
+): IntakeListPage<T> {
+  assertIntakeListPageIndex(selection.totalItems, selection.pageIndex);
+  const pageCount = intakeListPageCount(items.length);
+  const pageIndex = selection.owner === owner
+    ? selection.totalItems === items.length
+      ? selection.pageIndex
+      : Math.min(selection.pageIndex, pageCount - 1)
+    : 0;
+  return intakeListPage(items, pageIndex);
+}
+
+/** Local component state for one intake evidence list identity. */
 export function useIntakeListPage<T>(owner: string, items: readonly T[]): IntakeListPageController<T> {
-  const [selection, setSelection] = useState<Readonly<{ owner: string; pageIndex: number }>>({ owner, pageIndex: 0 });
-  const pageIndex = selection.owner === owner ? selection.pageIndex : 0;
-  const page = intakeListPage(items, pageIndex);
+  const [selection, setSelection] = useState<IntakeListSelection>({ owner, totalItems: items.length, pageIndex: 0 });
+  const page = intakeListPageForSelection(items, owner, selection);
+  useEffect(() => {
+    if (
+      selection.owner !== owner
+      || selection.totalItems !== items.length
+      || selection.pageIndex !== page.pageIndex
+    ) {
+      setSelection({ owner, totalItems: items.length, pageIndex: page.pageIndex });
+    }
+  }, [items.length, owner, page.pageIndex, selection.owner, selection.pageIndex, selection.totalItems]);
   return {
     ...page,
     goToPage: (nextPageIndex) => {
       intakeListPage(items, nextPageIndex);
-      setSelection({ owner, pageIndex: nextPageIndex });
+      setSelection({ owner, totalItems: items.length, pageIndex: nextPageIndex });
     },
   };
 }

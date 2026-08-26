@@ -19,6 +19,12 @@ archive readers and must fail here with the run and cursor.
 
 ### Dated lessons
 
+- **2026-08-25 — bounded list ownership includes its observed size.** A rerun membership list can
+  shrink while its prior-manifest owner stays the same, so an owner-only page selection can leave a
+  formerly valid final page outside the new bound. Validate the stored selection against its own
+  exact count first, then reset for a new owner or clamp for a changed count; otherwise refreshing
+  evidence either throws or hides malformed state behind a plausible page.
+
 - **2026-08-25 — compact evidence still needs an exact reachable value.** A title attribute and a
   painted hash prefix do not serve touch or keyboard operators. Keep the short value for scanning,
   but put the full identifier, hash or parsed input in the existing Popover vocabulary behind a

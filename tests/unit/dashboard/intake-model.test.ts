@@ -28,6 +28,7 @@ import {
   correctionText,
   headerCandidateOptionLabel,
   intakeListPage,
+  intakeListPageForSelection,
   layoutFingerprint,
   layoutMetaItems,
   manifestRowDetailFacts,
@@ -57,6 +58,32 @@ describe("intake evidence lists stay locally bounded without hiding rows", () =>
   it("refuses an out-of-range page instead of rendering a false empty state", () => {
     assert.throws(
       () => intakeListPage(["row 1", "row 2"], 1),
+      /intake list page 2 is outside 1 page for 2 items/u,
+    );
+  });
+
+  it("keeps every remaining row reachable when the current final page shrinks away", () => {
+    const remainingRows = ["row 1", "row 2", "row 3", "row 4", "row 5", "row 6", "row 7", "row 8"];
+
+    const page = intakeListPageForSelection(remainingRows, "rerun:prior:added", {
+      owner: "rerun:prior:added",
+      totalItems: 12,
+      pageIndex: 1,
+    });
+
+    assert.deepEqual(
+      { pageIndex: page.pageIndex, totalItems: page.totalItems, items: page.items },
+      { pageIndex: 0, totalItems: 8, items: remainingRows },
+    );
+  });
+
+  it("refuses a malformed prior page instead of hiding it behind a shrink reset", () => {
+    assert.throws(
+      () => intakeListPageForSelection(["row 1"], "rerun:prior:added", {
+        owner: "rerun:prior:added",
+        totalItems: 2,
+        pageIndex: 1,
+      }),
       /intake list page 2 is outside 1 page for 2 items/u,
     );
   });
