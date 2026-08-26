@@ -363,10 +363,10 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
  * processes is composition-owned and injected here.
  */
 export interface WorkerProcessSupervisor {
-  /** Start (or verify) the single Phase-1 worker process for a workflow. */
-  spawnWorker(input: Readonly<{ workflowId: WorkflowId; workerId: WorkerId }>): void;
-  refreshBrowser?(input: Readonly<{ workerId: WorkerId; browserSessionId: string }>): void;
-  reopenBrowser?(input: Readonly<{ workerId: WorkerId; browserSessionId: string }>): void;
+  /** Start the explicit Phase-1 pool member and return evidence that it started. */
+  spawnWorker(input: WorkerPoolMember): unknown;
+  refreshBrowser?(input: Readonly<{ member: WorkerPoolMember; browserSessionId: BrowserSessionId }>): unknown;
+  reopenBrowser?(input: Readonly<{ member: WorkerPoolMember; browserSessionId: BrowserSessionId }>): unknown;
 }
 
 export function poolWorkerId(workflowId: WorkflowId, poolIndex: PositiveInt): WorkerId {
@@ -594,6 +594,13 @@ function requireSameMember(
   }
 }
 
+function requireSupervisorAcknowledgement(command: WorkerSupervisorRequest["command"], value: unknown): unknown {
+  if (value === undefined) {
+    throw new Error(`${command} supervisor acknowledgement is required; refusing to accept an unproved effect`);
+  }
+  return value;
+}
+
 /**
  * The pool-capable runtime adapter. The supervisor acknowledges exact member
  * facts before the kernel may persist the declaration; an `accepted` envelope
@@ -761,10 +768,12 @@ export function createPhase1WorkerRuntimeExecutor(
       if (command.type !== "spawn-worker") {
         throw new Error(`spawnWorker received a ${command.type} command`);
       }
-      supervisor.spawnWorker({
-        workflowId: command.target.workflowId,
-        workerId: command.payload.workerId,
-      });
+      const member = poolMemberFromWorkerId(command.target.workflowId, command.payload.workerId);
+      const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(requireSupervisorAcknowledgement(
+        "spawn-worker",
+        supervisor.spawnWorker(member),
+      ));
+      requireSameMember("spawn-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
     refreshBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
@@ -777,10 +786,21 @@ export function createPhase1WorkerRuntimeExecutor(
           "refresh-browser requires the 1g browser supervisor; refusing to acknowledge an effect that did not happen",
         );
       }
-      supervisor.refreshBrowser({
-        workerId: command.target.workerId,
-        browserSessionId: command.target.browserSessionId,
-      });
+      const member = poolMemberFromIdentity(command.target.workerId);
+      const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(requireSupervisorAcknowledgement(
+        "refresh-browser",
+        supervisor.refreshBrowser({
+          member,
+          browserSessionId: command.target.browserSessionId,
+        }),
+      ));
+      requireSameMember("refresh-browser", member, acknowledgement.member);
+      if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
+        throw new Error(
+          `refresh-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
+          + acknowledgement.browserSessionId,
+        );
+      }
       return { state: "accepted" };
     },
     reopenBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
@@ -793,10 +813,21 @@ export function createPhase1WorkerRuntimeExecutor(
           "reopen-browser requires the 1g browser supervisor; refusing to acknowledge an effect that did not happen",
         );
       }
-      supervisor.reopenBrowser({
-        workerId: command.target.workerId,
-        browserSessionId: command.target.browserSessionId,
-      });
+      const member = poolMemberFromIdentity(command.target.workerId);
+      const acknowledgement = WorkerReopenAcknowledgementSchema.parse(requireSupervisorAcknowledgement(
+        "reopen-browser",
+        supervisor.reopenBrowser({
+          member,
+          browserSessionId: command.target.browserSessionId,
+        }),
+      ));
+      requireSameMember("reopen-browser", member, acknowledgement.member);
+      if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
+        throw new Error(
+          `reopen-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
+          + acknowledgement.browserSessionId,
+        );
+      }
       return { state: "accepted" };
     },
   });

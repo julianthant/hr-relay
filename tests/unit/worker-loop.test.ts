@@ -640,6 +640,12 @@ describe("phase-1 worker runtime executor seam", () => {
     const executor = createPhase1WorkerRuntimeExecutor({
       spawnWorker: (input) => {
         spawned.push(`${input.workflowId}:${input.workerId}`);
+        return {
+          command: "spawn-worker",
+          state: "acknowledged",
+          member: input,
+          stage: "started",
+        };
       },
     });
     const spawn = workerBrowserCommand({
@@ -661,6 +667,22 @@ describe("phase-1 worker runtime executor seam", () => {
     assert.throws(
       () => executor.refreshBrowser({ command: refresh, now: requestedAt }),
       /refusing to acknowledge an effect that did not happen/,
+    );
+  });
+
+  it("refuses a void supervisor result instead of accepting an unproved spawn", () => {
+    const executor = createPhase1WorkerRuntimeExecutor({ spawnWorker: () => undefined });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: EXECUTOR_WORKER_ID },
+    });
+
+    assert.throws(
+      () => executor.spawnWorker({ command: spawn, now: requestedAt }),
+      /spawn-worker supervisor acknowledgement/,
     );
   });
 });
