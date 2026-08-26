@@ -58,7 +58,7 @@
  * Values arrive redacted BY THE SERVER. `valueRedacted` renders verbatim: this
  * surface never re-derives, re-formats or unmasks one.
  */
-import { useCallback, useEffect, useId, useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -956,6 +956,7 @@ export function ContextRail({
   className,
   actorId,
   liveStatus,
+  dataExpanded,
   onDataExpandedChange,
   onSaved,
 }: {
@@ -967,27 +968,25 @@ export function ContextRail({
   actorId: string;
   /** The run's LIVE queue status off the day stream — the D19 staleness signal. */
   liveStatus: string | undefined;
-  /** The layout owner widens the rail while the Data surface is expanded. */
+  /**
+   * D273 item 5 — ONE OWNER. The Data surface's expansion is the LAYOUT owner's
+   * state, and this rail is told it rather than keeping a second copy.
+   *
+   * It used to be held here AND there: `LogPanel` sized the grid column from its
+   * own flag while this component's header word read a `useState` of its own,
+   * and collapsing the rail cleared NEITHER. Collapse an expanded rail and
+   * re-open it and the column was still `--ds-w-context-rail-wide` while the
+   * freshly mounted rail read `Run data` and offered `Widen` — the surface
+   * describing a state it did not have. The demo cannot desync because one hook
+   * owns both (`DemoContextRail.tsx:181-191`).
+   */
+  dataExpanded: boolean;
   onDataExpandedChange: (expanded: boolean) => void;
   /** An applied save bumped the run version — the owner refetches detail + sections. */
   onSaved: () => void;
 }) {
   const data = sections["context-data"];
   const attempts = sections["context-attempts"];
-
-  /**
-   * The Data surface has been widened to be edited in — the rail's own state,
-   * because two things read it: this component's header word and the layout
-   * owner's column width. It resets whenever the run changes, which the
-   * `key={data.runId}` on `DataSection` cannot do for a flag held out here.
-   */
-  const [dataExpanded, setDataExpanded] = useState(false);
-  const runId = data !== undefined && isDataPayload(data) ? data.runId : undefined;
-  useEffect(() => setDataExpanded(false), [runId]);
-  const setExpanded = useCallback((next: boolean) => {
-    setDataExpanded(next);
-    onDataExpandedChange(next);
-  }, [onDataExpandedChange]);
 
   /**
    * `RunSelector` renders nothing below two attempts, so the HEADING is gated
@@ -1059,7 +1058,7 @@ export function ContextRail({
             actorId={actorId}
             liveStatus={liveStatus}
             expanded={dataExpanded}
-            onExpandedChange={setExpanded}
+            onExpandedChange={onDataExpandedChange}
             onSaved={onSaved}
           />
         ) : (
