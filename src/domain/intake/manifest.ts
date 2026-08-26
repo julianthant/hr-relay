@@ -194,49 +194,22 @@ export const IntakeManifestTotalsSchema = z.strictObject({
 });
 export type IntakeManifestTotals = z.infer<typeof IntakeManifestTotalsSchema>;
 
-export const IntakePlanManifestSchema = z.strictObject({
-  version: z.literal(1),
-  manifestId: IntakeManifestIdSchema,
-  workflow: WorkflowIdSchema,
-  source: z.strictObject({
-    artifactId: ArtifactIdSchema,
-    sha256: FingerprintSchema,
-    originalName: z.string().min(1),
-  }),
-  mappingFingerprint: FingerprintSchema,
-  mappingSnapshotHash: FingerprintSchema,
-  intakeProjectionFingerprint: FingerprintSchema,
-  workflowContractFingerprint: FingerprintSchema,
-  /** The schema every `parsedInput` was produced by, and must be re-read with. */
-  canonicalInputSchemaHash: FingerprintSchema,
-  createdAt: IsoInstantSchema,
-  /**
-   * Present exactly when this manifest's source is a finalized phone-capture
-   * bundle rather than an uploaded spreadsheet (D174, ref data-intake-and-edit-data §5.1).
-   *
-   * §5.1 requires the bundle's manifest to name "a FileRef, source digest,
-   * capture-session id, ordered photo digests, and form/workflow binding". The
-   * first two and the last are already `source` and `workflow`; the two that
-   * are capture's alone live here. It is OPTIONAL rather than a discriminated
-   * `source` union so every manifest written before D174 still parses (D133:
-   * a durable schema is read forward, never back-filled), and its ABSENCE is
-   * the honest statement "this manifest came from a spreadsheet".
-   */
-  capture: z.strictObject({
-    captureSessionId: CaptureSessionIdSchema,
-    finalizationGeneration: PositiveIntSchema,
-    /** In page order — the bundle IS the order (ref data-intake-and-edit-data §5.1). */
-    orderedPhotoSha256: z.array(FingerprintSchema).min(1),
-  }).optional(),
-  totals: IntakeManifestTotalsSchema,
-  sourceRowDispositions: z.array(SourceRowDispositionSchema),
-  validRows: z.array(ValidRowSchema),
-  rejectedRows: z.array(RowRejectSchema),
-  corrections: z.array(IntakeCorrectionSchema),
-  exclusions: z.array(IntakeExclusionSchema),
-}).superRefine((manifest, context) => {
-  const issue = (message: string, path: (string | number)[] = []): void => {
-    context.addIssue({ code: "custom", message, path });
+interface IntakeManifestRowFacts {
+  readonly totals: z.infer<typeof IntakeManifestTotalsSchema>;
+  readonly sourceRowDispositions: readonly z.infer<typeof SourceRowDispositionSchema>[];
+  readonly validRows: readonly z.infer<typeof ValidRowSchema>[];
+}
+
+interface IntakeManifestRowIssue {
+  readonly message: string;
+  readonly path: readonly (string | number)[];
+}
+
+/** The row/totals invariant shared by durable storage and terminal wire. */
+function intakeManifestRowIssues(manifest: IntakeManifestRowFacts): readonly IntakeManifestRowIssue[] {
+  const issues: IntakeManifestRowIssue[] = [];
+  const issue = (message: string, path: readonly (string | number)[] = []): void => {
+    issues.push({ message, path });
   };
 
   const rows = manifest.sourceRowDispositions;
@@ -273,8 +246,6 @@ export const IntakePlanManifestSchema = z.strictObject({
     if (!seen.has(row)) issue(`source row ${String(row)} has no disposition`);
   }
 
-  // Totals are DERIVED. A manifest whose counts disagree with its own
-  // dispositions is the "done implies every row ran" failure (§7 #12).
   const derived = {
     valid: rows.filter((row) => row.disposition === "valid").length,
     rejected: rows.filter((row) => row.disposition === "rejected").length,
@@ -289,15 +260,11 @@ export const IntakePlanManifestSchema = z.strictObject({
   if (manifest.totals.excluded !== derived.excluded) {
     issue(`totals.excluded ${String(manifest.totals.excluded)} disagrees with ${String(derived.excluded)} excluded dispositions`, ["totals", "excluded"]);
   }
-  if (manifest.totals.rejectionEvents !== manifest.rejectedRows.length) {
-    issue("totals.rejectionEvents disagrees with the recorded rejection history", ["totals", "rejectionEvents"]);
-  }
-  if (manifest.totals.corrected !== manifest.corrections.length) {
-    issue("totals.corrected disagrees with the recorded corrections", ["totals", "corrected"]);
-  }
 
   const validRowNumbers = new Set(manifest.validRows.map((row) => row.sourceRow));
   if (validRowNumbers.size !== manifest.validRows.length) issue("validRows repeats a source row");
+  const validItemIds = new Set(manifest.validRows.map((row) => row.itemId));
+  if (validItemIds.size !== manifest.validRows.length) issue("validRows repeats a stable item identity");
   for (const row of rows) {
     if (row.disposition === "valid" && !validRowNumbers.has(row.sourceRow)) {
       issue(`source row ${String(row.sourceRow)} is valid but has no parsed input`);
@@ -310,6 +277,75 @@ export const IntakePlanManifestSchema = z.strictObject({
     } else if (disposition.itemId !== valid.itemId) {
       issue(`source row ${String(valid.sourceRow)} names a different item than its parsed input does`);
     }
+  }
+
+  return issues;
+}
+
+const IntakeManifestTerminalFields = {
+  manifestId: IntakeManifestIdSchema,
+  mappingFingerprint: FingerprintSchema,
+  mappingSnapshotHash: FingerprintSchema,
+  intakeProjectionFingerprint: FingerprintSchema,
+  workflowContractFingerprint: FingerprintSchema,
+  canonicalInputSchemaHash: FingerprintSchema,
+  createdAt: IsoInstantSchema,
+  totals: IntakeManifestTotalsSchema,
+  sourceRowDispositions: z.array(SourceRowDispositionSchema),
+  validRows: z.array(ValidRowSchema),
+} as const;
+
+export const IntakeManifestTerminalProjectionSchema = z.strictObject(IntakeManifestTerminalFields)
+  .superRefine((manifest, context) => {
+    for (const rowIssue of intakeManifestRowIssues(manifest)) {
+      context.addIssue({ code: "custom", message: rowIssue.message, path: [...rowIssue.path] });
+    }
+  });
+
+export const IntakePlanManifestSchema = z.strictObject({
+  version: z.literal(1),
+  workflow: WorkflowIdSchema,
+  source: z.strictObject({
+    artifactId: ArtifactIdSchema,
+    sha256: FingerprintSchema,
+    originalName: z.string().min(1),
+  }),
+  ...IntakeManifestTerminalFields,
+  /**
+   * Present exactly when this manifest's source is a finalized phone-capture
+   * bundle rather than an uploaded spreadsheet (D174, ref data-intake-and-edit-data §5.1).
+   *
+   * §5.1 requires the bundle's manifest to name "a FileRef, source digest,
+   * capture-session id, ordered photo digests, and form/workflow binding". The
+   * first two and the last are already `source` and `workflow`; the two that
+   * are capture's alone live here. It is OPTIONAL rather than a discriminated
+   * `source` union so every manifest written before D174 still parses (D133:
+   * a durable schema is read forward, never back-filled), and its ABSENCE is
+   * the honest statement "this manifest came from a spreadsheet".
+   */
+  capture: z.strictObject({
+    captureSessionId: CaptureSessionIdSchema,
+    finalizationGeneration: PositiveIntSchema,
+    /** In page order — the bundle IS the order (ref data-intake-and-edit-data §5.1). */
+    orderedPhotoSha256: z.array(FingerprintSchema).min(1),
+  }).optional(),
+  rejectedRows: z.array(RowRejectSchema),
+  corrections: z.array(IntakeCorrectionSchema),
+  exclusions: z.array(IntakeExclusionSchema),
+}).superRefine((manifest, context) => {
+  const issue = (message: string, path: (string | number)[] = []): void => {
+    context.addIssue({ code: "custom", message, path });
+  };
+
+  const rows = manifest.sourceRowDispositions;
+  for (const rowIssue of intakeManifestRowIssues(manifest)) {
+    issue(rowIssue.message, [...rowIssue.path]);
+  }
+  if (manifest.totals.rejectionEvents !== manifest.rejectedRows.length) {
+    issue("totals.rejectionEvents disagrees with the recorded rejection history", ["totals", "rejectionEvents"]);
+  }
+  if (manifest.totals.corrected !== manifest.corrections.length) {
+    issue("totals.corrected disagrees with the recorded corrections", ["totals", "corrected"]);
   }
 
   const rejectIds = new Set(manifest.rejectedRows.map((reject) => reject.rejectId));
@@ -335,7 +371,7 @@ export const IntakePlanManifestSchema = z.strictObject({
     }
   }
   for (const correction of manifest.corrections) {
-    if (!seen.has(correction.sourceRow)) {
+    if (!rows.some((row) => row.sourceRow === correction.sourceRow)) {
       issue(`correction names source row ${String(correction.sourceRow)}, which the file does not have`);
     }
   }
@@ -451,8 +487,9 @@ export function buildIntakeManifest(args: {
  * new run — ref data-intake-and-edit-data §7 vector #11.
  *
  * A rerun references an immutable manifest and an immutable artifact. If the
- * file, the mapping, the projection or the workflow contract has moved, that is
- * a NEW plan the operator confirms, never a silent reparse.
+ * file, mapping, projection, workflow contract, canonical schema, membership,
+ * or a stable item's input has moved, that is a NEW plan the operator confirms,
+ * never a silent reparse.
  */
 export const RerunDiffSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("same-plan") }),
@@ -467,11 +504,25 @@ export const RerunDiffSchema = z.discriminatedUnion("kind", [
     added: z.array(ValidRowSchema),
     /** Rows valid in the prior manifest whose stable item identity is absent now. */
     removed: z.array(ValidRowSchema),
+    /** Same stable item, different canonical input; hashes are safe to serve. */
+    changedInputs: z.array(z.strictObject({
+      itemId: ItemIdSchema,
+      beforeInputHash: FingerprintSchema,
+      afterInputHash: FingerprintSchema,
+    }).refine(
+      (change) => change.beforeInputHash !== change.afterInputHash,
+      { message: "a changed input names different before and after hashes" },
+    )),
   }).superRefine((diff, context) => {
-    if (diff.changes.length === 0 && diff.added.length === 0 && diff.removed.length === 0) {
+    if (
+      diff.changes.length === 0
+      && diff.added.length === 0
+      && diff.removed.length === 0
+      && diff.changedInputs.length === 0
+    ) {
       context.addIssue({
         code: "custom",
-        message: "a changed rerun diff names an axis change, an added item, or a removed item",
+        message: "a changed rerun diff names an axis change, an added item, a removed item, or changed input",
       });
     }
     const addedItemIds = new Set(diff.added.map((row) => row.itemId));
@@ -482,12 +533,29 @@ export const RerunDiffSchema = z.discriminatedUnion("kind", [
     if (removedItemIds.size !== diff.removed.length) {
       context.addIssue({ code: "custom", path: ["removed"], message: "removed repeats a stable item identity" });
     }
+    const changedItemIds = new Set(diff.changedInputs.map((change) => change.itemId));
+    if (changedItemIds.size !== diff.changedInputs.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["changedInputs"],
+        message: "changedInputs repeats a stable item identity",
+      });
+    }
     for (const itemId of addedItemIds) {
       if (removedItemIds.has(itemId)) {
         context.addIssue({
           code: "custom",
           path: ["added"],
           message: `stable item ${itemId} cannot be both added and removed`,
+        });
+      }
+    }
+    for (const itemId of changedItemIds) {
+      if (addedItemIds.has(itemId) || removedItemIds.has(itemId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["changedInputs"],
+          message: `stable item ${itemId} cannot be changed input and added or removed`,
         });
       }
     }
@@ -536,23 +604,28 @@ export function rerunDiff(
   compare("canonical-input-schema", priorManifest.canonicalInputSchemaHash, currentState.canonicalInputSchemaHash);
 
   const priorItemIds = new Set(priorManifest.validRows.map((row) => row.itemId));
-  if (priorItemIds.size !== priorManifest.validRows.length) {
-    throw new Error(`rerun diff prior manifest ${priorManifest.manifestId} repeats a valid item identity`);
-  }
   const currentItemIds = new Set(currentState.validRows.map((row) => row.itemId));
   if (currentItemIds.size !== currentState.validRows.length) {
     throw new Error("rerun diff current plan repeats a valid item identity");
   }
-  // This is a SET difference by stable item identity, not by source row or
-  // input hash. A mapping that changes an identity yields the prior row in
-  // `removed` and the current row in `added`; if identity survives, neither
-  // vector claims a replacement and the moved mapping remains visible above.
+  // Membership is a SET difference by stable item identity, not by source row
+  // or input hash. A mapping that changes an identity yields the prior row in
+  // `removed` and the current row in `added`. When identity survives, changed
+  // canonical input is a separate hash-only vector rather than a fake remove
+  // plus add.
   const added = currentState.validRows.filter((row) => !priorItemIds.has(row.itemId));
   const removed = priorManifest.validRows.filter((row) => !currentItemIds.has(row.itemId));
+  const priorByItemId = new Map(priorManifest.validRows.map((row) => [row.itemId, row]));
+  const changedInputs = currentState.validRows.flatMap((row) => {
+    const prior = priorByItemId.get(row.itemId);
+    return prior !== undefined && prior.inputHash !== row.inputHash
+      ? [{ itemId: row.itemId, beforeInputHash: prior.inputHash, afterInputHash: row.inputHash }]
+      : [];
+  });
 
-  return changes.length === 0 && added.length === 0 && removed.length === 0
+  return changes.length === 0 && added.length === 0 && removed.length === 0 && changedInputs.length === 0
     ? RerunDiffSchema.parse({ kind: "same-plan" })
-    : RerunDiffSchema.parse({ kind: "changed", changes, added, removed });
+    : RerunDiffSchema.parse({ kind: "changed", changes, added, removed, changedInputs });
 }
 
 export function intakeInputHash(parsedInput: unknown) {

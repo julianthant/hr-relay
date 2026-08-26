@@ -39,7 +39,11 @@ import {
   type IntakeSession,
 } from "../../../domain/intake/session.js";
 import { currentRerunState } from "../../../domain/intake/enqueue.js";
-import { rerunDiff, type IntakePlanManifest } from "../../../domain/intake/manifest.js";
+import {
+  IntakeManifestTerminalProjectionSchema,
+  rerunDiff,
+  type IntakePlanManifest,
+} from "../../../domain/intake/manifest.js";
 import {
   resolveInspectSelection,
   type IntakeParse,
@@ -210,18 +214,50 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
         };
       })();
 
+    const committedManifest = (() => {
+      if (session.intakeManifestId === undefined) return undefined;
+      const committed = dependencies.authorityRead.getIntakeManifest(session.intakeManifestId);
+      if (committed === undefined) {
+        throw new Error(
+          `enqueued intake session ${session.intakeSessionId} names missing manifest ${session.intakeManifestId}`,
+        );
+      }
+      return committed;
+    })();
+    const terminalManifest = committedManifest === undefined
+      ? undefined
+      : IntakeManifestTerminalProjectionSchema.parse({
+        manifestId: committedManifest.manifestId,
+        mappingFingerprint: committedManifest.mappingFingerprint,
+        mappingSnapshotHash: committedManifest.mappingSnapshotHash,
+        intakeProjectionFingerprint: committedManifest.intakeProjectionFingerprint,
+        workflowContractFingerprint: committedManifest.workflowContractFingerprint,
+        canonicalInputSchemaHash: committedManifest.canonicalInputSchemaHash,
+        createdAt: committedManifest.createdAt,
+        totals: committedManifest.totals,
+        sourceRowDispositions: committedManifest.sourceRowDispositions,
+        validRows: committedManifest.validRows,
+      });
+
     /**
      * Ref data-intake-and-edit-data §7 vector #11 (D171): these exact bytes may have run before. The
-     * LATEST manifest for this (digest, workflow) pair is what a rerun would be
-     * compared against, and the diff is computed against the session's CURRENT
-     * mapping — so an operator who re-uploads last week's export sees whether
-     * anything moved before they enqueue it a second time.
+     * committed manifest is the only comparison authority for an enqueued
+     * session. An open session uses the latest earlier manifest for this
+     * (digest, workflow) pair, excluding its own reservation and anything
+     * created after the session.
      */
     const rerun = ((): unknown => {
-      const prior = dependencies.authorityRead
+      const sessionCreatedAtMs = Date.parse(session.createdAt);
+      const prior = committedManifest ?? dependencies.authorityRead
         .findIntakeManifestsBySource(session.artifact.sha256)
-        .filter((manifest) => manifest.workflow === session.workflow)
-        .at(-1);
+        .filter((candidate) =>
+          candidate.workflow === session.workflow
+          && candidate.manifestId !== session.reservedManifestId
+          && Date.parse(candidate.createdAt) <= sessionCreatedAtMs)
+        .reduce<IntakePlanManifest | undefined>((latest, candidate) =>
+          latest === undefined || Date.parse(candidate.createdAt) >= Date.parse(latest.createdAt)
+            ? candidate
+            : latest, undefined);
       if (prior === undefined) return undefined;
       if (layout === null) {
         throw new Error(
@@ -245,26 +281,6 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       };
     })();
 
-    const manifest = (() => {
-      if (session.intakeManifestId === undefined) return undefined;
-      const committed = dependencies.authorityRead.getIntakeManifest(session.intakeManifestId);
-      if (committed === undefined) {
-        throw new Error(
-          `enqueued intake session ${session.intakeSessionId} names missing manifest ${session.intakeManifestId}`,
-        );
-      }
-      return {
-        manifestId: committed.manifestId,
-        mappingFingerprint: committed.mappingFingerprint,
-        mappingSnapshotHash: committed.mappingSnapshotHash,
-        workflowContractFingerprint: committed.workflowContractFingerprint,
-        createdAt: committed.createdAt,
-        totals: committed.totals,
-        sourceRowDispositions: committed.sourceRowDispositions,
-        validRows: committed.validRows,
-      };
-    })();
-
     return IntakeSessionWireSchema.parse({
       wireVersion: 1,
       intakeSessionId: session.intakeSessionId,
@@ -275,7 +291,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       expectedVersion: session.version,
       ...(session.reservedManifestId === undefined ? {} : { reservedManifestId: session.reservedManifestId }),
       ...(session.intakeManifestId === undefined ? {} : { intakeManifestId: session.intakeManifestId }),
-      ...(manifest === undefined ? {} : { manifest }),
+      ...(terminalManifest === undefined ? {} : { manifest: terminalManifest }),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       sheets: parse.sheets,

@@ -389,6 +389,34 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
     assert.deepEqual(diff.removed, []);
   });
 
+  it("reports changed canonical input hashes when a correction preserves the stable item", () => {
+    const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const current = validate([["10456712", "Cleckoa, Crithe", "HDH"]], {
+      corrections: [{
+        sourceRow: 1,
+        field: IntakeTargetFieldIdSchema.parse("department"),
+        correctedValue: "Student Affairs",
+      }],
+    });
+    const priorRow = prior.validRows[0];
+    const currentRow = current.valid[0];
+    if (priorRow === undefined || currentRow === undefined) throw new Error("the fixture row is not valid");
+
+    const diff = rerunDiff(prior, currentRerunFacts(prior, current.valid));
+
+    assert.deepEqual(diff, {
+      kind: "changed",
+      changes: [],
+      added: [],
+      removed: [],
+      changedInputs: [{
+        itemId: priorRow.itemId,
+        beforeInputHash: priorRow.inputHash,
+        afterInputHash: currentRow.inputHash,
+      }],
+    });
+  });
+
   it("reports remove plus add when a mapping change changes stable item identity", () => {
     const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
     const current = validate([["10998801", "Roe, Rick", "Student Affairs"]]);
@@ -440,7 +468,7 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
     );
   });
 
-  it("requires both identity vectors on a changed rerun wire", () => {
+  it("requires both membership vectors on a changed rerun wire", () => {
     assert.throws(
       () => RerunDiffSchema.parse({
         kind: "changed",
@@ -450,15 +478,48 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
           now: sha256Hex("new mapping"),
         }],
         added: [],
+        changedInputs: [],
       }),
       /removed/u,
     );
   });
 
+  it("requires the changed-input vector on a changed rerun wire", () => {
+    assert.throws(
+      () => RerunDiffSchema.parse({
+        kind: "changed",
+        changes: [{
+          what: "mapping",
+          was: sha256Hex("old mapping"),
+          now: sha256Hex("new mapping"),
+        }],
+        added: [],
+        removed: [],
+      }),
+      /changedInputs/u,
+    );
+  });
+
+  it("refuses a changed-input signal whose before and after hashes are equal", () => {
+    const itemId = deriveItemId({ emplId: "10456712" });
+    const inputHash = sha256Hex("same input");
+
+    assert.throws(
+      () => RerunDiffSchema.parse({
+        kind: "changed",
+        changes: [],
+        added: [],
+        removed: [],
+        changedInputs: [{ itemId, beforeInputHash: inputHash, afterInputHash: inputHash }],
+      }),
+      /different before and after hashes/u,
+    );
+  });
+
   it("refuses a changed rerun wire with no changed fact", () => {
     assert.throws(
-      () => RerunDiffSchema.parse({ kind: "changed", changes: [], added: [], removed: [] }),
-      /names an axis change, an added item, or a removed item/u,
+      () => RerunDiffSchema.parse({ kind: "changed", changes: [], added: [], removed: [], changedInputs: [] }),
+      /names an axis change, an added item, a removed item, or changed input/u,
     );
   });
 
@@ -480,6 +541,7 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
         changes: [],
         added: [row],
         removed: [row],
+        changedInputs: [],
       }),
       /cannot be both added and removed/u,
     );

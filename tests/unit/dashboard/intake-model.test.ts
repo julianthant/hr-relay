@@ -151,7 +151,9 @@ const TERMINAL_MANIFEST = {
   manifestId: MANIFEST_ID,
   mappingFingerprint: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
   mappingSnapshotHash: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
+  intakeProjectionFingerprint: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
   workflowContractFingerprint: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
+  canonicalInputSchemaHash: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
   createdAt: MANIFEST_CREATED_AT,
   totals: MANIFEST_TOTALS,
   sourceRowDispositions: [

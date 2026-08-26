@@ -129,7 +129,9 @@ function manifestWire(overrides: Record<string, unknown> = {}) {
     manifestId: UUID_2,
     mappingFingerprint: HASH_A,
     mappingSnapshotHash: HASH_A,
+    intakeProjectionFingerprint: HASH_A,
     workflowContractFingerprint: HASH_A,
+    canonicalInputSchemaHash: HASH_A,
     createdAt: NOW,
     totals: {
       sourceRows: 0,
@@ -243,6 +245,23 @@ describe("intake session wire", () => {
     );
   });
 
+  it("refuses a terminal rerun whose identity differs from the committed manifest", () => {
+    assert.throws(
+      () => IntakeSessionWireSchema.parse(sessionWire({
+        state: "enqueued",
+        intakeManifestId: UUID_2,
+        manifest: manifestWire(),
+        rerun: {
+          intakeManifestId: UUID_3,
+          createdAt: NOW,
+          totals: manifestWire().totals,
+          diff: { kind: "same-plan" },
+        },
+      })),
+      /the terminal rerun matches the session's committed manifest id/u,
+    );
+  });
+
   it("refuses a preflight session that claims a terminal manifest exists", () => {
     assert.throws(
       () => IntakeSessionWireSchema.parse(sessionWire({ manifest: manifestWire() })),
@@ -254,6 +273,66 @@ describe("intake session wire", () => {
     assert.throws(
       () => IntakeManifestWireSchema.parse(manifestWire({ guessedStatus: "ready" })),
       /Unrecognized key/u,
+    );
+  });
+
+  it("refuses duplicate stable item identities in a terminal manifest", () => {
+    const validRows = [1, 2].map((sourceRow) => ({
+      sourceRow,
+      itemId: UUID_7,
+      inputHash: HASH_A,
+      parsedInput: { emplId: `row-${String(sourceRow)}` },
+    }));
+
+    assert.throws(
+      () => IntakeManifestWireSchema.parse(manifestWire({
+        totals: {
+          sourceRows: 2,
+          valid: 2,
+          rejected: 0,
+          rejectionEvents: 0,
+          excluded: 0,
+          corrected: 0,
+        },
+        sourceRowDispositions: validRows.map((row) => ({
+          sourceRow: row.sourceRow,
+          disposition: "valid",
+          itemId: row.itemId,
+          currentRejectIds: [],
+        })),
+        validRows,
+      })),
+      /validRows repeats a stable item identity/u,
+    );
+  });
+
+  it("refuses a terminal manifest whose dispositions do not cover its row total", () => {
+    const validRow = {
+      sourceRow: 1,
+      itemId: UUID_7,
+      inputHash: HASH_A,
+      parsedInput: { emplId: "row-1" },
+    };
+
+    assert.throws(
+      () => IntakeManifestWireSchema.parse(manifestWire({
+        totals: {
+          sourceRows: 2,
+          valid: 1,
+          rejected: 0,
+          rejectionEvents: 0,
+          excluded: 0,
+          corrected: 0,
+        },
+        sourceRowDispositions: [{
+          sourceRow: 1,
+          disposition: "valid",
+          itemId: validRow.itemId,
+          currentRejectIds: [],
+        }],
+        validRows: [validRow],
+      })),
+      /1 dispositions cover a file of 2 rows/u,
     );
   });
 });

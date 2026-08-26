@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { manualClock } from "../../../src/domain/clock.js";
+import { manualClock, type TestClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
@@ -72,6 +72,7 @@ interface Surface {
   readonly intake: IntakeService;
   readonly database: AuthorityDatabase;
   readonly projection: ReturnType<typeof createRunQueueProjection>;
+  readonly clock: TestClock;
   readonly send: (
     intakeSessionId: string,
     expectedVersion: number,
@@ -192,6 +193,7 @@ function surface(): Surface {
     intake,
     database,
     projection,
+    clock,
     send: async (intakeSessionId, expectedVersion, type, payload) => {
       const command = {
         commandId: commandId(),
@@ -463,16 +465,22 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     if (reservedManifestId === undefined) throw new Error("the upload did not reserve a manifest identity");
     const durable = harness.database.authority.intakeManifests.get(reservedManifestId);
     if (durable === undefined) throw new Error("the immutable manifest is missing from authority");
-    assert.deepEqual(enqueued.manifest, {
-      manifestId: durable.manifestId,
-      mappingFingerprint: durable.mappingFingerprint,
-      mappingSnapshotHash: durable.mappingSnapshotHash,
-      workflowContractFingerprint: durable.workflowContractFingerprint,
-      createdAt: durable.createdAt,
-      totals: durable.totals,
-      sourceRowDispositions: durable.sourceRowDispositions,
-      validRows: durable.validRows,
-    }, "the terminal wire projects every Manifest-stage fact from the committed authority row");
+    assert.deepEqual(
+      enqueued.manifest,
+      {
+        manifestId: durable.manifestId,
+        mappingFingerprint: durable.mappingFingerprint,
+        mappingSnapshotHash: durable.mappingSnapshotHash,
+        intakeProjectionFingerprint: durable.intakeProjectionFingerprint,
+        workflowContractFingerprint: durable.workflowContractFingerprint,
+        canonicalInputSchemaHash: durable.canonicalInputSchemaHash,
+        createdAt: durable.createdAt,
+        totals: durable.totals,
+        sourceRowDispositions: durable.sourceRowDispositions,
+        validRows: durable.validRows,
+      },
+      "the terminal wire projects every reviewed field from the committed authority manifest",
+    );
   });
 
   it("serves no rerun view for a file that has never been enqueued", async () => {
@@ -519,6 +527,55 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     assert.equal(wire.rerun?.totals.valid, 2);
     assert.equal(wire.rerun?.totals.excluded, 1);
     assert.equal(wire.rerun?.diff.kind, "same-plan", "nothing has moved since it ran");
+  });
+
+  it("binds each terminal reread to that session's exact manifest after a newer same-source run", async () => {
+    const harness = surface();
+    const sessionA = await runTheRoster(harness);
+    const manifestA = (await harness.intake.read(sessionA)).intakeManifestId;
+    if (manifestA === undefined) throw new Error("session A did not name its manifest");
+
+    const sessionB = await runTheRoster(harness);
+    const manifestB = (await harness.intake.read(sessionB)).intakeManifestId;
+    if (manifestB === undefined) throw new Error("session B did not name its manifest");
+    assert.notEqual(manifestB, manifestA);
+
+    const rereadA = await harness.intake.read(sessionA);
+    assert.equal(rereadA.manifest?.manifestId, manifestA);
+    assert.equal(rereadA.rerun?.intakeManifestId, manifestA);
+
+    const rereadB = await harness.intake.read(sessionB);
+    assert.equal(rereadB.manifest?.manifestId, manifestB);
+    assert.equal(rereadB.rerun?.intakeManifestId, manifestB);
+  });
+
+  it("binds an open session only to a prior manifest, never its reservation or a future manifest", async () => {
+    const harness = surface();
+    const sessionA = await runTheRoster(harness);
+    const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
+    if (manifestAId === undefined) throw new Error("session A did not name its manifest");
+    const manifestA = harness.database.authority.intakeManifests.get(manifestAId);
+    if (manifestA === undefined) throw new Error("session A's manifest is missing");
+
+    harness.clock.advanceWall(1_000);
+    const openB = await uploadRoster(harness.intake);
+    const reservedB = openB.session.reservedManifestId;
+    if (reservedB === undefined) throw new Error("session B did not reserve a manifest identity");
+    harness.database.withAuthorityTransaction((repositories) => repositories.intakeManifests.insert({
+      ...manifestA,
+      manifestId: reservedB,
+      createdAt: openB.session.createdAt,
+    }));
+
+    harness.clock.advanceWall(1_000);
+    harness.database.withAuthorityTransaction((repositories) => repositories.intakeManifests.insert({
+      ...manifestA,
+      manifestId: "eeeeeeee-0001-4000-8000-000100000000",
+      createdAt: harness.clock.now().toISOString(),
+    }));
+
+    const rereadB = await harness.intake.read(openB.session.intakeSessionId);
+    assert.equal(rereadB.rerun?.intakeManifestId, manifestAId);
   });
 
   it("shows the mapping axis moving when the same bytes are mapped differently", async () => {

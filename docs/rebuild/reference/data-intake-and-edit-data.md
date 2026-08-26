@@ -1869,12 +1869,15 @@ that reached the same mapping in a different order hash the same. It deliberatel
 manifest records those in full in their own arrays; §7 #11 asks whether the run was planned the same
 WAY).
 
-**Rerun item vectors are a set difference over stable `itemId`.** `removed` carries the prior
-manifest's exact valid-row facts; `added` carries the current plan's re-derived valid-row facts.
-`sourceRow` and `inputHash` are evidence about an item, not its identity: a mapping change that
-preserves `itemId` leaves both vectors empty, while one that changes `itemId` reports the old row as
-removed and the new row as added. The current side is revalidated from the immutable artifact and
-the session's durable bindings/constants/corrections/exclusions. A validated or enqueued session
+**Rerun membership vectors are a set difference over stable `itemId`; changed input is separate.**
+`removed` carries the prior manifest's exact valid-row facts; `added` carries the current plan's
+re-derived valid-row facts. `sourceRow` and `inputHash` are evidence about an item, not its identity:
+a mapping change that preserves `itemId` leaves both membership vectors empty, while one that changes
+`itemId` reports the old row as removed and the new row as added. A stable item whose canonical input
+changes is never mislabeled `same-plan`: `changedInputs` carries only its `itemId` and safe
+`beforeInputHash`/`afterInputHash` fingerprints, not the canonical input values. The current side is
+revalidated from the immutable artifact and the session's durable
+bindings/constants/corrections/exclusions. A validated or enqueued session
 uses its retained validation `readAt`; a mapping session has no validation instant, so it uses its
 durable `updatedAt`, the instant that exact decision snapshot committed. It never reads the current
 clock or substitutes rows. Once a prior manifest exists, a missing current layout or prior/current
@@ -1899,10 +1902,13 @@ absent, but ordinary update cannot back-fill it. Enqueue passes the reservation 
 
 The wire keeps reservation and terminal authority separate. Before enqueue it serves only
 `reservedManifestId`; after enqueue it additionally requires the committed `intakeManifestId` and
-an immutable Manifest projection loaded by that exact id: mapping/layout snapshot/workflow-contract
-fingerprints, creation instant, derived totals, every source-row disposition and every valid row.
-The strict wire refuses a terminal projection before enqueue, an enqueued identity with no manifest,
-or any disagreement among reserved, committed and projected manifest ids.
+an immutable projection loaded by that exact id: all five plan fingerprints, creation instant,
+derived totals, every source-row disposition and every valid row. Its field schemas and the shared
+totals/disposition/row-coverage/unique-item refinement are owned beside the durable manifest; the
+wire remains a reviewed redaction surface rather than exposing the manifest's additional free-text
+and open-JSON leaves. The strict session wire refuses a terminal projection before enqueue, an
+enqueued identity with no manifest, or any disagreement among reserved, committed,
+projected-manifest and projected-rerun ids.
 
 **One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
 inserted; `start-run` and this arm reach it with different plans and identical obligations — the
@@ -1950,12 +1956,17 @@ stored `parsedInput`. A count mismatch between valid rows and reported runs thro
 filing a partial fan-out.
 
 **`rerunDiff` is served, not just computable.** The session wire carries an optional `rerun`
-`{intakeManifestId, createdAt, totals, diff}` whenever the LATEST manifest for this
-`(source digest, workflow)` pair exists — on the upload response and on
-`GET /api/v1/intake/:sessionId` alike, since both render from one `buildWire`. The prior manifest is
-found BY the session's own digest, so the `source-artifact` axis is equal by construction and the
-diff reports the mapping, projection, contract and canonical-schema axes. An enqueued session serves
-its own manifest reading `same-plan`, which is the manifest view the run surface links to.
+`{intakeManifestId, createdAt, totals, diff}` on the upload response and on
+`GET /api/v1/intake/:sessionId`, since both render from one `buildWire`. An enqueued session resolves
+the exact `intakeManifestId` it committed even when newer same-source manifests exist. An open
+session may resolve only the latest same-workflow manifest at or before that session's creation;
+its reserved identity and later manifests are ineligible. The source digest is the session's own,
+so the `source-artifact` axis is equal by construction and the diff reports mapping, projection,
+contract, canonical-schema, membership and changed-input facts.
+
+This is the server/wire contract only. The existing intake UI continues to consume its already-built
+manifest facts; displaying `changedInputs` and the newly served projection fingerprints belongs to
+the next `/ui` unit, so this section makes no visual-completion claim for them.
 
 **One more identity, closed.** `intakeProjectionRegistry` now refuses a module whose projection was
 built over a COPY of its descriptor's input schema rather than the schema object itself. Everything

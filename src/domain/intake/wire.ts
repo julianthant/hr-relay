@@ -33,11 +33,10 @@ import {
 } from "../ids.js";
 import { ServedHeaderCandidateSchema, HeaderDiscoverySchema } from "./header-discovery.js";
 import {
+  IntakeManifestTerminalProjectionSchema,
   IntakeManifestTotalsSchema,
   RerunDiffSchema,
   RowRejectSchema,
-  SourceRowDispositionSchema,
-  ValidRowSchema,
 } from "./manifest.js";
 import { ColumnBindingSchema, DetectedColumnSchema } from "./mapping.js";
 import { IntakeTargetSchema } from "./projection.js";
@@ -88,17 +87,10 @@ export type IntakeRerunWire = z.infer<typeof IntakeRerunWireSchema>;
  * The immutable terminal manifest an operator may inspect. This is never a
  * preflight prediction: before enqueue only the separately served reservation
  * exists, so the surface cannot claim a manifest has already been written.
+ * Its field schemas and row refinements are owned beside the durable manifest,
+ * so this reviewed projection cannot drift into a second totals contract.
  */
-export const IntakeManifestWireSchema = z.strictObject({
-  manifestId: IntakeManifestIdSchema,
-  mappingFingerprint: FingerprintSchema,
-  mappingSnapshotHash: FingerprintSchema,
-  workflowContractFingerprint: FingerprintSchema,
-  createdAt: IsoInstantSchema,
-  totals: IntakeManifestTotalsSchema,
-  sourceRowDispositions: z.array(SourceRowDispositionSchema),
-  validRows: z.array(ValidRowSchema),
-});
+export const IntakeManifestWireSchema = IntakeManifestTerminalProjectionSchema;
 export type IntakeManifestWire = z.infer<typeof IntakeManifestWireSchema>;
 
 export const IntakeSessionWireSchema = z.strictObject({
@@ -180,6 +172,17 @@ export const IntakeSessionWireSchema = z.strictObject({
       code: "custom",
       path: ["manifest", "manifestId"],
       message: "the terminal manifest matches the session's committed manifest id",
+    });
+  }
+  if (
+    session.rerun !== undefined
+    && session.intakeManifestId !== undefined
+    && session.rerun.intakeManifestId !== session.intakeManifestId
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["rerun", "intakeManifestId"],
+      message: "the terminal rerun matches the session's committed manifest id",
     });
   }
   if (
