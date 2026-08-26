@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
 asOf: 2026-08-25
-head: 88a20ee9
+head: 1af961c3
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
 source: `docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (Tracks 0/A/B/C)
@@ -13,8 +13,8 @@ tiles:
 - Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
 - Active | Phase 3 | per-workflow migration · entered at separations
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
-- Decisions | D1–D266 | rounds 68–90 landed this wave · D131 retired, never reused
-- Gates | 67 active guards | integrated gate pending · parity last frozen 157/157 on 08-25 · schema v18
+- Decisions | D1–D270 | D267–D270 landed in dashboard hardening · D131 retired, never reused
+- Gates | 69 active guards | integrated D191 2,729/2,729 · parity last frozen 157/157 on 08-25 · schema v18
 - !Critical-path blocker | Wait for 08-28 | canary **4537 named** — S7 admits its separation date then; the three commits run ② → ① → ③
 
 <!-- roadmap:start -->
@@ -364,11 +364,11 @@ log:
 
 ### Dashboard defaults — the generic surfaces every workflow inherits {#dash-defaults}
 status: active
-chip: B+C done · D ratified (D264)
+chip: B+C+D done · Duo + observed proof done · pool + fidelity open
 size: L
 doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C proved the connection against a real run; Track D hardens the stack before cutover; **Track F is the fidelity bar above all three** — every region demo-exact or ruled, with 52 current numbered decision lines waiting on the operator. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
+> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C proved the connection against a real run; Track D's D1–D5 + D11 are done, with D4/D5's budgets measured. **Track F is the fidelity bar above all three** — every region demo-exact or ruled, with 49 live decisions across six bounded sheets waiting on the operator. The Duo lease and observed-log proof are done; the worker supervisor/parallel proof remains. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -461,15 +461,15 @@ log:
 - 2026-08-21 | docs-cohesion workflow-model | ref workflow-model rewritten as-built, status blocks filled (`40088de6`)
 
 #### Track D · dashboard hardening, pre-cutover budgets {#track-d}
-status: planned
+status: done
 date: D264 · audit 2026-08-20
-chip: ratified 2026-08-20 (D264) · D1–D5 planned · D6–D10 proposed
+chip: D1–D5 + D11 landed · D4/D5 measured · D6–D10 proposed
 doc: 03a §Track D · dashboard hardening, pre-cutover budgets · ref:frontend-backend-integration §2 · ref:frontend-backend-integration §4 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §7.4 · ref:workflow-model §1.2
 
 > From the 2026-08-20 architecture audit (`docs/plans/2026-08-20-dashboard-architecture-audit.md`). **Verdict: the stack and shape are right; nothing is swapped.** Eleven ordered moves, none a rewrite, sequenced after Track C and before the next workflow leans on the dashboard. **Ruled by D264:** the track sits here under the dashboard defaults; D1–D5 are planned; D6–D10 stay proposed behind one named trigger; and §3.5 is answered — the descriptor registry LEAVES the browser bundle as row D11, amending D251. D4 and D5 double as the FIRST measurement of ref frontend-backend-integration §7.4's performance budgets, whose recorded numbers become the non-regression gates for every later workflow.
 
 builds:
-- [ ] BE D1 one status/outcome derivation — exported `deriveRunStatus`, ONE `TASK_OUTCOME` vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row (closes C1/C2, part of M3)
+- [x] BE D1 one status/outcome derivation — exported `deriveRunStatus`, ONE task-outcome vocabulary, ONE `panelKindOf`; the detail panel stops disagreeing with the queue row (D268, `81bfed73`; closes C1/C2, part of M3)
 - [x] BOTH D2 hygiene — the HTTP status is the error's KIND not its wording (`f39b2e95`), the phone-host gate is WIRED from `capture.ingress: "forwarded"` with a producer guard (`47eeb44e`), two dead hooks and ten dead exports gone (`69102aaf`), the TEST-instance hazard / `plural` / `shortHash` one each (`6d44bb1e`) (closes C3/C4/M7/M8; the D253-sentence half landed with D3, `1b13115f`)
 - [x] FE D3 every command settlement folds through `settleCommandResult` — all NINE command-issuing surfaces fold; the guard's second arm requires any module calling `.executeCommand(` to import it (closes C5)
 - [x] BOTH D4 patch-splice without re-parsing the whole day, `memo` on `QueuePanel`/`TopBar`/`LogPanel`, `viewState` and `nav` memoized; MEASURED against the seeded 1,240-row / 108-member fixture and recorded as ref frontend-backend-integration §7.4's first D4 numbers — one SSE row patch `22.30 → 0.02 ms`, `dayWireSchemaParses 1 → 0` (closes P1)
@@ -507,15 +507,16 @@ log:
 - 2026-08-21 | track-d11 | D11 DONE (`149bc5f8` the wire block + server projection + a test driving `buildBootstrap` over the whole registry; `0911becd` the frontend drop + guard arm 15, proved to bite by re-adding the deleted import). The audit's "49 modules for three plain fields" undercounted the cost: the production bundle fell **1,114,214 → 753,197 bytes (32 %)**, `separations` string occurrences 259 → 7. `run-start.tsx` needed no edit — the composed `RunStartWorkflow` is identical field for field, so the whole frontend delta is one deleted import and one read site, and the modal's `?? "reject-active"` default retired with it (it stood in for a fact the server always had). ref frontend-backend-integration §4's ONE named divergence is closed and its §7.4 exit-criterion 2 is MET
 - 2026-08-21 | track-d4 | D4 DONE (`345475bf` splice + tests, `bb406615` memo + stable props + guard) — a single-row SSE patch no longer re-validates the whole day: `22.30 → 0.02 ms` median and `dayWireSchemaParses` 1 → 0 over three runs against the same seed, with rows 1/3/4/5 held as an unchanged control so the delta is the change and not the loaded machine. Dropping the parse also gives every untouched row back its REFERENCE, which is the only reason `memo` on `LogPanel` can skip a 2,000-line subtree during a bulk run — the two halves are one change. New guard `dashboard-memo-prop-stability` refuses the five provably-fresh prop shapes, because a `memo` beaten by one fresh prop re-renders as often as before with every gate green. Honest bound recorded in §7.4: the D256 live clock is a prop of all three panels and ticks 1 Hz, so `memo` buys the re-renders BETWEEN ticks; the browser render count is deliberately not taken on a contended laptop and belongs to D9
 - 2026-08-21 | track-d3 | D3 DONE (`1b13115f`) — the seven hand-enumerating sites fold; the fold carries the server's own per-arm facts (`message`/`code`/`currentVersion`) beside the composed sentence, so a surface drawing a refusal in its own components stops taking the union apart, and ZERO operator-visible text moved (the parity corpus photographs identity-approve's conflict alert). The guard gains a second arm + fixture (`5c36a82d`): posting through `executeCommand` without importing the fold is now a failure, which the first arm could not see
+- 2026-08-25 | 03a reconciliation | Track D's exit scope is DONE: D1–D5 + D11 are landed and held by tests/guards; D4/D5 are measured, and ref frontend-backend-integration §7.4 carries their shared-fixture BEFORE/AFTER numbers. D6–D10 remain proposed behind their trigger and are outside this gate; the additional unchecked findings on this node remain explicitly booked work rather than false completion claims
 
 #### Track F · demo fidelity — every detail, region by region {#track-f}
 status: you
 date: fidelity re-audit 2026-08-21
 size: L
-chip: 52 decision lines — needs you
+chip: 49 live decisions across six sheets — needs you
 doc: 03a §Demo fidelity — every detail, region by region
 
-> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. The consolidated phase list has 52 current numbered decision lines; ledger 3 has 238 OPEN row marks mapped to 30 unresolved numbered groups.
+> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. Six decision sheets contain the 49 live operator choices exactly once; ledger 3 has 238 OPEN row marks mapped to 30 unresolved numbered groups.
 
 builds:
 - [!] DOCS the operator rules the 37 shell / queue / run-start OPEN questions (ledger 1 §Roll-up)
@@ -534,7 +535,7 @@ builds:
 
 needs:
 - track-b
-- you: rule the 52 current numbered decision lines in doc 03a's consolidated list — each becomes ported, or a recorded divergence with its argument
+- you: rule the 49 live decisions in the six 2026-08-25 sheets — each becomes ported, or a recorded divergence with its argument
 
 log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | node drawn from the three 2026-08-21 ledgers; doc 03a §Demo fidelity carries the per-region table, every OPEN question as one line, the served-and-dropped list and the stale-claims table · left: the operator's rulings, then every FE / BE / BOTH / PROOF line above
@@ -543,19 +544,20 @@ log:
 - 2026-08-25 | track-f A46 adversarial correction | `e108ff3f` separates cross-generation restart/rebuild from real missed history, stabilises interval identity across reason aging/head movement and process restart, single-flights concurrent clients, refuses every authority mutation/fold, and restarts an atomically captured handshake if publication moves the projection; `a2d2a8e8` keeps 6+ pins, ordinary rows and fixed filters reachable at 390×844 with truthful Pings counts and a 44px bell. A46 stays exact, so ledger 1 remains 132/178 and the three-ledger total remains 775/1,956 exact. Production-bundle mobile proof passed; no parity reference was re-frozen.
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
-status: planned
+status: done
 date: R12 · 2026-08-20
 size: S
+chip: D267 landed · live generations 3 → 4 serialized
 doc: 03a §Duo ceremony lease — one login at a time per credential · ref:execution-and-sessions §4.1 · ref:execution-and-sessions §4.2 · ref:execution-and-sessions §10
 
 > A durable per-credential lease in authority serializes EVERY Duo ceremony — from "navigate to SSO" until the content verifier proves the session — across every worker and every system. TTL is `sessionAcquireMs` + grace; waiters are bounded and refuse loud naming the holder; a refused assertion poison-closes and retries ONCE under the same lease on a FRESH profile, then fails naming the profile; `defineVerifiedLoginRecipe` takes a lease token only the lease store mints, pinned by a guard with a violating fixture. The hazard exists TODAY — two workflows' workers cold-starting together share one credential's server-side counter (D243).
 
 builds:
-- [ ] BE `duo_ceremony_leases` in authority + the lease token `defineVerifiedLoginRecipe` requires + the grace config leaf `timeouts.duoCeremonyLeaseGraceMs` (a D133 snapshot-generation change)
-- [ ] BE bounded waiters + the fresh-profile-once recovery, both failing by name
-- [ ] BE the guard: no login path without the lease, with a violating fixture
+- [x] BE `duo_ceremony_leases` in authority + the lease token `defineVerifiedLoginRecipe` requires + the grace config leaf `timeouts.duoCeremonyLeaseGraceMs` (D267, `bfc7d318`, `cb7f17f8`)
+- [x] BE bounded waiters + the fresh-profile-once recovery, both failing by name (`cb7f17f8`)
+- [x] BE the guard: no login path without the lease, with a violating fixture (`37e747f0`)
 - [x] PROOF two workers' cold starts serialize — unit (`1c244a40`) + the LIVE two-worker cold start (2026-08-21) + the ref execution-and-sessions §7.1 concurrency-matrix row
-- [ ] DOCS the decision in `reference/execution-and-sessions` + `reference/decisions`
+- [x] DOCS the decision in `reference/execution-and-sessions` + `reference/decisions` (D267)
 
 needs:
 - track-d
@@ -1090,7 +1092,9 @@ log:
 
 ## session: 2026-08-25 | workflow-tree completion | workflow-tree and test-tiers implementation landed through `88a20ee9`; the annotation is gone, the T1 machinery records honest blocked evidence, final D191 is 2,362/2,362 and parity is 157/157; only the 08-28 live `met` remains
 
-## today: 2026-08-25 · D265 + D266 implemented; 03a integration and decision briefs current — folders mirror the rail and timeline, observed logs have their live proof, and the T1 production runner records blocked-not-started honestly · 49 current Track F / worker-pool decisions wait on you · separations 8 / 9 · the live T1b `met` waits for 08-28
+## session: 2026-08-25 | 03a integration close | Track D D1–D5 + D11 and §7.4's D4/D5 measurements reconciled DONE; Duo D267 + its live proof reconciled DONE; observed logs live proof and intake Manifest/Rerun landed; integrated D191 PASS at `1af961c3` is 263 files / 2,729 tests (82.75 % statements, 84.79 % lines). Left honestly open: the real worker supervisor + parallel proof, 49 operator decisions and their resulting fidelity ports, then the one deliberate parity re-freeze
+
+## today: 2026-08-25 · 03a autonomous integration is green at 2,729/2,729 — Track D, Duo, observed-log proof and intake Manifest/Rerun are reconciled; worker supervision/parallel proof and 49 operator decisions remain · separations 8 / 9 · the live T1b `met` waits for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued

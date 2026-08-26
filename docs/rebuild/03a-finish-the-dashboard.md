@@ -18,12 +18,13 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [x] the notification inbox has production producers — backup health (D222) and the gate park (D262), both wired in `src/server/dashboard/compose.ts`
 - [x] the connection is proved end to end: the REAL dashboard drove a REAL composed separations dry run, every UI claim paired against authority (Track C, `docs/migrations/separations.md` §9.22)
 - [x] the reference corpus asserts green over the corrected surfaces — 139 references re-frozen, 151 assert-mode cases green (`81287bb1`)
-- [ ] Track D's D1–D5 — D1 LANDED as **D268** (`81bfed73`), D2 the hygiene commit and D3 the settlement fold LANDED (`f39b2e95`…`6d44bb1e`, `1b13115f`), D5 the bounded read scans LANDED (`d6d6c758`/`c1fa129b`/`c74efcca`/`c547f65a`); patch-splice + `memo` and the bounded read scans are still unlanded (ratified D264)
-- [ ] the two still-open nodes drawn under this one on 2026-08-20 — the Duo ceremony lease and the worker pool / sessions
+- [x] Track D's D1–D5 + D11 — one status derivation, typed failures, one settlement fold, patch-splice + stable `memo` props, bounded reads and the descriptor registry outside the browser bundle; D6–D10 remain proposed outside the exit gate (D264/D268)
+- [x] the Duo ceremony lease — authority, token, bounded waiters, recovery, guard, docs and the live two-worker cold-start proof all landed (D267)
+- [ ] the worker pool / sessions node — pool-indexed identity, durable pool/session authority and the FE session view landed; the real dashboard supervisor and two-scenario parallel proof remain
 - [x] observed logs — the real dashboard/composed separations dry run served 13 observed rows (sequences 0..12), no notes and zero run-scoped write evidence (`docs/migrations/separations.md` §9.25)
-- [ ] `ref frontend-backend-integration` §7.4's performance budgets — the instrument and its BEFORE baseline landed 2026-08-21 and **D5's AFTER numbers are recorded**; D4 still owes its half, and the recorded numbers become the non-regression gates
+- [x] `ref frontend-backend-integration` §7.4's performance budgets — the instrument, BEFORE baseline and both D4/D5 AFTER measurements are recorded against the same 1,240-row / 108-member fixture; the recorded bounds are the later-workflow non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
-- [!] demo fidelity — every region exact or ruled; 52 current numbered decision lines remain after the archive UI slice, Activity AC24 and Explorer EX5 closed their ledger marks (Track F, §Demo fidelity — every detail, region by region)
+- [!] demo fidelity — every region exact or ruled; 49 live operator decisions remain across six bounded sheets after the autonomous ports (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/2026-08-25-03a-decision-brief-coverage.md`)
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
 > 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
 > 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; `4e09fb49` carries Explorer's `Version registry` door through dashboard route state to Archive's actual `Versions & bumps` view. A mechanical recount of ledger 3's 1,119 rows gives 353 exact and 238 OPEN marks; left in this unit: every other non-archive served-and-dropped fact
@@ -60,7 +61,8 @@ observed logs beside them.
 ### What "done" means for this phase
 
 A later migration's `Dashboard · wire` task may read `{#dash-defaults}` as met when all of these
-hold. Only the first four hold at HEAD.
+hold. The original eight criteria are 7/8 met; demo fidelity remains open. The expanded ten-row exit
+table is 8/10 met: it also keeps parallel runs open and records observed logs met.
 
 1. Every row of the wiring matrix (`ref frontend-backend-integration` §5) has an implementation and
    a test, and every surface landed as ONE vertical slice (see §Integration execution rule).
@@ -78,8 +80,9 @@ hold. Only the first four hold at HEAD.
 7. The Duo ceremony lease exists, so a second workflow's worker cold-starting beside the first
    cannot burn the shared credential's counter.
 8. Every region of the dashboard is demo-exact or ruled — Track F's bar, above Track B's: Track B's
-   definition of done was the findings ledger; demo fidelity is the stricter bar, and 52 numbered
-   decision lines stand against it at HEAD (§Demo fidelity — every detail, region by region).
+   definition of done was the findings ledger; demo fidelity is the stricter bar, and 49 live
+   operator decisions across six sheets stand against it at HEAD (§Demo fidelity — every detail,
+   region by region).
 
 ### The honest state at HEAD, surface by surface
 
@@ -272,8 +275,10 @@ parse per single-row patch) confirm what the audit predicted from reading. D4 an
 command against the same seed and record the delta beneath it. The instrument touches nothing under
 `src/` — it measures the tree, it does not fix it.
 
-**D5's AFTER numbers are recorded (2026-08-21, `c547f65a`).** Same command, same seed, same eleven
-iterations, in §7.4's AFTER table: the day wire drops **6,718 → 5,568** SQLite statements (5.42 →
+**D4 and D5's AFTER numbers are recorded (2026-08-21).** Same command and seed: D4's row patch
+falls **22.30 → 0.02 ms** and `dayWireSchemaParses` **1 → 0** (`345475bf`, `bb406615`). D5's
+same eleven-iteration run (`c547f65a`) records, in §7.4's AFTER table, the day wire dropping
+**6,718 → 5,568** SQLite statements (5.42 →
 4.49 per row, decomposing exactly into 940 saved receipt reads and 210 saved preview joins), the
 member-preview delta drops **216 → 6** and stops scaling with the member count at all, and a logs
 GET may now open **2 of the corpus's 4 partitions** instead of all of them. Two honest readings
@@ -281,11 +286,11 @@ travel with the table. The logs row moves only 15 % in LINES because 78 % of thi
 sits on the measured run's own day — what changed is that the read stopped growing with the corpus,
 which is the bound audit P3 is actually about. And the archive freeze's own fix does not appear at
 all, because at 13 notes per run the freeze walks one page; its bound is pinned in the unit lane
-instead. D4 still owes its half.
+instead. Together those two rows close the measured-budget exit gate.
 
-**The eleven rows, and their state at HEAD.** D1 landed 2026-08-21 (**D268**); the other ten are
-unlanded. Each was re-verified against the code for the 2026-08-20 rewrite rather than carried
-forward on the audit's say-so.
+**The eleven rows, and their state at HEAD.** D1–D5 and D11 landed; D6–D10 remain proposed behind
+their named trigger. Each was re-verified against the code for the 2026-08-20 rewrite rather than
+carried forward on the audit's say-so.
 
 | Row | What it closes | Verified at HEAD (2026-08-20) |
 |---|---|---|
@@ -390,7 +395,7 @@ images. "Cited" is the ledger's own `ruled:` + `unserved:` count where it split 
 | Phone capture — the demo's DESKTOP view vs the rebuild's phone | 62 | 1 | 55 (cited) | — | 6 | ledger 3 §7 |
 | Version-bump dialog | 53 | 3 | 12 (cited) | — | 38 marks / 3 decision groups | ledger 3 §8 |
 | DS primitives — tokens, barrel, the specimen page | 159 | 119 | 22 (cited) | — | 18 | ledger 3 §9 |
-| **Total** | **1,956** | **775** | | | **52 current numbered decision lines** | |
+| **Total** | **1,956** | **775** | | | **49 live operator decisions across six sheets** | |
 
 Two readings worth having before the list. The design system is 75 % exact because it was COPIED
 with provenance rather than re-implemented (231 demo tokens, zero missing, zero values divergent);
@@ -795,7 +800,7 @@ platform_` in the ledger. They are listed here only because no phase owns them.
 
 07 recorded no exit block for the dashboard-defaults half of phase 3 — it predates Tracks B, C and
 D. What binds instead is the checklist below, which is what a later migration's `Dashboard · wire`
-task is entitled to assume. Five of ten hold at HEAD. Row 1 is not rewritten by the fidelity
+task is entitled to assume. Eight of ten hold at HEAD. Row 1 is not rewritten by the fidelity
 re-audit: Track B's definition of done was the findings ledger, and it met it; demo fidelity is the
 stricter bar Track F carries (row 10).
 
@@ -805,12 +810,12 @@ stricter bar Track F carries (row 10).
 | 2 | **The findings ledger is zero-or-decided** | **MET** | `docs/findings/README.md`, B8 sweep 2026-08-20: five open records across two files, each naming the commit that closes it; zero undecided |
 | 3 | **Track C met** — the real dashboard drove a real composed run, every claim paired to authority | **MET** | `docs/migrations/separations.md` §9.22 items 1–8; three runs; four defects plus the archive unblock (D258), all fixed same-day; §9.24's live `sp-105225-1e0b` |
 | 4 | **The reference corpus asserts over the corrected surfaces** | **MET** | `81287bb1` — 139 references re-frozen after the fixes, 151 assert-mode cases green, every drift attributed to a ratified decision |
-| 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **open** | D1 LANDED 2026-08-21 (**D268**, `81bfed73`) — one fact, one derivation, held by a test that asserts the row and the panel against each other. D11 LANDED 2026-08-21 (`149bc5f8`, `0911becd`) — the registry is out of the browser bundle (1,114,214 → 753,197 bytes), held by `dashboard-wire-boundary` arm (15). D2–D5 remain unlanded (see the Track D table); D6–D10 stay `proposed` behind their named trigger and are outside this gate |
-| 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **open** | the instrument and its BEFORE baseline landed 2026-08-21 (`407d373f`), and **D5's AFTER numbers are recorded** against the same seeded 1,240-row / 108-member fixture (`c547f65a`); D4 still owes its half, and the recorded numbers become the non-regression gate |
-| 7 | **The Duo ceremony lease landed** | **met (D267, bfc7d318…1c244a40)** | `duo_ceremony_leases` is schema v16; `defineVerifiedLoginRecipe` runs its `ceremony` half only under the lease token; the live two-worker cold start is still to be recorded |
+| 5 | **Track D's D1–D5 + D11 landed** — one fact, one derivation; the read scans bounded; the registry out of the browser bundle | **MET** | D1–D5 and D11 all landed and are test/guard held: D268's shared status fold; typed failure mapping; the one settlement fold; D4's splice + stable-prop `memo`; D5's bounded scans; D11's bundle-closure guard and 1,114,214 → 753,197-byte result. D6–D10 remain `proposed` outside this gate. |
+| 6 | **`ref frontend-backend-integration` §7.4's budgets measured and recorded** | **MET** | the BEFORE instrument (`407d373f`) and both AFTER rows use the same seeded 1,240-row / 108-member fixture: D4 row patch 22.30 → 0.02 ms / parses 1 → 0; D5 day wire 6,718 → 5,568 statements, preview delta 216 → 6 and logs scope 4 → 2 partitions. |
+| 7 | **The Duo ceremony lease landed** | **MET** | D267 authority/token/waiters/recovery/guard/docs landed (`bfc7d318`…`1c244a40`); the live two-worker cold start then serialized lease generations 3 → 4 with no overlap and zero waiter refusals (ref execution-and-sessions §10 §Live proof). |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the authority records and their FE view landed; the supervisor still refuses spawn by name, so the pool process and parallel dry-run proof remain |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **MET** | §9.25's real dashboard/composed separations dry run: document 4502, 13 observed rows (0..12), zero notes and 0 / 0 / 0 run-scoped write evidence. Its service-origin row proves a browser system is optional by declaration; `17468e60` changed the false API-500 invariant to a 200 response and the UI omits the absent claim. The node stays active for its notes emitter and fidelity extras. |
-| 10 | **Demo fidelity: every region exact or ruled** — 52 numbered decision lines outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 775 exact; the consolidated list carries 52 current decision lines, while ledger 3's source rows carry 238 OPEN marks mapped to 30 unresolved groups (§Demo fidelity — every detail, region by region); archive, Activity AC24, Explorer EX5 and shell A46 are complete, while the other facts, structural ports, vocabulary sweep and re-freeze remain |
+| 10 | **Demo fidelity: every region exact or ruled** — 49 live operator decisions outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 775 exact; the six 2026-08-25 decision sheets contain each of the 49 live choices exactly once. Archive, Activity AC24, Explorer EX5, shell A46 and the autonomous served-fact ports are complete; the decisions, resulting ports, vocabulary sweep and one deliberate parity re-freeze remain. |
 
 **Deliberately outside this phase, each with an owner.** The Review and People panel bodies (their
 projections belong to the OCR and group migrations in doc 03c); editable settings, the explorer's
