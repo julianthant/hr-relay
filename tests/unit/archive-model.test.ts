@@ -406,7 +406,10 @@ function startRun(world: World, eid: string, terminal: boolean, dryRun = false):
   return runId;
 }
 
-function plan(world: World): { versionPlanId: string; expectedVersion: number; planFingerprint: string } {
+function plan(
+  world: World,
+  kind: "major" | "minor" = "major",
+): { versionPlanId: string; expectedVersion: number; planFingerprint: string } {
   const result = CommandResultSchema.parse(world.kernel.execute({
     ...envelope(),
     family: "version-archive",
@@ -419,8 +422,10 @@ function plan(world: World): { versionPlanId: string; expectedVersion: number; p
       // the application verbatim. Without it a sweep can say who and when, and
       // nothing about why.
       changeRecord: {
-        kind: "major",
-        what: "the fixture workflow's probe step changed shape",
+        kind,
+        what: kind === "major"
+          ? "the fixture workflow's probe step changed shape"
+          : "the fixture workflow's presentation moved inside the same shape",
         why: "the archive suite bumps the descriptor to make prior-version runs exist",
         commit: { state: "present", value: "0123456abcdef" },
       },
@@ -1061,5 +1066,27 @@ describe("the D80 archive model", () => {
     assert.equal(result.code, "policy-refused");
     assert.equal(result.message.includes("re-plan"), true, result.message);
     assert.equal(world.database.authority.archivedRuns.list().length, 0);
+  });
+});
+
+/**
+ * D274 (ref dashboard-surfaces §9.5.1): "A MINOR bump archives nothing and
+ * cannot be blocked: it records the new version without moving prior-version
+ * runs … A MINOR bump archives nothing, so non-terminal runs do not block it."
+ * A MAJOR bump keeps the D80 semantics the suite above pins: it archives the
+ * affected set and refuses while any prior-version run is non-terminal.
+ */
+describe("D274 — bump kind semantics", () => {
+  it("a minor bump cannot be blocked — it applies while a prior-version run is in flight", () => {
+    const world = createWorld();
+    const inFlight = startRun(world, "10873698", false);
+    world.registry = V2;
+
+    const result = apply(world, plan(world, "minor"));
+    assert.equal(result.state, "applied", result.state === "rejected" ? result.message : "minor apply refused");
+
+    // The in-flight run carries on, untouched and unarchived.
+    assert.equal(world.database.authority.archivedRuns.isArchived(inFlight), false);
+    assert.equal(world.database.authority.runs.get(inFlight)?.lifecycle.state, "queued");
   });
 });
