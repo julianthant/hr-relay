@@ -92,6 +92,8 @@ import {
   capacityChip,
   connectionTone,
   needsYouCount,
+  POOL_CONTROL_TOUCH_TARGET,
+  POOL_COUNT_TOUCH_TARGET,
   SESSION_LIST_DEFAULT_VIEWPORT_HEIGHT,
   SESSION_POOL_MAX_WORKERS,
   type PoolPlanIntent,
@@ -1309,6 +1311,11 @@ function WorkerCard({
           <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-semibold text-[color:var(--ds-fg)]")}>
             {memberLabel ?? workflowLabel}
           </span>
+          <WorkerIdentityDetails
+            label={`Show full worker identity for ${memberLabel ?? workflowLabel}`}
+            workerId={String(card.workerId)}
+            facts={[{ label: "Workflow", value: workflowLabel }]}
+          />
           <span className={cn(dsText.caps, "shrink-0 text-[color:var(--ds-danger)]")}>{tone.label}</span>
         </div>
         <p className={cn(dsText.meta, "text-[color:var(--ds-danger)] opacity-85")}>
@@ -1318,7 +1325,7 @@ function WorkerCard({
           <Button
             size="sm"
             variant="outline"
-            className="mt-auto shrink-0 self-start"
+            className={cn("mt-auto shrink-0 self-start", POOL_CONTROL_TOUCH_TARGET)}
             disabled={spawn.pending}
             title={spawn.title}
             onClick={spawn.onSpawn}
@@ -1346,9 +1353,21 @@ function WorkerCard({
     >
       <div className="flex items-center gap-[var(--ds-space-snug)]">
         <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
+        {/*
+          The header label is `Member 2` for a pool member and the raw worker id
+          for a worker the pool contract cannot address — and it is `truncate`,
+          so the second case was an ellipsis with the full id on the article's
+          `title` and nowhere else. Both cases now carry the SAME route to the
+          served identity, beside the label rather than under a hover.
+        */}
         <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
           {memberLabel ?? workflowLabel}
         </span>
+        <WorkerIdentityDetails
+          label={`Show full worker identity for ${memberLabel ?? workflowLabel}`}
+          workerId={String(card.workerId)}
+          facts={[{ label: "Workflow", value: workflowLabel }]}
+        />
         {queued > 0 && (
           <span
             className={cn(
@@ -1451,10 +1470,15 @@ function WorkerCard({
           <span className={cn(dsText.nums, "shrink-0 tabular-nums")}>
             {elapsed > 0 ? fmtElapsed(elapsed) : "—"}
           </span>
+          {/*
+            The footer's two pool controls take the same coarse floor as the
+            band's: they sit on ONE row, so growing the spawn alone would leave
+            a 44px target beside a 24px one that stops a running worker.
+          */}
           <Button
             size="sm"
             variant="outline"
-            className="shrink-0"
+            className={cn("shrink-0", POOL_CONTROL_TOUCH_TARGET)}
             disabled={onStop === undefined || !canStopWorker(card)}
             title={canStopWorker(card)
               ? `Stop worker ${String(card.workerId)} after its current item (lease version ${String(card.leaseVersion)})`
@@ -1467,7 +1491,7 @@ function WorkerCard({
             <Button
               size="sm"
               variant="outline"
-              className="shrink-0"
+              className={cn("shrink-0", POOL_CONTROL_TOUCH_TARGET)}
               disabled={spawn.pending}
               title={spawn.title}
               onClick={spawn.onSpawn}
@@ -1493,7 +1517,7 @@ function WorkerCard({
  * supervisor fact this projection does not serve, and the panel may not pick
  * one (a retained card that DID end says why, on the card itself).
  */
-function UnmetMemberCard({
+export function UnmetMemberCard({
   workerId,
   poolIndex,
   spawn,
@@ -1519,6 +1543,24 @@ function UnmetMemberCard({
         <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg-muted)]")}>
           Member {poolIndex}
         </span>
+        {/*
+          The id the spawn will address, reachable rather than hover-only. It
+          was on the article's `title` alone — a mouse could read it and nobody
+          else could, which DESIGN.md bans — and it is the one string that says
+          WHICH worker this card's button is about to start.
+        */}
+        <WorkerIdentityDetails
+          label={`Show full worker identity for member ${String(poolIndex)}`}
+          workerId={workerId}
+          facts={[
+            { label: "Pool member", value: `Index ${String(poolIndex)}` },
+            {
+              label: "Worker lease",
+              value: "None served — authority holds no lease for this index. "
+                + "Whether it never started or ended is a supervisor fact this projection does not serve.",
+            },
+          ]}
+        />
         <span className={cn(dsText.caps, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>Unmet</span>
       </div>
       <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
@@ -1527,7 +1569,7 @@ function UnmetMemberCard({
       <Button
         size="sm"
         variant="outline"
-        className="mt-auto shrink-0 self-start"
+        className={cn("mt-auto shrink-0 self-start", POOL_CONTROL_TOUCH_TARGET)}
         disabled={spawn.pending}
         title={spawn.title}
         onClick={spawn.onSpawn}
@@ -1535,6 +1577,36 @@ function UnmetMemberCard({
         Spawn worker {poolIndex}
       </Button>
     </article>
+  );
+}
+
+/**
+ * The worker id, on the ONE keyboard- and touch-reachable route this panel
+ * already uses for a clipped identity (`AuthorityDetails`).
+ *
+ * Every card here carried its worker id on the article's `title` attribute and
+ * nowhere else, and the header label that stands in for it is `truncate` — so a
+ * pool member reads `Member 2` and an unindexed worker reads a clipped id, and
+ * the full string was reachable only by hovering a mouse. It is the same
+ * construct on every card in the drawer, so it is one component: a card that
+ * names a different route to the same fact is a second answer to "which worker
+ * is this".
+ */
+function WorkerIdentityDetails({
+  label,
+  workerId,
+  facts,
+}: {
+  label: string;
+  workerId: string;
+  facts?: readonly Readonly<{ label: string; value: string }>[];
+}) {
+  return (
+    <AuthorityDetails
+      label={label}
+      title="Worker identity"
+      facts={[{ label: "Worker ID", value: workerId }, ...(facts ?? [])]}
+    />
   );
 }
 
@@ -1573,20 +1645,29 @@ type PoolControlOutcome = Readonly<{
  * planning a number nobody chose.
  */
 export function PoolOutcomeNotice({ outcome }: { outcome: PoolControlOutcome }) {
+  /*
+    BOTH quiet arms are a LIVE REGION. A refusal is a `Banner`, which announces
+    itself; `pending` and `applied` were plain text appearing in a band the
+    operator is not looking at — the two arms that say a worker process is being
+    started or stopped, silent to a screen reader. `role="status"` is the polite
+    one on purpose: it must not interrupt, and the arm that MUST be heard
+    immediately (a refusal, a result the tab never got) is already `alert`-toned
+    chrome. The region is the same element across the pending → applied
+    transition, so the settlement is announced as a CHANGE inside a region that
+    was already there, not only as an insertion.
+  */
   if (outcome.state.kind === "pending") {
     return (
-      <MetaLine
-        className="px-[var(--ds-space-tight)]"
-        items={[outcome.action, "sending — the supervisor answers when the process effect has settled"]}
-      />
+      <span role="status" className="px-[var(--ds-space-tight)]">
+        <MetaLine items={[outcome.action, "sending — the supervisor answers when the process effect has settled"]} />
+      </span>
     );
   }
   if (outcome.state.kind === "applied") {
     return (
-      <MetaLine
-        className="px-[var(--ds-space-tight)]"
-        items={[outcome.action, outcome.state.replayed ? "already recorded (replay)" : "recorded"]}
-      />
+      <span role="status" className="px-[var(--ds-space-tight)]">
+        <MetaLine items={[outcome.action, outcome.state.replayed ? "already recorded (replay)" : "recorded"]} />
+      </span>
     );
   }
   if (outcome.state.kind === "unknown") {
@@ -1666,7 +1747,7 @@ function PoolPlanControl({
         <Button
           size="sm"
           variant="outline"
-          className="shrink-0"
+          className={cn("shrink-0", POOL_CONTROL_TOUCH_TARGET)}
           title={`Plan how many workers ${workflowLabel} runs (pool version ${String(group.expectedVersion)})`}
         >
           Plan workers
@@ -1687,13 +1768,19 @@ function PoolPlanControl({
             `cap ${String(SESSION_POOL_MAX_WORKERS)}`,
           ]}
         />
-        <span className="flex items-center gap-[var(--ds-space-tight)]">
+        {/*
+          NAMED as a set, because each button is named `1`. A bare digit is a
+          legible name for nothing: read on its own it says only that a control
+          called "2" exists, and this popover's title is the pool's, not this
+          row's. The group carries the noun the digits are counting.
+        */}
+        <span role="group" aria-label="Desired workers" className="flex items-center gap-[var(--ds-space-tight)]">
           {Array.from({ length: SESSION_POOL_MAX_WORKERS }, (_, offset) => offset + 1).map((count) => (
             <Button
               key={count}
               size="sm"
               variant={choice === count ? "primary" : "outline"}
-              className="shrink-0"
+              className={cn("shrink-0", POOL_COUNT_TOUCH_TARGET)}
               aria-pressed={choice === count}
               onClick={() => setChoice(count)}
             >
@@ -1717,10 +1804,19 @@ function PoolPlanControl({
                     ? "This plan stops these members, each after its current item settles:"
                     : "These indices are above the count. None is running, so this plan stops nothing:"}
                 </span>
+                {/*
+                  THE IDS ARE THE CONFIRMATION, so none of them may be clipped.
+                  `truncate` put an ellipsis through the one string that says
+                  WHICH worker this press stops — `person-lookup-worker-…` — and
+                  left the operator confirming a list they cannot read. The list
+                  already stacks one member per line, so the space to wrap is
+                  free; `break-all` because a worker id has no word boundary the
+                  browser would find.
+                */}
                 <ul className={cn(dsText.meta, "flex flex-col gap-[var(--ds-space-hair)]")}>
                   {intent.excess.map((member) => (
-                    <li key={member.workerId} className={cn(dsText.nums, "flex items-center gap-[var(--ds-space-tight)]")}>
-                      <span className="min-w-0 truncate text-[color:var(--ds-fg)]">{member.workerId}</span>
+                    <li key={member.workerId} className={cn(dsText.nums, "flex items-baseline gap-[var(--ds-space-tight)]")}>
+                      <span className="min-w-0 break-all text-[color:var(--ds-fg)]">{member.workerId}</span>
                       <span className="shrink-0 text-[color:var(--ds-fg-muted)]">
                         {member.running ? "running — graceful stop" : "no running worker served"}
                       </span>
@@ -1740,7 +1836,7 @@ function PoolPlanControl({
                 the list above says which indices it covers.
               */
               variant={stopping.length > 0 ? "danger" : "primary"}
-              className="self-start"
+              className={cn("self-start", POOL_CONTROL_TOUCH_TARGET)}
               disabled={pending}
               title={`Plan ${plural(intent.desiredWorkers, "worker")} for ${workflowLabel} against pool version `
                 + `${String(intent.expectedVersion)}`}

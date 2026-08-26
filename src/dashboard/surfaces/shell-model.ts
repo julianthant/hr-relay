@@ -631,6 +631,37 @@ export function poolFactsForWorkflow(
 export const SESSION_POOL_MAX_WORKERS = 3;
 
 /**
+ * THE 44px TOUCH FLOOR for D271's pool controls, the same coarse-gated pattern
+ * `surfaces/queue-model.ts` established for the member line (`MEMBER_NAME_TOUCH_TARGET`).
+ *
+ * `Button size="sm"` paints `--ds-h-sm`, 24px — the WCAG 2.2 AA minimum (2.5.8)
+ * and the right density for a mouse on an operator band, and well under the
+ * 44px a finger needs. Every one of these controls POSTS a pool command
+ * (`plan-worker-count`, `spawn-worker`, `stop-worker`), so a near-miss on a
+ * coarse pointer is a worker process started or stopped by accident.
+ *
+ * `min-h`, not `h`, and no `::after` overlay: unlike the member line's toggle,
+ * none of these controls sits at a fixed pitch beside a neighbour it could
+ * reach into. They sit in flex rows with their own gaps, so the ROW grows with
+ * them and containment is free — there is no clip to lift and no neighbour to
+ * overlap. `min-height` also survives the `h-[var(--ds-h-sm)]` the button
+ * variant already carries, whichever order `tailwind-merge` leaves them in.
+ *
+ * Gated on `pointer: coarse` for the reason the queue's targets are: on a fine
+ * pointer the density IS the design, and the parity corpus renders at
+ * `pointer: fine`, so no reference moves.
+ */
+export const POOL_CONTROL_TOUCH_TARGET = "pointer-coarse:min-h-11";
+
+/**
+ * The same floor in BOTH axes, for the count buttons — `1` / `2` / `3` are one
+ * glyph inside `--ds-space-snug` of padding, so height alone still leaves a
+ * ~24px-wide target. Three of them sit in a row `--ds-space-tight` apart, and
+ * the act a mis-tap performs is planning the WRONG worker count.
+ */
+export const POOL_COUNT_TOUCH_TARGET = "pointer-coarse:min-h-11 pointer-coarse:min-w-11";
+
+/**
  * The canonical pool identity, `poolWorkerId` restated for the bundle and
  * pinned to the kernel's derivation by the same test. It is a DERIVATION, not a
  * guess: `spawn-worker` names a worker id and the supervisor refuses any id
