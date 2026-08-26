@@ -67,6 +67,7 @@ import {
 } from "../surfaces/queue-toolbar.js";
 import {
   bulkSubjectsOf,
+  bulkUnavailableIds,
   composeBulkRunCommand,
   planBulkVerbs,
   type BulkBatchOutcome,
@@ -635,24 +636,50 @@ function LoadedApp({
    *
    * The rows are taken from `surfaces` and not from `bulkIds` alone: an id in
    * the selection whose row has left the day (a filter changed, the day rolled)
-   * has no served `actions[]`, so nothing may be sent for it, and it silently
-   * drops out of every plan rather than being sent against a version nobody
-   * currently serves.
+   * has no served `actions[]`, so nothing may be sent for it against a version
+   * nobody currently serves.
+   *
+   * It used to drop out of every plan THERE — the filter below removed it and
+   * no count downstream ever mentioned it again, so `Cancel 3 · 1 skipped`
+   * could sit under `6 selected` with two rows accounted for nowhere. That is
+   * the omission this repo's fail-loud rule forbids: not sent, and not
+   * disclosed either. The WHOLE selection now travels into `planBulkVerbs`,
+   * which returns those ids as its own `unavailable` bucket, and the strip, the
+   * confirm dialog and the result band each say so in their own words.
    */
+  const bulkCandidateRows = useMemo(
+    () =>
+      surfaces
+        .filter((surface) => bulkIds.has(String(surface.runId)))
+        .map((surface) => ({
+          runId: String(surface.runId),
+          // The SAME `displayName ?? title` fold the row itself draws, shared
+          // rather than repeated: a confirm dialog naming a run something other
+          // than the row above it is a dialog about a different run.
+          title: queueRowTitle(surface),
+          actions: surface.actions,
+        })),
+    [bulkIds, surfaces],
+  );
+
+  const bulkSelectedIds = useMemo(() => [...bulkIds], [bulkIds]);
+
   const bulkPlans = useMemo(() => {
     if (!selectMode || bulkIds.size === 0) return [];
-    const rows = surfaces
-      .filter((surface) => bulkIds.has(String(surface.runId)))
-      .map((surface) => ({
-        runId: String(surface.runId),
-        // The SAME `displayName ?? title` fold the row itself draws, shared
-        // rather than repeated: a confirm dialog naming a run something other
-        // than the row above it is a dialog about a different run.
-        title: queueRowTitle(surface),
-        actions: surface.actions,
-      }));
-    return planBulkVerbs(rows);
-  }, [selectMode, bulkIds, surfaces]);
+    return planBulkVerbs(bulkCandidateRows, bulkSelectedIds);
+  }, [selectMode, bulkIds, bulkCandidateRows, bulkSelectedIds]);
+
+  /**
+   * The unavailable bucket read on its OWN, because the strip needs it in the
+   * one case no plan survives to carry it: a selection whose rows have all left
+   * the day offers no verb, so `bulkPlans` is empty and there is no plan to ask.
+   * Without this the band would print "none of the 2 selected rows serves
+   * Cancel or Retry" about rows whose `actions[]` nobody ever read.
+   */
+  const bulkUnavailable = useMemo(
+    () => (selectMode && bulkIds.size > 0 ? bulkUnavailableIds(bulkCandidateRows, bulkSelectedIds) : []),
+    [selectMode, bulkIds, bulkCandidateRows, bulkSelectedIds],
+  );
 
   /**
    * THE ONE PLACE A SERVED CONTROL BECOMES A COMMAND (R8 finding 4, R5 finding
@@ -1366,6 +1393,7 @@ function LoadedApp({
             onSelectAll={() => onBulkIds(new Set(selectableIds))}
             onClearSelection={() => onBulkIds(new Set())}
             bulkPlans={bulkPlans}
+            bulkUnavailable={bulkUnavailable}
             onBulk={(plan) => setPendingBulk({ plan })}
             bulkOutcome={bulkOutcome}
             onDismissBulkOutcome={() => setBulkOutcome(null)}

@@ -71,6 +71,7 @@ import {
   bulkClosingAssurance,
   bulkConfirmBody,
   bulkResultCounts,
+  bulkUnavailableSentence,
   type BulkBatchOutcome,
   type BulkVerb,
   type BulkVerbPlan,
@@ -185,6 +186,7 @@ export function QueueToolbar({
   onSelectAll,
   onClearSelection,
   bulkPlans,
+  bulkUnavailable,
   onBulk,
   bulkOutcome,
   onDismissBulkOutcome,
@@ -209,6 +211,12 @@ export function QueueToolbar({
    * strip renders exactly these and derives no availability of its own.
    */
   bulkPlans: readonly BulkVerbPlan[];
+  /**
+   * Selected ids the day serves no row for. Read here rather than off a plan
+   * because the case that matters most — every selected row gone — leaves no
+   * plan at all, and the band must not then blame `actions[]` nobody read.
+   */
+  bulkUnavailable: readonly string[];
   onBulk: (plan: BulkVerbPlan) => void;
   /** the last batch's answer with the subjects it was sent for, kept until dismissed */
   bulkOutcome: BulkBatchOutcome | null;
@@ -342,8 +350,18 @@ export function QueueToolbar({
           */}
           {selectedCount > 0 && bulkPlans.length === 0 && (
             <span className={cn(dsText.meta, "ml-auto min-w-0 truncate text-[color:var(--ds-fg-muted)]")}>
-              None of the {selectedCount} selected {selectedCount === 1 ? "row serves" : "rows serve"} Cancel or
-              Retry, so there is nothing to apply to this selection.
+              {selectedCount === bulkUnavailable.length
+                ? /* Every selected row has left the day. Saying they "serve
+                     neither verb" would be a claim about `actions[]` this
+                     screen never received — the honest sentence is that there
+                     are no rows here to act on. */
+                  `${bulkUnavailableSentence(bulkUnavailable.length)}.`
+                : `None of the ${selectedCount - bulkUnavailable.length} selected `
+                  + `${selectedCount - bulkUnavailable.length === 1 ? "row still on this day serves" : "rows still on this day serve"} `
+                  + `Cancel or Retry, so there is nothing to apply to this selection.`
+                  + (bulkUnavailable.length === 0
+                    ? ""
+                    : ` A further ${bulkUnavailableSentence(bulkUnavailable.length)}.`)}
             </span>
           )}
 
@@ -364,12 +382,15 @@ export function QueueToolbar({
                     */
                     variant={plan.verb === "cancel" ? "dangerGhost" : "outline"}
                     onClick={() => onBulk(plan)}
-                    title={
-                      plan.skipped.length === 0
+                    title={[
+                      plan.skipped.length === 0 && plan.unavailable.length === 0
                         ? `${plan.label} all ${plan.eligible.length} selected rows`
-                        : `${plan.label} ${plan.eligible.length} of ${selectedCount} selected rows — `
-                          + `${plan.skipped.length} do not serve it`
-                    }
+                        : `${plan.label} ${plan.eligible.length} of ${selectedCount} selected rows`,
+                      plan.skipped.length === 0 ? "" : `${plan.skipped.length} do not serve it`,
+                      plan.unavailable.length === 0
+                        ? ""
+                        : `${plan.unavailable.length} are no longer on this day`,
+                    ].filter((part) => part !== "").join(" — ")}
                     icon={<Icon aria-hidden className={dsIcon.sm} />}
                   >
                     {plan.label} {plan.eligible.length}
@@ -383,6 +404,17 @@ export function QueueToolbar({
                       */
                       <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
                         {" "}· {plan.skipped.length} skipped
+                      </span>
+                    )}
+                    {plan.unavailable.length > 0 && (
+                      /*
+                        And the same argument for the third bucket, kept as its
+                        own count rather than added to the skip: `3 + 1` under
+                        `6 selected` is the arithmetic the operator was left to
+                        do, and the two numbers have different explanations.
+                      */
+                      <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
+                        {" "}· {plan.unavailable.length} not on this day
                       </span>
                     )}
                   </Button>
@@ -519,6 +551,17 @@ export function QueueToolbar({
                 ))}
               </div>
             </details>
+          )}
+
+          {/* AND THE THIRD BUCKET SURVIVES THE SEND TOO. It has no titles to
+              list — the day served no row for these ids — so it names them by
+              the only identity it holds, which is still the run's own rather
+              than a plausible substitute for one. */}
+          {bulkOutcome.plan.unavailable.length > 0 && (
+            <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
+              {bulkUnavailableSentence(bulkOutcome.plan.unavailable.length)} when this batch was sent:{" "}
+              <span className={dsText.nums}>{bulkOutcome.plan.unavailable.join(", ")}</span>
+            </p>
           )}
 
           {vector !== undefined && assurance !== undefined && (

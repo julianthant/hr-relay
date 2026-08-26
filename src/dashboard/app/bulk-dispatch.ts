@@ -66,6 +66,17 @@ export interface BulkVerbPlan {
   readonly eligible: readonly BulkTarget[];
   /** selected rows this verb will NOT be sent for, named rather than dropped */
   readonly skipped: readonly { readonly runId: string; readonly title: string }[];
+  /**
+   * Selected ids the current day serves NO row for — a filter changed or the
+   * day rolled under an open selection. They are a THIRD bucket on purpose:
+   * `skipped` means "the server described this row and it offers no such verb",
+   * which is a fact about the row; this means the row is not being described at
+   * all, so there is no title to print and nothing may be sent for it. Before
+   * this existed they fell out of every plan and every count, and the strip
+   * drew `Cancel 3 · 1 skipped` under `6 selected` with no account of the other
+   * two — an omission that was neither disclosed nor sent.
+   */
+  readonly unavailable: readonly string[];
 }
 
 const VERB_LABEL: Record<BulkVerb, string> = { cancel: "Cancel", retry: "Retry" };
@@ -81,11 +92,44 @@ function commandFor(
 }
 
 /**
+ * The selected ids the caller could NOT hand over a served row for.
+ *
+ * It also fails loud on the inverse — a candidate row outside the selection it
+ * claims to plan for. That can only mean the caller's filter is wrong, and a
+ * plan built from it would freeze a version for a run nobody selected.
+ */
+export function bulkUnavailableIds(
+  rows: readonly BulkCandidateRow[],
+  selectedIds: readonly string[],
+): readonly string[] {
+  const selected = new Set(selectedIds);
+  for (const row of rows) {
+    if (!selected.has(row.runId)) {
+      throw new Error(
+        `bulk plan received the candidate row ${row.runId}, which is not in the selection it plans for`,
+      );
+    }
+  }
+  const served = new Set(rows.map((row) => row.runId));
+  return selectedIds.filter((id) => !served.has(id));
+}
+
+/**
  * The plan for one verb over one selection. A verb with an EMPTY eligible set
  * still returns a plan — the strip needs the skip count to say why the control
  * is refusing — and `composeBulkRunCommand` is what refuses to post it.
+ *
+ * `selectedIds` is the WHOLE selection and is required rather than derived from
+ * `rows`: the difference between the two is exactly the bucket this plan would
+ * otherwise lose, and a parameter defaulted to `rows` would reinstate the drop
+ * silently at every call site that forgot it.
  */
-export function planBulkVerb(rows: readonly BulkCandidateRow[], verb: BulkVerb): BulkVerbPlan {
+export function planBulkVerb(
+  rows: readonly BulkCandidateRow[],
+  verb: BulkVerb,
+  selectedIds: readonly string[],
+): BulkVerbPlan {
+  const unavailable = bulkUnavailableIds(rows, selectedIds);
   const eligible: BulkTarget[] = [];
   const skipped: { runId: string; title: string }[] = [];
   let servedLabel: string | undefined;
@@ -101,12 +145,24 @@ export function planBulkVerb(rows: readonly BulkCandidateRow[], verb: BulkVerb):
     servedLabel = servedLabel === undefined || servedLabel === action.label ? action.label : VERB_LABEL[verb];
     eligible.push({ runId: row.runId, title: row.title, expectedVersion: action.expectedVersion });
   }
-  return { verb, label: servedLabel ?? VERB_LABEL[verb], eligible, skipped };
+  return { verb, label: servedLabel ?? VERB_LABEL[verb], eligible, skipped, unavailable };
 }
 
-/** Every verb the strip may draw, with its plan — offered when at least one row serves it. */
-export function planBulkVerbs(rows: readonly BulkCandidateRow[]): readonly BulkVerbPlan[] {
-  return BULK_STRIP_VERBS.map((verb) => planBulkVerb(rows, verb)).filter((plan) => plan.eligible.length > 0);
+/**
+ * Every verb the strip may draw, with its plan — offered when at least one row
+ * serves it.
+ *
+ * A selection whose rows have ALL left the day offers no verb and so returns
+ * nothing here; the unavailable count is therefore also read straight off
+ * `bulkUnavailableIds` by the strip, which is the only party that can say why a
+ * selection with a count has no controls.
+ */
+export function planBulkVerbs(
+  rows: readonly BulkCandidateRow[],
+  selectedIds: readonly string[],
+): readonly BulkVerbPlan[] {
+  return BULK_STRIP_VERBS.map((verb) => planBulkVerb(rows, verb, selectedIds))
+    .filter((plan) => plan.eligible.length > 0);
 }
 
 /**
@@ -155,6 +211,26 @@ export function bulkSubjectsOf(plan: BulkVerbPlan): ReadonlyMap<string, string> 
   return new Map(plan.eligible.map((target) => [target.runId, target.title]));
 }
 
+/**
+ * One sentence per REASON there is nothing to send, never one blended count.
+ * "None of the 4 serves retry" said about rows the day stopped serving would be
+ * a claim about `actions[]` nobody ever read.
+ */
+export function bulkUnavailableSentence(count: number): string {
+  return `${String(count)} selected ${count === 1 ? "row is" : "rows are"} no longer on this day, `
+    + `so nothing can be sent for ${count === 1 ? "it" : "them"} from this screen`;
+}
+
+function emptyPlanReason(plan: BulkVerbPlan): string {
+  const unserved = plan.skipped.length === 0
+    ? ""
+    : `none of the ${String(plan.skipped.length)} selected rows still on this day serves ${plan.verb}; `
+      + "the server describes what each row can do and this selection can do none of it";
+  const gone = plan.unavailable.length === 0 ? "" : bulkUnavailableSentence(plan.unavailable.length);
+  if (unserved === "" && gone === "") return `no rows are selected, so there is nothing to ${plan.verb}`;
+  return [unserved, gone].filter((part) => part !== "").join(", and ");
+}
+
 export type ComposedBulkCommand =
   | { readonly state: "ready"; readonly request: unknown }
   | { readonly state: "refused"; readonly reason: string };
@@ -180,13 +256,7 @@ export interface BulkCommandContext {
  */
 export function composeBulkRunCommand(plan: BulkVerbPlan, context: BulkCommandContext): ComposedBulkCommand {
   if (plan.eligible.length === 0) {
-    return {
-      state: "refused",
-      reason: plan.skipped.length === 0
-        ? `no rows are selected, so there is nothing to ${plan.verb}`
-        : `none of the ${String(plan.skipped.length)} selected rows serves ${plan.verb}; `
-          + "the server describes what each row can do and this selection can do none of it",
-    };
+    return { state: "refused", reason: emptyPlanReason(plan) };
   }
   const commandId = crypto.randomUUID();
   return {
@@ -225,8 +295,16 @@ export function bulkConfirmBody(plan: BulkVerbPlan): string {
     ? ""
     : ` ${String(plan.skipped.length)} selected ${plan.skipped.length === 1 ? "row is" : "rows are"} left alone: `
       + `the server serves no ${plan.verb} for ${plan.skipped.length === 1 ? "it" : "them"}.`;
+  // The third bucket is stated separately and never folded into the skip count:
+  // "left alone because the server offers no verb" and "left alone because the
+  // row is not on this screen any more" are different things to go and check.
+  const gone = plan.unavailable.length === 0
+    ? ""
+    : ` ${String(plan.unavailable.length)} selected `
+      + `${plan.unavailable.length === 1 ? "row is" : "rows are"} no longer on this day and cannot be `
+      + `included: ${plan.unavailable.join(", ")}.`;
   return `${plan.label} is about to be sent for ${rows}, as ${String(count)} separate commands. Each one is a real `
     + "transition recorded against the row version this screen was drawn at, so a run somebody else has touched "
-    + `since will refuse instead of applying.${skipped} Every run answers for itself and the result is reported `
-    + "run by run.";
+    + `since will refuse instead of applying.${skipped}${gone} Every run answers for itself and the result is `
+    + "reported run by run.";
 }
