@@ -61,6 +61,18 @@ export interface AppRouteState {
    * surface is open on its default range.
    */
   readonly activity?: string;
+  /**
+   * Settings (D272 item 1 / D274 item 5): the demo's FULL-PAGE takeover, not
+   * the dialog this used to be. The value is the open section's id, so
+   * `?settings=keyboard` is the Help → Keyboard destination the top bar's
+   * deleted glyph was traded for; an EMPTY value opens the page on its first
+   * section, which is why presence is what opens it.
+   *
+   * A takeover rather than a dialog is what puts Settings in history: the
+   * browser's own Back returns the operator to the view they left, which is
+   * the whole difference between "a place" and "a layer".
+   */
+  readonly settings?: string;
 }
 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/u;
@@ -83,6 +95,7 @@ export function parseRoute(search: string): AppRouteState {
   const archive = params.get("archive");
   const archiveView = params.get("archiveView");
   const activity = params.get("activity");
+  const settings = params.get("settings");
   const route: {
     day?: string;
     run?: string;
@@ -94,6 +107,7 @@ export function parseRoute(search: string): AppRouteState {
     archive?: string;
     archiveView?: ArchiveView;
     activity?: string;
+    settings?: string;
   } = { start: params.get("start") === "1" };
   if (day !== null && DAY_PATTERN.test(day)) route.day = day;
   if (run !== null && run.length > 0) route.run = run;
@@ -110,6 +124,11 @@ export function parseRoute(search: string): AppRouteState {
     if (archiveView === "runs" || archiveView === "versions") route.archiveView = archiveView;
   }
   if (activity !== null) route.activity = activity;
+  // Follows `catalog` and `activity`: an EMPTY value is meaningful (the page's
+  // first section), so presence is what opens the takeover. A section id this
+  // build does not render is NOT dropped here — the page says the name it was
+  // given rather than silently landing somewhere else.
+  if (settings !== null) route.settings = settings;
   return route;
 }
 
@@ -130,8 +149,21 @@ export function routeToSearch(route: AppRouteState): string {
     if (route.archiveView !== undefined) params.set("archiveView", route.archiveView);
   }
   if (route.activity !== undefined) params.set("activity", route.activity);
+  if (route.settings !== undefined) params.set("settings", route.settings);
   const query = params.toString();
   return query.length === 0 ? "" : `?${query}`;
+}
+
+/**
+ * Whether pushing `next` would land on a DIFFERENT search string than the one
+ * already showing (unit F4b finding 2). `setRoute` used to push unconditionally,
+ * so re-pressing a door already open — the gear, the active nav entry, the
+ * Storage door — pushed an identical entry on top of the one already there:
+ * the URL never changed, but History gained a row, and the operator's first
+ * Back press landed them right back on the screen they were trying to leave.
+ */
+export function routeAdvancesHistory(next: AppRouteState, currentSearch: string): boolean {
+  return routeToSearch(next) !== currentSearch;
 }
 
 /**
@@ -144,7 +176,13 @@ export function routeToSearch(route: AppRouteState): string {
  */
 export function activeTakeover(
   route: AppRouteState,
-): "intake" | "archive" | "activity" | "explore" | "catalog" | "none" {
+): "settings" | "intake" | "archive" | "activity" | "explore" | "catalog" | "none" {
+  // Settings outranks every other key, and the reason is functional rather
+  // than a preference about importance: the storage band's `Storage health`
+  // door is mounted ABOVE the takeover switch, so it is pressed from inside
+  // whatever is already open. If any of the keys below outranked `settings`,
+  // that door would change the URL and leave the screen where it was.
+  if (route.settings !== undefined) return "settings";
   if (route.intake !== undefined) return "intake";
   // Archive and Activity outrank the two reference views for the same reason
   // intake outranks all of them: they are places the operator navigates TO and

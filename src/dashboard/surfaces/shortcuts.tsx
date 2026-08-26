@@ -4,12 +4,12 @@
  *
  * The dashboard's whole keyboard flow, in ONE registry.
  *
- * It was designed to live in its own module because two surfaces would render it — the Top
- * Bar's `ShortcutsPopover` (below) and a future Help page — and neither may own it. Neither
- * exists on screen today: `ShortcutsPopover` has zero callers (the top bar dropped its keyboard
- * glyph, see the note at its call site), and no Help page was built. The whole legend is
- * unreachable from anywhere in this tree (`03a-finish-the-dashboard.md` OPEN question 6) — not
- * merely a binding that is missing from it.
+ * It lives in its own module because the surface that renders it may not own it. For a long
+ * while nothing rendered it at all: the top bar dropped its keyboard glyph on the operator's
+ * instruction and the Settings destination that instruction traded it for was never built, so
+ * the whole legend was unreachable from anywhere in this tree — not merely a binding that was
+ * missing from it. D274 item 5 built the destination: `surfaces/settings.tsx`'s Help → Keyboard
+ * section is the one caller, and `ShortcutsPopover` — which had zero — is gone with it.
  *
  * **A shortcut that is not in this array is undocumented, and a binding that is
  * not here is unreachable from Help.** That is the point of the single home:

@@ -18,14 +18,12 @@ import { memo, useMemo, useRef, useState, type ReactElement } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  ArrowUpRight,
   Bell,
   Calendar,
   ChevronLeft,
   ChevronRight,
   Clock,
   Inbox,
-  Keyboard,
   ListChecks,
   Mail,
   MailOpen,
@@ -67,7 +65,6 @@ import {
 import { systemClock } from "../../domain/clock.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { DemoShortcutsLegend } from "./shortcuts.js";
 import { DaySearchControl } from "./day-search.js";
 import type { QueueSurfaceWire } from "./queue-model.js";
 import {
@@ -77,7 +74,7 @@ import {
   fmtElapsed,
   plural,
 } from "./format.js";
-import { SettingsControl, type SettingsSection } from "./settings.js";
+import { SettingsGear } from "./settings.js";
 import { type StorageHealthSummary } from "./settings-model.js";
 import {
   type DayCountWire,
@@ -886,52 +883,19 @@ function NotificationRow({
   );
 }
 
-/* ── shortcuts ───────────────────────────────────────────────────────────── */
-
-/**
- * The Top Bar's route to the keyboard flow. A Popover is the sanctioned home
- * for something that has to be REACHABLE rather than visible: it opens on
- * click, so pointer, touch and keyboard all get to it, unlike the hover-only
- * tooltip DESIGN.md forbids for anything load-bearing.
+/*
+ * ── shortcuts ────────────────────────────────────────────────────────────────
  *
- * IT IS NO LONGER MOUNTED IN THE TOP BAR. The demo deleted the keyboard glyph
- * on the operator's own instruction — *"the keyboard icon will be removed from
- * there since we already have help in settings"* — and a second door to a
- * reference page is not discoverability, it is a second thing to maintain. The
- * component stays here, exported and whole, for the Settings → Help group and
- * the global `?` binding that own it next; deleting it would throw away a
- * ported surface to re-port it a slice later.
+ * `ShortcutsPopover` STOOD HERE and is gone (D274 item 5). It had zero callers
+ * and was kept, in its own words, "for the Settings → Help group and the global
+ * `?` binding that own it next". The Settings → Help group now exists and
+ * renders the one registry through `DemoShortcutsLegend` directly, at reading
+ * size with its scopes named; the `?` binding is not ruled and the ratified
+ * option explicitly rejected restoring a second top-bar door. Its stated future
+ * arrived and did not want it, so keeping it would be two operator-facing
+ * renderings of one registry with only one of them ever on screen — the exact
+ * shape the shortcuts module warns about.
  */
-export function ShortcutsPopover({ onOpenHelp }: { onOpenHelp?: () => void }) {
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <IconButton size="sm" label="Keyboard shortcuts" icon={<Keyboard aria-hidden className={dsIcon.md} />} />
-      </PopoverTrigger>
-      <PopoverContent
-        title="Keyboard"
-        description="Nothing here fires while the caret is in a field."
-        width="lg"
-        align="end"
-      >
-        <DemoShortcutsLegend />
-        {onOpenHelp !== undefined && (
-          <div className="mt-[var(--ds-space-base)] border-t border-[color:var(--ds-border-subtle)] pt-[var(--ds-space-snug)]">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onOpenHelp}
-              icon={<ArrowUpRight aria-hidden className={dsIcon.md} />}
-              className="w-full justify-start"
-            >
-              Help
-            </Button>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 /**
  * One bordered container, four segments — the same shape the Status Bar's
@@ -1004,9 +968,8 @@ export const TopBar = memo(function TopBar({
   preflight,
   onPreflightRerun,
   storage,
-  settingsSections,
   settingsOpen,
-  onSettingsOpen,
+  onOpenSettings,
   day,
   today,
   monthCounts,
@@ -1040,14 +1003,15 @@ export const TopBar = memo(function TopBar({
   onPreflightRerun?: () => void;
   /** the bootstrap's storage health summary — the gear's attention dot (2i-D) */
   storage: StorageHealthSummary;
-  settingsSections: readonly SettingsSection[];
   /**
-   * The Settings dialog is CONTROLLED by the app: the storage banner above
-   * every view opens the same dialog this gear does, and two triggers cannot
-   * share a state the dialog holds privately.
+   * Whether the Settings TAKEOVER owns the main region (D272 item 1). The gear
+   * only reports and requests: the page is a route, so the app owns the state
+   * and the bar reads it — the storage banner above every view opens the same
+   * page this gear does, and the served section list travels with the page
+   * rather than through the bar that never renders it.
    */
   settingsOpen: boolean;
-  onSettingsOpen: (open: boolean) => void;
+  onOpenSettings: () => void;
   /** the day partition the whole app is reading */
   day: string;
   today: string;
@@ -1122,9 +1086,11 @@ export const TopBar = memo(function TopBar({
         <NotificationBell notifications={notifications} actorId={actorId} nowIso={nowIso} onOpenRun={onOpenRun} />
         {/* THE KEYBOARD GLYPH IS GONE. Operator, on the demo: *"the keyboard
             icon will be removed from there since we already have help in
-            settings."* `ShortcutsPopover` above is unchanged and keeps its one
-            home — the global binding, and the Settings → Help group that lands
-            with it. A second door to a reference page is not discoverability. */}
+            settings."* The destination that instruction traded it for now
+            exists: the gear → Settings → Help → Keyboard (D274 item 5), which
+            renders the one registry through `DemoShortcutsLegend` directly.
+            Restoring the glyph was option C and was rejected — it reverses the
+            stated reason it was removed. */}
         {/* The theme pair. One control, and its LABEL names the destination
             ("Switch to Paper Ink"), because a lone sun/moon glyph never says
             which of the two states it is reporting. */}
@@ -1144,12 +1110,7 @@ export const TopBar = memo(function TopBar({
             UI catalog stays reachable through its URL route (`?catalog=`),
             which is what the parity lane already drives. */}
         {/* The gear opens Settings. It sits last, as in the demo. */}
-        <SettingsControl
-          storage={storage}
-          sections={settingsSections}
-          open={settingsOpen}
-          onOpenChange={onSettingsOpen}
-        />
+        <SettingsGear storage={storage} open={settingsOpen} onOpen={onOpenSettings} />
       </span>
     </header>
   );
