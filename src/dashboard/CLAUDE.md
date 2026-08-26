@@ -75,6 +75,28 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
   thrown-post arm `unknown` rather than "nothing was sent" (unit F2d): once the envelope is on the
   wire, the process effect may already have run.
 
+  **Amended 2026-08-26 (unit W4b, the review of the controls above).** Nine findings, and four
+  things generalize. **The unit lane MAY render and press React — when the claim is a dispatched
+  payload rather than a pixel.** Every fold under these controls was pinned and the WIRING between
+  them was not: nothing could see which `expectedVersion` `shell.tsx` hands the composer on a press,
+  or how many presses it takes to send one, and both have been wrong here before.
+  `session-panel-pool-press.test.ts` mounts the real panel under `jsdom` (declared per-file; Radix's
+  positioner takes two measurement-free stubs) and presses the real buttons. The standing rule that
+  behaviour belongs to the parity lane still holds for anything about layout — a payload is not
+  layout. **A touch floor taken as `min-h` costs none of the containment argument an `::after`
+  overlay costs**, because a control in a flex row grows the ROW; that is why the queue member
+  toggle needed two lessons about clipping and reach and these controls needed none. It is still
+  MEASURED in a real engine (`tests/parity/pool-control-touch-target.spec.ts`), with the
+  fine-pointer case in the same file as its negative control — the same measurement returning 24px
+  proves neither assertion is vacuous and that the coarse rules are gated. **`AuthorityDetails` is
+  drawn for a `flex-1 truncate` host**: its 44px target hangs on a negative margin over the value's
+  truncation point, so a control put beside a content-width label sits on the label's own text. That
+  is why the live worker card's identity route rides its SUBLINE — the header label is content-width
+  — while the unmet and retained cards, whose labels are `flex-1`, carry it in the header. And **a
+  popover that recovers a clipped value can clip it again**: the fact list was `nums` + `break-all`
+  for everyone, which is right for a 40-character id and renders a sentence as `this i / ndex`, so a
+  fact declares its `kind`.
+
 - **2026-08-26: a `<label for>` names an `<input>` and does NOT name a `<button role="checkbox">`, so
   the DS `Checkbox` ships every one of its controls nameless.** Intake's rejection acknowledgement —
   the gate that holds the plan closed until the operator has seen every non-valid row — resolved with
