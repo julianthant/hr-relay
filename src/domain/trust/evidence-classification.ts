@@ -181,8 +181,6 @@ const KUALI_FINALIZATION_GATE = gateResult("separations-kuali-finalization", "id
 const DEPARTMENT_OPTION = taskOutput("workflow:separations/match-department-option");
 const KUALI_STAGE_FINALIZATION = taskOutput("kuali/stage-separation-finalization");
 const KUALI_SAVE_FINALIZATION = taskOutput("kuali/save-separation-finalization");
-const KUALI_MATCH_TIMEKEEPER = taskOutput("kuali/read-timekeeper-annotation");
-const KUALI_VERIFY_TIMEKEEPER = taskOutput("kuali/verify-timekeeper-annotation");
 const KUALI_MATCH_FINALIZATION = taskOutput("kuali/match-separation-finalization");
 const KUALI_VERIFY_FINALIZATION = taskOutput("kuali/verify-separation-finalization");
 const SEPARATIONS_INPUT = workflowInput("separations");
@@ -659,9 +657,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...finalizationFieldLeaves(KUALI_STAGE_FINALIZATION, "previousFields"),
   ...finalizationFieldLeaves(KUALI_STAGE_FINALIZATION, "stagedFields"),
 
-  /* Kuali's two beat-① probes and two beat-⑥ reload read-backs. */
-  ...open(KUALI_MATCH_TIMEKEEPER, "state", "documentNumber"),
-  ...open(KUALI_VERIFY_TIMEKEEPER, "state", "documentNumber"),
+  /* Kuali's beat-① probe and beat-⑥ reload read-back. */
   ...open(KUALI_MATCH_FINALIZATION, "state", "documentNumber", "transactionNumber"),
   ...open(KUALI_VERIFY_FINALIZATION, "state", "documentNumber", "transactionNumber"),
 

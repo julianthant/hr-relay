@@ -580,21 +580,21 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
 
   it("serves a real transaction module as probe, prepare, fence, commit, verify without fabricating fence data", () => {
     const module = WORKFLOW_MODULES.find((candidate) =>
-      String(candidate.descriptor.id) === "kuali-timekeeper-annotation");
+      String(candidate.descriptor.id) === "separations-kuali-finalization");
     assert.ok(module !== undefined);
     const w = makeWorld({ descriptors: { resolve: () => module.descriptor } });
     worlds.push(w);
-    queuedEventOf(w, { seed: 1, workflow: "kuali-timekeeper-annotation" });
+    queuedEventOf(w, { seed: 1, workflow: "separations-kuali-finalization" });
     const emitObserved = (taskId: string, direction: "read" | "write", at: string): void => {
       w.writer.emit({
         t: "data.observed",
         ts: at,
-        workflow: "kuali-timekeeper-annotation",
+        workflow: "separations-kuali-finalization",
         runId: uuidOf(1),
         attempt: 1,
         traceId: traceOf(1),
-        spanPath: `${traceOf(1)}/annotate-timekeeper/${taskId.split("/").at(-1)}#1.1`,
-        nodeId: "annotate-timekeeper",
+        spanPath: `${traceOf(1)}/finalize-kuali/${taskId.split("/").at(-1)}#1.1`,
+        nodeId: "finalize-kuali",
         taskId,
         observedAt: at,
         points: [{
@@ -610,21 +610,21 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
         }],
       });
     };
-    emitObserved("kuali/read-timekeeper-annotation", "read", instantOffsetOf(0, 10));
-    emitObserved("kuali/fill-timekeeper-annotation", "write", instantOffsetOf(0, 20));
+    emitObserved("kuali/match-separation-finalization", "read", instantOffsetOf(0, 10));
+    emitObserved("kuali/stage-separation-finalization", "write", instantOffsetOf(0, 20));
     w.writer.emit({
       t: "transaction.fenced",
       ts: instantOffsetOf(0, 30),
-      workflow: "kuali-timekeeper-annotation",
+      workflow: "separations-kuali-finalization",
       runId: uuidOf(1),
       attempt: 1,
       traceId: traceOf(1),
-      spanPath: `${traceOf(1)}/annotate-timekeeper/commit`,
-      node: "annotate-timekeeper",
-      taskId: "kuali/save-timekeeper-annotation",
+      spanPath: `${traceOf(1)}/finalize-kuali/commit`,
+      node: "finalize-kuali",
+      taskId: "kuali/save-separation-finalization",
     });
-    emitObserved("kuali/save-timekeeper-annotation", "write", instantOffsetOf(0, 40));
-    emitObserved("kuali/verify-timekeeper-annotation", "read", instantOffsetOf(0, 50));
+    emitObserved("kuali/save-separation-finalization", "write", instantOffsetOf(0, 40));
+    emitObserved("kuali/verify-separation-finalization", "read", instantOffsetOf(0, 50));
     const deps: RunDetailQueryDeps = {
       stateRoot: w.stateRoot,
       projection: w.projection,
@@ -642,11 +642,11 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
       direction: row.kind === "observed" ? row.points[0]?.direction : undefined,
       hasPoints: "points" in row,
     })), [
-      { kind: "observed", taskId: "kuali/read-timekeeper-annotation", direction: "read", hasPoints: true },
-      { kind: "observed", taskId: "kuali/fill-timekeeper-annotation", direction: "write", hasPoints: true },
-      { kind: "transaction-fenced", taskId: "kuali/save-timekeeper-annotation", direction: undefined, hasPoints: false },
-      { kind: "observed", taskId: "kuali/save-timekeeper-annotation", direction: "write", hasPoints: true },
-      { kind: "observed", taskId: "kuali/verify-timekeeper-annotation", direction: "read", hasPoints: true },
+      { kind: "observed", taskId: "kuali/match-separation-finalization", direction: "read", hasPoints: true },
+      { kind: "observed", taskId: "kuali/stage-separation-finalization", direction: "write", hasPoints: true },
+      { kind: "transaction-fenced", taskId: "kuali/save-separation-finalization", direction: undefined, hasPoints: false },
+      { kind: "observed", taskId: "kuali/save-separation-finalization", direction: "write", hasPoints: true },
+      { kind: "observed", taskId: "kuali/verify-separation-finalization", direction: "read", hasPoints: true },
     ]);
     assert.ok(section.payload.rows.every((row) => row.kind === "note" || row.producer.system === "kuali"));
   });
