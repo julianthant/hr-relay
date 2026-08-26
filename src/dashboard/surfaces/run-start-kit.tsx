@@ -30,24 +30,22 @@ import {
   Badge,
   Banner,
   Button,
+  Card,
+  CardBody,
   Checkbox,
+  Chip,
   Field,
   KeyValueList,
   LockedValue,
   MetaLine,
   Refusal,
   Select,
-  TBody,
-  TD,
-  TH,
-  THead,
-  TR,
-  Table,
   Well,
   dsFg,
   dsIcon,
   dsText,
 } from "../ds/ui.js";
+import { fmtClock } from "./format.js";
 import type { CommandResult } from "../../domain/commands.js";
 import type { SurfaceField } from "../../domain/workflow/ingress.js";
 import type { StartPlanResponse } from "../client/index.js";
@@ -184,10 +182,38 @@ export function RunFlagChips({
  * so it lands with the descriptor start-capability projection, not before.
  */
 export function StartChoiceControl({ constant, reason }: { constant: SurfaceField; reason: string }) {
+  return <LockedFact label={constant.field} value={surfaceValueLabel(constant)} reason={reason} />;
+}
+
+/**
+ * A value the operator may not change, with the reason ON SCREEN (C48/C81,
+ * D272 item 9 — `ref dashboard-surfaces` §10).
+ *
+ * `LockedValue` puts its `reason` on `title`, and a tooltip is unavailable to
+ * touch and to the keyboard — DESIGN.md bans a fact that is reachable by mouse
+ * alone, and the 1440x900 parity reference showed both of this modal's locked
+ * values with their reason nowhere on the page. The demo draws the same `<p>`
+ * beneath (`DemoRunStartKit.tsx:175-183`).
+ *
+ * It is ONE component because there were two of these and they were already
+ * drifting: the sub-selection had the label span and the active-run policy had
+ * a hand-rolled copy of it. Two near-identical renderings are two things that
+ * happen to agree today (`src/dashboard/CLAUDE.md`, 2026-08-26).
+ */
+export function LockedFact({
+  label,
+  value,
+  reason,
+}: {
+  label: string;
+  value: string;
+  reason: string;
+}) {
   return (
     <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
-      <span className={cn(dsText.meta, "font-medium", dsFg.secondary)}>{constant.field}</span>
-      <LockedValue value={surfaceValueLabel(constant)} reason={reason} />
+      <span className={cn(dsText.meta, "font-medium", dsFg.secondary)}>{label}</span>
+      <LockedValue value={value} reason={reason} />
+      <p className={cn(dsText.meta, dsFg.muted)}>{reason}</p>
     </div>
   );
 }
@@ -207,24 +233,18 @@ function surfaceValueLabel(constant: SurfaceField): string {
  */
 export function StartFlagControl({
   label,
-  description,
   checked,
   onChange,
-  disabled,
 }: {
   label: string;
-  description?: string;
   checked: boolean;
   onChange: (next: boolean) => void;
-  disabled?: boolean;
 }) {
   return (
     <Checkbox
       checked={checked}
-      disabled={disabled}
       onCheckedChange={(next) => onChange(next === true)}
       label={label}
-      description={description}
     />
   );
 }
@@ -261,38 +281,53 @@ export function PlanPreview({
           <span className={dsFg.muted}>Nothing to create — every entry was refused.</span>
         </Well>
       ) : (
-        <Table label="Runs this start will create">
-          <THead>
-            <TR>
-              <TH>Title</TH>
-              <TH>Match key</TH>
-              <TH>Trace</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {plan.planned.map((row) => (
-              <TR key={row.runId}>
-                <TD>
-                  <span className="flex min-w-0 flex-col">
-                    <span className={cn(dsText.ui, dsFg.base)}>{row.title}</span>
-                    {row.subtitle !== undefined && (
-                      <span className={cn(dsText.meta, dsFg.muted)}>{row.subtitle}</span>
-                    )}
-                  </span>
-                </TD>
-                <TD numeric>{row.matchKey}</TD>
-                <TD numeric>{row.traceId}</TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <ul aria-label="Runs this start will create" className="flex flex-col gap-[var(--ds-space-snug)]">
+          {plan.planned.map((row) => (
+            <li key={row.runId}>
+              <PlanRowCard row={row} />
+            </li>
+          ))}
+        </ul>
       )}
 
       <MetaLine
         tone="faint"
-        items={[`plan ${plan.startPlanId}`, `planned by ${plan.plannedBy}`, `expires ${plan.expiresAt}`]}
+        items={[
+          `plan ${plan.startPlanId}`,
+          `planned by ${plan.plannedBy}`,
+          // C61 — an operator-facing instant is a clock reading, never a raw
+          // ISO string. Same defect the context rail's R6 f.10 fixed.
+          `expires ${fmtClock(plan.expiresAt)}`,
+        ]}
       />
     </section>
+  );
+}
+
+/**
+ * One proposed run, as a card (C57, D272 item 8 — `ref dashboard-surfaces` §10).
+ *
+ * The demo's `PlanRowCard` anatomy with the fields this wire actually serves:
+ * `StartPlanResponse.planned[]` carries `{runId, traceId, title, subtitle,
+ * matchKey}` and no role, panel, containment, born-as status or note, so those
+ * are ABSENT rather than invented — their `builds:` line is ledger 1's first
+ * region-C row. What replaces the demo's `panel` / `containment` chips is the
+ * pair this wire does serve, in the same slot and the same `Chip label=` shape.
+ */
+function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
+  return (
+    <Card>
+      <CardBody className="flex flex-col gap-[var(--ds-space-tight)] py-[var(--ds-space-snug)]">
+        <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
+          <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-medium", dsFg.base)}>{row.title}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
+          {row.subtitle !== undefined && <MetaLine items={[row.subtitle]} />}
+          <Chip label="match key">{row.matchKey}</Chip>
+          <Chip label="trace">{row.traceId}</Chip>
+        </div>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -331,28 +366,57 @@ export function PlanRefusals({ refused }: { refused: StartPlanResponse["refused"
  */
 export function EnqueueResultBanner({
   result,
+  onReload,
   onDismiss,
 }: {
   result: CommandResult;
+  /** conflict only — the ONE cure for a plan built against a version that moved */
+  onReload?: () => void;
   onDismiss?: () => void;
 }) {
-  const dismiss = onDismiss ? (
-    <Button size="sm" variant="secondary" onClick={onDismiss}>
-      Dismiss
-    </Button>
-  ) : undefined;
+  // C72 (D272 item 9) — the demo says **Close** on a settled start and
+  // **Dismiss** on a refusal (`DemoRunStartKit.tsx:341,379-383`). The two words
+  // are not decoration: closing a receipt and dismissing a refusal are
+  // different acts, and one word for both makes them read as the same one.
+  const dismissWith = (word: string) =>
+    onDismiss ? (
+      <Button size="sm" variant="secondary" onClick={onDismiss}>
+        {word}
+      </Button>
+    ) : undefined;
 
   if (result.state === "rejected") {
     return (
-      <Refusal title="The start was refused" code={result.code} outcome="nothing is enqueued" action={dismiss}>
+      <Refusal
+        title="The start was refused"
+        code={result.code}
+        outcome="nothing is enqueued"
+        action={dismissWith("Dismiss")}
+      >
         {result.message}
       </Refusal>
     );
   }
 
   if (result.state === "conflict") {
+    // C69 (D272 item 8) — a conflict banner with no exit names a state the
+    // operator cannot leave: D253 refuses a re-send of the same envelope
+    // identically, so the plan token in this form is spent for good. Reloading
+    // rebuilds the form's basis on the version the server actually serves and
+    // sends the operator back to plan again, which is the demo's own cure
+    // (`DemoRunStart.tsx:685-688`).
     return (
-      <Banner tone="warning" title="The start plan moved under this form" action={dismiss}>
+      <Banner
+        tone="warning"
+        title="The start plan moved under this form"
+        action={
+          onReload ? (
+            <Button size="sm" variant="primary" onClick={onReload}>
+              Reload the form
+            </Button>
+          ) : undefined
+        }
+      >
         <div className="flex flex-col gap-[var(--ds-space-snug)]">
           <span>{result.message}</span>
           <KeyValueList
@@ -368,7 +432,7 @@ export function EnqueueResultBanner({
       tone="success"
       title={result.state === "applied" ? "Start applied" : "Already applied"}
       icon={<CheckCircle2 aria-hidden className={dsIcon.lg} />}
-      action={dismiss}
+      action={dismissWith("Close")}
     >
       <div className="flex flex-col gap-[var(--ds-space-snug)]">
         <KeyValueList
