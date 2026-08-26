@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * THE CONTEXT RAIL'S DRAWN FACTS — D273 items 5 and 6, rendered rather than described.
  *
@@ -23,11 +24,25 @@
  * never read the same — because if the arm stopped arriving both strings would
  * still be grammatical English and nothing else in the suite could fail
  * (`refused-notice-model.ts`'s own rule, one surface on).
+ *
+ * UNIT F7b adds two claims `renderToStaticMarkup` cannot make, so the file
+ * takes `// @vitest-environment jsdom` for that half — exactly the shape
+ * `run-detail-timeline-render.test.ts` and `session-panel-pool-press.test.ts`
+ * already use, and nothing above this line changes behaviour under it:
+ *
+ *   1. Dismissing the refusal unmounts `CheckpointRefusal` — Dismiss button
+ *      included — so a keyboard operator's focus has to be MOVED before the
+ *      clear, not merely left to whatever DOM node is still there afterwards.
+ *   2. The rejected arm's toast used to share `role="alert"` with the
+ *      standing `Refusal` banner, so a screen reader announced the same
+ *      refusal twice. A fold can see the copy; only a real toast mounted
+ *      beside a real banner can see the DUPLICATE announcement.
  */
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import {
   CheckpointRefusal,
   ContextRail,
@@ -37,11 +52,14 @@ import {
 import { checkpointRefusalCopy } from "../../../src/dashboard/surfaces/context-rail-model.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
+import { CommandResultSchema, type CommandResult } from "../../../src/domain/commands.js";
 import {
   ContextSummaryWireSchema,
   RunDetailSectionResponseSchema,
 } from "../../../src/domain/dashboard/run-detail.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 /** what a sighted operator can read with no pointer: the markup minus its tooltips */
 function withoutTooltips(markup: string): string {
@@ -329,5 +347,166 @@ describe("the blocked commit arm states its reason exactly once (C70, D273 item 
     const text = textOf(renderRail(dataSections()));
     assert.match(text, /Save 0 corrections/u);
     assert.equal(text.includes("Saving"), false);
+  });
+});
+
+/* =========================================================================
+ * F7b — a refused save PRESSED, not merely rendered.
+ *
+ * Neither claim below has a fold that could hold it: (1) is about where the
+ * BROWSER's focus lands after a DOM node unmounts, and (2) is about whether
+ * TWO mounted components (a toast and a banner) share a live-region role —
+ * both are questions only a real document can answer.
+ * ====================================================================== */
+
+/** the value setter React's controlled `<input>` tracks, bypassed so `dispatchEvent` reads as real user input */
+function typeInto(input: HTMLInputElement, value: string): void {
+  const descriptor = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+  if (descriptor?.set === undefined) throw new Error("jsdom's HTMLInputElement offers no native value setter");
+  descriptor.set.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** flushes the microtask the `.then()` in `save()` settles on */
+async function flush(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+const REJECTED_RESULT: CommandResult = CommandResultSchema.parse({
+  state: "rejected",
+  commandId: "22222222-2222-4222-8222-222222222222",
+  code: "policy-refused",
+  message: "This run's checkpoint is not correctable while a write is fenced.",
+});
+
+/** answers `executeCommand` with a fixed result and throws by name for anything else */
+function commandClient(result: CommandResult): DashboardClient {
+  const handler: ProxyHandler<Record<string, unknown>> = {
+    get(_target, property): unknown {
+      if (property === "executeCommand") return async () => result;
+      throw new Error(`the Context rail reached for client.${String(property)} during a refused-save press`);
+    },
+  };
+  return new Proxy({}, handler) as unknown as DashboardClient;
+}
+
+let mountedRoot: Root | undefined;
+
+afterEach(async () => {
+  const root = mountedRoot;
+  mountedRoot = undefined;
+  if (root !== undefined) {
+    await act(async () => {
+      root.unmount();
+    });
+  }
+  document.body.replaceChildren();
+});
+
+/** mounts the real rail, dirties its one editable field and types a reason — everything short of the Save press */
+async function mountDirtyRail(client: DashboardClient): Promise<{ save: HTMLButtonElement }> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  mountedRoot = root;
+
+  await act(async () => {
+    root.render(
+      createElement(DashboardClientProvider, {
+        client,
+        children: createElement(ToastProvider, {
+          children: createElement(ContextRail, {
+            summary: SUMMARY,
+            sections: dataSections(),
+            onClose: () => undefined,
+            actorId: "operator-1",
+            liveStatus: "queued",
+            dataExpanded: false,
+            onDataExpandedChange: () => undefined,
+            onSaved: () => undefined,
+          }),
+        }),
+      }),
+    );
+  });
+
+  const inputsBeforeDirty = [...document.body.querySelectorAll("input")];
+  if (inputsBeforeDirty.length !== 1) {
+    throw new Error(`expected exactly one editable value input before typing, found ${String(inputsBeforeDirty.length)}`);
+  }
+  const value = inputsBeforeDirty[0];
+  if (value === undefined) throw new Error("the rail's one editable input vanished between find and type");
+
+  await act(async () => {
+    typeInto(value, "10000099");
+  });
+
+  const reason = [...document.body.querySelectorAll("input")].find(
+    (candidate) => candidate.placeholder.startsWith("e.g. CRM shows"),
+  );
+  if (reason === undefined) throw new Error("dirtying the value did not raise the reason field");
+  await act(async () => {
+    typeInto(reason, "CRM shows 10000099");
+  });
+
+  const save = [...document.body.querySelectorAll("button")].find(
+    (button) => (button.textContent ?? "").startsWith("Save"),
+  );
+  if (save === undefined) throw new Error("the rail rendered no Save control");
+  return { save };
+}
+
+describe("dismissing a refusal restores focus, it does not drop it (finding 1)", () => {
+  it("moves focus to the Save control before the refusal unmounts", async () => {
+    const { save } = await mountDirtyRail(commandClient(REJECTED_RESULT));
+
+    await act(async () => {
+      save.click();
+    });
+    await flush();
+
+    const dismiss = [...document.body.querySelectorAll("button")].find(
+      (button) => button.textContent === "Dismiss",
+    );
+    if (dismiss === undefined) throw new Error("the refused save drew no Dismiss control");
+    // The press that reads this assertion IS keyboard input on this control —
+    // give it the focus a keyboard operator would have left it with.
+    dismiss.focus();
+
+    await act(async () => {
+      dismiss.click();
+    });
+
+    // Before the fix, `onDismiss` only cleared state: `CheckpointRefusal`
+    // (Dismiss button included) unmounted and nothing had told the document
+    // where focus goes next, so it fell to `<body>` — indistinguishable from
+    // "the operator was never in this dialog" to anything listening for focus.
+    assert.notEqual(document.activeElement, document.body);
+    assert.equal(document.activeElement, save);
+  });
+});
+
+describe("a refused save's toast does not repeat the banner's alert (finding 2)", () => {
+  it("mounts the banner as the one role=\"alert\" and the toast as role=\"status\"", async () => {
+    const { save } = await mountDirtyRail(commandClient(REJECTED_RESULT));
+
+    await act(async () => {
+      save.click();
+    });
+    await flush();
+
+    const alerts = document.body.querySelectorAll('[role="alert"]');
+    const statuses = document.body.querySelectorAll('[role="status"]');
+    // Before the fix, the rejected arm's toast carried `tone: "danger"`, which
+    // `ds/primitives-overlay.tsx` maps straight to `role="alert"` — the same
+    // role the `Refusal` banner beside it already carries, and near-identical
+    // copy announced twice. One alert (the banner) and one status (the toast)
+    // is the fix; two alerts is the regression.
+    assert.equal(alerts.length, 1, `expected one role="alert", found ${String(alerts.length)}`);
+    assert.ok(statuses.length >= 1, "expected the toast to mount as role=\"status\"");
+    assert.match(alerts[0]?.textContent ?? "", /refused/u);
   });
 });
