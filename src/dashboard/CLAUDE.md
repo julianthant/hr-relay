@@ -45,8 +45,60 @@ npm run web:build   # production bundle into dist/dashboard (the parity lane bui
 npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity lane
 ```
 
+## Ruled deviations from the rebuild-demo
+
+Two shell affordances have no demo counterpart and STAY, ruled by **D272 item 3**
+(`ref dashboard-surfaces` §10; the sheet is `docs/decisions/2026-08-25-03a-demo-fidelity-core.md`
+item 3, answered A on 2026-08-26). They are recorded here so a later fidelity pass reads them as
+decisions rather than as drift, and each site carries the same citation in code.
+
+| Deviation | Where | Why it stays | Rejected |
+|---|---|---|---|
+| **Escape-clear in day search** — a first `Escape` clears a non-empty query; a second closes the dialog (ledger 1 A16) | `surfaces/day-search.tsx` | Clearing is the cheaper correction and the second press still reaches the dialog, so nothing the demo's Escape does is unavailable here | B — remove both for exactness |
+| **`Import spreadsheet` in the toolbar's left group** (ledger 1 A174 / B141) | `app/dashboard-app.tsx` | It is the only served door into the intake workspace; the demo reaches intake from inside the Run Modal and `RunStartSurfaces` serves no such handoff, so deleting it strands the workspace | B — remove both for exactness · C — build the Run-Modal handoff first |
+
+Neither is permanent: the import button goes when the run modal grows the handoff. The Escape-clear
+is deliberately NOT a `shortcuts-model.ts` entry — the legend's own *When they fire* rules say an
+open dialog owns the keyboard including Escape, and listing a per-dialog refinement as a global
+binding would contradict them.
+
 ## Lessons learned
 
+- **2026-08-26: the destination a deleted control was traded for is the one nobody checks was built
+  (D272 item 1 / D274 item 5, unit F4).** The top bar's keyboard glyph was deleted on the operator's
+  own instruction — *"we already have help in settings"* — and Settings → Help → Keyboard was never
+  built, so `DemoShortcutsLegend` had **zero callers** and the whole keyboard legend was reachable
+  from nowhere. Nothing failed, because the surviving half of a two-half change is self-consistent:
+  a deleted glyph looks exactly like a glyph that was never there. Building the destination exposed
+  the second defect immediately: **`/` was bound in `day-search.tsx` and missing from
+  `shortcuts-model.ts`, under a doc comment in that same file asserting the legend already carried
+  it.** A registry that nothing renders cannot be wrong in any way a reader will notice, so it drifts
+  freely and its own rule — *a binding that is not here is unreachable from Help* — enforces nothing.
+  Two habits travel. **When a change is justified by a destination, land both halves in one commit or
+  book the missing half as a task with the deletion's D-number on it**; "for the X that owns it next"
+  in a component's doc comment is not a task and expires silently. And **an unrendered vocabulary is
+  an unverified one**: prefer wiring the surface that reads it, even minimally, over leaving a
+  correct-looking array nothing consumes. The same commit removed `ShortcutsPopover` for the same
+  reason its own comment gave for keeping it — its stated future arrived (Settings → Help) and
+  renders the registry directly, and the rejected alternative (option C, restore the top-bar glyph)
+  is the only thing that would have wanted it back.
+- **2026-08-26: a CSS custom property reaches a portal-free provider viewport only through DOM
+  ancestry, and the theme root was one level too low (D272 item 2, ledger rows A168/A169/A170).**
+  `ToastProvider` renders its viewport as a **fragment sibling** of its children, not through a
+  portal — so with `<TooltipProvider><ToastProvider>` wrapping the app's themed root div, the
+  viewport was not a descendant of that div and inherited none of its custom properties.
+  `--ds-toast-inset-bottom` resolved to nothing, the viewport silently took its own
+  `var(--ds-space-loose)` fallback, and every toast in the product sat on top of the Session bar —
+  visible the moment the page booted, and **invisible to typecheck, to lint and to every unit test**,
+  because a `var()` fallback is a legal value. The variable and the nesting are ONE fix: setting the
+  property without moving the root, or moving the root without setting the property, both leave the
+  screen exactly as it was. Two things travel. **A `var(--x, fallback)` is a silent fallback of
+  exactly the kind this repo bans elsewhere** — it cannot distinguish "the shell chose the gutter"
+  from "the shell's value never arrived", so check where the CONSUMER sits in the tree, not only
+  that the producer set it. And **moving an app root moves every attribute on it**: `data-parity-ready`
+  stayed on the inner element while `data-demo-theme` went up, so the parity theme assertion that
+  read the theme *through* the readiness flag started reading `null`; it selects `[data-app-root]`
+  now, which is the element the comment always claimed it meant ("the one that wins the cascade").
 - **2026-08-26: a `<label for>` names an `<input>` and does NOT name a `<button role="checkbox">`, so
   the DS `Checkbox` ships every one of its controls nameless.** Intake's rejection acknowledgement —
   the gate that holds the plan closed until the operator has seen every non-valid row — resolved with

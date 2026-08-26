@@ -1478,7 +1478,14 @@ function LoadedApp({
               <>
                 {/*
                   THE INTAKE ROUTE LIVES IN THE TOOLBAR HERE, and that is a
-                  named deviation from the demo rather than a leftover. The
+                  RULED deviation from the demo (D272 item 3, ledger rows
+                  A174/B141): keep it, recorded as an intentional route
+                  deviation, because removing it strands the only served door
+                  into intake. The rejected alternatives were removing it for
+                  exactness (B — intake loses its reachable entry point) and
+                  building the Run-Modal handoff first (C — additional
+                  navigation work for the same end state). The
+                  reason it stands is unchanged and is the reason it goes: the
                   demo reaches its intake from INSIDE the Run Modal — a
                   spreadsheet source turns the dialog's primary into "Open the
                   intake…" — and this repository's `RunStartSurfaces` serves no
