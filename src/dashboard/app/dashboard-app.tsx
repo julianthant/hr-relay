@@ -60,7 +60,7 @@ import {
 import { fmtClock } from "../surfaces/format.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
 import { composeCommandRequest, composeStopWorkerCommand, type CommandAction } from "./command-dispatch.js";
-import { settleCommandResult } from "./command-result.js";
+import { commandFailureToast, settleCommandResult } from "./command-result.js";
 import { useGlobalKeys } from "./global-keys.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/status-model.js";
 import {
@@ -725,7 +725,7 @@ function LoadedApp({
         ...(answers.renameAnswer === undefined ? {} : { renameAnswer: answers.renameAnswer }),
       });
       if (composed.state === "refused") {
-        toast({ tone: "danger", title: "Nothing was sent", description: composed.reason });
+        toast(commandFailureToast({ stage: "before-dispatch", reason: composed.reason }));
         return;
       }
       /*
@@ -777,11 +777,10 @@ function LoadedApp({
           setDetailNonce((nonce) => nonce + 1);
         },
       ).catch((caught: unknown) => {
-        toast({
-          tone: "danger",
-          title: "Nothing was recorded",
-          description: caught instanceof Error ? caught.message : String(caught),
-        });
+        // NOT "Nothing was recorded": the envelope is already on the wire by
+        // the time anything can land here, so whether the kernel wrote the row
+        // is a fact this tab does not hold (`commandFailureToast`).
+        toast(commandFailureToast({ stage: "after-dispatch", caught }));
       });
     },
     [boot.actor.id, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso],
