@@ -536,3 +536,132 @@ describe("pause-worker / resume-worker", () => {
       .rejects.toThrow(/stop is already in flight/);
   });
 });
+
+/* ── plan-worker-count reconciliation (W1 exact-excess-coverage contract) ── */
+
+function planRequest(desired: number, members: readonly WorkerPoolMember[], excess: readonly WorkerPoolMember[]) {
+  return {
+    command: "plan-worker-count" as const,
+    workflowId: WORKFLOW,
+    desiredWorkers: PositiveIntSchema.parse(desired),
+    members,
+    excessMembers: excess,
+  };
+}
+
+describe("plan-worker-count", () => {
+  it("covers the full roster in order: running desired, initiating stop for a running excess member, honest unmet for a member with no process", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    harness.clock.advanceWall(2_000);
+
+    const acknowledgement = await harness.supervisor.execute(
+      planRequest(1, [member(1)], [member(2), member(3)]),
+    );
+
+    expect(acknowledgement).toEqual({
+      command: "plan-worker-count",
+      state: "acknowledged",
+      desiredWorkers: 1,
+      members: [
+        { member: member(1), stage: "running", ownership: "supervised" },
+        {
+          member: member(2),
+          stage: "graceful-stop-requested",
+          ownership: "supervised",
+          phase: "initiating",
+          escalation: stopPolicy(),
+          observed: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:02.000Z" }],
+        },
+        { member: member(3), stage: "unmet", reason: "not-started" },
+      ],
+    });
+    expect(harness.gracefulRequests).toEqual([member(2)]);
+    expect(harness.supervisor.memberEvidence(member(2))).toMatchObject({ state: "stopping" });
+    // The excess member's SIGTERM bound is armed, exactly one deadline.
+    expect(harness.scheduler.pending()).toHaveLength(1);
+  });
+
+  it("attests a stop already in flight as reconciling, reporting the escalation prefix that already occurred", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    await harness.supervisor.execute({ command: "stop-worker", member: member(2), escalation: stopPolicy() });
+    harness.clock.advanceMonotonic(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
+    harness.clock.advanceWall(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
+    harness.scheduler.pending()[0]?.fire();
+
+    const acknowledgement = await harness.supervisor.execute(
+      planRequest(1, [member(1)], [member(2), member(3)]),
+    );
+
+    expect(acknowledgement.command).toBe("plan-worker-count");
+    if (acknowledgement.command !== "plan-worker-count") throw new Error("unreachable");
+    expect(acknowledgement.members[1]).toEqual({
+      member: member(2),
+      stage: "graceful-stop-requested",
+      ownership: "supervised",
+      phase: "reconciling",
+      escalation: stopPolicy(),
+      observed: [
+        { stage: "graceful-stop-requested", at: NOW },
+        { stage: "sigterm-sent", at: "2026-08-26T09:02:00.000Z" },
+      ],
+    });
+    expect(harness.gracefulRequests).toHaveLength(1);
+  });
+
+  it("reports a crashed member as unmet/crashed — evidence, not silently re-created capacity", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    harness.children[0]?.emitExit(1, null);
+    harness.leases.delete(member(1).workerId);
+
+    const acknowledgement = await harness.supervisor.execute(
+      planRequest(2, [member(1), member(2)], [member(3)]),
+    );
+
+    expect(acknowledgement.command).toBe("plan-worker-count");
+    if (acknowledgement.command !== "plan-worker-count") throw new Error("unreachable");
+    expect(acknowledgement.members[0]).toEqual({ member: member(1), stage: "unmet", reason: "crashed" });
+    expect(acknowledgement.members[1]).toEqual({
+      member: member(2), stage: "running", ownership: "supervised",
+    });
+    expect(harness.spawnRequests).toHaveLength(2);
+  });
+
+  it("reads a member whose stop completed as unmet/not-started, not crashed", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "stop-worker", member: member(1), escalation: stopPolicy() });
+    harness.children[0]?.emitExit(0, null);
+    harness.leases.delete(member(1).workerId);
+
+    const acknowledgement = await harness.supervisor.execute(planRequest(1, [member(1)], [member(2), member(3)]));
+
+    expect(acknowledgement.command).toBe("plan-worker-count");
+    if (acknowledgement.command !== "plan-worker-count") throw new Error("unreachable");
+    expect(acknowledgement.members[0]).toEqual({ member: member(1), stage: "unmet", reason: "not-started" });
+  });
+
+  it("refuses a roster whose desired member count disagrees with desiredWorkers", async () => {
+    const harness = openHarness();
+
+    await expect(harness.supervisor.execute(planRequest(2, [member(1)], [member(3)])))
+      .rejects.toThrow(/names 1 desired members for desiredWorkers 2/);
+  });
+
+  it("refuses to plan over a child that has not proved birth yet", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    const settled = expect(pendingSpawn).rejects.toThrow(/exited/);
+
+    await expect(harness.supervisor.execute(planRequest(1, [member(1)], [member(2), member(3)])))
+      .rejects.toThrow(/has not proved its lease birth/);
+
+    harness.children[0]?.emitExit(1, null);
+    await settled;
+  });
+});

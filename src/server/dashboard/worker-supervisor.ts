@@ -38,10 +38,14 @@ import type {
   MonotonicDeadlineScheduler,
 } from "../../core/deadline-scheduler.js";
 import {
+  WORKER_GRACEFUL_STOP_TIMEOUT_MS,
+  WORKER_SIGTERM_TIMEOUT_MS,
   WorkerPoolMemberSchema,
   WorkerStopEscalationPolicySchema,
   WorkerSupervisorAcknowledgementSchema,
   type WorkerPoolMember,
+  type WorkerPoolMemberReconciliationFact,
+  type WorkerPoolPlanRequest,
   type WorkerPoolProcessSupervisor,
   type WorkerStopEscalationPolicy,
   type WorkerSupervisorAcknowledgement,
@@ -396,8 +400,8 @@ export function createDashboardWorkerProcessSupervisor(
     const requestedAt = IsoInstantSchema.parse(durable.requestedAt);
     if (record.state !== "running") {
       throw new Error(
-        `stop-worker for ${record.member.workerId} raced: the child left the running state while the `
-        + `durable graceful stop was being requested (now ${record.state})`,
+        `graceful stop for ${record.member.workerId} raced: the child left the running state while the `
+        + `durable directive was being requested (now ${record.state})`,
       );
     }
     record.state = "stopping";
@@ -427,6 +431,97 @@ export function createDashboardWorkerProcessSupervisor(
       ownership: "supervised",
       escalation,
       observed: [...record.observedStop],
+    });
+  };
+
+  /** The canonical D271 escalation policy: 120s graceful, SIGTERM, 30s, SIGKILL. */
+  const canonicalEscalation = (): WorkerStopEscalationPolicy => WorkerStopEscalationPolicySchema.parse([
+    { stage: "graceful-stop-requested", timeoutMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS },
+    { stage: "sigterm-sent", timeoutMs: WORKER_SIGTERM_TIMEOUT_MS },
+    { stage: "sigkill-sent" },
+  ]);
+
+  /**
+   * The truthful reconciliation fact for one roster member. A member this
+   * supervisor never spawned, or one whose stop completed, has no process and
+   * reads `unmet/not-started`; a crash stays visibly `crashed` (D271 — a crash
+   * is evidence, never silently erased capacity); a stop already in flight is
+   * attested `reconciling` with exactly the escalation prefix that already
+   * occurred. `initiateStopForRunning` is set only for EXCESS members: a
+   * running excess member gets its bounded graceful stop initiated here, while
+   * a running desired member is simply `running`.
+   */
+  const planMemberFact = async (
+    member: WorkerPoolMember,
+    initiateStopForRunning: boolean,
+  ): Promise<WorkerPoolMemberReconciliationFact> => {
+    const record = records.get(member.workerId);
+    if (record === undefined) {
+      return { member, stage: "unmet", reason: "not-started" };
+    }
+    switch (record.state) {
+      case "awaiting-birth":
+        throw new Error(
+          `plan-worker-count refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved `
+          + "its lease birth; a plan cannot truthfully cover a spawn still in flight",
+        );
+      case "running":
+        if (initiateStopForRunning) {
+          const escalation = canonicalEscalation();
+          await beginStopEscalation(record, escalation);
+          return {
+            member,
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "initiating",
+            escalation,
+            observed: [...record.observedStop],
+          };
+        }
+        return { member, stage: "running", ownership: "supervised" };
+      case "stopping":
+        return {
+          member,
+          stage: "graceful-stop-requested",
+          ownership: "supervised",
+          phase: "reconciling",
+          escalation: canonicalEscalation(),
+          observed: [...record.observedStop],
+        };
+      case "exited":
+        return {
+          member,
+          stage: "unmet",
+          reason: record.exit?.outcome === "crashed" ? "crashed" : "not-started",
+        };
+    }
+  };
+
+  const planWorkerCount = async (request: WorkerPoolPlanRequest): Promise<WorkerSupervisorAcknowledgement> => {
+    const desired = request.members.map((member) => WorkerPoolMemberSchema.parse(member));
+    const excess = request.excessMembers.map((member) => WorkerPoolMemberSchema.parse(member));
+    if (desired.length !== request.desiredWorkers) {
+      throw new Error(
+        `plan-worker-count refused: the request names ${String(desired.length)} desired members for `
+        + `desiredWorkers ${String(request.desiredWorkers)}`,
+      );
+    }
+    for (const member of [...desired, ...excess]) {
+      if (member.workflowId !== request.workflowId) {
+        throw new Error(
+          `plan-worker-count refused: member ${member.workerId} belongs to workflow ${member.workflowId}, `
+          + `not the planned workflow ${request.workflowId}`,
+        );
+      }
+    }
+    const facts: WorkerPoolMemberReconciliationFact[] = [];
+    for (const member of desired) facts.push(await planMemberFact(member, false));
+    for (const member of excess) facts.push(await planMemberFact(member, true));
+    return WorkerSupervisorAcknowledgementSchema.parse({
+      command: "plan-worker-count",
+      state: "acknowledged",
+      desiredWorkers: request.desiredWorkers,
+      members: facts,
     });
   };
 
@@ -460,6 +555,8 @@ export function createDashboardWorkerProcessSupervisor(
   return Object.freeze({
     async execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement> {
       switch (request.command) {
+        case "plan-worker-count":
+          return planWorkerCount(request);
         case "spawn-worker":
           return spawnWorker(WorkerPoolMemberSchema.parse(request.member));
         case "stop-worker":
