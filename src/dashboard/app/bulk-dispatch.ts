@@ -215,10 +215,23 @@ export function bulkSubjectsOf(plan: BulkVerbPlan): ReadonlyMap<string, string> 
  * One sentence per REASON there is nothing to send, never one blended count.
  * "None of the 4 serves retry" said about rows the day stopped serving would be
  * a claim about `actions[]` nobody ever read.
+ *
+ * IT HAS TWO TENSES because it is read at two moments, and the outcome band's
+ * copy read `…rows are no longer on this day … when this batch was sent`, which
+ * is a present-tense claim about a past instant. The tense is REQUIRED rather
+ * than defaulted: a default puts the wrong one on the next call site that
+ * forgets, and the whole sentence exists to be precise about which rows the
+ * screen is talking about and when.
  */
-export function bulkUnavailableSentence(count: number): string {
-  return `${String(count)} selected ${count === 1 ? "row is" : "rows are"} no longer on this day, `
-    + `so nothing can be sent for ${count === 1 ? "it" : "them"} from this screen`;
+export function bulkUnavailableSentence(count: number, tense: "present" | "past"): string {
+  const subject = `${String(count)} selected ${count === 1 ? "row" : "rows"}`;
+  const object = count === 1 ? "it" : "them";
+  if (tense === "past") {
+    return `${subject} ${count === 1 ? "was" : "were"} no longer on this day when this batch was sent, `
+      + `so nothing was sent for ${object}`;
+  }
+  return `${subject} ${count === 1 ? "is" : "are"} no longer on this day, `
+    + `so nothing can be sent for ${object} from this screen`;
 }
 
 function emptyPlanReason(plan: BulkVerbPlan): string {
@@ -226,7 +239,8 @@ function emptyPlanReason(plan: BulkVerbPlan): string {
     ? ""
     : `none of the ${String(plan.skipped.length)} selected rows still on this day serves ${plan.verb}; `
       + "the server describes what each row can do and this selection can do none of it";
-  const gone = plan.unavailable.length === 0 ? "" : bulkUnavailableSentence(plan.unavailable.length);
+  // Present tense: this refusal is composed BEFORE anything is sent.
+  const gone = plan.unavailable.length === 0 ? "" : bulkUnavailableSentence(plan.unavailable.length, "present");
   if (unserved === "" && gone === "") return `no rows are selected, so there is nothing to ${plan.verb}`;
   return [unserved, gone].filter((part) => part !== "").join(", and ");
 }

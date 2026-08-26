@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
+import { BulkRunCommandResponseSchema } from "../../../src/domain/commands.js";
 import { QueueToolbar } from "../../../src/dashboard/surfaces/queue-toolbar.js";
 import type { BulkVerbPlan } from "../../../src/dashboard/app/bulk-dispatch.js";
 
@@ -135,5 +136,127 @@ describe("the selection band's refusal, when a selection yields no bulk plan", (
     assert.ok(!text.includes("no longer on this day"), text);
     assert.ok(!text.includes("nothing to apply to this selection"), text);
     assert.ok(text.includes("0 selected"), `the count itself still reads out loud: ${text}`);
+  });
+});
+
+/**
+ * THE OTHER TWO WAYS THIS BAND'S SENTENCES WERE SHORT OF THE TRUTH (unit F2d).
+ *
+ * One was a TENSE: the outcome band read `… rows are no longer on this day …
+ * when this batch was sent`, a present-tense claim pinned to a past instant, so
+ * the sentence disagreed with itself about which moment it described. The rows
+ * it names are named for exactly one reason — they were already gone when the
+ * batch went — and the copy now says so once, in one tense.
+ *
+ * The other was CLIPPING: the refusal sentence sat in a `truncate` span. A row
+ * has the ⓘ popover as its route to a clipped value; a toolbar has none, so a
+ * refusal that ran past the band's width was a reason with no route to it on
+ * ANY pointer. It wraps now, and the band's `min-h` is what lets it.
+ */
+function outcomeBandText(unavailable: readonly string[]): string {
+  const markup = renderToStaticMarkup(createElement(QueueToolbar, {
+    sort: "attention",
+    onSort: noop,
+    selectMode: true,
+    onSelectMode: noop,
+    selectedCount: 3,
+    visibleIds: [runId(1), runId(2), runId(3)],
+    onSelectAll: noop,
+    onClearSelection: noop,
+    bulkPlans: [],
+    bulkUnavailable: unavailable,
+    onBulk: noop,
+    bulkOutcome: {
+      plan: {
+        verb: "cancel",
+        label: "Cancel",
+        eligible: [{ runId: runId(1), title: "Jordan Reyes", expectedVersion: 3 }],
+        skipped: [],
+        unavailable,
+      },
+      subjects: new Map([[runId(1), "Jordan Reyes"]]),
+      // Parsed THROUGH the schema, not hand-built: a band tested against a
+      // shape the wire cannot produce is a band tested against nothing.
+      response: BulkRunCommandResponseSchema.parse({
+        state: "vector",
+        bulkCommandId: "0f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b",
+        type: "cancel",
+        requestedCount: 1,
+        results: [{
+          runId: runId(1),
+          commandId: "1f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b",
+          outcome: "applied",
+          replayed: false,
+          detail: "cancelled",
+        }],
+      }),
+    },
+    onDismissBulkOutcome: noop,
+    onSelectRun: noop,
+  }));
+  return markup
+    .replace(/<[^>]*>/gu, " ")
+    .replace(/&#x27;/gu, "'")
+    .replace(/&quot;/gu, "\"")
+    .replace(/&amp;/gu, "&")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+describe("the outcome band's third bucket", () => {
+  it("speaks in the PAST about rows that were already gone when the batch was sent", () => {
+    const text = outcomeBandText([runId(7), runId(8)]);
+    assert.ok(
+      text.includes(
+        "2 selected rows were no longer on this day when this batch was sent, so nothing was sent for them",
+      ),
+      `the outcome sentence must be past tense throughout: ${text}`,
+    );
+    assert.ok(
+      !text.includes("are no longer on this day, so nothing can be sent for them from this screen: "),
+      `the present-tense sentence must not be the one pinned to a past instant: ${text}`,
+    );
+  });
+
+  it("agrees with itself in the SINGULAR too", () => {
+    const text = outcomeBandText([runId(7)]);
+    assert.ok(
+      text.includes(
+        "1 selected row was no longer on this day when this batch was sent, so nothing was sent for it",
+      ),
+      `one row is "was", not "were" and not "is": ${text}`,
+    );
+  });
+});
+
+describe("the selection band's refusal is READABLE, not merely present", () => {
+  it("puts the sentence in no `truncate` span — a toolbar has no popover to recover a clipped reason", () => {
+    const markup = renderToStaticMarkup(createElement(QueueToolbar, {
+      sort: "attention",
+      onSort: noop,
+      selectMode: true,
+      onSelectMode: noop,
+      selectedCount: 6,
+      visibleIds: [runId(1), runId(2)],
+      onSelectAll: noop,
+      onClearSelection: noop,
+      bulkPlans: [],
+      bulkUnavailable: [runId(7), runId(8)],
+      onBulk: noop,
+      bulkOutcome: null,
+      onDismissBulkOutcome: noop,
+      onSelectRun: noop,
+    }));
+    const sentence = /<span class="([^"]*)">None of the 4 selected/u.exec(markup);
+    assert.ok(sentence !== null, `the refusal sentence did not render at all: ${markup}`);
+    assert.ok(
+      !/(^|\s)truncate(\s|$)/u.test(sentence[1] ?? ""),
+      `the refusal must wrap rather than clip: ${String(sentence[1])}`,
+    );
+    // And the band it sits in must be able to grow, or wrapping only overflows.
+    assert.ok(
+      markup.includes("min-h-[var(--ds-h-bar)]"),
+      "a wrapping sentence in a fixed-height band is the same clip by another route",
+    );
   });
 });

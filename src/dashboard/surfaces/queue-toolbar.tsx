@@ -320,7 +320,13 @@ export function QueueToolbar({
         <div
           className={cn(
             "flex items-center border-t bg-[var(--ds-recess-bg)]",
-            dsSize.hBar,
+            // `min-h`, not the fixed `dsSize.hBar`: the refusal sentence below
+            // is the one thing in this band that can outgrow a line, and it has
+            // to WRAP rather than clip — a truncated refusal is a reason the
+            // operator cannot finish reading and has no other route to. At rest
+            // (a plan's buttons, or a sentence that fits) the band measures
+            // exactly `--ds-h-bar` and nothing moves.
+            "min-h-[var(--ds-h-bar)] py-[var(--ds-space-tight)]",
             dsBorder.subtle,
             "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)]",
           )}
@@ -349,19 +355,24 @@ export function QueueToolbar({
             "select something first" is a caption on an absence.
           */}
           {selectedCount > 0 && bulkPlans.length === 0 && (
-            <span className={cn(dsText.meta, "ml-auto min-w-0 truncate text-[color:var(--ds-fg-muted)]")}>
+            /* NOT `truncate`. This is the band's only statement of WHY nothing
+               can be applied, and the ⓘ-and-popover route the rows use for a
+               clipped value does not exist on a toolbar — so a clipped sentence
+               here is a reason with no route to it at all, on any pointer. It
+               wraps instead, and the band's `min-h` lets it. */
+            <span className={cn(dsText.meta, "ml-auto min-w-0 leading-snug text-[color:var(--ds-fg-muted)]")}>
               {selectedCount === bulkUnavailable.length
                 ? /* Every selected row has left the day. Saying they "serve
                      neither verb" would be a claim about `actions[]` this
                      screen never received — the honest sentence is that there
                      are no rows here to act on. */
-                  `${bulkUnavailableSentence(bulkUnavailable.length)}.`
+                  `${bulkUnavailableSentence(bulkUnavailable.length, "present")}.`
                 : `None of the ${selectedCount - bulkUnavailable.length} selected `
                   + `${selectedCount - bulkUnavailable.length === 1 ? "row still on this day serves" : "rows still on this day serve"} `
                   + `Cancel or Retry, so there is nothing to apply to this selection.`
                   + (bulkUnavailable.length === 0
                     ? ""
-                    : ` A further ${bulkUnavailableSentence(bulkUnavailable.length)}.`)}
+                    : ` A further ${bulkUnavailableSentence(bulkUnavailable.length, "present")}.`)}
             </span>
           )}
 
@@ -559,7 +570,11 @@ export function QueueToolbar({
               than a plausible substitute for one. */}
           {bulkOutcome.plan.unavailable.length > 0 && (
             <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
-              {bulkUnavailableSentence(bulkOutcome.plan.unavailable.length)} when this batch was sent:{" "}
+              {/* PAST tense: this is the batch's outcome, and the rows it names
+                  were already gone at the instant it was sent. The sentence
+                  carries "when this batch was sent" itself, so the two halves
+                  can no longer disagree about which moment they describe. */}
+              {bulkUnavailableSentence(bulkOutcome.plan.unavailable.length, "past")}:{" "}
               <span className={dsText.nums}>{bulkOutcome.plan.unavailable.join(", ")}</span>
             </p>
           )}
