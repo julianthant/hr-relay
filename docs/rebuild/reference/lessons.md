@@ -7,6 +7,21 @@ lessons keep living in the module's own `AGENTS.md` (`src/dashboard`, `src/store
 Read before kernel (`src/core`), driver (`src/stores`, `src/infra/browser`), dashboard, or
 write-safety work.
 
+- **2026-08-26: an acknowledgement compared against the object you handed the effect-taker is a
+  comparison the effect-taker controls (ref execution-and-sessions; the worker pool supervisor
+  contract in `src/core/worker-loop.ts`).** The pool executor validated the supervisor's
+  acknowledgement against the SAME member object it had put in the request, so a supervisor that
+  mutated the request after submission was checked against its own mutation — and a spawn could be
+  acknowledged for a member the command never targeted, while a plan's accepted `workerIds` echoed
+  the rewrite. Freeze what you submit and derive what you will acknowledge BEFORE the effect-taker
+  sees the request. The same review closed the seam's other lies: a scale-down now names the exact
+  authoritative excess indices and requires stop coverage of each; every mutating control attests
+  durable `supervised` ownership and refuses `external` by name; the stop escalation POLICY
+  (stages + timeout bounds) is separated from timestamped OBSERVED stages (a strict prefix, ordered,
+  non-decreasing instants) so an initial acknowledgement cannot claim a future SIGTERM/SIGKILL; and
+  the pool seam is awaitable, settling only after the process effect settles, while the synchronous
+  phase-1 seam refuses a pending promise instead of acknowledging an unproved effect.
+
 - **2026-08-25: record time is not append time, and a page cursor must name the corpus it pages
   (D5/D270; observed logs L3).** The span writer partitions on its append clock while an observation
   retains the earlier instant at which the task recorded it. Deriving reader partitions from run
