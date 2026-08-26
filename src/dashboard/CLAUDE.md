@@ -57,12 +57,58 @@ decisions rather than as drift, and each site carries the same citation in code.
 | **Escape-clear in day search** — a first `Escape` clears a non-empty query; a second closes the dialog (ledger 1 A16) | `surfaces/day-search.tsx` | Clearing is the cheaper correction and the second press still reaches the dialog, so nothing the demo's Escape does is unavailable here | B — remove both for exactness |
 | **`Import spreadsheet` in the toolbar's left group** (ledger 1 A174 / B141) | `app/dashboard-app.tsx` | It is the only served door into the intake workspace; the demo reaches intake from inside the Run Modal and `RunStartSurfaces` serves no such handoff, so deleting it strands the workspace | B — remove both for exactness · C — build the Run-Modal handoff first |
 
+Three more are ruled by **D273 items 5–6** (`ref dashboard-surfaces` §"D273 — run detail"; the
+sheet is ledger 2, `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §R-C). Same rule: each site
+carries the citation in code.
+
+| Deviation | Where | Why it stays | Rejected |
+|---|---|---|---|
+| **`Saving…` on the commit arm while a save is in flight** (ledger 2 C71) | `surfaces/context-rail.tsx` | The demo's save is a synchronous mock and this one is a real `run/edit-checkpoint` round trip. A control that looks identical mid-flight invites the second press D272's own after-dispatch lesson is about; the label IS the pending state, so the fact reaches a screen reader on the control's accessible name rather than through decoration | B — suppress the async state for exactness |
+| **The Data section's `aria-label` is its VISIBLE label** (ledger 2 C16) | `surfaces/context-rail.tsx` | The demo's region says `Data` under a visible `Extracted fields` — a mismatch it inherited when its own visible label changed and its region name did not. Porting it would put two names on one region and undo the one-expression rule this bundle ratified for WCAG 2.5.3 (`intake.tsx`'s review checkbox). `DATA_SECTION_LABEL` feeds both halves so they cannot drift | A — port `aria-label="Data"` verbatim |
+| **The unattributed ledger group takes no `Well` and no band** (ledger 2 C51/C54) | `surfaces/context-rail.tsx` | The demo has no counterpart because it always knows the step. The chrome ENCODES the step, so a group that has none has nothing to encode and an empty band would be D252's made-up heading in a quieter form. Its rows keep the dividers, which separate values rather than name a producer | B — give it a band with an invented or blank heading |
+
 Neither is permanent: the import button goes when the run modal grows the handoff. The Escape-clear
 is deliberately NOT a `shortcuts-model.ts` entry — the legend's own *When they fire* rules say an
 open dialog owns the keyboard including Escape, and listing a per-dialog refinement as a global
 binding would contradict them.
 
 ## Lessons learned
+
+- **2026-08-26: a finding named three things in one breath, half of it landed, and the half that
+  did not had no row of its own to be missed from (D273 item 5, unit F7, ledger 2 C51).** R6 f.1
+  asked the Data ledger for "the step LEVEL, a `Well` per step, a recessed caps band and divided
+  rows". D252 delivered the levels — correctly, and with the harder half of the work, the served
+  `origin.nodeId` grouping — and the chrome was simply not mentioned again. Nothing regressed and no
+  gate could see it, because the *surviving* half is self-consistent: a caps label over some rows is
+  a perfectly ordinary heading, and only the demo beside it says the hierarchy was supposed to be
+  drawn rather than labelled. **When a finding names a structure and a treatment in one sentence,
+  they are two rows — split them at the point of ratification, or the treatment becomes the thing
+  nobody can prove is absent.** Two more travel from the same pass. **Chrome is a claim about the
+  content it wraps**: the ledger's unattributed group takes neither Well nor band, because the band
+  encodes the step and a group with none has nothing to encode — an empty band would have been
+  D252's own refusal (never invent the heading) restated in a quieter register. And **the group's
+  BODY takes the rail's own surface back**, so the pair reads as one banded ledger rather than as a
+  card inside a panel; a Well drawn all the way through would have been the nested container the
+  craft floor bans, and would have said "these values are inset" when the true fact is "these values
+  share a producer".
+
+  The same commit's other half is the refusal (D273 item 6, C55/C57/C70). **A surface that HOLDS the
+  reassuring fact and does not say it is the fail-loud rule's failure mode in display form.** A
+  refused save kept every draft — `save()` has done so since D253 — and drew one uncoded red span,
+  so the operator saw a red line and no statement that their work survived. It now says the count,
+  says what was not done, and carries the server's code where there is one; the arm with no code
+  says so rather than inventing one. Three habits behind that. **A third ceremony is not
+  automatically a third parameter**: `refused-notice-model.ts` exists because two near-identical
+  copies drifted, and the reflex was to add a `checkpoint-edit` arm to it — but two of that notice's
+  three clauses are false here (the held work is drafts ABOVE the control, not "your answer below",
+  and the count is a fact a dialog does not have), and parameterizing a shared string until it is
+  the union of three ceremonies is how the drift it fixed got in. **The count is captured at
+  DISPATCH, not read at render**: the operator keeps typing while a command is in flight, so "your
+  3 edits are still here" has to be a fact about the save that was refused. And **C70's duplicate
+  resolves toward the VISIBLE half, always** — the blocked reason was on the primary's `title` and
+  in a sentence under the dock, and it is the tooltip that goes, because a reason reachable only by
+  pointer is a fact the product does not have (D272 items 8–9, landing a second time on a second
+  surface).
 
 - **2026-08-26: a reason that lives only on `title` is a fact the product does not have, and the
   two places this modal kept one had already stopped being the same code (D272 items 8–9, unit F5,
