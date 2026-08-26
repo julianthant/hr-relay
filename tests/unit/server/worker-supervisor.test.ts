@@ -402,10 +402,13 @@ describe("spawn-worker", () => {
     const poll = harness.scheduler.pending()[0];
     if (poll === undefined) throw new Error("expected a scheduled birth poll");
     poll.fire();
-    await expectation;
-
+    // Asserted BEFORE awaiting the rejection: a swallowed birth-probe catch
+    // would leave the spawn pending forever, so awaiting first would turn
+    // that mutation into a 30s test timeout instead of a real diff here.
     expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
     expect(harness.scheduler.pending()).toHaveLength(0);
+    await expectation;
+
     // The killed child's real exit still lands as evidence and frees the slot.
     harness.children[0]?.emitExit(null, "SIGKILL");
     expect(harness.supervisor.memberEvidence(target)).toMatchObject({
