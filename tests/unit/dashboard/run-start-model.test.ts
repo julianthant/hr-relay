@@ -130,6 +130,16 @@ describe("a plan outlives nothing that shaped it (C109, D272 item 8)", () => {
       ["priority", { ...base, priority: "bulk" }],
       ["instances", { ...base, instances: { ucpath: "test" } }],
     ];
+    // The enumeration is only as good as its coverage, and nothing here could
+    // see a SIXTH field arriving on `StartRequestShape` with no case for it —
+    // which is the whole failure mode this fold exists to prevent, one level
+    // up. `base` is typed as the real shape, so its own keys are the list the
+    // cases have to match exactly (unit F5b finding 9).
+    assert.deepEqual(
+      moved.map(([field]) => field).sort(),
+      Object.keys(base).sort(),
+      "a field of the start request has no case above",
+    );
     for (const [field, next] of moved) {
       assert.notEqual(
         startRequestFingerprint(next),

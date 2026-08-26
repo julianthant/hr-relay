@@ -38,6 +38,11 @@ function withoutTooltips(markup: string): string {
   return markup.replace(/title="[^"]*"/gu, "");
 }
 
+/** how many times a sentence occurs in a string — a fact said twice is a defect */
+function occurrences(haystack: string, needle: string): number {
+  return haystack.split(needle).length - 1;
+}
+
 /** the markup's text content, tags gone and React's entity escapes undone */
 function textOf(markup: string): string {
   return markup
@@ -101,6 +106,26 @@ describe("a locked value states its reason ON SCREEN (C48 / C81, D272 item 9)", 
     assert.ok(textOf(markup).includes("Active-run policy"), "the fact is unlabelled");
   });
 
+  it("states the reason ONCE — the `<p>` replaced the tooltip, it did not join it", () => {
+    // Unit F5b finding 4. `title` is not a second rendering of the same fact:
+    // it joins the accessible description, so a screen reader that has just
+    // read the `<p>` reads the identical sentence again from the tooltip. The
+    // mutation is putting `reason={reason}` back on `LockedValue`.
+    const markup = renderToStaticMarkup(
+      createElement(LockedFact, {
+        label: "Active-run policy",
+        value: "Refuses the start while a run for the same subject is unfinished",
+        reason: ENQUEUE_POLICY_REASON,
+      }),
+    );
+    assert.doesNotMatch(markup, /title="/u, "the reason went back onto a tooltip as well");
+    assert.equal(
+      occurrences(textOf(markup), ENQUEUE_POLICY_REASON),
+      1,
+      "a screen reader reads this locked value's reason more than once",
+    );
+  });
+
   it("is the SAME component behind the sub-selection, so the two cannot drift", () => {
     // Two near-identical renderings are two things that happen to agree today
     // (`src/dashboard/CLAUDE.md`, 2026-08-26). C48 and C81 were exactly that
@@ -140,6 +165,32 @@ describe("the plan is a card per proposed row (C57, D272 item 8)", () => {
     for (const invented of ["not yet created", "panel", "containment"]) {
       assert.ok(!text.includes(invented), `the card invented an unserved ${invented}`);
     }
+  });
+
+  it("puts the untruncatable identities on the provenance line, not in a clipped chip", () => {
+    // Unit F5b finding 5, and it is `Chip`'s OWN rule: a chip is a single-line
+    // token that cuts inside its border and recovers the cut on `title` — "if
+    // a fact cannot survive truncation it is not a chip: put it on the row's
+    // `MetaLine`, where it can wrap." Half of `eid:E1234567` is a different
+    // subject, and a `title` is reachable by mouse and by nobody else, which
+    // is exactly the defect C48/C81 fixed one component up.
+    //
+    // Both assertions are red against the chips this replaced: `Chip` emits
+    // `title="eid:E1234567"` and carries `dsClip.token`'s `whitespace-nowrap`.
+    const markup = renderToStaticMarkup(createElement(PlanPreview, { plan: PLAN, test: [] }));
+    for (const identity of ["eid:E1234567", "tr-000000000001"]) {
+      assert.ok(textOf(markup).includes(identity), `the card drops the served ${identity}`);
+      // Neither identity carries a regex metacharacter, so the literal is the
+      // pattern; a helper that escaped one would be untested machinery here.
+      assert.doesNotMatch(
+        markup,
+        new RegExp(`title="[^"]*${identity}`, "u"),
+        `${identity} is recoverable only by hovering`,
+      );
+    }
+    assert.doesNotMatch(markup, /whitespace-nowrap/u, "a served identity is back inside a single-line token");
+    assert.ok(textOf(markup).includes("match key eid:E1234567"));
+    assert.ok(textOf(markup).includes("trace tr-000000000001"));
   });
 
   it("prints the plan's expiry as a clock reading, never a raw ISO instant (C61)", () => {
