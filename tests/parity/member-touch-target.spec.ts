@@ -235,14 +235,27 @@ test.describe("a coarse pointer", () => {
 
     const onScreen = measurable(lines);
 
-    // 2 — THE OVERLAY IS LIVE. 44px of reach across a control that paints 24 is
-    // `pointer-coarse:after:size-11` and nothing else: ungate it, shrink it, or
-    // drop the `relative` that positions it, and this collapses to the paint.
+    // 2 — THE OVERLAY IS LIVE IN BOTH AXES. 44px of reach across a control that
+    // paints 24 is `pointer-coarse:after:size-11` and nothing else: ungate it,
+    // shrink it, or drop the `relative` that positions it, and this collapses to
+    // the paint.
+    //
+    // The HEIGHT is asserted separately from the width because the two failed
+    // separately: `size-11` made the overlay 44px square, and the toggle's own
+    // parent — the member line's `truncate` span — clipped it back to the 24px
+    // of paint vertically while leaving the width untouched. A spec that
+    // measured one axis called that fixed. A finger needs 44px of BOX, so both
+    // axes are measured, and the height is the one that regresses invisibly.
     for (const line of onScreen) {
       expect(
         line.hit.right - line.hit.left + 1,
-        `${line.runId}'s toggle reaches only its own paint, so no coarse-pointer overlay is live`,
+        `${line.runId}'s toggle reaches only its own paint horizontally, so no coarse-pointer overlay is live`,
       ).toBe(TOUCH_FLOOR);
+      expect(
+        line.hit.bottom - line.hit.top + 1,
+        `${line.runId}'s toggle is only ${String(line.hit.bottom - line.hit.top + 1)}px tall to a finger — `
+        + "an ancestor is clipping the coarse-pointer overlay back towards the 24px of paint",
+      ).toBeGreaterThanOrEqual(TOUCH_FLOOR);
     }
 
     // 3 — AND IT STAYS HOME. Whatever the overlay reaches must lie inside the
@@ -288,6 +301,13 @@ test.describe("a fine pointer", () => {
       expect(
         line.hit.right - line.hit.left + 1,
         "an overlay live on a fine pointer would reach 22px out of a 28px row and steal a neighbour's click",
+      ).toBe(TOGGLE_PAINT);
+      // The height is the axis the coarse fix had to un-clip, so it is also the
+      // axis by which that fix could leak past its gate. 24px here is the proof
+      // it did not, and the reason the parity corpus still holds.
+      expect(
+        line.hit.bottom - line.hit.top + 1,
+        "the coarse-pointer overlay has escaped its gate and grown the hit area on a mouse",
       ).toBe(TOGGLE_PAINT);
     }
   });
