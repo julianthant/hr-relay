@@ -1959,8 +1959,10 @@ filing a partial fan-out.
 `{intakeManifestId, createdAt, totals, diff}` on the upload response and on
 `GET /api/v1/intake/:sessionId`, since both render from one `buildWire`. An enqueued session resolves
 the exact `intakeManifestId` it committed even when newer same-source manifests exist. An open
-session may resolve only the latest same-workflow manifest at or before that session's creation;
-its reserved identity and later manifests are ineligible. The source digest is the session's own,
+session may resolve only the unique latest same-workflow manifest at or before that session's
+creation; its reserved identity and later manifests are ineligible. Equal latest creation times
+refuse, naming the session, timestamp and candidate manifest ids rather than selecting by repository
+order. The source digest is the session's own,
 so the `source-artifact` axis is equal by construction and the diff reports mapping, projection,
 contract, canonical-schema, membership and changed-input facts.
 

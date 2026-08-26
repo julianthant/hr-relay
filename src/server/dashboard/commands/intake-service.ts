@@ -248,16 +248,26 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
      */
     const rerun = ((): unknown => {
       const sessionCreatedAtMs = Date.parse(session.createdAt);
-      const prior = committedManifest ?? dependencies.authorityRead
-        .findIntakeManifestsBySource(session.artifact.sha256)
-        .filter((candidate) =>
-          candidate.workflow === session.workflow
-          && candidate.manifestId !== session.reservedManifestId
-          && Date.parse(candidate.createdAt) <= sessionCreatedAtMs)
-        .reduce<IntakePlanManifest | undefined>((latest, candidate) =>
-          latest === undefined || Date.parse(candidate.createdAt) >= Date.parse(latest.createdAt)
-            ? candidate
-            : latest, undefined);
+      const prior = committedManifest ?? (() => {
+        const eligible = dependencies.authorityRead
+          .findIntakeManifestsBySource(session.artifact.sha256)
+          .filter((candidate) =>
+            candidate.workflow === session.workflow
+            && candidate.manifestId !== session.reservedManifestId
+            && Date.parse(candidate.createdAt) <= sessionCreatedAtMs);
+        if (eligible.length === 0) return undefined;
+
+        const latestCreatedAtMs = Math.max(...eligible.map((candidate) => Date.parse(candidate.createdAt)));
+        const latest = eligible.filter((candidate) => Date.parse(candidate.createdAt) === latestCreatedAtMs);
+        if (latest.length !== 1) {
+          const candidateIds = latest.map((candidate) => candidate.manifestId).sort();
+          throw new Error(
+            `intake session ${session.intakeSessionId} cannot select a unique prior manifest at `
+            + `${new Date(latestCreatedAtMs).toISOString()}: candidates ${candidateIds.join(", ")}`,
+          );
+        }
+        return latest[0];
+      })();
       if (prior === undefined) return undefined;
       if (layout === null) {
         throw new Error(

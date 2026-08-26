@@ -312,8 +312,10 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
   before/after hashes there; the values retain their existing classifications. Missing current
   layout or prior/current row facts must refuse by name; an absent vector is never an empty-vector
   fallback. A reserved manifest id is preflight identity, not proof a manifest exists. Enqueued
-  reads bind both terminal projections to their exact committed id; open reads may select only an
-  earlier same-source manifest, never their reservation or a future row. Share the durable
+  reads bind both terminal projections to their exact committed id; open reads may select only the
+  unique latest earlier same-source manifest, never their reservation or a future row. Equal latest
+  creation times refuse by session, timestamp and candidate ids rather than selecting by repository
+  order. Share the durable
   manifest's field schemas and row refinement with the reviewed wire projection so totals, row
   coverage and stable-item uniqueness cannot drift without broadening data egress.
 

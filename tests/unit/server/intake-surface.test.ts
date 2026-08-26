@@ -549,7 +549,7 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     assert.equal(rereadB.rerun?.intakeManifestId, manifestB);
   });
 
-  it("binds an open session only to a prior manifest, never its reservation or a future manifest", async () => {
+  it("selects its sole eligible manifest while excluding its reservation and a future manifest", async () => {
     const harness = surface();
     const sessionA = await runTheRoster(harness);
     const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
@@ -576,6 +576,60 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
 
     const rereadB = await harness.intake.read(openB.session.intakeSessionId);
     assert.equal(rereadB.rerun?.intakeManifestId, manifestAId);
+  });
+
+  it("selects the uniquely latest eligible manifest for an open session", async () => {
+    const harness = surface();
+    const sessionA = await runTheRoster(harness);
+    const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
+    if (manifestAId === undefined) throw new Error("session A did not name its manifest");
+    const manifestA = harness.database.authority.intakeManifests.get(manifestAId);
+    if (manifestA === undefined) throw new Error("session A's manifest is missing");
+
+    harness.clock.advanceWall(1_000);
+    const openB = await uploadRoster(harness.intake);
+    const latestManifestId = "dddddddd-0001-4000-8000-000100000000";
+    harness.database.withAuthorityTransaction((repositories) => repositories.intakeManifests.insert({
+      ...manifestA,
+      manifestId: latestManifestId,
+      createdAt: openB.session.createdAt,
+    }));
+
+    const rereadB = await harness.intake.read(openB.session.intakeSessionId);
+    assert.equal(rereadB.rerun?.intakeManifestId, latestManifestId);
+  });
+
+  it("refuses an open session whose latest eligible manifests have the same creation time", async () => {
+    const harness = surface();
+    const sessionA = await runTheRoster(harness);
+    const manifestAId = (await harness.intake.read(sessionA)).intakeManifestId;
+    if (manifestAId === undefined) throw new Error("session A did not name its manifest");
+    const manifestA = harness.database.authority.intakeManifests.get(manifestAId);
+    if (manifestA === undefined) throw new Error("session A's manifest is missing");
+
+    harness.clock.advanceWall(1_000);
+    const openB = await uploadRoster(harness.intake);
+    const candidateIds = [
+      "dddddddd-0001-4000-8000-000100000000",
+      "eeeeeeee-0001-4000-8000-000100000000",
+    ];
+    harness.database.withAuthorityTransaction((repositories) => {
+      for (const manifestId of candidateIds) {
+        repositories.intakeManifests.insert({
+          ...manifestA,
+          manifestId,
+          createdAt: openB.session.createdAt,
+        });
+      }
+    });
+
+    await assert.rejects(
+      () => harness.intake.read(openB.session.intakeSessionId),
+      new RegExp(
+        `intake session ${openB.session.intakeSessionId} cannot select a unique prior manifest at `
+        + `${openB.session.createdAt}: candidates ${candidateIds.join(", ")}`,
+      ),
+    );
   });
 
   it("shows the mapping axis moving when the same bytes are mapped differently", async () => {
