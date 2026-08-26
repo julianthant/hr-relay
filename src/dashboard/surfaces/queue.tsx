@@ -86,6 +86,7 @@ import {
   queueRowAccessibleName,
   queueRowTitle,
   queueRowTitleTooltip,
+  rowInfoFacts,
   sortQueueBand,
   useAttentionAnnounce,
 } from "./queue-model.js";
@@ -407,30 +408,15 @@ const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
  *  - **What this run did not report** — an absent subtitle or live message
  *    arrives with the server's own reason, and that reason is a fact about THIS
  *    run, which is the one thing beyond the panel sentence the ⓘ may hold.
+ *  - **What a present fact SAYS IN FULL** — the fold that composes both lives
+ *    in `queue-model.ts` (`rowInfoFacts`), because a fact drawn as a chip is
+ *    clipped by design and this is the row's only hover-free route to the whole
+ *    value.
  *
  * It EXPLAINS; it never HIDES. Nothing load-bearing (status, counts, error,
- * trace, every command) moves in here from the row.
+ * trace, every command) moves in here from the row — it is the same values,
+ * unclipped, in the place DESIGN.md sanctions for detail.
  */
-function absentFacts(surface: QueueSurfaceWire): { label: string; reason: string }[] {
-  const facts: { label: string; reason: string }[] = [];
-  if (surface.subtitle.state === "absent") facts.push({ label: "Subtitle", reason: surface.subtitle.reason });
-  if (surface.liveMessage.state === "absent") facts.push({ label: "Live message", reason: surface.liveMessage.reason });
-  /*
-   * D230/§9 D7's two absences, in the one place ref dashboard-surfaces's second-batch delta
-   * says an operator reads them. Both are drawn on the ROW as nothing at all —
-   * a chip that is not there — and "nothing at all" is the state that cannot
-   * explain itself, which is what the ⓘ is for. Four distinct reasons hide
-   * behind an empty fact band and the server counts all four; collapsing them
-   * into a silent gap is the absence-versus-failure conflation this program
-   * bans.
-   */
-  if (surface.runNumber.state === "absent") facts.push({ label: "Run number", reason: surface.runNumber.reason });
-  if (surface.facts.state === "absent") facts.push({ label: "Outcome", reason: surface.facts.reason });
-  if (surface.surfaceKind === "operation" && surface.memberPreview.state === "absent") {
-    facts.push({ label: "Members", reason: surface.memberPreview.reason });
-  }
-  return facts;
-}
 
 /**
  * How this row is CONTAINED, in the product's own words (D231).
@@ -454,7 +440,7 @@ function RowInfo({
   surface: QueueSurfaceWire;
   workflowLabel: string;
 }) {
-  const facts = absentFacts(surface);
+  const facts = rowInfoFacts(surface);
   const panelName = PANEL_KIND_NAME[surface.panelKind];
   const containment = CONTAINMENT_EXPLANATION[surface.containment];
   return (
@@ -485,9 +471,22 @@ function RowInfo({
             <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>{containment}</p>
           )}
           {facts.map((fact) => (
-            <p key={fact.label} className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
+            <p
+              key={`${fact.state}:${fact.label}`}
+              className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}
+            >
               <span className="font-semibold text-[color:var(--ds-fg)]">{fact.label}: </span>
-              {fact.reason}
+              {fact.state === "present" ? (
+                /* A PRESENT fact is the row's chip, UNCLIPPED — `break-words`
+                   rather than a second truncation, following
+                   `intake.tsx`'s `IdentifierPopover`: a popover that clipped
+                   the value again would be the hover surface's failure moved
+                   somewhere quieter. Monospace, because it is the same token
+                   the chip draws. */
+                <span className={cn(dsText.nums, "break-words text-[color:var(--ds-fg)]")}>{fact.text}</span>
+              ) : (
+                fact.text
+              )}
             </p>
           ))}
           <MetaLine items={[workflowLabel, surface.traceId]} tone="faint" />

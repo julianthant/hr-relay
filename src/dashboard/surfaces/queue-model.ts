@@ -21,6 +21,54 @@ import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import { elapsedSecondsBetween, fmtElapsed } from "./format.js";
 
 /**
+ * ONE ROW'S ⓘ CONTENT, as a fold rather than as JSX.
+ *
+ * Two kinds of entry and they must stay distinguishable, which is why `state`
+ * rides along instead of both arms being flattened into a sentence:
+ *
+ *   ABSENT — the server said it has no such fact, and said WHY. Four distinct
+ *     reasons hide behind an empty fact band and all four are counted; letting
+ *     them collapse into a silent gap is the absence-versus-failure conflation
+ *     this program bans (D230 / §9 D7).
+ *   PRESENT — the fact's own value, WHOLE. On the row it is a `Chip`, and a
+ *     chip is a single-line token that clips its paint; before this the only
+ *     route to the uncut value was the element's `title`, which a touch user
+ *     cannot summon and a keyboard user is never shown. DESIGN.md's rule is
+ *     explicit — load-bearing detail "goes in the UI or in a Popover
+ *     (click-to-open, keyboard- and touch-reachable), never in a hover-only
+ *     surface" — and every queue row already has that Popover, so the value
+ *     costs no new chrome. The `title` stays as the mouse's shortcut.
+ */
+export interface RowInfoFact {
+  readonly label: string;
+  readonly state: "absent" | "present";
+  /** the server's reason for the absence, or the fact's own full value */
+  readonly text: string;
+}
+
+export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] {
+  const facts: RowInfoFact[] = [];
+  const absent = (label: string, text: string): void => {
+    facts.push({ label, state: "absent", text });
+  };
+  if (surface.subtitle.state === "absent") absent("Subtitle", surface.subtitle.reason);
+  if (surface.liveMessage.state === "absent") absent("Live message", surface.liveMessage.reason);
+  if (surface.runNumber.state === "absent") absent("Run number", surface.runNumber.reason);
+  if (surface.facts.state === "absent") absent("Outcome", surface.facts.reason);
+  if (surface.surfaceKind === "operation" && surface.memberPreview.state === "absent") {
+    absent("Members", surface.memberPreview.reason);
+  }
+  if (surface.facts.state === "present") {
+    // In the order the server sent them — the same order the chips draw, so the
+    // popover reads as the row it was opened from rather than as a second list.
+    for (const fact of surface.facts.value) {
+      facts.push({ label: fact.label, state: "present", text: fact.value });
+    }
+  }
+  return facts;
+}
+
+/**
  * THE 44px TOUCH FLOOR for a control that paints smaller than it.
  *
  * The member line's "checked by you" toggle is an `IconButton size="sm"` — 24px

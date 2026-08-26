@@ -47,6 +47,31 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
 
 ## Lessons learned
 
+- **2026-08-26: three ways a queue control can be short of the truth, and only one of them was
+  visible in the diff (unit F2, queue fidelity review).** All three were the same shape — a value
+  the surface HELD and did not make reachable. (1) `bulkPlans` was composed by filtering `surfaces`
+  by the selection, so a selected id whose row had left the day fell out of the plan and out of
+  every count downstream: `Cancel 3 · 1 skipped` under `6 selected`, with two rows accounted for
+  nowhere. Not sent AND not disclosed is the omission the fail-loud rule forbids, and the fix is
+  structural rather than a caption — `planBulkVerbs` now takes the WHOLE selection and returns the
+  difference as its own `unavailable` bucket, `selectedIds` is required rather than defaulted from
+  `rows` (a default reinstates the drop at the next call site that forgets it), and
+  `bulkUnavailableIds` throws on the inverse. **A count and its explanation must be derived from the
+  same input**: the strip's "none of the N selected rows serves cancel" was computed from a
+  different N than the one it printed. (2) The member line's toggle was 24px against a 44px touch
+  floor, and the obvious fix was a hazard: at the line's 28px pitch a 44px overlay reaches into the
+  rows above and below, so a tap near a boundary marks the WRONG member. **When a target cannot grow
+  without overlapping its neighbours, grow the PITCH** — `--ds-h-member-line` is 44px under
+  `@media (pointer: coarse)`, both well heights derive from it, and the parity corpus renders at
+  `pointer: fine` so no reference moved. (3) A `Chip` clips its paint and put the whole value on
+  `title` alone — reachable by mouse, by nobody else, which DESIGN.md bans outright. The row already
+  had the sanctioned Popover, so the fix cost no new chrome: `rowInfoFacts` composes absent reasons
+  and PRESENT values into one fold and the ⓘ prints the value unclipped (`break-words`, not a second
+  truncation). Two habits carried all three: the decision landed as a **pure exported fold** because
+  this tree renders no React in the unit lane, and each test was **run against a mutation of the
+  code it pins** — the touch-target guard was proved by ungating one `after:` utility, the fact fold
+  by having it print the label instead of the value.
+
 - **2026-08-21: an HTTP status decided by reading an error MESSAGE is a protocol keyed on prose, and
   every surface that renders a refusal inherits the mistake (Track D row D2, audit C3).** The BFF's
   `failureStatus` classified every throw by substring — four phrases meant 404, `"is not available"`
