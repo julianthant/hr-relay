@@ -9,11 +9,13 @@ import { setImmediate } from "node:timers";
 import { afterEach, describe, it } from "vitest";
 import {
   createPhase1WorkerRuntimeExecutor,
+  createWorkerPoolRuntimeExecutor,
   phase1WorkerId,
   poolWorkerId,
   runWorkerLoop,
   type WorkerLoopDependencies,
 } from "../../src/core/worker-loop.js";
+import type { WorkerRuntimeExecutor } from "../../src/core/command-kernel.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
@@ -282,6 +284,22 @@ function workerBrowserCommand(request: unknown) {
   return parsed;
 }
 
+function poolMemberFixture(poolIndex: number, workflowId = WORKFLOW_ID) {
+  return {
+    workflowId,
+    poolIndex,
+    workerId: `${workflowId}-worker-${String(poolIndex)}`,
+  };
+}
+
+const OBSERVED_GRACEFUL = [{ stage: "graceful-stop-requested", at: NOW }] as const;
+
+const STOP_ESCALATION = [
+  { stage: "graceful-stop-requested", timeoutMs: 120_000 },
+  { stage: "sigterm-sent", timeoutMs: 30_000 },
+  { stage: "sigkill-sent" },
+] as const;
+
 describe("pool worker identity", () => {
   it("mints stable identities from the workflow and pool index", () => {
     const workflowId = WorkflowIdSchema.parse(WORKFLOW_ID);
@@ -290,6 +308,1591 @@ describe("pool worker identity", () => {
       [1, 2].map((poolIndex) => poolWorkerId(workflowId, PositiveIntSchema.parse(poolIndex))),
       ["person-lookup-worker-1", "person-lookup-worker-2"],
     );
+  });
+});
+
+describe("pool-capable worker runtime executor seam", () => {
+  const requestedAt = NOW;
+  const envelope = {
+    commandId: UUID_7,
+    requestedBy: "local-operator",
+    requestedAt,
+    source: "dashboard",
+  };
+
+  it("is structurally non-assignable to the kernel's synchronous executor seam", () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => {
+        throw new Error("never invoked: this test is a compile-time pin");
+      },
+    });
+    // A mis-wire into the kernel's sync `workerRuntime` dependency would
+    // launch the real supervisor effect, then abandon its promise as an
+    // unhandled rejection once the synchronous zod parse throws on it. The
+    // pool seam's distinct method names make that mis-wire a compile error.
+    // @ts-expect-error — the awaitable pool executor must never satisfy the sync WorkerRuntimeExecutor
+    const misWired: WorkerRuntimeExecutor = executor;
+    assert.ok(misWired, "the runtime value itself still exists; only the assignment must be refused");
+  });
+
+  it("plans three deterministic members only after the supervisor acknowledges their lifecycle facts", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "plan-worker-count",
+          state: "acknowledged",
+          desiredWorkers: 3,
+          members: [
+            {
+              member: {
+                workflowId: WORKFLOW_ID,
+                poolIndex: 1,
+                workerId: "person-lookup-worker-1",
+              },
+              stage: "running",
+              ownership: "supervised",
+            },
+            {
+              member: {
+                workflowId: WORKFLOW_ID,
+                poolIndex: 2,
+                workerId: "person-lookup-worker-2",
+              },
+              stage: "running",
+              ownership: "supervised",
+            },
+            {
+              member: {
+                workflowId: WORKFLOW_ID,
+                poolIndex: 3,
+                workerId: "person-lookup-worker-3",
+              },
+              stage: "unmet",
+              reason: "crashed",
+            },
+          ],
+        };
+      },
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 3 },
+    });
+
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: [
+        "person-lookup-worker-1",
+        "person-lookup-worker-2",
+        "person-lookup-worker-3",
+      ],
+    });
+    assert.deepEqual(requests, [{
+      command: "plan-worker-count",
+      workflowId: WORKFLOW_ID,
+      desiredWorkers: 3,
+      members: [
+        { workflowId: WORKFLOW_ID, poolIndex: 1, workerId: "person-lookup-worker-1" },
+        { workflowId: WORKFLOW_ID, poolIndex: 2, workerId: "person-lookup-worker-2" },
+        { workflowId: WORKFLOW_ID, poolIndex: 3, workerId: "person-lookup-worker-3" },
+      ],
+      excessMembers: [],
+    }]);
+  });
+
+  it("acknowledges scale-down by selecting higher member indices for bounded stop", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          {
+            member: {
+              workflowId: WORKFLOW_ID,
+              poolIndex: 1,
+              workerId: "person-lookup-worker-1",
+            },
+            stage: "running",
+            ownership: "supervised",
+          },
+          {
+            member: {
+              workflowId: WORKFLOW_ID,
+              poolIndex: 2,
+              workerId: "person-lookup-worker-2",
+            },
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "initiating",
+            escalation: STOP_ESCALATION,
+            observed: OBSERVED_GRACEFUL,
+          },
+          {
+            member: {
+              workflowId: WORKFLOW_ID,
+              poolIndex: 3,
+              workerId: "person-lookup-worker-3",
+            },
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "initiating",
+            escalation: STOP_ESCALATION,
+            observed: OBSERVED_GRACEFUL,
+          },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: ["person-lookup-worker-1"],
+    });
+  });
+
+  it("spawns only the explicit pool member acknowledged as started", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "spawn-worker",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 2,
+            workerId: "person-lookup-worker-2",
+          },
+          stage: "started",
+        };
+      },
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    assert.deepEqual(await executor.spawnPoolWorker({ command: spawn, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "spawn-worker",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 2,
+        workerId: "person-lookup-worker-2",
+      },
+    }]);
+  });
+
+  it("requests a bounded graceful stop for the explicit member", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "stop-worker",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 2,
+            workerId: "person-lookup-worker-2",
+          },
+          escalation: STOP_ESCALATION,
+          observed: OBSERVED_GRACEFUL,
+        };
+      },
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    assert.deepEqual(await executor.stopPoolWorker({ command: stop, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "stop-worker",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 2,
+        workerId: "person-lookup-worker-2",
+      },
+      escalation: STOP_ESCALATION,
+    }]);
+  });
+
+  it("acknowledges pause only at the explicit member's requested stage", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "pause-worker",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 1,
+            workerId: "person-lookup-worker-1",
+          },
+          stage: "pause-requested",
+        };
+      },
+    });
+    const pause = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "pause-worker",
+      target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
+    });
+
+    assert.deepEqual(await executor.pausePoolWorker({ command: pause, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "pause-worker",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 1,
+        workerId: "person-lookup-worker-1",
+      },
+    }]);
+  });
+
+  it("acknowledges resume only at the explicit member's requested stage", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "resume-worker",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 3,
+            workerId: "person-lookup-worker-3",
+          },
+          stage: "resume-requested",
+        };
+      },
+    });
+    const resume = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "resume-worker",
+      target: { workerId: "person-lookup-worker-3", expectedVersion: 1 },
+    });
+
+    assert.deepEqual(await executor.resumePoolWorker({ command: resume, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "resume-worker",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 3,
+        workerId: "person-lookup-worker-3",
+      },
+    }]);
+  });
+
+  it("acknowledges refresh only after the explicit member session is refreshed", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "refresh-browser",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 2,
+            workerId: "person-lookup-worker-2",
+          },
+          browserSessionId: ITEM_ID,
+          stage: "refreshed",
+        };
+      },
+    });
+    const refresh = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "refresh-browser",
+      target: { workerId: "person-lookup-worker-2", browserSessionId: ITEM_ID, expectedVersion: 1 },
+    });
+
+    assert.deepEqual(await executor.refreshPoolBrowser({ command: refresh, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "refresh-browser",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 2,
+        workerId: "person-lookup-worker-2",
+      },
+      browserSessionId: ITEM_ID,
+    }]);
+  });
+
+  it("acknowledges reopen only after the explicit member session is reopened", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "reopen-browser",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 3,
+            workerId: "person-lookup-worker-3",
+          },
+          browserSessionId: ITEM_ID,
+          stage: "reopened",
+        };
+      },
+    });
+    const reopen = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "reopen-browser",
+      target: { workerId: "person-lookup-worker-3", browserSessionId: ITEM_ID, expectedVersion: 1 },
+    });
+
+    assert.deepEqual(await executor.reopenPoolBrowser({ command: reopen, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "reopen-browser",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 3,
+        workerId: "person-lookup-worker-3",
+      },
+      browserSessionId: ITEM_ID,
+    }]);
+  });
+
+  it("acknowledges a stop with the timestamped observed graceful stage, policy carried separately", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "stop-worker",
+          state: "acknowledged",
+          member: poolMemberFixture(2),
+          ownership: "supervised",
+          escalation: STOP_ESCALATION,
+          observed: OBSERVED_GRACEFUL,
+        };
+      },
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    assert.deepEqual(await executor.stopPoolWorker({ command: stop, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "stop-worker",
+      member: poolMemberFixture(2),
+      escalation: STOP_ESCALATION,
+    }]);
+  });
+
+  it.each([
+    {
+      seam: "stop",
+      acknowledgement: {
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "supervised",
+        escalation: STOP_ESCALATION,
+        observed: [{ stage: "graceful-stop-requested", at: "2026-07-31T17:00:00.001Z" }],
+      },
+      request: {
+        family: "worker-browser",
+        type: "stop-worker",
+        target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+      },
+    },
+    {
+      seam: "plan",
+      acknowledgement: {
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "initiating",
+            escalation: STOP_ESCALATION,
+            observed: [{ stage: "graceful-stop-requested", at: "2026-07-31T17:00:00.001Z" }],
+          },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+        ],
+      },
+      request: {
+        family: "worker-browser",
+        type: "plan-worker-count",
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        payload: { desiredWorkers: 1 },
+      },
+    },
+  ])("refuses a $seam observation timestamped after the command's now", async ({ seam, acknowledgement, request }) => {
+    // An observation is a record of something that HAPPENED; one postdating
+    // the command's own clock is a claim about the future dressed as a fact.
+    const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement });
+    const command = workerBrowserCommand({ ...envelope, ...request });
+    const invoke = seam === "stop"
+      ? () => executor.stopPoolWorker({ command, now: requestedAt })
+      : () => executor.planPoolWorkerCount({ command, now: requestedAt });
+
+    await assert.rejects(
+      invoke,
+      /person-lookup-worker-2 reports graceful-stop-requested observed at 2026-07-31T17:00:00\.001Z, after the command's now/,
+    );
+  });
+
+  it("refuses an initial stop acknowledgement claiming future escalation stages", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "supervised",
+        escalation: STOP_ESCALATION,
+        observed: [
+          { stage: "graceful-stop-requested", at: NOW },
+          { stage: "sigterm-sent", at: NOW },
+        ],
+      }),
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.stopPoolWorker({ command: stop, now: requestedAt }),
+      /may acknowledge only the observed graceful-stop-requested stage.*recorded as they occur/,
+    );
+  });
+
+  it("refuses a stop observation that short-circuits past the graceful stage", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "supervised",
+        escalation: STOP_ESCALATION,
+        observed: [{ stage: "sigkill-sent", at: NOW }],
+      }),
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.stopPoolWorker({ command: stop, now: requestedAt }),
+      /must follow the escalation policy in order/,
+    );
+  });
+
+  it("refuses an illegal escalation transition in a reconciliation fact", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "reconciling",
+            escalation: STOP_ESCALATION,
+            observed: [
+              { stage: "graceful-stop-requested", at: NOW },
+              // sigterm-sent skipped: graceful cannot jump straight to SIGKILL.
+              { stage: "sigkill-sent", at: NOW },
+            ],
+          },
+          {
+            member: poolMemberFixture(3),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "initiating",
+            escalation: STOP_ESCALATION,
+            observed: OBSERVED_GRACEFUL,
+          },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /must follow the escalation policy in order/,
+    );
+  });
+
+  it("refuses observed escalation stages with regressing timestamps", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "reconciling",
+            escalation: STOP_ESCALATION,
+            observed: [
+              { stage: "graceful-stop-requested", at: "2026-07-31T17:05:00.000Z" },
+              { stage: "sigterm-sent", at: NOW },
+            ],
+          },
+          {
+            member: poolMemberFixture(3),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "initiating",
+            escalation: STOP_ESCALATION,
+            observed: OBSERVED_GRACEFUL,
+          },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /non-decreasing timestamps/,
+    );
+  });
+
+  it("refuses an initiating plan fact claiming escalation stages beyond the graceful request", async () => {
+    // A fact attested `initiating` says THIS plan requested the graceful stop,
+    // so at acknowledgement time only graceful-stop-requested can have been
+    // observed; SIGTERM/SIGKILL are recorded through later `reconciling`
+    // facts as they occur, never promised in the initiating acknowledgement.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "initiating",
+            escalation: STOP_ESCALATION,
+            observed: [
+              { stage: "graceful-stop-requested", at: NOW },
+              { stage: "sigterm-sent", at: NOW },
+            ],
+          },
+          {
+            member: poolMemberFixture(3),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "initiating",
+            escalation: STOP_ESCALATION,
+            observed: OBSERVED_GRACEFUL,
+          },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /plan-worker-count for person-lookup-worker-2 may acknowledge only the observed graceful-stop-requested stage.*sigterm-sent.*recorded as they occur/,
+    );
+  });
+
+  it("accepts a reconciling plan fact reporting escalation stages that already occurred", async () => {
+    // A supervisor mid-escalation (graceful sent earlier, SIGTERM since) must
+    // have a legal TRUTHFUL fact on a re-issued plan: the supervisor-attested
+    // `reconciling` phase accepts the policy-ordered observed prefix that
+    // ALREADY happened, still bounded by the command's now — while the
+    // initiating arm above stays pinned to the graceful stage alone.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "reconciling",
+            escalation: STOP_ESCALATION,
+            observed: [
+              { stage: "graceful-stop-requested", at: "2026-07-31T16:58:00.000Z" },
+              { stage: "sigterm-sent", at: "2026-07-31T16:59:00.000Z" },
+            ],
+          },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: ["person-lookup-worker-1"],
+    });
+  });
+
+  it("bounds a reconciling plan fact's observed stages by the command's now", async () => {
+    // Reconciling relaxes WHICH stages may be reported, never WHEN: an
+    // escalation stage postdating the command's now is still a claim about
+    // the future dressed as a fact.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "reconciling",
+            escalation: STOP_ESCALATION,
+            observed: [
+              { stage: "graceful-stop-requested", at: NOW },
+              { stage: "sigterm-sent", at: "2026-07-31T17:00:00.001Z" },
+            ],
+          },
+          { member: poolMemberFixture(3), stage: "unmet", reason: "not-started" },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /person-lookup-worker-2 reports sigterm-sent observed at 2026-07-31T17:00:00\.001Z, after the command's now/,
+    );
+  });
+
+  it("refuses a plan fact that omits the initiating/reconciling attestation", async () => {
+    // The phase is supervisor-attested and schema-pinned: without it, an
+    // initiating acknowledgement could smuggle future stages by simply not
+    // saying which arm it claims.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            escalation: STOP_ESCALATION,
+            observed: OBSERVED_GRACEFUL,
+          },
+          { member: poolMemberFixture(3), stage: "unmet", reason: "not-started" },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /phase/,
+    );
+  });
+
+  it("refuses a malformed command now instead of silently unbounding observed stages", async () => {
+    // Date.parse of a garbage instant is NaN and every `> NaN` comparison is
+    // false, so a malformed now would silently accept ANY observed timestamp —
+    // the bound must fail loud, naming the offending value.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "supervised",
+        escalation: STOP_ESCALATION,
+        observed: OBSERVED_GRACEFUL,
+      }),
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.stopPoolWorker({ command: stop, now: "not-an-instant" }),
+      /stop-worker for person-lookup-worker-2 received an unparseable command now "not-an-instant"/,
+    );
+  });
+
+  it.each([
+    { method: "planPoolWorkerCount" },
+    { method: "spawnPoolWorker" },
+    { method: "stopPoolWorker" },
+    { method: "pausePoolWorker" },
+    { method: "resumePoolWorker" },
+    { method: "refreshPoolBrowser" },
+    { method: "reopenPoolBrowser" },
+  ] as const)("$method names itself when mis-dispatched a foreign command", async ({ method }) => {
+    // The diagnostic must name the POOL method that mis-received the command —
+    // not the phase-1 executor's differently named arm — so a mis-wire is
+    // legible at the seam that refused it.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => {
+        throw new Error("supervisor must not be called on a mis-dispatch");
+      },
+    });
+    const foreignType = method === "planPoolWorkerCount" ? "spawn-worker" : "plan-worker-count";
+    const command = method === "planPoolWorkerCount"
+      ? workerBrowserCommand({
+          ...envelope,
+          family: "worker-browser",
+          type: "spawn-worker",
+          target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+          payload: { workerId: "person-lookup-worker-1" },
+        })
+      : workerBrowserCommand({
+          ...envelope,
+          family: "worker-browser",
+          type: "plan-worker-count",
+          target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+          payload: { desiredWorkers: 1 },
+        });
+
+    await assert.rejects(
+      () => executor[method]({ command, now: requestedAt }),
+      new RegExp(`${method} received a ${foreignType} command`),
+    );
+  });
+
+  it.each([
+    {
+      type: "plan-worker-count",
+      request: {
+        family: "worker-browser",
+        type: "plan-worker-count",
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        payload: { desiredWorkers: 2 },
+      },
+      acknowledgement: {
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 2,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          { member: poolMemberFixture(2), stage: "running", ownership: "external" },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+        ],
+      },
+    },
+    {
+      type: "spawn-worker",
+      request: {
+        family: "worker-browser",
+        type: "spawn-worker",
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        payload: { workerId: "person-lookup-worker-2" },
+      },
+      acknowledgement: {
+        command: "spawn-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "external",
+        stage: "started",
+      },
+    },
+    {
+      type: "stop-worker",
+      request: {
+        family: "worker-browser",
+        type: "stop-worker",
+        target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "external",
+        escalation: STOP_ESCALATION,
+        observed: OBSERVED_GRACEFUL,
+      },
+    },
+    {
+      type: "pause-worker",
+      request: {
+        family: "worker-browser",
+        type: "pause-worker",
+        target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "pause-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "external",
+        stage: "pause-requested",
+      },
+    },
+    {
+      type: "resume-worker",
+      request: {
+        family: "worker-browser",
+        type: "resume-worker",
+        target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "resume-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "external",
+        stage: "resume-requested",
+      },
+    },
+    {
+      type: "refresh-browser",
+      request: {
+        family: "worker-browser",
+        type: "refresh-browser",
+        target: { workerId: "person-lookup-worker-2", browserSessionId: ITEM_ID, expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "refresh-browser",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "external",
+        browserSessionId: ITEM_ID,
+        stage: "refreshed",
+      },
+    },
+    {
+      type: "reopen-browser",
+      request: {
+        family: "worker-browser",
+        type: "reopen-browser",
+        target: { workerId: "person-lookup-worker-2", browserSessionId: ITEM_ID, expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "reopen-browser",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "external",
+        browserSessionId: ITEM_ID,
+        stage: "reopened",
+      },
+    },
+  ])("refuses a $type acknowledgement for an externally owned member", async ({ type, request, acknowledgement }) => {
+    const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement });
+    const command = workerBrowserCommand({ ...envelope, ...request });
+    const context = { command, now: requestedAt };
+    const message = new RegExp(
+      `${type} touches externally owned member person-lookup-worker-2 at index 2; `
+      + "a mutating control requires durable supervisor ownership",
+    );
+
+    switch (type) {
+      case "plan-worker-count":
+        await assert.rejects(() => executor.planPoolWorkerCount(context), message);
+        break;
+      case "spawn-worker":
+        await assert.rejects(() => executor.spawnPoolWorker(context), message);
+        break;
+      case "stop-worker":
+        await assert.rejects(() => executor.stopPoolWorker(context), message);
+        break;
+      case "pause-worker":
+        await assert.rejects(() => executor.pausePoolWorker(context), message);
+        break;
+      case "resume-worker":
+        await assert.rejects(() => executor.resumePoolWorker(context), message);
+        break;
+      case "refresh-browser":
+        await assert.rejects(() => executor.refreshPoolBrowser(context), message);
+        break;
+      case "reopen-browser":
+        await assert.rejects(() => executor.reopenPoolBrowser(context), message);
+        break;
+    }
+  });
+
+  it.each([
+    { arm: "spawn-worker" },
+    { arm: "refresh-browser" },
+    { arm: "reopen-browser" },
+  ])("phase-1 executor refuses a $arm acknowledgement for an externally owned member", ({ arm }) => {
+    const executor = createPhase1WorkerRuntimeExecutor({
+      spawnWorker: (member) => ({
+        command: "spawn-worker",
+        state: "acknowledged",
+        ownership: "external",
+        member,
+        stage: "started",
+      }),
+      refreshBrowser: (input) => ({
+        command: "refresh-browser",
+        state: "acknowledged",
+        ownership: "external",
+        member: input.member,
+        browserSessionId: input.browserSessionId,
+        stage: "refreshed",
+      }),
+      reopenBrowser: (input) => ({
+        command: "reopen-browser",
+        state: "acknowledged",
+        ownership: "external",
+        member: input.member,
+        browserSessionId: input.browserSessionId,
+        stage: "reopened",
+      }),
+    });
+    const message = new RegExp(
+      `${arm} touches externally owned member ${EXECUTOR_WORKER_ID} at index 1; `
+      + "a mutating control requires durable supervisor ownership",
+    );
+
+    if (arm === "spawn-worker") {
+      const spawn = workerBrowserCommand({
+        ...envelope,
+        family: "worker-browser",
+        type: "spawn-worker",
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        payload: { workerId: EXECUTOR_WORKER_ID },
+      });
+      assert.throws(() => executor.spawnWorker({ command: spawn, now: requestedAt }), message);
+      return;
+    }
+    const browser = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: arm,
+      target: { workerId: EXECUTOR_WORKER_ID, browserSessionId: ITEM_ID, expectedVersion: 1 },
+    });
+    if (arm === "refresh-browser") {
+      assert.throws(() => executor.refreshBrowser({ command: browser, now: requestedAt }), message);
+      return;
+    }
+    assert.throws(() => executor.reopenBrowser({ command: browser, now: requestedAt }), message);
+  });
+
+  it("refuses a stop acknowledgement with no observed stages", async () => {
+    // Pins the schema's .min(1): a stop acknowledgement that observed NOTHING
+    // has no graceful request to attest — an empty observation list is not a
+    // quieter way to acknowledge a stop.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "supervised",
+        escalation: STOP_ESCALATION,
+        observed: [],
+      }),
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.stopPoolWorker({ command: stop, now: requestedAt }),
+      /Too small: expected array to have >=1 items/,
+    );
+  });
+
+  it("names the authoritative excess members in a scale-down plan request", async () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "plan-worker-count",
+          state: "acknowledged",
+          desiredWorkers: 1,
+          members: [
+            { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+            { member: poolMemberFixture(2), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+            { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+          ],
+        };
+      },
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: ["person-lookup-worker-1"],
+    });
+    assert.deepEqual(requests, [{
+      command: "plan-worker-count",
+      workflowId: WORKFLOW_ID,
+      desiredWorkers: 1,
+      members: [poolMemberFixture(1)],
+      excessMembers: [poolMemberFixture(2), poolMemberFixture(3)],
+    }]);
+  });
+
+  it("accepts a scale-down acknowledgement reporting an honest unmet excess member", async () => {
+    // D271: a crashed member's declaration stays visibly unmet. An excess
+    // member that crashed or never started has no process to stop — the honest
+    // `unmet` fact satisfies stop coverage instead of coercing a fabricated
+    // graceful-stop observation.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          { member: poolMemberFixture(2), stage: "unmet", reason: "crashed" },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: ["person-lookup-worker-1"],
+    });
+  });
+
+  it("refuses a scale-down acknowledgement that omits an authoritative excess member", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          { member: poolMemberFixture(2), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+          // person-lookup-worker-3 silently omitted: its stop is never covered.
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /requires a bounded graceful stop acknowledgement for excess member person-lookup-worker-3 at index 3/,
+    );
+  });
+
+  it("refuses a supervisor that mutates the spawn request member after submission", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        // An adversarial supervisor rewrites the submitted member in place and
+        // acknowledges the rewritten member, hoping the executor compares the
+        // acknowledgement against its own mutation instead of the original.
+        const mutable = request as unknown as { member: { poolIndex: number; workerId: string } };
+        mutable.member.poolIndex = 2;
+        mutable.member.workerId = "person-lookup-worker-2";
+        return {
+          command: "spawn-worker",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: poolMemberFixture(2),
+          stage: "started",
+        };
+      },
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-1" },
+    });
+
+    // The submitted member is frozen at mint: the rewrite itself explodes as
+    // a strict-mode TypeError naming the property, before any acknowledgement
+    // comparison could be steered.
+    await assert.rejects(
+      () => executor.spawnPoolWorker({ command: spawn, now: requestedAt }),
+      { name: "TypeError", message: /read only property 'poolIndex'/ },
+    );
+  });
+
+  it("refuses a supervisor that mutates the plan request roster after submission", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        // Rewriting a submitted roster entry must never leak into the accepted
+        // plan's workerIds — the acknowledged ids are the ORIGINAL scalars.
+        const mutable = request as unknown as { members: { workerId: string }[] };
+        const second = mutable.members[1];
+        if (second === undefined) throw new Error("fixture expected a three-member roster");
+        second.workerId = "person-lookup-worker-hijacked";
+        return {
+          command: "plan-worker-count",
+          state: "acknowledged",
+          desiredWorkers: 3,
+          members: [1, 2, 3].map((poolIndex) => ({
+            member: poolMemberFixture(poolIndex),
+            stage: "running",
+            ownership: "supervised",
+          })),
+        };
+      },
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 3 },
+    });
+
+    // The submitted roster entries are frozen at mint: the rewrite itself
+    // explodes as a strict-mode TypeError naming the property, so the hijacked
+    // id can never reach the accepted plan's workerIds.
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      { name: "TypeError", message: /read only property 'workerId'/ },
+    );
+  });
+
+  it("awaits an asynchronous supervisor effect before acknowledging a spawn", async () => {
+    let effectProved = false;
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: async () => {
+        await new Promise((resolve) => setImmediate(resolve));
+        effectProved = true;
+        return {
+          command: "spawn-worker",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: poolMemberFixture(2),
+          stage: "started",
+        };
+      },
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    const acknowledged = await executor.spawnPoolWorker({ command: spawn, now: requestedAt });
+    assert.equal(effectProved, true, "the acknowledgement settled before the supervisor proved the effect");
+    assert.deepEqual(acknowledged, { state: "accepted" });
+  });
+
+  it("never settles the acknowledgement before the supervisor's effect settles", async () => {
+    let release: (() => void) | undefined;
+    const effect = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => effect.then(() => ({
+        command: "spawn-worker",
+        state: "acknowledged",
+        ownership: "supervised",
+        member: poolMemberFixture(2),
+        stage: "started",
+      })),
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    let settled = false;
+    const acknowledging = (async () => executor.spawnPoolWorker({ command: spawn, now: requestedAt }))();
+    const watched = acknowledging.then(
+      (value) => {
+        settled = true;
+        return value;
+      },
+      (error: unknown) => {
+        settled = true;
+        throw error;
+      },
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(settled, false, "the spawn was acknowledged while the process effect was still pending");
+    release?.();
+    assert.deepEqual(await watched, { state: "accepted" });
+  });
+
+  it("propagates a failed asynchronous effect instead of fabricating success", async () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => Promise.reject(new Error("spawn failed: EAGAIN forking person-lookup-worker-2")),
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: "person-lookup-worker-2" },
+    });
+
+    await assert.rejects(
+      () => executor.spawnPoolWorker({ command: spawn, now: requestedAt }),
+      /EAGAIN forking person-lookup-worker-2/,
+    );
+  });
+
+  it("refuses a plan above the proved three-member cap before calling the supervisor", async () => {
+    let calls = 0;
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => {
+        calls += 1;
+        throw new Error("supervisor must not be called");
+      },
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 4 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /worker pool size must not exceed 3/,
+    );
+    assert.equal(calls, 0);
+  });
+
+  it.each([
+    { workerId: "person-lookup-worker", message: /explicit positive pool index/ },
+    { workerId: "person-lookup-worker-4", message: /worker pool size must not exceed 3/ },
+    { workerId: "onboarding-worker-1", message: /not a pool member of workflow person-lookup/ },
+  ])("refuses noncanonical spawn identity $workerId before calling the supervisor", async ({ workerId, message }) => {
+    let calls = 0;
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => {
+        calls += 1;
+        throw new Error("supervisor must not be called");
+      },
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId },
+    });
+
+    await assert.rejects(() => executor.spawnPoolWorker({ command: spawn, now: requestedAt }), message);
+    assert.equal(calls, 0);
+  });
+
+  it.each([
+    {
+      name: "different desired count",
+      desiredWorkers: 2,
+      acknowledgement: {
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [{ member: poolMemberFixture(1), stage: "running", ownership: "supervised" }],
+      },
+      message: /requested 2 workers but the supervisor acknowledged 1/,
+    },
+    {
+      name: "missing desired member",
+      desiredWorkers: 2,
+      acknowledgement: {
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 2,
+        members: [{ member: poolMemberFixture(1), stage: "running", ownership: "supervised" }],
+      },
+      message: /requires acknowledgement for desired member person-lookup-worker-2 at index 2/,
+    },
+    {
+      name: "out-of-order member",
+      desiredWorkers: 2,
+      acknowledgement: {
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 2,
+        members: [
+          { member: poolMemberFixture(2), stage: "running", ownership: "supervised" },
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+        ],
+      },
+      message: /requested member person-lookup-worker-1 at index 1.*acknowledged person-lookup-worker-2 at index 2/,
+    },
+    {
+      name: "stop on a desired member",
+      desiredWorkers: 2,
+      acknowledgement: {
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 2,
+        members: [
+          { member: poolMemberFixture(1), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+          { member: poolMemberFixture(2), stage: "running", ownership: "supervised" },
+        ],
+      },
+      message: /cannot stop desired member person-lookup-worker-1 at index 1/,
+    },
+    {
+      name: "running excess member without stop coverage",
+      desiredWorkers: 1,
+      acknowledgement: {
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          { member: poolMemberFixture(2), stage: "running", ownership: "supervised" },
+        ],
+      },
+      message: /must select running excess member person-lookup-worker-2 for bounded graceful stop/,
+    },
+  ])("refuses a plan acknowledgement with $name", async ({ desiredWorkers, acknowledgement, message }) => {
+    const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers },
+    });
+
+    await assert.rejects(() => executor.planPoolWorkerCount({ command: plan, now: requestedAt }), message);
+  });
+
+  it.each([
+    {
+      type: "spawn-worker",
+      command: {
+        ...envelope,
+        family: "worker-browser",
+        type: "spawn-worker",
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        payload: { workerId: "person-lookup-worker-1" },
+      },
+      acknowledgement: {
+        command: "spawn-worker",
+        state: "acknowledged",
+        ownership: "supervised",
+        member: poolMemberFixture(2),
+        stage: "started",
+      },
+      message: /requested member person-lookup-worker-1 at index 1.*acknowledged person-lookup-worker-2 at index 2/,
+    },
+    {
+      type: "stop-worker",
+      command: {
+        ...envelope,
+        family: "worker-browser",
+        type: "stop-worker",
+        target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "stop-worker",
+        state: "acknowledged",
+        ownership: "supervised",
+        member: poolMemberFixture(2),
+        escalation: STOP_ESCALATION,
+        observed: OBSERVED_GRACEFUL,
+      },
+      message: /requested member person-lookup-worker-1 at index 1.*acknowledged person-lookup-worker-2 at index 2/,
+    },
+    {
+      type: "pause-worker",
+      command: {
+        ...envelope,
+        family: "worker-browser",
+        type: "pause-worker",
+        target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "pause-worker",
+        state: "acknowledged",
+        ownership: "supervised",
+        member: poolMemberFixture(2),
+        stage: "pause-requested",
+      },
+      message: /requested member person-lookup-worker-1 at index 1.*acknowledged person-lookup-worker-2 at index 2/,
+    },
+    {
+      type: "resume-worker",
+      command: {
+        ...envelope,
+        family: "worker-browser",
+        type: "resume-worker",
+        target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "resume-worker",
+        state: "acknowledged",
+        ownership: "supervised",
+        member: poolMemberFixture(2),
+        stage: "resume-requested",
+      },
+      message: /requested member person-lookup-worker-1 at index 1.*acknowledged person-lookup-worker-2 at index 2/,
+    },
+    {
+      type: "refresh-browser",
+      command: {
+        ...envelope,
+        family: "worker-browser",
+        type: "refresh-browser",
+        target: { workerId: "person-lookup-worker-1", browserSessionId: ITEM_ID, expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "refresh-browser",
+        state: "acknowledged",
+        ownership: "supervised",
+        member: poolMemberFixture(1),
+        browserSessionId: UUID_5,
+        stage: "refreshed",
+      },
+      message: new RegExp(`requested session ${ITEM_ID}.*acknowledged ${UUID_5}`),
+    },
+    {
+      type: "reopen-browser",
+      command: {
+        ...envelope,
+        family: "worker-browser",
+        type: "reopen-browser",
+        target: { workerId: "person-lookup-worker-1", browserSessionId: ITEM_ID, expectedVersion: 1 },
+      },
+      acknowledgement: {
+        command: "reopen-browser",
+        state: "acknowledged",
+        ownership: "supervised",
+        member: poolMemberFixture(2),
+        browserSessionId: ITEM_ID,
+        stage: "reopened",
+      },
+      message: /requested member person-lookup-worker-1 at index 1.*acknowledged person-lookup-worker-2 at index 2/,
+    },
+  ])("refuses mismatched $type acknowledgement facts", async ({ type, command: request, acknowledgement, message }) => {
+    const command = workerBrowserCommand(request);
+    const context = { command, now: requestedAt };
+    const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement });
+
+    switch (type) {
+      case "spawn-worker":
+        await assert.rejects(() => executor.spawnPoolWorker(context), message);
+        break;
+      case "stop-worker":
+        await assert.rejects(() => executor.stopPoolWorker(context), message);
+        break;
+      case "pause-worker":
+        await assert.rejects(() => executor.pausePoolWorker(context), message);
+        break;
+      case "resume-worker":
+        await assert.rejects(() => executor.resumePoolWorker(context), message);
+        break;
+      case "refresh-browser":
+        await assert.rejects(() => executor.refreshPoolBrowser(context), message);
+        break;
+      case "reopen-browser":
+        await assert.rejects(() => executor.reopenPoolBrowser(context), message);
+        break;
+    }
   });
 });
 
@@ -335,6 +1938,13 @@ describe("phase-1 worker runtime executor seam", () => {
     const executor = createPhase1WorkerRuntimeExecutor({
       spawnWorker: (input) => {
         spawned.push(`${input.workflowId}:${input.workerId}`);
+        return {
+          command: "spawn-worker",
+          state: "acknowledged",
+          ownership: "supervised",
+          member: input,
+          stage: "started",
+        };
       },
     });
     const spawn = workerBrowserCommand({
@@ -356,6 +1966,46 @@ describe("phase-1 worker runtime executor seam", () => {
     assert.throws(
       () => executor.refreshBrowser({ command: refresh, now: requestedAt }),
       /refusing to acknowledge an effect that did not happen/,
+    );
+  });
+
+  it("refuses a pending phase-1 supervisor promise instead of acknowledging an unproved spawn", () => {
+    const executor = createPhase1WorkerRuntimeExecutor({
+      spawnWorker: (input) => Promise.resolve({
+        command: "spawn-worker",
+        state: "acknowledged",
+        ownership: "supervised",
+        member: input,
+        stage: "started",
+      }),
+    });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: EXECUTOR_WORKER_ID },
+    });
+
+    assert.throws(
+      () => executor.spawnWorker({ command: spawn, now: requestedAt }),
+      /pending promise/,
+    );
+  });
+
+  it("refuses a void supervisor result instead of accepting an unproved spawn", () => {
+    const executor = createPhase1WorkerRuntimeExecutor({ spawnWorker: () => undefined });
+    const spawn = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "spawn-worker",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { workerId: EXECUTOR_WORKER_ID },
+    });
+
+    assert.throws(
+      () => executor.spawnWorker({ command: spawn, now: requestedAt }),
+      /spawn-worker supervisor acknowledgement/,
     );
   });
 });
