@@ -765,6 +765,35 @@ describe("stop-worker", () => {
     });
   });
 
+  it("keeps exited/os evidence when the child exits WHILE the durable stop channel is in flight and the channel then throws — the guard is conditional on state, not unconditional", async () => {
+    const { harness, target } = await runningHarness();
+    const child = harness.children[0];
+    if (child === undefined) throw new Error("expected a spawned child");
+    // The channel's throw happens AFTER the child's real exit already landed
+    // (and transitioned the record to "exited" with OS evidence): the
+    // stop-uncertain assignment must be conditional on the record still being
+    // "running" at that point, or it would clobber real exit evidence.
+    harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => {
+      child.emitExit(0, null);
+      throw new Error("directive store unavailable after exit");
+    };
+
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+      .rejects.toThrow(/is UNCERTAIN: the durable stop channel threw \(directive store unavailable after exit\)/);
+
+    // Never clobbered to stop-uncertain: the exit is real OS-reported evidence.
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "exited",
+      pid: child.pid,
+      outcome: "crashed",
+      exitCode: 0,
+      signal: null,
+      at: NOW,
+      reportedBy: "os",
+      observedStop: [],
+    });
+  });
+
   it("refuses a second stop while an escalation is already in flight", async () => {
     const { harness, target } = await runningHarness();
     await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
@@ -1027,6 +1056,34 @@ describe("plan-worker-count", () => {
     await settled;
   });
 
+  it("pre-scans a kill-undelivered excess member before initiating any stop for a RUNNING excess member ordered ahead of it", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    // member(2) is the running excess member, ordered AHEAD of the
+    // kill-undelivered member in the excess roster below.
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    const target = member(3);
+    const child = new FakeWorkerChild(9999);
+    child.killResult = false;
+    harness.nextSpawn = (): FakeWorkerChild => child;
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/process errored before proving its lease birth/);
+    child.emitError(new Error("spawn EPERM"));
+    await expectation;
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "kill-undelivered" });
+
+    // Without the whole-roster pre-scan, member(2)'s durable graceful stop
+    // would be requested (it is processed first) before the refusal on
+    // member(3) is ever reached.
+    await expect(harness.supervisor.execute(planRequest(1, [member(1)], [member(2), target])))
+      .rejects.toThrow(/may still be alive/);
+
+    expect(harness.gracefulRequests).toHaveLength(0);
+    expect(harness.supervisor.memberEvidence(member(2))).toMatchObject({ state: "running" });
+
+    child.emitExit(null, "SIGKILL");
+  });
+
   it("refuses a roster whose desired member count disagrees with desiredWorkers", async () => {
     const harness = openHarness();
 
@@ -1178,6 +1235,28 @@ describe("close", () => {
     harness.children[0]?.emitExit(0, null);
 
     expect(harness.supervisor.close()).toEqual([]);
+  });
+
+  it("includes a kill-undelivered child's evidence in close() — a possibly-live child is never hidden from teardown", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const child = new FakeWorkerChild(4321);
+    child.killResult = false;
+    harness.nextSpawn = (): FakeWorkerChild => child;
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/process errored before proving its lease birth/);
+    child.emitError(new Error("spawn EPERM"));
+    await expectation;
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "kill-undelivered" });
+
+    const live = harness.supervisor.close();
+
+    expect(live).toEqual([{
+      state: "kill-undelivered",
+      pid: 4321,
+      at: NOW,
+      cause: "spawn EPERM",
+    }]);
   });
 
   it("refuses every command after close — a closed supervisor acknowledges nothing", async () => {
