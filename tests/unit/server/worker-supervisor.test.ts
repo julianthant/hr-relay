@@ -585,6 +585,84 @@ describe("stop-worker", () => {
     });
   });
 
+  it("records the DURABLE requestedAt in the graceful stage, not its own clock reading", async () => {
+    const { harness, target } = await runningHarness();
+    const durableAt = new Date(Date.parse(NOW) + 1234).toISOString();
+    harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => ({ requestedAt: durableAt });
+
+    const acknowledgement = await harness.supervisor.execute({
+      command: "stop-worker",
+      member: target,
+      escalation: stopPolicy(),
+    });
+
+    expect(acknowledgement).toMatchObject({
+      observed: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:01.234Z" }],
+    });
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      observedStop: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:01.234Z" }],
+    });
+  });
+
+  it("refuses a stop whose durable request raced the child's exit, preserving the exit evidence", async () => {
+    const { harness, target } = await runningHarness();
+    harness.nextGracefulStop = async (): Promise<Readonly<{ requestedAt: string }>> => {
+      // The child dies while the durable directive is still being requested:
+      // the stop must refuse rather than record a stage over a dead child.
+      harness.children[0]?.emitExit(1, null);
+      return { requestedAt: harness.clock.now().toISOString() };
+    };
+
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+      .rejects.toThrow(/graceful stop for person-lookup-worker-1 raced: .*now exited/);
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "exited",
+      pid: harness.children[0]?.pid,
+      outcome: "crashed",
+      exitCode: 1,
+      signal: null,
+      at: NOW,
+      observedStop: [],
+    });
+    expect(harness.scheduler.pending()).toHaveLength(0);
+  });
+
+  it("refuses the second of two concurrent stops — the in-flight guard is synchronous", async () => {
+    const { harness, target } = await runningHarness();
+    harness.nextGracefulStop = async (): Promise<Readonly<{ requestedAt: string }>> => {
+      await Promise.resolve();
+      return { requestedAt: harness.clock.now().toISOString() };
+    };
+
+    const first = harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    const second = harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+
+    await expect(second).rejects.toThrow(/a stop is already in flight for person-lookup-worker-1/);
+    await expect(first).resolves.toMatchObject({ command: "stop-worker", state: "acknowledged" });
+    expect(harness.gracefulRequests).toHaveLength(1);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "stopping",
+      observedStop: [{ stage: "graceful-stop-requested", at: NOW }],
+    });
+  });
+
+  it("clears the in-flight guard when the durable stop request itself throws, so a retry can stop", async () => {
+    const { harness, target } = await runningHarness();
+    harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => {
+      throw new Error("directive store unavailable");
+    };
+
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+      .rejects.toThrow(/directive store unavailable/);
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({ state: "running" });
+
+    harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => ({
+      requestedAt: harness.clock.now().toISOString(),
+    });
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+      .resolves.toMatchObject({ command: "stop-worker", state: "acknowledged" });
+  });
+
   it("refuses a second stop while an escalation is already in flight", async () => {
     const { harness, target } = await runningHarness();
     await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });

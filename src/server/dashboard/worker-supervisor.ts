@@ -154,6 +154,13 @@ interface MemberRecord {
   pid: number | undefined;
   bornAt?: string;
   leaseStartedAt?: string;
+  /**
+   * Set SYNCHRONOUSLY when a stop begins, before the durable graceful-stop
+   * request is awaited: `state` only becomes "stopping" after that await, so
+   * without this flag two concurrent stops both pass the state guard and
+   * request the durable directive twice.
+   */
+  stopInFlight: boolean;
   observedStop: { stage: "graceful-stop-requested" | "sigterm-sent" | "sigkill-sent"; at: string }[];
   escalationTimer?: MonotonicDeadlineHandle;
   exit?: {
@@ -255,6 +262,7 @@ export function createDashboardWorkerProcessSupervisor(
       child,
       pid: child.pid,
       observedStop: [],
+      stopInFlight: false,
     };
     records.set(member.workerId, record);
 
@@ -456,7 +464,23 @@ export function createDashboardWorkerProcessSupervisor(
     record: MemberRecord,
     escalation: WorkerStopEscalationPolicy,
   ): Promise<void> => {
-    const durable = await deps.gracefulStop.request(record.member);
+    if (record.stopInFlight) {
+      throw new Error(
+        `graceful stop refused: a stop is already in flight for ${record.member.workerId} `
+        + "(the durable stop directive has been requested); its escalation stages are recorded as "
+        + "they occur, not re-initiated",
+      );
+    }
+    record.stopInFlight = true;
+    let durable: Readonly<{ requestedAt: string }>;
+    try {
+      durable = await deps.gracefulStop.request(record.member);
+    } catch (error) {
+      // The durable directive was NOT written: nothing to escalate, and the
+      // member must stay stoppable — a stuck flag would brick the stop path.
+      record.stopInFlight = false;
+      throw error;
+    }
     const requestedAt = IsoInstantSchema.parse(durable.requestedAt);
     if (record.state !== "running") {
       throw new Error(
