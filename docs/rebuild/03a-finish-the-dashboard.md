@@ -24,7 +24,7 @@ actor (`03d-co-operate-with-claude.md`, `{#claude-operator}`). Contracts this ph
 - [x] observed logs — the real dashboard/composed separations dry run served 13 observed rows (sequences 0..12), no notes and zero run-scoped write evidence (`docs/migrations/separations.md` §9.25)
 - [x] `ref frontend-backend-integration` §7.4's performance budgets — the instrument, BEFORE baseline and both D4/D5 AFTER measurements are recorded against the same 1,240-row / 108-member fixture; the recorded bounds are the later-workflow non-regression gates
 - [ ] the run-detail panel's **Review** and **People** bodies — `availableSections` cannot return either section, so both tabs are structurally unreachable; the projections behind them land with the OCR and group migrations in 03c, not here
-- [!] demo fidelity — every region exact or ruled; 49 live operator decisions remain across six bounded sheets after the autonomous ports (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/2026-08-25-03a-decision-brief-coverage.md`)
+- [!] demo fidelity — the 49 operator decisions are ratified as D271–D276; their resulting ports, proofs and one deliberate parity re-freeze remain open (Track F, §Demo fidelity — every detail, region by region; `docs/decisions/2026-08-25-03a-decision-brief-coverage.md`)
 > 2026-08-20 | docs-cohesion 03a | verified against src/dashboard/** and src/server/dashboard/**; every Track D finding still reproduces at HEAD (no exported deriveRunStatus, two TASK_OUTCOME vocabularies, two panelKindOf copies, zero React.memo, WORKFLOW_DESCRIPTORS imported at dashboard-app.tsx:25); left: D1–D5, the lease, the pool, observed logs, the §7.4 numbers
 > 2026-08-21 | docs-cohesion 03a fidelity fold | the demo-fidelity re-audit (1,956 elements/rows, 756 exact) is folded in as Track F; Track B's "frontend done" stands as the findings-ledger bar it was defined by, and demo fidelity is the stricter bar above it; left: the operator's ~150 rulings, then the FE / BE / PROOF lines Track F carries
 > 2026-08-25 | track-f archive UI + Activity AC24 + Explorer EX5 | `3d461962` served list warning/rehearsal facts and `d1f87916` drew them with the archive's already-served identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared status vocabulary; `4e09fb49` carries Explorer's `Version registry` door through dashboard route state to Archive's actual `Versions & bumps` view. A mechanical recount of ledger 3's 1,119 rows gives 353 exact and 238 OPEN marks; left in this unit: every other non-archive served-and-dropped fact
@@ -80,9 +80,9 @@ table is 8/10 met: it also keeps parallel runs open and records observed logs me
 7. The Duo ceremony lease exists, so a second workflow's worker cold-starting beside the first
    cannot burn the shared credential's counter.
 8. Every region of the dashboard is demo-exact or ruled — Track F's bar, above Track B's: Track B's
-   definition of done was the findings ledger; demo fidelity is the stricter bar, and 49 live
-   operator decisions across six sheets stand against it at HEAD (§Demo fidelity — every detail,
-   region by region).
+   definition of done was the findings ledger; demo fidelity is the stricter bar, and D271–D276
+   ratify all 49 sheet answers while their resulting ports/proofs remain open (§Demo fidelity — every
+   detail, region by region).
 
 ### The honest state at HEAD, surface by surface
 
@@ -815,7 +815,7 @@ stricter bar Track F carries (row 10).
 | 7 | **The Duo ceremony lease landed** | **MET** | D267 authority/token/waiters/recovery/guard/docs landed (`bfc7d318`…`1c244a40`); the live two-worker cold start then serialized lease generations 3 → 4 with no overlap and zero waiter refusals (ref execution-and-sessions §10 §Live proof). |
 | 8 | **Parallel runs proved** — the pool, the durable session record, two separations dry runs in parallel | **open** | the authority records and their FE view landed; the supervisor still refuses spawn by name, so the pool process and parallel dry-run proof remain |
 | 9 | **Observed logs landed** — the log quotes the recorded observations | **MET** | §9.25's real dashboard/composed separations dry run: document 4502, 13 observed rows (0..12), zero notes and 0 / 0 / 0 run-scoped write evidence. Its service-origin row proves a browser system is optional by declaration; `17468e60` changed the false API-500 invariant to a 200 response and the UI omits the absent claim. The node stays active for its notes emitter and fidelity extras. |
-| 10 | **Demo fidelity: every region exact or ruled** — 49 live operator decisions outstanding | **open** | the three 2026-08-21 ledgers: 1,956 elements/rows, 775 exact; the six 2026-08-25 decision sheets contain each of the 49 live choices exactly once. Archive, Activity AC24, Explorer EX5, shell A46 and the autonomous served-fact ports are complete; the decisions, resulting ports, vocabulary sweep and one deliberate parity re-freeze remain. |
+| 10 | **Demo fidelity: every region exact or ruled** — decisions ratified, ports/proofs open | **open** | D271–D276 record all 49 A answers from the six 2026-08-25 sheets. Archive, Activity AC24, Explorer EX5, shell A46 and autonomous served-fact ports are complete; the resulting ports, vocabulary sweep, proofs and one deliberate parity re-freeze remain. |
 
 **Deliberately outside this phase, each with an owner.** The Review and People panel bodies (their
 projections belong to the OCR and group migrations in doc 03c); editable settings, the explorer's

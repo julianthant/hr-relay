@@ -1,6 +1,6 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only per-session journal the `## session:` spine markers summarise. -->
-asOf: 2026-08-25
+asOf: 2026-08-26
 head: 1af961c3
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from the phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, `03c`'s migration order, `00`'s size model)
@@ -13,7 +13,7 @@ tiles:
 - Phases complete | 0 · 1 · 2 | runtime marker `completedThrough: 2j`
 - Active | Phase 3 | per-workflow migration · entered at separations
 - Workflows migrated | 2 of 15 | + separations at 8 of 9 exit criteria
-- Decisions | D1–D270 | D267–D270 landed in dashboard hardening · D131 retired, never reused
+- Decisions | D1–D276 | D271–D276 ratified 49 Phase 3a fidelity decisions; resulting ports/proofs remain open · D131 retired, never reused
 - Gates | 69 active guards | integrated D191 2,729/2,729 · parity last frozen 157/157 on 08-25 · schema v18
 - !Critical-path blocker | Wait for 08-28 | canary **4537 named** — S7 admits its separation date then; the three commits run ② → ① → ③
 
@@ -1092,9 +1092,11 @@ log:
 
 ## session: 2026-08-25 | workflow-tree completion | workflow-tree and test-tiers implementation landed through `88a20ee9`; the annotation is gone, the T1 machinery records honest blocked evidence, final D191 is 2,362/2,362 and parity is 157/157; only the 08-28 live `met` remains
 
-## session: 2026-08-25 | 03a integration close | Track D D1–D5 + D11 and §7.4's D4/D5 measurements reconciled DONE; Duo D267 + its live proof reconciled DONE; observed logs live proof and intake Manifest/Rerun landed; integrated D191 PASS at `1af961c3` is 263 files / 2,729 tests (82.75 % statements, 84.79 % lines). Left honestly open: the real worker supervisor + parallel proof, 49 operator decisions and their resulting fidelity ports, then the one deliberate parity re-freeze
+## session: 2026-08-25 | 03a integration close | Track D D1–D5 + D11 and §7.4's D4/D5 measurements reconciled DONE; Duo D267 + its live proof reconciled DONE; observed logs live proof and intake Manifest/Rerun landed; integrated D191 PASS at `1af961c3` is 263 files / 2,729 tests (82.75 % statements, 84.79 % lines). Left honestly open: the real worker supervisor + parallel proof, Phase 3a fidelity ports/proofs, then the one deliberate parity re-freeze
 
-## today: 2026-08-25 · 03a autonomous integration is green at 2,729/2,729 — Track D, Duo, observed-log proof and intake Manifest/Rerun are reconciled; worker supervision/parallel proof and 49 operator decisions remain · separations 8 / 9 · the live T1b `met` waits for 08-28
+## session: 2026-08-26 | 03a fidelity ratification | operator selected all 49 recommended A answers; D271–D276 ratify the worker-pool and fidelity decisions. No port, proof, parity re-freeze, or phase completion is claimed; all remain open.
+
+## today: 2026-08-26 · 03a decisions ratified as D271–D276; worker supervision/parallel proof and resulting fidelity ports/proofs remain · separations 8 / 9 · the live T1b `met` waits for 08-28
 
 ## The remaining migrations {#migrations}
 phase: Phase 3 · continued
