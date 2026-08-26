@@ -728,6 +728,17 @@ function LoadedApp({
         toast({ tone: "danger", title: "Nothing was sent", description: composed.reason });
         return;
       }
+      /*
+        `.then(onFulfilled).catch(onRejected)` — NOT `.then(onFulfilled, onRejected)`, and the
+        difference is the whole point of the two fail-loud guards inside this settlement handler.
+        A two-arm `.then` installs its rejection handler on the ORIGINAL promise, so a throw
+        raised by the fulfilment arm has nowhere to land: `toastAppliedCommandResult`'s refusal to
+        compose a success receipt for a refused settlement, and the missing-feed-entry throw below
+        it, would both become floating unhandled rejections — no toast, no feed row, nothing on
+        screen at all. A guard whose only effect is a message in a console the operator never opens
+        is exactly the silence it was written to prevent. Chained, the SAME danger toast that
+        reports a transport failure reports the guard, verbatim.
+      */
       client.executeCommand(composed.request).then(
         (result) => {
           // `conflict` and `rejected` are VALUES, not exceptions (ref frontend-backend-integration §3.4),
@@ -765,14 +776,13 @@ function LoadedApp({
           });
           setDetailNonce((nonce) => nonce + 1);
         },
-        (caught: unknown) => {
-          toast({
-            tone: "danger",
-            title: "Nothing was recorded",
-            description: caught instanceof Error ? caught.message : String(caught),
-          });
-        },
-      );
+      ).catch((caught: unknown) => {
+        toast({
+          tone: "danger",
+          title: "Nothing was recorded",
+          description: caught instanceof Error ? caught.message : String(caught),
+        });
+      });
     },
     [boot.actor.id, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso],
   );
