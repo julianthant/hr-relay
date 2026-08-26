@@ -41,7 +41,7 @@
  * `note` goes with them: with one method it would be a second sentence about
  * the same thing `summary` already says.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Keyboard, Layers, Play, Search, SlidersHorizontal } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
@@ -547,12 +547,15 @@ function TypedInput({
   text,
   onText,
   preview,
+  inputRef,
 }: {
   surface: InputRunSurface;
   workflowId: string;
   text: string;
   onText: (next: string) => void;
   preview: ParsePreview;
+  /** the dialog's handle on the box, so an exit from a banner can focus it */
+  inputRef: RefObject<HTMLTextAreaElement | null>;
 }) {
   return (
     <div className="flex flex-col gap-[var(--ds-space-snug)]">
@@ -588,6 +591,7 @@ function TypedInput({
           // Re-keyed per workflow so switching one puts the caret in the box the
           // operator is about to type into.
           key={workflowId}
+          ref={inputRef}
           autoFocus
           rows={4}
           value={text}
@@ -734,12 +738,36 @@ export function RunStartDialog({
     priority,
     instances,
   });
+  /**
+   * The identity of the request the dialog is CURRENTLY describing, readable
+   * from inside a settled promise (unit F5b finding 1).
+   *
+   * The effect below clears a plan the moment the request moves, but it can
+   * only clear what has already landed: an in-flight `submitStartPlan` /
+   * `executeCommand` that settles AFTER the edit re-lands its answer on top of
+   * the cleared state, and the operator is looking at a plan for text that is
+   * no longer in the box. Every dispatch below captures the fingerprint it was
+   * made for and compares it against this ref before it writes anything.
+   *
+   * It is updated in the SAME effect that does the clearing, which is what
+   * makes the ordering self-healing: if a settlement wins the race to a render
+   * the effect has not run for yet, the effect runs next and clears exactly
+   * what the settlement wrote.
+   */
+  const requestFingerprintRef = useRef(requestFingerprint);
   useEffect(() => {
+    requestFingerprintRef.current = requestFingerprint;
     setPlan(null);
     setResult(null);
     setError(null);
     setStage("input");
   }, [requestFingerprint]);
+
+  /**
+   * The typed box, so an exit from a settled banner can put the keyboard back
+   * where the operator types.
+   */
+  const typedInputRef = useRef<HTMLTextAreaElement>(null);
 
   const preview = useMemo((): ParsePreview => {
     if (inputRun.state !== "present" || text.trim().length === 0) return { entries: [], problem: null };
@@ -756,6 +784,7 @@ export function RunStartDialog({
 
   const submitPlan = useCallback(async (): Promise<void> => {
     if (preview.entries.length === 0) return;
+    const dispatchedFor = requestFingerprint;
     setBusy(true);
     setError(null);
     try {
@@ -766,18 +795,30 @@ export function RunStartDialog({
         priority,
         ...(Object.keys(instances).length === 0 ? {} : { requestedInstance: instances }),
       });
+      // The operator edited the form while this was on the wire, so the server
+      // answered a question the form no longer asks and the plan token it
+      // carries is already unusable. Landing it would put a proposal for text
+      // that has left the box under a primary button that says Start run.
+      if (requestFingerprintRef.current !== dispatchedFor) return;
       setPlan(next);
       setResult(null);
       setStage("plan");
     } catch (caught) {
+      // A refusal of a superseded request is not dropped evidence: the next
+      // `Plan the run` re-asks the same server the same way and surfaces it
+      // against the request the operator is actually looking at. What IS
+      // banned is showing this one — a danger banner naming text that is no
+      // longer in the box reads as a refusal of what is.
+      if (requestFingerprintRef.current !== dispatchedFor) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);
     }
-  }, [client, dryRun, instances, preview, priority, workflowId]);
+  }, [client, dryRun, instances, preview, priority, requestFingerprint, workflowId]);
 
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null) return;
+    const dispatchedFor = requestFingerprint;
     setBusy(true);
     setError(null);
     try {
@@ -795,14 +836,23 @@ export function RunStartDialog({
         },
         payload: plan.fingerprints,
       });
+      // Same rule one stage later, and it costs no record: `applied` is a
+      // RECEIPT for a request that was accepted, not the row itself — the
+      // queue changes only from the authoritative projection
+      // (ref frontend-backend-integration §0.5), so a run this command
+      // enqueued is on screen in the queue whether or not this banner draws.
+      // What the banner would claim, standing over an edited form, is that
+      // THIS request is the one that landed.
+      if (requestFingerprintRef.current !== dispatchedFor) return;
       setResult(next);
       setStage("result");
     } catch (caught) {
+      if (requestFingerprintRef.current !== dispatchedFor) return;
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);
     }
-  }, [actorId, client, plan]);
+  }, [actorId, client, plan, requestFingerprint]);
 
   const reachable = useMemo(() => {
     const keys = new Set<string>(["input"]);
@@ -824,6 +874,34 @@ export function RunStartDialog({
       : preview.entries.length === 0
         ? "Type at least one value."
         : null;
+
+  /**
+   * The ONE exit from a settled banner — C69's `Reload the form` and C72's
+   * `Close` / `Dismiss` alike (unit F5b findings 2, 3 and 8).
+   *
+   * C72 is a ruling about the WORD on the button, not about the act behind it:
+   * closing a receipt and dismissing a refusal read differently and land in the
+   * same place, because after any of the three the plan token in this form is
+   * spent. D253 refuses a re-send of the same envelope identically, so leaving
+   * the plan standing would offer a Start run that can only conflict.
+   *
+   * Both halves are the fix. Clearing the RESULT without the STAGE left the
+   * rail naming Result as the current step over a region with nothing in it,
+   * and left `reachable` with a step the operator cannot re-enter. And the
+   * control that was just pressed UNMOUNTS with the banner: focus on a removed
+   * element falls to `document.body`, so the next Tab restarts the dialog at
+   * its first control instead of resuming where the operator was working.
+   */
+  const returnToInput = useCallback(() => {
+    setPlan(null);
+    setResult(null);
+    setError(null);
+    setStage("input");
+    // A workflow that declares no typed-input surface draws no box, which is a
+    // real served state (`START_DOOR_ABSENCE`) rather than a missing element:
+    // there is genuinely nothing to put the keyboard back into.
+    typedInputRef.current?.focus();
+  }, []);
 
   const closeAndReset = useCallback((next: boolean) => {
     onOpenChange(next);
@@ -900,6 +978,7 @@ export function RunStartDialog({
                 text={text}
                 onText={setText}
                 preview={preview}
+                inputRef={typedInputRef}
               />
             ) : (
               <Well>
@@ -955,21 +1034,16 @@ export function RunStartDialog({
             )}
 
             {stage === "result" && result !== null && (
+              // C69 (D272 item 8) — the ONE cure for a plan built against a
+              // version that moved: drop the spent token and return to Input,
+              // which is what makes the next `POST /start-plans` read the
+              // server's current version. The typed text survives — it is the
+              // operator's, not the plan's. `Close` / `Dismiss` land in the
+              // same place for the same reason; see `returnToInput`.
               <EnqueueResultBanner
                 result={result}
-                onDismiss={() => setResult(null)}
-                onReload={() => {
-                  // C69 (D272 item 8) — the ONE cure for a plan built against a
-                  // version that moved. D253 refuses a re-send of the same
-                  // envelope identically, so the token in this form is spent:
-                  // dropping it and returning to Input is what makes the next
-                  // `POST /start-plans` read the server's current version. The
-                  // typed text survives — it is the operator's, not the plan's.
-                  setPlan(null);
-                  setResult(null);
-                  setError(null);
-                  setStage("input");
-                }}
+                onDismiss={returnToInput}
+                onReload={returnToInput}
               />
             )}
           </DialogBody>
