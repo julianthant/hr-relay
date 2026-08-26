@@ -238,11 +238,69 @@ export const WorkerPlanAcknowledgementSchema = z.strictObject({
   workerIds: z.array(WorkerIdSchema).min(1),
 });
 
+/**
+ * A pool stop's acknowledgement MUST carry the durable directive write's own
+ * lease versions, reported by the graceful-stop channel that performed the
+ * write. The audit records exactly these — never `lease.version` read back at
+ * journal time, which would absorb unrelated lease bumps (a worker heartbeat
+ * landing between the write and phase C) into this command's claimed change.
+ */
+export const WorkerStopPoolAcknowledgementSchema = z.strictObject({
+  state: z.literal("accepted"),
+  directiveLeaseVersions: z.strictObject({
+    before: z.number().int().positive(),
+    after: z.number().int().positive(),
+  }).superRefine((versions, context) => {
+    if (versions.after !== versions.before + 1) {
+      context.addIssue({
+        code: "custom",
+        message: `a lease directive write bumps its version by exactly one; before ${String(versions.before)} → `
+          + `after ${String(versions.after)} is not one write`,
+      });
+    }
+  }),
+});
+
 export interface WorkerRuntimeExecutor {
   planWorkerCount(context: WorkerRuntimeContext): unknown;
   spawnWorker(context: WorkerRuntimeContext): unknown;
   refreshBrowser(context: WorkerRuntimeContext): unknown;
   reopenBrowser(context: WorkerRuntimeContext): unknown;
+}
+
+/**
+ * The ASYNC pool seam (ref execution-and-sessions §11, D271) — worker-loop's
+ * `WorkerPoolRuntimeExecutor`, restated here structurally because worker-loop
+ * type-imports this module and the reverse import would be a cycle. Every
+ * method settles only after the supervisor's process effect settled: birth is
+ * proved against the durable lease before a spawn acknowledges, a stop's
+ * durable directive has landed before a stop acknowledges, and a thrown
+ * effect rejects the command instead of acknowledging it.
+ *
+ * The method names are deliberately DISTINCT from `WorkerRuntimeExecutor`'s:
+ * squeezing this async seam through the synchronous interface is a compile
+ * error, never a mis-wire that abandons the effect's promise.
+ */
+export interface WorkerPoolRuntimeSeam {
+  planPoolWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
+  spawnPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  refreshPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
+  reopenPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
+  stopPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  pausePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  resumePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
+}
+
+/**
+ * EXPLICIT adoption of the async pool seam. A composition that launches real
+ * worker processes passes `{ pool: createWorkerPoolRuntimeExecutor(supervisor) }`
+ * — worker-browser commands then settle ONLY through `executeWorkerPool`, and
+ * the synchronous `execute` path refuses them by name. The wrapper object is
+ * the explicit act: the pool executor can never be mistaken for (or silently
+ * squeezed through) the synchronous Phase-1 seam.
+ */
+export interface WorkerPoolRuntimeAdoption {
+  readonly pool: WorkerPoolRuntimeSeam;
 }
 
 /**
@@ -299,7 +357,8 @@ export interface CommandKernelDependencies {
   readonly appVersion: string;
   readonly descriptors: WorkflowDescriptorResolver;
   readonly writeResolution: WriteResolutionExecutor;
-  readonly workerRuntime: WorkerRuntimeExecutor;
+  /** The synchronous Phase-1 executor, or the explicit async pool adoption — never both. */
+  readonly workerRuntime: WorkerRuntimeExecutor | WorkerPoolRuntimeAdoption;
   readonly intakeParser: IntakeParser;
   readonly intakeProjections: IntakeProjectionResolver;
   readonly configIdentity: RunConfigIdentity;
@@ -315,6 +374,15 @@ export interface CommandKernelDependencies {
 
 export interface CommandKernel {
   execute(input: unknown): CommandResult;
+  /**
+   * The ASYNC door for the worker-browser family (W3): request →
+   * supervisor.execute → validated acknowledgement → settled reply. With a
+   * `WorkerPoolRuntimeAdoption` composed, worker-browser commands settle ONLY
+   * here (the sync path refuses them); with the sync Phase-1 runtime composed
+   * this settles through the same synchronous flow as `execute`. Any other
+   * family throws — this door widens nothing.
+   */
+  executeWorkerPool(input: unknown): Promise<CommandResult>;
 }
 
 /* ── internals ───────────────────────────────────────────────────────────── */
@@ -1937,33 +2005,61 @@ function executeResolveGate(
   }]);
 }
 
+type WorkerBrowserCommand = Extract<CommandRequest, { family: "worker-browser" }>;
+
+/**
+ * The synchronous Phase-1 executor, required. A kernel that adopted the async
+ * pool seam refuses the synchronous worker-browser path BY NAME — running a
+ * pool effect here would either abandon its promise or fabricate an
+ * acknowledgement the process never proved.
+ */
+function syncWorkerRuntime(dependencies: CommandKernelDependencies): WorkerRuntimeExecutor {
+  const runtime = dependencies.workerRuntime;
+  if ("pool" in runtime) {
+    throw new Error(
+      "this kernel adopted the async worker pool seam; worker-browser commands settle only through "
+      + "executeWorkerPool, never the synchronous execute path",
+    );
+  }
+  return runtime;
+}
+
+/**
+ * D269 (ref execution-and-sessions §11.5): the two pool-targeted arms CAS
+ * against the durable POOL version — the row's, or 0 for a workflow nobody
+ * has planned — before anything else is consulted. A stale basis is a
+ * `conflict` naming the current version, so a control can re-read the pool
+ * block and try again with a true number; it is never guessed past.
+ */
+function checkWorkerPoolVersion(
+  repositories: AuthorityRepositories,
+  request: CommandRequest,
+  workflowId: string,
+  expectedVersion: number,
+): number {
+  const current = workerPoolVersion(repositories.workerPools.get(workflowId));
+  if (current !== expectedVersion) {
+    conflict(
+      request,
+      current,
+      `worker pool ${workflowId} is at version ${String(current)}`
+      + `${current === 0 ? " (no worker count has been planned for it yet)" : ""}, not `
+      + `${String(expectedVersion)}; re-read the pool before planning or spawning against it`,
+    );
+  }
+  return current;
+}
+
 function executeWorkerBrowser(
   dependencies: CommandKernelDependencies,
   repositories: AuthorityRepositories,
-  request: Extract<CommandRequest, { family: "worker-browser" }>,
+  request: WorkerBrowserCommand,
   now: string,
 ): CommandApplication {
   const context: WorkerRuntimeContext = Object.freeze({ command: request, now });
-  /**
-   * D269 (ref execution-and-sessions §11.5): the two pool-targeted arms CAS
-   * against the durable POOL version — the row's, or 0 for a workflow nobody
-   * has planned — before anything else is consulted. A stale basis is a
-   * `conflict` naming the current version, so a control can re-read the pool
-   * block and try again with a true number; it is never guessed past.
-   */
-  const checkPoolVersion = (workflowId: string, expectedVersion: number): number => {
-    const current = workerPoolVersion(repositories.workerPools.get(workflowId));
-    if (current !== expectedVersion) {
-      conflict(
-        request,
-        current,
-        `worker pool ${workflowId} is at version ${String(current)}`
-        + `${current === 0 ? " (no worker count has been planned for it yet)" : ""}, not `
-        + `${String(expectedVersion)}; re-read the pool before planning or spawning against it`,
-      );
-    }
-    return current;
-  };
+  const workerRuntime = syncWorkerRuntime(dependencies);
+  const checkPoolVersion = (workflowId: string, expectedVersion: number): number =>
+    checkWorkerPoolVersion(repositories, request, workflowId, expectedVersion);
   switch (request.type) {
     case "plan-worker-count": {
       resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
@@ -1973,7 +2069,7 @@ function executeWorkerBrowser(
       // and a throw here unwinds the whole command, so the pool never records
       // a count the runtime refused to acknowledge.
       const acknowledgement = WorkerPlanAcknowledgementSchema.parse(
-        dependencies.workerRuntime.planWorkerCount(context),
+        workerRuntime.planWorkerCount(context),
       );
       const planned = repositories.workerPools.plan({
         workflow: request.target.workflowId,
@@ -2004,7 +2100,7 @@ function executeWorkerBrowser(
           + "a second process may not answer to the same worker id",
         );
       }
-      WorkerRuntimeAcknowledgementSchema.parse(dependencies.workerRuntime.spawnWorker(context));
+      WorkerRuntimeAcknowledgementSchema.parse(workerRuntime.spawnWorker(context));
       return applied(request, [workerTarget(request.payload.workerId)], []);
     }
     case "stop-worker":
@@ -2056,10 +2152,438 @@ function executeWorkerBrowser(
         );
       }
       const acknowledgement = request.type === "refresh-browser"
-        ? dependencies.workerRuntime.refreshBrowser(context)
-        : dependencies.workerRuntime.reopenBrowser(context);
+        ? workerRuntime.refreshBrowser(context)
+        : workerRuntime.reopenBrowser(context);
       WorkerRuntimeAcknowledgementSchema.parse(acknowledgement);
       return applied(request, [workerTarget(request.target.workerId)], []);
+    }
+  }
+}
+
+/* ── the async worker-pool door (W3, ref execution-and-sessions §11/D271) ── */
+
+/**
+ * The adopted pool seam, or undefined for a sync Phase-1 composition. An
+ * object carrying BOTH shapes is refused at kernel creation — a dependency
+ * that could satisfy either seam would make "which path runs this command"
+ * a matter of property-check ordering instead of composition.
+ */
+function adoptedWorkerPool(
+  runtime: WorkerRuntimeExecutor | WorkerPoolRuntimeAdoption,
+): WorkerPoolRuntimeSeam | undefined {
+  const pool = "pool" in runtime ? runtime.pool : undefined;
+  if (pool !== undefined && ("planWorkerCount" in runtime || "spawnWorker" in runtime)) {
+    throw new Error(
+      "the worker runtime dependency carries BOTH the synchronous Phase-1 executor and an async pool "
+      + "adoption; exactly one seam must be composed",
+    );
+  }
+  return pool;
+}
+
+/**
+ * Read-only preconditions for one worker-browser command, inside a
+ * transaction that writes NOTHING: the process effect has not run yet, so
+ * there is no authority fact to record — a refusal here reaches no target.
+ * Returns the validated CAS basis (the pool row's version for the two
+ * pool-targeted arms, the lease's version otherwise).
+ */
+function validateWorkerPoolCommand(
+  dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
+  request: WorkerBrowserCommand,
+): number {
+  switch (request.type) {
+    case "plan-worker-count": {
+      resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+      return checkWorkerPoolVersion(repositories, request, request.target.workflowId, request.target.expectedVersion);
+    }
+    case "spawn-worker": {
+      resolveDescriptorOrReject(dependencies, request, request.target.workflowId);
+      const version = checkWorkerPoolVersion(
+        repositories, request, request.target.workflowId, request.target.expectedVersion,
+      );
+      const existing = repositories.workerLeases.get(request.payload.workerId);
+      if (existing !== undefined && isLiveWorker(existing)) {
+        reject(
+          request,
+          "invalid-state",
+          `worker ${request.payload.workerId} already holds a live lease in state ${existing.lifecycle.state}; `
+          + "a second process may not answer to the same worker id",
+        );
+      }
+      return version;
+    }
+    case "stop-worker":
+    case "pause-worker":
+    case "resume-worker": {
+      const lease = repositories.workerLeases.get(request.target.workerId);
+      if (lease === undefined) {
+        reject(request, "target-not-found", `worker lease ${request.target.workerId} does not exist`);
+      }
+      if (!isLiveWorker(lease)) {
+        reject(
+          request,
+          "invalid-state",
+          `worker ${request.target.workerId} lease is ${lease.lifecycle.state}; `
+          + "a stopped worker starts a new lease generation instead of taking directives",
+        );
+      }
+      return lease.version;
+    }
+    case "refresh-browser":
+    case "reopen-browser": {
+      const lease = repositories.workerLeases.get(request.target.workerId);
+      if (lease === undefined) {
+        reject(request, "target-not-found", `worker lease ${request.target.workerId} does not exist`);
+      }
+      if (!isLiveWorker(lease)) {
+        reject(
+          request,
+          "invalid-state",
+          `worker ${request.target.workerId} lease is ${lease.lifecycle.state}; `
+          + "it owns no live browser session to act on",
+        );
+      }
+      return lease.version;
+    }
+  }
+}
+
+type WorkerPoolSettledAcknowledgement =
+  | Readonly<{ kind: "plan"; workerIds: readonly string[] }>
+  | Readonly<{ kind: "stop"; directiveLeaseVersions: Readonly<{ before: number; after: number }> }>
+  | Readonly<{ kind: "control" }>;
+
+/**
+ * Await the pool effect and zod-parse the SETTLED value — never a pending
+ * promise, never an unparsed shape. A thrown effect propagates and unwinds
+ * the command before any authority fact is written.
+ */
+async function settleWorkerPoolEffect(
+  pool: WorkerPoolRuntimeSeam,
+  request: WorkerBrowserCommand,
+  context: WorkerRuntimeContext,
+): Promise<WorkerPoolSettledAcknowledgement> {
+  switch (request.type) {
+    case "plan-worker-count": {
+      const acknowledgement = WorkerPlanAcknowledgementSchema.parse(await pool.planPoolWorkerCount(context));
+      return { kind: "plan", workerIds: acknowledgement.workerIds };
+    }
+    case "spawn-worker":
+      WorkerRuntimeAcknowledgementSchema.parse(await pool.spawnPoolWorker(context));
+      return { kind: "control" };
+    case "stop-worker": {
+      const acknowledgement = WorkerStopPoolAcknowledgementSchema.parse(await pool.stopPoolWorker(context));
+      return { kind: "stop", directiveLeaseVersions: acknowledgement.directiveLeaseVersions };
+    }
+    case "pause-worker":
+      WorkerRuntimeAcknowledgementSchema.parse(await pool.pausePoolWorker(context));
+      return { kind: "control" };
+    case "resume-worker":
+      WorkerRuntimeAcknowledgementSchema.parse(await pool.resumePoolWorker(context));
+      return { kind: "control" };
+    case "refresh-browser":
+      WorkerRuntimeAcknowledgementSchema.parse(await pool.refreshPoolBrowser(context));
+      return { kind: "control" };
+    case "reopen-browser":
+      WorkerRuntimeAcknowledgementSchema.parse(await pool.reopenPoolBrowser(context));
+      return { kind: "control" };
+  }
+}
+
+/**
+ * Authority facts AFTER the validated acknowledgement. The plan arm writes the
+ * desired count from the REQUEST under its original CAS basis — the ack path
+ * carries process facts and workerIds, never a count to persist — and the stop
+ * arm writes nothing: its durable directive landed through the supervisor's
+ * injected graceful-stop channel during the effect, so this transaction only
+ * verifies the durable record matches what was acknowledged.
+ */
+function applyWorkerPoolCommand(
+  repositories: AuthorityRepositories,
+  request: WorkerBrowserCommand,
+  now: string,
+  basisVersion: number,
+  acknowledgement: WorkerPoolSettledAcknowledgement,
+): CommandApplication {
+  switch (request.type) {
+    case "plan-worker-count": {
+      if (acknowledgement.kind !== "plan") {
+        throw new Error("plan-worker-count settled without a plan acknowledgement; the pool seam is inconsistent");
+      }
+      const planned = repositories.workerPools.plan({
+        workflow: request.target.workflowId,
+        expectedVersion: request.target.expectedVersion,
+        desiredWorkers: request.payload.desiredWorkers,
+        requestedBy: request.requestedBy,
+        now,
+      });
+      if (planned.state !== "applied") {
+        // A cross-process writer moved the pool between this command's
+        // phase-A CAS and this transaction (the in-process serialization only
+        // covers commands THIS kernel runs). The refusal is typed AND tells
+        // the operator the truth about the half that cannot roll back: the
+        // process effect already ran.
+        conflict(
+          request,
+          planned.currentVersion,
+          `worker pool ${request.target.workflowId} moved to version ${String(planned.currentVersion)} while this `
+          + "plan's process effects were executing; the acknowledged reconciliation — including any excess-member "
+          + "graceful stop it initiated — has ALREADY executed and stands; re-read the pool before planning again",
+        );
+      }
+      return applied(
+        request,
+        [
+          workerPoolTarget(request.target.workflowId),
+          ...acknowledgement.workerIds.map((workerId) => workerTarget(workerId)),
+        ],
+        [{ target: workerPoolTarget(request.target.workflowId), before: basisVersion, after: basisVersion + 1 }],
+      );
+    }
+    case "spawn-worker":
+      // The child's own birth lease IS the authority fact, written by the
+      // worker process and proved by the supervisor before it acknowledged.
+      return applied(request, [workerTarget(request.payload.workerId)], []);
+    case "stop-worker": {
+      if (acknowledgement.kind !== "stop") {
+        throw new Error("stop-worker settled without a stop acknowledgement; the pool seam is inconsistent");
+      }
+      const lease = repositories.workerLeases.get(request.target.workerId);
+      if (lease === undefined) {
+        throw new Error(
+          `worker lease ${request.target.workerId} vanished after its stop settled; the durable record is inconsistent`,
+        );
+      }
+      if (lease.control.directive !== "stop" || lease.control.requestedAt !== now) {
+        throw new Error(
+          `stop-worker for ${request.target.workerId} settled, but authority shows directive `
+          + `${lease.control.directive} requested at ${lease.control.requestedAt}, not the acknowledged stop `
+          + `at the command's now ${now}; refusing to audit an effect the durable record does not show`,
+        );
+      }
+      // The audited change is the directive WRITE's own before/after (the
+      // channel that performed it reported them through the acknowledgement)
+      // — never `basisVersion → lease.version`, which would fold unrelated
+      // lease bumps landed since into this command's claimed change.
+      return applied(request, [workerTarget(request.target.workerId)], [{
+        target: workerTarget(request.target.workerId),
+        before: acknowledgement.directiveLeaseVersions.before,
+        after: acknowledgement.directiveLeaseVersions.after,
+      }]);
+    }
+    case "pause-worker":
+    case "resume-worker": {
+      const lease = repositories.workerLeases.get(request.target.workerId);
+      if (lease === undefined) {
+        throw new Error(
+          `worker lease ${request.target.workerId} vanished after its ${request.type} was attested; `
+          + "the durable record is inconsistent",
+        );
+      }
+      if (!isLiveWorker(lease)) {
+        reject(
+          request,
+          "invalid-state",
+          `worker ${request.target.workerId} lease is ${lease.lifecycle.state}; `
+          + "a stopped worker starts a new lease generation instead of taking directives",
+        );
+      }
+      const directive = request.type === "pause-worker" ? "pause" : "run";
+      const outcome = repositories.workerLeases.control({
+        workerId: request.target.workerId,
+        expectedVersion: lease.version,
+        control: {
+          directive,
+          requestedAt: now,
+          requestedBy: request.requestedBy,
+          ...(request.reason === undefined ? {} : { reason: request.reason }),
+        },
+        now,
+      });
+      requireApplied(outcome, `${request.type} directive on worker ${request.target.workerId}`);
+      return applied(request, [workerTarget(request.target.workerId)], [{
+        target: workerTarget(request.target.workerId),
+        before: lease.version,
+        after: lease.version + 1,
+      }]);
+    }
+    case "refresh-browser":
+    case "reopen-browser":
+      return applied(request, [workerTarget(request.target.workerId)], []);
+  }
+}
+
+/**
+ * The B→C crash window's honest recovery (a stop only): the crashed delivery's
+ * effect is DURABLE — the lease's `control` carries the stop directive the
+ * command initiated — but no journal row was written, so without this arm
+ * every re-delivery re-consults the supervisor, which rightly refuses (a stop
+ * already in flight, or, after a BFF restart, a child it never spawned), and
+ * command authority never records a stop that in fact happened.
+ *
+ * A lease whose control already carries THIS command's stop identity —
+ * directive `stop`, the command's exact `requestedBy` and `reason`, an
+ * instant not after this delivery's `now` — is replayable evidence of that
+ * effect, and the command settles FROM it: journaled and audited applied,
+ * with no version change claimed (this delivery wrote nothing, and the
+ * original write's versions died with the crashed process). The directive's
+ * `requestedAt` cannot be matched to anything this delivery knows — it was
+ * minted from the crashed delivery's phase-A clock — so the identity match is
+ * actor + reason, exact.
+ *
+ * The evidence binds only while the target is still live (`isLiveWorker` —
+ * a crashed B→C delivery's target is still live, at worst `stopping`): a
+ * DEAD lease's directive is the record of a stop that already completed, not
+ * of this command's effect, and converging on it would journal "applied" for
+ * a command that stopped nothing. A dead lease falls through to the sync
+ * path's own typed stopped-worker refusal.
+ *
+ * On a live lease the directive is a stop IN FLIGHT, so an identity
+ * near-miss has exactly one honest answer: a typed refusal NAMING the
+ * drifted field (actor, reason, or a postdated `requestedAt`). Falling
+ * through instead would hand the command to the supervisor, whose refusal
+ * ("a stop is already in flight", or after a restart "never spawned") names
+ * none of the mismatch and leaves the drift illegible.
+ */
+function settleStopFromDurableEvidence(
+  dependencies: CommandKernelDependencies,
+  repositories: AuthorityRepositories,
+  request: Extract<WorkerBrowserCommand, { type: "stop-worker" | "pause-worker" | "resume-worker" }>,
+  now: string,
+): CommandResult | undefined {
+  if (request.type !== "stop-worker") {
+    throw new Error(`settleStopFromDurableEvidence received a ${request.type} command; only a stop has durable directive evidence`);
+  }
+  const lease = repositories.workerLeases.get(request.target.workerId);
+  if (lease === undefined) return undefined;
+  const { control } = lease;
+  if (control.directive !== "stop") return undefined;
+  if (!isLiveWorker(lease)) return undefined;
+  const describeReason = (reason: string | undefined): string =>
+    reason === undefined ? "no reason" : `reason "${reason}"`;
+  if (control.requestedBy !== request.requestedBy) {
+    reject(
+      request,
+      "invalid-state",
+      `worker ${request.target.workerId}'s durable stop directive was `
+      + `requested by ${control.requestedBy}, not ${request.requestedBy}; `
+      + "a stop is already in flight under a different actor",
+    );
+  }
+  if (control.reason !== request.reason) {
+    reject(
+      request,
+      "invalid-state",
+      `worker ${request.target.workerId}'s durable stop directive names `
+      + `${describeReason(control.reason)}, not ${describeReason(request.reason)}; `
+      + "a stop is already in flight for a different reason",
+    );
+  }
+  if (Date.parse(control.requestedAt) > Date.parse(now)) {
+    reject(
+      request,
+      "invalid-state",
+      `worker ${request.target.workerId}'s durable stop directive is postdated: `
+      + `its requestedAt ${control.requestedAt} is after this delivery's now ${now}, `
+      + "so it cannot be this command's own crashed effect",
+    );
+  }
+  const journal = repositories.commands.insert(request);
+  if (journal.state === "existing") {
+    throw new Error(
+      `stop-worker ${request.commandId} was journaled while its own settle transaction held the authority `
+      + "store; the journal is inconsistent",
+    );
+  }
+  const application = applied(request, [workerTarget(request.target.workerId)], []);
+  repositories.commandAudits.insert({
+    auditId: dependencies.ids.uuid(),
+    request,
+    result: application.result,
+    completedAt: now,
+    versionChanges: application.versionChanges,
+    affectedDependencyIds: application.affectedDependencyIds,
+  });
+  return application.result;
+}
+
+/**
+ * The three-phase pool flow. The authority transaction is synchronous and the
+ * pool effect is not, so the flow splits: (A) a read-only transaction settles
+ * replay (and, for a stop, the crashed-delivery evidence settle above) and
+ * validates the target — a refusal here reaches no target; (B) the effect is
+ * awaited OUTSIDE any transaction and its settled value parsed; (C) one
+ * transaction journals the command, writes the authority facts the
+ * acknowledged effect justifies, and audits the result. The caller holds the
+ * per-workflow serialization across all three phases.
+ */
+async function executeWorkerPoolCommand(
+  dependencies: CommandKernelDependencies,
+  pool: WorkerPoolRuntimeSeam,
+  request: WorkerBrowserCommand,
+): Promise<CommandResult> {
+  const pre = dependencies.authority.withAuthorityTransaction((repositories) => {
+    const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+    if (repositories.commands.get(request.commandId) !== undefined) {
+      return { kind: "replay" as const, result: replay(repositories, request, now) };
+    }
+    if (request.type === "stop-worker") {
+      const settled = settleStopFromDurableEvidence(dependencies, repositories, request, now);
+      if (settled !== undefined) return { kind: "settled" as const, result: settled };
+    }
+    return {
+      kind: "proceed" as const,
+      now,
+      basisVersion: validateWorkerPoolCommand(dependencies, repositories, request),
+    };
+  });
+  if (pre.kind !== "proceed") return pre.result;
+  const context: WorkerRuntimeContext = Object.freeze({ command: request, now: pre.now });
+  const acknowledgement = await settleWorkerPoolEffect(pool, request, context);
+  return dependencies.authority.withAuthorityTransaction((repositories) => {
+    const journal = repositories.commands.insert(request);
+    if (journal.state === "existing") return replay(repositories, request, pre.now);
+    const application = applyWorkerPoolCommand(
+      repositories, request, pre.now, pre.basisVersion, acknowledgement,
+    );
+    repositories.commandAudits.insert({
+      auditId: dependencies.ids.uuid(),
+      request,
+      result: application.result,
+      completedAt: pre.now,
+      versionChanges: application.versionChanges,
+      affectedDependencyIds: application.affectedDependencyIds,
+    });
+    return application.result;
+  });
+}
+
+/**
+ * The workflow that owns a pool command's target — the serialization unit for
+ * the async door. Worker-targeted arms derive it from the canonical pool
+ * identity `<workflowId>-worker-<n>` (the exact pattern worker-loop's
+ * `poolWorkerId` mints; restated here because a value import of worker-loop
+ * would be a module cycle). A worker id outside that shape serializes under
+ * its own key, which is provably sufficient: a plan's roster only ever names
+ * canonical pool members, so no workflow-scoped command can touch it.
+ */
+function workerPoolSerializationKey(request: WorkerBrowserCommand): string {
+  switch (request.type) {
+    case "plan-worker-count":
+    case "spawn-worker":
+      return `worker-pool:${request.target.workflowId}`;
+    case "stop-worker":
+    case "pause-worker":
+    case "resume-worker":
+    case "refresh-browser":
+    case "reopen-browser": {
+      const match = /^(?<workflowId>.+)-worker-[1-9]\d*$/.exec(request.target.workerId);
+      const workflowId = match?.groups?.["workflowId"];
+      return workflowId === undefined
+        ? `worker-browser:${request.target.workerId}`
+        : `worker-pool:${workflowId}`;
     }
   }
 }
@@ -2547,9 +3071,45 @@ function replay(
 }
 
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
-  return Object.freeze({
-    execute(input: unknown): CommandResult {
-      const request = CommandRequestSchema.parse(input);
+  // Validated ONCE at composition: a dependency satisfying both seams is a
+  // wiring ambiguity, refused before any command can reach it.
+  const pool = adoptedWorkerPool(dependencies.workerRuntime);
+  /**
+   * Per-workflow FIFO serialization across the pool door's WHOLE A→C flow.
+   * Phase A's CAS runs in its own transaction and phase B's process effect
+   * outside any transaction, so two in-flight commands could otherwise both
+   * validate against the same basis and both run process effects — the
+   * loser's durable side effects (a stop directive, an armed escalation for
+   * a member the winning plan still desires) standing while its phase C
+   * rolls back without a journal trace. Serialized, the loser's phase A sees
+   * the winner's version and refuses TYPED, before any effect is initiated.
+   *
+   * An in-process mutex is a real serialization here because exactly one BFF
+   * process owns the worker supervisor: `composeDashboardRuntime` takes the
+   * exclusive `server` process lock before composing it, so every pool-effect
+   * initiator runs through this kernel. A cross-PROCESS authority writer is
+   * still possible and surfaces as the typed phase-C conflict instead.
+   */
+  const poolCommandTails = new Map<string, Promise<void>>();
+  const withPoolCommandSerialization = async (
+    key: string,
+    work: () => Promise<CommandResult>,
+  ): Promise<CommandResult> => {
+    const previous = poolCommandTails.get(key);
+    let release: () => void = () => undefined;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    poolCommandTails.set(key, current);
+    if (previous !== undefined) await previous;
+    try {
+      return await work();
+    } finally {
+      if (poolCommandTails.get(key) === current) poolCommandTails.delete(key);
+      release();
+    }
+  };
+  const executeSync = (request: CommandRequest): CommandResult => {
       if (DEFERRED_ARM_KEYS.has(`${request.family}/${request.type}`)) {
         // Computed purely: no journal row, no audit row, no generation advance.
         return CommandResultSchema.parse({
@@ -2581,6 +3141,32 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         // effect, the journal row included, rolled back. Anything else stays a
         // thrown structured error; the kernel never converts an unknown
         // failure into a plausible typed result.
+        if (error instanceof CommandRefusal) return error.result;
+        throw error;
+      }
+  };
+  return Object.freeze({
+    execute(input: unknown): CommandResult {
+      return executeSync(CommandRequestSchema.parse(input));
+    },
+    async executeWorkerPool(input: unknown): Promise<CommandResult> {
+      const request = CommandRequestSchema.parse(input);
+      if (request.family !== "worker-browser") {
+        throw new Error(
+          `executeWorkerPool settles only worker-browser commands; received ${request.family}/${request.type}`,
+        );
+      }
+      if (pool === undefined) return executeSync(request);
+      try {
+        return await withPoolCommandSerialization(
+          workerPoolSerializationKey(request),
+          () => executeWorkerPoolCommand(dependencies, pool, request),
+        );
+      } catch (error) {
+        // Typed refusals from phases A and C become their exact typed results;
+        // a thrown effect (phase B) stays a thrown structured error — the
+        // kernel never converts an unproved process effect into a plausible
+        // typed outcome.
         if (error instanceof CommandRefusal) return error.result;
         throw error;
       }

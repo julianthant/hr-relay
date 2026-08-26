@@ -101,3 +101,43 @@ export function settleCommandResult(result: CommandResult): CommandSettlement {
       };
   }
 }
+
+/**
+ * WHERE A COMMAND DIED, and it decides the only honest thing the toast can say.
+ *
+ * `Nothing was recorded` is a claim about the SERVER, and there are exactly two
+ * moments at which this client is entitled to make it: before anything was
+ * sent, and after the server itself answered with a refusal. A throw from the
+ * settlement handler is neither. The envelope is already on the wire — the
+ * fetch may have failed after the kernel wrote the row, and the guards inside
+ * the fulfilment arm throw only AFTER a result came back — so "nothing was
+ * recorded" is a negative this side cannot know, and an operator who believes
+ * it re-issues a command that already landed. On an HR transaction that is the
+ * duplicate the fail-loud rule exists to prevent.
+ *
+ * So the two stages get two titles, and the after-dispatch one names the
+ * uncertainty rather than resolving it in the comfortable direction.
+ */
+export type CommandDispatchFailure =
+  /** The client refused to compose the envelope: nothing left this tab. */
+  | { readonly stage: "before-dispatch"; readonly reason: string }
+  /** The promise rejected, or a guard threw while settling the answer. */
+  | { readonly stage: "after-dispatch"; readonly caught: unknown };
+
+export interface CommandFailureToast {
+  readonly tone: "danger";
+  readonly title: string;
+  readonly description: string;
+}
+
+export function commandFailureToast(failure: CommandDispatchFailure): CommandFailureToast {
+  if (failure.stage === "before-dispatch") {
+    return { tone: "danger", title: "Nothing was sent", description: failure.reason };
+  }
+  return {
+    tone: "danger",
+    title: "Result unknown — check the run",
+    description: `${failure.caught instanceof Error ? failure.caught.message : String(failure.caught)} `
+      + "The command may already have been recorded: open the run and read its receipt before sending it again.",
+  };
+}

@@ -47,6 +47,85 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
 
 ## Lessons learned
 
+- **2026-08-26: a `<label for>` names an `<input>` and does NOT name a `<button role="checkbox">`, so
+  the DS `Checkbox` ships every one of its controls nameless.** Intake's rejection acknowledgement —
+  the gate that holds the plan closed until the operator has seen every non-valid row — resolved with
+  an EMPTY accessible name, verified against the built bundle: the control is a Radix
+  `Checkbox.Root`, which renders a `<button>` whose only content is an `aria-hidden` indicator, and
+  HTML-AAM computes a `button`'s native name from its SUBTREE, never from an associated label. The
+  visible text was right there in `<label for>`, the label click even toggled the box, and a screen
+  reader still announced "checkbox" and nothing else. `intake.tsx` now passes one `reviewLabel`
+  expression to BOTH `label` and `aria-label` so the two cannot drift (WCAG 2.5.3). Two things
+  generalize. **The label being clickable proves nothing about the name** — geometry, hit-testing and
+  naming are three independent claims, and this one passed the first two while failing the third.
+  And **a locator that never matches can only report the test timeout**: the parity case spent the
+  full 120 s deadline inside `locator.evaluate` saying nothing about the cause, so the spec now
+  asserts `toHaveCount(1)` on the named role FIRST and the missing name names itself. `ds/Checkbox`
+  itself is still unfixed — every other checkbox in this bundle has the same empty name, and the fix
+  belongs with the deliberate parity re-freeze, since naming them all rewrites the a11y references.
+- **2026-08-26: three ways a queue control can be short of the truth, and only one of them was
+  visible in the diff (unit F2, queue fidelity review).** All three were the same shape — a value
+  the surface HELD and did not make reachable. (1) `bulkPlans` was composed by filtering `surfaces`
+  by the selection, so a selected id whose row had left the day fell out of the plan and out of
+  every count downstream: `Cancel 3 · 1 skipped` under `6 selected`, with two rows accounted for
+  nowhere. Not sent AND not disclosed is the omission the fail-loud rule forbids, and the fix is
+  structural rather than a caption — `planBulkVerbs` now takes the WHOLE selection and returns the
+  difference as its own `unavailable` bucket, `selectedIds` is required rather than defaulted from
+  `rows` (a default reinstates the drop at the next call site that forgets it), and
+  `bulkUnavailableIds` throws on the inverse. **A count and its explanation must be derived from the
+  same input**: the strip's "none of the N selected rows serves cancel" was computed from a
+  different N than the one it printed. (2) The member line's toggle was 24px against a 44px touch
+  floor, and the obvious fix was a hazard: at the line's 28px pitch a 44px overlay reaches into the
+  rows above and below, so a tap near a boundary marks the WRONG member. **When a target cannot grow
+  without overlapping its neighbours, grow the PITCH** — `--ds-h-member-line` is 44px under
+  `@media (pointer: coarse)`, both well heights derive from it, and the parity corpus renders at
+  `pointer: fine` so no reference moved. **Amended 2026-08-26 (unit F2c): that fix was 44px in the
+  class list and 44 x 24 on screen, and only a real engine said so.** Two ancestors took the height
+  back. The toggle sits in the member line's NAME cell, which carries `truncate` — `overflow: hidden`
+  clips an absolutely-positioned descendant, and the cell is exactly as tall as the 24px of paint it
+  holds, so the width survived and the height did not (`MEMBER_TOUCH_TARGET_HOST` lifts the clip under
+  the coarse gate; `overflow-y` cannot be un-clipped alone, CSS computes the other axis to `auto`).
+  Then the un-clipped 44px target centred on a line with **43px of content** — the well is `divide-y`,
+  so every line but the last spends 1px of its own border box on the hairline — and hung half a pixel
+  over the row above, where `elementFromPoint` resolves to THIS toggle inside the NEIGHBOUR's row. The
+  coarse line is now `calc(44px + var(--ds-border-w))`. **A touch floor is a claim about the engine's
+  hit box, not about a class list**: measure both axes, in a real engine, or the guard passes while a
+  finger gets half the target. And **when a token is a target's size, remember what the border box
+  already spends** — `h-44` with a 1px divider is a 43px target. (3) A `Chip` clips its paint and put the whole value on
+  `title` alone — reachable by mouse, by nobody else, which DESIGN.md bans outright. The row already
+  had the sanctioned Popover, so the fix cost no new chrome: `rowInfoFacts` composes absent reasons
+  and PRESENT values into one fold and the ⓘ prints the value unclipped (`break-words`, not a second
+  truncation). Two habits carried all three: the decision landed as a **pure exported fold** because
+  this tree renders no React in the unit lane, and each test was **run against a mutation of the
+  code it pins** — the touch-target guard was proved by ungating one `after:` utility, the fact fold
+  by having it print the label instead of the value.
+
+  **Amended again 2026-08-26 (unit F2d): fixing a target creates targets, and a fix's OWN neighbours
+  are the next defect.** Four more, all downstream of the three above. (a) The member toggle's 44px
+  overlay was CENTRED, so it reached ~10px back across the name button `--ds-space-tight` to its
+  left: a tap on the end of a truncated name toggled the checkbox instead of selecting the row — the
+  same wrong-act-on-the-right-row error as the pitch bug, in the axis nobody had measured. It is
+  anchored to the toggle's LEFT edge now and spends its 44px going right, where only inert subtitle
+  text sits. **Containment is a claim about every direction the box grows in**, and the probe that
+  catches it is an adjacent-TARGET probe (what does the neighbour's last pixel resolve to), not a
+  size assertion. (b) The name button beside it was 16px tall inside a 44px line — **growing a line
+  for one control does not give the height to the others on it.** (c) The ⓘ from (3) above was
+  itself 20px: **a control introduced to fix a reachability defect inherits the floor of the thing it
+  replaced.** Its overlay needed the title LINE grown too, because the card is `overflow-hidden` and
+  clips whatever the line does not hold — F2c's lesson landing a second time, on a different clip.
+  (d) The toolbar's refusal sentence was `truncate` with no ⓘ to recover it: **the row's popover
+  route does not exist on a toolbar, so a clipped sentence there is unreachable on every pointer** —
+  it wraps, and the band takes `min-h` instead of `h` so it has somewhere to wrap to. And one that
+  is not about pixels at all: the one-command route's chained `.catch` titled every post-dispatch
+  throw `Nothing was recorded`, **a negative the client cannot know** — the envelope is already on
+  the wire and the fulfilment arm's own guards throw only after a result came back, so an operator
+  who believes it re-issues a command that may have landed. Both stages now settle through
+  `commandFailureToast`, and the after-dispatch arm says the result is unknown and names the one
+  thing that resolves it. (The bullet above says this tree renders no React in the unit lane. It
+  does for COPY: `queue-bulk-band-sentence.test.ts` runs the real toolbar through
+  `renderToStaticMarkup`, which is what pinned the tense and the absent `truncate` here — a
+  sentence composed across three JSX branches has no fold to test.)
+
 - **2026-08-21: an HTTP status decided by reading an error MESSAGE is a protocol keyed on prose, and
   every surface that renders a refusal inherits the mistake (Track D row D2, audit C3).** The BFF's
   `failureStatus` classified every throw by substring — four phrases meant 404, `"is not available"`

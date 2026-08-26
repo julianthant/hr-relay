@@ -391,7 +391,10 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     // Warm the seams a synchronous authority transaction cannot await. Today
     // that is exactly the intake parse (D170); every other family is a no-op.
     await deps.intake.prepare(body);
-    const result = deps.commands.execute(body);
+    // W3: `submit` routes the worker-browser family through the kernel's
+    // async pool seam (the process effect settles before the reply) and every
+    // other family through the same synchronous path as before.
+    const result = await deps.commands.submit(body);
     const status = result.state === "conflict" ? 409 : result.state === "rejected" ? 422 : 200;
     return c.json(result, status);
   });

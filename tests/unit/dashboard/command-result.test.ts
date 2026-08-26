@@ -19,7 +19,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { CommandRejectionCodeSchema, CommandResultSchema } from "../../../src/domain/commands.js";
-import { settleCommandResult } from "../../../src/dashboard/app/command-result.js";
+import { commandFailureToast, settleCommandResult } from "../../../src/dashboard/app/command-result.js";
 
 const COMMAND_ID = "0f3b6d5a-2e5a-4b8f-9a4e-1c2d3e4f5a6b";
 const RUN_ID = "8a1c9d2e-3f4b-4c5d-8e9f-0a1b2c3d4e5f";
@@ -135,5 +135,55 @@ describe("settleCommandResult (D253)", () => {
       ],
       ["applied", "applied", "refused", "refused"],
     );
+  });
+});
+
+/**
+ * THE TWO STAGES A COMMAND CAN DIE AT, and why they may not share a title.
+ *
+ * `Nothing was recorded` is a claim about the server. The client may make it
+ * before the envelope leaves (nothing was composed, so nothing was sent) and
+ * when the server itself answered with a refusal. It may NOT make it from a
+ * `.catch`: by then the POST is on the wire, the fetch can fail after the
+ * kernel wrote the row, and the guards in the fulfilment arm throw only after a
+ * result came back. An operator told "nothing was recorded" re-issues a command
+ * that may already have landed — the duplicate HR transaction the whole
+ * fail-loud rule exists to prevent.
+ *
+ * Both arms are pinned because the defect was that they were IDENTICAL, and the
+ * cheapest way to reintroduce it is to copy one title onto the other.
+ */
+describe("commandFailureToast — where the command died decides what may be claimed", () => {
+  it("says nothing was SENT before dispatch, carrying the client's own reason verbatim", () => {
+    const toast = commandFailureToast({ stage: "before-dispatch", reason: "a rename needs a name." });
+    assert.equal(toast.tone, "danger");
+    assert.equal(toast.title, "Nothing was sent");
+    assert.equal(toast.description, "a rename needs a name.");
+  });
+
+  it("refuses to claim anything about the server after dispatch, and says what to do instead", () => {
+    const toast = commandFailureToast({ stage: "after-dispatch", caught: new Error("network error") });
+    assert.equal(toast.tone, "danger");
+    assert.equal(toast.title, "Result unknown — check the run");
+    assert.ok(
+      !/nothing was (recorded|sent)/iu.test(`${toast.title} ${toast.description}`),
+      `a throw after dispatch cannot know either negative: ${toast.title} — ${toast.description}`,
+    );
+    assert.ok(toast.description.includes("network error"), "the throw's own sentence survives");
+    assert.ok(
+      toast.description.includes("open the run"),
+      "an unknown result is only actionable if the toast names the one thing that resolves it",
+    );
+  });
+
+  it("keeps the two stages DISTINGUISHABLE, which is the whole finding", () => {
+    const before = commandFailureToast({ stage: "before-dispatch", reason: "a rename needs a name." });
+    const after = commandFailureToast({ stage: "after-dispatch", caught: new Error("network error") });
+    assert.notEqual(before.title, after.title);
+  });
+
+  it("survives a throw that is not an Error, rather than printing `[object Object]` at the operator", () => {
+    const toast = commandFailureToast({ stage: "after-dispatch", caught: "socket hang up" });
+    assert.ok(toast.description.startsWith("socket hang up "), toast.description);
   });
 });

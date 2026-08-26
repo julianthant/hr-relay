@@ -19,6 +19,9 @@ archive readers and must fail here with the run and cursor.
 
 ### Dated lessons
 
+- **2026-08-26 — a rejection acknowledgement belongs to the exact served set, not a sticky boolean.** Intake may acknowledge only the current session version, validation instant and rejected-row identities; a later authority read invalidates that acknowledgement before the sticky outcome band can offer Run. Keep the courtesy blocker client-side and name it, but leave final enqueue eligibility to the kernel. The demo-shaped table may show a redacted cell representation, never promote it into an editor default or a fabricated original value. (IN95, IN99–IN122)
+- **2026-08-26 — queue triage is local context, while outcomes are authority.** “Checked by you” may help one operator work through members, but it is neither a member outcome nor durable evidence: keep it in browser state, reset it on reload, count only the loaded members of the current well, and never send it over the wire. A full roster/drill-in still requires its served People route; do not fabricate one from the day projection. Bulk results likewise keep every zero bucket and their named skipped set, because a clean count alone cannot say what a batch did not do. (ledger 1 B57/B80/B155/B164/B165/B172–B174/B195/B196)
+
 - **2026-08-25 — bounded list ownership includes its observed size.** A rerun membership list can
   shrink while its prior-manifest owner stays the same, so an owner-only page selection can leave a
   formerly valid final page outside the new bound. Validate the stored selection against its own
