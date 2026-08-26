@@ -13,7 +13,7 @@
  * the parity lane waits on it so a capture can never catch a half-painted
  * shell, and a human reading the DOM can tell the same thing.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
   SettingsSectionPrimitiveSchema,
@@ -93,7 +93,7 @@ import {
   type StatusBucket,
   type WorkerCardWire,
 } from "../surfaces/shell-model.js";
-import { StorageBanner } from "../surfaces/settings.js";
+import { SettingsPage, StorageBanner } from "../surfaces/settings.js";
 import { TopBar, type NavControls } from "../surfaces/top-bar.js";
 import {
   serverLocalDay,
@@ -202,7 +202,29 @@ export function DashboardApp() {
   // the panel draws several. Mounting it here rather than per-surface is also
   // what gives the whole app one shared open/close delay instead of each
   // tooltip negotiating its own.
+  //
+  // THE THEME ROOT IS THE OUTERMOST NODE, ABOVE BOTH PROVIDERS (D272 item 2,
+  // ledger rows A168/A169/A170). That is load-bearing rather than tidy:
+  // `ToastProvider` renders its viewport as a FRAGMENT sibling of its children,
+  // so while the providers sat outside this element the viewport was not a
+  // descendant of it and inherited none of its custom properties.
+  // `--ds-toast-inset-bottom` therefore resolved to nothing, the viewport took
+  // its own `var(--ds-space-loose)` fallback, and every toast in the product
+  // sat on top of the Session bar — visible the moment the page was booted, and
+  // invisible to typecheck. The variable and the nesting are ONE fix; either
+  // alone changes nothing.
+  //
+  // The floor clears the app's OWN chrome and nothing else. The viewport is
+  // `fixed` at the bottom of the WINDOW and this shell is the only thing that
+  // knows what it has parked down there: the Session bar. One term, app-level,
+  // the same on every view.
   return (
+    <div
+      data-app-root=""
+      data-demo-theme={theme}
+      style={{ "--ds-toast-inset-bottom": "calc(var(--ds-h-bar) + var(--ds-space-loose))" } as CSSProperties}
+      className="flex h-screen min-w-0 flex-col overflow-hidden bg-[color:var(--ds-bg)] text-[color:var(--ds-fg)]"
+    >
     <TooltipProvider delayDuration={200}>
     <ToastProvider>
       {day === undefined || boot === undefined ? (
@@ -235,6 +257,7 @@ export function DashboardApp() {
       )}
     </ToastProvider>
     </TooltipProvider>
+    </div>
   );
 }
 
@@ -377,14 +400,6 @@ function LoadedApp({
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
   const [activeWorkflowId, setActiveWorkflowId] = useState<string>(() => workflows[0]?.id ?? "");
   const [startOpen, setStartOpen] = useState(route.start);
-  /**
-   * The Settings dialog has TWO triggers — the top bar's gear and the storage
-   * banner's route — so its open state is held here rather than inside the
-   * control. It is client UI state, not route state: nothing about a run or a
-   * day changes when it opens, so putting it in the URL would make every
-   * shared link carry a dialog somebody else had open.
-   */
-  const [settingsOpen, setSettingsOpen] = useState(false);
   /**
    * The command waiting on the operator's confirmation. A descriptor that
    * carries a server-authored `confirm` block goes here first; everything else
@@ -1079,6 +1094,7 @@ function LoadedApp({
         activity: undefined,
         explore: undefined,
         catalog: undefined,
+        settings: undefined,
         day: place.day,
         run: place.runId ?? undefined,
         section: place.tab ?? undefined,
@@ -1201,6 +1217,7 @@ function LoadedApp({
         activity: undefined,
         explore: undefined,
         catalog: undefined,
+        settings: undefined,
       };
       if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
       else if (next === "activity") setRoute({ ...base, activity: "" });
@@ -1210,11 +1227,35 @@ function LoadedApp({
     [route, setRoute, activeWorkflowId],
   );
 
+  /**
+   * Settings is a PLACE now (D272 item 1), so its two doors — the gear and the
+   * storage band's `Storage health` — both push a history entry and the
+   * browser's own Back returns the operator to the view they left. The empty
+   * value is the page's first section; every other takeover key clears for the
+   * same reason the switcher clears them.
+   */
+  const openSettings = useCallback((): void => {
+    setRoute({
+      ...route,
+      intake: undefined,
+      archive: undefined,
+      archiveView: undefined,
+      activity: undefined,
+      explore: undefined,
+      catalog: undefined,
+      settings: "",
+    });
+  }, [route, setRoute]);
+
   return (
+    // NOT the theme root any more (D272 item 2): the app root moved above both
+    // providers so the toast viewport inherits its custom properties, and this
+    // fills it. `min-w-0` + `overflow-hidden` live up there with the root
+    // classes the demo has (`min-h-0` was this tree's own addition and is what
+    // a flex CHILD needs, which is exactly what this element now is).
     <div
-      data-demo-theme={theme}
       data-parity-ready={ready ? "true" : "loading"}
-      className={cn("flex h-screen min-h-0 flex-col bg-[color:var(--ds-bg)] text-[color:var(--ds-fg)]")}
+      className={cn("flex min-h-0 min-w-0 flex-1 flex-col")}
     >
       <TopBar
         view={shellView}
@@ -1226,9 +1267,8 @@ function LoadedApp({
         actorId={boot.actor.id}
         nowIso={nowIso}
         storage={boot.storage}
-        settingsSections={settingsSections}
-        settingsOpen={settingsOpen}
-        onSettingsOpen={setSettingsOpen}
+        settingsOpen={takeover === "settings"}
+        onOpenSettings={openSettings}
         day={day}
         today={today}
         monthCounts={dayMonthCounts}
@@ -1271,7 +1311,7 @@ function LoadedApp({
           */}
           <StorageBanner
             storage={boot.storage}
-            onOpenSettings={() => setSettingsOpen(true)}
+            onOpenSettings={openSettings}
             className="mx-[var(--ds-shell-inset)] mt-[var(--ds-space-tight)]"
           />
 
@@ -1283,7 +1323,23 @@ function LoadedApp({
             they are in a different task — a half-visible queue behind a
             takeover is the modal it deliberately is not.
           */}
-          {takeover === "intake" ? (
+          {takeover === "settings" ? (
+            /*
+              Settings REPLACES the queue (D272 item 1 / D274 item 5). It was a
+              dialog, which gave the one page an operator opens most often no
+              place in history and no back path — and the demo's own container
+              is a page for exactly that reason.
+            */
+            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
+              <SettingsPage
+                storage={boot.storage}
+                sections={settingsSections}
+                section={route.settings ?? ""}
+                onSection={(next) => setRoute({ ...route, settings: next })}
+                onClose={() => setRoute({ ...route, settings: undefined })}
+              />
+            </div>
+          ) : takeover === "intake" ? (
             <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
               <IntakeWorkspace
                 workflowId={activeWorkflowId}

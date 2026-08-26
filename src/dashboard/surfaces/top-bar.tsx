@@ -77,7 +77,7 @@ import {
   fmtElapsed,
   plural,
 } from "./format.js";
-import { SettingsControl, type SettingsSection } from "./settings.js";
+import { SettingsGear } from "./settings.js";
 import { type StorageHealthSummary } from "./settings-model.js";
 import {
   type DayCountWire,
@@ -1004,9 +1004,8 @@ export const TopBar = memo(function TopBar({
   preflight,
   onPreflightRerun,
   storage,
-  settingsSections,
   settingsOpen,
-  onSettingsOpen,
+  onOpenSettings,
   day,
   today,
   monthCounts,
@@ -1040,14 +1039,15 @@ export const TopBar = memo(function TopBar({
   onPreflightRerun?: () => void;
   /** the bootstrap's storage health summary — the gear's attention dot (2i-D) */
   storage: StorageHealthSummary;
-  settingsSections: readonly SettingsSection[];
   /**
-   * The Settings dialog is CONTROLLED by the app: the storage banner above
-   * every view opens the same dialog this gear does, and two triggers cannot
-   * share a state the dialog holds privately.
+   * Whether the Settings TAKEOVER owns the main region (D272 item 1). The gear
+   * only reports and requests: the page is a route, so the app owns the state
+   * and the bar reads it — the storage banner above every view opens the same
+   * page this gear does, and the served section list travels with the page
+   * rather than through the bar that never renders it.
    */
   settingsOpen: boolean;
-  onSettingsOpen: (open: boolean) => void;
+  onOpenSettings: () => void;
   /** the day partition the whole app is reading */
   day: string;
   today: string;
@@ -1144,12 +1144,7 @@ export const TopBar = memo(function TopBar({
             UI catalog stays reachable through its URL route (`?catalog=`),
             which is what the parity lane already drives. */}
         {/* The gear opens Settings. It sits last, as in the demo. */}
-        <SettingsControl
-          storage={storage}
-          sections={settingsSections}
-          open={settingsOpen}
-          onOpenChange={onSettingsOpen}
-        />
+        <SettingsGear storage={storage} open={settingsOpen} onOpen={onOpenSettings} />
       </span>
     </header>
   );

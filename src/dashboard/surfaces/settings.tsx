@@ -1,6 +1,9 @@
 /**
- * Settings (ref dashboard-surfaces §2.5, 2i-D): the gear in the top bar, and the one section
- * the bootstrap serves today — Storage.
+ * Settings (ref dashboard-surfaces §2.5, 2i-D): the gear in the top bar, and the FULL-PAGE
+ * takeover it opens — the demo's container, ratified as D272 item 1 / D274
+ * item 5 (`ref dashboard-surfaces` §10). It was a `Dialog size="lg"`; a dialog
+ * has no place in history and no back path, which is what the ledger rows
+ * A65 / SE1–SE4 / SE8 were pointing at.
  *
  * Storage is READ-ONLY health: the bootstrap summary at rest (age/health,
  * §2.5's "expose age/health in Settings"), and the full read-only doctor on
@@ -10,36 +13,62 @@
  * so nothing here pretends to save; the section list itself comes from the
  * SERVER's `settingsSections`, and a served section this build cannot render
  * says so by name instead of disappearing.
+ *
+ * Help → Keyboard is the OTHER half of D274 item 5 (SE7 / SE43 / SE44). The top
+ * bar's keyboard glyph was deleted on the operator's instruction — *"we already
+ * have help in settings"* — and the destination was never built, so the whole
+ * legend was reachable from nowhere. It is a `client` section rather than a
+ * served one because a legend of this bundle's own bindings is not a fact the
+ * server holds.
  */
 import { useState } from "react";
-import { Settings as SettingsIcon } from "lucide-react";
-import type { z } from "zod";
-import type { SettingsSectionPrimitiveSchema } from "../../domain/dashboard/bootstrap.js";
+import {
+  ArrowLeft,
+  CircleAlert,
+  Database,
+  Keyboard as KeyboardIcon,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
-import { storageNeedsAttention, type StorageHealthSummary } from "./settings-model.js";
+import {
+  SETTINGS_KEYBOARD_SECTION_ID,
+  buildSettingsNav,
+  resolveSettingsSection,
+  storageNeedsAttention,
+  type SettingsNavEntry,
+  type SettingsNavIcon,
+  type SettingsSection,
+  type StorageHealthSummary,
+} from "./settings-model.js";
+import { DemoShortcutsLegend } from "./shortcuts.js";
+import { DEMO_SHORTCUTS } from "./shortcuts-model.js";
 
-export type { StorageHealthSummary };
+export type { StorageHealthSummary, SettingsSection };
 import {
   Banner,
+  BulletList,
   Button,
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogTrigger,
   IconButton,
   MetaLine,
+  Panel,
+  PanelBody,
+  PanelHeader,
   SectionLabel,
+  Separator,
   StatusDot,
+  dsFocus,
   dsIcon,
+  dsMotion,
   dsText,
+  useDsEnterTransition,
   type DsStatus,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { fmtClock, plural } from "./format.js";
 
-/* whether the storage summary owes the operator attention lives in `settings-model.ts` — see the note there */
-export type SettingsSection = z.infer<typeof SettingsSectionPrimitiveSchema>;
+/* whether the storage summary owes the operator attention, the nav fold and the
+   section resolution all live in `settings-model.ts` — see the note there */
 
 /** The at-rest indicator tones; the words themselves render beside the dots. */
 function authorityStatusOf(authority: StorageHealthSummary["authority"]): DsStatus {
@@ -288,70 +317,236 @@ function StorageSection({ storage }: { storage: StorageHealthSummary }) {
 }
 
 /**
- * The gear, and the one dialog Settings has.
+ * The keyboard legend, at reading size (SE43).
  *
- * `open` is CONTROLLED by the app rather than held here, because the dialog is
- * now reachable from two places — the gear, and the storage banner mounted
- * above every view — and a component's own `useState` cannot be opened by a
- * sibling. Radix still owns focus return: the trigger it returns focus to is
- * the gear, which is on screen in every view the banner is.
+ * It renders the SAME registry the Top Bar popover was built against, through
+ * the same component, so a key cannot be bound in one place and described in
+ * another. The three rules below are not teaching — they are the conditions
+ * under which these bindings do and do not fire, each one a fact
+ * `app/global-keys.ts` enforces in its own header, and the one thing a legend
+ * of keys cannot carry in a key column.
  */
-export function SettingsControl({
+function KeyboardSection() {
+  return (
+    <Panel className="min-h-0 flex-1">
+      <PanelHeader
+        title="Keyboard"
+        subtitle="Every key the shell binds, by where it works."
+        icon={<KeyboardIcon aria-hidden className={dsIcon.lg} />}
+        meta={plural(DEMO_SHORTCUTS.length, "binding")}
+      />
+      <PanelBody className="flex flex-col gap-[var(--ds-space-section)] p-[var(--ds-space-cozy)]">
+        <DemoShortcutsLegend grouped className="max-w-[64ch]" />
+
+        <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
+          <SectionLabel>When they fire</SectionLabel>
+          <BulletList
+            className="max-w-[86ch]"
+            items={[
+              "Never while the caret is in a text field — typing a name into search does not jump the queue.",
+              "Never while a dialog or a drawer is open. That surface owns the keyboard, including Escape.",
+              "Right-click, and the platform's own Menu / Shift+F10 key, open the same row menu that m does — m works from the SELECTION, so it does not need the row to be focused.",
+            ]}
+          />
+        </div>
+      </PanelBody>
+    </Panel>
+  );
+}
+
+const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
+  storage: Database,
+  keyboard: KeyboardIcon,
+  unrendered: CircleAlert,
+};
+
+/**
+ * One nav entry. `aria-current="page"` rather than `aria-selected`, because
+ * this is navigation between pages of one surface and not a tablist — the
+ * demo's own choice, and the one an assistive technology reads as "you are
+ * here" rather than "this option is picked".
+ */
+function SectionButton({
+  entry,
+  active,
+  onClick,
+}: {
+  entry: SettingsNavEntry;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const Icon = NAV_ICON[entry.icon];
+  return (
+    <button
+      type="button"
+      aria-current={active ? "page" : undefined}
+      onClick={onClick}
+      className={cn(
+        "flex min-w-0 items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)]",
+        "px-[var(--ds-space-base)] py-[var(--ds-space-snug)] text-left",
+        dsText.ui,
+        dsFocus,
+        dsMotion.base,
+        active
+          ? "bg-[var(--ds-surface-selected)] font-semibold text-[color:var(--ds-fg)]"
+          : "text-[color:var(--ds-fg-muted)] hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+      )}
+    >
+      <Icon aria-hidden className={cn(dsIcon.md, "shrink-0")} />
+      <span className="truncate">{entry.label}</span>
+    </button>
+  );
+}
+
+/**
+ * The gear. A plain button now rather than a `DialogTrigger`: what it opens is
+ * a page, so it navigates instead of raising a layer.
+ *
+ * `open` is still passed in rather than held here, because the page is
+ * reachable from two places — this gear and the storage banner mounted above
+ * every view — and a component's own `useState` cannot be opened by a sibling.
+ */
+export function SettingsGear({
+  storage,
+  open,
+  onOpen,
+}: {
+  storage: StorageHealthSummary;
+  open: boolean;
+  onOpen: () => void;
+}) {
+  const attention = storageNeedsAttention(storage);
+  return (
+    <IconButton
+      size="sm"
+      label={attention ? "Settings — storage needs attention" : "Settings"}
+      // The gear REPORTS that it owns the screen, in both representations:
+      // `aria-pressed` for the accessibility tree and the surface-3 fill
+      // for the eye. Every other pressed control in this cluster carries
+      // the pair; the gear carried neither, so the one takeover an operator
+      // opens most often was the one that never looked open.
+      aria-pressed={open}
+      onClick={onOpen}
+      className={cn(open && "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg)]")}
+      icon={
+        <span className="relative inline-flex">
+          <SettingsIcon aria-hidden className={dsIcon.md} />
+          {attention && (
+            <span aria-hidden className="pointer-events-none absolute right-[-3px] top-[-3px]">
+              <StatusDot status={storage.authority === "healthy" ? "waiting" : "failed"} />
+            </span>
+          )}
+        </span>
+      }
+    />
+  );
+}
+
+/**
+ * Settings, as a page (D272 item 1 / D274 item 5).
+ *
+ * The 220px nav on the left, `Back to the dashboard` at the top of it, and the
+ * section's own panel filling the rest — the demo's shape (SE1–SE4, SE8). It
+ * takes the same `Panel` + enter transition every other takeover in this tree
+ * uses (D275 item 2), so the region does not arrive from a different direction
+ * depending on which door was pressed.
+ */
+export function SettingsPage({
   storage,
   sections,
-  open,
-  onOpenChange,
+  section,
+  onSection,
+  onClose,
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  /** the open section id — `""` is the page's own default, from `?settings=` */
+  section: string;
+  onSection: (next: string) => void;
+  onClose: () => void;
 }) {
-  const attention = storageNeedsAttention(storage);
+  const enter = useDsEnterTransition();
+  const groups = buildSettingsNav(sections);
+  const resolution = resolveSettingsSection(groups, section);
+  const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger asChild>
-        <IconButton
+    <Panel
+      {...enter}
+      aria-label="Settings"
+      className={cn(
+        "flex min-h-0 flex-1 flex-row",
+        "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
+        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
+      )}
+    >
+      <nav
+        aria-label="Settings sections"
+        className={cn(
+          "flex w-[220px] shrink-0 flex-col gap-[var(--ds-space-hair)] overflow-y-auto",
+          "border-r border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] p-[var(--ds-space-base)]",
+        )}
+      >
+        <Button
+          variant="ghost"
           size="sm"
-          label={attention ? "Settings — storage needs attention" : "Settings"}
-          // The gear REPORTS that it owns the screen, in both representations:
-          // `aria-pressed` for the accessibility tree and the surface-3 fill
-          // for the eye. Every other pressed control in this cluster carries
-          // the pair; the gear carried neither, so the one takeover an operator
-          // opens most often was the one that never looked open.
-          aria-pressed={open}
-          className={cn(open && "bg-[var(--ds-surface-3)] text-[color:var(--ds-fg)]")}
-          icon={
-            <span className="relative inline-flex">
-              <SettingsIcon aria-hidden className={dsIcon.md} />
-              {attention && (
-                <span aria-hidden className="pointer-events-none absolute right-[-3px] top-[-3px]">
-                  <StatusDot status={storage.authority === "healthy" ? "waiting" : "failed"} />
-                </span>
-              )}
+          icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
+          onClick={onClose}
+          className="justify-start"
+        >
+          Back to the dashboard
+        </Button>
+        <Separator className="my-[var(--ds-space-tight)]" />
+        {groups.map((group) => (
+          <div key={group.heading} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+            <SectionLabel className="px-[var(--ds-space-base)] pb-[var(--ds-space-tight)] pt-[var(--ds-space-cozy)]">
+              {group.heading}
+            </SectionLabel>
+            {group.entries.map((entry) => (
+              <SectionButton
+                key={entry.id}
+                entry={entry}
+                active={entry.id === activeId}
+                onClick={() => onSection(entry.id)}
+              />
+            ))}
+          </div>
+        ))}
+      </nav>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-[var(--ds-space-base)] overflow-y-auto p-[var(--ds-space-cozy)]">
+        {/* A link naming a section this build has no entry for is stated, never
+            redirected: landing on Storage under `?settings=budgets` tells the
+            operator they are reading something they are not. */}
+        {resolution.state === "unknown" && (
+          <Banner tone="danger" title="No such settings section">
+            This build has no settings section called &quot;{resolution.requested}&quot;. Pick one from the
+            list beside this.
+          </Banner>
+        )}
+        {resolution.state === "empty" && (
+          <Banner tone="warning" title="No settings sections">
+            The server listed no settings sections and this build contributes none.
+          </Banner>
+        )}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
+        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
+        {resolution.state === "open"
+          && resolution.entry.source === "served"
+          && resolution.entry.id !== "storage" && (
+          // A served section without a renderer is a build gap, said by name —
+          // never a section that silently vanishes.
+          <section
+            aria-label={resolution.entry.label}
+            className="flex flex-col gap-[var(--ds-space-tight)]"
+          >
+            <SectionLabel>{resolution.entry.label}</SectionLabel>
+            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+              This build has no renderer for the served section &quot;{resolution.entry.id}&quot;.
             </span>
-          }
-        />
-      </DialogTrigger>
-      <DialogContent title="Settings" size="lg">
-        <DialogBody className="flex flex-col gap-[var(--ds-space-loose)]">
-          {sections.map((section) => (
-            section.id === "storage"
-              ? <StorageSection key={section.id} storage={storage} />
-              : (
-                // A served section without a renderer is a build gap, said by
-                // name — never a section that silently vanishes.
-                <section key={section.id} aria-label={section.label} className="flex flex-col gap-[var(--ds-space-tight)]">
-                  <SectionLabel>{section.label}</SectionLabel>
-                  <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-                    This build has no renderer for the served section &quot;{section.id}&quot;.
-                  </span>
-                </section>
-              )
-          ))}
-        </DialogBody>
-      </DialogContent>
-    </Dialog>
+          </section>
+        )}
+      </div>
+    </Panel>
   );
 }

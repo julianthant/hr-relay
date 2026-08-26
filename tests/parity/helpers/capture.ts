@@ -102,7 +102,10 @@ export async function assertThemeApplied(page: Page, theme: ParityTheme): Promis
   const observed = await page.evaluate(() => ({
     html: document.documentElement.getAttribute("data-demo-theme"),
     body: document.body.getAttribute("data-demo-theme"),
-    root: document.querySelector("[data-parity-ready]")?.getAttribute("data-demo-theme") ?? null,
+    // `[data-app-root]`, not `[data-parity-ready]`: D272 item 2 moved the theme
+    // root ABOVE both providers so the toast viewport inherits its custom
+    // properties, and the readiness flag stayed on the element below it.
+    root: document.querySelector("[data-app-root]")?.getAttribute("data-demo-theme") ?? null,
   }));
   const disagreeing = Object.entries(observed)
     .filter(([, value]) => value !== theme.attribute)
