@@ -19,6 +19,21 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 **Recommendation.** A — exact demo parity is also the only option that preserves authority truth.
 **Notes.** _(your notes here)_
 
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |
+| 6 | A | |
+| 7 | A | |
+| 8 | A | |
+| 9 | A | |
+| 10 | A | |
+
 ## 3 · Design-system specimen page
 **Situation.** The demo has a full seven-section component specimen page; this tree has no page or standalone mount. The current design document records that absence and points to this open decision, so the live choice is whether to build a reviewable specimen surface or defer it with a trigger.
 **Options.**

@@ -2513,3 +2513,11 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified each of the eleven criteria against the guard suite, the parity corpus and the served routes; left: 9 and 11 outright, four partials with one named blocker each, and the budgets
 > 2026-08-25 | 03a reconciliation | §7.4's D4/D5 budget row is MET; the other partial/unmet integration criteria above are unchanged
 <!-- /roadmap-status -->
+
+### D272–D276 parity disposition (2026-08-26)
+
+The operator ratified the 49 presentation recommendations as future ports. The parity lane remains
+assert-mode until those ports and their proofs deliberately re-freeze references; ratification is
+not a reference update or an implementation claim. The detailed decisions, including each rejected
+B/C alternative, live in `ref dashboard-surfaces` §10; served-truth boundaries remain in the owning
+contracts (D173, D179, D225, D238, D250–D253 and D264 unchanged).

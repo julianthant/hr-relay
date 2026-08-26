@@ -19,6 +19,20 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 **Recommendation.** A — it is the smallest coherent parity repair and improves rather than weakens accessibility.
 **Notes.** _(your notes here)_
 
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |
+| 6 | A | |
+| 7 | A | |
+| 8 | A | |
+| 9 | A | |
+
 ## 3 · Rebuild-only shell affordances
 **Situation.** Search consumes a first Escape to clear text, and the toolbar exposes Import spreadsheet because no Run-modal handoff exists. Neither behavior has a ruling or demo counterpart, but removing the import route could strand intake.
 **Options.**

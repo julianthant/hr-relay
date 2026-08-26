@@ -19,6 +19,16 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 **Recommendation.** A — the escalation is explicit, bounded, and retains the existing poison-close/recovery authority path.
 **Notes.** _(your notes here)_
 
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |
+
 ## 3 · Initial maximum pool size
 **Situation.** Each additional member creates an independent browser-profile/session set and can contend for shared external systems, even though claims, write fences, and the Duo ceremony lease remain authoritative. The architecture has a three-worker soak and a two-worker live cold-start proof; it has no higher live pool proof.
 **Options.**

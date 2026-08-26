@@ -19,6 +19,21 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 **Recommendation.** A — parity and accessibility point to the same implementation.
 **Notes.** _(your notes here)_
 
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |
+| 6 | A | |
+| 7 | A | |
+| 8 | A | |
+| 9 | A | |
+| 10 | A | |
+
 ## 3 · Log-stream additions that remain open
 **Situation.** The rebuild now groups contiguous producer rows under sticky step-and-task headings; that resolved hierarchy is not an operator choice here. The remaining divergence is the empty-stream message, the cursor-backed “Load more lines” control, and the wider design-system search input. These are visible states and controls, so the choice is whether to restore the demo treatment while preserving truthful absence and pagination.
 **Options.**
