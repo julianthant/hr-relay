@@ -40,11 +40,11 @@ import type {
 import {
   WORKER_GRACEFUL_STOP_TIMEOUT_MS,
   WORKER_SIGTERM_TIMEOUT_MS,
+  WorkerPoolMemberReconciliationFactSchema,
   WorkerPoolMemberSchema,
   WorkerStopEscalationPolicySchema,
   WorkerSupervisorAcknowledgementSchema,
   type WorkerPoolMember,
-  type WorkerPoolMemberReconciliationFact,
   type WorkerPoolPlanRequest,
   type WorkerPoolProcessSupervisor,
   type WorkerStopEscalationPolicy,
@@ -81,7 +81,7 @@ export const WorkerLeaseBirthFactSchema = z.strictObject({
   processId: z.number().int().positive(),
   startedAt: IsoInstantSchema,
 });
-export type WorkerLeaseBirthFact = z.infer<typeof WorkerLeaseBirthFactSchema>;
+export type WorkerLeaseBirthFact = z.input<typeof WorkerLeaseBirthFactSchema>;
 
 export interface WorkerLeaseProbe {
   /** The LIVE lease under this worker id, or undefined when none is live. */
@@ -435,7 +435,7 @@ export function createDashboardWorkerProcessSupervisor(
   };
 
   /** The canonical D271 escalation policy: 120s graceful, SIGTERM, 30s, SIGKILL. */
-  const canonicalEscalation = (): WorkerStopEscalationPolicy => WorkerStopEscalationPolicySchema.parse([
+  const canonicalEscalation = (): z.infer<typeof WorkerStopEscalationPolicySchema> => WorkerStopEscalationPolicySchema.parse([
     { stage: "graceful-stop-requested", timeoutMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS },
     { stage: "sigterm-sent", timeoutMs: WORKER_SIGTERM_TIMEOUT_MS },
     { stage: "sigkill-sent" },
@@ -454,7 +454,7 @@ export function createDashboardWorkerProcessSupervisor(
   const planMemberFact = async (
     member: WorkerPoolMember,
     initiateStopForRunning: boolean,
-  ): Promise<WorkerPoolMemberReconciliationFact> => {
+  ): Promise<z.input<typeof WorkerPoolMemberReconciliationFactSchema>> => {
     const record = records.get(member.workerId);
     if (record === undefined) {
       return { member, stage: "unmet", reason: "not-started" };
@@ -514,7 +514,7 @@ export function createDashboardWorkerProcessSupervisor(
         );
       }
     }
-    const facts: WorkerPoolMemberReconciliationFact[] = [];
+    const facts: z.input<typeof WorkerPoolMemberReconciliationFactSchema>[] = [];
     for (const member of desired) facts.push(await planMemberFact(member, false));
     for (const member of excess) facts.push(await planMemberFact(member, true));
     return WorkerSupervisorAcknowledgementSchema.parse({
