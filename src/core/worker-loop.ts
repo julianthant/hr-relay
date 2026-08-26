@@ -21,6 +21,7 @@ import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import {
+  ActorIdSchema,
   BrowserSessionIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
@@ -534,6 +535,27 @@ const WorkerSpawnAcknowledgementSchema = z.strictObject({
   stage: z.literal("started"),
 });
 
+/**
+ * The durable stop directive write's own lease versions — reported by the
+ * graceful-stop channel that performed the write, threaded through the stop
+ * acknowledgement so command authority audits the WRITE's change, never a
+ * later lease read that would absorb unrelated bumps (a worker heartbeat)
+ * into the command's claimed change.
+ */
+export const WorkerDirectiveLeaseVersionsSchema = z.strictObject({
+  before: PositiveIntSchema,
+  after: PositiveIntSchema,
+}).superRefine((versions, context) => {
+  if (versions.after !== versions.before + 1) {
+    context.addIssue({
+      code: "custom",
+      message: `a lease directive write bumps its version by exactly one; before ${String(versions.before)} → `
+        + `after ${String(versions.after)} is not one write`,
+    });
+  }
+});
+export type WorkerDirectiveLeaseVersions = z.infer<typeof WorkerDirectiveLeaseVersionsSchema>;
+
 const WorkerStopAcknowledgementSchema = z.strictObject({
   command: z.literal("stop-worker"),
   state: z.literal("acknowledged"),
@@ -543,6 +565,13 @@ const WorkerStopAcknowledgementSchema = z.strictObject({
   escalation: WorkerStopEscalationPolicySchema,
   /** What actually happened so far. The initial acknowledgement may contain only the graceful request. */
   observed: WorkerStopObservedStagesSchema,
+  /**
+   * Optional AT THIS SCHEMA only because a synthetic phase-1 supervisor may
+   * predate the version-reporting channel; the kernel's async pool door
+   * REQUIRES it (`WorkerStopPoolAcknowledgementSchema`) before it will audit
+   * a stop, so an acknowledgement without it refuses loudly there.
+   */
+  directiveLeaseVersions: WorkerDirectiveLeaseVersionsSchema.optional(),
 });
 
 const WorkerPauseAcknowledgementSchema = z.strictObject({
@@ -590,6 +619,24 @@ export const WorkerSupervisorAcknowledgementSchema = z.discriminatedUnion("comma
 ]);
 export type WorkerSupervisorAcknowledgement = z.infer<typeof WorkerSupervisorAcknowledgementSchema>;
 
+/**
+ * The durable stop directive's identity, threaded from the kernel command that
+ * initiates a stop — a `stop-worker`, or a plan that stops an excess member.
+ * `requestedAt` is the COMMAND's `now`, the same instant
+ * `requireObservedNotAfterNow` bounds observed stages against: the injected
+ * graceful-stop channel writes the lease directive at EXACTLY this instant, so
+ * the recorded graceful stage can never postdate the acknowledgement that
+ * carries it (the W1/W2 seam gap this closes). `requestedBy`/`reason` are the
+ * command's own actor and reason — a directive is authority, and authority
+ * never carries a fabricated actor.
+ */
+export const WorkerStopDirectiveContextSchema = z.strictObject({
+  requestedAt: IsoInstantSchema,
+  requestedBy: ActorIdSchema,
+  reason: z.string().min(1).optional(),
+});
+export type WorkerStopDirectiveContext = z.infer<typeof WorkerStopDirectiveContextSchema>;
+
 export interface WorkerPoolPlanRequest {
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
@@ -603,6 +650,8 @@ export interface WorkerPoolPlanRequest {
    * omitting one, or stopping a desired index instead, refuses.
    */
   readonly excessMembers: readonly WorkerPoolMember[];
+  /** The stop identity for any excess member this plan gracefully stops. */
+  readonly directive: WorkerStopDirectiveContext;
 }
 
 export interface WorkerPoolSpawnRequest {
@@ -614,6 +663,8 @@ export interface WorkerPoolStopRequest {
   readonly command: "stop-worker";
   readonly member: WorkerPoolMember;
   readonly escalation: WorkerStopEscalationPolicy;
+  /** The durable stop directive's identity — the command's now/actor/reason. */
+  readonly directive: WorkerStopDirectiveContext;
 }
 
 export interface WorkerPoolPauseRequest {
@@ -724,6 +775,28 @@ function workerStopEscalation(): WorkerStopEscalationPolicy {
   ]);
   for (const stage of escalation) Object.freeze(stage);
   return Object.freeze(escalation);
+}
+
+/**
+ * The command's own now/actor/reason, parsed into the durable stop identity a
+ * stop's channel writes. A malformed `now` refuses HERE, before the supervisor
+ * is consulted — it would otherwise both unbound the observed-stage check and
+ * stamp garbage into a durable directive.
+ */
+function stopDirectiveContext(context: WorkerRuntimeContext): WorkerStopDirectiveContext {
+  const { command } = context;
+  const now = IsoInstantSchema.safeParse(context.now);
+  if (!now.success) {
+    throw new Error(
+      `${command.type} received an unparseable command now ${JSON.stringify(context.now)}; `
+      + "refusing to derive a durable stop directive from a malformed instant",
+    );
+  }
+  return WorkerStopDirectiveContextSchema.parse({
+    requestedAt: now.data,
+    requestedBy: command.requestedBy,
+    ...(command.reason === undefined ? {} : { reason: command.reason }),
+  });
 }
 
 function requireSameMember(
@@ -870,6 +943,7 @@ export function createWorkerPoolRuntimeExecutor(
         desiredWorkers,
         members,
         excessMembers,
+        directive: stopDirectiveContext(context),
       })));
       if (acknowledgement.desiredWorkers !== desiredWorkers) {
         throw new Error(
@@ -933,7 +1007,10 @@ export function createWorkerPoolRuntimeExecutor(
       requireDurableOwnership("spawn-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
-    async stopPoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
+    async stopPoolWorker(context: WorkerRuntimeContext): Promise<Readonly<{
+      state: "accepted";
+      directiveLeaseVersions?: WorkerDirectiveLeaseVersions;
+    }>> {
       const { command } = context;
       if (command.type !== "stop-worker") {
         throw new Error(`stopPoolWorker received a ${command.type} command`);
@@ -944,12 +1021,17 @@ export function createWorkerPoolRuntimeExecutor(
         command: "stop-worker",
         member,
         escalation,
+        directive: stopDirectiveContext(context),
       })));
       requireSameMember("stop-worker", member, acknowledgement.member);
       requireDurableOwnership("stop-worker", acknowledgement.member, acknowledgement.ownership);
       requireInitialGracefulObservation("stop-worker", member, acknowledgement.observed);
       requireObservedNotAfterNow("stop-worker", member, acknowledgement.observed, context.now);
-      return { state: "accepted" };
+      // Forwarded verbatim when the supervisor attested the directive write's
+      // versions; the kernel's pool door refuses an absence by name.
+      return acknowledgement.directiveLeaseVersions === undefined
+        ? { state: "accepted" }
+        : { state: "accepted", directiveLeaseVersions: acknowledgement.directiveLeaseVersions };
     },
     async pausePoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;

@@ -15,7 +15,12 @@ import type { Hono } from "hono";
 
 export interface DashboardHttpServerDeps {
   readonly app: Hono;
-  /** The config-resolved isolation port — never a literal at a call site. */
+  /**
+   * The config-resolved isolation port — never a literal at a call site.
+   * 0 delegates to the OS (an ephemeral port), for a composition that must
+   * not claim the machine-wide isolation port — a test composing the real
+   * runtime; the returned `port` is always the port actually bound.
+   */
   readonly port: number;
   readonly hostname?: string;
 }
@@ -43,15 +48,18 @@ function toWebRequest(req: IncomingMessage, hostname: string, port: number): Req
 }
 
 export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): Promise<DashboardHttpServer> {
-  const port = z.number().int().positive().parse(deps.port);
+  const requestedPort = z.number().int().nonnegative().parse(deps.port);
   const hostname = deps.hostname ?? "127.0.0.1";
   if (hostname !== "127.0.0.1" && hostname !== "localhost") {
     throw new Error(`the dashboard BFF is loopback-only; refusing to bind ${hostname}`);
   }
 
+  // Reassigned to the OS-assigned port after listen when requestedPort is 0;
+  // requests only arrive after listen, so the handler always sees the bound port.
+  let boundPort = requestedPort;
   const server: Server = createServer((req, res) => {
     void (async (): Promise<void> => {
-      const response = await deps.app.fetch(toWebRequest(req, hostname, port));
+      const response = await deps.app.fetch(toWebRequest(req, hostname, boundPort));
       res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
       if (response.body === null) {
         res.end();
@@ -79,14 +87,19 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(port, hostname, () => {
+    server.listen(requestedPort, hostname, () => {
       server.removeListener("error", reject);
       resolve();
     });
   });
+  const address = server.address();
+  if (address === null || typeof address === "string") {
+    throw new Error("the dashboard HTTP server reported no TCP address after listen; the bound port is unknowable");
+  }
+  boundPort = address.port;
 
   return Object.freeze({
-    port,
+    port: boundPort,
     close: (): Promise<void> => new Promise<void>((resolve, reject) => {
       server.closeAllConnections();
       server.close((error) => {
