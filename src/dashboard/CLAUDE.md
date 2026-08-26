@@ -125,6 +125,34 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
   does for COPY: `queue-bulk-band-sentence.test.ts` runs the real toolbar through
   `renderToStaticMarkup`, which is what pinned the tense and the absent `truncate` here — a
   sentence composed across three JSX branches has no fold to test.)
+- **2026-08-26: two near-identical components do not drift apart evenly — one of them goes stale and
+  keeps saying the true thing, and the other quietly stops (D273 items 9–10, 03a ledger F22/F35).**
+  `park-resolve.tsx` and `identity-approve.tsx` each carried a `RefusedNotice`: same two arms, same
+  code/no-code split (`rejected` always carries a code, `conflict` never does), same enter
+  transition. The gate copy's uncoded arm said *"The gate is still open and your answer below is
+  untouched"*; the park copy's said *"Nothing was recorded and your answer below is untouched"* —
+  which is the banner's own TITLE, three lines up, in place of the one fact the operator opened the
+  dialog to learn. Nothing failed. **A duplicate is not two copies of one thing; it is two things
+  that happen to agree today**, and the one that stops agreeing is the one nobody re-read.
+  `refused-notice.tsx` + `refused-notice-model.ts` are the merged pair, with the ONE clause that
+  genuinely differs — *what is still true after the refusal* — carried by a `ceremony` parameter.
+  Four rules travel. **Parameterize the fact, not the sentence**: the clause is stated twice per
+  ceremony (`sentence` and `clause`) rather than case-folded from one form, because a fold that
+  lower-cases the first character works until the first standing fact that begins with a proper noun.
+  **The negative control is the test that matters** — the pinned case is "the two ceremonies never
+  read the same", because if the parameter stopped arriving both strings would still be grammatical
+  English and nothing else in the suite could fail. **Merging two copies means picking the right
+  one, out loud**: the park copy wrapped its children in a `role="alert"` inside a `danger` Banner
+  that already carries one, so a screen reader said the sentence twice and every
+  `getByRole("alert")` there was ambiguous — the gate copy's reading won, and the render proves it
+  (`alerts-in-dialog=1`). And **the defect the diff cannot show is the one the render shows**: both
+  copies interpolated the server's message straight into the product's sentence, and a `conflict`
+  message ends in no period, so the screenshot read `…replaces it The write is still parked…` as one
+  broken sentence. Same commit's other half is D273 item 9 — the park dialog's footer `meta` slot
+  reprinted `runId · rev · generation` under a fence Well that already carried `generation` as a
+  chip. **Repeating a fenced fact in a quieter type a few hundred pixels below its own chip teaches
+  the eye that the chip row is not the whole truth.** The gate dialog's footer meta is untouched:
+  D273 ruled on the park footer, and "while I was in here" is not a ruling.
 
 - **2026-08-21: an HTTP status decided by reading an error MESSAGE is a protocol keyed on prose, and
   every surface that renders a refusal inherits the mistake (Track D row D2, audit C3).** The BFF's
