@@ -378,6 +378,8 @@ export function phase1WorkerId(workflowId: WorkflowId): WorkerId {
 }
 
 export const MAX_WORKERS_PER_POOL = 3;
+export const WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000;
+export const WORKER_SIGTERM_TIMEOUT_MS = 30_000;
 
 const PoolSizeSchema = PositiveIntSchema.refine(
   (value) => value <= MAX_WORKERS_PER_POOL,
@@ -427,6 +429,26 @@ const WorkerSpawnAcknowledgementSchema = z.strictObject({
   stage: z.literal("started"),
 });
 
+const WorkerStopEscalationSchema = z.tuple([
+  z.strictObject({
+    stage: z.literal("graceful-stop-requested"),
+    timeoutMs: z.literal(WORKER_GRACEFUL_STOP_TIMEOUT_MS),
+  }),
+  z.strictObject({
+    stage: z.literal("sigterm-sent"),
+    timeoutMs: z.literal(WORKER_SIGTERM_TIMEOUT_MS),
+  }),
+  z.strictObject({ stage: z.literal("sigkill-sent") }),
+]);
+
+const WorkerStopAcknowledgementSchema = z.strictObject({
+  command: z.literal("stop-worker"),
+  state: z.literal("acknowledged"),
+  member: WorkerPoolMemberSchema,
+  stage: z.literal("graceful-stop-requested"),
+  escalation: WorkerStopEscalationSchema,
+});
+
 export interface WorkerPoolPlanRequest {
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
@@ -439,10 +461,22 @@ export interface WorkerPoolSpawnRequest {
   readonly member: WorkerPoolMember;
 }
 
-export type WorkerSupervisorRequest = WorkerPoolPlanRequest | WorkerPoolSpawnRequest;
+export interface WorkerPoolStopRequest {
+  readonly command: "stop-worker";
+  readonly member: WorkerPoolMember;
+  readonly escalation: z.infer<typeof WorkerStopEscalationSchema>;
+}
+
+export type WorkerSupervisorRequest = WorkerPoolPlanRequest | WorkerPoolSpawnRequest | WorkerPoolStopRequest;
 
 export interface WorkerPoolProcessSupervisor {
   execute(request: WorkerSupervisorRequest): unknown;
+}
+
+export interface WorkerPoolRuntimeExecutor extends WorkerRuntimeExecutor {
+  stopWorker(context: WorkerRuntimeContext): unknown;
+  pauseWorker(context: WorkerRuntimeContext): unknown;
+  resumeWorker(context: WorkerRuntimeContext): unknown;
 }
 
 function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember {
@@ -454,20 +488,34 @@ function poolMember(workflowId: WorkflowId, poolIndex: number): WorkerPoolMember
   });
 }
 
-function poolMemberFromWorkerId(workflowId: WorkflowId, workerId: WorkerId): WorkerPoolMember {
-  const prefix = `${workflowId}-worker-`;
-  if (!workerId.startsWith(prefix)) {
-    throw new Error(`worker ${workerId} is not a pool member of workflow ${workflowId}`);
-  }
-  const rawIndex = workerId.slice(prefix.length);
-  if (!/^[1-9]\d*$/.test(rawIndex)) {
+function poolMemberFromIdentity(workerId: WorkerId): WorkerPoolMember {
+  const match = /^(?<workflowId>.+)-worker-(?<poolIndex>[1-9]\d*)$/.exec(workerId);
+  if (match?.groups === undefined) {
     throw new Error(`worker ${workerId} must carry an explicit positive pool index`);
   }
+  const workflowId = WorkflowIdSchema.parse(match.groups.workflowId);
+  const rawIndex = match.groups.poolIndex;
   const member = poolMember(workflowId, Number(rawIndex));
   if (member.workerId !== workerId) {
     throw new Error(`worker ${workerId} is not the canonical identity for pool index ${rawIndex}`);
   }
   return member;
+}
+
+function poolMemberFromWorkerId(workflowId: WorkflowId, workerId: WorkerId): WorkerPoolMember {
+  const member = poolMemberFromIdentity(workerId);
+  if (member.workflowId !== workflowId) {
+    throw new Error(`worker ${workerId} is not a pool member of workflow ${workflowId}`);
+  }
+  return member;
+}
+
+function workerStopEscalation(): z.infer<typeof WorkerStopEscalationSchema> {
+  return WorkerStopEscalationSchema.parse([
+    { stage: "graceful-stop-requested", timeoutMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS },
+    { stage: "sigterm-sent", timeoutMs: WORKER_SIGTERM_TIMEOUT_MS },
+    { stage: "sigkill-sent" },
+  ]);
 }
 
 function requireSameMember(
@@ -494,7 +542,7 @@ function requireSameMember(
  */
 export function createWorkerPoolRuntimeExecutor(
   supervisor: WorkerPoolProcessSupervisor,
-): WorkerRuntimeExecutor {
+): WorkerPoolRuntimeExecutor {
   return Object.freeze({
     planWorkerCount(context: WorkerRuntimeContext): z.input<typeof WorkerPlanAcknowledgementSchema> {
       const { command } = context;
@@ -540,6 +588,27 @@ export function createWorkerPoolRuntimeExecutor(
       }));
       requireSameMember("spawn-worker", member, acknowledgement.member);
       return { state: "accepted" };
+    },
+    stopWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "stop-worker") {
+        throw new Error(`stopWorker received a ${command.type} command`);
+      }
+      const member = poolMemberFromIdentity(command.target.workerId);
+      const escalation = workerStopEscalation();
+      const acknowledgement = WorkerStopAcknowledgementSchema.parse(supervisor.execute({
+        command: "stop-worker",
+        member,
+        escalation,
+      }));
+      requireSameMember("stop-worker", member, acknowledgement.member);
+      return { state: "accepted" };
+    },
+    pauseWorker(): never {
+      throw new Error("pause-worker is not implemented by the pool runtime contract yet");
+    },
+    resumeWorker(): never {
+      throw new Error("resume-worker is not implemented by the pool runtime contract yet");
     },
     refreshBrowser(): never {
       throw new Error("refresh-browser is not implemented by the pool runtime contract yet");

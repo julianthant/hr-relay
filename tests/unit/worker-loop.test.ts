@@ -407,6 +407,51 @@ describe("pool-capable worker runtime executor seam", () => {
       },
     }]);
   });
+
+  it("requests a bounded graceful stop for the explicit member", () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "stop-worker",
+          state: "acknowledged",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 2,
+            workerId: "person-lookup-worker-2",
+          },
+          stage: "graceful-stop-requested",
+          escalation: [
+            { stage: "graceful-stop-requested", timeoutMs: 120_000 },
+            { stage: "sigterm-sent", timeoutMs: 30_000 },
+            { stage: "sigkill-sent" },
+          ],
+        };
+      },
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    assert.deepEqual(executor.stopWorker({ command: stop, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "stop-worker",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 2,
+        workerId: "person-lookup-worker-2",
+      },
+      escalation: [
+        { stage: "graceful-stop-requested", timeoutMs: 120_000 },
+        { stage: "sigterm-sent", timeoutMs: 30_000 },
+        { stage: "sigkill-sent" },
+      ],
+    }]);
+  });
 });
 
 describe("phase-1 worker runtime executor seam", () => {
