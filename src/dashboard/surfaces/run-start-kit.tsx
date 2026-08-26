@@ -33,7 +33,6 @@ import {
   Card,
   CardBody,
   Checkbox,
-  Chip,
   Field,
   KeyValueList,
   LockedValue,
@@ -212,7 +211,13 @@ export function LockedFact({
   return (
     <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
       <span className={cn(dsText.meta, "font-medium", dsFg.secondary)}>{label}</span>
-      <LockedValue value={value} reason={reason} />
+      {/* `reason` is deliberately NOT handed to `LockedValue` (unit F5b finding
+          4). It puts what it is given on `title`, and `title` is not a second
+          rendering of the same fact — it joins the accessible description, so a
+          screen reader reads the sentence once from the tooltip and again from
+          the `<p>` below. The `<p>` is the whole point of this component; the
+          tooltip is the thing it replaced. */}
+      <LockedValue value={value} />
       <p className={cn(dsText.meta, dsFg.muted)}>{reason}</p>
     </div>
   );
@@ -312,7 +317,8 @@ export function PlanPreview({
  * matchKey}` and no role, panel, containment, born-as status or note, so those
  * are ABSENT rather than invented — their `builds:` line is ledger 1's first
  * region-C row. What replaces the demo's `panel` / `containment` chips is the
- * pair this wire does serve, in the same slot and the same `Chip label=` shape.
+ * pair this wire does serve, in the same slot — on the card's provenance line
+ * rather than in chips, for the reason spelled out at the line itself.
  */
 function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
   return (
@@ -321,11 +327,22 @@ function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
         <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
           <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-medium", dsFg.base)}>{row.title}</span>
         </div>
-        <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
-          {row.subtitle !== undefined && <MetaLine items={[row.subtitle]} />}
-          <Chip label="match key">{row.matchKey}</Chip>
-          <Chip label="trace">{row.traceId}</Chip>
-        </div>
+        {/* The match key and the trace id are on the card's PROVENANCE LINE,
+            not in chips (unit F5b finding 5). `Chip`'s own rule says so: it is
+            a single-line token that truncates inside its own border and
+            recovers the cut on `title` — "if a fact cannot survive truncation
+            it is not a chip: put it on the row's `MetaLine`, on its own line,
+            where it can wrap." A match key and a trace id are exactly that
+            kind of fact: half of `eid:E1234567` is a different subject, and a
+            `title` is reachable by mouse and by nobody else, which is the
+            defect C48/C81 fixed two components up in this same file. */}
+        <MetaLine
+          items={[
+            row.subtitle,
+            `match key ${row.matchKey}`,
+            `trace ${row.traceId}`,
+          ]}
+        />
       </CardBody>
     </Card>
   );
