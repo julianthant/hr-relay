@@ -42,13 +42,16 @@
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  Check,
   CheckCircle2,
   FileSpreadsheet,
   GitCompare,
   Info,
   ListChecks,
+  Play,
   RotateCcw,
   Table2,
+  X,
 } from "lucide-react";
 import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
@@ -67,6 +70,8 @@ import {
   Badge,
   Banner,
   Button,
+  Card,
+  Checkbox,
   Chip,
   CountBadge,
   Dropzone,
@@ -85,7 +90,6 @@ import {
   Refusal,
   SectionLabel,
   Select,
-  Separator,
   Skeleton,
   Tab,
   TabList,
@@ -110,6 +114,7 @@ import { fmtClock, pluralize, shortHash } from "./format.js";
 import {
   correctionText,
   headerCandidateOptionLabel,
+  INTAKE_REVIEW_COPY,
   intakeTab,
   type IntakeTab,
   type IntakeListPageController,
@@ -124,7 +129,11 @@ import {
   rerunIdentifierFacts,
   rerunMembershipDetailFacts,
   rerunStage,
+  rejectionReviewEligibility,
+  rejectionReviewLabel,
+  type RejectionReviewEligibility,
   sourceLabel,
+  startRunsLabel,
   suggestionProposalText,
   useIntakeListPage,
 } from "./intake-model.js";
@@ -143,16 +152,6 @@ const SOURCE_SURFACE = "intake-workspace";
  * bytes. Filtering here instead would make an unreadable file simply vanish.
  */
 const INTAKE_ACCEPT = ".csv,.xlsx,.xls";
-
-/** Ref data-intake-and-edit-data's own words for each rejection code, in the operator's terms. */
-const REJECT_CODE_LABEL: Record<RowReject["code"], string> = {
-  "unmapped-required": "unmapped field",
-  "cell-coercion": "cell could not be read",
-  "field-schema": "value out of shape",
-  "workflow-schema": "row rejected by the workflow",
-  "duplicate-identity": "duplicate person",
-  "cross-field": "fields disagree",
-};
 
 /* ── command plumbing ─────────────────────────────────────────────────────── */
 
@@ -651,12 +650,16 @@ function ValidationReview({
   session,
   busy,
   pending,
+  reviewed,
+  onReviewed,
   onCorrect,
   onExclude,
 }: {
   session: IntakeSessionWire;
   busy: boolean;
   pending: string | null;
+  reviewed: boolean;
+  onReviewed: (next: boolean) => void;
   onCorrect: (sourceRow: number, field: string, correctedValue: string) => void;
   onExclude: (sourceRow: number, reason: string) => void;
 }) {
@@ -675,11 +678,7 @@ function ValidationReview({
   }
 
   const validation = session.validation;
-  const byRow = new Map<number, RowReject[]>();
-  for (const reject of validation.rejected) {
-    byRow.set(reject.sourceRow, [...(byRow.get(reject.sourceRow) ?? []), reject]);
-  }
-  const rows = [...byRow.entries()].sort((left, right) => left[0] - right[0]);
+  const rejects = [...validation.rejected].sort((left, right) => left.sourceRow - right.sourceRow);
   const locked = busy || session.state === "enqueued";
   // A correction names a TARGET FIELD, so the control is labelled with the
   // field's own operator-facing label rather than its path — `emplId` is the
@@ -696,33 +695,31 @@ function ValidationReview({
         ]}
       />
 
-      {rows.length === 0 && validation.excluded.length === 0 && session.corrections.length === 0 ? (
+      {rejects.length === 0 && validation.excluded.length === 0 && session.corrections.length === 0 ? (
         <EmptyState
           icon={<CheckCircle2 aria-hidden className={dsIcon.lg} />}
-          title={`All ${String(validation.validRows)} rows are runnable`}
-          description="Nothing was rejected and nothing was excluded, so every row in this file would fan out."
+          title={INTAKE_REVIEW_COPY.noRejectionsTitle}
+          description={INTAKE_REVIEW_COPY.noRejectionsDescription}
         />
       ) : (
         <>
-          {rows.length > 0 && (
+          {rejects.length > 0 && (
             <>
-              <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-                Every rejected row is fixed or excluded before this file can run — there is
-                deliberately no way to ignore one. An exclusion is durable and keeps the reason it
-                was made with.
-              </span>
-              {rows.map(([sourceRow, rejects]) => (
-                <RejectedRow
-                  key={sourceRow}
-                  sourceRow={sourceRow}
-                  rejects={rejects}
-                  locked={locked}
-                  pending={pending}
-                  labelOf={labelOf}
-                  onCorrect={onCorrect}
-                  onExclude={onExclude}
-                />
-              ))}
+              <RejectedRowsTable
+                rejects={rejects}
+                locked={locked}
+                pending={pending}
+                labelOf={labelOf}
+                onCorrect={onCorrect}
+                onExclude={onExclude}
+              />
+              <Checkbox
+                checked={reviewed}
+                disabled={locked}
+                onCheckedChange={(next) => onReviewed(next === true)}
+                label={rejectionReviewLabel(new Set(rejects.map((reject) => reject.sourceRow)).size)}
+                description={INTAKE_REVIEW_COPY.reviewDescription}
+              />
             </>
           )}
 
@@ -740,34 +737,28 @@ function ValidationReview({
             * this operator made about one source row.
             */}
           {session.corrections.length > 0 && (
-            <section aria-label="Corrected cells" className="flex flex-col gap-[var(--ds-space-tight)]">
-              <SectionLabel>Corrections</SectionLabel>
+            <Well aria-label="Corrected cells" className="flex flex-col gap-[var(--ds-space-tight)]">
+              <SectionLabel>{INTAKE_REVIEW_COPY.corrections}</SectionLabel>
               {session.corrections.map((correction) => (
                 <span
                   key={`${String(correction.sourceRow)}:${correction.field}`}
-                  className="flex flex-wrap items-baseline gap-[var(--ds-space-snug)]"
+                  className={cn(dsText.body, "flex flex-wrap items-baseline gap-[var(--ds-space-snug)] text-[color:var(--ds-fg-secondary)]")}
                 >
-                  <Chip label="row">{String(correction.sourceRow)}</Chip>
-                  <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg-secondary)]")}>
-                    {correctionText(correction, labelOf(correction.field))}
-                  </span>
-                  <MetaLine items={[fmtClock(correction.correctedAt)]} />
+                  {`row ${String(correction.sourceRow)} · ${correctionText(correction, labelOf(correction.field))}`}
                 </span>
               ))}
-            </section>
+            </Well>
           )}
 
           {validation.excluded.length > 0 && (
-            <section aria-label="Excluded rows" className="flex flex-col gap-[var(--ds-space-tight)]">
-              <SectionLabel>Excluded by you</SectionLabel>
+            <Well aria-label="Excluded rows" className="flex flex-col gap-[var(--ds-space-tight)]">
+              <SectionLabel>{INTAKE_REVIEW_COPY.exclusions}</SectionLabel>
               {session.exclusions.map((exclusion) => (
-                <span key={exclusion.sourceRow} className="flex flex-wrap items-baseline gap-[var(--ds-space-snug)]">
-                  <Chip label="row">{String(exclusion.sourceRow)}</Chip>
-                  <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{exclusion.reason}</span>
-                  <MetaLine items={[fmtClock(exclusion.excludedAt)]} />
+                <span key={exclusion.sourceRow} className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                  {`row ${String(exclusion.sourceRow)} — ${exclusion.reason}`}
                 </span>
               ))}
-            </section>
+            </Well>
           )}
         </>
       )}
@@ -797,8 +788,7 @@ function rejectRawText(reject: RowReject): string | undefined {
     : String(raw.value);
 }
 
-function RejectedRow({
-  sourceRow,
+function RejectedRowsTable({
   rejects,
   locked,
   pending,
@@ -806,7 +796,6 @@ function RejectedRow({
   onCorrect,
   onExclude,
 }: {
-  sourceRow: number;
   rejects: readonly RowReject[];
   locked: boolean;
   pending: string | null;
@@ -814,111 +803,132 @@ function RejectedRow({
   onCorrect: (sourceRow: number, field: string, correctedValue: string) => void;
   onExclude: (sourceRow: number, reason: string) => void;
 }) {
-  const [drafts, setDrafts] = useState<Readonly<Record<string, string>>>({});
-  const [reason, setReason] = useState("");
-  const correctable = rejects.filter(
-    (reject): reject is Extract<RowReject, { kind: "cell-coercion" | "field-schema" }> =>
-      reject.kind === "cell-coercion" || reject.kind === "field-schema",
-  );
+  const [correction, setCorrection] = useState<Readonly<{
+    sourceRow: number;
+    field: string;
+    value: string;
+  }> | null>(null);
+  const [exclusion, setExclusion] = useState<Readonly<{ sourceRow: number; reason: string }> | null>(null);
 
   return (
-    <section
-      aria-label={`Source row ${String(sourceRow)}`}
-      /*
-       * The CONTAINER is quiet and the VERDICT is loud. Four rejected rows
-       * stacked as four filled red blocks is a wall that hides exactly what the
-       * operator is scanning for — which row, and what is wrong with it. So the
-       * card sits on the recessed plane every other grouped fact uses, and the
-       * failed tone is spent where it carries information: the badge and the
-       * sentence.
-       */
-      className={cn(
-        "flex flex-col gap-[var(--ds-space-tight)] rounded-[var(--ds-radius-lg)]",
-        "border border-[color:var(--ds-border)] bg-[var(--ds-recess-bg)]",
-        "p-[var(--ds-space-base)]",
-      )}
-    >
-      <span className="flex flex-wrap items-baseline gap-[var(--ds-space-snug)]">
-        <Chip label="row" tone="danger">
-          {String(sourceRow)}
-        </Chip>
-        {rejects.map((reject) => (
-          <Badge key={reject.rejectId} tone="danger">
-            {REJECT_CODE_LABEL[reject.code]}
-          </Badge>
-        ))}
-      </span>
+    <div className="flex flex-col gap-[var(--ds-space-cozy)]">
+      <div className="overflow-x-auto">
+        <Table label={INTAKE_REVIEW_COPY.tableLabel} className="min-w-[52rem]">
+          <THead>
+            <TR>
+              <TH align="right">{INTAKE_REVIEW_COPY.columns[0]}</TH>
+              <TH>{INTAKE_REVIEW_COPY.columns[1]}</TH>
+              <TH>{INTAKE_REVIEW_COPY.columns[2]}</TH>
+              <TH>{INTAKE_REVIEW_COPY.columns[3]}</TH>
+              <TH align="right">{INTAKE_REVIEW_COPY.columns[4]}</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {rejects.map((reject) => {
+              const correctable = reject.kind === "cell-coercion" || reject.kind === "field-schema";
+              const raw = rejectRawText(reject);
+              return (
+                <TR key={reject.rejectId}>
+                  <TD numeric align="right">{String(reject.sourceRow)}</TD>
+                  <TD>
+                    <Badge tone={reject.kind === "duplicate-identity" || reject.kind === "cross-field" ? "warning" : "danger"}>
+                      {reject.kind}
+                    </Badge>
+                  </TD>
+                  <TD>
+                    <span className="flex flex-col">
+                      <span className={cn(dsText.body, "text-[color:var(--ds-fg)]")}>{"field" in reject ? reject.field : "—"}</span>
+                      {"column" in reject && <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>“{reject.column.header}”</span>}
+                      {raw !== undefined && <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>{`raw: ${raw || "(empty)"}`}</span>}
+                    </span>
+                  </TD>
+                  <TD className="max-w-[420px]">
+                    <span className="block">{reject.reason}</span>
+                    <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-faint)]")}>{`code ${reject.code}`}</span>
+                  </TD>
+                  <TD align="right">
+                    <span className="flex justify-end gap-[var(--ds-space-tight)]">
+                      {correctable && "field" in reject && (
+                        <Button size="sm" variant="outline" disabled={locked} onClick={() => setCorrection({ sourceRow: reject.sourceRow, field: reject.field, value: "" })}>
+                          {INTAKE_REVIEW_COPY.fixCell}
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" disabled={locked} onClick={() => setExclusion({ sourceRow: reject.sourceRow, reason: "" })}>
+                        {INTAKE_REVIEW_COPY.exclude}
+                      </Button>
+                    </span>
+                  </TD>
+                </TR>
+              );
+            })}
+          </TBody>
+        </Table>
+      </div>
 
-      {rejects.map((reject) => (
-        <span key={reject.rejectId} className="flex flex-col gap-[var(--ds-space-hair)]">
-          <span role="alert" className={cn(dsText.body, "text-[color:var(--ds-status-failed-fg)]")}>
-            {reject.reason}
+      {correction !== null && (
+        <Card className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+          <span className={cn(dsText.ui, "font-semibold", "text-[color:var(--ds-fg)]")}>
+            {`Correct row ${String(correction.sourceRow)} · ${correction.field}`}
           </span>
-          <MetaLine
-            items={[
-              /*
-               * IN106 / `DemoIntake.tsx:844` — the raw code, under the reason
-               * it names. The badge above spells the SAME code in the
-               * operator's words, and a re-worded label is not a thing anyone
-               * can quote back to us: a `Refusal` on this surface always
-               * carries its code for exactly that reason, and a rejection is
-               * the same kind of sentence one row down.
-               */
-              `code ${reject.code}`,
-              "column" in reject ? `column ${reject.column.header}` : undefined,
-              "field" in reject ? reject.field : undefined,
-              rejectRawText(reject) === undefined ? undefined : `value ${rejectRawText(reject) ?? ""}`,
-            ]}
-          />
-        </span>
-      ))}
+          <Field label={INTAKE_REVIEW_COPY.correctedValue} description={INTAKE_REVIEW_COPY.correctionDescription}>
+            <Input
+              value={correction.value}
+              disabled={locked}
+              onChange={(event) => setCorrection({ ...correction, value: event.currentTarget.value })}
+            />
+          </Field>
+          <span className="flex justify-end gap-[var(--ds-space-base)]">
+            <Button variant="secondary" icon={<X aria-hidden className={dsIcon.md} />} disabled={locked} onClick={() => setCorrection(null)}>
+              {INTAKE_REVIEW_COPY.cancel}
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Check aria-hidden className={dsIcon.md} />}
+              disabled={locked || correction.value.trim() === ""}
+              loading={pending === `fix:${String(correction.sourceRow)}:${correction.field}`}
+              onClick={() => onCorrect(correction.sourceRow, correction.field, correction.value)}
+            >
+              {INTAKE_REVIEW_COPY.reCoerce}
+            </Button>
+          </span>
+        </Card>
+      )}
 
-      <Separator />
-
-      {correctable.map((reject) => (
-        <span key={reject.rejectId} className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
-          <Input
-            aria-label={`Corrected ${labelOf(reject.field)} for source row ${String(sourceRow)}`}
-            value={drafts[reject.field] ?? ""}
-            disabled={locked}
-            placeholder={`corrected ${labelOf(reject.field)}`}
-            className="min-w-[var(--ds-w-member-detail)] flex-1"
-            onChange={(event) => {
-              const next = event.currentTarget.value;
-              setDrafts((current) => ({ ...current, [reject.field]: next }));
-            }}
-          />
-          <Button
-            size="sm"
-            disabled={locked || (drafts[reject.field] ?? "").trim().length === 0}
-            loading={pending === `fix:${String(sourceRow)}:${reject.field}`}
-            onClick={() => onCorrect(sourceRow, reject.field, drafts[reject.field] ?? "")}
+      {exclusion !== null && (
+        <Card className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+          <span className={cn(dsText.ui, "font-semibold", "text-[color:var(--ds-fg)]")}>
+            {`Exclude row ${String(exclusion.sourceRow)}`}
+          </span>
+          <Field
+            label={INTAKE_REVIEW_COPY.reason}
+            required
+            error={exclusion.reason.trim() === "" ? INTAKE_REVIEW_COPY.exclusionError : null}
+            description={INTAKE_REVIEW_COPY.exclusionDescription}
           >
-            Fix cell
-          </Button>
-        </span>
-      ))}
-
-      <span className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
-        <Input
-          aria-label={`Reason for excluding source row ${String(sourceRow)}`}
-          value={reason}
-          disabled={locked}
-          placeholder="why this person is not in this batch"
-          className="min-w-[var(--ds-w-member-detail)] flex-1"
-          onChange={(event) => setReason(event.currentTarget.value)}
-        />
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={locked || reason.trim().length === 0}
-          loading={pending === `exclude:${String(sourceRow)}`}
-          onClick={() => onExclude(sourceRow, reason.trim())}
-        >
-          Exclude row
-        </Button>
-      </span>
-    </section>
+            <Input
+              value={exclusion.reason}
+              disabled={locked}
+              placeholder={INTAKE_REVIEW_COPY.exclusionPlaceholder}
+              onChange={(event) => setExclusion({ ...exclusion, reason: event.currentTarget.value })}
+            />
+          </Field>
+          <span className="flex justify-end gap-[var(--ds-space-base)]">
+            <Button variant="secondary" icon={<X aria-hidden className={dsIcon.md} />} disabled={locked} onClick={() => setExclusion(null)}>
+              {INTAKE_REVIEW_COPY.cancel}
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Check aria-hidden className={dsIcon.md} />}
+              disabled={locked || exclusion.reason.trim() === ""}
+              loading={pending === `exclude:${String(exclusion.sourceRow)}`}
+              onClick={() => onExclude(exclusion.sourceRow, exclusion.reason.trim())}
+            >
+              {INTAKE_REVIEW_COPY.excludeWithReason}
+            </Button>
+          </span>
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -1239,6 +1249,7 @@ function OutcomeBand({
   session,
   busy,
   pending,
+  rejectionReview,
   supportsDryRun,
   dryRun,
   onDryRun,
@@ -1248,6 +1259,7 @@ function OutcomeBand({
   session: IntakeSessionWire;
   busy: boolean;
   pending: string | null;
+  rejectionReview: RejectionReviewEligibility;
   supportsDryRun: boolean;
   dryRun: boolean;
   onDryRun: (next: boolean) => void;
@@ -1260,10 +1272,11 @@ function OutcomeBand({
   const blockers = [
     noHeader ? "no header row is settled" : undefined,
     nothingBound ? "no column is bound" : undefined,
+    rejectionReview.kind === "required" && !rejectionReview.reviewed ? INTAKE_REVIEW_COPY.unresolvedBlocker : undefined,
   ].filter((entry): entry is string => entry !== undefined);
 
   const validated = validation.state === "validated";
-  const rejectedRows = validated ? new Set(validation.rejected.map((entry) => entry.sourceRow)).size : 0;
+  const rejectedRows = rejectionReview.rejectedRows;
   const fingerprint = layoutFingerprint(session);
 
   return (
@@ -1293,6 +1306,11 @@ function OutcomeBand({
             {blockers.length > 0
               ? `Not ready — ${blockers.join(" and ")}.`
               : "This mapping has not been validated, so nothing is known about its rows yet."}
+          </span>
+        )}
+        {rejectionReview.kind === "required" && !rejectionReview.reviewed && (
+          <span className={cn(dsText.meta, "text-[color:var(--ds-status-warning-fg)]")}>
+            {`Run is blocked: ${INTAKE_REVIEW_COPY.unresolvedBlocker}.`}
           </span>
         )}
         {/*
@@ -1338,11 +1356,12 @@ function OutcomeBand({
       </Button>
       <Button
         variant="primary"
+        icon={<Play aria-hidden className={dsIcon.md} />}
         loading={pending === "run"}
-        disabled={busy || !validated || session.state === "enqueued"}
+        disabled={busy || !validated || blockers.length > 0 || session.state === "enqueued"}
         onClick={onRun}
       >
-        {validated ? `Run ${String(validation.validRows)} rows` : "Run"}
+        {validated ? startRunsLabel(validation.validRows) : "Start runs"}
       </Button>
     </div>
   );
@@ -1391,6 +1410,12 @@ export function IntakeWorkspace({
    */
   const [pending, setPending] = useState<string | null>(null);
   const [problem, setProblem] = useState<CommandProblem | null>(null);
+  /**
+   * An acknowledgement belongs to the exact served rejection set. Keeping the
+   * set's key, rather than a boolean, makes a later authority read revoke it
+   * without a transient frame that could offer a stale Run command.
+   */
+  const [reviewedRejectionKey, setReviewedRejectionKey] = useState<string | undefined>(undefined);
   const busy = pending !== null;
   /**
    * Undefined until the operator picks one: a VALIDATED session opens on its
@@ -1400,6 +1425,9 @@ export function IntakeWorkspace({
    */
   const [tab, setTab] = useState<IntakeTab | undefined>(undefined);
   const [dryRun, setDryRun] = useState(false);
+  const rejectionReview = resource.state === "loaded"
+    ? rejectionReviewEligibility(resource.session, reviewedRejectionKey)
+    : undefined;
 
   useEffect(() => {
     if (sessionId === undefined) {
@@ -1614,6 +1642,18 @@ export function IntakeWorkspace({
               session={session}
               busy={busy}
               pending={pending}
+              reviewed={rejectionReview?.kind === "required" && rejectionReview.reviewed}
+              onReviewed={(next) => {
+                if (!next) {
+                  setReviewedRejectionKey(undefined);
+                  return;
+                }
+                const review = rejectionReviewEligibility(session, undefined);
+                if (review.kind !== "required") {
+                  throw new Error(`intake session ${session.intakeSessionId} requested a rejection acknowledgement with no rejected rows`);
+                }
+                setReviewedRejectionKey(review.reviewKey);
+              }}
               onCorrect={(sourceRow, field, correctedValue) =>
                 issue(
                   session,
@@ -1678,6 +1718,7 @@ export function IntakeWorkspace({
           dryRun={dryRun}
           onDryRun={setDryRun}
           pending={pending}
+          rejectionReview={rejectionReviewEligibility(resource.session, reviewedRejectionKey)}
           onValidate={() => issue(resource.session, { type: "validate-intake" }, "validate")}
           onRun={() => issue(resource.session, { type: "enqueue-intake-manifest", payload: { dryRun } }, "run")}
         />

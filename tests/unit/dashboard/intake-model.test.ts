@@ -27,6 +27,7 @@ import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/do
 import {
   correctionText,
   headerCandidateOptionLabel,
+  INTAKE_REVIEW_COPY,
   intakeListPage,
   intakeListPageForSelection,
   layoutFingerprint,
@@ -38,9 +39,82 @@ import {
   rerunStage,
   rerunIdentifierFacts,
   rerunMembershipDetailFacts,
+  rejectionReviewEligibility,
+  rejectionReviewLabel,
   sourceLabel,
+  startRunsLabel,
   suggestionProposalText,
 } from "../../../src/dashboard/surfaces/intake-model.js";
+
+describe("IN95 / IN99–IN122 — rejection review uses the demo's one vocabulary and one eligibility door", () => {
+  it("pins every visible label in the table, editors, review acknowledgement and Well summaries", () => {
+    assert.deepEqual(INTAKE_REVIEW_COPY, {
+      tableLabel: "Rejected rows",
+      columns: ["Row", "Kind", "Field / column", "Why", "Resolve"],
+      noRejectionsTitle: "No rejections",
+      noRejectionsDescription: "Every source row coerced and parsed cleanly against the bound fields. There is no list to review, so the plan is ready.",
+      fixCell: "Fix cell",
+      exclude: "Exclude…",
+      correctedValue: "Corrected value",
+      correctionDescription: "The source file is never rewritten. The correction is recorded in the manifest with the original beside it, and the value is re-coerced and re-parsed before it can become valid.",
+      cancel: "Cancel",
+      reCoerce: "Re-coerce this cell",
+      reason: "Reason",
+      exclusionError: "An exclusion without a reason is a row that vanished. Say why.",
+      exclusionDescription: "Recorded in the manifest with a timestamp, so the receipt can never imply every source row ran.",
+      exclusionPlaceholder: "duplicate export line — already filed last week",
+      excludeWithReason: "Exclude with this reason",
+      corrections: "Corrections",
+      exclusions: "Exclusions",
+      reviewDescription: "Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen.",
+      unresolvedBlocker: "unresolved rejected rows have not been reviewed",
+    });
+    assert.equal(rejectionReviewLabel(1), "I have read all 1 rejected row");
+    assert.equal(rejectionReviewLabel(4), "I have read all 4 rejected rows");
+    assert.equal(startRunsLabel(1), "Start 1 run");
+    assert.equal(startRunsLabel(3), "Start 3 runs");
+  });
+
+  it("refuses the client-side Run offer until the exact served rejection set is acknowledged", () => {
+    const unreviewed = rejectionReviewEligibility(FIXTURE_INTAKE_VALIDATED, undefined);
+    assert.equal(unreviewed.kind, "required");
+    if (unreviewed.kind !== "required") return;
+    assert.equal(unreviewed.rejectedRows, 4);
+    assert.equal(unreviewed.reviewed, false);
+
+    const reviewed = rejectionReviewEligibility(FIXTURE_INTAKE_VALIDATED, unreviewed.reviewKey);
+    assert.equal(reviewed.kind, "required");
+    assert.equal(reviewed.kind === "required" ? reviewed.reviewed : false, true);
+  });
+
+  it("revokes an acknowledgement when authority serves a newer session version", () => {
+    const reviewed = rejectionReviewEligibility(FIXTURE_INTAKE_VALIDATED, undefined);
+    assert.equal(reviewed.kind, "required");
+    if (reviewed.kind !== "required") return;
+
+    const newer = IntakeSessionWireSchema.parse({
+      ...FIXTURE_INTAKE_VALIDATED,
+      expectedVersion: FIXTURE_INTAKE_VALIDATED.expectedVersion + 1,
+    });
+    const stale = rejectionReviewEligibility(newer, reviewed.reviewKey);
+    assert.equal(stale.kind, "required");
+    assert.equal(stale.kind === "required" ? stale.reviewed : true, false);
+  });
+
+  it("does not require a review when the validated session has no rejected rows", () => {
+    const clean = IntakeSessionWireSchema.parse({
+      ...FIXTURE_INTAKE_VALIDATED,
+      validation: {
+        ...FIXTURE_INTAKE_VALIDATED.validation,
+        rejected: [],
+      },
+    });
+    assert.deepEqual(rejectionReviewEligibility(clean, "stale acknowledgement"), {
+      kind: "not-required",
+      rejectedRows: 0,
+    });
+  });
+});
 
 describe("intake evidence lists stay locally bounded without hiding rows", () => {
   it("bounds every page while preserving exact access to every source row", () => {

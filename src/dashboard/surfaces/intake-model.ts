@@ -32,6 +32,90 @@ type IntakeRowCorrection = z.infer<typeof IntakeRowCorrectionSchema>;
 type Suggestion = z.infer<typeof SuggestionSchema>;
 export type RerunMembershipRow = IntakeManifestWire["validRows"][number];
 
+/**
+ * The operator words shared by the rejection table, its two editors and the
+ * outcome band. Keep this vocabulary together: `Fix cell` is the affordance,
+ * while `Re-coerce this cell` is the irreversible request it opens.
+ *
+ * Ported from hr-automation@80967ce5,
+ * src/dashboard/components/dev/rebuild-demo/DemoIntake.tsx:816-922.
+ */
+export const INTAKE_REVIEW_COPY = Object.freeze({
+  tableLabel: "Rejected rows",
+  columns: Object.freeze(["Row", "Kind", "Field / column", "Why", "Resolve"]),
+  noRejectionsTitle: "No rejections",
+  noRejectionsDescription: "Every source row coerced and parsed cleanly against the bound fields. There is no list to review, so the plan is ready.",
+  fixCell: "Fix cell",
+  exclude: "Exclude…",
+  correctedValue: "Corrected value",
+  correctionDescription: "The source file is never rewritten. The correction is recorded in the manifest with the original beside it, and the value is re-coerced and re-parsed before it can become valid.",
+  cancel: "Cancel",
+  reCoerce: "Re-coerce this cell",
+  reason: "Reason",
+  exclusionError: "An exclusion without a reason is a row that vanished. Say why.",
+  exclusionDescription: "Recorded in the manifest with a timestamp, so the receipt can never imply every source row ran.",
+  exclusionPlaceholder: "duplicate export line — already filed last week",
+  excludeWithReason: "Exclude with this reason",
+  corrections: "Corrections",
+  exclusions: "Exclusions",
+  reviewDescription: "Nothing half-launches: the plan stays closed until every non-valid row has been corrected, excluded, or seen.",
+  unresolvedBlocker: "unresolved rejected rows have not been reviewed",
+});
+
+export type RejectionReviewEligibility =
+  | Readonly<{ kind: "not-required"; rejectedRows: 0 }>
+  | Readonly<{
+    kind: "required";
+    rejectedRows: number;
+    reviewKey: string;
+    reviewed: boolean;
+  }>;
+
+/**
+ * The exact rejection set the operator acknowledged. A later authority read
+ * invalidates the acknowledgement before the next render can offer Run.
+ */
+export function rejectionReviewEligibility(
+  session: IntakeSessionWire,
+  reviewedKey: string | undefined,
+): RejectionReviewEligibility {
+  if (session.validation.state !== "validated") return { kind: "not-required", rejectedRows: 0 };
+
+  const rejectedRows = new Set(session.validation.rejected.map((reject) => reject.sourceRow)).size;
+  if (rejectedRows === 0) return { kind: "not-required", rejectedRows: 0 };
+
+  const reviewKey = [
+    session.intakeSessionId,
+    String(session.expectedVersion),
+    session.validation.validatedAt,
+    ...session.validation.rejected
+      .map((reject) => `${String(reject.sourceRow)}:${reject.rejectId}`)
+      .sort((left, right) => left.localeCompare(right)),
+  ].join("|");
+  return {
+    kind: "required",
+    rejectedRows,
+    reviewKey,
+    reviewed: reviewedKey === reviewKey,
+  };
+}
+
+/** The demo's acknowledgement label, pluralised from the actual row set. */
+export function rejectionReviewLabel(rejectedRows: number): string {
+  if (!Number.isInteger(rejectedRows) || rejectedRows < 1) {
+    throw new Error(`rejection review label requires a positive row count, received ${String(rejectedRows)}`);
+  }
+  return `I have read all ${String(rejectedRows)} rejected row${rejectedRows === 1 ? "" : "s"}`;
+}
+
+/** The final verb names runs, not source rows; row is merely the intake unit. */
+export function startRunsLabel(validRows: number): string {
+  if (!Number.isInteger(validRows) || validRows < 0) {
+    throw new Error(`start-runs label requires a non-negative row count, received ${String(validRows)}`);
+  }
+  return `Start ${String(validRows)} ${validRows === 1 ? "run" : "runs"}`;
+}
+
 export type IntakeStageFact = { key: string; value: string };
 
 export type ManifestStageRow = Readonly<{
