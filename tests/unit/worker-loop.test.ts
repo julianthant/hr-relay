@@ -729,6 +729,63 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
+  it.each([
+    {
+      seam: "stop",
+      acknowledgement: {
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "supervised",
+        escalation: STOP_ESCALATION,
+        observed: [{ stage: "graceful-stop-requested", at: "2026-07-31T17:00:00.001Z" }],
+      },
+      request: {
+        family: "worker-browser",
+        type: "stop-worker",
+        target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+      },
+    },
+    {
+      seam: "plan",
+      acknowledgement: {
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            escalation: STOP_ESCALATION,
+            observed: [{ stage: "graceful-stop-requested", at: "2026-07-31T17:00:00.001Z" }],
+          },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+        ],
+      },
+      request: {
+        family: "worker-browser",
+        type: "plan-worker-count",
+        target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+        payload: { desiredWorkers: 1 },
+      },
+    },
+  ])("refuses a $seam observation timestamped after the command's now", async ({ seam, acknowledgement, request }) => {
+    // An observation is a record of something that HAPPENED; one postdating
+    // the command's own clock is a claim about the future dressed as a fact.
+    const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement });
+    const command = workerBrowserCommand({ ...envelope, ...request });
+    const invoke = seam === "stop"
+      ? () => executor.stopPoolWorker({ command, now: requestedAt })
+      : () => executor.planPoolWorkerCount({ command, now: requestedAt });
+
+    await assert.rejects(
+      invoke,
+      /person-lookup-worker-2 reports graceful-stop-requested observed at 2026-07-31T17:00:00\.001Z, after the command's now/,
+    );
+  });
+
   it("refuses an initial stop acknowledgement claiming future escalation stages", async () => {
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
@@ -865,7 +922,11 @@ describe("pool-capable worker runtime executor seam", () => {
     );
   });
 
-  it("records later escalation stages in reconciliation facts as they occurred", async () => {
+  it("refuses an initiating plan fact claiming escalation stages beyond the graceful request", async () => {
+    // The plan command INITIATES the excess members' graceful stops, so at
+    // acknowledgement time only graceful-stop-requested can have been
+    // observed; SIGTERM/SIGKILL are recorded through later reconciliation
+    // facts as they occur, never promised in the initiating acknowledgement.
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
         command: "plan-worker-count",
@@ -880,7 +941,7 @@ describe("pool-capable worker runtime executor seam", () => {
             escalation: STOP_ESCALATION,
             observed: [
               { stage: "graceful-stop-requested", at: NOW },
-              { stage: "sigterm-sent", at: "2026-07-31T17:02:00.000Z" },
+              { stage: "sigterm-sent", at: NOW },
             ],
           },
           {
@@ -901,10 +962,10 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 1 },
     });
 
-    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
-      state: "accepted",
-      workerIds: ["person-lookup-worker-1"],
-    });
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /plan-worker-count for person-lookup-worker-2 may acknowledge only the observed graceful-stop-requested stage.*sigterm-sent.*recorded as they occur/,
+    );
   });
 
   it("refuses a plan acknowledgement reporting a running member under external ownership", async () => {

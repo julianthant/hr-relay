@@ -747,6 +747,49 @@ function requireDurableOwnership(
   }
 }
 
+/**
+ * The command being acknowledged is the one that INITIATED the graceful stop,
+ * so at acknowledgement time only `graceful-stop-requested` can have been
+ * observed. The schema pins observation order; this pins TIME: SIGTERM/SIGKILL
+ * are recorded through later reconciliation facts as they occur, never
+ * promised by the initiating acknowledgement.
+ */
+function requireInitialGracefulObservation(
+  command: WorkerSupervisorRequest["command"],
+  member: WorkerPoolMember,
+  observed: WorkerStopObservedStages,
+): void {
+  const futureStages = observed.slice(1);
+  if (futureStages.length > 0) {
+    throw new Error(
+      `${command} for ${member.workerId} may acknowledge only the observed graceful-stop-requested stage; `
+      + `future stages (${futureStages.map(({ stage }) => stage).join(", ")}) are recorded as they occur, `
+      + "not promised in advance",
+    );
+  }
+}
+
+/**
+ * An observed stage is a record of something that HAPPENED. One timestamped
+ * after the command's own `now` is a claim about the future dressed as a
+ * fact — refused by name rather than persisted as history.
+ */
+function requireObservedNotAfterNow(
+  command: WorkerSupervisorRequest["command"],
+  member: WorkerPoolMember,
+  observed: WorkerStopObservedStages,
+  now: string,
+): void {
+  for (const record of observed) {
+    if (Date.parse(record.at) > Date.parse(now)) {
+      throw new Error(
+        `${command} for ${member.workerId} reports ${record.stage} observed at ${record.at}, after the `
+        + `command's now ${now}; an observation cannot postdate the acknowledgement that carries it`,
+      );
+    }
+  }
+}
+
 function requireSupervisorAcknowledgement(command: WorkerSupervisorRequest["command"], value: unknown): unknown {
   if (value === undefined) {
     throw new Error(`${command} supervisor acknowledgement is required; refusing to accept an unproved effect`);
@@ -835,6 +878,10 @@ export function createWorkerPoolRuntimeExecutor(
             `plan-worker-count cannot stop desired member ${fact.member.workerId} at index ${String(offset + 1)}`,
           );
         }
+        if (fact.stage === "graceful-stop-requested") {
+          requireInitialGracefulObservation("plan-worker-count", fact.member, fact.observed);
+          requireObservedNotAfterNow("plan-worker-count", fact.member, fact.observed, context.now);
+        }
         if (offset >= desiredWorkers && fact.stage === "running") {
           // Stop coverage is owed only for a process that exists: a running
           // excess member must carry its bounded graceful stop, while an
@@ -875,17 +922,8 @@ export function createWorkerPoolRuntimeExecutor(
       })));
       requireSameMember("stop-worker", member, acknowledgement.member);
       requireDurableOwnership("stop-worker", acknowledgement.member, acknowledgement.ownership);
-      const futureStages = acknowledgement.observed.slice(1);
-      if (futureStages.length > 0) {
-        // The schema pins observation order; this pins TIME: at the initial
-        // acknowledgement only the graceful request has happened. TERM/KILL
-        // are recorded through later reconciliation facts as they occur.
-        throw new Error(
-          `stop-worker for ${member.workerId} may acknowledge only the observed graceful-stop-requested stage; `
-          + `future stages (${futureStages.map(({ stage }) => stage).join(", ")}) are recorded as they occur, `
-          + "not promised in advance",
-        );
-      }
+      requireInitialGracefulObservation("stop-worker", member, acknowledgement.observed);
+      requireObservedNotAfterNow("stop-worker", member, acknowledgement.observed, context.now);
       return { state: "accepted" };
     },
     async pausePoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
