@@ -402,6 +402,18 @@ export const WorkerPoolMemberSchema = z.strictObject({
 });
 export type WorkerPoolMember = z.infer<typeof WorkerPoolMemberSchema>;
 
+const WorkerStopEscalationSchema = z.tuple([
+  z.strictObject({
+    stage: z.literal("graceful-stop-requested"),
+    timeoutMs: z.literal(WORKER_GRACEFUL_STOP_TIMEOUT_MS),
+  }),
+  z.strictObject({
+    stage: z.literal("sigterm-sent"),
+    timeoutMs: z.literal(WORKER_SIGTERM_TIMEOUT_MS),
+  }),
+  z.strictObject({ stage: z.literal("sigkill-sent") }),
+]);
+
 const WorkerPlanMemberFactSchema = z.discriminatedUnion("stage", [
   z.strictObject({
     member: WorkerPoolMemberSchema,
@@ -412,6 +424,11 @@ const WorkerPlanMemberFactSchema = z.discriminatedUnion("stage", [
     member: WorkerPoolMemberSchema,
     stage: z.literal("unmet"),
     reason: z.enum(["not-started", "crashed"]),
+  }),
+  z.strictObject({
+    member: WorkerPoolMemberSchema,
+    stage: z.literal("graceful-stop-requested"),
+    escalation: WorkerStopEscalationSchema,
   }),
 ]);
 
@@ -428,18 +445,6 @@ const WorkerSpawnAcknowledgementSchema = z.strictObject({
   member: WorkerPoolMemberSchema,
   stage: z.literal("started"),
 });
-
-const WorkerStopEscalationSchema = z.tuple([
-  z.strictObject({
-    stage: z.literal("graceful-stop-requested"),
-    timeoutMs: z.literal(WORKER_GRACEFUL_STOP_TIMEOUT_MS),
-  }),
-  z.strictObject({
-    stage: z.literal("sigterm-sent"),
-    timeoutMs: z.literal(WORKER_SIGTERM_TIMEOUT_MS),
-  }),
-  z.strictObject({ stage: z.literal("sigkill-sent") }),
-]);
 
 const WorkerStopAcknowledgementSchema = z.strictObject({
   command: z.literal("stop-worker"),
@@ -632,13 +637,26 @@ export function createWorkerPoolRuntimeExecutor(
           + String(acknowledgement.desiredWorkers),
         );
       }
-      for (const [offset, member] of members.entries()) {
-        const acknowledged = acknowledgement.members[offset]?.member;
-        if (acknowledged?.workerId !== member.workerId) {
+      for (const [offset, fact] of acknowledgement.members.entries()) {
+        const expected = poolMember(command.target.workflowId, offset + 1);
+        requireSameMember("plan-worker-count", expected, fact.member);
+        if (offset < desiredWorkers && fact.stage === "graceful-stop-requested") {
           throw new Error(
-            `plan-worker-count requires acknowledgement for member ${member.workerId} at index ${String(offset + 1)}`,
+            `plan-worker-count cannot stop desired member ${fact.member.workerId} at index ${String(offset + 1)}`,
           );
         }
+        if (offset >= desiredWorkers && fact.stage !== "graceful-stop-requested") {
+          throw new Error(
+            `plan-worker-count must select excess member ${fact.member.workerId} for bounded graceful stop`,
+          );
+        }
+      }
+      if (acknowledgement.members.length < desiredWorkers) {
+        const missing = members[acknowledgement.members.length];
+        throw new Error(
+          `plan-worker-count requires acknowledgement for desired member ${String(missing?.workerId)} `
+          + `at index ${String(acknowledgement.members.length + 1)}`,
+        );
       }
       return { state: "accepted", workerIds: members.map(({ workerId }) => workerId) };
     },

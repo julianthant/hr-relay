@@ -372,6 +372,65 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
+  it("acknowledges scale-down by selecting higher member indices for bounded stop", () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          {
+            member: {
+              workflowId: WORKFLOW_ID,
+              poolIndex: 1,
+              workerId: "person-lookup-worker-1",
+            },
+            stage: "running",
+            ownership: "supervised",
+          },
+          {
+            member: {
+              workflowId: WORKFLOW_ID,
+              poolIndex: 2,
+              workerId: "person-lookup-worker-2",
+            },
+            stage: "graceful-stop-requested",
+            escalation: [
+              { stage: "graceful-stop-requested", timeoutMs: 120_000 },
+              { stage: "sigterm-sent", timeoutMs: 30_000 },
+              { stage: "sigkill-sent" },
+            ],
+          },
+          {
+            member: {
+              workflowId: WORKFLOW_ID,
+              poolIndex: 3,
+              workerId: "person-lookup-worker-3",
+            },
+            stage: "graceful-stop-requested",
+            escalation: [
+              { stage: "graceful-stop-requested", timeoutMs: 120_000 },
+              { stage: "sigterm-sent", timeoutMs: 30_000 },
+              { stage: "sigkill-sent" },
+            ],
+          },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    assert.deepEqual(executor.planWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: ["person-lookup-worker-1"],
+    });
+  });
+
   it("spawns only the explicit pool member acknowledged as started", () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
