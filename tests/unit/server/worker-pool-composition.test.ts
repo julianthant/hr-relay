@@ -22,7 +22,11 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
-import { createCommandKernel, type CommandKernel } from "../../../src/core/command-kernel.js";
+import {
+  createCommandKernel,
+  type CommandKernel,
+  type WorkerPoolRuntimeSeam,
+} from "../../../src/core/command-kernel.js";
 import { poolWorkerId } from "../../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../../src/domain/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
@@ -50,6 +54,9 @@ const WORKFLOW = WorkflowIdSchema.parse("person-lookup");
 const POOL_INDEX_1 = PositiveIntSchema.parse(1);
 const WORKER_1 = poolWorkerId(WORKFLOW, POOL_INDEX_1);
 const MEMBER_1 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_1, workerId: WORKER_1 } as const;
+const POOL_INDEX_2 = PositiveIntSchema.parse(2);
+const WORKER_2 = poolWorkerId(WORKFLOW, POOL_INDEX_2);
+const MEMBER_2 = { workflowId: WORKFLOW, poolIndex: POOL_INDEX_2, workerId: WORKER_2 } as const;
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];
@@ -101,7 +108,19 @@ interface ControlHarness {
   readonly faults: Error[];
 }
 
-function openControlHarness(): ControlHarness {
+interface ControlHarnessOptions {
+  /**
+   * Wraps the pool seam the kernel adopts — the hook a test uses to run an
+   * out-of-band authority write between the kernel's phases, exactly the way
+   * another process would land one.
+   */
+  readonly interceptPool?: (
+    pool: WorkerPoolRuntimeSeam,
+    edges: Readonly<{ database: AuthorityDatabase; clock: TestClock }>,
+  ) => WorkerPoolRuntimeSeam;
+}
+
+function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
   const root = mkdtempSync(join(tmpdir(), "hrauto-worker-pool-"));
   roots.push(root);
   const clock = manualClock(new Date(NOW));
@@ -135,6 +154,32 @@ function openControlHarness(): ControlHarness {
       faults.push(error);
     },
   });
+  /**
+   * The alias-breaker: the manual wall clock ADVANCES before every
+   * directive-writing pool effect runs, so a channel (or a phase-C write)
+   * that stamps its own clock read instead of the command's own `now`
+   * produces a postdated instant the seam's guards must trip on. Without
+   * this, every requestedAt==command-now pin holds vacuously, because every
+   * clock read in the flow aliases to the same frozen instant.
+   */
+  const aliasBrokenPool: WorkerPoolRuntimeSeam = {
+    ...control.workerRuntime.pool,
+    stopPoolWorker: async (context) => {
+      clock.advanceWall(7);
+      return control.workerRuntime.pool.stopPoolWorker(context);
+    },
+    pausePoolWorker: async (context) => {
+      clock.advanceWall(7);
+      return control.workerRuntime.pool.pausePoolWorker(context);
+    },
+    resumePoolWorker: async (context) => {
+      clock.advanceWall(7);
+      return control.workerRuntime.pool.resumePoolWorker(context);
+    },
+  };
+  const pool = options?.interceptPool === undefined
+    ? aliasBrokenPool
+    : options.interceptPool(aliasBrokenPool, { database, clock });
   const kernel = createCommandKernel({
     appVersion: "0.1.0",
     archiveSnapshots: UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -156,8 +201,9 @@ function openControlHarness(): ControlHarness {
       },
     },
     // EXACTLY what src/server/dashboard/compose.ts adopts: the pool executor
-    // over the composed supervisor, behind the explicit adoption wrapper.
-    workerRuntime: control.workerRuntime,
+    // over the composed supervisor, behind the explicit adoption wrapper —
+    // plus the test-only alias-breaking clock advance around the seam.
+    workerRuntime: { pool },
   });
   return { database, clock, scheduler, kernel, control, children, spawnRequests, faults };
 }
@@ -196,20 +242,23 @@ function fireBirthPoll(harness: ControlHarness): void {
  * the child "boot", prove its birth by writing the SAME durable lease the real
  * worker CLI writes, and tick the poll.
  */
-async function spawnWorkerOne(harness: ControlHarness): Promise<{ commandId: string; result: unknown }> {
+async function spawnPoolWorker(
+  harness: ControlHarness,
+  member: typeof MEMBER_1 = MEMBER_1,
+): Promise<{ commandId: string; result: unknown }> {
   const commandId = nextCommandId();
   const pending = harness.kernel.executeWorkerPool({
     ...envelope(harness, commandId),
     type: "spawn-worker",
-    target: { workflowId: WORKFLOW, expectedVersion: 0 },
-    payload: { workerId: WORKER_1 },
+    target: { workflowId: member.workflowId, expectedVersion: 0 },
+    payload: { workerId: member.workerId },
   });
   await settleMicrotasks();
   const child = harness.children.at(-1);
   if (child?.pid === undefined) throw new Error("the fake spawner produced no child");
   assert.equal(harness.database.authority.workerLeases.start({
-    workerId: WORKER_1,
-    workflow: WORKFLOW,
+    workerId: member.workerId,
+    workflow: member.workflowId,
     processId: child.pid,
     requestedBy: "local-operator",
     now: harness.clock.now().toISOString(),
@@ -320,7 +369,7 @@ describe("the composed worker process control through the kernel pool door", () 
 
   it("writes the durable stop directive at exactly the command's now (the requestedAt==command-now pin)", async () => {
     const harness = openControlHarness();
-    await spawnWorkerOne(harness);
+    await spawnPoolWorker(harness);
     harness.clock.advanceWall(5_000);
     const stopAt = harness.clock.now().toISOString();
 
@@ -390,9 +439,242 @@ describe("the composed worker process control through the kernel pool door", () 
     assert.equal(harness.database.authority.workerPools.get(WORKFLOW)?.version, 1);
   });
 
+  it("serializes concurrent pool plans: the loser refuses before any directive or escalation effect lands", async () => {
+    const harness = openControlHarness();
+    await spawnPoolWorker(harness, MEMBER_1);
+    await spawnPoolWorker(harness, MEMBER_2);
+
+    // Two plans against the SAME basis (pool version 0), in flight together.
+    // The first keeps both running workers; the second would stop worker 2 as
+    // excess. Without per-workflow serialization across phases A→C, both pass
+    // the phase-A CAS, both run process effects, and the loser's durable stop
+    // directive plus armed escalation stand against a member the winning plan
+    // still desires — while its phase C rolls back without a journal trace.
+    const keepBothId = nextCommandId();
+    const keepBoth = harness.kernel.executeWorkerPool({
+      ...envelope(harness, keepBothId),
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      payload: { desiredWorkers: 2 },
+    });
+    const shrinkId = nextCommandId();
+    const shrink = harness.kernel.executeWorkerPool({
+      ...envelope(harness, shrinkId),
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      payload: { desiredWorkers: 1 },
+    });
+    const [first, second] = await Promise.allSettled([keepBoth, shrink]);
+
+    assert.equal(first.status, "fulfilled");
+    if (first.status !== "fulfilled") throw new Error("unreachable");
+    assert.equal(first.value.state, "applied");
+    // The loser refuses TYPED, before its effect: never a thrown 500, never a
+    // stop directive it initiated and then abandoned.
+    assert.equal(second.status, "fulfilled");
+    if (second.status !== "fulfilled") throw new Error("unreachable");
+    assert.equal(second.value.state, "conflict");
+    if (second.value.state !== "conflict") throw new Error("unreachable");
+    assert.equal(second.value.currentVersion, 1);
+    assert.equal(harness.database.authority.commands.get(shrinkId), undefined);
+
+    // The desired member the loser would have stopped is untouched: run
+    // directive intact, supervisor evidence plain running, nothing armed.
+    assert.equal(harness.database.authority.workerLeases.get(WORKER_2)?.control.directive, "run");
+    assert.deepEqual(harness.control.supervisor.memberEvidence(MEMBER_2)?.state, "running");
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW)?.desiredWorkers, 2);
+    assert.equal(harness.database.authority.workerPools.get(WORKFLOW)?.version, 1);
+  });
+
+  it("maps a phase-C pool CAS loss to a typed conflict naming the already-executed effect", async () => {
+    const harness = openControlHarness({
+      interceptPool: (pool, edges) => ({
+        ...pool,
+        planPoolWorkerCount: async (context) => {
+          // Another PROCESS plans the pool after this command's phase-A CAS
+          // passed and before its phase-C write — outside what the in-process
+          // serialization can see, so phase C is where it must surface, typed.
+          assert.equal(edges.database.authority.workerPools.plan({
+            workflow: WORKFLOW,
+            expectedVersion: 0,
+            desiredWorkers: 1,
+            requestedBy: "local-operator",
+            now: edges.clock.now().toISOString(),
+          }).state, "applied");
+          return pool.planPoolWorkerCount(context);
+        },
+      }),
+    });
+    const commandId = nextCommandId();
+    const result = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, commandId),
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW, expectedVersion: 0 },
+      payload: { desiredWorkers: 1 },
+    });
+    assert.equal(result.state, "conflict");
+    if (result.state !== "conflict") throw new Error("unreachable");
+    assert.equal(result.currentVersion, 1);
+    // The refusal tells the operator the truth: the process effect ran.
+    assert.match(result.message, /ALREADY executed/);
+    // A conflict is never journaled or audited.
+    assert.equal(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId), undefined);
+  });
+
+  it("journals a settled-but-unjournaled stop from the lease's own directive evidence on re-delivery", async () => {
+    const harness = openControlHarness();
+    // The B→C crash window, reproduced at its durable footprint: the crashed
+    // delivery's effect stands (the lease carries the command's own stop
+    // directive), no journal row was written, and the restarted supervisor
+    // never spawned the child.
+    assert.equal(harness.database.authority.workerLeases.start({
+      workerId: WORKER_1, workflow: WORKFLOW, processId: 4242, requestedBy: "local-operator", now: NOW,
+    }).state, "started");
+    const crashedNow = harness.clock.now().toISOString();
+    assert.equal(harness.database.authority.workerLeases.control({
+      workerId: WORKER_1,
+      expectedVersion: 1,
+      control: { directive: "stop", requestedAt: crashedNow, requestedBy: "local-operator", reason: "shift over" },
+      now: crashedNow,
+    }).state, "applied");
+
+    harness.clock.advanceWall(30_000);
+    const commandId = nextCommandId();
+    const command = {
+      ...envelope(harness, commandId),
+      type: "stop-worker" as const,
+      target: { workerId: WORKER_1, expectedVersion: 2 },
+      reason: "shift over",
+    };
+    const result = await harness.kernel.executeWorkerPool(command);
+    assert.deepEqual(result, {
+      state: "applied",
+      commandId,
+      affectedTargets: [{ family: "worker-browser", workerId: WORKER_1 }],
+    });
+    // Journaled and audited WITHOUT re-running the process effect; this
+    // delivery wrote nothing, so its audit claims no version change.
+    assert.notEqual(harness.database.authority.commands.get(commandId), undefined);
+    assert.equal(harness.database.authority.commandAudits.findByCommand(commandId)?.result.state, "applied");
+    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges, []);
+    assert.equal(harness.spawnRequests.length, 0);
+    assert.deepEqual(harness.database.authority.workerLeases.get(WORKER_1)?.control, {
+      directive: "stop", requestedAt: crashedNow, requestedBy: "local-operator", reason: "shift over",
+    });
+    assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.version, 2);
+
+    // A second delivery of the SAME command replays from the journal.
+    const replayed = await harness.kernel.executeWorkerPool(command);
+    assert.equal(replayed.state, "already-applied");
+
+    // Evidence matching is EXACT: a stop with a different reason is a new
+    // request, not a replay — it falls through to the supervisor, which
+    // refuses the never-spawned worker by name.
+    await assert.rejects(
+      () => harness.kernel.executeWorkerPool({
+        ...envelope(harness, nextCommandId()),
+        type: "stop-worker",
+        target: { workerId: WORKER_1, expectedVersion: 2 },
+        reason: "different reason",
+      }),
+      /never spawned person-lookup-worker-1/,
+    );
+  });
+
+  it("audits a stop with the directive write's own lease versions, not later unrelated bumps", async () => {
+    const harness = openControlHarness({
+      interceptPool: (pool, edges) => ({
+        ...pool,
+        stopPoolWorker: async (context) => {
+          const acknowledgement = await pool.stopPoolWorker(context);
+          // An unrelated lease bump (the worker's own lifecycle report)
+          // lands AFTER the durable directive write and BEFORE phase C. The
+          // audit must record the directive write's versions, not absorb
+          // this bump into the command's claimed change.
+          const bumpNow = edges.clock.now().toISOString();
+          assert.equal(edges.database.authority.workerLeases.reportLifecycle({
+            workerId: WORKER_1,
+            leaseGeneration: 1,
+            lifecycle: { state: "idle", startedAt: NOW, heartbeatAt: bumpNow },
+            now: bumpNow,
+          }).state, "applied");
+          return acknowledgement;
+        },
+      }),
+    });
+    await spawnPoolWorker(harness, MEMBER_1);
+    const commandId = nextCommandId();
+    const result = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, commandId),
+      type: "stop-worker",
+      target: { workerId: WORKER_1, expectedVersion: 1 },
+    });
+    assert.equal(result.state, "applied");
+    // Lease: v1 at birth, v2 at the directive write, v3 at the unrelated bump.
+    assert.equal(harness.database.authority.workerLeases.get(WORKER_1)?.version, 3);
+    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(commandId)?.versionChanges, [
+      { target: { family: "worker-browser", workerId: WORKER_1 }, before: 1, after: 2 },
+    ]);
+  });
+
+  it("drives the composed pause→resume round-trip: durable directives at the command's now, versioned and audited", async () => {
+    const harness = openControlHarness();
+    await spawnPoolWorker(harness, MEMBER_1);
+
+    const pauseAt = harness.clock.now().toISOString();
+    const pauseId = nextCommandId();
+    const paused = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, pauseId),
+      type: "pause-worker",
+      target: { workerId: WORKER_1, expectedVersion: 1 },
+      reason: "operator break",
+    });
+    assert.deepEqual(paused, {
+      state: "applied",
+      commandId: pauseId,
+      affectedTargets: [{ family: "worker-browser", workerId: WORKER_1 }],
+    });
+    const afterPause = harness.database.authority.workerLeases.get(WORKER_1);
+    // The durable directive IS the command — its instant the command's own
+    // `now` (the alias-breaker advanced the wall clock inside the effect, so
+    // a phase-C write stamping a fresh clock read would postdate this).
+    assert.deepEqual(afterPause?.control, {
+      directive: "pause", requestedAt: pauseAt, requestedBy: "local-operator", reason: "operator break",
+    });
+    assert.equal(afterPause?.version, 2);
+    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(pauseId)?.versionChanges, [
+      { target: { family: "worker-browser", workerId: WORKER_1 }, before: 1, after: 2 },
+    ]);
+
+    harness.clock.advanceWall(60_000);
+    const resumeAt = harness.clock.now().toISOString();
+    const resumeId = nextCommandId();
+    const resumed = await harness.kernel.executeWorkerPool({
+      ...envelope(harness, resumeId),
+      type: "resume-worker",
+      target: { workerId: WORKER_1, expectedVersion: 2 },
+    });
+    assert.deepEqual(resumed, {
+      state: "applied",
+      commandId: resumeId,
+      affectedTargets: [{ family: "worker-browser", workerId: WORKER_1 }],
+    });
+    const afterResume = harness.database.authority.workerLeases.get(WORKER_1);
+    assert.deepEqual(afterResume?.control, {
+      directive: "run", requestedAt: resumeAt, requestedBy: "local-operator",
+    });
+    assert.equal(afterResume?.version, 3);
+    assert.deepEqual(harness.database.authority.commandAudits.findByCommand(resumeId)?.versionChanges, [
+      { target: { family: "worker-browser", workerId: WORKER_1 }, before: 2, after: 3 },
+    ]);
+    // The supervisor still owns the child as plain running throughout.
+    assert.deepEqual(harness.control.supervisor.memberEvidence(MEMBER_1)?.state, "running");
+  });
+
   it("replays an already-applied spawn without re-running the process effect", async () => {
     const harness = openControlHarness();
-    const { commandId } = await spawnWorkerOne(harness);
+    const { commandId } = await spawnPoolWorker(harness);
     assert.equal(harness.children.length, 1);
 
     const replayed = await harness.kernel.executeWorkerPool({
@@ -435,7 +717,7 @@ describe("the composed worker process control through the kernel pool door", () 
 /* ── dashboard shutdown ordering (the composed runtime) ──────────────────── */
 
 describe("dashboard shutdown closes the worker supervisor between ingress and the process lock", () => {
-  it("reports still-live children to the fault path and releases the server lock afterwards", async () => {
+  it("reports still-live children to the fault path before the server lock releases", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-shutdown-"));
     writeFileSync(join(repoRoot, "package.json"), JSON.stringify({ name: "probe", version: "0.1.0" }));
     cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
@@ -444,32 +726,39 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     const scheduler = new ManualScheduler(clock, 0);
     const children: FakeWorkerChild[] = [];
     const faultLines: string[] = [];
-    let runtime: DashboardRuntime;
-    try {
-      runtime = await composeDashboardRuntime({
-        isolation: rebuildRuntimeIsolation,
-        env: {},
-        clock,
-        repoRoot,
-        workerProcess: {
-          scheduler,
-          spawn: () => {
-            const child = new FakeWorkerChild(7001);
-            children.push(child);
-            return child;
-          },
-          birth: { pollMs: 250, timeoutMs: 10_000 },
-          faultSink: (line) => {
-            faultLines.push(line);
-          },
+    const lockFile = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
+    const lockRecord = (): { releasedAt: string | null } =>
+      JSON.parse(readFileSync(lockFile, "utf8")) as { releasedAt: string | null };
+    // ORDER pin, observed AT EMISSION TIME: when the supervisor's shutdown
+    // fault line is emitted, the process lock must still be held (close()
+    // runs before the release) — an after-the-fact read cannot tell the two
+    // orders apart.
+    const lockStateAtShutdownFault: (string | null)[] = [];
+    // Port 0: the OS assigns an ephemeral port, so this test never contends
+    // with a concurrently running rebuild dashboard on the machine-wide
+    // isolation port — and never silently passes vacuous because of one.
+    const runtime: DashboardRuntime = await composeDashboardRuntime({
+      isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0,
+      env: {},
+      clock,
+      repoRoot,
+      workerProcess: {
+        scheduler,
+        spawn: () => {
+          const child = new FakeWorkerChild(7001);
+          children.push(child);
+          return child;
         },
-      });
-    } catch (error) {
-      // The port is a machine-wide singleton; a concurrently running rebuild
-      // dashboard legitimately owns it. That is contention, not a regression.
-      if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "EADDRINUSE") return;
-      throw error;
-    }
+        birth: { pollMs: 250, timeoutMs: 10_000 },
+        faultSink: (line) => {
+          faultLines.push(line);
+          if (line.includes("dashboard shutdown leaves a worker child")) {
+            lockStateAtShutdownFault.push(existsSync(lockFile) ? lockRecord().releasedAt : "lock-file-missing");
+          }
+        },
+      },
+    });
     const stops: (() => Promise<void>)[] = [() => runtime.stop()];
     cleanups.push(async () => {
       for (const stop of stops.splice(0)) await stop();
@@ -515,9 +804,6 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     assert.equal(((await response.json()) as { state: string }).state, "applied");
 
     // Shutdown: ingress stops, the supervisor closes, THEN the lock releases.
-    const lockFile = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
-    const lockRecord = (): { releasedAt: string | null } =>
-      JSON.parse(readFileSync(lockFile, "utf8")) as { releasedAt: string | null };
     assert.equal(existsSync(lockFile), true);
     assert.equal(lockRecord().releasedAt, null);
     for (const stop of stops.splice(0)) await stop();
@@ -531,6 +817,10 @@ describe("dashboard shutdown closes the worker supervisor between ingress and th
     assert.equal(parsed.source, "worker-supervisor");
     assert.match(parsed.message, /"state":"running"/);
     assert.match(parsed.message, /"pid":7001/);
+    // The ORDER, pinned at emission time: the supervisor's close (which emits
+    // the fault line) ran while the process lock was still held. Moving
+    // close() after the lock release records a releasedAt instant here.
+    assert.deepEqual(lockStateAtShutdownFault, [null]);
     // The process lock under .tracker-rebuild/locks records its release only
     // after the supervisor closed (the closed-supervisor refusal itself is
     // pinned in the W2 suite). The file stays as the durable record; the NEXT

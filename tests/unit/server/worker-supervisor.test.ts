@@ -31,6 +31,7 @@ import {
   workerCliArgv,
   type DashboardWorkerProcessSupervisor,
   type SpawnedWorkerHandle,
+  type WorkerDurableStopReceipt,
   type WorkerLeaseBirthFact,
   type WorkerProcessSpawnRequest,
 } from "../../../src/server/dashboard/worker-supervisor.js";
@@ -106,7 +107,17 @@ interface Harness {
   nextGracefulStop: (
     target: WorkerPoolMember,
     directive: WorkerStopDirectiveContext,
-  ) => Promise<Readonly<{ requestedAt: string }>> | Readonly<{ requestedAt: string }>;
+  ) => Promise<WorkerDurableStopReceipt> | WorkerDurableStopReceipt;
+}
+
+/**
+ * The directive write's lease versions a well-behaved channel reports: the
+ * fake authority's lease is born at version 1, so the stop write is 1 → 2.
+ */
+const DIRECTIVE_WRITE_VERSIONS = Object.freeze({ before: 1, after: 2 });
+
+function stopReceipt(requestedAt: string): WorkerDurableStopReceipt {
+  return Object.freeze({ requestedAt, leaseVersions: DIRECTIVE_WRITE_VERSIONS });
 }
 
 const LAUNCH = Object.freeze({
@@ -148,8 +159,8 @@ function openHarness(overrides?: Readonly<{
       return child;
     },
     observeLease: (workerId): WorkerLeaseBirthFact | undefined => leases.get(workerId),
-    nextGracefulStop: (_target, directive): Readonly<{ requestedAt: string }> =>
-      ({ requestedAt: directive.requestedAt }),
+    nextGracefulStop: (_target, directive): WorkerDurableStopReceipt =>
+      stopReceipt(directive.requestedAt),
     supervisor: createDashboardWorkerProcessSupervisor({
       launch: {
         command: overrides?.launchCommand ?? LAUNCH.command,
@@ -602,6 +613,7 @@ describe("stop-worker", () => {
       ownership: "supervised",
       escalation: stopPolicy(),
       observed: [{ stage: "graceful-stop-requested", at: "2026-08-26T09:00:05.000Z" }],
+      directiveLeaseVersions: DIRECTIVE_WRITE_VERSIONS,
     });
     expect(harness.supervisor.memberEvidence(target)).toMatchObject({
       state: "stopping",
@@ -681,7 +693,7 @@ describe("stop-worker", () => {
     // re-stop over it until the child's real exit is observed.
     const { harness, target } = await runningHarness();
     const durableAt = new Date(Date.parse(NOW) + 1234).toISOString();
-    harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => ({ requestedAt: durableAt });
+    harness.nextGracefulStop = (): WorkerDurableStopReceipt => stopReceipt(durableAt);
 
     await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/durable requestedAt 2026-08-26T09:00:01\.234Z that is not the command's now/);
@@ -695,11 +707,11 @@ describe("stop-worker", () => {
 
   it("refuses a stop whose durable request raced the child's exit, preserving the exit evidence", async () => {
     const { harness, target } = await runningHarness();
-    harness.nextGracefulStop = async (): Promise<Readonly<{ requestedAt: string }>> => {
+    harness.nextGracefulStop = async (): Promise<WorkerDurableStopReceipt> => {
       // The child dies while the durable directive is still being requested:
       // the stop must refuse rather than record a stage over a dead child.
       harness.children[0]?.emitExit(1, null);
-      return { requestedAt: harness.clock.now().toISOString() };
+      return stopReceipt(harness.clock.now().toISOString());
     };
 
     await expect(harness.supervisor.execute(stopRequest(harness, target)))
@@ -719,9 +731,9 @@ describe("stop-worker", () => {
 
   it("refuses the second of two concurrent stops — the in-flight guard is synchronous", async () => {
     const { harness, target } = await runningHarness();
-    harness.nextGracefulStop = async (): Promise<Readonly<{ requestedAt: string }>> => {
+    harness.nextGracefulStop = async (): Promise<WorkerDurableStopReceipt> => {
       await Promise.resolve();
-      return { requestedAt: harness.clock.now().toISOString() };
+      return stopReceipt(harness.clock.now().toISOString());
     };
 
     const first = harness.supervisor.execute(stopRequest(harness, target));
@@ -738,7 +750,7 @@ describe("stop-worker", () => {
 
   it("marks the record stop-uncertain when the durable stop channel throws — a possibly-landed directive is never masked as running", async () => {
     const { harness, target } = await runningHarness();
-    harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => {
+    harness.nextGracefulStop = (): WorkerDurableStopReceipt => {
       throw new Error("directive store unavailable");
     };
 
@@ -756,9 +768,8 @@ describe("stop-worker", () => {
     });
 
     // A retry does NOT double-write the durable directive…
-    harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => ({
-      requestedAt: harness.clock.now().toISOString(),
-    });
+    harness.nextGracefulStop = (): WorkerDurableStopReceipt =>
+      stopReceipt(harness.clock.now().toISOString());
     await expect(harness.supervisor.execute(stopRequest(harness, target)))
       .rejects.toThrow(/stop-worker refused: .*durable stop directive is UNCERTAIN/);
     expect(harness.gracefulRequests).toHaveLength(1);
@@ -794,7 +805,7 @@ describe("stop-worker", () => {
     // (and transitioned the record to "exited" with OS evidence): the
     // stop-uncertain assignment must be conditional on the record still being
     // "running" at that point, or it would clobber real exit evidence.
-    harness.nextGracefulStop = (): Readonly<{ requestedAt: string }> => {
+    harness.nextGracefulStop = (): WorkerDurableStopReceipt => {
       child.emitExit(0, null);
       throw new Error("directive store unavailable after exit");
     };
@@ -1168,7 +1179,7 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
         target: { workerId: member(2).workerId, expectedVersion: 1 },
       }),
       now: NOW,
-    })).resolves.toEqual({ state: "accepted" });
+    })).resolves.toEqual({ state: "accepted", directiveLeaseVersions: DIRECTIVE_WRITE_VERSIONS });
 
     // The scale-down plan: member 1 stays, member 2's stop is attested
     // reconciling, member 3 is honestly unmet — all under W1's validators.
@@ -1219,8 +1230,8 @@ describe("close", () => {
     const harness = openHarness();
     const target = member(1);
     await harness.supervisor.execute({ command: "spawn-worker", member: target });
-    let land: ((ack: Readonly<{ requestedAt: string }>) => void) | undefined;
-    harness.nextGracefulStop = (): Promise<Readonly<{ requestedAt: string }>> =>
+    let land: ((ack: WorkerDurableStopReceipt) => void) | undefined;
+    harness.nextGracefulStop = (): Promise<WorkerDurableStopReceipt> =>
       new Promise((resolve) => {
         land = resolve;
       });
@@ -1242,7 +1253,7 @@ describe("close", () => {
     // timers may be armed, the landed-directive fact goes to the fault sink,
     // and the stage itself is still recorded as evidence.
     if (land === undefined) throw new Error("expected the durable stop request to be in flight");
-    land({ requestedAt: NOW });
+    land(stopReceipt(NOW));
     await settled;
 
     expect(harness.scheduler.pending()).toHaveLength(0);
