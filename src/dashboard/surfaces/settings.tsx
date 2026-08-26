@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import {
+  SETTINGS_GEAR_ID,
   SETTINGS_KEYBOARD_SECTION_ID,
   buildSettingsNav,
   resolveSettingsSection,
@@ -377,10 +378,19 @@ function SectionButton({
 }) {
   const Icon = NAV_ICON[entry.icon];
   return (
-    <button
-      type="button"
+    <a
+      // A real href — not a `button` — so middle-click, Cmd/Ctrl-click and
+      // "open in new tab" all work the way any other in-page navigation does
+      // (unit F4b finding 4). `onSection` still owns the actual transition
+      // (through `setRoute`, which carries the rest of the route the bare
+      // href below cannot), so the default navigation is prevented and the
+      // click is handed to it exactly as the `button` version did.
+      href={`?settings=${encodeURIComponent(entry.id)}`}
       aria-current={active ? "page" : undefined}
-      onClick={onClick}
+      onClick={(event) => {
+        event.preventDefault();
+        onClick();
+      }}
       className={cn(
         "flex min-w-0 items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)]",
         "px-[var(--ds-space-base)] py-[var(--ds-space-snug)] text-left",
@@ -410,7 +420,7 @@ function SectionButton({
     >
       <Icon aria-hidden className={cn(dsIcon.md, "shrink-0")} />
       <span className="truncate">{entry.label}</span>
-    </button>
+    </a>
   );
 }
 
@@ -434,6 +444,7 @@ export function SettingsGear({
   const attention = storageNeedsAttention(storage);
   return (
     <IconButton
+      id={SETTINGS_GEAR_ID}
       size="sm"
       label={attention ? "Settings — storage needs attention" : "Settings"}
       // The gear REPORTS that it owns the screen, in both representations:
@@ -536,7 +547,7 @@ export function SettingsPage({
             operator they are reading something they are not. */}
         {resolution.state === "unknown" && (
           <Banner tone="danger" title="No such settings section">
-            This build has no settings section called &quot;{resolution.requested}&quot;. Pick one from the
+            This build has no settings section called “{resolution.requested}”. Pick one from the
             list beside this.
           </Banner>
         )}
@@ -558,7 +569,7 @@ export function SettingsPage({
           >
             <SectionLabel>{resolution.entry.label}</SectionLabel>
             <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-              This build has no renderer for the served section &quot;{resolution.entry.id}&quot;.
+              This build has no renderer for the served section “{resolution.entry.id}”.
             </span>
           </section>
         )}
