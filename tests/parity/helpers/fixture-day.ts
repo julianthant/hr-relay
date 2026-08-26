@@ -825,19 +825,59 @@ interface NoteSeed {
   readonly message: string;
 }
 
+/**
+ * A LIVE combined log page, built the way the server builds one (D270 / L3).
+ *
+ * `buildRunSection`'s `logs` arm composes `rows` FIRST — one row per ordered
+ * log entry, a note entry becoming a `kind: "note"` row whose `logId` is the
+ * note's own id — and then derives `notes` from those rows as the exact
+ * compatibility mirror. This fixture does the same, in that order, because the
+ * live renderer (`logRowsOf` → `requireLiveLogRows`) reads `rows` and THROWS
+ * when a live page omits them: a page authored the other way round is not a
+ * thinner fixture, it is a screen that unmounts before anything is asserted.
+ *
+ * `rows` is optional on the wire only so a frozen archive written before this
+ * vocabulary stays readable, which is why `NotePageSchema.parse` alone cannot
+ * catch the omission — `requireLiveRows` below is the half that can.
+ */
 function notePageOf(seed: number, notes: readonly NoteSeed[]): z.infer<typeof NotePageSchema> {
-  return NotePageSchema.parse({
-    runId: uuidOf(seed),
-    notes: notes.map((note, index) => ({
+  const rows = notes.map((note, index) => ({
+    kind: "note" as const,
+    logId: uuidOf(seed * 1000 + index + 1),
+    sequence: index,
+    note: {
       noteId: uuidOf(seed * 1000 + index + 1),
       runId: uuidOf(seed),
       sequence: index,
       at: at(note.minute, index),
       level: note.level,
       message: note.message,
-    })),
+    },
+  }));
+  return requireLiveRows(NotePageSchema.parse({
+    runId: uuidOf(seed),
+    rows,
+    notes: rows.map((row) => row.note),
     nextCursor: { state: "absent", reason: "end-of-page" },
-  });
+  }));
+}
+
+/**
+ * Fail loud when an authored LIVE page carries the archive-only shape.
+ *
+ * Every page this adapter serves answers a live `?section=logs` query, so the
+ * optional arm of the wire is never the right one here. Asserting it at the
+ * point of authorship names the fixture; discovering it in the browser costs a
+ * silent unmount and a theme assertion blaming the capture.
+ */
+function requireLiveRows(page: z.infer<typeof NotePageSchema>): z.infer<typeof NotePageSchema> {
+  if (page.rows === undefined) {
+    throw new Error(
+      `fixture log page for run ${String(page.runId)} omits rows; a live log page must carry the `
+      + "combined row vocabulary the renderer reads, and the notes-only shape belongs to frozen archives",
+    );
+  }
+  return page;
 }
 
 /**
