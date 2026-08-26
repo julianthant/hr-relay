@@ -59,13 +59,30 @@ describe("command result feed settlement (D253)", () => {
  * look exactly like "it worked", so it throws instead of returning quietly.
  */
 describe("the applied-command toast (D253)", () => {
-  const toasted: { title: string; description: string }[] = [];
-  const toast = (input: { tone: "success"; title: string; description: string }): string => {
-    toasted.push({ title: input.title, description: input.description });
-    return "toast-id";
+  /*
+    A RECORDER PER TEST, not one shared by the block. A `toasted` array declared
+    beside the `it`s carries whatever the previous test emitted, so the refusal
+    case could only ever ask whether the count had GROWN — and `length === 1`
+    is satisfied both by "it stayed silent" and by "it emitted a success toast
+    and the earlier test's entry vanished". The one claim that matters there is
+    that NOTHING was emitted, and only a fresh recorder can state it.
+  */
+  const recorder = (): {
+    toasted: { title: string; description: string }[];
+    toast: (input: { tone: "success"; title: string; description: string }) => string;
+  } => {
+    const toasted: { title: string; description: string }[] = [];
+    return {
+      toasted,
+      toast: (input): string => {
+        toasted.push({ title: input.title, description: input.description });
+        return "toast-id";
+      },
+    };
   };
 
   it("draws the applied receipt from the settlement and the surface's own context", () => {
+    const { toasted, toast } = recorder();
     toastAppliedCommandResult(toast, {
       settlement: settleCommandResult(CommandResultSchema.parse({
         state: "applied",
@@ -81,6 +98,7 @@ describe("the applied-command toast (D253)", () => {
   });
 
   it("throws rather than falling silent when handed a refusal", () => {
+    const { toasted, toast } = recorder();
     assert.throws(
       () => {
         toastAppliedCommandResult(toast, {
@@ -96,6 +114,6 @@ describe("the applied-command toast (D253)", () => {
       /refused settlement of Retry on Jordan Reyes/u,
       "a quiet return would leave the operator with no toast at all and no reason for its absence",
     );
-    assert.equal(toasted.length, 1, "and it must not have emitted a success toast on the way out");
+    assert.deepEqual(toasted, [], "and it must not have emitted a success toast on the way out");
   });
 });
