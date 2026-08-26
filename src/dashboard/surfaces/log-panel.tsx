@@ -1330,7 +1330,7 @@ function LogLine({ row, dim, hit }: { row: LogRow; dim: boolean; hit: boolean })
  * tell a live stream from an idle one either. The house pattern for a
  * hue-blind status cue is the one `DirectionRail` already uses beside it in
  * this bundle: keep the colour, add the MOVEMENT the running row's own dot
- * already carries (`animate-pulse`, same as the timeline's `active` mark), and
+ * already carries (the pulse, same as the timeline's `active` mark), and
  * pair an `sr-only` word so the fact survives no colour and no motion at all.
  *
  * Exported for the F6b render pin
