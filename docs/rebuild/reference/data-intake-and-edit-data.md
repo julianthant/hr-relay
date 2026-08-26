@@ -1916,7 +1916,12 @@ only the enqueued arm renders the terminal id, all five fingerprints, derived to
 source-row disposition table. The Rerun diff tab names a no-prior-manifest empty state, or renders
 changed axes, membership additions/removals and hash-only changed inputs. It does not synthesize an
 item label for membership rows: the served `ValidRow` carries identity and input evidence, not an
-operator label. (Track F IN123–IN143, 2026-08-25.)
+operator label. Dense values keep their short scan form, while the full prior manifest id, hashes and
+parsed input remain keyboard/touch reachable through the dashboard's Popover detail vocabulary.
+Manifest dispositions, added/removed membership and changed-input evidence render in exact local
+10-row pages; this is a surface bound, not D9's proposed shared virtualization primitive. IN144's
+closing rerun copy/icon remains OPEN and is not part of Track F's autonomous IN123–IN143 row.
+(Track F IN123–IN143, 2026-08-25.)
 
 **One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
 inserted; `start-run` and this arm reach it with different plans and identical obligations — the

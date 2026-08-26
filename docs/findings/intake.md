@@ -26,7 +26,8 @@ axes, membership, counts and hash-only changed inputs.
 
 **Ledger rows folded here:** IN123–IN136, IN139 and IN142 are ported. IN137 and IN138 remain
 operator-owned presentation decisions. IN143 has the exact served item ids and input hashes, but
-remains open for a human-readable item label because no wire producer serves one.
+remains open for a human-readable item label because no wire producer serves one. IN144 remains an
+OPEN operator-owned copy/icon decision; the unratified closing banner is not rendered.
 
 **Verification.** Focused projection tests cover reservation, terminal facts, empty rerun and
 changed rerun states. The dashboard fixture renders both terminal stages; reference captures were
@@ -45,7 +46,8 @@ membership/count inputs. The UI fails loud for missing terminal facts rather tha
 plausible manifest.
 
 **Remaining boundary.** No served source supplies a human-readable membership item label for
-IN143. The UI therefore renders the exact item id and short input hash without inventing copy.
+IN143. The UI therefore renders the exact item id and short input hash without inventing copy; its
+full hash is reachable through the same detail popover as other compact evidence.
 
 ---
 
