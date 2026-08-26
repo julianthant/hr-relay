@@ -449,6 +449,20 @@ const WorkerStopAcknowledgementSchema = z.strictObject({
   escalation: WorkerStopEscalationSchema,
 });
 
+const WorkerPauseAcknowledgementSchema = z.strictObject({
+  command: z.literal("pause-worker"),
+  state: z.literal("acknowledged"),
+  member: WorkerPoolMemberSchema,
+  stage: z.literal("pause-requested"),
+});
+
+const WorkerResumeAcknowledgementSchema = z.strictObject({
+  command: z.literal("resume-worker"),
+  state: z.literal("acknowledged"),
+  member: WorkerPoolMemberSchema,
+  stage: z.literal("resume-requested"),
+});
+
 export interface WorkerPoolPlanRequest {
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
@@ -467,7 +481,22 @@ export interface WorkerPoolStopRequest {
   readonly escalation: z.infer<typeof WorkerStopEscalationSchema>;
 }
 
-export type WorkerSupervisorRequest = WorkerPoolPlanRequest | WorkerPoolSpawnRequest | WorkerPoolStopRequest;
+export interface WorkerPoolPauseRequest {
+  readonly command: "pause-worker";
+  readonly member: WorkerPoolMember;
+}
+
+export interface WorkerPoolResumeRequest {
+  readonly command: "resume-worker";
+  readonly member: WorkerPoolMember;
+}
+
+export type WorkerSupervisorRequest =
+  | WorkerPoolPlanRequest
+  | WorkerPoolSpawnRequest
+  | WorkerPoolStopRequest
+  | WorkerPoolPauseRequest
+  | WorkerPoolResumeRequest;
 
 export interface WorkerPoolProcessSupervisor {
   execute(request: WorkerSupervisorRequest): unknown;
@@ -604,11 +633,31 @@ export function createWorkerPoolRuntimeExecutor(
       requireSameMember("stop-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
-    pauseWorker(): never {
-      throw new Error("pause-worker is not implemented by the pool runtime contract yet");
+    pauseWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "pause-worker") {
+        throw new Error(`pauseWorker received a ${command.type} command`);
+      }
+      const member = poolMemberFromIdentity(command.target.workerId);
+      const acknowledgement = WorkerPauseAcknowledgementSchema.parse(supervisor.execute({
+        command: "pause-worker",
+        member,
+      }));
+      requireSameMember("pause-worker", member, acknowledgement.member);
+      return { state: "accepted" };
     },
-    resumeWorker(): never {
-      throw new Error("resume-worker is not implemented by the pool runtime contract yet");
+    resumeWorker(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "resume-worker") {
+        throw new Error(`resumeWorker received a ${command.type} command`);
+      }
+      const member = poolMemberFromIdentity(command.target.workerId);
+      const acknowledgement = WorkerResumeAcknowledgementSchema.parse(supervisor.execute({
+        command: "resume-worker",
+        member,
+      }));
+      requireSameMember("resume-worker", member, acknowledgement.member);
+      return { state: "accepted" };
     },
     refreshBrowser(): never {
       throw new Error("refresh-browser is not implemented by the pool runtime contract yet");

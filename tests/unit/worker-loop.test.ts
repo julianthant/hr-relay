@@ -452,6 +452,76 @@ describe("pool-capable worker runtime executor seam", () => {
       ],
     }]);
   });
+
+  it("acknowledges pause only at the explicit member's requested stage", () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "pause-worker",
+          state: "acknowledged",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 1,
+            workerId: "person-lookup-worker-1",
+          },
+          stage: "pause-requested",
+        };
+      },
+    });
+    const pause = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "pause-worker",
+      target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
+    });
+
+    assert.deepEqual(executor.pauseWorker({ command: pause, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "pause-worker",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 1,
+        workerId: "person-lookup-worker-1",
+      },
+    }]);
+  });
+
+  it("acknowledges resume only at the explicit member's requested stage", () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "resume-worker",
+          state: "acknowledged",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 3,
+            workerId: "person-lookup-worker-3",
+          },
+          stage: "resume-requested",
+        };
+      },
+    });
+    const resume = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "resume-worker",
+      target: { workerId: "person-lookup-worker-3", expectedVersion: 1 },
+    });
+
+    assert.deepEqual(executor.resumeWorker({ command: resume, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "resume-worker",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 3,
+        workerId: "person-lookup-worker-3",
+      },
+    }]);
+  });
 });
 
 describe("phase-1 worker runtime executor seam", () => {
