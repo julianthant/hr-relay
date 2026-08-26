@@ -402,7 +402,7 @@ export const WorkerPoolMemberSchema = z.strictObject({
 });
 export type WorkerPoolMember = z.infer<typeof WorkerPoolMemberSchema>;
 
-const WorkerStopEscalationSchema = z.tuple([
+export const WorkerStopEscalationSchema = z.tuple([
   z.strictObject({
     stage: z.literal("graceful-stop-requested"),
     timeoutMs: z.literal(WORKER_GRACEFUL_STOP_TIMEOUT_MS),
@@ -413,8 +413,9 @@ const WorkerStopEscalationSchema = z.tuple([
   }),
   z.strictObject({ stage: z.literal("sigkill-sent") }),
 ]);
+export type WorkerStopEscalation = z.infer<typeof WorkerStopEscalationSchema>;
 
-const WorkerPlanMemberFactSchema = z.discriminatedUnion("stage", [
+export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("stage", [
   z.strictObject({
     member: WorkerPoolMemberSchema,
     stage: z.literal("running"),
@@ -431,13 +432,17 @@ const WorkerPlanMemberFactSchema = z.discriminatedUnion("stage", [
     escalation: WorkerStopEscalationSchema,
   }),
 ]);
+export type WorkerPoolMemberReconciliationFact = z.infer<typeof WorkerPoolMemberReconciliationFactSchema>;
 
-const WorkerPlanReconciliationAcknowledgementSchema = z.strictObject({
+export const WorkerPoolReconciliationAcknowledgementSchema = z.strictObject({
   command: z.literal("plan-worker-count"),
   state: z.literal("acknowledged"),
   desiredWorkers: PoolSizeSchema,
-  members: z.array(WorkerPlanMemberFactSchema).min(1).max(MAX_WORKERS_PER_POOL),
+  members: z.array(WorkerPoolMemberReconciliationFactSchema).min(1).max(MAX_WORKERS_PER_POOL),
 });
+export type WorkerPoolReconciliationAcknowledgement = z.infer<
+  typeof WorkerPoolReconciliationAcknowledgementSchema
+>;
 
 const WorkerSpawnAcknowledgementSchema = z.strictObject({
   command: z.literal("spawn-worker"),
@@ -484,6 +489,17 @@ const WorkerReopenAcknowledgementSchema = z.strictObject({
   stage: z.literal("reopened"),
 });
 
+export const WorkerSupervisorAcknowledgementSchema = z.discriminatedUnion("command", [
+  WorkerPoolReconciliationAcknowledgementSchema,
+  WorkerSpawnAcknowledgementSchema,
+  WorkerStopAcknowledgementSchema,
+  WorkerPauseAcknowledgementSchema,
+  WorkerResumeAcknowledgementSchema,
+  WorkerRefreshAcknowledgementSchema,
+  WorkerReopenAcknowledgementSchema,
+]);
+export type WorkerSupervisorAcknowledgement = z.infer<typeof WorkerSupervisorAcknowledgementSchema>;
+
 export interface WorkerPoolPlanRequest {
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
@@ -499,7 +515,7 @@ export interface WorkerPoolSpawnRequest {
 export interface WorkerPoolStopRequest {
   readonly command: "stop-worker";
   readonly member: WorkerPoolMember;
-  readonly escalation: z.infer<typeof WorkerStopEscalationSchema>;
+  readonly escalation: WorkerStopEscalation;
 }
 
 export interface WorkerPoolPauseRequest {
@@ -574,7 +590,7 @@ function poolMemberFromWorkerId(workflowId: WorkflowId, workerId: WorkerId): Wor
   return member;
 }
 
-function workerStopEscalation(): z.infer<typeof WorkerStopEscalationSchema> {
+function workerStopEscalation(): WorkerStopEscalation {
   return WorkerStopEscalationSchema.parse([
     { stage: "graceful-stop-requested", timeoutMs: WORKER_GRACEFUL_STOP_TIMEOUT_MS },
     { stage: "sigterm-sent", timeoutMs: WORKER_SIGTERM_TIMEOUT_MS },
@@ -625,7 +641,7 @@ export function createWorkerPoolRuntimeExecutor(
         { length: desiredWorkers },
         (_, offset) => poolMember(command.target.workflowId, offset + 1),
       );
-      const acknowledgement = WorkerPlanReconciliationAcknowledgementSchema.parse(supervisor.execute({
+      const acknowledgement = WorkerPoolReconciliationAcknowledgementSchema.parse(supervisor.execute({
         command: "plan-worker-count",
         workflowId: command.target.workflowId,
         desiredWorkers,
