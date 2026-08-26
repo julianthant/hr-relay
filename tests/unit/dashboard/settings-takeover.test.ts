@@ -28,6 +28,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
+import { SettingsSectionPrimitiveSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { WorkerCardWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { SessionPanel } from "../../../src/dashboard/surfaces/shell.js";
 import { appVersionTag, fmtAppVersion } from "../../../src/dashboard/surfaces/format.js";
@@ -44,7 +45,12 @@ import {
   type SettingsSection,
 } from "../../../src/dashboard/surfaces/settings-model.js";
 
-const STORAGE: SettingsSection = { id: "storage", label: "Storage", revision: 1 };
+/** Parsed, so a case cannot express a section the bootstrap would refuse. */
+function section(id: string, label: string): SettingsSection {
+  return SettingsSectionPrimitiveSchema.parse({ id, label, revision: 1 });
+}
+
+const STORAGE = section("storage", "Storage");
 
 describe("the settings route (D272 item 1)", () => {
   it("carries an EMPTY value, because that is the page's first section", () => {
@@ -107,7 +113,7 @@ describe("the settings page's nav (D274 item 5)", () => {
   });
 
   it("gives a served section this build cannot render its own glyph", () => {
-    const groups = buildSettingsNav([STORAGE, { id: "budgets", label: "Budgets", revision: 1 }]);
+    const groups = buildSettingsNav([STORAGE, section("budgets", "Budgets")]);
     assert.deepEqual(groups[0]?.entries.map((entry) => entry.icon), ["storage", "unrendered"]);
   });
 });
@@ -181,7 +187,10 @@ function sessionBarText(cards: readonly ReturnType<typeof WorkerCardWireSchema.p
     workerCards: cards,
     queueSurfaces: [],
     workerPools: [],
-    workflows: [{ id: "person-lookup", label: "Person lookup", startable: true, version: 7 }],
+    // Empty on purpose: the chip's SENTENCE is what is pinned here, and
+    // `labelOf` names an unlisted workflow by its id rather than throwing, so
+    // a bootstrap fixture would add eight fields the assertion never reads.
+    workflows: [],
     counts: [],
     nowIso: "2026-08-26T16:10:00.000Z",
     connection: { state: "live" },

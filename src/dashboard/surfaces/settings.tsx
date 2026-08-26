@@ -384,6 +384,14 @@ function SectionButton({
       className={cn(
         "flex min-w-0 items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)]",
         "px-[var(--ds-space-base)] py-[var(--ds-space-snug)] text-left",
+        // The finger's 44px floor, taken by GROWING the entry rather than by
+        // hanging an overlay on it (`ds/tokens.css`'s coarse-pointer note, and
+        // unit F2c's lesson). It is safe here where it was not on the member
+        // line: these entries are separated by a real `gap-hair`, so a taller
+        // entry has its own box to grow into and cannot resolve a tap to its
+        // neighbour. A fine pointer sees the demo's density unchanged, and the
+        // parity corpus renders at `pointer: fine`.
+        "[@media(pointer:coarse)]:min-h-[44px]",
         dsText.ui,
         dsFocus,
         dsMotion.base,
@@ -492,7 +500,7 @@ export function SettingsPage({
           size="sm"
           icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
           onClick={onClose}
-          className="justify-start"
+          className="justify-start [@media(pointer:coarse)]:min-h-[44px]"
         >
           Back to the dashboard
         </Button>
