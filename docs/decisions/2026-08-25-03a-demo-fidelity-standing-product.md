@@ -65,12 +65,12 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 **Notes.** _(your notes here)_
 
 ## 8 · Intake Manifest and rerun stages
-**Situation.** Intake renders neither the Manifest stage nor a real rerun diff, even though an enqueue result names a bare manifest id. Some detailed lists need new wire facts, but the placement decision is independent of those producers.
+**Situation.** Intake already renders a compact enqueued-manifest block with the served manifest, source, artifact, created, and row facts, and its rerun banner already shows the served same-plan or changed-axis diff. The remaining operator-owned gap is the explicit Manifest/Rerun-diff review framing: there is no stage or equivalent panel for the comparison entry, the no-prior-intake state, or the closing replay-safety note. Per-source dispositions and added/removed item lists remain unserved producer fields and are not choices to invent in this brief.
 **Options.**
-- **A.** Restore stages 5 and 6 in the intake workspace; show only served facts and book the missing diff fields as explicit producers — preserves the demo flow without inventing values.
-- **B.** Keep the one-line result banner — minimal work, but removes provenance and rerun comparison from the operator flow.
-- **C.** Defer both stages until every missing wire field exists — avoids partial UI, but leaves currently served manifest evidence without a surface.
-**Recommendation.** A — a partial, explicit absence is safer than hiding a durable manifest entirely.
+- **A.** Add equivalent Manifest and Rerun-diff review panels to the current workspace around the facts and axis changes already served, including explicit compare, empty, and closing-safety states — restores the operator review path without fabricating producer-owned detail.
+- **B.** Keep the compact facts and axis-change banner as-is and defer only the missing operator-owned framing — avoids surface work, but leaves prior-intake review incomplete.
+- **C.** Defer all remaining framing until the unserved per-row and added/removed fields exist — keeps the surface smaller, but withholds review states that need no new wire facts.
+**Recommendation.** A — it completes the operator-owned review path while keeping absent detailed data explicitly out of the UI.
 **Notes.** _(your notes here)_
 
 ## 9 · Intake unresolved-rejection gate
