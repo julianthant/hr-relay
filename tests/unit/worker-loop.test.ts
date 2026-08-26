@@ -429,6 +429,7 @@ describe("pool-capable worker runtime executor seam", () => {
             },
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "initiating",
             escalation: STOP_ESCALATION,
             observed: OBSERVED_GRACEFUL,
           },
@@ -440,6 +441,7 @@ describe("pool-capable worker runtime executor seam", () => {
             },
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "initiating",
             escalation: STOP_ESCALATION,
             observed: OBSERVED_GRACEFUL,
           },
@@ -742,10 +744,11 @@ describe("pool-capable worker runtime executor seam", () => {
             member: poolMemberFixture(2),
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "initiating",
             escalation: STOP_ESCALATION,
             observed: [{ stage: "graceful-stop-requested", at: "2026-07-31T17:00:00.001Z" }],
           },
-          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
         ],
       },
       request: {
@@ -833,6 +836,7 @@ describe("pool-capable worker runtime executor seam", () => {
             member: poolMemberFixture(2),
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "reconciling",
             escalation: STOP_ESCALATION,
             observed: [
               { stage: "graceful-stop-requested", at: NOW },
@@ -844,6 +848,7 @@ describe("pool-capable worker runtime executor seam", () => {
             member: poolMemberFixture(3),
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "initiating",
             escalation: STOP_ESCALATION,
             observed: OBSERVED_GRACEFUL,
           },
@@ -876,6 +881,7 @@ describe("pool-capable worker runtime executor seam", () => {
             member: poolMemberFixture(2),
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "reconciling",
             escalation: STOP_ESCALATION,
             observed: [
               { stage: "graceful-stop-requested", at: "2026-07-31T17:05:00.000Z" },
@@ -886,6 +892,7 @@ describe("pool-capable worker runtime executor seam", () => {
             member: poolMemberFixture(3),
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "initiating",
             escalation: STOP_ESCALATION,
             observed: OBSERVED_GRACEFUL,
           },
@@ -907,9 +914,9 @@ describe("pool-capable worker runtime executor seam", () => {
   });
 
   it("refuses an initiating plan fact claiming escalation stages beyond the graceful request", async () => {
-    // The plan command INITIATES the excess members' graceful stops, so at
-    // acknowledgement time only graceful-stop-requested can have been
-    // observed; SIGTERM/SIGKILL are recorded through later reconciliation
+    // A fact attested `initiating` says THIS plan requested the graceful stop,
+    // so at acknowledgement time only graceful-stop-requested can have been
+    // observed; SIGTERM/SIGKILL are recorded through later `reconciling`
     // facts as they occur, never promised in the initiating acknowledgement.
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
@@ -922,6 +929,7 @@ describe("pool-capable worker runtime executor seam", () => {
             member: poolMemberFixture(2),
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "initiating",
             escalation: STOP_ESCALATION,
             observed: [
               { stage: "graceful-stop-requested", at: NOW },
@@ -932,6 +940,7 @@ describe("pool-capable worker runtime executor seam", () => {
             member: poolMemberFixture(3),
             stage: "graceful-stop-requested",
             ownership: "supervised",
+            phase: "initiating",
             escalation: STOP_ESCALATION,
             observed: OBSERVED_GRACEFUL,
           },
@@ -952,6 +961,191 @@ describe("pool-capable worker runtime executor seam", () => {
     );
   });
 
+  it("accepts a reconciling plan fact reporting escalation stages that already occurred", async () => {
+    // A supervisor mid-escalation (graceful sent earlier, SIGTERM since) must
+    // have a legal TRUTHFUL fact on a re-issued plan: the supervisor-attested
+    // `reconciling` phase accepts the policy-ordered observed prefix that
+    // ALREADY happened, still bounded by the command's now — while the
+    // initiating arm above stays pinned to the graceful stage alone.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "reconciling",
+            escalation: STOP_ESCALATION,
+            observed: [
+              { stage: "graceful-stop-requested", at: "2026-07-31T16:58:00.000Z" },
+              { stage: "sigterm-sent", at: "2026-07-31T16:59:00.000Z" },
+            ],
+          },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: ["person-lookup-worker-1"],
+    });
+  });
+
+  it("bounds a reconciling plan fact's observed stages by the command's now", async () => {
+    // Reconciling relaxes WHICH stages may be reported, never WHEN: an
+    // escalation stage postdating the command's now is still a claim about
+    // the future dressed as a fact.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            phase: "reconciling",
+            escalation: STOP_ESCALATION,
+            observed: [
+              { stage: "graceful-stop-requested", at: NOW },
+              { stage: "sigterm-sent", at: "2026-07-31T17:00:00.001Z" },
+            ],
+          },
+          { member: poolMemberFixture(3), stage: "unmet", reason: "not-started" },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /person-lookup-worker-2 reports sigterm-sent observed at 2026-07-31T17:00:00\.001Z, after the command's now/,
+    );
+  });
+
+  it("refuses a plan fact that omits the initiating/reconciling attestation", async () => {
+    // The phase is supervisor-attested and schema-pinned: without it, an
+    // initiating acknowledgement could smuggle future stages by simply not
+    // saying which arm it claims.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          {
+            member: poolMemberFixture(2),
+            stage: "graceful-stop-requested",
+            ownership: "supervised",
+            escalation: STOP_ESCALATION,
+            observed: OBSERVED_GRACEFUL,
+          },
+          { member: poolMemberFixture(3), stage: "unmet", reason: "not-started" },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
+      /phase/,
+    );
+  });
+
+  it("refuses a malformed command now instead of silently unbounding observed stages", async () => {
+    // Date.parse of a garbage instant is NaN and every `> NaN` comparison is
+    // false, so a malformed now would silently accept ANY observed timestamp —
+    // the bound must fail loud, naming the offending value.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "stop-worker",
+        state: "acknowledged",
+        member: poolMemberFixture(2),
+        ownership: "supervised",
+        escalation: STOP_ESCALATION,
+        observed: OBSERVED_GRACEFUL,
+      }),
+    });
+    const stop = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "stop-worker",
+      target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
+    });
+
+    await assert.rejects(
+      () => executor.stopPoolWorker({ command: stop, now: "not-an-instant" }),
+      /stop-worker for person-lookup-worker-2 received an unparseable command now "not-an-instant"/,
+    );
+  });
+
+  it.each([
+    { method: "planPoolWorkerCount" },
+    { method: "spawnPoolWorker" },
+    { method: "stopPoolWorker" },
+    { method: "pausePoolWorker" },
+    { method: "resumePoolWorker" },
+    { method: "refreshPoolBrowser" },
+    { method: "reopenPoolBrowser" },
+  ] as const)("$method names itself when mis-dispatched a foreign command", async ({ method }) => {
+    // The diagnostic must name the POOL method that mis-received the command —
+    // not the phase-1 executor's differently named arm — so a mis-wire is
+    // legible at the seam that refused it.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => {
+        throw new Error("supervisor must not be called on a mis-dispatch");
+      },
+    });
+    const foreignType = method === "planPoolWorkerCount" ? "spawn-worker" : "plan-worker-count";
+    const command = method === "planPoolWorkerCount"
+      ? workerBrowserCommand({
+          ...envelope,
+          family: "worker-browser",
+          type: "spawn-worker",
+          target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+          payload: { workerId: "person-lookup-worker-1" },
+        })
+      : workerBrowserCommand({
+          ...envelope,
+          family: "worker-browser",
+          type: "plan-worker-count",
+          target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+          payload: { desiredWorkers: 1 },
+        });
+
+    await assert.rejects(
+      () => executor[method]({ command, now: requestedAt }),
+      new RegExp(`${method} received a ${foreignType} command`),
+    );
+  });
+
   it.each([
     {
       type: "plan-worker-count",
@@ -968,7 +1162,7 @@ describe("pool-capable worker runtime executor seam", () => {
         members: [
           { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
           { member: poolMemberFixture(2), stage: "running", ownership: "external" },
-          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
         ],
       },
     },
@@ -1197,8 +1391,8 @@ describe("pool-capable worker runtime executor seam", () => {
           desiredWorkers: 1,
           members: [
             { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
-            { member: poolMemberFixture(2), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
-            { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+            { member: poolMemberFixture(2), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+            { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
           ],
         };
       },
@@ -1237,7 +1431,7 @@ describe("pool-capable worker runtime executor seam", () => {
         members: [
           { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
           { member: poolMemberFixture(2), stage: "unmet", reason: "crashed" },
-          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
         ],
       }),
     });
@@ -1263,7 +1457,7 @@ describe("pool-capable worker runtime executor seam", () => {
         desiredWorkers: 1,
         members: [
           { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
-          { member: poolMemberFixture(2), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+          { member: poolMemberFixture(2), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
           // person-lookup-worker-3 silently omitted: its stop is never covered.
         ],
       }),
@@ -1534,7 +1728,7 @@ describe("pool-capable worker runtime executor seam", () => {
         state: "acknowledged",
         desiredWorkers: 2,
         members: [
-          { member: poolMemberFixture(1), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+          { member: poolMemberFixture(1), stage: "graceful-stop-requested", ownership: "supervised", phase: "initiating", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
           { member: poolMemberFixture(2), stage: "running", ownership: "supervised" },
         ],
       },

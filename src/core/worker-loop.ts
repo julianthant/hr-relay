@@ -500,8 +500,17 @@ export const WorkerPoolMemberReconciliationFactSchema = z.discriminatedUnion("st
     member: WorkerPoolMemberSchema,
     stage: z.literal("graceful-stop-requested"),
     ownership: WorkerPoolOwnershipSchema,
+    /**
+     * Supervisor-attested provenance of the stop, schema-pinned so it can
+     * never be left implicit: `initiating` — THIS plan requested the graceful
+     * stop, so exactly the graceful stage can have been observed;
+     * `reconciling` — the stop was already in flight when this plan was
+     * acknowledged, and `observed` reports every escalation stage that has
+     * ALREADY occurred. Both arms stay bounded by the command's `now`.
+     */
+    phase: z.enum(["initiating", "reconciling"]),
     escalation: WorkerStopEscalationPolicySchema,
-    /** Recorded AS THEY OCCUR: a later reconciliation may report escalations that happened since. */
+    /** Recorded AS THEY OCCUR: a later `reconciling` fact reports escalations that happened since. */
     observed: WorkerStopObservedStagesSchema,
   }),
 ]);
@@ -748,10 +757,11 @@ function requireDurableOwnership(
 }
 
 /**
- * The command being acknowledged is the one that INITIATED the graceful stop,
- * so at acknowledgement time only `graceful-stop-requested` can have been
+ * The acknowledgement being checked INITIATED the graceful stop — a stop
+ * command always, a plan fact when the supervisor attests `initiating` — so
+ * at acknowledgement time only `graceful-stop-requested` can have been
  * observed. The schema pins observation order; this pins TIME: SIGTERM/SIGKILL
- * are recorded through later reconciliation facts as they occur, never
+ * are recorded through later `reconciling` plan facts as they occur, never
  * promised by the initiating acknowledgement.
  */
 function requireInitialGracefulObservation(
@@ -780,8 +790,17 @@ function requireObservedNotAfterNow(
   observed: WorkerStopObservedStages,
   now: string,
 ): void {
+  const nowMs = Date.parse(now);
+  if (Number.isNaN(nowMs)) {
+    // `> NaN` is false for every instant, so a malformed `now` would silently
+    // accept ANY observed timestamp — the bound must fail loud instead.
+    throw new Error(
+      `${command} for ${member.workerId} received an unparseable command now ${JSON.stringify(now)}; `
+      + "refusing to bound observed escalation stages against a malformed instant",
+    );
+  }
   for (const record of observed) {
-    if (Date.parse(record.at) > Date.parse(now)) {
+    if (Date.parse(record.at) > nowMs) {
       throw new Error(
         `${command} for ${member.workerId} reports ${record.stage} observed at ${record.at}, after the `
         + `command's now ${now}; an observation cannot postdate the acknowledgement that carries it`,
@@ -825,7 +844,7 @@ export function createWorkerPoolRuntimeExecutor(
     async planPoolWorkerCount(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerPlanAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "plan-worker-count") {
-        throw new Error(`planWorkerCount received a ${command.type} command`);
+        throw new Error(`planPoolWorkerCount received a ${command.type} command`);
       }
       const desiredWorkers = PoolSizeSchema.parse(command.payload.desiredWorkers);
       const members = Object.freeze(Array.from(
@@ -879,7 +898,13 @@ export function createWorkerPoolRuntimeExecutor(
           );
         }
         if (fact.stage === "graceful-stop-requested") {
-          requireInitialGracefulObservation("plan-worker-count", fact.member, fact.observed);
+          // `initiating` (this plan requested the stop) pins the observation
+          // to the graceful stage alone; a supervisor-attested `reconciling`
+          // fact reports the policy-ordered prefix that ALREADY occurred —
+          // the schema pins its order, and both arms stay bounded by now.
+          if (fact.phase === "initiating") {
+            requireInitialGracefulObservation("plan-worker-count", fact.member, fact.observed);
+          }
           requireObservedNotAfterNow("plan-worker-count", fact.member, fact.observed, context.now);
         }
         if (offset >= desiredWorkers && fact.stage === "running") {
@@ -897,7 +922,7 @@ export function createWorkerPoolRuntimeExecutor(
     async spawnPoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "spawn-worker") {
-        throw new Error(`spawnWorker received a ${command.type} command`);
+        throw new Error(`spawnPoolWorker received a ${command.type} command`);
       }
       const member = poolMemberFromWorkerId(command.target.workflowId, command.payload.workerId);
       const acknowledgement = WorkerSpawnAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
@@ -911,7 +936,7 @@ export function createWorkerPoolRuntimeExecutor(
     async stopPoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "stop-worker") {
-        throw new Error(`stopWorker received a ${command.type} command`);
+        throw new Error(`stopPoolWorker received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
       const escalation = workerStopEscalation();
@@ -929,7 +954,7 @@ export function createWorkerPoolRuntimeExecutor(
     async pausePoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "pause-worker") {
-        throw new Error(`pauseWorker received a ${command.type} command`);
+        throw new Error(`pausePoolWorker received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerPauseAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
@@ -943,7 +968,7 @@ export function createWorkerPoolRuntimeExecutor(
     async resumePoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "resume-worker") {
-        throw new Error(`resumeWorker received a ${command.type} command`);
+        throw new Error(`resumePoolWorker received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerResumeAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
@@ -957,7 +982,7 @@ export function createWorkerPoolRuntimeExecutor(
     async refreshPoolBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "refresh-browser") {
-        throw new Error(`refreshBrowser received a ${command.type} command`);
+        throw new Error(`refreshPoolBrowser received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
@@ -978,7 +1003,7 @@ export function createWorkerPoolRuntimeExecutor(
     async reopenPoolBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "reopen-browser") {
-        throw new Error(`reopenBrowser received a ${command.type} command`);
+        throw new Error(`reopenPoolBrowser received a ${command.type} command`);
       }
       const member = poolMemberFromIdentity(command.target.workerId);
       const acknowledgement = WorkerReopenAcknowledgementSchema.parse(await supervisor.execute(Object.freeze({
