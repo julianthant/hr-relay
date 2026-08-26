@@ -36,6 +36,8 @@ import {
   IntakeManifestTotalsSchema,
   RerunDiffSchema,
   RowRejectSchema,
+  SourceRowDispositionSchema,
+  ValidRowSchema,
 } from "./manifest.js";
 import { ColumnBindingSchema, DetectedColumnSchema } from "./mapping.js";
 import { IntakeTargetSchema } from "./projection.js";
@@ -82,6 +84,23 @@ export const IntakeRerunWireSchema = z.strictObject({
 });
 export type IntakeRerunWire = z.infer<typeof IntakeRerunWireSchema>;
 
+/**
+ * The immutable terminal manifest an operator may inspect. This is never a
+ * preflight prediction: before enqueue only the separately served reservation
+ * exists, so the surface cannot claim a manifest has already been written.
+ */
+export const IntakeManifestWireSchema = z.strictObject({
+  manifestId: IntakeManifestIdSchema,
+  mappingFingerprint: FingerprintSchema,
+  mappingSnapshotHash: FingerprintSchema,
+  workflowContractFingerprint: FingerprintSchema,
+  createdAt: IsoInstantSchema,
+  totals: IntakeManifestTotalsSchema,
+  sourceRowDispositions: z.array(SourceRowDispositionSchema),
+  validRows: z.array(ValidRowSchema),
+});
+export type IntakeManifestWire = z.infer<typeof IntakeManifestWireSchema>;
+
 export const IntakeSessionWireSchema = z.strictObject({
   wireVersion: z.literal(1),
   intakeSessionId: IntakeSessionIdSchema,
@@ -96,6 +115,8 @@ export const IntakeSessionWireSchema = z.strictObject({
   reservedManifestId: IntakeManifestIdSchema.optional(),
   /** Set exactly when the session enqueued; the manifest is the rerun authority. */
   intakeManifestId: IntakeManifestIdSchema.optional(),
+  /** Present only after authority committed the immutable manifest. */
+  manifest: IntakeManifestWireSchema.optional(),
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
 
@@ -134,6 +155,31 @@ export const IntakeSessionWireSchema = z.strictObject({
       code: "custom",
       path: ["intakeManifestId"],
       message: "only an enqueued session carries a manifest id",
+    });
+  }
+  if (session.state === "enqueued" && session.manifest === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["manifest"],
+      message: "an enqueued session serves the immutable manifest it committed",
+    });
+  }
+  if (session.state !== "enqueued" && session.manifest !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["manifest"],
+      message: "a manifest exists only after the session enqueues",
+    });
+  }
+  if (
+    session.manifest !== undefined
+    && session.intakeManifestId !== undefined
+    && session.manifest.manifestId !== session.intakeManifestId
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["manifest", "manifestId"],
+      message: "the terminal manifest matches the session's committed manifest id",
     });
   }
   if (

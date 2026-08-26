@@ -1247,8 +1247,14 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/intake-session", path: "corrections[].correctedValue", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "exclusions[].reason", origin: "repository-authored" },
   { surface: "wire/intake-session", path: "headerCandidates[].cells[]", origin: "captured-hr-value" },
+  // Terminal valid inputs come from the immutable manifest loaded by exact id;
+  // rerun removed rows are those same durable facts, while added rows are the
+  // canonical inputs revalidated from the session's immutable source artifact.
+  { surface: "wire/intake-session", path: "manifest.validRows[].parsedInput", origin: "captured-hr-value" },
+  { surface: "wire/intake-session", path: "rerun.diff.added[].parsedInput", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "rerun.diff.changes[].now", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "rerun.diff.changes[].was", origin: "captured-hr-value" },
+  { surface: "wire/intake-session", path: "rerun.diff.removed[].parsedInput", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "sheet", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "sheets[]", origin: "captured-hr-value" },
   { surface: "wire/intake-session", path: "sourceName", origin: "captured-hr-value" },

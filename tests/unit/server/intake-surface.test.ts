@@ -109,6 +109,7 @@ function surface(): Surface {
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
     authorityRead: {
       getIntakeSession: (intakeSessionId) => database.authority.intakeSessions.get(intakeSessionId),
+      getIntakeManifest: (manifestId) => database.authority.intakeManifests.get(manifestId),
       findIntakeManifestsBySource: (sourceSha256) =>
         database.authority.intakeManifests.findBySource(sourceSha256),
     },
@@ -449,6 +450,7 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     const created = await uploadRoster(harness.intake);
     const reservedManifestId = created.session.reservedManifestId;
     assert.notEqual(reservedManifestId, undefined, "the durable upload session reserves its manifest identity");
+    assert.equal(created.session.manifest, undefined, "a reservation is not a manifest before enqueue");
     assert.equal(
       harness.database.authority.intakeSessions.get(created.session.intakeSessionId)?.reservedManifestId,
       reservedManifestId,
@@ -458,13 +460,19 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     const sessionId = await runTheRoster(harness, created);
     const enqueued = await harness.intake.read(sessionId);
     assert.equal(enqueued.intakeManifestId, reservedManifestId, "enqueue consumes the reserved identity");
-    assert.equal(
-      reservedManifestId === undefined
-        ? undefined
-        : harness.database.authority.intakeManifests.get(reservedManifestId)?.manifestId,
-      reservedManifestId,
-      "the immutable manifest is stored under that same identity",
-    );
+    if (reservedManifestId === undefined) throw new Error("the upload did not reserve a manifest identity");
+    const durable = harness.database.authority.intakeManifests.get(reservedManifestId);
+    if (durable === undefined) throw new Error("the immutable manifest is missing from authority");
+    assert.deepEqual(enqueued.manifest, {
+      manifestId: durable.manifestId,
+      mappingFingerprint: durable.mappingFingerprint,
+      mappingSnapshotHash: durable.mappingSnapshotHash,
+      workflowContractFingerprint: durable.workflowContractFingerprint,
+      createdAt: durable.createdAt,
+      totals: durable.totals,
+      sourceRowDispositions: durable.sourceRowDispositions,
+      validRows: durable.validRows,
+    }, "the terminal wire projects every Manifest-stage fact from the committed authority row");
   });
 
   it("serves no rerun view for a file that has never been enqueued", async () => {
@@ -522,12 +530,22 @@ describe("D171 rerun diff — these exact bytes have run before", () => {
     const second = await uploadRoster(harness.intake);
     assert.equal(second.state, "created");
     const fresh = second.session;
-    assert.equal(fresh.rerun?.intakeManifestId, (await harness.intake.read(first)).intakeManifestId);
+    const firstManifestId = (await harness.intake.read(first)).intakeManifestId;
+    assert.equal(fresh.rerun?.intakeManifestId, firstManifestId);
+    if (firstManifestId === undefined) throw new Error("the first session did not name its manifest");
+    const firstManifest = harness.database.authority.intakeManifests.get(firstManifestId);
+    if (firstManifest === undefined) throw new Error("the first manifest is missing from authority");
     assert.equal(fresh.rerun?.diff.kind, "changed", "an unmapped session is not last week's plan");
     assert.deepEqual(
       fresh.rerun?.diff.kind === "changed" ? fresh.rerun.diff.changes.map((change) => change.what) : [],
       ["mapping"],
       "only the mapping axis moved — same bytes, same projection, same contract",
     );
+    assert.deepEqual(
+      fresh.rerun?.diff.removed.map((row) => row.itemId),
+      firstManifest.validRows.map((row) => row.itemId),
+      "the rerun identifies every previously valid item the current plan no longer contains",
+    );
+    assert.deepEqual(fresh.rerun?.diff.added, [], "an unmapped current plan adds no runnable item");
   });
 });

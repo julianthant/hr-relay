@@ -138,6 +138,54 @@ describe("IN121 — a correction is listed, and the half nothing serves is not i
 });
 
 const MANIFEST_ID = "3f2a9c14-77b8-4d6e-9a01-5c8e2b4f6a90";
+const MANIFEST_CREATED_AT = "2026-08-21T18:30:00.000Z";
+const MANIFEST_TOTALS = {
+  sourceRows: 5,
+  valid: 3,
+  rejected: 1,
+  rejectionEvents: 1,
+  excluded: 1,
+  corrected: 1,
+};
+const TERMINAL_MANIFEST = {
+  manifestId: MANIFEST_ID,
+  mappingFingerprint: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
+  mappingSnapshotHash: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
+  workflowContractFingerprint: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
+  createdAt: MANIFEST_CREATED_AT,
+  totals: MANIFEST_TOTALS,
+  sourceRowDispositions: [
+    { sourceRow: 1, disposition: "valid", itemId: "11111111-1111-4111-8111-111111111111", currentRejectIds: [] },
+    { sourceRow: 2, disposition: "valid", itemId: "22222222-2222-4222-8222-222222222222", currentRejectIds: [] },
+    { sourceRow: 3, disposition: "valid", itemId: "33333333-3333-4333-8333-333333333333", currentRejectIds: [] },
+    {
+      sourceRow: 4,
+      disposition: "rejected",
+      currentRejectIds: ["44444444-4444-4444-8444-444444444444"],
+    },
+    { sourceRow: 5, disposition: "excluded", currentRejectIds: [] },
+  ],
+  validRows: [
+    {
+      sourceRow: 1,
+      itemId: "11111111-1111-4111-8111-111111111111",
+      inputHash: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
+      parsedInput: { emplId: "10456712" },
+    },
+    {
+      sourceRow: 2,
+      itemId: "22222222-2222-4222-8222-222222222222",
+      inputHash: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
+      parsedInput: { emplId: "10998801" },
+    },
+    {
+      sourceRow: 3,
+      itemId: "33333333-3333-4333-8333-333333333333",
+      inputHash: FIXTURE_INTAKE_VALIDATED.artifact.sha256,
+      parsedInput: { emplId: "10123456" },
+    },
+  ],
+};
 
 describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowhere else", () => {
   // Parsed rather than spread-and-cast: the enqueued shape is exactly what the
@@ -147,10 +195,11 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
     ...FIXTURE_INTAKE_VALIDATED,
     state: "enqueued",
     intakeManifestId: MANIFEST_ID,
+    manifest: TERMINAL_MANIFEST,
     rerun: {
       intakeManifestId: MANIFEST_ID,
-      createdAt: "2026-08-21T18:30:00.000Z",
-      totals: { sourceRows: 5, valid: 3, rejected: 1, rejectionEvents: 1, excluded: 1, corrected: 1 },
+      createdAt: MANIFEST_CREATED_AT,
+      totals: MANIFEST_TOTALS,
       diff: { kind: "same-plan" },
     },
   });

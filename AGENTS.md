@@ -304,6 +304,15 @@ into a message — `no-secret-values-in-logs.test.ts` enforces that half.
 
 ### Dated lessons
 
+- **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
+  current side again from the immutable intake artifact, durable decisions and their retained
+  read instant. `removed` carries the prior manifest row and `added` the current re-derived row,
+  keyed only by `itemId`: a mapping that changes identity is remove-plus-add, while one that keeps
+  identity changes only the mapping axis. Missing current layout or prior/current row facts must
+  refuse by name; an absent vector is never an empty-vector fallback. A reserved manifest id is
+  preflight identity, not proof a manifest exists—the terminal projection appears only after
+  enqueue and must load by the exact committed id.
+
 - **2026-08-25 — an irreversible intake must consume an identity authority reserved before review.**
   Mint `reservedManifestId` in the upload route's durable session write, serve that exact value, and
   make enqueue pass it unchanged into the immutable manifest. Keep terminal `intakeManifestId`

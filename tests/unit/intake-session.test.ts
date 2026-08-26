@@ -13,7 +13,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { IntakeSessionSchema, type IntakeSession } from "../../src/domain/intake/session.js";
-import { IntakeSessionWireSchema } from "../../src/domain/intake/wire.js";
+import { IntakeManifestWireSchema, IntakeSessionWireSchema } from "../../src/domain/intake/wire.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { HASH_A, LATER, NOW, UUID_2, UUID_3, UUID_7 } from "./fixtures/phase1c-contract-fixtures.js";
 
@@ -124,6 +124,27 @@ function sessionWire(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function manifestWire(overrides: Record<string, unknown> = {}) {
+  return {
+    manifestId: UUID_2,
+    mappingFingerprint: HASH_A,
+    mappingSnapshotHash: HASH_A,
+    workflowContractFingerprint: HASH_A,
+    createdAt: NOW,
+    totals: {
+      sourceRows: 0,
+      valid: 0,
+      rejected: 0,
+      rejectionEvents: 0,
+      excluded: 0,
+      corrected: 0,
+    },
+    sourceRowDispositions: [],
+    validRows: [],
+    ...overrides,
+  };
+}
+
 describe("intake session record", () => {
   it("requires an enqueued session to name its manifest, and only an enqueued one to carry it", () => {
     assert.throws(
@@ -169,10 +190,27 @@ describe("intake session record", () => {
 });
 
 describe("intake session wire", () => {
+  it("accepts the exact terminal manifest committed under the reserved identity", () => {
+    const wire = IntakeSessionWireSchema.parse(sessionWire({
+      state: "enqueued",
+      intakeManifestId: UUID_2,
+      manifest: manifestWire(),
+    }));
+
+    assert.deepEqual(wire.manifest, manifestWire());
+  });
+
   it("refuses an enqueued session without its terminal manifest identity", () => {
     assert.throws(
       () => IntakeSessionWireSchema.parse(sessionWire({ state: "enqueued" })),
       /an enqueued session names the manifest it fanned out as/u,
+    );
+  });
+
+  it("refuses an enqueued identity without the immutable terminal manifest", () => {
+    assert.throws(
+      () => IntakeSessionWireSchema.parse(sessionWire({ state: "enqueued", intakeManifestId: UUID_2 })),
+      /an enqueued session serves the immutable manifest it committed/u,
     );
   });
 
@@ -188,8 +226,34 @@ describe("intake session wire", () => {
       () => IntakeSessionWireSchema.parse(sessionWire({
         state: "enqueued",
         intakeManifestId: UUID_3,
+        manifest: manifestWire({ manifestId: UUID_3 }),
       })),
       /an enqueued session consumes its reserved manifest id exactly/u,
+    );
+  });
+
+  it("refuses a terminal manifest whose identity differs from the committed identity", () => {
+    assert.throws(
+      () => IntakeSessionWireSchema.parse(sessionWire({
+        state: "enqueued",
+        intakeManifestId: UUID_2,
+        manifest: manifestWire({ manifestId: UUID_3 }),
+      })),
+      /the terminal manifest matches the session's committed manifest id/u,
+    );
+  });
+
+  it("refuses a preflight session that claims a terminal manifest exists", () => {
+    assert.throws(
+      () => IntakeSessionWireSchema.parse(sessionWire({ manifest: manifestWire() })),
+      /a manifest exists only after the session enqueues/u,
+    );
+  });
+
+  it("refuses undeclared terminal manifest facts", () => {
+    assert.throws(
+      () => IntakeManifestWireSchema.parse(manifestWire({ guessedStatus: "ready" })),
+      /Unrecognized key/u,
     );
   });
 });

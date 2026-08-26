@@ -103,6 +103,7 @@ export interface IntakeServiceDependencies {
   }>;
   readonly authorityRead: Readonly<{
     getIntakeSession(intakeSessionId: string): IntakeSession | undefined;
+    getIntakeManifest(manifestId: string): IntakePlanManifest | undefined;
     findIntakeManifestsBySource(sourceSha256: string): readonly IntakePlanManifest[];
   }>;
   readonly artifacts: ContentAddressedArtifactWriter;
@@ -168,6 +169,9 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
     );
     const layout = parse.layout;
     const readAt = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+    const planning = workflowPlanning(descriptor);
+    const deriveCurrentItemId = (parsedInput: Parameters<typeof planning.matchKey>[0]) =>
+      ItemIdSchema.parse(deriveItemId(session.workflow, planning.matchKey(parsedInput)));
     const suggestions = layout === null
       ? []
       : suggestBindings({
@@ -183,7 +187,6 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
     const validation = session.validation.state === "none" || layout === null
       ? { state: "none" as const }
       : (() => {
-        const planning = workflowPlanning(descriptor);
         const outcome = validateIntakeRows({
           workflow: session.workflow,
           sourceSha256: session.artifact.sha256,
@@ -195,8 +198,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
           corrections: session.corrections,
           excludedRows: session.exclusions.map((entry) => entry.sourceRow),
           readAt: session.validation.readAt,
-          deriveItemId: (parsedInput) =>
-            ItemIdSchema.parse(deriveItemId(session.workflow, planning.matchKey(parsedInput))),
+          deriveItemId: deriveCurrentItemId,
         });
         return {
           state: "validated" as const,
@@ -216,12 +218,17 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
      * anything moved before they enqueue it a second time.
      */
     const rerun = ((): unknown => {
-      if (layout === null) return undefined;
       const prior = dependencies.authorityRead
         .findIntakeManifestsBySource(session.artifact.sha256)
         .filter((manifest) => manifest.workflow === session.workflow)
         .at(-1);
       if (prior === undefined) return undefined;
+      if (layout === null) {
+        throw new Error(
+          `intake session ${session.intakeSessionId} cannot compare prior manifest ${prior.manifestId}: `
+          + "the current intake layout is missing",
+        );
+      }
       return {
         intakeManifestId: prior.manifestId,
         createdAt: prior.createdAt,
@@ -230,9 +237,31 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
           session,
           layout,
           projection,
+          readAt: session.validation.state === "validated" ? session.validation.readAt : session.updatedAt,
           workflowContractFingerprint: descriptor.contractFingerprint,
           canonicalInputSchemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"),
+          deriveItemId: deriveCurrentItemId,
         })),
+      };
+    })();
+
+    const manifest = (() => {
+      if (session.intakeManifestId === undefined) return undefined;
+      const committed = dependencies.authorityRead.getIntakeManifest(session.intakeManifestId);
+      if (committed === undefined) {
+        throw new Error(
+          `enqueued intake session ${session.intakeSessionId} names missing manifest ${session.intakeManifestId}`,
+        );
+      }
+      return {
+        manifestId: committed.manifestId,
+        mappingFingerprint: committed.mappingFingerprint,
+        mappingSnapshotHash: committed.mappingSnapshotHash,
+        workflowContractFingerprint: committed.workflowContractFingerprint,
+        createdAt: committed.createdAt,
+        totals: committed.totals,
+        sourceRowDispositions: committed.sourceRowDispositions,
+        validRows: committed.validRows,
       };
     })();
 
@@ -246,6 +275,7 @@ export function createIntakeService(dependencies: IntakeServiceDependencies): In
       expectedVersion: session.version,
       ...(session.reservedManifestId === undefined ? {} : { reservedManifestId: session.reservedManifestId }),
       ...(session.intakeManifestId === undefined ? {} : { intakeManifestId: session.intakeManifestId }),
+      ...(manifest === undefined ? {} : { manifest }),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
       sheets: parse.sheets,

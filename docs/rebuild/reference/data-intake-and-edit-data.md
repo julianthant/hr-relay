@@ -1869,6 +1869,17 @@ that reached the same mapping in a different order hash the same. It deliberatel
 manifest records those in full in their own arrays; §7 #11 asks whether the run was planned the same
 WAY).
 
+**Rerun item vectors are a set difference over stable `itemId`.** `removed` carries the prior
+manifest's exact valid-row facts; `added` carries the current plan's re-derived valid-row facts.
+`sourceRow` and `inputHash` are evidence about an item, not its identity: a mapping change that
+preserves `itemId` leaves both vectors empty, while one that changes `itemId` reports the old row as
+removed and the new row as added. The current side is revalidated from the immutable artifact and
+the session's durable bindings/constants/corrections/exclusions. A validated or enqueued session
+uses its retained validation `readAt`; a mapping session has no validation instant, so it uses its
+durable `updatedAt`, the instant that exact decision snapshot committed. It never reads the current
+clock or substitutes rows. Once a prior manifest exists, a missing current layout or prior/current
+valid-row fact refuses by name instead of hiding the rerun view.
+
 **The manifest must name its file, so the session retains one.** `source.originalName` is required
 by the D159 schema and a content-addressed artifact has a digest, not a name — so
 `POST /api/v1/intake/files` requires a `filename` query parameter and the session retains it as
@@ -1885,6 +1896,13 @@ reservation whenever the latter is present. The repository requires the reservat
 holds its exact optional value immutable on update: an older absent row can read and advance as
 absent, but ordinary update cannot back-fill it. Enqueue passes the reservation into
 `deriveIntakeEnqueuePlan`; `dependencies.ids.uuid()` is not an alternative path.
+
+The wire keeps reservation and terminal authority separate. Before enqueue it serves only
+`reservedManifestId`; after enqueue it additionally requires the committed `intakeManifestId` and
+an immutable Manifest projection loaded by that exact id: mapping/layout snapshot/workflow-contract
+fingerprints, creation instant, derived totals, every source-row disposition and every valid row.
+The strict wire refuses a terminal projection before enqueue, an enqueued identity with no manifest,
+or any disagreement among reserved, committed and projected manifest ids.
 
 **One fan-out path.** `fanOutQueuedRuns` in the command kernel is the ONE place N queued runs are
 inserted; `start-run` and this arm reach it with different plans and identical obligations — the

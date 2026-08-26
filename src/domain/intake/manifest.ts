@@ -462,10 +462,47 @@ export const RerunDiffSchema = z.discriminatedUnion("kind", [
       what: z.enum(["source-artifact", "mapping", "intake-projection", "workflow-contract", "canonical-input-schema"]),
       was: z.string().min(1),
       now: z.string().min(1),
-    })).min(1),
+    })),
+    /** Rows valid in the current plan whose stable item identity was absent before. */
+    added: z.array(ValidRowSchema),
+    /** Rows valid in the prior manifest whose stable item identity is absent now. */
+    removed: z.array(ValidRowSchema),
+  }).superRefine((diff, context) => {
+    if (diff.changes.length === 0 && diff.added.length === 0 && diff.removed.length === 0) {
+      context.addIssue({
+        code: "custom",
+        message: "a changed rerun diff names an axis change, an added item, or a removed item",
+      });
+    }
+    const addedItemIds = new Set(diff.added.map((row) => row.itemId));
+    if (addedItemIds.size !== diff.added.length) {
+      context.addIssue({ code: "custom", path: ["added"], message: "added repeats a stable item identity" });
+    }
+    const removedItemIds = new Set(diff.removed.map((row) => row.itemId));
+    if (removedItemIds.size !== diff.removed.length) {
+      context.addIssue({ code: "custom", path: ["removed"], message: "removed repeats a stable item identity" });
+    }
+    for (const itemId of addedItemIds) {
+      if (removedItemIds.has(itemId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["added"],
+          message: `stable item ${itemId} cannot be both added and removed`,
+        });
+      }
+    }
   }),
 ]);
 export type RerunDiff = z.infer<typeof RerunDiffSchema>;
+
+const CurrentRerunStateSchema = z.strictObject({
+  sourceSha256: FingerprintSchema,
+  mappingSnapshotHash: FingerprintSchema,
+  intakeProjectionFingerprint: FingerprintSchema,
+  workflowContractFingerprint: FingerprintSchema,
+  canonicalInputSchemaHash: FingerprintSchema,
+  validRows: z.array(ValidRowSchema),
+});
 
 type RerunChange = z.infer<typeof RerunDiffSchema> extends infer Diff
   ? Diff extends { kind: "changed"; changes: readonly (infer Change)[] } ? Change : never
@@ -479,8 +516,11 @@ export function rerunDiff(
     intakeProjectionFingerprint: string;
     workflowContractFingerprint: string;
     canonicalInputSchemaHash: string;
+    validRows: readonly z.input<typeof ValidRowSchema>[];
   },
 ): RerunDiff {
+  const priorManifest = IntakePlanManifestSchema.parse(manifest);
+  const currentState = CurrentRerunStateSchema.parse(current);
   const changes: RerunChange[] = [];
   const compare = (
     what: "source-artifact" | "mapping" | "intake-projection" | "workflow-contract" | "canonical-input-schema",
@@ -489,14 +529,30 @@ export function rerunDiff(
   ): void => {
     if (was !== now) changes.push({ what, was, now });
   };
-  compare("source-artifact", manifest.source.sha256, current.sourceSha256);
-  compare("mapping", manifest.mappingSnapshotHash, current.mappingSnapshotHash);
-  compare("intake-projection", manifest.intakeProjectionFingerprint, current.intakeProjectionFingerprint);
-  compare("workflow-contract", manifest.workflowContractFingerprint, current.workflowContractFingerprint);
-  compare("canonical-input-schema", manifest.canonicalInputSchemaHash, current.canonicalInputSchemaHash);
-  return changes.length === 0
+  compare("source-artifact", priorManifest.source.sha256, currentState.sourceSha256);
+  compare("mapping", priorManifest.mappingSnapshotHash, currentState.mappingSnapshotHash);
+  compare("intake-projection", priorManifest.intakeProjectionFingerprint, currentState.intakeProjectionFingerprint);
+  compare("workflow-contract", priorManifest.workflowContractFingerprint, currentState.workflowContractFingerprint);
+  compare("canonical-input-schema", priorManifest.canonicalInputSchemaHash, currentState.canonicalInputSchemaHash);
+
+  const priorItemIds = new Set(priorManifest.validRows.map((row) => row.itemId));
+  if (priorItemIds.size !== priorManifest.validRows.length) {
+    throw new Error(`rerun diff prior manifest ${priorManifest.manifestId} repeats a valid item identity`);
+  }
+  const currentItemIds = new Set(currentState.validRows.map((row) => row.itemId));
+  if (currentItemIds.size !== currentState.validRows.length) {
+    throw new Error("rerun diff current plan repeats a valid item identity");
+  }
+  // This is a SET difference by stable item identity, not by source row or
+  // input hash. A mapping that changes an identity yields the prior row in
+  // `removed` and the current row in `added`; if identity survives, neither
+  // vector claims a replacement and the moved mapping remains visible above.
+  const added = currentState.validRows.filter((row) => !priorItemIds.has(row.itemId));
+  const removed = priorManifest.validRows.filter((row) => !currentItemIds.has(row.itemId));
+
+  return changes.length === 0 && added.length === 0 && removed.length === 0
     ? RerunDiffSchema.parse({ kind: "same-plan" })
-    : RerunDiffSchema.parse({ kind: "changed", changes });
+    : RerunDiffSchema.parse({ kind: "changed", changes, added, removed });
 }
 
 export function intakeInputHash(parsedInput: unknown) {

@@ -13,6 +13,7 @@ import { confirmBinding, detectColumns, headerFingerprint } from "../../src/doma
 import { defineIntakeProjection } from "../../src/domain/intake/projection.js";
 import {
   IntakePlanManifestSchema,
+  RerunDiffSchema,
   buildIntakeManifest,
   deriveRowRejectId,
   enqueueReadiness,
@@ -100,6 +101,22 @@ function manifestFrom(
     exclusions: [],
     ...extras,
   });
+}
+
+function currentRerunFacts(
+  manifest: ReturnType<typeof manifestFrom>,
+  validRows: Parameters<typeof rerunDiff>[1]["validRows"] = manifest.validRows,
+  overrides: Partial<Parameters<typeof rerunDiff>[1]> = {},
+): Parameters<typeof rerunDiff>[1] {
+  return {
+    sourceSha256: manifest.source.sha256,
+    mappingSnapshotHash: manifest.mappingSnapshotHash,
+    intakeProjectionFingerprint: manifest.intakeProjectionFingerprint,
+    workflowContractFingerprint: manifest.workflowContractFingerprint,
+    canonicalInputSchemaHash: manifest.canonicalInputSchemaHash,
+    validRows,
+    ...overrides,
+  };
 }
 
 describe("ref data-intake-and-edit-data §5 intake validation", () => {
@@ -320,20 +337,151 @@ describe("ref data-intake-and-edit-data §5 manifest invariants", () => {
     assert.equal(readiness.reason, "no-valid-rows");
   });
 
-  it("shows a rerun diff when the file, mapping or contract has moved", () => {
+  it("recognizes an identical rerun plan", () => {
     const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
-    const same = {
-      sourceSha256: manifest.source.sha256,
-      mappingSnapshotHash: manifest.mappingSnapshotHash,
-      intakeProjectionFingerprint: manifest.intakeProjectionFingerprint,
-      workflowContractFingerprint: manifest.workflowContractFingerprint,
-      canonicalInputSchemaHash: manifest.canonicalInputSchemaHash,
-    };
-    assert.deepEqual(rerunDiff(manifest, same), { kind: "same-plan" });
+    assert.deepEqual(rerunDiff(manifest, currentRerunFacts(manifest)), { kind: "same-plan" });
+  });
 
-    const moved = rerunDiff(manifest, { ...same, sourceSha256: sha256Hex("a different file") });
+  it("reports a newly valid stable item with its current row facts", () => {
+    const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const current = validate([
+      ["10456712", "Cleckoa, Crithe", "HDH"],
+      ["10998801", "Roe, Rick", "Student Affairs"],
+    ]);
+
+    const diff = rerunDiff(prior, currentRerunFacts(prior, current.valid));
+
+    assert.equal(diff.kind, "changed");
+    if (diff.kind !== "changed") return;
+    assert.deepEqual(diff.changes, []);
+    assert.deepEqual(diff.added, [current.valid[1]]);
+    assert.deepEqual(diff.removed, []);
+  });
+
+  it("reports a no-longer-valid stable item with its prior durable row facts", () => {
+    const priorValidation = validate([
+      ["10456712", "Cleckoa, Crithe", "HDH"],
+      ["10998801", "Roe, Rick", "Student Affairs"],
+    ]);
+    const prior = manifestFrom(priorValidation, 2);
+    const current = validate([["10456712", "Cleckoa, Crithe", "HDH"]]);
+
+    const diff = rerunDiff(prior, currentRerunFacts(prior, current.valid));
+
+    assert.equal(diff.kind, "changed");
+    if (diff.kind !== "changed") return;
+    assert.deepEqual(diff.changes, []);
+    assert.deepEqual(diff.added, []);
+    assert.deepEqual(diff.removed, [prior.validRows[1]]);
+  });
+
+  it("keeps identity vectors empty when a mapping change preserves the stable item", () => {
+    const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+
+    const diff = rerunDiff(prior, currentRerunFacts(prior, prior.validRows, {
+      mappingSnapshotHash: sha256Hex("a different mapping"),
+    }));
+
+    assert.equal(diff.kind, "changed");
+    if (diff.kind !== "changed") return;
+    assert.deepEqual(diff.changes.map((change) => change.what), ["mapping"]);
+    assert.deepEqual(diff.added, []);
+    assert.deepEqual(diff.removed, []);
+  });
+
+  it("reports remove plus add when a mapping change changes stable item identity", () => {
+    const prior = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const current = validate([["10998801", "Roe, Rick", "Student Affairs"]]);
+
+    const diff = rerunDiff(prior, currentRerunFacts(prior, current.valid, {
+      mappingSnapshotHash: sha256Hex("a different mapping"),
+    }));
+
+    assert.equal(diff.kind, "changed");
+    if (diff.kind !== "changed") return;
+    assert.deepEqual(diff.changes.map((change) => change.what), ["mapping"]);
+    assert.deepEqual(diff.added, [current.valid[0]]);
+    assert.deepEqual(diff.removed, [prior.validRows[0]]);
+  });
+
+  it("reports a source-axis change even when stable items are unchanged", () => {
+    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+
+    const moved = rerunDiff(manifest, currentRerunFacts(manifest, manifest.validRows, {
+      sourceSha256: sha256Hex("a different file"),
+    }));
+
     assert.equal(moved.kind, "changed");
     if (moved.kind !== "changed") return;
     assert.deepEqual(moved.changes.map((change) => change.what), ["source-artifact"]);
+    assert.deepEqual(moved.added, []);
+    assert.deepEqual(moved.removed, []);
+  });
+
+  it("refuses missing current valid-row facts by field name", () => {
+    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const { validRows: omitted, ...missingCurrentRows } = currentRerunFacts(manifest);
+    assert.notEqual(omitted, undefined);
+
+    assert.throws(
+      () => Reflect.apply(rerunDiff, undefined, [manifest, missingCurrentRows]),
+      /validRows/u,
+    );
+  });
+
+  it("refuses missing prior valid-row facts by field name", () => {
+    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const { validRows: omitted, ...missingPriorRows } = manifest;
+    assert.notEqual(omitted, undefined);
+
+    assert.throws(
+      () => Reflect.apply(rerunDiff, undefined, [missingPriorRows, currentRerunFacts(manifest)]),
+      /validRows/u,
+    );
+  });
+
+  it("requires both identity vectors on a changed rerun wire", () => {
+    assert.throws(
+      () => RerunDiffSchema.parse({
+        kind: "changed",
+        changes: [{
+          what: "mapping",
+          was: sha256Hex("old mapping"),
+          now: sha256Hex("new mapping"),
+        }],
+        added: [],
+      }),
+      /removed/u,
+    );
+  });
+
+  it("refuses a changed rerun wire with no changed fact", () => {
+    assert.throws(
+      () => RerunDiffSchema.parse({ kind: "changed", changes: [], added: [], removed: [] }),
+      /names an axis change, an added item, or a removed item/u,
+    );
+  });
+
+  it("refuses identity vectors on an identical rerun wire", () => {
+    assert.throws(
+      () => RerunDiffSchema.parse({ kind: "same-plan", added: [], removed: [] }),
+      /Unrecognized key/u,
+    );
+  });
+
+  it("refuses one stable identity in both rerun vectors", () => {
+    const manifest = manifestFrom(validate([["10456712", "Cleckoa, Crithe", "HDH"]]), 1);
+    const row = manifest.validRows[0];
+    if (row === undefined) throw new Error("the fixture manifest has no valid row");
+
+    assert.throws(
+      () => RerunDiffSchema.parse({
+        kind: "changed",
+        changes: [],
+        added: [row],
+        removed: [row],
+      }),
+      /cannot be both added and removed/u,
+    );
   });
 });

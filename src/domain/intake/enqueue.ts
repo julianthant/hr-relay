@@ -199,12 +199,30 @@ export function currentRerunState(input: Readonly<{
     sheet: string;
     bindings: readonly ColumnBinding[];
     constants: readonly z.infer<typeof IntakeConstantSchema>[];
+    corrections: readonly z.infer<typeof IntakeRowCorrectionSchema>[];
+    exclusions: readonly z.infer<typeof IntakeRowExclusionSchema>[];
   }>;
   layout: IntakeLayout;
   projection: IntakeProjection;
+  /** Durable instant this exact decision snapshot is read against. */
+  readAt: string;
   workflowContractFingerprint: string;
   canonicalInputSchemaHash: string;
+  deriveItemId: (parsedInput: JsonValue) => ItemId;
 }>) {
+  const validation = validateIntakeRows({
+    workflow: input.session.workflow,
+    sourceSha256: input.session.artifact.sha256,
+    projection: input.projection,
+    detected: input.layout.columns,
+    bindings: input.session.bindings,
+    rows: input.layout.rows,
+    constants: input.session.constants,
+    corrections: input.session.corrections,
+    excludedRows: input.session.exclusions.map((entry) => entry.sourceRow),
+    readAt: input.readAt,
+    deriveItemId: input.deriveItemId,
+  });
   return Object.freeze({
     sourceSha256: input.session.artifact.sha256,
     mappingSnapshotHash: deriveMappingSnapshotHash({
@@ -218,5 +236,6 @@ export function currentRerunState(input: Readonly<{
     intakeProjectionFingerprint: input.projection.fingerprint,
     workflowContractFingerprint: input.workflowContractFingerprint,
     canonicalInputSchemaHash: input.canonicalInputSchemaHash,
+    validRows: validation.valid,
   });
 }
