@@ -535,6 +535,27 @@ const WorkerSpawnAcknowledgementSchema = z.strictObject({
   stage: z.literal("started"),
 });
 
+/**
+ * The durable stop directive write's own lease versions — reported by the
+ * graceful-stop channel that performed the write, threaded through the stop
+ * acknowledgement so command authority audits the WRITE's change, never a
+ * later lease read that would absorb unrelated bumps (a worker heartbeat)
+ * into the command's claimed change.
+ */
+export const WorkerDirectiveLeaseVersionsSchema = z.strictObject({
+  before: PositiveIntSchema,
+  after: PositiveIntSchema,
+}).superRefine((versions, context) => {
+  if (versions.after !== versions.before + 1) {
+    context.addIssue({
+      code: "custom",
+      message: `a lease directive write bumps its version by exactly one; before ${String(versions.before)} → `
+        + `after ${String(versions.after)} is not one write`,
+    });
+  }
+});
+export type WorkerDirectiveLeaseVersions = z.infer<typeof WorkerDirectiveLeaseVersionsSchema>;
+
 const WorkerStopAcknowledgementSchema = z.strictObject({
   command: z.literal("stop-worker"),
   state: z.literal("acknowledged"),
@@ -544,6 +565,13 @@ const WorkerStopAcknowledgementSchema = z.strictObject({
   escalation: WorkerStopEscalationPolicySchema,
   /** What actually happened so far. The initial acknowledgement may contain only the graceful request. */
   observed: WorkerStopObservedStagesSchema,
+  /**
+   * Optional AT THIS SCHEMA only because a synthetic phase-1 supervisor may
+   * predate the version-reporting channel; the kernel's async pool door
+   * REQUIRES it (`WorkerStopPoolAcknowledgementSchema`) before it will audit
+   * a stop, so an acknowledgement without it refuses loudly there.
+   */
+  directiveLeaseVersions: WorkerDirectiveLeaseVersionsSchema.optional(),
 });
 
 const WorkerPauseAcknowledgementSchema = z.strictObject({
@@ -979,7 +1007,10 @@ export function createWorkerPoolRuntimeExecutor(
       requireDurableOwnership("spawn-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
-    async stopPoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
+    async stopPoolWorker(context: WorkerRuntimeContext): Promise<Readonly<{
+      state: "accepted";
+      directiveLeaseVersions?: WorkerDirectiveLeaseVersions;
+    }>> {
       const { command } = context;
       if (command.type !== "stop-worker") {
         throw new Error(`stopPoolWorker received a ${command.type} command`);
@@ -996,7 +1027,11 @@ export function createWorkerPoolRuntimeExecutor(
       requireDurableOwnership("stop-worker", acknowledgement.member, acknowledgement.ownership);
       requireInitialGracefulObservation("stop-worker", member, acknowledgement.observed);
       requireObservedNotAfterNow("stop-worker", member, acknowledgement.observed, context.now);
-      return { state: "accepted" };
+      // Forwarded verbatim when the supervisor attested the directive write's
+      // versions; the kernel's pool door refuses an absence by name.
+      return acknowledgement.directiveLeaseVersions === undefined
+        ? { state: "accepted" }
+        : { state: "accepted", directiveLeaseVersions: acknowledgement.directiveLeaseVersions };
     },
     async pausePoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;

@@ -289,6 +289,15 @@ export interface DashboardComposeInput {
   readonly repoRoot?: string;
   readonly startPlanTtlMs?: number;
   /**
+   * Test-only ingress bind override: `0` asks the OS for an ephemeral port,
+   * so a composition test never contends with — or silently passes vacuous
+   * because of — a concurrently running dashboard on the machine-wide
+   * isolation port. Typed as the literal 0 on purpose: "ephemeral" is the
+   * only override; a different fixed port can never enter through this seam.
+   * Production omits it and binds the isolation port.
+   */
+  readonly backendPortOverride?: 0;
+  /**
    * The worker process edges (W3). Production composes the real
    * `child_process` spawner, the node+tsx CLI launch spec, the real timer
    * scheduler and a structured stderr fault sink; a test injects fakes HERE so
@@ -430,7 +439,12 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
             `graceful stop for ${member.workerId} could not write the durable directive: ${outcome.message}`,
           );
         }
-        return Object.freeze({ requestedAt: directive.requestedAt });
+        return Object.freeze({
+          requestedAt: directive.requestedAt,
+          // The WRITE's own before/after — what command authority audits;
+          // a later lease read would absorb unrelated bumps into it.
+          leaseVersions: Object.freeze({ before: lease.version, after: outcome.lease.version }),
+        });
       }),
     },
     clock: input.clock,
@@ -1088,7 +1102,10 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
     ...(capturePhoneHost === undefined ? {} : { capturePhoneHost }),
   });
 
-  const server = await startDashboardHttpServer({ app, port: input.isolation.backendPort });
+  const server = await startDashboardHttpServer({
+    app,
+    port: input.backendPortOverride ?? input.isolation.backendPort,
+  });
 
   return Object.freeze({
     port: server.port,

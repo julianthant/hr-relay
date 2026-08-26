@@ -40,11 +40,13 @@ import type {
 import {
   WORKER_GRACEFUL_STOP_TIMEOUT_MS,
   WORKER_SIGTERM_TIMEOUT_MS,
+  WorkerDirectiveLeaseVersionsSchema,
   WorkerPoolMemberReconciliationFactSchema,
   WorkerPoolMemberSchema,
   WorkerStopDirectiveContextSchema,
   WorkerStopEscalationPolicySchema,
   WorkerSupervisorAcknowledgementSchema,
+  type WorkerDirectiveLeaseVersions,
   type WorkerPoolMember,
   type WorkerPoolPlanRequest,
   type WorkerPoolProcessSupervisor,
@@ -99,13 +101,20 @@ export interface WorkerLeaseProbe {
  * the DURABLE instant, which is what the observed graceful stage records; the
  * supervisor refuses a durable instant that differs from the command's now,
  * because an observed stage that postdates the command's `now` is a claim the
- * kernel's `requireObservedNotAfterNow` bound rightly rejects.
+ * kernel's `requireObservedNotAfterNow` bound rightly rejects. The receipt
+ * also carries the directive WRITE's own lease versions (before → after), so
+ * command authority audits the write's change rather than a later lease read.
  */
+export interface WorkerDurableStopReceipt {
+  readonly requestedAt: string;
+  readonly leaseVersions: z.input<typeof WorkerDirectiveLeaseVersionsSchema>;
+}
+
 export interface WorkerGracefulStopChannel {
   request(
     member: WorkerPoolMember,
     directive: WorkerStopDirectiveContext,
-  ): Promise<Readonly<{ requestedAt: string }>> | Readonly<{ requestedAt: string }>;
+  ): Promise<WorkerDurableStopReceipt> | WorkerDurableStopReceipt;
 }
 
 export interface WorkerCliLaunchSpec {
@@ -590,7 +599,7 @@ export function createDashboardWorkerProcessSupervisor(
     record: MemberRecord,
     escalation: WorkerStopEscalationPolicy,
     directive: WorkerStopDirectiveContext,
-  ): Promise<void> => {
+  ): Promise<WorkerDirectiveLeaseVersions> => {
     if (record.stopInFlight) {
       throw new Error(
         `graceful stop refused: a stop is already in flight for ${record.member.workerId} `
@@ -599,7 +608,7 @@ export function createDashboardWorkerProcessSupervisor(
       );
     }
     record.stopInFlight = true;
-    let durable: Readonly<{ requestedAt: string }> | undefined;
+    let durable: WorkerDurableStopReceipt | undefined;
     try {
       durable = await deps.gracefulStop.request(record.member, directive);
     } catch (error) {
@@ -632,6 +641,26 @@ export function createDashboardWorkerProcessSupervisor(
       );
     }
     const requestedAt = IsoInstantSchema.parse(durable.requestedAt);
+    const parsedVersions = WorkerDirectiveLeaseVersionsSchema.safeParse(durable.leaseVersions);
+    if (!parsedVersions.success) {
+      // The channel RESOLVED, so the durable directive stands — but its
+      // receipt cannot say which write it was. Re-initiating or attesting
+      // over a landed stop would double-write or lie, so the record is
+      // blocked exactly like a stop-uncertain until the child's exit.
+      if (record.state === "running") {
+        record.state = "stop-uncertain";
+        record.stopUncertain = {
+          at: instant(),
+          cause: `the durable stop directive landed but its receipt carries no valid lease versions: `
+            + parsedVersions.error.message,
+        };
+      }
+      throw new Error(
+        `graceful stop for ${record.member.workerId} landed a durable directive whose receipt carries no valid `
+        + `lease versions (${parsedVersions.error.message}); the write cannot be audited, so this worker refuses `
+        + "plan coverage and further stop commands until its exit is observed",
+      );
+    }
     if (requestedAt !== directive.requestedAt) {
       // The directive DID land (the channel resolved), but at an instant that
       // is not the kernel command's `now` — the exact W1/W2 gap this seam
@@ -681,6 +710,7 @@ export function createDashboardWorkerProcessSupervisor(
     armEscalation(record, "SIGTERM", "sigterm-sent", escalation[0].timeoutMs, () => {
       armEscalation(record, "SIGKILL", "sigkill-sent", escalation[1].timeoutMs);
     });
+    return parsedVersions.data;
   };
 
   const stopWorker = async (
@@ -696,7 +726,7 @@ export function createDashboardWorkerProcessSupervisor(
         + "stages are recorded as they occur, not re-initiated",
       );
     }
-    await beginStopEscalation(record, escalation, directive);
+    const directiveLeaseVersions = await beginStopEscalation(record, escalation, directive);
     return WorkerSupervisorAcknowledgementSchema.parse({
       command: "stop-worker",
       state: "acknowledged",
@@ -704,6 +734,7 @@ export function createDashboardWorkerProcessSupervisor(
       ownership: "supervised",
       escalation,
       observed: [...record.observedStop],
+      directiveLeaseVersions,
     });
   };
 
