@@ -90,15 +90,78 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
  * The overlay only reaches that far because `MEMBER_TOUCH_TARGET_HOST` lifts
  * the name cell's clip; this constant alone is 44px wide and 24px tall.
  *
+ * IT IS ANCHORED TO THE TOGGLE'S LEFT EDGE, NOT CENTRED ON IT, and that is the
+ * horizontal half of the same containment argument. Centred, a 44px box over
+ * 24px of paint reaches ~10px each way, and 4px (`--ds-space-tight`) to the
+ * LEFT is the member's name — the row's selection button. On an unchecked line
+ * the last pixels of a truncated name hit-tested to this toggle, so a finger
+ * aiming at the name marked the member checked: the wrong act on the right row,
+ * which is the same defect the pitch fixed one axis over. Anchored left, the
+ * overlay spends its whole 44px going RIGHT, where the only thing under it is
+ * the line's subtitle cell — inert text that competes for no tap.
+ *
  * `touch-manipulation` rides along because the same tap is otherwise held for
  * ~300ms waiting to see whether it was a double-tap zoom.
  */
 export const MEMBER_TOUCH_TARGET = [
   "relative touch-manipulation",
+  "pointer-coarse:after:absolute pointer-coarse:after:left-0 pointer-coarse:after:top-1/2",
+  "pointer-coarse:after:size-11 pointer-coarse:after:-translate-y-1/2",
+  "pointer-coarse:after:content-['']",
+].join(" ");
+
+/**
+ * THE NAME BESIDE IT, which is the row's SELECTION and the only way into a
+ * member panel — and which painted one line of text, 16px to a finger, inside a
+ * line the coarse pitch had already grown to 44.
+ *
+ * `min-h`, not `h`: the button also carries `--ds-h-xs`-ish text metrics from
+ * `dsText.body` and a min-height cannot be lost to a height utility ordered
+ * after it. The line's content box is exactly 44px on a coarse pointer
+ * (`--ds-h-member-line` is `calc(44px + var(--ds-border-w))` and the well's
+ * `divide-y` hairline spends the border), so this fills the line and cannot
+ * reach past it — no overlay, nothing to un-clip, nothing to contain.
+ *
+ * Gated for the same reason everything else here is: at the fine-pointer 28px
+ * pitch a 44px name would overlap the lines above and below it.
+ */
+export const MEMBER_NAME_TOUCH_TARGET = "pointer-coarse:min-h-11";
+
+/**
+ * THE ROW ⓘ, which after unit F2 is the row's ONLY hover-free route to a
+ * clipped fact's full value — and which paints `--ds-h-xs`, 20px, less than
+ * half the floor. A control that guards the value a mouse can already read by
+ * hovering, and that a finger misses, is the hover-only failure moved rather
+ * than fixed.
+ *
+ * Centred here, unlike the member toggle: everything within the overlay's reach
+ * on the title line is inert — the title text, the workflow chip, the status
+ * chips — and the card underneath is the row's own select, which is where a
+ * near-miss already went.
+ *
+ * Its containment is the CARD's `overflow-hidden`, so it can never reach the
+ * row above; what that same box CAN do is clip the overlay back under the floor
+ * (the F2c failure, exactly), because the title line is only 20px tall and sits
+ * `--ds-space-snug` from the card's top edge. `ROW_INFO_TOUCH_LINE` is the
+ * other half: it grows the title line to 44px on a coarse pointer, so the
+ * overlay fills a box the card already holds.
+ */
+export const ROW_INFO_TOUCH_TARGET = [
+  "relative touch-manipulation",
   "pointer-coarse:after:absolute pointer-coarse:after:left-1/2 pointer-coarse:after:top-1/2",
   "pointer-coarse:after:size-11 pointer-coarse:after:-translate-x-1/2 pointer-coarse:after:-translate-y-1/2",
   "pointer-coarse:after:content-['']",
 ].join(" ");
+
+/**
+ * The 44px the ⓘ's overlay needs, taken by the LINE rather than by the control
+ * — the D-lesson the member pitch already carries. It goes on BOTH cells of the
+ * card's first grid row: the title line that holds the ⓘ, and the leading
+ * status-glyph box beside it, which is a fixed `--ds-h-xs` in a grid whose
+ * items are `items-start` and would otherwise leave the glyph floating at the
+ * top of a taller line.
+ */
+export const ROW_INFO_TOUCH_LINE = "pointer-coarse:min-h-11";
 
 /**
  * THE OTHER HALF OF THE TOUCH TARGET, and the half that was silently missing.

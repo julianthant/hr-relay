@@ -43,6 +43,9 @@ const TOUCH_FLOOR = 44;
 const DENSE_PITCH = 28;
 const TOGGLE_PAINT = 24;
 
+/** The row ⓘ's own paint: `IconButton size="xs"` is `--ds-h-xs`. */
+const INFO_PAINT = 20;
+
 /**
  * How far above and below the toggle's centre the wrong-member probe sits. The
  * overlay is 44px and centred, so its own edges are at ±22; ±21 is one pixel
@@ -103,6 +106,23 @@ interface HitBox {
   readonly bottom: number;
 }
 
+/** The member line's OTHER control: the name, which is also the row's selection. */
+interface NameButton {
+  readonly left: number;
+  readonly right: number;
+  readonly centerX: number;
+  readonly centerY: number;
+  /** `null` on the same terms as a toggle's: the line is behind its own well. */
+  readonly hit: HitBox | null;
+  /**
+   * Which control the engine hands the LAST PIXEL of the name to. A 44px overlay
+   * centred on the 24px toggle reaches ~10px back along this button, and the gap
+   * between them is `--ds-space-tight` — so on an unchecked line a tap on the
+   * end of a truncated name toggled the checkbox instead of selecting the row.
+   */
+  readonly tailOwner: "name" | "toggle" | "other";
+}
+
 interface MemberLine {
   readonly runId: string;
   /**
@@ -123,6 +143,32 @@ interface MemberLine {
    * members are. Such a line has no edges worth probing.
    */
   readonly hit: HitBox | null;
+  readonly name: NameButton;
+  /** The distance from the name's right edge to the toggle's painted left edge. */
+  readonly nameToToggle: number;
+}
+
+/**
+ * The top-level row's ⓘ, and the CARD it lives in.
+ *
+ * The card is `overflow-hidden`, which is what makes its own box the containment
+ * boundary: an overlay that overflowed it would be clipped rather than land in
+ * the card above. So the card's rectangle is measured beside the trigger's hit
+ * area — a 44px target that is 44px only because it hangs into the next row is
+ * the same defect in a different axis.
+ */
+interface InfoTrigger {
+  readonly runId: string;
+  readonly centerX: number;
+  readonly centerY: number;
+  readonly cardTop: number;
+  readonly cardBottom: number;
+  readonly hit: HitBox | null;
+}
+
+interface Measured {
+  readonly lines: readonly MemberLine[];
+  readonly infos: readonly InfoTrigger[];
 }
 
 /**
@@ -135,36 +181,50 @@ interface MemberLine {
  * resolves, and a `::after` can be clipped by an ancestor that no class list
  * mentions.
  */
-async function memberLines(page: Page): Promise<readonly MemberLine[]> {
-  const lines = await page.evaluate((scan: number) => {
+async function measure(page: Page): Promise<Measured> {
+  const measured = await page.evaluate((scan: number) => {
+    /** Does the engine hand this exact point to this exact control? */
+    const claims = (control: Element, x: number, y: number): boolean => {
+      const at = document.elementFromPoint(x, y);
+      return at !== null && (at === control || at.closest("button") === control);
+    };
+    /** The CONTIGUOUS run of offsets out from a centre that a control claims. */
+    const reach = (step: (offset: number) => boolean): { low: number; high: number } => {
+      let low = 0;
+      let high = 0;
+      while (low > -scan && step(low - 1)) low -= 1;
+      while (high < scan && step(high + 1)) high += 1;
+      return { low, high };
+    };
+    const hitBox = (control: Element, centerX: number, centerY: number) => {
+      if (!claims(control, centerX, centerY)) return null;
+      const horizontal = reach((offset) => claims(control, centerX + offset, centerY));
+      const vertical = reach((offset) => claims(control, centerX, centerY + offset));
+      return { left: horizontal.low, right: horizontal.high, top: vertical.low, bottom: vertical.high };
+    };
+
     const wells: Element[] = [];
-    const toggles = [...document.querySelectorAll("button[aria-label^='Mark ']")];
-    return toggles.flatMap((toggle) => {
+    const lines = [...document.querySelectorAll("button[aria-label^='Mark ']")].flatMap((toggle) => {
       const row = toggle.closest("[data-demo-row-id]");
       const runId = row === null ? null : row.getAttribute("data-demo-row-id");
       const well = row === null ? null : row.parentElement;
-      if (row === null || runId === null || well === null) return [];
+      // The member line's OTHER button: the name, which is the row's selection.
+      const nameButton = row === null ? null : row.querySelector("button:not([aria-label^='Mark '])");
+      if (row === null || runId === null || well === null || nameButton === null) return [];
       if (!wells.includes(well)) wells.push(well);
       const rowBox = row.getBoundingClientRect();
       const toggleBox = toggle.getBoundingClientRect();
+      const nameBox = nameButton.getBoundingClientRect();
       const centerX = toggleBox.left + (toggleBox.width / 2);
       const centerY = toggleBox.top + (toggleBox.height / 2);
-      const claims = (x: number, y: number): boolean =>
-        document.elementFromPoint(x, y)?.closest("button[aria-label^='Mark ']") === toggle;
-      /** The CONTIGUOUS run of offsets out from the centre that this toggle claims. */
-      const reach = (step: (offset: number) => boolean): { low: number; high: number } => {
-        let low = 0;
-        let high = 0;
-        while (low > -scan && step(low - 1)) low -= 1;
-        while (high < scan && step(high + 1)) high += 1;
-        return { low, high };
-      };
-      let hit: HitBox | null = null;
-      if (claims(centerX, centerY)) {
-        const horizontal = reach((offset) => claims(centerX + offset, centerY));
-        const vertical = reach((offset) => claims(centerX, centerY + offset));
-        hit = { left: horizontal.low, right: horizontal.high, top: vertical.low, bottom: vertical.high };
-      }
+      const nameCenterX = nameBox.left + (nameBox.width / 2);
+      const nameCenterY = nameBox.top + (nameBox.height / 2);
+      // The LAST pixel of the name, which is the pixel the toggle's overlay
+      // reaches back to. `elementFromPoint` takes the point, not the box.
+      const tail = document.elementFromPoint(nameBox.right - 1, nameCenterY);
+      const tailButton = tail === null ? null : tail.closest("button");
+      const tailOwner: "name" | "toggle" | "other" =
+        tailButton === nameButton ? "name" : (tailButton === toggle ? "toggle" : "other");
       return [{
         runId,
         wellKey: wells.indexOf(well),
@@ -173,17 +233,49 @@ async function memberLines(page: Page): Promise<readonly MemberLine[]> {
         height: rowBox.height,
         centerX,
         centerY,
-        hit,
+        hit: hitBox(toggle, centerX, centerY),
+        nameToToggle: toggleBox.left - nameBox.right,
+        name: {
+          left: nameBox.left,
+          right: nameBox.right,
+          centerX: nameCenterX,
+          centerY: nameCenterY,
+          hit: hitBox(nameButton, nameCenterX, nameCenterY),
+          tailOwner,
+        },
       }];
     });
+
+    const infos = [...document.querySelectorAll("button[aria-label^='What is this row?']")].flatMap((trigger) => {
+      const card = trigger.closest("[data-demo-row-id]");
+      const runId = card === null ? null : card.getAttribute("data-demo-row-id");
+      if (card === null || runId === null) return [];
+      const cardBox = card.getBoundingClientRect();
+      const triggerBox = trigger.getBoundingClientRect();
+      const centerX = triggerBox.left + (triggerBox.width / 2);
+      const centerY = triggerBox.top + (triggerBox.height / 2);
+      return [{
+        runId,
+        centerX,
+        centerY,
+        cardTop: cardBox.top,
+        cardBottom: cardBox.bottom,
+        hit: hitBox(trigger, centerX, centerY),
+      }];
+    });
+
+    return { lines, infos };
   }, 40);
-  if (lines.length < 2) {
+  if (measured.lines.length < 2) {
     throw new Error(
       "the fixture day must draw at least two member lines carrying a checked-by-you toggle; "
-      + `found ${String(lines.length)}`,
+      + `found ${String(measured.lines.length)}`,
     );
   }
-  return lines;
+  if (measured.infos.length < 1) {
+    throw new Error("the fixture day must draw at least one top-level row carrying the ⓘ trigger; found none");
+  }
+  return measured;
 }
 
 /** Which member row the engine says owns a point — the wrong-member question, asked directly. */
@@ -207,6 +299,17 @@ function measurable(lines: readonly MemberLine[]): readonly (MemberLine & { hit:
   return onScreen;
 }
 
+/** The ⓘ triggers the engine resolves at their own centre, refusing an empty measurement. */
+function measurableInfos(infos: readonly InfoTrigger[]): readonly (InfoTrigger & { hit: HitBox })[] {
+  const onScreen = infos.flatMap((info) => (info.hit === null ? [] : [{ ...info, hit: info.hit }]));
+  if (onScreen.length < 1) {
+    throw new Error(
+      "no row ⓘ hit-tested to itself, so nothing was measured; a spec that measures nothing cannot fail",
+    );
+  }
+  return onScreen;
+}
+
 test.describe("a coarse pointer", () => {
   test.use({ hasTouch: true, viewport: VIEWPORT });
 
@@ -215,7 +318,7 @@ test.describe("a coarse pointer", () => {
     await assertPointer(page, "coarse");
     await minimiseWorkflowPanel(page);
 
-    const lines = await memberLines(page);
+    const { lines } = await measure(page);
 
     // 1 — THE PITCH, which is the whole of `@media (pointer: coarse)`. A line
     // shorter than the floor cannot contain a 44px overlay at all, and two
@@ -252,10 +355,16 @@ test.describe("a coarse pointer", () => {
     // measured one axis called that fixed. A finger needs 44px of BOX, so both
     // axes are measured, and the height is the one that regresses invisibly.
     for (const line of onScreen) {
+      // `>=`, not `===`, and only in this axis: the overlay is anchored to the
+      // toggle's own left EDGE rather than centred on it, so the scan starts on
+      // a boundary pixel the engine counts and reads 45 for a 44px box. What is
+      // being pinned is that the overlay exists and clears the floor; where its
+      // far edge lands is pinned by the name-tail probe below, which is the
+      // neighbour that edge can actually take a tap from.
       expect(
         line.hit.right - line.hit.left + 1,
         `${line.runId}'s toggle reaches only its own paint horizontally, so no coarse-pointer overlay is live`,
-      ).toBe(TOUCH_FLOOR);
+      ).toBeGreaterThanOrEqual(TOUCH_FLOOR);
       expect(
         line.hit.bottom - line.hit.top + 1,
         `${line.runId}'s toggle is only ${String(line.hit.bottom - line.hit.top + 1)}px tall to a finger — `
@@ -281,6 +390,113 @@ test.describe("a coarse pointer", () => {
       }
     }
   });
+
+  /**
+   * THE OTHER NEIGHBOUR, in the axis the first test never looks at.
+   *
+   * The overlay's vertical containment was argued for and measured; its
+   * HORIZONTAL containment was neither. A 44px box centred on 24px of paint
+   * reaches ~10px each way, and the control 4px (`--ds-space-tight`) to its left
+   * is the member's NAME — the row's selection. So on an unchecked line the end
+   * of a truncated name hit-tested to the toggle, and a finger aiming at the
+   * name marked the member checked instead: the same wrong-act-on-the-right-row
+   * error as the vertical case, one axis over.
+   */
+  test("keeps the toggle's overlay off the name button beside it", async ({ page }) => {
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
+    await assertPointer(page, "coarse");
+    await minimiseWorkflowPanel(page);
+
+    const { lines } = await measure(page);
+    const onScreen = measurable(lines);
+
+    // The probe only means something on a line whose name ENDS near the toggle.
+    // A checked member carries a ✓ between the two, which pads the name out of
+    // the overlay's way and would let this pass for the wrong reason.
+    const adjacent = onScreen.filter((line) => line.nameToToggle < TOUCH_FLOOR - TOGGLE_PAINT);
+    expect(
+      adjacent.length,
+      "no measurable member line puts its name within the overlay's reach of the toggle, "
+      + "so the adjacent-target probe below could not fail",
+    ).toBeGreaterThan(0);
+
+    for (const line of adjacent) {
+      expect(
+        line.name.tailOwner,
+        `the last pixel of ${line.runId}'s name belongs to the ${line.name.tailOwner} — `
+        + "a tap at the end of a truncated name toggles the checkbox instead of selecting the row",
+      ).toBe("name");
+      expect(
+        line.centerX + line.hit.left,
+        `${line.runId}'s toggle reaches back across the name button's right edge`,
+      ).toBeGreaterThanOrEqual(line.name.right);
+    }
+  });
+
+  /**
+   * AND THE NAME IS A TARGET TOO. It is the row's selection — the only way to
+   * open a member — and it paints one line of text, ~20px, inside a line that
+   * is now 44. The height was free and unclaimed.
+   */
+  test("gives the member's name button the whole 44px its own line already holds", async ({ page }) => {
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
+    await assertPointer(page, "coarse");
+    await minimiseWorkflowPanel(page);
+
+    const { lines } = await measure(page);
+    const named = measurable(lines).flatMap((line) => (line.name.hit === null ? [] : [line]));
+    expect(named.length, "no member line's name hit-tested to itself, so nothing was measured")
+      .toBeGreaterThan(0);
+
+    for (const line of named) {
+      const hit = line.name.hit;
+      if (hit === null) throw new Error(`${line.runId}'s name lost its hit box between two reads`);
+      expect(
+        hit.bottom - hit.top + 1,
+        `${line.runId}'s name is only ${String(hit.bottom - hit.top + 1)}px tall to a finger`,
+      ).toBeGreaterThanOrEqual(TOUCH_FLOOR);
+      // And it stays in its own line, on the same terms as the toggle.
+      expect(line.name.centerY + hit.top, `${line.runId}'s name reaches above its own row`)
+        .toBeGreaterThanOrEqual(line.rowTop);
+      expect(line.name.centerY + hit.bottom, `${line.runId}'s name reaches below its own row`)
+        .toBeLessThanOrEqual(line.rowBottom);
+    }
+  });
+
+  /**
+   * THE ⓘ, which is now the row's ONLY hover-free route to a clipped fact's
+   * full value (unit F2's third defect). It paints `--ds-h-xs` — 20px — so a
+   * finger missed it more often than it hit it, and the value it guards was
+   * reachable by mouse and by nobody else, which is the defect the popover was
+   * added to close.
+   *
+   * Its containment is the CARD, which is `overflow-hidden`: the overlay cannot
+   * reach the row above even in principle, but it can be CLIPPED by that same
+   * box back under the floor, which is exactly how the member toggle was 44px
+   * in the class list and 24 on screen. So both are measured.
+   */
+  test("gives the row ⓘ 44px, inside its own card", async ({ page }) => {
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
+    await assertPointer(page, "coarse");
+    await minimiseWorkflowPanel(page);
+
+    const { infos } = await measure(page);
+    for (const info of measurableInfos(infos)) {
+      expect(
+        info.hit.right - info.hit.left + 1,
+        `${info.runId}'s ⓘ is only ${String(info.hit.right - info.hit.left + 1)}px wide to a finger`,
+      ).toBeGreaterThanOrEqual(TOUCH_FLOOR);
+      expect(
+        info.hit.bottom - info.hit.top + 1,
+        `${info.runId}'s ⓘ is only ${String(info.hit.bottom - info.hit.top + 1)}px tall to a finger — `
+        + "the card's own `overflow-hidden` is clipping the coarse-pointer overlay",
+      ).toBeGreaterThanOrEqual(TOUCH_FLOOR);
+      expect(info.centerY + info.hit.top, `${info.runId}'s ⓘ reaches above its own card`)
+        .toBeGreaterThanOrEqual(info.cardTop);
+      expect(info.centerY + info.hit.bottom, `${info.runId}'s ⓘ reaches below its own card`)
+        .toBeLessThanOrEqual(info.cardBottom);
+    }
+  });
 });
 
 /**
@@ -296,13 +512,36 @@ test.describe("a fine pointer", () => {
     await assertPointer(page, "fine");
     await minimiseWorkflowPanel(page);
 
-    const lines = await memberLines(page);
+    const { lines, infos } = await measure(page);
     for (const line of lines) {
       expect(line.height, "a fine pointer must keep the dense member line, not the touch one")
         .toBeCloseTo(DENSE_PITCH, 0);
     }
 
+    // The ⓘ keeps its own paint and nothing more. An ungated overlay here would
+    // put 44px of invisible target over a 20px control in a dense row, where the
+    // card underneath it is itself the row's select button.
+    for (const info of measurableInfos(infos)) {
+      expect(
+        info.hit.right - info.hit.left + 1,
+        "the row ⓘ's coarse-pointer overlay has escaped its gate and grown the hit area on a mouse",
+      ).toBe(INFO_PAINT);
+      expect(
+        info.hit.bottom - info.hit.top + 1,
+        "the row ⓘ's coarse-pointer overlay has escaped its gate in the vertical axis",
+      ).toBe(INFO_PAINT);
+    }
+
     for (const line of measurable(lines)) {
+      // The name button grows only on a coarse pointer: at the dense 28px pitch
+      // a 44px name would overlap the lines above and below it.
+      const nameHit = line.name.hit;
+      if (nameHit !== null) {
+        expect(
+          nameHit.bottom - nameHit.top + 1,
+          "the name button's coarse-pointer height has escaped its gate and now overlaps the dense line",
+        ).toBeLessThan(TOUCH_FLOOR);
+      }
       expect(
         line.hit.right - line.hit.left + 1,
         "an overlay live on a fine pointer would reach 22px out of a 28px row and steal a neighbour's click",

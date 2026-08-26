@@ -71,8 +71,11 @@ import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import {
   BAND_LABEL,
   BAND_ORDER,
+  MEMBER_NAME_TOUCH_TARGET,
   MEMBER_TOUCH_TARGET,
   MEMBER_TOUCH_TARGET_HOST,
+  ROW_INFO_TOUCH_LINE,
+  ROW_INFO_TOUCH_TARGET,
   type LinkedRunWire,
   type MemberSurfaceWire,
   type OperationSurfaceWire,
@@ -457,7 +460,13 @@ function RowInfo({
           onKeyDown={(event) => {
             if (event.key === "Enter" || event.key === " ") event.stopPropagation();
           }}
-          className="text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]"
+          className={cn(
+            "text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]",
+            // 20px of paint, and the row's only hover-free route to a clipped
+            // fact's whole value; the line it sits on grows with it
+            // (`ROW_INFO_TOUCH_LINE`), or the card's clip takes the height back.
+            ROW_INFO_TOUCH_TARGET,
+          )}
         />
       </PopoverTrigger>
       {/* `md`, not `lg`: a 380px surface in a 380px queue column is
@@ -828,7 +837,10 @@ function MemberLine({
           title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
           aria-label={selectionLabel}
           onClick={onSelect}
-          className={cn("min-w-0 truncate text-left", dsFocus)}
+          // The line is 44px on a coarse pointer and this button is the row's
+          // SELECTION — the only way into the member's panel — so it takes the
+          // whole height rather than the 16px its text paints.
+          className={cn("min-w-0 truncate text-left", MEMBER_NAME_TOUCH_TARGET, dsFocus)}
         >
           {queueRowTitle(surface)}
         </button>
@@ -1317,10 +1329,17 @@ export function QueueRow({
             {/* The icon, title and status pill share one cross-axis centre. The
                 icon box matches the StatusBadge (`sm` = `--ds-h-xs`) so a taller
                 title line cannot leave the glyph floating above the pill. */}
-            <div className="col-start-1 row-start-1 flex h-[var(--ds-h-xs)] items-center">
+            <div className={cn("col-start-1 row-start-1 flex h-[var(--ds-h-xs)] items-center", ROW_INFO_TOUCH_LINE)}>
               <StatusIcon aria-hidden className={cn(dsIcon.md, "shrink-0", PROPOSED_STATUS[status].iconClass)} />
             </div>
-            <div className="col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center gap-x-[var(--ds-space-base)]">
+            <div
+              className={cn(
+                "col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center gap-x-[var(--ds-space-base)]",
+                // The ⓘ's 44px is taken by the LINE, not by the control — the
+                // same move `--ds-h-member-line` makes for the member toggle.
+                ROW_INFO_TOUCH_LINE,
+              )}
+            >
               <div className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
                 {/* Bulk selection is a TOP-LEVEL act: a member is acted on
                     through its group or on its own row, never half-selected
