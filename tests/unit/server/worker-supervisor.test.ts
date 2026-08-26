@@ -529,6 +529,7 @@ describe("stop-worker", () => {
 
   it("escalates to SIGTERM after the graceful bound and SIGKILL after the SIGTERM bound, recording each stage as it happens", async () => {
     const { harness, target } = await runningHarness();
+    const stoppedAtMonotonic = harness.clock.monotonicMs();
     await harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
     const child = harness.children[0];
     if (child === undefined) throw new Error("expected a spawned child");
@@ -538,6 +539,8 @@ describe("stop-worker", () => {
     harness.clock.advanceWall(WORKER_GRACEFUL_STOP_TIMEOUT_MS);
     const sigterm = harness.scheduler.pending()[0];
     if (sigterm === undefined) throw new Error("expected the armed SIGTERM deadline");
+    // D271: the SIGTERM deadline is EXACTLY the graceful bound past the stop.
+    expect(sigterm.deadlineMonotonicMs).toBe(stoppedAtMonotonic + 120_000);
     sigterm.fire();
     expect(child.signalsSent).toEqual(["SIGTERM"]);
 
@@ -545,6 +548,8 @@ describe("stop-worker", () => {
     harness.clock.advanceWall(WORKER_SIGTERM_TIMEOUT_MS);
     const sigkill = harness.scheduler.pending()[0];
     if (sigkill === undefined) throw new Error("expected the armed SIGKILL deadline");
+    // D271: the SIGKILL deadline is EXACTLY the SIGTERM bound past the SIGTERM send.
+    expect(sigkill.deadlineMonotonicMs).toBe(stoppedAtMonotonic + 120_000 + 30_000);
     sigkill.fire();
     expect(child.signalsSent).toEqual(["SIGTERM", "SIGKILL"]);
 
@@ -676,7 +681,30 @@ describe("stop-worker", () => {
     const harness = openHarness();
 
     await expect(harness.supervisor.execute({ command: "stop-worker", member: member(2), escalation: stopPolicy() }))
-      .rejects.toThrow(/never spawned .* externally started worker is never adopted or controlled/);
+      .rejects.toThrow(
+        `stop-worker refused: this supervisor never spawned ${member(2).workerId}; `
+        + "an externally started worker is never adopted or controlled",
+      );
+  });
+
+  it("refuses to stop or pause a child still awaiting its lease birth — ownership is unproved", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const pendingSpawn = harness.supervisor.execute({ command: "spawn-worker", member: target });
+    const settled = expect(pendingSpawn).rejects.toThrow(/exited/);
+
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+      .rejects.toThrow(new RegExp(
+        `stop-worker refused: worker ${target.workerId} \\(pid \\d+\\) has not proved its lease birth`,
+      ));
+    await expect(harness.supervisor.execute({ command: "pause-worker", member: target }))
+      .rejects.toThrow(new RegExp(
+        `pause-worker refused: worker ${target.workerId} \\(pid \\d+\\) has not proved its lease birth`,
+      ));
+    expect(harness.gracefulRequests).toHaveLength(0);
+
+    harness.children[0]?.emitExit(1, null);
+    await settled;
   });
 
   it("refuses to stop a child that already exited, naming its evidence", async () => {
@@ -739,7 +767,10 @@ describe("pause-worker / resume-worker", () => {
     const harness = openHarness();
 
     await expect(harness.supervisor.execute({ command: "pause-worker", member: member(1) }))
-      .rejects.toThrow(/never spawned .* never adopted or controlled/);
+      .rejects.toThrow(
+        `pause-worker refused: this supervisor never spawned ${member(1).workerId}; `
+        + "an externally started worker is never adopted or controlled",
+      );
   });
 
   it("refuses to pause a child whose stop escalation is in flight", async () => {
