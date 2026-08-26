@@ -316,3 +316,56 @@ export function composeStopWorkerCommand(
     target: { workerId: worker.workerId, expectedVersion: worker.leaseVersion },
   };
 }
+
+/**
+ * The Session Panel's pool controls (D271) — the two arms that CAS against the
+ * worker POOL rather than a worker lease.
+ *
+ * `expectedVersion` is the pool row's version as served by the snapshot the
+ * operator was looking at, and `0` for a workflow with no row at all (D269:
+ * nothing seeds a pool, so 0 is the honest first basis). This is the exact fact
+ * the CAS exists to check, which is why it travels FROM the view rather than
+ * being read again here: a composer that re-read it would be checking the pool
+ * against itself, and the whole point is that the operator's basis may be
+ * stale. When it is, the kernel answers `conflict` naming the live version and
+ * the panel draws that refusal — it never retries with the number the server
+ * just sent, because the operator's decision was made against the count they
+ * could see.
+ */
+export function composePlanWorkerCountCommand(
+  pool: Readonly<{ workflowId: string; desiredWorkers: number; expectedVersion: number }>,
+  context: Readonly<{ actorId: string; source: string }>,
+): unknown {
+  return {
+    commandId: crypto.randomUUID(),
+    requestedAt: systemClock.now().toISOString(),
+    requestedBy: context.actorId,
+    source: context.source,
+    family: "worker-browser",
+    type: "plan-worker-count",
+    target: { workflowId: pool.workflowId, expectedVersion: pool.expectedVersion },
+    payload: { desiredWorkers: pool.desiredWorkers },
+  };
+}
+
+/**
+ * `spawn-worker` names the EXACT member being replaced (D271: a crashed
+ * member's declaration stays visibly unmet until an explicit spawn), so the
+ * worker id is the caller's — derived from the served workflow id and the slot
+ * the operator pressed, never the next free index this composer picked.
+ */
+export function composeSpawnWorkerCommand(
+  member: Readonly<{ workflowId: string; workerId: string; expectedVersion: number }>,
+  context: Readonly<{ actorId: string; source: string }>,
+): unknown {
+  return {
+    commandId: crypto.randomUUID(),
+    requestedAt: systemClock.now().toISOString(),
+    requestedBy: context.actorId,
+    source: context.source,
+    family: "worker-browser",
+    type: "spawn-worker",
+    target: { workflowId: member.workflowId, expectedVersion: member.expectedVersion },
+    payload: { workerId: member.workerId },
+  };
+}
