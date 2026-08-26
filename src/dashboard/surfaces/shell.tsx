@@ -1353,21 +1353,9 @@ function WorkerCard({
     >
       <div className="flex items-center gap-[var(--ds-space-snug)]">
         <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", tone.dot)} />
-        {/*
-          The header label is `Member 2` for a pool member and the raw worker id
-          for a worker the pool contract cannot address — and it is `truncate`,
-          so the second case was an ellipsis with the full id on the article's
-          `title` and nowhere else. Both cases now carry the SAME route to the
-          served identity, beside the label rather than under a hover.
-        */}
         <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>
           {memberLabel ?? workflowLabel}
         </span>
-        <WorkerIdentityDetails
-          label={`Show full worker identity for ${memberLabel ?? workflowLabel}`}
-          workerId={String(card.workerId)}
-          facts={[{ label: "Workflow", value: workflowLabel }]}
-        />
         {queued > 0 && (
           <span
             className={cn(
@@ -1396,17 +1384,36 @@ function WorkerCard({
         >
           {card.currentRun.state === "present" ? String(card.currentRun.traceId) : card.currentRun.reason}
         </span>
-        {card.currentRun.state === "present" && (
-          <AuthorityDetails
-            label={`Show full current run and trace IDs for ${workflowLabel}`}
-            title="Current run identity"
-            facts={[
-              { label: "Run ID", value: String(card.currentRun.runId) },
-              { label: "Trace ID", value: String(card.currentRun.traceId) },
-            ]}
-            touchAlign="up"
-          />
-        )}
+        {/*
+          THE CARD'S ONE IDENTITY ROUTE, and it is no longer conditional on the
+          worker holding a run.
+
+          The header label above is `Member 2` for a pool member and the raw
+          worker id for a worker the pool contract cannot address — and it is
+          `truncate`, so the second case was an ellipsis with the full id on the
+          article's `title` and nowhere else: readable by a mouse, by nobody
+          else, which DESIGN.md bans outright. The id rides HERE rather than
+          beside the label because this is the line whose value span is
+          `flex-1 truncate`, which is the geometry `AuthorityDetails` is drawn
+          for — its 44px target hangs on a negative margin over the truncation
+          point, so a control on a content-width label would sit on top of the
+          label's own text.
+        */}
+        <AuthorityDetails
+          label={`Show full worker identity and run IDs for ${memberLabel ?? workflowLabel}`}
+          title="Worker identity"
+          facts={[
+            { label: "Worker ID", value: String(card.workerId) },
+            { label: "Workflow", value: workflowLabel },
+            ...(card.currentRun.state === "present"
+              ? [
+                { label: "Run ID", value: String(card.currentRun.runId) },
+                { label: "Trace ID", value: String(card.currentRun.traceId) },
+              ]
+              : [{ label: "Current run", value: card.currentRun.reason }]),
+          ]}
+          touchAlign="up"
+        />
       </span>
 
       <WorkerSessionLine membership={membership} />
@@ -1540,7 +1547,13 @@ export function UnmetMemberCard({
     >
       <div className="flex items-center gap-[var(--ds-space-snug)]">
         <span aria-hidden className="size-1.5 shrink-0 rounded-full border border-[color:var(--ds-border)]" />
-        <span className={cn(dsText.ui, "min-w-0 truncate font-semibold text-[color:var(--ds-fg-muted)]")}>
+        {/*
+          `flex-1`, because the control beside it is `AuthorityDetails`: its
+          44px target hangs on a negative margin over the value's truncation
+          point, so the value has to OWN the free space or the eye lands on the
+          label's own text.
+        */}
+        <span className={cn(dsText.ui, "min-w-0 flex-1 truncate font-semibold text-[color:var(--ds-fg-muted)]")}>
           Member {poolIndex}
         </span>
         {/*
@@ -1584,13 +1597,14 @@ export function UnmetMemberCard({
  * The worker id, on the ONE keyboard- and touch-reachable route this panel
  * already uses for a clipped identity (`AuthorityDetails`).
  *
- * Every card here carried its worker id on the article's `title` attribute and
- * nowhere else, and the header label that stands in for it is `truncate` — so a
- * pool member reads `Member 2` and an unindexed worker reads a clipped id, and
- * the full string was reachable only by hovering a mouse. It is the same
- * construct on every card in the drawer, so it is one component: a card that
- * names a different route to the same fact is a second answer to "which worker
- * is this".
+ * Every card in this drawer carried its worker id on the article's `title`
+ * attribute and nowhere else, and the header label that stands in for it is
+ * `truncate` — so a pool member reads `Member 2`, an unindexed worker reads a
+ * clipped id, and the full string was reachable by hovering a mouse and by
+ * nothing else. This is the shared route for the two cards whose HEADER holds
+ * it (the unmet slot and the retained failed card, both of which have a
+ * `flex-1` label for the target to hang off); the live card's is on its
+ * subline, where the run identity already was.
  */
 function WorkerIdentityDetails({
   label,
