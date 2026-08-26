@@ -829,9 +829,13 @@ export function createWorkerPoolRuntimeExecutor(
             `plan-worker-count cannot stop desired member ${fact.member.workerId} at index ${String(offset + 1)}`,
           );
         }
-        if (offset >= desiredWorkers && fact.stage !== "graceful-stop-requested") {
+        if (offset >= desiredWorkers && fact.stage === "running") {
+          // Stop coverage is owed only for a process that exists: a running
+          // excess member must carry its bounded graceful stop, while an
+          // honest `unmet` fact (crashed / never started — D271's visibly
+          // unmet declaration) has no process to stop and satisfies coverage.
           throw new Error(
-            `plan-worker-count must select excess member ${fact.member.workerId} for bounded graceful stop`,
+            `plan-worker-count must select running excess member ${fact.member.workerId} for bounded graceful stop`,
           );
         }
       }

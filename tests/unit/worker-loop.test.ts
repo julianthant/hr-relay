@@ -1004,6 +1004,37 @@ describe("pool-capable worker runtime executor seam", () => {
     }]);
   });
 
+  it("accepts a scale-down acknowledgement reporting an honest unmet excess member", async () => {
+    // D271: a crashed member's declaration stays visibly unmet. An excess
+    // member that crashed or never started has no process to stop — the honest
+    // `unmet` fact satisfies stop coverage instead of coercing a fabricated
+    // graceful-stop observation.
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => ({
+        command: "plan-worker-count",
+        state: "acknowledged",
+        desiredWorkers: 1,
+        members: [
+          { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
+          { member: poolMemberFixture(2), stage: "unmet", reason: "crashed" },
+          { member: poolMemberFixture(3), stage: "graceful-stop-requested", ownership: "supervised", escalation: STOP_ESCALATION, observed: OBSERVED_GRACEFUL },
+        ],
+      }),
+    });
+    const plan = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "plan-worker-count",
+      target: { workflowId: WORKFLOW_ID, expectedVersion: 1 },
+      payload: { desiredWorkers: 1 },
+    });
+
+    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
+      state: "accepted",
+      workerIds: ["person-lookup-worker-1"],
+    });
+  });
+
   it("refuses a scale-down acknowledgement that omits an authoritative excess member", async () => {
     const executor = createWorkerPoolRuntimeExecutor({
       execute: () => ({
@@ -1278,7 +1309,7 @@ describe("pool-capable worker runtime executor seam", () => {
       message: /cannot stop desired member person-lookup-worker-1 at index 1/,
     },
     {
-      name: "unstopped excess member",
+      name: "running excess member without stop coverage",
       desiredWorkers: 1,
       acknowledgement: {
         command: "plan-worker-count",
@@ -1286,10 +1317,10 @@ describe("pool-capable worker runtime executor seam", () => {
         desiredWorkers: 1,
         members: [
           { member: poolMemberFixture(1), stage: "running", ownership: "supervised" },
-          { member: poolMemberFixture(2), stage: "unmet", reason: "crashed" },
+          { member: poolMemberFixture(2), stage: "running", ownership: "supervised" },
         ],
       },
-      message: /must select excess member person-lookup-worker-2 for bounded graceful stop/,
+      message: /must select running excess member person-lookup-worker-2 for bounded graceful stop/,
     },
   ])("refuses a plan acknowledgement with $name", async ({ desiredWorkers, acknowledgement, message }) => {
     const executor = createWorkerPoolRuntimeExecutor({ execute: () => acknowledgement });
