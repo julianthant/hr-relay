@@ -825,11 +825,10 @@ function LoadedApp({
           setDetailNonce((nonce) => nonce + 1);
         },
         (caught: unknown) => {
-          toast({
-            tone: "danger",
-            title: "Nothing was recorded",
-            description: caught instanceof Error ? caught.message : String(caught),
-          });
+          // NOT "Nothing was recorded": the envelope is already on the wire by
+          // the time anything can land here, so whether the kernel wrote the
+          // row is a fact this tab does not hold (`commandFailureToast`).
+          toast(commandFailureToast({ stage: "after-dispatch", caught }));
         },
       );
     },
@@ -865,11 +864,10 @@ function LoadedApp({
           });
         },
         (caught: unknown) => {
-          toast({
-            tone: "danger",
-            title: "Nothing was recorded",
-            description: caught instanceof Error ? caught.message : String(caught),
-          });
+          // NOT "Nothing was recorded": the envelope is already on the wire by
+          // the time anything can land here, so whether the kernel wrote the
+          // row is a fact this tab does not hold (`commandFailureToast`).
+          toast(commandFailureToast({ stage: "after-dispatch", caught }));
         },
       );
     },
