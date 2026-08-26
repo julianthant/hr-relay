@@ -197,3 +197,40 @@ export function shortHash(value: string): string {
 export function versionTag(version: number): string {
   return `v${String(version)}`;
 }
+
+/**
+ * The APP's version tag — `app 0.1` (D272 item 4, ledger row A126).
+ *
+ * The bootstrap serves a semver (`AppVersionSchema`), and the shell drew all
+ * three components under a tooltip that explains exactly two: what MAJOR does
+ * to prior-version runs and what MINOR does not. A third digit the sentence
+ * beside it never mentions is a claim the operator cannot check, so the tag is
+ * the demo's MAJOR.MINOR and the patch stays where it is served.
+ *
+ * It THROWS on anything that is not `major.minor[.…]`. This is the one place
+ * the app's own version reaches the screen, and a version tag that quietly
+ * degrades to the raw string when the shape moves is a wrong version drawn
+ * beside a right-sounding sentence.
+ */
+export function fmtAppVersion(appVersion: string): string {
+  const parts = appVersion.split(".");
+  const [major, minor] = parts;
+  if (
+    parts.length < 2
+    || major === undefined
+    || minor === undefined
+    || !/^\d+$/u.test(major)
+    || !/^\d+$/u.test(minor)
+  ) {
+    throw new Error(
+      `app version "${appVersion}" is not MAJOR.MINOR[.PATCH]; the shell's version tag prints the `
+      + "first two components and will not guess at a shape it does not recognise",
+    );
+  }
+  return `${major}.${minor}`;
+}
+
+/** `app 0.1` — where the number needs to say WHICH version it is. */
+export function appVersionTag(appVersion: string): string {
+  return `app ${fmtAppVersion(appVersion)}`;
+}

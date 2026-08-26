@@ -55,7 +55,7 @@ import {
 import type { SubscriptionState } from "../client/index.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "./status-model.js";
 import { SYSTEM_LABEL } from "./system-chip-model.js";
-import { elapsedSecondsBetween, fmtElapsed, plural } from "./format.js";
+import { appVersionTag, elapsedSecondsBetween, fmtAppVersion, fmtElapsed, plural } from "./format.js";
 import {
   type WorkflowGroupEntry,
 } from "./workflow-category.js";
@@ -278,7 +278,9 @@ function WorkflowEntryList({
             on ? "bg-[var(--ds-ring)]" : "bg-transparent group-hover:bg-[var(--ds-border-loud)]",
           )}
         />
-        <span className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
+        {/* No gap: the span holds ONE child, so the gap was unrecorded spacing
+            drift rather than a decision (D272 item 2, ledger row A81). */}
+        <span className="flex min-w-0 flex-1 items-center">
           <span className={cn(dsText.ui, "truncate", labelWeight)}>{workflow.label}</span>
         </span>
         {/* `active │ all`, PER WORKFLOW, and it is the ONLY badge on the row —
@@ -297,9 +299,12 @@ function WorkflowEntryList({
           className={cn(
             dsText.meta,
             dsText.nums,
-            // The row gap alone leaves a truncated label crowding the numbers;
-            // this pad keeps the label→count boundary at 16px minimum.
-            "flex shrink-0 items-center justify-end gap-[var(--ds-space-hair)] pl-[var(--ds-space-base)]",
+            // The demo's cluster exactly (D272 item 2, ledger row A82). The
+            // extra `pl-base` this tree had added was an unrecorded spacing
+            // change: the button's own `gap-base` is what separates a truncated
+            // label from the numbers, and paying for it twice reads as a
+            // different rail.
+            "flex shrink-0 items-center justify-end gap-[var(--ds-space-hair)]",
           )}
         >
           <span
@@ -1561,7 +1566,12 @@ export function SessionPanel({
               className={capacityChip(true)}
             >
               <AlertTriangle aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
-              {plural(attention.length, "worker")} need attention
+              {/* The demo's STABLE plural (D272 item 4, ledger row A122). This
+                  read `1 worker need attention` at a count of one, because
+                  `plural` agrees the noun and the sentence's verb is fixed —
+                  the demo's chip never inflects either, so the two always
+                  agree. */}
+              {attention.length} workers need attention
             </span>
           )}
         </button>
@@ -1582,11 +1592,15 @@ export function SessionPanel({
               ever told them: what a MAJOR bump does to prior-version runs is
               not derivable from a version string, and the tooltip on that
               string is where the demo puts it. */}
+          {/* D272 item 4 (ledger row A126): the tag and the sentence beside it
+              print the SAME two components. The bootstrap serves a semver, and
+              a third digit under a tooltip that explains exactly two is a claim
+              the operator cannot check. */}
           <span
-            title={`App ${appVersion} — MAJOR moves when a dashboard change reaches some or all workflows (prior-version runs archive); MINOR when it reaches none. A run that RAN under a different version carries its own, which is a fact about the run and stays on the run.`}
+            title={`App ${fmtAppVersion(appVersion)} — MAJOR moves when a dashboard change reaches some or all workflows (prior-version runs archive); MINOR when it reaches none. A run that RAN under a different version carries its own, which is a fact about the run and stays on the run.`}
             className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}
           >
-            app {appVersion}
+            {appVersionTag(appVersion)}
           </span>
           <span aria-hidden className="h-[var(--ds-h-xs)] w-px shrink-0 bg-[var(--ds-border)]" />
           {/* The subscription, named. This is the live / reconnecting state the
