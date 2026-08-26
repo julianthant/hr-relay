@@ -481,14 +481,20 @@ export function createDashboardWorkerProcessSupervisor(
       );
     }
     record.stopInFlight = true;
-    let durable: Readonly<{ requestedAt: string }>;
+    let durable: Readonly<{ requestedAt: string }> | undefined;
     try {
       durable = await deps.gracefulStop.request(record.member);
-    } catch (error) {
-      // The durable directive was NOT written: nothing to escalate, and the
-      // member must stay stoppable — a stuck flag would brick the stop path.
-      record.stopInFlight = false;
-      throw error;
+    } finally {
+      // A throw from the durable request propagates untouched; this only
+      // releases the in-flight flag when no durable acknowledgement exists —
+      // nothing was written, and a stuck flag would brick the stop path.
+      if (durable === undefined) record.stopInFlight = false;
+    }
+    if (durable === undefined) {
+      throw new Error(
+        `graceful stop for ${record.member.workerId} produced no durable acknowledgement; `
+        + "the stop directive channel returned nothing",
+      );
     }
     const requestedAt = IsoInstantSchema.parse(durable.requestedAt);
     if (record.state !== "running") {
