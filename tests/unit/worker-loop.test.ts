@@ -15,6 +15,7 @@ import {
   runWorkerLoop,
   type WorkerLoopDependencies,
 } from "../../src/core/worker-loop.js";
+import type { WorkerRuntimeExecutor } from "../../src/core/command-kernel.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
@@ -319,6 +320,21 @@ describe("pool-capable worker runtime executor seam", () => {
     source: "dashboard",
   };
 
+  it("is structurally non-assignable to the kernel's synchronous executor seam", () => {
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: () => {
+        throw new Error("never invoked: this test is a compile-time pin");
+      },
+    });
+    // A mis-wire into the kernel's sync `workerRuntime` dependency would
+    // launch the real supervisor effect, then abandon its promise as an
+    // unhandled rejection once the synchronous zod parse throws on it. The
+    // pool seam's distinct method names make that mis-wire a compile error.
+    // @ts-expect-error — the awaitable pool executor must never satisfy the sync WorkerRuntimeExecutor
+    const misWired: WorkerRuntimeExecutor = executor;
+    assert.ok(misWired, "the runtime value itself still exists; only the assignment must be refused");
+  });
+
   it("plans three deterministic members only after the supervisor acknowledges their lifecycle facts", async () => {
     const requests: unknown[] = [];
     const executor = createWorkerPoolRuntimeExecutor({
@@ -368,7 +384,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 3 },
     });
 
-    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
       state: "accepted",
       workerIds: [
         "person-lookup-worker-1",
@@ -446,7 +462,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 1 },
     });
 
-    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
       state: "accepted",
       workerIds: ["person-lookup-worker-1"],
     });
@@ -478,7 +494,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { workerId: "person-lookup-worker-2" },
     });
 
-    assert.deepEqual(await executor.spawnWorker({ command: spawn, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.spawnPoolWorker({ command: spawn, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "spawn-worker",
       member: {
@@ -519,7 +535,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
     });
 
-    assert.deepEqual(await executor.stopWorker({ command: stop, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.stopPoolWorker({ command: stop, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "stop-worker",
       member: {
@@ -560,7 +576,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-1", expectedVersion: 1 },
     });
 
-    assert.deepEqual(await executor.pauseWorker({ command: pause, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.pausePoolWorker({ command: pause, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "pause-worker",
       member: {
@@ -596,7 +612,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-3", expectedVersion: 1 },
     });
 
-    assert.deepEqual(await executor.resumeWorker({ command: resume, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.resumePoolWorker({ command: resume, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "resume-worker",
       member: {
@@ -633,7 +649,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-2", browserSessionId: ITEM_ID, expectedVersion: 1 },
     });
 
-    assert.deepEqual(await executor.refreshBrowser({ command: refresh, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.refreshPoolBrowser({ command: refresh, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "refresh-browser",
       member: {
@@ -671,7 +687,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-3", browserSessionId: ITEM_ID, expectedVersion: 1 },
     });
 
-    assert.deepEqual(await executor.reopenBrowser({ command: reopen, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.reopenPoolBrowser({ command: reopen, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "reopen-browser",
       member: {
@@ -705,7 +721,7 @@ describe("pool-capable worker runtime executor seam", () => {
       target: { workerId: "person-lookup-worker-2", expectedVersion: 1 },
     });
 
-    assert.deepEqual(await executor.stopWorker({ command: stop, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(await executor.stopPoolWorker({ command: stop, now: requestedAt }), { state: "accepted" });
     assert.deepEqual(requests, [{
       command: "stop-worker",
       member: poolMemberFixture(2),
@@ -735,7 +751,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.stopWorker({ command: stop, now: requestedAt }),
+      () => executor.stopPoolWorker({ command: stop, now: requestedAt }),
       /may acknowledge only the observed graceful-stop-requested stage.*recorded as they occur/,
     );
   });
@@ -759,7 +775,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.stopWorker({ command: stop, now: requestedAt }),
+      () => executor.stopPoolWorker({ command: stop, now: requestedAt }),
       /must follow the escalation policy in order/,
     );
   });
@@ -802,7 +818,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.planWorkerCount({ command: plan, now: requestedAt }),
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
       /must follow the escalation policy in order/,
     );
   });
@@ -844,7 +860,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.planWorkerCount({ command: plan, now: requestedAt }),
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
       /non-decreasing timestamps/,
     );
   });
@@ -885,7 +901,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 1 },
     });
 
-    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
       state: "accepted",
       workerIds: ["person-lookup-worker-1"],
     });
@@ -913,7 +929,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.planWorkerCount({ command: plan, now: requestedAt }),
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
       /plan-worker-count touches externally owned member person-lookup-worker-2/,
     );
   });
@@ -937,7 +953,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.stopWorker({ command: stop, now: requestedAt }),
+      () => executor.stopPoolWorker({ command: stop, now: requestedAt }),
       /stop-worker touches externally owned member person-lookup-worker-2/,
     );
   });
@@ -961,7 +977,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.spawnWorker({ command: spawn, now: requestedAt }),
+      () => executor.spawnPoolWorker({ command: spawn, now: requestedAt }),
       /spawn-worker touches externally owned member person-lookup-worker-2/,
     );
   });
@@ -991,7 +1007,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 1 },
     });
 
-    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
       state: "accepted",
       workerIds: ["person-lookup-worker-1"],
     });
@@ -1029,7 +1045,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 1 },
     });
 
-    assert.deepEqual(await executor.planWorkerCount({ command: plan, now: requestedAt }), {
+    assert.deepEqual(await executor.planPoolWorkerCount({ command: plan, now: requestedAt }), {
       state: "accepted",
       workerIds: ["person-lookup-worker-1"],
     });
@@ -1057,7 +1073,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.planWorkerCount({ command: plan, now: requestedAt }),
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
       /requires a bounded graceful stop acknowledgement for excess member person-lookup-worker-3 at index 3/,
     );
   });
@@ -1088,7 +1104,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { workerId: "person-lookup-worker-1" },
     });
 
-    await assert.rejects(() => executor.spawnWorker({ command: spawn, now: requestedAt }));
+    await assert.rejects(() => executor.spawnPoolWorker({ command: spawn, now: requestedAt }));
   });
 
   it("refuses a supervisor that mutates the plan request roster after submission", async () => {
@@ -1120,7 +1136,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers: 3 },
     });
 
-    await assert.rejects(() => executor.planWorkerCount({ command: plan, now: requestedAt }));
+    await assert.rejects(() => executor.planPoolWorkerCount({ command: plan, now: requestedAt }));
   });
 
   it("awaits an asynchronous supervisor effect before acknowledging a spawn", async () => {
@@ -1146,7 +1162,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { workerId: "person-lookup-worker-2" },
     });
 
-    const acknowledged = await executor.spawnWorker({ command: spawn, now: requestedAt });
+    const acknowledged = await executor.spawnPoolWorker({ command: spawn, now: requestedAt });
     assert.equal(effectProved, true, "the acknowledgement settled before the supervisor proved the effect");
     assert.deepEqual(acknowledged, { state: "accepted" });
   });
@@ -1174,7 +1190,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     let settled = false;
-    const acknowledging = (async () => executor.spawnWorker({ command: spawn, now: requestedAt }))();
+    const acknowledging = (async () => executor.spawnPoolWorker({ command: spawn, now: requestedAt }))();
     const watched = acknowledging.then(
       (value) => {
         settled = true;
@@ -1205,7 +1221,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.spawnWorker({ command: spawn, now: requestedAt }),
+      () => executor.spawnPoolWorker({ command: spawn, now: requestedAt }),
       /EAGAIN forking person-lookup-worker-2/,
     );
   });
@@ -1227,7 +1243,7 @@ describe("pool-capable worker runtime executor seam", () => {
     });
 
     await assert.rejects(
-      () => executor.planWorkerCount({ command: plan, now: requestedAt }),
+      () => executor.planPoolWorkerCount({ command: plan, now: requestedAt }),
       /worker pool size must not exceed 3/,
     );
     assert.equal(calls, 0);
@@ -1253,7 +1269,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { workerId },
     });
 
-    await assert.rejects(() => executor.spawnWorker({ command: spawn, now: requestedAt }), message);
+    await assert.rejects(() => executor.spawnPoolWorker({ command: spawn, now: requestedAt }), message);
     assert.equal(calls, 0);
   });
 
@@ -1332,7 +1348,7 @@ describe("pool-capable worker runtime executor seam", () => {
       payload: { desiredWorkers },
     });
 
-    await assert.rejects(() => executor.planWorkerCount({ command: plan, now: requestedAt }), message);
+    await assert.rejects(() => executor.planPoolWorkerCount({ command: plan, now: requestedAt }), message);
   });
 
   it.each([
@@ -1449,22 +1465,22 @@ describe("pool-capable worker runtime executor seam", () => {
 
     switch (type) {
       case "spawn-worker":
-        await assert.rejects(() => executor.spawnWorker(context), message);
+        await assert.rejects(() => executor.spawnPoolWorker(context), message);
         break;
       case "stop-worker":
-        await assert.rejects(() => executor.stopWorker(context), message);
+        await assert.rejects(() => executor.stopPoolWorker(context), message);
         break;
       case "pause-worker":
-        await assert.rejects(() => executor.pauseWorker(context), message);
+        await assert.rejects(() => executor.pausePoolWorker(context), message);
         break;
       case "resume-worker":
-        await assert.rejects(() => executor.resumeWorker(context), message);
+        await assert.rejects(() => executor.resumePoolWorker(context), message);
         break;
       case "refresh-browser":
-        await assert.rejects(() => executor.refreshBrowser(context), message);
+        await assert.rejects(() => executor.refreshPoolBrowser(context), message);
         break;
       case "reopen-browser":
-        await assert.rejects(() => executor.reopenBrowser(context), message);
+        await assert.rejects(() => executor.reopenPoolBrowser(context), message);
         break;
     }
   });

@@ -654,15 +654,21 @@ export interface WorkerPoolProcessSupervisor {
  * Every pool control is awaitable: the acknowledgement settles only after the
  * supervisor's effect settled (the kernel's synchronous Phase-1 seam keeps
  * `createPhase1WorkerRuntimeExecutor`, which refuses pending effects instead).
+ *
+ * DELIBERATELY not a `WorkerRuntimeExecutor`: the pool methods carry distinct
+ * names, so wiring this executor into the kernel's synchronous `workerRuntime`
+ * dependency is a compile error rather than a mis-wire that launches the real
+ * supervisor effect and abandons its promise as an unhandled rejection when
+ * the synchronous zod parse throws on it.
  */
-export interface WorkerPoolRuntimeExecutor extends WorkerRuntimeExecutor {
-  planWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
-  spawnWorker(context: WorkerRuntimeContext): Promise<unknown>;
-  refreshBrowser(context: WorkerRuntimeContext): Promise<unknown>;
-  reopenBrowser(context: WorkerRuntimeContext): Promise<unknown>;
-  stopWorker(context: WorkerRuntimeContext): Promise<unknown>;
-  pauseWorker(context: WorkerRuntimeContext): Promise<unknown>;
-  resumeWorker(context: WorkerRuntimeContext): Promise<unknown>;
+export interface WorkerPoolRuntimeExecutor {
+  planPoolWorkerCount(context: WorkerRuntimeContext): Promise<unknown>;
+  spawnPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  refreshPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
+  reopenPoolBrowser(context: WorkerRuntimeContext): Promise<unknown>;
+  stopPoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  pausePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
+  resumePoolWorker(context: WorkerRuntimeContext): Promise<unknown>;
 }
 
 /**
@@ -773,7 +779,7 @@ export function createWorkerPoolRuntimeExecutor(
   supervisor: WorkerPoolProcessSupervisor,
 ): WorkerPoolRuntimeExecutor {
   return Object.freeze({
-    async planWorkerCount(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerPlanAcknowledgementSchema>> {
+    async planPoolWorkerCount(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerPlanAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "plan-worker-count") {
         throw new Error(`planWorkerCount received a ${command.type} command`);
@@ -841,7 +847,7 @@ export function createWorkerPoolRuntimeExecutor(
       }
       return { state: "accepted", workerIds: [...plannedWorkerIds] };
     },
-    async spawnWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
+    async spawnPoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "spawn-worker") {
         throw new Error(`spawnWorker received a ${command.type} command`);
@@ -855,7 +861,7 @@ export function createWorkerPoolRuntimeExecutor(
       requireDurableOwnership("spawn-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
-    async stopWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
+    async stopPoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "stop-worker") {
         throw new Error(`stopWorker received a ${command.type} command`);
@@ -882,7 +888,7 @@ export function createWorkerPoolRuntimeExecutor(
       }
       return { state: "accepted" };
     },
-    async pauseWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
+    async pausePoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "pause-worker") {
         throw new Error(`pauseWorker received a ${command.type} command`);
@@ -896,7 +902,7 @@ export function createWorkerPoolRuntimeExecutor(
       requireDurableOwnership("pause-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
-    async resumeWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
+    async resumePoolWorker(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "resume-worker") {
         throw new Error(`resumeWorker received a ${command.type} command`);
@@ -910,7 +916,7 @@ export function createWorkerPoolRuntimeExecutor(
       requireDurableOwnership("resume-worker", acknowledgement.member, acknowledgement.ownership);
       return { state: "accepted" };
     },
-    async refreshBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
+    async refreshPoolBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "refresh-browser") {
         throw new Error(`refreshBrowser received a ${command.type} command`);
@@ -931,7 +937,7 @@ export function createWorkerPoolRuntimeExecutor(
       }
       return { state: "accepted" };
     },
-    async reopenBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
+    async reopenPoolBrowser(context: WorkerRuntimeContext): Promise<z.input<typeof WorkerRuntimeAcknowledgementSchema>> {
       const { command } = context;
       if (command.type !== "reopen-browser") {
         throw new Error(`reopenBrowser received a ${command.type} command`);
