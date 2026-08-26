@@ -391,7 +391,15 @@ function SectionButton({
         // entry has its own box to grow into and cannot resolve a tap to its
         // neighbour. A fine pointer sees the demo's density unchanged, and the
         // parity corpus renders at `pointer: fine`.
-        "[@media(pointer:coarse)]:min-h-[44px]",
+        //
+        // `pointer-coarse:` — the variant the queue's own touch constants use.
+        // The first attempt here was the arbitrary form
+        // `[@media(pointer:coarse)]:min-h-[44px]`, which compiled to an EMPTY
+        // rule: the class was in the DOM and the declaration was in no
+        // stylesheet, so nothing on screen and nothing in the gate family would
+        // have said the floor was missing. Read the generated CSS, not the
+        // class list — F2c's lesson, one layer lower down.
+        "pointer-coarse:min-h-11",
         dsText.ui,
         dsFocus,
         dsMotion.base,
@@ -500,7 +508,7 @@ export function SettingsPage({
           size="sm"
           icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
           onClick={onClose}
-          className="justify-start [@media(pointer:coarse)]:min-h-[44px]"
+          className="justify-start pointer-coarse:min-h-11"
         >
           Back to the dashboard
         </Button>
