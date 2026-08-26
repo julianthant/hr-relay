@@ -51,7 +51,6 @@ import {
   outcomeAction,
   parkResolutions,
 } from "./actions-model.js";
-import type { CommandSettlement } from "../app/command-result.js";
 import {
   Button,
   ContextMenu,
@@ -91,29 +90,6 @@ export interface ActionTarget {
 export type DashboardActionHandler = (action: ActionDescriptorWire, target: ActionTarget) => void;
 
 const NOOP_ACTION: DashboardActionHandler = () => {};
-
-/**
- * The applied half of D253's fold. This receives the settlement, never a raw
- * command result, so a future refusal arm cannot accidentally fall through
- * into an affirmative toast.
- */
-export function toastAppliedCommandResult(
-  toast: (input: { tone: "success"; title: string; description: string }) => string,
-  input: {
-    readonly settlement: CommandSettlement;
-    readonly actionLabel: string;
-    readonly subject: string;
-    readonly clock: string;
-    readonly actorId: string;
-  },
-): void {
-  if (input.settlement.kind !== "applied") return;
-  toast({
-    tone: "success",
-    title: input.actionLabel,
-    description: `${input.subject} · ${input.clock} · ${input.actorId}`,
-  });
-}
 
 /**
  * Persistent refusal context. It is a client-side feed of command answers,

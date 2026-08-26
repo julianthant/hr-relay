@@ -49,11 +49,14 @@ import {
 import {
   CommandResultFeed,
   ConfirmCommandDialog,
-  toastAppliedCommandResult,
   type ActionTarget,
   type PendingCommand,
 } from "../surfaces/actions.js";
-import { commandResultFeedEntry, type CommandResultFeedEntry } from "../surfaces/actions-model.js";
+import {
+  commandResultFeedEntry,
+  toastAppliedCommandResult,
+  type CommandResultFeedEntry,
+} from "../surfaces/actions-model.js";
 import { fmtClock } from "../surfaces/format.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
 import { composeCommandRequest, composeStopWorkerCommand, type CommandAction } from "./command-dispatch.js";
