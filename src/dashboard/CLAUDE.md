@@ -63,7 +63,19 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
   rows above and below, so a tap near a boundary marks the WRONG member. **When a target cannot grow
   without overlapping its neighbours, grow the PITCH** — `--ds-h-member-line` is 44px under
   `@media (pointer: coarse)`, both well heights derive from it, and the parity corpus renders at
-  `pointer: fine` so no reference moved. (3) A `Chip` clips its paint and put the whole value on
+  `pointer: fine` so no reference moved. **Amended 2026-08-26 (unit F2c): that fix was 44px in the
+  class list and 44 x 24 on screen, and only a real engine said so.** Two ancestors took the height
+  back. The toggle sits in the member line's NAME cell, which carries `truncate` — `overflow: hidden`
+  clips an absolutely-positioned descendant, and the cell is exactly as tall as the 24px of paint it
+  holds, so the width survived and the height did not (`MEMBER_TOUCH_TARGET_HOST` lifts the clip under
+  the coarse gate; `overflow-y` cannot be un-clipped alone, CSS computes the other axis to `auto`).
+  Then the un-clipped 44px target centred on a line with **43px of content** — the well is `divide-y`,
+  so every line but the last spends 1px of its own border box on the hairline — and hung half a pixel
+  over the row above, where `elementFromPoint` resolves to THIS toggle inside the NEIGHBOUR's row. The
+  coarse line is now `calc(44px + var(--ds-border-w))`. **A touch floor is a claim about the engine's
+  hit box, not about a class list**: measure both axes, in a real engine, or the guard passes while a
+  finger gets half the target. And **when a token is a target's size, remember what the border box
+  already spends** — `h-44` with a 1px divider is a 43px target. (3) A `Chip` clips its paint and put the whole value on
   `title` alone — reachable by mouse, by nobody else, which DESIGN.md bans outright. The row already
   had the sanctioned Popover, so the fix cost no new chrome: `rowInfoFacts` composes absent reasons
   and PRESENT values into one fold and the ⓘ prints the value unclipped (`break-words`, not a second
