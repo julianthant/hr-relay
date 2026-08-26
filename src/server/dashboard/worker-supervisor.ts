@@ -149,11 +149,17 @@ export function workerCliArgv(member: WorkerPoolMember): readonly string[] {
  */
 interface MemberRecord {
   readonly member: WorkerPoolMember;
-  state: "awaiting-birth" | "running" | "stopping" | "exited";
+  state: "awaiting-birth" | "running" | "stopping" | "kill-undelivered" | "exited";
   readonly child: SpawnedWorkerHandle;
   pid: number | undefined;
   bornAt?: string;
   leaseStartedAt?: string;
+  /**
+   * Set when a pre-birth spawn-abort SIGKILL could NOT be delivered: the
+   * child may still be alive, so no exit is synthesized and the slot stays
+   * blocked until the child's REAL exit event is observed.
+   */
+  killUndelivered?: { at: string; cause: string };
   /**
    * Set SYNCHRONOUSLY when a stop begins, before the durable graceful-stop
    * request is awaited: `state` only becomes "stopping" after that await, so
@@ -168,6 +174,13 @@ interface MemberRecord {
     signal: string | null;
     at: string;
     outcome: "stopped" | "crashed";
+    /**
+     * "os" = a real exit event from the process boundary; "supervisor" =
+     * synthesized for a child that provably cannot run (it never got a pid,
+     * or its spawn-abort SIGKILL was delivered) — a launch failure must never
+     * read as a normal worker crash.
+     */
+    reportedBy: "os" | "supervisor";
   };
 }
 
@@ -192,12 +205,20 @@ export const WorkerChildEvidenceSchema = z.discriminatedUnion("state", [
     })).min(1),
   }),
   z.strictObject({
+    state: z.literal("kill-undelivered"),
+    pid: z.number().int().positive(),
+    at: IsoInstantSchema,
+    cause: z.string().min(1),
+  }),
+  z.strictObject({
     state: z.literal("exited"),
     pid: z.number().int().positive().optional(),
     outcome: z.enum(["stopped", "crashed"]),
     exitCode: z.number().int().nullable(),
     signal: z.string().min(1).nullable(),
     at: IsoInstantSchema,
+    /** "os" = a real exit event; "supervisor" = synthesized launch-failure evidence. */
+    reportedBy: z.enum(["os", "supervisor"]),
     observedStop: z.array(z.strictObject({
       stage: z.enum(["graceful-stop-requested", "sigterm-sent", "sigkill-sent"]),
       at: IsoInstantSchema,
@@ -239,13 +260,20 @@ export function createDashboardWorkerProcessSupervisor(
     record.escalationTimer?.cancel();
     record.escalationTimer = undefined;
     const outcome: "stopped" | "crashed" = record.state === "stopping" ? "stopped" : "crashed";
-    record.exit = { exitCode, signal, at: instant(), outcome };
+    record.exit = { exitCode, signal, at: instant(), outcome, reportedBy: "os" };
     record.state = "exited";
   };
 
   const spawnWorker = async (member: WorkerPoolMember): Promise<WorkerSupervisorAcknowledgement> => {
     const existing = records.get(member.workerId);
     if (existing !== undefined && existing.state !== "exited") {
+      if (existing.state === "kill-undelivered") {
+        throw new Error(
+          `spawn-worker refused: worker ${member.workerId}'s previous child (pid ${String(existing.pid)}) `
+          + "may still be alive — its spawn-abort SIGKILL was not delivered and no exit has been observed; "
+          + "a replacement cannot run beside a possibly-live orphan under the same worker id",
+        );
+      }
       throw new Error(
         `spawn-worker refused: this supervisor already owns a ${existing.state} child for `
         + `${member.workerId}; a second process may not answer to the same worker id`,
@@ -289,15 +317,25 @@ export function createDashboardWorkerProcessSupervisor(
        * pid) and say honestly whether the kill was delivered. An undelivered
        * abort goes to the fault sink — the child may still be alive, and the
        * rejection must never claim a kill that did not happen.
+       * `childCannotRun` is true only when the child provably cannot be
+       * running (it never got a pid, or the SIGKILL was delivered) — the only
+       * cases where synthesizing exit evidence is honest.
        */
-      const killUnprovenChild = (): string => {
-        if (record.pid === undefined) return "the child has no pid to kill";
-        if (child.kill("SIGKILL")) return "the unproved child was killed";
+      const killUnprovenChild = (): Readonly<{ childCannotRun: boolean; description: string }> => {
+        if (record.pid === undefined) {
+          return { childCannotRun: true, description: "the child has no pid to kill" };
+        }
+        if (child.kill("SIGKILL")) {
+          return { childCannotRun: true, description: "the unproved child was killed" };
+        }
         deps.onFault(new Error(
           `worker ${member.workerId} (pid ${String(record.pid)}) spawn-abort SIGKILL was not delivered; `
           + "the unproved child may still be alive",
         ));
-        return "the unproved child was NOT killed (SIGKILL was not delivered)";
+        return {
+          childCannotRun: false,
+          description: "the unproved child was NOT killed (SIGKILL was not delivered)",
+        };
       };
       child.onExit((exitCode, signal) => {
         onChildExit(record, exitCode, signal);
@@ -324,13 +362,32 @@ export function createDashboardWorkerProcessSupervisor(
         // record would stay awaiting-birth forever and brick the worker slot.
         const killed = killUnprovenChild();
         if (record.state === "awaiting-birth") {
-          record.exit = { exitCode: null, signal: null, at: instant(), outcome: "crashed" };
-          record.state = "exited";
+          if (killed.childCannotRun) {
+            // Synthesized exit evidence, marked reportedBy: "supervisor" —
+            // honest ONLY because the child provably cannot be running.
+            record.exit = {
+              exitCode: null,
+              signal: null,
+              at: instant(),
+              outcome: "crashed",
+              reportedBy: "supervisor",
+            };
+            record.state = "exited";
+          } else {
+            // The abort SIGKILL was NOT delivered: the child may still be
+            // alive. Recording "exited" would free the slot and let a
+            // replacement run beside a live orphan under the same worker id —
+            // instead the record enters kill-undelivered, which blocks
+            // respawn, stop, pause, resume and plan coverage until the
+            // child's REAL exit event is observed.
+            record.state = "kill-undelivered";
+            record.killUndelivered = { at: instant(), cause: error.message };
+          }
         }
         settle(() => {
           reject(new Error(
             `spawn-worker failed: worker ${member.workerId} process errored before proving its lease `
-            + `birth: ${error.message}; ${killed}`,
+            + `birth: ${error.message}; ${killed.description}`,
           ));
         });
       });
@@ -352,7 +409,7 @@ export function createDashboardWorkerProcessSupervisor(
               reject(new Error(
                 `spawn-worker failed: worker ${member.workerId} lease is owned by pid `
                 + `${String(fact.processId)}, not the spawned child pid ${String(child.pid)}; the identity is `
-                + `externally held and ${killed}`,
+                + `externally held and ${killed.description}`,
               ));
             });
             return;
@@ -362,7 +419,7 @@ export function createDashboardWorkerProcessSupervisor(
             settle(() => {
               reject(new Error(
                 `spawn-worker failed: worker ${member.workerId} (pid ${String(child.pid)}) proved no lease `
-                + `birth within ${String(deps.birth.timeoutMs)}ms; ${killed}`,
+                + `birth within ${String(deps.birth.timeoutMs)}ms; ${killed.description}`,
               ));
             });
             return;
@@ -378,7 +435,7 @@ export function createDashboardWorkerProcessSupervisor(
           settle(() => {
             reject(new Error(
               `spawn-worker failed: worker ${member.workerId} (pid ${String(record.pid)}) birth probe `
-              + `threw before proving its lease birth: ${probe.message}; ${killed}`,
+              + `threw before proving its lease birth: ${probe.message}; ${killed.description}`,
             ));
           });
         }
@@ -429,6 +486,13 @@ export function createDashboardWorkerProcessSupervisor(
       throw new Error(
         `${command} refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved its `
         + "lease birth yet",
+      );
+    }
+    if (record.state === "kill-undelivered") {
+      throw new Error(
+        `${command} refused: worker ${member.workerId} (pid ${String(record.pid)}) may still be alive — `
+        + "its spawn-abort SIGKILL was not delivered and no exit has been observed; no command is honest "
+        + "until its real exit lands",
       );
     }
     if (record.state === "exited") {
@@ -564,6 +628,12 @@ export function createDashboardWorkerProcessSupervisor(
           `plan-worker-count refused: worker ${member.workerId} (pid ${String(record.pid)}) has not proved `
           + "its lease birth; a plan cannot truthfully cover a spawn still in flight",
         );
+      case "kill-undelivered":
+        throw new Error(
+          `plan-worker-count refused: worker ${member.workerId} (pid ${String(record.pid)}) may still be `
+          + "alive — its spawn-abort SIGKILL was not delivered and no exit has been observed; a plan cannot "
+          + "truthfully cover a possibly-live unproven child",
+        );
       case "running":
         if (initiateStopForRunning) {
           const escalation = canonicalEscalation();
@@ -634,6 +704,13 @@ export function createDashboardWorkerProcessSupervisor(
           + "its lease birth; a plan cannot truthfully cover a spawn still in flight",
         );
       }
+      if (record.state === "kill-undelivered") {
+        throw new Error(
+          `plan-worker-count refused: worker ${member.workerId} (pid ${String(record.pid)}) may still be `
+          + "alive — its spawn-abort SIGKILL was not delivered and no exit has been observed; a plan cannot "
+          + "truthfully cover a possibly-live unproven child",
+        );
+      }
       if (record.state === "running" && record.stopInFlight) {
         throw new Error(
           `plan-worker-count refused: worker ${member.workerId} has a stop in flight whose durable `
@@ -700,6 +777,20 @@ export function createDashboardWorkerProcessSupervisor(
           bornAt: record.bornAt,
           observedStop: record.observedStop,
         });
+      case "kill-undelivered": {
+        if (record.killUndelivered === undefined) {
+          throw new Error(
+            `worker ${record.member.workerId} is recorded kill-undelivered without its abort evidence; `
+            + "the supervisor registry is corrupt",
+          );
+        }
+        return WorkerChildEvidenceSchema.parse({
+          state: "kill-undelivered",
+          pid: record.pid,
+          at: record.killUndelivered.at,
+          cause: record.killUndelivered.cause,
+        });
+      }
       case "exited": {
         if (record.exit === undefined) {
           throw new Error(
@@ -714,6 +805,7 @@ export function createDashboardWorkerProcessSupervisor(
           exitCode: record.exit.exitCode,
           signal: record.exit.signal,
           at: record.exit.at,
+          reportedBy: record.exit.reportedBy,
           observedStop: record.observedStop,
         });
       }

@@ -255,6 +255,7 @@ describe("spawn-worker", () => {
       exitCode: 1,
       signal: null,
       at: NOW,
+      reportedBy: "os",
     });
   });
 
@@ -276,6 +277,8 @@ describe("spawn-worker", () => {
     await expectation;
 
     expect(harness.children[0]?.signalsSent).toEqual(["SIGKILL"]);
+    // The exit evidence is supervisor-SYNTHESIZED (there is no OS exit event
+    // for a child whose abort SIGKILL was delivered) and says so.
     expect(harness.supervisor.memberEvidence(target)).toEqual({
       state: "exited",
       pid: harness.children[0]?.pid,
@@ -283,6 +286,7 @@ describe("spawn-worker", () => {
       exitCode: null,
       signal: null,
       at: NOW,
+      reportedBy: "supervisor",
       observedStop: [],
     });
     // The slot is NOT bricked: an explicit new spawn-worker replaces the record.
@@ -312,9 +316,62 @@ describe("spawn-worker", () => {
       exitCode: null,
       signal: null,
       at: NOW,
+      reportedBy: "supervisor",
       observedStop: [],
     });
     expect(harness.faults).toHaveLength(0);
+  });
+
+  it("never fabricates exit evidence when the pre-birth abort SIGKILL was NOT delivered — the possibly-live child blocks the slot", async () => {
+    const harness = openHarness({ publishLeaseOnSpawn: false });
+    const target = member(1);
+    const child = new FakeWorkerChild(4321);
+    child.killResult = false;
+    harness.nextSpawn = (): FakeWorkerChild => child;
+    const expectation = expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/process errored before proving its lease birth: spawn EPERM; the unproved child was NOT killed/);
+    child.emitError(new Error("spawn EPERM"));
+    await expectation;
+
+    expect(harness.faults).toHaveLength(1);
+    expect(harness.faults[0]?.message).toMatch(/spawn-abort SIGKILL was not delivered/);
+    // NOT recorded "exited": the child may still be alive, and synthesizing an
+    // exit would free the slot for a replacement beside the live orphan.
+    expect(harness.supervisor.memberEvidence(target)).toEqual({
+      state: "kill-undelivered",
+      pid: 4321,
+      at: NOW,
+      cause: "spawn EPERM",
+    });
+    // Respawn is BLOCKED until the child's real exit is observed.
+    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .rejects.toThrow(/a replacement cannot run beside a possibly-live orphan/);
+    expect(harness.spawnRequests).toHaveLength(1);
+    // So are stop, pause and plan coverage — each refuses by name.
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() }))
+      .rejects.toThrow(/stop-worker refused: .*spawn-abort SIGKILL was not delivered/);
+    await expect(harness.supervisor.execute({ command: "pause-worker", member: target }))
+      .rejects.toThrow(/pause-worker refused: .*spawn-abort SIGKILL was not delivered/);
+    await expect(harness.supervisor.execute(planRequest(1, [target], [])))
+      .rejects.toThrow(/plan-worker-count refused: .*spawn-abort SIGKILL was not delivered/);
+    expect(harness.gracefulRequests).toHaveLength(0);
+    // The child stays visible to close()'s caller as still possibly live.
+    // The REAL exit, when it lands, resolves the uncertainty with OS evidence
+    // and frees the slot.
+    child.emitExit(null, "SIGKILL");
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "exited",
+      outcome: "crashed",
+      signal: "SIGKILL",
+      reportedBy: "os",
+    });
+    harness.nextSpawn = (request): FakeWorkerChild => {
+      const replacement = new FakeWorkerChild(4322);
+      harness.leases.set(request.member.workerId, { processId: 4322, startedAt: NOW });
+      return replacement;
+    };
+    await expect(harness.supervisor.execute({ command: "spawn-worker", member: target }))
+      .resolves.toMatchObject({ command: "spawn-worker", state: "acknowledged" });
   });
 
   it("forwards a post-birth process error to the fault sink instead of letting it vanish", async () => {
@@ -355,6 +412,7 @@ describe("spawn-worker", () => {
       state: "exited",
       outcome: "crashed",
       signal: "SIGKILL",
+      reportedBy: "os",
     });
   });
 
@@ -458,6 +516,7 @@ describe("a crashed child", () => {
       exitCode: 1,
       signal: null,
       at: "2026-08-26T09:01:00.000Z",
+      reportedBy: "os",
       observedStop: [],
     });
   });
@@ -562,6 +621,7 @@ describe("stop-worker", () => {
       exitCode: null,
       signal: "SIGKILL",
       at: "2026-08-26T09:02:31.000Z",
+      reportedBy: "os",
       observedStop: [
         { stage: "graceful-stop-requested", at: NOW },
         { stage: "sigterm-sent", at: "2026-08-26T09:02:00.000Z" },
@@ -627,6 +687,7 @@ describe("stop-worker", () => {
       exitCode: 1,
       signal: null,
       at: NOW,
+      reportedBy: "os",
       observedStop: [],
     });
     expect(harness.scheduler.pending()).toHaveLength(0);
