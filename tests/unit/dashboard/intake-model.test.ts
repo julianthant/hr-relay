@@ -25,8 +25,11 @@ import { IntakeRowCorrectionSchema } from "../../../src/domain/intake/session.js
 import { SuggestionSchema } from "../../../src/domain/intake/suggestions.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/domain/intake/wire.js";
 import {
+  correctionEditorLabel,
   correctionText,
+  exclusionEditorLabel,
   headerCandidateOptionLabel,
+  INTAKE_REVIEW_CONTROL_NAMES,
   INTAKE_REVIEW_COPY,
   intakeListPage,
   intakeListPageForSelection,
@@ -73,6 +76,18 @@ describe("IN95 / IN99–IN122 — rejection review uses the demo's one vocabular
     assert.equal(rejectionReviewLabel(4), "I have read all 4 rejected rows");
     assert.equal(startRunsLabel(1), "Start 1 run");
     assert.equal(startRunsLabel(3), "Start 3 runs");
+    assert.equal(correctionEditorLabel(3, "Employee ID (EID)"), "Correct row 3 · Employee ID (EID)");
+    assert.equal(exclusionEditorLabel(6), "Exclude row 6");
+    assert.deepEqual(INTAKE_REVIEW_CONTROL_NAMES, {
+      correctedValue: "intake-corrected-value",
+      exclusionReason: "intake-exclusion-reason",
+    });
+  });
+
+  it("refuses malformed editor labels instead of minting unstable control context", () => {
+    assert.throws(() => correctionEditorLabel(0, "Employee ID (EID)"), /positive source row/u);
+    assert.throws(() => correctionEditorLabel(3, "  "), /non-empty target label/u);
+    assert.throws(() => exclusionEditorLabel(1.5), /positive source row/u);
   });
 
   it("refuses the client-side Run offer until the exact served rejection set is acknowledged", () => {
