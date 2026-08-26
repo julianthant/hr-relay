@@ -45,7 +45,7 @@
  * reports "Done" over a partial result.
  */
 import { useMemo, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpDown, Ban, CheckSquare, RotateCcw, Square, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../domain/commands.js";
 import {
@@ -67,7 +67,10 @@ import {
 import { toolbarControl } from "./shell-model.js";
 import { QUEUE_SORTS, type QueueSortKey } from "./queue-model.js";
 import {
+  BULK_RESULT_OUTCOMES,
+  bulkClosingAssurance,
   bulkConfirmBody,
+  bulkResultCounts,
   type BulkBatchOutcome,
   type BulkVerb,
   type BulkVerbPlan,
@@ -223,14 +226,11 @@ export function QueueToolbar({
 }) {
   const allSelected = visibleIds.length > 0 && selectedCount === visibleIds.length;
   const vector = bulkOutcome?.response.state === "vector" ? bulkOutcome.response : undefined;
-  const buckets = useMemo(() => {
-    if (vector === undefined) return undefined;
-    const counts: Record<BulkRunCommandOutcome["outcome"], number> = {
-      applied: 0, conflict: 0, refused: 0, errored: 0,
-    };
-    for (const entry of vector.results) counts[entry.outcome] += 1;
-    return counts;
-  }, [vector]);
+  const buckets = useMemo(() => vector === undefined ? undefined : bulkResultCounts(vector), [vector]);
+  const assurance = useMemo(
+    () => vector === undefined ? undefined : bulkClosingAssurance(vector),
+    [vector],
+  );
 
   return (
     <div
@@ -413,13 +413,11 @@ export function QueueToolbar({
         >
           <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
             <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>
-              {vector === undefined ? "Nothing was sent" : `${vector.type} — result per run`}
+              {vector === undefined ? "Nothing was sent" : `${bulkOutcome.plan.label} — partial result`}
             </span>
             {vector !== undefined && buckets !== undefined && (
               <span className={cn(dsText.meta, dsText.nums, "flex flex-wrap items-center gap-[var(--ds-space-base)]")}>
-                {(["applied", "conflict", "refused", "errored"] as const)
-                  .filter((outcome) => buckets[outcome] > 0)
-                  .map((outcome, index) => (
+                {BULK_RESULT_OUTCOMES.map((outcome, index) => (
                     <span key={outcome} className="flex items-center gap-[var(--ds-space-base)]">
                       {index > 0 && <span aria-hidden className="text-[color:var(--ds-fg-faint)]">·</span>}
                       <span className={OUTCOME_TONE[outcome].text}>
@@ -428,9 +426,12 @@ export function QueueToolbar({
                     </span>
                   ))}
                 {vector.results.length < vector.requestedCount && (
-                  <span className="text-[color:var(--ds-danger)]">
-                    {vector.requestedCount - vector.results.length} not attempted
-                  </span>
+                  <>
+                    <span aria-hidden className="text-[color:var(--ds-fg-faint)]">·</span>
+                    <span className="text-[color:var(--ds-fg-muted)]">
+                      {vector.requestedCount - vector.results.length} not attempted
+                    </span>
+                  </>
                 )}
               </span>
             )}
@@ -503,10 +504,36 @@ export function QueueToolbar({
               with three outcomes is a discrepancy the operator would otherwise
               have to reconstruct from memory. */}
           {bulkOutcome.plan.skipped.length > 0 && (
-            <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
-              {bulkOutcome.plan.skipped.length} selected{" "}
-              {bulkOutcome.plan.skipped.length === 1 ? "row was" : "rows were"} left alone — the server serves no{" "}
-              {bulkOutcome.plan.verb} for {bulkOutcome.plan.skipped.map(({ title }) => title).join(", ")}.
+            <details className="mt-[var(--ds-space-snug)]">
+              <summary className={cn(dsText.meta, dsFocus, "cursor-pointer text-[color:var(--ds-fg-muted)]")}>
+                <span className={dsText.nums}>{bulkOutcome.plan.skipped.length}</span> selected{" "}
+                {bulkOutcome.plan.skipped.length === 1 ? "row" : "rows"} never offered {bulkOutcome.plan.label.toLowerCase()} —
+                nothing was attempted for {bulkOutcome.plan.skipped.length === 1 ? "it" : "them"}
+              </summary>
+              <div className="mt-[var(--ds-space-tight)] flex max-h-28 flex-col gap-[var(--ds-space-hair)] overflow-y-auto pl-[var(--ds-space-cozy)]">
+                {bulkOutcome.plan.skipped.map((row) => (
+                  <span key={row.runId} className={cn(dsText.meta, "flex min-w-0 items-center gap-[var(--ds-space-base)]")}>
+                    <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--ds-fg-muted)]" />
+                    <span className="min-w-0 truncate text-[color:var(--ds-fg-muted)]">{row.title}</span>
+                  </span>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {vector !== undefined && assurance !== undefined && (
+            <p className={cn(dsText.meta, "mt-[var(--ds-space-snug)] flex items-start gap-[var(--ds-space-snug)] leading-snug text-[color:var(--ds-fg-muted)]")}>
+              {assurance === "needs-review" ? (
+                <>
+                  <AlertTriangle aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-status-waiting-fg)]")} />
+                  Nothing was applied for conflicted, refused, errored, or unattempted rows. Open each one and look before you decide again — a conflict means the row changed under you.
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 aria-hidden className={cn(dsIcon.sm, "mt-px shrink-0 text-[color:var(--ds-success-fg)]")} />
+                  Every selected row that offered {bulkOutcome.plan.label.toLowerCase()} accepted it.
+                </>
+              )}
             </p>
           )}
         </div>

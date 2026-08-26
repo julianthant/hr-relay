@@ -8,6 +8,7 @@
  * instead of hot-swapping the component.
  */
 import { cn } from "../lib/utils.js";
+import type { CommandSettlement } from "../app/command-result.js";
 import {
   actionsAt,
   type ActionDescriptorWire,
@@ -97,4 +98,46 @@ export function parkResolutions(actions: readonly ActionDescriptorWire[]): reado
 
 export function outcomeAction(actions: readonly ActionDescriptorWire[]): ActionDescriptorWire | undefined {
   return actionsAt(actions, "outcome")[0];
+}
+
+/** A client-side receipt that a command was refused. The command result owns
+ * the verdict and server sentence; the surface supplies only the context it
+ * already showed when the operator pressed the control. */
+export interface CommandResultFeedEntry {
+  readonly id: string;
+  readonly targetRunId: string;
+  readonly expectedVersion: number;
+  readonly subject: string;
+  readonly workflowLabel: string;
+  readonly actionLabel: string;
+  readonly clock: string;
+  readonly actorId: string;
+  readonly settlement: Extract<CommandSettlement, { kind: "refused" }>;
+}
+
+export function commandResultFeedEntry(input: {
+  readonly settlement: CommandSettlement;
+  readonly targetRunId: string;
+  readonly expectedVersion: number;
+  /** The result's own durable identity. A replay deliberately replaces the
+   * same feed card rather than looking like a second refusal. */
+  readonly commandId: string;
+  readonly subject: string;
+  readonly workflowLabel: string;
+  readonly actionLabel: string;
+  readonly clock: string;
+  readonly actorId: string;
+}): CommandResultFeedEntry | undefined {
+  if (input.settlement.kind === "applied") return undefined;
+  return {
+    id: input.commandId,
+    targetRunId: input.targetRunId,
+    expectedVersion: input.expectedVersion,
+    subject: input.subject,
+    workflowLabel: input.workflowLabel,
+    actionLabel: input.actionLabel,
+    clock: input.clock,
+    actorId: input.actorId,
+    settlement: input.settlement,
+  };
 }

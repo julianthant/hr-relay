@@ -53,6 +53,24 @@ export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "ope
 
 export type PipelineStep = QueueSurfaceWire["pipeline"][number];
 
+/**
+ * Browser-local triage, deliberately not an authority projection. The caller
+ * owns the state lifetime (DashboardApp creates an empty set on every load),
+ * while this fold keeps the immutable set update shared and testable.
+ */
+export function toggleCheckedByYou(previous: ReadonlySet<string>, runId: string): ReadonlySet<string> {
+  const next = new Set(previous);
+  if (next.has(runId)) next.delete(runId);
+  else next.add(runId);
+  return next;
+}
+
+/** Only members present in this view count toward its local tally. A saved id
+ * from another operation cannot inflate a group it does not belong to. */
+export function checkedByYouCount(members: readonly MemberSurfaceWire[], checkedIds: ReadonlySet<string>): number {
+  return members.filter((member) => checkedIds.has(String(member.runId))).length;
+}
+
 /** One delegated child this row waits on and does NOT count (D231). */
 export type LinkedRunWire = QueueSurfaceWire["linkedRuns"][number];
 

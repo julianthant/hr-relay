@@ -41,11 +41,20 @@ import { QueuePanel, type QueueFilterScope, type QueueHandlers, type QueueViewSt
 import {
   attentionRunIds,
   queueRowTitle,
+  toggleCheckedByYou,
   visibleRunIds,
   type QueueSortKey,
   type QueueSurfaceWire,
 } from "../surfaces/queue-model.js";
-import { ConfirmCommandDialog, type ActionTarget, type PendingCommand } from "../surfaces/actions.js";
+import {
+  CommandResultFeed,
+  ConfirmCommandDialog,
+  toastAppliedCommandResult,
+  type ActionTarget,
+  type PendingCommand,
+} from "../surfaces/actions.js";
+import { commandResultFeedEntry, type CommandResultFeedEntry } from "../surfaces/actions-model.js";
+import { fmtClock } from "../surfaces/format.js";
 import { RenameRunDialog, type PendingRename } from "../surfaces/run-identity.js";
 import { composeCommandRequest, composeStopWorkerCommand, type CommandAction } from "./command-dispatch.js";
 import { settleCommandResult } from "./command-result.js";
@@ -177,6 +186,9 @@ export function DashboardApp() {
   const [sort, setSort] = useState<QueueSortKey>("attention");
   const [selectMode, setSelectMode] = useState(false);
   const [bulkIds, setBulkIds] = useState<ReadonlySet<string>>(() => new Set());
+  // Deliberately browser-local triage, not a durable run fact. Reloading the
+  // dashboard starts this set over; only the operator can see their checks.
+  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const boot = bootstrap.state === "loaded" ? bootstrap.value : undefined;
   const today = boot === undefined ? undefined : serverLocalDay(boot.serverClock);
@@ -213,6 +225,8 @@ export function DashboardApp() {
           onSelectMode={setSelectMode}
           bulkIds={bulkIds}
           onBulkIds={setBulkIds}
+          checkedIds={checkedIds}
+          onCheckedIds={setCheckedIds}
         />
       )}
     </ToastProvider>
@@ -278,6 +292,8 @@ interface LoadedAppProps {
   onSelectMode: (on: boolean) => void;
   bulkIds: ReadonlySet<string>;
   onBulkIds: (next: ReadonlySet<string>) => void;
+  checkedIds: ReadonlySet<string>;
+  onCheckedIds: (next: ReadonlySet<string>) => void;
 }
 
 function LoadedApp({
@@ -301,6 +317,8 @@ function LoadedApp({
   onSelectMode,
   bulkIds,
   onBulkIds,
+  checkedIds,
+  onCheckedIds,
 }: LoadedAppProps) {
   const { day: dayResource, connection } = useDashboardDay(day);
   /**
@@ -317,6 +335,9 @@ function LoadedApp({
   // the open detail (and, through its rowRevision, every fetched section)
   // refetches rather than serving a CAS basis the kernel will now refuse.
   const [detailNonce, setDetailNonce] = useState(0);
+  /** Refused command answers are local, bounded reading context; the durable
+   * audit remains the server's authority. Applied answers toast instead. */
+  const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
   /**
    * THE OPEN PANEL FOLLOWS ITS RUN (D257).
    *
@@ -583,10 +604,11 @@ function LoadedApp({
       openWells,
       selectMode,
       bulkIds,
+      checkedIds,
       panelWorkflowId: activeWorkflowId,
       nowIso,
     }),
-    [route.run, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
+    [route.run, openWells, selectMode, bulkIds, checkedIds, activeWorkflowId, nowIso],
   );
 
   /**
@@ -686,11 +708,31 @@ function LoadedApp({
           // version is live now, and neither refusal changes what this toast
           // says about the command it answers.
           const settlement = settleCommandResult(result);
+          const surface = dayWire?.queueSurfaces.find((row) => String(row.runId) === target.runId);
           if (settlement.kind === "refused") {
+            const feedEntry = commandResultFeedEntry({
+              settlement,
+              targetRunId: target.runId,
+              expectedVersion: target.expectedVersion,
+              commandId: String(result.commandId),
+              subject: surface === undefined ? `run ${target.runId}` : queueRowTitle(surface),
+              workflowLabel: workflowLabelOf(String(surface?.workflowId ?? activeWorkflowId)),
+              actionLabel: action.label,
+              clock: fmtClock(nowIso),
+              actorId: boot.actor.id,
+            });
+            if (feedEntry === undefined) throw new Error("refused command settlement produced no feed entry");
+            setCommandResults((previous) => [feedEntry, ...previous].slice(0, 4));
             toast({ tone: "danger", title: "Nothing was recorded", description: settlement.message });
             return;
           }
-          toast({ tone: "success", title: action.label, description: "Recorded." });
+          toastAppliedCommandResult(toast, {
+            settlement,
+            actionLabel: action.label,
+            subject: surface === undefined ? `run ${target.runId}` : queueRowTitle(surface),
+            clock: fmtClock(nowIso),
+            actorId: boot.actor.id,
+          });
           setDetailNonce((nonce) => nonce + 1);
         },
         (caught: unknown) => {
@@ -702,7 +744,7 @@ function LoadedApp({
         },
       );
     },
-    [boot.actor.id, client, sections, toast],
+    [boot.actor.id, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso],
   );
 
   /**
@@ -895,6 +937,7 @@ function LoadedApp({
         else next.add(runId);
         onBulkIds(next);
       },
+      onToggleChecked: (runId) => onCheckedIds(toggleCheckedByYou(checkedIds, runId)),
       /*
         A parent can belong to ANOTHER workflow, so the jump moves the panel and
         then selects — selecting alone would open a run the queue beside it is
@@ -918,7 +961,7 @@ function LoadedApp({
         selectRun(String(link.runId));
       },
     }),
-    [selectRun, runAction, openWells, onWells, bulkIds, onBulkIds, dayWire, setActiveWorkflowId],
+    [selectRun, runAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId],
   );
 
   const keyboardOrder = useMemo(
@@ -1365,6 +1408,16 @@ function LoadedApp({
             filters={
               <StatusFilters statusCounts={scopedStatusCounts} active={filter} onSelect={onFilter} />
             }
+          />
+
+          <CommandResultFeed
+            results={commandResults}
+            onDismiss={(id) => setCommandResults((previous) => previous.filter((entry) => entry.id !== id))}
+            onRefreshRow={(entry) => {
+              setCommandResults((previous) => previous.filter((result) => result.id !== entry.id));
+              setDetailNonce((nonce) => nonce + 1);
+              selectRun(entry.targetRunId);
+            }}
           />
 
           {/*
