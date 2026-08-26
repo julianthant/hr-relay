@@ -568,9 +568,21 @@ export function createDashboardWorkerProcessSupervisor(
           return attestDirective("pause-worker", WorkerPoolMemberSchema.parse(request.member), "pause-requested");
         case "resume-worker":
           return attestDirective("resume-worker", WorkerPoolMemberSchema.parse(request.member), "resume-requested");
-        default:
-          throw new Error(`worker supervisor cannot execute ${request.command} yet`);
+        case "refresh-browser":
+        case "reopen-browser":
+          // Ref execution-and-sessions's live worker lane: a worker-owned
+          // browser session lives in the CHILD process, and this supervisor
+          // has no cross-process channel to reach it. Refusing is the only
+          // honest answer — acknowledging would claim an effect that cannot
+          // have happened.
+          throw new Error(
+            `${request.command} refused for ${request.member.workerId} session ${request.browserSessionId}: `
+            + "the dashboard supervisor has no cross-process channel into a live worker's browser sessions yet",
+          );
       }
+      throw new Error(
+        `worker supervisor received an unknown request: ${JSON.stringify(request)}`,
+      );
     },
     memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined {
       const record = records.get(member.workerId);

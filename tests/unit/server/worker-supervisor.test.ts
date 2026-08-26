@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
 import type { TestClock } from "../../../src/domain/clock.js";
-import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
+import { BrowserSessionIdSchema, PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
 import type { WorkerId } from "../../../src/domain/ids.js";
 import {
   poolWorkerId,
@@ -663,5 +663,19 @@ describe("plan-worker-count", () => {
 
     harness.children[0]?.emitExit(1, null);
     await settled;
+  });
+});
+
+/* ── browser arms: no cross-process channel exists yet ───────────────────── */
+
+describe("browser session arms", () => {
+  it("refuses refresh-browser and reopen-browser by name — no effect is acknowledged that cannot happen", async () => {
+    const { harness, target } = await runningHarness();
+    const browserSessionId = BrowserSessionIdSchema.parse("11111111-2222-4333-8444-555555555555");
+
+    await expect(harness.supervisor.execute({ command: "refresh-browser", member: target, browserSessionId }))
+      .rejects.toThrow(/refresh-browser .* no cross-process channel into a live worker's browser sessions/);
+    await expect(harness.supervisor.execute({ command: "reopen-browser", member: target, browserSessionId }))
+      .rejects.toThrow(/reopen-browser .* no cross-process channel into a live worker's browser sessions/);
   });
 });
