@@ -20,8 +20,8 @@ import type { TaskStoreRegistry } from "../base/store.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
-import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
-import type { PositiveInt, WorkerId, WorkflowId } from "../domain/ids.js";
+import { BrowserSessionIdSchema, PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../domain/ids.js";
+import type { BrowserSessionId, PositiveInt, WorkerId, WorkflowId } from "../domain/ids.js";
 import { WorkerDirectiveSchema, type WorkerDirective } from "../domain/run/worker.js";
 import type {
   CanonicalInputSnapshotMigration,
@@ -463,6 +463,22 @@ const WorkerResumeAcknowledgementSchema = z.strictObject({
   stage: z.literal("resume-requested"),
 });
 
+const WorkerRefreshAcknowledgementSchema = z.strictObject({
+  command: z.literal("refresh-browser"),
+  state: z.literal("acknowledged"),
+  member: WorkerPoolMemberSchema,
+  browserSessionId: BrowserSessionIdSchema,
+  stage: z.literal("refreshed"),
+});
+
+const WorkerReopenAcknowledgementSchema = z.strictObject({
+  command: z.literal("reopen-browser"),
+  state: z.literal("acknowledged"),
+  member: WorkerPoolMemberSchema,
+  browserSessionId: BrowserSessionIdSchema,
+  stage: z.literal("reopened"),
+});
+
 export interface WorkerPoolPlanRequest {
   readonly command: "plan-worker-count";
   readonly workflowId: WorkflowId;
@@ -491,12 +507,26 @@ export interface WorkerPoolResumeRequest {
   readonly member: WorkerPoolMember;
 }
 
+export interface WorkerPoolRefreshRequest {
+  readonly command: "refresh-browser";
+  readonly member: WorkerPoolMember;
+  readonly browserSessionId: BrowserSessionId;
+}
+
+export interface WorkerPoolReopenRequest {
+  readonly command: "reopen-browser";
+  readonly member: WorkerPoolMember;
+  readonly browserSessionId: BrowserSessionId;
+}
+
 export type WorkerSupervisorRequest =
   | WorkerPoolPlanRequest
   | WorkerPoolSpawnRequest
   | WorkerPoolStopRequest
   | WorkerPoolPauseRequest
-  | WorkerPoolResumeRequest;
+  | WorkerPoolResumeRequest
+  | WorkerPoolRefreshRequest
+  | WorkerPoolReopenRequest;
 
 export interface WorkerPoolProcessSupervisor {
   execute(request: WorkerSupervisorRequest): unknown;
@@ -659,11 +689,45 @@ export function createWorkerPoolRuntimeExecutor(
       requireSameMember("resume-worker", member, acknowledgement.member);
       return { state: "accepted" };
     },
-    refreshBrowser(): never {
-      throw new Error("refresh-browser is not implemented by the pool runtime contract yet");
+    refreshBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "refresh-browser") {
+        throw new Error(`refreshBrowser received a ${command.type} command`);
+      }
+      const member = poolMemberFromIdentity(command.target.workerId);
+      const acknowledgement = WorkerRefreshAcknowledgementSchema.parse(supervisor.execute({
+        command: "refresh-browser",
+        member,
+        browserSessionId: command.target.browserSessionId,
+      }));
+      requireSameMember("refresh-browser", member, acknowledgement.member);
+      if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
+        throw new Error(
+          `refresh-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
+          + acknowledgement.browserSessionId,
+        );
+      }
+      return { state: "accepted" };
     },
-    reopenBrowser(): never {
-      throw new Error("reopen-browser is not implemented by the pool runtime contract yet");
+    reopenBrowser(context: WorkerRuntimeContext): z.input<typeof WorkerRuntimeAcknowledgementSchema> {
+      const { command } = context;
+      if (command.type !== "reopen-browser") {
+        throw new Error(`reopenBrowser received a ${command.type} command`);
+      }
+      const member = poolMemberFromIdentity(command.target.workerId);
+      const acknowledgement = WorkerReopenAcknowledgementSchema.parse(supervisor.execute({
+        command: "reopen-browser",
+        member,
+        browserSessionId: command.target.browserSessionId,
+      }));
+      requireSameMember("reopen-browser", member, acknowledgement.member);
+      if (acknowledgement.browserSessionId !== command.target.browserSessionId) {
+        throw new Error(
+          `reopen-browser requested session ${command.target.browserSessionId} but the supervisor acknowledged `
+          + acknowledgement.browserSessionId,
+        );
+      }
+      return { state: "accepted" };
     },
   });
 }

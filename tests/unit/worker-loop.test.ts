@@ -522,6 +522,80 @@ describe("pool-capable worker runtime executor seam", () => {
       },
     }]);
   });
+
+  it("acknowledges refresh only after the explicit member session is refreshed", () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "refresh-browser",
+          state: "acknowledged",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 2,
+            workerId: "person-lookup-worker-2",
+          },
+          browserSessionId: ITEM_ID,
+          stage: "refreshed",
+        };
+      },
+    });
+    const refresh = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "refresh-browser",
+      target: { workerId: "person-lookup-worker-2", browserSessionId: ITEM_ID, expectedVersion: 1 },
+    });
+
+    assert.deepEqual(executor.refreshBrowser({ command: refresh, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "refresh-browser",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 2,
+        workerId: "person-lookup-worker-2",
+      },
+      browserSessionId: ITEM_ID,
+    }]);
+  });
+
+  it("acknowledges reopen only after the explicit member session is reopened", () => {
+    const requests: unknown[] = [];
+    const executor = createWorkerPoolRuntimeExecutor({
+      execute: (request) => {
+        requests.push(request);
+        return {
+          command: "reopen-browser",
+          state: "acknowledged",
+          member: {
+            workflowId: WORKFLOW_ID,
+            poolIndex: 3,
+            workerId: "person-lookup-worker-3",
+          },
+          browserSessionId: ITEM_ID,
+          stage: "reopened",
+        };
+      },
+    });
+    const reopen = workerBrowserCommand({
+      ...envelope,
+      family: "worker-browser",
+      type: "reopen-browser",
+      target: { workerId: "person-lookup-worker-3", browserSessionId: ITEM_ID, expectedVersion: 1 },
+    });
+
+    assert.deepEqual(executor.reopenBrowser({ command: reopen, now: requestedAt }), { state: "accepted" });
+    assert.deepEqual(requests, [{
+      command: "reopen-browser",
+      member: {
+        workflowId: WORKFLOW_ID,
+        poolIndex: 3,
+        workerId: "person-lookup-worker-3",
+      },
+      browserSessionId: ITEM_ID,
+    }]);
+  });
 });
 
 describe("phase-1 worker runtime executor seam", () => {
