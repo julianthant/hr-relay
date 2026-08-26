@@ -368,7 +368,7 @@ chip: B+C+D done · Duo + observed proof done · pool + fidelity open
 size: L
 doc: 03a §Phase summary · ref:frontend-backend-integration §5 · ref:frontend-backend-integration §5.1 · ref:frontend-backend-integration §6.8 · ref:dashboard-surfaces §1.2
 
-> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C proved the connection against a real run; Track D's D1–D5 + D11 are done, with D4/D5's budgets measured. **Track F is the fidelity bar above all three** — every region demo-exact or ruled, with 49 live decisions across six bounded sheets waiting on the operator. The Duo lease and observed-log proof are done; the worker supervisor/parallel proof remains. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
+> Built ONCE so a migration only wires it: the run modal, queue rows, run detail + timeline, gate ceremonies, notifications, archive, activity, explorer. Track B finished the surfaces with separations as the forcing function; Track C proved the connection against a real run; Track D's D1–D5 + D11 are done, with D4/D5's budgets measured. **Track F is the fidelity bar above all three** — D272–D276 ratify all 49 choices across six bounded sheets, and their resulting implementations/proofs remain open. The Duo lease and observed-log proof are done; the worker supervisor/parallel proof remains. A workflow's own "Dashboard · wire" task sits under that workflow and reads this node as its prerequisite.
 
 builds:
 - [ ] BE the per-run stream topics — five of six declared TopicKeys have no producer, so run detail, logs, review, people and artifact updates arrive by re-read, not by patch (ref frontend-backend-integration §3.5)
@@ -510,38 +510,38 @@ log:
 - 2026-08-25 | 03a reconciliation | Track D's exit scope is DONE: D1–D5 + D11 are landed and held by tests/guards; D4/D5 are measured, and ref frontend-backend-integration §7.4 carries their shared-fixture BEFORE/AFTER numbers. D6–D10 remain proposed behind their trigger and are outside this gate; the additional unchecked findings on this node remain explicitly booked work rather than false completion claims
 
 #### Track F · demo fidelity — every detail, region by region {#track-f}
-status: you
-date: fidelity re-audit 2026-08-21
+status: active
+date: fidelity re-audit 2026-08-21 · ratified 2026-08-26
 size: L
-chip: 49 live decisions across six sheets — needs you
+chip: D272–D276 ratified · implementations/proofs open
 doc: 03a §Demo fidelity — every detail, region by region
 
-> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN for the operator — nothing is dismissed or "modified" without a citation. Three ledgers audited 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. Six decision sheets contain the 49 live operator choices exactly once; ledger 3 has 238 OPEN row marks mapped to 30 unresolved numbered groups.
+> The dashboard is a 1:1 detail replica of the legacy rebuild-demo, reviewed glyph by glyph: every element is exact, or a divergence ruled by a D-number / a plan decision / a dated operator call, or unserved by a NAMED producer (a `builds:` line, never a reason to drop the detail), or OPEN in the historical audit — nothing is dismissed or "modified" without a citation. Three ledgers audited exactly 1,956 elements/rows at HEAD on 2026-08-21 (`docs/plans/2026-08-21-03a-fidelity-1-shell-queue-start.md` 489 · `…-2-run-detail.md` 348 · `…-3-standing-surfaces.md` 1,119); a mechanical recount after the current ports, Activity AC24, Explorer EX5 and shell A46 gives 775 exact rows. The six sheets' 49 choices are ratified as D272–D276; ledger 3's 238 OPEN row marks / 30 groups remain historical audit counts, while their resulting implementations and proofs are current work.
 
 builds:
-- [!] DOCS the operator rules the 37 shell / queue / run-start OPEN questions (ledger 1 §Roll-up)
-- [!] DOCS the operator rules the 54 run-detail OPEN questions (ledger 2 §Roll-up)
-- [!] DOCS the operator rules the 30 unresolved standing-surface decision groups, the twelve structural ones first — the virtualised archive · the bump's MAJOR/MINOR arms · a DS specimen page · the row-and-panel vocabulary surface · Settings as a takeover · the keyboard legend · intake stages 5–6 · the intake review gate · the archived-capture lightbox · the bump plan naming its runs · the operator capture half · the two Settings sections already served (238 OPEN row marks; ledger 3 §Roll-up)
+- [x] DOCS D272 ratifies the shell / queue / run-start choices (ledger 1's 37 OPEN rows / 28 questions remain the exact historical audit count)
+- [x] DOCS D273 ratifies the run-detail choices (ledger 2's 54 OPEN questions remain the exact historical audit count)
+- [x] DOCS D274–D276 ratify the 30 standing-surface groups (ledger 3's 238 OPEN row marks remain the exact historical audit count)
 - [x] FE the served-and-dropped facts — receipt/failure, intake, archive, the queue gate age, the run-modal descriptor version, Activity AC24 and Explorer EX5 are complete (doc 03a §Served-and-dropped)
 - [ ] FE the structural run-detail ports — the failure-record disclosure + write-state block, the focusable timeline segment, the step-group Well, one-owner `dataExpanded`, the grouped log stream
-- [ ] FE the vocabulary sweep — every word / glyph off the demo reverted or ruled (ledgers 1–3)
+- [ ] FE the vocabulary sweep — implement D272–D276's required demo wording and named truthful exceptions (ledgers 1–3)
 - [x] DOCS the stale claims in code and docs corrected (`receipt.tsx` header, `archive.tsx` comments, `findings/queue-rows.md:221`, `ref operator-trust` §5.7, `explorer.tsx:8-10`, `DESIGN.md`)
 - [x] BOTH A46's exact-generation unreplayable-history trigger, stable no-churn permanent fact, authority-immutable Refusal and reachable 6+ pin mobile lane (`68dea43a`, `e108ff3f`, `a2d2a8e8`; fidelity ledger 1 A46)
 - [ ] BE the receipt's action evidence carries what proved the write (ledger 2 D16–D22)
 - [x] BOTH a diagnostic bundle is readable — exact-id D137 readback plus `BundleDialog` and server manifest download (ledger 2 E28/E29)
-- [x] BOTH the intake manifest + rerun-diff surface — terminal and preflight identities, manifest projection and rerun diff are fixture-rendered in exact local pages with full compact values keyboard/touch reachable; this does not claim D9, IN144 remains OPEN, and no parity reference was re-frozen (ledger 3 IN123–IN143)
+- [x] BOTH the intake manifest + rerun-diff surface — terminal and preflight identities, manifest projection and rerun diff are fixture-rendered in exact local pages with full compact values keyboard/touch reachable; this does not claim D9, D274/D276's IN137/IN138/IN144 presentation ports remain open, and no parity reference was re-frozen (ledger 3 IN123–IN143)
 - [ ] BOTH the operator half of phone capture (ledger 3 CP3–CP5)
 - [ ] PROOF the parity corpus re-frozen once over every change, with the three missing scenes (Settings · the version-bump dialog · a DS specimen page)
 
 needs:
 - track-b
-- you: rule the 49 live decisions in the six 2026-08-25 sheets — each becomes ported, or a recorded divergence with its argument
 
 log:
 - 2026-08-21 | docs-cohesion 03a fidelity fold | node drawn from the three 2026-08-21 ledgers; doc 03a §Demo fidelity carries the per-region table, every OPEN question as one line, the served-and-dropped list and the stale-claims table · left: the operator's rulings, then every FE / BE / BOTH / PROOF line above
 - 2026-08-25 | track-f archive UI + Activity AC24 | `3d461962` served frozen list warnings/rehearsal state; `d1f87916` drew those and the already-served archive identity, priority, bump-kind, relaunch and enum facts through total folds; `4da19fd7` closes Activity's raw `blocked` caveat with the shared wire→display status fold. Ledger 3 remains 346/1,119 exact with 248 OPEN marks. Before/after screenshots were taken without `PARITY_UPDATE` · left in this unit: Explorer EX5 and every other non-archive served-and-dropped fact
 - 2026-08-25 | track-f Explorer EX5 | `4e09fb49` restores the demo's ghost `Version registry` action with its `Eye` icon; it clears the Explorer takeover and opens Archive's actual `Versions & bumps` view through `?archive=&archiveView=versions`. The browser test proves the exact search state, direct deep-link and Back/Forward restoration against the pressed view and real `Workflow version registry` table; no parity reference was re-frozen. A mechanical recount of ledger 3's current rows gives 353/1,119 exact with 238 OPEN marks · left: every non-archive served-and-dropped fact
 - 2026-08-25 | track-f A46 adversarial correction | `e108ff3f` separates cross-generation restart/rebuild from real missed history, stabilises interval identity across reason aging/head movement and process restart, single-flights concurrent clients, refuses every authority mutation/fold, and restarts an atomically captured handshake if publication moves the projection; `a2d2a8e8` keeps 6+ pins, ordinary rows and fixed filters reachable at 390×844 with truthful Pings counts and a 44px bell. A46 stays exact, so ledger 1 remains 132/178 and the three-ledger total remains 775/1,956 exact. Production-bundle mobile proof passed; no parity reference was re-frozen.
+- 2026-08-26 | track-f ratification | D272–D276 answer all 49 choices; this node is implementation-owned. Left: the resulting FE / BE / BOTH / PROOF rows and one deliberate parity re-freeze; no operator decision remains.
 
 #### Duo ceremony lease — one login at a time per credential {#duo-lease}
 status: done
@@ -1975,7 +1975,7 @@ The rows below are the same map the master plan's §0.2 carried, re-pointed to t
 |---|---|
 | Task contract (`defineTaskContract`/`defineTask`), contract/impl split (D3), task-namespace grammar + closed `SystemId` union (D2), error taxonomy, three effects/dry-run mechanics, retry, decoration, system/service stores + pure workflow mini-stores, session providers + login signature, `stores/common/` leaf homes | **`reference/task-contract`** (was doc 01) |
 | Workflow builder API (single), descriptor shape, `RunEnvelope`, run-state machine incl. gates/parks (D5), checkpoint/resume + freshness walk (D8), label precedence (D16) | **`reference/workflow-model`** (was doc 02) |
-| Span/event wire schema (D10), notes stream, storage layout, SQLite projection role (D14), SSE wire shapes, completion (fan-out/approval) union (D11), cross-repo runtime boundary + one-time import rules (D88/D89/D93), the ONE run/queue projection every count reads (D81), run versioning + archive-on-bump (D80), run display names (D83) | **`reference/dashboard-surfaces`** (was doc 03) |
+| Span/event wire schema (D10), notes stream, storage layout, SQLite projection role (D14), SSE wire shapes, completion (fan-out/approval) union (D11), cross-repo runtime boundary + one-time import rules (D88/D89/D93), the ONE run/queue projection every count reads (D81), run versioning + major-only archive-on-bump (D80/D274), run display names (D83) | **`reference/dashboard-surfaces`** (was doc 03) |
 | Binding cross-doc reconciliation (D1–D118, through 2026-08-02 Round 18) | **`reference/decisions`** (was doc 04) |
 | One-item workers, queue dispatch/backpressure, explicit browser-session boundaries + driver leases, speed/sleep-tax contract, page/subject-isolation invariant | **`reference/execution-and-sessions`** (was doc 05) |
 | Data-service systems: CSV/PDF extraction, typed contact/address normalization, roster matching, durable mobile capture, operator column mapping, immutable intake manifest/rerun, Edit Data checkpoint UI | **`reference/data-intake-and-edit-data`** (was doc 06) |

@@ -3512,7 +3512,7 @@ Four hard rules:
    retired the `hide`/`unhide` pair across the whole stack: `ActionCommandKeySchema` holds neither
    key (`src/domain/dashboard/actions.ts:47-50`) and `RunRecord.hidden` is a parse-tolerated
    vestige written by nothing (`src/domain/run/record.ts:232-244`). D234 claimed the correction and
-   nobody made it here, which is how a reader arriving from a `ref dashboard-surfaces §10.2`
+   nobody made it here, which is how a reader arriving from a `ref dashboard-surfaces §9.5.1`
    citation met a retired control described as live. One exclusion, inherited by every count,
    applied once inside the projection.
 
