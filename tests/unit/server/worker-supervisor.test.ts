@@ -1128,6 +1128,47 @@ describe("close", () => {
     expect(harness.supervisor.close()).toEqual(live);
   });
 
+  it("racing an in-flight stop: reports the stop-in-flight, and the directive landing after teardown arms NO escalation", async () => {
+    const harness = openHarness();
+    const target = member(1);
+    await harness.supervisor.execute({ command: "spawn-worker", member: target });
+    let land: ((ack: Readonly<{ requestedAt: string }>) => void) | undefined;
+    harness.nextGracefulStop = (): Promise<Readonly<{ requestedAt: string }>> =>
+      new Promise((resolve) => {
+        land = resolve;
+      });
+    const pendingStop = harness.supervisor.execute({ command: "stop-worker", member: target, escalation: stopPolicy() });
+    const settled = expect(pendingStop).rejects.toThrow(/interrupted by close\(\): the durable stop directive landed/);
+
+    // close() runs while the durable stop request is still in flight — its
+    // returned evidence must not hide the pending stop behind plain running.
+    const live = harness.supervisor.close();
+    expect(live).toEqual([{
+      state: "running",
+      pid: harness.children[0]?.pid,
+      bornAt: NOW,
+      leaseStartedAt: NOW,
+      stopInFlight: true,
+    }]);
+
+    // The durable directive lands AFTER teardown: no fresh SIGTERM/SIGKILL
+    // timers may be armed, the landed-directive fact goes to the fault sink,
+    // and the stage itself is still recorded as evidence.
+    if (land === undefined) throw new Error("expected the durable stop request to be in flight");
+    land({ requestedAt: NOW });
+    await settled;
+
+    expect(harness.scheduler.pending()).toHaveLength(0);
+    expect(harness.faults).toHaveLength(1);
+    expect(harness.faults[0]?.message).toMatch(
+      /durable stop directive landed .* the supervisor closed while the request was in flight; no escalation will be armed/,
+    );
+    expect(harness.supervisor.memberEvidence(target)).toMatchObject({
+      state: "stopping",
+      observedStop: [{ stage: "graceful-stop-requested", at: NOW }],
+    });
+  });
+
   it("returns no evidence when every child already exited", async () => {
     const harness = openHarness();
     await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });

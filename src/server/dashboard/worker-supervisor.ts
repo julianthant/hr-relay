@@ -200,6 +200,12 @@ export const WorkerChildEvidenceSchema = z.discriminatedUnion("state", [
     pid: z.number().int().positive(),
     bornAt: IsoInstantSchema,
     leaseStartedAt: IsoInstantSchema,
+    /**
+     * Present only while a stop's durable directive request is in flight —
+     * close()'s returned evidence must never hide a pending stop behind
+     * plain "running".
+     */
+    stopInFlight: z.literal(true).optional(),
   }),
   z.strictObject({
     state: z.literal("stopping"),
@@ -251,7 +257,11 @@ export interface DashboardWorkerProcessSupervisor extends WorkerPoolProcessSuper
    * still live at close — the caller decides what to do with them; this
    * supervisor never pretends they stopped. Idempotent. A spawn still
    * awaiting birth keeps its birth poll (cancelling it would strand the
-   * pending command) and is reported here as awaiting-birth.
+   * pending command) and is reported here as awaiting-birth; a running child
+   * whose stop's durable directive request is still in flight is reported
+   * with `stopInFlight: true` — and if that directive lands after close, no
+   * escalation is armed (the landed fact goes to onFault and the stop
+   * command rejects).
    */
   close(): readonly WorkerChildEvidence[];
 }
@@ -269,6 +279,7 @@ export function createDashboardWorkerProcessSupervisor(
   }
   const records = new Map<string, MemberRecord>();
   const instant = (): string => deps.clock.now().toISOString();
+  let closed = false;
 
   const onChildExit = (record: MemberRecord, exitCode: number | null, signal: string | null): void => {
     record.escalationTimer?.cancel();
@@ -606,6 +617,22 @@ export function createDashboardWorkerProcessSupervisor(
     }
     record.state = "stopping";
     record.observedStop.push({ stage: "graceful-stop-requested", at: requestedAt });
+    if (closed) {
+      // close() ran while the durable request was in flight: the directive
+      // landed and its stage is recorded above, but arming SIGTERM/SIGKILL
+      // timers after teardown would resurrect the supervisor. close()
+      // already reported this child stop-in-flight; the landed-directive
+      // fact goes to the fault sink, and the command refuses instead of
+      // acknowledging an escalation it will never run.
+      deps.onFault(new Error(
+        `worker ${record.member.workerId} durable stop directive landed at ${requestedAt}, but `
+        + "the supervisor closed while the request was in flight; no escalation will be armed",
+      ));
+      throw new Error(
+        `stop for ${record.member.workerId} was interrupted by close(): the durable stop directive landed `
+        + `at ${requestedAt} and is recorded, but this closed supervisor arms no escalation`,
+      );
+    }
     armEscalation(record, "SIGTERM", "sigterm-sent", escalation[0].timeoutMs, () => {
       armEscalation(record, "SIGKILL", "sigkill-sent", escalation[1].timeoutMs);
     });
@@ -819,6 +846,7 @@ export function createDashboardWorkerProcessSupervisor(
           pid: record.pid,
           bornAt: record.bornAt,
           leaseStartedAt: record.leaseStartedAt,
+          ...(record.stopInFlight ? { stopInFlight: true } : {}),
         });
       case "stopping":
         return WorkerChildEvidenceSchema.parse({
@@ -877,8 +905,6 @@ export function createDashboardWorkerProcessSupervisor(
       }
     }
   };
-
-  let closed = false;
 
   return Object.freeze({
     async execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement> {
