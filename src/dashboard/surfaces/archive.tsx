@@ -18,11 +18,31 @@
  * durations are. The `--ds-w-archive-*` width tokens exist for exactly that
  * alignment; two grids cannot be made to agree by choosing better numbers.
  *
- * This table is NOT virtualised. `@tanstack/react-virtual` is not a dependency here, there are
- * no row/section pixel constants, no `overscan`, no spacer rows and no flat item list — each
- * sweep gets its own `<TBody>` and the browser lays out every row of every sweep. The demo's
- * `useVirtualizer` handles its own 800-row case; whether this table needs the same machinery at
- * that scale is undecided (Track D row D9; `03a-finish-the-dashboard.md` OPEN question 1).
+ * ## VIRTUALISED, NOT PAGINATED (D274 item 1)
+ *
+ * The operator arrives with a question — *did we ever file something for this
+ * person?* — and the narrowing tool for that is the search and the three
+ * filters already on the bar. Pagination would be a SECOND narrowing mechanism
+ * stacked on those: it splits a set that has already been narrowed, forces a
+ * decision ("is it on page 4?") that no fact on screen can answer, and breaks
+ * the one motion a dense console is for. It would also have to interact with
+ * the sweep sections, because a page boundary landing inside a sweep either
+ * repeats its header or orphans its rows. A window keeps one continuous list,
+ * keeps the section heads where they belong, and costs the same at 800 rows as
+ * at 80.
+ *
+ * The three mechanics, and none of them is a library. `table-fixed` plus the
+ * `<colgroup>` means the columns never re-measure from whatever rows happen to
+ * be mounted. Two spacer `<tr>`s bracket the window instead of transforms, so
+ * this stays a real table with a sticky `<thead>`. And the heads live in the
+ * SAME flat item list as the runs (`flattenArchiveTable`), so a collapsed
+ * sweep of 400 costs one item. `windowArchiveTable` is exact arithmetic over
+ * two DECLARED row heights rather than an estimator — `--ds-h-row` and
+ * `--ds-h-archive-sweep` are set on the elements and pinned against their
+ * restated constants, because a spacer computed from a height the rows do not
+ * actually have is a table that slides under its own scrollbar. This is the
+ * archive's own window and it is NOT D9's proposed shared `ds/` primitive; it
+ * claims none of it.
  *
  * ## Two views, and the list keeps its detail beside it
  *
@@ -179,7 +199,11 @@ import {
   archivedRunHeading,
   archivedRunTouchedTest,
   blockerStatusOf,
+  flattenArchiveTable,
+  useArchiveViewport,
+  windowArchiveTable,
 } from "./archive-model.js";
+import type { ArchiveSection } from "./archive-model.js";
 import { settleCommandResult } from "../app/command-result.js";
 
 const SOURCE_SURFACE = "archive";
@@ -354,12 +378,6 @@ function queryArchive(entries: readonly ArchiveEntryWire[], query: ArchiveQuery)
 }
 
 /* ── sweeps, as the sections of the table ────────────────────────────────── */
-
-interface ArchiveSection {
-  readonly sweep: ArchiveSweepWire | undefined;
-  readonly applicationId: string;
-  readonly entries: readonly ArchiveEntryWire[];
-}
 
 /**
  * Group a QUERIED list by the sweep that archived it, preserving the sort
@@ -584,7 +602,12 @@ function SweepSectionRow({
   })();
 
   return (
-    <TR interactive onClick={onToggle} className={cn("h-auto", dsMotion.fast)}>
+    /*
+      The head's height is DECLARED, not left to its content: the windowed
+      body's spacer rows are computed from `ARCHIVE_SECTION_PX`, and a head
+      that measured anything else would slide every row below it (D274 item 1).
+    */
+    <TR interactive onClick={onToggle} className={cn("h-[var(--ds-h-archive-sweep)]", dsMotion.fast)}>
       <TD className={cn(cell, "align-middle")}>
         <button
           type="button"
@@ -733,8 +756,12 @@ function ArchiveTable({
     children: ARCHIVE_SORT_LABEL[key],
   });
 
+  const items = useMemo(() => flattenArchiveTable(sections, collapsed), [sections, collapsed]);
+  const [scrollRef, viewport] = useArchiveViewport();
+  const pane = useMemo(() => windowArchiveTable(items, viewport), [items, viewport]);
+
   return (
-    <div className="min-h-0 flex-1 overflow-auto">
+    <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
       <Table label="Archived runs, grouped by the version bump that swept them" layout="fixed" className="min-w-[720px]">
         {/*
           The measured column widths. Every one of these except the name is a
@@ -758,24 +785,46 @@ function ArchiveTable({
             <TH align="right" className="whitespace-nowrap" {...head("duration")} />
           </TR>
         </THead>
-        {sections.map((section) => (
-          <TBody key={section.applicationId}>
-            <SweepSectionRow
-              section={section}
-              collapsed={collapsed.has(section.applicationId)}
-              onToggle={() => onToggleSection(section.applicationId)}
-            />
-            {!collapsed.has(section.applicationId)
-              && section.entries.map((entry) => (
-                <ArchiveRow
-                  key={entry.runId}
-                  entry={entry}
-                  selected={entry.runId === selectedRunId}
-                  onSelect={() => onSelect(entry.runId)}
+        {/*
+          ONE body, windowed. The sweep heads and the run rows are a single
+          flat sequence (`flattenArchiveTable`), so a section header is an item
+          exactly as a run is and a collapsed sweep of 400 costs one item
+          rather than 400 skipped ones. The window is bracketed by two spacer
+          `<tr>`s rather than by transforms, which keeps this a real table:
+          native semantics, the sticky `<thead>`, and no absolutely-positioned
+          rows to fight (D274 item 1).
+        */}
+        <TBody>
+          {pane.beforePx > 0 && (
+            <tr aria-hidden style={{ height: pane.beforePx }}>
+              <td colSpan={5} />
+            </tr>
+          )}
+          {items.slice(pane.firstIndex, pane.lastIndex).map((item) =>
+            item.kind === "section"
+              ? (
+                <SweepSectionRow
+                  key={`section-${item.section.applicationId}`}
+                  section={item.section}
+                  collapsed={item.collapsed}
+                  onToggle={() => onToggleSection(item.section.applicationId)}
                 />
-              ))}
-          </TBody>
-        ))}
+              )
+              : (
+                <ArchiveRow
+                  key={item.entry.runId}
+                  entry={item.entry}
+                  selected={item.entry.runId === selectedRunId}
+                  onSelect={() => onSelect(item.entry.runId)}
+                />
+              )
+          )}
+          {pane.afterPx > 0 && (
+            <tr aria-hidden style={{ height: pane.afterPx }}>
+              <td colSpan={5} />
+            </tr>
+          )}
+        </TBody>
       </Table>
     </div>
   );

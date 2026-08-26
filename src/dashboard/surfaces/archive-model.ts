@@ -17,6 +17,9 @@ export const ARCHIVE_INDEX = "";
  */
 export type ArchiveView = "runs" | "versions";
 
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
+
 import type {
   ArchiveEntryWire,
   ArchiveSweepWire,
@@ -27,6 +30,182 @@ import type { VersionBumpChangeRecord } from "../../domain/archive/change-record
 import type { DsStatus } from "../ds/ui.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "./status-model.js";
+
+/* ── the windowed table (D274 item 1) ────────────────────────────────────── */
+
+/**
+ * A sweep, as one section of the archive table: the applied bump and the runs
+ * this query left inside it. `sweep` is `undefined` when the index carries no
+ * record for the entries' `applicationId` — the one case where the archive
+ * loses the reason it exists, and it is NAMED rather than degraded to an id.
+ */
+export interface ArchiveSection {
+  readonly sweep: ArchiveSweepWire | undefined;
+  readonly applicationId: string;
+  readonly entries: readonly ArchiveEntryWire[];
+}
+
+/**
+ * THE FLAT LIST A WINDOW WALKS — section headers and run rows in ONE sequence
+ * (D274 item 1, ported from legacy hr-automation@1bffbd65,
+ * `demo-archive-wire.ts` `flattenArchiveTable`).
+ *
+ * A header is an item exactly as a run is, so the window can hold either and
+ * the two cannot get out of step. A COLLAPSED section contributes its header
+ * and nothing else, which is what makes collapsing cheap at any size: the rows
+ * are never built.
+ */
+export type ArchiveTableItem =
+  | { readonly kind: "section"; readonly section: ArchiveSection; readonly collapsed: boolean }
+  | { readonly kind: "run"; readonly entry: ArchiveEntryWire };
+
+export function flattenArchiveTable(
+  sections: readonly ArchiveSection[],
+  collapsed: ReadonlySet<string>,
+): readonly ArchiveTableItem[] {
+  const items: ArchiveTableItem[] = [];
+  for (const section of sections) {
+    const shut = collapsed.has(section.applicationId);
+    items.push({ kind: "section", section, collapsed: shut });
+    if (shut) continue;
+    for (const entry of section.entries) items.push({ kind: "run", entry });
+  }
+  return items;
+}
+
+/**
+ * The two row heights the window's arithmetic is built on. They are not
+ * estimates: the run row IS `--ds-h-row` and the sweep head IS
+ * `--ds-h-archive-sweep`, both set on the element, and
+ * `archive-window.test.ts` reads `ds/tokens.css` and asserts the two pairs
+ * agree. A restated constant that nothing pins is how a spacer comes to be a
+ * few pixels short of the rows it stands in for, and a table that drifts under
+ * the scrollbar is worse than a table that is merely slow.
+ */
+export const ARCHIVE_ROW_PX = 32;
+export const ARCHIVE_SECTION_PX = 52;
+
+/** The demo's own window margin: twelve items above and below (D274 item 1). */
+export const ARCHIVE_OVERSCAN = 12;
+
+export function archiveItemHeightPx(item: ArchiveTableItem): number {
+  switch (item.kind) {
+    case "section": return ARCHIVE_SECTION_PX;
+    case "run": return ARCHIVE_ROW_PX;
+  }
+}
+
+/** The scroll container's measured state. `undefined` means NOT YET MEASURED. */
+export interface ArchiveViewport {
+  readonly scrollTop: number;
+  readonly height: number;
+}
+
+/**
+ * The half-open item range to render, and the two spacer heights that stand in
+ * for everything outside it.
+ */
+export interface ArchiveTableWindow {
+  readonly firstIndex: number;
+  /** exclusive */
+  readonly lastIndex: number;
+  readonly beforePx: number;
+  readonly afterPx: number;
+  readonly totalPx: number;
+}
+
+/**
+ * Which items a viewport can see, with the space above and below them.
+ *
+ * An UNMEASURED viewport renders every item. That is the honest arm: before
+ * the container has a height, "nothing is visible" and "we have not looked
+ * yet" are different facts, and rendering the whole list is correct-but-slow
+ * where rendering none would be simply wrong.
+ *
+ * A negative `scrollTop` is clamped rather than refused, because elastic
+ * overscroll reports one in Safari and WebKit and the visible top of the
+ * content genuinely is 0 there. A NON-FINITE measurement is refused: that is
+ * not a scroll position, and windowing from it would silently blank the table.
+ */
+export function windowArchiveTable(
+  items: readonly ArchiveTableItem[],
+  viewport: ArchiveViewport | undefined,
+): ArchiveTableWindow {
+  const offsets: number[] = [0];
+  for (const item of items) offsets.push(offsets[offsets.length - 1] + archiveItemHeightPx(item));
+  const totalPx = offsets[items.length];
+
+  if (viewport === undefined) {
+    return { firstIndex: 0, lastIndex: items.length, beforePx: 0, afterPx: 0, totalPx };
+  }
+  if (!Number.isFinite(viewport.scrollTop) || !Number.isFinite(viewport.height)) {
+    throw new Error(
+      `the archive table cannot be windowed from a non-finite viewport (scrollTop ${String(viewport.scrollTop)}, height ${String(viewport.height)})`,
+    );
+  }
+  if (viewport.height < 0) {
+    throw new Error(`the archive table cannot be windowed from a negative viewport height (${String(viewport.height)})`);
+  }
+
+  const top = Math.max(0, viewport.scrollTop);
+  const bottom = top + viewport.height;
+
+  let first = 0;
+  while (first < items.length && offsets[first + 1] <= top) first += 1;
+  let last = first;
+  while (last < items.length && offsets[last] < bottom) last += 1;
+
+  const firstIndex = Math.max(0, first - ARCHIVE_OVERSCAN);
+  const lastIndex = Math.min(items.length, last + ARCHIVE_OVERSCAN);
+  return {
+    firstIndex,
+    lastIndex,
+    beforePx: offsets[firstIndex],
+    afterPx: totalPx - offsets[lastIndex],
+    totalPx,
+  };
+}
+
+/**
+ * The scroll container's own measurement, as a ref to attach and the viewport
+ * it reports. Scroll and resize are the only two things that move the window,
+ * and both are read off the element rather than computed from React state.
+ *
+ * The effect throws when the ref never attached: it runs after mount, so a
+ * null element there is a wiring defect, and silently declining to window
+ * would leave the 800-row case looking exactly like the windowed one.
+ */
+export function useArchiveViewport(): readonly [RefObject<HTMLDivElement | null>, ArchiveViewport | undefined] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState<ArchiveViewport | undefined>(undefined);
+
+  const read = useCallback((element: HTMLDivElement) => {
+    setViewport((previous) => {
+      const next = { scrollTop: element.scrollTop, height: element.clientHeight };
+      return previous !== undefined && previous.scrollTop === next.scrollTop && previous.height === next.height
+        ? previous
+        : next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (element === null) {
+      throw new Error("the archive table's scroll container never mounted, so its rows cannot be windowed");
+    }
+    const onChange = () => { read(element); };
+    onChange();
+    element.addEventListener("scroll", onChange, { passive: true });
+    const observer = new ResizeObserver(onChange);
+    observer.observe(element);
+    return () => {
+      element.removeEventListener("scroll", onChange);
+      observer.disconnect();
+    };
+  }, [read]);
+
+  return [ref, viewport] as const;
+}
 
 /**
  * Whether this archived run touched a TEST instance of any system. The fact is
