@@ -62,6 +62,31 @@ export const INTAKE_REVIEW_COPY = Object.freeze({
   unresolvedBlocker: "unresolved rejected rows have not been reviewed",
 });
 
+/** Stable browser-form names for the two rejection-resolution values. */
+export const INTAKE_REVIEW_CONTROL_NAMES = Object.freeze({
+  correctedValue: "intake-corrected-value",
+  exclusionReason: "intake-exclusion-reason",
+});
+
+function reviewedSourceRow(sourceRow: number): string {
+  if (!Number.isInteger(sourceRow) || sourceRow < 1) {
+    throw new Error(`intake rejection editor requires a positive source row, received ${String(sourceRow)}`);
+  }
+  return String(sourceRow);
+}
+
+/** The correction editor's visible and accessible region name. */
+export function correctionEditorLabel(sourceRow: number, targetLabel: string): string {
+  const label = targetLabel.trim();
+  if (label === "") throw new Error("intake correction editor requires a non-empty target label");
+  return `Correct row ${reviewedSourceRow(sourceRow)} · ${label}`;
+}
+
+/** The exclusion editor's visible and accessible region name. */
+export function exclusionEditorLabel(sourceRow: number): string {
+  return `Exclude row ${reviewedSourceRow(sourceRow)}`;
+}
+
 export type RejectionReviewEligibility =
   | Readonly<{ kind: "not-required"; rejectedRows: 0 }>
   | Readonly<{

@@ -112,8 +112,11 @@ import { useDashboardClient } from "../state/client-context.js";
 import { CaptureStart } from "./capture-start.js";
 import { fmtClock, pluralize, shortHash } from "./format.js";
 import {
+  correctionEditorLabel,
   correctionText,
+  exclusionEditorLabel,
   headerCandidateOptionLabel,
+  INTAKE_REVIEW_CONTROL_NAMES,
   INTAKE_REVIEW_COPY,
   intakeTab,
   type IntakeTab,
@@ -682,6 +685,15 @@ function ValidationReview({
   // wire's word for it, "Employee ID (EID)" is the operator's.
   const labelOf = (targetFieldId: string): string =>
     session.targets.find((target) => target.targetFieldId === targetFieldId)?.label ?? targetFieldId;
+  // IN95 — the acknowledgement's ONE name. Radix renders `Checkbox.Root` as a
+  // `<button role="checkbox">`, and HTML-AAM does not name a `button` from an
+  // associated `<label for>` the way it names an `<input>`: verified 2026-08-26
+  // against the built bundle, the control resolved with NO accessible name at
+  // all, so `getByRole("checkbox", { name })` could never match it and a screen
+  // reader announced the gate that holds the plan closed as an unnamed control.
+  // The visible label and the accessible name are read from this single
+  // expression so the two can never drift apart (WCAG 2.5.3, Label in Name).
+  const reviewLabel = rejectionReviewLabel(new Set(rejects.map((reject) => reject.sourceRow)).size);
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-loose)]">
@@ -713,8 +725,10 @@ function ValidationReview({
               <Checkbox
                 checked={reviewed}
                 disabled={locked}
+                className="min-h-11 items-center [&>label]:min-h-11 [&>label]:justify-center"
                 onCheckedChange={(next) => onReviewed(next === true)}
-                label={rejectionReviewLabel(new Set(rejects.map((reject) => reject.sourceRow)).size)}
+                aria-label={reviewLabel}
+                label={reviewLabel}
                 description={INTAKE_REVIEW_COPY.reviewDescription}
               />
             </>
@@ -846,11 +860,29 @@ function RejectedRowsTable({
                   <TD align="right">
                     <span className="flex justify-end gap-[var(--ds-space-tight)]">
                       {correctable && "field" in reject && (
-                        <Button size="sm" variant="outline" disabled={locked} onClick={() => setCorrection({ sourceRow: reject.sourceRow, field: reject.field, value: "" })}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="relative touch-manipulation after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']"
+                          disabled={locked}
+                          onClick={() => {
+                            setExclusion(null);
+                            setCorrection({ sourceRow: reject.sourceRow, field: reject.field, value: "" });
+                          }}
+                        >
                           {INTAKE_REVIEW_COPY.fixCell}
                         </Button>
                       )}
-                      <Button size="sm" variant="outline" disabled={locked} onClick={() => setExclusion({ sourceRow: reject.sourceRow, reason: "" })}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="relative touch-manipulation after:absolute after:inset-x-0 after:top-1/2 after:h-11 after:-translate-y-1/2 after:content-['']"
+                        disabled={locked}
+                        onClick={() => {
+                          setCorrection(null);
+                          setExclusion({ sourceRow: reject.sourceRow, reason: "" });
+                        }}
+                      >
                         {INTAKE_REVIEW_COPY.exclude}
                       </Button>
                     </span>
@@ -863,12 +895,23 @@ function RejectedRowsTable({
       </div>
 
       {correction !== null && (
-        <Card className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
-          <span className={cn(dsText.ui, "font-semibold", "text-[color:var(--ds-fg)]")}>
-            {`Correct row ${String(correction.sourceRow)} · ${correction.field}`}
+        <Card
+          key={`${String(correction.sourceRow)}:${correction.field}`}
+          role="region"
+          aria-labelledby="intake-correction-editor-heading"
+          className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]"
+        >
+          <span
+            id="intake-correction-editor-heading"
+            className={cn(dsText.ui, "font-semibold", "text-[color:var(--ds-fg)]")}
+          >
+            {correctionEditorLabel(correction.sourceRow, labelOf(correction.field))}
           </span>
           <Field label={INTAKE_REVIEW_COPY.correctedValue} description={INTAKE_REVIEW_COPY.correctionDescription}>
             <Input
+              autoFocus
+              autoComplete="off"
+              name={INTAKE_REVIEW_CONTROL_NAMES.correctedValue}
               value={correction.value}
               disabled={locked}
               onChange={(event) => setCorrection({ ...correction, value: event.currentTarget.value })}
@@ -892,9 +935,17 @@ function RejectedRowsTable({
       )}
 
       {exclusion !== null && (
-        <Card className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
-          <span className={cn(dsText.ui, "font-semibold", "text-[color:var(--ds-fg)]")}>
-            {`Exclude row ${String(exclusion.sourceRow)}`}
+        <Card
+          key={String(exclusion.sourceRow)}
+          role="region"
+          aria-labelledby="intake-exclusion-editor-heading"
+          className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]"
+        >
+          <span
+            id="intake-exclusion-editor-heading"
+            className={cn(dsText.ui, "font-semibold", "text-[color:var(--ds-fg)]")}
+          >
+            {exclusionEditorLabel(exclusion.sourceRow)}
           </span>
           <Field
             label={INTAKE_REVIEW_COPY.reason}
@@ -903,6 +954,9 @@ function RejectedRowsTable({
             description={INTAKE_REVIEW_COPY.exclusionDescription}
           >
             <Input
+              autoFocus
+              autoComplete="off"
+              name={INTAKE_REVIEW_CONTROL_NAMES.exclusionReason}
               value={exclusion.reason}
               disabled={locked}
               placeholder={INTAKE_REVIEW_COPY.exclusionPlaceholder}
