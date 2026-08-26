@@ -19,16 +19,6 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 **Recommendation.** A — a trust surface should not display states the system cannot reach.
 **Notes.** _(your notes here)_
 
-## Answers (2026-08-26)
-
-| Item | Chosen | Notes |
-|---:|:---:|---|
-| 1 | A | |
-| 2 | A | |
-| 3 | A | |
-| 4 | A | |
-| 5 | A | |
-
 ## 3 · Version-bump validation and outcome wording
 **Situation.** The bump dialog changes field labels/descriptions/placeholders, character limits/counts, cancel styling, disabled behavior, success/refusal presentation, and transition behavior. The server remains the refusal authority and no force arm may be introduced.
 **Options.**
@@ -55,3 +45,13 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 - **C.** Remove only the catalog count — solves wording while leaving unruled primitive behavior.
 **Recommendation.** A — no demonstrated operator, accessibility, or performance gain justifies broad primitive divergence.
 **Notes.** _(your notes here)_
+
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |

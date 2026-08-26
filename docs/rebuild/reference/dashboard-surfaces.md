@@ -32,7 +32,7 @@ says so in one line rather than opening a second block.
 
 | | Concept | Where |
 |---|---|---|
-| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + archive-on-bump (D80)**, **run display names (D83)** | §1–§5, §9 |
+| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + major-bump archival (D80/D274)**, **run display names (D83)** | §1–§5, §9 |
 | **Imports from `ref task-contract`** | the task contract and `defineTask`, the task-id grammar (`<system>/<verb-object>`, D2), the closed `SystemId` union, the error taxonomy | referenced, never redefined |
 | **Imports from `ref workflow-model`** | the descriptor shape and builder, `RunEnvelope` (`dryRun`'s one home, D6), the run-state machine including gates and parks (D5), the checkpoint store, and the readable span-path grammar | referenced, never redefined |
 | **Exports `ref workflow-model` adopts** | verdict/detail semantics, completion-program semantics, and the wire projections; the descriptor carries every consumed field | §3–§4 |
@@ -3481,10 +3481,12 @@ parity references for all three.
 fingerprint; a guard forces a bump on behavior change; **every run permanently stamps the workflow
 version and the app version it ran with, at enqueue.**
 
-**On a version bump, all runs of prior versions leave the dashboard.** Active surfaces, counts, and
-filters only ever contain current-version runs; prior runs move to a read-only **Archive** (a
-browsable view + on-disk store). A **dashboard/app update bumps the effective version of every
-workflow**, because old runs may not be interpretable against new dashboard state.
+**On a MAJOR version bump, all runs of prior versions leave the dashboard.** Active surfaces,
+counts, and filters then contain only current-version runs; prior runs move to a read-only
+**Archive** (a browsable view + on-disk store). A **MINOR bump archives nothing and cannot be
+blocked**: it records the new version without moving prior-version runs. A dashboard/app update that
+requires old runs to leave active surfaces is therefore a MAJOR effective-version bump for every
+affected workflow, because those runs may not be interpretable against new dashboard state.
 
 The rule that makes this pay for itself: **an archived run is stored as self-contained data** — its
 final projected row, its receipt, and evidence pointers — so rendering it requires **zero
@@ -3499,12 +3501,13 @@ Four hard rules:
 2. **Relaunch from archive starts a fresh run on the current version** from the archived immutable
    input. It is never a resume of the old run — resume across a fingerprint change is exactly what
    D35 forbids.
-3. **A bump cannot archive a non-terminal run.** Queued/parked runs must be terminalized first
-   (cancelled, or for a parked write RESOLVED present/absent per §parked-intent resolution), and
-   the bump flow lists them. **An unresolved possible-submit is never buried in an archive** — this
-   is the write-safety carve-out and it is not negotiable for convenience.
+3. **A MAJOR bump cannot archive a non-terminal run.** Queued/parked runs must be terminalized first
+   (cancelled, or for a parked write RESOLVED present/absent per §parked-intent resolution), and the
+   major-bump flow lists them. **An unresolved possible-submit is never buried in an archive** —
+   this is the write-safety carve-out and it is not negotiable for convenience. A MINOR bump
+   archives nothing, so non-terminal runs do not block it.
 4. **Archive is the ONLY whole-run exclusion.** This rule read *"Hide/Unhide still exists for
-   same-version runs (reversible presentation tombstone, D49); archive-on-bump is the automatic
+   same-version runs (reversible presentation tombstone, D49); archive-on-major-bump is the automatic
    path, Hide is the manual one"* until 2026-08-21, and it had been false since **D234** (§9.2)
    retired the `hide`/`unhide` pair across the whole stack: `ActionCommandKeySchema` holds neither
    key (`src/domain/dashboard/actions.ts:47-50`) and `RunRecord.hidden` is a parse-tolerated

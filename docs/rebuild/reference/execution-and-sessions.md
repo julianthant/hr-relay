@@ -1216,16 +1216,20 @@ profile.
 
 ### D271 — worker-pool process semantics are ratified (2026-08-26; designed, not built)
 
-The operator selected A for all five `worker-pool` items. The future supervisor stops the selected
-member only after its active item settles; B's arbitrary idle-member selection and C's immediate
-abort were rejected for non-determinism and for violating the between-items/write-fence contract.
+The operator selected A for all five `worker-pool` items. A scale-down names the **explicit member
+indices** to stop; the future supervisor stops each selected member only after its active item
+settles. B's arbitrary idle-member selection and C's immediate abort were rejected for
+non-determinism and for violating the between-items/write-fence contract.
 It records a 120s graceful wait, SIGTERM, 30s wait, then SIGKILL, leaving the claim stale for the
 existing recovery sweep; B's unbounded wait and C's immediate termination were rejected as
 respectively unbounded and unsafe. **An initial workflow pool is capped at three workers**: B's cap
 of two discards the proven three-worker soak, while C's unbounded/N≥1 pool exceeds current proof.
 This amends the earlier unbounded wording in this section: N≥1 still describes session membership,
-not permissible dashboard pool capacity. A crashed member stays visibly unmet until an explicit
-`spawn-worker`; B's one automatic retry and C's continuous reconciliation were rejected because a
-crash is evidence, not capacity to silently erase. After restart, a supervisor reconstructs all
-cards but controls only durably proven children; B's PID adoption and C's false stopped state were
-rejected. D269's authority/pool distinction and D181/D200 recovery/identity rules remain unchanged.
+not permissible dashboard pool capacity. Raising the cap above three requires a named concurrency
+proof **at the proposed size** before that size can be exposed. A crashed member's card exposes its
+stop reason, the declaration stays visibly unmet, and only then may an explicit `spawn-worker`
+replace it; B's one automatic retry and C's continuous reconciliation were rejected because a crash
+is evidence, not capacity to silently erase. After restart, a supervisor reconstructs all cards but
+controls only durably proven children; every other live member is reported as **externally running**
+and is not controlled. B's PID adoption and C's false stopped state were rejected. D269's
+authority/pool distinction and D181/D200 recovery/identity rules remain unchanged.

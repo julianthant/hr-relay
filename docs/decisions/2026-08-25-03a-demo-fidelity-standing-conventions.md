@@ -19,21 +19,6 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 **Recommendation.** A — the consistent wrapper has an accessibility purpose and can be explicitly governed.
 **Notes.** _(your notes here)_
 
-## Answers (2026-08-26)
-
-| Item | Chosen | Notes |
-|---:|:---:|---|
-| 1 | A | |
-| 2 | A | |
-| 3 | A | |
-| 4 | A | |
-| 5 | A | |
-| 6 | A | |
-| 7 | A | |
-| 8 | A | |
-| 9 | A | |
-| 10 | A | |
-
 ## 3 · Horizontal table overflow
 **Situation.** Rebuild tables add `overflow-x-auto` wrappers where the demo leaves tables bare. On narrow viewports, the wrapper can preserve columns; without a rule, it is an unexplained interaction change.
 **Options.**
@@ -105,3 +90,18 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 - **C.** Create separate decisions for each token — maximum granularity, but disproportionate operator overhead for linked visual details.
 **Recommendation.** A — no listed change improves authority, safety, or accessibility over the demo.
 **Notes.** _(your notes here)_
+
+## Answers (2026-08-26)
+
+| Item | Chosen | Notes |
+|---:|:---:|---|
+| 1 | A | |
+| 2 | A | |
+| 3 | A | |
+| 4 | A | |
+| 5 | A | |
+| 6 | A | |
+| 7 | A | |
+| 8 | A | |
+| 9 | A | |
+| 10 | A | |
