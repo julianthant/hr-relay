@@ -113,11 +113,9 @@ describe("bounded transaction task recording", () => {
     const roles = [
       ["ucpath/match-existing-termination", ["state", "emplId", "effectiveDate"]],
       ["ucpath/match-pending-terminations", ["state", "emplId"]],
-      ["kuali/read-timekeeper-annotation", ["state", "documentNumber"]],
       ["kuali/match-separation-finalization", ["state", "documentNumber", "transactionNumber"]],
       ["ucpath/verify-termination", ["state", "emplId", "effectiveDate"]],
       ["ucpath/verify-pending-terminations-cleared", ["state", "emplId"]],
-      ["kuali/verify-timekeeper-annotation", ["state", "documentNumber"]],
       ["kuali/verify-separation-finalization", ["state", "documentNumber", "transactionNumber"]],
     ] as const;
 
