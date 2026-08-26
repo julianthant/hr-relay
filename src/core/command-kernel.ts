@@ -126,7 +126,7 @@ const PHASE1_ACTIVE = {
     "capture-discard",
   ],
   // D170 (2i-E1): the five non-enqueue intake arms over the durable session.
-  // D171 (2i-E2) adds the sixth: the manifest mint and the run fan-out.
+  // D171 (2i-E2) adds the sixth: the manifest commit and the run fan-out.
   intake: [
     "inspect-intake",
     "confirm-intake-mapping",
@@ -1558,6 +1558,14 @@ function executeIntake(
           + "it ran; re-upload the file to start a session that does",
         );
       }
+      const reservedManifestId = current.reservedManifestId;
+      if (reservedManifestId === undefined) {
+        reject(
+          request,
+          "invalid-state",
+          `intake session ${sessionId} predates reserved manifest identities and cannot enqueue without one`,
+        );
+      }
       const projection = requireProjection();
       const descriptor = resolveDescriptorOrReject(dependencies, request, current.workflow);
       if (request.payload.dryRun && !supportsDryRun(descriptor)) {
@@ -1582,7 +1590,7 @@ function executeIntake(
         },
         projection,
         layout,
-        manifestId: dependencies.ids.uuid(),
+        manifestId: reservedManifestId,
         createdAt: now,
         workflowContractFingerprint: descriptor.contractFingerprint,
         canonicalInputSchemaHash,

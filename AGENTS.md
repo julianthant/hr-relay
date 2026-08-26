@@ -354,6 +354,29 @@ behind the closed EID references read only by `src/domain/secrets.ts`.
 
 ### Dated lessons
 
+- **2026-08-25 — rerun membership is stable-item membership, not row-position equality.** Derive the
+  current side again from the immutable intake artifact, durable decisions and their retained
+  read instant. `removed` carries the prior manifest row and `added` the current re-derived row,
+  keyed only by `itemId`: a mapping that changes identity is remove-plus-add, while one that keeps
+  identity uses a separate `changedInputs` vector when its canonical input hash moves. Carry only
+  before/after hashes there; the values retain their existing classifications. Missing current
+  layout or prior/current row facts must refuse by name; an absent vector is never an empty-vector
+  fallback. A reserved manifest id is preflight identity, not proof a manifest exists. Enqueued
+  reads bind both terminal projections to their exact committed id; open reads may select only the
+  unique latest earlier same-source manifest, never their reservation or a future row. Equal latest
+  creation times refuse by session, timestamp and candidate ids rather than selecting by repository
+  order. Share the durable
+  manifest's field schemas and row refinement with the reviewed wire projection so totals, row
+  coverage and stable-item uniqueness cannot drift without broadening data egress.
+
+- **2026-08-25 — an irreversible intake must consume an identity authority reserved before review.**
+  Mint `reservedManifestId` in the upload route's durable session write, serve that exact value, and
+  make enqueue pass it unchanged into the immutable manifest. Keep terminal `intakeManifestId`
+  exclusive to `enqueued` and require equality when a reservation exists. The reservation stays
+  optional only for read-forward compatibility; an older row without it refuses by session id and
+  must never fall back to a fresh UUID, because that would commit a different plan than the operator
+  inspected.
+
 - **2026-08-25 — exact-id readback needs the same identity door at every authority boundary.** A
   repository lookup, recursively strict wire parse, or injected dashboard client can each return a
   valid diagnostic bundle for the wrong id. Compare the requested id to the durable row before

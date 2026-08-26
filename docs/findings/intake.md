@@ -10,61 +10,44 @@ exist before this pass — Track F booked it because the ledger named 22 real ga
 Owning doc for every record below: `docs/rebuild/reference/data-intake-and-edit-data.md` §5/§5.2,
 `docs/rebuild/reference/dashboard-surfaces.md` §9.7.1.
 
-## The Manifest and Rerun-diff STAGES have no surface
+## The Manifest and Rerun-diff STAGES are rendered
 
-**Recorded:** 2026-08-21 · **Status:** OPEN — blocked on the operator's ruling named below (03a
-`{#track-f}` OPEN question 9) · **Owning doc:** `docs/rebuild/03a-finish-the-dashboard.md` OPEN
-question 9
+**Recorded:** 2026-08-21 · **Resolved:** 2026-08-25 · **Owning doc:**
+`docs/rebuild/reference/data-intake-and-edit-data.md` §5.2
 
-**Symptom.** The demo's intake flow has six stages; this tree renders four. The two that render
-nowhere are `Manifest` (the plan id, source sha, artifact id, the three fingerprints and the
-per-source-row disposition table) and `Rerun diff` (the added/removed item lists, the per-axis
-`was… → now…` digest already partially built at `intake.tsx:857-888` under D171). The enqueued
-banner today shows one bare `manifest <uuid>` (`intake.tsx:1243`) in place of the whole stage.
+**Resolution.** The intake surface now has named Manifest and Rerun diff stage tabs. The Manifest
+model distinguishes a preflight-reserved plan id from a terminal committed manifest, and renders
+the terminal identifiers, fingerprints, totals and per-source-row dispositions only when the
+served terminal facts exist. Rerun renders named empty and same-plan states plus exact changed
+axes, membership, counts and hash-only changed inputs.
 
 **Demo elements.** `DemoIntake.tsx:96-97` (the two stage tabs), `:946-1091` (the Manifest body),
 `:1031-1091` (the rerun empty-state and diff body).
 
-**Ledger rows folded here:** IN15, IN16, IN123, IN124, IN126, IN127, IN131, IN137, IN139, IN144 —
-all ten are "OPEN — operator call" in the ledger, not wire gaps; several of the fields they would
-draw (`IntakeSessionWire.artifact`, `.createdAt`) are already served and simply have nowhere to
-render.
+**Ledger rows folded here:** IN123–IN136, IN139 and IN142 are ported. IN137 and IN138 remain
+operator-owned presentation decisions. IN143 has the exact served item ids and input hashes, but
+remains open for a human-readable item label because no wire producer serves one. IN144 remains an
+OPEN operator-owned copy/icon decision; the unratified closing banner is not rendered.
 
-**What closes it:** the operator's ruling on `{#track-f}` OPEN question 9 ("Intake stages 5 and 6
-have no surface... D173 ratifies the dialog → workspace reshaping at length and says nothing about
-where these went"). Building the two stages is the trigger; the wire-field gaps below are a
-SEPARATE, smaller trigger nested inside this one.
+**Verification.** Focused projection tests cover reservation, terminal facts, empty rerun and
+changed rerun states. The dashboard fixture renders both terminal stages; reference captures were
+intentionally not re-frozen in this pass.
 
 ---
 
-## The Manifest/rerun-diff WIRE fields are unbooked
+## Terminal Manifest/rerun-diff WIRE fields are served
 
-**Recorded:** 2026-08-21 · **Status:** OPEN — no producer at any layer (re-verified 2026-08-21:
-none of the field names below appear in `src/domain/intake/**` or `IntakeSessionWire`) ·
-**Owning doc:** `docs/rebuild/reference/data-intake-and-edit-data.md` §5.2
+**Recorded:** 2026-08-21 · **Resolved:** 2026-08-25 · **Owning doc:**
+`docs/rebuild/reference/data-intake-and-edit-data.md` §5.2
 
-**Symptom.** Even once the two stages above are built, several fields the demo's Manifest and
-Rerun-diff bodies draw have no producer to bind to.
+**Resolution.** `IntakeSessionWire` now serves the terminal mapping fingerprint and snapshot,
+workflow contract fingerprint, totals and source-row dispositions, and rerun serves exact
+membership/count inputs. The UI fails loud for missing terminal facts rather than substituting a
+plausible manifest.
 
-**Missing wire fields, by ledger row:**
-- IN125 `mapping fingerprint`, IN129 `mapping snapshot hash` — `mappingFingerprint` /
-  `mappingSnapshotHash` are not on `IntakeSessionWire`.
-- IN128 `mapping fingerprint` (duplicate ledger citation of the same gap) — see above.
-- IN130 `workflow contract` fingerprint — `workflowContractFingerprint` is not on the wire.
-- IN132 the totals line `N rows · V valid · R rejected · E excluded · C corrected` —
-  `IntakeValidationWireSchema` has no `corrected` count (it exists on `IntakeManifestTotalsSchema`,
-  a domain type never projected to the wire).
-- IN133, IN134, IN135, IN136 the per-source-row disposition table (row / disposition / item / input
-  hash / parsed input) — `SourceRowDispositionSchema` and `ValidRowSchema` are domain types, not on
-  `IntakeSessionWire`.
-- IN142 the rerun chips (`unchanged` / `added` / `removed` / `mapping` / `contract`) — `RerunDiffSchema`
-  carries no per-item counts.
-- IN143 the two rerun `Well`s ("In this plan, not in `<planId>`" / "In `<planId>`, not here") —
-  `RerunDiffSchema` has no `added`/`removed` item lists.
-
-**What closes it:** the same commit that builds the Manifest/Rerun-diff stages (the record above)
-must also widen `IntakeSessionWire` and `RerunDiffSchema` with these fields — building the stage
-first would ship a page that cannot fill itself in.
+**Remaining boundary.** No served source supplies a human-readable membership item label for
+IN143. The UI therefore renders the exact item id and short input hash without inventing copy; its
+full hash is reachable through the same detail popover as other compact evidence.
 
 ---
 

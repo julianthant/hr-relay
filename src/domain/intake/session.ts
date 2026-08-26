@@ -11,6 +11,8 @@
  * detected columns are NEVER stored — they are a pure function of the
  * content-addressed artifact and the header selection, so every read
  * re-derives them and a stored copy could only drift from its own source.
+ * A new row also reserves the one manifest id enqueue must consume; it does
+ * not claim that manifest has already fanned out.
  *
  * `validation` retains `readAt` because `validateIntakeRows` resolves
  * two-digit years against it: a replayed validation must resolve exactly as
@@ -96,6 +98,12 @@ export const IntakeSessionSchema = z.strictObject({
   exclusions: z.array(IntakeRowExclusionSchema),
   state: IntakeSessionStateSchema,
   validation: IntakeSessionValidationSchema,
+  /**
+   * Minted with every new session so the operator can inspect the exact plan
+   * identity BEFORE enqueue. Optional only because pre-reservation rows must
+   * read forward; enqueue refuses such a row rather than minting a replacement.
+   */
+  reservedManifestId: IntakeManifestIdSchema.optional(),
   /** Set exactly when the session enqueued (E2); the manifest is the rerun authority. */
   intakeManifestId: IntakeManifestIdSchema.optional(),
   version: PositiveIntSchema,
@@ -114,6 +122,17 @@ export const IntakeSessionSchema = z.strictObject({
       code: "custom",
       path: ["intakeManifestId"],
       message: "only an enqueued session carries a manifest id",
+    });
+  }
+  if (
+    session.reservedManifestId !== undefined
+    && session.intakeManifestId !== undefined
+    && session.reservedManifestId !== session.intakeManifestId
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["intakeManifestId"],
+      message: "an enqueued session consumes its reserved manifest id exactly",
     });
   }
   if (session.state === "validated" && session.validation.state !== "validated") {

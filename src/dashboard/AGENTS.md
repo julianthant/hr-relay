@@ -19,6 +19,20 @@ archive readers and must fail here with the run and cursor.
 
 ### Dated lessons
 
+- **2026-08-25 — bounded list ownership includes its observed size.** A rerun membership list can
+  shrink while its prior-manifest owner stays the same, so an owner-only page selection can leave a
+  formerly valid final page outside the new bound. Validate the stored selection against its own
+  exact count first, then reset for a new owner or clamp for a changed count; otherwise refreshing
+  evidence either throws or hides malformed state behind a plausible page.
+
+- **2026-08-25 — compact evidence still needs an exact reachable value.** A title attribute and a
+  painted hash prefix do not serve touch or keyboard operators. Keep the short value for scanning,
+  but put the full identifier, hash or parsed input in the existing Popover vocabulary behind a
+  44×44 semantic trigger. Bound intake evidence locally in exact 10-row pages; that is not D9's
+  proposed shared virtualization primitive, and must never be described as such. (IN123–IN143)
+
+- **2026-08-25 — a reserved identity is not a terminal record.** The intake upload reserves a manifest id before the irreversible enqueue, but calling it committed would tell the operator that runs exist when authority has written none. Keep reservation and terminal projections in separate total-fold arms; a missing rerun is likewise a named empty state, and a changed input shows hashes only rather than leaking a parsed value. (IN123–IN143)
+
 - **2026-08-25 — an exact descriptor origin need not be a browser origin.** The first live observed-log
   proof reached `workflow:separations/read-separation-plan`: one exact data origin existed, but it was a
   service task and correctly declared no browser system. Making every log producer carry a system turned

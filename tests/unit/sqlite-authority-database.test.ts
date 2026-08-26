@@ -776,6 +776,7 @@ const INTAKE_SESSION = {
   exclusions: [],
   state: "mapping",
   validation: { state: "none" },
+  reservedManifestId: "8e7d6c5b-4a39-4827-9615-0f1e2d3c4b5a",
   version: 1,
   createdAt: NOW,
   updatedAt: NOW,
