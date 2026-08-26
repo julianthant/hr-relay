@@ -210,6 +210,15 @@ export interface DashboardWorkerProcessSupervisor extends WorkerPoolProcessSuper
   execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement>;
   /** Evidence about a member THIS supervisor spawned; undefined = never spawned here. */
   memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined;
+  /**
+   * The teardown seam (W3 composition): cancels every armed escalation timer,
+   * refuses all further commands, and returns the evidence of every child
+   * still live at close — the caller decides what to do with them; this
+   * supervisor never pretends they stopped. Idempotent. A spawn still
+   * awaiting birth keeps its birth poll (cancelling it would strand the
+   * pending command) and is reported here as awaiting-birth.
+   */
+  close(): readonly WorkerChildEvidence[];
 }
 
 /* ── the supervisor ──────────────────────────────────────────────────────── */
@@ -664,8 +673,57 @@ export function createDashboardWorkerProcessSupervisor(
     });
   };
 
+  const recordEvidence = (record: MemberRecord): WorkerChildEvidence => {
+    switch (record.state) {
+      case "awaiting-birth":
+        return WorkerChildEvidenceSchema.parse({
+          state: "awaiting-birth",
+          ...(record.pid === undefined ? {} : { pid: record.pid }),
+        });
+      case "running":
+        return WorkerChildEvidenceSchema.parse({
+          state: "running",
+          pid: record.pid,
+          bornAt: record.bornAt,
+          leaseStartedAt: record.leaseStartedAt,
+        });
+      case "stopping":
+        return WorkerChildEvidenceSchema.parse({
+          state: "stopping",
+          pid: record.pid,
+          bornAt: record.bornAt,
+          observedStop: record.observedStop,
+        });
+      case "exited": {
+        if (record.exit === undefined) {
+          throw new Error(
+            `worker ${record.member.workerId} is recorded exited without exit evidence; `
+            + "the supervisor registry is corrupt",
+          );
+        }
+        return WorkerChildEvidenceSchema.parse({
+          state: "exited",
+          ...(record.pid === undefined ? {} : { pid: record.pid }),
+          outcome: record.exit.outcome,
+          exitCode: record.exit.exitCode,
+          signal: record.exit.signal,
+          at: record.exit.at,
+          observedStop: record.observedStop,
+        });
+      }
+    }
+  };
+
+  let closed = false;
+
   return Object.freeze({
     async execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement> {
+      if (closed) {
+        throw new Error(
+          `${request.command} refused: this worker supervisor is closed; a closed supervisor `
+          + "acknowledges nothing",
+        );
+      }
       switch (request.command) {
         case "plan-worker-count":
           return planWorkerCount(request);
@@ -699,44 +757,17 @@ export function createDashboardWorkerProcessSupervisor(
     memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined {
       const record = records.get(member.workerId);
       if (record === undefined) return undefined;
-      switch (record.state) {
-        case "awaiting-birth":
-          return WorkerChildEvidenceSchema.parse({
-            state: "awaiting-birth",
-            ...(record.pid === undefined ? {} : { pid: record.pid }),
-          });
-        case "running":
-          return WorkerChildEvidenceSchema.parse({
-            state: "running",
-            pid: record.pid,
-            bornAt: record.bornAt,
-            leaseStartedAt: record.leaseStartedAt,
-          });
-        case "stopping":
-          return WorkerChildEvidenceSchema.parse({
-            state: "stopping",
-            pid: record.pid,
-            bornAt: record.bornAt,
-            observedStop: record.observedStop,
-          });
-        case "exited": {
-          if (record.exit === undefined) {
-            throw new Error(
-              `worker ${record.member.workerId} is recorded exited without exit evidence; `
-              + "the supervisor registry is corrupt",
-            );
-          }
-          return WorkerChildEvidenceSchema.parse({
-            state: "exited",
-            ...(record.pid === undefined ? {} : { pid: record.pid }),
-            outcome: record.exit.outcome,
-            exitCode: record.exit.exitCode,
-            signal: record.exit.signal,
-            at: record.exit.at,
-            observedStop: record.observedStop,
-          });
-        }
+      return recordEvidence(record);
+    },
+    close(): readonly WorkerChildEvidence[] {
+      closed = true;
+      const live: WorkerChildEvidence[] = [];
+      for (const record of records.values()) {
+        record.escalationTimer?.cancel();
+        record.escalationTimer = undefined;
+        if (record.state !== "exited") live.push(recordEvidence(record));
       }
+      return Object.freeze(live);
     },
   });
 }

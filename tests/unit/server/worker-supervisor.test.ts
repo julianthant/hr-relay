@@ -971,6 +971,62 @@ describe("through createWorkerPoolRuntimeExecutor", () => {
   });
 });
 
+/* ── close(): the W3 teardown seam ───────────────────────────────────────── */
+
+describe("close", () => {
+  it("cancels every armed escalation timer and returns the still-live children's evidence", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(2) });
+    await harness.supervisor.execute({ command: "stop-worker", member: member(1), escalation: stopPolicy() });
+    expect(harness.scheduler.pending()).toHaveLength(1);
+
+    const live = harness.supervisor.close();
+
+    expect(harness.scheduler.pending()).toHaveLength(0);
+    expect(live).toEqual([
+      {
+        state: "stopping",
+        pid: harness.children[0]?.pid,
+        bornAt: NOW,
+        observedStop: [{ stage: "graceful-stop-requested", at: NOW }],
+      },
+      {
+        state: "running",
+        pid: harness.children[1]?.pid,
+        bornAt: NOW,
+        leaseStartedAt: NOW,
+      },
+    ]);
+    // Idempotent: a second close has nothing left to cancel and reports the
+    // same still-live children.
+    expect(harness.supervisor.close()).toEqual(live);
+  });
+
+  it("returns no evidence when every child already exited", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    harness.children[0]?.emitExit(0, null);
+
+    expect(harness.supervisor.close()).toEqual([]);
+  });
+
+  it("refuses every command after close — a closed supervisor acknowledges nothing", async () => {
+    const harness = openHarness();
+    await harness.supervisor.execute({ command: "spawn-worker", member: member(1) });
+    harness.supervisor.close();
+
+    await expect(harness.supervisor.execute({ command: "spawn-worker", member: member(2) }))
+      .rejects.toThrow(/supervisor is closed/);
+    await expect(harness.supervisor.execute({ command: "stop-worker", member: member(1), escalation: stopPolicy() }))
+      .rejects.toThrow(/supervisor is closed/);
+    expect(harness.spawnRequests).toHaveLength(1);
+    expect(harness.gracefulRequests).toHaveLength(0);
+    // Evidence stays readable after close: the record is history, not a command.
+    expect(harness.supervisor.memberEvidence(member(1))).toMatchObject({ state: "running" });
+  });
+});
+
 /* ── browser arms: no cross-process channel exists yet ───────────────────── */
 
 describe("browser session arms", () => {
