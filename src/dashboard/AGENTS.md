@@ -19,6 +19,8 @@ archive readers and must fail here with the run and cursor.
 
 ### Dated lessons
 
+- **2026-08-25 — a reserved identity is not a terminal record.** The intake upload reserves a manifest id before the irreversible enqueue, but calling it committed would tell the operator that runs exist when authority has written none. Keep reservation and terminal projections in separate total-fold arms; a missing rerun is likewise a named empty state, and a changed input shows hashes only rather than leaking a parsed value. (IN123–IN143)
+
 - **2026-08-25 — an exact descriptor origin need not be a browser origin.** The first live observed-log
   proof reached `workflow:separations/read-separation-plan`: one exact data origin existed, but it was a
   service task and correctly declared no browser system. Making every log producer carry a system turned

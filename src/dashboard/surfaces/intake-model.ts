@@ -19,15 +19,52 @@
  * Provenance: `hr-automation@src/dashboard/components/dev/rebuild-demo/DemoIntake.tsx`.
  */
 import type { z } from "zod";
+import { canonicalJsonStringify, type JsonObject, type JsonValue } from "../../domain/canonical-json.js";
 import type { ServedHeaderCandidateSchema } from "../../domain/intake/header-discovery.js";
 import type { IntakeRowCorrectionSchema } from "../../domain/intake/session.js";
 import type { SuggestionSchema } from "../../domain/intake/suggestions.js";
-import type { IntakeSessionWire } from "../../domain/intake/wire.js";
+import type { IntakeManifestWire, IntakeSessionWire } from "../../domain/intake/wire.js";
 import { fmtClock, shortHash } from "./format.js";
 
 type ServedHeaderCandidate = z.infer<typeof ServedHeaderCandidateSchema>;
 type IntakeRowCorrection = z.infer<typeof IntakeRowCorrectionSchema>;
 type Suggestion = z.infer<typeof SuggestionSchema>;
+export type RerunMembershipRow = IntakeManifestWire["validRows"][number];
+
+export type IntakeStageFact = { key: string; value: string };
+
+export type ManifestStage =
+  | Readonly<{ kind: "unavailable" }>
+  | Readonly<{ kind: "reserved"; manifestId: string }>
+  | Readonly<{
+    kind: "terminal";
+    manifestId: string;
+    facts: IntakeStageFact[];
+    rows: {
+      sourceRow: number;
+      disposition: "valid" | "rejected" | "excluded";
+      tone: "success" | "danger" | "neutral";
+      itemId: string | undefined;
+      inputHash: string | undefined;
+      parsedInput: string;
+    }[];
+  }>;
+
+export type RerunStage =
+  | Readonly<{ kind: "none" }>
+  | Readonly<{ kind: "same-plan"; manifestId: string; createdAt: string }>
+  | Readonly<{
+    kind: "changed";
+    manifestId: string;
+    createdAt: string;
+    axes: readonly Readonly<{ label: string; was: string; now: string }>[];
+    unchanged: number | undefined;
+    mapping: "changed" | "identical";
+    contract: "changed" | "identical";
+    added: readonly RerunMembershipRow[];
+    removed: readonly RerunMembershipRow[];
+    changedInputs: readonly Readonly<{ itemId: string; beforeInputHash: string; afterInputHash: string }>[];
+  }>;
 
 /** Why a column was proposed — ref data-intake-and-edit-data §2.5's scorer, said out loud. */
 const SUGGESTION_WHY_LABEL: Record<Suggestion["why"][number], string> = {
@@ -146,21 +183,9 @@ export function correctionText(correction: IntakeRowCorrection, fieldLabel: stri
  * enqueued session carries no rerun view, the row is simply absent rather than
  * filled from the nearest plausible instant.
  */
-export function manifestFacts(session: IntakeSessionWire): { key: string; value: string }[] {
-  const facts: { key: string; value: string }[] = [];
-  if (session.intakeManifestId !== undefined) {
-    facts.push({ key: "manifest", value: session.intakeManifestId });
-  }
-  facts.push({ key: "source", value: `${sourceLabel(session)} · sha ${session.artifact.sha256.slice(0, 12)}` });
-  facts.push({ key: "artifact", value: session.artifact.id });
-  if (session.rerun !== undefined) {
-    facts.push({ key: "created", value: fmtClock(session.rerun.createdAt) });
-    facts.push({
-      key: "rows",
-      value: `${String(session.rerun.totals.valid)} of ${String(session.rerun.totals.sourceRows)} rows`,
-    });
-  }
-  return facts;
+export function manifestFacts(session: IntakeSessionWire): IntakeStageFact[] {
+  const stage = manifestStage(session);
+  return stage.kind === "terminal" ? stage.facts : [];
 }
 
 /**
@@ -170,10 +195,134 @@ export function manifestFacts(session: IntakeSessionWire): { key: string; value:
  * values travel separately to the one accessible disclosure beside that list.
  * The digest is the full SHA-256, never the source row's eye-scan prefix.
  */
-export function manifestIdentifierFacts(session: IntakeSessionWire): { key: string; value: string }[] {
+export function manifestIdentifierFacts(session: IntakeSessionWire): IntakeStageFact[] {
+  const stage = manifestStage(session);
+  if (stage.kind === "reserved") return [{ key: "reserved manifest id", value: stage.manifestId }];
+  if (stage.kind === "unavailable") return [];
+  const manifest = terminalManifest(session);
   return [
-    ...(session.intakeManifestId === undefined ? [] : [{ key: "manifest id", value: session.intakeManifestId }]),
-    { key: "sha256", value: session.artifact.sha256 },
+    { key: "plan id", value: stage.manifestId },
+    { key: "source sha256", value: session.artifact.sha256 },
     { key: "artifact id", value: session.artifact.id },
+    { key: "mapping fingerprint", value: manifest.mappingFingerprint },
+    { key: "mapping snapshot", value: manifest.mappingSnapshotHash },
+    { key: "intake projection", value: manifest.intakeProjectionFingerprint },
+    { key: "workflow contract", value: manifest.workflowContractFingerprint },
+    { key: "canonical input schema", value: manifest.canonicalInputSchemaHash },
   ];
+}
+
+/** The terminal receipt and its preflight reservation are intentionally different states. */
+export function manifestStage(session: IntakeSessionWire): ManifestStage {
+  if (session.state !== "enqueued") {
+    return session.reservedManifestId === undefined
+      ? { kind: "unavailable" }
+      : { kind: "reserved", manifestId: session.reservedManifestId };
+  }
+
+  const manifest = terminalManifest(session);
+  const validBySourceRow = new Map(manifest.validRows.map((row) => [row.sourceRow, row]));
+  return {
+    kind: "terminal",
+    manifestId: manifest.manifestId,
+    facts: [
+      { key: "plan id", value: manifest.manifestId },
+      { key: "source", value: `${sourceLabel(session)} · sha ${session.artifact.sha256.slice(0, 12)}` },
+      { key: "artifact", value: session.artifact.id },
+      { key: "mapping fingerprint", value: manifest.mappingFingerprint },
+      { key: "mapping snapshot", value: manifest.mappingSnapshotHash },
+      { key: "intake projection", value: manifest.intakeProjectionFingerprint },
+      { key: "workflow contract", value: manifest.workflowContractFingerprint },
+      { key: "canonical input schema", value: manifest.canonicalInputSchemaHash },
+      { key: "created", value: fmtClock(manifest.createdAt) },
+      { key: "totals", value: manifestTotalsText(manifest.totals) },
+    ],
+    rows: manifest.sourceRowDispositions.map((disposition) => {
+      const valid = validBySourceRow.get(disposition.sourceRow);
+      return {
+        sourceRow: disposition.sourceRow,
+        disposition: disposition.disposition,
+        tone: disposition.disposition === "valid" ? "success" : disposition.disposition === "rejected" ? "danger" : "neutral",
+        itemId: disposition.itemId,
+        inputHash: valid?.inputHash.slice(0, 10),
+        parsedInput: valid === undefined
+          ? disposition.currentRejectIds.length === 0 ? "—" : `rejects: ${disposition.currentRejectIds.join(", ")}`
+          : parsedInputText(valid.parsedInput),
+      };
+    }),
+  };
+}
+
+/** An absent rerun is meaningful: this source has never been imported before. */
+export function rerunStage(session: IntakeSessionWire): RerunStage {
+  if (session.rerun === undefined) return { kind: "none" };
+  const { rerun } = session;
+  if (rerun.diff.kind === "same-plan") {
+    return { kind: "same-plan", manifestId: rerun.intakeManifestId, createdAt: rerun.createdAt };
+  }
+  return {
+    kind: "changed",
+    manifestId: rerun.intakeManifestId,
+    createdAt: rerun.createdAt,
+    axes: rerun.diff.changes.map((change) => ({ label: RERUN_AXIS_LABEL[change.what], was: change.was, now: change.now })),
+    unchanged: session.validation.state === "validated"
+      ? session.validation.validRows - rerun.diff.added.length - rerun.diff.changedInputs.length
+      : undefined,
+    mapping: rerun.diff.changes.some((change) => change.what === "mapping") ? "changed" : "identical",
+    contract: rerun.diff.changes.some((change) => change.what === "workflow-contract") ? "changed" : "identical",
+    added: rerun.diff.added,
+    removed: rerun.diff.removed,
+    changedInputs: rerun.diff.changedInputs,
+  };
+}
+
+export type IntakeTab = "mapping" | "review" | "manifest" | "rerun";
+
+/** The tab primitive is stringly; this boundary refuses a value the workspace never declared. */
+export function intakeTab(value: string): IntakeTab {
+  if (value === "mapping" || value === "review" || value === "manifest" || value === "rerun") return value;
+  throw new Error(`intake workspace received an undeclared tab value: ${value}`);
+}
+
+const RERUN_AXIS_LABEL: Record<"source-artifact" | "mapping" | "intake-projection" | "workflow-contract" | "canonical-input-schema", string> = {
+  "source-artifact": "the file",
+  mapping: "the mapping",
+  "intake-projection": "the workflow's mappable fields",
+  "workflow-contract": "the workflow contract",
+  "canonical-input-schema": "the input schema",
+};
+
+function terminalManifest(session: IntakeSessionWire): NonNullable<IntakeSessionWire["manifest"]> {
+  if (session.manifest === undefined) {
+    throw new Error(`enqueued intake session ${session.intakeSessionId} carries no terminal manifest`);
+  }
+  if (session.intakeManifestId === undefined) {
+    throw new Error(`enqueued intake session ${session.intakeSessionId} carries no committed manifest id`);
+  }
+  if (session.manifest.manifestId !== session.intakeManifestId) {
+    throw new Error(`enqueued intake session ${session.intakeSessionId} disagrees with its terminal manifest id`);
+  }
+  return session.manifest;
+}
+
+function manifestTotalsText(totals: NonNullable<IntakeSessionWire["manifest"]>["totals"]): string {
+  return `${String(totals.sourceRows)} rows · ${String(totals.valid)} valid · ${String(totals.rejected)} rejected · ${String(totals.excluded)} excluded · ${String(totals.corrected)} corrected`;
+}
+
+function parsedInputText(input: JsonValue): string {
+  if (isJsonObject(input)) {
+    return Object.entries(input)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => `${key}=${jsonValueText(value)}`)
+      .join(" · ");
+  }
+  return canonicalJsonStringify(input);
+}
+
+function jsonValueText(value: JsonValue): string {
+  return typeof value === "string" ? value : canonicalJsonStringify(value);
+}
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

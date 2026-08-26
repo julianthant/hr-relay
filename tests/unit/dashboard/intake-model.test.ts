@@ -28,8 +28,10 @@ import {
   headerCandidateOptionLabel,
   layoutFingerprint,
   layoutMetaItems,
+  manifestStage,
   manifestIdentifierFacts,
   manifestFacts,
+  rerunStage,
   sourceLabel,
   suggestionProposalText,
 } from "../../../src/dashboard/surfaces/intake-model.js";
@@ -206,9 +208,20 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
     },
   });
 
-  it("draws the source with its digest, the artifact and the manifest's own instant", () => {
+  it("draws the source with its digest, terminal fingerprints, artifact and the manifest's own instant", () => {
     const keys = manifestFacts(enqueued).map((fact) => fact.key);
-    assert.deepEqual(keys, ["manifest", "source", "artifact", "created", "rows"]);
+    assert.deepEqual(keys, [
+      "plan id",
+      "source",
+      "artifact",
+      "mapping fingerprint",
+      "mapping snapshot",
+      "intake projection",
+      "workflow contract",
+      "canonical input schema",
+      "created",
+      "totals",
+    ]);
     const source = manifestFacts(enqueued).find((fact) => fact.key === "source");
     assert.equal(source?.value, `${sourceLabel(enqueued)} · sha ${enqueued.artifact.sha256.slice(0, 12)}`);
     assert.equal(manifestFacts(enqueued).find((fact) => fact.key === "artifact")?.value, enqueued.artifact.id);
@@ -216,9 +229,14 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
 
   it("keeps each full opaque identifier available behind the dense manifest rows", () => {
     assert.deepEqual(manifestIdentifierFacts(enqueued), [
-      { key: "manifest id", value: MANIFEST_ID },
-      { key: "sha256", value: enqueued.artifact.sha256 },
+      { key: "plan id", value: MANIFEST_ID },
+      { key: "source sha256", value: enqueued.artifact.sha256 },
       { key: "artifact id", value: enqueued.artifact.id },
+      { key: "mapping fingerprint", value: enqueued.manifest?.mappingFingerprint },
+      { key: "mapping snapshot", value: enqueued.manifest?.mappingSnapshotHash },
+      { key: "intake projection", value: enqueued.manifest?.intakeProjectionFingerprint },
+      { key: "workflow contract", value: enqueued.manifest?.workflowContractFingerprint },
+      { key: "canonical input schema", value: enqueued.manifest?.canonicalInputSchemaHash },
     ]);
   });
 
@@ -234,11 +252,14 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
     assert.equal(created.value, manifestFacts(enqueued).find((fact) => fact.key === "created")?.value);
   });
 
-  it("omits `created` rather than substituting one when no manifest view is served", () => {
+  it("keeps the terminal creation instant when the prior-rerun view is absent", () => {
     const withoutRerun: IntakeSessionWire = { ...enqueued, rerun: undefined };
     const keys = manifestFacts(withoutRerun).map((fact) => fact.key);
-    assert.deepEqual(keys, ["manifest", "source", "artifact"]);
-    assert.deepEqual(manifestIdentifierFacts(withoutRerun).map((fact) => fact.key), ["manifest id", "sha256", "artifact id"]);
+    assert.ok(keys.includes("created"));
+    assert.equal(
+      manifestFacts(withoutRerun).find((fact) => fact.key === "created")?.value,
+      manifestFacts(enqueued).find((fact) => fact.key === "created")?.value,
+    );
   });
 
   it("names a pre-D171 file as one that predates the field, never as a blank", () => {
@@ -246,5 +267,109 @@ describe("IN126 / IN127 / IN131 — the manifest block, from the wire and nowher
     const source = manifestFacts(unnamed).find((fact) => fact.key === "source");
     assert.ok(source !== undefined);
     assert.ok(source.value.startsWith("(this session predates file names) · sha "), source.value);
+  });
+});
+
+describe("IN123 / IN125 — a manifest identity is reserved before it is committed", () => {
+  it("says reserved, never committed, while a validated session holds its preflight identity", () => {
+    const reserved: IntakeSessionWire = IntakeSessionWireSchema.parse({
+      ...FIXTURE_INTAKE_VALIDATED,
+      reservedManifestId: MANIFEST_ID,
+    });
+
+    assert.deepEqual(manifestStage(reserved), {
+      kind: "reserved",
+      manifestId: MANIFEST_ID,
+    });
+  });
+
+  it("names the absent legacy arm instead of inventing a manifest identity", () => {
+    assert.deepEqual(manifestStage(FIXTURE_INTAKE_VALIDATED), { kind: "unavailable" });
+  });
+});
+
+describe("IN123 / IN124 / IN128–IN136 — a terminal manifest is rendered from its terminal projection", () => {
+  const enqueued: IntakeSessionWire = IntakeSessionWireSchema.parse({
+    ...FIXTURE_INTAKE_VALIDATED,
+    state: "enqueued",
+    reservedManifestId: MANIFEST_ID,
+    intakeManifestId: MANIFEST_ID,
+    manifest: TERMINAL_MANIFEST,
+    rerun: {
+      intakeManifestId: MANIFEST_ID,
+      createdAt: MANIFEST_CREATED_AT,
+      totals: MANIFEST_TOTALS,
+      diff: { kind: "same-plan" },
+    },
+  });
+
+  it("keeps the committed id, all fingerprints, derived totals and disposition rows together", () => {
+    const stage = manifestStage(enqueued);
+    assert.equal(stage.kind, "terminal");
+    if (stage.kind !== "terminal") return;
+
+    assert.deepEqual(stage.facts.map((fact) => fact.key), [
+      "plan id",
+      "source",
+      "artifact",
+      "mapping fingerprint",
+      "mapping snapshot",
+      "intake projection",
+      "workflow contract",
+      "canonical input schema",
+      "created",
+      "totals",
+    ]);
+    assert.equal(stage.facts[0]?.value, MANIFEST_ID);
+    assert.equal(stage.facts.at(-1)?.value, "5 rows · 3 valid · 1 rejected · 1 excluded · 1 corrected");
+    assert.deepEqual(stage.rows.map((row) => [row.sourceRow, row.disposition, row.itemId, row.inputHash, row.parsedInput]), [
+      [1, "valid", "11111111-1111-4111-8111-111111111111", FIXTURE_INTAKE_VALIDATED.artifact.sha256.slice(0, 10), "emplId=10456712"],
+      [2, "valid", "22222222-2222-4222-8222-222222222222", FIXTURE_INTAKE_VALIDATED.artifact.sha256.slice(0, 10), "emplId=10998801"],
+      [3, "valid", "33333333-3333-4333-8333-333333333333", FIXTURE_INTAKE_VALIDATED.artifact.sha256.slice(0, 10), "emplId=10123456"],
+      [4, "rejected", undefined, undefined, "rejects: 44444444-4444-4444-8444-444444444444"],
+      [5, "excluded", undefined, undefined, "—"],
+    ]);
+  });
+});
+
+describe("IN139 / IN142 / IN143 — rerun is a named absence, or its exact changed evidence", () => {
+  it("keeps a source with no earlier manifest as an explicit empty state", () => {
+    assert.deepEqual(rerunStage(FIXTURE_INTAKE_VALIDATED), { kind: "none" });
+  });
+
+  it("preserves axes, membership, and hash-only changed inputs without exposing parsed values", () => {
+    const changed: IntakeSessionWire = IntakeSessionWireSchema.parse({
+      ...FIXTURE_INTAKE_VALIDATED,
+      reservedManifestId: MANIFEST_ID,
+      rerun: {
+        intakeManifestId: MANIFEST_ID,
+        createdAt: MANIFEST_CREATED_AT,
+        totals: MANIFEST_TOTALS,
+        diff: {
+          kind: "changed",
+          changes: [{ what: "mapping", was: "a".repeat(64), now: "b".repeat(64) }],
+          added: [TERMINAL_MANIFEST.validRows[0]],
+          removed: [TERMINAL_MANIFEST.validRows[1]],
+          changedInputs: [{
+            itemId: TERMINAL_MANIFEST.validRows[2]?.itemId ?? "33333333-3333-4333-8333-333333333333",
+            beforeInputHash: "c".repeat(64),
+            afterInputHash: "d".repeat(64),
+          }],
+        },
+      },
+    });
+    const stage = rerunStage(changed);
+    assert.equal(stage.kind, "changed");
+    if (stage.kind !== "changed") return;
+
+    assert.deepEqual(stage.axes, [{ label: "the mapping", was: "a".repeat(64), now: "b".repeat(64) }]);
+    assert.deepEqual(stage.added.map((row) => row.itemId), ["11111111-1111-4111-8111-111111111111"]);
+    assert.deepEqual(stage.removed.map((row) => row.itemId), ["22222222-2222-4222-8222-222222222222"]);
+    assert.deepEqual(stage.changedInputs, [{
+      itemId: "33333333-3333-4333-8333-333333333333",
+      beforeInputHash: "c".repeat(64),
+      afterInputHash: "d".repeat(64),
+    }]);
+    assert.equal(JSON.stringify(stage.changedInputs).includes("emplId"), false);
   });
 });

@@ -70,6 +70,8 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
   { id: "intake-upload", route: { day: FIXTURE_DAY, intake: "new" } },
   { id: "intake-mapping", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.mapping } },
   { id: "intake-review", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.validated } },
+  { id: "intake-manifest", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.manifest } },
+  { id: "intake-rerun", route: { day: FIXTURE_DAY, intake: FIXTURE_INTAKE_IDS.rerun } },
   /*
     The two read-only reference takeovers (2i-G). `explorer-graph` is the
     Phase-2 exit criterion's own picture — the as-built person-lookup graph,
