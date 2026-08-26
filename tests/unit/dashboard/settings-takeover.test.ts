@@ -23,25 +23,43 @@
  * three text nodes with no fold to test, so the real `SessionPanel` is rendered
  * to static markup at a count of ONE — the exact count the old `plural` got
  * wrong and the only one that can tell the two spellings apart.
+ *
+ * Unit F4b closes four review findings on this same takeover. Findings 1 and 2
+ * are DOM/History behavior this project's unit lane cannot exercise directly —
+ * there is no jsdom project here (only `tests/unit/**\/*.test.ts` runs under
+ * plain Node), so each is pinned at the pure fold `dashboard-app.tsx` calls
+ * rather than at the DOM effect itself: `settingsCloseFocusTargetId` (which id
+ * to focus) and `routeAdvancesHistory` (whether a route change pushes).
+ * Findings 3 and 4 (the curly quotes, the nav's real `<a href>`) ARE reachable
+ * through `renderToStaticMarkup`, the same technique the session-bar block
+ * below already uses, so those two are pinned against the real `SettingsPage`.
  */
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
-import { SettingsSectionPrimitiveSchema } from "../../../src/domain/dashboard/bootstrap.js";
+import {
+  SettingsSectionPrimitiveSchema,
+  StorageHealthSummaryWireSchema,
+} from "../../../src/domain/dashboard/bootstrap.js";
 import { WorkerCardWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { SessionPanel } from "../../../src/dashboard/surfaces/shell.js";
+import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
 import { appVersionTag, fmtAppVersion } from "../../../src/dashboard/surfaces/format.js";
 import {
   activeTakeover,
   parseRoute,
+  routeAdvancesHistory,
   routeToSearch,
   type AppRouteState,
 } from "../../../src/dashboard/app/url-state.js";
 import {
+  DASHBOARD_MAIN_REGION_ID,
+  SETTINGS_GEAR_ID,
   SETTINGS_KEYBOARD_SECTION_ID,
   buildSettingsNav,
   resolveSettingsSection,
+  settingsCloseFocusTargetId,
   type SettingsSection,
 } from "../../../src/dashboard/surfaces/settings-model.js";
 
@@ -51,6 +69,11 @@ function section(id: string, label: string): SettingsSection {
 }
 
 const STORAGE = section("storage", "Storage");
+const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
+  authority: "healthy",
+  backup: "current",
+  checkedAt: "2026-08-26T16:00:00.000Z",
+});
 
 describe("the settings route (D272 item 1)", () => {
   it("carries an EMPTY value, because that is the page's first section", () => {
@@ -144,6 +167,118 @@ describe("which section a link opens (D274 item 5)", () => {
 
   it("says so when there is nothing at all to open", () => {
     assert.equal(resolveSettingsSection([{ heading: "Status", entries: [] }], "").state, "empty");
+  });
+});
+
+describe("focus on close (unit F4b finding 1)", () => {
+  it("prefers the gear that opened the page", () => {
+    assert.equal(settingsCloseFocusTargetId(true), SETTINGS_GEAR_ID);
+  });
+
+  it("falls back to the main region the takeover was covering, when the gear is gone", () => {
+    // The gear is part of the persistent TopBar and is mounted for as long as
+    // Settings is, so this arm is defensive — but it is the one Radix's own
+    // Dialog would have refused to leave unhandled, and it is the ONLY arm a
+    // regression that deletes the fallback branch entirely would still pass.
+    assert.equal(settingsCloseFocusTargetId(false), DASHBOARD_MAIN_REGION_ID);
+  });
+
+  it("the two targets are distinct ids — a collision would make this fold meaningless", () => {
+    assert.notEqual(SETTINGS_GEAR_ID, DASHBOARD_MAIN_REGION_ID);
+  });
+});
+
+describe("history push on re-press (unit F4b finding 2)", () => {
+  const base: AppRouteState = {
+    start: false,
+    settings: "",
+    intake: undefined,
+    archive: undefined,
+    activity: undefined,
+    explore: undefined,
+    catalog: undefined,
+  };
+
+  it("does NOT advance history when the next route serialises to the current search", () => {
+    // Re-pressing the gear while `?settings=` is already showing — the exact
+    // case that used to push a second, identical entry and leave the
+    // browser's first Back press landing right back where the operator
+    // already was.
+    assert.equal(routeAdvancesHistory(base, routeToSearch(base)), false);
+  });
+
+  it("DOES advance history when the next route is a different place", () => {
+    const toKeyboard: AppRouteState = { ...base, settings: SETTINGS_KEYBOARD_SECTION_ID };
+    assert.equal(routeAdvancesHistory(toKeyboard, routeToSearch(base)), true);
+  });
+
+  it("advances on the very first navigation, from an unrelated current search", () => {
+    assert.equal(routeAdvancesHistory(base, "?day=2026-08-26"), true);
+  });
+});
+
+describe("the settings nav renders real navigation, not buttons (unit F4b finding 4)", () => {
+  const markup = renderToStaticMarkup(createElement(SettingsPage, {
+    storage: HEALTHY_STORAGE,
+    sections: [STORAGE],
+    // Opened on Keyboard rather than Storage, so this render never reaches
+    // `StorageSection` — which calls `useDashboardClient()` and throws loud
+    // without a provider above it. The nav below still lists BOTH entries
+    // regardless of which one is open.
+    section: SETTINGS_KEYBOARD_SECTION_ID,
+    onSection: () => undefined,
+    onClose: () => undefined,
+  }));
+
+  it("gives every nav entry a real, section-addressed href", () => {
+    assert.match(markup, /<a[^>]*href="\?settings=storage"[^>]*>/u);
+    assert.match(markup, new RegExp(`<a[^>]*href="\\?settings=${SETTINGS_KEYBOARD_SECTION_ID}"[^>]*>`, "u"));
+  });
+
+  it("keeps aria-current on the open entry and off the others", () => {
+    const keyboardAnchor = new RegExp(
+      `<a[^>]*href="\\?settings=${SETTINGS_KEYBOARD_SECTION_ID}"[^>]*aria-current="page"[^>]*>`,
+      "u",
+    );
+    assert.match(markup, keyboardAnchor);
+    const storageAnchor = /<a[^>]*href="\?settings=storage"[^>]*>/u.exec(markup)?.[0];
+    assert.ok(storageAnchor !== undefined, markup);
+    assert.ok(!storageAnchor.includes("aria-current"), storageAnchor);
+  });
+
+  it("renders no plain <button> for a nav entry any more", () => {
+    // The defect this replaces: a `button` has no href, so middle-click,
+    // Cmd/Ctrl-click and "open in new tab" all silently did nothing.
+    assert.ok(!/<button[^>]*aria-current/u.test(markup), markup);
+  });
+});
+
+describe("curly quotes around a section name (unit F4b finding 3)", () => {
+  it("quotes the requested-but-unknown section name with curly quotes, not &quot;", () => {
+    const groups = buildSettingsNav([STORAGE]);
+    const resolution = resolveSettingsSection(groups, "budgets");
+    assert.equal(resolution.state, "unknown");
+    const markup = renderToStaticMarkup(createElement(SettingsPage, {
+      storage: HEALTHY_STORAGE,
+      sections: [STORAGE],
+      section: "budgets",
+      onSection: () => undefined,
+      onClose: () => undefined,
+    }));
+    assert.match(markup, /called “budgets”\./u);
+    assert.ok(!markup.includes("&quot;budgets&quot;"), markup);
+  });
+
+  it("quotes an unrendered served section's id with curly quotes, not &quot;", () => {
+    const markup = renderToStaticMarkup(createElement(SettingsPage, {
+      storage: HEALTHY_STORAGE,
+      sections: [STORAGE, section("budgets", "Budgets")],
+      section: "budgets",
+      onSection: () => undefined,
+      onClose: () => undefined,
+    }));
+    assert.match(markup, /“budgets”/u);
+    assert.ok(!markup.includes("&quot;budgets&quot;"), markup);
   });
 });
 
