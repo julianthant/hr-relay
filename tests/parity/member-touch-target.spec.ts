@@ -14,8 +14,13 @@
  * adjacent member lines actually resolve to, and the region of screen that
  * actually hit-tests to each toggle, scanned pixel by pixel out from its centre
  * rather than assumed from the class list. That distinction earned itself
- * immediately: the overlay reaches its full 44px across, and its own parent
- * clips it to the toggle's 24px of paint vertically (see NOTES).
+ * twice, in the same axis. The overlay reached its full 44px ACROSS while its
+ * own parent — the member line's `truncate` name cell — clipped it back to the
+ * toggle's 24px of paint vertically; and once un-clipped, a 44px target centred
+ * on a line whose `divide-y` hairline left it 43px of content hung half a pixel
+ * over the row above, where a tap resolves to this toggle inside the
+ * neighbour's row. Neither was visible in a class list, and both were the same
+ * bug the pitch exists to prevent.
  *
  * `hasTouch` is what makes Chromium report a coarse primary pointer;
  * `Emulation.setEmulatedMedia` does not carry the `pointer` feature, so the

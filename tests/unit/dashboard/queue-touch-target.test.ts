@@ -11,7 +11,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { IconButton } from "../../../src/dashboard/ds/ui.js";
-import { MEMBER_TOUCH_TARGET } from "../../../src/dashboard/surfaces/queue-model.js";
+import { MEMBER_TOUCH_TARGET, MEMBER_TOUCH_TARGET_HOST } from "../../../src/dashboard/surfaces/queue-model.js";
 
 describe("the member line's touch target", () => {
   it("declares a 44px overlay, centred on the control, only on a coarse pointer", () => {
@@ -30,6 +30,25 @@ describe("the member line's touch target", () => {
   it("positions the overlay, which an `after:` without `relative` would hang off the page instead", () => {
     assert.match(MEMBER_TOUCH_TARGET, /(^|\s)relative(\s|$)/u);
     assert.match(MEMBER_TOUCH_TARGET, /(^|\s)touch-manipulation(\s|$)/u);
+  });
+
+  it("un-clips the cell the overlay hangs in, on a coarse pointer and nowhere else", () => {
+    // A 44px overlay inside an `overflow: hidden` cell is 44px in the class list
+    // and 24px to a finger: the cell is exactly as tall as the paint it holds.
+    assert.match(MEMBER_TOUCH_TARGET_HOST, /(^|\s)pointer-coarse:overflow-visible(\s|$)/u);
+
+    // The name still truncates. Dropping `truncate` here rather than gating the
+    // overflow would let a long member name run across the detail column on
+    // every pointer, which is a fine-pointer regression the parity corpus WOULD
+    // photograph.
+    assert.match(MEMBER_TOUCH_TARGET_HOST, /(^|\s)truncate(\s|$)/u);
+
+    // And the escape carries the gate. Ungated, the fine-pointer cell stops
+    // clipping too — the half of this fix that no coarse measurement can catch.
+    const ungated = MEMBER_TOUCH_TARGET_HOST
+      .split(" ")
+      .filter((utility) => utility.startsWith("overflow-"));
+    assert.deepEqual(ungated, [], "un-clipping the cell on a mouse would unclip the name beside it");
   });
 
   it("actually reaches the rendered button", () => {

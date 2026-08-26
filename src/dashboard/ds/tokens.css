@@ -1326,9 +1326,18 @@ body[data-demo-theme="light"] {
    with nothing to overlap. Both well heights are derived from this token, so
    the whole mini-table scales in one move. A fine pointer sees no change at
    all — density is a desktop fact, and the parity corpus renders at
-   `pointer: fine`, so no reference moves. */
+   `pointer: fine`, so no reference moves.
+
+   THE HAIRLINE IS PART OF THE LINE, which is why this is not a bare `44px`.
+   The well is `divide-y`, so every line but the last carries a 1px border
+   INSIDE its own border box: a line of exactly 44px leaves 43px of content, the
+   target centres on that 43 and hangs half a pixel over the line above. Half a
+   pixel is still the wrong member — `elementFromPoint` at the boundary resolves
+   to THIS toggle while the row it lands in is the neighbour's. So the line is
+   the finger's 44px PLUS the hairline it carries, and the target fits its
+   content box exactly. `tests/parity/member-touch-target.spec.ts` measures it. */
 @media (pointer: coarse) {
   :root {
-    --ds-h-member-line: 44px;
+    --ds-h-member-line: calc(44px + var(--ds-border-w));
   }
 }

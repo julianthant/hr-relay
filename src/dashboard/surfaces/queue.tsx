@@ -72,6 +72,7 @@ import {
   BAND_LABEL,
   BAND_ORDER,
   MEMBER_TOUCH_TARGET,
+  MEMBER_TOUCH_TARGET_HOST,
   type LinkedRunWire,
   type MemberSurfaceWire,
   type OperationSurfaceWire,
@@ -812,7 +813,14 @@ function MemberLine({
       )}
     >
       <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass)} />
-      <span className="flex min-w-0 items-center gap-[var(--ds-space-tight)] truncate text-[color:var(--ds-fg)]">
+      <span
+        className={cn(
+          "flex min-w-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg)]",
+          // This cell is what clips the toggle's coarse-pointer overlay; the
+          // constant carries both its `truncate` and the gated escape.
+          MEMBER_TOUCH_TARGET_HOST,
+        )}
+      >
         {/* Selection and local triage are sibling controls: nesting the latter
             in a row button would create an invalid interactive hierarchy. */}
         <button

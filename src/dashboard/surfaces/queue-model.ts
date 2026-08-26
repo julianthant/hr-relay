@@ -82,8 +82,13 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
  * clear: member lines stack at a 28px pitch there, so a 44px overlay would
  * reach 8px into the rows above and below and a click near a boundary would
  * mark the WRONG member checked. On a coarse pointer `--ds-h-member-line` is
- * 44px (`ds/tokens.css`), so the overlay fills its own line exactly and can
- * never reach a neighbour's.
+ * 44px plus the `divide-y` hairline the line carries (`ds/tokens.css`), so the
+ * overlay fills its own line's CONTENT box exactly and can never reach a
+ * neighbour's — a bare 44px line leaves 43 and the overlay hangs half a pixel
+ * into the row above, which resolves to this toggle.
+ *
+ * The overlay only reaches that far because `MEMBER_TOUCH_TARGET_HOST` lifts
+ * the name cell's clip; this constant alone is 44px wide and 24px tall.
  *
  * `touch-manipulation` rides along because the same tap is otherwise held for
  * ~300ms waiting to see whether it was a double-tap zoom.
@@ -94,6 +99,34 @@ export const MEMBER_TOUCH_TARGET = [
   "pointer-coarse:after:size-11 pointer-coarse:after:-translate-x-1/2 pointer-coarse:after:-translate-y-1/2",
   "pointer-coarse:after:content-['']",
 ].join(" ");
+
+/**
+ * THE OTHER HALF OF THE TOUCH TARGET, and the half that was silently missing.
+ *
+ * `MEMBER_TOUCH_TARGET` declares a 44px square and the engine handed a finger
+ * 44 x 24: the toggle sits inside the member line's name cell, that cell carries
+ * `truncate` for the name beside it, and `truncate` is `overflow: hidden` — which
+ * clips an absolutely-positioned descendant of a `relative` box INSIDE it. The
+ * overlay reached its full width because the cell is wide and its full height
+ * nowhere, because the cell is exactly as tall as the 24px of paint it contains.
+ *
+ * `overflow-y` cannot be un-clipped on its own — CSS computes the other axis to
+ * `auto` the moment the two differ, which would put a scroll container on the
+ * name cell. So the whole clip is lifted, under the coarse gate only:
+ *
+ * - Nothing in the cell needs clipping to lay out. The NAME truncates on its own
+ *   button (`min-w-0 truncate`), which is where the ellipsis has always been
+ *   painted; the cell's `truncate` contributes only `white-space: nowrap` (kept)
+ *   and an `overflow: hidden` that was clipping the target instead of any text.
+ * - It is `pointer-coarse:`-gated for the same reason the overlay is: on a fine
+ *   pointer the overlay does not exist, so there is nothing to un-clip, and the
+ *   parity corpus — which renders at `pointer: fine` — sees no change at all.
+ *
+ * `tests/parity/member-touch-target.spec.ts` measures both axes in a real engine
+ * against a real coarse pointer, because this is the second time this control
+ * has been 44px in the class list and smaller than that on screen.
+ */
+export const MEMBER_TOUCH_TARGET_HOST = "truncate pointer-coarse:overflow-visible";
 
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
