@@ -94,6 +94,11 @@ import {
   type WorkerCardWire,
 } from "../surfaces/shell-model.js";
 import { SettingsPage, StorageBanner } from "../surfaces/settings.js";
+import {
+  DASHBOARD_MAIN_REGION_ID,
+  SETTINGS_GEAR_ID,
+  settingsCloseFocusTargetId,
+} from "../surfaces/settings-model.js";
 import { TopBar, type NavControls } from "../surfaces/top-bar.js";
 import {
   serverLocalDay,
@@ -117,6 +122,7 @@ import {
   INTAKE_NEW,
   activeTakeover,
   parseRoute,
+  routeAdvancesHistory,
   routeToSearch,
   type AppRouteState,
 } from "./url-state.js";
@@ -171,7 +177,12 @@ function useRoute(): [AppRouteState, (next: AppRouteState) => void] {
   }, []);
 
   const setRoute = useCallback((next: AppRouteState) => {
-    window.history.pushState(null, "", `${window.location.pathname}${routeToSearch(next)}`);
+    // Re-pressing the door already open (the gear, the active nav entry, the
+    // Storage door) must not push a second, identical history entry — that
+    // makes the browser's own Back button appear inert (unit F4b finding 2).
+    if (routeAdvancesHistory(next, window.location.search)) {
+      window.history.pushState(null, "", `${window.location.pathname}${routeToSearch(next)}`);
+    }
     setRouteState(next);
   }, []);
 
@@ -1290,7 +1301,14 @@ function LoadedApp({
           />
         )}
 
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <main
+          id={DASHBOARD_MAIN_REGION_ID}
+          // Only ever a programmatic focus TARGET (settings-model's
+          // `settingsCloseFocusTargetId` fallback) — never in the Tab order,
+          // which is what -1 (rather than 0) means here.
+          tabIndex={-1}
+          className="flex min-h-0 min-w-0 flex-1 flex-col"
+        >
           {/*
             A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
 
@@ -1336,7 +1354,19 @@ function LoadedApp({
                 sections={settingsSections}
                 section={route.settings ?? ""}
                 onSection={(next) => setRoute({ ...route, settings: next })}
-                onClose={() => setRoute({ ...route, settings: undefined })}
+                onClose={() => {
+                  // The takeover unmounts its OWN focused `Back to the
+                  // dashboard` button on close — restore focus to the door it
+                  // was opened from (or the main region behind it) before that
+                  // happens, matching the Radix `Dialog` behavior this page
+                  // replaced (unit F4b finding 1). Called before `setRoute` so
+                  // it runs while the gear is still the DOM's most-recently-
+                  // rendered state, though the gear itself never unmounts —
+                  // `TopBar` renders it regardless of which takeover is open.
+                  const gearMounted = document.getElementById(SETTINGS_GEAR_ID) !== null;
+                  document.getElementById(settingsCloseFocusTargetId(gearMounted))?.focus();
+                  setRoute({ ...route, settings: undefined });
+                }}
               />
             </div>
           ) : takeover === "intake" ? (
