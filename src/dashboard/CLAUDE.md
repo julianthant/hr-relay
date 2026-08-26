@@ -47,6 +47,23 @@ npm run test:parity # ref frontend-backend-integration §7 visual/a11y parity la
 
 ## Lessons learned
 
+- **2026-08-26: a `<label for>` names an `<input>` and does NOT name a `<button role="checkbox">`, so
+  the DS `Checkbox` ships every one of its controls nameless.** Intake's rejection acknowledgement —
+  the gate that holds the plan closed until the operator has seen every non-valid row — resolved with
+  an EMPTY accessible name, verified against the built bundle: the control is a Radix
+  `Checkbox.Root`, which renders a `<button>` whose only content is an `aria-hidden` indicator, and
+  HTML-AAM computes a `button`'s native name from its SUBTREE, never from an associated label. The
+  visible text was right there in `<label for>`, the label click even toggled the box, and a screen
+  reader still announced "checkbox" and nothing else. `intake.tsx` now passes one `reviewLabel`
+  expression to BOTH `label` and `aria-label` so the two cannot drift (WCAG 2.5.3). Two things
+  generalize. **The label being clickable proves nothing about the name** — geometry, hit-testing and
+  naming are three independent claims, and this one passed the first two while failing the third.
+  And **a locator that never matches can only report the test timeout**: the parity case spent the
+  full 120 s deadline inside `locator.evaluate` saying nothing about the cause, so the spec now
+  asserts `toHaveCount(1)` on the named role FIRST and the missing name names itself. `ds/Checkbox`
+  itself is still unfixed — every other checkbox in this bundle has the same empty name, and the fix
+  belongs with the deliberate parity re-freeze, since naming them all rewrites the a11y references.
+
 - **2026-08-21: an HTTP status decided by reading an error MESSAGE is a protocol keyed on prose, and
   every surface that renders a refusal inherits the mistake (Track D row D2, audit C3).** The BFF's
   `failureStatus` classified every throw by substring — four phrases meant 404, `"is not available"`

@@ -19,6 +19,8 @@ archive readers and must fail here with the run and cursor.
 
 ### Dated lessons
 
+- **2026-08-26 — a rejection acknowledgement belongs to the exact served set, not a sticky boolean.** Intake may acknowledge only the current session version, validation instant and rejected-row identities; a later authority read invalidates that acknowledgement before the sticky outcome band can offer Run. Keep the courtesy blocker client-side and name it, but leave final enqueue eligibility to the kernel. The demo-shaped table may show a redacted cell representation, never promote it into an editor default or a fabricated original value. (IN95, IN99–IN122)
+
 - **2026-08-25 — bounded list ownership includes its observed size.** A rerun membership list can
   shrink while its prior-manifest owner stays the same, so an owner-only page selection can leave a
   formerly valid final page outside the new bound. Validate the stored selection against its own
