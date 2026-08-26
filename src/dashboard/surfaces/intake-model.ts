@@ -18,6 +18,7 @@
  *
  * Provenance: `hr-automation@src/dashboard/components/dev/rebuild-demo/DemoIntake.tsx`.
  */
+import { useState } from "react";
 import type { z } from "zod";
 import { canonicalJsonStringify, type JsonObject, type JsonValue } from "../../domain/canonical-json.js";
 import type { ServedHeaderCandidateSchema } from "../../domain/intake/header-discovery.js";
@@ -33,6 +34,70 @@ export type RerunMembershipRow = IntakeManifestWire["validRows"][number];
 
 export type IntakeStageFact = { key: string; value: string };
 
+export type ManifestStageRow = Readonly<{
+  sourceRow: number;
+  disposition: "valid" | "rejected" | "excluded";
+  tone: "success" | "danger" | "neutral";
+  itemId: string | undefined;
+  inputHash: string | undefined;
+  parsedInput: string;
+}>;
+
+export type RerunChangedInput = Readonly<{
+  itemId: string;
+  beforeInputHash: string;
+  afterInputHash: string;
+}>;
+
+export const INTAKE_LIST_PAGE_SIZE = 10;
+
+export type IntakeListPage<T> = Readonly<{
+  items: readonly T[];
+  pageIndex: number;
+  pageCount: number;
+  firstItem: number;
+  lastItem: number;
+  totalItems: number;
+}>;
+
+export type IntakeListPageController<T> = IntakeListPage<T> & Readonly<{
+  goToPage: (pageIndex: number) => void;
+}>;
+
+/** A local rendering bound; D9's shared virtualization primitive remains unbuilt. */
+export function intakeListPage<T>(items: readonly T[], pageIndex: number): IntakeListPage<T> {
+  const pageCount = Math.max(1, Math.ceil(items.length / INTAKE_LIST_PAGE_SIZE));
+  if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pageCount) {
+    throw new Error(
+      `intake list page ${String(pageIndex + 1)} is outside ${String(pageCount)} ${pageCount === 1 ? "page" : "pages"} for ${String(items.length)} ${items.length === 1 ? "item" : "items"}`,
+    );
+  }
+  const start = pageIndex * INTAKE_LIST_PAGE_SIZE;
+  const pageItems = items.slice(start, start + INTAKE_LIST_PAGE_SIZE);
+  return {
+    items: pageItems,
+    pageIndex,
+    pageCount,
+    firstItem: items.length === 0 ? 0 : start + 1,
+    lastItem: start + pageItems.length,
+    totalItems: items.length,
+  };
+}
+
+/** Local component state for one immutable intake evidence list. */
+export function useIntakeListPage<T>(owner: string, items: readonly T[]): IntakeListPageController<T> {
+  const [selection, setSelection] = useState<Readonly<{ owner: string; pageIndex: number }>>({ owner, pageIndex: 0 });
+  const pageIndex = selection.owner === owner ? selection.pageIndex : 0;
+  const page = intakeListPage(items, pageIndex);
+  return {
+    ...page,
+    goToPage: (nextPageIndex) => {
+      intakeListPage(items, nextPageIndex);
+      setSelection({ owner, pageIndex: nextPageIndex });
+    },
+  };
+}
+
 export type ManifestStage =
   | Readonly<{ kind: "unavailable" }>
   | Readonly<{ kind: "reserved"; manifestId: string }>
@@ -40,14 +105,7 @@ export type ManifestStage =
     kind: "terminal";
     manifestId: string;
     facts: IntakeStageFact[];
-    rows: {
-      sourceRow: number;
-      disposition: "valid" | "rejected" | "excluded";
-      tone: "success" | "danger" | "neutral";
-      itemId: string | undefined;
-      inputHash: string | undefined;
-      parsedInput: string;
-    }[];
+    rows: ManifestStageRow[];
   }>;
 
 export type RerunStage =
@@ -63,7 +121,7 @@ export type RerunStage =
     contract: "changed" | "identical";
     added: readonly RerunMembershipRow[];
     removed: readonly RerunMembershipRow[];
-    changedInputs: readonly Readonly<{ itemId: string; beforeInputHash: string; afterInputHash: string }>[];
+    changedInputs: readonly RerunChangedInput[];
   }>;
 
 /** Why a column was proposed — ref data-intake-and-edit-data §2.5's scorer, said out loud. */
@@ -212,6 +270,15 @@ export function manifestIdentifierFacts(session: IntakeSessionWire): IntakeStage
   ];
 }
 
+/** Full row evidence for the touch- and keyboard-reachable detail disclosure. */
+export function manifestRowDetailFacts(row: ManifestStageRow): IntakeStageFact[] {
+  const facts: IntakeStageFact[] = [];
+  if (row.itemId !== undefined) facts.push({ key: "item id", value: row.itemId });
+  if (row.inputHash !== undefined) facts.push({ key: "input hash", value: row.inputHash });
+  facts.push({ key: "parsed input", value: row.parsedInput });
+  return facts;
+}
+
 /** The terminal receipt and its preflight reservation are intentionally different states. */
 export function manifestStage(session: IntakeSessionWire): ManifestStage {
   if (session.state !== "enqueued") {
@@ -244,7 +311,7 @@ export function manifestStage(session: IntakeSessionWire): ManifestStage {
         disposition: disposition.disposition,
         tone: disposition.disposition === "valid" ? "success" : disposition.disposition === "rejected" ? "danger" : "neutral",
         itemId: disposition.itemId,
-        inputHash: valid?.inputHash.slice(0, 10),
+        inputHash: valid?.inputHash,
         parsedInput: valid === undefined
           ? disposition.currentRejectIds.length === 0 ? "—" : `rejects: ${disposition.currentRejectIds.join(", ")}`
           : parsedInputText(valid.parsedInput),
@@ -274,6 +341,28 @@ export function rerunStage(session: IntakeSessionWire): RerunStage {
     removed: rerun.diff.removed,
     changedInputs: rerun.diff.changedInputs,
   };
+}
+
+/** Exact identifiers behind the rerun stage's compact prior-plan and axis values. */
+export function rerunIdentifierFacts(stage: Exclude<RerunStage, Readonly<{ kind: "none" }>>): IntakeStageFact[] {
+  const facts: IntakeStageFact[] = [{ key: "prior manifest id", value: stage.manifestId }];
+  if (stage.kind === "changed") {
+    for (const axis of stage.axes) {
+      facts.push(
+        { key: `${axis.label} — previous`, value: axis.was },
+        { key: `${axis.label} — current`, value: axis.now },
+      );
+    }
+  }
+  return facts;
+}
+
+/** Full membership evidence behind one compact added/removed row. */
+export function rerunMembershipDetailFacts(row: RerunMembershipRow): IntakeStageFact[] {
+  return [
+    { key: "item id", value: row.itemId },
+    { key: "input hash", value: row.inputHash },
+  ];
 }
 
 export type IntakeTab = "mapping" | "review" | "manifest" | "rerun";

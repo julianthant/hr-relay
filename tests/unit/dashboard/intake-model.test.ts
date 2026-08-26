@@ -18,6 +18,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import {
   FIXTURE_INTAKE_MAPPING,
+  FIXTURE_INTAKE_RERUN,
   FIXTURE_INTAKE_VALIDATED,
 } from "../../parity/helpers/fixture-intake.js";
 import { IntakeRowCorrectionSchema } from "../../../src/domain/intake/session.js";
@@ -26,15 +27,40 @@ import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/do
 import {
   correctionText,
   headerCandidateOptionLabel,
+  intakeListPage,
   layoutFingerprint,
   layoutMetaItems,
+  manifestRowDetailFacts,
   manifestStage,
   manifestIdentifierFacts,
   manifestFacts,
   rerunStage,
+  rerunIdentifierFacts,
+  rerunMembershipDetailFacts,
   sourceLabel,
   suggestionProposalText,
 } from "../../../src/dashboard/surfaces/intake-model.js";
+
+describe("intake evidence lists stay locally bounded without hiding rows", () => {
+  it("bounds every page while preserving exact access to every source row", () => {
+    const sourceRows = Array.from({ length: 23 }, (_, index) => index + 1);
+
+    const pages = [0, 1, 2].map((pageIndex) => intakeListPage(sourceRows, pageIndex));
+
+    assert.deepEqual(pages.map((page) => page.items), [
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+      [21, 22, 23],
+    ]);
+  });
+
+  it("refuses an out-of-range page instead of rendering a false empty state", () => {
+    assert.throws(
+      () => intakeListPage(["row 1", "row 2"], 1),
+      /intake list page 2 is outside 1 page for 2 items/u,
+    );
+  });
+});
 
 describe("IN53 — a header candidate's rank, in the one place D173 left for it", () => {
   it("prints the row 1-based, the rank at two places, and the row's own cells after it", () => {
@@ -323,11 +349,25 @@ describe("IN123 / IN124 / IN128–IN136 — a terminal manifest is rendered from
     assert.equal(stage.facts[0]?.value, MANIFEST_ID);
     assert.equal(stage.facts.at(-1)?.value, "5 rows · 3 valid · 1 rejected · 1 excluded · 1 corrected");
     assert.deepEqual(stage.rows.map((row) => [row.sourceRow, row.disposition, row.itemId, row.inputHash, row.parsedInput]), [
-      [1, "valid", "11111111-1111-4111-8111-111111111111", FIXTURE_INTAKE_VALIDATED.artifact.sha256.slice(0, 10), "emplId=10456712"],
-      [2, "valid", "22222222-2222-4222-8222-222222222222", FIXTURE_INTAKE_VALIDATED.artifact.sha256.slice(0, 10), "emplId=10998801"],
-      [3, "valid", "33333333-3333-4333-8333-333333333333", FIXTURE_INTAKE_VALIDATED.artifact.sha256.slice(0, 10), "emplId=10123456"],
+      [1, "valid", "11111111-1111-4111-8111-111111111111", FIXTURE_INTAKE_VALIDATED.artifact.sha256, "emplId=10456712"],
+      [2, "valid", "22222222-2222-4222-8222-222222222222", FIXTURE_INTAKE_VALIDATED.artifact.sha256, "emplId=10998801"],
+      [3, "valid", "33333333-3333-4333-8333-333333333333", FIXTURE_INTAKE_VALIDATED.artifact.sha256, "emplId=10123456"],
       [4, "rejected", undefined, undefined, "rejects: 44444444-4444-4444-8444-444444444444"],
       [5, "excluded", undefined, undefined, "—"],
+    ]);
+  });
+
+  it("keeps a valid row's full evidence available to its detail disclosure", () => {
+    const stage = manifestStage(enqueued);
+    assert.equal(stage.kind, "terminal");
+    if (stage.kind !== "terminal") return;
+    const row = stage.rows[0];
+    assert.ok(row !== undefined);
+
+    assert.deepEqual(manifestRowDetailFacts(row), [
+      { key: "item id", value: "11111111-1111-4111-8111-111111111111" },
+      { key: "input hash", value: FIXTURE_INTAKE_VALIDATED.artifact.sha256 },
+      { key: "parsed input", value: "emplId=10456712" },
     ]);
   });
 });
@@ -371,5 +411,30 @@ describe("IN139 / IN142 / IN143 — rerun is a named absence, or its exact chang
       afterInputHash: "d".repeat(64),
     }]);
     assert.equal(JSON.stringify(stage.changedInputs).includes("emplId"), false);
+  });
+
+  it("keeps the full prior manifest and changed-axis hashes in one detail disclosure", () => {
+    const stage = rerunStage(FIXTURE_INTAKE_RERUN);
+    assert.equal(stage.kind, "changed");
+    if (stage.kind !== "changed") return;
+
+    assert.deepEqual(rerunIdentifierFacts(stage), [
+      { key: "prior manifest id", value: "7b92095b-bb90-4ca2-b373-8402790fb7f8" },
+      { key: "the mapping — previous", value: "a".repeat(64) },
+      { key: "the mapping — current", value: "b".repeat(64) },
+    ]);
+  });
+
+  it("keeps each membership input hash whole behind its compact row", () => {
+    const stage = rerunStage(FIXTURE_INTAKE_RERUN);
+    assert.equal(stage.kind, "changed");
+    if (stage.kind !== "changed") return;
+    const row = stage.added[0];
+    assert.ok(row !== undefined);
+
+    assert.deepEqual(rerunMembershipDetailFacts(row), [
+      { key: "item id", value: row.itemId },
+      { key: "input hash", value: row.inputHash },
+    ]);
   });
 });

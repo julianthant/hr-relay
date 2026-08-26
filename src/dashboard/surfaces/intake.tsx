@@ -112,14 +112,21 @@ import {
   headerCandidateOptionLabel,
   intakeTab,
   type IntakeTab,
+  type IntakeListPageController,
   layoutFingerprint,
   layoutMetaItems,
   manifestIdentifierFacts,
+  manifestRowDetailFacts,
   manifestStage,
+  type ManifestStageRow,
+  type RerunChangedInput,
   type RerunMembershipRow,
+  rerunIdentifierFacts,
+  rerunMembershipDetailFacts,
   rerunStage,
   sourceLabel,
   suggestionProposalText,
+  useIntakeListPage,
 } from "./intake-model.js";
 
 type DetectedColumn = z.infer<typeof DetectedColumnSchema>;
@@ -917,6 +924,85 @@ function RejectedRow({
 
 /* ── manifest + rerun stages ─────────────────────────────────────────────── */
 
+function EvidencePager<T>({
+  label,
+  page,
+}: {
+  label: string;
+  page: IntakeListPageController<T>;
+}) {
+  if (page.pageCount === 1) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-tight)]">
+      <span aria-live="polite" className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
+        {`Showing ${String(page.firstItem)}–${String(page.lastItem)} of ${String(page.totalItems)}`}
+      </span>
+      <div role="group" aria-label={`${label} pages`} className="flex gap-[var(--ds-space-tight)]">
+        <Button
+          size="sm"
+          variant="secondary"
+          className="min-h-[44px]"
+          disabled={page.pageIndex === 0}
+          onClick={() => page.goToPage(page.pageIndex - 1)}
+        >
+          Previous
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          className="min-h-[44px]"
+          disabled={page.pageIndex === page.pageCount - 1}
+          onClick={() => page.goToPage(page.pageIndex + 1)}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ManifestRows({ manifestId, rows }: { manifestId: string; rows: readonly ManifestStageRow[] }) {
+  const page = useIntakeListPage(`manifest:${manifestId}:source-rows`, rows);
+  return (
+    <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
+      <div className="max-w-full overflow-x-auto">
+        <Table label="Source row dispositions" className="min-w-[52rem]">
+          <THead>
+            <TR>
+              <TH align="right">Row</TH>
+              <TH>Disposition</TH>
+              <TH>Item</TH>
+              <TH>Input hash</TH>
+              <TH>Parsed input</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {page.items.map((row) => (
+              <TR key={row.sourceRow}>
+                <TD numeric align="right">{String(row.sourceRow)}</TD>
+                <TD><Badge tone={row.tone}>{row.disposition}</Badge></TD>
+                <TD numeric>{row.itemId ?? "—"}</TD>
+                <TD numeric>{row.inputHash === undefined ? "—" : row.inputHash.slice(0, 10)}</TD>
+                <TD className="max-w-[var(--ds-w-member-detail)]">
+                  <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+                    <span className="min-w-0 flex-1 truncate">{row.parsedInput}</span>
+                    <IdentifierPopover
+                      label={`Show full evidence for source row ${String(row.sourceRow)}`}
+                      title={`Source row ${String(row.sourceRow)} evidence`}
+                      facts={manifestRowDetailFacts(row)}
+                    />
+                  </div>
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </div>
+      <EvidencePager label="Source row dispositions" page={page} />
+    </div>
+  );
+}
+
 function ManifestStageView({ session }: { session: IntakeSessionWire }) {
   const stage = manifestStage(session);
   if (stage.kind === "unavailable") {
@@ -933,14 +1019,14 @@ function ManifestStageView({ session }: { session: IntakeSessionWire }) {
         <Banner tone="info" title="Manifest identity reserved">
           This identity is reserved for this session. It is not a committed manifest, and no runs have been enqueued.
         </Banner>
-        <span className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
+        <div className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
           <KeyValueList items={[{ key: "reserved plan id", value: stage.manifestId }]} className="min-w-0 flex-1" />
           <IdentifierPopover
             label="Show full reserved manifest identifier"
             title="Reserved manifest identifier"
             facts={manifestIdentifierFacts(session)}
           />
-        </span>
+        </div>
       </section>
     );
   }
@@ -950,56 +1036,79 @@ function ManifestStageView({ session }: { session: IntakeSessionWire }) {
         Every source row below has exactly one disposition. The counts are derived from those dispositions, never summed from the
         rejection history — a row that was rejected and then corrected is counted once, as valid.
       </Banner>
-      <span className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
+      <div className="flex min-w-0 items-start gap-[var(--ds-space-snug)]">
         <KeyValueList items={stage.facts} className="min-w-0 flex-1" />
         <IdentifierPopover
           label="Show full manifest identifiers"
           title="Manifest identifiers"
           facts={manifestIdentifierFacts(session)}
         />
-      </span>
-      <div className="max-w-full overflow-x-auto">
-        <Table label="Source row dispositions" className="min-w-[52rem]">
-          <THead>
-            <TR>
-              <TH align="right">Row</TH>
-              <TH>Disposition</TH>
-              <TH>Item</TH>
-              <TH>Input hash</TH>
-              <TH>Parsed input</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {stage.rows.map((row) => (
-              <TR key={row.sourceRow}>
-                <TD numeric align="right">{String(row.sourceRow)}</TD>
-                <TD><Badge tone={row.tone}>{row.disposition}</Badge></TD>
-                <TD numeric>{row.itemId ?? "—"}</TD>
-                <TD numeric>{row.inputHash ?? "—"}</TD>
-                <TD className="max-w-[var(--ds-w-member-detail)]">
-                  <span className="block truncate" title={row.parsedInput}>{row.parsedInput}</span>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
       </div>
+      <ManifestRows manifestId={stage.manifestId} rows={stage.rows} />
     </section>
   );
 }
 
-function RerunMembership({ label, rows }: { label: string; rows: readonly RerunMembershipRow[] }) {
+function RerunMembership({
+  label,
+  owner,
+  rows,
+}: {
+  label: string;
+  owner: string;
+  rows: readonly RerunMembershipRow[];
+}) {
+  const page = useIntakeListPage(owner, rows);
   return (
     <Well className="flex flex-col gap-[var(--ds-space-tight)]">
       <SectionLabel>{label}</SectionLabel>
       {rows.length === 0 ? (
         <span className={cn(dsText.body, "text-[color:var(--ds-fg-faint)]")}>nothing</span>
-      ) : rows.map((row) => (
-        <span key={row.itemId} className={cn(dsText.body, dsText.nums, "break-all text-[color:var(--ds-fg-secondary)]")}>
-          {row.itemId} · input {shortHash(row.inputHash)}…
-        </span>
+      ) : page.items.map((row) => (
+        <div key={row.itemId} className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+          <span className={cn(dsText.body, dsText.nums, "min-w-0 flex-1 break-all text-[color:var(--ds-fg-secondary)]")}>
+            {row.itemId} · input {shortHash(row.inputHash)}…
+          </span>
+          <IdentifierPopover
+            label={`Show full membership evidence for item ${row.itemId}`}
+            title="Rerun membership evidence"
+            facts={rerunMembershipDetailFacts(row)}
+          />
+        </div>
       ))}
+      <EvidencePager label={label} page={page} />
     </Well>
+  );
+}
+
+function ChangedInputRows({
+  manifestId,
+  rows,
+}: {
+  manifestId: string;
+  rows: readonly RerunChangedInput[];
+}) {
+  const page = useIntakeListPage(`rerun:${manifestId}:changed-inputs`, rows);
+  return (
+    <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
+      <div className="max-w-full overflow-x-auto">
+        <Table label="Changed input hashes" className="min-w-[44rem]">
+          <THead>
+            <TR><TH>Item</TH><TH>Previous input hash</TH><TH>Current input hash</TH></TR>
+          </THead>
+          <TBody>
+            {page.items.map((change) => (
+              <TR key={change.itemId}>
+                <TD numeric>{change.itemId}</TD>
+                <TD numeric>{change.beforeInputHash}</TD>
+                <TD numeric>{change.afterInputHash}</TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </div>
+      <EvidencePager label="Changed input hashes" page={page} />
+    </div>
   );
 }
 
@@ -1019,7 +1128,14 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
         <Banner tone="warning" title="This file has already been enqueued, with this exact plan">
           Running it again would file the same rows a second time. Nothing has changed since.
         </Banner>
-        <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${fmtClock(stage.createdAt)}`]} />
+        <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+          <MetaLine items={[`manifest ${shortHash(stage.manifestId)}…`, `made ${fmtClock(stage.createdAt)}`]} />
+          <IdentifierPopover
+            label="Show full prior manifest identifier"
+            title="Prior manifest identifier"
+            facts={rerunIdentifierFacts(stage)}
+          />
+        </div>
       </section>
     );
   }
@@ -1028,6 +1144,14 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
       <Banner tone="info" title={`Compared with ${shortHash(stage.manifestId)}…, made ${fmtClock(stage.createdAt)}`}>
         This file has run before, and the plan has changed since. The exact changed axes and membership are below.
       </Banner>
+      <div className="flex min-w-0 items-center gap-[var(--ds-space-tight)]">
+        <MetaLine items={[`prior manifest ${shortHash(stage.manifestId)}…`, `${String(stage.axes.length)} changed axes`]} />
+        <IdentifierPopover
+          label="Show full prior manifest and changed-axis hashes"
+          title="Prior manifest and changed axes"
+          facts={rerunIdentifierFacts(stage)}
+        />
+      </div>
       <div className="flex flex-wrap gap-[var(--ds-space-tight)]">
         {stage.axes.map((axis) => (
           <Chip key={axis.label} label={axis.label} tone="info">
@@ -1042,30 +1166,18 @@ function RerunStageView({ session }: { session: IntakeSessionWire }) {
         <Chip label="changed inputs" tone={stage.changedInputs.length > 0 ? "info" : "neutral"}>{String(stage.changedInputs.length)}</Chip>
       </div>
       <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] min-[640px]:grid-cols-2">
-        <RerunMembership label={`In this plan, not in ${stage.manifestId}`} rows={stage.added} />
-        <RerunMembership label={`In ${stage.manifestId}, not here`} rows={stage.removed} />
+        <RerunMembership
+          label={`In this plan, not in ${shortHash(stage.manifestId)}…`}
+          owner={`rerun:${stage.manifestId}:added`}
+          rows={stage.added}
+        />
+        <RerunMembership
+          label={`In ${shortHash(stage.manifestId)}…, not here`}
+          owner={`rerun:${stage.manifestId}:removed`}
+          rows={stage.removed}
+        />
       </div>
-      {stage.changedInputs.length > 0 && (
-        <div className="max-w-full overflow-x-auto">
-          <Table label="Changed input hashes" className="min-w-[44rem]">
-            <THead>
-              <TR><TH>Item</TH><TH>Previous input hash</TH><TH>Current input hash</TH></TR>
-            </THead>
-            <TBody>
-              {stage.changedInputs.map((change) => (
-                <TR key={change.itemId}>
-                  <TD numeric>{change.itemId}</TD>
-                  <TD numeric>{change.beforeInputHash}</TD>
-                  <TD numeric>{change.afterInputHash}</TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-        </div>
-      )}
-      <Banner tone="info" title="Reruns never relabel replayed data as newly observed" icon={<GitCompare aria-hidden className={dsIcon.lg} />}>
-        A rerun reuses the immutable source artifact and exact validated input hashes. Only a value actually re-read from a system is recorded as observed.
-      </Banner>
+      {stage.changedInputs.length > 0 && <ChangedInputRows manifestId={stage.manifestId} rows={stage.changedInputs} />}
     </section>
   );
 }
@@ -1083,12 +1195,17 @@ function IdentifierPopover({
 }: {
   label: string;
   title: string;
-  facts: { key: string; value: string }[];
+  facts: readonly { key: string; value: string }[];
 }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <IconButton size="xs" label={label} icon={<Info aria-hidden className={dsIcon.sm} />} />
+        <IconButton
+          size="xs"
+          className="size-[44px] shrink-0"
+          label={label}
+          icon={<Info aria-hidden className={dsIcon.sm} />}
+        />
       </PopoverTrigger>
       <PopoverContent title={title} width="lg" align="start">
         <dl className="flex flex-col gap-[var(--ds-space-base)]">
@@ -1514,9 +1631,9 @@ export function IntakeWorkspace({
           <TabPanel value="manifest" className="p-[var(--ds-space-base)]">
             <ManifestStageView session={session} />
             {session.state === "enqueued" && (
-              <span className="mt-[var(--ds-space-cozy)] flex">
+              <div className="mt-[var(--ds-space-cozy)] flex">
                 <Button size="sm" className="min-h-[44px]" onClick={onEnqueued}>Show the runs</Button>
-              </span>
+              </div>
             )}
           </TabPanel>
           <TabPanel value="rerun" className="p-[var(--ds-space-base)]">
