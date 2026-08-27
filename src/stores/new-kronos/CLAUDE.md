@@ -133,8 +133,9 @@ hit the search box's own echo of the query), and the `loadingOverlay` CSS union 
   content you will read, and on the LAST stage of it (§9.20 item 7 → §9.28).** The search poll
   accepted `[role='menuitemradio']` the instant it counted above zero and read `""`, because WFD
   renders a slat in four digests (host → skeleton → tabular card with raw `{{…}}` bindings →
-  interpolation). Cold profiles and loaded machines only widen the gap (33–214 ms against 9–18 ms);
-  the refusal reproduced on a WARM search under 20× CPU throttle. The first fix waited for the card
+  interpolation). Cold profiles and loaded machines only widen the gap (30–108 ms cold and
+  214–570 ms throttled, against 9–18 ms warm); the refusal reproduced on a WARM search under 20× CPU
+  throttle. The first fix waited for the card
   ELEMENT and refused the same way — the card arrives before its text does. The rule has two halves:
   the completion signal must be the thing you read (non-empty, interpolated text), and it decides
   only WHEN to read — the identity parse still refuses a completed row that names nobody. And take

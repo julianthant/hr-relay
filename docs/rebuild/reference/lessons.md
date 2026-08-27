@@ -14,8 +14,8 @@ write-safety work.
   `{{…}}` bindings → interpolation. A poll that accepted the host on sight read `""` and refused a
   real person; a second cut that waited for the card element refused the same way under load, because
   the element lands before its text. Cold profiles and busy machines do not cause this, they widen a
-  gap that exists on every render (33–214 ms cold, 9–18 ms warm, reproduced on a WARM search under
-  20× CPU throttle). The fix is a bounded wait for a NAMED fact — non-empty text with no `{{`, in
+  gap that exists on every render (30–108 ms cold, 9–18 ms warm, 214–570 ms throttled; reproduced on
+  a WARM search under 20× CPU throttle). The fix is a bounded wait for a NAMED fact — non-empty text with no `{{`, in
   the element that carries the identity — inside the caller's existing bound, with a by-name refusal
   when it elapses mid-render, and with the identity parse unchanged: completion decides when to
   read, never what was read. Generalises D205: terminate on what the answer must contain, and when

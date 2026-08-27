@@ -6236,3 +6236,14 @@ name-only label, a complete row with a foreign label) against the extracted on-s
 store's `CLAUDE.md` carries the invariant and the lesson; `ref lessons` carries the general form.
 Not done here: the throttled cold home's navbar bound (a7/a8) is an artefact of 20× throttling and
 elapsed loudly by name — no bound was widened.
+
+**Review fix (2026-08-27).** The read above swapped the poll's `count()` for `evaluateAll()`, and on
+Playwright 1.61.1 those disagree about a missing frame — `count()` answers 0, `evaluateAll` throws
+`Failed to find frame for selector "…"` — so the TOP-LEVEL panel context (no named frames; the
+second `searchEmployee` of a session) aborted on a raw Playwright error instead of falling through
+to the `page` root. The poll now counts each candidate root's slats before reading it, nothing is
+caught, and `tests/unit/new-kronos-search-poll.test.ts` pins the interpreter halves the 12 verdict
+cases could not reach (the two-root read, the hydrating streak reset, the by-name bound refusal, and
+`no-signal` when the rows vanish again). The prose figures in `ref lessons` and the store's
+`CLAUDE.md` also merged a6's 8×-throttled 214 ms into the COLD range; the table above is
+authoritative — 30–108 ms cold, 214–570 ms throttled.
