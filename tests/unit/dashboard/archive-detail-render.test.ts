@@ -73,10 +73,19 @@ describe("the frozen log line (AR163)", () => {
     return renderToStaticMarkup(createElement(FrozenLogLine, { note }));
   }
 
+  it("sizes the level column for the LONGEST word this wire serves", () => {
+    // The demo's 46px was sized for `warn`; this wire's enum says `warning`,
+    // and the ported constant put the level on top of its own message. Nothing
+    // but a screenshot saw it, so the width is pinned here.
+    const longest = ["info", "warning", "error"].reduce((a, b) => (b.length > a.length ? b : a));
+    assert.equal(longest, "warning");
+    assert.equal(line("warning").includes("truncate"), false);
+  });
+
   it("puts the clock and the level in fixed columns, so messages share one x", () => {
     const html = line("info");
     assert.equal(html.includes("w-[76px]"), true);
-    assert.equal(html.includes("w-[46px]"), true);
+    assert.equal(html.includes("w-[72px]"), true);
   });
 
   it("prints the level as a WORD, so the tint is never its only carrier", () => {

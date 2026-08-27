@@ -1969,7 +1969,15 @@ export function FrozenLogLine({ note }: { note: z.infer<typeof NoteWireSchema> }
       <span className={cn(dsText.meta, dsText.nums, "w-[76px] shrink-0 text-[color:var(--ds-fg-faint)]")}>
         {fmtClock(note.at)}
       </span>
-      <span className={cn(dsText.meta, dsText.caps, "w-[46px] shrink-0", FROZEN_LEVEL_CLASS[note.level])}>
+      {/*
+        NOT the demo's `w-[46px]`: its level vocabulary is `info`/`warn`/`error`
+        and this wire's is `info`/`warning`/`error` (AR164), so the ported
+        constant was a column sized for a word this tree never prints —
+        `WARNING` in caps overran it and sat on top of its own message. The
+        width holds the LONGEST served level, and the column does not truncate,
+        because a clipped level is exactly the fact this column exists for.
+      */}
+      <span className={cn(dsText.meta, dsText.caps, "w-[72px] shrink-0", FROZEN_LEVEL_CLASS[note.level])}>
         {note.level}
       </span>
       <span className={cn(dsText.body, "min-w-0 flex-1 break-words text-[color:var(--ds-fg)]")}>
@@ -2239,7 +2247,11 @@ function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (
         <Camera className={dsIcon.md} />
       </span>
       <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
-        <span className="flex flex-wrap items-center gap-[var(--ds-space-hair)]">
+        {/*
+          `tight`, not `hair`: the origin badge and the step id are two
+          different facts and a 2px gutter read as one word in the screenshot.
+        */}
+        <span className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
           {/*
             AR184 — the badge's WORD and its TONE come from one fact. It used
             to print `kind` in a tone keyed off `origin`, so an ordinary
