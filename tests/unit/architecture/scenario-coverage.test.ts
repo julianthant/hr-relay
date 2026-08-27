@@ -282,6 +282,43 @@ describe("scenario coverage", () => {
     }
   });
 
+  /**
+   * The disjointness check above walks the LIVE corpus, so it can only ever
+   * prove "the files that happen to exist today don't collide" — a real
+   * near-miss shape (a dashboard-nested walk file, a workflow-folder graph
+   * file whose suffix drifted) would stay invisible until someone happened to
+   * create one. This table is synthetic on purpose: it exercises the three
+   * patterns' full pairwise matrix (GRAPH∧DASHBOARD, WALK∧DASHBOARD,
+   * GRAPH∧WALK) against shapes chosen to be plausible near-misses, independent
+   * of whatever the corpus directory currently contains.
+   */
+  it("keeps the three corpus file patterns pairwise disjoint over a synthetic path table", () => {
+    const SYNTHETIC_PATHS: readonly string[] = [
+      `${SCENARIO_ROOT}/dashboard/separations/x.scenario.test.ts`, // dashboard
+      `${SCENARIO_ROOT}/dashboard/a/b.walk.test.ts`, // dashboard-shaped, walk-suffixed
+      `${SCENARIO_ROOT}/workflows/w/structural.scenario.test.ts`, // graph (workflow-folder arm)
+      `${SCENARIO_ROOT}/foo.walk.test.ts`, // walk
+      `${SCENARIO_ROOT}/foo.scenario.test.ts`, // graph (flat arm)
+    ];
+    for (const file of SYNTHETIC_PATHS) {
+      assert.equal(
+        GRAPH_SCENARIO_FILE_PATTERN.test(file) && DASHBOARD_SCENARIO_FILE_PATTERN.test(file),
+        false,
+        `${file} matches both GRAPH and DASHBOARD`,
+      );
+      assert.equal(
+        INTEGRATION_WALK_FILE_PATTERN.test(file) && DASHBOARD_SCENARIO_FILE_PATTERN.test(file),
+        false,
+        `${file} matches both WALK and DASHBOARD`,
+      );
+      assert.equal(
+        GRAPH_SCENARIO_FILE_PATTERN.test(file) && INTEGRATION_WALK_FILE_PATTERN.test(file),
+        false,
+        `${file} matches both GRAPH and WALK`,
+      );
+    }
+  });
+
   it("reads an `it` title as a scenario CLAIM only when its head is a scenario id", () => {
     // The separator is what makes "unregistered id" and "sentence" different
     // facts. A typo stays a claim on purpose — it must fail, not be silently
