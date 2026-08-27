@@ -6247,3 +6247,16 @@ cases could not reach (the two-root read, the hydrating streak reset, the by-nam
 `no-signal` when the rows vanish again). The prose figures in `ref lessons` and the store's
 `CLAUDE.md` also merged a6's 8×-throttled 214 ms into the COLD range; the table above is
 authoritative — 30–108 ms cold, 214–570 ms throttled.
+
+Live RED→GREEN on the warm `hrauto-rebuild` profile, EID 10776990, the real factory / login recipe /
+driver, same sequence both runs (`readSeparationTimecard` → Go To → Timecard, then a second
+`searchEmployee`): **pre-fix** the second search threw
+`locator.evaluateAll: Failed to find frame for selector "iframe[name^=\"portal-frame-\"] >> …"` from
+`interpreter.ts:308` via `:399`; **post-fix** `state=resolved context=top-level in 1436 ms`, one row,
+matched `Kou, Nathan`. Two OUT-OF-SEAM refusals surfaced on the way and were left alone, both loud
+and both after the navigation this fix covers: (1) `searchEmployee` called twice in one session on
+`…/wfd/home` refuses the second with `the Employee Search panel's …query-field rendered in neither
+… context` — search #1 collapses the panel to `Show Search`, and the separations descriptor chains
+the `search-employee` node into `read-separation-timecard`, whose `selectEmployeeInPanel` searches
+again; (2) `setRangeField` refused `could not set the timecard start date to 6/1/2026 — the field
+last read "11/20/2626"`, i.e. the range field is typed into without being cleared first.
