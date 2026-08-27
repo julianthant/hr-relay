@@ -168,7 +168,7 @@ function KitHeader() {
         <span className="flex size-6 items-center justify-center rounded-[var(--ds-radius-md)] bg-[var(--ds-accent-quiet)]">
           <ShieldCheck aria-hidden className="size-3.5 text-[color:var(--ds-accent-mark)]" />
         </span>
-        <span className={cn(dsText.ui, "font-semibold")}>Rebuild demo — design system</span>
+        <h1 className={cn(dsText.ui, "font-semibold")}>Rebuild demo — design system</h1>
       </span>
       <Badge tone="info">dev only · specimen page</Badge>
       <nav aria-label="Sections" className="ml-auto flex items-center gap-[var(--ds-space-tight)]">
@@ -204,7 +204,10 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section id={id} className="flex flex-col gap-[var(--ds-space-cozy)]">
+    <section
+      id={id}
+      className="flex scroll-mt-[var(--ds-h-topbar)] flex-col gap-[var(--ds-space-cozy)]"
+    >
       <div className="flex flex-col gap-[var(--ds-space-hair)] border-b border-[color:var(--ds-border-subtle)] pb-[var(--ds-space-base)]">
         <h2 className={cn(dsText.section, "font-semibold")}>{title}</h2>
         <p className={cn(dsText.body, "max-w-[80ch] text-[color:var(--ds-fg-muted)]")}>{note}</p>
@@ -261,19 +264,23 @@ function StatusSection() {
             <span className="inline-flex items-center gap-[var(--ds-space-snug)]">
               <StatusPill status={status} age={status === "waiting" ? "12m" : undefined} />
               {status === "doneWarnings" && (
-                <span
-                  title="Finished with warnings"
-                  className={cn(
-                    "inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[var(--ds-space-tight)] rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]",
-                    "border-[color:var(--ds-status-done-warnings-border)] bg-[var(--ds-status-done-warnings-bg)] text-[color:var(--ds-status-done-warnings-fg)]",
-                    dsText.meta,
-                    dsText.nums,
-                    dsText.flush,
-                  )}
-                >
-                  <TriangleAlert aria-hidden className={dsIcon.sm} />
-                  2
-                </span>
+                <Tooltip content="Finished with warnings">
+                  <span
+                    tabIndex={0}
+                    aria-label="Finished with warnings: 2"
+                    className={cn(
+                      "inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[var(--ds-space-tight)] rounded-[var(--ds-radius-sm)] border px-[var(--ds-space-snug)]",
+                      "border-[color:var(--ds-status-done-warnings-border)] bg-[var(--ds-status-done-warnings-bg)] text-[color:var(--ds-status-done-warnings-fg)]",
+                      dsFocus,
+                      dsText.meta,
+                      dsText.nums,
+                      dsText.flush,
+                    )}
+                  >
+                    <TriangleAlert aria-hidden className={dsIcon.sm} />
+                    2
+                  </span>
+                </Tooltip>
               )}
             </span>
             <span className={cn(dsText.meta, "min-w-0 flex-1 text-[color:var(--ds-fg-muted)]")}>
@@ -895,7 +902,7 @@ function FormsSection() {
               label="Select all rows"
               description="Indeterminate when only some are checked"
             />
-            <Checkbox checked label="Capture a screenshot at each write" />
+            <Checkbox defaultChecked label="Capture a screenshot at each write" />
             <Checkbox
               checked={false}
               disabled
@@ -959,7 +966,6 @@ function OverlaysSection() {
         <ContextMenu>
           <ContextMenuTrigger asChild>
             <div
-              role="button"
               tabIndex={0}
               className={cn(
                 "flex w-[260px] cursor-context-menu items-center justify-center border border-dashed",
