@@ -226,6 +226,9 @@ describe("the settings nav renders real navigation, not buttons (unit F4b findin
     // without a provider above it. The nav below still lists BOTH entries
     // regardless of which one is open.
     section: SETTINGS_KEYBOARD_SECTION_ID,
+    // Capabilities is not the open section in any render here, so the join map
+    // is empty rather than a fixture nothing reads.
+    workflowLabels: new Map<string, string>(),
     onSection: () => undefined,
     onClose: () => undefined,
   }));
@@ -262,6 +265,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
       storage: HEALTHY_STORAGE,
       sections: [STORAGE],
       section: "budgets",
+      workflowLabels: new Map<string, string>(),
       onSection: () => undefined,
       onClose: () => undefined,
     }));
@@ -274,6 +278,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
       storage: HEALTHY_STORAGE,
       sections: [STORAGE, section("budgets", "Budgets")],
       section: "budgets",
+      workflowLabels: new Map<string, string>(),
       onSection: () => undefined,
       onClose: () => undefined,
     }));

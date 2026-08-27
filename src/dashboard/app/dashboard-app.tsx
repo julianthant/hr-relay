@@ -1209,6 +1209,13 @@ function LoadedApp({
     () => SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections),
     [boot.settingsSections],
   );
+  // Settings → Workflow capabilities joins its served rows to THESE labels: the
+  // capability wire carries none on purpose, so one page cannot hold two names
+  // for one workflow (D274 item 6).
+  const workflowLabels = useMemo(
+    () => new Map(workflows.map((workflow) => [String(workflow.id), workflow.label])),
+    [workflows],
+  );
   const onSelectDay = useCallback(
     (next: string): void => setRoute({ ...route, day: next }),
     [route, setRoute],
@@ -1391,6 +1398,7 @@ function LoadedApp({
               <SettingsPage
                 storage={boot.storage}
                 sections={settingsSections}
+                workflowLabels={workflowLabels}
                 section={route.settings ?? ""}
                 onSection={(next) => setRoute({ ...route, settings: next })}
                 onClose={() => {
