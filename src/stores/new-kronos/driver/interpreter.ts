@@ -396,6 +396,20 @@ function createDriverInternals(page: Page, clock: Clock) {
     const outcome = await pollUntil(clock, input.searchTimeoutMs, async () => {
       hydratingAtLastPoll = null;
       for (const candidateRoot of roots) {
+        // COUNT before reading. `roots` always tries the `portal-frame-` locator
+        // first, and after a timecard navigation the page has NO named frames at
+        // all (live 2026-08-12) — the second `searchEmployee` of a session runs
+        // top-level. Playwright 1.61.1 treats a missing frame differently on the
+        // two APIs, measured on this repo's pinned version: `count()` answers 0,
+        // but `evaluateAll` resolves the frame chain in the main world and THROWS
+        // `Failed to find frame for selector "…"`. Reading `readSlatFacts` first
+        // therefore aborted the poll on a raw Playwright error in exactly the
+        // context that must fall through to `page`, before the sentinel logic was
+        // ever consulted. Zero rows here is the same `absent` the verdict below
+        // would return, so this skips nothing a read would have found — and it
+        // catches NOTHING: a frame that exists still lets every `evaluateAll`
+        // error out.
+        if (await resolveRecipe(candidateRoot, NEW_KRONOS_SEARCH_RESULT_SLAT).count() === 0) continue;
         const slats = await readSlatFacts(candidateRoot);
         const verdict = judgeSearchRender(slats);
         if (verdict === "results") {
