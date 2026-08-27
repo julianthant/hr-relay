@@ -21,21 +21,35 @@
  * served one because a legend of this bundle's own bindings is not a fact the
  * server holds.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ArrowLeft,
   CircleAlert,
   Database,
+  Info,
   Keyboard as KeyboardIcon,
+  Link2,
   Settings as SettingsIcon,
+  Table2,
 } from "lucide-react";
+import {
+  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
+  SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
+  type SettingsFactsWire,
+} from "../../domain/dashboard/settings.js";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import {
+  CAPABILITY_SPECS,
   SETTINGS_GEAR_ID,
   SETTINGS_KEYBOARD_SECTION_ID,
   buildSettingsNav,
+  capabilityAvailableCount,
+  capabilityMatrix,
   resolveSettingsSection,
   storageNeedsAttention,
+  systemHostsMeta,
+  useSettingsFacts,
+  type CapabilityCell,
   type SettingsNavEntry,
   type SettingsNavIcon,
   type SettingsSection,
@@ -46,17 +60,30 @@ import { DEMO_SHORTCUTS } from "./shortcuts-model.js";
 
 export type { StorageHealthSummary, SettingsSection };
 import {
+  Badge,
   Banner,
   BulletList,
   Button,
+  Chip,
   IconButton,
   MetaLine,
   Panel,
   PanelBody,
   PanelHeader,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   SectionLabel,
   Separator,
+  Spinner,
   StatusDot,
+  TBody,
+  TD,
+  TH,
+  THead,
+  TR,
+  Table,
+  dsClip,
   dsFocus,
   dsIcon,
   dsMotion,
@@ -355,8 +382,353 @@ function KeyboardSection() {
   );
 }
 
+/* ── the two served status sections (D274 item 6, ledger 3 SE40–SE42) ─────── */
+
+/**
+ * The async half of both sections, drawn rather than hidden (D275 item 4).
+ *
+ * A refusal is NOT an empty table. "No test host is configured" and "we could
+ * not ask the server" are different sentences about the same blank space, and a
+ * page whose job is to state facts may not let one stand in for the other — so
+ * the failed arm names the failure, in an `alert`, instead of rendering an
+ * honest-looking page of nothing.
+ */
+const FACTS_LOADING = "Reading what this deployment is configured with";
+
+function FactsPane({
+  facts,
+  children,
+}: {
+  facts: ReturnType<typeof useSettingsFacts>;
+  children: (loaded: SettingsFactsWire) => ReactNode;
+}) {
+  if (facts.state === "loading") {
+    return (
+      <span
+        className={cn(
+          dsText.meta,
+          "flex items-center gap-[var(--ds-space-snug)] p-[var(--ds-space-cozy)]",
+          "text-[color:var(--ds-fg-muted)]",
+        )}
+      >
+        {/* The spinner IS the `role="status"` here, so its name is what a
+            screen reader reads — it carries the real sentence rather than
+            "Loading" over the top of it, and the visible copy is hidden from
+            the tree so the one fact is announced once. ONE expression feeds
+            both halves, the way intake's review checkbox does. */}
+        <Spinner label={FACTS_LOADING} />
+        <span aria-hidden>{FACTS_LOADING}…</span>
+      </span>
+    );
+  }
+  if (facts.state === "failed") {
+    return (
+      // No inner `role="alert"`: a `danger` Banner already carries one
+      // (`primitives-layout.tsx`), and nesting a second is the exact defect the
+      // D273 items 9–10 refused-notice merge ratified out — the sentence is
+      // announced twice and every `getByRole("alert")` here goes ambiguous.
+      <Banner
+        className="m-[var(--ds-space-cozy)]"
+        tone="danger"
+        title="These facts could not be read"
+      >
+        <span className="flex flex-col gap-[var(--ds-space-tight)]">
+          <span>{facts.message}</span>
+          <span>Nothing below is missing — nothing below was asked for.</span>
+        </span>
+      </Banner>
+    );
+  }
+  return <>{children(facts.facts)}</>;
+}
+
+/**
+ * SE40 — the hosts this deployment resolves, per system.
+ *
+ * It STATES and sets nothing, and the banner says why that is a decision rather
+ * than an unbuilt control: the instance is a per-RUN choice the envelope
+ * carries, and a standing override here would redirect every future run with no
+ * expiry and nothing on screen to say so. `none provisioned` is the served
+ * absence — the projection drops a test host that is not distinct from
+ * production, because a run asking for that one is refused (D274 item 6).
+ */
+function SystemHostsSection() {
+  const facts = useSettingsFacts();
+  return (
+    <Panel className="min-h-0 flex-1">
+      <PanelHeader
+        title="System hosts"
+        subtitle="Where a run goes when it opens each system."
+        icon={<Link2 aria-hidden className={dsIcon.lg} />}
+        meta={facts.state === "loaded" ? systemHostsMeta(facts.facts.systemHosts) : undefined}
+      />
+      <PanelBody className="flex flex-col">
+        <FactsPane facts={facts}>
+          {(loaded) => (
+            <>
+              <Banner
+                tone="info"
+                title="Choosing between these is a per-run decision"
+                className="m-[var(--ds-space-cozy)]"
+              >
+                A run envelope carries the instance per system and defaults to production; a start
+                that asks for <strong>test</strong> is refused outright unless a distinct test host is
+                configured, never quietly sent to production. This page states the hosts and sets
+                none — a standing override here would redirect every future run with no expiry and
+                nothing on screen to say so.
+              </Banner>
+              <Table label="System entry hosts">
+                <THead>
+                  <TR>
+                    <TH>System</TH>
+                    <TH>Production</TH>
+                    <TH>Test</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {loaded.systemHosts.map((host) => (
+                    <TR key={host.system}>
+                      <TD className="whitespace-nowrap">{host.system}</TD>
+                      {/* `break-all` belongs to the URL, never to the cell: a
+                          deep PeopleSoft route has no spaces to wrap at, and
+                          the same rule applied to the absence below spelled it
+                          `none pro / visioned`. Prose wraps at words. */}
+                      <TD numeric><span className="break-all">{host.production}</span></TD>
+                      {host.test.state === "provisioned" ? (
+                        <TD numeric><span className="break-all">{host.test.url}</span></TD>
+                      ) : host.test.state === "not-distinct" ? (
+                        // Configured, but identical to production — refused at
+                        // run time by `resolveSystemEntryUrl`. Stated by name
+                        // rather than folded into `none provisioned`, which
+                        // would read as "nobody configured a sandbox" when the
+                        // true fact is "a sandbox was configured wrong" (unit
+                        // F11b finding 2).
+                        <TD>
+                          <span className={cn(dsText.meta, "whitespace-nowrap text-[color:var(--ds-danger)]")}>
+                            provisioned identical to production — refused
+                          </span>
+                        </TD>
+                      ) : (
+                        <TD>
+                          <span className={cn(dsText.meta, "whitespace-nowrap text-[color:var(--ds-fg-faint)]")}>
+                            none provisioned
+                          </span>
+                        </TD>
+                      )}
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </>
+          )}
+        </FactsPane>
+      </PanelBody>
+    </Panel>
+  );
+}
+
+/**
+ * ONE capability cell. Three states, told apart by SHAPE and by WORD, never by
+ * colour, and nothing here is pressable: this is a page that STATES, and a
+ * toggle would be a second control for a decision that belongs to a start.
+ *
+ * All three arms take the SAME shape — a short state token, then the sentence —
+ * and the reason it is not the demo's "filled chip carrying the value" is
+ * `Chip`'s own docstring: *if a fact cannot survive truncation it is not a
+ * chip*. A chip is `dsClip.token` outside and `dsClip.text` inside, so a
+ * `break-words` on its child is dead CSS and a three-system list would cut with
+ * nothing to recover it — on any pointer, which DESIGN.md bans outright and
+ * D272 items 8–9 ratified against twice already. The detail wraps beside the
+ * token instead, where it has somewhere to wrap TO, and it is not `nums`:
+ * "3 correctable fields" is prose, and a fact declares its kind (F2d).
+ */
+function CapabilityCellView({ cell }: { cell: CapabilityCell }) {
+  const available = cell.state === "available";
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
+      <Chip tone={available ? "info" : cell.state === "not-built" ? "warning" : "neutral"}>
+        {available ? "Yes" : cell.state === "not-built" ? "Not built" : "N/A"}
+      </Chip>
+      <span
+        className={cn(
+          dsText.meta,
+          "min-w-0 break-words",
+          // The answer is the page's content; a reason is its explanation.
+          available ? "text-[color:var(--ds-fg)]" : "text-[color:var(--ds-fg-muted)]",
+        )}
+      >
+        {available ? cell.detail : cell.reason}
+      </span>
+    </span>
+  );
+}
+
+/**
+ * SE41/SE42 — what each workflow can do, read down one capability at a time.
+ *
+ * CAPABILITY-MAJOR rather than a grid of six columns by seven rows, and that is
+ * the whole design decision. A true matrix is a horizontal scroll with a header
+ * the eye loses, and its cells can hold only a tick — which throws away the half
+ * of the answer that matters, namely WHICH systems, WHICH gates, and WHY not.
+ * Read down a capability and "which ones have a dry run?" is one glance, with
+ * the reason attached to every no.
+ */
+function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<string, string> }) {
+  const facts = useSettingsFacts();
+  return (
+    <Panel className="min-h-0 flex-1">
+      <PanelHeader
+        title="Workflow capabilities"
+        subtitle="What each registered workflow can do, and what it will not do."
+        icon={<Table2 aria-hidden className={dsIcon.lg} />}
+        meta={facts.state === "loaded"
+          ? `${String(facts.facts.workflowCapabilities.length)} workflows · ${String(CAPABILITY_SPECS.length)} capabilities`
+          : undefined}
+      />
+      <PanelBody className="flex flex-col gap-[var(--ds-space-cozy)] p-[var(--ds-space-cozy)]">
+        <FactsPane facts={facts}>
+          {(loaded) => {
+            const matrix = capabilityMatrix(loaded.workflowCapabilities, workflowLabels);
+            // A build that registers no workflow is unusual and real, and the
+            // six header-only tables it would otherwise draw say nothing at all
+            // — six `0 of 0` badges over empty grids read as a page that failed
+            // to load rather than as a build with nothing to describe.
+            if (matrix.length === 0) {
+              return (
+                <Banner tone="warning" title="This build registers no workflows">
+                  There is nothing to describe: the capability rows are derived from the descriptor
+                  registry, and it is empty in this process.
+                </Banner>
+              );
+            }
+            return (
+              <>
+                <Banner tone="info" title="Read from the descriptors, not from a list somebody kept up to date">
+                  Every cell is derived from the same descriptor the Run modal and the Explorer read.
+                  A workflow that gains a dry run gains it here on the same deploy. These six are what
+                  a descriptor declares; a seventh appears when a descriptor grows one, never before.
+                </Banner>
+
+                {CAPABILITY_SPECS.map((spec) => (
+                  <div key={spec.key} className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
+                    <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+                      <SectionLabel className="min-w-0 truncate">{spec.label}</SectionLabel>
+                      {/* compared down the page, so the digits must not shift */}
+                      <Badge tone="neutral" className={dsText.nums}>
+                        {capabilityAvailableCount(matrix, spec.key)} of {matrix.length}
+                      </Badge>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <IconButton
+                            size="xs"
+                            label={`What ${spec.label} means`}
+                            // 20px at rest. The floor is taken as min-w/min-h
+                            // rather than an `::after` overlay because this
+                            // control sits in a FLEX ROW — it grows the row and
+                            // cannot resolve a tap to a neighbour (F2d). The
+                            // parity corpus renders at `pointer: fine`, so no
+                            // reference moves.
+                            className="pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                            icon={<Info aria-hidden className={dsIcon.sm} />}
+                          />
+                        </PopoverTrigger>
+                        <PopoverContent title={spec.label}>
+                          <p className={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")}>
+                            {spec.meaning}
+                          </p>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    <Table label={`${spec.label} by workflow`}>
+                      <THead>
+                        <TR>
+                          <TH>Workflow</TH>
+                          <TH>{spec.label}</TH>
+                        </TR>
+                      </THead>
+                      <TBody>
+                        {matrix.map((row) => (
+                          <TR key={row.workflowId}>
+                            <TD className="w-[190px]">
+                              <WorkflowName label={row.label} served={row.labelServed} />
+                            </TD>
+                            <TD>
+                              <CapabilityCellView cell={row.cells[spec.key]} />
+                            </TD>
+                          </TR>
+                        ))}
+                      </TBody>
+                    </Table>
+                  </div>
+                ))}
+
+                {/* The one fact that is not a yes/no, so it is not a capability
+                    row: a workflow can honour a rehearsal, have nothing to
+                    rehearse, or write and refuse one — and the third is the
+                    answer worth reading before a real HR transaction. */}
+                <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
+                  <SectionLabel>Where a dry run stops</SectionLabel>
+                  <Table label="Dry-run posture by workflow">
+                    <THead>
+                      <TR>
+                        <TH>Workflow</TH>
+                        <TH>Posture</TH>
+                      </TR>
+                    </THead>
+                    <TBody>
+                      {matrix.map((row) => (
+                        <TR key={row.workflowId}>
+                          <TD className="w-[190px]">
+                            <WorkflowName label={row.label} served={row.labelServed} />
+                          </TD>
+                          <TD>{row.dryRunPosture}</TD>
+                        </TR>
+                      ))}
+                    </TBody>
+                  </Table>
+                </div>
+              </>
+            );
+          }}
+        </FactsPane>
+      </PanelBody>
+    </Panel>
+  );
+}
+
+/**
+ * A workflow's name in the first column. The capability wire carries no label —
+ * the bootstrap already serves one, and one page may not hold two names for one
+ * workflow — so a row this document does not list falls back to the workflow's
+ * own id and SAYS it is the id, rather than reading as a badly-cased label.
+ */
+function WorkflowName({ label, served }: { label: string; served: boolean }) {
+  if (served) return <>{label}</>;
+  return (
+    <span className="flex min-w-0 flex-col">
+      <span className={cn(dsText.nums, dsClip.text)}>{label}</span>
+      <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
+        not in the served workflow list — this is its id
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The served sections this build has a renderer for. A served id NOT in here
+ * draws the named build gap below — which is the arm that must keep working, so
+ * the set is spelled once and both the switch and the gap read it.
+ */
+const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
+  "storage",
+  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
+  SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
+]);
+
 const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   storage: Database,
+  "system-hosts": Link2,
+  capabilities: Table2,
   keyboard: KeyboardIcon,
   unrendered: CircleAlert,
 };
@@ -481,12 +853,18 @@ export function SettingsGear({
 export function SettingsPage({
   storage,
   sections,
+  workflowLabels,
   section,
   onSection,
   onClose,
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
+  /**
+   * The bootstrap's own workflow labels, by id. Capabilities joins on them
+   * rather than being served a second copy — one page, one name per workflow.
+   */
+  workflowLabels: ReadonlyMap<string, string>;
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
   onSection: (next: string) => void;
@@ -558,9 +936,15 @@ export function SettingsPage({
         )}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_SYSTEM_HOSTS_SECTION_ID && (
+          <SystemHostsSection />
+        )}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
+          <CapabilitiesSection workflowLabels={workflowLabels} />
+        )}
         {resolution.state === "open"
           && resolution.entry.source === "served"
-          && resolution.entry.id !== "storage" && (
+          && !RENDERED_SERVED_SECTION_IDS.has(resolution.entry.id) && (
           // A served section without a renderer is a build gap, said by name —
           // never a section that silently vanishes.
           <section
