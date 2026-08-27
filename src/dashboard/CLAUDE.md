@@ -74,6 +74,63 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a wire that splits one flag into two arms has done half the work — the SURFACE is
+  where the split survives or dies, and a geometry the parser refused has no shape to draw
+  (D274 item 7, unit F13, ledger 3 §7 CP2–CP21).** `capture-start.tsx` had handed the operator a QR
+  and then silence since D175: no phase, no page count, no expiry, no unreadable-page alert, no
+  contact sheet, while the phone on the desk filled with pages nothing on screen acknowledged. No
+  gate could see it, because **a door with nothing behind it is a perfectly good door** — the QR
+  scans, the phone works, and the missing half is only visible beside the demo panel that is
+  entirely about the desktop. The producer had landed the day before (F12) and `queries.ts` called
+  neither route; `config/pending-wire-bindings.json` was carrying the gap as a DECLARATION, which is
+  the mechanism working — the guard fails in both directions, so the declaration had to be deleted
+  in the same commit that consumed it.
+
+  Four things travel. **The interesting arm is the one the demo did not have.** F12 serves
+  `unreadable` (the finalize bundler's own parse refusing the recorded bytes) and `unavailable` (the
+  artifact failing read-back or its integrity check) as two arms precisely so "the check failed"
+  cannot impersonate "the page is bad" — and a surface is free to undo that with one `.filter()`.
+  They are two banners with two tones and two INSTRUCTIONS, and the instruction is the half that
+  matters: telling an operator to re-photograph a form because a disk read failed is worse than
+  saying nothing, and the negative control is that the two sentences may never read the same.
+  **A page whose bytes would not parse has no served shape, and the tile may not invent one.** The
+  frame draws each page's own `pixelWidth/pixelHeight`; the failure arms carry no ratio at all,
+  because letterboxing them to a plausible US Letter would be this surface fabricating the one thing
+  it exists to look at. (A SQUARE stands in — visibly not a page at 0.77, and close enough in height
+  that the sheet still reads as one grid; the first build used `--ds-h-lg` and the screenshot showed
+  a sheet with no baseline.) **The same word can mean something else on this side of the wire**:
+  the demo's `ready` meant *ready to finalise* and here it is the durable `finalized` state, and its
+  `blocked` meant *a page cannot be read* while here it is the FINALIZATION failing — the schema
+  pins `phase` to the state machine alone, so an unreadable page moves no phase and its only signal
+  is its own banner. Porting either label verbatim would have been true-looking and wrong. And
+  **four demo facts have no producer and are ABSENT rather than optional** (device label, pairing
+  code, a page's arrival instant, its filename, a focus score): the ⓘ names them out loud, so the
+  next reader meets a decision instead of an oversight, and the test asserts the accessible name
+  WHOLE so none of them can leak back in as a plausible blank.
+
+  Two more from the same pass. **Capture is the one live thing here the day stream does not carry**
+  — a capture session is not a run, so no SSE envelope moves when a page lands. The reads poll, and
+  the hook says so: it stops at a terminal phase, and a failed read keeps ticking while the surface
+  keeps SAYING it failed, because re-issuing the same GET is a retry but "the request died" and "the
+  session is empty" may never draw identically. **And the selection has to LATCH.**
+  `listActive` serves `open`/`finalizing`/`failed`, so a capture that finalizes — the successful
+  ending — leaves the list at the exact moment the operator wants to read it; recomputing "the
+  newest active session" each tick would jump them off it, so the id is adopted into state once and
+  a departed session is still read by id and still named in the picker.
+
+  **And the screenshot found the third thing twice, in one shape**: a fact printed at the far end of
+  the thing it qualifies. The `Pages received` count and the ⓘ both wore the demo's `ml-auto`, which
+  is right in a ~600px modal and wrong in an ~830px column — the count sat 800px from its own noun
+  and the ⓘ 1,300px from the words it explains. Both are against their labels now; the picker keeps
+  the right edge, because a picker IS a row's trailing control.
+
+  What is NOT drawn, and why: no page BYTES, so no thumbnail — the production byte path is doc 04's
+  deferral and every frame here is a served shape holding an icon. No retake-in-place control: `PUT
+  /api/v1/capture/phone/photos/:photoId` exists and no client implements it (ledger 3 CP45), so the
+  banner says *remove it on the phone and photograph it again*, which is what the phone can actually
+  do. The panel is scoped to its intake screen's workflow — a served field, so a scope rather than a
+  hidden fact.
+
 - **2026-08-26: a head composed in ONE consumer's JSX is a head the second consumer loses in
   silence, and a vocabulary of three tones is a vocabulary of two when the palette paints two
   (D273 item 8, unit F8c, the review of F8b).** Five findings, and three things travel.

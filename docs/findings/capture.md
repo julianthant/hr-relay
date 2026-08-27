@@ -15,10 +15,14 @@ Owning doc for every record below: `docs/rebuild/reference/data-intake-and-edit-
 
 ## No operator-scoped session LIST
 
-**Recorded:** 2026-08-21 · **Status:** PRODUCER CLOSED 2026-08-26 (D274 item 7) —
-`GET /api/v1/capture/sessions` now serves `CaptureOperatorSessionListWireSchema` summaries
-(sessionId · phase · pageCount · expiry) from `captureSessions.listActive()`; a by-actor index was
-never needed in a single-operator product. The picker itself remains the operator-surface unit ·
+**Recorded:** 2026-08-21 · **Status:** CLOSED 2026-08-26 (D274 item 7) — the producer landed first
+(`GET /api/v1/capture/sessions` serves `CaptureOperatorSessionListWireSchema` summaries from
+`captureSessions.listActive()`; a by-actor index was never needed in a single-operator product), and
+the picker now consumes it: `client.activeCaptureSessions()` →
+`useActiveCaptureSessions` → the `Select` in `surfaces/capture-session.tsx`, scoped to the intake
+screen's workflow. Its option carries the id, the phase label and the page count, and it keeps the
+LOADED session as an extra option when that session has left the active set — a capture that
+finalizes leaves `listActive` at the moment the operator wants to read it ·
 **Owning doc:** ref data-intake-and-edit-data §5.1
 
 **Symptom.** The demo's multi-session picker (`Select`, one option per open session with its phase
@@ -34,18 +38,25 @@ sessions-by-actor; a small, separate producer from the single-session read below
 
 ## The single-session READ exists on the server and is never called
 
-**Recorded:** 2026-08-21 · **Status:** OPEN — the true gap is the FRONTEND, not the backend
-(corrects the ledger's "no operator-scoped session read — UNBOOKED": `GET
-/api/v1/capture/sessions/:sessionId` → `deps.capture.readSession` is real,
-`src/server/dashboard/routes/api.ts:264-265`; `src/dashboard/client/queries.ts` has no client
-function that calls it, and `capture-start.tsx` never references a session read) ·
+**Recorded:** 2026-08-21 · **Status:** CLOSED 2026-08-26 (D274 item 7). The gap was the FRONTEND,
+not the backend, and both halves have now landed ·
 **Owning doc:** ref data-intake-and-edit-data §5.1
 
-**Producer upgraded 2026-08-26 (D274 item 7):** the same route now serves the OPERATOR projection
-(`CaptureOperatorSessionWireSchema`, `src/domain/capture-operator.ts`) — the durable state plus a
-schema-pinned `phase` (CP7's vocabulary), the expiry, and one entry per page with its recorded size,
-media type, artifact id and image fact. The frontend half (the client query, the poll, the five
-components) still stands open.
+**Producer upgraded 2026-08-26 (D274 item 7):** `GET /api/v1/capture/sessions/:sessionId` serves the
+OPERATOR projection (`CaptureOperatorSessionWireSchema`, `src/domain/capture-operator.ts`) — the
+durable state plus a schema-pinned `phase` (CP7's vocabulary), the expiry, and one entry per page
+with its recorded size, media type, artifact id and image fact.
+
+**Consumer landed 2026-08-26 (D274 item 7, unit F13):** `client.captureSession()` →
+`useCaptureSession` (a poll, because a capture session is not a run and no SSE envelope moves when a
+page lands; it stops at a terminal phase and keeps saying so when a read fails) →
+`surfaces/capture-session.tsx`, mounted beside `CaptureStart` in the intake workspace. All seven
+rows are drawn: the state `Well` (CP6), the phase `Badge` over the eight-arm vocabulary (CP7), the
+session `MetaLine` minus every unserved fact (CP8), the unreadable and unavailable banners as TWO
+regions (CP9), the `What was recorded` list (CP10), the count (CP11), the contact sheet (CP12–CP15),
+the two-arm empty sheet (CP16), the divider TRACK (CP17), the capped scrolling `Well` (CP18) and the
+waiting-for-phone state (CP21). CP3/CP4's ⓘ is built with copy about THIS tree rather than the
+demo's fixture, and CP5's no-session `EmptyState` is the panel's absent arm.
 
 **Symptom.** The demo renders the session's state Well, its phase Badge, its MetaLine, its
 pages-received count, its contact sheet and its no-page empty state — none of which exist on the
@@ -121,3 +132,29 @@ already exists and is unused by any client.
 **What closes it:** wiring the phone bundle's photo-review step to call the existing PUT route on
 retake, and — for the operator's own Banner (bundled with the "unreadable" group above once that
 lands) — a way to ask the phone to retake a specific page.
+
+---
+
+## The intake column gives its whole height to the dropzone, so a LIVE capture opens below the fold
+
+**Recorded:** 2026-08-26 (unit F13) · **Status:** OPEN — a layout proportion, not a missing fact ·
+**Owning doc:** ref data-intake-and-edit-data §5.1
+
+**Symptom.** `surfaces/intake.tsx`'s empty/refused arm gives the `Dropzone` `flex-1` under a comment
+that reads *"the zone GROWS to fill the surface. It is the only act available on this screen"*. That
+sentence stopped being true when the capture panel landed beside it. Measured at 1440x900 with the
+fixture's three-page session: the panel's top is at y=620 and its bottom at y=1080, so roughly half
+of a live capture — including the second failure banner — sits under the fold. It is REACHABLE (the
+intake body is a real scroller, 969/727), so this is not a hidden fact; it is an operator watching a
+phone fill up having to scroll past an empty 430px drop target to see it.
+
+**Why it was not fixed in F13.** Whether the dropzone or the live capture owns the column's height
+is a genuine trade-off with an operator-visible cost on both sides — a small dropzone is a worse
+drop target — and D274 item 7 ruled the PANEL in, not the intake column's proportions. Deciding it
+inside a one-seam unit would be exactly the kind of unilateral call the ratification rule exists to
+stop.
+
+**What closes it.** A ruling on the intake column: either the dropzone yields its `flex-1` while a
+capture session is open (the panel would have to tell it, which is a prop), or the capture panel
+moves above the dropzone, or the column stays as it is and the decision is recorded as one. The
+stale comment at `intake.tsx`'s Dropzone should be corrected in the same change either way.
