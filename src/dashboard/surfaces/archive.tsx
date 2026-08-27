@@ -2710,6 +2710,68 @@ function RelaunchConfirmDialog({
 
 /* ── the version-bump flow ───────────────────────────────────────────────── */
 
+/**
+ * What the operator pressed Apply ON, captured at DISPATCH (VB43).
+ *
+ * The plan leaves `plans` the moment it applies and the index is re-read, so
+ * reading the count back afterwards would report a plan that no longer exists.
+ * The KIND is captured for the same reason and decides one thing: whether
+ * there is an archive to open at all.
+ */
+interface AppliedBump {
+  readonly archived: number;
+  /** `undefined` is a generation-1 plan, which recorded no kind */
+  readonly kind: VersionBumpChangeRecord["kind"] | undefined;
+}
+
+/**
+ * The bump APPLIED (VB43/VB44, AR241).
+ *
+ * Apply used to settle in silence: the index re-read, the plan vanished, and
+ * nothing on screen said the act had happened or where its runs had gone. The
+ * demo's banner says both, and its `Open the archive` is the door — offered
+ * only where there is something behind it, because a minor bump archives
+ * nothing (D274 item 2) and a door onto no new rows is worse than no door.
+ */
+export function BumpAppliedBanner({
+  result,
+  applied,
+  onOpenArchive,
+}: {
+  result: CommandResult;
+  applied: AppliedBump;
+  onOpenArchive: () => void;
+}) {
+  const archives = applied.kind !== "minor";
+  return (
+    <Banner
+      tone="success"
+      icon={<BadgeCheck aria-hidden className={dsIcon.lg} />}
+      title={result.state === "already-applied"
+        ? "That bump had already been applied"
+        : "The bump was applied"}
+      action={archives
+        ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<ArchiveIcon aria-hidden className={dsIcon.md} />}
+            onClick={onOpenArchive}
+          >
+            Open the archive
+          </Button>
+        )
+        : undefined}
+    >
+      <span className={dsText.body}>
+        {archives
+          ? `${plural(applied.archived, "run")} left the live surfaces for the read-only archive, grouped under the sweep this bump minted. The registry below is re-read; nothing else moved.`
+          : "A minor bump records the new version and archives nothing, so every run is exactly where it was. The registry below is re-read."}
+      </span>
+    </Banner>
+  );
+}
+
 function BumpRefusal({ result, plan }: { result: CommandResult; plan: VersionBumpPlanWire | undefined }) {
   // The hook must run before any early return; a refusal that appeared with no
   // transition after a click would read as a page change rather than as the
@@ -2862,12 +2924,15 @@ function VersionsView({
   actorId,
   busy,
   onCommand,
+  onOpenArchive,
   result,
 }: {
   wire: ArchiveIndexWire;
   actorId: string;
   busy: boolean;
   onCommand: (request: unknown) => void;
+  /** the applied banner's door back to the runs view (VB44/AR241) */
+  onOpenArchive: () => void;
   result: CommandResult | undefined;
 }) {
   const openPlan = wire.plans.find((plan) => plan.state === "planned");
@@ -2887,10 +2952,17 @@ function VersionsView({
    * left to whoever reads the archive six months later, who cannot answer it.
    */
   const [authoring, setAuthoring] = useState<BumpAuthoring | undefined>(undefined);
+  /*
+    VB43 — captured at DISPATCH, never re-read: applying removes the plan from
+    the index, so after the re-read there is nothing left to count.
+  */
+  const [applied, setApplied] = useState<AppliedBump | undefined>(undefined);
 
   const submitPlan = useCallback(
     (authored: BumpAuthoring, changeRecord: VersionBumpChangeRecord) => {
       setAuthoring(undefined);
+      // a settled banner about the PREVIOUS bump may not stand over a new one
+      setApplied(undefined);
       onCommand({
         commandId: crypto.randomUUID(),
         requestedAt: systemClock.now().toISOString(),
@@ -2933,6 +3005,10 @@ function VersionsView({
 
   const apply = useCallback(() => {
     if (openPlan === undefined) return;
+    setApplied({
+      archived: openPlan.candidates.length,
+      kind: openPlan.changeRecord.state === "present" ? openPlan.changeRecord.value.kind : undefined,
+    });
     onCommand({
       commandId: crypto.randomUUID(),
       requestedAt: systemClock.now().toISOString(),
@@ -3122,7 +3198,22 @@ function VersionsView({
               />
             )}
 
-            {result !== undefined && <BumpRefusal result={result} plan={openPlan} />}
+            {/*
+              VB43 — apply settled in SILENCE before this: the index re-read,
+              the plan vanished, and nothing said the act had happened. Both
+              arms of the one fold are drawn now (D253, Track D row D3), and
+              the applied arm needs the dispatch record as well as the verdict:
+              without it the result belongs to some other command this surface
+              issued, and a success banner about a bump nobody pressed is worse
+              than no banner at all.
+            */}
+            {result !== undefined && (
+              settleCommandResult(result).kind === "applied"
+                ? applied !== undefined && (
+                  <BumpAppliedBanner result={result} applied={applied} onOpenArchive={onOpenArchive} />
+                )
+                : <BumpRefusal result={result} plan={openPlan} />
+            )}
 
             <div className="flex flex-col gap-[var(--ds-space-base)]">
               <SectionLabel>Applied bumps</SectionLabel>
@@ -3358,7 +3449,16 @@ export function ArchiveWorkspace({
       );
     }
     if (view === "versions") {
-      return <VersionsView wire={index.value} actorId={actorId} busy={busy} onCommand={onCommand} result={result} />;
+      return (
+        <VersionsView
+          wire={index.value}
+          actorId={actorId}
+          busy={busy}
+          onCommand={onCommand}
+          onOpenArchive={() => onView("runs")}
+          result={result}
+        />
+      );
     }
     return (
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)] min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
