@@ -2,27 +2,32 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx
  *
- * The demo receipt's frame, verdict band and absence treatments, fed by what the wire serves — the
- * terminal outcome and the receipt section resource (a pointer, or an explicit
- * missing / purged / error state). 2g landed the full `RunEvidenceReceipt` body: it renders in
- * `trust.tsx`'s `ReceiptEvidenceBody` (input / observations / decisions / actions / verification /
- * output / reuse / warnings), which this surface mounts once the resource resolves to a real
- * receipt. This file owns the frame around it, not the body — the same false-deferral shape D251
- * found on the picker (ledger 2 D39).
+ * The receipt's FRAME — the verdict band, the banners, the absence treatments — fed by what the
+ * wire serves: the terminal outcome and the receipt section resource (a receipt, or an explicit
+ * missing / purged / error state). The BODY is `trust.tsx`'s `ReceiptEvidenceBody` (input /
+ * observations / decisions / actions / verification / output / reuse / warnings / fingerprints),
+ * which this surface mounts once the resource resolves to a real receipt and which the archive
+ * surface mounts too, so a live receipt and an archived one cannot describe one run two ways.
+ *
+ * This file's header used to call itself "the 1i Receipt PLACEHOLDER" and defer the body to 2g.
+ * 2g landed; the sentence did not (ledger 2 row D39 — the same false-deferral shape D251 found on
+ * the picker). Corrected 2026-08-26.
  *
  * The verdict word is read from `DS_STATUS`, never restated — a chip saying
  * `Done` beside a receipt saying `Verified done` was two names for one
  * verdict. `partial` keeps its own word: it is the one verdict with no status
- * of its own.
+ * of its own. What DOES sit beside the word is the confidence that qualifies
+ * it (ledger 2 row D8) and the one identity line (row D9); both are folded in
+ * `receipt-model.ts`.
  */
 import { ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import { Banner, DS_STATUS, EmptyState, MetaLine, SectionLabel, dsIcon, dsText } from "../ds/ui.js";
+import { Banner, Chip, DS_STATUS, EmptyState, MetaLine, SectionLabel, dsIcon, dsText } from "../ds/ui.js";
 import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
-import { fmtClock } from "./format.js";
+import { receiptConfidenceChip, receiptIdentityItems } from "./receipt-model.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import type { OutcomeWire, TerminalOutcomeResult } from "./status-model.js";
 
@@ -61,16 +66,28 @@ export function ReceiptView({
   resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
 }) {
   const testSystems = testInstanceSystems(resolvedInstances);
+  const value = receipt.state === "available" ? receipt.value : undefined;
+  // The receipt's ONE identity line (row D9). It rides the band when there is
+  // a band; when the run has not terminalized there is no band to ride, so it
+  // is drawn under the absence instead — the facts are never dropped, they
+  // only ever have one home at a time.
+  const identityItems = receiptIdentityItems({
+    receipt: value,
+    completedAt: outcome.state === "terminal" ? outcome.completedAt : undefined,
+  });
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-loose)] p-[var(--ds-space-cozy)]">
       {outcome.state === "terminal" ? (
-        <VerdictBand result={outcome.result} completedAt={outcome.completedAt} />
+        <VerdictBand result={outcome.result} confidence={value?.confidence} identityItems={identityItems} />
       ) : (
-        <EmptyState
-          title="No receipt yet"
-          description={`${outcome.reason}. A receipt is written at the run's terminal outcome.`}
-        />
+        <>
+          <EmptyState
+            title="No receipt yet"
+            description={`${outcome.reason}. A receipt is written at the run's terminal outcome.`}
+          />
+          <MetaLine items={identityItems} />
+        </>
       )}
 
       {testSystems.length > 0 && (
@@ -80,21 +97,13 @@ export function ReceiptView({
         </Banner>
       )}
 
-      {receipt.state === "available" && (
+      {value !== undefined && (
         <ReceiptSection label="Receipt">
-          {/* The receipt's own `failure` id: a failed run's receipt names the
-              failure record beside it rather than leaving the operator to
-              find it. It is served (`RunEvidenceReceiptSchema.failure`) and
-              was drawn nowhere; the demo has no counterpart because the
-              demo's receipts never fail. */}
-          <MetaLine
-            items={[
-              `receipt ${receipt.value.receiptId}`,
-              `run ${receipt.value.runId}`,
-              receipt.value.failure.state === "present" && `failure ${receipt.value.failure.value}`,
-            ]}
-          />
-          <ReceiptEvidenceBody receipt={receipt.value} />
+          {/* `bandCarriesIdentity` — the band above already prints this
+              receipt's id, instant, attempt, retry-of and confidence, so the
+              body must not print them a second time. The archive mounts the
+              same body with no band and keeps its full trailing line. */}
+          <ReceiptEvidenceBody receipt={value} bandCarriesIdentity />
         </ReceiptSection>
       )}
       {receipt.state === "missing" && <EmptyState title="No receipt" description={receipt.reason} />}
@@ -108,9 +117,18 @@ export function ReceiptView({
   );
 }
 
-/** the verdict, and the instant that qualifies it */
-function VerdictBand({ result, completedAt }: { result: TerminalOutcomeResult; completedAt: string }) {
+/** the verdict, the confidence that qualifies it, and the receipt's identity line */
+function VerdictBand({
+  result,
+  confidence,
+  identityItems,
+}: {
+  result: TerminalOutcomeResult;
+  confidence?: "verified" | "partial" | "unknown";
+  identityItems: readonly string[];
+}) {
   const verdict = RESULT_COPY[result];
+  const confidenceChip = confidence === undefined ? undefined : receiptConfidenceChip(confidence);
   return (
     <div
       className={cn(
@@ -138,8 +156,16 @@ function VerdictBand({ result, completedAt }: { result: TerminalOutcomeResult; c
           )}
         />
         <span className={cn(dsText.section, "font-semibold text-[color:var(--ds-fg)]")}>{verdict.word}</span>
+        {/* Row D8: a verdict is qualified WHERE it is said. The chip carries
+            the served word AND the sentence that says what the word means —
+            `verified` alone never told the operator that "read back from the
+            system of record" is what earned it. It is absent, not guessed,
+            when no receipt was served. */}
+        {confidenceChip !== undefined && (
+          <Chip label="confidence" tone={confidenceChip.tone}>{confidenceChip.text}</Chip>
+        )}
       </div>
-      <MetaLine items={[`completed ${fmtClock(completedAt)}`]} />
+      <MetaLine items={[...identityItems]} />
     </div>
   );
 }

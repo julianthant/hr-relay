@@ -456,7 +456,26 @@ function InputHashFooter({ inputHash }: { inputHash: string }) {
   );
 }
 
-export function ReceiptEvidenceBody({ receipt }: { receipt: RunEvidenceReceiptWire }) {
+export function ReceiptEvidenceBody({
+  receipt,
+  bandCarriesIdentity = false,
+}: {
+  receipt: RunEvidenceReceiptWire;
+  /**
+   * The Receipt TAB draws a verdict band above this body, and that band now
+   * carries the receipt's one identity line and its confidence chip (03a
+   * fidelity ledger 2 rows D8/D9). Setting this drops those facts from the
+   * trailing line so they are said once, not twice.
+   *
+   * It never drops `result`: the band's verdict word is read from the RUN's
+   * terminal outcome, and this is the RECEIPT's own recorded verdict. They are
+   * two facts from two records that happen to agree, so the receipt keeps
+   * printing its own.
+   *
+   * The archive mounts this same body with no band and leaves this false.
+   */
+  bandCarriesIdentity?: boolean;
+}) {
   const inputHash = inputHashFooter(receipt.input);
   return (
     <div className="flex flex-col gap-[var(--ds-space-loose)]">
@@ -540,11 +559,11 @@ export function ReceiptEvidenceBody({ receipt }: { receipt: RunEvidenceReceiptWi
 
       <MetaLine
         items={[
-          `confidence ${receipt.confidence}`,
+          !bandCarriesIdentity && `confidence ${receipt.confidence}`,
           `result ${receipt.result}`,
-          `attempt ${String(receipt.attempt)}`,
-          receipt.retryOf.state === "present" && `retry of ${receipt.retryOf.value}`,
-          `generated ${fmtClock(receipt.generatedAt)}`,
+          !bandCarriesIdentity && `attempt ${String(receipt.attempt)}`,
+          !bandCarriesIdentity && receipt.retryOf.state === "present" && `retry of ${receipt.retryOf.value}`,
+          !bandCarriesIdentity && `generated ${fmtClock(receipt.generatedAt)}`,
         ]}
       />
 
