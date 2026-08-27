@@ -23,7 +23,7 @@
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import {
   CaptureOperatorSessionListWireSchema,
   CaptureOperatorSessionWireSchema,
@@ -64,6 +64,37 @@ const ACTIVE: CaptureOperatorSessionListWire = CaptureOperatorSessionListWireSch
 
 const EMPTY_LIST: CaptureOperatorSessionListWire =
   CaptureOperatorSessionListWireSchema.parse({ wireVersion: 1, sessions: [] });
+
+const SESSION_ID_2 = "22222222-3333-4444-8555-666666666666";
+
+/** Two active sessions, so the picker has something to lose. */
+const TWO_ACTIVE: CaptureOperatorSessionListWire = CaptureOperatorSessionListWireSchema.parse({
+  wireVersion: 1,
+  sessions: [
+    {
+      sessionId: SESSION_ID,
+      workflow: WORKFLOW,
+      state: "open",
+      phase: "receiving",
+      pageCount: 3,
+      createdAt: NOW,
+      connectedAt: NOW,
+      expiresAt: LATER,
+      version: 4,
+    },
+    {
+      sessionId: SESSION_ID_2,
+      workflow: WORKFLOW,
+      state: "open",
+      phase: "awaiting-pages",
+      pageCount: 0,
+      createdAt: NOW,
+      connectedAt: NOW,
+      expiresAt: LATER,
+      version: 1,
+    },
+  ],
+});
 
 /** One readable page, one the bundler refused, one the store could not read back. */
 const MIXED: CaptureOperatorSessionWire = CaptureOperatorSessionWireSchema.parse({
@@ -234,6 +265,66 @@ describe("the loaded session", () => {
     assert.equal(info === null, false);
     await act(async () => { (info as HTMLButtonElement).click(); });
     assert.match(mounted().textContent ?? "", /never the bytes themselves/);
+  });
+
+  it("wires the ⓘ's aria-controls to the disclosed Well it opens", async () => {
+    await mount(stubs);
+    const info = mounted().querySelector("button[aria-expanded]");
+    const controls = info?.getAttribute("aria-controls");
+    assert.equal(typeof controls === "string" && controls.length > 0, true);
+    await act(async () => { (info as HTMLButtonElement).click(); });
+    const panel = document.getElementById(controls as string);
+    assert.equal(panel === null, false);
+    assert.match(panel?.textContent ?? "", /never the bytes themselves/);
+  });
+
+  it("gives a flagged tile a hover tint, not just a click handler", async () => {
+    await mount(stubs);
+    const tiles = [...mounted().querySelectorAll("ul[aria-label='Pages received'] > li > button")];
+    const unreadable = tiles[1];
+    const unavailable = tiles[2];
+    assert.equal(unreadable?.className.includes("hover:brightness-125"), true);
+    assert.equal(unavailable?.className.includes("hover:brightness-125"), true);
+  });
+});
+
+describe("a failed list poll while a session is latched", () => {
+  it("keeps the prior picker options and surfaces an inline failure note, never folding to []", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      const text = await mount({
+        activeCaptureSessions: () => {
+          calls += 1;
+          return calls === 1
+            ? Promise.resolve(TWO_ACTIVE)
+            : Promise.reject(refusal("the capture service could not be reached"));
+        },
+        captureSession: () => Promise.resolve(MIXED),
+      });
+
+      // Before the second poll: two sessions, so the picker is offered.
+      assert.equal(mounted().querySelectorAll("select option").length, 2);
+      assert.equal(text.includes("Receiving pages"), true);
+
+      // Advance past the list's poll interval — the SECOND call rejects.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+
+      const after = mounted().textContent ?? "";
+      // The negative control: a failed poll must NEVER collapse the picker to
+      // nothing, and the panel must NEVER read as "no capture session is open"
+      // while one is latched.
+      assert.equal(mounted().querySelectorAll("select option").length, 2);
+      assert.equal(after.includes("No capture session is open"), false);
+      // An inline failure note is on screen, naming the server's own words.
+      assert.match(after, /could not be reached/);
+      // The latched session's own contact sheet is still drawn underneath it.
+      assert.equal(after.includes("Receiving pages"), true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

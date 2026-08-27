@@ -30,9 +30,13 @@
  * the wire keeps them separate: one is a page to photograph again, the other is
  * a storage fault that retaking cannot clear.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { Camera, FileText, Info } from "lucide-react";
-import type { CaptureOperatorPageWire, CaptureOperatorSessionWire } from "../../domain/capture-operator.js";
+import type {
+  CaptureOperatorPageWire,
+  CaptureOperatorSessionSummaryWire,
+  CaptureOperatorSessionWire,
+} from "../../domain/capture-operator.js";
 import {
   Badge,
   Banner,
@@ -106,9 +110,9 @@ function PageTile({
         dsMotion.fast,
         "active:translate-y-px",
         facts.flag === "unreadable"
-          && "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)]",
+          && "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] hover:brightness-125",
         facts.flag === "unavailable"
-          && "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
+          && "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)] hover:brightness-125",
         facts.flag === "none"
           && "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] hover:bg-[var(--ds-surface-3)]",
         // SELECTION NEVER TAKES A FLAG'S EDGE (CP15). Which page you are reading
@@ -316,11 +320,30 @@ export function CaptureSessionPanel({ workflowId }: { workflowId: string }) {
   const [selected, setSelected] = useState<string | undefined>(undefined);
   const [picked, setPicked] = useState<PickedPage | undefined>(undefined);
   const enter = useDsEnterTransition();
+  const ruleId = useId();
+  const rulePanelId = `${ruleId}-rule-panel`;
 
   const list = useActiveCaptureSessions();
+
+  // A failed poll may NEVER fold the picker to `[]`. The only way this read
+  // legitimately says "nothing is open" is a LOADED empty array — a failed
+  // tick knows nothing new, so the last successfully-read set of active
+  // sessions is kept for the picker across it, and the failure is surfaced
+  // beside the picker rather than swallowed into a silently shrinking
+  // `<select>` (a freshly-minted capture on another tab would otherwise
+  // never appear, with no error anywhere on screen).
+  const [lastGoodActive, setLastGoodActive] = useState<readonly CaptureOperatorSessionSummaryWire[]>([]);
+  useEffect(() => {
+    if (list.state === "loaded") {
+      setLastGoodActive(list.value.sessions.filter((summary) => summary.workflow === workflowId));
+    }
+  }, [list, workflowId]);
+
   const active = list.state === "loaded"
     ? list.value.sessions.filter((summary) => summary.workflow === workflowId)
-    : [];
+    : list.state === "failed"
+      ? lastGoodActive
+      : [];
 
   // The effective id is DERIVED so the first render already reads the right
   // session — an effect alone would paint "no capture session is open" for a
@@ -388,6 +411,7 @@ export function CaptureSessionPanel({ workflowId }: { workflowId: string }) {
           size="xs"
           label={CAPTURE_RULE_LABEL}
           aria-expanded={ruleOpen}
+          aria-controls={rulePanelId}
           onClick={() => setRuleOpen((open) => !open)}
           icon={<Info aria-hidden className={dsIcon.sm} />}
         />
@@ -416,9 +440,21 @@ export function CaptureSessionPanel({ workflowId }: { workflowId: string }) {
         )}
       </div>
 
+      {/* A failed poll while a session is latched is a DEGRADED read, not an
+          empty one — the picker above kept its prior options rather than
+          folding to `[]`, and this note is what tells the operator the list
+          itself is stale rather than letting it look silently authoritative. */}
+      {effective !== undefined && list.state === "failed" && (
+        <Banner tone="warning" title="The list of open captures could not be refreshed">
+          {endSentence(list.error.message)} The sessions shown below are the ones last seen; a
+          freshly started capture may not appear here yet.
+        </Banner>
+      )}
+
       {ruleOpen && (
         <div
           {...enter}
+          id={rulePanelId}
           className={cn(
             dsMotion.enter,
             "data-[demo-enter=from]:translate-y-[var(--ds-travel-sm)] data-[demo-enter=from]:opacity-0",
