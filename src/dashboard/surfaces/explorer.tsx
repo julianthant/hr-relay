@@ -115,6 +115,8 @@ import { plural } from "./format.js";
 import {
   type DryRunPosture,
   conditionalEdgesFrom,
+  correctableMarkFor,
+  correctableMarks,
   dependsOnEdgeExists,
   dryRunBoundaryNodeId,
   dryRunPosture,
@@ -124,6 +126,7 @@ import {
   nodeBindings,
   nodeLabelBeside,
   taskSystemLabel,
+  unplaceableEditableFields,
   writeSystems,
 } from "./explorer-model.js";
 
@@ -805,7 +808,14 @@ function ContractFieldRow({
       <TD className="py-[var(--ds-space-hair)] pl-[var(--ds-space-base)]">
         <span className={cn(dsText.meta, dsText.nums, dsClip.text, "block text-[color:var(--ds-fg)]")}>
           {correctableAs !== undefined && (
+            /*
+              `role="img"` is load-bearing: HTML-AAM computes no accessible name
+              for a bare <svg>, so `aria-label` on one names nothing and the mark
+              this whole ruling is about would reach no screen reader (the
+              generic-element lesson, `src/dashboard/CLAUDE.md`).
+            */
             <Pencil
+              role="img"
               aria-label={`correctable at a checkpoint as ${correctableAs}`}
               className={cn(dsIcon.sm, "mr-[var(--ds-space-tight)] inline shrink-0 align-[-0.15em] text-[color:var(--ds-info-fg)]")}
             />
@@ -835,7 +845,7 @@ function ContractArmRows({
   correctable,
 }: {
   task: ExplorerTaskWire;
-  /** field path → the Edit Data label it is allowlisted under (D275 item 6). */
+  /** `side path` → the Edit Data label it is allowlisted under (D275 item 6). */
   correctable: ReadonlyMap<string, string>;
 }) {
   const system = taskSystemLabel(task);
@@ -847,7 +857,7 @@ function ContractArmRows({
           key={`${field.side}:${String(field.path)}`}
           field={field}
           system={system}
-          correctableAs={correctable.get(String(field.path))}
+          correctableAs={correctableMarkFor(correctable, field)}
         />
       ))}
     </>
@@ -1056,16 +1066,8 @@ export function NodeDetail({
   const reads = node.tasks.filter((task) => task.effect === "read");
   const writes = node.tasks.filter((task) => task.effect !== "read");
   const boundaryNodeId = dryRunBoundaryNodeId(workflow);
-  const correctable = new Map(node.editableFields.map((field) => [String(field.fieldPath), field.label]));
-  /**
-   * An allowlisted path with no contract row to sit on. It CANNOT be dropped:
-   * the whole point of moving the mark onto the field row (D275 item 6) is that
-   * the row is where the fact is read, and a path this node exports for Edit
-   * Data that no arm of it declares is a descriptor defect the surface must
-   * say out loud rather than render as "nothing is correctable here".
-   */
-  const contractPaths = new Set(node.tasks.flatMap((task) => task.fields.map((field) => String(field.path))));
-  const unplaceable = node.editableFields.filter((field) => !contractPaths.has(String(field.fieldPath)));
+  const correctable = correctableMarks(node);
+  const unplaceable = unplaceableEditableFields(node);
 
   return (
     <Panel className="min-h-0">
