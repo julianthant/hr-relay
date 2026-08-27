@@ -23,10 +23,11 @@ saw. The decisions live in `reference/decisions.md`.
 - [x] step 2 author — nineteen nodes, one ALWAYS-GATE, three fenced transactions, four stores (`src/workflows/separations/descriptor.ts`, `module.ts`; D211, D261)
 - [x] step 3 guards — `descriptor-coverage`, `write-safety-contract`, `identity-gate-before-commit`, `scenario-coverage`, `gate-coverage` all green over this descriptor; `config/pending-impl-bindings.json` is the empty set, so every contract it names is implemented
 - [x] step 4 live dry run — MET 2026-08-14 at the preview terminal (run `7565a88d` / `sp-105939-7565`, doc 4502, §9.17) and re-proved through the dashboard 2026-08-20 (run `e1b8ae3e` / `sp-081217-e1b8`, §9.22) and off one typed document number (run `1e0b7cc2` / `sp-105225-1e0b`, §9.24)
-- [ ] step 5 controlled commits — all three OPEN. The canary is doc 4537, named 2026-08-19 and mapped live (§9.19); S7 admits it on Pacific calendar day **2026-08-28**
+- [ ] step 5 controlled commits — all three OPEN. Doc 4537, named 2026-08-19 and mapped live (§9.19), S7-admits on Pacific calendar day **2026-08-28**. A second canary, doc 4568, was registered 2026-08-27 (D280, §9.29); its composed `dryRun=true` audit REFUSED at `timecard` (three attempts, `1622afcf`) — no commit ran, and the WFD range-field clear fix is handed to R3
 - [ ] step 6 rebuild-ready — blocked by step 5; the open exit criterion is the only one of nine
 - [ ] step 7 close-out — regression scenarios, knowledge records, capability dispositions, docs to as-built (Track A row A8)
 > 2026-08-20 | docs-cohesion 03b | verified against src/workflows/separations/**, src/stores/{kuali,ucpath,new-kronos,separations}/**, config/pending-impl-bindings.json and the §9.x record; left: the three commits and everything only they discharge
+> 2026-08-27 | R2a u28 close | doc 4568 registered `819ff38f`, doc 03b row `6a876627`, composed dry run refused at `timecard` `1622afcf`, this close `26ee2e1a` + this commit; no controlled commit ran; step 5 stays OPEN — all three; R3 carries the WFD range-field clear fix (§9.29 item 11)
 <!-- /roadmap-status -->
 
 ### What Phase 3b is, and why separations went first
@@ -66,7 +67,7 @@ calendar date; 6 and 7 follow it.
 | 2 · **author the workflow** | **MET** | `src/workflows/separations/descriptor.ts` (1,098 lines), `module.ts` — four stores, nineteen nodes, three transaction nodes, one ALWAYS-GATE |
 | 3 · **guards green** | **MET** | the full gate is green at HEAD; `descriptor-coverage` regenerates the build manifest, `write-safety-contract` pairs every commit, `identity-gate-before-commit` walks both sinks, `scenario-coverage` audits the 21 declared scenario ids |
 | 4 · **live dry run** | **MET**, three times over | §9.17 (the preview terminal), §9.22 (driven from the real dashboard), §9.24 (from one typed document number) — zero durable write rows proved from authority on every one |
-| 5 · **controlled commit** | **OPEN — all three** | canary doc 4537 named 2026-08-19 and mapped live (§9.19); ② the UCPath filing unblocks **2026-08-28**, then ① the sweep on the row ② creates, then ③ the Kuali finalization |
+| 5 · **controlled commit** | **OPEN — all three** | canary doc 4537 named 2026-08-19 and mapped live (§9.19); ② the UCPath filing unblocks **2026-08-28**, then ① the sweep on the row ② creates, then ③ the Kuali finalization. Second canary doc 4568 (D280) dry run 2026-08-27 refused at `timecard` (§9.29 item 5, `1622afcf`); no commit ran; 4537 keeps 08-28 |
 | 6 · **rebuild-ready** | blocked by 5 | doc 03c's rule: an open criterion blocks rebuild-ready status; a dry-run success is never converted into a write-safety claim |
 | 7 · **close-out** | blocked by 5–6 | Track A row A8 |
 
@@ -268,7 +269,10 @@ which makes it the first **voluntary**-template canary. Its purpose is D280's or
 `dryRun=true` audit first, then ②→①→③ on the operator's say-so. It does not displace 4537, whose
 `08/28/2026` last day worked keeps it the 2026-08-28 subject; the two are a pair, and the label
 `separations-controlled-commit-candidate` stays with the **gone** doc 4524 so its history is not
-overwritten.
+overwritten. **The audit ran the same day (u24, §9.29 item 5) and REFUSED at `timecard`** — the
+`setRangeField` clear never reads `""` back on the period-start field, three attempts, 0/0/0 write
+rows, no preview terminal (`1622afcf`). No controlled commit ran on either canary 2026-08-27; the
+range-field fix is handed to R3 as a driver unit (§9.29 item 11).
 
 A live inventory belongs in an as-built with a date on it, never in a plan sentence: **two named
 canaries have already evaporated between passes** (docs 4510 and 4524). An evaporated subject KEEPS
@@ -559,7 +563,7 @@ with the controlled commits.
 
 <!-- roadmap-status: track-a -->
 - [x] A1 the §4f2 canary is NAMED — Kuali doc 4537 (operator, 2026-08-19) — and mapped live the same day: one Active terminable employment, a resolvable termination type, all four owning sections `edit`, all twelve staged controls exactly one editable node (§9.19)
-- [ ] A2–A4 the three controlled commits, in the order the facts force: ② UCPath filing → ① pending sweep on the row ② creates → ③ Kuali finalization. Blocked on a DATE: S7 admits 4537 on Pacific calendar day **2026-08-28**
+- [ ] A2–A4 the three controlled commits, in the order the facts force: ② UCPath filing → ① pending sweep on the row ② creates → ③ Kuali finalization. **Not met.** 4537 blocked on a DATE: S7 admits it on Pacific calendar day **2026-08-28**. 4568 (D280) attempted its composed dry-run audit 2026-08-27 and REFUSED at `timecard` before reaching any commit — no commit ran (§9.29 item 11)
 - [ ] A5 the obligations only the commits discharge — `probeToFenceMaxMs` per beat, D207's 30 s window on this write's own evidence, the seven Kuali payload shapes, the `would-prepare` preview arm live
 - [x] A6 the first live RETRY on the composed graph — six retries through the real command endpoint across two logical items, every one minting the item's next unspent attempt, no collision, one reaching terminal `done` (§9.20)
 - [x] A7 the browser-profile wedge ROOT-CAUSED and fixed — Duo's WebAuthn counter is per CREDENTIAL and Duo Autopilot's copy is per BROWSER PROFILE (D243/D244)
@@ -820,7 +824,7 @@ at **8 of 9**, and the ninth is open on a calendar date.
 | 2 | **`typecheck` + `lint` + `test:coverage` green (D191); `descriptor-coverage`; every commit contract passes `write-safety-contract` and transaction pairing** | **MET** | green at HEAD; the build manifest regenerates clean |
 | 3 | **Every input/output/result/command/detail/evidence parses strict; every UI id, scenario id and subject observation resolves; no raw `Page`/`Locator`/selector outside the system driver** | **MET** | `strict-boundary-schemas`, `semantic-ui-registry`, `scenario-coverage`, `task-driver-boundary` |
 | 4 | **Live dry-run green against Kuali, UCPath and New Kronos — submit-free, zero durable write rows ASSERTED** | **MET** 2026-08-14, re-proved twice since | run `7565a88d` / `sp-105939-7565` to the preview terminal (§9.17); run `e1b8ae3e` / `sp-081217-e1b8` driven from the real dashboard (§9.22); run `1e0b7cc2` / `sp-105225-1e0b` from one typed number (§9.24). Zero write rows proved from authority every time |
-| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **OPEN — all three** | the canary is doc 4537, named 2026-08-19 and mapped live (§9.19). **② unblocks on Pacific calendar day 2026-08-28** (S7 passes on equality), then ① on the row ② creates, then ③ once a real `transactionNumber` exists. Unavailable safe evidence BLOCKS rebuild-ready; a dry-run success is never converted into a write-safety claim |
+| 5 | **Controlled-commit evidence for every commit/probe/verify on an operator-approved target** | **OPEN — all three** | the canary is doc 4537, named 2026-08-19 and mapped live (§9.19). **② unblocks on Pacific calendar day 2026-08-28** (S7 passes on equality), then ① on the row ② creates, then ③ once a real `transactionNumber` exists. 4568 (D280) dry run 2026-08-27 refused at `timecard` (§9.29 item 5, `1622afcf`); no commit ran; 4537 keeps 08-28. Unavailable safe evidence BLOCKS rebuild-ready; a dry-run success is never converted into a write-safety claim |
 | 6 | **`identity-gate-before-commit` green — every commit and the terminal result graph-reachable only through the gate** | **MET** | the guard walks both sinks (`tests/unit/architecture/identity-gate-before-commit.test.ts`), and §14.5's digest binding is proved LIVE: the stored gate result's `evidenceDigest` is byte-identical to the `comparison` checkpoint's (§9.14) |
 | 7 | **D58 capability dispositions updated for every legacy capability this workflow touches; legacy source and tests preserved** | **MET** 2026-08-14, and its one finding since CLOSED | three entries touched, none stale under D188's arm, no legacy path deleted (§9.17 item 6). The flagged item — D192's condition on `legacy-tool-ops-sanity-check-record` — was closed by the operator on 2026-08-18 and the entry is `retired` |
 | 8 | **Regression scenario + knowledge record for anything the live lane finds; owning docs and the nearest `CLAUDE.md` updated** | **MET** | D212/D213 (`d00b66c`, `1d019ee`), D214/D215, the `already-present` receipt arm (`b73b546`), the span-wire fork (`e1ba81b`), D221 (`tests/unit/retry-item-attempt.test.ts`, live-proved §9.20) and the browser-profile wedge (D243/D244, `tests/unit/duo-sign-count.test.ts`, both arms verified RED pre-fix) |

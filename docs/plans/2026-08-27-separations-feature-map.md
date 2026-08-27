@@ -193,6 +193,7 @@ _Note: the "S" numbers are legacy-behavior finding IDs (`docs/migrations/separat
 | `separations-dry-run-subject` | 4502 | past-dated full-chain practice subject | available (2026-08-20) |
 | `separations-future-dated` | 4495 | S7 refusal path; past-dated on 2026-09-02 → R4 | available (2026-08-19) |
 | `finalization-canary` | **4537** | controlled-commit candidate; LDW 08/28/2026 → R2 | unknown (2026-08-19) |
+| `separations-controlled-commit-canary` | **4568** | second controlled-commit canary (D280); composed dry run refused at `timecard` 2026-08-27, `1622afcf` — no commit ran | available (2026-08-27) |
 | `separations-controlled-commit-candidate` | 4524 | earlier candidate | gone (2026-08-14) |
 | `finalization-already-finalized` / `finalization-no-active-job` | 4510 | finalization edge cases | gone |
 | `finalization-subject-mismatch` | — | subject mismatch | unknown |
