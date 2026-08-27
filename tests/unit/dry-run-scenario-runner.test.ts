@@ -374,6 +374,8 @@ describe("dry-run scenario execution", () => {
         assert.ok(error instanceof Error);
         assert.doesNotMatch(error.message, new RegExp(secret));
         assert.match(error.message, /failed result 11111111/);
+        assert.ok(error.cause instanceof Error);
+        assert.match(error.cause.message, new RegExp(`failed for ${secret}`));
         return true;
       },
     );
@@ -383,6 +385,34 @@ describe("dry-run scenario execution", () => {
       reason: "execution-error",
     }]);
     assert.doesNotMatch(JSON.stringify(records), new RegExp(secret));
+  });
+
+  it("surfaces the underlying cause when a scenario fails before run identity is known", async () => {
+    await assert.rejects(
+      runDryRunScenario({
+        args: { workflow: "fixture-workflow", subjectLabel: "fixture-canary" },
+        loadManifest: () => Promise.resolve(MANIFEST),
+        resolveTarget: () => ({ state: "ready", label: "fixture-canary", canonicalInput: {} }),
+        persistResult: () => {
+          throw new Error("persistResult must not be called before run identity is known");
+        },
+        createRuntime: () => ({
+          start: () => Promise.reject(new Error("runtime could not start")),
+          drain: () => Promise.reject(new Error("not reached")),
+          resolveGate: () => Promise.resolve(),
+          collectEvidence: () => Promise.reject(new Error("not reached")),
+        }),
+        clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+        ids: { uuid: () => "11111111-1111-4111-8111-111111111111" },
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /before run identity was known/);
+        assert.ok(error.cause instanceof Error);
+        assert.match(error.cause.message, /runtime could not start/);
+        return true;
+      },
+    );
   });
 });
 
