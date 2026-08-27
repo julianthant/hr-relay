@@ -118,7 +118,7 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A62 | `ShortcutsPopover` stays exported and unmounted, whole, for Settings → Help | `DemoTopBarSurfaces.tsx:121-154` | `top-bar.tsx:912-941` | exact | — |
 | A63 | Gear — `aria-pressed` + `surface-3` fill when its surface owns the screen, LAST in the cluster | `DemoShell.tsx:620-627` | `settings.tsx:313-336` | exact | — |
 | A64 | Gear attention dot for storage health | — | `settings.tsx:328-333` | extra | `ruled: D169 / D222` + ref dashboard-surfaces §9.8 (the at-rest summary rides the bootstrap; the dot is `storageNeedsAttention`) |
-| A65 | **What the gear OPENS** — the demo's gear switches to a full-page `settings` takeover with its own `PageHeader` and Back | `DemoShell.tsx:623` + `RebuildDemo.tsx:656-657` | `settings.tsx:313,337` (a `Dialog size="lg"`) | divergent | **OPEN — operator call** (ref dashboard-surfaces §9.8 says only "the gear in the top bar, opening the sections the SERVER lists"; takeover-vs-dialog is undecided in writing) |
+| A65 | **What the gear OPENS** — the demo's gear switches to a full-page `settings` takeover with its own `PageHeader` and Back | `DemoShell.tsx:623` + `RebuildDemo.tsx:656-657` | `settings.tsx:313,337` (a `Dialog size="lg"`) | divergent | ~~**OPEN — operator call** (ref dashboard-surfaces §9.8 says only "the gear in the top bar, opening the sections the SERVER lists"; takeover-vs-dialog is undecided in writing)~~ **Superseded 2026-08-27 (run UI-1) — stale vs `D272 item 1`.** `dashboard-surfaces.md` §10: *"Settings is the demo full-page takeover; B dialog and C deferral reject known navigation drift."* No longer undecided in writing. Geometry lands in `ab67408f` (audit row UF-SET-1). |
 | A66 | Cluster ORDER — doctor · bell · theme · flask · gear | `DemoShell.tsx:589-628` | `top-bar.tsx:1101-1138` (doctor · bell · theme · gear) | divergent | follows A39 (unserved) and A60 (operator call) — no separate cause |
 
 ### A.5 The Workflow Panel — launcher, list, three modes
@@ -252,9 +252,10 @@ Rebuild: `src/dashboard/surfaces/{top-bar,top-bar-model,day-search,day-search-mo
 | A176 | Panel REGION — `relative min-h-0 flex-1` wrapper (the floating window's positioning context) with the grid inside it | `RebuildDemo.tsx:747-748` | `dashboard-app.tsx:1220-1221` | exact | — |
 | A177 | Panel grid — `grid-cols-1`, `gap`/`p` at `--ds-shell-inset`, `min-[1180px]:grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)]` | `RebuildDemo.tsx:748` | `dashboard-app.tsx:1221` | exact | — |
 | A178 | Session panel mounted below the shell body, under EVERY view | `RebuildDemo.tsx` shell tail | `dashboard-app.tsx:1351-1359` | exact | — |
+| A179 | Switcher segment state while a NON-switcher takeover (Settings, intake, catalog) is open — the demo's switcher claims nothing (`Dashboard` `pressed=false`) while the gear alone shows `pressed=true` | `DemoShell.tsx:560-580` + `RebuildDemo.tsx:656-657` | `top-bar.tsx:925` (consumer) via `app/dashboard-app.tsx:1261-1262` (`shellView` fallback) | exact | **New row 2026-08-27 (run UI-1) — no prior A-row covered this.** Found by the audit as UF-SET-2 (`fix-now`, `docs/plans/2026-08-27-ui-fidelity-audit.md`): `shellView` silently fell back to `"queue"` for every non-switcher takeover, so `Dashboard` and the gear both read `aria-pressed=true` at once — two simultaneous "you are here" claims, the fail-loud-substitution shape (Note 3 of the audit's Notes section). **Landed:** commit `e1c978f4` gives the fallback a fourth arm that presses nothing. |
 
-**Counts (Region A):** 178 elements — **132 exact · 34 divergent · 11 missing · 8 extra** (an element is
-counted once, under the strongest verdict). Reasons on the 46 non-exact rows: **ruled 34** ·
+**Counts (Region A):** 179 elements — **133 exact · 34 divergent · 11 missing · 8 extra** (an element is
+counted once, under the strongest verdict; A179 added 2026-08-27, run UI-1). Reasons on the 46 non-exact rows: **ruled 34** ·
 **unserved 2** · **OPEN 10**.
 
 A46's adversarial correction changed its implementation proof, not its verdict or row accounting;
