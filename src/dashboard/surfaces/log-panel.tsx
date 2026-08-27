@@ -120,7 +120,7 @@ import { useContextRail, type ContextSections } from "./context-rail-model.js";
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
 import { ReceiptView, type ReceiptSectionPayload } from "./receipt.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "./run-identity.js";
-import { FailureDetailBody } from "./trust.js";
+import { FailureDetailBody, FailureRecordHead } from "./trust.js";
 import { FailureAdvisoryPanel } from "./advisory.js";
 import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
 import { dsStatusOf, outcomeDsStatusOf } from "./status-model.js";
@@ -911,15 +911,33 @@ function InlineGateDecisionRecord({
 /**
  * THE FAILURE RECORD, rendered where the run died.
  *
- * 1i serves the record's IDENTITY (`{ runId, failureId }`) and the facts around
+ * 1i served the record's IDENTITY (`{ runId, failureId }`) and the facts around
  * it — the terminal outcome, the timeline's failed event, and the error-level
- * notes in the stream. The ref operator-trust projection that turns that id into a summary,
- * a code, a write state and a remediation ladder is 2g. So this renders the
- * frame, names the record, and shows what the run's OWN stream said — and it
- * does not print a write-state sentence, because the difference between "wrote
- * nothing" and "we never read back" is the whole reason that sentence exists.
+ * notes in the stream. The ref operator-trust projection that turns that id
+ * into a summary, a code, a write state and a remediation ladder landed at
+ * 2g/2i-A, so this component owns the FRAME and the HEAD and `FailureDetailBody`
+ * (`trust.tsx`) owns everything the projection serves.
+ *
+ * The head is the run's own `summary`, its `code` and its permanence (D273
+ * item 8) — never a category the surface authored, except in the one arm where
+ * no record was served and "this run failed" is the whole of what is known.
+ *
+ * THE READING ORDER BELOW IS THE RULE, not a layout (ref dashboard-surfaces D18):
+ * what this run left behind, then what is safe to retry, then — behind
+ * `Show the diagnostic record` — why. The first two never sit behind the
+ * disclosure, because the difference between "wrote nothing" and "we never read
+ * back" is the whole reason that sentence exists, and a fact an operator has to
+ * press for cannot decide whether they press retry.
  */
-function InlineFailureRecord({
+/**
+ * Exported for the D273 item 8 head pin
+ * (`tests/unit/dashboard/failure-record-render.test.ts`), on the same footing
+ * as `InlineDecision` above: the head's three facts — the run's own `summary`,
+ * its `code` and its permanence — are composed in JSX from three places, so no
+ * fold can see whether the record leads with the served sentence or with a
+ * category the surface authored.
+ */
+export function InlineFailureRecord({
   failure,
   errorNotes,
   completedAt,
@@ -940,7 +958,24 @@ function InlineFailureRecord({
       ref={anchorRef}
       tabIndex={-1}
       data-panel-failure-record=""
-      aria-label="Failure record"
+      /*
+        `role="group"` is what makes the name below EXIST (unit F8c finding 3).
+        HTML-AAM computes no accessible name for a generic element, so an
+        `aria-label` on a bare `<div>` names nothing — this bundle's own dated
+        lesson (`src/dashboard/CLAUDE.md`, 2026-08-26, the timeline segment),
+        one surface later. This container is focusable on purpose: the outcome
+        bar's `Open failure` lands on it, and a landing that announces nothing
+        is the fact the record exists to carry, lost at the moment of arrival.
+      */
+      role="group"
+      /*
+        The record's own sentence names it (E2/E4). When the record is not
+        served there is no sentence to name it with, and the bare label is the
+        honest one — the arms below say what happened to the record itself.
+      */
+      aria-label={
+        failure.state === "available" ? `Failure record — ${failure.value.summary}` : "Failure record"
+      }
       className={cn(
         // same geometry as the inline decision: indented to the stream's
         // hanging indent, a rail in its own tone, and loud where it sits
@@ -951,17 +986,37 @@ function InlineFailureRecord({
         "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
       )}
     >
-      <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
-        <TriangleAlert aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-danger)]")} />
-        <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-danger)]")}>
-          This run failed
-        </span>
-        {failure.state === "available" && (
-          <Chip label="record" tone="danger">
-            {failure.value.failureId}
-          </Chip>
-        )}
-      </div>
+      {/*
+        THE HEAD SAYS THE FACT (D273 item 8, ledger 2 E4/E5/E6 — legacy
+        hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
+        DemoFailure.tsx:180-188). It used to say the CATEGORY — the constant
+        `This run failed`, which the status pill, the outcome bar and the danger
+        tint had all already said — while the run's own served `summary` waited
+        a line below in body copy. The category arm survives for the record the
+        wire could NOT serve, where "this run failed" is the whole of what is
+        known.
+
+        `code` and permanence ride the head for the same reason: permanence is
+        the reading that tells the operator not to press retry, and it was
+        drawing as a bare `transient` word with no opposite arm at all.
+
+        The SERVED head moved to `trust.tsx` (unit F8c finding 1) because the
+        archive's failure card is its second consumer and was drawing the body
+        with no head above it at all. Only this arm forks — a record the
+        projection refused exists nowhere else, and it must NOT borrow the
+        served head's chips: an unserved record dressed as a served one is the
+        fail-loud rule inverted into display.
+      */}
+      {failure.state === "available" ? (
+        <FailureRecordHead detail={failure.value} />
+      ) : (
+        <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+          <TriangleAlert aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-danger)]")} />
+          <span className={cn(dsText.ui, "min-w-0 break-words font-semibold text-[color:var(--ds-danger)]")}>
+            This run failed
+          </span>
+        </div>
+      )}
 
       <div className="mt-[var(--ds-space-base)] flex flex-col gap-[var(--ds-space-base)] pl-5">
         {failure.state === "available" ? (

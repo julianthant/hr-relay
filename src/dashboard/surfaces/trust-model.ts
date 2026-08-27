@@ -9,10 +9,12 @@
  */
 import type { z } from "zod";
 import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
+import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { fmtClock, plural, shortHash } from "./format.js";
 
 type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
+type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;
 
 export type DiagnosticBundleReadbackAcceptance =
   | Readonly<{ state: "ready"; bundle: DiagnosticBundleWire }>
@@ -29,6 +31,104 @@ export function acceptDiagnosticBundleReadback(
     bundleId: requestedBundleId,
     message: `DIAGNOSTIC_BUNDLE_IDENTITY_MISMATCH: requested diagnostic bundle ${requestedBundleId} returned a different bundle identity`,
   });
+}
+
+/* ── the failure record's vocabulary (D273 item 8, ledger 2 §R-E) ─────────── */
+
+/**
+ * Ported from legacy hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
+ * src/dashboard/components/dev/rebuild-demo/DemoFailure.tsx:156-161,190-205
+ * (the write-state block's three tones and its labelled frame).
+ *
+ * WHAT THIS RUN LEFT BEHIND, and how loudly to say it.
+ *
+ * The demo keys its tone off a served `writeState.tone` of `none | unknown |
+ * other`. This wire serves no tone at all — `writeState` is a six-arm enum — so
+ * the mapping is made HERE, once, and it is total: a seventh arm is a
+ * typecheck failure rather than a silent `?? "left-behind"`.
+ *
+ * Only `not-attempted` takes the settled tone. `prepared` does NOT, even though
+ * nothing reached the target system: a staged intent is a durable row and a
+ * fence the operator may still have to clear, and this sentence's whole job is
+ * to separate "safe to retry" from "may duplicate a termination". A tone that
+ * is wrong in the reassuring direction is the only one that can hurt somebody.
+ */
+export type FailureWriteStateTone = "nothing-written" | "unknown" | "left-behind";
+
+export const FAILURE_WRITE_STATE: Readonly<
+  Record<FailureDetailWire["writeState"], Readonly<{ sentence: string; tone: FailureWriteStateTone }>>
+> = Object.freeze({
+  "not-attempted": Object.freeze({
+    sentence: "This run wrote nothing — no write was attempted.",
+    tone: "nothing-written",
+  }),
+  prepared: Object.freeze({
+    sentence: "A write was staged but never committed.",
+    tone: "left-behind",
+  }),
+  attempting: Object.freeze({
+    sentence: "A write attempt was in flight; this run did not settle its outcome.",
+    tone: "left-behind",
+  }),
+  committed: Object.freeze({
+    sentence: "A write was committed; its read-back verification did not complete.",
+    tone: "left-behind",
+  }),
+  verified: Object.freeze({
+    sentence: "A write was committed and verified.",
+    tone: "left-behind",
+  }),
+  unknown: Object.freeze({
+    sentence: "The write outcome is unknown — the intent is parked for operator resolution.",
+    tone: "unknown",
+  }),
+});
+
+/**
+ * Ported from the same file, :185-187 — the head's permanence Chip.
+ *
+ * `transient` is a REQUIRED boolean on the wire and the record used to print
+ * the bare word `transient` for the true arm and nothing at all for the false
+ * one, so the reading that actually changes what the operator does — *do not
+ * press retry, the same input will fail again* — was the one that never
+ * appeared. Both arms are stated, because silence is not the opposite of a
+ * warning; it reads as "nobody classified this".
+ */
+export function failurePermanence(transient: boolean): Readonly<{ text: string; tone: "warning" | "neutral" }> {
+  return transient
+    ? Object.freeze({ text: "transient — a later attempt may differ", tone: "warning" as const })
+    : Object.freeze({ text: "permanent — the same input will fail again", tone: "neutral" as const });
+}
+
+/**
+ * Ported from the same file, :365-376 — the fingerprint's history, in the two
+ * arms the demo draws, beside the diagnostic bundle.
+ *
+ * `sameFingerprintSeen` counts THIS occurrence too (`FailureDetailWireSchema`'s
+ * own `superRefine`), so `1` is genuinely a first sighting. It used to render
+ * only when `> 1`, which made "this has never happened before" and "nobody
+ * counted" the same blank — the defect D141 is not about, and the one an
+ * operator reads as reassurance.
+ *
+ * What is NOT ported, and is not an absence to name on screen: the demo's
+ * `window`, `lastTrace`, `lastAt` and `note`. `ref operator-trust` D141 rules the
+ * count out as a LIST of other runs; the wire carries none of the four, and a
+ * window invented here would be exactly the banned constant.
+ */
+export function failureFingerprintHistory(
+  sameFingerprintSeen: number,
+): Readonly<{ text: string; tone: "seen-before" | "first" }> {
+  if (!Number.isInteger(sameFingerprintSeen) || sameFingerprintSeen < 1) {
+    throw new Error(
+      `failureFingerprintHistory: sameFingerprintSeen must be a positive integer (the projected failure is itself one occurrence); received ${String(sameFingerprintSeen)}`,
+    );
+  }
+  return sameFingerprintSeen === 1
+    ? Object.freeze({ text: "First time this fingerprint has been seen.", tone: "first" as const })
+    : Object.freeze({
+        text: `Seen ${String(sameFingerprintSeen)} times, this one included.`,
+        tone: "seen-before" as const,
+      });
 }
 
 /** `EvidenceSourceSchema`'s six arms, reached through the receipt's own type. */

@@ -74,6 +74,94 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a head composed in ONE consumer's JSX is a head the second consumer loses in
+  silence, and a vocabulary of three tones is a vocabulary of two when the palette paints two
+  (D273 item 8, unit F8c, the review of F8b).** Five findings, and three things travel.
+
+  **The head.** F8b put the record's three head facts — the run's own `summary`, its `code`, its
+  permanence — into `log-panel.tsx`'s JSX. The archive's failure card is the record's SECOND
+  consumer and draws `FailureDetailBody` alone, so it lost all three the same day: an archived
+  failed run printed its write state, its remediation and its diagnosis under a bare
+  `Failure record` label, with the one sentence the run wrote about itself nowhere on the page.
+  Nothing failed and no gate could see it, because **a card with no head is perfectly
+  grammatical** — the defect is only visible beside the surface that has one. `FailureRecordHead`
+  lives in `trust.tsx` beside the body it heads, and the `available` / unserved fork stays with
+  the panel, because only the live stream can hold a record the projection refused. The pin is the
+  archive card rendered directly (`ArchivedFailureCard` is exported for it, like
+  `InlineFailureRecord` before it), with a transient/permanent pair as the negative control: a head
+  hard-coded to one arm passes any single case.
+
+  **The tone.** `WRITE_STATE_TONE` named three tokens — success, `--ds-status-parked-fg`,
+  `--ds-status-waiting-fg` — and the last two are the SAME amber in both themes, here and in the
+  demo it is ported from, where `parked`'s own violet was re-derived to amber years ago. So the map
+  claimed a distinction the screen has never drawn. `unknown` takes `--ds-status-waiting-fg`
+  outright now: **a second token name for one colour is the `--log-violet` rot in a new place**, a
+  name that outlives the colour it was picked for and then lies to the next reader. No hue was
+  invented — D232's budget is one accent and five semantic hues, the fifth was bought outright for
+  `dry run`, and nothing left is honest for "the write outcome is unknown". Nothing is lost because
+  **colour was never the carrier**: the three arms' sentences differ, and the `FailureWriteStateTone`
+  vocabulary keeps all three arms so a palette that later buys `parked` a hue changes one line
+  rather than re-deriving which arm deserved it. The test reads `ds/tokens.css` — the same move
+  `archive-window.test.ts` makes for row heights — and fails if any two tones drawn here resolve to
+  one colour in either theme.
+
+  **And the two a11y findings are this directory's own lessons, landing again.** `aria-label` on the
+  record's role-less `<div>` named nothing (HTML-AAM computes no name for a generic element) — the
+  timeline segment's lesson, one surface later, and worse here because the container is focusable
+  on purpose: the outcome bar's `Open failure` lands on it, so the record announced nothing at the
+  moment of arrival. It is `role="group"` now. `What this run left behind` was a bare `<div>` with a
+  caps label while its sibling `What is safe to retry` was a named `<section>` — **weaker semantics
+  on the louder fact**, and it is now the same `<section>`, its visible label and its accessible
+  name from one expression. The fifth finding is `Chip`'s own docstring quoted back at it:
+  `permanent — the same input will fail again` is a sentence, it clipped inside a `w-fit` token and
+  recovered the cut on `title` alone, and **a fact reachable by pointer and by nobody else is a fact
+  the product does not have** (the third time in this directory). It is a `MetaLine` under the chip
+  row — still in the head, because a fact that decides whether the operator presses retry cannot
+  wait for a disclosure. The screenshot then found what the diff could not, again: loose in the
+  head's wrapping row, the danger triangle took a line of its own above the summary in the
+  archive's ~400px rail, so the glyph and the sentence are one nested item.
+
+- **2026-08-26: a record that says the CATEGORY instead of the FACT reads as complete, and the tone
+  a wire does not serve is a judgement somebody has to make out loud (D273 item 8, unit F8b,
+  ledger 2 §R-E).** The failure record's head said the constant `This run failed` — which the status
+  pill, the outcome bar and the danger tint had each already said — while the one sentence the run
+  wrote about itself, the served `summary`, waited a line below in body copy. Nothing was missing
+  and nothing could fail: a head that names the category is grammatical, sufficient-looking and
+  wrong only beside the demo. **When a surface holds a served sentence and prints a constant over
+  it, the constant is the defect even though it is true.** The category arm survives in exactly one
+  place — the record the projection could not serve, where "this run failed" is the whole of what is
+  known — and the render test pins that this arm grows no code, no permanence and no write state,
+  because an unserved record that looks like a served one is the fail-loud rule inverted into
+  display.
+
+  Four things travel. **A boolean with one drawn arm is a fact with no opposite.** `transient` is
+  required on the wire and drew the bare word `transient` when true and NOTHING when false, so
+  *permanent — the same input will fail again*, the reading whose whole job is to stop the operator
+  pressing retry, was indistinguishable from a record nobody had classified. Both arms are stated
+  now; silence is not the opposite of a warning. **A tone the wire does not carry still has to be
+  decided, totally, in one place.** The demo keys its write-state colour off a served
+  `tone: none | unknown | other`; this wire serves a six-arm enum and no tone, so `FAILURE_WRITE_STATE`
+  makes the mapping once and the test asserts it covers `WriteStateSchema` in BOTH directions — a
+  seventh arm is a typecheck failure, never a silent default. Only `not-attempted` takes the settled
+  colour: `prepared` reaches no target system and still gets the cautious one, because a staged
+  intent is a durable row and a fence somebody may have to clear, and **a tone that is wrong in the
+  reassuring direction is the only one that can put a duplicate termination into UCPath.**
+  **The disclosure's contract is a NEGATIVE claim, so the test that matters asserts both halves at
+  once**: on a closed record the diagnosis is gone AND the write-state block and the remediation
+  ladder are still there. Either half alone passes for the wrong reason — a disclosure that hides
+  nothing satisfies the second, one that hides everything satisfies the first — and D18's rule is
+  precisely that only diagnosis may sit behind a press. And **a count of one is a sentence, not a
+  blank**: `sameFingerprintSeen` drew only when `> 1`, so "this has never happened before" and
+  "nobody counted" occupied the same empty space. D141's refusal is about the LIST of other runs and
+  survives untouched — the repeat arm states the count and nothing else, and the test's negative
+  control is that it leaks no `last`, no window and no trace.
+
+  **And the screenshot found what the diff could not, again.** `remediation Operat…` — a `Chip` is
+  `w-fit` and clips, so beside a sentence that wanted the width it gave its own up and recovered the
+  cut on `title` alone, which is a fact reachable by pointer and by nobody else. It is `shrink-0`
+  now. The same pass is why the permanence chip is known to survive 1024: it was checked in a real
+  engine rather than argued about from a class list.
+
 - **2026-08-26: a restated pixel constant is a claim about a class list, and a KIND that decides
   nothing reads exactly like a KIND that decides something (D274–D276, unit F10, ledger 3 §1/§8).**
   Two halves of the archive family, and the same shape twice — a fact the surface HELD and did not

@@ -184,7 +184,12 @@ import { failed, loaded, LOADING, type AsyncResource } from "../state/async-reso
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, fmtInstantDay, plural, shortHash } from "./format.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import { dsStatusOf } from "./status-model.js";
-import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
+import {
+  FailureDetailBody,
+  FailureRecordHead,
+  ReceiptEvidenceBody,
+  type FailureDetailWire,
+} from "./trust.js";
 import {
   ARCHIVE_INDEX,
   ARCHIVED_CAPTURE_NAV_TOUCH_TARGET,
@@ -1181,6 +1186,35 @@ function LedgerLineRow({ line }: { line: ResolvedLedgerLineWire }) {
 /* ── one archived run ────────────────────────────────────────────────────── */
 
 /**
+ * THE ARCHIVED RUN'S FAILURE RECORD — the same head and the same body the live
+ * record draws, so an archived failure and a live one cannot describe one run
+ * two ways (unit F8c finding 1).
+ *
+ * It drew `FailureDetailBody` alone. The head's three facts — the run's own
+ * `summary`, its `code` and its permanence — were composed in
+ * `log-panel.tsx`'s JSX at unit F8b, and this card, the record's SECOND
+ * consumer, silently lost every one of them: an archived failed run printed
+ * its write state, its remediation and its diagnosis under a bare
+ * `Failure record` label, with the sentence the run wrote about itself nowhere
+ * on the page. Nothing failed and no gate could see it, because a card with no
+ * head is perfectly grammatical.
+ *
+ * Exported so `failure-record-render.test.ts` can render the card the archive
+ * actually places, on the same footing as `InlineFailureRecord`.
+ */
+export function ArchivedFailureCard({ failure }: { failure: FailureDetailWire }) {
+  return (
+    <Card tone="danger">
+      <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
+        <SectionLabel>Failure record</SectionLabel>
+        <FailureRecordHead detail={failure} />
+        <FailureDetailBody detail={failure} />
+      </CardBody>
+    </Card>
+  );
+}
+
+/**
  * Which sweep archived this run, in the DETAIL. The scope badge used to live
  * only in the list's section header and vanished the moment you opened a run.
  */
@@ -1441,14 +1475,7 @@ function ArchivedRunDetail({
 
           <SweepRecordCard sweep={sweep} applicationId={detail.applicationId} />
 
-          {detail.failure.state === "present" && (
-            <Card tone="danger">
-              <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
-                <SectionLabel>Failure record</SectionLabel>
-                <FailureDetailBody detail={detail.failure.value} />
-              </CardBody>
-            </Card>
-          )}
+          {detail.failure.state === "present" && <ArchivedFailureCard failure={detail.failure.value} />}
 
           <Card>
             <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
