@@ -21,12 +21,14 @@ import {
   FIXTURE_INTAKE_RERUN,
   FIXTURE_INTAKE_VALIDATED,
 } from "../../parity/helpers/fixture-intake.js";
+import { RowRejectSchema } from "../../../src/domain/intake/manifest.js";
 import { IntakeRowCorrectionSchema } from "../../../src/domain/intake/session.js";
 import { SuggestionSchema } from "../../../src/domain/intake/suggestions.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../src/domain/intake/wire.js";
 import {
   correctionEditorLabel,
   correctionText,
+  REJECT_KIND_LABEL,
   exclusionEditorLabel,
   headerCandidateOptionLabel,
   INTAKE_REVIEW_CONTROL_NAMES,
@@ -552,5 +554,26 @@ describe("IN139 / IN142 / IN143 — rerun is a named absence, or its exact chang
       { key: "item id", value: row.itemId },
       { key: "input hash", value: row.inputHash },
     ]);
+  });
+});
+
+describe("the rejection badge names what an operator can act on", () => {
+  /**
+   * D276 item 1, ledger 3 row IN101. The badge printed the wire's own
+   * discriminant, which names the validator that refused the row rather than
+   * the thing in the spreadsheet that is wrong.
+   */
+  const servedKinds = RowRejectSchema.options.map((option) => option.shape.kind.value);
+
+  it("answers every kind the schema can serve, and no kind it cannot", () => {
+    assert.deepEqual([...servedKinds].sort(), Object.keys(REJECT_KIND_LABEL).sort());
+  });
+
+  it("never falls back to the wire's own discriminant", () => {
+    for (const kind of servedKinds) {
+      const label = REJECT_KIND_LABEL[kind];
+      assert.notEqual(label, kind, `the ${kind} badge still prints the wire discriminant`);
+      assert.ok(!label.includes("-"), `the ${kind} badge reads like an identifier: ${label}`);
+    }
   });
 });

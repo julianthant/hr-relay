@@ -111,7 +111,7 @@ import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { CaptureStart } from "./capture-start.js";
 import { CaptureSessionPanel } from "./capture-session.js";
-import { fmtClock, pluralize, shortHash } from "./format.js";
+import { fmtClock, plural, pluralize, shortHash } from "./format.js";
 import {
   correctionEditorLabel,
   correctionText,
@@ -134,6 +134,7 @@ import {
   rerunMembershipDetailFacts,
   rerunStage,
   rejectionReviewEligibility,
+  REJECT_KIND_LABEL,
   rejectionReviewLabel,
   type RejectionReviewEligibility,
   sourceLabel,
@@ -301,16 +302,31 @@ function SourceBand({
 
   return (
     <section aria-label="Source file" className="flex flex-col gap-[var(--ds-space-base)]">
+      {/*
+        The demo's own visible `SectionLabel` (D276 item 1, ledger 3 row IN27 —
+        `DemoIntake.tsx:414`). It had survived only as this section's
+        `aria-label`, which names the region for a screen reader and leaves the
+        operator reading an unheaded block of file facts.
+      */}
+      <SectionLabel>Source file</SectionLabel>
       <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
         <FileSpreadsheet aria-hidden className={cn(dsIcon.lg, "text-[color:var(--ds-fg-muted)]")} />
         <span className="flex min-w-0 flex-col">
           <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>
             {sourceLabel(session)}
           </span>
+          {/*
+            The demo's digest and row-count wording (D276 item 1, ledger 3 rows
+            IN44/IN45, `DemoIntake.tsx:437`): `sha <8>` — the product's ONE id
+            length, the same `shortHash` cut every other surface prints — and
+            `N rows read`, which says what the number IS. "N data rows" named a
+            category; "read" names the act that produced the count, which is
+            the fact an operator checks against the sheet in front of them.
+          */}
           <MetaLine
             items={[
-              `sha256 ${session.artifact.sha256.slice(0, 12)}…`,
-              `${String(session.rowCount)} data rows`,
+              `sha ${shortHash(session.artifact.sha256)}`,
+              `${plural(session.rowCount, "row")} read`,
               `${String(session.columns.length)} columns`,
               `uploaded ${fmtClock(session.createdAt)}`,
             ]}
@@ -409,7 +425,11 @@ function headerReasonSentence(reason: IntakeSessionWire["headerDiscoveryReason"]
 
 function columnLabel(column: DetectedColumn): string {
   const header = column.header.trim().length === 0 ? "(blank header)" : column.header;
-  return column.occurrence === 1 ? header : `${header} (${String(column.occurrence)})`;
+  // The demo's duplicate-header suffix (D276 item 1, ledger 3 row IN74 —
+  // `DemoIntake.tsx:514`). The `#` is load-bearing: `Header (2)` reads as a
+  // count of two columns; `Header (#2)` reads as the second one of them, which
+  // is the fact an operator binding a repeated heading needs.
+  return column.occurrence === 1 ? header : `${header} (#${String(column.occurrence)})`;
 }
 
 /**
@@ -462,12 +482,21 @@ function MappingGrid({
 
   return (
     <div className="overflow-x-auto">
-      <Table label={`Map ${session.workflow} fields to columns of ${session.sourceName ?? "this file"}`}>
+      {/*
+        THE DEMO'S MAPPING VOCABULARY (D276 item 1, ledger 3 rows IN64/IN66/IN69
+        — `DemoIntake.tsx:571,575,578`). The table's accessible name is what the
+        table IS, not an instruction to the reader; `Target field` and
+        `Suggestion` are nouns, matching `Bound column` beside them, where
+        `Workflow field` and `Suggested` mixed a scope word and a participle
+        into one head row. `sourceLabel` supplies the file's name so the
+        pre-D171 fallback is spelled once, here as everywhere else.
+      */}
+      <Table label={`Column mapping for ${sourceLabel(session)}`}>
         <THead>
           <TR>
-            <TH>Workflow field</TH>
+            <TH>Target field</TH>
             <TH>Bound column</TH>
-            <TH>Suggested</TH>
+            <TH>Suggestion</TH>
           </TR>
         </THead>
         <TBody>
@@ -542,7 +571,14 @@ function BoundColumnCell({
   return (
     <span className="flex min-w-[var(--ds-w-member-detail)] flex-col gap-[var(--ds-space-tight)]">
       <Select
-        aria-label={`Column bound to ${target.label}`}
+        /*
+          The demo's names for this control and its resting option (D276 item 1,
+          ledger 3 rows IN72/IN73 — `DemoIntake.tsx:607,611`). `Source column
+          for X` says what the operator is choosing; `Column bound to X` stated
+          the outcome as though it had already happened. `— unbound —` is the
+          same word the column head uses, so one state has one name.
+        */
+        aria-label={`Source column for ${target.label}`}
         value={bound?.sourceColumnId ?? ""}
         disabled={locked}
         onChange={(event) => {
@@ -554,7 +590,7 @@ function BoundColumnCell({
           onPick(next);
         }}
       >
-        <option value="">— not bound —</option>
+        <option value="">— unbound —</option>
         {columns.map((column) => (
           <option key={column.sourceColumnId} value={column.sourceColumnId}>
             {columnLabel(column)}
@@ -843,7 +879,7 @@ function RejectedRowsTable({
                   <TD numeric align="right">{String(reject.sourceRow)}</TD>
                   <TD>
                     <Badge tone={reject.kind === "duplicate-identity" || reject.kind === "cross-field" ? "warning" : "danger"}>
-                      {reject.kind}
+                      {REJECT_KIND_LABEL[reject.kind]}
                     </Badge>
                   </TD>
                   <TD>
@@ -1741,9 +1777,28 @@ export function IntakeWorkspace({
 
   return (
     <Panel className="flex min-h-0 flex-1 flex-col">
+      {/*
+        THE DEMO'S OWN HEADER (D276 item 1, ledger 3 rows IN2/IN3 —
+        `DemoIntake.tsx:266-267`). `Import a spreadsheet` named the ACTION the
+        button that opens this surface already names; `Spreadsheet intake` names
+        the WORKSPACE, which is what a header does. The subtitle is the demo's
+        sentence verbatim, and it is the whole reason this surface has five
+        stages instead of one button: a sheet does not become runs until a
+        person has settled the header row, built the mapping and answered every
+        rejected cell. `workflowLabel` is not lost with it — it stays on the
+        upload label below, where the demo also carries the target.
+
+        THE DISMISS CONTROL STAYS HERE (ledger 3 row IN7 — a named truthful
+        exception, not a port). The demo's `Cancel` is a DIALOG footer button;
+        D173 reshaped this surface from that dialog into a workspace, and a
+        workspace has no dialog footer to put it in. `Cancel` would also
+        misname it: by the time this header is on screen the upload has already
+        created a durable session with an artifact behind it, so the control
+        closes the workspace and cancels nothing.
+      */}
       <PanelHeader
-        title="Import a spreadsheet"
-        subtitle={`${workflowLabel} — one run per row`}
+        title="Spreadsheet intake"
+        subtitle="A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row."
         actions={
           <span className="flex items-center gap-[var(--ds-space-tight)]">
             {sessionId !== undefined && (
