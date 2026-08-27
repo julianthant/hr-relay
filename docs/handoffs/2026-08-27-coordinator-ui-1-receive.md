@@ -1,27 +1,29 @@
-# Handoff — coordinator: run UI-1 received, merge held on R2a
+# Handoff — coordinator: run UI-1 received, decided, merged; UI-2 briefed behind R2
 
-**Date:** 2026-08-27 · **Paused at:** `decide` — waiting on the operator's answers to two sheets, and on R2a's handoff before the merge.
+**Date:** 2026-08-27 · **Paused at:** `receive R2` (Phase 3b, 08-28) — then UI-2 (`brief` is already written and guarded).
 
 ## Task summary
-Received run UI-1 (`docs/handoffs/2026-08-27-run-ui-1-complete.md`, branch `feature/ui-fidelity`). Verified from git and the gate; booked the one claimed-but-missing artifact (G1 finding); wrote the coordinator's sheet. The root merge is HELD: R2a was live on the root checkout (BFF/vite/worker up, commits landing) — merging 176 files under a live canary is item 8 of the sheet, recommendation A (merge the moment R2a hands off).
+Received run UI-1 from `feature/ui-fidelity`; verified from git and the gate; booked the missing G1 finding (`6302e737`); wrote the receive sheet; the operator answered both sheets "all recommended" (1–6 A, 7 B, 8–12 A). Merged `--no-ff` into `integration/03b` at **`a3683bf3`** once R2a had closed; ratified **D281** (`9b67c77b`, ref dashboard-surfaces §10 + changelog round 98); wrote the UI board + run plan (`02c2ee01`) and the guarded UI-2 brief (`c134a3f5`); swept the `-ui` worktree and the branch.
 
 ## Current state (from git)
-- Root `integration/03b`: this commit's parent chain; clean apart from this handoff
-- `feature/ui-fidelity` @ `6302e737` (28 UI-1 commits + the coordinator's G1 finding) in `../hr-automation-rebuild-ui`; the only `feature/*` branch; scratch worktree `ui-merge-check` removed
-- Proof: trial merge onto `c8d6fdcd` conflict-free (tree `e28446f46477`); merged-tree gate typecheck 0 · lint 0 · 318 / 3476 · manifest no diff · parity 218 · roadmap fresh; zero overlap re-checked against `55032e70`
+- `integration/03b` @ this commit's parent chain · clean · root is the only worktree · `feature/*` = 0 · master `301ee1d7` (unmoved)
+- Coordinator gate on the root at `a3683bf3`: typecheck 0 · lint 0 · test:coverage 318 / 3476 (6 load-timeout files re-run alone: 49 / 49) · `build:manifest` no diff · parity 218, refs clean · roadmap fresh
+- The root's dashboard pair (BFF 3938 / vite 5174, pids from 10:56) predates the merge — the permission classifier blocked the coordinator from restarting it; the served `Storage health` label appears only after the operator restarts it (`npm run dashboard`)
 
-## Open — the operator
-- `docs/decisions/2026-08-27-ui-fidelity-new-elements.md` items 1–7 (on `feature/ui-fidelity`; read it from the `-ui` worktree) + `docs/decisions/2026-08-27-ui-1-receive.md` items 8–12 (on `integration/03b`). One positional reply covers both.
+## Open
+- UI-1's supervisor token figure (run log says "not reported")
+- R2 (08-28) — brief `docs/handoffs/2026-08-28-run-1-t1b-canary.md`; its base note is on the 03b board (`a3683bf3`+, nothing under the freeze). R2a's own residue (§9.29's three questions a/b/c) is R2's / the 03b coordinator's, not UI's
+- UI-2 — `docs/handoffs/2026-08-28-run-ui-2-residue.md`, paste after R2 closes; the guard greps the 03b board for R2's `u1–u5 | R2 | merged` rows (if R2's supervisor writes its rows differently, re-check the guard before handing the prompt over)
 
-## Resume — the merge (after R2a's handoff lands and item 8 = A)
+## Verification before resuming
 ```bash
-cd /Users/julianhein/Projects/hr-automation-rebuild && git status --short --branch   # integration/03b, clean
-lsof -nP -iTCP:3938 -iTCP:5174 -sTCP:LISTEN                                            # attribute or free before the merge
-git merge --no-ff feature/ui-fidelity -m "Merge feature/ui-fidelity: run UI-1 — demo-fidelity audit, four takeovers full-bleed on TakeoverFrame, six fix-now rows, 93 attributed parity re-freezes, 7-item operator sheet"
-export HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation && npm run typecheck && npm run lint && npm run test:coverage 2>&1 | tail -8 && npm run test:parity 2>&1 | tail -3 && npm run roadmap:check
-git worktree remove ../hr-automation-rebuild-ui && git branch -d feature/ui-fidelity && git worktree list && git branch --list 'feature/*'
+git status --short --branch && git log --oneline -3 && git worktree list && git branch --list 'feature/*'
+grep -n 'D281' docs/rebuild/reference/decisions.md | head -2
 ```
-Then: add the run-log row to `docs/plans/2026-08-27-03b-runs.md` §Run log (UI-1 merge sha, gate line, "token figure: ask operator"), collapse the board line above into *Decisions ratified* once the sheets are answered, and ratify items 1–7 into `docs/rebuild/reference/dashboard-surfaces.md` §10 as one D-entry (re-read `reference/decisions.md` at HEAD first — D280 is taken).
+
+## Pointers
+- `docs/plans/ui-board.md` · `docs/plans/2026-08-27-ui-runs.md` · `docs/plans/03b-board.md` · `docs/plans/2026-08-27-03b-runs.md` §Run log
+- Sheets (answered): `docs/decisions/2026-08-27-ui-fidelity-new-elements.md`, `docs/decisions/2026-08-27-ui-1-receive.md`
 
 ## Suggested skills
-- `/coordinator` (mode: decide) once the answers arrive; `/decision-brief` to ratify; `/supervise` only for UI-2 after item 12.
+- `/coordinator` — `receive` when R2's handoff lands; then hand over the UI-2 prompt (below)
