@@ -608,6 +608,18 @@ export const ARCHIVED_CAPTURE_VIEWER_NOTE =
   + "content store. What the capture was is here in full; the image itself is wherever it was filed.";
 
 /**
+ * THE 44px TOUCH FLOOR for the capture viewer's Previous/Next controls
+ * (ui-review finding F10b/2), the same coarse-gated pattern the queue's and
+ * the Session Panel's own touch constants use: a mouse gets the demo's 24px
+ * `size="sm"` button, a finger gets 44. It is safe to grow the LINE here
+ * (rather than hang an overlay on it, the member-line lesson) because these
+ * two buttons sit in a `DialogFooter` row with `gap-[var(--ds-space-base)]`
+ * between horizontal siblings, not stacked at a tight vertical pitch — there
+ * is nothing above or below either button for a taller box to overlap.
+ */
+export const ARCHIVED_CAPTURE_NAV_TOUCH_TARGET = "pointer-coarse:min-h-11";
+
+/**
  * The archived facts that change a relaunch's risk. The command always creates
  * an interactive REAL run and resolves instances afresh; these sentences are
  * therefore derived from the frozen row, never assumed from its workflow.

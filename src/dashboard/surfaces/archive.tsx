@@ -187,6 +187,7 @@ import { dsStatusOf } from "./status-model.js";
 import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
 import {
   ARCHIVE_INDEX,
+  ARCHIVED_CAPTURE_NAV_TOUCH_TARGET,
   ARCHIVED_CAPTURE_VIEWER_NOTE,
   BUMP_KIND_LABEL,
   BUMP_KIND_NOTE,
@@ -491,16 +492,26 @@ function ArchiveDryRunMark() {
 function ArchiveRow({
   entry,
   selected,
+  rowIndex,
   onSelect,
 }: {
   entry: ArchiveEntryWire;
   selected: boolean;
+  /** this row's 1-based position in the FULL flat list (finding 4) */
+  rowIndex: number;
   onSelect: () => void;
 }) {
   const seconds = durationSeconds(entry);
   const ended = endedInstant(entry);
   return (
-    <TR interactive selected={selected} onClick={onSelect} className="cursor-pointer" data-demo-row-id={entry.runId}>
+    <TR
+      interactive
+      selected={selected}
+      onClick={onSelect}
+      className="cursor-pointer"
+      data-demo-row-id={entry.runId}
+      aria-rowindex={rowIndex}
+    >
       <TD className="truncate">
         <span className="inline-flex min-w-0 items-center gap-[var(--ds-space-snug)]">
           <ArchiveStatusLead />
@@ -590,10 +601,13 @@ function ArchiveRow({
 function SweepSectionRow({
   section,
   collapsed,
+  rowIndex,
   onToggle,
 }: {
   section: ArchiveSection;
   collapsed: boolean;
+  /** this row's 1-based position in the FULL flat list (finding 4) */
+  rowIndex: number;
   onToggle: () => void;
 }) {
   const { sweep, applicationId } = section;
@@ -617,7 +631,12 @@ function SweepSectionRow({
       body's spacer rows are computed from `ARCHIVE_SECTION_PX`, and a head
       that measured anything else would slide every row below it (D274 item 1).
     */
-    <TR interactive onClick={onToggle} className={cn("h-[var(--ds-h-archive-sweep)]", dsMotion.fast)}>
+    <TR
+      interactive
+      onClick={onToggle}
+      className={cn("h-[var(--ds-h-archive-sweep)]", dsMotion.fast)}
+      aria-rowindex={rowIndex}
+    >
       <TD className={cn(cell, "align-middle")}>
         <button
           type="button"
@@ -741,7 +760,7 @@ function SweepSectionRow({
   );
 }
 
-function ArchiveTable({
+export function ArchiveTable({
   sections,
   query,
   onSort,
@@ -772,7 +791,13 @@ function ArchiveTable({
 
   return (
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
-      <Table label="Archived runs" layout="fixed" className="min-w-[720px]">
+      {/*
+        `rowCount` is the flat item count the window walks, not however many
+        happen to be mounted right now — the whole reason a windowed body needs
+        it (finding 4): a screen reader reading the DOM alone would count only
+        the overscanned slice and never learn the list is 800 long.
+      */}
+      <Table label="Archived runs" layout="fixed" rowCount={items.length} className="min-w-[720px]">
         {/*
           The measured column widths. Every one of these except the name is a
           value of known shape — a status word, a trace id, a clock, a duration
@@ -810,13 +835,17 @@ function ArchiveTable({
               <td colSpan={5} />
             </tr>
           )}
-          {items.slice(pane.firstIndex, pane.lastIndex).map((item) =>
-            item.kind === "section"
+          {items.slice(pane.firstIndex, pane.lastIndex).map((item, offset) => {
+            // 1-based, over the FULL flat list — the position `rowCount` above
+            // promises exists, not the position within this mounted slice.
+            const rowIndex = pane.firstIndex + offset + 1;
+            return item.kind === "section"
               ? (
                 <SweepSectionRow
                   key={`section-${item.section.applicationId}`}
                   section={item.section}
                   collapsed={item.collapsed}
+                  rowIndex={rowIndex}
                   onToggle={() => onToggleSection(item.section.applicationId)}
                 />
               )
@@ -825,10 +854,11 @@ function ArchiveTable({
                   key={item.entry.runId}
                   entry={item.entry}
                   selected={item.entry.runId === selectedRunId}
+                  rowIndex={rowIndex}
                   onSelect={() => onSelect(item.entry.runId)}
                 />
-              )
-          )}
+              );
+          })}
           {pane.afterPx > 0 && (
             <tr aria-hidden style={{ height: pane.afterPx }}>
               <td colSpan={5} />
@@ -1992,7 +2022,7 @@ function AttemptRow({ attempt }: { attempt: ArchivedRunAttempt }) {
  * Prev/next walk the run's own captures, because an operator comparing two
  * failures should not have to close and re-aim at a tile between them.
  */
-function CaptureViewerDialog({
+export function CaptureViewerDialog({
   tiles,
   index,
   subject,
@@ -2067,19 +2097,41 @@ function CaptureViewerDialog({
             </Field>
           </DialogBody>
           <DialogFooter meta={`Captured ${fmtClock(tile.capturedAt)} · bundle ${shortHash(tile.bundleId)}`}>
+            {/*
+              `aria-disabled`, never `disabled`, at either end of the walk
+              (ui-review finding F10b/1). A genuinely `disabled` button is
+              pulled out of the tab order the instant it disables — which is
+              exactly what used to happen to the control the operator had just
+              PRESSED to reach an end, dropping keyboard focus to the dialog
+              body mid-walk. Both buttons stay focusable and keyboard-operable
+              at every index; the press itself is the no-op, and the muted
+              look is drawn by hand since `disabled:` styling is a native
+              pseudo-class this button no longer carries.
+            */}
             <Button
               size="sm"
               variant="secondary"
-              disabled={index === 0}
-              onClick={() => { onIndex(index - 1); }}
+              aria-disabled={index === 0}
+              className={cn(ARCHIVED_CAPTURE_NAV_TOUCH_TARGET, index === 0 && "pointer-events-none opacity-45")}
+              onClick={() => {
+                if (index === 0) return;
+                onIndex(index - 1);
+              }}
             >
               Previous capture
             </Button>
             <Button
               size="sm"
               variant="secondary"
-              disabled={index === tiles.length - 1}
-              onClick={() => { onIndex(index + 1); }}
+              aria-disabled={index === tiles.length - 1}
+              className={cn(
+                ARCHIVED_CAPTURE_NAV_TOUCH_TARGET,
+                index === tiles.length - 1 && "pointer-events-none opacity-45",
+              )}
+              onClick={() => {
+                if (index === tiles.length - 1) return;
+                onIndex(index + 1);
+              }}
             >
               Next capture
             </Button>
@@ -2240,7 +2292,12 @@ function BumpChangeRecordDialog({
   const refusalRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (refused === undefined) return;
-    refusalRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    // `prefers-reduced-motion` is a request about MOTION, not about whether the
+    // refusal reaches view — the scroll still has to happen, only without the
+    // animated glide (ui-review finding F10b/3; the same gate `log-panel.tsx`'s
+    // `seek` already uses).
+    const reduced = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    refusalRef.current?.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
   }, [refused]);
 
   useEffect(() => {
