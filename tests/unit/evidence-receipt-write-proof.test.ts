@@ -93,16 +93,39 @@ describe("composition 2 — the commit action carries what proved the write", ()
     assert.equal(prepare.proved, undefined);
   });
 
-  it("negative control: with no durable write intent supplied, the commit action carries NO proof", () => {
+  it("REFUSES a settled outcome no intent row pairs with — corruption may not render as documented absence", () => {
+    // The checkpoint stores a SETTLED TransactionOutcome, so a durable intent
+    // row MUST exist: the sequencer records the intent before it settles.
+    // Deriving `proved: undefined` here made a recorder/store failure print as
+    // "no settled write intent reached it" — both halves false.
+    assert.throws(
+      () => buildRunEvidenceReceipt({
+        descriptor: separationsKualiFinalizationDescriptor,
+        run: evidence.run,
+        result: evidence.result,
+        checkpoints: evidence.checkpoints,
+        writes: [],
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /finalize-kuali/u, "names the unpaired node");
+        assert.match(error.message, /committed/u, "names the settled disposition");
+        assert.match(error.message, /no durable write intent/u);
+        return true;
+      },
+    );
+  });
+
+  it("composition 1 with no intent row still derives — the stored shape never carried the proof", () => {
     const bare = buildRunEvidenceReceipt({
       descriptor: separationsKualiFinalizationDescriptor,
       run: evidence.run,
       result: evidence.result,
       checkpoints: evidence.checkpoints,
       writes: [],
-    });
+    }, 1);
+    assert.equal(bare.composition, undefined);
     assert.equal(commitActionOfReceipt(bare).proved, undefined);
-    assert.equal(bare.composition, 2, "the composition states what the DERIVATION could carry, not what this run had");
   });
 });
 
@@ -278,6 +301,23 @@ describe("deriveActionWriteProof — the already-present arms", () => {
     assert.ok(proved);
     assert.equal(proved.proofSource, "durable-intent");
     assert.equal(proved.recordedAt, observedAt);
+  });
+
+  it("refuses a settled outcome handed no intent row, naming the disposition and the fail-loud reason", () => {
+    assert.throws(
+      () => deriveActionWriteProof({
+        commitContract: KualiSaveSeparationFinalization,
+        record,
+        intent: undefined,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /settled/u);
+        assert.match(error.message, /no durable write intent/u);
+        assert.match(error.message, /recorder|store/u);
+        return true;
+      },
+    );
   });
 
   it("refuses a transaction checkpoint whose outcome is not a recorded transaction outcome", () => {

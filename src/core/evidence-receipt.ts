@@ -350,9 +350,12 @@ export function buildRunEvidenceReceipt(
  * Every proof leaf is redacted through the declared `write-proof` scope — an
  * undeclared leaf fails loud here, exactly like a receipt fact.
  *
- * Returns `undefined` only when no durable write intent was supplied: the
- * fence identity (system + key digest) is half of what the block asserts,
- * and inventing it from the contract would be a claim, not a record. The
+ * A checkpoint holding a SETTLED outcome with no durable write intent to pair
+ * it with is a recorder/store failure, and this THROWS rather than deriving a
+ * proof-less commit: the fence identity (system + key digest) is half of what
+ * the block asserts, inventing it from the contract would be a claim rather
+ * than a record, and rendering the absence as "no settled write intent
+ * reached authority" would print two false halves over real corruption. The
  * outcome's proof schema hash must be the commit contract's own — a proof
  * bound to a schema this build no longer declares cannot be classified by
  * this build's table, and saying so beats redacting under the wrong rows.
@@ -362,9 +365,8 @@ export function deriveActionWriteProof(input: Readonly<{
   /** The transaction node's checkpoint row (raw or parsed). */
   record: unknown;
   intent: WriteIntentRecord | undefined;
-}>): ActionWriteProof | undefined {
+}>): ActionWriteProof {
   const { commitContract, intent } = input;
-  if (intent === undefined) return undefined;
   const record = RunCheckpointRecordSchema.parse(input.record);
   const parsed = TransactionOutcomeSchema.safeParse(record.output.value);
   if (!parsed.success) {
@@ -374,6 +376,14 @@ export function deriveActionWriteProof(input: Readonly<{
     );
   }
   const outcome = parsed.data;
+  if (intent === undefined) {
+    throw new Error(
+      `transaction checkpoint ${record.nodeId} stores a settled "${outcome.disposition}" outcome for `
+      + `${commitContract.id} (proof source ${outcome.proofSource}), but no durable write intent row `
+      + "pairs with it. The sequencer records the intent before any outcome settles, so this is a "
+      + "recorder/store failure — refusing to describe the write as if the absence were a fact",
+    );
+  }
   const declaredProofHash = deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output");
   if (outcome.proof.schemaHash !== declaredProofHash) {
     throw new Error(
@@ -719,12 +729,11 @@ export function deriveRunEvidenceReceipt(
        * that is the whole re-derivation contract, not an omission.
        */
       if (composition === 2) {
-        const proved = deriveActionWriteProof({
+        commitAction.proved = deriveActionWriteProof({
           commitContract: node.commit.uses,
           record,
           intent: write?.intent,
         });
-        if (proved !== undefined) commitAction.proved = proved;
       }
       actions.push(commitAction);
       const dedupeId = entryId("decision", `dedupe.${id}`);
