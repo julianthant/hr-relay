@@ -681,7 +681,25 @@ export function deriveRunEvidenceReceipt(
     const occurredAt = record.writtenAt;
     if (node.kind === "transaction") {
       const outcome = transactionOutcomeOf(record);
-      const write = writes.find((entry) => entry.intent.taskId === contract.id);
+      /*
+       * The intent join is by taskId because the checkpoint row carries no
+       * write-intent id — and a first-match join over a duplicated task would
+       * silently attribute ONE intent's fence identity (system + key digest,
+       * binding proof, subject) to the node's proof values. Authority keys an
+       * intent by (workflow, item, task, system, key), so a second row for one
+       * commit contract is a recorder/supply defect: refuse to guess which
+       * fence proved this write.
+       */
+      const matchingWrites = writes.filter((entry) => entry.intent.taskId === contract.id);
+      if (matchingWrites.length > 1) {
+        throw new Error(
+          `run ${envelope.runId} supplies ${matchingWrites.length} write intents for commit contract `
+          + `${contract.id} (${matchingWrites.map((entry) => entry.intent.writeIntentId).join(", ")}); `
+          + `the checkpoint for node "${id}" names no intent id, so the fence identity cannot be `
+          + "attributed to one of them — refusing to guess which intent proved this write",
+        );
+      }
+      const write = matchingWrites[0];
       actions.push({
         id: entryId("action", `${id}.prepare`),
         taskId: node.prepare.uses.id,

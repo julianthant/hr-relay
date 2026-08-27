@@ -21,7 +21,7 @@ import {
   type EvidenceReceiptStore,
 } from "../../src/core/evidence-receipt.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
-import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
+import { deriveIdempotencyKeyDigest, WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
 import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { separationsKualiFinalizationDescriptor } from "../../src/workflows/separations/kuali-finalization/descriptor.js";
 import {
@@ -103,6 +103,65 @@ describe("composition 2 — the commit action carries what proved the write", ()
     });
     assert.equal(commitActionOfReceipt(bare).proved, undefined);
     assert.equal(bare.composition, 2, "the composition states what the DERIVATION could carry, not what this run had");
+  });
+});
+
+describe("the intent join — one commit contract, exactly one intent row", () => {
+  const evidence = kualiReceiptEvidence();
+
+  it("REFUSES two intents for one commit contract instead of attributing the first one's fence identity", () => {
+    const first = evidence.writes[0];
+    assert.ok(first !== undefined);
+    // A second, genuinely distinct durable intent for the SAME task: a
+    // different natural key mints a different intent id and digest. Authority
+    // keys an intent by (workflow, item, task, system, key), so two rows for
+    // one commit contract is a supply/recorder defect — and the checkpoint
+    // carries no intent id, so nothing can say WHICH fence proved the write.
+    const duplicateKey = `${KUALI_IDEMPOTENCY_KEY}::duplicate`;
+    const duplicate = WriteIntentRecordSchema.parse({
+      ...first.intent,
+      writeIntentId: "0f0e0d0c-0b0a-4a11-8f6e-2b8c0d3f1a99",
+      idempotencyKey: duplicateKey,
+      idempotencyKeyDigest: deriveIdempotencyKeyDigest("kuali", duplicateKey),
+    });
+    assert.throws(
+      () => buildRunEvidenceReceipt({
+        descriptor: separationsKualiFinalizationDescriptor,
+        run: evidence.run,
+        result: evidence.result,
+        checkpoints: evidence.checkpoints,
+        writes: [first, { intent: duplicate, attempts: [] }],
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /2 write intents/u);
+        assert.match(error.message, /kuali\/save-separation-finalization/u);
+        assert.match(error.message, /refusing/u);
+        return true;
+      },
+    );
+  });
+
+  it("refuses at composition 1 too — the stored shape's commit action reads the same join", () => {
+    const first = evidence.writes[0];
+    assert.ok(first !== undefined);
+    const duplicateKey = `${KUALI_IDEMPOTENCY_KEY}::duplicate`;
+    const duplicate = WriteIntentRecordSchema.parse({
+      ...first.intent,
+      writeIntentId: "0f0e0d0c-0b0a-4a11-8f6e-2b8c0d3f1a99",
+      idempotencyKey: duplicateKey,
+      idempotencyKeyDigest: deriveIdempotencyKeyDigest("kuali", duplicateKey),
+    });
+    assert.throws(
+      () => buildRunEvidenceReceipt({
+        descriptor: separationsKualiFinalizationDescriptor,
+        run: evidence.run,
+        result: evidence.result,
+        checkpoints: evidence.checkpoints,
+        writes: [first, { intent: duplicate, attempts: [] }],
+      }, 1),
+      /2 write intents/u,
+    );
   });
 });
 
