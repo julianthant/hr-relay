@@ -49,18 +49,64 @@ export const TestTargetEidInputSchema = z.strictObject({
   ]).optional(),
 });
 
-export const TestTargetRegistryEntrySchema = z.strictObject({
+/**
+ * Every entry carries these, whatever workflow owns it: what the subject is
+ * FOR (`purpose`, doc 03b's "what it is good for" column), the dated
+ * availability claim, the record that observed it, and D85's usage rules.
+ */
+const COMMON_TEST_TARGET_FIELDS = {
   label: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  workflow: z.literal("separations-kuali-finalization"),
-  kind: TestTargetKindSchema,
   availability: TestTargetAvailabilitySchema,
   provenance: TestTargetProvenanceSchema,
   usagePolicy: z.enum(["read-only", "write-allowed-if-restored"]),
   cleanupObligation: z.string().min(1),
   owner: z.string().min(1),
+  purpose: z.string().min(1),
+} as const;
+
+export const SeparationsKualiFinalizationTestTargetSchema = z.strictObject({
+  ...COMMON_TEST_TARGET_FIELDS,
+  workflow: z.literal("separations-kuali-finalization"),
+  kind: TestTargetKindSchema,
   publicInput: SeparationsKualiFinalizationPublicTestInputSchema,
   secretInput: TestTargetEidInputSchema.optional(),
 });
+
+/**
+ * What a subject of the COMPOSED separations chain is for. These are not the
+ * finalization scenario matrix's kinds — they name the migration role doc 03b
+ * mapped the document into, and a subject that evaporated keeps its row with
+ * an explicit `gone` availability rather than being deleted (§9.16 recorded
+ * two canaries evaporating between passes; a deleted row loses that history).
+ */
+export const SeparationsChainSubjectKindSchema = z.enum([
+  "full-chain-dry-run",
+  "future-dated",
+  "controlled-commit-candidate",
+  "pending-termination",
+]);
+
+/**
+ * A Kuali document number is not a person, so it lives in the repo — but
+ * "no subject exists" is a real, recorded state (the PENDING-sweep gap), and
+ * it is spelled out rather than left as a missing key.
+ */
+export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), documentNumber: z.string().regex(/^[0-9]{1,8}$/) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
+export const SeparationsChainTestTargetSchema = z.strictObject({
+  ...COMMON_TEST_TARGET_FIELDS,
+  workflow: z.literal("separations"),
+  kind: SeparationsChainSubjectKindSchema,
+  publicInput: z.strictObject({ document: SeparationsChainSubjectDocumentSchema }),
+});
+
+export const TestTargetRegistryEntrySchema = z.discriminatedUnion("workflow", [
+  SeparationsKualiFinalizationTestTargetSchema,
+  SeparationsChainTestTargetSchema,
+]);
 
 export const TestTargetRegistrySchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -177,6 +223,14 @@ export function resolveSeparationsKualiFinalizationTestTarget(
       label,
       reason: `blocked: needs ${label}`,
     });
+  }
+  // A label that exists but belongs to another workflow is a mis-addressed
+  // request, not a decayed canary: `blocked` would read as "the subject left
+  // the university" and hide the mistake. Refuse by name.
+  if (target.workflow !== "separations-kuali-finalization") {
+    throw new TestTargetRegistryDefectError(
+      `test target ${target.label} belongs to workflow ${target.workflow}, not separations-kuali-finalization`,
+    );
   }
   if (target.availability.state !== "available") {
     return TestTargetBlockedResolutionSchema.parse({
