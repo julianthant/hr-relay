@@ -551,18 +551,35 @@ function SystemHostsSection() {
                           <span className={cn(dsText.ui, "whitespace-nowrap text-[color:var(--ds-fg)]")}>
                             {SYSTEM_HOST_PRESENTATION[host.system].name}
                           </span>
+                          {/* `micro` (10px) is the demo's own token for this
+                              note — legacy 1ec1d870
+                              `DemoSettings.tsx:842` — not a step chosen here.
+                              DESIGN.md's micro row names it as the one ported
+                              exception to "badges and kbd". */}
                           <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
                             {SYSTEM_HOST_PRESENTATION[host.system].note}
                           </span>
                         </span>
                       </TD>
-                      {/* `break-all` belongs to the URL, never to the cell: a
-                          deep PeopleSoft route has no spaces to wrap at, and
-                          the same rule applied to the absence below spelled it
-                          `none pro / visioned`. Prose wraps at words. */}
-                      <TD numeric><span className="break-all">{host.production}</span></TD>
+                      {/* One line, clipped at the demo's own width, never
+                          fragmented: a deep PeopleSoft route has no spaces to
+                          wrap at, so wrapping it broke the host across lines
+                          mid-token. `max-w-[260px] truncate` is the demo's
+                          treatment for both URL cells, ported from legacy
+                          1ec1d870
+                          `src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:845-850`.
+                          `title` is ours: the demo clips with no way to read
+                          the rest, and a truncated host the operator cannot
+                          recover is a host they cannot check. The absence arms
+                          below are NOT clipped — their words are prose, and
+                          `none pro…` would be unreadable. */}
+                      <TD numeric className="max-w-[260px] truncate" title={host.production}>
+                        {host.production}
+                      </TD>
                       {host.test.state === "provisioned" ? (
-                        <TD numeric><span className="break-all">{host.test.url}</span></TD>
+                        <TD numeric className="max-w-[260px] truncate" title={host.test.url}>
+                          {host.test.url}
+                        </TD>
                       ) : host.test.state === "not-distinct" ? (
                         // Configured, but identical to production — refused at
                         // run time by `resolveSystemEntryUrl`. Stated by name

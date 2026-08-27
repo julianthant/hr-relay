@@ -186,9 +186,18 @@ Four steps. If you want a fifth, the surface is saying too much.
 | `dsText.ui` | 13px | control labels, row titles, nav — **the default** |
 | `dsText.body` | 12px | table cells, log lines, descriptions |
 | `dsText.meta` | 11px | timestamps, trace ids, chips, footers |
-| `dsText.micro` | 10px | count badges, kbd |
+| `dsText.micro` | 10px | count badges, kbd — plus the one ported exception below |
 | `dsText.caps` | 10px upper | group headers, column heads — never sentences |
 | `dsText.nums` | — | **every** id, count, duration, rate, amount |
+
+`micro` carries a sentence in exactly one place: the per-system note under the
+name in Settings → System hosts. That is the demo's own token for that note
+(legacy `1ec1d870`
+`src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:842`), and the demo
+is the design authority for the copy and the treatment it covers, so it is
+ported rather than promoted to `meta`. It does not license `micro` for prose
+anywhere else — a new sentence at 10px needs a demo line behind it or it is a
+finding.
 
 ### Colour — one accent, four semantic hues, and nothing else
 
