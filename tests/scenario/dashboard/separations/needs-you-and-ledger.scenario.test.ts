@@ -14,9 +14,10 @@
  * one partition, and the Write-ledger card renders them as one ordered vector
  * with a declared absence sitting between two present confirmations.
  *
- * The `readGateParks` fold below is `compose.ts`'s, verbatim including its
- * refusal: a row listed as parked that reads otherwise throws by name rather
- * than being narrowed past.
+ * `readGateParks` is imported from `compose.ts` itself (not hand-copied) so
+ * these assertions pin the composition's real fold, refusal included: a row
+ * listed as parked that reads otherwise throws by name rather than being
+ * narrowed past.
  */
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -31,12 +32,10 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../../../src/domain/schema-bound-value.js";
 import { deriveIdempotencyKeyDigest } from "../../../../src/domain/write-safety.js";
 import { ledgerFilePath } from "../../../../src/infra/ledger/ledger-projector.js";
-import {
-  GateParkObservationSchema,
-  createGateParkNotifier,
-} from "../../../../src/services/notifications/gate-park.js";
+import { createGateParkNotifier } from "../../../../src/services/notifications/gate-park.js";
 import { EMPTY_IDENTITY_GATE_DRAFT, identityCeremonyFor, identityGateAnswer } from "../../../../src/dashboard/app/identity-ceremony.js";
 import { buildRunSection } from "../../../../src/server/dashboard/queries/run-detail.js";
+import { readGateParks } from "../../../../src/server/dashboard/compose.js";
 import { HASH_A, HASH_B, UUID_4 } from "../../../unit/fixtures/phase1c-contract-fixtures.js";
 import {
   DOCUMENT_NUMBER,
@@ -52,25 +51,6 @@ import {
 } from "./world.js";
 
 afterEach(disposeWorlds);
-
-/**
- * `compose.ts`'s own read, refusal included. Copying the fold rather than
- * asserting on the repository directly is the point: the notifier is only wired
- * to authority through these five lines, and a park whose lifecycle disagreed
- * with the listing must throw here rather than reach the inbox as a guess.
- */
-function readGateParks(world: SeparationsDashboardWorld): readonly unknown[] {
-  return world.database.authority.runs.listParkedAtGate().map((run) => {
-    if (run.lifecycle.state !== "parked-gate") {
-      throw new Error(`run ${run.envelope.runId} was listed as parked at a gate but reads ${run.lifecycle.state}`);
-    }
-    return GateParkObservationSchema.parse({
-      runId: run.envelope.runId,
-      workflowId: run.envelope.workflow,
-      gateId: run.lifecycle.gateId,
-    });
-  });
-}
 
 /** One separations run, started from the typed box and parked with its packet. */
 function parkOne(world: SeparationsDashboardWorld, text: string): string {
@@ -88,7 +68,7 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
     const runId = parkOne(world, DOCUMENT_NUMBER);
     const notifier = createGateParkNotifier({ inbox: world.inbox });
 
-    const first = await notifier.observed(readGateParks(world));
+    const first = await notifier.observed(readGateParks(world.database));
     assert.deepEqual(first.published.map(({ park }) => park.runId), [runId]);
     assert.deepEqual(first.standing, []);
 
@@ -102,7 +82,7 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
 
     // A STANDING park is not news again; re-publishing it every tick is the
     // unreadable-forever row §2.6 forbids.
-    const second = await notifier.observed(readGateParks(world));
+    const second = await notifier.observed(readGateParks(world.database));
     assert.deepEqual(second.published, []);
     assert.deepEqual(second.standing.map(({ runId: id }) => id), [runId]);
     assert.equal(world.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID).length, 1);
@@ -111,7 +91,7 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
   it("serves the alert on the day wire the operator's bell reads", async () => {
     const world = createSeparationsWorld();
     const runId = parkOne(world, DOCUMENT_NUMBER);
-    await createGateParkNotifier({ inbox: world.inbox }).observed(readGateParks(world));
+    await createGateParkNotifier({ inbox: world.inbox }).observed(readGateParks(world.database));
 
     const day = world.projection.buildDashboardDayWire(localDatePart(world.clock.now()));
     assert.equal(day.notifications.length, 1);
@@ -130,7 +110,7 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
     const second = parkOne(world, "4510");
     const notifier = createGateParkNotifier({ inbox: world.inbox });
 
-    const report = await notifier.observed(readGateParks(world));
+    const report = await notifier.observed(readGateParks(world.database));
     assert.deepEqual(
       [...report.published.map(({ park }) => park.runId)].sort(),
       [first, second].sort(),
@@ -142,7 +122,7 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
     const world = createSeparationsWorld();
     const runId = parkOne(world, DOCUMENT_NUMBER);
     const notifier = createGateParkNotifier({ inbox: world.inbox });
-    await notifier.observed(readGateParks(world));
+    await notifier.observed(readGateParks(world.database));
 
     const response = buildRunSection(world.runDetail, runId, "identity-gate");
     assert.equal(response.section, "identity-gate");
@@ -177,7 +157,7 @@ describe("separations dashboard — the needs-you alert a parked gate produces",
     // notifier FORGETS it, which is what makes a later re-park news again. The
     // row itself is deliberately untouched: read state is the operator's axis,
     // and erasing it would erase the record that a human was ever asked.
-    const report = await notifier.observed(readGateParks(world));
+    const report = await notifier.observed(readGateParks(world.database));
     assert.deepEqual(report.released.map((park) => park.runId), [runId]);
     assert.deepEqual(report.published, []);
     assert.equal(world.database.authority.notifications.listByActor(LOCAL_OPERATOR_ACTOR_ID).length, 1);
