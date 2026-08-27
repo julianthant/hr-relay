@@ -167,6 +167,7 @@ describe("ReceiptView — confidence must render somewhere, even with no band (r
     const html = renderToStaticMarkup(createElement(ReceiptView, {
       outcome: { state: "absent", reason: "still running" },
       receipt: { state: "available", value: AVAILABLE_RECEIPT },
+      dryRun: false,
     }));
     // No VerdictBand renders for a non-terminal outcome, so the body must be
     // the one place confidence lands — `bandCarriesIdentity` false, not true.
@@ -177,11 +178,80 @@ describe("ReceiptView — confidence must render somewhere, even with no band (r
     const html = renderToStaticMarkup(createElement(ReceiptView, {
       outcome: { state: "terminal", result: "partial", completedAt: COMPLETED_AT },
       receipt: { state: "available", value: AVAILABLE_RECEIPT },
+      dryRun: false,
     }));
     // The band prints `confidence partial — some of it read back` via the
     // qualifying chip; the body's own trailing MetaLine must not restate the
     // bare `confidence partial` a second time underneath it.
     assert.match(html, /partial — some of it read back/u);
     assert.doesNotMatch(html, /confidence partial(?!\s*—)/u);
+  });
+});
+
+/**
+ * The dry-run Banner — 03a fidelity ledger 2 row D13, ruled in under D273
+ * item 7 ("port every served receipt cue"). F8a could not land this one row:
+ * `dryRun` reaches `ReceiptView` only through `log-panel.tsx`'s call site,
+ * which a parallel unit (the dry-run worker supervisor) owned at the time.
+ *
+ * `dryRun` is a REQUIRED prop, not an optional flag defaulting to `false`
+ * (`log-panel.tsx`'s own `surface` is genuinely absent when a panel is opened
+ * for a run outside the day currently loaded — a deep link across a day
+ * boundary is the real, reachable case, not a defensive type). Defaulting to
+ * `false` would print "not a rehearsal" about a run nobody asked, which is
+ * exactly the silent-fallback shape CLAUDE.md's fail-loud rule forbids: the
+ * false arm and the "we do not know" arm must both draw nothing, and only a
+ * genuine `true` may draw the banner.
+ */
+describe("ReceiptView — the dry-run banner (row D13)", () => {
+  const AVAILABLE_RECEIPT = RunEvidenceReceiptSchema.parse({
+    receiptId: RECEIPT_ID,
+    runId: RUN_ID,
+    traceId: "on-120000-2222",
+    workflowId: "onboarding",
+    attempt: 1,
+    generatedAt: GENERATED_AT,
+    descriptorFingerprint: "a".repeat(64),
+    configFingerprint: "a".repeat(64),
+    retryOf: { state: "absent" },
+    failure: { state: "absent" },
+    input: [],
+    observations: [],
+    decisions: [],
+    actions: [],
+    verification: [],
+    output: [],
+    reuse: [],
+    warnings: [],
+    confidence: "verified",
+    result: "verified-done",
+  });
+
+  it("draws the rehearsal banner when the run really was a dry run", () => {
+    const html = renderToStaticMarkup(createElement(ReceiptView, {
+      outcome: { state: "terminal", result: "verified-done", completedAt: COMPLETED_AT },
+      receipt: { state: "available", value: AVAILABLE_RECEIPT },
+      dryRun: true,
+    }));
+    assert.match(html, /Dry run — this run was a rehearsal/u);
+    assert.match(html, /reads everything and writes nothing/u);
+  });
+
+  it("draws nothing when the run genuinely was not a dry run", () => {
+    const html = renderToStaticMarkup(createElement(ReceiptView, {
+      outcome: { state: "terminal", result: "verified-done", completedAt: COMPLETED_AT },
+      receipt: { state: "available", value: AVAILABLE_RECEIPT },
+      dryRun: false,
+    }));
+    assert.doesNotMatch(html, /rehearsal/u);
+  });
+
+  it("draws nothing when the call site genuinely does not know — never defaults to a claim", () => {
+    const html = renderToStaticMarkup(createElement(ReceiptView, {
+      outcome: { state: "terminal", result: "verified-done", completedAt: COMPLETED_AT },
+      receipt: { state: "available", value: AVAILABLE_RECEIPT },
+      dryRun: undefined,
+    }));
+    assert.doesNotMatch(html, /rehearsal/u);
   });
 });
