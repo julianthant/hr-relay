@@ -22,6 +22,7 @@ const TARGET = {
   usagePolicy: "read-only",
   cleanupObligation: "None; this fixture must not write.",
   owner: "test operator",
+  purpose: "The registry fixture every parse/resolve case in this file starts from.",
   publicInput: {},
 } as const;
 
