@@ -19,16 +19,21 @@ import { SHELL_VIEWS, type ShellViewSelection } from "../../../src/dashboard/sur
 
 const BASE = { start: false } as const;
 
-/** The whole `ActiveTakeover` union, so a seventh arm cannot go unpinned. */
-const EVERY_TAKEOVER: readonly ActiveTakeover[] = [
-  "settings",
-  "intake",
-  "archive",
-  "activity",
-  "explore",
-  "catalog",
-  "none",
-];
+/**
+ * The whole `ActiveTakeover` union against the segment the switcher must press
+ * for each arm. `satisfies Record<ActiveTakeover, ShellViewSelection>` pins it
+ * in both directions: a seventh takeover added to the union fails to compile
+ * here until this table names its segment, and a key the union drops fails too.
+ */
+const SEGMENT_OF = {
+  settings: "none",
+  intake: "none",
+  catalog: "none",
+  archive: "archive",
+  explore: "explorer",
+  activity: "activity",
+  none: "queue",
+} as const satisfies Record<ActiveTakeover, ShellViewSelection>;
 
 describe("the Top Bar switcher's pressed segment", () => {
   it("presses nothing for every takeover the switcher does not name", () => {
@@ -60,13 +65,27 @@ describe("the Top Bar switcher's pressed segment", () => {
     assert.equal(shellViewOf(activeTakeover({ ...BASE, archive: "index", explore: "separations" })), "archive");
   });
 
-  it("returns a value the switcher can render for every takeover in the union", () => {
-    const renderable: readonly ShellViewSelection[] = [...SHELL_VIEWS, "none"];
-    for (const takeover of EVERY_TAKEOVER) {
-      assert.ok(
-        renderable.includes(shellViewOf(takeover)),
-        `shellViewOf(${takeover}) produced a segment the switcher cannot draw`,
-      );
+  /**
+   * The arm table, asserted per takeover. Its predecessor only checked that the
+   * result was a member of `[...SHELL_VIEWS, "none"]`, which the return type
+   * already guarantees — a test tsc owned, that could not go red for any wiring
+   * mistake (unit U4b). This one names the expected segment for each arm, so a
+   * takeover folded onto the wrong one fails here.
+   */
+  it("presses the segment its arm names, for every takeover in the union", () => {
+    for (const [takeover, segment] of Object.entries(SEGMENT_OF) as readonly (readonly [
+      ActiveTakeover,
+      ShellViewSelection,
+    ])[]) {
+      assert.equal(shellViewOf(takeover), segment, `shellViewOf(${takeover}) pressed the wrong segment`);
+      if (segment !== "none") {
+        // The other half: a segment the switcher draws no button for would
+        // press nothing on screen while reading as pressed here.
+        assert.ok(
+          SHELL_VIEWS.includes(segment),
+          `${takeover} names ${segment}, which the switcher draws no button for`,
+        );
+      }
     }
   });
 });

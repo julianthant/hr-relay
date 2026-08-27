@@ -68,7 +68,7 @@ function section(id: string, label: string): SettingsSection {
   return SettingsSectionPrimitiveSchema.parse({ id, label, revision: 1 });
 }
 
-const STORAGE = section("storage", "Storage");
+const STORAGE = section("storage", "Storage health");
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
   authority: "healthy",
   backup: "current",
