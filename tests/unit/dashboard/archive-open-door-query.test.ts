@@ -15,13 +15,20 @@
  * `command-result-exhaustive.test.ts` uses for a wiring fact of the same kind.
  *
  * A full runtime press test was attempted first and hit a genuine, separate
- * defect: `VersionsView`'s local `applied` state does not survive the index
- * re-read a successful apply triggers (the re-read's `useEffect` sets the
- * parent's `index` resource back to `"loading"`, which unmounts `VersionsView`
- * entirely before the banner can render), so the door this finding is about
- * is not reliably reachable by a click in the first place. That is out of
- * this unit's scope (five specified fixes) and is reported separately rather
- * than fixed here.
+ * defect: `VersionsView`'s local `applied` state did not survive the index
+ * re-read a successful apply triggers (the re-read's `useEffect` set the
+ * parent's `index` resource back to `"loading"`, which unmounted `VersionsView`
+ * entirely before the banner could render), so the door this finding is about
+ * was not reliably reachable by a click in the first place. That was out of
+ * F10d's scope (five specified fixes) and was reported rather than fixed
+ * there; **unit F10e fixed it**, and the press test it unblocked —
+ * `archive-bump-round-trip-press.test.ts` — types a filter, applies, presses
+ * the door and asserts the ledger it opens is unfiltered. That is now the
+ * load-bearing proof of this finding, and deleting the `setQuery` call turns
+ * it red. The walker below stays as the cheaper SHAPE control on the same
+ * line — it fails on the single-expression form before a browser is
+ * involved — but the sentence above it, that no render could ever see this,
+ * stopped being true the day the surface became pressable.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

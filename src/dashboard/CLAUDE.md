@@ -74,6 +74,40 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a surface that re-reads what it just changed unmounts the only thing that says it
+  changed anything (unit F10e, the defect F10d found and reported rather than fixed).** Applying a
+  version bump made `ArchiveWorkspace` re-read the archive index, the re-read set the `index`
+  resource back to `"loading"`, and the loading arm renders a skeleton IN PLACE OF `VersionsView` —
+  which is where VB43's `applied` record lives, captured at dispatch because the plan is gone by the
+  time the result lands. So the success banner and its `Open the archive` door existed, were pinned
+  by two test files, and were never reliably on screen for a single frame. **Every fold and every
+  render test in the family stayed green, because a surface that redraws after a command looks
+  exactly like one that reported success** — the only thing that can see it is a press, which is why
+  `archive-bump-round-trip-press.test.ts` is the third file in the unit lane to mount React (after
+  `session-panel-pool-press.test.ts` and `run-start-dialog.test.ts`) and why its first case is the
+  whole round trip rather than the banner alone.
+
+  Three things travel. **The fix is the house rule, already written down twice**: a resource already
+  on screen keeps its last value while the next read is in flight (`useRunDetail`, then
+  `useCaptureSession`) — the FIRST read still loads, because a skeleton and a stale answer are
+  different claims and only one of them is honest before anything has been read. Lifting the banner
+  state above the remount boundary was the other candidate and is strictly worse: it does not
+  survive a re-read that FAILS either, since the failed arm replaces the whole body too, and it
+  spreads one surface's dispatch record across two components to work around a refresh that should
+  not have been blanking the surface in the first place. **Rendering stale buys a window, and the
+  window has a control in it**: for as long as the re-read is in flight the wire on screen still
+  lists the plan that was just applied, so `Apply the bump` stood directly under `The bump was
+  applied` — a control contradicting the sentence above it. The dispatch record carries the
+  `versionPlanId` now and that one plan stands down until the re-read that no longer carries it
+  lands. And **the banner's clear is a REMOUNT, so check what else the fix keeps mounted**: leaving
+  the versions view still drops it, which is what should happen, and that arm is pinned rather than
+  assumed now that a nearby unmount was load-bearing by accident.
+
+  Still true of `detail`: the run-detail pane blanks to a skeleton on the same nonce. Its relaunch
+  banner lives in the workspace and survives, so nothing is lost today — but it is the same one-line
+  rule, unapplied, and it wants the identity comparison `useRunDetail` uses rather than this one's
+  bare "already loaded".
+
 - **2026-08-26: the codes were in the index the whole time, and a ported pixel constant is a claim
   about a VOCABULARY (unit F10c, ledger 3 §1/§8 — the archive family's remaining ruled rows).**
   Forty rows, six of which were code. Three things travel.

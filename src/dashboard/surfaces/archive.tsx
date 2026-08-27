@@ -2780,17 +2780,29 @@ function RelaunchConfirmDialog({
 /* ── the version-bump flow ───────────────────────────────────────────────── */
 
 /**
- * What the operator pressed Apply ON, captured at DISPATCH (VB43).
+ * What the applied bump MOVED, captured at DISPATCH (VB43).
  *
  * The plan leaves `plans` the moment it applies and the index is re-read, so
  * reading the count back afterwards would report a plan that no longer exists.
  * The KIND is captured for the same reason and decides one thing: whether
  * there is an archive to open at all.
  */
-interface AppliedBump {
+interface AppliedBumpFacts {
   readonly archived: number;
   /** `undefined` is a generation-1 plan, which recorded no kind */
   readonly kind: VersionBumpChangeRecord["kind"] | undefined;
+}
+
+/**
+ * The same record, plus WHICH plan it is about.
+ *
+ * The banner draws the facts; the surface needs the identity, because the
+ * index it re-reads after an apply is served STALE while that read is in
+ * flight (unit F10e) — so for as long as the banner takes to be earned, the
+ * wire on screen still lists the plan that earned it.
+ */
+interface AppliedBump extends AppliedBumpFacts {
+  readonly versionPlanId: string;
 }
 
 /**
@@ -2813,7 +2825,8 @@ export function BumpAppliedBanner({
    * the ONE place a wire's arms are read for a verdict (unit F10d finding 3).
    */
   replayed: boolean;
-  applied: AppliedBump;
+  /** the dispatch record's FACTS — which plan they belong to is the surface's business */
+  applied: AppliedBumpFacts;
   onOpenArchive: () => void;
 }) {
   const archives = applied.kind !== "minor";
@@ -3007,7 +3020,6 @@ function VersionsView({
   onOpenArchive: () => void;
   result: CommandResult | undefined;
 }) {
-  const openPlan = wire.plans.find((plan) => plan.state === "planned");
   const blockedWorkflows = wire.versionState.filter((state) => state.blockers.length > 0).length;
   // Settled ONCE (unit F10d finding 3): the applied/refused fork below and
   // the applied banner's replay verdict both read this fold's answer, never
@@ -3034,6 +3046,19 @@ function VersionsView({
     the index, so after the re-read there is nothing left to count.
   */
   const [applied, setApplied] = useState<AppliedBump | undefined>(undefined);
+
+  /*
+    The plan the operator is being asked to decide about — and never the one
+    they have already applied. The index is served STALE while the re-read that
+    an apply triggers is in flight (unit F10e), so without this the surface
+    offers `Apply the bump` directly under `The bump was applied`: a control
+    contradicting the sentence above it, and a second envelope the CAS would
+    answer `already-applied`. It comes back on its own, because the re-read
+    that lands next no longer carries the plan at all.
+  */
+  const openPlan = wire.plans.find(
+    (plan) => plan.state === "planned" && plan.versionPlanId !== applied?.versionPlanId,
+  );
 
   const submitPlan = useCallback(
     (authored: BumpAuthoring, changeRecord: VersionBumpChangeRecord) => {
@@ -3083,6 +3108,7 @@ function VersionsView({
   const apply = useCallback(() => {
     if (openPlan === undefined) return;
     setApplied({
+      versionPlanId: openPlan.versionPlanId,
       archived: openPlan.candidates.length,
       kind: openPlan.changeRecord.state === "present" ? openPlan.changeRecord.value.kind : undefined,
     });
@@ -3379,7 +3405,19 @@ export function ArchiveWorkspace({
 
   useEffect(() => {
     let live = true;
-    setIndex(LOADING);
+    /*
+      An index ALREADY on screen keeps its last wire while the next read is in
+      flight — the rule `useRunDetail` settled for run detail and
+      `useCaptureSession` inherited, landing here for a third reason (unit
+      F10e). A re-read is triggered by an APPLIED command, so blanking to a
+      skeleton unmounts the surface that issued it: `VersionsView` lost the
+      dispatch record VB43's banner is composed from, and the banner and its
+      door were unreachable by a click for as long as they existed. There is
+      one archive index, so there is no identity to compare — the first read
+      still loads, because a skeleton and a stale answer are different claims
+      and only one of them is honest before anything has been read.
+    */
+    setIndex((current) => (current.state === "loaded" ? current : LOADING));
     client.archiveIndex().then(
       (value) => { if (live) setIndex(loaded(value)); },
       (error: unknown) => {
