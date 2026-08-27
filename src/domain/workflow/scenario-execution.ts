@@ -32,6 +32,20 @@ import { deepFreeze } from "../immutability.js";
 export const GRAPH_SCENARIO_FILE_PATTERN =
   /^tests\/scenario\/(?:[a-z0-9-]+|workflows\/[a-z0-9-]+\/structural)\.scenario\.test\.ts$/u;
 export const INTEGRATION_WALK_FILE_PATTERN = /^tests\/scenario\/[a-z0-9-]+\.walk\.test\.ts$/u;
+/**
+ * R10 §10.9's T2 tier: `tests/scenario/dashboard/<feature>/<name>.scenario.test.ts`
+ * — a DASHBOARD feature over the real projection and the real command service,
+ * no browser and no graph.
+ *
+ * It is a third kind rather than a third arm of the graph pattern because it
+ * carries the opposite obligation: a graph scenario MUST claim a scenario id
+ * (a file that claims none is walking nothing), and a dashboard scenario must
+ * claim NONE — a graph path is claimed by the file that walks the graph, which
+ * is the same rule the integration walk already carries. Folding the two into
+ * one pattern would make each obligation unenforceable against the other.
+ */
+export const DASHBOARD_SCENARIO_FILE_PATTERN =
+  /^tests\/scenario\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\.scenario\.test\.ts$/u;
 
 export const ExecutableScenarioSpecSchema = z.strictObject({
   scenarioId: ScenarioIdSchema,
@@ -372,10 +386,12 @@ export function auditScenarioCorpusLayout(
   for (const { file, itTitles } of files) {
     const isGraphScenario = GRAPH_SCENARIO_FILE_PATTERN.test(file);
     const isWalk = INTEGRATION_WALK_FILE_PATTERN.test(file);
-    if (!isGraphScenario && !isWalk) {
+    const isDashboardScenario = DASHBOARD_SCENARIO_FILE_PATTERN.test(file);
+    if (!isGraphScenario && !isWalk && !isDashboardScenario) {
       violations.push(
-        `${file} is neither a graph scenario (<name>.scenario.test.ts) nor an integration walk `
-        + "(<name>.walk.test.ts); the corpus has exactly two kinds",
+        `${file} is neither a graph scenario (<name>.scenario.test.ts), a dashboard scenario `
+        + "(dashboard/<feature>/<name>.scenario.test.ts) nor an integration walk (<name>.walk.test.ts); "
+        + "the corpus has exactly three kinds",
       );
       continue;
     }
@@ -385,13 +401,14 @@ export function auditScenarioCorpusLayout(
       .map((title) => claimedScenarioId(title))
       .filter((id): id is string => id !== undefined);
 
-    if (isWalk) {
+    if (isWalk || isDashboardScenario) {
+      const kind = isWalk ? "an integration walk" : "a dashboard scenario";
       if (rowsByFile.has(file)) {
-        violations.push(`${file} is an integration walk and may not carry a manifest row`);
+        violations.push(`${file} is ${kind} and may not carry a manifest row`);
       }
       for (const id of claimed) {
         violations.push(
-          `${file} is an integration walk and may not claim scenario ${id}; a graph path is claimed `
+          `${file} is ${kind} and may not claim scenario ${id}; a graph path is claimed `
           + "by the scenario file that walks it",
         );
       }
