@@ -22,8 +22,10 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 | Unit | Run | Status | Merge sha | Gate line | Review | Notes |
 |---|---|---|---|---|---|---|
 | u1–u5 | R2 | held | — | — | — | first cut ran them as R1 on 08-27; supervisor held on the date gate, nothing dispatched (`b9126e6d`) |
+| u18 | R1 | merged | `c8b7530e` (direct on integration/03b, root) | roadmap:check fresh; docs-only, no code gate | skipped — no code | dryRun=true full chain on 4502: run `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6` / trace `sp-053429-fd41`, terminal `done` at `clear-pending` (`already-present` off a `live-probe`, D215 preview terminal), 299.7 s claimed→terminal, gate via real `POST /api/v1/commands`; authority write rows 0/0/0 (write_intents · write_attempts · durable_outbox); §9.27 addendum |
 
 ## Residue (named, owned)
+- **R2 pre-flight residue from u18 (`c8b7530e`, 2026-08-27):** (a) the root `.tracker-rebuild/state.db` at `36135120` would not open — `user_version` 16 carrying `dry_run_scenario_results` (migration 18) without `worker_pools` (17) → `table dry_run_scenario_results already exists` unwinding `composeDashboardRuntime`; stale local db, not a tree defect; archived to `.tracker-rebuild/stale-schema16-2026-08-27/`, fresh v18 authority built — R2's u1 should expect it and budget for it; (b) a BFF+vite pair from the deregistered worktree `.hr-rebuild-worktrees/fidelity-standing` (no `.git`, absent from `git worktree list`) held 3938/5174 since 08-26 writing to its own db — stopped; the directory is still on disk (worktree-sweep leftover); (c) `npm run cli -- worker <id>` now requires `--pool-index`; the `hr-manage` skill §1 line omits it; (d) the fresh db rehydrated 50 `runs_view` rows from on-disk span JSONL with write tables at 0; `storage doctor` marks 56 pre-v18 backup manifests `INVALID`.
 - sep-2 S2 refusal live (a non-RRSS doc must appear in the Action List) — external, parked on doc 03b line ~317
 - 03a fidelity carry-in C1–C6 — doc 04 §"Carried in from Phase 3a" (D279), not 03b work
 
