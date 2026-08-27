@@ -186,8 +186,8 @@
         "reason": "Doc 4502 was open and driven live on 2026-08-14 (§9.17), 2026-08-19 (§9.20, five retries) and 2026-08-20 (§9.22 and §9.24): an active job, a past last day worked, and no pending transaction."
       },
       "provenance": {
-        "document": "docs/rebuild/03b-finish-separations.md",
-        "section": "The canary registry — doc 4502; docs/migrations/separations.md §9.17, §9.20, §9.22, §9.24"
+        "document": "docs/migrations/separations.md",
+        "section": "§9.17, §9.20, §9.22, §9.24"
       },
       "usagePolicy": "read-only",
       "cleanupObligation": "Dry runs only (dryRun=true): a rehearsal must leave the Kuali document unsaved and file no UCPath transaction.",
@@ -210,8 +210,8 @@
         "reason": "Doc 4495 was open when last observed (§9.19 §7); its separation date 09/02/2026 keeps S7 refusing at plan until Pacific calendar day 2026-09-02."
       },
       "provenance": {
-        "document": "docs/rebuild/03b-finish-separations.md",
-        "section": "The canary registry — doc 4495; docs/migrations/separations.md §9.19 §7, §9.17a run 4"
+        "document": "docs/migrations/separations.md",
+        "section": "§9.19 §7, §9.17a run 4"
       },
       "usagePolicy": "read-only",
       "cleanupObligation": "None; read-only until 2026-09-02, when it becomes a fresh full-chain subject.",
@@ -234,8 +234,8 @@
         "reason": "Doc 4524's action was completed 2026-08-14, between two passes on the same day (§9.16 §3)."
       },
       "provenance": {
-        "document": "docs/rebuild/03b-finish-separations.md",
-        "section": "The canary registry — doc 4524; docs/migrations/separations.md §9.12, §9.16 §3"
+        "document": "docs/migrations/separations.md",
+        "section": "§9.12, §9.16 §3"
       },
       "usagePolicy": "read-only",
       "cleanupObligation": "None; the completed document must not be used as a live target.",
@@ -253,13 +253,13 @@
       "workflow": "separations",
       "kind": "pending-termination",
       "availability": {
-        "state": "gone",
+        "state": "unknown",
         "lastObserved": "2026-08-19",
-        "reason": "No subject holding a PENDING UCPath termination exists: deleting T002209631 cleared the canary path exactly as intended and removed the only mapped subject with anything for the sweep to delete (§9.16 §4, §9.19 §5)."
+        "reason": "No subject holding a PENDING UCPath termination is currently known: deleting T002209631 cleared the canary path exactly as intended and removed the only mapped subject with anything for the sweep to delete (§9.16 §4, §9.19 §5). Doc 4510 (the no-active-job witness, cited in finalization-already-finalized/finalization-no-active-job above) is a different mapped subject for a different gap and is not part of this fact — the removed table names it separately and never pairs it with T002209631. No replacement subject for this gap has been mapped or observed since, so the state is unknown, not gone."
       },
       "provenance": {
-        "document": "docs/rebuild/03b-finish-separations.md",
-        "section": "The canary registry — (no subject); docs/migrations/separations.md §9.16 §4, §9.19 §5"
+        "document": "docs/migrations/separations.md",
+        "section": "§9.16 §4, §9.19 §5"
       },
       "usagePolicy": "read-only",
       "cleanupObligation": "None; no subject exists to clean up.",
