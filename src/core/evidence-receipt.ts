@@ -128,7 +128,12 @@ import {
   type EvidenceObligation,
   type EvidenceObligationSource,
 } from "../domain/trust/evidence-obligations.js";
-import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../domain/trust/evidence.js";
+import {
+  ActionWriteProofSchema,
+  RunEvidenceReceiptSchema,
+  type ActionWriteProof,
+  type RunEvidenceReceipt,
+} from "../domain/trust/evidence.js";
 import {
   evaluateReceiptDerivationBinding,
   evaluateReceiptRederivation,
@@ -142,12 +147,13 @@ import {
   type RunCheckpointRecord,
 } from "../domain/workflow/checkpoint.js";
 import {
+  TransactionOutcomeSchema,
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
   type WriteAttemptRecord,
   type WriteIntentRecord,
 } from "../domain/write-safety.js";
-import type { AnyTaskContract } from "../domain/contracts/base.js";
+import type { AnyCommitTaskContract, AnyTaskContract } from "../domain/contracts/base.js";
 
 /* ── inputs ──────────────────────────────────────────────────────────────── */
 
@@ -317,8 +323,74 @@ function pickCheckpoint(
       || (right.claimGeneration ?? 0) - (left.claimGeneration ?? 0))[0];
 }
 
-export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceReceipt {
-  return deriveRunEvidenceReceipt(input).receipt;
+/**
+ * The receipt COMPOSITION — which shape this builder derives (Track F,
+ * ledger 2 D16–D22). Composition 2 added `actions[].proved` and the
+ * `composition` stamp; composition 1 is the exact shape every receipt stored
+ * before that. The number exists for one reason: a stored receipt is
+ * immutable and must RE-DERIVE byte-identically under the composition it was
+ * stored at, so `ensureRunEvidenceReceipt` derives a stored composition-1
+ * receipt at 1 and never upgrades it in place — the D199 stranding, refused
+ * structurally rather than remembered.
+ */
+export type ReceiptComposition = 1 | 2;
+export const LATEST_RECEIPT_COMPOSITION = 2 satisfies ReceiptComposition;
+
+export function buildRunEvidenceReceipt(
+  input: ReceiptBuildInput,
+  composition: ReceiptComposition = LATEST_RECEIPT_COMPOSITION,
+): RunEvidenceReceipt {
+  return deriveRunEvidenceReceipt(input, composition).receipt;
+}
+
+/**
+ * What PROVED a commit, from durable authority alone (ledger 2 D16–D22):
+ * the fence identity off the write intent, and the proof value, proof source
+ * and instant off the transaction checkpoint's stored `TransactionOutcome`.
+ * Every proof leaf is redacted through the declared `write-proof` scope — an
+ * undeclared leaf fails loud here, exactly like a receipt fact.
+ *
+ * Returns `undefined` only when no durable write intent was supplied: the
+ * fence identity (system + key digest) is half of what the block asserts,
+ * and inventing it from the contract would be a claim, not a record. The
+ * outcome's proof schema hash must be the commit contract's own — a proof
+ * bound to a schema this build no longer declares cannot be classified by
+ * this build's table, and saying so beats redacting under the wrong rows.
+ */
+export function deriveActionWriteProof(input: Readonly<{
+  commitContract: AnyCommitTaskContract;
+  /** The transaction node's checkpoint row (raw or parsed). */
+  record: unknown;
+  intent: WriteIntentRecord | undefined;
+}>): ActionWriteProof | undefined {
+  const { commitContract, intent } = input;
+  if (intent === undefined) return undefined;
+  const record = RunCheckpointRecordSchema.parse(input.record);
+  const parsed = TransactionOutcomeSchema.safeParse(record.output.value);
+  if (!parsed.success) {
+    throw new Error(
+      `transaction checkpoint ${record.nodeId} does not store a recorded transaction outcome, so `
+      + "nothing durable proves this write: " + parsed.error.message,
+    );
+  }
+  const outcome = parsed.data;
+  const declaredProofHash = deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output");
+  if (outcome.proof.schemaHash !== declaredProofHash) {
+    throw new Error(
+      `transaction checkpoint ${record.nodeId} stores a completion proof bound to schema `
+      + `${outcome.proof.schemaHash}, and ${commitContract.id} now declares ${declaredProofHash}; `
+      + "refusing to redact a proof under a declaration authored for a different shape",
+    );
+  }
+  const scope: EvidenceValueScope = { kind: "write-proof", taskId: commitContract.id };
+  return ActionWriteProofSchema.parse({
+    system: intent.system,
+    idempotencyKeyDigest: intent.idempotencyKeyDigest,
+    completion: commitContract.writeSafety.completion.kind,
+    proofSource: outcome.proofSource,
+    values: evidenceLeaves(outcome.proof.value).map((leaf) => redactEvidenceLeaf(scope, leaf)),
+    recordedAt: outcome.disposition === "committed" ? outcome.confirmedAt : outcome.observedAt,
+  });
 }
 
 /**
@@ -327,7 +399,10 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
  * when the stored receipt no longer re-derives, and evaluating the table twice
  * would let the two answers drift.
  */
-export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
+export function deriveRunEvidenceReceipt(
+  input: ReceiptBuildInput,
+  composition: ReceiptComposition = LATEST_RECEIPT_COMPOSITION,
+): Readonly<{
   receipt: RunEvidenceReceipt;
   checks: readonly ReceiptBindingCheckResult[];
 }> {
@@ -620,6 +695,19 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
         occurredAt,
         write,
       });
+      /*
+       * Composition 2 (ledger 2 D16–D22): what proved this write, beside the
+       * write it proves. Composition 1 is the stored shape and emits nothing —
+       * that is the whole re-derivation contract, not an omission.
+       */
+      if (composition === 2) {
+        const proved = deriveActionWriteProof({
+          commitContract: node.commit.uses,
+          record,
+          intent: write?.intent,
+        });
+        if (proved !== undefined) commitAction.proved = proved;
+      }
       actions.push(commitAction);
       const dedupeId = entryId("decision", `dedupe.${id}`);
       decisions.push({
@@ -861,6 +949,7 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
           : "done-with-warnings";
 
   const receipt = RunEvidenceReceiptSchema.parse({
+    ...(composition === 2 ? { composition: 2 } : {}),
     receiptId,
     runId: envelope.runId,
     traceId: envelope.traceId,
@@ -989,6 +1078,20 @@ export function ensureRunEvidenceReceipt(
   if (lifecycle.state !== "terminal") {
     throw new Error(`run ${runId} is ${lifecycle.state}; only a terminal run has a receipt`);
   }
+  const existingRaw: unknown = store.findReceiptByRun(runId);
+  const existing = existingRaw === undefined || existingRaw === null
+    ? undefined
+    : RunEvidenceReceiptSchema.parse(existingRaw);
+  /*
+   * A stored receipt is immutable and re-derives under ITS OWN composition —
+   * an absent stamp IS composition 1, the closed shape every receipt stored
+   * before the stamp existed (never a guessed default). Only a run with no
+   * stored receipt gets the latest composition; upgrading a stored one in
+   * place would be exactly the "newer story about a settled run" D199 forbids.
+   */
+  const composition: ReceiptComposition = existing === undefined
+    ? LATEST_RECEIPT_COMPOSITION
+    : existing.composition === undefined ? 1 : existing.composition;
   const { receipt: derived, checks } = deriveRunEvidenceReceipt({
     descriptor,
     run,
@@ -997,13 +1100,12 @@ export function ensureRunEvidenceReceipt(
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
     gateResults: store.listGateResultsByRun(runId),
-  });
-  const existing: unknown = store.findReceiptByRun(runId);
-  if (existing !== undefined && existing !== null) {
+  }, composition);
+  if (existing !== undefined) {
     const rederivation = evaluateReceiptRederivation({
       run,
       descriptor,
-      stored: RunEvidenceReceiptSchema.parse(existing),
+      stored: existing,
       derived,
       checks,
     });
