@@ -84,7 +84,7 @@
  * sentence is what this surface shows. A button disabled by a client-side
  * count would be the client claiming to know what only that transaction can.
  */
-import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { z } from "zod";
 import {
   Archive as ArchiveIcon,
@@ -2231,6 +2231,17 @@ function BumpChangeRecordDialog({
   const [commit, setCommit] = useState("");
   /* the refusal a press produced, cleared by any edit that could change it */
   const [refused, setRefused] = useState<BumpRecordComposition | undefined>(undefined);
+  /*
+    A refusal the operator cannot SEE is the dead button VB41 argues against,
+    wearing a different coat: the dialog body scrolls, and the primary sits
+    below the fold from the refusal it produces. So the answer is brought to
+    the press rather than left where it happened to render.
+  */
+  const refusalRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (refused === undefined) return;
+    refusalRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [refused]);
 
   useEffect(() => {
     if (authoring === undefined) return;
@@ -2313,8 +2324,8 @@ function BumpChangeRecordDialog({
               >
                 <span className={dsText.body}>
                   {parkedWrites > 0
-                    ? `${plural(parkedWrites, "of them")} a parked write — a write whose outcome is unknown may never `
-                      + "be buried in an archive. Resolve it present or absent first."
+                    ? `${String(parkedWrites)} of them ${parkedWrites === 1 ? "is" : "are"} a parked write — a write `
+                      + "whose outcome is unknown may never be buried in an archive. Resolve it present or absent first."
                     : "A major bump takes every prior-version run out of the live surfaces, and it will not take one "
                       + "that is still in flight."}
                 </span>
@@ -2413,13 +2424,15 @@ function BumpChangeRecordDialog({
             </Field>
 
             {refused?.state === "incomplete" && (
-              <Refusal
-                title="The change record is not complete"
-                code={refused.code}
-                outcome="No plan was minted. Nothing has been archived and no version has moved."
-              >
-                <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{refused.sentence}</p>
-              </Refusal>
+              <div ref={refusalRef}>
+                <Refusal
+                  title="The change record is not complete"
+                  code={refused.code}
+                  outcome="No plan was minted. Nothing has been archived and no version has moved."
+                >
+                  <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{refused.sentence}</p>
+                </Refusal>
+              </div>
             )}
           </DialogBody>
           <DialogFooter meta="There is no force arm. The refusal is the feature.">

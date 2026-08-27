@@ -225,12 +225,18 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
       enqueuedAt: at(12),
       drift: ["descriptor-version"],
     }],
+    // MAJOR, and it has to be. This plan carries a blocker, and since D274 a
+    // minor bump archives nothing and cannot be blocked — so a minor plan
+    // holding a blocking run is a contradiction `VersionBumpPlanSchema` now
+    // refuses outright. The fixture said `minor` from before that rule existed,
+    // which drew a screen reading "a minor bump archives no run at all" above a
+    // blocker table demanding the run be resolved first.
     changeRecord: {
       state: "present",
       value: {
-        kind: "minor",
-        what: "Person Lookup's CRM cross-check tolerates a middle initial",
-        why: "three subjects a week were parking on a name mismatch that was not one",
+        kind: "major",
+        what: "Person Lookup's CRM cross-check moved its subject match onto a canonical name field",
+        why: "the old descriptor cannot express the canonical field, so its runs cannot be rendered by the new one",
         commit: { state: "absent", reason: "authored from the dashboard before the change was tagged" },
       },
     },
