@@ -518,8 +518,9 @@ function GraphNodeRow({
       <span className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
         <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
           {/*
-            The demo prints ONE name because its node ids are prose. Here the id
-            is the stable identifier a failure resolves to and the label is the
+            EX66 — ref operator-trust §5.2.1 item 1 (D275 item 5). The demo
+            prints ONE name because its node ids are prose. Here the id is the
+            stable identifier a failure resolves to and the label is the
             operator's word for it, so both travel — the id first and loud,
             because that is the half somebody arrives holding.
           */}
@@ -547,6 +548,12 @@ function GraphNodeRow({
             {describeNodeCondition(node.shape.condition)}
           </span>
         )}
+        {/*
+          EX87/EX88 — ref operator-trust §5.2.1 items 2 and 3 (D275 item 5).
+          The count is §5.9's own census printed where the node is CHOSEN, and
+          `always-rerun` is the one replay value that has to be legible before
+          the retry rather than after it.
+        */}
         <span className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
           {contracts > 0 && (
             <span className={cn(dsText.micro, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
@@ -1157,9 +1164,10 @@ export function NodeDetail({
         <NodeShapeFacts node={node} />
 
         {/*
-          The projection chips keep NO pencil (EX114): the mark now rides the
-          contract row, and drawing it twice would put the same fact in two
-          places that can disagree the moment one of them stops being updated.
+          EX133 — ref operator-trust §5.2.1 item 5 (D275 item 5). The chips
+          entered the contract; the pencil did NOT (EX114): the mark rides the
+          field's own contract row, and drawing it twice would put one fact in
+          two places that can disagree the moment one stops being updated.
         */}
         {node.details.length > 0 && (
           <FactRow label="Detail projections">
@@ -1212,6 +1220,8 @@ function NodeShapeFacts({ node }: { node: ExplorerNodeWire }) {
   const shape = node.shape;
   switch (shape.kind) {
     case "task":
+      // EX127 — ref operator-trust §5.2.1 item 4 (D275 item 5): the list row's
+      // two replay facts, named in full where the panel has room to name them.
       return (
         <FactRow label="Replay">
           <FactChips>
@@ -1416,6 +1426,11 @@ function NodeInfo({ workflow, node }: { workflow: ExplorerWorkflowWire; node: Ex
       <PopoverContent title={String(node.id)} side="bottom" align="end" width="lg">
         <div className="flex flex-col gap-[var(--ds-space-base)]">
           <Prose prose={node.purpose} />
+          {/*
+            EX165 — ref operator-trust §5.2.1 item 6 (D275 item 5): places the
+            node in its graph for a reader who arrived here by deep link rather
+            than by scrolling the list, where the graph is already on screen.
+          */}
           <p className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}>
             {`${node.label} — a ${kind.word.toLowerCase()} node of ${workflow.label}.`}
           </p>
