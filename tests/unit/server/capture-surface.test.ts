@@ -46,6 +46,7 @@ import {
 } from "../../../src/domain/capture-surface.js";
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, type Config } from "../../../src/domain/config/schema.js";
+import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { deriveItemId, deriveStableUuid } from "../../../src/domain/identifiers.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
@@ -344,6 +345,10 @@ function surface(options: SurfaceOptions = {}): Surface {
     commands,
     startPlans,
     hub,
+    // D274 item 6 — the read-only Settings status sections read the SAME
+    // resolved config and descriptor tuple this harness composes everything else
+    // from, so nothing on that page can be true here and false in production.
+    settings: { config: resolveConfig({}, {}, clock), descriptors: [captureFixtureDescriptor] },
     storage: {
       doctorOptions: {
         authorityPath: join(root, "state.db"),

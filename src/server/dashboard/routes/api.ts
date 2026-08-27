@@ -23,6 +23,7 @@ import {
 import type { StartPlanService } from "../commands/start-plan-service.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../queries/bootstrap.js";
 import { buildStorageDoctor, type StorageQueryDeps } from "../queries/storage.js";
+import { buildSettingsFacts, type SettingsQueryDeps } from "../queries/settings.js";
 import { buildWorkflowExplorer, type ExplorerQueryDeps } from "../queries/explorer.js";
 import { buildUiCatalogWire, type UiCatalogQueryDeps } from "../queries/ui-catalog.js";
 import { buildRunDetail, buildRunSection, type RunDetailQueryDeps } from "../queries/run-detail.js";
@@ -50,6 +51,8 @@ export interface DashboardAppDeps {
   readonly capture: CaptureService;
   readonly hub: DashboardStreamHub;
   readonly storage: StorageQueryDeps;
+  /** D274 item 6 / ledger 3 SE40–SE42 — the two READ-ONLY Settings status sections. */
+  readonly settings: SettingsQueryDeps;
   /** Ref operator-trust §5.2's read-only explorer projection (2i-G, D176). */
   readonly explorer: ExplorerQueryDeps;
   /** The committed semantic UI catalog, served read-only (2i-G, D177). */
@@ -147,6 +150,15 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
 
   // Ref dashboard-surfaces §2.5's read-only doctor, on demand from the Settings surface.
   app.get("/api/v1/storage/doctor", async (c) => c.json(await buildStorageDoctor(deps.storage)));
+
+  /**
+   * D274 item 6 — System hosts + Workflow capabilities, read-only.
+   *
+   * GET-only by construction, and that is the ruling rather than an omission:
+   * the settings WRITE family (`apply-settings`) is deferred to doc 04, and
+   * item 6's rejected option C was coupling these reads to it.
+   */
+  app.get("/api/v1/settings/facts", (c) => c.json(buildSettingsFacts(deps.settings)));
 
   /**
    * Ref operator-trust §5.2's read-only explorer (2i-G, D176) and the committed UI catalog

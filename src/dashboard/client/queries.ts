@@ -13,6 +13,7 @@ import {
   type RunDetailWire,
 } from "../../domain/dashboard/run-detail.js";
 import { StorageDoctorWireSchema, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import { SettingsFactsWireSchema, type SettingsFactsWire } from "../../domain/dashboard/settings.js";
 import {
   DiagnosticBundleWireSchema,
   type DiagnosticBundleWire,
@@ -86,6 +87,14 @@ export interface DashboardQueries {
   diagnosticBundleManifestUrl(bundleId: string): string;
   /** Ref dashboard-surfaces §2.5's read-only doctor, run on demand from Settings (2i-D). */
   storageDoctor(): Promise<StorageDoctorWire>;
+  /**
+   * D274 item 6 — Settings' System hosts + Workflow capabilities, read-only.
+   *
+   * There is deliberately no mutating counterpart on this interface, for the
+   * same reason `workflowExplorer` has none: the settings WRITE family is
+   * deferred (doc 04), so the surface cannot offer what the wire will not take.
+   */
+  settingsFacts(): Promise<SettingsFactsWire>;
   /** Ref data-intake-and-edit-data §2.2 step 1 — the bytes go up, a durable session comes back (2i-E3). */
   uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult>;
   /** The durable session joined with its re-derived parse view and hints. */
@@ -203,6 +212,13 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         StorageDoctorWireSchema,
         "GET /api/v1/storage/doctor",
         await transport.requestJson("/api/v1/storage/doctor"),
+      );
+    },
+    async settingsFacts(): Promise<SettingsFactsWire> {
+      return parseOrThrow(
+        SettingsFactsWireSchema,
+        "GET /api/v1/settings/facts",
+        await transport.requestJson("/api/v1/settings/facts"),
       );
     },
     async uploadIntakeFile(request: IntakeUploadRequest): Promise<IntakeUploadResult> {

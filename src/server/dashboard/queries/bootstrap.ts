@@ -12,6 +12,10 @@ import {
   FrontendBootstrapWireSchema,
   type FrontendBootstrapWire,
 } from "../../../domain/dashboard/bootstrap.js";
+import {
+  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
+  SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
+} from "../../../domain/dashboard/settings.js";
 import { LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../domain/ids.js";
 import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
@@ -137,9 +141,20 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         reason: "test-instance selection lands with the settings surface (2i)",
       },
     })),
-    // 2i-D: the one real section. Editable settings (`apply-settings`) stay a
-    // deferred command family; Storage is read-only health + the doctor.
-    settingsSections: [{ id: "storage", label: "Storage", revision: 1 }],
+    // Every section here is READ-ONLY status. Editable settings
+    // (`apply-settings`) stay a deferred command family (doc 04), so the list
+    // carries no editable group and the nav draws none.
+    //
+    // D274 item 6 (ledger 3 SE40–SE42) added the second and third: both are
+    // projections of authority this process already composed — the resolved
+    // config, and the descriptor tuple the kernel plans with — served by
+    // `GET /api/v1/settings/facts`. They were absent for exactly one reason,
+    // which the ledger names: this list said `storage` and nothing else.
+    settingsSections: [
+      { id: "storage", label: "Storage", revision: 1 },
+      { id: SETTINGS_SYSTEM_HOSTS_SECTION_ID, label: "System hosts", revision: 1 },
+      { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
+    ],
     featureAvailability: [
       ...DEFERRED_FEATURES.map(([feature, reason]) => ({
         feature,

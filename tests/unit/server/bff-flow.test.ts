@@ -41,6 +41,7 @@ import { RUN_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js
 import { personLookupQueuedRun } from "../fixtures/phase1f-executor-harness.js";
 import { AT, DAY } from "./helpers/dashboard-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
+import { resolveConfig } from "../../../src/domain/config/resolve.js";
 import { UNWIRED_CAPTURE_SERVICE } from "../../fixtures/capture-surface-seams.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
@@ -222,6 +223,10 @@ function harness(options: {
     commands,
     startPlans,
     hub,
+    // D274 item 6 — the read-only Settings status sections read the SAME
+    // resolved config and descriptor tuple this harness composes everything else
+    // from, so nothing on that page can be true here and false in production.
+    settings: { config: resolveConfig({}, {}, clock), descriptors: [fixtureDescriptor] },
     storage: {
       doctorOptions: {
         // The harness database lives at the temp ROOT, not under stateRoot.
@@ -578,7 +583,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(storage.authority, "healthy");
     assert.equal(storage.backup, "missing");
     const sections = boot.settingsSections as { id: string; label: string }[];
-    assert.deepEqual(sections.map(({ id }) => id), ["storage"]);
+    assert.deepEqual(sections.map(({ id }) => id), ["storage", "system-hosts", "workflow-capabilities"]);
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {

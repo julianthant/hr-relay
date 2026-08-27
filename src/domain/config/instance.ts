@@ -34,6 +34,47 @@ function entryUrls(config: Config, system: BrowserSystemId): { readonly prod: st
   }
 }
 
+/**
+ * One system's configured entry hosts, as a READ states them (never as a run
+ * resolves them).
+ *
+ * Deliberately NOT exported: it is the shape of `listSystemEntryHosts`'s return
+ * and nothing else names it, and an exported interface at a boundary owes a zod
+ * schema (`strict-boundary-schemas`). The value that crosses a wire is
+ * `SystemHostWireSchema` in `domain/dashboard/settings.ts`, which is that schema.
+ */
+interface SystemEntryHosts {
+  readonly system: BrowserSystemId;
+  readonly prod: string;
+  /** Absent when none is configured, or when the configured one is not DISTINCT. */
+  readonly test?: string;
+}
+
+/**
+ * Every browser system's configured entry hosts (Settings → System hosts, SE40).
+ *
+ * It reads `entryUrls` — the SAME table `resolveSystemEntryUrl` reads — and
+ * applies that function's own distinctness rule, so a host this returns is a
+ * host a run would actually navigate to. A `test` entry configured identical to
+ * `prod` is dropped here for the same reason it throws there: a session that
+ * believes it is hitting a sandbox may never silently land on production, and a
+ * page advertising a test host every run asking for it would be refused from is
+ * the same lie one screen earlier.
+ *
+ * It is a READ, so it refuses nothing and throws nothing: absence is the answer.
+ */
+export function listSystemEntryHosts(config: Config): readonly SystemEntryHosts[] {
+  return BrowserSystemIdSchema.options.map((system) => {
+    const urls = entryUrls(config, system);
+    const distinctTest = urls.test !== undefined && urls.test !== urls.prod ? urls.test : undefined;
+    return Object.freeze({
+      system,
+      prod: urls.prod,
+      ...(distinctTest === undefined ? {} : { test: distinctTest }),
+    });
+  });
+}
+
 /** `context` names the requester (a run id, or a worker/system session label). */
 export function resolveSystemEntryUrl(
   config: Config,
