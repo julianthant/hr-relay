@@ -11,6 +11,7 @@
  */
 
 import type { ArchiveView } from "../surfaces/archive-model.js";
+import { parseCatalogView, type CatalogView } from "../surfaces/row-catalog-model.js";
 
 export interface AppRouteState {
   readonly day?: string;
@@ -41,6 +42,14 @@ export interface AppRouteState {
    * and the term may legitimately be blank.
    */
   readonly catalog?: string;
+  /**
+   * The catalog's visible view (D274 item 4). It travels with `catalog` for the
+   * same reason `archiveView` travels with `archive`: the takeover has two
+   * panels — the generated selector catalog and the row-and-panel vocabulary —
+   * and a door from elsewhere has to be able to land on the right one in a
+   * single navigation rather than asking the operator to take a second action.
+   */
+  readonly catalogView?: CatalogView;
   /**
    * The read-only Archive (2i-G, D179). An empty value opens the index; a run
    * id opens that archived run's detail beside it — the same
@@ -92,6 +101,7 @@ export function parseRoute(search: string): AppRouteState {
   const intake = params.get("intake");
   const explore = params.get("explore");
   const catalog = params.get("catalog");
+  const catalogView = params.get("catalogView");
   const archive = params.get("archive");
   const archiveView = params.get("archiveView");
   const activity = params.get("activity");
@@ -104,6 +114,7 @@ export function parseRoute(search: string): AppRouteState {
     intake?: string;
     explore?: string;
     catalog?: string;
+    catalogView?: CatalogView;
     archive?: string;
     archiveView?: ArchiveView;
     activity?: string;
@@ -116,7 +127,14 @@ export function parseRoute(search: string): AppRouteState {
   if (explore !== null && explore.length > 0) route.explore = explore;
   // Unlike every key above, an EMPTY catalog value is meaningful: the surface
   // is open with no search term. Presence is what opens it.
-  if (catalog !== null) route.catalog = catalog;
+  if (catalog !== null) {
+    route.catalog = catalog;
+    // Follows `archiveView`: an unrecognised view is DROPPED rather than
+    // carried, so a mistyped link lands on the catalog's default panel instead
+    // of on a blank region naming a view this build does not render.
+    const parsedCatalogView = parseCatalogView(catalogView);
+    if (parsedCatalogView !== undefined) route.catalogView = parsedCatalogView;
+  }
   // Both of these follow `catalog`: an EMPTY value is meaningful (the index,
   // and the default range), so presence is what opens the surface.
   if (archive !== null) {
@@ -143,7 +161,10 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.start) params.set("start", "1");
   if (route.intake !== undefined) params.set("intake", route.intake);
   if (route.explore !== undefined) params.set("explore", route.explore);
-  if (route.catalog !== undefined) params.set("catalog", route.catalog);
+  if (route.catalog !== undefined) {
+    params.set("catalog", route.catalog);
+    if (route.catalogView !== undefined) params.set("catalogView", route.catalogView);
+  }
   if (route.archive !== undefined) {
     params.set("archive", route.archive);
     if (route.archiveView !== undefined) params.set("archiveView", route.archiveView);

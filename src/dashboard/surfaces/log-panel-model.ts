@@ -300,6 +300,21 @@ export type PanelTab = "review" | "people" | "logs" | "receipt";
  */
 const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
 
+/**
+ * The tab's WORD, in the one place both readers of it can see.
+ *
+ * `log-panel.tsx`'s `TAB_META` pairs each label with its glyph and the row/panel
+ * catalog prints the same strip without one, so the label lived in a `.tsx` only
+ * one of them could import. A specimen page naming a tab `Log` while the panel
+ * draws `Logs` is precisely the drift a reference surface exists to prevent.
+ */
+export const PANEL_TAB_LABEL: Record<PanelTab, string> = {
+  review: "Review",
+  people: "People",
+  logs: "Logs",
+  receipt: "Receipt",
+};
+
 export function tabsFor(detail: RunDetailWire): PanelTab[] {
   const advertised = new Set<RunDetailSection>(detail.availableSections);
   return TAB_ORDER.filter((tab) => advertised.has(tab));

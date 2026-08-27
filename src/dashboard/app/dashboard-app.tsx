@@ -21,7 +21,7 @@ import {
   type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
 import { CapabilityAvailabilitySchema, type CapabilityAvailability } from "../../domain/absence.js";
-import { FileSpreadsheet, PanelRight } from "lucide-react";
+import { BookMarked, FileSpreadsheet, PanelRight, Workflow } from "lucide-react";
 import { Button, EmptyState, Panel, PanelBody, ToastProvider, TooltipProvider, dsIcon, useDemoTheme, useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -35,6 +35,7 @@ import { ArchiveWorkspace } from "../surfaces/archive.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { UiCatalogWorkspace } from "../surfaces/ui-catalog.js";
+import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
 import { LogPanel } from "../surfaces/log-panel.js";
 import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-model.js";
 import { QueuePanel, type QueueFilterScope, type QueueHandlers, type QueueViewState } from "../surfaces/queue.js";
@@ -1144,6 +1145,7 @@ function LoadedApp({
         activity: undefined,
         explore: undefined,
         catalog: undefined,
+        catalogView: undefined,
         settings: undefined,
         day: place.day,
         run: place.runId ?? undefined,
@@ -1274,6 +1276,7 @@ function LoadedApp({
         activity: undefined,
         explore: undefined,
         catalog: undefined,
+        catalogView: undefined,
         settings: undefined,
       };
       if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
@@ -1300,6 +1303,7 @@ function LoadedApp({
       activity: undefined,
       explore: undefined,
       catalog: undefined,
+      catalogView: undefined,
       settings: "",
     });
   }, [route, setRoute]);
@@ -1494,6 +1498,7 @@ function LoadedApp({
                   activity: undefined,
                   explore: undefined,
                   catalog: undefined,
+                  catalogView: undefined,
                 })}
                 onClose={() => setRoute({ ...route, explore: undefined })}
               />
@@ -1503,7 +1508,9 @@ function LoadedApp({
               <UiCatalogWorkspace
                 query={route.catalog ?? ""}
                 onQuery={(next) => setRoute({ ...route, catalog: next })}
-                onClose={() => setRoute({ ...route, catalog: undefined })}
+                view={route.catalogView ?? DEFAULT_CATALOG_VIEW}
+                onView={(next) => setRoute({ ...route, catalogView: next })}
+                onClose={() => setRoute({ ...route, catalog: undefined, catalogView: undefined })}
               />
             </div>
           ) : (
@@ -1579,6 +1586,39 @@ function LoadedApp({
                   onClick={() => setRoute({ ...route, intake: INTAKE_NEW })}
                 >
                   Import spreadsheet
+                </Button>
+                {/*
+                  THE TWO REFERENCE DOORS (D275 item 1, ledger 3 CA41).
+                  `ref dashboard-surfaces` §9.5.3 documented "two `ghost`
+                  buttons in the panel's action bar beside `Import spreadsheet`"
+                  and the tree had neither: both takeovers were reachable only
+                  by typing their query param. D275 item 1 restores them and
+                  supersedes the section's own 2026-08-21 correction, which
+                  recorded the as-built state rather than the contract. The
+                  rejected arms were hiding the navigation (B) and deleting it
+                  outright (C).
+
+                  They are `ghost` because a reference view is something the
+                  operator looks UP: the two ways work ENTERS this queue —
+                  `Import spreadsheet` and the run modal — keep the weight.
+                  The deep links are untouched; these press the same route keys
+                  a pasted link carries.
+                */}
+                <Button
+                  size="toolbar"
+                  variant="ghost"
+                  icon={<Workflow aria-hidden className={dsIcon.sm} />}
+                  onClick={() => setRoute({ ...route, explore: activeWorkflowId })}
+                >
+                  Workflow explorer
+                </Button>
+                <Button
+                  size="toolbar"
+                  variant="ghost"
+                  icon={<BookMarked aria-hidden className={dsIcon.sm} />}
+                  onClick={() => setRoute({ ...route, catalog: "", catalogView: undefined })}
+                >
+                  UI catalog
                 </Button>
                 <RunStartButton onOpen={() => setStartOpen(true)} />
               </>
