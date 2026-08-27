@@ -48,8 +48,8 @@ Screenshots: `ui-fidelity-audit/shell-1440-demo.png` · `ui-fidelity-audit/shell
 | UF-SH-7 | toolbar | chip label rendering | count>0 draws icon + WORD + number (`Queued 2`); count==0 draws icon + number only (`0`) | identical rule — every count is 0 on this day, so every chip below `All`/`Needs you` draws the minimal form | `state-only` | live: demo `"All8"`,`"Queued2"`,`"0"`(Write parked) vs current `"All0"`,`"0"`(Queued). Same renderer, empty day. The raw map's "current uses full words, demo is icon-only" reading is inverted by this |
 | UF-SH-8 | toolbar | chip explanation on hover | native `title` per chip (`"Accepted, nothing has run. Can be bumped or cancelled."`) | no `title`; the SAME sentences are served through the `Tooltip` primitive (`spec.meaning`) | `exact` | `shell.tsx:551-620` wraps every chip in `<Tooltip content={…}>`; the operator-facing behaviour is identical, only the mechanism is the shared primitive |
 | UF-SH-9 | toolbar | `Import spreadsheet` button | absent | present, `x=104 w=137` | `ruled` | A174 (`fidelity-1:250`) — `ruled: D272 item 3` (**RETAINED with a recorded exception**: it is the only served door into the intake workspace) |
-| UF-SH-10 | toolbar | `Workflow explorer` button | absent | present, `x=246 w=129` — `dashboard-app.tsx:1613` | `new-in-current` | no ledger row names a toolbar button for the Explorer (the Explorer is a top-bar switcher segment, A7). A second door to the same takeover, with no `title` and no ruling |
-| UF-SH-11 | toolbar | `UI catalog` button | absent | present, `x=381 w=88` — `dashboard-app.tsx:1621` | `new-in-current` | **CA41** (`fidelity-3:721`) records the opposite state: "the catalog has NO control anywhere; it is reachable only by typing `?catalog=`", citing the operator's 2026-08-14 removal of the glyph (`8f55a168`). A control has since reappeared. This row is the question, not the fix |
+| UF-SH-10 | toolbar | `Workflow explorer` button | absent | present, `x=246 w=129` — `dashboard-app.tsx:1613` | `ruled` | **Reclassed 2026-08-27 (run UI-1) from `new-in-current`.** `dashboard-surfaces.md` §10, **D275 item 1**: *"Restore the two documented catalog toolbar entries and retain deep links; B hides navigation, C deletes it. This supersedes the prior corrective statement that no buttons exist."* This button is that restoration — a second door to the same Explorer takeover the top-bar segment (A7) already opens, by design. `ruled by D275.1; kept on the sheet as confirm-or-revisit` (`docs/decisions/2026-08-27-ui-fidelity-new-elements.md` item 1) |
+| UF-SH-11 | toolbar | `UI catalog` button | absent | present, `x=381 w=88` — `dashboard-app.tsx:1621` | `ruled` | **Reclassed 2026-08-27 (run UI-1) from `new-in-current`.** Same **D275 item 1** restoration as UF-SH-10 (the second of the "two documented catalog toolbar entries"). **CA41** (`fidelity-3:721`) recorded the opposite state as of 2026-08-21 — "the catalog has NO control anywhere; it is reachable only by typing `?catalog=`", citing the operator's 2026-08-14 removal of the glyph (`8f55a168`) — and D275 item 1 (2026-08-26) is the later, more specific ruling that explicitly supersedes it. `ruled by D275.1; kept on the sheet as confirm-or-revisit` (`docs/decisions/2026-08-27-ui-fidelity-new-elements.md` item 2) |
 | UF-SH-12 | toolbar | sort control + `Select` | `Attention first` select + `Select` toggle at the far right (`x=1242`, `x=1361`) | identical pair (`x=1229`, `x=1348`), `title="Act on several rows at once"` byte-identical | `exact` | B145/B146/B149; live |
 | UF-SH-13 | top bar | Preflight / stethoscope icon | present, first of the right cluster (`aria="Preflight — 1 failing, 1 warning"`) | absent | `ruled` | A39 (`fidelity-1:95`) — `unserved: FrontendBootstrapWireSchema#preflight`, declared-unserved in `config/pending-wire-bindings.json` (D184); the consumer is built |
 | UF-SH-14 | top bar | flask "Demo surfaces" icon | present (`aria="Demo surfaces — synthetic data"`) | absent | `ruled` | A60 (`fidelity-1:116`) — `ruled: operator 2026-08-14`; demo scaffolding with no product counterpart |
@@ -261,14 +261,14 @@ The conversion is one change applied to one shared wrapper, not four. The demo's
 **`DemoSettings.tsx:1071-1075`** (`<div className="flex min-h-0 flex-1">` + a `w-[220px]` nav). All four are
 full-bleed under the top bar: **x=0, w=viewport, no card, no radius, no gutter**.
 
-| id | current component | current file:line | what changes |
-|---|---|---|---|
-| UF-SET-1 | `SettingsPage` (a `Panel`) inside the takeover arm | `app/dashboard-app.tsx:1394-1402` (the `px-[--ds-shell-inset] pb-[--ds-space-base]` wrapper) + `surfaces/settings.tsx:901-935` (the `Panel` root) | drop the gutter + the card frame; keep `D275 item 2`'s shared a11y/motion wrapper |
-| UF-SET-4 | the 220px nav inside it | `surfaces/settings.tsx:937-941` | nothing of its own — it moves with UF-SET-1 |
-| UF-SET-5 | the same at 2000px | as above | full-bleed at every width |
-| UF-AR-3 | `ArchivePage` | `app/dashboard-app.tsx:1439-1456` | same wrapper change |
-| UF-EX-2 | `ExplorerPage` | `app/dashboard-app.tsx:1482-1505` | same wrapper change |
-| UF-AC-2 | `ActivityPage` | `app/dashboard-app.tsx:1457-1481` | same wrapper change |
+| id | current component | current file:line | what changes | landed |
+|---|---|---|---|---|
+| UF-SET-1 | `SettingsPage` (a `Panel`) inside the takeover arm | `app/dashboard-app.tsx:1394-1402` (the `px-[--ds-shell-inset] pb-[--ds-space-base]` wrapper) + `surfaces/settings.tsx:901-935` (the `Panel` root) | drop the gutter + the card frame; keep `D275 item 2`'s shared a11y/motion wrapper | `ab67408f` (+ `5dc014f9` focus-on-enter) |
+| UF-SET-4 | the 220px nav inside it | `surfaces/settings.tsx:937-941` | nothing of its own — it moves with UF-SET-1 | `ab67408f` (+ `5dc014f9` focus-on-enter) |
+| UF-SET-5 | the same at 2000px | as above | full-bleed at every width | `ab67408f` (+ `5dc014f9` focus-on-enter) |
+| UF-AR-3 | `ArchivePage` | `app/dashboard-app.tsx:1439-1456` | same wrapper change | `ab67408f` (+ `5dc014f9` focus-on-enter) |
+| UF-EX-2 | `ExplorerPage` | `app/dashboard-app.tsx:1482-1505` | same wrapper change | `ab67408f` (+ `5dc014f9` focus-on-enter) |
+| UF-AC-2 | `ActivityPage` | `app/dashboard-app.tsx:1457-1481` | same wrapper change | `ab67408f` (+ `5dc014f9` focus-on-enter) |
 
 Ratified by **D272 item 1** and **D274 item 5** (Settings is the demo's full-page takeover) and constrained by
 **D275 item 2** (one shared takeover wrapper). The ROUTE half already landed — none of these is a `Dialog`, and
@@ -278,29 +278,29 @@ Ratified by **D272 item 1** and **D274 item 5** (Settings is the demo's full-pag
 
 **Seam 1 — the shell's view state (1 row, `src/dashboard/app/` + `src/dashboard/surfaces/`)**
 
-| id | fix | file:line |
-|---|---|---|
-| UF-SET-2 | a non-switcher takeover must not leave the switcher claiming `Dashboard`. `shellView` falls back to `"queue"` for `settings`, `intake` and `catalog`; it needs an arm that presses nothing | `app/dashboard-app.tsx:1261-1262` (the fallback) · `surfaces/top-bar.tsx:925` (the consumer) |
+| id | fix | file:line | landed |
+|---|---|---|---|
+| UF-SET-2 | a non-switcher takeover must not leave the switcher claiming `Dashboard`. `shellView` falls back to `"queue"` for `settings`, `intake` and `catalog`; it needs an arm that presses nothing | `app/dashboard-app.tsx:1261-1262` (the fallback) · `surfaces/top-bar.tsx:925` (the consumer) | `e1c978f4` |
 
 **Seam 2 — the served settings-section label (1 row, `src/server/`)**
 
-| id | fix | file:line |
-|---|---|---|
-| UF-SET-9 | the served label reads `Storage`; the page it opens is titled `Storage health` | `src/server/dashboard/queries/bootstrap.ts:154` |
+| id | fix | file:line | landed |
+|---|---|---|---|
+| UF-SET-9 | the served label reads `Storage`; the page it opens is titled `Storage health` | `src/server/dashboard/queries/bootstrap.ts:154` | `7975e209` |
 
 **Seam 3 — the System hosts section (3 rows, `src/dashboard/surfaces/settings.tsx` + the `systemHosts` wire)**
 
-| id | fix | file:line |
-|---|---|---|
-| UF-SET-22 | subtitle copy | `surfaces/settings.tsx:508` |
-| UF-SET-25 | the SYSTEM column prints the raw wire id, not a display name (needs a `label` on the served shape) | `surfaces/settings.tsx:538` + the `systemHosts` wire |
-| UF-SET-26 | no per-system explanatory sentence (the demo authors these as client constants) | `surfaces/settings.tsx:534-560` |
+| id | fix | file:line | landed |
+|---|---|---|---|
+| UF-SET-22 | subtitle copy | `surfaces/settings.tsx:508` | `6db7e75f` (+ `a656c75c` verbatim onbase/i9, + `a01c6bf0` URL clip) |
+| UF-SET-25 | the SYSTEM column prints the raw wire id, not a display name (needs a `label` on the served shape) | `surfaces/settings.tsx:538` + the `systemHosts` wire | `6db7e75f` (+ `a656c75c` verbatim onbase/i9, + `a01c6bf0` URL clip) |
+| UF-SET-26 | no per-system explanatory sentence (the demo authors these as client constants) | `surfaces/settings.tsx:534-560` | `6db7e75f` (+ `a656c75c` verbatim onbase/i9, + `a01c6bf0` URL clip) |
 
 **Seam 4 — the Workflow capabilities section (1 row, `src/dashboard/surfaces/settings.tsx`)**
 
-| id | fix | file:line |
-|---|---|---|
-| UF-SET-31 | subtitle copy | `surfaces/settings.tsx:~630` (the `CapabilitiesSection` `PanelHeader`) |
+| id | fix | file:line | landed |
+|---|---|---|---|
+| UF-SET-31 | subtitle copy | `surfaces/settings.tsx:~630` (the `CapabilitiesSection` `PanelHeader`) | `6db7e75f` (+ `a656c75c` verbatim onbase/i9, + `a01c6bf0` URL clip) |
 
 Six `fix-now` rows across four seams — comfortably one unit; no split needed. Seam 2 is the only one that leaves
 `src/dashboard/`.
@@ -309,10 +309,14 @@ Six `fix-now` rows across four seams — comfortably one unit; no split needed. 
 
 Neither built further nor removed. Each needs a numbered "where do you want this?" item.
 
+**UF-SH-10 and UF-SH-11 are reclassed `ruled` in §1 above (2026-08-27, run UI-1 — D275 item 1) and are kept
+in this table only because the two-doors-to-one-place shape D275 item 1 ratified is still worth a
+confirm-or-revisit question, not because either is open on the merits.**
+
 | id | element | where it lives | precise description |
 |---|---|---|---|
-| UF-SH-10 | `Workflow explorer` toolbar button | `app/dashboard-app.tsx:1613` | A 129px secondary button in the queue toolbar's left group, between `Import spreadsheet` and `UI catalog`, with no `title` and no icon-only variant. It opens the same Explorer takeover the top bar's `Explorer` segment opens, so the surface has two doors. The demo has one (the segment). |
-| UF-SH-11 | `UI catalog` toolbar button | `app/dashboard-app.tsx:1621` | An 88px secondary button in the same group, opening `surfaces/ui-catalog.tsx` (the generated catalog, D177). **CA41 records that the operator removed this glyph from the top bar on 2026-08-14 (`8f55a168`), leaving `?catalog=` as the only route** — a control has since reappeared in a different place. The question is whether the 08-14 decision still stands. |
+| UF-SH-10 | `Workflow explorer` toolbar button | `app/dashboard-app.tsx:1613` | A 129px secondary button in the queue toolbar's left group, between `Import spreadsheet` and `UI catalog`, with no `title` and no icon-only variant. It opens the same Explorer takeover the top bar's `Explorer` segment opens, so the surface has two doors. The demo has one (the segment). **Ruled by D275.1; kept on the sheet as confirm-or-revisit** — sheet item 1, recommendation A (keep). |
+| UF-SH-11 | `UI catalog` toolbar button | `app/dashboard-app.tsx:1621` | An 88px secondary button in the same group, opening `surfaces/ui-catalog.tsx` (the generated catalog, D177). **CA41 records that the operator removed this glyph from the top bar on 2026-08-14 (`8f55a168`), leaving `?catalog=` as the only route** — a control has since reappeared in a different place. The question is whether the 08-14 decision still stands. **Ruled by D275.1; kept on the sheet as confirm-or-revisit** — sheet item 2, recommendation A (keep). |
 | UF-SET-24 | the System-hosts banner's first sentence | `surfaces/settings.tsx:517-521` | *"A run envelope carries the instance per system and defaults to production; a start that asks for test is refused outright unless a distinct test host is configured, never quietly sent to production."* — a true statement about a refusal this build has and the demo's runtime does not. Keep (the fact is real and load-bearing) or trim to the demo's shorter framing? |
 | UF-SET-28 | the `provisioned identical to production — refused` host arm | `surfaces/settings.tsx:546-552` | A danger-toned third arm in the TEST column, between `provisioned` and `none provisioned`, for a host configured but byte-equal to production — which `resolveSystemEntryUrl` refuses at run time. The demo has two arms. Unreachable on the current estate (all 9 read `none provisioned`). |
 | UF-SET-33 | the Workflow-capabilities banner's trailing clause | `surfaces/settings.tsx:~640` | *"These six are what a descriptor declares; a seventh appears when a descriptor grows one, never before."* — one added sentence naming this build's capability count. |
@@ -326,6 +330,7 @@ tables only).
 | id | element | where it lives | precise description |
 |---|---|---|---|
 | UF-FU-1 | the intake workspace and the UI catalog still hand-roll the takeover wrapper | `app/dashboard-app.tsx` — the `intake` arm and the `catalog` arm, each still a `flex min-h-0 flex-1 px-[--ds-shell-inset] pb-[--ds-space-base]` div — plus `surfaces/intake.tsx` and `surfaces/ui-catalog.tsx`, whose roots are still `Panel`s | U2 converted the FOUR demo-covered takeovers to the shared `TakeoverFrame`. The wrapper was duplicated **six** times; these are the other two, left alone deliberately — the demo covers neither surface, so neither has a ruled geometry target, and converting them would have been an unruled change wearing a refactor's clothes. The consequence is now visible: they render as inset cards in a 12px gutter while the other four are full-bleed, and they still carry their own copy of the arrival (`Panel` + `useDsEnterTransition` + the two `data-[demo-enter=from]:` classes) — the drift `TakeoverFrame` exists to end, surviving in two places. **`new-in-current`-adjacent**: both elements are real and in use; neither is to be built further nor removed until the operator rules. U4a widened the gap by giving `TakeoverFrame` its focus-on-enter contract, so these two are now the only takeovers that do NOT move focus when they open — an accessibility difference, not only a geometric one. Closing it is one substitution per arm the moment a ruling exists. |
+| UF-FU-2 | `StorageBanner` keeps its 12px shell inset above an x=0 takeover, while the demo's own band is full-bleed | `app/dashboard-app.tsx` (the `StorageBanner` mount, above the `shellView` switch — recorded there per U4a's `d0dbc272`) — demo `RebuildDemo.tsx:654` | The demo mounts its degraded-storage band above the shellView switch too, and the demo's band IS full-bleed (`x=0`). The current keeps a `mx-[--ds-shell-inset]` margin above the SAME point, so the band is a 12px-inset rounded card sitting over a full-bleed takeover beneath it — not "the demo has no such state," but a real geometric mismatch. It is deliberately unfixed: the band is the shared `Banner` primitive (a rounded, four-side-bordered card) that **D276 item 4** kept rather than reverting to the demo's hand-rolled div, and dropping only the margin would leave a rounded card flush against both viewport edges — the full match is a `Banner` SHAPE change that also moves the queue view, and no audit row rules it. Unruled; sheet item 7. |
 
 ## Gaps — what could not be settled, and why
 
@@ -343,14 +348,17 @@ tables only).
 |---|---|
 | `exact` | 43 |
 | `state-only` | 18 |
-| `ruled` | 34 |
+| `ruled` | 36 |
 | `fix-now` | 6 |
 | `takeover` | 6 |
-| `new-in-current` | 5 |
+| `new-in-current` | 3 |
 | **total** | **112** |
 
 Counted mechanically over the ten surface tables (Summaries A–C re-list ids already classed above and are not
 counted twice): every row carries exactly one of the six classes, and no id appears in two surface tables.
+
+**Updated 2026-08-27 (run UI-1):** UF-SH-10 and UF-SH-11 reclassed `new-in-current` → `ruled` (D275 item 1) —
+`ruled` 34 → 36, `new-in-current` 5 → 3. The total (112) is unchanged; only the class distribution moved.
 
 ## Notes
 
