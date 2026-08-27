@@ -6342,9 +6342,10 @@ created the same morning (`Aug 27, 2026`) whose Step-1 timekeeper has not touche
 recorded rather than acted on: what it means for ③ (a finalization that fills more fields than
 4537's would have) is u27's finding, not this pass's claim.
 
-`Department*` offered the same six options §9.19 recorded on 4537. The accessibility snapshot
-collapses whitespace, so the double space §9.19 saw in `000719 -  Supply Chain Services` cannot be
-confirmed or denied from this read — no claim is made either way.
+`Department*` offered the same six options §9.3 recorded (`:2156-2159`, not §9.19 — §9.19 never
+enumerated this list). The accessibility snapshot collapses whitespace, so the double space §9.12
+saw (`:3212`, not §9.19) in `000719 -  Supply Chain Services` cannot be confirmed or denied from
+this read — no claim is made either way.
 
 #### 3. The date / state gate — **PASSES**
 
@@ -6390,10 +6391,12 @@ section carries no run id, and every fact in items 1–3 came from a direct read
 **One operational correction.** The pool worker's start form is
 `npm run cli -- worker separations --pool-index 1`: the first positional argument is a **workflow
 id**, and the worker id (`separations-worker-1`) is DERIVED from it
-(`src/server/worker/compose.ts` `parseWorkerArguments`). The form carried by the `hr-manage` skill
-and by this run's handoff passed the derived worker id as the first argument, which the parser
-refuses by name with the registered-workflow list. Recorded here because the refusal reads like a
-missing workflow rather than a wrong argument.
+(`src/server/worker/compose.ts` `parseWorkerArguments`). The wrong form — the derived worker id
+passed as the first argument — lives in this run's handoff
+(`docs/handoffs/2026-08-28-run-1-t1b-canary.md:29`), which the parser refuses by name with the
+registered-workflow list. The `hr-manage` skill (`.claude/skills/hr-manage/SKILL.md:19,35`) passes
+the correct `<workflow-id>` throughout and only OMITS `--pool-index`; it does not pass the wrong id.
+Recorded here because the refusal reads like a missing workflow rather than a wrong argument.
 
 #### 5. u24 — the composed dry run: **REFUSED at `timecard`, three attempts, no preview terminal**
 
@@ -6584,3 +6587,32 @@ whether u25 proceeds, and how, is the supervisor's call.
 member `separations-worker-1` (pid 93342) is left running per the brief. This pass opened no
 `playwright-cli` session of its own — the browser work was the worker's, and `playwright-cli list`
 reports no CLI-owned browsers. `npm run roadmap:check` reports `docs/roadmap/index.html is fresh`.
+
+#### 11. Close — 2026-08-27
+
+Run R2a's six units, from authority (items 1–10 above; no fact here is re-derived):
+
+| Unit | Outcome | Sha |
+|---|---|---|
+| u23 — 4568 mapping pass, read-only against Kuali | done — date gate **PASSES** (LDW = separation date `06/08/2026`; `transactionNumber` empty; document present in the Action List) | registration `819ff38f`; doc 03b row `6a876627`; §9.29 header `c8d6fdcd`; roadmap `55032e70` |
+| u24 — composed workflow, `dryRun=true` | done — **REFUSED at `timecard`**, three attempts (`a248967a` · `e44d4d4e` · `bfbd2487`); `setRangeField` clear never reads `""`, the field holds WFD's default `08/27/2026` for the 8 000 ms bound; 9 read nodes + `timecard-search` checkpointed (11 `run_checkpoints`), nodes 12–19 never entered; write rows 0/0/0; no preview terminal | `1622afcf` |
+| u25 (② UCPath filing) | **NOT dispatched** | — |
+| u26 (① pending sweep) | **NOT dispatched** | — |
+| u27 (③ Kuali finalization) | **NOT dispatched** | — |
+| u28 — this close | done | this commit |
+
+**Supervisor ruling (verbatim).** Under D280 ("dry run clean first") and condition (ii) (tree
+frozen; nothing fixed today), NO controlled commit ran on 2026-08-27. u25 (②), u26 (①), u27 (③) NOT
+dispatched — ② has no kronos-free fallback (condition iii covers ③ only); a `dryRun=false` run would
+replay the nine reads, re-run `timecard-search`, and hit the same clear refusal before the gate.
+
+**Handed to R3, as a driver unit:** the WFD range-field clear — `fill("")` does not take on the
+period-start field; find the control that clears it (live), keep the read-back refusal.
+
+**Questions for the coordinator:**
+
+(a) may ② run on a standalone `ucpath-transaction` path without the composed dry run, or does
+D280's "composed dry run clean first" stand;
+(b) does 4568 keep its canary role for the next attempt or does 4537 (08-28) go first;
+(c) the `separations-kuali-read` `dry-run-unsupported` refusal — is a registration read allowed
+`dryRun=false` on a workflow with no write path.
