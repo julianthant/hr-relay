@@ -74,6 +74,57 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: the codes were in the index the whole time, and a ported pixel constant is a claim
+  about a VOCABULARY (unit F10c, ledger 3 §1/§8 — the archive family's remaining ruled rows).**
+  Forty rows, six of which were code. Three things travel.
+
+  **A "we do not have that field" row is worth one more look at the payload.** The sweep head
+  printed `person-lookup v2 → 0.1.0` where the demo prints `pl v2 → 0.1.0`, and F10 left it open
+  because `ArchiveSweepWire.appliedIdentities` carries workflow IDs and no code — which is true, and
+  is not the same as the index not having them. It has them TWICE, with two different meanings:
+  `versionState` carries the registry's code beside the version it is the code OF, so it answers the
+  identity a sweep moved runs ONTO, and every archived run froze its own code beside the version it
+  RAN (D242), so the entries answer identities the registry no longer holds. **Which source answers
+  an identity is not a preference, it is the identity**: the join key is
+  `(workflowId, descriptorVersion)` precisely so no code is ever carried across a version it was not
+  true at, which is the silently-wrong derivation `ArchivedWorkflowCodeWireSchema`'s own docstring
+  refuses. The fixture is what found the shape — the first key was "the archived run's version", and
+  `appliedIdentities` names the version moved TO, so it missed every time and every sweep would have
+  degraded to its workflow ID while looking completely reasonable.
+
+  **A ported constant carries the assumptions of the tree it was measured in.** The demo's frozen log
+  level column is `w-[46px]` because its levels are `info` / `warn` / `error`. This wire's enum is
+  `info` / `warning` / `error`, and `WARNING` in caps overran the column and sat on top of its own
+  message. Every fold assertion passed — the words were all present and in order — and only the
+  screenshot said so, which is the third time in this directory that the capture taken to PROVE a
+  port found the defect underneath it. The width is sized to the longest word this wire serves and
+  the column does not truncate, because a clipped level is exactly the fact the column exists for.
+
+  **A fact drawn under the wrong heading reads as complete.** The capture tile's badge printed
+  `tile.kind` in a tone keyed off `tile.origin`, so an ordinary screenshot of a failed step wore
+  danger red while an operator-requested one wore neutral: colour and word came from two different
+  facts, both true, and only their PAIRING was a lie. The word is the origin now, `kind` joined the
+  artifact's other physical facts, and `ARCHIVED_CAPTURE_ORIGIN_TONE` is total over the served enum
+  in both directions so a sixth origin is a typecheck failure. The same shape one card over: three
+  run-wide counts — attempts, data facts, evidence facts — sat under a card headed `Decision`, each
+  already owned by a section that derives it from the FROZEN sections while `context` is the run
+  detail's own count. Two sources for one fact, and where a section was never frozen its owner prints
+  the REASON, which is a better answer than a number the archive cannot corroborate. They are gone;
+  a removal is the hardest row to pin, so the test asserts their absence.
+
+  Two more worth knowing. **Applying a bump settled in silence** — the index re-read, the plan left
+  `plans`, the registry redrew, and nothing said the act had happened. `settleCommandResult` already
+  answered `applied` and only its refusal half had a component, which is a shape worth grepping for
+  elsewhere. Its banner needs the DISPATCH record as well as the verdict, because the plan is gone by
+  the time the result lands and the verdict alone belongs to whichever command the surface last
+  issued. `Open the archive` is offered only where a bump archived something — a minor bump archives
+  nothing (D274 item 2), and a door onto no new rows is worse than no door; a generation-1 plan that
+  recorded no kind KEEPS the door, because `undefined` is not `minor` and suppressing it would hide
+  the runs that plan really did archive. And **a demo arm can be unrepresentable rather than
+  unbuilt**: VB47's code-less refusal cannot arrive here, since `CommandResultSchema`'s `rejected`
+  arm requires a `CommandRejectionCode` — recorded in the row so the next reader meets a decision
+  instead of a gap.
+
 - **2026-08-26: a wire that splits one flag into two arms has done half the work — the SURFACE is
   where the split survives or dies, and a geometry the parser refused has no shape to draw
   (D274 item 7, unit F13, ledger 3 §7 CP2–CP21).** `capture-start.tsx` had handed the operator a QR
