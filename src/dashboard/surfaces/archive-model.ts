@@ -26,8 +26,12 @@ import type {
   ArchivedRunDetailWire,
   WorkflowVersionStateWire,
 } from "../../domain/dashboard/archive.js";
-import type { VersionBumpChangeRecord } from "../../domain/archive/change-record.js";
+import {
+  VersionBumpChangeRecordSchema,
+  type VersionBumpChangeRecord,
+} from "../../domain/archive/change-record.js";
 import type { ArchivedCaptureTile } from "../../domain/archive/sections.js";
+import type { VersionScope } from "../../domain/commands.js";
 import type { DsStatus } from "../ds/ui.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "./status-model.js";
@@ -303,6 +307,114 @@ export const BUMP_KIND_LABEL = {
   minor: "Minor — behaviour inside the same shape",
 } as const satisfies Record<VersionBumpChangeRecord["kind"], string>;
 
+/**
+ * What each kind DOES, under the current contract (D274 item 2).
+ *
+ * The demo's minor arm reads "presentation only"; this tree's `minor` is the
+ * broader "behaviour inside an unchanged shape", and that wording is prior
+ * authority (`VersionBumpChangeRecordSchema.kind`) rather than drift. What
+ * ports verbatim is the CONSEQUENCE, which is the half an operator is choosing
+ * between: a major archives and can be blocked, a minor does neither.
+ */
+export const BUMP_KIND_NOTE = {
+  major:
+    "Steps added, removed or renamed, or the data contract moved. A run started under the old descriptor cannot be "
+    + "rendered by the new one, so every prior-version run is ARCHIVED — and a run that is not terminal blocks the "
+    + "bump until it is resolved.",
+  minor:
+    "Behaviour inside an unchanged shape. NOTHING is archived, runs in flight carry on, and every prior-version run "
+    + "still renders — so there is nothing a run could be doing that would block this.",
+} as const satisfies Record<VersionBumpChangeRecord["kind"], string>;
+
+/**
+ * WHAT A BUMP OF THIS KIND WOULD DO with the facts the index serves.
+ *
+ * This is the surface's half of `resolveBumpEffect` (`archive-service.ts`,
+ * D274): the assessment answers a factual question — which prior-version runs
+ * are terminal, and which are not — and the KIND decides what the bump does
+ * about them. `versionState` is kind-AGNOSTIC, so the same numbers reach both
+ * arms and only their meaning changes.
+ *
+ * The minor arm is the one that must not lie. A minor plan carries no
+ * candidates and no blockers BY DEFINITION — the schema refuses one that does
+ * — so drawing an empty candidate list beside an empty blocker list would read
+ * as "we looked and found none", which is a claim about this scope rather than
+ * about minor bumps. The numbers are therefore carried under names that say
+ * what they are: what a MAJOR bump would face, stated as an aside.
+ */
+export type BumpKindEffect =
+  | {
+    readonly kind: "major";
+    /** terminal prior-version runs this bump WOULD archive */
+    readonly archivable: number;
+    /** non-terminal prior-version runs that REFUSE it */
+    readonly blockers: readonly VersionBumpBlocker[];
+  }
+  | {
+    readonly kind: "minor";
+    /** runs in flight — unaffected, because a minor bump archives nothing */
+    readonly unaffected: readonly VersionBumpBlocker[];
+    /** what a MAJOR bump on the same scope would have archived */
+    readonly wouldHaveArchived: number;
+  };
+
+export function resolveBumpKindEffect(
+  kind: VersionBumpChangeRecord["kind"],
+  states: readonly WorkflowVersionStateWire[],
+): BumpKindEffect {
+  const archivable = states.reduce((total, state) => total + state.archivable, 0);
+  const nonTerminal = states.flatMap((state) => state.blockers);
+  switch (kind) {
+    case "major":
+      return { kind: "major", archivable, blockers: nonTerminal };
+    case "minor":
+      return { kind: "minor", unaffected: nonTerminal, wouldHaveArchived: archivable };
+  }
+}
+
+/**
+ * The resolution column's head, PARAMETERISED by kind (ledger 3 VB22). Under a
+ * major bump these runs are the thing to act on; under a minor one the same
+ * rows are context, and a head reading "What has to happen" over runs that
+ * block nothing would be an instruction nobody owes.
+ */
+export function bumpResolutionColumnHead(kind: VersionBumpChangeRecord["kind"] | undefined): string {
+  // A generation-1 plan recorded no kind at all, so neither head is true of it:
+  // the demand is stated without claiming which bump is making it.
+  if (kind === undefined) return "What would have to happen";
+  switch (kind) {
+    case "major": return "What has to happen";
+    case "minor": return "What a MAJOR bump would have demanded";
+  }
+}
+
+/**
+ * What resolving one blocking run takes. Derived from `runState` because that
+ * is the only fact the wire carries — `WorkflowVersionStateWire.blockers[]`
+ * serves no `requiredResolution`, so this is the surface reading a served
+ * enum, never a sentence it pretends the server sent.
+ */
+export function blockerResolution(state: VersionBumpBlocker["runState"]): string {
+  switch (state) {
+    case "parked-write":
+      return "Resolve the parked write present or absent — an unresolved possible-submit is never archived.";
+    case "parked-gate":
+      return "Answer the open gate, or cancel the run.";
+    case "queued":
+    case "claimed":
+    case "validating":
+    case "running":
+      return "Let it finish, or cancel it.";
+    case "terminal":
+      throw new Error("a terminal run is archivable and needs no resolution to be archived");
+  }
+}
+
+/** How many of these blocking runs are PARKED WRITES — the non-negotiable half. */
+export function parkedWriteBlockers(blockers: readonly VersionBumpBlocker[]): number {
+  return blockers.filter((blocker) => blocker.runState === "parked-write").length;
+}
+
 export type ArchiveBumpKind =
   | {
     readonly state: "present";
@@ -346,6 +458,86 @@ export function archiveSweepVersionRange(sweep: ArchiveSweepWire): ArchiveSweepV
   return {
     state: "present",
     text: `v${sweep.fromVersions.join(", v")} → ${sweep.targetVersion}`,
+  };
+}
+
+/**
+ * The bump's SCOPE, in the operator's words. The demo keys three arms off its
+ * own `BumpScope`; this tree's `VersionScope` has two, and a single-workflow
+ * bump is the one-element case of the first rather than a third kind — so the
+ * split is made where the fact is, on the length.
+ */
+export function bumpScopeLabel(scope: VersionScope): Readonly<{ label: string; note: string }> {
+  switch (scope.kind) {
+    case "application":
+      return {
+        label: `Dashboard update — every workflow (app ${scope.applicationVersion})`,
+        note:
+          "An app update bumps the EFFECTIVE version of every workflow, because an old run may not be interpretable "
+          + "against new dashboard state.",
+      };
+    case "workflows":
+      return scope.workflowIds.length === 1
+        ? {
+          label: "Single workflow",
+          note: "Only this workflow's version moves, and only its prior-version runs are in scope.",
+        }
+        : {
+          label: `Several workflows (${String(scope.workflowIds.length)})`,
+          note: "Each named workflow's version moves together, under ONE change record.",
+        };
+  }
+}
+
+/**
+ * The authored change record, or the reason it is not one yet.
+ *
+ * The demo's primary button is NEVER disabled, and its argument is the right
+ * one: an empty record is a real refusal (`change-record-incomplete`), and a
+ * greyed-out control hides the rule this flow exists to enforce. So the button
+ * stays pressable and this fold answers the press.
+ *
+ * What it must not do is pretend the answer came from the server. The schema
+ * that refuses an empty `what` is the SAME schema on both sides of the wire,
+ * so this refusal is composed here and says so — it names the missing fields,
+ * which a round trip could not do better, and it carries the code a bug report
+ * would quote.
+ */
+export type BumpRecordDraft = Readonly<{ kind: VersionBumpChangeRecord["kind"]; what: string; why: string; commit: string }>;
+
+export type BumpRecordComposition =
+  | { readonly state: "complete"; readonly record: VersionBumpChangeRecord }
+  | {
+    readonly state: "incomplete";
+    readonly code: "change-record-incomplete";
+    readonly missing: readonly string[];
+    readonly sentence: string;
+  };
+
+export function composeBumpChangeRecord(draft: BumpRecordDraft): BumpRecordComposition {
+  const commit = draft.commit.trim();
+  const parsed = VersionBumpChangeRecordSchema.safeParse({
+    kind: draft.kind,
+    what: draft.what.trim(),
+    why: draft.why.trim(),
+    commit: commit === ""
+      ? { state: "absent", reason: "the operator recorded no commit for this bump" }
+      : { state: "present", value: commit },
+  });
+  if (parsed.success) return { state: "complete", record: parsed.data };
+
+  const missing = [
+    ...(draft.what.trim() === "" ? ["What moved"] : []),
+    ...(draft.why.trim() === "" ? ["Why it had to move"] : []),
+  ];
+  return {
+    state: "incomplete",
+    code: "change-record-incomplete",
+    missing,
+    sentence: missing.length > 0
+      ? `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} still empty. `
+        + "The change record is the only account of why a version moved, and nobody can write it later."
+      : parsed.error.issues.map((issue) => issue.message).join(" "),
   };
 }
 

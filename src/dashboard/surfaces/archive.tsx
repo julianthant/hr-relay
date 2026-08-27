@@ -100,6 +100,7 @@ import {
   Info,
   Lock,
   RotateCw,
+  ShieldAlert,
   TriangleAlert,
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
@@ -132,6 +133,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  RadioGroup,
   Refusal,
   SearchInput,
   SectionLabel,
@@ -173,10 +175,7 @@ import type {
 import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
 import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
 import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
-import {
-  VersionBumpChangeRecordSchema,
-  type VersionBumpChangeRecord,
-} from "../../domain/archive/change-record.js";
+import type { VersionBumpChangeRecord } from "../../domain/archive/change-record.js";
 import type { ArchivedCaptureTile, ArchivedRunAttempt, ArchivedRunSections } from "../../domain/archive/sections.js";
 import type { CommandResult, VersionScope } from "../../domain/commands.js";
 import { DashboardClientError } from "../client/errors.js";
@@ -189,9 +188,18 @@ import { FailureDetailBody, ReceiptEvidenceBody } from "./trust.js";
 import {
   ARCHIVE_INDEX,
   ARCHIVED_CAPTURE_VIEWER_NOTE,
+  BUMP_KIND_LABEL,
+  BUMP_KIND_NOTE,
   type ArchiveView,
+  type BumpRecordComposition,
   archiveBumpKind,
   archivedCaptureFacts,
+  blockerResolution,
+  bumpResolutionColumnHead,
+  bumpScopeLabel,
+  composeBumpChangeRecord,
+  parkedWriteBlockers,
+  resolveBumpKindEffect,
   archivePriorityTone,
   archiveStatusLabel,
   archiveSweepVersionRange,
@@ -2196,77 +2204,197 @@ interface BumpAuthoring {
  */
 function BumpChangeRecordDialog({
   authoring,
+  states,
   busy,
   onCancel,
   onConfirm,
 }: {
   authoring: BumpAuthoring | undefined;
+  /** the version rows THIS bump's scope covers — the facts both arms read */
+  states: readonly WorkflowVersionStateWire[];
   busy: boolean;
   onCancel: () => void;
   onConfirm: (authoring: BumpAuthoring, changeRecord: VersionBumpChangeRecord) => void;
 }) {
-  const [kind, setKind] = useState<"major" | "minor">("minor");
+  /*
+    MAJOR is the default, as the demo's is. It is the consequential arm, and a
+    flow that opens on the harmless one invites the operator to accept it.
+  */
+  const [kind, setKind] = useState<VersionBumpChangeRecord["kind"]>("major");
   const [what, setWhat] = useState("");
   const [why, setWhy] = useState("");
   const [commit, setCommit] = useState("");
+  /* the refusal a press produced, cleared by any edit that could change it */
+  const [refused, setRefused] = useState<BumpRecordComposition | undefined>(undefined);
 
   useEffect(() => {
     if (authoring === undefined) return;
-    setKind("minor");
+    setKind("major");
     setWhat("");
     setWhy("");
     setCommit("");
+    setRefused(undefined);
   }, [authoring]);
 
-  const trimmedCommit = commit.trim();
-  const composed = authoring === undefined
-    ? undefined
-    : VersionBumpChangeRecordSchema.safeParse({
-      kind,
-      what: what.trim(),
-      why: why.trim(),
-      commit: trimmedCommit === ""
-        ? { state: "absent", reason: "the operator recorded no commit for this bump" }
-        : { state: "present", value: trimmedCommit },
-    });
+  const scope = bumpScopeLabel(authoring?.scope.scope ?? { kind: "workflows", workflowIds: [] });
+  const effect = resolveBumpKindEffect(kind, states);
+  const inFlight = effect.kind === "major" ? effect.blockers : effect.unaffected;
+  const parkedWrites = parkedWriteBlockers(inFlight);
 
   return (
     <Dialog open={authoring !== undefined} onOpenChange={(open) => { if (!open) onCancel(); }}>
       {authoring !== undefined && (
-        <DialogContent
-          size="lg"
-          title={`Bump ${authoring.title}`}
-          description="Every prior-version run leaves the live surfaces in one act. What moved, and why, is recorded with it — that is the question the archive exists to answer later."
-        >
+        <DialogContent size="xl" title={`Bump ${authoring.title}`} description={`${scope.label} · ${scope.note}`}>
           <DialogBody className="flex flex-col gap-[var(--ds-space-base)]">
-            <Field label="Kind" description="MAJOR is a shape change; MINOR is behaviour inside the same shape.">
-              <Select value={kind} onChange={(event) => setKind(event.target.value === "major" ? "major" : "minor")}>
-                <option value="minor">minor — behaviour changed</option>
-                <option value="major">major — the shape changed</option>
-              </Select>
-            </Field>
-            <Field label="What moved" required hint={`${String(what.trim().length)}/200`}>
-              <Input
-                value={what}
-                maxLength={200}
-                placeholder="the CRM cross-check tolerates a middle initial"
-                onChange={(event) => setWhat(event.target.value)}
-              />
-            </Field>
-            <Field
-              label="Why"
-              required
-              description="The half nobody can reconstruct from a diff."
-              hint={`${String(why.trim().length)}/1000`}
-            >
-              <Textarea
-                rows={3}
-                value={why}
-                maxLength={1000}
-                placeholder="three subjects a week were parking on a name mismatch that was not one"
-                onChange={(event) => setWhy(event.target.value)}
-              />
-            </Field>
+            {/*
+              THE KIND IS THE WHOLE DESIGN (D274 item 2). It is a radio group
+              rather than a select because each option's consequence is a
+              paragraph, and the paragraph is the choice — a one-line <option>
+              would make the operator pick between two words for the same act.
+            */}
+            <RadioGroup
+              label="What kind of change is this?"
+              name="version-bump-kind"
+              value={kind}
+              onValueChange={(next) => {
+                setKind(next);
+                // the standing refusal was about the OTHER shape of this request
+                setRefused(undefined);
+              }}
+              options={[
+                { value: "major", label: BUMP_KIND_LABEL.major, description: BUMP_KIND_NOTE.major },
+                { value: "minor", label: BUMP_KIND_LABEL.minor, description: BUMP_KIND_NOTE.minor },
+              ]}
+            />
+
+            {/* what this bump moves, named — the registry has the versions, the dialog had nothing */}
+            {states.length > 0 && (
+              <ChipRow>
+                {states.map((state) => (
+                  <Chip key={state.workflowId} label={state.workflowCode}>
+                    {state.workflowLabel} v{state.current.descriptorVersion} → next
+                  </Chip>
+                ))}
+              </ChipRow>
+            )}
+
+            {effect.kind === "minor" ? (
+              <Banner
+                tone="success"
+                title="Nothing can block a minor bump, because nothing is archived"
+                icon={<BadgeCheck aria-hidden className={dsIcon.lg} />}
+              >
+                <span className={dsText.body}>
+                  {/*
+                    The one sentence this arm must get right. A minor plan
+                    carries no candidates and no blockers BY DEFINITION — the
+                    schema refuses one that does — so this states the rule, and
+                    the number beside it is labelled as what a MAJOR bump would
+                    have faced rather than as a blocker count of zero.
+                  */}
+                  A minor bump records the new version and moves no run, so there is nothing a run could be doing that
+                  would stop it.{" "}
+                  {inFlight.length > 0
+                    ? `${plural(inFlight.length, "run")} in flight ${inFlight.length === 1 ? "is" : "are"} unaffected and `
+                      + "would have blocked a MAJOR bump on this scope."
+                    : "No prior-version run is in flight either, though that would not have mattered here."}
+                </span>
+              </Banner>
+            ) : inFlight.length > 0 ? (
+              <Banner
+                tone={parkedWrites > 0 ? "danger" : "warning"}
+                title={`${plural(inFlight.length, "run")} must be resolved before this bump`}
+                icon={<TriangleAlert aria-hidden className={dsIcon.lg} />}
+              >
+                <span className={dsText.body}>
+                  {parkedWrites > 0
+                    ? `${plural(parkedWrites, "of them")} a parked write — a write whose outcome is unknown may never `
+                      + "be buried in an archive. Resolve it present or absent first."
+                    : "A major bump takes every prior-version run out of the live surfaces, and it will not take one "
+                      + "that is still in flight."}
+                </span>
+              </Banner>
+            ) : null}
+
+            {inFlight.length > 0 && (
+              <div className="flex flex-col gap-[var(--ds-space-snug)]">
+                <SectionLabel>
+                  {effect.kind === "major"
+                    ? "Must be terminalized or resolved first"
+                    : `Still in flight — unaffected (${String(inFlight.length)})`}
+                </SectionLabel>
+                <BlockerTable blockers={inFlight} kind={kind} />
+              </div>
+            )}
+
+            <div className="flex flex-col gap-[var(--ds-space-snug)]">
+              <SectionLabel>
+                {effect.kind === "minor"
+                  ? "Would be archived — nothing"
+                  : effect.archivable === 0
+                    ? "Would be archived — nothing"
+                    : `Would be archived — ${plural(effect.archivable, "run")}`}
+              </SectionLabel>
+              <Well>
+                <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                  {effect.kind === "minor"
+                    ? "A minor bump archives no run at all. The archive is the consequence of a SHAPE change, and "
+                      + "this is not one."
+                    : effect.archivable === 0
+                      ? "No terminal prior-version run is listed for this scope, so this bump would move the version "
+                        + "and archive nothing."
+                      : `${plural(effect.archivable, "terminal prior-version run")} would leave the live surfaces in `
+                        + "one act. The registry serves the COUNT; the reviewed plan names every one of them by "
+                        + "trace before anything is applied — nothing is archived from this dialog."}
+                </span>
+              </Well>
+            </div>
+
+            {/*
+              The change record, two-up: `what` and `why` are the pair, and the
+              labels and examples move with the KIND, because "why the shape had
+              to move" and "why this is presentation only" are different
+              questions and one placeholder cannot prompt both.
+            */}
+            <div className="grid grid-cols-1 gap-[var(--ds-space-base)] min-[720px]:grid-cols-2">
+              <Field
+                label="What changed"
+                required
+                description="Recorded beside the version, in the same store as fix records."
+                hint={`${String(what.trim().length)}/200`}
+              >
+                <Input
+                  value={what}
+                  maxLength={200}
+                  placeholder={kind === "major"
+                    ? "the separation flow gained a Kuali read-back step"
+                    : "the CRM cross-check tolerates a middle initial"}
+                  onChange={(event) => {
+                    setWhat(event.target.value);
+                    setRefused(undefined);
+                  }}
+                />
+              </Field>
+              <Field
+                label={kind === "major" ? "Why the shape had to move" : "Why this is behaviour, not shape"}
+                required
+                description="The record says which kind it was, and the archive's sweep header shows it."
+                hint={`${String(why.trim().length)}/1000`}
+              >
+                <Textarea
+                  rows={3}
+                  value={why}
+                  maxLength={1000}
+                  placeholder={kind === "major"
+                    ? "the old descriptor cannot express the read-back, so its runs cannot be rendered by the new one"
+                    : "three subjects a week were parking on a name mismatch that was not one"}
+                  onChange={(event) => {
+                    setWhy(event.target.value);
+                    setRefused(undefined);
+                  }}
+                />
+              </Field>
+            </div>
             <Field
               label="Commit"
               description="Optional. Left empty, the record says no commit was named rather than showing a blank."
@@ -2278,16 +2406,42 @@ function BumpChangeRecordDialog({
                 onChange={(event) => setCommit(event.target.value)}
               />
             </Field>
+
+            {refused?.state === "incomplete" && (
+              <Refusal
+                title="The change record is not complete"
+                code={refused.code}
+                outcome="No plan was minted. Nothing has been archived and no version has moved."
+              >
+                <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{refused.sentence}</p>
+              </Refusal>
+            )}
           </DialogBody>
-          <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={onCancel}>Cancel</Button>
+          <DialogFooter meta="There is no force arm. The refusal is the feature.">
+            <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+            {/*
+              NEVER DISABLED (ledger 3 VB41, D276 item 3). A greyed-out primary
+              hides the one rule this flow exists to enforce, and an incomplete
+              change record is a real refusal with a real code. What this does
+              NOT do is dress a local check as a server round trip: the schema
+              that refuses an empty `what` is the same schema on both sides, so
+              the refusal is composed here and names the fields, which a round
+              trip could not do better.
+            */}
             <Button
-              variant="primary"
-              size="sm"
+              variant={effect.kind === "major" && effect.blockers.length > 0 ? "danger" : "primary"}
+              icon={effect.kind === "major" && effect.blockers.length > 0
+                ? <ShieldAlert aria-hidden className={dsIcon.md} />
+                : undefined}
               loading={busy}
-              disabled={composed === undefined || !composed.success}
               onClick={() => {
-                if (composed?.success === true) onConfirm(authoring, composed.data);
+                const composed = composeBumpChangeRecord({ kind, what, why, commit });
+                if (composed.state === "incomplete") {
+                  setRefused(composed);
+                  return;
+                }
+                setRefused(undefined);
+                onConfirm(authoring, composed.record);
               }}
             >
               Plan the bump…
@@ -2472,33 +2626,107 @@ function BumpRefusal({ result, plan }: { result: CommandResult; plan: VersionBum
   );
 }
 
-function BlockerTable({ blockers }: { blockers: WorkflowVersionStateWire["blockers"] }) {
+/**
+ * The non-terminal prior-version runs, with the resolution head PARAMETERISED
+ * by kind (ledger 3 VB22). Under a major bump these rows are the thing to act
+ * on; under a minor one the same rows are context, and a head reading "What
+ * has to happen" over runs that block nothing would be an instruction nobody
+ * owes.
+ */
+function BlockerTable({
+  blockers,
+  kind,
+}: {
+  blockers: readonly WorkflowVersionStateWire["blockers"][number][];
+  /** `undefined` is a generation-1 plan, which recorded no kind at all */
+  kind: VersionBumpChangeRecord["kind"] | undefined;
+}) {
   return (
     <div className="overflow-x-auto">
-      <Table label="Prior-version runs that are not terminal">
+      <Table
+        label={kind === "minor"
+          ? "Prior-version runs still in flight, unaffected by this minor bump"
+          : "Prior-version runs that are not terminal"}
+      >
         <THead>
           <TR>
             <TH>Run</TH>
             <TH>State</TH>
-            <TH>What has to happen</TH>
+            <TH>{bumpResolutionColumnHead(kind)}</TH>
           </TR>
         </THead>
         <TBody>
           {blockers.map((blocker) => (
             <TR key={blocker.runId}>
-              <TD numeric>{blocker.traceId}</TD>
-              <TD><StatusPill status={blockerStatusOf(blocker.runState)} size="sm" /></TD>
-              <TD>
-                {blocker.runState === "parked-write"
-                  ? "Resolve the parked write present or absent — an unresolved possible-submit is never archived."
-                  : blocker.runState === "parked-gate"
-                    ? "Answer the open gate, or cancel the run."
-                    : "Let it finish, or cancel it."}
+              <TD className="min-w-0">
+                <span className="flex min-w-0 flex-col">
+                  <span className={cn(dsText.ui, "truncate text-[color:var(--ds-fg)]")} title={blocker.title}>
+                    {blocker.title}
+                  </span>
+                  <span className={cn(dsText.meta, dsText.nums, "truncate text-[color:var(--ds-fg-muted)]")}>
+                    {blocker.traceId} · enqueued {fmtInstantDay(blocker.enqueuedAt)}
+                  </span>
+                </span>
               </TD>
+              <TD><StatusPill status={blockerStatusOf(blocker.runState)} size="sm" /></TD>
+              <TD>{blockerResolution(blocker.runState)}</TD>
             </TR>
           ))}
         </TBody>
       </Table>
+    </div>
+  );
+}
+
+/**
+ * WHAT THE APPLY WOULD TAKE, by name (D274 item 10, ledger 3 VB25).
+ *
+ * The reviewed plan carries its candidates, so the operator no longer applies
+ * a sweep on the strength of a count. A minor plan carries none BY DEFINITION
+ * (`resolveBumpEffect`, D274) — that arm says so in words rather than drawing
+ * an empty list, which would read as "we looked and found none".
+ */
+function ArchivableRunList({ plan }: { plan: VersionBumpPlanWire }) {
+  const kind = plan.changeRecord.state === "present" ? plan.changeRecord.value.kind : undefined;
+  return (
+    <div className="flex flex-col gap-[var(--ds-space-snug)]">
+      <SectionLabel>
+        {plan.candidates.length === 0
+          ? "Would be archived — nothing"
+          : `Would be archived — ${plural(plan.candidates.length, "run")}`}
+      </SectionLabel>
+      {plan.candidates.length === 0 ? (
+        <Well>
+          <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+            {kind === "minor"
+              ? "A minor bump archives no run at all — not because none was found, but because the archive is the "
+                + "consequence of a SHAPE change and this is not one."
+              : kind === "major"
+                ? "No terminal prior-version run was in scope when this plan was minted, so applying it moves the "
+                  + "version and archives nothing."
+                : "This plan predates the change record, so which kind of bump it is was never recorded — and with it, "
+                  + "why it names no run."}
+          </span>
+        </Well>
+      ) : (
+        <Well className="max-h-[190px] overflow-y-auto">
+          <ul className="flex flex-col gap-[var(--ds-space-hair)]">
+            {plan.candidates.map((candidate) => (
+              <li
+                key={candidate.runId}
+                className={cn(dsText.body, "flex min-w-0 items-baseline gap-[var(--ds-space-snug)]")}
+              >
+                <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg)]" title={candidate.title}>
+                  {candidate.title}
+                </span>
+                <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
+                  {candidate.traceId} · {candidate.workflowId}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Well>
+      )}
     </div>
   );
 }
@@ -2629,6 +2857,17 @@ function VersionsView({
 
           <BumpChangeRecordDialog
             authoring={authoring}
+            /*
+              The rows THIS bump's scope covers. An application-scope bump
+              names every workflow, because that is exactly what it moves.
+            */
+            states={authoring === undefined
+              ? []
+              : authoring.scope.scope.kind === "application"
+                ? wire.versionState
+                : wire.versionState.filter((state) =>
+                  authoring.scope.scope.kind === "workflows"
+                  && authoring.scope.scope.workflowIds.includes(state.workflowId))}
             busy={busy}
             onCancel={() => setAuthoring(undefined)}
             onConfirm={submitPlan}
@@ -2688,8 +2927,14 @@ function VersionsView({
                 .filter((state) => state.blockers.length > 0)
                 .map((state) => (
                   <div key={state.workflowId} className="flex flex-col gap-[var(--ds-space-snug)]">
-                    <SectionLabel>{state.workflowLabel} — what a bump would refuse to bury</SectionLabel>
-                    <BlockerTable blockers={state.blockers} />
+                    {/*
+                      Kind-AGNOSTIC, and it says so. `versionState` is a fact
+                      about the registry now, not about a bump nobody has
+                      authored yet — so the head states what a MAJOR bump would
+                      face rather than implying every bump would (D274 item 2).
+                    */}
+                    <SectionLabel>{state.workflowLabel} — what a MAJOR bump would refuse to bury</SectionLabel>
+                    <BlockerTable blockers={state.blockers} kind="major" />
                   </div>
                 ))}
 
@@ -2711,6 +2956,12 @@ function VersionsView({
                       "A relaunch from the archive later starts a FRESH run on the current version; it never resumes one of these.",
                     ]}
                   />
+                  {/*
+                    The runs, by name (D274 item 10). The operator used to
+                    apply a sweep against a count and discover its membership
+                    afterwards, in the archive.
+                  */}
+                  <ArchivableRunList plan={openPlan} />
                   <div className="flex items-center gap-[var(--ds-space-snug)]">
                     <Button size="sm" variant="primary" loading={busy} onClick={apply}>
                       Apply the bump
@@ -2736,7 +2987,12 @@ function VersionsView({
               operator has to act on, and a recessed surface is where this
               design system puts context, not consequence.
             */}
-            {openPlan !== undefined && openPlan.blockers.length > 0 && <BlockerTable blockers={openPlan.blockers} />}
+            {openPlan !== undefined && openPlan.blockers.length > 0 && (
+              <BlockerTable
+                blockers={openPlan.blockers}
+                kind={openPlan.changeRecord.state === "present" ? openPlan.changeRecord.value.kind : undefined}
+              />
+            )}
 
             {result !== undefined && <BumpRefusal result={result} plan={openPlan} />}
 

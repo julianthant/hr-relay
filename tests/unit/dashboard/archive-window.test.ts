@@ -12,6 +12,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { ArchiveEntryWireSchema } from "../../../src/domain/dashboard/archive.js";
 import {
   ARCHIVE_OVERSCAN,
   ARCHIVE_ROW_PX,
@@ -37,17 +38,24 @@ function tokenPx(name: string): number {
 
 const ENTRY = FIXTURE_ARCHIVE_INDEX.entries[0];
 
+/** A distinct, schema-valid uuid per fixture row — the ids are branded. */
+function uuid(seed: string, index: number): string {
+  const tail = `${seed}${String(index)}`.padStart(12, "0").slice(-12);
+  return `00000000-0000-4000-8000-${tail}`;
+}
+
 /** `n` distinct entries, so a window can be told apart from the list it came from. */
-function entries(applicationId: string, n: number): ArchiveSection["entries"] {
-  return Array.from({ length: n }, (_, index) => ({
+function entries(seed: string, applicationId: string, n: number): ArchiveSection["entries"] {
+  return Array.from({ length: n }, (_, index) => ArchiveEntryWireSchema.parse({
     ...ENTRY,
     applicationId,
-    runId: `${applicationId}-run-${String(index)}`,
+    runId: uuid(seed, index),
   }));
 }
 
-function section(applicationId: string, n: number): ArchiveSection {
-  return { sweep: undefined, applicationId, entries: entries(applicationId, n) };
+function section(seed: string, n: number): ArchiveSection {
+  const applicationId = uuid(`${seed}f`, 0);
+  return { sweep: undefined, applicationId, entries: entries(seed, applicationId, n) };
 }
 
 function runIds(items: readonly ArchiveTableItem[]): string[] {
@@ -73,14 +81,14 @@ describe("flattenArchiveTable", () => {
   it("puts heads and runs in ONE sequence, head first", () => {
     const items = flattenArchiveTable([section("a", 2), section("b", 1)], new Set());
     expect(items.map((item) => item.kind)).toEqual(["section", "run", "run", "section", "run"]);
-    expect(runIds(items)).toEqual(["a-run-0", "a-run-1", "b-run-0"]);
+    expect(runIds(items)).toEqual([uuid("a", 0), uuid("a", 1), uuid("b", 0)]);
   });
 
   it("makes a collapsed sweep cost ONE item, however many runs it holds", () => {
-    const items = flattenArchiveTable([section("a", 400), section("b", 1)], new Set(["a"]));
+    const items = flattenArchiveTable([section("a", 400), section("b", 1)], new Set([section("a", 400).applicationId]));
     expect(items).toHaveLength(3);
     expect(items[0]).toMatchObject({ kind: "section", collapsed: true });
-    expect(runIds(items)).toEqual(["b-run-0"]);
+    expect(runIds(items)).toEqual([uuid("b", 0)]);
   });
 });
 
