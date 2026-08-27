@@ -31,6 +31,15 @@ write-safety work.
   synchronous seam, while the synchronous phase-1 seam refuses a pending promise instead of
   acknowledging an unproved effect.
 
+- **2026-08-26: the wire-connectivity route guard matches by PATH, not method (D274;
+  `tests/unit/architecture/wire-connectivity.test.ts`).** `routeMatches` compares paths only, so a
+  GET registered beside a client-called POST on the SAME path counts as consumed the moment it is
+  served — and declaring it `served-unconsumed` in `config/pending-wire-bindings.json` fails the
+  guard from the other direction. The operator capture list (`GET /api/v1/capture/sessions`, beside
+  the start POST) is the case that found this: it ships undeclared, while the genuinely uncalled
+  `GET /api/v1/capture/sessions/:sessionId` keeps its declaration. Before declaring a new route,
+  check whether any client already calls its path under another method.
+
 - **2026-08-25: record time is not append time, and a page cursor must name the corpus it pages
   (D5/D270; observed logs L3).** The span writer partitions on its append clock while an observation
   retains the earlier instant at which the task recorded it. Deriving reader partitions from run
