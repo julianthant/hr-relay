@@ -1567,14 +1567,12 @@ export function WorkflowExplorer({
       : undefined;
 
   return (
-    /* UF-EX-2: full-bleed under the top bar, because the Explorer replaces the
-       window — `// ported from legacy 1ec1d870
+    /* UF-EX-2. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
+       focus, decided once for all four takeovers. This surface's demo
+       container: `// ported from legacy 1ec1d870
        src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:666-667` →
        `DemoExplorerPage`, whose root is a bare `flex min-h-0 flex-1 flex-col`
-       div (`DemoExplorer.tsx:164`). It was a `Panel` in a 12px gutter.
-       `TakeoverFrame` keeps the SAME arrival the other takeovers use — same
-       slot, same direction, same distance — now in one place rather than four
-       copies (D275 item 2). */
+       div at `DemoExplorer.tsx:165` (`:164` is the `return (`). */
     <TakeoverFrame label="Workflow explorer">
       <PageHeader
         title="Explorer"

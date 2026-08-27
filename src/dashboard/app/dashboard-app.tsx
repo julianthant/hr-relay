@@ -1398,13 +1398,11 @@ function LoadedApp({
               place in history and no back path — and the demo's own container
               is a page for exactly that reason.
 
-              NO WRAPPER (UF-SET-1/4/5). The four demo-covered takeovers mount
-              their own `TakeoverFrame`, which is full-bleed under the top bar —
-              x=0, the viewport's width, no card, no radius, no gutter. The
-              `px-[--ds-shell-inset] pb-[--ds-space-base]` div that used to sit
-              here is what drew Settings as a 1416px card floating in a 12px
-              gutter; the demo's switch (`RebuildDemo.tsx:656-678`) hands its
-              pages straight to the shell column with nothing between.
+              NO WRAPPER (UF-SET-1/4/5). All four demo-covered takeovers mount
+              their own `TakeoverFrame`, whose JSDoc owns the why — geometry,
+              arrival and focus, decided once. The demo's switch
+              (`1ec1d870 RebuildDemo.tsx:656-678`) hands its pages straight to
+              the shell column with nothing between them and it.
             */
             <SettingsPage
               storage={boot.storage}

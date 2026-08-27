@@ -3637,13 +3637,11 @@ export function ArchiveWorkspace({
   };
 
   return (
-    /* UF-AR-3: the Archive REPLACES the window, so it is full-bleed under the
-       top bar — `// ported from legacy 1ec1d870
-       src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:658-665`, whose
-       `DemoArchivePage` roots in a bare `flex min-h-0 flex-1 flex-col` div. It
-       was a `Panel` inside a `px-[--ds-shell-inset]` wrapper, which drew the
-       page as a card in a gutter. The arrival did not move: `TakeoverFrame`
-       owns it now for all four takeovers at once (D275 item 2). */
+    /* UF-AR-3. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
+       focus, decided once for all four takeovers. This surface's demo
+       container: `// ported from legacy 1ec1d870
+       src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:658-665`
+       (`DemoArchivePage`, a bare `flex min-h-0 flex-1 flex-col` div). */
     <TakeoverFrame label="Archive">
       <PageHeader
         title="Archive"

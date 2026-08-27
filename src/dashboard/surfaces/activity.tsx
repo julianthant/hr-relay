@@ -1100,12 +1100,12 @@ export function ActivityReport({
   }, [client, resolved.from, resolved.to]);
 
   return (
-    /* UF-AC-2: full-bleed under the top bar — `// ported from legacy 1ec1d870
+    /* UF-AC-2. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
+       focus, decided once for all four takeovers. This surface's demo
+       container: `// ported from legacy 1ec1d870
        src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:668-669` →
-       `DemoActivityReportPage`, rooted in a bare `flex min-h-0 flex-1 flex-col`
-       div (`DemoActivityReport.tsx:79`). It was a `Panel` in a 12px gutter; the
-       report is the window while it is open, not a card on it. The arrival is
-       unchanged — `TakeoverFrame` owns it for all four (D275 item 2). */
+       `DemoActivityReportPage`, a bare `flex min-h-0 flex-1 flex-col` div at
+       `DemoActivityReport.tsx:79`. */
     <TakeoverFrame label="Activity report">
       {/* NO `back` BUTTON, deliberately — ported from the demo's own rule.
           Operator, of this surface: *"no need to have this back to dashboard in
