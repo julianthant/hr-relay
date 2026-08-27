@@ -1,0 +1,358 @@
+// @vitest-environment jsdom
+/**
+ * D273 item 8, rendered — the markup half of the failure-record ports.
+ *
+ * The sheet is `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §R-E; the
+ * ruling is `ref dashboard-surfaces` §"D273 — run detail" item 8. The audited
+ * rows are E2, E4, E5, E6, E8, E9, E11, E15, E22 and E30.
+ * `failure-record-model.test.ts` pins the three folds; this file pins that the
+ * record CONSUMES them, which no fold can see.
+ *
+ * The load-bearing claim here is a NEGATIVE one and it exists in no fold: what
+ * the disclosure may hide. `ref dashboard-surfaces` D18 rules that the
+ * write-state sentence and the remediation ladder render unconditionally and
+ * that only diagnosis sits behind a press — so the test that matters asserts
+ * both halves at once, on a CLOSED record: the diagnosis is gone AND the two
+ * sentences are still there. Either half alone passes for the wrong reason (a
+ * disclosure that hides nothing passes the second; one that hides everything
+ * passes the first).
+ *
+ * The head's words are the other half a fold cannot reach: `summary`, `code`
+ * and permanence are composed in `log-panel.tsx`'s JSX from three different
+ * places, so only the markup says whether the record leads with the run's own
+ * sentence or with a category the surface authored.
+ */
+import assert from "node:assert/strict";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, describe, it } from "vitest";
+import {
+  FailureDetailWireSchema,
+  type FailureDetailWire,
+} from "../../../src/domain/dashboard/run-detail.js";
+import { wireResourceSchema } from "../../../src/domain/dashboard/primitives.js";
+import { FailureDetailBody } from "../../../src/dashboard/surfaces/trust.js";
+import { InlineFailureRecord } from "../../../src/dashboard/surfaces/log-panel.js";
+import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+
+const SUMMARY = "The CRM record named a different person than the one this run was started for.";
+
+/** The run-detail `failure` section's own arm, composed from the wire's own combinator. */
+const FailureSectionSchema = wireResourceSchema(FailureDetailWireSchema);
+
+/**
+ * A client that answers NOTHING and throws by name if the body reaches for it.
+ *
+ * Every case here is a resting render or a disclosure press — neither touches
+ * the BFF — so a reach for the client is a defect this file wants to hear about
+ * rather than absorb.
+ */
+function refusingClient(): DashboardClient {
+  const handler: ProxyHandler<Record<string, unknown>> = {
+    get(_target, property): unknown {
+      throw new Error(`the failure record reached for client.${String(property)} without a press`);
+    },
+  };
+  return new Proxy({}, handler) as unknown as DashboardClient;
+}
+
+/**
+ * Parsed through the REAL wire schema, so a fixture that drifted off the
+ * contract fails here instead of rendering a shape the server cannot serve.
+ */
+function failureDetail(overrides: Record<string, unknown> = {}): FailureDetailWire {
+  return FailureDetailWireSchema.parse({
+    runId: "11111111-1111-4111-8111-111111111111",
+    failureId: "22222222-2222-4222-8222-222222222222",
+    traceId: "pl-141500-a3c1",
+    attempt: 2,
+    workflowId: "person-lookup",
+    nodeId: "cross-verify",
+    taskId: "crm/read-onboarding-record",
+    fingerprint: "e".repeat(64),
+    code: "SUBJECT_MISMATCH",
+    summary: SUMMARY,
+    transient: false,
+    writeState: "not-attempted",
+    subject: {
+      state: "present",
+      expected: { kind: "eid", digest: "1".repeat(64), displayRedacted: "••••5001" },
+      observed: { kind: "eid", digest: "2".repeat(64), displayRedacted: "••••4136" },
+    },
+    page: {
+      screen: "crm.onboarding",
+      state: "crm.onboarding.record-ready",
+      urlRedacted: "https://crm.example/onboarding/[redacted]",
+      titleRedacted: "Onboarding record",
+    },
+    action: { operation: "read", sequence: 3 },
+    causeChain: [{
+      code: "SUBJECT_MISMATCH",
+      summary: "the observed EID did not match the fenced subject",
+      role: "primary",
+      transient: false,
+    }],
+    remediation: [{
+      kind: "operator-action",
+      message: "Confirm which EID is correct at the source before re-running; nothing was written.",
+    }],
+    sameFingerprintSeen: 1,
+    diagnosticBundle: { state: "absent", reason: "no bundle was captured for this failure" },
+    occurredAt: "2026-08-25T14:15:00.000Z",
+    ...overrides,
+  });
+}
+
+function renderBody(detail: FailureDetailWire): string {
+  return renderToStaticMarkup(
+    createElement(DashboardClientProvider, {
+      client: refusingClient(),
+      children: createElement(FailureDetailBody, { detail }),
+    }),
+  );
+}
+
+let mountedRoot: Root | undefined;
+
+afterEach(async () => {
+  const root = mountedRoot;
+  mountedRoot = undefined;
+  if (root !== undefined) {
+    await act(async () => {
+      root.unmount();
+    });
+  }
+  document.body.replaceChildren();
+});
+
+/** Mounts the real body and presses its disclosure — `renderToStaticMarkup` cannot press. */
+async function mountOpenRecord(detail: FailureDetailWire): Promise<HTMLElement> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  mountedRoot = root;
+  await act(async () => {
+    root.render(createElement(DashboardClientProvider, {
+      client: refusingClient(),
+      children: createElement(FailureDetailBody, { detail }),
+    }));
+  });
+  const toggle = host.querySelector<HTMLButtonElement>("[data-panel-failure-toggle]");
+  assert.ok(toggle !== null, "the disclosure trigger did not render");
+  await act(async () => {
+    toggle.click();
+  });
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  return host;
+}
+
+function renderRecord(failure: Record<string, unknown>): string {
+  return renderToStaticMarkup(
+    createElement(DashboardClientProvider, {
+      client: refusingClient(),
+      children: createElement(InlineFailureRecord, {
+        failure: FailureSectionSchema.parse(failure),
+        errorNotes: [],
+        runId: "11111111-1111-4111-8111-111111111111",
+        aiAdvisory: { state: "unavailable", code: "not-configured", reason: "no advisory is configured" },
+      }),
+    }),
+  );
+}
+
+/* ── the head says the FACT, not the category (E2/E4/E5/E6) ──────────────── */
+
+describe("the failure record's head (E2/E4/E5/E6)", () => {
+  it("leads with the run's own summary, its code and its permanence", () => {
+    const html = renderRecord({ state: "available", value: failureDetail() });
+
+    // E4: the constant `This run failed` said what the status pill, the outcome
+    // bar and the danger tint had all already said, while the ONE sentence this
+    // run wrote about itself waited a line below in body copy.
+    assert.ok(html.includes(SUMMARY), "the head does not say the run's own summary");
+    assert.ok(!html.includes("This run failed"), "the head still leads with the category");
+    // E5/E6, both in the head, both beside the summary.
+    assert.match(html, /code<\/span><span[^>]*>SUBJECT_MISMATCH/u);
+    assert.ok(html.includes("permanent — the same input will fail again"));
+    assert.ok(!html.includes("transient — a later attempt may differ"));
+    // E2: the anchor's accessible name is the record's own sentence.
+    assert.ok(html.includes(`aria-label="Failure record — ${SUMMARY}"`));
+  });
+
+  it("says the OPPOSITE permanence when the wire says transient", () => {
+    const html = renderRecord({ state: "available", value: failureDetail({ transient: true }) });
+    assert.ok(html.includes("transient — a later attempt may differ"));
+    assert.ok(!html.includes("permanent — the same input will fail again"));
+  });
+
+  it("keeps the category arm for the record the wire could NOT serve", () => {
+    // The one place `This run failed` is still the whole of what is known. It
+    // must NOT grow a code, a permanence chip or a borrowed summary — that
+    // would be the surface authoring a record the projection refused.
+    const html = renderRecord({ state: "missing", reason: "the failure record was never projected" });
+    assert.ok(html.includes("This run failed"));
+    assert.ok(html.includes("the failure record was never projected"));
+    assert.ok(html.includes('aria-label="Failure record"'));
+    assert.ok(!html.includes("permanent"), "an unserved record grew a permanence claim");
+    assert.ok(!html.includes("transient"), "an unserved record grew a permanence claim");
+    assert.ok(!html.includes("What this run left behind"), "an unserved record grew a write state");
+  });
+});
+
+/* ── the disclosure, and what it may not hide (E15) ──────────────────────── */
+
+describe("the diagnostic disclosure (E15)", () => {
+  it("hides DIAGNOSIS and nothing else while it is closed", () => {
+    const html = renderBody(failureDetail());
+
+    // Behind the press: classification, the cause chain, the fingerprint, the
+    // bundle and the fingerprint's history.
+    assert.ok(!html.includes("Cause chain"), "the cause chain rendered on a closed record");
+    assert.ok(!html.includes("occurred"), "the classification rendered on a closed record");
+    assert.ok(!html.includes("pl-141500-a3c1"), "the trace rendered on a closed record");
+    assert.ok(!html.includes("crm.onboarding"), "the page state rendered on a closed record");
+    assert.ok(!html.includes("First time"), "the fingerprint history rendered on a closed record");
+    assert.ok(!html.includes("no diagnostic bundle"), "the bundle arm rendered on a closed record");
+
+    // NEVER behind the press. Both of these are the ruling, not the layout:
+    // the write state is the difference between a safe retry and a duplicate
+    // termination, and "why can I not just retry this" is a question a hidden
+    // control never answers.
+    assert.ok(html.includes("What this run left behind"), "the write-state block was hidden");
+    assert.ok(
+      html.includes("This run wrote nothing — no write was attempted."),
+      "the write-state sentence was hidden",
+    );
+    assert.ok(html.includes("What is safe to retry"), "the remediation section was hidden");
+    assert.ok(
+      html.includes("Confirm which EID is correct at the source"),
+      "the served remediation was hidden",
+    );
+  });
+
+  it("offers the diagnosis as a real control, not a hover", () => {
+    const html = renderBody(failureDetail());
+    // A disclosure trigger is a control (the timeline segment's own lesson).
+    assert.match(html, /<button[^>]*aria-expanded="false"[^>]*data-panel-failure-toggle=""/u);
+    assert.ok(html.includes("Show the diagnostic record"));
+    assert.ok(!html.includes("Hide the diagnostic record"));
+  });
+
+  it("names the OPPOSITE act once it is open, and reveals the diagnosis", async () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    mountedRoot = root;
+    await act(async () => {
+      root.render(createElement(DashboardClientProvider, {
+        client: refusingClient(),
+        children: createElement(FailureDetailBody, { detail: failureDetail() }),
+      }));
+    });
+
+    const toggle = host.querySelector<HTMLButtonElement>("[data-panel-failure-toggle]");
+    assert.ok(toggle !== null, "the disclosure trigger did not render");
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert.ok(!host.textContent.includes("Cause chain"));
+
+    await act(async () => {
+      toggle.click();
+    });
+
+    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+    assert.ok(toggle.textContent.includes("Hide the diagnostic record"));
+    assert.ok(host.textContent.includes("Cause chain"), "the cause chain stayed hidden after the press");
+    assert.ok(host.textContent.includes("pl-141500-a3c1"), "the classification stayed hidden after the press");
+    assert.ok(
+      host.textContent.includes("First time this fingerprint has been seen."),
+      "the fingerprint history stayed hidden after the press",
+    );
+    // Still there — a disclosure that swallows the two unconditional facts on
+    // OPEN would pass every closed-state assertion above.
+    assert.ok(host.textContent.includes("What this run left behind"));
+    assert.ok(host.textContent.includes("What is safe to retry"));
+  });
+
+  it("re-hides the diagnosis on a second press", async () => {
+    const host = await mountOpenRecord(failureDetail());
+    const toggle = host.querySelector<HTMLButtonElement>("[data-panel-failure-toggle]");
+    assert.ok(toggle !== null);
+    await act(async () => {
+      toggle.click();
+    });
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert.ok(!host.textContent.includes("Cause chain"), "the disclosure is a one-way door");
+  });
+});
+
+/* ── the write-state block and its tones (E8/E9) ─────────────────────────── */
+
+describe("the write-state block (E8/E9)", () => {
+  it("gives the sentence its own labelled, bordered frame", () => {
+    const html = renderBody(failureDetail());
+    // The label and the sentence must live in ONE box: a SectionLabel loose in
+    // the body flow is the drift this row is about.
+    assert.match(
+      html,
+      /border[^"]*"><[^>]*>What this run left behind<\/[^>]*><p[^>]*>This run wrote nothing/u,
+    );
+  });
+
+  it("colours the six arms by what they left behind, not one weight for all", () => {
+    const settled = renderBody(failureDetail({ writeState: "not-attempted" }));
+    const parked = renderBody(failureDetail({ writeState: "unknown" }));
+    const left = renderBody(failureDetail({ writeState: "committed" }));
+
+    assert.ok(settled.includes("--ds-success-fg"), "a run that wrote nothing did not read as settled");
+    assert.ok(parked.includes("--ds-status-parked-fg"), "an unknown write outcome did not read as parked");
+    assert.ok(left.includes("--ds-status-waiting-fg"), "a committed-unverified write did not read as a wait");
+    // The negative control: if the tone stopped arriving, all three would still
+    // be grammatical and only their equality would say so.
+    assert.ok(!settled.includes("--ds-status-parked-fg"));
+    assert.ok(!parked.includes("--ds-success-fg"));
+    assert.ok(!left.includes("--ds-success-fg"));
+  });
+});
+
+/* ── the classification's tones and arms (E22/E30) ───────────────────────── */
+
+describe("the classification, once disclosed (E5/E6)", () => {
+  it("draws `code` ONCE and permanence nowhere — both are head facts now", async () => {
+    const host = await mountOpenRecord(failureDetail());
+    const text = host.textContent;
+
+    // `code` moved to the head (E5), which `log-panel.tsx` owns. The cause
+    // chain's `primary — SUBJECT_MISMATCH` is a DIFFERENT fact that happens to
+    // share the string, so the claim is a COUNT: a copy left behind in the
+    // classification MetaLine would print the code twice on one record.
+    assert.equal(
+      text.split("SUBJECT_MISMATCH").length - 1,
+      1,
+      `the code is drawn more than once in the body: ${text}`,
+    );
+    // Permanence (E6) has no counterpart in the body at all.
+    assert.ok(!text.includes("permanent — the same input"), "permanence is still drawn in the body");
+    assert.ok(!text.includes("transient — a later attempt"), "permanence is still drawn in the body");
+    // The classification's own facts are still here and unmoved.
+    assert.ok(text.includes("occurred"));
+    assert.ok(text.includes("attempt 2"));
+    assert.ok(text.includes("node cross-verify"));
+  });
+});
+
+describe("the observed subject reads as the thing that is wrong (E22)", () => {
+  it("tones the OBSERVED half in danger and leaves the expected half alone", async () => {
+    const host = await mountOpenRecord(failureDetail());
+
+    const observed = host.querySelector<HTMLElement>("span.text-\\[color\\:var\\(--ds-danger\\)\\]");
+    assert.ok(observed !== null, "the observed subject carries no danger tone");
+    assert.ok(observed.textContent.startsWith("observed eid"), `the danger tone landed on: ${observed.textContent}`);
+    // Redaction is unchanged and not re-derived: the served display wins.
+    assert.ok(observed.textContent.includes("••••4136"));
+    assert.ok(!observed.textContent.includes("2".repeat(64)), "the raw digest leaked past the served display");
+    // The expected half is the same fact class and must NOT be shouted at.
+    assert.ok(host.textContent.includes("expected eid ••••5001"));
+  });
+});

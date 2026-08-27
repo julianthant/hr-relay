@@ -930,7 +930,15 @@ function InlineGateDecisionRecord({
  * back" is the whole reason that sentence exists, and a fact an operator has to
  * press for cannot decide whether they press retry.
  */
-function InlineFailureRecord({
+/**
+ * Exported for the D273 item 8 head pin
+ * (`tests/unit/dashboard/failure-record-render.test.ts`), on the same footing
+ * as `InlineDecision` above: the head's three facts — the run's own `summary`,
+ * its `code` and its permanence — are composed in JSX from three places, so no
+ * fold can see whether the record leads with the served sentence or with a
+ * category the surface authored.
+ */
+export function InlineFailureRecord({
   failure,
   errorNotes,
   completedAt,
