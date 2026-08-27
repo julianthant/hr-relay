@@ -21,7 +21,7 @@ import { REPO_ROOT } from "./helpers/guard-files.js";
 
 const WORKFLOW_SCENARIO_ROOT = "tests/scenario/workflows";
 const MANIFEST_FILE = "dry-run.scenario.ts";
-const CLI_PATH = "src/cli.ts";
+const MANIFEST_REGISTRY_PATH = "src/server/dry-run-scenario/manifests.ts";
 const MANIFEST_MODULE = "domain/trust/dry-run-scenario.js";
 const PHASE_DOC_PATH = "docs/rebuild/03b-finish-separations.md";
 /** The one order-8 status line that names the mapped inventory in prose. */
@@ -87,6 +87,8 @@ function manifestView(manifest: DryRunScenarioManifest): TestTargetManifestView 
   };
 }
 
+const RECEIPT_NODE_OBLIGATION_PREFIX = "node.";
+
 /** Every node id a manifest case names, in one flat list. */
 function nodeIdsNamedBy(manifest: DryRunScenarioManifest): readonly string[] {
   return [
@@ -99,26 +101,37 @@ function nodeIdsNamedBy(manifest: DryRunScenarioManifest): readonly string[] {
       ...(scenarioCase.terminal.lifecycle === "failed"
         ? [scenarioCase.terminal.node]
         : [scenarioCase.terminal.stoppedAtNodeId]),
+      // A receipt obligation `node.<id>` names the same graph node — its
+      // verification is a `node-output` obligation source (ref evidence
+      // obligations), not a free-text label — so it names a real node
+      // exactly as much as a checkpoint or a gate result does.
+      ...scenarioCase.receipt.verification
+        .map(({ obligation }) => obligation)
+        .filter((obligation) => obligation.startsWith(RECEIPT_NODE_OBLIGATION_PREFIX))
+        .map((obligation) => obligation.slice(RECEIPT_NODE_OBLIGATION_PREFIX.length)),
     ]),
   ];
 }
 
 /**
- * The workflows `src/cli.ts` can actually load a manifest for, read off its own
- * source. The CLI is a composition ROOT — importing it would start the runtime —
- * so the registration is inspected as data.
+ * The workflows the production manifest registry can actually load, read off
+ * its own source. `src/server/dry-run-scenario/manifests.ts` is the ONE place
+ * a workflow id is paired with its T1b loader — `src/cli.ts` only calls
+ * `loadDryRunScenarioManifest`, so this is the composition root's real
+ * registration surface. It is inspected as data rather than imported: the
+ * loaders it holds are live `import()` calls this guard must not trigger.
  */
-function workflowsRegisteredByCli(): ReadonlyMap<string, string> {
-  const source = readFileSync(join(REPO_ROOT, CLI_PATH), "utf8");
+function workflowsRegisteredByManifestRegistry(): ReadonlyMap<string, string> {
+  const source = readFileSync(join(REPO_ROOT, MANIFEST_REGISTRY_PATH), "utf8");
   const registered = new Map<string, string>();
-  const entry = /"(?<workflow>[a-z0-9-]+)":[\s\S]{0,400}?import\(\s*\n?\s*"(?<path>[^"]*dry-run\.scenario\.js)"/gu;
+  const entry = /\[\s*"(?<workflow>[a-z0-9-]+)",[\s\S]{0,400}?import\(\s*\n?\s*"(?<path>[^"]*dry-run\.scenario\.js)"/gu;
   for (const match of source.matchAll(entry)) {
     const { workflow, path } = match.groups ?? {};
     if (workflow === undefined || path === undefined) continue;
     registered.set(workflow, path);
   }
   if (registered.size === 0) {
-    throw new Error(`${CLI_PATH} registers no dry-run scenario manifest, so this guard proves nothing`);
+    throw new Error(`${MANIFEST_REGISTRY_PATH} registers no dry-run scenario manifest, so this guard proves nothing`);
   }
   return registered;
 }
@@ -199,15 +212,15 @@ describe("test target registry architecture", () => {
     }
   });
 
-  it("registers exactly the layout's T1b manifests in the CLI, each at its own path", () => {
+  it("registers exactly the layout's T1b manifests in the manifest registry, each at its own path", () => {
     const layout = manifestPathsByWorkflow();
-    const registered = workflowsRegisteredByCli();
+    const registered = workflowsRegisteredByManifestRegistry();
     assert.deepEqual([...registered.keys()].sort(), [...layout.keys()].sort());
     for (const [workflow, path] of registered) {
       assert.equal(
         path.endsWith(`${WORKFLOW_SCENARIO_ROOT}/${workflow}/dry-run.scenario.js`),
         true,
-        `${CLI_PATH} loads ${workflow} from ${path}, which is not that workflow's T1b manifest`,
+        `${MANIFEST_REGISTRY_PATH} loads ${workflow} from ${path}, which is not that workflow's T1b manifest`,
       );
     }
   });
