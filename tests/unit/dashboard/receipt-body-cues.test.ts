@@ -80,14 +80,20 @@ const PROOF_SOURCES: readonly ProofSource[] = [
 ];
 
 describe("writeProofConfirmation (D20)", () => {
-  it("a `receipt` completion IS the system's own confirmation record", () => {
-    const verdict = writeProofConfirmation("receipt", "ucpath");
+  it("a `receipt` completion proved by the commit's own path IS the system's own confirmation record", () => {
+    const verdict = writeProofConfirmation("receipt", "ucpath", "normal-output");
     expect(verdict.state).toBe("confirmed");
+    expect(verdict.sentence).toContain("system's own receipt");
+  });
+
+  it("a probe-sourced proof under a `receipt` completion is still the system's record — a probe reads the target system", () => {
+    expect(writeProofConfirmation("receipt", "ucpath", "recovery-probe").state).toBe("confirmed");
+    expect(writeProofConfirmation("receipt", "ucpath", "live-probe").state).toBe("confirmed");
   });
 
   it("a verify-backed completion states the demo's fallback — the system issues no confirmation number, the read-back is the proof", () => {
     for (const completion of ["save-verify", "upload-verify"] as const) {
-      const verdict = writeProofConfirmation(completion, "kuali");
+      const verdict = writeProofConfirmation(completion, "kuali", "normal-output");
       expect(verdict.state).toBe("none-issued");
       expect(verdict.sentence).toContain("no confirmation number");
       expect(verdict.sentence).toContain("read-back");
@@ -95,14 +101,42 @@ describe("writeProofConfirmation (D20)", () => {
     }
   });
 
-  it("is total over the served completions, and the two arms never read the same", () => {
+  it("an operator-attested proof NEVER wears the system's-own-receipt check — a human's attestation is not the system's record", () => {
     for (const completion of COMPLETIONS) {
-      const verdict = writeProofConfirmation(completion, "ucpath");
-      expect(["confirmed", "none-issued"]).toContain(verdict.state);
-      expect(verdict.sentence.length).toBeGreaterThan(0);
+      const verdict = writeProofConfirmation(completion, "ucpath", "operator-attestation");
+      expect(verdict.state).toBe("attested");
+      expect(verdict.state).not.toBe("confirmed");
+      expect(verdict.sentence).toContain("attested");
+      expect(verdict.sentence).toContain("not the system's");
     }
-    expect(writeProofConfirmation("receipt", "ucpath").sentence)
-      .not.toBe(writeProofConfirmation("save-verify", "ucpath").sentence);
+  });
+
+  it("a durable-intent proof is a prior settled write's record — never a fresh confirmation for this commit", () => {
+    for (const completion of COMPLETIONS) {
+      const verdict = writeProofConfirmation(completion, "kuali", "durable-intent");
+      expect(verdict.state).toBe("prior-record");
+      expect(verdict.state).not.toBe("confirmed");
+      expect(verdict.sentence).toContain("prior");
+    }
+  });
+
+  it("is total over every (completion, proofSource) pair, states never share a sentence, and only system-sourced proofs confirm", () => {
+    const sentences = new Map<string, string>();
+    for (const completion of COMPLETIONS) {
+      for (const source of PROOF_SOURCES) {
+        const verdict = writeProofConfirmation(completion, "ucpath", source);
+        expect(["confirmed", "none-issued", "attested", "prior-record"]).toContain(verdict.state);
+        expect(verdict.sentence.length).toBeGreaterThan(0);
+        if (verdict.state === "confirmed") {
+          expect(["normal-output", "live-probe", "recovery-probe"]).toContain(source);
+        }
+        const existing = sentences.get(verdict.sentence);
+        if (existing !== undefined) expect(existing).toBe(verdict.state);
+        sentences.set(verdict.sentence, verdict.state);
+      }
+    }
+    expect(writeProofConfirmation("receipt", "ucpath", "normal-output").sentence)
+      .not.toBe(writeProofConfirmation("save-verify", "ucpath", "normal-output").sentence);
   });
 });
 

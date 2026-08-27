@@ -946,7 +946,7 @@ type ActionWriteProofWire = NonNullable<RunEvidenceReceiptWire["actions"][number
  *   never silence.
  */
 function WriteProofBlock({ proved }: { proved: ActionWriteProofWire }) {
-  const confirmation = writeProofConfirmation(proved.completion, proved.system);
+  const confirmation = writeProofConfirmation(proved.completion, proved.system, proved.proofSource);
   const readBack = writeProofReadBack(proved.completion, proved.proofSource);
   return (
     <div className="flex flex-col gap-[var(--ds-space-tight)] pl-[var(--ds-space-loose)]">

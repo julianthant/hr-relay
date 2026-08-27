@@ -277,31 +277,58 @@ type WriteProofSystem = ActionWriteProofWire["system"];
 
 export type WriteProofConfirmationVerdict =
   | Readonly<{ state: "confirmed"; sentence: string }>
-  | Readonly<{ state: "none-issued"; sentence: string }>;
+  | Readonly<{ state: "none-issued"; sentence: string }>
+  | Readonly<{ state: "attested"; sentence: string }>
+  | Readonly<{ state: "prior-record"; sentence: string }>;
 
 /**
- * D20 — the CONFIRMATION arm, decided by the commit contract's declared
- * completion. A `receipt` completion means the system issued its own
- * confirmation record at the commit and the proof values ARE that record; a
- * verify-backed completion means the system issues no confirmation number for
- * the operation, and the demo's own fallback sentence says where the proof
- * lives instead (`DemoReceipt.tsx:125-141`). Decided from the served pair and
- * never stored twice — one source, two readings.
+ * D20 — the CONFIRMATION arm, decided by (completion, proofSource), both
+ * served. The completion says whether the system issues its own confirmation
+ * record for the operation; the proofSource says where THESE proof values
+ * actually came from, and the second question outranks the first. A `receipt`
+ * completion whose values reached authority through the commit's own path or
+ * a probe of the target system IS the system's own record; a verify-backed
+ * completion means the system issues no confirmation number, and the demo's
+ * own fallback sentence says where the proof lives instead
+ * (`DemoReceipt.tsx:125-141`). An operator attestation is a HUMAN's typed
+ * statement and may never wear the "system's own receipt" check — calling it
+ * one is the exact lie this fold exists to refuse — and a durable-intent
+ * proof is a prior settled write's record, not a fresh confirmation for this
+ * commit. Total over both enums, no default: a sixth proof source or a fourth
+ * completion is a typecheck failure here, never a silent green check.
  */
 export function writeProofConfirmation(
   completion: WriteProofCompletion,
   system: WriteProofSystem,
+  proofSource: WriteProofSource,
 ): WriteProofConfirmationVerdict {
-  if (completion === "receipt") {
-    return Object.freeze({
-      state: "confirmed",
-      sentence: "confirmation recorded — the values below are the system's own receipt for this commit",
-    });
+  switch (proofSource) {
+    case "operator-attestation":
+      return Object.freeze({
+        state: "attested",
+        sentence: "no system confirmation stands here — a human attested this outcome through the typed "
+          + "resolution, and the values below are the operator's attestation, not the system's own receipt",
+      });
+    case "durable-intent":
+      return Object.freeze({
+        state: "prior-record",
+        sentence: "no fresh confirmation was issued to this run — the values below are a prior settled "
+          + "write's own durable record, which is what proves the key was already satisfied",
+      });
+    case "normal-output":
+    case "live-probe":
+    case "recovery-probe":
+      if (completion === "receipt") {
+        return Object.freeze({
+          state: "confirmed",
+          sentence: "confirmation recorded — the values below are the system's own receipt for this commit",
+        });
+      }
+      return Object.freeze({
+        state: "none-issued",
+        sentence: `${SYSTEM_LABEL[system]} issues no confirmation number for this operation — the read-back below is the proof`,
+      });
   }
-  return Object.freeze({
-    state: "none-issued",
-    sentence: `${SYSTEM_LABEL[system]} issues no confirmation number for this operation — the read-back below is the proof`,
-  });
 }
 
 export type WriteProofReadBackVerdict =
