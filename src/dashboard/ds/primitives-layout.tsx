@@ -621,7 +621,24 @@ export function TakeoverFrame({
       {...enter}
       aria-label={label}
       className={cn(
-        "flex min-h-0 min-w-0 flex-1 overflow-hidden",
+        // `flex min-h-0 flex-1` IS the demo root, byte for byte. `overflow-hidden`
+        // is the one addition, and it is a NET, not a mechanism —
+        // // verified 2026-08-27: the root must clip because it is the last box
+        // between a takeover's content and the sessions bar. Measured live at
+        // 1440x900 on all four takeovers, with an over-wide (3000px) and an
+        // over-tall (2000px) child forced in: the frame's own box is IDENTICAL
+        // with and without it (x=0 y=44 w=1440 h=819), the page never scrolls in
+        // either axis either way (the shell root, `flex h-screen min-w-0
+        // flex-col overflow-hidden`, already owns the viewport clip), and the
+        // ONLY difference is whether an overflowing child PAINTS across the
+        // frame's bottom edge at y=863 — where the sessions bar is. The demo's
+        // root can go without because each of its pages gives its own regions an
+        // `overflow-y-auto`; so does every surface here, which is exactly why
+        // this is a net and why keeping it costs no pixel.
+        // `min-w-0` was dropped: the frame is a COLUMN-flex item under `main`,
+        // so `min-width: auto` is never the constraint being fought, and all
+        // three configurations measured identically.
+        "flex min-h-0 flex-1 overflow-hidden",
         direction === "row" ? "flex-row" : "flex-col",
         "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
         "data-[demo-enter=from]:opacity-0 ds-motion-enter",
