@@ -12,6 +12,9 @@
  * Every id goes through its own schema, so a fixture cannot pin a shape the
  * wire would refuse.
  */
+import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
   EvidenceReceiptIdSchema,
@@ -20,8 +23,10 @@ import {
   PositiveIntSchema,
   RunIdSchema,
 } from "../../../src/domain/ids.js";
+import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { CONFIDENCE_COPY, receiptConfidenceChip, receiptIdentityItems } from "../../../src/dashboard/surfaces/receipt-model.js";
 import { fmtClock } from "../../../src/dashboard/surfaces/format.js";
+import { ReceiptView } from "../../../src/dashboard/surfaces/receipt.js";
 
 const RECEIPT_ID = EvidenceReceiptIdSchema.parse("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
 const RUN_ID = RunIdSchema.parse("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb");
@@ -122,5 +127,61 @@ describe("receiptIdentityItems", () => {
 
   it("returns nothing at all when neither fact exists — no placeholder segments", () => {
     expect(receiptIdentityItems({})).toStrictEqual([]);
+  });
+});
+
+/**
+ * F8d finding 1 (MED, `receipt.tsx:121`) — `bandCarriesIdentity` was hardcoded
+ * `true`, but a receipt-available + non-terminal-outcome state renders no
+ * `VerdictBand` at all. The body was told a band it does not draw already
+ * carries confidence, so `!bandCarriesIdentity && \`confidence ...\`` never
+ * fired and confidence rendered NOWHERE — contradicting the surface's own
+ * "facts are never dropped" comment. `bandCarriesIdentity` must track whether
+ * a band actually rendered (`outcome.state === "terminal"`), not a constant.
+ */
+describe("ReceiptView — confidence must render somewhere, even with no band (row D8, finding 1)", () => {
+  const AVAILABLE_RECEIPT = RunEvidenceReceiptSchema.parse({
+    receiptId: RECEIPT_ID,
+    runId: RUN_ID,
+    traceId: "on-120000-2222",
+    workflowId: "onboarding",
+    attempt: 1,
+    generatedAt: GENERATED_AT,
+    descriptorFingerprint: "a".repeat(64),
+    configFingerprint: "a".repeat(64),
+    retryOf: { state: "absent" },
+    failure: { state: "absent" },
+    input: [],
+    observations: [],
+    decisions: [],
+    actions: [],
+    verification: [],
+    output: [],
+    reuse: [],
+    warnings: [],
+    confidence: "partial",
+    result: "partial",
+  });
+
+  it("prints the confidence fact when the run has NOT terminalized but a receipt is already available", () => {
+    const html = renderToStaticMarkup(createElement(ReceiptView, {
+      outcome: { state: "absent", reason: "still running" },
+      receipt: { state: "available", value: AVAILABLE_RECEIPT },
+    }));
+    // No VerdictBand renders for a non-terminal outcome, so the body must be
+    // the one place confidence lands — `bandCarriesIdentity` false, not true.
+    assert.match(html, /confidence partial/u);
+  });
+
+  it("does NOT repeat confidence in the body once a band exists to carry it", () => {
+    const html = renderToStaticMarkup(createElement(ReceiptView, {
+      outcome: { state: "terminal", result: "partial", completedAt: COMPLETED_AT },
+      receipt: { state: "available", value: AVAILABLE_RECEIPT },
+    }));
+    // The band prints `confidence partial — some of it read back` via the
+    // qualifying chip; the body's own trailing MetaLine must not restate the
+    // bare `confidence partial` a second time underneath it.
+    assert.match(html, /partial — some of it read back/u);
+    assert.doesNotMatch(html, /confidence partial(?!\s*—)/u);
   });
 });

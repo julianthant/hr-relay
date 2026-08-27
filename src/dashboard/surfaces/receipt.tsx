@@ -23,7 +23,7 @@
 import { ShieldCheck } from "lucide-react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import { Banner, Chip, DS_STATUS, EmptyState, MetaLine, dsIcon, dsText } from "../ds/ui.js";
+import { Banner, DS_STATUS, EmptyState, MetaLine, dsIcon, dsRadius, dsText } from "../ds/ui.js";
 import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import { receiptConfidenceChip, receiptIdentityItems } from "./receipt-model.js";
@@ -33,12 +33,46 @@ import type { OutcomeWire, TerminalOutcomeResult } from "./status-model.js";
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
 export type ReceiptSectionPayload = Extract<RunDetailSectionResponse, { section: "receipt" }>["payload"];
 
+/**
+ * Row D9's identity line breaks between FACTS, never mid-fact (F8d finding 3).
+ * `MetaLine` renders each item as plain text inside its own span, and a fact
+ * like `receipt aaaaaaaa-…` has a space in it the browser is free to wrap on,
+ * orphaning the uuid onto its own line. Each segment is `whitespace-nowrap`
+ * so the browser's only legal break point is the `·` separator MetaLine
+ * already draws between facts. Both of the line's homes (the band, and the
+ * absence it renders under when there is no band) share this fold so they
+ * cannot drift into two different wrap behaviors for one identity line.
+ */
+function identityLineItems(items: readonly string[]) {
+  return items.map((item, index) => <span key={index} className="whitespace-nowrap">{item}</span>);
+}
+
 const RESULT_COPY: Record<TerminalOutcomeResult, { word: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
   "verified-done": { word: DS_STATUS.verifiedDone.label, tone: "success" },
   "done-with-warnings": { word: DS_STATUS.doneWarnings.label, tone: "warning" },
   partial: { word: "Partial outcome", tone: "warning" },
   failed: { word: DS_STATUS.failed.label, tone: "danger" },
   cancelled: { word: DS_STATUS.cancelled.label, tone: "neutral" },
+};
+
+/**
+ * The confidence sentence's tint — the same two tones `receiptConfidenceChip`
+ * returns, reproduced locally rather than reused from `Chip`'s own
+ * `CHIP_TONE` (private to `ds/primitives-core.tsx`).
+ *
+ * This is NOT a `Chip`. `Chip`'s own docstring is the rule (F5b): "if a fact
+ * cannot survive truncation it is not a chip — put it on the row's `MetaLine`,
+ * where it can wrap." The confidence sentence is a full clause ("verified —
+ * read back from the system of record"), and `Chip` clips its paint to one
+ * line inside its own border — exactly the load-bearing sentence D8 exists to
+ * surface would be cut. A tinted, wrapping span keeps the same visual cue
+ * (the eye must still catch a non-`verified` confidence) without clipping the
+ * sentence that says what it means (F8d finding 2).
+ */
+const CONFIDENCE_TONE_CLASS: Record<"neutral" | "warning", string> = {
+  neutral: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg)]",
+  warning:
+    "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
 };
 
 /**
@@ -76,7 +110,7 @@ export function ReceiptView({
             title="No receipt yet"
             description={`${outcome.reason}. A receipt is written at the run's terminal outcome.`}
           />
-          <MetaLine items={identityItems} />
+          <MetaLine items={identityLineItems(identityItems)} />
         </>
       )}
 
@@ -108,17 +142,18 @@ export function ReceiptView({
         </Banner>
       )}
 
-      {/* `bandCarriesIdentity` — the band above already prints this receipt's
-          id, instant, attempt, retry-of and confidence, so the body must not
-          print them a second time. The archive mounts the same body with no
-          band and keeps its full trailing line.
-
-          There is no `Receipt` SectionLabel around this any more. It existed to
-          head the identity MetaLine that row D9 moved onto the band, and once
-          that left it was a caps label sitting directly on top of the body's
-          own first caps label with nothing between them — chrome naming chrome.
-          The band above says `receipt {id}`, which is what the heading was for. */}
-      {value !== undefined && <ReceiptEvidenceBody receipt={value} bandCarriesIdentity />}
+      {/* `bandCarriesIdentity` — WHEN a band renders (a terminal outcome), it
+          already prints this receipt's id, instant, attempt, retry-of and
+          confidence, so the body must not print them a second time. When the
+          run has not terminalized there IS no band (see the branch above), so
+          `bandCarriesIdentity` must be false there or confidence and the rest
+          render nowhere at all — the exact defect the surface's own "facts are
+          never dropped" comment forbids (F8d finding 1). The archive mounts
+          the same body with no band and keeps its full trailing line, which is
+          this same `false` case, just for a different reason. */}
+      {value !== undefined && (
+        <ReceiptEvidenceBody receipt={value} bandCarriesIdentity={outcome.state === "terminal"} />
+      )}
       {receipt.state === "missing" && <EmptyState title="No receipt" description={receipt.reason} />}
       {receipt.state === "purged" && <EmptyState title="Receipt purged" description={receipt.reason} />}
       {receipt.state === "error" && (
@@ -169,16 +204,27 @@ function VerdictBand({
           )}
         />
         <span className={cn(dsText.section, "font-semibold text-[color:var(--ds-fg)]")}>{verdict.word}</span>
-        {/* Row D8: a verdict is qualified WHERE it is said. The chip carries
-            the served word AND the sentence that says what the word means —
-            `verified` alone never told the operator that "read back from the
-            system of record" is what earned it. It is absent, not guessed,
-            when no receipt was served. */}
+        {/* Row D8: a verdict is qualified WHERE it is said — the served word
+            AND the sentence that says what the word means, "verified" alone
+            never told the operator that "read back from the system of
+            record" is what earned it. It is absent, not guessed, when no
+            receipt was served. A tinted SPAN, not a `Chip` (F8d finding 2) —
+            see `CONFIDENCE_TONE_CLASS`'s comment for why. */}
         {confidenceChip !== undefined && (
-          <Chip label="confidence" tone={confidenceChip.tone}>{confidenceChip.text}</Chip>
+          <span
+            className={cn(
+              "inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-[var(--ds-space-tight)] border px-[var(--ds-space-snug)] py-[var(--ds-space-hair)]",
+              dsRadius.sm,
+              dsText.meta,
+              CONFIDENCE_TONE_CLASS[confidenceChip.tone],
+            )}
+          >
+            <span className="shrink-0 text-[color:var(--ds-fg-muted)]">confidence</span>
+            <span className={cn(dsText.nums, "min-w-0 whitespace-normal break-words")}>{confidenceChip.text}</span>
+          </span>
         )}
       </div>
-      <MetaLine items={[...identityItems]} />
+      <MetaLine items={identityLineItems(identityItems)} />
     </div>
   );
 }
