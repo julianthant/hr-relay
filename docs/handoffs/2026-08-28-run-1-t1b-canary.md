@@ -34,13 +34,13 @@ Phase 3b's exit table is 8 of 9; row 5 — controlled-commit evidence on the ope
 | 11 | u5: T1b is already `met` (`0cc71a31…` on 4502, R1) — a second take on the same state root is attempt 2 and fails on the checkpoint count alone; record, do not re-run | `separations.md:6163-6167` |
 
 ## Current state (from git)
-- Repo: `/Users/julianhein/Projects/hr-automation-rebuild`   Branch: `integration/03b`   Base: `87a38779` at the time of writing (R1 closed at `db3f76f6`; u21, if landed tonight, moves it — read the board's ledger row for u21)
+- Repo: `/Users/julianhein/Projects/hr-automation-rebuild`   Branch: `integration/03b`   Base: `e955a9d6` (R1 closed at `db3f76f6`; u21 + u21-fix landed `f157aae6`..`5d92794a`; coordinator gate 316 / 3,460 at `5d92794a`)
 - master: `8e322e8a` (03a closed, merged `--no-ff`) — do not move it
 - Worktrees: `../hr-automation-rebuild-ui*` belong to run UI-1 (another session) — leave them · feature/ui-* are theirs · root tree: `vitest.config.ts` reflow pending the operator's sheet item 5
 - Gate at `db3f76f6` (coordinator-run): typecheck · lint · 315 files / 3,456 tests · roadmap fresh · manifest unchanged
 
 ## Progress
-- [ ] u21 (tonight, sheet item 1 A — its own short session; see the board's ledger for the sha)
+- [x] u21 range-field clear (`3b9588c5`, manifest `5d92794a`) — the tree is now FROZEN under `src/stores/**`, `src/base/**`, `src/domain/**` until ③ lands
 - [ ] u1 pre-flight — the 11 steps above ← **resume here on 2026-08-28**
 - [ ] u2 commit ② UCPath filing — operator at the gate
 - [ ] u3 commit ① sweep + `clear-pending` COMMITTED-arm witness — ask the operator at the keyboard whether to re-run ① immediately after ②
