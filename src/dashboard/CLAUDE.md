@@ -74,6 +74,48 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a reference page's kinds must be READ OFF the schema, and a mark placed away from
+  the value it is about is a mark nobody reads (D274 item 4 / D275 items 1 and 6 / D276 items 2 and
+  5, unit F14, ledger 3 §3 and §4).** Two surfaces, and the same shape twice: a fact the product
+  held and did not put where it is read.
+
+  **The catalog.** The demo's row-and-panel catalog authors its vocabulary beside the product — 8
+  row variants, 3 containment kinds, a rollup precedence chain, 4 panel kinds — and D274 item 4
+  rules that this tree builds only what it SERVES. So every kind on `surfaces/row-catalog.tsx` comes
+  off a schema: the four `surfaceKind` arms off the queue wire's own discriminant, containment and
+  panel kind off `.options`, and each kind's tab strip off the new `sectionsForPanelKind`, which
+  derives from the SAME `sectionsCompatible` rule `RunDetailWireSchema` enforces. **A `Record` keyed
+  by the schema's union is what makes that structural** — a fifth arm is a typecheck failure, not a
+  page that silently documents four of five — and the ORDER array beside it is the one place an arm
+  can still be dropped without the compiler noticing, which is why a test pins that the two agree.
+  Three things travel. **The negative control is the test that matters**: a `tabsForPanelKind` that
+  returned every tab for every kind passes "the wire accepts each tab I draw" and fails only the
+  test that names the refused pairings. **An arm that cannot fire is a check that cannot fail** —
+  the catalog row's scenario list has no empty arm because `scenarios` is `.min(1)`, and the
+  Explorer's `{label} declares no nodes` is deleted because `nodes` is `.min(1)`; both claims are
+  ASSERTED at the site rather than assumed, so a relaxed schema fails loudly instead of blanking a
+  panel. And **the absences are RENDERED, not commented**: a reference page that quietly omits what
+  the demo names is indistinguishable from one nobody finished, so `UNSERVED_VOCABULARY` states each
+  one with the producer that is missing. It takes the page's own specimen chrome rather than a
+  `Banner` — every banner tone carries `role="status"`, and five live regions announcing five
+  STANDING facts on mount would read as five things that just happened.
+
+  **The mark.** The Explorer drew its editable-field pencil on chips in two `FactRow`s below the
+  contract table, reversing the demo's own argument that editability is a property of a FIELD. It
+  is in the field's own cell now, and **the claim is entirely about placement, so no fold can make
+  it** — the pin is `renderToStaticMarkup` asserting no `</td>` between the mark and the path, with
+  an unmarked node as the negative control, because a pencil rendered unconditionally satisfies any
+  presence assertion and is a mark on every field in the product. Removing the chip row then
+  exposed what the chip row had hidden: **an allowlisted path with no contract row used to have a
+  chip to sit in and now has no row**, so it is named in a warning Banner rather than dropped — a
+  descriptor exporting a field for correction its own contract does not declare is a defect, and
+  rendering it as "nothing is correctable here" is the fail-loud rule inverted into display.
+
+  And **a copy port is a decision about whose question is being answered**: the posture notes said
+  what the DESCRIPTOR declares where the operator asks what a run does to a system of record, and
+  the empty-contract line explained what a control node IS where the reader of a contract table
+  needs to know that no value moves.
+
 - **2026-08-26: a head composed in ONE consumer's JSX is a head the second consumer loses in
   silence, and a vocabulary of three tones is a vocabulary of two when the palette paints two
   (D273 item 8, unit F8c, the review of F8b).** Five findings, and three things travel.
