@@ -57,12 +57,7 @@ const GATED_MANIFEST = {
   cases: [{
     ...MANIFEST.cases[0],
     nodesReached: ["read", "approval", "write"],
-    gateResults: [{
-      gate: "approval",
-      decision: "approved",
-      resolvedBy: "local-operator",
-      leaf: "resolve-gate-approved",
-    }],
+    gateResults: [{ gate: "approval", decision: "approved", resolvedBy: "local-operator" }],
   }],
 } as const;
 
@@ -130,6 +125,28 @@ describe("dry-run scenario manifest boundary", () => {
       deriveDryRunScenarioManifestDigest(parsed),
       "0f150541beb3edf4844380b02efc65f85b3c41668fa89cb09ec1204ee1a8d5c6",
     );
+  });
+
+  /**
+   * A gate row used to carry `leaf` — the resolver leaf the approval came from.
+   * Nothing ever compared it: `evaluateDryRunScenarioEvidence` projects a gate
+   * row down to `{gate, decision, resolvedBy}` before the comparison, so the
+   * field read as an assertion and asserted nothing. An expectation no evaluator
+   * checks must not be declarable, or the next manifest author writes one.
+   */
+  it("refuses a gate expectation field no evaluator compares", () => {
+    assert.throws(() => parseDryRunScenarioManifest({
+      ...GATED_MANIFEST,
+      cases: [{
+        ...GATED_MANIFEST.cases[0],
+        gateResults: [{
+          gate: "approval",
+          decision: "approved",
+          resolvedBy: "local-operator",
+          leaf: "resolve-gate-approved",
+        }],
+      }],
+    }), /leaf/);
   });
 
   it("rejects duplicate subject cases at the strict manifest boundary", () => {
@@ -357,6 +374,8 @@ describe("dry-run scenario execution", () => {
         assert.ok(error instanceof Error);
         assert.doesNotMatch(error.message, new RegExp(secret));
         assert.match(error.message, /failed result 11111111/);
+        assert.ok(error.cause instanceof Error);
+        assert.match(error.cause.message, new RegExp(`failed for ${secret}`));
         return true;
       },
     );
@@ -366,6 +385,34 @@ describe("dry-run scenario execution", () => {
       reason: "execution-error",
     }]);
     assert.doesNotMatch(JSON.stringify(records), new RegExp(secret));
+  });
+
+  it("surfaces the underlying cause when a scenario fails before run identity is known", async () => {
+    await assert.rejects(
+      runDryRunScenario({
+        args: { workflow: "fixture-workflow", subjectLabel: "fixture-canary" },
+        loadManifest: () => Promise.resolve(MANIFEST),
+        resolveTarget: () => ({ state: "ready", label: "fixture-canary", canonicalInput: {} }),
+        persistResult: () => {
+          throw new Error("persistResult must not be called before run identity is known");
+        },
+        createRuntime: () => ({
+          start: () => Promise.reject(new Error("runtime could not start")),
+          drain: () => Promise.reject(new Error("not reached")),
+          resolveGate: () => Promise.resolve(),
+          collectEvidence: () => Promise.reject(new Error("not reached")),
+        }),
+        clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+        ids: { uuid: () => "11111111-1111-4111-8111-111111111111" },
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /before run identity was known/);
+        assert.ok(error.cause instanceof Error);
+        assert.match(error.cause.message, /runtime could not start/);
+        return true;
+      },
+    );
   });
 });
 

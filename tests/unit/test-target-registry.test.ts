@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import {
   parseTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
+  resolveSeparationsTestTarget,
   type TestTargetRegistryInput,
 } from "../../src/control/test-target-registry.js";
 
@@ -49,6 +50,32 @@ const READY_PUBLIC_INPUT: TestTargetRegistryInput["targets"][number]["publicInpu
   timekeeperComments: "Synthetic finalization comment.",
   observedExistingComments: "",
 };
+
+
+/**
+ * The composed `separations` chain's fixture. Its ingress is ONE typed Kuali
+ * document number (D261) and nothing about it is secret, so — unlike the
+ * finalization fixture above — it carries no `secretInput` at all.
+ */
+const CHAIN_TARGET = {
+  label: "fixture-chain-target",
+  workflow: "separations",
+  kind: "full-chain-dry-run",
+  availability: {
+    state: "available",
+    lastObserved: "2026-08-25",
+    reason: "Synthetic chain fixture.",
+  },
+  provenance: {
+    document: "docs/rebuild/reference/guards-and-tests.md",
+    section: "\u00a710.5",
+  },
+  usagePolicy: "read-only",
+  cleanupObligation: "None; this fixture must not write.",
+  owner: "test operator",
+  purpose: "The separations chain fixture every chain resolve case in this file starts from.",
+  publicInput: { document: { state: "present", documentNumber: "4502" } },
+} as const;
 
 function registry(targets: TestTargetRegistryInput["targets"]): TestTargetRegistryInput {
   return { schemaVersion: 1, targets };
@@ -198,7 +225,7 @@ describe("test target registry", () => {
       () => resolveSeparationsKualiFinalizationTestTarget(parsed, "fixture-target", {
         HRAUTO_TEST_SUBJECT_SEPARATIONS_KUALI_FINALIZATION_CANARY_EID: "10800000",
       }),
-      /fixture-target marked available, last observed 2026-08-25:.*complete canonical input/,
+      /fixture-target marked available, last observed 2026-08-25:.*complete canonical input.*transactionNumber/s,
     );
   });
 
@@ -258,5 +285,76 @@ describe("test target registry", () => {
       }],
     };
     assert.throws(() => parseTestTargetRegistry(invalidRegistry));
+  });
+});
+
+describe("separations chain test target resolution", () => {
+  it("resolves an available chain subject through the descriptor's own start box", () => {
+    const parsed = parseTestTargetRegistry(registry([CHAIN_TARGET]));
+
+    assert.deepEqual(resolveSeparationsTestTarget(parsed, "fixture-chain-target"), {
+      state: "ready",
+      label: "fixture-chain-target",
+      // The document number is the box's ONE varying value; `timekeeperName`
+      // rides in the descriptor's own `constants[]` and `searchTimeoutMs` is
+      // the ingress default the real start path applies. Nothing here is
+      // authored by the resolver.
+      canonicalInput: {
+        documentNumber: "4502",
+        timekeeperName: "Julian Zaw",
+        searchTimeoutMs: 15_000,
+      },
+    });
+  });
+  it("blocks a chain label the registry does not carry", () => {
+    const parsed = parseTestTargetRegistry(registry([CHAIN_TARGET]));
+    assert.deepEqual(resolveSeparationsTestTarget(parsed, "unmapped-chain-target"), {
+      state: "blocked",
+      label: "unmapped-chain-target",
+      reason: "blocked: needs unmapped-chain-target",
+    });
+  });
+
+  it("blocks gone and unknown chain subjects with the registry's own dated claim", () => {
+    const states = ["gone", "unknown"] as const;
+    const results = states.map((state) => {
+      const parsed = parseTestTargetRegistry(registry([{
+        ...CHAIN_TARGET,
+        availability: { state, lastObserved: "2026-08-19", reason: `${state} fixture` },
+      }]));
+      return resolveSeparationsTestTarget(parsed, "fixture-chain-target");
+    });
+    assert.deepEqual(results, [
+      {
+        state: "blocked",
+        label: "fixture-chain-target",
+        reason: "blocked: needs fixture-chain-target; registry says gone, last observed 2026-08-19",
+      },
+      {
+        state: "blocked",
+        label: "fixture-chain-target",
+        reason: "blocked: needs fixture-chain-target; registry says unknown, last observed 2026-08-19",
+      },
+    ]);
+  });
+
+  it("refuses a label owned by another workflow instead of blocking on it", () => {
+    const parsed = parseTestTargetRegistry(registry([TARGET]));
+    assert.throws(
+      () => resolveSeparationsTestTarget(parsed, "fixture-target"),
+      /fixture-target belongs to workflow separations-kuali-finalization, not separations/,
+    );
+  });
+
+  it("fails a falsely available chain subject that records no document", () => {
+    const parsed = parseTestTargetRegistry(registry([{
+      ...CHAIN_TARGET,
+      kind: "pending-termination",
+      publicInput: { document: { state: "absent", reason: "The only mapped subject lost its row." } },
+    }]));
+    assert.throws(
+      () => resolveSeparationsTestTarget(parsed, "fixture-chain-target"),
+      /fixture-chain-target marked available, last observed 2026-08-25: no Kuali document exists to run: The only mapped subject lost its row\./,
+    );
   });
 });

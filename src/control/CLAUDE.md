@@ -6,8 +6,9 @@ composes a runtime, so a bad answer here is a refusal, not a live mistake.
 - `workflow-registry.ts` — the built workflows.
 - `test-target-registry.ts` — the **test subject registry** (`ref guards-and-tests` §10.5). It parses
   and recursively freezes `config/test-subjects.json` at module load and exports
-  `TEST_TARGET_REGISTRY`, `readTestTargetRegistry` (the repo-root form the CLI uses) and
-  `resolveSeparationsKualiFinalizationTestTarget`.
+  `TEST_TARGET_REGISTRY`, `readTestTargetRegistry` (the repo-root form the CLI uses) and one
+  resolver per workflow arm: `resolveSeparationsKualiFinalizationTestTarget` and
+  `resolveSeparationsTestTarget`.
 
 ## The test subject registry, in one screen
 
@@ -24,8 +25,17 @@ composes a runtime, so a bad answer here is a refusal, not a live mistake.
   that it evaporated — doc 03b records that happening twice (docs 4510 and 4524).
 - **Blocked, never failed** — an unresolvable label reports `blocked: needs <label>`, because a
   canary leaving the university is not a defect in the workflow.
-- The guard is `tests/unit/architecture/test-target-registry.test.ts`; the unit half is
-  `tests/unit/test-target-registry.test.ts`.
+- **One resolver per arm, because the ingress shapes differ.** The finalization resolver assembles a
+  canonical input field by field and merges two EID references. The chain's ingress is ONE typed
+  Kuali document number (D261), so `resolveSeparationsTestTarget` feeds that number through
+  `separationsDescriptor.surfaces.inputRun.parser` — the operator's real start box — and parses the
+  result through the descriptor's own ingress and canonical schemas. `timekeeperName` therefore comes
+  from the descriptor's `constants[]` and `searchTimeoutMs` from the ingress default; a rehearsal
+  cannot start from an input a real run would never produce. No EID crosses this arm at all.
+- The guard is `tests/unit/architecture/test-target-registry.test.ts` — which also WALKS every
+  `tests/scenario/workflows/*/dry-run.scenario.ts`, evaluates each declaration without importing it,
+  and pins the manifests, `config/test-subjects.json` and `src/cli.ts`'s registration against each
+  other in both directions; the unit half is `tests/unit/test-target-registry.test.ts`.
 
 ## Lessons
 

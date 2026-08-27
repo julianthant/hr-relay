@@ -274,10 +274,14 @@ export function createProductionDryRunScenarioRuntime(
       if (expected.gateResults.length !== 1 || gateExpectation === undefined) {
         throw new Error(`dry-run ${manifest.workflow}/${expected.caseId} must declare exactly one resolvable gate`);
       }
+      // This runtime serves exactly one gate outcome — the local operator's
+      // `approved` — so a manifest expecting anything else would be silently
+      // handed a decision it did not declare.
       if (gateExpectation.decision !== "approved"
-        || gateExpectation.resolvedBy !== LOCAL_OPERATOR_ACTOR_ID
-        || gateExpectation.leaf !== "resolve-gate-approved") {
-        throw new Error(`dry-run ${manifest.workflow}/${expected.caseId} does not name the served approved gate leaf`);
+        || gateExpectation.resolvedBy !== LOCAL_OPERATOR_ACTOR_ID) {
+        throw new Error(
+          `dry-run ${manifest.workflow}/${expected.caseId} does not declare the approved local-operator gate this runtime serves`,
+        );
       }
       const database = open();
       try {

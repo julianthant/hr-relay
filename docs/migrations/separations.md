@@ -6142,3 +6142,25 @@ fingerprints byte-identical to this tree, but it was not this checkout's runtime
 left in place per D181. `npm run build:manifest` was clean before the run and `npm run roadmap:check`
 reports `docs/roadmap/index.html is fresh`; the served `separations` fingerprint was
 `14217f341c0b84ef…`, byte-identical to the tree manifest, for the whole pass.
+
+**Addendum, 2026-08-27 — the hand-run above is now a REPLAYABLE T1b scenario, and it agreed.** The
+proof this section records was driven by hand through the dashboard; it is now declared at
+`tests/scenario/workflows/separations/dry-run.scenario.ts` and taken by
+`npm run cli -- dry-run-scenario separations --subject separations-dry-run-subject` (the label is
+`config/test-subjects.json`'s, doc **4502**). The first live take of that command, at
+2026-08-27T13:46:39Z, came back **`met`** — `dry_run_scenario_results`
+**`0cc71a31-4119-4588-b96b-0fd5e568abe6`**, run `91cf5356-5211-4d09-8d37-8ddf4c7bc901`, trace
+`sp-064438-91cf`, 121 s — with all eight of `evaluateDryRunScenarioEvidence`'s assertions met:
+the nineteen-node reach and the four excluded, the **fifteen** checkpoints at attempt 1 (both
+`timecard-search` claim generations), the single `identity-approval`/`approved`/`local-operator`
+gate, terminal `done` at the D215 preview terminal on `clear-pending` settling **`already-present`
+off its live probe**, the twenty-row receipt vocabulary, and `write_intents` / `write_attempts` /
+`durable_outbox` **0/0/0** read over the whole database. Two facts about the harness are worth
+carrying rather than rediscovering. A worktree needs `duo-autopilot/credentials/` (gitignored) as
+well as `.auth` and `.env`: without it a FRESH browser profile has no Duo credential to self-arm
+from, the ceremony hangs, and the run dies at `resolve-action` on the 60 s
+`timeouts.sessionAcquireMs` bound — which is what the first two takes here did
+(`a558c3a8-…`, then `4e6e5be3-…`). And the manifest's `attempt: 1` is a **first-rehearsal** fact:
+the item id derives from the document, so a second take against the same state root is attempt 2 and
+`checkpoints` fails on the number alone. The take recorded above ran against a fresh
+`.tracker-rebuild`.

@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import vm from "node:vm";
 import ts from "typescript";
 import { describe, it } from "vitest";
+import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
+import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../src/domain/workflow/generated-build-manifest.js";
+import {
+  parseDryRunScenarioManifest,
+  type DryRunScenarioManifest,
+} from "../../../src/domain/trust/dry-run-scenario.js";
 import {
   readTestTargetRegistry,
   resolveSeparationsKualiFinalizationTestTarget,
@@ -12,70 +19,121 @@ import {
 } from "../../../src/control/test-target-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 
-const MANIFEST_PATH = "tests/scenario/workflows/separations-kuali-finalization/dry-run.scenario.ts";
+const WORKFLOW_SCENARIO_ROOT = "tests/scenario/workflows";
+const MANIFEST_FILE = "dry-run.scenario.ts";
+const MANIFEST_REGISTRY_PATH = "src/server/dry-run-scenario/manifests.ts";
+const MANIFEST_MODULE = "domain/trust/dry-run-scenario.js";
 const PHASE_DOC_PATH = "docs/rebuild/03b-finish-separations.md";
 /** The one order-8 status line that names the mapped inventory in prose. */
 const INVENTORY_LINE_MARKER = "the subject/canary inventory mapped live and dated";
 
-function namedProperty(object: ts.ObjectLiteralExpression, name: string): ts.Expression {
-  const matches = object.properties.filter((property): property is ts.PropertyAssignment =>
-    ts.isPropertyAssignment(property)
-    && ((ts.isIdentifier(property.name) || ts.isStringLiteralLike(property.name)) && property.name.text === name));
-  const only = matches[0];
-  if (matches.length !== 1 || only === undefined) {
-    throw new Error(`${MANIFEST_PATH} must declare exactly one ${name} property in the inspected object`);
+/**
+ * Every T1b manifest in the layout (ref guards-and-tests §10.9), by workflow id
+ * — the folder name IS the workflow id, which the parse arm below re-proves
+ * against the declaration's own `workflow` field.
+ */
+function manifestPathsByWorkflow(): ReadonlyMap<string, string> {
+  const found = new Map<string, string>();
+  for (const entry of readdirSync(join(REPO_ROOT, WORKFLOW_SCENARIO_ROOT), { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const path = `${WORKFLOW_SCENARIO_ROOT}/${entry.name}/${MANIFEST_FILE}`;
+    if (existsSync(join(REPO_ROOT, path))) found.set(entry.name, path);
   }
-  return only.initializer;
-}
-
-function stringLiteral(expression: ts.Expression, name: string): string {
-  if (!ts.isStringLiteralLike(expression)) {
-    throw new Error(`${MANIFEST_PATH} ${name} must be a direct string literal`);
+  if (found.size === 0) {
+    throw new Error(`the T1b walk found no ${MANIFEST_FILE} under ${WORKFLOW_SCENARIO_ROOT}, so it proves nothing`);
   }
-  return expression.text;
+  return found;
 }
 
 /**
- * T1b manifests may not be imported by a Vitest-collected file. Inspect the
- * declaration as source data so this guard can still check registry parity.
+ * Evaluate a T1b declaration WITHOUT importing it.
+ *
+ * A vitest-collected file may not import a manifest (the sibling
+ * `structural.scenario.test.ts` proves nothing does, in both static and dynamic
+ * form), so this guard transpiles the declaration and runs it in an isolated
+ * `node:vm` context whose only reachable module is the real manifest parser.
+ * Reading the file as text and re-deriving its object literal would re-implement
+ * zod; running it is what proves the checked-in declaration parses.
  */
-function manifestView(): TestTargetManifestView {
-  const source = ts.createSourceFile(
-    MANIFEST_PATH,
-    readFileSync(join(REPO_ROOT, MANIFEST_PATH), "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  let manifest: ts.ObjectLiteralExpression | undefined;
-  function visit(node: ts.Node): void {
-    if (ts.isVariableDeclaration(node)
-      && ts.isIdentifier(node.name)
-      && node.name.text === "MANIFEST"
-      && node.initializer !== undefined
-      && ts.isObjectLiteralExpression(node.initializer)) {
-      manifest = node.initializer;
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(source);
-  if (manifest === undefined) throw new Error(`${MANIFEST_PATH} has no direct MANIFEST object declaration`);
-
-  const workflow = stringLiteral(namedProperty(manifest, "workflow"), "workflow");
-  const casesExpression = namedProperty(manifest, "cases");
-  if (!ts.isArrayLiteralExpression(casesExpression)) {
-    throw new Error(`${MANIFEST_PATH} cases must be a direct array literal`);
-  }
-  const cases = casesExpression.elements.map((element, index) => {
-    if (!ts.isObjectLiteralExpression(element)) {
-      throw new Error(`${MANIFEST_PATH} case ${String(index)} must be a direct object literal`);
-    }
-    return {
-      subjectLabel: stringLiteral(namedProperty(element, "subjectLabel"), `case ${String(index)} subjectLabel`),
-      subjectKind: stringLiteral(namedProperty(element, "subjectKind"), `case ${String(index)} subjectKind`),
-    };
+function evaluateManifest(path: string): DryRunScenarioManifest {
+  const transpiled = ts.transpileModule(readFileSync(join(REPO_ROOT, path), "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    fileName: path,
+  }).outputText;
+  const moduleRecord = { exports: {} as Record<string, unknown> };
+  const context = vm.createContext({
+    module: moduleRecord,
+    exports: moduleRecord.exports,
+    require: (specifier: string): unknown => {
+      if (!specifier.endsWith(MANIFEST_MODULE)) {
+        throw new Error(`${path} may only import the manifest parser, not ${specifier}`);
+      }
+      return { parseDryRunScenarioManifest };
+    },
   });
-  return { workflow, cases };
+  vm.runInContext(transpiled, context, { filename: path });
+  const exported = Object.values(moduleRecord.exports);
+  const only = exported[0];
+  if (exported.length !== 1 || only === undefined) {
+    throw new Error(`${path} must export exactly one manifest; it exports ${String(exported.length)}`);
+  }
+  return parseDryRunScenarioManifest(only);
+}
+
+function manifestView(manifest: DryRunScenarioManifest): TestTargetManifestView {
+  return {
+    workflow: manifest.workflow,
+    cases: manifest.cases.map(({ subjectLabel, subjectKind }) => ({ subjectLabel, subjectKind })),
+  };
+}
+
+const RECEIPT_NODE_OBLIGATION_PREFIX = "node.";
+
+/** Every node id a manifest case names, in one flat list. */
+function nodeIdsNamedBy(manifest: DryRunScenarioManifest): readonly string[] {
+  return [
+    manifest.transactionNode,
+    ...manifest.cases.flatMap((scenarioCase) => [
+      ...scenarioCase.nodesReached,
+      ...scenarioCase.nodesExcluded,
+      ...scenarioCase.checkpoints.map(({ node }) => node),
+      ...scenarioCase.gateResults.map(({ gate }) => gate),
+      ...(scenarioCase.terminal.lifecycle === "failed"
+        ? [scenarioCase.terminal.node]
+        : [scenarioCase.terminal.stoppedAtNodeId]),
+      // A receipt obligation `node.<id>` names the same graph node — its
+      // verification is a `node-output` obligation source (ref evidence
+      // obligations), not a free-text label — so it names a real node
+      // exactly as much as a checkpoint or a gate result does.
+      ...scenarioCase.receipt.verification
+        .map(({ obligation }) => obligation)
+        .filter((obligation) => obligation.startsWith(RECEIPT_NODE_OBLIGATION_PREFIX))
+        .map((obligation) => obligation.slice(RECEIPT_NODE_OBLIGATION_PREFIX.length)),
+    ]),
+  ];
+}
+
+/**
+ * The workflows the production manifest registry can actually load, read off
+ * its own source. `src/server/dry-run-scenario/manifests.ts` is the ONE place
+ * a workflow id is paired with its T1b loader — `src/cli.ts` only calls
+ * `loadDryRunScenarioManifest`, so this is the composition root's real
+ * registration surface. It is inspected as data rather than imported: the
+ * loaders it holds are live `import()` calls this guard must not trigger.
+ */
+function workflowsRegisteredByManifestRegistry(): ReadonlyMap<string, string> {
+  const source = readFileSync(join(REPO_ROOT, MANIFEST_REGISTRY_PATH), "utf8");
+  const registered = new Map<string, string>();
+  const entry = /\[\s*"(?<workflow>[a-z0-9-]+)",[\s\S]{0,400}?import\(\s*\n?\s*"(?<path>[^"]*dry-run\.scenario\.js)"/gu;
+  for (const match of source.matchAll(entry)) {
+    const { workflow, path } = match.groups ?? {};
+    if (workflow === undefined || path === undefined) continue;
+    registered.set(workflow, path);
+  }
+  if (registered.size === 0) {
+    throw new Error(`${MANIFEST_REGISTRY_PATH} registers no dry-run scenario manifest, so this guard proves nothing`);
+  }
+  return registered;
 }
 
 /**
@@ -113,25 +171,56 @@ function documentNumbersRegisteredInConfig(): readonly string[] {
 }
 
 describe("test target registry architecture", () => {
-  it("registers every dry-run manifest label with the same workflow and kind, and admits no other unmapped label but a separations chain entry", () => {
-    const manifest = manifestView();
-    const registry = readTestTargetRegistry(REPO_ROOT, [manifest]);
-    const manifestLabels = new Set(manifest.cases.map(({ subjectLabel }) => subjectLabel));
-    const registered = new Set(registry.targets.map(({ label }) => label));
-    for (const { subjectLabel } of manifest.cases) {
-      assert.equal(registered.has(subjectLabel), true, `manifest label ${subjectLabel} is unregistered`);
+  it("parses every T1b manifest in the layout and names only nodes its descriptor declares", () => {
+    for (const [workflow, path] of manifestPathsByWorkflow()) {
+      const manifest = evaluateManifest(path);
+      assert.equal(manifest.workflow, workflow, `${path} declares workflow ${manifest.workflow} under folder ${workflow}`);
+      const descriptor = DESCRIPTORS.find(({ id }) => id === workflow);
+      if (descriptor === undefined) throw new Error(`${path} names workflow ${workflow}, which no descriptor builds`);
+      const declared = new Set<string>(descriptorRuntimeNodes(descriptor).map(({ id }) => id));
+      for (const node of nodeIdsNamedBy(manifest)) {
+        assert.equal(declared.has(node), true, `${path} names node ${node}, which ${workflow} does not declare`);
+      }
     }
-    assert.equal(manifest.cases.length > 0, true);
+  });
 
-    // The other direction: a registry label with no manifest case must belong
-    // to the separations chain (which has no dry-run manifest of its own) —
-    // an orphaned finalization entry with no manifest case must fail here.
-    const unmatched = registry.targets.filter((target) => !manifestLabels.has(target.label));
-    for (const target of unmatched) {
+  it("registers every T1b manifest label in config with the same workflow and kind", () => {
+    const views = [...manifestPathsByWorkflow().values()].map((path) => manifestView(evaluateManifest(path)));
+    // `readTestTargetRegistry` refuses an unregistered label, a workflow
+    // mismatch and a kind mismatch; asserting it does not throw IS the pin.
+    const registry = readTestTargetRegistry(REPO_ROOT, views);
+    const registered = new Set(registry.targets.map(({ label }) => label));
+    for (const view of views) {
+      assert.equal(view.cases.length > 0, true, `manifest ${view.workflow} declares no case`);
+      for (const { subjectLabel } of view.cases) {
+        assert.equal(registered.has(subjectLabel), true, `manifest label ${subjectLabel} is unregistered`);
+      }
+    }
+  });
+
+  it("gives every rehearsable registry subject a manifest case", () => {
+    const cased = new Set<string>([...manifestPathsByWorkflow().values()]
+      .flatMap((path) => evaluateManifest(path).cases.map(({ subjectLabel }) => subjectLabel)));
+    // The finalization matrix maps one subject per scenario ARM, so every one of
+    // its labels must be a case. Doc 03b's chain inventory maps DOCUMENTS by
+    // migration role, and only the full-chain role is ever rehearsed — the other
+    // roles are recorded facts (§9.16's evaporating canaries), not cases.
+    const rehearsable = TEST_TARGET_REGISTRY.targets.filter((target) =>
+      target.workflow === "separations-kuali-finalization" || target.kind === "full-chain-dry-run");
+    for (const { label } of rehearsable) {
+      assert.equal(cased.has(label), true, `registry label ${label} is rehearsable and has no manifest case`);
+    }
+  });
+
+  it("registers exactly the layout's T1b manifests in the manifest registry, each at its own path", () => {
+    const layout = manifestPathsByWorkflow();
+    const registered = workflowsRegisteredByManifestRegistry();
+    assert.deepEqual([...registered.keys()].sort(), [...layout.keys()].sort());
+    for (const [workflow, path] of registered) {
       assert.equal(
-        target.workflow,
-        "separations",
-        `registry label ${target.label} has no manifest case and is not a separations chain entry`,
+        path.endsWith(`${WORKFLOW_SCENARIO_ROOT}/${workflow}/dry-run.scenario.js`),
+        true,
+        `${MANIFEST_REGISTRY_PATH} loads ${workflow} from ${path}, which is not that workflow's T1b manifest`,
       );
     }
   });

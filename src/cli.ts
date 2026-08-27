@@ -10,6 +10,7 @@ import {
 } from "./core/runtime-composition.js";
 import { composeDashboardRuntime } from "./server/dashboard/compose.js";
 import { composeDryRunScenarioCommand } from "./server/dry-run-scenario/compose.js";
+import { loadDryRunScenarioManifest } from "./server/dry-run-scenario/manifests.js";
 import { createProductionDryRunScenarioRuntime } from "./server/dry-run-scenario/runtime.js";
 import { composeExplainRuntime } from "./server/explain/compose.js";
 import { composeOcrCommand } from "./server/ocr/compose.js";
@@ -20,20 +21,12 @@ registerDashboardComposer((runtimeIsolation) => composeDashboardRuntime({ isolat
 registerDryRunScenarioComposer((runtimeIsolation, args) => composeDryRunScenarioCommand({
   isolation: runtimeIsolation,
   args,
-  // The executable declaration intentionally remains under tests/scenario and
-  // is loaded only at this outer CLI root. No production module statically
-  // depends on a test module, and Vitest still cannot collect this non-test file.
-  loadManifest: async (workflow) => {
-    if (workflow !== "separations-kuali-finalization") {
-      throw new Error(
-        `unknown dry-run scenario workflow ${workflow}; registered: separations-kuali-finalization`,
-      );
-    }
-    const declaration = await import(
-      "../tests/scenario/workflows/separations-kuali-finalization/dry-run.scenario.js"
-    );
-    return declaration.SEPARATIONS_KUALI_FINALIZATION_DRY_RUN;
-  },
+  // The manifest registration itself lives in ./server/dry-run-scenario/manifests.js
+  // (ref guards-and-tests §10.9) — `test-target-registry` (architecture) reads
+  // that file's own source and walks the layout, failing in both directions,
+  // so a manifest that lands without a registration there, or a registration
+  // that outlives its manifest, is red.
+  loadManifest: loadDryRunScenarioManifest,
   createRuntime: createProductionDryRunScenarioRuntime,
 }));
 registerWorkerComposer((runtimeIsolation, args) => composeWorkerRuntime({ isolation: runtimeIsolation, args }));
