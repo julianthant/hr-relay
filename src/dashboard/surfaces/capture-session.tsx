@@ -130,7 +130,12 @@ function PageTile({
         className={cn(
           "flex w-full items-center justify-center border bg-[var(--ds-surface-1)]",
           dsRadius.sm,
-          facts.aspectRatio === undefined && "h-[var(--ds-h-lg)]",
+          // A SQUARE, deliberately — visibly not a page (US Letter is 0.77) and
+          // close enough in height to its readable neighbours that the sheet
+          // still reads as one grid. Letting it fill the row's height instead
+          // would give it the shape of whatever page happened to sit beside it,
+          // which is the fabrication this whole surface is built to refuse.
+          facts.aspectRatio === undefined && "aspect-square",
           facts.flag === "unreadable" && "border-[color:var(--ds-status-waiting-mark)]",
           facts.flag === "unavailable" && "border-[color:var(--ds-danger)]",
           facts.flag === "none" && "border-[color:var(--ds-border-subtle)]",
@@ -247,9 +252,13 @@ function SessionBody({
 
       {/* ---- RIGHT: the pages, which is what the operator came to see ------ */}
       <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
+        {/* The count sits BESIDE the label it qualifies, not at the far edge of
+            the column. The demo's `ml-auto` was right inside a 600px modal and
+            wrong here: at 1440 this column is ~830px, and a number that far
+            from its own noun is a fact the reader of the noun does not have. */}
         <div className="flex items-center gap-[var(--ds-space-snug)]">
           <SectionLabel className="min-w-0 truncate">Pages received</SectionLabel>
-          <CountBadge className="ml-auto" value={total} />
+          <CountBadge value={total} />
         </div>
         {total === 0
           ? (
@@ -368,6 +377,18 @@ export function CaptureSessionPanel({ workflowId }: { workflowId: string }) {
     <section aria-label="Capture session" className="@container flex flex-col gap-[var(--ds-space-snug)]">
       <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
         <SectionLabel className="min-w-0 truncate">Capture session</SectionLabel>
+        {/* The ⓘ discloses THIS section, so it sits against the section's own
+            name. Parked at the far right by `ml-auto` it was 1,300px from the
+            words it explains — a control nobody reading the heading would ever
+            connect to it. The picker takes the right edge instead, because a
+            picker IS the row's trailing control. */}
+        <IconButton
+          size="xs"
+          label={CAPTURE_RULE_LABEL}
+          aria-expanded={ruleOpen}
+          onClick={() => setRuleOpen((open) => !open)}
+          icon={<Info aria-hidden className={dsIcon.sm} />}
+        />
         {options.length > 1 && effective !== undefined && (
           /* `lg`, not `md`: an option is `<id> · <phase label> · N pages` and a
              native select CUTS rather than wraps, so the width has to seat the
@@ -391,14 +412,6 @@ export function CaptureSessionPanel({ workflowId }: { workflowId: string }) {
             </Select>
           </span>
         )}
-        <IconButton
-          size="xs"
-          className={options.length > 1 ? undefined : "ml-auto"}
-          label={CAPTURE_RULE_LABEL}
-          aria-expanded={ruleOpen}
-          onClick={() => setRuleOpen((open) => !open)}
-          icon={<Info aria-hidden className={dsIcon.sm} />}
-        />
       </div>
 
       {ruleOpen && (
