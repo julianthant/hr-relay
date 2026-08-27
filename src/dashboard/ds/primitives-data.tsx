@@ -103,14 +103,16 @@ export function TR({
       className={cn(
         "h-[var(--ds-h-row)]",
         dsMotion.base,
-        // A row that opens something is a pressable, so it acknowledges the
-        // press rather than waiting for whatever the click opens. `:active` is
-        // transient, so no stored parity screenshot can see it.
-        interactive && cn(
-          "cursor-pointer hover:bg-[var(--ds-surface-2)]",
-          "active:bg-[var(--ds-surface-3)]",
-          dsMotion.fast,
-        ),
+        // UK141 (D276 item 5) — ROLLED BACK to the demo's one arm. A row that
+        // opens a panel DISCLOSES; it does not commit. `dsMotion.fast` is this
+        // system's press timing and is spent on "press + hover on a COMMAND"
+        // (DESIGN.md), and `--ds-surface-3` is the pressed fill — spending both
+        // on a row that only reveals what was already there teaches the press
+        // dip to mean nothing, which is the same argument the timeline segment
+        // already carries: it takes a hover tint and deliberately no press dip
+        // (unit F6). `:active` is transient, so no stored parity screenshot
+        // could ever have caught the broadening either way.
+        interactive && "cursor-pointer hover:bg-[var(--ds-surface-2)]",
         selected && "bg-[var(--ds-surface-selected)]",
         className,
       )}
@@ -287,6 +289,21 @@ export interface DsStep {
    * line under the label because a list of durations an operator wants to
    * compare has to share an edge; stacked under variable-length labels they
    * are a ragged set of numbers nobody can scan.
+   *
+   * UK144 (D276 item 5) — a KEPT extension, and this paragraph is its
+   * contract, because the arm the ruling rejects is a primitive broadened
+   * WITHOUT one. The demo's `DsStep` has no such column and needs none: its
+   * steps carry no measured span. This tree's archive does
+   * (`archive.tsx`'s step rows), and it is a SERVED measurement with a named
+   * absence — `—` plus the projection's own reason on `trailingTitle` when
+   * nothing measured the step. Deleting the column to match the demo would
+   * delete a fact the surface holds, which is the failure mode this directory
+   * has recorded five times.
+   *
+   * The contract is therefore narrow, and a future caller must meet it: a
+   * `trailing` value is a MEASURED number, one unit family down a column, and
+   * an unmeasured step says so rather than printing a plausible zero. It is
+   * not a slot for a second label, a status word, or a control.
    */
   trailing?: string;
   /** Why `trailing` reads the way it does — carried on the row's `title`. */
