@@ -920,23 +920,31 @@ describe("separations-kuali-finalization scenarios", () => {
     // prose that merely names a manifest is not an import. A regex could not
     // separate those three, and the file it would false-positive on first is
     // this one.
+    //
+    // Every `.ts` under `tests/` is scanned, not only `*.test.ts`: a helper,
+    // fixture or world file is never collected by vitest itself, but a
+    // collected `*.test.ts` importing THAT file would import the manifest
+    // transitively without this audit's direct-specifier check on the
+    // `.test.ts` file ever seeing it. Scanning every file the corpus can
+    // reach closes that gap without re-deriving the whole import graph.
     const collected: string[] = [];
     const visit = (directory: string): void => {
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
         const full = join(directory, entry.name);
         if (entry.isDirectory()) visit(full);
-        else if (entry.isFile() && entry.name.endsWith(".test.ts")) collected.push(full);
+        else if (entry.isFile() && entry.name.endsWith(".ts")) collected.push(full);
       }
     };
     visit(testsRoot);
     assert.ok(collected.length > 0, "the test corpus scan found nothing, so it proves nothing");
     const importers = collected.filter((file) => {
+      if (file === manifest) return false;
       const source = readFileSync(file, "utf8");
       // Cheap pre-filter; every candidate is then judged by the parser alone.
       if (!source.includes("dry-run.scenario.")) return false;
       return moduleSpecifiers(file, source).some((specifier) =>
         /dry-run\.scenario\.(?:js|ts)$/u.test(specifier));
     });
-    assert.deepEqual(importers, [], "a vitest-collected file imports a dry-run manifest");
+    assert.deepEqual(importers, [], "a file the test corpus can reach imports a dry-run manifest");
   });
 });
