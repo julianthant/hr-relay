@@ -13,6 +13,7 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 
 ## Decisions ratified (one line each → sheet + item + owning doc)
 - 2026-08-27 `docs/decisions/2026-08-27-ui-fidelity-new-elements.md` 1–7 + `docs/decisions/2026-08-27-ui-1-receive.md` 8–12, all recommended → **D281** (ref dashboard-surfaces §10; changelog round 98)
+- 2026-08-27 receive item 12 re-asked → B: UI-2 runs 08-27 before R2 under a date stop rule (`docs/handoffs/2026-08-27-run-ui-2-residue.md` §Guard / §Date stop rule)
 - Standing (do not re-open): D272–D276 (ref dashboard-surfaces §10) · D275.1 the two catalog toolbar buttons · D276.4 the `Banner` primitive is not reverted (D281.7 gives the storage band its own full-bleed arm instead) · D177 the generated selector catalog · D187 parity references need a browser
 
 ## Unit ledger
