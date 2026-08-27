@@ -14,9 +14,10 @@
  * re-Tabbing the entire shell.
  *
  * `TakeoverFrame` (D275 item 2 — ONE shared wrapper, kept as the accessibility
- * and motion convention) now owns it, so this file tests the wrapper rather
- * than four surfaces. Three claims, and each was run against a mutation of the
- * exact line it pins:
+ * and motion convention) now owns it. The generic claims below test that one
+ * owner; the final two tests prove the last adopters, intake and the UI
+ * catalog, actually cross the boundary and keep their truthful first control.
+ * Three claims, and each was run against a mutation of the exact line it pins:
  *
  * 1. **The frame takes focus on mount.** Deleting the `node.focus(...)` call
  *    turns the first two tests red.
@@ -50,7 +51,11 @@ import assert from "node:assert/strict";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
+import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { TakeoverFrame } from "../../../src/dashboard/ds/primitives-layout.js";
+import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { IntakeWorkspace } from "../../../src/dashboard/surfaces/intake.js";
+import { UiCatalogWorkspace } from "../../../src/dashboard/surfaces/ui-catalog.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -87,6 +92,36 @@ async function mountTakeover(label: string, children: ReactNode[]): Promise<void
   await act(async () => {
     root.render(createElement(TakeoverFrame, { label, children }));
   });
+}
+
+/**
+ * Mounts one real takeover against only the client reads its initial arm owns.
+ * The provider remains strict: an unexpected client call still throws rather
+ * than falling through a permissive fake.
+ */
+async function mountSurface(client: DashboardClient, children: ReactNode): Promise<void> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  mounted = root;
+  await act(async () => {
+    root.render(createElement(DashboardClientProvider, { client, children }));
+  });
+}
+
+/**
+ * The browser's first Tab from a `tabIndex=-1` frame reaches the first enabled
+ * descendant in DOM order. jsdom does not implement Tab navigation, so make
+ * that order explicit, focus the same node, and assert the resulting target.
+ */
+function takeFirstTab(frame: HTMLElement): HTMLElement {
+  const first = frame.querySelector<HTMLElement>(
+    "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
+  );
+  assert.ok(first instanceof HTMLElement, "the takeover has no first Tab target");
+  first.focus();
+  assert.equal(document.activeElement, first);
+  return first;
 }
 
 describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
@@ -141,5 +176,51 @@ describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
     assert.ok(focused instanceof HTMLInputElement, `expected the search input to keep focus, got ${String(focused?.tagName)}`);
     assert.equal(focused.getAttribute("aria-label"), "Search settings");
     assert.notEqual(focused, frameOf("Settings"));
+  });
+});
+
+describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", () => {
+  it("Spreadsheet intake receives frame focus, then Tab reaches Close first", async () => {
+    const client = {
+      activeCaptureSessions: () => Promise.resolve({ wireVersion: 1, sessions: [] }),
+    } as unknown as DashboardClient;
+    await mountSurface(client, createElement(IntakeWorkspace, {
+      workflowId: "fixture-workflow",
+      workflowLabel: "Fixture workflow",
+      actorId: "fixture-operator",
+      supportsDryRun: false,
+      sessionId: undefined,
+      onSession: () => undefined,
+      onClose: () => undefined,
+      onEnqueued: () => undefined,
+    }));
+
+    const frame = frameOf("Spreadsheet intake");
+    assert.equal(document.activeElement, frame);
+    const first = takeFirstTab(frame);
+    assert.equal(first.textContent?.trim(), "Close");
+  });
+
+  it("UI catalog receives frame focus, then Tab reaches its Close control first", async () => {
+    const client = {
+      uiCatalog: () => Promise.resolve({
+        wireVersion: 1,
+        sourcePath: "generated/ui-catalog.json",
+        schemaVersion: 1,
+        entries: [],
+      }),
+    } as unknown as DashboardClient;
+    await mountSurface(client, createElement(UiCatalogWorkspace, {
+      query: "",
+      onQuery: () => undefined,
+      view: "selectors",
+      onView: () => undefined,
+      onClose: () => undefined,
+    }));
+
+    const frame = frameOf("UI catalog");
+    assert.equal(document.activeElement, frame);
+    const first = takeFirstTab(frame);
+    assert.equal(first.getAttribute("aria-label"), "Close the UI catalog");
   });
 });

@@ -1437,21 +1437,22 @@ function LoadedApp({
               }}
             />
           ) : takeover === "intake" ? (
-            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-              <IntakeWorkspace
-                workflowId={activeWorkflowId}
-                workflowLabel={workflowLabelOf(activeWorkflowId)}
-                actorId={boot.actor.id}
-                supportsDryRun={
-                  startWorkflow?.inputRun.state === "present"
-                  && startWorkflow.inputRun.surface.supportsDryRun === true
-                }
-                sessionId={route.intake === INTAKE_NEW ? undefined : route.intake}
-                onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
-                onClose={() => setRoute({ ...route, intake: undefined })}
-                onEnqueued={() => setRoute({ ...route, intake: undefined })}
-              />
-            </div>
+            /* UF-FU-1: the surface owns the same full-bleed `TakeoverFrame`
+               as every other window-replacing view. No shell gutter may sit
+               between that frame and this column. */
+            <IntakeWorkspace
+              workflowId={activeWorkflowId}
+              workflowLabel={workflowLabelOf(activeWorkflowId)}
+              actorId={boot.actor.id}
+              supportsDryRun={
+                startWorkflow?.inputRun.state === "present"
+                && startWorkflow.inputRun.surface.supportsDryRun === true
+              }
+              sessionId={route.intake === INTAKE_NEW ? undefined : route.intake}
+              onSession={(next) => setRoute({ ...route, intake: next ?? INTAKE_NEW })}
+              onClose={() => setRoute({ ...route, intake: undefined })}
+              onEnqueued={() => setRoute({ ...route, intake: undefined })}
+            />
           ) : takeover === "archive" ? (
             /*
               The Archive replaces the queue whole. It is the opposite view of
@@ -1520,15 +1521,15 @@ function LoadedApp({
               onClose={() => setRoute({ ...route, explore: undefined })}
             />
           ) : takeover === "catalog" ? (
-            <div className="flex min-h-0 flex-1 px-[var(--ds-shell-inset)] pb-[var(--ds-space-base)]">
-              <UiCatalogWorkspace
-                query={route.catalog ?? ""}
-                onQuery={(next) => setRoute({ ...route, catalog: next })}
-                view={route.catalogView ?? DEFAULT_CATALOG_VIEW}
-                onView={(next) => setRoute({ ...route, catalogView: next })}
-                onClose={() => setRoute({ ...route, catalog: undefined, catalogView: undefined })}
-              />
-            </div>
+            /* UF-FU-1: `UiCatalogWorkspace` owns the full-bleed frame and its
+               focus-on-enter contract; the shell adds no second wrapper. */
+            <UiCatalogWorkspace
+              query={route.catalog ?? ""}
+              onQuery={(next) => setRoute({ ...route, catalog: next })}
+              view={route.catalogView ?? DEFAULT_CATALOG_VIEW}
+              onView={(next) => setRoute({ ...route, catalogView: next })}
+              onClose={() => setRoute({ ...route, catalog: undefined, catalogView: undefined })}
+            />
           ) : (
           <>
           {/*
