@@ -129,6 +129,20 @@ hit the search box's own echo of the query), and the `loadingOverlay` CSS union 
 
 ## Lessons learned
 
+- **2026-08-27: `ControlOrMeta+a` select-all looked like a clear — it typed correctly on every
+  field that was already empty, which is most of them — and it was ornamental (u21).**
+  `setRangeField` pressed select-all then typed by real keystrokes, on the theory (recorded
+  2026-08-12) that real keystrokes stick where `fill(value)` gets reverted. That is still true of
+  the TYPED value. What was never separately verified is that the select-all actually selected
+  anything: live it did not, so on a PRE-FILLED field the typed keystrokes were APPENDED onto the
+  untouched prior value instead of replacing it — a requested `6/1/2026` read back `"11/20/2626"`
+  against a field still holding `11/20/2026`. The fix does not add a retry or a bigger selector; it
+  adds a CLEAR that is proven the same way the typed value already was — `fill("")`, then poll the
+  field back to `""` before typing a single keystroke, and refuse by name (the label, the value that
+  would not go away, the bound) if it never clears. The general rule: a step that "looks safe because
+  the common case never needed it" (here, most fields start empty) is unverified for the case that
+  DOES need it, and the fix is to prove the precondition, not to assume the workaround that always
+  ran alongside it was doing anything.
 - **2026-08-27: an element on sight is the FIRST digest of its render, not its answer — wait on the
   content you will read, and on the LAST stage of it (§9.20 item 7 → §9.28).** The search poll
   accepted `[role='menuitemradio']` the instant it counted above zero and read `""`, because WFD
