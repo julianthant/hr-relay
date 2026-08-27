@@ -1095,3 +1095,29 @@ binding would contradict them.
   `Active-run policy` select against a `descriptor.enqueue` the planner reads with no per-start
   override — draw the FACT read-only in the control's slot rather than the control: an operator choice
   the server ignores is a wrong value about what is being started.
+
+- **2026-08-27: a page that REPLACES the window is not a region sitting on one — and four copies of
+  a wrapper are four chances to drift, so the fix is one component, not one edit per surface (UI-1
+  U2; audit rows UF-SET-1/4/5, UF-AR-3, UF-EX-2, UF-AC-2; D272 item 1 / D274 item 5 / D275 item 2).**
+  Settings, Archive, Explorer and the Activity report had each rooted in a `Panel` — the REGION
+  container: border, `--ds-radius-lg`, `--ds-surface-1` — inside a
+  `px-[--ds-shell-inset] pb-[--ds-space-base]` div in `dashboard-app.tsx`'s takeover switch. The
+  route half of the takeover conversion had landed (none of them is a `Dialog`, all four have a back
+  path and a history entry) and the GEOMETRY half had not, so the most-opened pages in the product
+  arrived as 1416px cards floating in a 12px gutter while the demo's own containers are full-bleed at
+  `x=0, w=viewport, y=44`. **`Panel` is the tell**: reaching for the region container to root a page
+  is how the card gets there, and it reads as correct at every review because the primitive is the
+  right one — for a region. Three things travel. **The wrapper was duplicated SIX times** (intake and
+  the UI catalog carry it too), which is why the change had to become `TakeoverFrame` in
+  `ds/primitives-layout.tsx` rather than four edits: the same file also held four hand-rolled copies
+  of `useDsEnterTransition` plus the two `data-[demo-enter=from]:` classes, and removing the card one
+  surface at a time would have left the motion behind to diverge. D275 item 2 asks for exactly one
+  shared wrapper, and one component is the only thing that can be audited as one. **The
+  accessibility tree is the proof the port was geometric only**: all four roots were already a
+  `section` with their own `aria-label`, `TakeoverFrame` keeps both, and the 40-reference parity
+  re-freeze changed 40 `.png` files and not a single `.a11y.yml` or `.meta.json` — if a wrapper
+  change moves an a11y reference, it was never only a wrapper change. **Two takeovers are
+  deliberately NOT converted**: the demo covers neither intake nor the UI catalog, so their geometry
+  has no ruled target, and converting them would have been an unruled change wearing a refactor's
+  clothes. They still hand-roll `Panel` + the arrival; adopting `TakeoverFrame` is the follow-up the
+  moment a ruling exists.
