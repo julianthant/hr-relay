@@ -467,15 +467,21 @@ function SystemHostsSection() {
                 <TBody>
                   {loaded.systemHosts.map((host) => (
                     <TR key={host.system}>
-                      <TD>{host.system}</TD>
-                      <TD numeric className="break-all">{host.production}</TD>
-                      <TD numeric className="break-all">
-                        {host.test ?? (
-                          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>
+                      <TD className="whitespace-nowrap">{host.system}</TD>
+                      {/* `break-all` belongs to the URL, never to the cell: a
+                          deep PeopleSoft route has no spaces to wrap at, and
+                          the same rule applied to the absence below spelled it
+                          `none pro / visioned`. Prose wraps at words. */}
+                      <TD numeric><span className="break-all">{host.production}</span></TD>
+                      {host.test === undefined ? (
+                        <TD>
+                          <span className={cn(dsText.meta, "whitespace-nowrap text-[color:var(--ds-fg-faint)]")}>
                             none provisioned
                           </span>
-                        )}
-                      </TD>
+                        </TD>
+                      ) : (
+                        <TD numeric><span className="break-all">{host.test}</span></TD>
+                      )}
                     </TR>
                   ))}
                 </TBody>
