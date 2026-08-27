@@ -174,7 +174,7 @@
       "file": "tests/unit/architecture/test-target-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Ref guards-and-tests §10.5: every T1b manifest label has exactly one strict registry entry with matching workflow and subject kind; the checked-in export is recursively frozen, real EIDs cannot enter publicInput, and the ordinary finalization canary remains unavailable until dated evidence makes it complete.",
+      "invariant": "Ref guards-and-tests §10.5: every T1b manifest label has exactly one strict registry entry with matching workflow and subject kind; the checked-in export is recursively frozen, real EIDs cannot enter publicInput, and the ordinary finalization canary remains unavailable until dated evidence makes it complete. Doc 03b's order-8 inventory line and config/test-subjects.json pin each other in BOTH directions (the same set of Kuali document numbers), every separations chain subject matches the dated literals the guard carries, transcribed from docs/migrations/separations.md §9.16/§9.19 — every registry label is either a manifest label or a `separations` chain entry — every entry names a workflow the generated build manifest actually built and records a purpose, and the finalization resolver refuses a label owned by another workflow BY NAME rather than reporting it blocked.",
       "replacementRequired": true
     },
     {
