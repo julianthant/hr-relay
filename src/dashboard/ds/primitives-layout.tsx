@@ -577,11 +577,20 @@ export function PageHeader({
  * operator just opened rather than one button on it. From here the first Tab
  * reaches whatever that takeover's first control happens to be.
  *
- * Nothing paints. `tabIndex={-1}` keeps the frame OUT of the tab order (it is a
- * focus TARGET, never a tab stop) and the frame carries no `dsFocus` class —
- * the ring in this product is opt-in `.ds-focus:focus-visible` (`tokens.css`),
+ * `outline-none` IS REQUIRED, and the parity lane is what proved it. The first
+ * cut of this reasoned that nothing could paint: the frame carries no `dsFocus`
+ * class, the product's ring is opt-in `.ds-focus:focus-visible` (`tokens.css`),
  * and the base layer's `* { outline-color }` sets a colour with no width or
- * style. That is why moving focus here moves no parity reference.
+ * style. All true, and all beside the point — the ring that appeared is
+ * Chromium's own UA `:focus-visible { outline: auto }`, wearing that `*` rule's
+ * colour. A programmatic focus with no preceding pointer interaction matches
+ * `:focus-visible`, so opening any takeover drew a 2px ring around the ENTIRE
+ * page. 38 references moved on it (2548px each, the frame's own perimeter).
+ * Suppressing it is correct rather than a cover-up: `tabIndex={-1}` means the
+ * operator can never keyboard-navigate TO this element, so a focus indicator on
+ * it points at nothing they can act on, and what carries the arrival for a
+ * screen reader is the region's accessible NAME, not an outline. With it, the
+ * takeover corpus is byte-identical across this change.
  */
 export function TakeoverFrame({
   label,
@@ -638,7 +647,10 @@ export function TakeoverFrame({
         // `min-w-0` was dropped: the frame is a COLUMN-flex item under `main`,
         // so `min-width: auto` is never the constraint being fought, and all
         // three configurations measured identically.
-        "flex min-h-0 flex-1 overflow-hidden",
+        // `outline-none`: see the JSDoc — it suppresses Chromium's UA focus ring
+        // on a target the operator can never tab to. Not a `dsFocus` opt-out;
+        // this element was never opted in.
+        "flex min-h-0 flex-1 overflow-hidden outline-none",
         direction === "row" ? "flex-row" : "flex-col",
         "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
         "data-[demo-enter=from]:opacity-0 ds-motion-enter",

@@ -29,10 +29,22 @@
  *    test red — the frame steals focus back off the control the surface
  *    deliberately focused on arrival.
  *
- * This file is in the unit lane, not the parity lane, on purpose: focus is not
- * a pixel. The parity corpus cannot see it at all — the frame carries no
- * `ds-focus` class, so `.ds-focus:focus-visible` never paints a ring and the
- * 40-reference takeover corpus is untouched by any of this.
+ * A fourth claim earned its place the hard way. Focus was reasoned to be
+ * invisible to the parity corpus — the frame carries no `ds-focus` class, so
+ * the product's opt-in `.ds-focus:focus-visible` ring never paints. The lane
+ * disagreed: 38 references moved, 2548 pixels each, tracing the frame's own
+ * perimeter. The ring was CHROMIUM'S, not the product's — a programmatic focus
+ * with no preceding pointer interaction matches `:focus-visible`, and the UA's
+ * `outline: auto` picked up the base layer's `* { outline-color }`. So opening
+ * any takeover drew a ring around the whole page. `outline-none` suppresses it,
+ * and the fourth test pins that class: the operator can never tab TO this
+ * element, so an indicator on it points at nothing actionable, and it is the
+ * region's accessible NAME that announces the arrival.
+ *
+ * That assertion is a class check, which on its own would be weak — the real
+ * proof is the parity lane going green with zero references moved. It lives
+ * here so the fast lane catches a deletion in seconds rather than in the 5
+ * minutes the reference corpus costs.
  */
 import assert from "node:assert/strict";
 import { act, createElement, type ReactNode } from "react";
@@ -104,6 +116,18 @@ describe("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
   it("is a focus target, not a tab stop", async () => {
     await mountTakeover("Workflow explorer", []);
     assert.equal(frameOf("Workflow explorer").getAttribute("tabindex"), "-1");
+  });
+
+  it("paints no focus ring — the UA's included", async () => {
+    await mountTakeover("Workflow explorer", []);
+    const cls = frameOf("Workflow explorer").className.split(/\s+/u);
+    // Chromium's own `:focus-visible { outline: auto }` matches a programmatic
+    // focus. Without this class the ring traced the whole page and moved 38
+    // parity references; jsdom computes no UA styles, so the class IS the
+    // assertion here and the parity corpus is the proof behind it.
+    assert.ok(cls.includes("outline-none"), `the frame must suppress the UA ring: ${cls.join(" ")}`);
+    // And it must not have opted INTO the product ring by accident.
+    assert.ok(!cls.includes("ds-focus"), "the frame is not an interactive control");
   });
 
   it("does not steal focus from a descendant that took it in the same commit", async () => {

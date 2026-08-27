@@ -1135,10 +1135,19 @@ binding would contradict them.
   ref the surfaces point at their Back button would have given three takeovers a contract and the
   fourth silence, which is the four-copies drift in a new costume. Focusing the labelled `section` also
   announces the PAGE rather than one button on it, and one Tab from there reaches whatever that
-  takeover's first control is (verified live: Settings → `Back to the dashboard`). **It moves no
-  pixel** — the frame carries no `ds-focus` class, `.ds-focus:focus-visible` is opt-in, and the base
-  layer's `*` rule sets an outline COLOUR with no width or style, so the 40-reference takeover corpus
-  is untouched. Same pass: the root's `min-w-0` was dropped as provably inert (the frame is a
+  takeover's first control is (verified live: Settings → `Back to the dashboard`). **And the ring you
+  did not opt into is still a ring.** This was reasoned to move no pixel — the frame carries no
+  `ds-focus` class, `.ds-focus:focus-visible` is opt-in, and the base layer's `*` rule sets an outline
+  COLOUR with no width or style. Every clause true, and the parity lane failed anyway: 38 references,
+  2548 pixels each, tracing the frame's perimeter. The ring was **Chromium's own**
+  `:focus-visible { outline: auto }` wearing that `*` rule's colour — a programmatic focus with no
+  preceding pointer interaction MATCHES `:focus-visible`, so every takeover opened with a 2px ring
+  around the whole page. `outline-none` on the frame is the fix and it is correct rather than a
+  cover-up: `tabIndex={-1}` means the operator can never navigate TO it, so an indicator there points
+  at nothing they can act on, and what announces the arrival is the region's accessible NAME. **The
+  lesson generalises**: "this element has no ring class" is not the same claim as "this element paints
+  no ring", and only the reference corpus can tell them apart. With it the 40-reference takeover
+  corpus is byte-identical. Same pass: the root's `min-w-0` was dropped as provably inert (the frame is a
   COLUMN-flex item under `main`, so `min-width: auto` is never the constraint) and `overflow-hidden`
   was KEPT with a live-verified note — measured at 1440x900 on all four with an over-wide and an
   over-tall child forced in, it changes no layout at all (the shell root already owns the viewport
