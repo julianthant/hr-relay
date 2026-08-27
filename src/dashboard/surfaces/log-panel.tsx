@@ -2435,6 +2435,17 @@ export const LogPanel = memo(function LogPanel({
                 }
               }
               resolvedInstances={surface?.resolvedInstances ?? []}
+              /*
+                Ledger 2 row D13 — `dryRun` is REQUIRED on `ReceiptView` and is
+                genuinely `undefined` here when the panel is opened for a run
+                outside the currently loaded day: `surface` is looked up in
+                THIS day's queue surfaces (`dashboard-app.tsx`'s
+                `openPanelSurface`), and a deep link across a day boundary
+                finds no row there while `detail` still loads fine. That is
+                "we do not know", never "not a rehearsal" — see `receipt.tsx`'s
+                own doc comment for why this is not defaulted to `false`.
+              */
+              dryRun={surface?.dryRun}
             />
           )}
           {(effectiveTab === "review" || effectiveTab === "people") && <UnservedTab tab={effectiveTab} />}

@@ -79,15 +79,30 @@ const CONFIDENCE_TONE_CLASS: Record<"neutral" | "warning", string> = {
  * The Receipt tab's whole 1i surface. `resolvedInstances` is the row's served
  * instance resolution — the TEST banner draws from it exactly as the demo
  * draws from the receipt's own.
+ *
+ * `dryRun` is REQUIRED, not an optional flag defaulting to `false` (ledger 2
+ * row D13, ruled in under D273 item 7). It is the run's own served rehearsal
+ * bit, but this component's callers do not all have it: `log-panel.tsx`'s
+ * queue `surface` is genuinely absent when a panel is opened for a run
+ * outside the currently loaded day, which is a real reachable state and not
+ * defensive typing. Making the prop optional-with-default would let a caller
+ * that does not know the answer silently render "not a rehearsal" about a run
+ * nobody asked — the exact silent-fallback shape CLAUDE.md's fail-loud rule
+ * forbids. So the caller must say explicitly `true`, `false`, or `undefined`
+ * ("I do not know"), and only `true` draws the banner; `false` and `undefined`
+ * both draw nothing, because neither is the same fact as "this really is a
+ * rehearsal".
  */
 export function ReceiptView({
   outcome,
   receipt,
   resolvedInstances = [],
+  dryRun,
 }: {
   outcome: OutcomeWire;
   receipt: ReceiptSectionPayload;
   resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
+  dryRun: boolean | undefined;
 }) {
   const testSystems = testInstanceSystems(resolvedInstances);
   const value = receipt.state === "available" ? receipt.value : undefined;
@@ -139,6 +154,15 @@ export function ReceiptView({
         <Banner tone="warning" title={`Written to the TEST instance of ${testSystems.join(", ")} — this is not a filing`}>
           Everything below really happened, on a test system. Nothing on this receipt changed a production record, and the
           confirmation numbers are test-instance numbers.
+        </Banner>
+      )}
+
+      {/* Ledger 2 row D13 — the demo's dry-run Banner, ruled in whole under
+          D273 item 7. `dryRun === true` only: `false` and `undefined` both
+          draw nothing, per this component's own doc comment above. */}
+      {dryRun === true && (
+        <Banner tone="info" title="Dry run — this run was a rehearsal">
+          A dry run reads everything and writes nothing. Any value below is an observation, never a change.
         </Banner>
       )}
 
