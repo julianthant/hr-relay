@@ -4,8 +4,13 @@
  * content the sections have served since D140/D142.
  *
  * Rendering rules these components pin (ref dashboard-surfaces D18/D24, ref operator-trust D141/D142):
- * - the WRITE-STATE sentence renders unconditionally, never behind a
- *   disclosure — "what this run left behind" is the record's first job;
+ * - the WRITE-STATE sentence and the remediation ladder render unconditionally,
+ *   never behind the `Show the diagnostic record` disclosure — "what this run
+ *   left behind" and "what is safe to retry" are the record's first two jobs,
+ *   and ONLY diagnosis (classification, cause chain, bundle, the fingerprint's
+ *   history) may sit behind one (D273 item 8);
+ * - the write-state sentence carries a TONE, and only `not-attempted` gets the
+ *   settled one — `trust-model.ts` owns the mapping and says why;
  * - `sameFingerprintSeen` renders as a COUNT, never a list of other runs;
  * - an absent diagnostic bundle names its reason, never a blank;
  * - redaction is already final: a `drop` arm renders as an explicit redacted
@@ -19,7 +24,7 @@
  * - empty sections are omitted (D24 restraint) — a receipt does not explain
  *   itself, and "no warnings" is best said by no warnings section.
  */
-import { Check, Download, Fingerprint, Package } from "lucide-react";
+import { Check, ChevronDown, Download, Fingerprint, Package } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
@@ -38,16 +43,22 @@ import {
   PopoverContent,
   PopoverTrigger,
   SectionLabel,
+  dsFocus,
   dsIcon,
+  dsMotion,
+  dsRadius,
   dsText,
 } from "../ds/ui.js";
 import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { fmtClock, shortHash } from "./format.js";
 import {
+  FAILURE_WRITE_STATE,
   acceptDiagnosticBundleReadback,
   evidenceSourceMeta,
+  failureFingerprintHistory,
   inputHashFooter,
+  type FailureWriteStateTone,
 } from "./trust-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
@@ -119,17 +130,17 @@ function fmtAge(ms: number): string {
 
 /* ── the failure record body (ref operator-trust §2.1, D142) ─────────────────────────── */
 
-const WRITE_STATE_SENTENCE: Record<FailureDetailWire["writeState"], string> = {
-  "not-attempted": "This run wrote nothing — no write was attempted.",
-  prepared: "A write was staged but never committed.",
-  attempting: "A write attempt was in flight; this run did not settle its outcome.",
-  committed: "A write was committed; its read-back verification did not complete.",
-  verified: "A write was committed and verified.",
-  unknown: "The write outcome is unknown — the intent is parked for operator resolution.",
+const WRITE_STATE_TONE: Record<FailureWriteStateTone, string> = {
+  "nothing-written": "text-[color:var(--ds-success-fg)]",
+  unknown: "text-[color:var(--ds-status-parked-fg)]",
+  "left-behind": "text-[color:var(--ds-status-waiting-fg)]",
 };
 
 export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
   const subject = detail.subject;
+  const writeState = FAILURE_WRITE_STATE[detail.writeState];
+  const history = failureFingerprintHistory(detail.sameFingerprintSeen);
+  const [diagnosticOpen, setDiagnosticOpen] = useState(false);
   const remediationLabel: Record<FailureDetailWire["remediation"][number]["kind"], string> = {
     "retry-when-served": "Retry",
     "operator-action": "Operator",
@@ -179,11 +190,91 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
   };
   return (
     <div className="flex flex-col gap-[var(--ds-space-base)]">
-      <span className={cn(dsText.body, "break-words text-[color:var(--ds-danger)]")}>{detail.summary}</span>
-      {/* Unconditional and never behind a disclosure (ref dashboard-surfaces D18). */}
-      <span className={cn(dsText.body, "font-semibold text-[color:var(--ds-fg)]")}>
-        {WRITE_STATE_SENTENCE[detail.writeState]}
-      </span>
+      {/*
+        THE SENTENCE (D273 item 8, ledger 2 E8/E9 — DemoFailure.tsx:190-205).
+        Unconditional and never behind the disclosure below (ref dashboard-surfaces
+        D18): it is the difference between a safe retry and a duplicate
+        termination. It gets its own labelled, bordered block rather than a line
+        of body copy because a run that wrote half a termination reads exactly
+        like one that wrote none until this is read, and one weight for all six
+        arms made the six read the same at a glance.
+      */}
+      <div
+        className={cn(
+          "border p-[var(--ds-space-base)]",
+          dsRadius.md,
+          "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
+        )}
+      >
+        <SectionLabel>What this run left behind</SectionLabel>
+        <p
+          className={cn(
+            "mt-[var(--ds-space-hair)] leading-relaxed",
+            dsText.body,
+            WRITE_STATE_TONE[writeState.tone],
+          )}
+        >
+          {writeState.sentence}
+        </p>
+      </div>
+
+      {/*
+        WHAT IS SAFE TO RETRY (E11/E14) — the question the operator arrives
+        with, not an instruction list, and unconditional for the same reason:
+        "why can I not just retry this" is a question a hidden button never
+        answers, so every served remediation renders, including the ones whose
+        kind is `no-safe-action`.
+
+        NOT SERVED, and therefore not drawn: the demo's per-remediation SAFETY
+        verdict (`safe` / `needs a fix first` / `blocked`) and its label/detail
+        pair. `RemediationActionSchema` carries `{kind, message}` — one axis and
+        one sentence (`src/domain/trust/failure.ts`) — and the two axes overlap
+        only at `no-safe-action` ↔ `blocked`, so deriving one from the other
+        would put a safety word on this surface that no producer stands behind.
+      */}
+      <TrustSection label="What is safe to retry">
+        {detail.remediation.map((action, index) => (
+          <span key={index} className="flex items-baseline gap-[var(--ds-space-snug)]">
+            <Chip label="remediation" tone={action.kind === "no-safe-action" ? "danger" : "neutral"}>
+              {remediationLabel[action.kind]}
+            </Chip>
+            <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>{action.message}</span>
+          </span>
+        ))}
+      </TrustSection>
+
+      {/*
+        THE DISCLOSURE (E15 — DemoFailure.tsx:266-284). Everything below it
+        answers "why", which matters, but not before the operator knows what is
+        half-done and what is safe to do next; and always-expanding a 400px
+        diagnostic dump into a log stream buries the lines after it, which on a
+        failed run is the stream that is the evidence for the summary.
+
+        It is a real `<button>` with `aria-expanded`, not a span with a class —
+        a disclosure trigger is a control (the timeline segment's own lesson,
+        `src/dashboard/CLAUDE.md` 2026-08-26).
+      */}
+      <button
+        type="button"
+        aria-expanded={diagnosticOpen}
+        onClick={() => setDiagnosticOpen(!diagnosticOpen)}
+        data-panel-failure-toggle=""
+        className={cn(
+          "inline-flex w-fit shrink-0 items-center gap-[var(--ds-space-tight)] border px-[var(--ds-space-base)]",
+          "h-[var(--ds-h-sm)] min-h-11 border-[color:var(--ds-danger-border)]",
+          dsRadius.md,
+          dsText.meta,
+          dsFocus,
+          dsMotion.fast,
+          "font-semibold text-[color:var(--ds-danger)]",
+        )}
+      >
+        {diagnosticOpen ? "Hide the diagnostic record" : "Show the diagnostic record"}
+        <ChevronDown aria-hidden className={cn(dsIcon.sm, dsMotion.fast, diagnosticOpen && "rotate-180")} />
+      </button>
+
+      {diagnosticOpen && (
+      <div className="flex flex-col gap-[var(--ds-space-base)]">
       {/*
         The demo's `Classification` KeyValueList, in this tree's MetaLine idiom
         and in the demo's order (legacy hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43,
@@ -195,17 +286,19 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
         a run can fail on one node and terminalize after the executor has
         finished unwinding, so "failed 2:41 PM" and "occurred 2:39 PM" are
         both true and only one of them says when the thing went wrong.
+
+        `code` and `transient` have LEFT this line for the head (E5/E6): the
+        demo states both where the summary is, because permanence decides
+        whether the operator presses retry at all and a fact behind a
+        disclosure cannot decide anything.
       */}
       <MetaLine
         items={[
-          detail.code,
-          detail.transient && "transient",
           `occurred ${fmtClock(detail.occurredAt)}`,
           `run ${detail.traceId}`,
           `attempt ${String(detail.attempt)}`,
           detail.nodeId !== undefined && `node ${detail.nodeId}`,
           detail.taskId !== undefined && `task ${detail.taskId}`,
-          detail.sameFingerprintSeen > 1 && `same failure seen ${String(detail.sameFingerprintSeen)} times`,
         ]}
       />
 
@@ -214,8 +307,16 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
           items={[
             subject.expected !== undefined
               && `expected ${subject.expected.kind} ${subject.expected.displayRedacted ?? subject.expected.digest}`,
-            subject.observed !== undefined
-              && `observed ${subject.observed.kind} ${subject.observed.displayRedacted ?? subject.observed.digest}`,
+            // The OBSERVED row in danger tone (E22 — DemoFailure.tsx:322-325).
+            // The pair exists to be compared, and the one that is wrong is the
+            // one the eye has to find; same-weight rows made the reader do the
+            // diff. Redaction is unchanged: the served `displayRedacted` wins
+            // and nothing is re-derived here.
+            subject.observed !== undefined && (
+              <span className="text-[color:var(--ds-danger)]">
+                observed {subject.observed.kind} {subject.observed.displayRedacted ?? subject.observed.digest}
+              </span>
+            ),
           ]}
         />
       )}
@@ -247,17 +348,6 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
         />
       )}
 
-      <TrustSection label="What to do">
-        {detail.remediation.map((action, index) => (
-          <span key={index} className="flex items-baseline gap-[var(--ds-space-snug)]">
-            <Chip label="remediation" tone={action.kind === "no-safe-action" ? "danger" : "neutral"}>
-              {remediationLabel[action.kind]}
-            </Chip>
-            <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>{action.message}</span>
-          </span>
-        ))}
-      </TrustSection>
-
       <TrustSection label="Cause chain">
         {detail.causeChain.map((cause, index) => (
           <FactRow
@@ -269,6 +359,14 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
           />
         ))}
         <MetaLine items={[`fingerprint ${detail.fingerprint.slice(0, 12)}…`]} />
+      </TrustSection>
+
+      {/*
+        The bundle and the fingerprint's history, on one row, at the record's
+        foot — the demo's own placement (DemoFailure.tsx:360-376). The absent
+        bundle arm keeps its reason: a missing package names why, never a blank.
+      */}
+      <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
         {detail.diagnosticBundle.state === "present" ? (
           <Button
             ref={bundleTriggerRef}
@@ -282,7 +380,20 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
         ) : (
           <MetaLine items={[`no diagnostic bundle — ${detail.diagnosticBundle.reason}`]} />
         )}
-      </TrustSection>
+        <span
+          className={cn(
+            dsText.meta,
+            "min-w-0 flex-1 break-words",
+            history.tone === "seen-before"
+              ? "font-semibold text-[color:var(--ds-status-waiting-fg)]"
+              : "text-[color:var(--ds-fg-muted)]",
+          )}
+        >
+          {history.text}
+        </span>
+      </div>
+      </div>
+      )}
       {bundleDialog.state !== "closed" && (
         <DiagnosticBundleDialog
           state={bundleDialog}
@@ -486,7 +597,7 @@ export function ReceiptEvidenceBody({ receipt }: { receipt: RunEvidenceReceiptWi
             <FactRow
               key={action.id}
               label={action.taskId}
-              value={`${action.kind} — ${WRITE_STATE_SENTENCE[action.writeState]}`}
+              value={`${action.kind} — ${FAILURE_WRITE_STATE[action.writeState].sentence}`}
               meta={fmtClock(action.occurredAt)}
             />
           ))}
