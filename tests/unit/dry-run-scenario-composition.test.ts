@@ -14,6 +14,7 @@ import {
   composeDryRunScenarioCommand,
   resolveDryRunScenarioTarget,
 } from "../../src/server/dry-run-scenario/compose.js";
+import { loadDryRunScenarioManifest } from "../../src/server/dry-run-scenario/manifests.js";
 import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
 import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
@@ -191,6 +192,22 @@ const CHAIN_BLOCKED_MANIFEST = parseDryRunScenarioManifest({
       stoppedAtNodeId: "clear-pending",
     },
     preview: { outcome: "already-present", proofSource: "live-probe" },
+  }],
+});
+
+/**
+ * The composed chain's manifest, on the ONE registry subject that is
+ * `available`: enough to prove `resolveTarget` reaches `ready` and dispatches
+ * into `createRuntime` with the chain's own canonical input, rather than
+ * stopping at the blocked arm `CHAIN_BLOCKED_MANIFEST` proves.
+ */
+const CHAIN_READY_MANIFEST = parseDryRunScenarioManifest({
+  ...CHAIN_BLOCKED_MANIFEST,
+  cases: [{
+    ...CHAIN_BLOCKED_MANIFEST.cases[0],
+    caseId: "full-chain-dry-run",
+    subjectLabel: "separations-dry-run-subject",
+    subjectKind: "full-chain-dry-run",
   }],
 });
 
@@ -578,6 +595,63 @@ describe("dry-run scenario target dispatch", () => {
       }]);
     } finally {
       database.close();
+    }
+  });
+
+  it("resolves the ready chain subject through the real registry and reaches createRuntime with its typed document number", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-dry-run-chain-ready-"));
+    roots.push(root);
+    mkdirSync(join(root, "config"), { recursive: true });
+    writeFileSync(
+      join(root, "config", "test-subjects.json"),
+      readFileSync(join(process.cwd(), "config", "test-subjects.json"), "utf8"),
+    );
+    let capturedCanonicalInput: unknown;
+
+    await assert.rejects(
+      composeDryRunScenarioCommand({
+        isolation: rebuildRuntimeIsolation,
+        args: ["separations", "--subject", "separations-dry-run-subject"],
+        repoRoot: root,
+        env: {},
+        clock: manualClock(new Date("2026-08-25T18:00:00.000Z")),
+        ids: { uuid: () => "33333333-3333-4333-8333-333333333333" },
+        loadManifest: () => Promise.resolve(CHAIN_READY_MANIFEST),
+        createRuntime: () => ({
+          start: (startInput) => {
+            capturedCanonicalInput = startInput.canonicalInput;
+            return Promise.reject(new Error("stop the fixture runtime after capturing the ready dispatch"));
+          },
+          drain: () => Promise.reject(new Error("not reached")),
+          resolveGate: () => Promise.resolve(),
+          collectEvidence: () => Promise.reject(new Error("not reached")),
+        }),
+      }),
+      /dry-run scenario failed before run identity was known/,
+    );
+
+    // The chain's ingress is ONE typed Kuali document number (D261): the
+    // resolver feeds the registry's document through the descriptor's own
+    // `inputRun` start box rather than assembling fields by hand, so
+    // `timekeeperName`/`searchTimeoutMs` ride the descriptor's own constants
+    // and default, not anything this test authored.
+    assert.deepEqual(capturedCanonicalInput, {
+      documentNumber: "4502",
+      timekeeperName: "Julian Zaw",
+      searchTimeoutMs: 15_000,
+    });
+  });
+});
+
+describe("dry-run scenario manifest registry", () => {
+  it("names exactly the registered workflows for an unknown workflow, even a prototype key", async () => {
+    for (const workflow of ["constructor", "nope"]) {
+      await assert.rejects(
+        async () => loadDryRunScenarioManifest(workflow),
+        new RegExp(
+          `unknown dry-run scenario workflow ${workflow}; registered: separations, separations-kuali-finalization`,
+        ),
+      );
     }
   });
 });
