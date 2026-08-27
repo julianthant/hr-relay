@@ -21,10 +21,10 @@
   - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
   - button "Settings — storage needs attention"
+- alert:
+  - text: Authority storage is unavailable Nothing durable can be read or recorded. checked 9:00 AM
+  - button "Storage health"
 - main:
-  - alert:
-    - text: Authority storage is unavailable Nothing durable can be read or recorded. checked 9:00 AM
-    - button "Storage health"
   - button "Workflow Panel — Person Lookup, minimised. 5 of 14 rows across every workflow are queued or running today": pl 5
   - button "Import spreadsheet"
   - button "Workflow explorer"

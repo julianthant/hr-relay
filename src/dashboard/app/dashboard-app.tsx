@@ -1328,6 +1328,37 @@ function LoadedApp({
         nav={nav}
       />
 
+      {/*
+        A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
+
+        Mounted here — between the Top Bar and the complete shell body, above
+        both the optional Workflow sidebar and the takeover switch — rather
+        than inside Settings, because Settings is the page that EXPLAINS the
+        state and an operator filing transactions is not in it. Every takeover below
+        (intake, archive, explorer, catalog, activity) replaces the queue
+        and inherits this band unchanged.
+
+        D222: only the unreachable AUTHORITY earns this band — a stale or
+        missing backup is a `storage` notification in the bell (ref dashboard-surfaces
+        §2.6) plus the gear's attention dot, because it does not stop the
+        work. It renders nothing at all otherwise, which is why it costs
+        the shell no fixed height: an empty band held open for a state
+        that is almost never true is the decoration this product spends
+        its density on avoiding.
+      */}
+      {/*
+        D281 item 7 RULES the full match: x=0, border-bottom only, no
+        radius, above the switch on the queue and every takeover. That is
+        the demo's exact site geometry (`hr-automation@1ec1d870`,
+        `RebuildDemo.tsx:654` and `DemoSettings.tsx:1204-1237`). D276 item
+        4 still protects every other `Banner`: the storage hazard selects
+        the explicit `band` arm instead of changing the default card.
+      */}
+      <StorageBanner
+        storage={boot.storage}
+        onOpenSettings={openSettings}
+      />
+
       <div className="flex min-h-0 flex-1">
         {panelMode.mode === "sidebar" && (
           <WorkflowSidebar
@@ -1348,35 +1379,6 @@ function LoadedApp({
           tabIndex={-1}
           className="flex min-h-0 min-w-0 flex-1 flex-col"
         >
-          {/*
-            A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
-
-            Mounted here — above the takeover switch, inside `main` — rather
-            than inside Settings, because Settings is the page that EXPLAINS
-            the state and an operator filing transactions is not in it. Every takeover below
-            (intake, archive, explorer, catalog, activity) replaces the queue
-            and inherits this band unchanged.
-
-            D222: only the unreachable AUTHORITY earns this band — a stale or
-            missing backup is a `storage` notification in the bell (ref dashboard-surfaces
-            §2.6) plus the gear's attention dot, because it does not stop the
-            work. It renders nothing at all otherwise, which is why it costs
-            the shell no fixed height: an empty band held open for a state
-            that is almost never true is the decoration this product spends
-            its density on avoiding.
-          */}
-          {/*
-            D281 item 7 RULES the full match: x=0, border-bottom only, no
-            radius, above the switch on the queue and every takeover. That is
-            the demo's exact site geometry (`hr-automation@1ec1d870`,
-            `RebuildDemo.tsx:654` and `DemoSettings.tsx:1204-1237`). D276 item
-            4 still protects every other `Banner`: the storage hazard selects
-            the explicit `band` arm instead of changing the default card.
-          */}
-          <StorageBanner
-            storage={boot.storage}
-            onOpenSettings={openSettings}
-          />
 
           {/*
             The intake workspace REPLACES the queue for as long as it is open.
