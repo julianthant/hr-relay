@@ -772,7 +772,7 @@ function ArchiveTable({
 
   return (
     <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
-      <Table label="Archived runs, grouped by the version bump that swept them" layout="fixed" className="min-w-[720px]">
+      <Table label="Archived runs" layout="fixed" className="min-w-[720px]">
         {/*
           The measured column widths. Every one of these except the name is a
           value of known shape — a status word, a trace id, a clock, a duration
@@ -1005,12 +1005,17 @@ function ArchiveListPanel({
         <PanelBody>
           <EmptyState
             icon={<ArchiveIcon aria-hidden className={dsIcon.lg} />}
-            title={filtered ? "Nothing in the archive matches" : "Nothing has been archived yet"}
+            title={filtered ? "Nothing in the archive matches" : "The archive is empty"}
             description={
               filtered
                 ? "Every archived run was excluded by the search or one of the filters. Clearing them shows all of them again."
-                : "A run reaches the archive only when its workflow's version bumps — its shape moved, so it is no longer "
-                  + "comparable with what runs today. Plan a bump under Versions & bumps to see which runs a sweep would take."
+                /*
+                  AR56 — the demo's sentence, verbatim, and it is TRUE of this
+                  tree now: D274 made the MAJOR/minor split behavioural, so
+                  "only when its workflow's MAJOR version bumps" is the rule
+                  rather than a promise the code did not keep.
+                */
+                : "A run reaches the archive only when its workflow's MAJOR version bumps. Nothing has bumped yet."
             }
             action={
               filtered
@@ -1258,8 +1263,8 @@ function ArchivedRunDetail({
     window.setTimeout(() => { URL.revokeObjectURL(url); }, 0);
     toast({
       tone: "success",
-      title: `archive-${detail.detail.header.traceId}.json`,
-      description: "Exactly what this page holds — the display-redacted archived record, nothing re-derived.",
+      title: "Archived run exported",
+      description: `archive-${detail.detail.header.traceId}.json — exactly what this page holds, nothing re-derived.`,
     });
   }, [detail, toast]);
 
@@ -1583,7 +1588,7 @@ function ArchivedRunDetail({
                       <TH>System</TH>
                       <TH>Action</TH>
                       <TH>Confirmation</TH>
-                      <TH align="right">Instance</TH>
+                      <TH>Instance</TH>
                     </TR>
                   </THead>
                   <TBody>
@@ -2828,7 +2833,7 @@ function VersionsView({
       <Panel className="min-h-0 flex-1">
         <PanelHeader
           title="Versions & bumps"
-          subtitle="Every workflow's current descriptor version, the runs stamped with it, and what a bump would move."
+          subtitle="Every workflow's current descriptor version, the runs stamped with it, and the two bump arms."
           icon={<BadgeCheck aria-hidden className={dsIcon.lg} />}
           meta={`app ${wire.currentAppVersion}`}
         />
@@ -2837,8 +2842,13 @@ function VersionsView({
             tone={blockedWorkflows > 0 ? "warning" : "info"}
             title={
               blockedWorkflows > 0
-                ? `${plural(blockedWorkflows, "workflow")} ${blockedWorkflows === 1 ? "has" : "have"} runs that are not terminal — a bump on those is refused`
-                : "Every prior-version run is terminal — a bump can proceed anywhere"
+                /*
+                  AR220/AR221 — the word MAJOR is back, and it is now load
+                  bearing: `versionState` is kind-agnostic, and a minor bump on
+                  these same workflows is refused by nothing (D274 item 2).
+                */
+                ? `${plural(blockedWorkflows, "workflow")} ${blockedWorkflows === 1 ? "has" : "have"} runs that are not terminal — a MAJOR bump on those is refused`
+                : "Every listed run is terminal — a major bump can proceed anywhere"
             }
             className="m-[var(--ds-space-cozy)]"
             action={
@@ -2848,10 +2858,11 @@ function VersionsView({
             }
           >
             <span className={dsText.body}>
-              A bump moves every prior-version run out of the live surfaces into this read-only archive, and it{" "}
-              <strong>cannot</strong> archive a run that is still queued, running, waiting on you or parked — the plan
-              lists them by name. A dashboard update bumps the effective version of every workflow, because an old run
-              may not be interpretable against new dashboard state.
+              A <strong>major</strong> bump moves every prior-version run out of the live surfaces into this read-only
+              archive, and it <strong>cannot</strong> archive a run that is still queued, running, waiting on you or
+              parked — the plan lists them by name. A <strong>minor</strong> bump records the new version and moves
+              nothing: no run is archived, so no run can block it. A dashboard update bumps the effective version of
+              every workflow, because an old run may not be interpretable against new dashboard state.
             </span>
           </Banner>
 
@@ -3260,7 +3271,9 @@ export function ArchiveWorkspace({
             icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
             onClick={() => (selection === ARCHIVE_INDEX ? onClose() : onSelection(ARCHIVE_INDEX))}
           >
-            {selection === ARCHIVE_INDEX ? "Back to the dashboard" : "Back to the ledger"}
+            {/* AR4, D275 item 7 — one label. The detail is a PANE beside the
+                list, not a page over it, so the button never went anywhere else. */}
+            Back to the dashboard
           </Button>
         }
         actions={
