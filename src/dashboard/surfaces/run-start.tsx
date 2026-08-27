@@ -948,6 +948,14 @@ export function RunStartDialog({
             <section className="flex flex-col gap-[var(--ds-space-snug)]">
               <SectionLabel>Workflow setup</SectionLabel>
               <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
+                {/*
+                  `No workflow` is a rebuild-only arm and STAYS (D272 item 9,
+                  ledger 1 row C28 — "keep honest empty states"). The demo's
+                  catalogue is a fixture that always has one, so it never had
+                  to name the empty case; this one is served and can be empty,
+                  and a heading that silently disappears reads as a surface
+                  still loading rather than as a catalogue with nothing in it.
+                */}
                 <h3 className={cn(dsText.section, "min-w-0 font-semibold", dsFg.base)}>
                   {workflow?.label ?? "No workflow"}
                 </h3>
