@@ -61,7 +61,7 @@ export const CaptureOperatorPhaseSchema = z.enum([
 ]);
 export type CaptureOperatorPhase = z.infer<typeof CaptureOperatorPhaseSchema>;
 
-export interface CaptureOperatorPhaseFacts {
+interface CaptureOperatorPhaseFacts {
   readonly state: CaptureSessionState;
   /** Whether the durable row records a `connectedAt` — the phone's first touch. */
   readonly connected: boolean;
