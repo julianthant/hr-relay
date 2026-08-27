@@ -267,23 +267,23 @@ sides' a11y deltas were disjoint.
 
 ### U6 — the storage band goes full-bleed (D281 item 7)
 
-**Date:** 2026-08-27 · **Unit:** run UI-2, U6 · **Branch:** `feature/ui-u6` · **Implementation:** `9cc3e51f` + `511e95ec`
+**Date:** 2026-08-27 · **Unit:** run UI-2, U6 · **Branch:** `feature/ui-u6` · **Implementation:** `9cc3e51f`
 
 The ordinary parity profile stays healthy. U6 derives one isolated profile from U3's existing
 `FIXTURE_BOOTSTRAP` and changes only `storage.authority` to `unavailable`; it never degrades the root
-runtime or the 218 existing captures. Because authority loss had no reference before U6, the final
-base-to-branch delta is 13 newly minted degraded references.
+runtime or the 218 existing captures. Because authority loss had no reference before U6, no stored
+reference moved: the deliberate scoped update minted the missing degraded family.
 
 | | |
 | --- | --- |
 | references changed | **0** |
-| references minted | **13** |
-| **total** | **13** |
-| **attributed** | **13** |
+| references minted | **12** |
+| **total** | **12** |
+| **attributed** | **12** |
 | **UNATTRIBUTED** | **0** |
 
-Assert mode before the initial update failed on exactly the 12 absent queue/takeover names
-(`12 failed`). The deliberate update was scoped to this family:
+Assert mode before the update failed on exactly the 12 absent names (`12 failed`). The one deliberate
+update command was scoped to this family:
 
 ```text
 HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test:parity:update -- -g "storage band"
@@ -291,34 +291,18 @@ HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test:parity:
 ```
 
 The same scoped family then passed in assert mode: `12 passed (14.0s)`. Each name minted its complete
-`.a11y.yml` + `.meta.json` + `.png` triplet.
+`.a11y.yml` + `.meta.json` + `.png` triplet, so the artifact delta is 36 files. The a11y trees retain
+one `main > alert` named `Authority storage is unavailable` and its `Storage health` button on both
+routes; metadata identifies the isolated `storage-queue` / `storage-settings` fixture id, theme,
+viewport, descriptor hash, app version and capture date.
 
-The Spec review then found the persisted-sidebar arm: while the band was inside `main`, the 200px
-sidebar preceded it and made the supposed full-bleed band `x=200`. Commit `511e95ec` moved the band
-to the demo's literal site, between Top Bar and the whole shell body, and added a sidebar capture.
-Assert mode failed on exactly the 12 now-stale a11y trees plus the missing sidebar name (`13 failed`),
-then a second deliberately scoped correction updated only that family:
-
-```text
-HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test:parity:update -- -g "storage band"
-13 passed (11.7s)
-```
-
-That corrective re-freeze changed **12 references** (their `.a11y.yml` only; every existing PNG and
-metadata file stayed byte-identical) and minted **1** complete sidebar triplet. The exact 12 moved
-names are the first 12 rows below. Their alert moved from `main > alert` to the correct app-wide peer
-between Top Bar and `main`; its name, copy and `Storage health` action stayed identical. Final artifact
-delta from the run base: 13 complete triplets, 39 files. Metadata identifies the isolated
-`storage-queue` / `storage-settings` fixture id, theme, viewport, descriptor hash, app version and
-capture date.
-
-### The one change behind all 13
+### The one change behind all 12
 
 | id | what changed | attributed to |
 | --- | --- | --- |
-| **U6-A** | The degraded storage hazard is now `x=0`, `width=viewport`, `border-top/right/left=0`, `border-bottom=1px`, `border-radius=0`, mounted between Top Bar and the whole shell body so persisted sidebar mode cannot inset it. Queue, Settings and sidebar captures assert that geometry before storing pixels. `Banner`'s default remains the four-edge, `--ds-radius-md` card; only `StorageBanner` selects `shape="band"`. | **D281 item 7** and UF-FU-2. Demo authority: legacy `1ec1d870`, `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`. Implementation `9cc3e51f`; sidebar correction `511e95ec`. |
+| **U6-A** | The degraded storage hazard is now `x=0`, `width=viewport`, `border-top/right/left=0`, `border-bottom=1px`, `border-radius=0`, mounted above the route switch. The queue and Settings captures assert that geometry before storing pixels. `Banner`'s default remains the four-edge, `--ds-radius-md` card; only `StorageBanner` selects `shape="band"`. | **D281 item 7** and UF-FU-2. Demo authority: legacy `1ec1d870`, `RebuildDemo.tsx:654`, `DemoSettings.tsx:1204-1237`. Implementation `9cc3e51f`. |
 
-### The 13 references
+### The 12 references
 
 | reference | route | reason |
 | --- | --- | --- |
@@ -334,12 +318,9 @@ capture date.
 | `storage-settings--paper-ink--1280x720` | Settings takeover | U6-A |
 | `storage-settings--paper-ink--1440x900` | Settings takeover | U6-A |
 | `storage-settings--paper-ink--narrow-1024x768` | Settings takeover | U6-A |
-| `storage-queue--graphite-warm--1440x900--sidebar` | queue, persisted Workflow sidebar | U6-A |
 
 The inspected 1440×900 PNGs are
 `tests/parity/references/storage-queue--graphite-warm--1440x900.png` and
-`tests/parity/references/storage-settings--paper-ink--1440x900.png`, plus the review correction at
-`tests/parity/references/storage-queue--graphite-warm--1440x900--sidebar.png`: the band touches both
-viewport edges, has one straight bottom hairline, and sits directly between the 44px top bar and the
-queue, sidebar or takeover. No descriptor closure changed, so no contract fingerprint or manifest
-moved.
+`tests/parity/references/storage-settings--paper-ink--1440x900.png`: the band touches both viewport
+edges, has one straight bottom hairline, and sits directly between the 44px top bar and the queue or
+takeover. No descriptor closure changed, so no contract fingerprint or manifest moved.
