@@ -32,6 +32,7 @@ import { dsFocus, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "./tokens.j
 export function Table({
   label,
   layout = "auto",
+  rowCount,
   className,
   children,
 }: {
@@ -45,12 +46,20 @@ export function Table({
    * around with it.
    */
   layout?: "auto" | "fixed";
+  /**
+   * `aria-rowcount`, for a table whose body is WINDOWED: only the mounted rows
+   * are in the DOM, so without this an assistive technology counts however many
+   * rows happen to be rendered rather than the true size of the list. Pair with
+   * `aria-rowindex` on each `TR` (it already forwards arbitrary row props).
+   */
+  rowCount?: number;
   className?: string;
   children: ReactNode;
 }) {
   return (
     <table
       aria-label={label}
+      aria-rowcount={rowCount}
       className={cn(
         "w-full border-separate border-spacing-0 text-left",
         layout === "fixed" && "table-fixed",

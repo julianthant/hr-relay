@@ -74,6 +74,55 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a restated pixel constant is a claim about a class list, and a KIND that decides
+  nothing reads exactly like a KIND that decides something (D274–D276, unit F10, ledger 3 §1/§8).**
+  Two halves of the archive family, and the same shape twice — a fact the surface HELD and did not
+  make true.
+
+  **The window.** D274 item 1 ruled the archive's 800-row virtualization in. The demo's mechanic
+  ports whole (one flat item list, a collapsed sweep costing one item, two spacer `<tr>`s instead of
+  transforms so the table stays a real table with its sticky `<thead>`), but the LIBRARY does not:
+  `@tanstack/react-virtual` estimates heights and corrects by measuring, and here both row kinds have
+  a KNOWN height, so `windowArchiveTable` is exact arithmetic over a prefix sum with no estimator to
+  be wrong. What that buys is also what it costs — **the spacers are only correct while the declared
+  heights are the real ones.** The sweep head was `h-auto`, i.e. 52px because its content happened to
+  be; it is `--ds-h-archive-sweep` now, and `archive-window.test.ts` reads `ds/tokens.css` and asserts
+  both constants equal the values set on the elements. A spacer a few pixels short of the rows it
+  stands in for is a table that slides under its own scrollbar, and no typecheck, lint or fold test
+  could ever have seen it. Two smaller rules travel. **An unmeasured viewport renders everything, not
+  nothing** — "nothing is visible" and "we have not looked yet" are different facts, and only one of
+  them should blank a list. And **an elastic overscroll is clamped while a non-finite measurement
+  throws**: WebKit really does report a negative `scrollTop`, and the visible top of the content
+  genuinely is 0 there, but `NaN` is not a scroll position and windowing from it would silently empty
+  the table. This is the archive's own window and is NOT D9's proposed shared `ds/` primitive.
+
+  **The kind.** Until F9, `VersionBumpChangeRecordSchema.kind` was a pure label — nothing branched on
+  it — so the surface had honestly dropped the word MAJOR from every sentence that needed it. F9 made
+  it behavioural (`resolveBumpEffect`; a minor plan listing a candidate or a blocker is now
+  zod-unrepresentable), and the interesting part is what that does to the DRAWING. `versionState` is
+  kind-agnostic: the same numbers reach both arms and only their meaning changes. So the minor arm may
+  not render an empty candidate list beside an empty blocker list, because **an empty list reads as
+  "we looked and found none", which is a claim about this scope rather than about minor bumps.**
+  `resolveBumpKindEffect`'s minor arm therefore carries no `blockers` and no `archivable` key at all —
+  the facts survive under `unaffected` / `wouldHaveArchived`, and the banner states the RULE
+  ("nothing can block a minor bump, because nothing is archived") with the in-flight count labelled as
+  what a MAJOR bump would have faced. The blocker table's resolution head is parameterised the same
+  way, with a third arm for a generation-1 plan that recorded no kind at all: neither head is true of
+  it, so it gets its own. **A fixture is a claim too** — `fixture-archive.ts` held a `minor` plan with
+  a blocking run, which the durable schema now refuses outright, and it drew a screen reading "a minor
+  bump archives no run at all" above a table demanding that run be resolved first. The wire schema
+  still admits that plan; `VersionBumpPlanWireSchema` carries no D274 refinement, and that gap is
+  named rather than closed here.
+
+  **And a disabled control is not the only way to hide a rule.** VB41's argument ported: the primary
+  is never disabled, because a greyed-out button hides the one refusal this flow exists to enforce.
+  But the first build put the resulting refusal below the fold of a scrolling dialog body, under the
+  button that produced it — **an answer the operator cannot see is the dead button in a different
+  coat**, so it scrolls itself into view. The refusal is composed locally and says so: the schema that
+  refuses an empty `what` is the same schema on both sides of the wire, so dressing it as a server
+  round trip would be a lie, and naming the empty fields is something a round trip could not do
+  better anyway.
+
 - **2026-08-26: a finding named three things in one breath, half of it landed, and the half that
   did not had no row of its own to be missed from (D273 item 5, unit F7, ledger 2 C51).** R6 f.1
   asked the Data ledger for "the step LEVEL, a `Well` per step, a recessed caps band and divided

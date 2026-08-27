@@ -514,6 +514,13 @@
   /* `RAN FOR` (caps) + sort glyph + count badge — 76 forced the header onto two
      lines. */
   --ds-w-archive-duration: 104px;
+  /* The sweep head's own height, and it is DECLARED rather than left to its
+     content because the archive table is windowed (D274 item 1): the spacer
+     rows that stand in for everything outside the window are computed from
+     this number and from `--ds-h-row`, so a head whose real height drifted
+     from the constant would slide the whole table under the scrollbar.
+     `archive-window.test.ts` asserts this value equals `ARCHIVE_SECTION_PX`. */
+  --ds-h-archive-sweep: 52px;
   /* The bump header used to own two tracks of its own here — a version pair and
      a kind. They are GONE, and that is the fix rather than a tidy-up: a second
      set of tracks inside the archive table is what put a sweep's date 42px left

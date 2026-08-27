@@ -228,7 +228,10 @@ export const FIXTURE_ARCHIVE_INDEX: ArchiveIndexWire = ArchiveIndexWireSchema.pa
     // MAJOR, and it has to be. This plan carries a blocker, and since D274 a
     // minor bump archives nothing and cannot be blocked — so a minor plan
     // holding a blocking run is a contradiction `VersionBumpPlanSchema` (and,
-    // as of unit F9c, `VersionBumpPlanWireSchema`) refuses outright.
+    // as of unit F9c, `VersionBumpPlanWireSchema`) refuses outright. The fixture
+    // said `minor` from before that rule existed, which drew a screen reading
+    // "a minor bump archives no run at all" above a blocker table demanding the
+    // run be resolved first.
     changeRecord: {
       state: "present",
       value: {
