@@ -31,12 +31,6 @@
       "direction": "declared-unserved",
       "decision": "D184",
       "note": "Ref frontend-backend-integration §3.1/§5 assign the preflight (doctor) summary and the doctor-rerun command to the Top Bar. `buildBootstrap` composes no preflight service, so the optional field is never present and the Top Bar's Stethoscope popover never mounts — the honest absence, never a fabricated pass verdict. Closes with the ref clock-config-secrets preflight/config service that also serves the rerun command."
-    },
-    {
-      "binding": "route:GET /api/v1/capture/sessions/:sessionId",
-      "direction": "served-unconsumed",
-      "decision": "D274",
-      "note": "The operator's capture-session poll, now serving the D274 item 7 operator projection (CaptureOperatorSessionWireSchema: phase, expiry, pages and each page's image fact — no bytes). Served for the desktop capture surface (ledger 3 §7 CP6–CP16, CP21), which is the next unit; closes when that surface polls it."
     }
   ]
 }

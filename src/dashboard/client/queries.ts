@@ -34,6 +34,12 @@ import {
   type WorkflowExplorerWire,
 } from "../../domain/dashboard/explorer.js";
 import { CaptureStartResultSchema, type CaptureStartResult } from "../../domain/capture-surface.js";
+import {
+  CaptureOperatorSessionListWireSchema,
+  CaptureOperatorSessionWireSchema,
+  type CaptureOperatorSessionListWire,
+  type CaptureOperatorSessionWire,
+} from "../../domain/capture-operator.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../domain/intake/wire.js";
 import {
   WIRE_ERROR_BODY,
@@ -109,6 +115,28 @@ export interface DashboardQueries {
    * fault must never render as "capture is misconfigured".
    */
   startCaptureSession(request: CaptureStartRequest): Promise<CaptureStartResult>;
+  /**
+   * D274 item 7 (ledger 3 CP2) — the ACTIVE capture sessions, as the operator's
+   * picker reads them.
+   *
+   * `open`/`finalizing`/`failed` only, oldest first: the server drops a session
+   * whose window has closed, durably, as it reads the set. So a session leaving
+   * this list is a real transition and never a filter the client applied — which
+   * is why the panel keeps reading a departed session by id rather than
+   * inferring anything from its absence here.
+   */
+  activeCaptureSessions(): Promise<CaptureOperatorSessionListWire>;
+  /**
+   * D274 item 7 (ledger 3 CP6–CP16, CP21) — ONE capture session, as the DESKTOP
+   * is served it: the phase, the expiry, and every page that has landed with the
+   * bundler's own verdict on its recorded bytes.
+   *
+   * Works for any state, not only an active one. That is deliberate: a capture
+   * that finalized while the operator was watching leaves the active list, and a
+   * panel that lost it at that exact moment would blank the one screen that says
+   * the capture worked.
+   */
+  captureSession(sessionId: string): Promise<CaptureOperatorSessionWire>;
   /**
    * Ref operator-trust §5.2's read-only explorer projection (2i-G, D176).
    *
@@ -267,6 +295,15 @@ export function createDashboardQueries(transport: DashboardTransport): Dashboard
         throw httpError(response.status, response.body);
       }
       return parseOrThrow(CaptureStartResultSchema, `POST ${path}`, response.body);
+    },
+
+    async activeCaptureSessions(): Promise<CaptureOperatorSessionListWire> {
+      const path = "/api/v1/capture/sessions";
+      return parseOrThrow(CaptureOperatorSessionListWireSchema, `GET ${path}`, await transport.requestJson(path));
+    },
+    async captureSession(sessionId: string): Promise<CaptureOperatorSessionWire> {
+      const path = `/api/v1/capture/sessions/${encodeURIComponent(sessionId)}`;
+      return parseOrThrow(CaptureOperatorSessionWireSchema, `GET ${path}`, await transport.requestJson(path));
     },
 
     async archiveIndex(): Promise<ArchiveIndexWire> {
