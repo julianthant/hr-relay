@@ -1,17 +1,25 @@
 # Handoff — run UI-2: the D281 residue (storage band, last two takeovers, ledger recount, G1, Activity audit)
 
-**Date:** written 2026-08-27 for a paste on or after 2026-08-28, once Phase 3b R2 has closed · **Paused at:** before execution — resume at U9 (sequential first), U6/U7/U8 in parallel.
+**Date:** 2026-08-27 (re-cut the same day: runs TODAY, before Phase 3b R2, under a date stop rule — receive sheet item 12, re-asked → B) · **Paused at:** before execution — resume at U9 (sequential first), U6/U7/U8 in parallel.
 
 ## Guard (zero cost, before any reading)
-`grep -cE '^\| u[1-5] \| R2 \| merged' docs/plans/03b-board.md` — if it prints less than 5, R2 has not closed: reply "held: R2 not closed" and STOP. Also `git worktree list` must show the root only and `git branch --list 'feature/*'` nothing — else STOP and say what is there.
+Run these four; hold on the first that trips, with the message given, and STOP:
+1. `pgrep -fl 'src/cli.ts worker' | grep -v pgrep` prints anything → reply "held: a worker is live" (a Phase 3b run owns the machine).
+2. `grep -E '^\| u[1-5] \| R2 \|' docs/plans/03b-board.md | grep -vc merged` prints more than 0 → reply "held: R2 is live" (an R2 unit row that is not merged).
+3. `TZ=America/Los_Angeles date +%F` prints 2026-08-28 or later AND `grep -cE '^\| u[1-5] \| R2 \| merged' docs/plans/03b-board.md` prints less than 5 → reply "held: R2 window" (R2's day, R2 not closed).
+4. `git worktree list` must show the root only and `git branch --list 'feature/*'` nothing — else reply "held: tree not swept" and say what is there.
+On 2026-08-27 with no worker live, all four pass and you proceed.
 
 ## Task summary
 Run UI-2 (`docs/plans/2026-08-27-ui-runs.md` §UI-2) discharges what D281 and the UI-1 receive left named: U6 the storage band goes full-bleed (D281.7), U7 intake + UI catalog adopt `TakeoverFrame` (UF-FU-1), U8 recount ledger 1's Region A, U9 diagnose G1 on the root's state root (read-only; the projection's refusal is not softened), U10 audit Activity's populated body on a reconciled day. Five units, one theme. Unit specs (Goal/Scope/Acceptance/Tier/Mode/Review) are in the run plan — restate them verbatim in your briefs.
 
 ## Current state (from git, at write time)
-- Repo `/Users/julianhein/Projects/hr-automation-rebuild` · branch `integration/03b` · UI-1 merged at `a3683bf3` (`--no-ff`); base for this run = R2's exit (whatever `integration/03b` is at when the guard passes — record the sha in your first commit message)
+- Repo `/Users/julianhein/Projects/hr-automation-rebuild` · branch `integration/03b` · UI-1 merged at `a3683bf3` (`--no-ff`); base for this run = `integration/03b` at the commit that carries this brief (`git log --oneline -1 -- docs/handoffs/2026-08-27-run-ui-2-residue.md`) — record the sha in your first commit message. R2 (08-28) will see your merges as dashboard + docs only; nothing you touch is under its freeze (`src/stores|base|domain`) — if a unit needs to, STOP and record it as a question
 - Worktrees: root only · `feature/*`: none · parity 218 assert, references clean at `a3683bf3`
 - Parallel units get `<repo>/.hr-rebuild-worktrees/<unit>` + `feature/<unit>` — each needs `npm ci`, `.env`/`.auth` symlinks from the root, `HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation` for every gate (board §Traps)
+
+## Date stop rule (in addition to the normal stop rule)
+At every merge boundary run `TZ=America/Los_Angeles date +%F`. If it prints 2026-08-28 or later, do NOT start or merge another unit: `/handoff` at that coherent boundary (merged units only, worktrees of unmerged units left in place and named) and STOP — R2's canary owns 08-28 and the coordinator re-sizes the rest behind it.
 
 ## Order
 1. U9 first, sequential — it reads the ROOT's `.tracker-rebuild/` read-only and decides U10's day; do not start U10 until U9's finding row says `diagnosed`.
