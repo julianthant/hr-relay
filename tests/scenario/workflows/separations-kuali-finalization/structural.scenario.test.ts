@@ -40,6 +40,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import ts from "typescript";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { mintMutationCapability } from "../../../../src/base/mutation-capability.js";
@@ -384,6 +385,34 @@ async function previewDependencyEvidence(run: RunRecord): Promise<readonly unkno
       ),
     },
   ];
+}
+
+/**
+ * Every module specifier a file actually imports — static `import`/`export …
+ * from`, and dynamic `import(…)`. A dynamic import whose specifier is not a
+ * literal is refused rather than ignored: a computed specifier is exactly how a
+ * manifest would be reached without this audit noticing.
+ */
+function moduleSpecifiers(file: string, source: string): readonly string[] {
+  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const specifiers: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
+      && node.moduleSpecifier !== undefined
+      && ts.isStringLiteralLike(node.moduleSpecifier)) {
+      specifiers.push(node.moduleSpecifier.text);
+    }
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const [only] = node.arguments;
+      if (only === undefined || !ts.isStringLiteralLike(only)) {
+        throw new Error(`${file} takes a dynamic import whose specifier is not a literal`);
+      }
+      specifiers.push(only.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  return specifiers;
 }
 
 describe("separations-kuali-finalization scenarios", () => {
@@ -874,14 +903,23 @@ describe("separations-kuali-finalization scenarios", () => {
     const testsRoot = join(import.meta.dirname, "..", "..", "..");
     const manifest = join(import.meta.dirname, "dry-run.scenario.ts");
     assert.ok(existsSync(manifest), "the T1b manifest is missing from this workflow's folder");
-    assert.ok(
-      !manifest.includes(".test."),
-      "a manifest named `.test.` would be collected and would start a browser",
+
+    // The NAME, asserted against what is on disk rather than against the string
+    // this test just built: a hard-coded literal cannot carry `.test.`, so the
+    // old form could never fail. A `dry-run*.test.*` sibling would be collected
+    // and would start a browser.
+    assert.deepEqual(
+      readdirSync(import.meta.dirname).filter((entry) => /^dry-run.*\.test\./u.test(entry)),
+      [],
+      "a collectible dry-run file sits beside the manifest",
     );
 
-    // An actual import of a manifest, not a mention of one: this file's own
-    // pattern text cannot match itself, so it is audited like every other.
-    const manifestImport = /\bfrom\s+"[^"]*dry-run\.scenario\.js"/u;
+    // An actual import of a manifest — determined by the PARSER, not by a
+    // pattern over the raw text. A dynamic import executes the declaration
+    // exactly as a static one does, `.ts` resolves as readily as `.js`, and
+    // prose that merely names a manifest is not an import. A regex could not
+    // separate those three, and the file it would false-positive on first is
+    // this one.
     const collected: string[] = [];
     const visit = (directory: string): void => {
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -892,7 +930,13 @@ describe("separations-kuali-finalization scenarios", () => {
     };
     visit(testsRoot);
     assert.ok(collected.length > 0, "the test corpus scan found nothing, so it proves nothing");
-    const importers = collected.filter((file) => manifestImport.test(readFileSync(file, "utf8")));
+    const importers = collected.filter((file) => {
+      const source = readFileSync(file, "utf8");
+      // Cheap pre-filter; every candidate is then judged by the parser alone.
+      if (!source.includes("dry-run.scenario.")) return false;
+      return moduleSpecifiers(file, source).some((specifier) =>
+        /dry-run\.scenario\.(?:js|ts)$/u.test(specifier));
+    });
     assert.deepEqual(importers, [], "a vitest-collected file imports a dry-run manifest");
   });
 });
