@@ -68,6 +68,7 @@ import {
   captureSessionMetaItems,
   captureSessionOptions,
   captureEmptySheetDescription,
+  endSentence,
 } from "./capture-session-model.js";
 
 /** Which page the left column describes, keyed to the session it belongs to. */
@@ -120,10 +121,7 @@ function PageTile({
       {/* THE FRAME IS THE PAGE'S OWN SERVED SHAPE (CP13). Width comes from the
           grid track and the height falls out of the ratio, so a row of frames
           lands on one baseline without anyone picking a height. A page whose
-          bytes would not parse has NO served shape, so it takes a fixed frame
-          instead — visibly not a page outline, because letterboxing it to a
-          plausible US Letter would be this surface inventing the one thing it
-          is looking at. */}
+          bytes would not parse has NO served shape — see the square below. */}
       <span
         aria-hidden
         style={facts.aspectRatio === undefined ? undefined : { aspectRatio: facts.aspectRatio }}
@@ -345,7 +343,11 @@ export function CaptureSessionPanel({ workflowId }: { workflowId: string }) {
       if (list.state === "failed") {
         return (
           <Banner tone="danger" title="The open captures could not be read">
-            {list.error.message} Nothing below is missing — nothing below was asked for.
+            {/* The server's own sentence is CLOSED before ours follows it — a
+                wire message is not required to end in a stop, and running the
+                two together is how this directory once rendered one broken
+                sentence out of two correct ones. */}
+            {endSentence(list.error.message)} Nothing below is missing — nothing below was asked for.
           </Banner>
         );
       }
