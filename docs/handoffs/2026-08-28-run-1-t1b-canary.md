@@ -1,7 +1,7 @@
-# Handoff — Phase 3b run R1: the 2026-08-28 controlled commits on canary 4537
+# Handoff — Phase 3b run R2 (was R1 in the first cut): the 2026-08-28 controlled commits on canary 4537
 
 **Date:** 2026-08-27 (written by the coordinator for a session on 2026-08-28)
-**Paused at:** before execution — resume at u1
+**Paused at:** before execution — resume at u1 on Pacific 2026-08-28, after R1's receive (base = R1's exit sha on the board)
 
 ## Task summary
 Phase 3b's exit table is 8 of 9; row 5 — controlled-commit evidence on the operator-approved target — is the only open row, and it was blocked on a DATE, not a defect: S7 admits Kuali doc **4537** on Pacific calendar day 2026-08-28. This run performs the three controlled commits in order ② UCPath filing → ① sweep → ③ Kuali finalization, records each from authority in `docs/migrations/separations.md` **§9.28**, and runs the T1b manifest live to record `met`. It confirms facts; it does not fix what it finds — differences from the recorded shapes are R2's input (u6–u8).
@@ -9,7 +9,7 @@ Phase 3b's exit table is 8 of 9; row 5 — controlled-commit evidence on the ope
 **These are REAL HR transactions.** `dryRun=false` only on 4537, only after the operator approves the ALWAYS-GATE in the ceremony, one commit at a time. An UNKNOWN submit stops the run: record it, never re-run. Everything else (login smoke, dry runs, selector snapshots, Duo) is pre-authorized — never ask.
 
 ## Plan
-- Run plan: `docs/plans/2026-08-27-03b-runs.md` §R1 (units u1–u5, specs verbatim there)
+- Run plan: `docs/plans/2026-08-27-03b-runs.md` §R2 (units u1–u5, specs verbatim there; R1 = the date-independent seams that run on 08-27)
 - Board: `docs/plans/03b-board.md` — read FIRST; write your ledger rows back at close
 
 ## Current state (from git)

@@ -2,6 +2,7 @@
 _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fact without provenance is a claim and does not go here. Supervisors append their rows at close; the coordinator prunes._
 
 ## Facts every run needs
+- Run order (re-cut 2026-08-27): **R1 = date-independent seams (u18, u11–u14) — runnable today** · R2 = the 08-28 canary (u1–u5) · R3 = discharge + A8 · R4 = 09/02 parallel. `docs/plans/2026-08-27-03b-runs.md`
 - Integration branch `integration/03b` · base `8e322e8a` (master after the 03a close merge `8e322e8a`) · master position `8e322e8a` — **do not move master**; the root checkout stays on `integration/03b` for the whole run
 - Gate (D191): `npm run typecheck && npm run lint && HRAUTO_LEGACY_REPO=/Users/julianhein/Projects/hr-automation npm run test:coverage` (310 files / 3,392 tests at base) · `npm run test:parity` (218 assert) · `npm run roadmap:check` · `npm run build:manifest` after ANY edit under a descriptor's import closure (`src/base/**`, most of `src/domain/**`)
 - Plan SSOT: `docs/rebuild/03b-finish-separations.md` (exit table lines ~798–808, **8 of 9** met; row 5 controlled commits is the phase's remaining gate) · the migration record `docs/migrations/separations.md` (§9.19 canary mapping, §9.27 parallel proof at lines 5927–6053; the next live section is **§9.28**)
@@ -14,12 +15,13 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 
 ## Decisions ratified (one line each → sheet + item + owning doc)
 - 2026-08-27 sheet `docs/decisions/2026-08-27-03a-close-decisions.md` — 1 B (master ← integration/03a-final `--no-ff`, `8e322e8a`) · 2 A → D277 (jsdom per file; ref guards-and-tests §10.9) · 3 A (keep `src/dashboard/AGENTS.md` for Codex; `src/dashboard/CLAUDE.md`) · 4 A → D278 (live capture takes the intake column; ref dashboard-surfaces §D274 item 7) · 5 A (R1 = the 08-28 canary) · row 10 → D279 (03a closes 10/10; residue carried to doc 04 §"Carried in from Phase 3a")
+- 2026-08-27 sheet item 5 A → the canary runs on 08-28 as **R2** (was R1; re-cut after the date-gate hold)
 - Standing from 03b (do not re-open): D207 stabilized window · D211/D261 descriptor · D215 `would-prepare` · D217 Kuali wire shapes (provisional until ③) · D265/D266 workflow tree · D218–D222/D243/D244 platform fixes
 
 ## Unit ledger
 | Unit | Run | Status | Merge sha | Gate line | Review | Notes |
 |---|---|---|---|---|---|---|
-| — | — | — | — | — | — | R1 not started |
+| u1–u5 | R2 | held | — | — | — | first cut ran them as R1 on 08-27; supervisor held on the date gate, nothing dispatched (`b9126e6d`) |
 
 ## Residue (named, owned)
 - sep-2 S2 refusal live (a non-RRSS doc must appear in the Action List) — external, parked on doc 03b line ~317
