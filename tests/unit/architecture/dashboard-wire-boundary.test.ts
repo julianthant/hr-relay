@@ -306,8 +306,21 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     // An HTML page that only ever renders on the dev server is a page ref frontend-backend-integration §7's
     // parity lane — which serves `dist/dashboard` as static files — can never
     // photograph, and nothing else in this tree would have said so.
+    //
+    // A bare substring check on the whole file (`toContain('"src/dashboard/kit.html"')`)
+    // is satisfied by a COMMENT that merely mentions the path — it never has to
+    // find the actual rollup `input` entry, so deleting the real entry while
+    // leaving a stray reference to its path anywhere in the file (a docstring,
+    // a stale note) would stay green. The pattern below anchors on the
+    // `<key>: resolve(import.meta.dirname, "src/dashboard/<file>")` shape the
+    // config actually uses, so it bites on both failure modes.
     for (const file of dashboardHtmlFiles()) {
-      expect(viteConfig, `${file} is a rollup input`).toContain(`"src/dashboard/${file}"`);
+      const key = file.replace(/\.html$/, "");
+      const escapedFile = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const inputPattern = new RegExp(
+        `\\b${key}\\s*:\\s*resolve\\(\\s*import\\.meta\\.dirname\\s*,\\s*"src/dashboard/${escapedFile}"\\s*\\)`,
+      );
+      expect(inputPattern.test(viteConfig), `${file} is a rollup input (as "${key}: resolve(...)")`).toBe(true);
     }
     for (const entry of entries) {
       expect(nodeBuiltinReach(entry), entry).toEqual([]);
@@ -386,9 +399,20 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     expect(violations, "the specimen bundle may not reach an operator module").toEqual([]);
 
     // The rule only means something because the walker can SEE such a reach:
-    // the operator entry legitimately reaches four of the five.
+    // the operator entry legitimately reaches four of the five. `app/` cannot
+    // be proven the same way as the other three roots: the entry file itself,
+    // `src/dashboard/app/main.tsx`, already lives under `src/dashboard/app/`,
+    // so a bare `startsWith("src/dashboard/app/")` would pass even if
+    // `bundleClosure` resolved zero imports — it is checking the entry against
+    // itself, not against a real reach. The control asserts a NON-ENTRY file
+    // under `app/` instead, so it can actually fail if the walker stops
+    // resolving imports.
     const operator = bundleClosure("src/dashboard/app/main.tsx");
     for (const root of forbidden.filter((root) => root !== "src/dashboard/phone/")) {
+      if (root === "src/dashboard/app/") {
+        expect(operator, root).toContain("src/dashboard/app/dashboard-app.tsx");
+        continue;
+      }
       expect([...operator].some((file) => file.startsWith(root)), root).toBe(true);
     }
   });
