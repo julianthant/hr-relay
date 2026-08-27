@@ -128,6 +128,7 @@ import {
 import {
   INTAKE_NEW,
   activeTakeover,
+  shellViewOf,
   parseRoute,
   routeAdvancesHistory,
   routeToSearch,
@@ -1247,19 +1248,7 @@ function LoadedApp({
   // cannot disagree with a link that carries more than one key.
   const takeover = activeTakeover(route);
 
-  /**
-   * The Top Bar's switcher is a VIEW of the route, never a second copy of it.
-   *
-   * `activeTakeover` already resolves which key owns the main region, so the
-   * pressed segment is derived from that one answer — a link carrying both
-   * `?archive=` and `?explore=` lights the segment the region actually renders,
-   * because both read the same resolution. The two views the switcher does not
-   * name (intake and the catalog) fall back to `queue`: neither is a product
-   * page, and lighting nothing would be the switcher claiming the operator is
-   * nowhere.
-   */
-  const shellView: ShellView =
-    takeover === "archive" ? "archive" : takeover === "explore" ? "explorer" : takeover === "activity" ? "activity" : "queue";
+  const shellView = shellViewOf(takeover);
 
   /**
    * Switching views CLEARS the other three keys rather than layering one over

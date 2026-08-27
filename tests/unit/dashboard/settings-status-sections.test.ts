@@ -35,6 +35,8 @@ import {
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
+import { SYSTEM_HOST_PRESENTATION } from "../../../src/dashboard/surfaces/settings-model.js";
+import { BrowserSystemIdSchema } from "../../../src/domain/ids.js";
 
 class MeasurementFreeResizeObserver {
   observe(): void {}
@@ -168,10 +170,12 @@ describe("System hosts (SE40)", () => {
   it("names a test host configured identical to production as refused, not as unprovisioned", async () => {
     const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
     assert.ok(text.includes("provisioned identical to production — refused"), text);
-    // `onbase` is the not-distinct row and `crm` is the genuinely unprovisioned
+    // OnBase is the not-distinct row and CRM is the genuinely unprovisioned
     // one — both must be on screen, and they must be distinguishable words.
-    assert.ok(text.includes("onbase"), text);
-    assert.ok(text.includes("crm"), text);
+    // Named, not id'd: UF-SET-25 replaced the raw wire key with the system's
+    // own name, so `onbase` is now `OnBase`.
+    assert.ok(text.includes("OnBase"), text);
+    assert.ok(text.includes("CRM"), text);
   });
 
   it("counts the systems that have a test host", async () => {
@@ -184,6 +188,84 @@ describe("System hosts (SE40)", () => {
   it("states that the instance is a per-run decision this page does not make", async () => {
     const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
     assert.ok(text.includes("Choosing between these is a per-run decision"), text);
+  });
+
+  /**
+   * UF-SET-25 — the SYSTEM column printed the raw wire id (`ucpath`,
+   * `new-kronos`), which is a KEY. The demo prints the system's own name off a
+   * client constant, and so does this now.
+   */
+  it("names each system rather than printing its wire id", async () => {
+    await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
+    // Read the SYSTEM cell itself rather than the panel's text: the host URLs
+    // in the two columns beside it contain `crm` and `onbase` as substrings, so
+    // a whole-panel search cannot tell a name from a hostname.
+    const names = [...mounted().querySelectorAll("tbody tr")].map(
+      (row) => row.querySelector("td")?.textContent ?? "",
+    );
+    assert.equal(names.length, 3);
+    assert.ok(names[0]?.startsWith("Kuali"), names.join(" | "));
+    assert.ok(names[1]?.startsWith("CRM"), names.join(" | "));
+    assert.ok(names[2]?.startsWith("OnBase"), names.join(" | "));
+    for (const name of names) {
+      assert.ok(!/\b(?:crm|onbase|kuali)\b/.test(name), `the raw wire id is still on screen: ${name}`);
+    }
+  });
+
+  /**
+   * UF-SET-26 — every row carries one sentence saying why the instance choice
+   * matters for THAT system. Absent entirely before this.
+   */
+  it("carries the per-system sentence under each name", async () => {
+    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
+    assert.ok(text.includes(SYSTEM_HOST_PRESENTATION.kuali.note), text);
+    assert.ok(text.includes(SYSTEM_HOST_PRESENTATION.crm.note), text);
+    assert.ok(text.includes(SYSTEM_HOST_PRESENTATION.onbase.note), text);
+  });
+
+  /** UF-SET-22 — the demo's subtitle, which says where the choice IS made. */
+  it("subtitles the section with where the instance question is actually asked", async () => {
+    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
+    assert.ok(
+      text.includes(
+        "Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal.",
+      ),
+      text,
+    );
+  });
+
+  /**
+   * The map is `Record<BrowserSystemId, …>`, so a MISSING system is already a
+   * compile error. This pins the other direction — a key the enum no longer
+   * carries, which compiles fine and is dead presentation nobody will notice.
+   */
+  it("presents exactly the closed system enum, no more and no less", () => {
+    assert.deepEqual(
+      Object.keys(SYSTEM_HOST_PRESENTATION).sort(),
+      [...BrowserSystemIdSchema.options].sort(),
+    );
+    for (const [system, presentation] of Object.entries(SYSTEM_HOST_PRESENTATION)) {
+      assert.ok(presentation.name.length > 0, `${system} has no name`);
+      assert.ok(presentation.note.length > 0, `${system} has no note`);
+    }
+  });
+
+  /**
+   * The demo is the design authority for every system it covers, so its note is
+   * the note — byte for byte (operator's ruling, unit U4b). U3 re-authored the
+   * two that restate provisioning state and a `/provisioned/i` rule test was
+   * added to hold the re-authoring in place; both are gone. This pins the port
+   * itself instead, for the two the re-authoring had replaced.
+   */
+  it("carries the demo's own sentence for the systems the demo covers", () => {
+    assert.equal(
+      SYSTEM_HOST_PRESENTATION.onbase.note,
+      "No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production.",
+    );
+    assert.equal(
+      SYSTEM_HOST_PRESENTATION.i9.note,
+      "No test host is provisioned. The doctor's I-9 test-instance check reports the same thing.",
+    );
   });
 });
 
@@ -206,6 +288,17 @@ describe("Workflow capabilities (SE41/SE42)", () => {
     // not-built — the gap, with its named offender
     assert.ok(text.includes("Not built"), text);
     assert.ok(text.includes("write-anyway declares no preview arm"), text);
+  });
+
+  /** UF-SET-31 — the demo's subtitle, which names the two kinds of "cannot". */
+  it("subtitles the section with the decision-or-gap distinction", async () => {
+    const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
+    assert.ok(
+      text.includes(
+        "What each workflow can do — and, where it cannot, whether that is a decision or a gap.",
+      ),
+      text,
+    );
   });
 
   it("counts, per capability, how many workflows answer it", async () => {

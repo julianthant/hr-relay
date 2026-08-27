@@ -94,6 +94,48 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-27: a "you are here" control with no value for "nowhere in here" will be made to lie
+  (unit U3, UF-SET-2).** `ShellViewSwitcher`'s prop was typed `ShellView` — the four segments it
+  draws — so `dashboard-app.tsx` had nothing to hand it when a takeover the switcher does not name
+  (Settings, intake, the catalog) owned the main region. It handed over `"queue"`, and wrote a
+  docstring defending the choice: *"lighting nothing would be the switcher claiming the operator is
+  nowhere."* The result was `Dashboard` and the gear both `aria-pressed`, at a moment when the
+  dashboard was covered by a takeover. The demo has never had the problem because its switcher reads
+  the app's FULL view union and simply matches nothing (legacy `1ec1d870`
+  `src/dashboard/components/dev/rebuild-demo/DemoShell.tsx:560-573`).
+
+  **The type was the defect, not the fallback.** A narrowed prop makes the absent state unspeakable,
+  and an unspeakable state comes out as the nearest speakable one — which is exactly the shape the
+  root CLAUDE.md's fail-loud rule describes for data. It applies to UI state too: a pressed segment
+  is an assertion about where the operator is, and a plausible-but-wrong one is worse than none.
+  `ShellViewSelection = ShellView | "none"` is the missing value, and `shellViewOf` in
+  `app/url-state.ts` is exhaustive over `ActiveTakeover`, so a seventh takeover fails to compile
+  rather than quietly inheriting an arm.
+
+- **2026-08-27: the demo is the design authority for everything it covers, and a tension in its copy
+  is an operator question, not a licence to re-author (units U3 → U4b, UF-SET-26).** U3 ported the
+  demo's per-system host notes into `settings-model.ts`'s `SYSTEM_HOST_PRESENTATION` and stopped at
+  two of them: `onbase` and `i9` read *"No test host is provisioned…"*, which the SERVED `Test`
+  column also says. U3 reasoned from the root CLAUDE.md's fail-loud rule — an authored constant that
+  restates served state goes on restating it after the state changes — invented the rule *"a note
+  describes the SYSTEM, never this deployment's config"*, wrote replacement prose for both, and
+  added a `/provisioned/i` test to hold the rule in place. **The operator overruled all of it in
+  U4b.** Both notes are now the demo's sentences byte for byte, the rule test is deleted, and
+  `settings-status-sections.test.ts` pins the two ported strings instead.
+
+  The reasoning was not wrong; the authority was. The demo's copy is a decision already taken, and a
+  worker deriving a rule from a general principle does not get to overturn it — the observation
+  ("this constant could contradict the column beside it the day a sandbox is provisioned") is worth
+  raising, and raising it is the whole move. **Port what the demo covers verbatim; author only where
+  the demo has no counterpart, and mark those entries `// authored — no demo counterpart` so the
+  next reader can tell the two apart at a glance.** Here that is `new-kronos` / `old-kronos`
+  (the demo carried one undifferentiated `kronos`) and `sharepoint` (absent from the demo).
+
+  The same commit is the argument for two label maps over one. `SYSTEM_LABEL`
+  (`system-chip-model.ts`) is the CHIP's treatment — `UCPATH`, `NEW KRONOS`, shouted at chip size in
+  a dense row — and reusing it in a table beside prose is how `NEW-KRONOS` ends up in a sentence.
+  One vocabulary, two treatments, and neither substitutes for the other.
+
 - **2026-08-26: a ledger row can be wrong in both directions at once, and the direction nobody
   checks is "it says this landed" (unit V1, the Track F vocabulary sweep across all three 03a
   fidelity ledgers).** The sweep set out to port 24 + 37 + ~120 open word rows and found almost all

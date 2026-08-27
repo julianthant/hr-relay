@@ -48,6 +48,7 @@ import {
   capabilityMatrix,
   resolveSettingsSection,
   storageNeedsAttention,
+  SYSTEM_HOST_PRESENTATION,
   systemHostsMeta,
   useSettingsFacts,
   type CapabilityCell,
@@ -506,7 +507,9 @@ function SystemHostsSection() {
     <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="System hosts"
-        subtitle="Where a run goes when it opens each system."
+        // ported from legacy 1ec1d870
+        // src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:164-168
+        subtitle="Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal."
         icon={<Link2 aria-hidden className={dsIcon.lg} />}
         meta={facts.state === "loaded" ? systemHostsMeta(facts.facts.systemHosts) : undefined}
       />
@@ -536,14 +539,47 @@ function SystemHostsSection() {
                 <TBody>
                   {loaded.systemHosts.map((host) => (
                     <TR key={host.system}>
-                      <TD className="whitespace-nowrap">{host.system}</TD>
-                      {/* `break-all` belongs to the URL, never to the cell: a
-                          deep PeopleSoft route has no spaces to wrap at, and
-                          the same rule applied to the absence below spelled it
-                          `none pro / visioned`. Prose wraps at words. */}
-                      <TD numeric><span className="break-all">{host.production}</span></TD>
+                      {/* The system's own NAME over the one sentence that says
+                          why the instance choice matters for it — never the raw
+                          wire id, which is a key and not a word (UF-SET-25 /
+                          UF-SET-26). Both come from
+                          `SYSTEM_HOST_PRESENTATION`, which is exhaustive over
+                          the closed enum, so a system with nothing to say about
+                          it is a compile error rather than an id on screen. */}
+                      <TD>
+                        <span className="flex min-w-0 flex-col">
+                          <span className={cn(dsText.ui, "whitespace-nowrap text-[color:var(--ds-fg)]")}>
+                            {SYSTEM_HOST_PRESENTATION[host.system].name}
+                          </span>
+                          {/* `micro` (10px) is the demo's own token for this
+                              note — legacy 1ec1d870
+                              `DemoSettings.tsx:842` — not a step chosen here.
+                              DESIGN.md's micro row names it as the one ported
+                              exception to "badges and kbd". */}
+                          <span className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>
+                            {SYSTEM_HOST_PRESENTATION[host.system].note}
+                          </span>
+                        </span>
+                      </TD>
+                      {/* One line, clipped at the demo's own width, never
+                          fragmented: a deep PeopleSoft route has no spaces to
+                          wrap at, so wrapping it broke the host across lines
+                          mid-token. `max-w-[260px] truncate` is the demo's
+                          treatment for both URL cells, ported from legacy
+                          1ec1d870
+                          `src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:845-850`.
+                          `title` is ours: the demo clips with no way to read
+                          the rest, and a truncated host the operator cannot
+                          recover is a host they cannot check. The absence arms
+                          below are NOT clipped — their words are prose, and
+                          `none pro…` would be unreadable. */}
+                      <TD numeric className="max-w-[260px] truncate" title={host.production}>
+                        {host.production}
+                      </TD>
                       {host.test.state === "provisioned" ? (
-                        <TD numeric><span className="break-all">{host.test.url}</span></TD>
+                        <TD numeric className="max-w-[260px] truncate" title={host.test.url}>
+                          {host.test.url}
+                        </TD>
                       ) : host.test.state === "not-distinct" ? (
                         // Configured, but identical to production — refused at
                         // run time by `resolveSystemEntryUrl`. Stated by name
@@ -627,7 +663,9 @@ function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<s
     <Panel className="min-h-0 flex-1">
       <PanelHeader
         title="Workflow capabilities"
-        subtitle="What each registered workflow can do, and what it will not do."
+        // ported from legacy 1ec1d870
+        // src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:178-182
+        subtitle="What each workflow can do — and, where it cannot, whether that is a decision or a gap."
         icon={<Table2 aria-hidden className={dsIcon.lg} />}
         meta={facts.state === "loaded"
           ? `${String(facts.facts.workflowCapabilities.length)} workflows · ${String(CAPABILITY_SPECS.length)} capabilities`
