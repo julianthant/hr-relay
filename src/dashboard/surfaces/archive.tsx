@@ -173,7 +173,7 @@ import type {
   WorkflowVersionStateWire,
 } from "../../domain/dashboard/archive.js";
 import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
-import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
+import { timelineEventDuration, type NoteWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
 import type { VersionBumpChangeRecord } from "../../domain/archive/change-record.js";
 import type { ArchivedCaptureTile, ArchivedRunAttempt, ArchivedRunSections } from "../../domain/archive/sections.js";
@@ -193,6 +193,7 @@ import {
 import {
   ARCHIVE_INDEX,
   ARCHIVED_CAPTURE_NAV_TOUCH_TARGET,
+  ARCHIVED_CAPTURE_ORIGIN_TONE,
   ARCHIVED_CAPTURE_VIEWER_NOTE,
   BUMP_KIND_LABEL,
   BUMP_KIND_NOTE,
@@ -1280,7 +1281,7 @@ function SweepRecordCard({
   );
 }
 
-function ArchivedRunDetail({
+export function ArchivedRunDetail({
   detail,
   sweep,
   codes,
@@ -1593,13 +1594,16 @@ function ArchivedRunDetail({
                       : detail.detail.gate.reason}
                   </span>
                 )}
-                <MetaLine
-                  items={[
-                    `${plural(detail.detail.context.attempts, "attempt")}`,
-                    `${plural(detail.detail.context.dataFacts, "data fact")}`,
-                    `${plural(detail.detail.context.evidenceFacts, "evidence fact")}`,
-                  ]}
-                />
+                {/*
+                  AR150 — three counts about the RUN used to sit here, under a
+                  card about the GATE. Each has an owner a few hundred pixels
+                  away (the Attempts card, the Data tab, the Evidence tab), and
+                  each owner derives its number from the FROZEN sections while
+                  `context` is the run detail's own count — two sources for one
+                  fact, which is the thing this bundle bans. Where a section
+                  was never frozen its owner prints the REASON, and a reason is
+                  a better answer than a number the archive cannot corroborate.
+                */}
               </CardBody>
             </Card>
           </div>
@@ -1730,15 +1734,7 @@ function ArchivedRunDetail({
               <Card>
                 <CardBody className="flex flex-col gap-[var(--ds-space-hair)]">
                   {page.notes.map((note) => (
-                    <div key={note.noteId} className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
-                      <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-faint)]")}>
-                        {fmtClock(note.at)}
-                      </span>
-                      <Badge tone={FROZEN_LEVEL_TONE[note.level]}>{note.level}</Badge>
-                      <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
-                        {note.message}
-                      </span>
-                    </div>
+                    <FrozenLogLine key={note.noteId} note={note} />
                   ))}
                 </CardBody>
               </Card>
@@ -1955,11 +1951,47 @@ function EvidencePointerGroup({
 
 /* ── D223's frozen sections ──────────────────────────────────────────────── */
 
-const FROZEN_LEVEL_TONE = {
-  info: "neutral",
-  warning: "warning",
-  error: "danger",
-} as const satisfies Record<"info" | "warning" | "error", "neutral" | "warning" | "danger">;
+/**
+ * ONE frozen log line (AR163).
+ *
+ * The demo's three COLUMNS, not three inline runs. A badge per line is
+ * decoration on a list whose whole job is scanning, and its width follows its
+ * word — so every message started at a different x. The clock and level
+ * columns are fixed, which puts every message on one left edge, and the level
+ * is a WORD, so the tint is a second reading and never the only one.
+ *
+ * It is its own component because the Logs tab panel does not exist until the
+ * tab is selected, so nothing rendered from the detail could pin the row.
+ */
+export function FrozenLogLine({ note }: { note: z.infer<typeof NoteWireSchema> }) {
+  return (
+    <div className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
+      <span className={cn(dsText.meta, dsText.nums, "w-[76px] shrink-0 text-[color:var(--ds-fg-faint)]")}>
+        {fmtClock(note.at)}
+      </span>
+      <span className={cn(dsText.meta, dsText.caps, "w-[46px] shrink-0", FROZEN_LEVEL_CLASS[note.level])}>
+        {note.level}
+      </span>
+      <span className={cn(dsText.body, "min-w-0 flex-1 break-words text-[color:var(--ds-fg)]")}>
+        {note.message}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The frozen note stream's three levels, tinted (AR163/AR164).
+ *
+ * The wire's enum is `info | warning | error` and there is no `read`/`write`
+ * level in this tree, so the demo's five-word vocabulary is two words short
+ * here by the schema and not by omission. The tint is a second reading of a
+ * word that is always printed — never the only one.
+ */
+const FROZEN_LEVEL_CLASS = {
+  info: "text-[color:var(--ds-fg-muted)]",
+  warning: "text-[color:var(--ds-status-waiting-fg)]",
+  error: "text-[color:var(--ds-danger)]",
+} as const satisfies Record<"info" | "warning" | "error", string>;
 
 /** The counts the tab strip prints — absent is not zero, so it prints nothing. */
 function frozenLogCount(sections: ArchivedRunSections | undefined): number | undefined {
@@ -2208,7 +2240,13 @@ function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (
       </span>
       <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
         <span className="flex flex-wrap items-center gap-[var(--ds-space-hair)]">
-          <Badge tone={tile.origin === "operator-request" ? "neutral" : "danger"}>{tile.kind}</Badge>
+          {/*
+            AR184 — the badge's WORD and its TONE come from one fact. It used
+            to print `kind` in a tone keyed off `origin`, so an ordinary
+            screenshot of a failed step wore danger red and nobody could tell
+            which of the two the red was about.
+          */}
+          <Badge tone={ARCHIVED_CAPTURE_ORIGIN_TONE[tile.origin]}>{tile.origin}</Badge>
           <span className={cn(dsText.body, "truncate text-[color:var(--ds-fg)]")}>
             {tile.step.state === "present" ? tile.step.nodeId : "step unrecorded"}
           </span>
@@ -2217,7 +2255,9 @@ function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (
         <MetaLine
           items={[
             fmtClock(tile.capturedAt),
-            tile.origin,
+            // `kind` is a physical property of the artifact and sits with the
+            // others; the badge above carries why it was taken (AR184).
+            tile.kind,
             `${String(Math.max(1, Math.round(tile.byteLength / 1024)))} KB`,
             tile.sensitivity,
             tile.retention.kind === "pinned"

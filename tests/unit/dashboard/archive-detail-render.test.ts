@@ -1,0 +1,93 @@
+/**
+ * Two archived-run detail rows (unit F10c, ledger 3 AR150 and AR163) that only
+ * the drawn tree can hold.
+ *
+ * AR150 is a REMOVAL, which is the hardest kind of row to pin: three counts
+ * about the run — attempts, data facts, evidence facts — sat under a card
+ * headed `Decision`, and each of them has an owner elsewhere on the same page
+ * that derives its number from the FROZEN sections. Two sources for one fact
+ * is the thing this bundle bans, and where a section was never frozen its
+ * owner prints the REASON, which is a better answer than a number the archive
+ * cannot corroborate. Nothing but an assertion about their absence can keep
+ * them out.
+ *
+ * AR163 is the log line's shape: fixed clock and level columns so every
+ * message starts on one x, and the level as a WORD so nothing is carried by
+ * colour alone.
+ */
+import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, it } from "vitest";
+import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
+import { NoteWireSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { ArchivedRunDetail, FrozenLogLine } from "../../../src/dashboard/surfaces/archive.js";
+import { FIXTURE_ARCHIVED_RUN, FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
+
+const noop = (): void => undefined;
+
+function markup(): string {
+  return renderToStaticMarkup(createElement(ToastProvider, {
+    children: createElement(ArchivedRunDetail, {
+      detail: FIXTURE_ARCHIVED_RUN,
+      sweep: FIXTURE_ARCHIVE_INDEX.sweeps[0],
+      codes: new Map<string, string>([["person-lookup@2", "pl"]]),
+      busy: false,
+      relaunched: false,
+      onRelaunch: noop,
+      onDismiss: noop,
+    }),
+  }));
+}
+
+describe("the Decision card (AR150)", () => {
+  it("is still drawn, with the gate it is about", () => {
+    assert.equal(markup().includes("Decision"), true);
+  });
+
+  it("borrows none of the run-wide counts its neighbours own", () => {
+    const html = markup();
+    for (const borrowed of ["data fact", "evidence fact"]) {
+      assert.equal(html.includes(borrowed), false, `the Decision card still prints "${borrowed}"`);
+    }
+    // `attempt` survives as the Attempts card's own heading, so the negative
+    // control has to be the COUNT sentence, not the word.
+    assert.equal(/\d+ attempts?<\/span>/u.test(html), false);
+  });
+
+  it("still gives the Attempts card its own section", () => {
+    assert.equal(markup().includes("Attempts"), true);
+  });
+});
+
+describe("the frozen log line (AR163)", () => {
+  function line(level: "info" | "warning" | "error"): string {
+    const note = NoteWireSchema.parse({
+      noteId: "aa11bb22-0006-4000-8000-aa11bb220006",
+      runId: FIXTURE_ARCHIVED_RUN.runId,
+      sequence: 0,
+      at: FIXTURE_ARCHIVED_RUN.archivedAt,
+      level,
+      message: "read the empl record beside the name",
+    });
+    return renderToStaticMarkup(createElement(FrozenLogLine, { note }));
+  }
+
+  it("puts the clock and the level in fixed columns, so messages share one x", () => {
+    const html = line("info");
+    assert.equal(html.includes("w-[76px]"), true);
+    assert.equal(html.includes("w-[46px]"), true);
+  });
+
+  it("prints the level as a WORD, so the tint is never its only carrier", () => {
+    for (const level of ["info", "warning", "error"] as const) {
+      assert.equal(line(level).includes(`>${level}<`), true);
+    }
+  });
+
+  it("gives each level its own tint", () => {
+    const tints = (["info", "warning", "error"] as const)
+      .map((level) => /text-\[color:var\((--ds-[a-z-]+)\)\][^"]*">[a-z]+</u.exec(line(level))?.[1]);
+    assert.equal(new Set(tints).size, 3, `two log levels resolved to one tint: ${tints.join(", ")}`);
+  });
+});

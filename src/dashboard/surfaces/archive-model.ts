@@ -717,6 +717,30 @@ export function archivedCaptureFacts(tile: ArchivedCaptureTile): readonly Archiv
 }
 
 /**
+ * A capture tile's lead BADGE (AR184).
+ *
+ * It carried `tile.kind` in a tone keyed off `tile.origin`, so a routine
+ * `screenshot` taken at a step's ordinary failure wore danger red while an
+ * operator-requested one wore neutral — the badge's colour and its word came
+ * from two different facts, and the reader had no way to tell which one the
+ * red was about. The word is the ORIGIN now, which is the fact the colour was
+ * always trying to say; `kind` is a physical property of the artifact and
+ * lives with the others on the meta line.
+ *
+ * The map is TOTAL over `ArchivedCaptureTile["origin"]` and the test asserts
+ * both directions, so a sixth origin is a typecheck failure and never a silent
+ * default. Only the two that say something went wrong ABOUT THE SUBJECT take
+ * danger: a wrong person is the worst thing this system can record.
+ */
+export const ARCHIVED_CAPTURE_ORIGIN_TONE = {
+  "failure": "danger",
+  "subject-mismatch": "danger",
+  "unexpected-state": "warning",
+  "recovery-park": "warning",
+  "operator-request": "neutral",
+} as const satisfies Record<ArchivedCaptureTile["origin"], "danger" | "warning" | "neutral">;
+
+/**
  * The one sentence the viewer owes the operator: why there is no image here.
  * It is stated as a property of the archive rather than as a failure, because
  * it IS one — nothing broke, and nothing is going to load.
