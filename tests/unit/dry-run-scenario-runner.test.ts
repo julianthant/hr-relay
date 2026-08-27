@@ -57,12 +57,7 @@ const GATED_MANIFEST = {
   cases: [{
     ...MANIFEST.cases[0],
     nodesReached: ["read", "approval", "write"],
-    gateResults: [{
-      gate: "approval",
-      decision: "approved",
-      resolvedBy: "local-operator",
-      leaf: "resolve-gate-approved",
-    }],
+    gateResults: [{ gate: "approval", decision: "approved", resolvedBy: "local-operator" }],
   }],
 } as const;
 
@@ -130,6 +125,28 @@ describe("dry-run scenario manifest boundary", () => {
       deriveDryRunScenarioManifestDigest(parsed),
       "0f150541beb3edf4844380b02efc65f85b3c41668fa89cb09ec1204ee1a8d5c6",
     );
+  });
+
+  /**
+   * A gate row used to carry `leaf` — the resolver leaf the approval came from.
+   * Nothing ever compared it: `evaluateDryRunScenarioEvidence` projects a gate
+   * row down to `{gate, decision, resolvedBy}` before the comparison, so the
+   * field read as an assertion and asserted nothing. An expectation no evaluator
+   * checks must not be declarable, or the next manifest author writes one.
+   */
+  it("refuses a gate expectation field no evaluator compares", () => {
+    assert.throws(() => parseDryRunScenarioManifest({
+      ...GATED_MANIFEST,
+      cases: [{
+        ...GATED_MANIFEST.cases[0],
+        gateResults: [{
+          gate: "approval",
+          decision: "approved",
+          resolvedBy: "local-operator",
+          leaf: "resolve-gate-approved",
+        }],
+      }],
+    }), /leaf/);
   });
 
   it("rejects duplicate subject cases at the strict manifest boundary", () => {

@@ -132,7 +132,6 @@ const IDENTITY_GATE = {
   gate: GATE_NODE,
   decision: "approved",
   resolvedBy: "local-operator",
-  leaf: "resolve-gate-approved",
 } as const;
 
 /**

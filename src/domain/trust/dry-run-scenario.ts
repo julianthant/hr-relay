@@ -61,11 +61,16 @@ export const DryRunCheckpointExpectationSchema = z.strictObject({
   keyedBy: z.array(CheckpointKeyPartSchema).min(1),
 });
 
+/**
+ * Exactly the three facts `evaluateDryRunScenarioEvidence` compares. A fourth
+ * (the resolver leaf) used to sit here and was never read — an expectation the
+ * evaluator projects away is a claim nobody checks, so the boundary refuses it
+ * rather than letting a manifest author believe it is asserted.
+ */
 export const DryRunGateExpectationSchema = z.strictObject({
   gate: NodeIdSchema,
   decision: slugSchema("dry-run gate decision must be kebab-case"),
   resolvedBy: slugSchema("dry-run gate resolver must be kebab-case"),
-  leaf: z.string().min(1),
 });
 
 export const DryRunReceiptExpectationSchema = z.strictObject({

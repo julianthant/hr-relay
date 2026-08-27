@@ -82,7 +82,6 @@ const IDENTITY_GATE = {
   gate: GATE_NODE,
   decision: "approved",
   resolvedBy: "local-operator",
-  leaf: "resolve-gate-approved",
 } as const;
 
 /** The receipt service's complete ordered authority vocabulary for a preview.

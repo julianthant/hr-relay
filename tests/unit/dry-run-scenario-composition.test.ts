@@ -114,12 +114,7 @@ const TEST_MANIFEST = parseDryRunScenarioManifest({
       attempt: 1,
       keyedBy: ["workflow", "item", "node", "attempt", "claimGeneration"],
     })),
-    gateResults: [{
-      gate: "identity-approval",
-      decision: "approved",
-      resolvedBy: "local-operator",
-      leaf: "resolve-gate-approved",
-    }],
+    gateResults: [{ gate: "identity-approval", decision: "approved", resolvedBy: "local-operator" }],
     durableDeltas: { writeIntents: 0, writeAttempts: 0, durableOutbox: 0 },
     receipt: {
       result: "partial",
