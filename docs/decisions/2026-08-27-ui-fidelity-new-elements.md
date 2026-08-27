@@ -128,6 +128,20 @@ _Answer positionally: `1 A, 2 C + "note"`, or "all recommended". Anything unansw
 
 ## Answers (fill and return)
 
-`1 _ · 2 _ · 3 _ · 4 _ · 5 _ · 6 _ · 7 _`
+`1 A · 2 A · 3 A · 4 A · 5 A · 6 A · 7 B` — answered 2026-08-27 by the operator ("do the rec"), collected by the coordinator.
 
 **Where ratified answers land:** `docs/rebuild/reference/dashboard-surfaces.md` §10 ("D272–D276 — Phase 3a operator ratification"), as a new D-entry with a one-line pointer in `docs/rebuild/reference/decisions.md`. The next free D-number at time of writing is **D280** (the changelog's tail currently ends at D279, `docs/rebuild/reference/decisions.md`); the ratifying session mints it, this sheet does not.
+
+## Answers — 2026-08-27
+
+| # | answer | ratified as | lands |
+|---|---|---|---|
+| 1 | A keep | D281 item 1 | as built (`a3683bf3`) |
+| 2 | A keep | D281 item 2 | as built |
+| 3 | A keep | D281 item 3 | as built |
+| 4 | A keep | D281 item 4 | as built |
+| 5 | A keep | D281 item 5 | as built |
+| 6 | A keep | D281 item 6 | as built |
+| 7 | B full-bleed band | D281 item 7 | **UI-2 U6** (`docs/plans/2026-08-27-ui-runs.md`) |
+
+Normative text: `docs/rebuild/reference/dashboard-surfaces.md` §10 D281; pointer: `docs/rebuild/reference/decisions.md` round 98.
