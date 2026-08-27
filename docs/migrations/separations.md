@@ -6051,3 +6051,94 @@ stopped, ports 3938/5174 silent. The dev-runner teardown was a process kill, so
 left in place per D181 (the lock layer validates PID + process birth, so a dead holder's record is
 inert). `storage doctor` during the pass: authority healthy (schema v18), backup STALE — a fresh
 throwaway worktree database with no real writes; no backup was taken.
+
+#### 7. Addendum — the chain at base, proved dry on 4502 (2026-08-27)
+
+Phase 3b's R1 opened by re-proving §9.27's chain on the ROOT checkout at `integration/03b`
+**`36135120`**, so the 2026-08-28 canary starts from a measured base rather than a remembered one.
+One `dryRun: true` run of the whole composition on document **4502** — start plan
+`7693f19f-b5a6-486f-a2d2-631036db844e` → command `156c42ff-b411-46d8-b0f8-986d8a206adf`
+(`applied`) → run **`fd415e49-54bb-4ccd-bec4-ad1cba94a4f6`**, trace **`sp-053429-fd41`**, item
+`c9837287-f3c5-5697-89f4-73e727fbfe04` (§9.27's own 4502 item), one BFF on 3938 and ONE manually
+launched pool member `separations-worker-1` (pid 63112, `--pool-index 1`). Queued 12:34:52.419Z,
+claimed 12:35:18.731Z, parked at `identity-approval` 12:37:00.082Z, approved 12:39:19.826Z,
+re-claimed by the same worker 12:39:30.285Z, **terminal `done` 12:40:18.473Z** — 299.7 s claim to
+terminal, of which the gate held 139.7 s, so 160.0 s of machine work across Kuali, UCPath and New
+Kronos with Duo Autopilot clearing every ceremony hands-off. The terminal is the **D215 preview
+terminal**: `run_results` bound to the preview schema **`86cd007a59d4ae67…`** (§9.17's hash, the
+same one §9.27 recorded), `kind: "dry-run-preview"`, `stoppedAtNodeId: "clear-pending"`,
+`externalCommit: "none"`, outcome **`already-present` off a `live-probe`** — the `would-prepare` arm
+was never reached because the real path settles this subject at its probe, which is exactly the
+false-rehearsal D215 removed. Receipt `b7e7b603-6099-52d5-a065-27112c289a07` is `partial` with ONE
+load-bearing `DRY_RUN_PREVIEW` warning and marks the four write-side obligations `unknown`, never
+`verified`. The identity gate was taken through the REAL `POST /api/v1/commands` kernel path (command
+`aee0b3f0-097c-445a-803a-6d52e1b80a53`, `expectedVersion` 52, one-click shape, the single candidate
+`Dreitho Cramia / 10001754` with all four comparisons agreeing); the durable approval is
+`checkpoint_payloads` key `fd415e49…:identity-approval` carrying `evidenceDigest
+d846bb7b1697ae4c…` — the digest the served packet printed. This pass did NOT drive the dashboard
+dialog; §9.27 already holds that proof, and this addendum proves the kernel half.
+
+**The submit-free audit, node by node** (`hr-debug` §9). Spans are this run's own
+`.tracker-rebuild/spans/separations-2026-08-27.jsonl`; `#N.M` is execution N of attempt 1 (D214 —
+the park and resume are two executions of one attempt).
+
+| # | node | shape · store | what it did | write intent | durable rows |
+|---|---|---|---|---|---|
+| 1 | `resolve-action` | task · kuali | `#1.1` `done` 30 212 ms — Action List filtered, document matched | none | 1 checkpoint |
+| 2 | `document` | task · kuali | `#1.1` `done` 4 195 ms — RRSS document read | none | 1 checkpoint |
+| 3 | `plan` | task · workflow (headless) | `#1.1` `done` 7 ms | none | 1 checkpoint |
+| 4 | `termination-type` | task · workflow (headless) | `#1.1` `done` 2 ms | none | 1 checkpoint |
+| 5 | `name-search` | task · ucpath | `#1.1` `done` 23 712 ms — Person Org search | none | 1 checkpoint |
+| 6 | `subject` | task · workflow (headless) | `#1.1` `done` 2 ms | none | 1 checkpoint |
+| 7 | `job-summary` | task · ucpath | `#1.1` `done` 3 044 ms — 1 active of 1 rows | none | 1 checkpoint |
+| 8 | `employment` | task · workflow (headless) | `#1.1` `done` 3 ms | none | 1 checkpoint |
+| 9 | `department-option` | task · workflow (headless) | `#1.1` `done` 3 ms | none | 1 checkpoint |
+| 10 | `timecard-search` | task · new-kronos | `#1.1` `done` 32 204 ms; re-read live as `#2.1` on resume | none | 2 checkpoints (gen 1, gen 2) |
+| 11 | `timecard` | task · new-kronos | `#1.1` `done` 7 916 ms | none | 1 checkpoint |
+| 12 | `dates` | task · workflow (headless) | `#1.1` `done` 2 ms — Kronos moved nothing | none | 1 checkpoint |
+| 13 | `comparison` | task · workflow (headless) | `#1.1` `done` 9 ms — packet built | none | 1 checkpoint |
+| 14 | `identity-approval` | **gate** · operator | opened 12:37:00.082Z, resolved 12:39:19.826Z | none | 1 `checkpoint_payloads` row (the approval), 0 `run_checkpoints` |
+| 15 | `approval` | task · workflow (headless) | `#2.1` `done` — approval verified after resume | none | 1 checkpoint |
+| 16 | `clear-pending` | **transaction** · ucpath | ONE span, `clear-pending/probe`, `done` — `present`, `scannedRowCount 2`, source `ss-smart-hr-detail-read`; then `transaction.previewed` (`subject: not-observed`, `externalCommit: none`) and the run ended. **No `prepare` span, no fence, no `commit` span** | none | **0** |
+| 17 | `file-termination` | **transaction** · ucpath | never entered — no span | none | **0** |
+| 18 | `receipt` | task · workflow (headless) | never entered — no span | none | **0** |
+| 19 | `finalize-kuali` | **transaction** · kuali | never entered — no span | none | **0** |
+
+The run emitted **55 events and not one of them names a write**: `run.queued` 1, `run.claimed` 2,
+`span.started` 16, `data.observed` 16, `span.ended` 17, `gate.opened` 1, `gate.resolved` 1,
+`transaction.previewed` 1 — zero `write.*`, zero fence, zero commit, zero intent. Read from
+authority after the terminal, over the WHOLE database: **`write_intents` 0 · `write_attempts` 0 ·
+`durable_outbox` 0** — 0/0/0, and `artifact_outbox` 0 besides. `run_checkpoints` holds **15** rows,
+every one a read-side node, and **zero** for `clear-pending`, `file-termination`, `receipt` or
+`finalize-kuali`. The one non-zero outbox is `run_terminal_outbox` = 1, a `run-terminal-result`
+projection row for this run's own terminal — an internal projection hand-off, not an external write.
+This is the code's shape, not luck: `executeDryRun` reports the settlement the real path would reach
+**without calling `settleAlreadyPresent`** — no checkpoint, no observed-present intent row, no run
+transition (`src/core/write-sequencer.ts` §D215) — and the retired `dry-run-composition-submit-free`
+guard's invariant lives on in `write-safety-contract` plus the row-level scenario (D188). Nothing
+was written to UCPath, Kuali or Kronos, and document 4502's Kuali form was not saved.
+
+**One pre-flight finding, recorded because R2 will hit it.** The root checkout's own
+`.tracker-rebuild/state.db` **could not be opened at this tree**: it sat at `PRAGMA user_version`
+16 with `authority_meta.schema_version` 16, yet already carried `dry_run_scenario_results` — a table
+migration **18** creates — while `worker_pools` (migration **17**) was absent, so `#runMigrations`
+replayed 17→18 and threw `table dry_run_scenario_results already exists`, unwinding
+`composeDashboardRuntime`. That is a stale local database from a pre-merge branch, not a defect in
+`36135120`; it was moved intact to `.tracker-rebuild/stale-schema16-2026-08-27/` (nothing deleted)
+and the runtime built a fresh authority at **schema v18, generation 1, `quick_check ok`**, which is
+also why the 0/0/0 above is an empty-from-birth read rather than a delta. Two consequences worth
+carrying: the fresh database's `runs_view` rehydrated **50** historical rows from the on-disk span
+JSONL while the write tables stayed empty, and `storage doctor` lists the 56 pre-v18 backup
+manifests as `INVALID — backup-invalid: schemaVersion`, with the new generation-1 backup `ok`.
+A second, unrelated occupant was cleared first: a BFF + vite pair from the deregistered worktree
+`.hr-rebuild-worktrees/fidelity-standing` (no `.git`, absent from `git worktree list`) had held
+3938/5174 since 2026-08-26 and was writing to that directory's own database; it served descriptor
+fingerprints byte-identical to this tree, but it was not this checkout's runtime and was stopped.
+
+**Closure.** Worker stopped, its process-lock record released cleanly
+(`releasedAt 2026-08-27T12:42:44.892Z`, pid gone); BFF stopped and 3938 silent;
+`playwright-cli close-all` → no orphan Chromium. As in §9.26/§9.27 the BFF's own
+`.tracker-rebuild/locks/server.lock.json` retains `releasedAt: null` under a dead pid — observed,
+left in place per D181. `npm run build:manifest` was clean before the run and `npm run roadmap:check`
+reports `docs/roadmap/index.html is fresh`; the served `separations` fingerprint was
+`14217f341c0b84ef…`, byte-identical to the tree manifest, for the whole pass.
