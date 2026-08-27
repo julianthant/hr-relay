@@ -1328,55 +1328,58 @@ function LoadedApp({
         nav={nav}
       />
 
-      <div className="flex min-h-0 flex-1">
-        {panelMode.mode === "sidebar" && (
-          <WorkflowSidebar
-            mode={panelMode.mode}
-            onMode={panelMode.setMode}
-            workflows={workflows}
-            counts={dayWire?.workflowCounts ?? []}
-            activeWorkflowId={activeWorkflowId}
-            onActive={setActiveWorkflowId}
-          />
-        )}
+      <main
+        id={DASHBOARD_MAIN_REGION_ID}
+        // Only ever a programmatic focus TARGET (settings-model's
+        // `settingsCloseFocusTargetId` fallback) — never in the Tab order,
+        // which is what -1 (rather than 0) means here.
+        tabIndex={-1}
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
+      >
+        {/*
+          A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
 
-        <main
-          id={DASHBOARD_MAIN_REGION_ID}
-          // Only ever a programmatic focus TARGET (settings-model's
-          // `settingsCloseFocusTargetId` fallback) — never in the Tab order,
-          // which is what -1 (rather than 0) means here.
-          tabIndex={-1}
-          className="flex min-h-0 min-w-0 flex-1 flex-col"
-        >
-          {/*
-            A DASHBOARD THAT CANNOT WORK SAYS SO ON EVERY VIEW.
+          Mounted here — above the complete sidebar/content row, inside the
+          full-width `main` — rather than inside Settings, because Settings is
+          the page that EXPLAINS the state and an operator filing transactions
+          is not in it. Every takeover below (intake, archive, explorer,
+          catalog, activity) replaces the queue and inherits this band
+          unchanged.
 
-            Mounted here — above the takeover switch, inside `main` — rather
-            than inside Settings, because Settings is the page that EXPLAINS
-            the state and an operator filing transactions is not in it. Every takeover below
-            (intake, archive, explorer, catalog, activity) replaces the queue
-            and inherits this band unchanged.
+          D222: only the unreachable AUTHORITY earns this band — a stale or
+          missing backup is a `storage` notification in the bell (ref dashboard-surfaces
+          §2.6) plus the gear's attention dot, because it does not stop the
+          work. It renders nothing at all otherwise, which is why it costs
+          the shell no fixed height: an empty band held open for a state
+          that is almost never true is the decoration this product spends
+          its density on avoiding.
+        */}
+        {/*
+          D281 item 7 RULES the full match: x=0, border-bottom only, no
+          radius, above the switch on the queue and every takeover. That is
+          the demo's exact site geometry (`hr-automation@1ec1d870`,
+          `RebuildDemo.tsx:654` and `DemoSettings.tsx:1204-1237`). D276 item
+          4 still protects every other `Banner`: the storage hazard selects
+          the explicit `band` arm instead of changing the default card.
+        */}
+        <StorageBanner
+          storage={boot.storage}
+          onOpenSettings={openSettings}
+        />
 
-            D222: only the unreachable AUTHORITY earns this band — a stale or
-            missing backup is a `storage` notification in the bell (ref dashboard-surfaces
-            §2.6) plus the gear's attention dot, because it does not stop the
-            work. It renders nothing at all otherwise, which is why it costs
-            the shell no fixed height: an empty band held open for a state
-            that is almost never true is the decoration this product spends
-            its density on avoiding.
-          */}
-          {/*
-            D281 item 7 RULES the full match: x=0, border-bottom only, no
-            radius, above the switch on the queue and every takeover. That is
-            the demo's exact site geometry (`hr-automation@1ec1d870`,
-            `RebuildDemo.tsx:654` and `DemoSettings.tsx:1204-1237`). D276 item
-            4 still protects every other `Banner`: the storage hazard selects
-            the explicit `band` arm instead of changing the default card.
-          */}
-          <StorageBanner
-            storage={boot.storage}
-            onOpenSettings={openSettings}
-          />
+        <div className="flex min-h-0 flex-1">
+          {panelMode.mode === "sidebar" && (
+            <WorkflowSidebar
+              mode={panelMode.mode}
+              onMode={panelMode.setMode}
+              workflows={workflows}
+              counts={dayWire?.workflowCounts ?? []}
+              activeWorkflowId={activeWorkflowId}
+              onActive={setActiveWorkflowId}
+            />
+          )}
+
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/*
             The intake workspace REPLACES the queue for as long as it is open.
@@ -1751,8 +1754,9 @@ function LoadedApp({
           </div>
           </>
           )}
-        </main>
-      </div>
+          </div>
+        </div>
+      </main>
 
       <SessionPanel
         workerCards={dayWire?.workerCards ?? []}
