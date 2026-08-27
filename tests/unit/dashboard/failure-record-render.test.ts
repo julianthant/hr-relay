@@ -405,6 +405,44 @@ describe("the permanence reading (unit F8c finding 5)", () => {
       }
     }
   });
+
+  /*
+    The same rule, one fact over (unit F10c). `record <uuid>` was a `Chip`, and
+    a `Chip` is `w-fit` and clips — so in the archive's ~400px detail rail it
+    read `record aa11bb22-0…` with no `title` at all, which is worse than the
+    pointer-only defect above: the id an operator has to quote in a bug report
+    was reachable by NOBODY. It rides the head's `MetaLine` now, where it wraps.
+  */
+  it("never clips the failure record's id, and never hides it on a title", () => {
+    const detail = failureDetail();
+    for (const html of [
+      renderRecord({ state: "available", value: detail }),
+      renderArchivedCard(detail),
+    ]) {
+      const root = document.createElement("div");
+      root.innerHTML = html;
+      // The DEEPEST element holding it — `MetaLine` wraps each item in a span
+      // that also carries the ` · ` separator, so a childless-leaf filter would
+      // find nothing and pass for the wrong reason.
+      const holding = [...root.querySelectorAll("*")]
+        .filter((element) => element.textContent.includes(detail.failureId));
+      const leaves = holding.filter(
+        (element) => ![...element.children].some((child) => child.textContent.includes(detail.failureId)),
+      );
+      assert.equal(leaves.length, 1, `the record id rendered ${String(leaves.length)} times`);
+
+      let walk: Element | null = leaves[0] ?? null;
+      while (walk !== null && walk !== root) {
+        const classes: string = walk.getAttribute("class") ?? "";
+        assert.ok(
+          !classes.includes("truncate") && !classes.includes("w-fit"),
+          `the record id is clipped by \`${classes}\``,
+        );
+        assert.equal(walk.getAttribute("title"), null, "the record id is recovered on a title alone");
+        walk = walk.parentElement;
+      }
+    }
+  });
 });
 
 /* ── the disclosure, and what it may not hide (E15) ──────────────────────── */

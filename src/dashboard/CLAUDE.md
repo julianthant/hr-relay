@@ -76,6 +76,101 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-26: a surface that re-reads what it just changed unmounts the only thing that says it
+  changed anything (unit F10e, the defect F10d found and reported rather than fixed).** Applying a
+  version bump made `ArchiveWorkspace` re-read the archive index, the re-read set the `index`
+  resource back to `"loading"`, and the loading arm renders a skeleton IN PLACE OF `VersionsView` —
+  which is where VB43's `applied` record lives, captured at dispatch because the plan is gone by the
+  time the result lands. So the success banner and its `Open the archive` door existed, were pinned
+  by two test files, and were never reliably on screen for a single frame. **Every fold and every
+  render test in the family stayed green, because a surface that redraws after a command looks
+  exactly like one that reported success** — the only thing that can see it is a press, which is why
+  `archive-bump-round-trip-press.test.ts` is the third file in the unit lane to mount React (after
+  `session-panel-pool-press.test.ts` and `run-start-dialog.test.ts`) and why its first case is the
+  whole round trip rather than the banner alone.
+
+  Three things travel. **The fix is the house rule, already written down twice**: a resource already
+  on screen keeps its last value while the next read is in flight (`useRunDetail`, then
+  `useCaptureSession`) — the FIRST read still loads, because a skeleton and a stale answer are
+  different claims and only one of them is honest before anything has been read. Lifting the banner
+  state above the remount boundary was the other candidate and is strictly worse: it does not
+  survive a re-read that FAILS either, since the failed arm replaces the whole body too, and it
+  spreads one surface's dispatch record across two components to work around a refresh that should
+  not have been blanking the surface in the first place. **Rendering stale buys a window, and the
+  window has a control in it**: for as long as the re-read is in flight the wire on screen still
+  lists the plan that was just applied, so `Apply the bump` stood directly under `The bump was
+  applied` — a control contradicting the sentence above it. The dispatch record carries the
+  `versionPlanId` now and that one plan stands down until the re-read that no longer carries it
+  lands. And **the banner's clear is a REMOUNT, so check what else the fix keeps mounted**: leaving
+  the versions view still drops it, which is what should happen, and that arm is pinned rather than
+  assumed now that a nearby unmount was load-bearing by accident.
+
+  Still true of `detail`: the run-detail pane blanks to a skeleton on the same nonce. Its relaunch
+  banner lives in the workspace and survives, so nothing is lost today — but it is the same one-line
+  rule, unapplied, and it wants the identity comparison `useRunDetail` uses rather than this one's
+  bare "already loaded".
+
+- **2026-08-26: the codes were in the index the whole time, and a ported pixel constant is a claim
+  about a VOCABULARY (unit F10c, ledger 3 §1/§8 — the archive family's remaining ruled rows).**
+  Forty rows, six of which were code. Three things travel.
+
+  **A "we do not have that field" row is worth one more look at the payload.** The sweep head
+  printed `person-lookup v2 → 0.1.0` where the demo prints `pl v2 → 0.1.0`, and F10 left it open
+  because `ArchiveSweepWire.appliedIdentities` carries workflow IDs and no code — which is true, and
+  is not the same as the index not having them. It has them TWICE, with two different meanings:
+  `versionState` carries the registry's code beside the version it is the code OF, so it answers the
+  identity a sweep moved runs ONTO, and every archived run froze its own code beside the version it
+  RAN (D242), so the entries answer identities the registry no longer holds. **Which source answers
+  an identity is not a preference, it is the identity**: the join key is
+  `(workflowId, descriptorVersion)` precisely so no code is ever carried across a version it was not
+  true at, which is the silently-wrong derivation `ArchivedWorkflowCodeWireSchema`'s own docstring
+  refuses. The fixture is what found the shape — the first key was "the archived run's version", and
+  `appliedIdentities` names the version moved TO, so it missed every time and every sweep would have
+  degraded to its workflow ID while looking completely reasonable.
+
+  **A ported constant carries the assumptions of the tree it was measured in.** The demo's frozen log
+  level column is `w-[46px]` because its levels are `info` / `warn` / `error`. This wire's enum is
+  `info` / `warning` / `error`, and `WARNING` in caps overran the column and sat on top of its own
+  message. Every fold assertion passed — the words were all present and in order — and only the
+  screenshot said so, which is the third time in this directory that the capture taken to PROVE a
+  port found the defect underneath it. The width is sized to the longest word this wire serves and
+  the column does not truncate, because a clipped level is exactly the fact the column exists for.
+
+  **A fact drawn under the wrong heading reads as complete.** The capture tile's badge printed
+  `tile.kind` in a tone keyed off `tile.origin`, so an ordinary screenshot of a failed step wore
+  danger red while an operator-requested one wore neutral: colour and word came from two different
+  facts, both true, and only their PAIRING was a lie. The word is the origin now, `kind` joined the
+  artifact's other physical facts, and `ARCHIVED_CAPTURE_ORIGIN_TONE` is total over the served enum
+  in both directions so a sixth origin is a typecheck failure. The same shape one card over: three
+  run-wide counts — attempts, data facts, evidence facts — sat under a card headed `Decision`, each
+  already owned by a section that derives it from the FROZEN sections while `context` is the run
+  detail's own count. Two sources for one fact, and where a section was never frozen its owner prints
+  the REASON, which is a better answer than a number the archive cannot corroborate. They are gone;
+  a removal is the hardest row to pin, so the test asserts their absence.
+
+  Two more worth knowing. **Applying a bump settled in silence** — the index re-read, the plan left
+  `plans`, the registry redrew, and nothing said the act had happened. `settleCommandResult` already
+  answered `applied` and only its refusal half had a component, which is a shape worth grepping for
+  elsewhere. Its banner needs the DISPATCH record as well as the verdict, because the plan is gone by
+  the time the result lands and the verdict alone belongs to whichever command the surface last
+  issued. `Open the archive` is offered only where a bump archived something — a minor bump archives
+  nothing (D274 item 2), and a door onto no new rows is worse than no door; a generation-1 plan that
+  recorded no kind KEEPS the door, because `undefined` is not `minor` and suppressing it would hide
+  the runs that plan really did archive. And **a demo arm can be unrepresentable rather than
+  unbuilt**: VB47's code-less refusal cannot arrive here, since `CommandResultSchema`'s `rejected`
+  arm requires a `CommandRejectionCode` — recorded in the row so the next reader meets a decision
+  instead of a gap.
+
+  **And the same defect, one file over, found by the row that pointed at it.** AR133's disposition
+  runs through `FailureRecordHead`, and the head's `record <uuid>` was a `Chip` — `w-fit`, clipping,
+  with no `title` at all. That is worse than the pointer-only fact this directory has now fixed three
+  times: `record aa11bb22-0…` in the archive's ~400px rail left the id an operator must quote in a
+  bug report reachable by NOBODY. It rides the head's `MetaLine` beside the permanence sentence,
+  which is there for exactly this reason; the `code` chip stays, because a rejection code survives
+  truncation and a uuid does not. **When a fix moves one fact out of a clipping token, check what
+  else is still in there** — the sentence and the id were side by side and only one of them was
+  looked at.
+
 - **2026-08-26: a wire that splits one flag into two arms has done half the work — the SURFACE is
   where the split survives or dies, and a geometry the parser refused has no shape to draw
   (D274 item 7, unit F13, ledger 3 §7 CP2–CP21).** `capture-start.tsx` had handed the operator a QR

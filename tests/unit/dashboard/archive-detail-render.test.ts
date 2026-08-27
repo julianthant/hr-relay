@@ -1,0 +1,130 @@
+/**
+ * Two archived-run detail rows (unit F10c, ledger 3 AR150 and AR163) that only
+ * the drawn tree can hold.
+ *
+ * AR150 is a REMOVAL, which is the hardest kind of row to pin: three counts
+ * about the run — attempts, data facts, evidence facts — sat under a card
+ * headed `Decision`, and each of them has an owner elsewhere on the same page
+ * that derives its number from the FROZEN sections. Two sources for one fact
+ * is the thing this bundle bans, and where a section was never frozen its
+ * owner prints the REASON, which is a better answer than a number the archive
+ * cannot corroborate. Nothing but an assertion about their absence can keep
+ * them out.
+ *
+ * AR163 is the log line's shape: fixed clock and level columns so every
+ * message starts on one x, and the level as a WORD so nothing is carried by
+ * colour alone.
+ */
+import assert from "node:assert/strict";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, it } from "vitest";
+import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
+import { NoteWireSchema } from "../../../src/domain/dashboard/run-detail.js";
+import { ArchivedRunDetail, FrozenLogLine } from "../../../src/dashboard/surfaces/archive.js";
+import { FIXTURE_ARCHIVED_RUN, FIXTURE_ARCHIVE_INDEX } from "../../parity/helpers/fixture-archive.js";
+
+const noop = (): void => undefined;
+
+function markup(): string {
+  return renderToStaticMarkup(createElement(ToastProvider, {
+    children: createElement(ArchivedRunDetail, {
+      detail: FIXTURE_ARCHIVED_RUN,
+      sweep: FIXTURE_ARCHIVE_INDEX.sweeps[0],
+      codes: new Map<string, string>([["person-lookup@2", "pl"]]),
+      busy: false,
+      relaunched: false,
+      onRelaunch: noop,
+      onDismiss: noop,
+    }),
+  }));
+}
+
+describe("the Decision card (AR150)", () => {
+  it("is still drawn, with the gate it is about", () => {
+    assert.equal(markup().includes("Decision"), true);
+  });
+
+  it("borrows none of the run-wide counts its neighbours own", () => {
+    const html = markup();
+    for (const borrowed of ["data fact", "evidence fact"]) {
+      assert.equal(html.includes(borrowed), false, `the Decision card still prints "${borrowed}"`);
+    }
+    // `attempt` survives as the Attempts card's own heading, so the negative
+    // control has to be the COUNT sentence, not the word.
+    assert.equal(/\d+ attempts?<\/span>/u.test(html), false);
+  });
+
+  it("still gives the Attempts card its own section", () => {
+    assert.equal(markup().includes("Attempts"), true);
+  });
+});
+
+describe("the sweep record card's name (unit F10d finding 1)", () => {
+  it("pairs the full identity onto the accessible name, not just the pointer-only title", () => {
+    // `archiveSweepName(sweep, codes)` for this fixture pair is
+    // "pl v2 → 0.1.0" (text) / "Single workflow — person-lookup v2 → 0.1.0"
+    // (title). Before this fix the full identity lived ONLY on `title`,
+    // reachable by pointer and by nobody else — the third such row in this
+    // directory. `aria-label` now carries the same string.
+    const html = markup();
+    const match = /<p class="[^"]*" title="([^"]*)" aria-label="([^"]*)">pl v2 → 0\.1\.0<\/p>/u.exec(html);
+    assert.notEqual(match, null, `the sweep name <p> was not found as expected in:\n${html}`);
+    const [, title, ariaLabel] = match ?? [];
+    assert.equal(title, ariaLabel);
+    assert.equal(title?.includes("person-lookup v2"), true);
+  });
+});
+
+describe("the frozen log line (AR163)", () => {
+  function line(level: "info" | "warning" | "error"): string {
+    const note = NoteWireSchema.parse({
+      noteId: "aa11bb22-0006-4000-8000-aa11bb220006",
+      runId: FIXTURE_ARCHIVED_RUN.runId,
+      sequence: 0,
+      at: FIXTURE_ARCHIVED_RUN.archivedAt,
+      level,
+      message: "read the empl record beside the name",
+    });
+    return renderToStaticMarkup(createElement(FrozenLogLine, { note }));
+  }
+
+  it("sizes the level column for the LONGEST word this wire serves", () => {
+    // The demo's 46px was sized for `warn`; this wire's enum says `warning`,
+    // and the ported constant put the level on top of its own message. Nothing
+    // but a screenshot saw it, so the width is pinned here.
+    const longest = ["info", "warning", "error"].reduce((a, b) => (b.length > a.length ? b : a));
+    assert.equal(longest, "warning");
+    assert.equal(line("warning").includes("truncate"), false);
+  });
+
+  it("puts the clock and the level in fixed columns, so messages share one x", () => {
+    const html = line("info");
+    assert.equal(html.includes("w-[76px]"), true);
+    assert.equal(html.includes("w-[72px]"), true);
+  });
+
+  it("draws the level column's SIZE from ds-text-caps alone (unit F10d finding 4)", () => {
+    // `ds-text-meta` and `ds-text-caps` both set font-size and are unlayered
+    // CSS classes (tokens.ts), so composing both let source order — not
+    // intent — decide which size the column drew at. The class list may
+    // carry only ONE of the two.
+    const span = /<span class="([^"]*w-\[72px\][^"]*)">/u.exec(line("info"));
+    assert.notEqual(span, null, "the level span was not found");
+    const classes = (span?.[1] ?? "").split(/\s+/u);
+    assert.equal(classes.includes("ds-text-caps"), true);
+    assert.equal(classes.includes("ds-text-meta"), false, `the level column also carries ds-text-meta: ${span?.[1]}`);
+  });
+
+  it("prints the level as a WORD, so the tint is never its only carrier", () => {
+    for (const level of ["info", "warning", "error"] as const) {
+      assert.equal(line(level).includes(`>${level}<`), true);
+    }
+  });
+
+  it("gives each level its own tint", () => {
+    const tints = (["info", "warning", "error"] as const)
+      .map((level) => /text-\[color:var\((--ds-[a-z-]+)\)\][^"]*">[a-z]+</u.exec(line(level))?.[1]);
+    assert.equal(new Set(tints).size, 3, `two log levels resolved to one tint: ${tints.join(", ")}`);
+  });
+});

@@ -279,9 +279,6 @@ export function FailureRecordHead({ detail }: { detail: FailureDetailWire }) {
         <Chip label="code" tone="danger">
           {detail.code}
         </Chip>
-        <Chip label="record" tone="danger">
-          {detail.failureId}
-        </Chip>
       </div>
       {/*
         PERMANENCE IS A SENTENCE, so it is not a chip (unit F8c finding 5).
@@ -303,6 +300,17 @@ export function FailureRecordHead({ detail }: { detail: FailureDetailWire }) {
           >
             {permanence.text}
           </span>,
+          /*
+            The record id joins it, for the reason the permanence sentence is
+            here (unit F8c finding 5, landing again). It was a `Chip`, and a
+            `Chip` is `w-fit` and clips — so in the archive's ~400px detail rail
+            it read `record aa11bb22-0…` with NO `title` at all, which is worse
+            than the pointer-only defect this directory has fixed three times:
+            the id an operator has to quote in a bug report was reachable by
+            nobody. The `code` chip stays; a rejection code survives truncation
+            and a uuid does not.
+          */
+          `record ${detail.failureId}`,
         ]}
       />
     </div>

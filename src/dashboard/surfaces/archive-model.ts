@@ -33,6 +33,7 @@ import {
 import type { ArchivedCaptureTile } from "../../domain/archive/sections.js";
 import type { VersionScope } from "../../domain/commands.js";
 import type { DsStatus } from "../ds/ui.js";
+import { fmtClock, plural, shortHash } from "./format.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import { PROPOSED_STATUS, dsStatusOf, type QueueStatus } from "./status-model.js";
 
@@ -489,6 +490,139 @@ export function bumpScopeLabel(scope: VersionScope): Readonly<{ label: string; n
   }
 }
 
+/* ── the sweep's NAME, and the frozen codes it joins against (AR80/AR82) ─── */
+
+/**
+ * The identity a frozen short code belongs to.
+ *
+ * A code is a fact about a workflow AT a descriptor version (D242) and never
+ * about the workflow forever, so the join key is the PAIR. That is what keeps
+ * a workflow renamed between two bumps printing each sweep's own code rather
+ * than today's — the one case the frozen field exists for.
+ */
+export function archiveIdentityKey(workflowId: string, descriptorVersion: number): string {
+  return `${workflowId}@${String(descriptorVersion)}`;
+}
+
+/**
+ * `workflowId@version → that identity's short code` (AR80).
+ *
+ * `ArchiveSweepWire.appliedIdentities` carries workflow IDs and no code, so
+ * the sweep head printed `separations-kuali-read v3` where the demo prints
+ * `sk v3`. The codes ARE in the index and this is a join, not a rename and
+ * not a new wire field — but they come from TWO places, and which one answers
+ * an identity is not a preference:
+ *
+ * - `versionState` carries the registry's code beside the version it is the
+ *   code OF, so it answers the identity a sweep moved runs ONTO (the one
+ *   `appliedIdentities` names).
+ * - every archived run froze its own code beside the version it RAN (D242), so
+ *   the entries answer identities the registry no longer holds — a retired
+ *   descriptor, or a code that has changed since.
+ *
+ * Both are exact `(workflowId, descriptorVersion)` matches; neither is a code
+ * carried across a version it was not true at, which is the silently-wrong
+ * derivation `ArchivedWorkflowCodeWireSchema`'s own docstring refuses. Where
+ * both answer, the FROZEN code wins: the archive's copy is the authority for
+ * what a run was planned under.
+ */
+export function archiveWorkflowCodes(
+  index: Readonly<{
+    entries: readonly ArchiveEntryWire[];
+    versionState: readonly WorkflowVersionStateWire[];
+  }>,
+): ReadonlyMap<string, string> {
+  const codes = new Map<string, string>();
+  for (const state of index.versionState) {
+    codes.set(archiveIdentityKey(state.workflowId, state.current.descriptorVersion), state.workflowCode);
+  }
+  for (const entry of index.entries) {
+    if (entry.workflowCode.state !== "present") continue;
+    codes.set(
+      archiveIdentityKey(entry.workflowId, entry.archivedIdentity.descriptorVersion),
+      entry.workflowCode.value,
+    );
+  }
+  return codes;
+}
+
+/** What a sweep head prints, and the SECOND fact its hover carries. */
+export interface ArchiveSweepName {
+  /** the cell's own text — short codes where a run froze one */
+  readonly text: string;
+  /** the hover: the bump's SCOPE, then the unabbreviated identities (AR82) */
+  readonly title: string;
+}
+
+/**
+ * The unabbreviated identities a sweep's short codes stand in for — the same
+ * fact `archiveSweepName`'s `title` carries and `archiveSweepFacts` restates,
+ * because a fact reachable only through `title` is a fact reachable by
+ * pointer and by nobody else (`src/dashboard/CLAUDE.md`, three times).
+ */
+function archiveSweepFullIdentities(sweep: ArchiveSweepWire): string {
+  return sweep.appliedIdentities
+    .map((identity) => `${identity.workflowId} v${String(identity.descriptorVersion)}`)
+    .join(", ");
+}
+
+/**
+ * The sweep's NAME, as the demo's `ec v3.1 → v4.0` reads.
+ *
+ * Two rules. An identity with no frozen code degrades to its workflow ID —
+ * the degradation `ArchivedWorkflowCodeWireSchema` already rules, because a
+ * workflow ID is a real name the operator can act on while a code has no such
+ * fallback. And the `title` is a DIFFERENT fact from the cell (AR82): a
+ * tooltip repeating its own cell text is a no-op, so the hover carries the
+ * scope sentence and the ids the codes stand in for.
+ */
+export function archiveSweepName(
+  sweep: ArchiveSweepWire,
+  codes: ReadonlyMap<string, string>,
+): ArchiveSweepName {
+  const short = sweep.appliedIdentities
+    .map((identity) => {
+      const code = codes.get(archiveIdentityKey(identity.workflowId, identity.descriptorVersion));
+      return `${code === undefined ? identity.workflowId : code} v${String(identity.descriptorVersion)}`;
+    })
+    .join(", ");
+  const full = archiveSweepFullIdentities(sweep);
+  return {
+    text: `${short} → ${sweep.targetVersion}`,
+    title: `${bumpScopeLabel(sweep.scope).label} — ${full} → ${sweep.targetVersion}`,
+  };
+}
+
+/**
+ * The sweep ⓘ's meta line (AR84/AR93).
+ *
+ * The sweep's id leads it. The trace column prints `shortHash(applicationId)`
+ * because a uuid does not fit 148px, and until this fold the whole id was
+ * recoverable from that cell's `title` and from nowhere else — a fact
+ * reachable by pointer and by nobody else is a fact the product does not have
+ * (`src/dashboard/CLAUDE.md`, three times). It is a fold rather than JSX
+ * because the popover body only exists once the popover is open, so nothing
+ * rendered could pin it.
+ *
+ * The unabbreviated identities join the same list for the same reason (AR82,
+ * unit F10d): the sweep head prints only the short codes, and the popover was
+ * the row's own route to their full form — carrying that only on the head's
+ * `title` would leave it reachable by pointer and by nobody else.
+ */
+export function archiveSweepFacts(sweep: ArchiveSweepWire): string[] {
+  const range = archiveSweepVersionRange(sweep);
+  return [
+    `sweep ${sweep.applicationId}`,
+    sweep.appliedBy,
+    `plan ${shortHash(sweep.versionPlanId)}`,
+    `app ${sweep.appliedAppVersion}`,
+    fmtClock(sweep.appliedAt),
+    `${plural(sweep.archivedCount, "run")} archived`,
+    range.state === "present" ? range.text : range.reason,
+    archiveSweepFullIdentities(sweep),
+  ];
+}
+
 /**
  * The authored change record, or the reason it is not one yet.
  *
@@ -597,6 +731,30 @@ export function archivedCaptureFacts(tile: ArchivedCaptureTile): readonly Archiv
     { state: "present", label: "Bundle", value: tile.bundleId },
   ];
 }
+
+/**
+ * A capture tile's lead BADGE (AR184).
+ *
+ * It carried `tile.kind` in a tone keyed off `tile.origin`, so a routine
+ * `screenshot` taken at a step's ordinary failure wore danger red while an
+ * operator-requested one wore neutral — the badge's colour and its word came
+ * from two different facts, and the reader had no way to tell which one the
+ * red was about. The word is the ORIGIN now, which is the fact the colour was
+ * always trying to say; `kind` is a physical property of the artifact and
+ * lives with the others on the meta line.
+ *
+ * The map is TOTAL over `ArchivedCaptureTile["origin"]` and the test asserts
+ * both directions, so a sixth origin is a typecheck failure and never a silent
+ * default. Only the two that say something went wrong ABOUT THE SUBJECT take
+ * danger: a wrong person is the worst thing this system can record.
+ */
+export const ARCHIVED_CAPTURE_ORIGIN_TONE = {
+  "failure": "danger",
+  "subject-mismatch": "danger",
+  "unexpected-state": "warning",
+  "recovery-park": "warning",
+  "operator-request": "neutral",
+} as const satisfies Record<ArchivedCaptureTile["origin"], "danger" | "warning" | "neutral">;
 
 /**
  * The one sentence the viewer owes the operator: why there is no image here.

@@ -173,7 +173,7 @@ import type {
   WorkflowVersionStateWire,
 } from "../../domain/dashboard/archive.js";
 import { EVENT_STREAM_RETENTION_DAYS, type ArchiveRetentionWire } from "../../domain/archive/retention.js";
-import { timelineEventDuration } from "../../domain/dashboard/run-detail.js";
+import { timelineEventDuration, type NoteWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
 import type { VersionBumpChangeRecord } from "../../domain/archive/change-record.js";
 import type { ArchivedCaptureTile, ArchivedRunAttempt, ArchivedRunSections } from "../../domain/archive/sections.js";
@@ -193,6 +193,7 @@ import {
 import {
   ARCHIVE_INDEX,
   ARCHIVED_CAPTURE_NAV_TOUCH_TARGET,
+  ARCHIVED_CAPTURE_ORIGIN_TONE,
   ARCHIVED_CAPTURE_VIEWER_NOTE,
   BUMP_KIND_LABEL,
   BUMP_KIND_NOTE,
@@ -208,8 +209,11 @@ import {
   resolveBumpKindEffect,
   archivePriorityTone,
   archiveStatusLabel,
+  archiveSweepFacts,
+  archiveSweepName,
   archiveSweepVersionRange,
   archiveWarningChip,
+  archiveWorkflowCodes,
   archivedRelaunchCautions,
   archivedRelaunchHeadline,
   archivedRunHeading,
@@ -421,21 +425,6 @@ function scopeWord(scope: ArchiveSweepWire["scope"]): string {
   return scope.kind === "application" ? "app" : plural(scope.workflowIds.length, "workflow");
 }
 
-/**
- * The sweep's NAME, as the demo's `ec v3.1 → v4.0` reads: the identities it
- * moved every prior run onto, then the version it was applied for. The demo's
- * `major`/`minor` word DOES have a counterpart on this wire — `changeRecord.value.kind`
- * (`ArchiveSweepWireSchema`, `src/domain/dashboard/archive.ts`, D223). The
- * sibling view-model folds that union once for the badge, accessible summary,
- * popover and Archived-by card; this name remains only the version identity.
- */
-function sweepNameLabel(sweep: ArchiveSweepWire): string {
-  const identities = sweep.appliedIdentities
-    .map((identity) => `${identity.workflowId} v${String(identity.descriptorVersion)}`)
-    .join(", ");
-  return `${identities} → ${sweep.targetVersion}`;
-}
-
 /* ── the table ───────────────────────────────────────────────────────────── */
 
 /**
@@ -605,11 +594,14 @@ function ArchiveRow({
  */
 function SweepSectionRow({
   section,
+  codes,
   collapsed,
   rowIndex,
   onToggle,
 }: {
   section: ArchiveSection;
+  /** `workflowId@version → frozen short code`, joined off the index (AR80) */
+  codes: ReadonlyMap<string, string>;
   collapsed: boolean;
   /** this row's 1-based position in the FULL flat list (finding 4) */
   rowIndex: number;
@@ -620,14 +612,15 @@ function SweepSectionRow({
   const Chevron = collapsed ? ChevronRight : ChevronDown;
   const cell = "bg-[var(--ds-surface-2)] border-b border-[color:var(--ds-border)]";
   const kind = sweep === undefined ? undefined : archiveBumpKind(sweep.changeRecord);
+  const name = sweep === undefined ? undefined : archiveSweepName(sweep, codes);
   const summary = (() => {
-    if (sweep === undefined) {
+    if (sweep === undefined || name === undefined) {
       return `${applicationId} — the index carries no sweep record, ${plural(count, "run")}`;
     }
     const sweepKind = archiveBumpKind(sweep.changeRecord);
     return sweepKind.state === "present"
-      ? `${sweepNameLabel(sweep)}, ${sweepKind.kind} bump — ${scopeWord(sweep.scope)} scope, ${plural(count, "run")}`
-      : `${sweepNameLabel(sweep)}, bump kind unrecorded — ${sweepKind.reason}, ${plural(count, "run")}`;
+      ? `${name.text}, ${sweepKind.kind} bump — ${scopeWord(sweep.scope)} scope, ${plural(count, "run")}`
+      : `${name.text}, bump kind unrecorded — ${sweepKind.reason}, ${plural(count, "run")}`;
   })();
 
   return (
@@ -679,16 +672,21 @@ function SweepSectionRow({
 
       {/* the NAME column — what every swept run was moved off, and onto */}
       <TD className={cn(cell, "min-w-0")}>
-        {sweep === undefined ? (
+        {name === undefined ? (
           <span className={cn(dsText.meta, "block min-w-0 truncate text-[color:var(--ds-danger)]")}>
             Sweep record missing
           </span>
         ) : (
+          /*
+            AR80/AR82 — the cell prints the FROZEN short codes (`sk v3 → 4.0.0`)
+            and the hover carries a second fact, not a copy of the cell: the
+            bump's scope, then the ids the codes stand in for.
+          */
           <span
             className={cn(dsText.meta, dsText.nums, "block min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}
-            title={sweepNameLabel(sweep)}
+            title={name.title}
           >
-            {sweepNameLabel(sweep)}
+            {name.text}
           </span>
         )}
       </TD>
@@ -712,13 +710,13 @@ function SweepSectionRow({
               <IconButton
                 size="xs"
                 onClick={(event) => event.stopPropagation()}
-                label={sweep === undefined ? `About ${applicationId}` : `About this bump — ${sweepNameLabel(sweep)}`}
+                label={name === undefined ? `About ${applicationId}` : `About this bump — ${name.text}`}
                 icon={<Info aria-hidden className={dsIcon.sm} />}
                 className="shrink-0 data-[state=open]:bg-[var(--ds-surface-3)] data-[state=open]:text-[color:var(--ds-fg)]"
               />
             </PopoverTrigger>
             <PopoverContent
-              title={sweep === undefined ? "Sweep record missing" : sweepNameLabel(sweep)}
+              title={name === undefined ? "Sweep record missing" : name.text}
               description={kind?.state === "present" ? kind.label : undefined}
               width="lg"
               align="end"
@@ -743,18 +741,14 @@ function SweepSectionRow({
                     of a decision with one author.
                   */}
                   <ChangeRecordBody record={sweep.changeRecord} />
-                  <MetaLine
-                    items={[
-                      sweep.appliedBy,
-                      `plan ${shortHash(sweep.versionPlanId)}`,
-                      `app ${sweep.appliedAppVersion}`,
-                      fmtClock(sweep.appliedAt),
-                      `${plural(sweep.archivedCount, "run")} archived`,
-                      sweep.fromVersions.length === 0
-                        ? "archived nothing, so no from-version"
-                        : `v${sweep.fromVersions.join(", v")} → ${sweep.targetVersion}`,
-                    ]}
-                  />
+                  {/*
+                    AR84 — a fold, because a popover body does not exist until
+                    the popover is open and nothing rendered could pin it. Its
+                    first item is the sweep's WHOLE id: the trace cell prints
+                    eight characters and until now the rest lived on that
+                    cell's `title` and nowhere else.
+                  */}
+                  <MetaLine items={archiveSweepFacts(sweep)} />
                 </div>
               )}
             </PopoverContent>
@@ -767,6 +761,7 @@ function SweepSectionRow({
 
 export function ArchiveTable({
   sections,
+  codes,
   query,
   onSort,
   collapsed,
@@ -775,6 +770,8 @@ export function ArchiveTable({
   onSelect,
 }: {
   sections: readonly ArchiveSection[];
+  /** `workflowId@version → frozen short code` (AR80), joined off the index */
+  codes: ReadonlyMap<string, string>;
   query: ArchiveQuery;
   onSort: (key: ArchiveSortKey) => void;
   collapsed: ReadonlySet<string>;
@@ -849,6 +846,7 @@ export function ArchiveTable({
                 <SweepSectionRow
                   key={`section-${item.section.applicationId}`}
                   section={item.section}
+                  codes={codes}
                   collapsed={item.collapsed}
                   rowIndex={rowIndex}
                   onToggle={() => onToggleSection(item.section.applicationId)}
@@ -906,6 +904,12 @@ function ArchiveListPanel({
 
   const visible = useMemo(() => queryArchive(wire.entries, query), [wire.entries, query]);
   const sections = useMemo(() => groupBySweep(visible, wire.sweeps), [visible, wire.sweeps]);
+  /*
+    Built off the WHOLE index, never off `visible`: a filter that hides the
+    only run a workflow froze a code on must not change the sweep head's name
+    (AR80).
+  */
+  const codes = useMemo(() => archiveWorkflowCodes(wire), [wire]);
   const filtered = queryIsFiltered(query);
 
   /**
@@ -1066,6 +1070,7 @@ function ArchiveListPanel({
       ) : (
         <ArchiveTable
           sections={sections}
+          codes={codes}
           query={query}
           onSort={toggleSort}
           collapsed={collapsed}
@@ -1218,7 +1223,16 @@ export function ArchivedFailureCard({ failure }: { failure: FailureDetailWire })
  * Which sweep archived this run, in the DETAIL. The scope badge used to live
  * only in the list's section header and vanished the moment you opened a run.
  */
-function SweepRecordCard({ sweep, applicationId }: { sweep: ArchiveSweepWire | undefined; applicationId: string }) {
+function SweepRecordCard({
+  sweep,
+  applicationId,
+  codes,
+}: {
+  sweep: ArchiveSweepWire | undefined;
+  applicationId: string;
+  /** `workflowId@version → frozen short code` (AR80) */
+  codes: ReadonlyMap<string, string>;
+}) {
   if (sweep === undefined) {
     return (
       <Banner tone="warning" title="Archived by a sweep this index does not carry">
@@ -1231,6 +1245,10 @@ function SweepRecordCard({ sweep, applicationId }: { sweep: ArchiveSweepWire | u
   }
   const kind = archiveBumpKind(sweep.changeRecord);
   const versionRange = archiveSweepVersionRange(sweep);
+  // Bound once (unit F10d finding 5): a per-render recomputation for the same
+  // sweep/codes pair costs nothing observable, but a caller reading the two
+  // uses could believe they were free to diverge.
+  const name = archiveSweepName(sweep, codes);
   return (
     <Card>
       <CardBody className="flex flex-col gap-[var(--ds-space-snug)]">
@@ -1249,7 +1267,15 @@ function SweepRecordCard({ sweep, applicationId }: { sweep: ArchiveSweepWire | u
             {versionRange.state === "present" ? versionRange.text : `→ ${versionRange.target}`}
           </span>
         </div>
-        <p className={cn(dsText.body, "text-[color:var(--ds-fg)]")}>{sweepNameLabel(sweep)}</p>
+        {/*
+          The cell prints the short codes; the full identities they stand in
+          for used to live ONLY on `title`, reachable by pointer and by
+          nobody else (unit F10d finding 1). `aria-label` pairs the same
+          fact onto the accessible name so keyboard/AT users can resolve it.
+        */}
+        <p className={cn(dsText.body, "text-[color:var(--ds-fg)]")} title={name.title} aria-label={name.title}>
+          {name.text}
+        </p>
         <ChangeRecordBody record={sweep.changeRecord} />
         <MetaLine
           items={[
@@ -1265,9 +1291,10 @@ function SweepRecordCard({ sweep, applicationId }: { sweep: ArchiveSweepWire | u
   );
 }
 
-function ArchivedRunDetail({
+export function ArchivedRunDetail({
   detail,
   sweep,
+  codes,
   busy,
   relaunched,
   onRelaunch,
@@ -1275,6 +1302,8 @@ function ArchivedRunDetail({
 }: {
   detail: ArchivedRunDetailWire;
   sweep: ArchiveSweepWire | undefined;
+  /** `workflowId@version → frozen short code` (AR80), off the loaded index */
+  codes: ReadonlyMap<string, string>;
   busy: boolean;
   relaunched: boolean;
   onRelaunch: () => void;
@@ -1473,7 +1502,7 @@ function ArchivedRunDetail({
             ]}
           />
 
-          <SweepRecordCard sweep={sweep} applicationId={detail.applicationId} />
+          <SweepRecordCard sweep={sweep} applicationId={detail.applicationId} codes={codes} />
 
           {detail.failure.state === "present" && <ArchivedFailureCard failure={detail.failure.value} />}
 
@@ -1575,13 +1604,16 @@ function ArchivedRunDetail({
                       : detail.detail.gate.reason}
                   </span>
                 )}
-                <MetaLine
-                  items={[
-                    `${plural(detail.detail.context.attempts, "attempt")}`,
-                    `${plural(detail.detail.context.dataFacts, "data fact")}`,
-                    `${plural(detail.detail.context.evidenceFacts, "evidence fact")}`,
-                  ]}
-                />
+                {/*
+                  AR150 — three counts about the RUN used to sit here, under a
+                  card about the GATE. Each has an owner a few hundred pixels
+                  away (the Attempts card, the Data tab, the Evidence tab), and
+                  each owner derives its number from the FROZEN sections while
+                  `context` is the run detail's own count — two sources for one
+                  fact, which is the thing this bundle bans. Where a section
+                  was never frozen its owner prints the REASON, and a reason is
+                  a better answer than a number the archive cannot corroborate.
+                */}
               </CardBody>
             </Card>
           </div>
@@ -1712,15 +1744,7 @@ function ArchivedRunDetail({
               <Card>
                 <CardBody className="flex flex-col gap-[var(--ds-space-hair)]">
                   {page.notes.map((note) => (
-                    <div key={note.noteId} className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
-                      <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-faint)]")}>
-                        {fmtClock(note.at)}
-                      </span>
-                      <Badge tone={FROZEN_LEVEL_TONE[note.level]}>{note.level}</Badge>
-                      <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
-                        {note.message}
-                      </span>
-                    </div>
+                    <FrozenLogLine key={note.noteId} note={note} />
                   ))}
                 </CardBody>
               </Card>
@@ -1937,11 +1961,62 @@ function EvidencePointerGroup({
 
 /* ── D223's frozen sections ──────────────────────────────────────────────── */
 
-const FROZEN_LEVEL_TONE = {
-  info: "neutral",
-  warning: "warning",
-  error: "danger",
-} as const satisfies Record<"info" | "warning" | "error", "neutral" | "warning" | "danger">;
+/**
+ * ONE frozen log line (AR163).
+ *
+ * The demo's three COLUMNS, not three inline runs. A badge per line is
+ * decoration on a list whose whole job is scanning, and its width follows its
+ * word — so every message started at a different x. The clock and level
+ * columns are fixed, which puts every message on one left edge, and the level
+ * is a WORD, so the tint is a second reading and never the only one.
+ *
+ * It is its own component because the Logs tab panel does not exist until the
+ * tab is selected, so nothing rendered from the detail could pin the row.
+ */
+export function FrozenLogLine({ note }: { note: z.infer<typeof NoteWireSchema> }) {
+  return (
+    <div className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
+      <span className={cn(dsText.meta, dsText.nums, "w-[76px] shrink-0 text-[color:var(--ds-fg-faint)]")}>
+        {fmtClock(note.at)}
+      </span>
+      {/*
+        NOT the demo's `w-[46px]`: its level vocabulary is `info`/`warn`/`error`
+        and this wire's is `info`/`warning`/`error` (AR164), so the ported
+        constant was a column sized for a word this tree never prints —
+        `WARNING` in caps overran it and sat on top of its own message. The
+        width holds the LONGEST served level, and the column does not truncate,
+        because a clipped level is exactly the fact this column exists for.
+      */}
+      {/*
+        `dsText.meta` dropped (unit F10d finding 4): both it and `dsText.caps`
+        set font-size, and the two are unlayered CSS classes (tokens.ts) whose
+        cascade order is NOT the order they are composed in here — so pairing
+        them let source order, not intent, decide which size the column drew
+        at. `caps` alone is the level column's own size.
+      */}
+      <span className={cn(dsText.caps, "w-[72px] shrink-0", FROZEN_LEVEL_CLASS[note.level])}>
+        {note.level}
+      </span>
+      <span className={cn(dsText.body, "min-w-0 flex-1 break-words text-[color:var(--ds-fg)]")}>
+        {note.message}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The frozen note stream's three levels, tinted (AR163/AR164).
+ *
+ * The wire's enum is `info | warning | error` and there is no `read`/`write`
+ * level in this tree, so the demo's five-word vocabulary is two words short
+ * here by the schema and not by omission. The tint is a second reading of a
+ * word that is always printed — never the only one.
+ */
+const FROZEN_LEVEL_CLASS = {
+  info: "text-[color:var(--ds-fg-muted)]",
+  warning: "text-[color:var(--ds-status-waiting-fg)]",
+  error: "text-[color:var(--ds-danger)]",
+} as const satisfies Record<"info" | "warning" | "error", string>;
 
 /** The counts the tab strip prints — absent is not zero, so it prints nothing. */
 function frozenLogCount(sections: ArchivedRunSections | undefined): number | undefined {
@@ -2189,8 +2264,18 @@ function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (
         <Camera className={dsIcon.md} />
       </span>
       <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
-        <span className="flex flex-wrap items-center gap-[var(--ds-space-hair)]">
-          <Badge tone={tile.origin === "operator-request" ? "neutral" : "danger"}>{tile.kind}</Badge>
+        {/*
+          `tight`, not `hair`: the origin badge and the step id are two
+          different facts and a 2px gutter read as one word in the screenshot.
+        */}
+        <span className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
+          {/*
+            AR184 — the badge's WORD and its TONE come from one fact. It used
+            to print `kind` in a tone keyed off `origin`, so an ordinary
+            screenshot of a failed step wore danger red and nobody could tell
+            which of the two the red was about.
+          */}
+          <Badge tone={ARCHIVED_CAPTURE_ORIGIN_TONE[tile.origin]}>{tile.origin}</Badge>
           <span className={cn(dsText.body, "truncate text-[color:var(--ds-fg)]")}>
             {tile.step.state === "present" ? tile.step.nodeId : "step unrecorded"}
           </span>
@@ -2199,7 +2284,9 @@ function CaptureTileRow({ tile, onOpen }: { tile: ArchivedCaptureTile; onOpen: (
         <MetaLine
           items={[
             fmtClock(tile.capturedAt),
-            tile.origin,
+            // `kind` is a physical property of the artifact and sits with the
+            // others; the badge above carries why it was taken (AR184).
+            tile.kind,
             `${String(Math.max(1, Math.round(tile.byteLength / 1024)))} KB`,
             tile.sensitivity,
             tile.retention.kind === "pinned"
@@ -2692,6 +2779,84 @@ function RelaunchConfirmDialog({
 
 /* ── the version-bump flow ───────────────────────────────────────────────── */
 
+/**
+ * What the applied bump MOVED, captured at DISPATCH (VB43).
+ *
+ * The plan leaves `plans` the moment it applies and the index is re-read, so
+ * reading the count back afterwards would report a plan that no longer exists.
+ * The KIND is captured for the same reason and decides one thing: whether
+ * there is an archive to open at all.
+ */
+interface AppliedBumpFacts {
+  readonly archived: number;
+  /** `undefined` is a generation-1 plan, which recorded no kind */
+  readonly kind: VersionBumpChangeRecord["kind"] | undefined;
+}
+
+/**
+ * The same record, plus WHICH plan it is about.
+ *
+ * The banner draws the facts; the surface needs the identity, because the
+ * index it re-reads after an apply is served STALE while that read is in
+ * flight (unit F10e) — so for as long as the banner takes to be earned, the
+ * wire on screen still lists the plan that earned it.
+ */
+interface AppliedBump extends AppliedBumpFacts {
+  readonly versionPlanId: string;
+}
+
+/**
+ * The bump APPLIED (VB43/VB44, AR241).
+ *
+ * Apply used to settle in silence: the index re-read, the plan vanished, and
+ * nothing on screen said the act had happened or where its runs had gone. The
+ * demo's banner says both, and its `Open the archive` is the door — offered
+ * only where there is something behind it, because a minor bump archives
+ * nothing (D274 item 2) and a door onto no new rows is worse than no door.
+ */
+export function BumpAppliedBanner({
+  replayed,
+  applied,
+  onOpenArchive,
+}: {
+  /**
+   * The settlement's own verdict (`settleCommandResult(result).replayed`),
+   * never re-derived from `result.state` here — D253's rule that the fold is
+   * the ONE place a wire's arms are read for a verdict (unit F10d finding 3).
+   */
+  replayed: boolean;
+  /** the dispatch record's FACTS — which plan they belong to is the surface's business */
+  applied: AppliedBumpFacts;
+  onOpenArchive: () => void;
+}) {
+  const archives = applied.kind !== "minor";
+  return (
+    <Banner
+      tone="success"
+      icon={<BadgeCheck aria-hidden className={dsIcon.lg} />}
+      title={replayed ? "That bump had already been applied" : "The bump was applied"}
+      action={archives
+        ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<ArchiveIcon aria-hidden className={dsIcon.md} />}
+            onClick={onOpenArchive}
+          >
+            Open the archive
+          </Button>
+        )
+        : undefined}
+    >
+      <span className={dsText.body}>
+        {archives
+          ? `${plural(applied.archived, "run")} left the live surfaces for the read-only archive, grouped under the sweep this bump minted. The registry below is re-read; nothing else moved.`
+          : "A minor bump records the new version and archives nothing, so every run is exactly where it was. The registry below is re-read."}
+      </span>
+    </Banner>
+  );
+}
+
 function BumpRefusal({ result, plan }: { result: CommandResult; plan: VersionBumpPlanWire | undefined }) {
   // The hook must run before any early return; a refusal that appeared with no
   // transition after a click would read as a page change rather than as the
@@ -2844,16 +3009,25 @@ function VersionsView({
   actorId,
   busy,
   onCommand,
+  onOpenArchive,
   result,
 }: {
   wire: ArchiveIndexWire;
   actorId: string;
   busy: boolean;
   onCommand: (request: unknown) => void;
+  /** the applied banner's door back to the runs view (VB44/AR241) */
+  onOpenArchive: () => void;
   result: CommandResult | undefined;
 }) {
-  const openPlan = wire.plans.find((plan) => plan.state === "planned");
   const blockedWorkflows = wire.versionState.filter((state) => state.blockers.length > 0).length;
+  // Settled ONCE (unit F10d finding 3): the applied/refused fork below and
+  // the applied banner's replay verdict both read this fold's answer, never
+  // `result.state` directly — that is D253's rule that the fold, not a
+  // second reader of the wire, decides what a command's landing means.
+  const settlement = result === undefined ? undefined : settleCommandResult(result);
+  /** the frozen short codes an applied sweep's name joins against (AR80) */
+  const codes = useMemo(() => archiveWorkflowCodes(wire), [wire]);
   const archivedByWorkflow = useMemo(() => {
     const counts = new Map<string, number>();
     for (const entry of wire.entries) counts.set(entry.workflowId, (counts.get(entry.workflowId) ?? 0) + 1);
@@ -2867,10 +3041,30 @@ function VersionsView({
    * left to whoever reads the archive six months later, who cannot answer it.
    */
   const [authoring, setAuthoring] = useState<BumpAuthoring | undefined>(undefined);
+  /*
+    VB43 — captured at DISPATCH, never re-read: applying removes the plan from
+    the index, so after the re-read there is nothing left to count.
+  */
+  const [applied, setApplied] = useState<AppliedBump | undefined>(undefined);
+
+  /*
+    The plan the operator is being asked to decide about — and never the one
+    they have already applied. The index is served STALE while the re-read that
+    an apply triggers is in flight (unit F10e), so without this the surface
+    offers `Apply the bump` directly under `The bump was applied`: a control
+    contradicting the sentence above it, and a second envelope the CAS would
+    answer `already-applied`. It comes back on its own, because the re-read
+    that lands next no longer carries the plan at all.
+  */
+  const openPlan = wire.plans.find(
+    (plan) => plan.state === "planned" && plan.versionPlanId !== applied?.versionPlanId,
+  );
 
   const submitPlan = useCallback(
     (authored: BumpAuthoring, changeRecord: VersionBumpChangeRecord) => {
       setAuthoring(undefined);
+      // a settled banner about the PREVIOUS bump may not stand over a new one
+      setApplied(undefined);
       onCommand({
         commandId: crypto.randomUUID(),
         requestedAt: systemClock.now().toISOString(),
@@ -2913,6 +3107,11 @@ function VersionsView({
 
   const apply = useCallback(() => {
     if (openPlan === undefined) return;
+    setApplied({
+      versionPlanId: openPlan.versionPlanId,
+      archived: openPlan.candidates.length,
+      kind: openPlan.changeRecord.state === "present" ? openPlan.changeRecord.value.kind : undefined,
+    });
     onCommand({
       commandId: crypto.randomUUID(),
       requestedAt: systemClock.now().toISOString(),
@@ -3102,7 +3301,22 @@ function VersionsView({
               />
             )}
 
-            {result !== undefined && <BumpRefusal result={result} plan={openPlan} />}
+            {/*
+              VB43 — apply settled in SILENCE before this: the index re-read,
+              the plan vanished, and nothing said the act had happened. Both
+              arms of the one fold are drawn now (D253, Track D row D3), and
+              the applied arm needs the dispatch record as well as the verdict:
+              without it the result belongs to some other command this surface
+              issued, and a success banner about a bump nobody pressed is worse
+              than no banner at all.
+            */}
+            {result !== undefined && settlement !== undefined && (
+              settlement.kind === "applied"
+                ? applied !== undefined && (
+                  <BumpAppliedBanner replayed={settlement.replayed} applied={applied} onOpenArchive={onOpenArchive} />
+                )
+                : <BumpRefusal result={result} plan={openPlan} />
+            )}
 
             <div className="flex flex-col gap-[var(--ds-space-base)]">
               <SectionLabel>Applied bumps</SectionLabel>
@@ -3113,15 +3327,23 @@ function VersionsView({
                   </span>
                 </Well>
               ) : (
-                wire.sweeps.map((sweep) => (
+                wire.sweeps.map((sweep) => {
+                  // Bound once (unit F10d finding 5) and paired onto the
+                  // accessible name (finding 1) — see `SweepRecordCard` above.
+                  const name = archiveSweepName(sweep, codes);
+                  return (
                   <Card key={sweep.applicationId}>
                     <CardBody className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
                       <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
                         <Badge tone={sweep.scope.kind === "application" ? "warning" : "neutral"}>
                           {scopeWord(sweep.scope)}
                         </Badge>
-                        <span className={cn(dsText.nums, dsText.meta, "text-[color:var(--ds-fg)]")}>
-                          {sweepNameLabel(sweep)}
+                        <span
+                          className={cn(dsText.nums, dsText.meta, "text-[color:var(--ds-fg)]")}
+                          title={name.title}
+                          aria-label={name.title}
+                        >
+                          {name.text}
                         </span>
                         <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
                           {fmtClock(sweep.appliedAt)}
@@ -3133,7 +3355,8 @@ function VersionsView({
                       <MetaLine items={[sweep.appliedBy, `app ${sweep.appliedAppVersion}`, `plan ${shortHash(sweep.versionPlanId)}`]} />
                     </CardBody>
                   </Card>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -3182,7 +3405,19 @@ export function ArchiveWorkspace({
 
   useEffect(() => {
     let live = true;
-    setIndex(LOADING);
+    /*
+      An index ALREADY on screen keeps its last wire while the next read is in
+      flight — the rule `useRunDetail` settled for run detail and
+      `useCaptureSession` inherited, landing here for a third reason (unit
+      F10e). A re-read is triggered by an APPLIED command, so blanking to a
+      skeleton unmounts the surface that issued it: `VersionsView` lost the
+      dispatch record VB43's banner is composed from, and the banner and its
+      door were unreachable by a click for as long as they existed. There is
+      one archive index, so there is no identity to compare — the first read
+      still loads, because a skeleton and a stale answer are different claims
+      and only one of them is honest before anything has been read.
+    */
+    setIndex((current) => (current.state === "loaded" ? current : LOADING));
     client.archiveIndex().then(
       (value) => { if (live) setIndex(loaded(value)); },
       (error: unknown) => {
@@ -3273,6 +3508,15 @@ export function ArchiveWorkspace({
   const sweepOfDetail = loadedDetail === undefined
     ? undefined
     : loadedIndex?.sweeps.find((sweep) => sweep.applicationId === loadedDetail.applicationId);
+  /*
+    The frozen short codes a sweep name joins against (AR80). Empty until the
+    index lands, which is the ruled degradation and not a guess: a sweep name
+    with no code prints the workflow ID, which is a real name.
+  */
+  const codes = useMemo(() => {
+    if (loadedIndex === undefined) return new Map<string, string>();
+    return archiveWorkflowCodes(loadedIndex);
+  }, [loadedIndex]);
 
   const detailPane = (): ReactNode => {
     if (selection === ARCHIVE_INDEX) {
@@ -3299,6 +3543,7 @@ export function ArchiveWorkspace({
       <ArchivedRunDetail
         detail={detail.value}
         sweep={sweepOfDetail}
+        codes={codes}
         busy={busy}
         relaunched={
           relaunched === detail.value.runId
@@ -3325,7 +3570,23 @@ export function ArchiveWorkspace({
       );
     }
     if (view === "versions") {
-      return <VersionsView wire={index.value} actorId={actorId} busy={busy} onCommand={onCommand} result={result} />;
+      return (
+        <VersionsView
+          wire={index.value}
+          actorId={actorId}
+          busy={busy}
+          onCommand={onCommand}
+          onOpenArchive={() => {
+            // The door names runs a fresh sweep just minted — a standing
+            // filter from an earlier visit to the ledger could hide every one
+            // of them (unit F10d finding 2), so entering through the door
+            // clears it rather than opening onto a filtered-empty ledger.
+            setQuery(EMPTY_ARCHIVE_QUERY);
+            onView("runs");
+          }}
+          result={result}
+        />
+      );
     }
     return (
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)] min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(0,440px)]">
