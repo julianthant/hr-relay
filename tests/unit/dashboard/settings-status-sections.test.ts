@@ -247,15 +247,25 @@ describe("System hosts (SE40)", () => {
     for (const [system, presentation] of Object.entries(SYSTEM_HOST_PRESENTATION)) {
       assert.ok(presentation.name.length > 0, `${system} has no name`);
       assert.ok(presentation.note.length > 0, `${system} has no note`);
-      // A note states something about the SYSTEM, never what this deployment
-      // configured — the served `Test` column owns that, and a constant
-      // asserting provisioning state would go on asserting it after the state
-      // changed (root CLAUDE.md, fail loud).
-      assert.ok(
-        !/provisioned/i.test(presentation.note),
-        `${system}'s note claims provisioning state, which is served, not authored`,
-      );
     }
+  });
+
+  /**
+   * The demo is the design authority for every system it covers, so its note is
+   * the note — byte for byte (operator's ruling, unit U4b). U3 re-authored the
+   * two that restate provisioning state and a `/provisioned/i` rule test was
+   * added to hold the re-authoring in place; both are gone. This pins the port
+   * itself instead, for the two the re-authoring had replaced.
+   */
+  it("carries the demo's own sentence for the systems the demo covers", () => {
+    assert.equal(
+      SYSTEM_HOST_PRESENTATION.onbase.note,
+      "No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production.",
+    );
+    assert.equal(
+      SYSTEM_HOST_PRESENTATION.i9.note,
+      "No test host is provisioned. The doctor's I-9 test-instance check reports the same thing.",
+    );
   });
 });
 

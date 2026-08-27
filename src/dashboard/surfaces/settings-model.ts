@@ -212,14 +212,20 @@ export function useSettingsFacts(): SettingsFactsState {
  * `I-9` are what the systems are actually called. One vocabulary, two
  * treatments, and the two are not interchangeable in either direction.
  *
- * **What a `note` may say.** It states something durable about the SYSTEM —
- * what a run against the wrong host would do there. It must never state what
- * this deployment configured: the `Test` column is served, and a constant
- * asserting "no test host is provisioned" would go on saying so the day one is,
- * which is exactly the plausible-but-wrong sentence the fail-loud rule exists
- * to prevent. That is why the demo's `kronos` / `onbase` / `i9` notes are not
- * ported verbatim — all three restate provisioning state — while `ucpath`,
- * `kuali`, `crm` and `servicenow` are, byte for byte.
+ * **Where a note comes from.** The demo is the design authority for every
+ * system it covers, and demo-covered copy is ported BYTE FOR BYTE (operator's
+ * ruling, unit U4b) — including `onbase` and `i9`, whose notes restate
+ * provisioning state that the served `Test` column also carries. U3 read that
+ * restatement as the fail-loud rule's plausible-but-wrong sentence and
+ * re-authored both; that was the wrong call. The tension is real — one of these
+ * constants could one day contradict the column beside it — but it is an
+ * operator question about the demo's copy, not a licence to write new prose in
+ * the demo's place. Raise it; do not resolve it here.
+ *
+ * A system the demo does NOT cover (`new-kronos`, `old-kronos`, `sharepoint` —
+ * the demo carried one undifferentiated `kronos` and no SharePoint) has no copy
+ * to port, so its note is authored and marked as such at the entry. Every note
+ * says why the instance choice matters for that system.
  *
  * `Record<BrowserSystemId, …>` on the CLOSED enum, so a tenth system is a
  * compile error here rather than a row that renders its id again.
@@ -227,54 +233,56 @@ export function useSettingsFacts(): SettingsFactsState {
 export interface SystemHostPresentation {
   /** the system's own name, as it is written everywhere but a chip */
   readonly name: string;
-  /** why the instance choice matters for this system — never what is configured */
+  /** why the instance choice matters for this system */
   readonly note: string;
 }
 
 export const SYSTEM_HOST_PRESENTATION: Record<BrowserSystemId, SystemHostPresentation> = {
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:89-92
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:89-93
   ucpath: {
     name: "UCPath",
     note: "A UCPath write on the test host files nothing real and reads a stale copy of the roster.",
   },
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:98-101
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:94-98
   kuali: {
     name: "Kuali",
     note: "Staging holds its own documents — a doc ID from production will not resolve there.",
   },
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:103-106
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:104-108
   crm: {
     name: "CRM",
     note: "Read-only for the download workflow, so the risk of the wrong host here is a wrong answer, not a wrong write.",
   },
-  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:108-111
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:109-113
   servicenow: {
     name: "ServiceNow",
     note: "A ticket filed on the dev host is real and visible — it just goes to nobody.",
   },
-  // The demo's note for this system was a provisioning claim; authored to the
-  // rule above instead. OnBase indexes against a person, so the wrong host is
-  // a real filing in the wrong place rather than a discarded one.
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:114-118
   onbase: {
     name: "OnBase",
-    note: "Documents are indexed against a person's record, so a filing on the wrong host is a real filing somewhere the operator will not look for it.",
+    note: "No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production.",
   },
-  // Demo note was a provisioning claim (and named the doctor, which this build
-  // does not serve); authored to the rule above.
+  // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/demo-runstart-wire.ts:119-123
+  // The second sentence names a doctor check this build does not serve yet; it
+  // is the demo's sentence and stays as written (U4b).
   i9: {
     name: "I-9",
-    note: "The I-9 is a federal record — a section completed here lands on the person's real form, never on a copy of it.",
+    note: "No test host is provisioned. The doctor's I-9 test-instance check reports the same thing.",
   },
-  // No demo counterpart: the demo carried one `kronos`, this build resolves two
-  // tenants (`stores` catalog, `new-kronos` / `old-kronos`).
+  // authored — no demo counterpart (UI-1 sheet item 6): the demo carried one
+  // undifferentiated `kronos` (demo-runstart-wire.ts:99-103), this build
+  // resolves two tenants (`stores` catalog, `new-kronos` / `old-kronos`).
   "new-kronos": {
     name: "New Kronos",
     note: "Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total.",
   },
+  // authored — no demo counterpart (UI-1 sheet item 6)
   "old-kronos": {
     name: "Old Kronos",
     note: "Workforce Central, kept for the reports the new tenant did not carry across.",
   },
+  // authored — no demo counterpart (UI-1 sheet item 6)
   sharepoint: {
     name: "SharePoint",
     note: "A download source, so the wrong host here yields the wrong file rather than the wrong write.",
