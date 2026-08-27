@@ -101,3 +101,68 @@ export function inputHashFooter(facts: readonly ReceiptFact[]): string | undefin
   }
   return inputFingerprint;
 }
+
+/* ── the receipt body's three ported cues (ledger 2 D17 / D24 / D29) ────────
+ *
+ * All three are served facts this tree already had and drew as bare words. The
+ * demo draws each one with a MARK the eye catches before it reads — a badge, an
+ * icon, a full sentence — and D273 item 7 rules that every served receipt cue
+ * is ported. Each fold is total over its served enum: a new arm is a type
+ * error, never a silent default.
+ *
+ * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
+ * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx:110 (D17),
+ * :332-368 (D24) and :455-473 (D29).
+ */
+
+type ActionKind = RunEvidenceReceiptWire["actions"][number]["kind"];
+type VerificationVerdict = RunEvidenceReceiptWire["verification"][number]["verdict"];
+
+/**
+ * D17 — the write KIND as a badge rather than a word folded into a sentence.
+ *
+ * `commit` is the one arm that changed a record of a real system, so it is the
+ * one arm that reads as news (`info`, the demo's own tone at :110). `prepare`
+ * is the demo's `neutral`; `external-read` and `local-projection` are arms the
+ * demo has no counterpart for and are neutral for the same reason `prepare` is
+ * — nothing was filed.
+ */
+export function writeActionBadgeTone(kind: ActionKind): "info" | "neutral" {
+  return kind === "commit" ? "info" : "neutral";
+}
+
+/** D24 — the completion criterion's mark: met, unmet, or neither known. */
+export type VerificationMark = "met" | "unmet" | "uncertain";
+
+/**
+ * `verified` and `present` are the two verdicts that MET the obligation;
+ * `absent` is the one that answered it and found nothing, which is the demo's
+ * `unmet`; `unknown` and `ambiguous` did not answer it at all, which is the
+ * demo's third arm. The verdict WORD still renders beside the mark — the mark
+ * is a second channel, not a replacement.
+ */
+export function verificationMark(verdict: VerificationVerdict): VerificationMark {
+  switch (verdict) {
+    case "verified":
+    case "present":
+      return "met";
+    case "absent":
+      return "unmet";
+    case "unknown":
+    case "ambiguous":
+      return "uncertain";
+  }
+}
+
+/**
+ * D29 — what `loadBearing` MEANS, in the demo's two full sentences
+ * (`DemoReceipt.tsx:466-468`). This tree collapsed both to the single word
+ * "load-bearing" on the section whose entire job is saying what is still
+ * uncertain — and said nothing at all in the false case, so an operator could
+ * not tell a declared-harmless warning from an unclassified one.
+ */
+export function uncertaintySentence(loadBearing: boolean): string {
+  return loadBearing
+    ? "load-bearing — this is why the run cannot read as done"
+    : "declared non-load-bearing — it cannot change the transaction or the core result";
+}

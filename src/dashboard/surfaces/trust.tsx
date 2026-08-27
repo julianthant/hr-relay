@@ -19,11 +19,12 @@
  * - empty sections are omitted (D24 restraint) — a receipt does not explain
  *   itself, and "no warnings" is best said by no warnings section.
  */
-import { Check, Download, Fingerprint, Package } from "lucide-react";
+import { Check, CircleAlert, Download, Fingerprint, Package, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
+  Badge,
   Chip,
   Banner,
   Button,
@@ -48,6 +49,9 @@ import {
   acceptDiagnosticBundleReadback,
   evidenceSourceMeta,
   inputHashFooter,
+  uncertaintySentence,
+  verificationMark,
+  writeActionBadgeTone,
 } from "./trust-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
@@ -56,6 +60,7 @@ import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bun
 export type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
 export type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;
 type EvidenceFactWire = RunEvidenceReceiptWire["input"][number];
+type VerificationVerdictWire = RunEvidenceReceiptWire["verification"][number]["verdict"];
 type FactValue = Extract<EvidenceFactWire, { state: "satisfied" }>["value"];
 
 type BundleDialogState =
@@ -72,33 +77,76 @@ function redactedText(value: FactValue): string {
   return typeof value.value === "string" ? value.value : JSON.stringify(value.value);
 }
 
-function FactRow({ label, value, tone, meta }: {
+/**
+ * `mark` and `badge` are the demo's two ways of putting a cue AHEAD of a fact
+ * so the eye catches it before it reads (ledger 2 D17/D24/D29); `note` is its
+ * way of putting a full sentence UNDER one, where it can wrap. All three are
+ * optional and additive — a row that passes none renders exactly as before.
+ */
+function FactRow({ label, value, tone, meta, mark, badge, note }: {
   label: string;
   value: string;
   tone?: "danger" | "warning";
   meta?: string;
+  mark?: ReactNode;
+  badge?: ReactNode;
+  note?: string;
 }) {
   return (
     <div className="grid grid-cols-[minmax(0,14rem)_1fr] gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-tight)]">
       <span className={cn(dsText.meta, "min-w-0 truncate text-[color:var(--ds-fg-muted)]")}>{label}</span>
-      <span
-        className={cn(
-          dsText.body,
-          dsText.nums,
-          "min-w-0 break-words",
-          tone === "danger"
-            ? "text-[color:var(--ds-danger)]"
-            : tone === "warning"
-              ? "text-[color:var(--ds-status-waiting-fg)]"
-              : "text-[color:var(--ds-fg)]",
-        )}
-      >
-        {value}
-        {meta !== undefined && (
-          <span className={cn(dsText.meta, "ml-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>{meta}</span>
+      <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+        <span className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
+          {mark}
+          {badge}
+          <span
+            className={cn(
+              dsText.body,
+              dsText.nums,
+              "min-w-0 break-words",
+              tone === "danger"
+                ? "text-[color:var(--ds-danger)]"
+                : tone === "warning"
+                  ? "text-[color:var(--ds-status-waiting-fg)]"
+                  : "text-[color:var(--ds-fg)]",
+            )}
+          >
+            {value}
+            {meta !== undefined && (
+              <span className={cn(dsText.meta, "ml-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>{meta}</span>
+            )}
+          </span>
+        </span>
+        {note !== undefined && (
+          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{note}</span>
         )}
       </span>
     </div>
+  );
+}
+
+/**
+ * D24's criterion glyph — the demo's `Check` / `X` / `CircleAlert` over the
+ * served verdict, in the demo's three tones. `aria-hidden`: the verdict WORD
+ * renders beside it, so this is a second channel for the sighted read and
+ * never the only one.
+ */
+function VerificationMarkGlyph({ verdict }: { verdict: VerificationVerdictWire }) {
+  const mark = verificationMark(verdict);
+  const Glyph = mark === "met" ? Check : mark === "unmet" ? X : CircleAlert;
+  return (
+    <Glyph
+      aria-hidden
+      className={cn(
+        dsIcon.md,
+        "shrink-0 self-center",
+        mark === "met"
+          ? "text-[color:var(--ds-success-fg)]"
+          : mark === "unmet"
+            ? "text-[color:var(--ds-danger)]"
+            : "text-[color:var(--ds-status-waiting-fg)]",
+      )}
+    />
   );
 }
 
@@ -502,10 +550,14 @@ export function ReceiptEvidenceBody({
       {receipt.actions.length > 0 && (
         <TrustSection label="Actions">
           {receipt.actions.map((action) => (
+            /* D17 — the write kind is a BADGE, not a word folded into the
+               sentence. `commit` is the arm that changed a record of a real
+               system and is the only one that reads as news. */
             <FactRow
               key={action.id}
               label={action.taskId}
-              value={`${action.kind} — ${WRITE_STATE_SENTENCE[action.writeState]}`}
+              badge={<Badge tone={writeActionBadgeTone(action.kind)}>{action.kind}</Badge>}
+              value={WRITE_STATE_SENTENCE[action.writeState]}
               meta={fmtClock(action.occurredAt)}
             />
           ))}
@@ -518,6 +570,7 @@ export function ReceiptEvidenceBody({
             <FactRow
               key={entry.id}
               label={entry.obligation}
+              mark={<VerificationMarkGlyph verdict={entry.verdict} />}
               value={entry.verdict}
               tone={entry.verdict === "verified" || entry.verdict === "present"
                 ? undefined
@@ -546,12 +599,28 @@ export function ReceiptEvidenceBody({
       {receipt.warnings.length > 0 && (
         <TrustSection label="Warnings">
           {receipt.warnings.map((warning) => (
+            /* D29 — the section whose whole job is saying what is still
+               uncertain said it with one word, and said nothing at all when a
+               warning was declared harmless. The glyph and both full sentences
+               are the demo's (`DemoReceipt.tsx:455-473`). */
             <FactRow
               key={warning.id}
               label={warning.code}
+              mark={(
+                <CircleAlert
+                  aria-hidden
+                  className={cn(
+                    dsIcon.md,
+                    "shrink-0 self-center",
+                    warning.loadBearing
+                      ? "text-[color:var(--ds-danger)]"
+                      : "text-[color:var(--ds-status-waiting-fg)]",
+                  )}
+                />
+              )}
               value={warning.summary}
               tone={warning.loadBearing ? "danger" : "warning"}
-              meta={warning.loadBearing ? "load-bearing" : undefined}
+              note={uncertaintySentence(warning.loadBearing)}
             />
           ))}
         </TrustSection>
