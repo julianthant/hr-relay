@@ -21,10 +21,9 @@
  * `receipt-model.ts`.
  */
 import { ShieldCheck } from "lucide-react";
-import type { ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import { Banner, Chip, DS_STATUS, EmptyState, MetaLine, SectionLabel, dsIcon, dsText } from "../ds/ui.js";
+import { Banner, Chip, DS_STATUS, EmptyState, MetaLine, dsIcon, dsText } from "../ds/ui.js";
 import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
 import { receiptConfidenceChip, receiptIdentityItems } from "./receipt-model.js";
@@ -41,15 +40,6 @@ const RESULT_COPY: Record<TerminalOutcomeResult, { word: string; tone: "success"
   failed: { word: DS_STATUS.failed.label, tone: "danger" },
   cancelled: { word: DS_STATUS.cancelled.label, tone: "neutral" },
 };
-
-function ReceiptSection({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-[var(--ds-space-snug)]">
-      <SectionLabel>{label}</SectionLabel>
-      {children}
-    </section>
-  );
-}
 
 /**
  * The Receipt tab's whole 1i surface. `resolvedInstances` is the row's served
@@ -118,15 +108,17 @@ export function ReceiptView({
         </Banner>
       )}
 
-      {value !== undefined && (
-        <ReceiptSection label="Receipt">
-          {/* `bandCarriesIdentity` — the band above already prints this
-              receipt's id, instant, attempt, retry-of and confidence, so the
-              body must not print them a second time. The archive mounts the
-              same body with no band and keeps its full trailing line. */}
-          <ReceiptEvidenceBody receipt={value} bandCarriesIdentity />
-        </ReceiptSection>
-      )}
+      {/* `bandCarriesIdentity` — the band above already prints this receipt's
+          id, instant, attempt, retry-of and confidence, so the body must not
+          print them a second time. The archive mounts the same body with no
+          band and keeps its full trailing line.
+
+          There is no `Receipt` SectionLabel around this any more. It existed to
+          head the identity MetaLine that row D9 moved onto the band, and once
+          that left it was a caps label sitting directly on top of the body's
+          own first caps label with nothing between them — chrome naming chrome.
+          The band above says `receipt {id}`, which is what the heading was for. */}
+      {value !== undefined && <ReceiptEvidenceBody receipt={value} bandCarriesIdentity />}
       {receipt.state === "missing" && <EmptyState title="No receipt" description={receipt.reason} />}
       {receipt.state === "purged" && <EmptyState title="Receipt purged" description={receipt.reason} />}
       {receipt.state === "error" && (
