@@ -150,8 +150,16 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     // config, and the descriptor tuple the kernel plans with — served by
     // `GET /api/v1/settings/facts`. They were absent for exactly one reason,
     // which the ledger names: this list said `storage` and nothing else.
+    //
+    // `Storage health`, not `Storage`: the nav word and the page it opens are
+    // one name, and the demo spells it once (legacy 1ec1d870
+    // `src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:170-176`, the
+    // nav entry carrying `label: "Storage health"` at :172).
+    // D276 item 4 ported the PANEL HEADER and left the nav entry behind, so the
+    // two disagreed on screen (UF-SET-9). The label is served rather than
+    // authored in the surface, so this list is where it is spelled.
     settingsSections: [
-      { id: "storage", label: "Storage", revision: 1 },
+      { id: "storage", label: "Storage health", revision: 1 },
       { id: SETTINGS_SYSTEM_HOSTS_SECTION_ID, label: "System hosts", revision: 1 },
       { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
     ],

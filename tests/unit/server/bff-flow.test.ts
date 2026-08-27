@@ -583,7 +583,16 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(storage.authority, "healthy");
     assert.equal(storage.backup, "missing");
     const sections = boot.settingsSections as { id: string; label: string }[];
-    assert.deepEqual(sections.map(({ id }) => id), ["storage", "system-hosts", "workflow-capabilities"]);
+    // The LABEL is asserted with the id, because it is served here and rendered
+    // verbatim by `buildSettingsNav` — the surface authors none of it. `Storage
+    // health` is the demo's one name for the entry and the page it opens
+    // (UF-SET-9); the two used to disagree because only the panel header was
+    // ported (D276 item 4).
+    assert.deepEqual(sections, [
+      { id: "storage", label: "Storage health", revision: 1 },
+      { id: "system-hosts", label: "System hosts", revision: 1 },
+      { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
+    ]);
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {

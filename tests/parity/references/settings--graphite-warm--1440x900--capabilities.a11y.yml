@@ -10,7 +10,7 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
-  - button "Dashboard" [pressed]
+  - button "Dashboard"
   - button "Archive"
   - button "Explorer"
   - button "Activity"
@@ -27,7 +27,7 @@
       - button "Back to the dashboard"
       - separator
       - text: Status
-      - link "Storage":
+      - link "Storage health":
         - /url: "?settings=storage"
       - link "System hosts":
         - /url: "?settings=system-hosts"
@@ -36,7 +36,7 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
-    - text: Workflow capabilities What each registered workflow can do, and what it will not do. 1 workflows · 6 capabilities
+    - text: Workflow capabilities What each workflow can do — and, where it cannot, whether that is a decision or a gap. 1 workflows · 6 capabilities
     - status: Read from the descriptors, not from a list somebody kept up to date Every cell is derived from the same descriptor the Run modal and the Explorer read. A workflow that gains a dry run gains it here on the same deploy. These six are what a descriptor declares; a seventh appears when a descriptor grows one, never before.
     - text: Typed start 1 of 1
     - button "What Typed start means"

@@ -1440,7 +1440,7 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
     gear had never been rendered by the lane at all.
   */
   settingsSections: [
-    { id: "storage", label: "Storage", revision: 1 },
+    { id: "storage", label: "Storage health", revision: 1 },
     { id: SETTINGS_SYSTEM_HOSTS_SECTION_ID, label: "System hosts", revision: 1 },
     { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
   ],

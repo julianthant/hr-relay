@@ -94,6 +94,48 @@ binding would contradict them.
 
 ## Lessons learned
 
+- **2026-08-27: a "you are here" control with no value for "nowhere in here" will be made to lie
+  (unit U3, UF-SET-2).** `ShellViewSwitcher`'s prop was typed `ShellView` — the four segments it
+  draws — so `dashboard-app.tsx` had nothing to hand it when a takeover the switcher does not name
+  (Settings, intake, the catalog) owned the main region. It handed over `"queue"`, and wrote a
+  docstring defending the choice: *"lighting nothing would be the switcher claiming the operator is
+  nowhere."* The result was `Dashboard` and the gear both `aria-pressed`, at a moment when the
+  dashboard was covered by a takeover. The demo has never had the problem because its switcher reads
+  the app's FULL view union and simply matches nothing (legacy `1ec1d870`
+  `src/dashboard/components/dev/rebuild-demo/DemoShell.tsx:560-573`).
+
+  **The type was the defect, not the fallback.** A narrowed prop makes the absent state unspeakable,
+  and an unspeakable state comes out as the nearest speakable one — which is exactly the shape the
+  root CLAUDE.md's fail-loud rule describes for data. It applies to UI state too: a pressed segment
+  is an assertion about where the operator is, and a plausible-but-wrong one is worse than none.
+  `ShellViewSelection = ShellView | "none"` is the missing value, and `shellViewOf` in
+  `app/url-state.ts` is exhaustive over `ActiveTakeover`, so a seventh takeover fails to compile
+  rather than quietly inheriting an arm.
+
+- **2026-08-27: the demo is the design authority for everything it covers, and a tension in its copy
+  is an operator question, not a licence to re-author (units U3 → U4b, UF-SET-26).** U3 ported the
+  demo's per-system host notes into `settings-model.ts`'s `SYSTEM_HOST_PRESENTATION` and stopped at
+  two of them: `onbase` and `i9` read *"No test host is provisioned…"*, which the SERVED `Test`
+  column also says. U3 reasoned from the root CLAUDE.md's fail-loud rule — an authored constant that
+  restates served state goes on restating it after the state changes — invented the rule *"a note
+  describes the SYSTEM, never this deployment's config"*, wrote replacement prose for both, and
+  added a `/provisioned/i` test to hold the rule in place. **The operator overruled all of it in
+  U4b.** Both notes are now the demo's sentences byte for byte, the rule test is deleted, and
+  `settings-status-sections.test.ts` pins the two ported strings instead.
+
+  The reasoning was not wrong; the authority was. The demo's copy is a decision already taken, and a
+  worker deriving a rule from a general principle does not get to overturn it — the observation
+  ("this constant could contradict the column beside it the day a sandbox is provisioned") is worth
+  raising, and raising it is the whole move. **Port what the demo covers verbatim; author only where
+  the demo has no counterpart, and mark those entries `// authored — no demo counterpart` so the
+  next reader can tell the two apart at a glance.** Here that is `new-kronos` / `old-kronos`
+  (the demo carried one undifferentiated `kronos`) and `sharepoint` (absent from the demo).
+
+  The same commit is the argument for two label maps over one. `SYSTEM_LABEL`
+  (`system-chip-model.ts`) is the CHIP's treatment — `UCPATH`, `NEW KRONOS`, shouted at chip size in
+  a dense row — and reusing it in a table beside prose is how `NEW-KRONOS` ends up in a sentence.
+  One vocabulary, two treatments, and neither substitutes for the other.
+
 - **2026-08-26: a ledger row can be wrong in both directions at once, and the direction nobody
   checks is "it says this landed" (unit V1, the Track F vocabulary sweep across all three 03a
   fidelity ledgers).** The sweep set out to port 24 + 37 + ~120 open word rows and found almost all
@@ -1095,3 +1137,61 @@ binding would contradict them.
   `Active-run policy` select against a `descriptor.enqueue` the planner reads with no per-start
   override — draw the FACT read-only in the control's slot rather than the control: an operator choice
   the server ignores is a wrong value about what is being started.
+
+- **2026-08-27: a page that REPLACES the window is not a region sitting on one — and four copies of
+  a wrapper are four chances to drift, so the fix is one component, not one edit per surface (UI-1
+  U2; audit rows UF-SET-1/4/5, UF-AR-3, UF-EX-2, UF-AC-2; D272 item 1 / D274 item 5 / D275 item 2).**
+  Settings, Archive, Explorer and the Activity report had each rooted in a `Panel` — the REGION
+  container: border, `--ds-radius-lg`, `--ds-surface-1` — inside a
+  `px-[--ds-shell-inset] pb-[--ds-space-base]` div in `dashboard-app.tsx`'s takeover switch. The
+  route half of the takeover conversion had landed (none of them is a `Dialog`, all four have a back
+  path and a history entry) and the GEOMETRY half had not, so the most-opened pages in the product
+  arrived as 1416px cards floating in a 12px gutter while the demo's own containers are full-bleed at
+  `x=0, w=viewport, y=44`. **`Panel` is the tell**: reaching for the region container to root a page
+  is how the card gets there, and it reads as correct at every review because the primitive is the
+  right one — for a region. Three things travel. **The wrapper was duplicated SIX times** (intake and
+  the UI catalog carry it too), which is why the change had to become `TakeoverFrame` in
+  `ds/primitives-layout.tsx` rather than four edits: the same file also held four hand-rolled copies
+  of `useDsEnterTransition` plus the two `data-[demo-enter=from]:` classes, and removing the card one
+  surface at a time would have left the motion behind to diverge. D275 item 2 asks for exactly one
+  shared wrapper, and one component is the only thing that can be audited as one. **The
+  accessibility tree is the proof the port was geometric only**: all four roots were already a
+  `section` with their own `aria-label`, `TakeoverFrame` keeps both, and the 40-reference parity
+  re-freeze changed 40 `.png` files and not a single `.a11y.yml` or `.meta.json` — if a wrapper
+  change moves an a11y reference, it was never only a wrapper change. **Two takeovers are
+  deliberately NOT converted**: the demo covers neither intake nor the UI catalog, so their geometry
+  has no ruled target, and converting them would have been an unruled change wearing a refactor's
+  clothes. They still hand-roll `Panel` + the arrival; adopting `TakeoverFrame` is the follow-up the
+  moment a ruling exists (audit row **UF-FU-1**).
+
+- **2026-08-27: a takeover that replaces the window has to take FOCUS with it, and the wrapper is the
+  only place that scales (UI-1 U4a; D275 item 2).** All four takeovers were Radix `Dialog`s. A dialog
+  moves focus in on open and hands it back on close for free — so when D272 item 1 / D274 item 5 made
+  them routed pages, BOTH halves became manual work, and only one half got done: unit F4b
+  re-implemented the close arm (`settingsCloseFocusTargetId`) and nothing re-implemented the open arm.
+  The failure is invisible until someone presses Tab. The page swaps, the operator's focus stays on a
+  door that is no longer on screen, and the next Tab restarts at the top of the shell — a keyboard
+  operator cannot reach the page they just opened. **`TakeoverFrame` focuses ITSELF** (`tabIndex={-1}`
+  plus a mount effect), not a control inside it, and the deciding fact is that **the Activity report
+  deliberately has no `Back to the dashboard` button** (the demo's own rule, ported): an `initialFocus`
+  ref the surfaces point at their Back button would have given three takeovers a contract and the
+  fourth silence, which is the four-copies drift in a new costume. Focusing the labelled `section` also
+  announces the PAGE rather than one button on it, and one Tab from there reaches whatever that
+  takeover's first control is (verified live: Settings → `Back to the dashboard`). **And the ring you
+  did not opt into is still a ring.** This was reasoned to move no pixel — the frame carries no
+  `ds-focus` class, `.ds-focus:focus-visible` is opt-in, and the base layer's `*` rule sets an outline
+  COLOUR with no width or style. Every clause true, and the parity lane failed anyway: 38 references,
+  2548 pixels each, tracing the frame's perimeter. The ring was **Chromium's own**
+  `:focus-visible { outline: auto }` wearing that `*` rule's colour — a programmatic focus with no
+  preceding pointer interaction MATCHES `:focus-visible`, so every takeover opened with a 2px ring
+  around the whole page. `outline-none` on the frame is the fix and it is correct rather than a
+  cover-up: `tabIndex={-1}` means the operator can never navigate TO it, so an indicator there points
+  at nothing they can act on, and what announces the arrival is the region's accessible NAME. **The
+  lesson generalises**: "this element has no ring class" is not the same claim as "this element paints
+  no ring", and only the reference corpus can tell them apart. With it the 40-reference takeover
+  corpus is byte-identical. Same pass: the root's `min-w-0` was dropped as provably inert (the frame is a
+  COLUMN-flex item under `main`, so `min-width: auto` is never the constraint) and `overflow-hidden`
+  was KEPT with a live-verified note — measured at 1440x900 on all four with an over-wide and an
+  over-tall child forced in, it changes no layout at all (the shell root already owns the viewport
+  clip); its one job is stopping an overflowing child painting across the frame's bottom edge at
+  y=863, where the sessions bar is.

@@ -10,7 +10,7 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
-  - button "Dashboard" [pressed]
+  - button "Dashboard"
   - button "Archive"
   - button "Explorer"
   - button "Activity"
@@ -27,7 +27,7 @@
       - button "Back to the dashboard"
       - separator
       - text: Status
-      - link "Storage":
+      - link "Storage health":
         - /url: "?settings=storage"
       - link "System hosts":
         - /url: "?settings=system-hosts"
@@ -36,7 +36,7 @@
       - text: Help
       - link "Keyboard":
         - /url: "?settings=keyboard"
-    - text: System hosts Where a run goes when it opens each system. 0 of 9 have a test host
+    - text: System hosts Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal. 0 of 9 have a test host
     - status:
       - text: Choosing between these is a per-run decision A run envelope carries the instance per system and defaults to production; a start that asks for
       - strong: test
@@ -48,40 +48,40 @@
           - columnheader "Production"
           - columnheader "Test"
       - rowgroup:
-        - row "ucpath https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y none provisioned":
-          - cell "ucpath"
+        - row "UCPath A UCPath write on the test host files nothing real and reads a stale copy of the roster. https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y none provisioned":
+          - cell "UCPath A UCPath write on the test host files nothing real and reads a stale copy of the roster."
           - cell "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y"
           - cell "none provisioned"
-        - row "crm https://crm.ucsd.edu/hr none provisioned":
-          - cell "crm"
+        - row "CRM Read-only for the download workflow, so the risk of the wrong host here is a wrong answer, not a wrong write. https://crm.ucsd.edu/hr none provisioned":
+          - cell "CRM Read-only for the download workflow, so the risk of the wrong host here is a wrong answer, not a wrong write."
           - cell "https://crm.ucsd.edu/hr"
           - cell "none provisioned"
-        - row "onbase https://ucsd.hylandcloud.com/251ids/NavPanel.aspx none provisioned":
-          - cell "onbase"
+        - row "OnBase No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production. https://ucsd.hylandcloud.com/251ids/NavPanel.aspx none provisioned":
+          - cell "OnBase No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production."
           - cell "https://ucsd.hylandcloud.com/251ids/NavPanel.aspx"
           - cell "none provisioned"
-        - row "kuali https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb none provisioned":
-          - cell "kuali"
+        - row "Kuali Staging holds its own documents — a doc ID from production will not resolve there. https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb none provisioned":
+          - cell "Kuali Staging holds its own documents — a doc ID from production will not resolve there."
           - cell "https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb"
           - cell "none provisioned"
-        - row "servicenow https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf none provisioned":
-          - cell "servicenow"
+        - row "ServiceNow A ticket filed on the dev host is real and visible — it just goes to nobody. https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf none provisioned":
+          - cell "ServiceNow A ticket filed on the dev host is real and visible — it just goes to nobody."
           - cell "https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf"
           - cell "none provisioned"
-        - row "i9 https://i9complete.ucop.edu none provisioned":
-          - cell "i9"
+        - row "I-9 No test host is provisioned. The doctor's I-9 test-instance check reports the same thing. https://i9complete.ucop.edu none provisioned":
+          - cell "I-9 No test host is provisioned. The doctor's I-9 test-instance check reports the same thing."
           - cell "https://i9complete.ucop.edu"
           - cell "none provisioned"
-        - row "new-kronos https://ucsd-sso.prd.mykronos.com/wfd/home none provisioned":
-          - cell "new-kronos"
+        - row "New Kronos Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total. https://ucsd-sso.prd.mykronos.com/wfd/home none provisioned":
+          - cell "New Kronos Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total."
           - cell "https://ucsd-sso.prd.mykronos.com/wfd/home"
           - cell "none provisioned"
-        - row "old-kronos https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/ none provisioned":
-          - cell "old-kronos"
+        - row "Old Kronos Workforce Central, kept for the reports the new tenant did not carry across. https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/ none provisioned":
+          - cell "Old Kronos Workforce Central, kept for the reports the new tenant did not carry across."
           - cell "https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/"
           - cell "none provisioned"
-        - row "sharepoint https://ucsdcloud.sharepoint.com none provisioned":
-          - cell "sharepoint"
+        - row "SharePoint A download source, so the wrong host here yields the wrong file rather than the wrong write. https://ucsdcloud.sharepoint.com none provisioned":
+          - cell "SharePoint A download source, so the wrong host here yields the wrong file rather than the wrong write."
           - cell "https://ucsdcloud.sharepoint.com"
           - cell "none provisioned"
 - region "Session Panel":

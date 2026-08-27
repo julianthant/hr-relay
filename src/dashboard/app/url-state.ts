@@ -11,6 +11,7 @@
  */
 
 import type { ArchiveView } from "../surfaces/archive-model.js";
+import type { ShellViewSelection } from "../surfaces/top-bar-model.js";
 import { parseCatalogView, type CatalogView } from "../surfaces/row-catalog-model.js";
 
 export interface AppRouteState {
@@ -195,9 +196,16 @@ export function routeAdvancesHistory(next: AppRouteState, currentSearch: string)
  * to test first: the operator's in-progress WORK outranks either reference
  * view, and the workflow-scoped reference outranks the system-scoped one.
  */
-export function activeTakeover(
-  route: AppRouteState,
-): "settings" | "intake" | "archive" | "activity" | "explore" | "catalog" | "none" {
+export type ActiveTakeover =
+  | "settings"
+  | "intake"
+  | "archive"
+  | "activity"
+  | "explore"
+  | "catalog"
+  | "none";
+
+export function activeTakeover(route: AppRouteState): ActiveTakeover {
   // Settings outranks every other key, and the reason is functional rather
   // than a preference about importance: the storage band's `Storage health`
   // door is mounted ABOVE the takeover switch, so it is pressed from inside
@@ -214,4 +222,37 @@ export function activeTakeover(
   if (route.explore !== undefined) return "explore";
   if (route.catalog !== undefined) return "catalog";
   return "none";
+}
+
+/**
+ * Which Top Bar switcher segment the resolved takeover presses.
+ *
+ * The switcher is a VIEW of the route and never a second copy of it, so this is
+ * a fold of `activeTakeover`'s ONE answer — a link carrying both `?archive=`
+ * and `?explore=` lights the segment the region actually renders, because both
+ * read the same resolution.
+ *
+ * `settings`, `intake` and `catalog` press NOTHING (`"none"`). They used to
+ * fall through to `queue` on the reasoning that "lighting nothing would be the
+ * switcher claiming the operator is nowhere" — but the operator is not nowhere,
+ * they are in a takeover the switcher does not name, and the gear (or the
+ * takeover's own header) says where. Pressing `Dashboard` while a takeover
+ * covers the dashboard is two simultaneous "you are here" claims, one of them
+ * false (UF-SET-2). The demo has always done it this way
+ * (legacy `1ec1d870` `src/dashboard/components/dev/rebuild-demo/DemoShell.tsx:560-573`).
+ *
+ * Exhaustive over `ActiveTakeover` on purpose: a seventh takeover added to the
+ * union above fails to compile here rather than quietly acquiring one of the
+ * arms below.
+ */
+export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
+  switch (takeover) {
+    case "archive": return "archive";
+    case "explore": return "explorer";
+    case "activity": return "activity";
+    case "none": return "queue";
+    case "settings":
+    case "intake":
+    case "catalog": return "none";
+  }
 }

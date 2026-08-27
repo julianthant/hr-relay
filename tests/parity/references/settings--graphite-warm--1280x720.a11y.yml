@@ -10,7 +10,7 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
-  - button "Dashboard" [pressed]
+  - button "Dashboard"
   - button "Archive"
   - button "Explorer"
   - button "Activity"
@@ -27,7 +27,7 @@
       - button "Back to the dashboard"
       - separator
       - text: Status
-      - link "Storage":
+      - link "Storage health":
         - /url: "?settings=storage"
       - link "System hosts":
         - /url: "?settings=system-hosts"

@@ -191,3 +191,38 @@ different window D180 refuses. The two bounds remain the honest control.
 `bounds: { earliest, latest }` so a preset names a real window; the panel header's subtitle already
 renders the chosen span as a human label (`Sat, Aug 1 – Fri, Aug 14`), which is the readout half of
 the demo's chip row.
+
+## Activity refuses to build on 2026-08-27 — a run in the span stream is absent from authority
+
+**Date:** 2026-08-27 · **Status:** recorded (run UI-1 audit gap G1; booked by the coordinator on
+receive — the run's handoff claimed the record and had not written it) · **Owning doc:** ref
+dashboard-surfaces §9.5.2 (the refusal pane) / §2 (the authority join) · **Priority:** medium — it
+blocks the fidelity audit of Activity's populated body (`docs/plans/2026-08-27-ui-fidelity-audit.md`
+row UF-AC-4 is `state-only` on this basis; gap G1 in its "Gaps" table).
+
+**Symptom.** On an Activity span that includes 2026-08-27 the surface renders D275 item 4's refusal
+pane instead of the five stat tiles: *"The activity report could not be built · run 7b1e3251-… exists
+in the span stream but not in authority; the projection refuses to render an unaccounted run · code
+`activity-read-failed` · Nothing was changed; this surface only reads."*
+
+**Evidence.** Rendered at `src/dashboard/surfaces/activity.tsx:1198`; the throw is
+`src/server/dashboard/projectors/run-queue-projection.ts:887` (`#authorityRun` →
+`TargetNotFoundError`) — the fold found the run in the on-disk span stream and
+`authority.getRun(runId)` returned `undefined`. Observed by the UI-1 audit (U1b, `1257bda0`) against
+the root's BFF on 3938 on 2026-08-27; screenshots in `docs/plans/ui-fidelity-audit/`.
+
+**Mechanism (hypothesis, not yet diagnosed).** The same day, the root's `.tracker-rebuild/state.db`
+was found unopenable (schema 16 carrying a migration-18 table) and archived to
+`.tracker-rebuild/stale-schema16-2026-08-27/`; a fresh v18 authority was built and *"rehydrated 50
+`runs_view` rows from on-disk span JSONL with write tables at 0"* (`docs/plans/03b-board.md`, R2
+pre-flight residue (a)/(d)). A run whose spans are on disk but whose `runs` record lived only in
+the archived db is exactly "in the span stream but not in authority". If that is the cause it is a
+local-state condition of this machine, not a tree defect — but the refusal is correct either way:
+the surface must not aggregate over a run authority cannot account for.
+
+**What a fix involves.** (1) Confirm the cause: list the span-stream run ids for 2026-08-27 and
+check each against `authority.getRun` on the live root; compare with the archived db. (2) If it is
+the archived-db split, decide whether `storage doctor` should NAME unaccounted runs (a legible
+reconciliation report) rather than leaving the first surface that folds them to refuse — the
+refusal stays, the diagnosis moves earlier. (3) Re-run the Activity half of the fidelity audit on a
+day whose stream reconciles (UF-AC-4, G1). Not a frontend fix; do not soften the refusal.
