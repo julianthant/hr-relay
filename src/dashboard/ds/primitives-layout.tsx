@@ -1,6 +1,15 @@
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-layout.tsx
+ *
+ * ONE EXCEPTION, and it is the only one: `TakeoverFrame` has no counterpart in
+ * that file. It is the single shared takeover root D275 item 2 asks for, and
+ * its geometry is ported from the demo's own takeover CONTAINERS at a later
+ * legacy commit — `1ec1d870`,
+ * `src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:656-678` (the
+ * `shellView` switch) and `.../DemoSettings.tsx:1071-1075` (Settings' own root,
+ * the one that lays its children out in a row). Its own JSDoc carries both
+ * pointers. Nothing else in this module ports from `1ec1d870`.
  */
 import {
   createContext,
@@ -546,6 +555,33 @@ export function PageHeader({
  *
  * `label` is required and lands on a `section`, so each takeover stays a named
  * landmark rather than an anonymous full-window div.
+ *
+ * ENTERING one MOVES FOCUS INTO IT, which is the other half of a pair
+ * `dashboard-app.tsx` already held one end of. The Radix `Dialog` these pages
+ * replaced took focus on open and gave it back on close for free; D272 item 1 /
+ * D274 item 5 took the dialog away, the close arm was re-implemented by hand
+ * (unit F4b finding 1) and the OPEN arm was not. Without it the operator opens
+ * a page that replaces the window while their focus stays on a door that is no
+ * longer on screen, and the next Tab walks the top bar instead of the page they
+ * just asked for — a keyboard operator never reaches the takeover's own
+ * controls without re-Tabbing the whole shell.
+ *
+ * It focuses ITSELF (`tabIndex={-1}`), not a control inside it, and that is the
+ * choice D275 item 2 forces. The Activity report deliberately has NO `Back to
+ * the dashboard` button (the demo's own rule, ported), so an `initialFocus` ref
+ * the surfaces point at their Back button could never be the convention — three
+ * takeovers would have one and the fourth would silently have nothing, which is
+ * exactly the four-copies-drift this component exists to end. Focusing the
+ * frame is uniform, and it is also the better announcement: the `section`
+ * carries `label` as its accessible name, so a screen reader says the page the
+ * operator just opened rather than one button on it. From here the first Tab
+ * reaches whatever that takeover's first control happens to be.
+ *
+ * Nothing paints. `tabIndex={-1}` keeps the frame OUT of the tab order (it is a
+ * focus TARGET, never a tab stop) and the frame carries no `dsFocus` class —
+ * the ring in this product is opt-in `.ds-focus:focus-visible` (`tokens.css`),
+ * and the base layer's `* { outline-color }` sets a colour with no width or
+ * style. That is why moving focus here moves no parity reference.
  */
 export function TakeoverFrame({
   label,
@@ -561,8 +597,27 @@ export function TakeoverFrame({
   children: ReactNode;
 }) {
   const enter = useDsEnterTransition();
+  const frame = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const node = frame.current;
+    // React sets a ref before it runs the effects of the commit that mounted
+    // it, so this is the type's null and never a state — there is no takeover
+    // whose frame is missing at this point.
+    if (node === null) return;
+    // A descendant that took focus in the SAME commit keeps it. Child effects
+    // run before the parent's, so a control the surface deliberately focused
+    // on arrival is already `document.activeElement` here, and stealing it
+    // back would silently undo that surface's own decision.
+    if (node.contains(document.activeElement)) return;
+    // `preventScroll` because the frame is mid-transition: `ds-motion-enter` is
+    // still moving it from `-var(--ds-travel-sm)`, and scrolling an element the
+    // browser reads at a transformed position jogs the whole shell.
+    node.focus({ preventScroll: true });
+  }, []);
   return (
     <section
+      ref={frame}
+      tabIndex={-1}
       {...enter}
       aria-label={label}
       className={cn(
