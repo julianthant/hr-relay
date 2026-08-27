@@ -517,6 +517,68 @@ export function PageHeader({
 }
 
 /* =========================================================================
+ * TakeoverFrame — the root a full-page takeover wears
+ * ====================================================================== */
+
+/**
+ * The ONE container every window-replacing surface mounts in (D275 item 2).
+ *
+ * A takeover REPLACES the window under the top bar, so it is full-bleed: x=0,
+ * the viewport's whole width, no card frame, no radius and no gutter. That is
+ * the demo's own container, copied:
+ * // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:656-678
+ * // ported from legacy 1ec1d870 src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:1071-1075
+ * where `DemoSettingsPage`, `DemoArchivePage`, `DemoExplorerPage` and
+ * `DemoActivityReportPage` each root in a bare `flex min-h-0 flex-1` div under
+ * the bar. Settings alone lays its children out in a ROW (the 220px nav beside
+ * the section), which is the only reason `direction` exists.
+ *
+ * The four surfaces each hand-rolled `Panel` + `useDsEnterTransition` + the two
+ * `data-[demo-enter=from]:` classes, which is how the card frame got there in
+ * the first place: `Panel` is the REGION container (border + radius +
+ * `--ds-surface-1`), and a region inside a page is not the page. Taking the
+ * frame away one surface at a time would have left four copies of the arrival
+ * behind to drift; this owns BOTH, so the geometry and the motion contract are
+ * one decision made once. D275 item 2 is exactly that — keep the shared
+ * takeover wrapper as an accessibility/motion convention: every takeover
+ * arrives the same way, from the same edge, over the same distance, and
+ * `ds-motion-enter` + `--ds-travel-*` honour reduced motion with no branch here.
+ *
+ * `label` is required and lands on a `section`, so each takeover stays a named
+ * landmark rather than an anonymous full-window div.
+ */
+export function TakeoverFrame({
+  label,
+  direction = "column",
+  className,
+  children,
+}: {
+  /** the accessible name of the region — "Settings", "Archive", … */
+  label: string;
+  /** `row` only for Settings' nav-beside-section layout */
+  direction?: "column" | "row";
+  className?: string;
+  children: ReactNode;
+}) {
+  const enter = useDsEnterTransition();
+  return (
+    <section
+      {...enter}
+      aria-label={label}
+      className={cn(
+        "flex min-h-0 min-w-0 flex-1 overflow-hidden",
+        direction === "row" ? "flex-row" : "flex-col",
+        "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
+        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
+        className,
+      )}
+    >
+      {children}
+    </section>
+  );
+}
+
+/* =========================================================================
  * MetaLine — the provenance line
  * ====================================================================== */
 

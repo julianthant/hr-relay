@@ -78,6 +78,7 @@ import {
   Separator,
   Spinner,
   StatusDot,
+  TakeoverFrame,
   TBody,
   TD,
   TH,
@@ -89,7 +90,6 @@ import {
   dsIcon,
   dsMotion,
   dsText,
-  useDsEnterTransition,
   type DsStatus,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -894,9 +894,16 @@ export function SettingsGear({
  *
  * The 220px nav on the left, `Back to the dashboard` at the top of it, and the
  * section's own panel filling the rest — the demo's shape (SE1–SE4, SE8). It
- * takes the same `Panel` + enter transition every other takeover in this tree
- * uses (D275 item 2), so the region does not arrive from a different direction
+ * mounts in the shared `TakeoverFrame` every other takeover in this tree uses
+ * (D275 item 2), so the region does not arrive from a different direction
  * depending on which door was pressed.
+ *
+ * UF-SET-1/4/5: it used to be a `Panel` inside a `px-[--ds-shell-inset]`
+ * wrapper, which drew the page as a 1416px card floating in a 12px gutter. The
+ * demo's own container is full-bleed — `// ported from legacy 1ec1d870
+ * src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:1071-1075`, a bare
+ * `flex min-h-0 flex-1` with the 220px nav as its first child — because a page
+ * that REPLACES the window is not a region sitting on one.
  */
 export function SettingsPage({
   storage,
@@ -918,21 +925,12 @@ export function SettingsPage({
   onSection: (next: string) => void;
   onClose: () => void;
 }) {
-  const enter = useDsEnterTransition();
   const groups = buildSettingsNav(sections);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
 
   return (
-    <Panel
-      {...enter}
-      aria-label="Settings"
-      className={cn(
-        "flex min-h-0 flex-1 flex-row",
-        "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
-        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
-      )}
-    >
+    <TakeoverFrame label="Settings" direction="row">
       <nav
         aria-label="Settings sections"
         className={cn(
@@ -1006,6 +1004,6 @@ export function SettingsPage({
           </section>
         )}
       </div>
-    </Panel>
+    </TakeoverFrame>
   );
 }

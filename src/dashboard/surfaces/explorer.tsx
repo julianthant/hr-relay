@@ -87,6 +87,7 @@ import {
   PopoverTrigger,
   SectionLabel,
   Spinner,
+  TakeoverFrame,
   TBody,
   TD,
   TH,
@@ -98,7 +99,6 @@ import {
   dsIcon,
   dsMotion,
   dsText,
-  useDsEnterTransition,
 } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { failed, loaded, LOADING, type AsyncResource } from "../state/async-resource.js";
@@ -1513,7 +1513,6 @@ export function WorkflowExplorer({
   onClose: () => void;
 }) {
   const client = useDashboardClient();
-  const enter = useDsEnterTransition();
   const [resource, setResource] = useState<AsyncResource<WorkflowExplorerWire>>(LOADING);
   const [openNodeId, setOpenNodeId] = useState<string | undefined>(undefined);
 
@@ -1568,17 +1567,15 @@ export function WorkflowExplorer({
       : undefined;
 
   return (
-    <Panel
-      {...enter}
-      aria-label="Workflow explorer"
-      className={cn(
-        // The SAME arrival the intake and archive takeovers use — same slot,
-        // same direction, same distance. Two takeovers that occupy one region
-        // and arrive from opposite edges read as two different products.
-        "flex-1 data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
-        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
-      )}
-    >
+    /* UF-EX-2: full-bleed under the top bar, because the Explorer replaces the
+       window — `// ported from legacy 1ec1d870
+       src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:666-667` →
+       `DemoExplorerPage`, whose root is a bare `flex min-h-0 flex-1 flex-col`
+       div (`DemoExplorer.tsx:164`). It was a `Panel` in a 12px gutter.
+       `TakeoverFrame` keeps the SAME arrival the other takeovers use — same
+       slot, same direction, same distance — now in one place rather than four
+       copies (D275 item 2). */
+    <TakeoverFrame label="Workflow explorer">
       <PageHeader
         title="Explorer"
         icon={<Workflow aria-hidden className={dsIcon.lg} />}
@@ -1721,6 +1718,6 @@ export function WorkflowExplorer({
           </>
         )}
       </div>
-    </Panel>
+    </TakeoverFrame>
   );
 }

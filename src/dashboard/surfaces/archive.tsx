@@ -143,6 +143,7 @@ import {
   Tab,
   TabList,
   TabPanel,
+  TakeoverFrame,
   Table,
   Tabs,
   TBody,
@@ -3418,7 +3419,6 @@ export function ArchiveWorkspace({
   onClose: () => void;
 }) {
   const client = useDashboardClient();
-  const enter = useDsEnterTransition();
   const [index, setIndex] = useState<AsyncResource<ArchiveIndexWire>>(LOADING);
   const [detail, setDetail] = useState<AsyncResource<ArchivedRunDetailWire>>(LOADING);
   const [query, setQuery] = useState<ArchiveQuery>(EMPTY_ARCHIVE_QUERY);
@@ -3637,14 +3637,14 @@ export function ArchiveWorkspace({
   };
 
   return (
-    <Panel
-      {...enter}
-      aria-label="Archive"
-      className={cn(
-        "flex-1 data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
-        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
-      )}
-    >
+    /* UF-AR-3: the Archive REPLACES the window, so it is full-bleed under the
+       top bar — `// ported from legacy 1ec1d870
+       src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:658-665`, whose
+       `DemoArchivePage` roots in a bare `flex min-h-0 flex-1 flex-col` div. It
+       was a `Panel` inside a `px-[--ds-shell-inset]` wrapper, which drew the
+       page as a card in a gutter. The arrival did not move: `TakeoverFrame`
+       owns it now for all four takeovers at once (D275 item 2). */
+    <TakeoverFrame label="Archive">
       <PageHeader
         title="Archive"
         icon={<ArchiveIcon aria-hidden className={dsIcon.lg} />}
@@ -3700,6 +3700,6 @@ export function ArchiveWorkspace({
           if (loadedDetail !== undefined) relaunch(loadedDetail);
         }}
       />
-    </Panel>
+    </TakeoverFrame>
   );
 }

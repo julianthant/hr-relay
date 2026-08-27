@@ -87,6 +87,7 @@ import {
   SectionLabel,
   Skeleton,
   StatusPill,
+  TakeoverFrame,
   Table,
   TBody,
   TD,
@@ -96,7 +97,6 @@ import {
   Well,
   dsIcon,
   dsText,
-  useDsEnterTransition,
 } from "../ds/ui.js";
 import {
   activityErrorRatePercent,
@@ -1052,7 +1052,6 @@ export function ActivityReport({
   onRange: (next: string) => void;
 }) {
   const client = useDashboardClient();
-  const enter = useDsEnterTransition();
   const resolved = useMemo(() => parseActivityRange(range, today), [range, today]);
   const [resource, setResource] = useState<AsyncResource<ActivityReportWire>>(LOADING);
 
@@ -1101,14 +1100,13 @@ export function ActivityReport({
   }, [client, resolved.from, resolved.to]);
 
   return (
-    <Panel
-      {...enter}
-      aria-label="Activity report"
-      className={cn(
-        "flex-1 data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
-        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
-      )}
-    >
+    /* UF-AC-2: full-bleed under the top bar — `// ported from legacy 1ec1d870
+       src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:668-669` →
+       `DemoActivityReportPage`, rooted in a bare `flex min-h-0 flex-1 flex-col`
+       div (`DemoActivityReport.tsx:79`). It was a `Panel` in a 12px gutter; the
+       report is the window while it is open, not a card on it. The arrival is
+       unchanged — `TakeoverFrame` owns it for all four (D275 item 2). */
+    <TakeoverFrame label="Activity report">
       {/* NO `back` BUTTON, deliberately — ported from the demo's own rule.
           Operator, of this surface: *"no need to have this back to dashboard in
           activity."* It was a duplicate door: the product switcher sits above
@@ -1237,6 +1235,6 @@ export function ActivityReport({
           </PanelFooter>
         </Panel>
       </div>
-    </Panel>
+    </TakeoverFrame>
   );
 }
