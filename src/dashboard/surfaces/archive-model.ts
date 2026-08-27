@@ -555,6 +555,18 @@ export interface ArchiveSweepName {
 }
 
 /**
+ * The unabbreviated identities a sweep's short codes stand in for — the same
+ * fact `archiveSweepName`'s `title` carries and `archiveSweepFacts` restates,
+ * because a fact reachable only through `title` is a fact reachable by
+ * pointer and by nobody else (`src/dashboard/CLAUDE.md`, three times).
+ */
+function archiveSweepFullIdentities(sweep: ArchiveSweepWire): string {
+  return sweep.appliedIdentities
+    .map((identity) => `${identity.workflowId} v${String(identity.descriptorVersion)}`)
+    .join(", ");
+}
+
+/**
  * The sweep's NAME, as the demo's `ec v3.1 → v4.0` reads.
  *
  * Two rules. An identity with no frozen code degrades to its workflow ID —
@@ -574,9 +586,7 @@ export function archiveSweepName(
       return `${code === undefined ? identity.workflowId : code} v${String(identity.descriptorVersion)}`;
     })
     .join(", ");
-  const full = sweep.appliedIdentities
-    .map((identity) => `${identity.workflowId} v${String(identity.descriptorVersion)}`)
-    .join(", ");
+  const full = archiveSweepFullIdentities(sweep);
   return {
     text: `${short} → ${sweep.targetVersion}`,
     title: `${bumpScopeLabel(sweep.scope).label} — ${full} → ${sweep.targetVersion}`,
@@ -593,6 +603,11 @@ export function archiveSweepName(
  * (`src/dashboard/CLAUDE.md`, three times). It is a fold rather than JSX
  * because the popover body only exists once the popover is open, so nothing
  * rendered could pin it.
+ *
+ * The unabbreviated identities join the same list for the same reason (AR82,
+ * unit F10d): the sweep head prints only the short codes, and the popover was
+ * the row's own route to their full form — carrying that only on the head's
+ * `title` would leave it reachable by pointer and by nobody else.
  */
 export function archiveSweepFacts(sweep: ArchiveSweepWire): string[] {
   const range = archiveSweepVersionRange(sweep);
@@ -604,6 +619,7 @@ export function archiveSweepFacts(sweep: ArchiveSweepWire): string[] {
     fmtClock(sweep.appliedAt),
     `${plural(sweep.archivedCount, "run")} archived`,
     range.state === "present" ? range.text : range.reason,
+    archiveSweepFullIdentities(sweep),
   ];
 }
 

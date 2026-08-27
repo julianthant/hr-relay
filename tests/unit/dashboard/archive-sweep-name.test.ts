@@ -138,4 +138,17 @@ describe("archiveSweepFacts", () => {
     assert.equal(facts.includes("archived nothing, so no from-version"), true);
     assert.equal(facts.includes("0 runs archived"), true);
   });
+
+  it("carries the FULL identities the head's short codes stand in for (unit F10d finding 1)", () => {
+    // Until this fix the only route to the unabbreviated identity was the
+    // head's `title` — reachable by pointer and by nobody else. The row's
+    // own ⓘ popover is built from this list, so the fact now has a route
+    // that does not depend on a mouse.
+    const facts = archiveSweepFacts(SWEEP);
+    assert.equal(facts.includes("person-lookup v2"), true);
+    // The exact same string `archiveSweepName`'s title carries — one source,
+    // read twice, never two independent spellings of the same fact.
+    const codes = archiveWorkflowCodes(FIXTURE_ARCHIVE_INDEX);
+    assert.equal(archiveSweepName(SWEEP, codes).title.includes("person-lookup v2"), true);
+  });
 });
