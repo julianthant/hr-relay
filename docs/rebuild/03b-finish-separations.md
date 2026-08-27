@@ -105,8 +105,9 @@ rule). Where the two disagreed the code won and the line says so.
 - [x] the ALWAYS-GATE — server-computed ceremony, the packet binding every value the approval authorizes (D77, D202, D204, D211, D226)
 - [x] the subject/canary inventory mapped live and dated — 4537 (the canary), 4502 (the dry-run subject), 4495 (the S7 refusal path); 4510 and 4524 both evaporated between passes (§9.16, §9.19)
 - [ ] the three controlled commits — the last substantive item; ② 2026-08-28, then ①, then ③
-- [ ] `config/test-subjects.json` — the registry below moves into config under cohesion step 5.2c, with any sensitive value read through `src/domain/secrets.ts` and referenced by label
+- [x] `config/test-subjects.json` — the registry moved into config under cohesion step 5.2c (2026-08-27); the table below became a pointer, every subject is a label, and EIDs stay in `.env` behind `src/domain/secrets.ts`
 > 2026-08-20 | docs-cohesion 03b | node list and start door verified against src/workflows/separations/descriptor.ts; registry recomposed from §9.12/§9.16/§9.19/§9.24; left: the commits and the config registry
+> 2026-08-27 | order-8 registry | the canary registry is now config/test-subjects.json (8 entries, 4 of them this chain's subjects); tests/unit/architecture/test-target-registry.test.ts pins the inventory line above to the config in BOTH directions; left: the three controlled commits
 <!-- /roadmap-status -->
 
 ### The questionnaire answers that shaped the graph
@@ -241,22 +242,28 @@ downgrading. It has been driven live eight times (§9.6 twice, §9.14 twice, §9
 
 ### The canary registry — every subject this migration has mapped
 
-**This is the first canary registry in the program**, and it is prose until cohesion step 5.2c moves
-it into `config/test-subjects.json`. Subjects are named by **Kuali document number only** — a
-document number is not a person. EIDs and names stay out of the repository entirely and will be read
-through `src/domain/secrets.ts` from an ignored `.env` when the registry becomes config (R10).
+**This is the first canary registry in the program**, and since 2026-08-27 it lives in
+`config/test-subjects.json`, not here — read it there, and read
+`src/control/test-target-registry.ts` for the schema that judges it. Subjects are named by **Kuali
+document number only** — a document number is not a person. EIDs and names stay out of the
+repository entirely and are read through `src/domain/secrets.ts` from an ignored `.env`, referenced
+by label (R10, `ref guards-and-tests` §10.5).
+
+Per entry the config carries what the table used to: the label, the owning workflow, the kind, the
+`purpose` (what the subject is good for), the dated `availability` claim with the reason behind it,
+the migration section that observed it, and D85's usage rules (read-only vs write-allowed-if-restored,
+the cleanup obligation, the owner). The four subjects this chain mapped are
+`separations-dry-run-subject` (doc 4502), `separations-future-dated` (doc 4495),
+`separations-controlled-commit-candidate` (doc 4524, **gone**) and `separations-pending-termination`
+(**no subject exists**); the finalization canary (doc 4537) and the two doc-4510 witnesses were
+already there under the `separations-kuali-finalization` labels.
 
 A live inventory belongs in an as-built with a date on it, never in a plan sentence: **two named
-canaries have already evaporated between passes.** Every row below carries the pass that observed it.
-
-| Label | What kind of subject it is | Availability, and when it was observed | What it is good for |
-|---|---|---|---|
-| **doc 4537** | the **§4f2 canary** — an open document whose subject has exactly ONE Active terminable employment, a termination type that resolves, and a department option the document already holds | **open**, mapped live **2026-08-19** (§9.19). Its Last Day Worked is `08/28/2026`, so S7 refuses at `plan` until Pacific calendar day **2026-08-28** | controlled commit ② (UCPath filing) on/after 08-28, then ① (the sweep, on the row ② creates), then ③ (Kuali finalization). Its `transactionNumber` is EMPTY, so ③ writes into an empty field rather than over a stale one |
-| **doc 4502** | the full-chain **dry-run** subject — active job, past last day worked, no pending transaction, which under D215 is the subject whose `clear-pending` preview settles `already-present` at beat ① | **open**; driven live 2026-08-14 (§9.17), 2026-08-19 (§9.20, five retries), 2026-08-20 (§9.22 and §9.24) | every composed dry run; D215's `already-present` arm; D221's retry lineage; Track C's connection proof; D261's one-typed-number proof |
-| **doc 4495** | a **future-dated** document — separation date `09/02/2026` | **open**; last observed 2026-08-19 (§9.19 §7) | the S7 refusal path, proved live (§9.17a run 4); the standalone read workflows; a fresh full-chain subject from 2026-09-02 |
-| **doc 4510** | was the `no-active-job` witness (its subject is Inactive in Person Org) and the best-mapped standalone-finalization target | **GONE** — its action was completed between 2026-08-14 and 2026-08-19; `ActionPage` answers `document: null` and both date controls resolve to zero nodes (§9.19 §7) | nothing further. Its record stands as §9.16/§9.17's evidence, including the live `NO_ACTIVE_EMPLOYMENT` refusal (run `ee9824f7`) |
-| **doc 4524** | was the natural Kuali controlled-commit candidate from §9.12 | **GONE** — action completed 2026-08-14, between two passes on the same day (§9.16 §3) | nothing further; the recommendation was withdrawn on the facts, not on a judgement |
-| **(no subject)** | a subject holding a **PENDING** UCPath termination | **none exists.** Deleting `T002209631` cleared the canary path exactly as intended and removed the only mapped subject with anything for the sweep to delete (§9.16 §4, §9.19 §5) | `clear-pending`'s COMMITTED arm. Its one honest window is re-running ① immediately after ② files, before an approver clears the row — an operator call, named under §Smaller operator calls open |
+canaries have already evaporated between passes** (docs 4510 and 4524). An evaporated subject KEEPS
+its row with an explicit `gone` state and the date it was last observed — deleting it would delete
+the history, and `availability` is exactly the field that makes the loss legible. The order-8 status
+line above names every mapped document, and the guard fails if that set and the config's set ever
+differ in either direction.
 
 **Historical Phase-2 evidence, outside this registry.** Kuali docs **4489** and **4490** were the
 subjects of the now-retired annotation proof workflow; they are not current workflow entries or
@@ -277,8 +284,8 @@ different person (§9.19 §1). A record that names the wrong person is one nobod
 - [x] two page-visit read tasks under D194's rich-extraction convention, and the `separations-kronos-timecard` chunk harness
 - [x] the virtualized grid read terminates on RANGE COVERAGE, not on the scrollbar (D205, 2026-08-13)
 - [x] live proof MET at attempt 17 — run `sk-171645-4adf`, a 64-day window, 67 days covered, terminal `done` in 39.6 s (§9.2)
-- [ ] a cold WFD profile's FIRST Employee Search can present a result row whose identity cell is still empty; the driver correctly refuses to read a row whose subject it cannot name, and whether that wants a bounded wait is the driver owner's call (§9.20 item 7, recorded not diagnosed)
-> 2026-08-20 | docs-cohesion 03b | verified against src/stores/new-kronos/{driver,tasks,session.ts} and §9.1/§9.2/§9.2a; left: the cold-profile first-search observation
+- [x] the cold-profile first-search "empty identity cell" (§9.20 item 7) — ROOT-CAUSED and FIXED 2026-08-27 (§9.28): WFD renders a result row in stages and the poll read it before its `{{…}}` bindings were interpolated; cold widens the gap (33–214 ms against 9–18 ms warm), load makes the 200 ms poll land in it, and the refusal reproduced on a WARM search under 20× throttle; the driver now reads a row only once its render is complete (`search-render.ts`, RED-first test, `b87dc560`), refuses by name if the bound elapses mid-render, and the refusal of a nameless row stays
+> 2026-08-27 | u14 sep-1 | verified live (8 cold attempts, 21 searches, §9.28) and against src/stores/new-kronos/driver/{interpreter,search-render}.ts; left: nothing
 <!-- /roadmap-status -->
 
 **What it built.** The first store authored whole under D194 — and therefore the store that settled
@@ -589,8 +596,8 @@ naming the real cause instead of burning the bound and blaming Duo hand-approval
 <!-- roadmap-status: sep-dash -->
 - [x] all nine wire squares filled — the last (notifications) closed by D262 on 2026-08-20; each verified against the code below, not against the tree
 - [x] the connection proof: the REAL dashboard drove a REAL composed dry run and every UI claim was paired with an independent authority read (Track C, §9.22) — five defects found, all fixed the same day (D256–D259 and the shape-hazard correction)
-- [ ] T1 — the structural fixture scenario plus the live dry-run scenario with checkpoints (R10; cohesion step 5.2). `tests/scenario/separations.scenario.test.ts` is the structural half today and is not yet in the T1 layout
-- [ ] T2 — a dashboard scenario over the wired surfaces (R10; cohesion step 5.2)
+- [x] T1 — the pair is in the T1 layout (ref guards-and-tests §10.9), 2026-08-27: `tests/scenario/workflows/separations/structural.scenario.test.ts` (T1a, moved with history from `tests/scenario/separations.scenario.test.ts`; 24 tests / 129 assertions, up from 23 / 125 — the added arm proves the T1b manifest stays uncollected) and `tests/scenario/workflows/separations/dry-run.scenario.ts` (T1b, one `already-present` case on the past-dated subject, stopping at the D215 preview terminal on `clear-pending`, 0/0/0 write rows). Every T1b expectation was transcribed from authority — §9.27 addendum 7's run `fd415e49-54bb-4ccd-bec4-ad1cba94a4f6` — and the **LIVE `cli dry-run-scenario` run has now been taken** on the registry's own label (`separations-dry-run-subject`, doc 4502) at 2026-08-27T13:46:39Z: verdict **`met`**, `dry_run_scenario_results` `0cc71a31-4119-4588-b96b-0fd5e568abe6`, run `91cf5356-5211-4d09-8d37-8ddf4c7bc901`, trace `sp-064438-91cf`, 121 s. All eight of `evaluateDryRunScenarioEvidence`'s assertions met against that run's own durable rows — fifteen checkpoints at attempt 1 (the two `timecard-search` claim generations included), terminal `done` at the D215 preview terminal on `clear-pending` settling `already-present` off its live probe, and `write_intents`/`write_attempts`/`durable_outbox` 0/0/0 read over the whole database. The three pins that refused the workflow are gone: `src/cli.ts` carries one manifest entry per workflow in the layout, `resolveDryRunScenarioTarget` dispatches on `manifest.workflow`, and `resolveSeparationsTestTarget` turns the registry's document number into a canonical input through the descriptor's own start box
+- [x] T2 — a dashboard scenario over the wired surfaces (R10; cohesion step 5.2) — `tests/scenario/dashboard/separations/{wired-surfaces,identity-gate,needs-you-and-ledger}.scenario.test.ts` (2026-08-27), 26 tests over the REAL projection + REAL command service + a REAL authority database, no browser; all nine squares observed through what the composition serves, BOTH `CommandResult` refusal arms exercised (`conflict` on a stale panel, `rejected`/`schema-mismatch` on a foreign gate schema), and eleven deliberate src breaks each turning a test red
 > 2026-08-20 | docs-cohesion 03b | nine squares verified against src/workflows/separations/descriptor.ts (inputRun · timeline · nodePurposes · subjectProjection · presentation · verdicts), src/domain/archive/ledger-resolution.ts:167, src/services/notifications/gate-park.ts wired at src/server/dashboard/compose.ts:497, src/dashboard/app/identity-ceremony.ts; left: the two PROOF lines
 <!-- /roadmap-status -->
 

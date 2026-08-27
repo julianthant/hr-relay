@@ -5,6 +5,12 @@ import {
   optionalTestTargetEidSecret,
   TestTargetEidSecretReferenceSchema,
 } from "../domain/secrets.js";
+import { parseInputRunText, toRawSubmission } from "../domain/workflow/ingress.js";
+import {
+  SeparationsCanonicalInput,
+  SeparationsInput,
+  separationsDescriptor,
+} from "../workflows/separations/descriptor.js";
 import {
   SeparationsKualiFinalizationCanonicalInput,
   SeparationsKualiFinalizationInput,
@@ -49,18 +55,64 @@ export const TestTargetEidInputSchema = z.strictObject({
   ]).optional(),
 });
 
-export const TestTargetRegistryEntrySchema = z.strictObject({
+/**
+ * Every entry carries these, whatever workflow owns it: what the subject is
+ * FOR (`purpose`, doc 03b's "what it is good for" column), the dated
+ * availability claim, the record that observed it, and D85's usage rules.
+ */
+const COMMON_TEST_TARGET_FIELDS = {
   label: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
-  workflow: z.literal("separations-kuali-finalization"),
-  kind: TestTargetKindSchema,
   availability: TestTargetAvailabilitySchema,
   provenance: TestTargetProvenanceSchema,
   usagePolicy: z.enum(["read-only", "write-allowed-if-restored"]),
   cleanupObligation: z.string().min(1),
   owner: z.string().min(1),
+  purpose: z.string().min(1),
+} as const;
+
+export const SeparationsKualiFinalizationTestTargetSchema = z.strictObject({
+  ...COMMON_TEST_TARGET_FIELDS,
+  workflow: z.literal("separations-kuali-finalization"),
+  kind: TestTargetKindSchema,
   publicInput: SeparationsKualiFinalizationPublicTestInputSchema,
   secretInput: TestTargetEidInputSchema.optional(),
 });
+
+/**
+ * What a subject of the COMPOSED separations chain is for. These are not the
+ * finalization scenario matrix's kinds — they name the migration role doc 03b
+ * mapped the document into, and a subject that evaporated keeps its row with
+ * an explicit `gone` availability rather than being deleted (§9.16 recorded
+ * two canaries evaporating between passes; a deleted row loses that history).
+ */
+export const SeparationsChainSubjectKindSchema = z.enum([
+  "full-chain-dry-run",
+  "future-dated",
+  "controlled-commit-candidate",
+  "pending-termination",
+]);
+
+/**
+ * A Kuali document number is not a person, so it lives in the repo — but
+ * "no subject exists" is a real, recorded state (the PENDING-sweep gap), and
+ * it is spelled out rather than left as a missing key.
+ */
+export const SeparationsChainSubjectDocumentSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("present"), documentNumber: z.string().regex(/^[0-9]{1,8}$/) }),
+  z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+]);
+
+export const SeparationsChainTestTargetSchema = z.strictObject({
+  ...COMMON_TEST_TARGET_FIELDS,
+  workflow: z.literal("separations"),
+  kind: SeparationsChainSubjectKindSchema,
+  publicInput: z.strictObject({ document: SeparationsChainSubjectDocumentSchema }),
+});
+
+export const TestTargetRegistryEntrySchema = z.discriminatedUnion("workflow", [
+  SeparationsKualiFinalizationTestTargetSchema,
+  SeparationsChainTestTargetSchema,
+]);
 
 export const TestTargetRegistrySchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -86,6 +138,18 @@ export const SeparationsKualiFinalizationTestTargetResolutionSchema = z.discrimi
 ]);
 export type SeparationsKualiFinalizationTestTargetResolution =
   z.output<typeof SeparationsKualiFinalizationTestTargetResolutionSchema>;
+
+export const SeparationsReadyTestTargetSchema = z.strictObject({
+  state: z.literal("ready"),
+  label: z.string().min(1),
+  canonicalInput: SeparationsCanonicalInput,
+});
+export const SeparationsTestTargetResolutionSchema = z.discriminatedUnion("state", [
+  TestTargetBlockedResolutionSchema,
+  SeparationsReadyTestTargetSchema,
+]);
+export type SeparationsTestTargetResolution =
+  z.output<typeof SeparationsTestTargetResolutionSchema>;
 
 export class TestTargetRegistryDefectError extends Error {
   constructor(message: string) {
@@ -154,9 +218,11 @@ export const TEST_TARGET_REGISTRY: TestTargetRegistry = parseTestTargetRegistry(
 function registryDefect(
   target: TestTargetRegistry["targets"][number],
   problem: string,
+  detail?: string,
 ): never {
+  const suffix = detail === undefined ? "" : ` (${detail})`;
   throw new TestTargetRegistryDefectError(
-    `test target ${target.label} marked available, last observed ${target.availability.lastObserved}: ${problem}`,
+    `test target ${target.label} marked available, last observed ${target.availability.lastObserved}: ${problem}${suffix}`,
   );
 }
 
@@ -177,6 +243,14 @@ export function resolveSeparationsKualiFinalizationTestTarget(
       label,
       reason: `blocked: needs ${label}`,
     });
+  }
+  // A label that exists but belongs to another workflow is a mis-addressed
+  // request, not a decayed canary: `blocked` would read as "the subject left
+  // the university" and hide the mistake. Refuse by name.
+  if (target.workflow !== "separations-kuali-finalization") {
+    throw new TestTargetRegistryDefectError(
+      `test target ${target.label} belongs to workflow ${target.workflow}, not separations-kuali-finalization`,
+    );
   }
   if (target.availability.state !== "available") {
     return TestTargetBlockedResolutionSchema.parse({
@@ -220,9 +294,89 @@ export function resolveSeparationsKualiFinalizationTestTarget(
     documentEid,
   });
   if (!canonical.success) {
-    registryDefect(target, "declared public fields and secret EID references do not form the complete canonical input");
+    registryDefect(
+      target,
+      "declared public fields and secret EID references do not form the complete canonical input",
+      z.prettifyError(canonical.error),
+    );
   }
   return SeparationsKualiFinalizationReadyTestTargetSchema.parse({
+    state: "ready",
+    label,
+    canonicalInput: canonical.data,
+  });
+}
+
+/**
+ * Resolve a composed-chain label the way the OPERATOR would start the run.
+ *
+ * The chain's ingress is one typed Kuali document number (D261), so this
+ * resolver does not assemble a canonical input field by field the way the
+ * finalization resolver must. It feeds the registry's document number through
+ * the descriptor's OWN `inputRun` parser — the same code path the dashboard's
+ * start box uses — and parses the resulting submission through the descriptor's
+ * own ingress and canonical schemas. `timekeeperName` therefore comes from the
+ * descriptor's `constants[]` and `searchTimeoutMs` from the ingress default;
+ * neither is authored here, so a rehearsal cannot start from an input a real
+ * run would never produce.
+ *
+ * No EID crosses this boundary at all: a Kuali document number is not a person.
+ */
+export function resolveSeparationsTestTarget(
+  registry: TestTargetRegistry,
+  label: string,
+): SeparationsTestTargetResolution {
+  const target = registry.targets.find((candidate) => candidate.label === label);
+  if (target === undefined) {
+    return TestTargetBlockedResolutionSchema.parse({
+      state: "blocked",
+      label,
+      reason: `blocked: needs ${label}`,
+    });
+  }
+  // Same refusal as the finalization resolver, for the same reason: a
+  // mis-addressed label is a defect in the request, not a decayed canary.
+  if (target.workflow !== "separations") {
+    throw new TestTargetRegistryDefectError(
+      `test target ${target.label} belongs to workflow ${target.workflow}, not separations`,
+    );
+  }
+  if (target.availability.state !== "available") {
+    return TestTargetBlockedResolutionSchema.parse({
+      state: "blocked",
+      label,
+      reason: `blocked: needs ${label}; registry says ${target.availability.state}, last observed ${target.availability.lastObserved}`,
+    });
+  }
+  if (target.publicInput.document.state === "absent") {
+    registryDefect(target, `no Kuali document exists to run: ${target.publicInput.document.reason}`);
+  }
+  const surface = separationsDescriptor.surfaces?.inputRun;
+  if (surface === undefined) {
+    registryDefect(target, "descriptor separations declares no inputRun start box to resolve through");
+  }
+  const entries = parseInputRunText(surface.parser, target.publicInput.document.documentNumber);
+  const entry = entries[0];
+  if (entries.length !== 1 || entry === undefined) {
+    registryDefect(target, `document number parsed into ${String(entries.length)} start-box entries; exactly one is required`);
+  }
+  const submission = SeparationsInput.safeParse(toRawSubmission(entry));
+  if (!submission.success) {
+    registryDefect(
+      target,
+      "declared document number does not form a valid separations submission",
+      z.prettifyError(submission.error),
+    );
+  }
+  const canonical = SeparationsCanonicalInput.safeParse(submission.data);
+  if (!canonical.success) {
+    registryDefect(
+      target,
+      "declared document number does not form the complete canonical input",
+      z.prettifyError(canonical.error),
+    );
+  }
+  return SeparationsReadyTestTargetSchema.parse({
     state: "ready",
     label,
     canonicalInput: canonical.data,

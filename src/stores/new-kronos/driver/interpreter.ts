@@ -62,6 +62,8 @@ import {
 } from "../../../domain/kronos/separation-timecard.js";
 import { readVirtualizedGrid } from "./grid-scroll.js";
 import type { RawTimecardGridRow } from "./grid-scroll.js";
+import { judgeSearchRender, parseSlatIdentity, slatRenderComplete } from "./search-render.js";
+import type { SlatRenderFact } from "./search-render.js";
 import type { TimecardGridRow } from "../../../domain/kronos/separation-timecard.js";
 import type { TimecardDateRange } from "../../../domain/timecard-period.js";
 import {
@@ -125,6 +127,17 @@ const NO_RESULTS_STABLE_POLLS = 15;
  * driver's internal reach-the-page step and is not a caller's choice.
  */
 const PANEL_SEARCH_TIMEOUT_MS = 20_000;
+/**
+ * The element that CARRIES a result row's identity: WFD transcludes a
+ * `krn-slats-tabular-data` card (its `li.card__data` rows are the `Name` /
+ * `ID` label-value pairs the identity regex reads) into the slat's
+ * `.slat-col__data` zone one Angular digest AFTER the `slat-container` host —
+ * the `[role='menuitemradio']` row — has landed. Driver-internal like
+ * `p.totals-counter`: legacy has no key for it, so it is not a registry
+ * element. Verified live 2026-08-27 (§9.28): present in every hydrated row,
+ * absent for the 9–34 ms in which the row exists with empty text.
+ */
+const NEW_KRONOS_SLAT_TABULAR_DATA_SELECTOR = "krn-slats-tabular-data";
 /** The virtualized grid's own scroll bounds live with its loop in `grid-scroll.ts` (D205). */
 
 type PanelRoot = FrameLocator | Page;
@@ -279,34 +292,39 @@ function createDriverInternals(page: Page, clock: Clock) {
   };
 
   /**
-   * Every rendered candidate, off each slat's OWN accessible name.
+   * Every rendered row: its identity label and whether its tabular-data card
+   * has rendered yet (§9.28).
    *
-   * Live 2026-08-12 the row carries `aria-label="Name <name> ID <eid>"` — so the
-   * row IS the identity and no separate EID text match is needed (legacy's
-   * `getByText(eid)` could hit the search box's own echo of the query).
+   * The label is the row's own accessible name when it has one, else the row's
+   * text. Live 2026-08-12 the row carried `aria-label="Name <name> ID <eid>"`;
+   * live 2026-08-27 that attribute is a feature-toggle-gated binding
+   * (`ng-attr-aria-label="{{isSwapA11yImprovementsEnabled && enableSlatA11y …}}"`)
+   * and was ABSENT on every row, so the identity came from the text of the
+   * `krn-slats-tabular-data` card — the same `Name <name> ID <eid>` string.
+   * Either way the row IS the identity; no separate EID text match is needed
+   * (legacy's `getByText(eid)` could hit the search box's own echo of the query).
    */
-  const readCandidates = async (root: PanelRoot): Promise<NewKronosSearchCandidate[]> => {
-    const labels = await resolveRecipe(root, NEW_KRONOS_SEARCH_RESULT_SLAT)
-      .evaluateAll((rows) => rows.map((row) => {
-        const aria = row.getAttribute("aria-label");
-        if (typeof aria === "string" && aria.length > 0) return aria;
-        const text = row.textContent;
-        return typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
-      }));
-    const candidates: NewKronosSearchCandidate[] = [];
-    for (const label of labels) {
-      const match = /^Name\s+(.+?)\s+ID\s+(\d{6,10})$/u.exec(label.replace(/\s+/gu, " ").trim());
-      if (match === null) {
-        throw new NewKronosDriverError(
-          `an Employee Search result row does not carry the "Name <name> ID <eid>" identity `
-          + `WFD renders — observed ${JSON.stringify(label)}; refusing to read a row whose subject is unknown`,
-        );
-      }
-      const [, displayName = "", employeeId = ""] = match;
-      candidates.push({ displayName, employeeId });
+  const readSlatFacts = async (root: PanelRoot): Promise<SlatRenderFact[]> => resolveRecipe(root, NEW_KRONOS_SEARCH_RESULT_SLAT)
+    .evaluateAll((rows, tabularDataSelector) => rows.map((row) => {
+      const aria = row.getAttribute("aria-label");
+      const text = row.textContent;
+      const label = typeof aria === "string" && aria.length > 0
+        ? aria
+        : (typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "");
+      return { label, cardRendered: row.querySelector(tabularDataSelector) !== null };
+    }), NEW_KRONOS_SLAT_TABULAR_DATA_SELECTOR);
+
+  /** Every rendered candidate off its row's identity, or a refusal naming the row that has none. */
+  const candidatesFrom = (slats: readonly SlatRenderFact[]): NewKronosSearchCandidate[] => slats.map((slat) => {
+    const identity = parseSlatIdentity(slat.label);
+    if (identity === null) {
+      throw new NewKronosDriverError(
+        `an Employee Search result row does not carry the "Name <name> ID <eid>" identity `
+        + `WFD renders — observed ${JSON.stringify(slat.label)}; refusing to read a row whose subject is unknown`,
+      );
     }
-    return candidates;
-  };
+    return { displayName: identity.displayName, employeeId: identity.employeeId };
+  });
 
   /**
    * Open the panel, search for `employeeId`, and select the matching row.
@@ -361,11 +379,47 @@ function createDriverInternals(page: Page, clock: Clock) {
     // Stabilizing a negative observation is the same discipline ref write-safety applies
     // post-fence: a `present` reading is evidence immediately, an `absent` one
     // has to hold still.
+    //
+    // A row on SIGHT is not a result either (§9.28, 2026-08-27): WFD lands the
+    // `[role='menuitemradio']` host digests before it transcludes the
+    // `krn-slats-tabular-data` card and then interpolates the card's `{{ … }}`
+    // bindings into the row's identity text (`search-render.ts` has the four
+    // stages and the measurements). The 2026-08-19 cold-profile refusal
+    // (`observed ""`) was this poll reading inside that gap, and so was its
+    // reproduction under 20x CPU throttle on 2026-08-27. A `hydrating` render
+    // is neither a result nor a negative: keep polling within the SAME bound,
+    // and if the bound elapses with incomplete rows still on screen, refuse by
+    // name below — never report them as `no-signal`, because the search DID
+    // answer.
     let sentinelStreak = 0;
+    let hydratingAtLastPoll: readonly SlatRenderFact[] | null = null;
     const outcome = await pollUntil(clock, input.searchTimeoutMs, async () => {
+      hydratingAtLastPoll = null;
       for (const candidateRoot of roots) {
-        if (await resolveRecipe(candidateRoot, NEW_KRONOS_SEARCH_RESULT_SLAT).count() > 0) {
-          return { kind: "results" as const, root: candidateRoot };
+        // COUNT before reading. `roots` always tries the `portal-frame-` locator
+        // first, and after a timecard navigation the page has NO named frames at
+        // all (live 2026-08-12) — the second `searchEmployee` of a session runs
+        // top-level. Playwright 1.61.1 treats a missing frame differently on the
+        // two APIs, measured on this repo's pinned version: `count()` answers 0,
+        // but `evaluateAll` resolves the frame chain in the main world and THROWS
+        // `Failed to find frame for selector "…"`. Reading `readSlatFacts` first
+        // therefore aborted the poll on a raw Playwright error in exactly the
+        // context that must fall through to `page`, before the sentinel logic was
+        // ever consulted. Zero rows here is the same `absent` the verdict below
+        // would return, so this skips nothing a read would have found — and it
+        // catches NOTHING: a frame that exists still lets every `evaluateAll`
+        // error out.
+        if (await resolveRecipe(candidateRoot, NEW_KRONOS_SEARCH_RESULT_SLAT).count() === 0) continue;
+        const slats = await readSlatFacts(candidateRoot);
+        const verdict = judgeSearchRender(slats);
+        if (verdict === "results") {
+          return { kind: "results" as const, root: candidateRoot, slats };
+        }
+        if (verdict === "hydrating") {
+          // Rows exist, so whatever the sentinel says it is the loading state.
+          sentinelStreak = 0;
+          hydratingAtLastPoll = slats;
+          return null;
         }
       }
       for (const candidateRoot of roots) {
@@ -380,6 +434,17 @@ function createDriverInternals(page: Page, clock: Clock) {
       sentinelStreak = 0;
       return null;
     });
+
+    if (outcome.value === null && hydratingAtLastPoll !== null) {
+      const stuck: readonly SlatRenderFact[] = hydratingAtLastPoll;
+      const incomplete = stuck.filter((slat) => !slatRenderComplete(slat));
+      throw new NewKronosDriverError(
+        `the Employee Search rendered ${String(stuck.length)} result row(s) but ${String(incomplete.length)} of them `
+        + `never completed the identity render (the ${NEW_KRONOS_SLAT_TABULAR_DATA_SELECTOR} card and its interpolated `
+        + `text) within ${String(outcome.waitedMs)}ms — last observed ${JSON.stringify(incomplete.map((slat) => slat.label))}; `
+        + "refusing to read rows whose subjects are unknown",
+      );
+    }
 
     if (outcome.value === null) {
       // S35 / pattern D5: "the check could not run" is its own value.
@@ -405,7 +470,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     }
 
     const resultRoot = outcome.value.root;
-    const candidates = await readCandidates(resultRoot);
+    const candidates = candidatesFrom(outcome.value.slats);
     const counters = await readCounters(resultRoot);
     if (counters.total === null) {
       throw new NewKronosDriverError(

@@ -353,6 +353,32 @@ const SPAN_TAIL_POLL_MS = 250;
  */
 export const GATE_PARK_WATCH_MS = 5_000;
 
+/**
+ * D262's read: every run currently parked at a gate, narrowed to the shape
+ * `GateParkNotifier.observed` takes. Exported (not a `createDashboardRuntime`
+ * closure) so a scenario test can prove the SAME fold the running composition
+ * calls, rather than a hand-copy that could drift from it unnoticed. Lives
+ * here rather than in `src/services/notifications/gate-park.ts` because that
+ * module's own header is explicit that the notifier "holds no authority
+ * handle and does no I/O of its own" — this function does both, so it belongs
+ * with the other authority-reading folds the composition owns (see
+ * `readBackupSummary` below).
+ */
+export function readGateParks(database: AuthorityDatabase): readonly GateParkObservation[] {
+  return database.authority.runs.listParkedAtGate().map((run) => {
+    // The repository refuses such a row before it reaches here; this keeps the
+    // narrowing below a checked fact rather than an assertion.
+    if (run.lifecycle.state !== "parked-gate") {
+      throw new Error(`run ${run.envelope.runId} was listed as parked at a gate but reads ${run.lifecycle.state}`);
+    }
+    return GateParkObservationSchema.parse({
+      runId: run.envelope.runId,
+      workflowId: run.envelope.workflow,
+      gateId: run.lifecycle.gateId,
+    });
+  });
+}
+
 export function descriptorSetHash(fingerprints: readonly string[]): Fingerprint {
   return FingerprintSchema.parse(
     sha256Hex(`hrauto:descriptor-set:v1\0${[...fingerprints].sort().join("\n")}`),
@@ -656,22 +682,9 @@ export async function composeDashboardRuntime(input: DashboardComposeInput): Pro
    * authority, where it stands until a human resolves it.
    */
   const gateParkNotifier = createGateParkNotifier({ inbox });
-  const readGateParks = (): readonly GateParkObservation[] =>
-    database.authority.runs.listParkedAtGate().map((run) => {
-      // The repository refuses such a row before it reaches here; this keeps the
-      // narrowing below a checked fact rather than an assertion.
-      if (run.lifecycle.state !== "parked-gate") {
-        throw new Error(`run ${run.envelope.runId} was listed as parked at a gate but reads ${run.lifecycle.state}`);
-      }
-      return GateParkObservationSchema.parse({
-        runId: run.envelope.runId,
-        workflowId: run.envelope.workflow,
-        gateId: run.lifecycle.gateId,
-      });
-    });
   const publishGateParks = async (): Promise<void> => {
     try {
-      await gateParkNotifier.observed(readGateParks());
+      await gateParkNotifier.observed(readGateParks(database));
     } catch {
       /*
        * This catch keeps the timer alive; it does not decide the alert was

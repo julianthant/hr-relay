@@ -6051,3 +6051,212 @@ stopped, ports 3938/5174 silent. The dev-runner teardown was a process kill, so
 left in place per D181 (the lock layer validates PID + process birth, so a dead holder's record is
 inert). `storage doctor` during the pass: authority healthy (schema v18), backup STALE — a fresh
 throwaway worktree database with no real writes; no backup was taken.
+
+#### 7. Addendum — the chain at base, proved dry on 4502 (2026-08-27)
+
+Phase 3b's R1 opened by re-proving §9.27's chain on the ROOT checkout at `integration/03b`
+**`36135120`**, so the 2026-08-28 canary starts from a measured base rather than a remembered one.
+One `dryRun: true` run of the whole composition on document **4502** — start plan
+`7693f19f-b5a6-486f-a2d2-631036db844e` → command `156c42ff-b411-46d8-b0f8-986d8a206adf`
+(`applied`) → run **`fd415e49-54bb-4ccd-bec4-ad1cba94a4f6`**, trace **`sp-053429-fd41`**, item
+`c9837287-f3c5-5697-89f4-73e727fbfe04` (§9.27's own 4502 item), one BFF on 3938 and ONE manually
+launched pool member `separations-worker-1` (pid 63112, `--pool-index 1`). Queued 12:34:52.419Z,
+claimed 12:35:18.731Z, parked at `identity-approval` 12:37:00.082Z, approved 12:39:19.826Z,
+re-claimed by the same worker 12:39:30.285Z, **terminal `done` 12:40:18.473Z** — 299.7 s claim to
+terminal, of which the gate held 139.7 s, so 160.0 s of machine work across Kuali, UCPath and New
+Kronos with Duo Autopilot clearing every ceremony hands-off. The terminal is the **D215 preview
+terminal**: `run_results` bound to the preview schema **`86cd007a59d4ae67…`** (§9.17's hash, the
+same one §9.27 recorded), `kind: "dry-run-preview"`, `stoppedAtNodeId: "clear-pending"`,
+`externalCommit: "none"`, outcome **`already-present` off a `live-probe`** — the `would-prepare` arm
+was never reached because the real path settles this subject at its probe, which is exactly the
+false-rehearsal D215 removed. Receipt `b7e7b603-6099-52d5-a065-27112c289a07` is `partial` with ONE
+load-bearing `DRY_RUN_PREVIEW` warning and marks the four write-side obligations `unknown`, never
+`verified`. The identity gate was taken through the REAL `POST /api/v1/commands` kernel path (command
+`aee0b3f0-097c-445a-803a-6d52e1b80a53`, `expectedVersion` 52, one-click shape, the single candidate
+`Dreitho Cramia / 10001754` with all four comparisons agreeing); the durable approval is
+`checkpoint_payloads` key `fd415e49…:identity-approval` carrying `evidenceDigest
+d846bb7b1697ae4c…` — the digest the served packet printed. This pass did NOT drive the dashboard
+dialog; §9.27 already holds that proof, and this addendum proves the kernel half.
+
+**The submit-free audit, node by node** (`hr-debug` §9). Spans are this run's own
+`.tracker-rebuild/spans/separations-2026-08-27.jsonl`; `#N.M` is execution N of attempt 1 (D214 —
+the park and resume are two executions of one attempt).
+
+| # | node | shape · store | what it did | write intent | durable rows |
+|---|---|---|---|---|---|
+| 1 | `resolve-action` | task · kuali | `#1.1` `done` 30 212 ms — Action List filtered, document matched | none | 1 checkpoint |
+| 2 | `document` | task · kuali | `#1.1` `done` 4 195 ms — RRSS document read | none | 1 checkpoint |
+| 3 | `plan` | task · workflow (headless) | `#1.1` `done` 7 ms | none | 1 checkpoint |
+| 4 | `termination-type` | task · workflow (headless) | `#1.1` `done` 2 ms | none | 1 checkpoint |
+| 5 | `name-search` | task · ucpath | `#1.1` `done` 23 712 ms — Person Org search | none | 1 checkpoint |
+| 6 | `subject` | task · workflow (headless) | `#1.1` `done` 2 ms | none | 1 checkpoint |
+| 7 | `job-summary` | task · ucpath | `#1.1` `done` 3 044 ms — 1 active of 1 rows | none | 1 checkpoint |
+| 8 | `employment` | task · workflow (headless) | `#1.1` `done` 3 ms | none | 1 checkpoint |
+| 9 | `department-option` | task · workflow (headless) | `#1.1` `done` 3 ms | none | 1 checkpoint |
+| 10 | `timecard-search` | task · new-kronos | `#1.1` `done` 32 204 ms; re-read live as `#2.1` on resume | none | 2 checkpoints (gen 1, gen 2) |
+| 11 | `timecard` | task · new-kronos | `#1.1` `done` 7 916 ms | none | 1 checkpoint |
+| 12 | `dates` | task · workflow (headless) | `#1.1` `done` 2 ms — Kronos moved nothing | none | 1 checkpoint |
+| 13 | `comparison` | task · workflow (headless) | `#1.1` `done` 9 ms — packet built | none | 1 checkpoint |
+| 14 | `identity-approval` | **gate** · operator | opened 12:37:00.082Z, resolved 12:39:19.826Z | none | 1 `checkpoint_payloads` row (the approval), 0 `run_checkpoints` |
+| 15 | `approval` | task · workflow (headless) | `#2.1` `done` — approval verified after resume | none | 1 checkpoint |
+| 16 | `clear-pending` | **transaction** · ucpath | ONE span, `clear-pending/probe`, `done` — `present`, `scannedRowCount 2`, source `ss-smart-hr-detail-read`; then `transaction.previewed` (`subject: not-observed`, `externalCommit: none`) and the run ended. **No `prepare` span, no fence, no `commit` span** | none | **0** |
+| 17 | `file-termination` | **transaction** · ucpath | never entered — no span | none | **0** |
+| 18 | `receipt` | task · workflow (headless) | never entered — no span | none | **0** |
+| 19 | `finalize-kuali` | **transaction** · kuali | never entered — no span | none | **0** |
+
+The run emitted **55 events and not one of them names a write**: `run.queued` 1, `run.claimed` 2,
+`span.started` 16, `data.observed` 16, `span.ended` 17, `gate.opened` 1, `gate.resolved` 1,
+`transaction.previewed` 1 — zero `write.*`, zero fence, zero commit, zero intent. Read from
+authority after the terminal, over the WHOLE database: **`write_intents` 0 · `write_attempts` 0 ·
+`durable_outbox` 0** — 0/0/0, and `artifact_outbox` 0 besides. `run_checkpoints` holds **15** rows,
+every one a read-side node, and **zero** for `clear-pending`, `file-termination`, `receipt` or
+`finalize-kuali`. The one non-zero outbox is `run_terminal_outbox` = 1, a `run-terminal-result`
+projection row for this run's own terminal — an internal projection hand-off, not an external write.
+This is the code's shape, not luck: `executeDryRun` reports the settlement the real path would reach
+**without calling `settleAlreadyPresent`** — no checkpoint, no observed-present intent row, no run
+transition (`src/core/write-sequencer.ts` §D215) — and the retired `dry-run-composition-submit-free`
+guard's invariant lives on in `write-safety-contract` plus the row-level scenario (D188). Nothing
+was written to UCPath, Kuali or Kronos, and document 4502's Kuali form was not saved.
+
+**One pre-flight finding, recorded because R2 will hit it.** The root checkout's own
+`.tracker-rebuild/state.db` **could not be opened at this tree**: it sat at `PRAGMA user_version`
+16 with `authority_meta.schema_version` 16, yet already carried `dry_run_scenario_results` — a table
+migration **18** creates — while `worker_pools` (migration **17**) was absent, so `#runMigrations`
+replayed 17→18 and threw `table dry_run_scenario_results already exists`, unwinding
+`composeDashboardRuntime`. That is a stale local database from a pre-merge branch, not a defect in
+`36135120`; it was moved intact to `.tracker-rebuild/stale-schema16-2026-08-27/` (nothing deleted)
+and the runtime built a fresh authority at **schema v18, generation 1, `quick_check ok`**, which is
+also why the 0/0/0 above is an empty-from-birth read rather than a delta. Two consequences worth
+carrying: the fresh database's `runs_view` rehydrated **50** historical rows from the on-disk span
+JSONL while the write tables stayed empty, and `storage doctor` lists the 56 pre-v18 backup
+manifests as `INVALID — backup-invalid: schemaVersion`, with the new generation-1 backup `ok`.
+A second, unrelated occupant was cleared first: a BFF + vite pair from the deregistered worktree
+`.hr-rebuild-worktrees/fidelity-standing` (no `.git`, absent from `git worktree list`) had held
+3938/5174 since 2026-08-26 and was writing to that directory's own database; it served descriptor
+fingerprints byte-identical to this tree, but it was not this checkout's runtime and was stopped.
+
+**Closure.** Worker stopped, its process-lock record released cleanly
+(`releasedAt 2026-08-27T12:42:44.892Z`, pid gone); BFF stopped and 3938 silent;
+`playwright-cli close-all` → no orphan Chromium. As in §9.26/§9.27 the BFF's own
+`.tracker-rebuild/locks/server.lock.json` retains `releasedAt: null` under a dead pid — observed,
+left in place per D181. `npm run build:manifest` was clean before the run and `npm run roadmap:check`
+reports `docs/roadmap/index.html is fresh`; the served `separations` fingerprint was
+`14217f341c0b84ef…`, byte-identical to the tree manifest, for the whole pass.
+
+**Addendum, 2026-08-27 — the hand-run above is now a REPLAYABLE T1b scenario, and it agreed.** The
+proof this section records was driven by hand through the dashboard; it is now declared at
+`tests/scenario/workflows/separations/dry-run.scenario.ts` and taken by
+`npm run cli -- dry-run-scenario separations --subject separations-dry-run-subject` (the label is
+`config/test-subjects.json`'s, doc **4502**). The first live take of that command, at
+2026-08-27T13:46:39Z, came back **`met`** — `dry_run_scenario_results`
+**`0cc71a31-4119-4588-b96b-0fd5e568abe6`**, run `91cf5356-5211-4d09-8d37-8ddf4c7bc901`, trace
+`sp-064438-91cf`, 121 s — with all eight of `evaluateDryRunScenarioEvidence`'s assertions met:
+the nineteen-node reach and the four excluded, the **fifteen** checkpoints at attempt 1 (both
+`timecard-search` claim generations), the single `identity-approval`/`approved`/`local-operator`
+gate, terminal `done` at the D215 preview terminal on `clear-pending` settling **`already-present`
+off its live probe**, the twenty-row receipt vocabulary, and `write_intents` / `write_attempts` /
+`durable_outbox` **0/0/0** read over the whole database. Two facts about the harness are worth
+carrying rather than rediscovering. A worktree needs `duo-autopilot/credentials/` (gitignored) as
+well as `.auth` and `.env`: without it a FRESH browser profile has no Duo credential to self-arm
+from, the ceremony hangs, and the run dies at `resolve-action` on the 60 s
+`timeouts.sessionAcquireMs` bound — which is what the first two takes here did
+(`a558c3a8-…`, then `4e6e5be3-…`). And the manifest's `attempt: 1` is a **first-rehearsal** fact:
+the item id derives from the document, so a second take against the same state root is attempt 2 and
+`checkpoints` fails on the number alone. The take recorded above ran against a fresh
+`.tracker-rebuild`.
+
+### 9.28 §9.20 item 7 — CLOSED: the "empty identity cell" is a row read mid-render, and the driver now waits for the render to complete (2026-08-27)
+
+**The open line.** §9.20 item 7 recorded, without diagnosing, that a cold WFD profile's FIRST
+Employee Search once presented a result row whose identity cell was empty — the driver refused it by
+name (`observed ""; refusing to read a row whose subject is unknown`) and the next search resolved
+in 1.83 s. This pass reproduced the mechanism live, then the refusal itself, and fixed the read.
+
+**The probe.** `scripts/u14-cold-probe.ts` (temporary, deleted with this pass): the REAL factory, the
+REAL `new-kronos` login recipe and the REAL driver's `searchEmployee`, on a never-used profile
+directory under `.auth/hrauto-rebuild/u14-cold-probe-a<N>/` (a random config fingerprint makes every
+attempt cold; the eight directories were removed at the end, as were their released `live-smoke`
+lock directories), instrumented from OUTSIDE the driver: a MutationObserver installed by init script
+in every frame recording each `[role='menuitemradio']` row's creation, child insertions and
+attribute / text changes with timestamps; a 50 ms node-side sampler of slat counts, labels and
+counters per frame; every `*.mykronos.com` response. Subject: EID 10776990 (§9.20's own). Headless,
+Duo cleared hands-off, read-only throughout.
+
+| attempt | condition | cold first search | host → identity text | warm searches | hydrating arm |
+|---|---|---|---|---|---|
+| a1 | cold, idle | resolved 2.79 s | **33 ms** | 1 resolved, 12 ms | (not yet built) |
+| a2 | cold, idle | resolved 3.42 s | **34 ms** | 1 resolved, 9 ms | (not yet built) |
+| a3 | cold, idle, fix v1 (card presence) | resolved 2.96 s | **108 ms** | 1 resolved, 14 ms | — |
+| a4 | cold, idle, fix v1 | resolved 2.93 s | 30 ms | 6 resolved, 11–18 ms | fired 0/7 |
+| a5 | cold | login refused at `sso-form`: entry route landed on `chrome-error://chromewebdata/` — a navigation error refused by name, retried | — | — | — |
+| a6 | cold, **8× CPU throttle** (CDP `Emulation.setCPUThrottlingRate`, post-login) | resolved 17.85 s | **214 ms** | 3 resolved, 91–104 ms | fired 0/4 |
+| a7 | cold, **20× throttle**, fix v1 | navbar `Employee Search` click elapsed its 15 s bound (the throttled home paints slower than `CONTROL_TIMEOUT_MS`; refused by name) | — | 3 resolved (360–572 ms); **warm-5 REFUSED `observed ""`** — §9.20 item 7 reproduced verbatim | fired 0/4 |
+| a8 | cold, 20× throttle, **final fix** | same 15 s navbar bound | — | **5/5 resolved**, 295–456 ms | **fired 2/5** (`{label:"",cardRendered:true}`) |
+
+**Root cause — the row is rendered in STAGES, each an Angular digest apart, and the poll accepted
+the first stage.** Every one of the 21 searches showed the same sequence in the panel's frame
+(`angularIframeSlider`, inside `iframe[name^="portal-frame-"]`): (1) the `div.slat-container` host
+lands — already `role="menuitemradio"` (WFD sets `role="button"` first and rewrites it in the same
+batch), with the `Total [1]` / `Selected [0]` counters, and **no text**; (2) the inner `krn-slat`
+skeleton renders (checkbox zone, data zone; the `krn-slat` gets `aria-label="Item Name <name> not
+checked"` — a name, no EID); (3) the `krn-slats-tabular-data` card is transcluded into
+`.slat-col__data`, its `span.card__label` / `span.card__info` text nodes still holding the RAW
+bindings `{{::row.label ? row.label : row.name}}` and `{{context.data[slatIndex][row.name]}}`
+(the MutationObserver's `characterData` `oldValue`); (4) a digest interpolates them into `Name` /
+`Kou, Nathan` / `ID` / `10776990`. The driver's poll returned "results" the instant
+`[role='menuitemradio']` counted above zero and read the row's text — `""` at stages 1–3. On an idle
+machine the gap is 9–34 ms and a 200 ms poll rarely lands in it; on a loaded machine (2026-08-19's
+cold profile 32 s into a Duo ceremony; 20× throttle here) it is hundreds of milliseconds and the poll
+lands. **Cold is a widener, not the cause**: every cold first search had a wider gap than the warm
+ones that followed it (33/34/108/30/214 ms against 9–18 ms), and the refusal reproduced on a WARM
+search under load. A second finding on the way: the row-level `aria-label="Name <name> ID <eid>"`
+§9.1 recorded on 2026-08-12 is a feature-toggle-gated binding
+(`ng-attr-aria-label="{{isSwapA11yImprovementsEnabled && enableSlatA11y && getSlatLabel …}}"`) and
+was ABSENT on every row today; the identity has been coming from the card's interpolated text (the
+same `Name <name> ID <eid>` string) through the read's text arm. `role` is bound the same way
+(`enableSlatA11y ? 'button' : … 'menuitemradio'`) — recorded, not acted on.
+
+**The signal, and why the first cut was wrong.** Fix v1 waited for stage 3 — the card element's
+presence — and a7-warm-5 refused `""` with that check in place: the card is inserted BEFORE its
+bindings are interpolated. The completion signal is therefore the CONTENT: a row has completed its
+render when its card is in AND its text is non-empty and carries no raw `{{` binding
+(`slatRenderComplete`, `src/stores/new-kronos/driver/search-render.ts`). This is a bounded wait for
+a named fact, not a longer timeout: the poll keeps its caller's `searchTimeoutMs`, a `hydrating`
+render resets the sentinel streak (rows exist, so the sentinel is the loading state), and if the
+bound elapses with incomplete rows on screen the driver throws naming the count, the card selector
+and the last-observed labels — never `no-signal`, because the search answered. The refusal of a
+COMPLETED row whose label carries no identity is unchanged: completion says when to read, never what
+was read. Pinned RED-first by `tests/unit/new-kronos-search-render.test.ts` (12 cases — the three
+mid-render stages as fixtures, the raw-binding strings verbatim, the nested `krn-slat`'s
+name-only label, a complete row with a foreign label) against the extracted on-sight verdict
+(`70f0bbf2`), fixed at `b87dc560`. `krn-slats-tabular-data` is driver-internal like
+`p.totals-counter` — legacy has no key for it — so it is not a registry element.
+
+**Disposition:** fix, live-verified (a8). Doc 03b's sep-1 line is closed with this section; the
+store's `CLAUDE.md` carries the invariant and the lesson; `ref lessons` carries the general form.
+Not done here: the throttled cold home's navbar bound (a7/a8) is an artefact of 20× throttling and
+elapsed loudly by name — no bound was widened.
+
+**Review fix (2026-08-27).** The read above swapped the poll's `count()` for `evaluateAll()`, and on
+Playwright 1.61.1 those disagree about a missing frame — `count()` answers 0, `evaluateAll` throws
+`Failed to find frame for selector "…"` — so the TOP-LEVEL panel context (no named frames; the
+second `searchEmployee` of a session) aborted on a raw Playwright error instead of falling through
+to the `page` root. The poll now counts each candidate root's slats before reading it, nothing is
+caught, and `tests/unit/new-kronos-search-poll.test.ts` pins the interpreter halves the 12 verdict
+cases could not reach (the two-root read, the hydrating streak reset, the by-name bound refusal, and
+`no-signal` when the rows vanish again). The prose figures in `ref lessons` and the store's
+`CLAUDE.md` also merged a6's 8×-throttled 214 ms into the COLD range; the table above is
+authoritative — 30–108 ms cold, 214–570 ms throttled.
+
+Live RED→GREEN on the warm `hrauto-rebuild` profile, EID 10776990, the real factory / login recipe /
+driver, same sequence both runs (`readSeparationTimecard` → Go To → Timecard, then a second
+`searchEmployee`): **pre-fix** the second search threw
+`locator.evaluateAll: Failed to find frame for selector "iframe[name^=\"portal-frame-\"] >> …"` from
+`interpreter.ts:308` via `:399`; **post-fix** `state=resolved context=top-level in 1436 ms`, one row,
+matched `Kou, Nathan`. Two OUT-OF-SEAM refusals surfaced on the way and were left alone, both loud
+and both after the navigation this fix covers: (1) `searchEmployee` called twice in one session on
+`…/wfd/home` refuses the second with `the Employee Search panel's …query-field rendered in neither
+… context` — search #1 collapses the panel to `Show Search`, and the separations descriptor chains
+the `search-employee` node into `read-separation-timecard`, whose `selectEmployeeInPanel` searches
+again; (2) `setRangeField` refused `could not set the timecard start date to 6/1/2026 — the field
+last read "11/20/2626"`, i.e. the range field is typed into without being cleared first.

@@ -23,6 +23,13 @@
  * both directions and, with it, names the corpus's second deliberate kind: an
  * INTEGRATION WALK (`*.walk.test.ts`), which crosses slices instead of walking
  * one graph and therefore claims no coverage point and carries no manifest row.
+ *
+ * R10 §10.9's T2 tier is the THIRD kind — a DASHBOARD scenario at
+ * `dashboard/<feature>/<name>.scenario.test.ts`, driving a feature through the
+ * real projection and the real command service. It carries the walk's
+ * obligations for the same reason the walk does: it walks no graph, so a
+ * coverage claim or a manifest row on one would be a path nobody executed
+ * counted as executed.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -40,6 +47,7 @@ import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import {
   EXECUTABLE_SCENARIO_MANIFEST,
   ExecutableScenarioSpecSchema,
+  DASHBOARD_SCENARIO_FILE_PATTERN,
   GRAPH_SCENARIO_FILE_PATTERN,
   INTEGRATION_WALK_FILE_PATTERN,
   auditExecutableScenarioParity,
@@ -246,20 +254,69 @@ describe("scenario coverage", () => {
     );
   });
 
-  it("holds the corpus DIRECTORY to its two declared kinds, in both directions", () => {
+  it("holds the corpus DIRECTORY to its three declared kinds, in both directions", () => {
     const files = scenarioCorpusFiles();
     assert.ok(files.length > 0, "the scenario corpus is empty");
     assert.deepEqual(auditScenarioCorpusLayout(files, graphClaimedScenarioIds()), []);
-    // Every file on disk is one of the two kinds, and the graph kind is used.
+    // Every file on disk is one of the three kinds, and each kind is used.
     for (const { file } of files) {
       assert.ok(
-        GRAPH_SCENARIO_FILE_PATTERN.test(file) || INTEGRATION_WALK_FILE_PATTERN.test(file),
-        `${file} is neither corpus kind`,
+        GRAPH_SCENARIO_FILE_PATTERN.test(file)
+        || INTEGRATION_WALK_FILE_PATTERN.test(file)
+        || DASHBOARD_SCENARIO_FILE_PATTERN.test(file),
+        `${file} is no corpus kind`,
       );
     }
-    // Both kinds are in use, so neither arm is enforcing an empty set.
+    // All three kinds are in use, so no arm is enforcing an empty set.
     assert.ok(files.some(({ file }) => GRAPH_SCENARIO_FILE_PATTERN.test(file)));
     assert.ok(files.some(({ file }) => INTEGRATION_WALK_FILE_PATTERN.test(file)));
+    assert.ok(files.some(({ file }) => DASHBOARD_SCENARIO_FILE_PATTERN.test(file)));
+    // The kinds are disjoint: a dashboard scenario is never read as a graph one,
+    // which is what keeps their opposite claim obligations enforceable.
+    for (const { file } of files) {
+      assert.equal(
+        GRAPH_SCENARIO_FILE_PATTERN.test(file) && DASHBOARD_SCENARIO_FILE_PATTERN.test(file),
+        false,
+        `${file} matches two corpus kinds`,
+      );
+    }
+  });
+
+  /**
+   * The disjointness check above walks the LIVE corpus, so it can only ever
+   * prove "the files that happen to exist today don't collide" — a real
+   * near-miss shape (a dashboard-nested walk file, a workflow-folder graph
+   * file whose suffix drifted) would stay invisible until someone happened to
+   * create one. This table is synthetic on purpose: it exercises the three
+   * patterns' full pairwise matrix (GRAPH∧DASHBOARD, WALK∧DASHBOARD,
+   * GRAPH∧WALK) against shapes chosen to be plausible near-misses, independent
+   * of whatever the corpus directory currently contains.
+   */
+  it("keeps the three corpus file patterns pairwise disjoint over a synthetic path table", () => {
+    const SYNTHETIC_PATHS: readonly string[] = [
+      `${SCENARIO_ROOT}/dashboard/separations/x.scenario.test.ts`, // dashboard
+      `${SCENARIO_ROOT}/dashboard/a/b.walk.test.ts`, // dashboard-shaped, walk-suffixed
+      `${SCENARIO_ROOT}/workflows/w/structural.scenario.test.ts`, // graph (workflow-folder arm)
+      `${SCENARIO_ROOT}/foo.walk.test.ts`, // walk
+      `${SCENARIO_ROOT}/foo.scenario.test.ts`, // graph (flat arm)
+    ];
+    for (const file of SYNTHETIC_PATHS) {
+      assert.equal(
+        GRAPH_SCENARIO_FILE_PATTERN.test(file) && DASHBOARD_SCENARIO_FILE_PATTERN.test(file),
+        false,
+        `${file} matches both GRAPH and DASHBOARD`,
+      );
+      assert.equal(
+        INTEGRATION_WALK_FILE_PATTERN.test(file) && DASHBOARD_SCENARIO_FILE_PATTERN.test(file),
+        false,
+        `${file} matches both WALK and DASHBOARD`,
+      );
+      assert.equal(
+        GRAPH_SCENARIO_FILE_PATTERN.test(file) && INTEGRATION_WALK_FILE_PATTERN.test(file),
+        false,
+        `${file} matches both GRAPH and WALK`,
+      );
+    }
   });
 
   it("reads an `it` title as a scenario CLAIM only when its head is a scenario id", () => {
@@ -279,6 +336,16 @@ describe("scenario coverage", () => {
         { file: `${SCENARIO_ROOT}/helpers.test.ts`, itTitles: ["does a thing"] },
       ])),
       /helpers\.test\.ts is neither a graph scenario .* nor an integration walk/,
+    );
+    // A dashboard scenario one folder too shallow is a stray kind, not a T2
+    // file: §10.9's path is `dashboard/<feature>/<name>.scenario.test.ts`, and
+    // a `<feature>` that is really the file name owns no feature.
+    assert.match(
+      corpusViolations(corpusWith((files) => [
+        ...files,
+        { file: `${SCENARIO_ROOT}/dashboard/loose.scenario.test.ts`, itTitles: ["does a thing"] },
+      ])),
+      /dashboard\/loose\.scenario\.test\.ts is neither a graph scenario .* nor an integration walk/,
     );
     assert.match(
       corpusViolations(corpusWith((files) => [
@@ -337,6 +404,28 @@ describe("scenario coverage", () => {
     assert.match(
       corpusViolations(corpusWith((files) => files.filter((entry) => entry.file !== owner))),
       new RegExp(`manifest rows name ${owner.replaceAll("/", "\\/")}, which is not in the scenario corpus`),
+    );
+  });
+
+  it("rejects a dashboard scenario that claims a graph path or declares no test", () => {
+    const claimed = String(EXECUTABLE_SCENARIO_MANIFEST[0].scenarioId);
+    const file = `${SCENARIO_ROOT}/dashboard/separations/pretend.scenario.test.ts`;
+    assert.match(
+      corpusViolations(corpusWith((files) => [
+        ...files,
+        { file, itTitles: [`${claimed} — a T2 file pretending to walk the graph`] },
+      ])),
+      new RegExp(`pretend\\.scenario\\.test\\.ts is a dashboard scenario and may not claim scenario ${claimed}`),
+    );
+    assert.match(
+      corpusViolations(corpusWith((files) => [...files, { file, itTitles: [] }])),
+      /pretend\.scenario\.test\.ts declares no test/,
+    );
+    // The manifest schema refuses a T2 path outright — the same rule from the
+    // other side, so a row can never point at a file that walks no graph.
+    assert.throws(
+      () => ExecutableScenarioSpecSchema.parse({ scenarioId: claimed, file }),
+      /invalid_format|regex/u,
     );
   });
 

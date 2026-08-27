@@ -316,7 +316,7 @@ export async function runDryRunScenario(
       started.writeSafetyBefore,
       evidence,
     );
-  } catch {
+  } catch (error) {
     if (started !== undefined) {
       const failed = DryRunScenarioResultSchema.parse({
         resultId,
@@ -343,10 +343,12 @@ export async function runDryRunScenario(
       }
       throw new Error(
         `dry-run scenario execution failed after start; failed result ${resultId} records ${manifest.workflow}/${scenarioCase.subjectLabel}`,
+        { cause: error },
       );
     }
     throw new Error(
       `dry-run scenario failed before run identity was known for ${manifest.workflow}/${scenarioCase.subjectLabel}`,
+      { cause: error },
     );
   }
   const verdict = assertions.every((outcome) => outcome.verdict === "met") ? "met" : "failed";
