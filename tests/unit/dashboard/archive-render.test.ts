@@ -64,9 +64,10 @@ function section(seed: string, n: number): ArchiveSection {
   return { sweep: undefined, applicationId, entries: entries(seed, applicationId, n) };
 }
 
-function markup(sections: readonly ArchiveSection[]): string {
+function markup(sections: readonly ArchiveSection[], codes = new Map<string, string>()): string {
   return renderToStaticMarkup(createElement(ArchiveTable, {
     sections,
+    codes,
     query: { text: "", workflowId: "all", status: "all", instance: "all", sort: "when", dir: "desc" },
     onSort: noop,
     collapsed: new Set<string>(),
@@ -106,6 +107,7 @@ describe("the windowed archive table names its true size to assistive tech", () 
     const collapsedSection = section("a", 3);
     const html = renderToStaticMarkup(createElement(ArchiveTable, {
       sections: [collapsedSection, section("b", 1)],
+      codes: new Map<string, string>(),
       query: { text: "", workflowId: "all", status: "all", instance: "all", sort: "when", dir: "desc" },
       onSort: noop,
       collapsed: new Set([collapsedSection.applicationId]),
