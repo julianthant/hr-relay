@@ -82,3 +82,15 @@ recorded as named external gates in §9.27 and the 03a closure.
 **Recommendation: A** — it is the next plan item and pre-authorized live work.
 
 **Notes:**
+
+## Answers (2026-08-27)
+_Coordinator verified before ratifying: master `08676c3c` is a strict ancestor of `integration/03a-final` (0 commits master-only, 178 integration-only) — item 1's "anomalous snapshot" is a stale point on the same line, so B is a plain `--no-ff` merge, no history moves. jsdom is declared in 9 files, not 6. `~/.codex/` exists on this machine, so Codex sessions are real (item 3)._
+
+| # | Chosen | Note |
+|---|---|---|
+| 1 | B | merge `integration/03a-final` → master `--no-ff`; A rejected (history-moving, unnecessary); C rejected (master would mislead every comparing session) |
+| 2 | A | jsdom ratified as the wiring-level React test environment, per-file; B rejected (payload/focus pins do not belong in a screenshot lane) |
+| 3 | A | keep `src/dashboard/AGENTS.md` for Codex; Claude sessions never author it; B rejected while Codex sessions continue |
+| 4 | A | the capture panel takes the intake column while a session is live; B rejected (the session is the operator's task); C rejected (viewport-conditional layout = two behaviours to keep in parity) |
+| 5 | A | 2026-08-28 local session runs the T1b canary as 03b run R1 (needs local Playwright + Duo Autopilot — not a cloud routine) |
+| + | row 10 → carry to phase 04 | the ledgers' structural residue and the three recorded findings are fidelity polish, not separations blockers; 03a's exit table closes 10/10 with row 10 "met by disposition — carried to 04" |

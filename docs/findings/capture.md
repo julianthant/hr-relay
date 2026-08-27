@@ -137,7 +137,7 @@ lands) — a way to ask the phone to retake a specific page.
 
 ## The intake column gives its whole height to the dropzone, so a LIVE capture opens below the fold
 
-**Recorded:** 2026-08-26 (unit F13) · **Status:** OPEN — a layout proportion, not a missing fact ·
+**Recorded:** 2026-08-26 (unit F13) · **Status:** RULED 2026-08-27 (D278 — the live capture panel takes the column; the dropzone yields to a strip), implementation carried to Phase 4 (D279) · was: OPEN — a layout proportion, not a missing fact ·
 **Owning doc:** ref data-intake-and-edit-data §5.1
 
 **Symptom.** `surfaces/intake.tsx`'s empty/refused arm gives the `Dropzone` `flex-1` under a comment

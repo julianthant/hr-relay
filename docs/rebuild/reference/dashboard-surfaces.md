@@ -171,7 +171,7 @@ cross-referenced rather than re-litigated.
 4. Build only a served-vocabulary catalog and name absences; B claims unsupported semantics, C has no home.
 5. Use Settings takeover with Help→Keyboard; B retains container drift, C reverses its removal rationale.
 6. Add read-only hosts/capabilities; B hides served facts, C wrongly couples reads to settings writes.
-7. Build authority-backed desktop capture states; B defers visible capture, C abandons review.
+7. Build authority-backed desktop capture states; B defers visible capture, C abandons review. **D278 (2026-08-27) rules the column the panel mounts in:** while a capture session is live the panel takes the intake column's height and the `Dropzone` yields its `flex-1` to a strip; with no live session the dropzone is primary. Rejected: dropzone-primary with a scrolling panel; a wide-viewport split. Lands with the Phase 4 carry-in (D279).
 8. Add Manifest/Rerun panels over served facts only; B leaves review incomplete, C withholds states awaiting unrelated producer facts.
 9. Use review checkbox/disabled Run/courtesy reason; B advertises a known refusal, C hides work.
 10. Add non-byte capture viewer and archivable-run list; B leaves capture inert, C asks action on counts alone.

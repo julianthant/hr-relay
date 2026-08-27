@@ -6,6 +6,11 @@ never a server module (`dashboard-wire-boundary` walks the closure and fails lou
 binding for anything visual: read it before building a surface — and open the specimen page it
 points at (`npm run web` → http://localhost:5174/kit.html) before choosing a primitive.
 
+**`AGENTS.md` in this directory is Codex's binding file** (kept by the operator's 2026-08-27 ruling,
+`docs/decisions/2026-08-27-03a-close-decisions.md` item 3). Claude sessions never create or edit
+it; when it drifts from this file, `skill-sync` regenerates it — resolve a merge by keeping both
+sides and say so.
+
 ## Layout
 
 | Path         | Contents                                                                                                                     |
