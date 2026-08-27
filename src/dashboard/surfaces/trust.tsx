@@ -235,7 +235,20 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
       <TrustSection label="What is safe to retry">
         {detail.remediation.map((action, index) => (
           <span key={index} className="flex items-baseline gap-[var(--ds-space-snug)]">
-            <Chip label="remediation" tone={action.kind === "no-safe-action" ? "danger" : "neutral"}>
+            {/*
+              `shrink-0` is load-bearing, and a screenshot is what found it: a
+              `Chip` is `w-fit` and clips, so in a flex row beside a sentence
+              that wants the width it drew `remediation Operat…` at 1440 and
+              recovered the cut on `title` alone — a fact reachable by pointer
+              and by nobody else, which DESIGN.md bans outright. The kind is
+              five short words from a closed vocabulary; it never needs to give
+              width up to the message.
+            */}
+            <Chip
+              label="remediation"
+              tone={action.kind === "no-safe-action" ? "danger" : "neutral"}
+              className="shrink-0"
+            >
               {remediationLabel[action.kind]}
             </Chip>
             <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>{action.message}</span>
