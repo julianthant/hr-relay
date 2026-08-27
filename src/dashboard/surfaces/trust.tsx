@@ -24,7 +24,7 @@
  * - empty sections are omitted (D24 restraint) — a receipt does not explain
  *   itself, and "no warnings" is best said by no warnings section.
  */
-import { Check, ChevronDown, Download, Fingerprint, Package } from "lucide-react";
+import { Check, ChevronDown, Download, Fingerprint, Package, TriangleAlert } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
@@ -57,6 +57,7 @@ import {
   acceptDiagnosticBundleReadback,
   evidenceSourceMeta,
   failureFingerprintHistory,
+  failurePermanence,
   inputHashFooter,
   type FailureWriteStateTone,
 } from "./trust-model.js";
@@ -130,11 +131,128 @@ function fmtAge(ms: number): string {
 
 /* ── the failure record body (ref operator-trust §2.1, D142) ─────────────────────────── */
 
+/**
+ * THE WRITE-STATE SENTENCE'S COLOUR — two of them, for three ruled arms.
+ *
+ * D273 item 8 rules the MAPPING, ported from legacy
+ * hr-automation@c9e6aaf3aa8978a776f72205b71a96a988773b43, DemoFailure.tsx:156-161
+ * (ledger 2 E9): `none` → success, `unknown` → parked, everything else →
+ * waiting. Three token families, and the palette paints two colours with them:
+ * `--ds-status-parked-fg` and `--ds-status-waiting-fg` are the SAME amber in
+ * both themes — in this tree and in the demo it is ported from, where the
+ * `parked` family's own violet was re-derived to amber years ago (see the
+ * palette note at the top of `ds/tokens.css`).
+ *
+ * So the fold is deliberate rather than accidental (unit F8c finding 2). The
+ * `unknown` arm takes `--ds-status-waiting-fg` outright: naming a second token
+ * for the identical colour is the `--log-violet` rot that same note warns
+ * about — a name that outlives the colour it was chosen for and then lies to
+ * the next reader about what the screen distinguishes.
+ *
+ * What is NOT done, and why: `unknown` is not given a hue of its own. D232's
+ * budget is one accent and FIVE semantic hues, the fifth was bought outright
+ * for `dry run`, and no remaining token is honest here — `info` is not a
+ * warning, `danger` re-says the failure the whole card already carries, the
+ * muted ramp says "less important", and the rehearsal violet means "wrote
+ * nothing", which is the exact opposite of an unknown write outcome.
+ *
+ * Nothing is lost, because the colour was never the carrier: the three arms'
+ * SENTENCES differ, and `FAILURE_WRITE_STATE` states each in full — "The write
+ * outcome is unknown — the intent is parked for operator resolution." cannot be
+ * mistaken for "A write was committed; its read-back verification did not
+ * complete." The `FailureWriteStateTone` vocabulary keeps all three arms: it is
+ * the ruled mapping, and a palette that later buys `parked` a hue changes one
+ * line here rather than re-deriving which arm deserved it.
+ *
+ * `failure-record-render.test.ts` reads `ds/tokens.css` and fails if any two
+ * tones drawn here resolve to one colour in either theme.
+ */
 const WRITE_STATE_TONE: Record<FailureWriteStateTone, string> = {
   "nothing-written": "text-[color:var(--ds-success-fg)]",
-  unknown: "text-[color:var(--ds-status-parked-fg)]",
+  unknown: "text-[color:var(--ds-status-waiting-fg)]",
   "left-behind": "text-[color:var(--ds-status-waiting-fg)]",
 };
+
+/**
+ * ONE expression for the write-state block's visible label and its accessible
+ * name, so the two cannot drift (the WCAG 2.5.3 rule this bundle ratified at
+ * `intake.tsx`'s review checkbox).
+ */
+const WRITE_STATE_LABEL = "What this run left behind";
+
+/**
+ * THE RECORD'S HEAD — the run's own sentence, its code, its identity and its
+ * permanence (D273 item 8, ledger 2 E2/E4/E5/E6).
+ *
+ * It lives HERE, beside the body it heads, because the record has two
+ * consumers: the log panel's `InlineFailureRecord` and the archive's own
+ * failure card. The head was composed in the panel's JSX at unit F8b and the
+ * archive card — which draws the body and nothing above it — silently lost all
+ * three facts: an archived failed run printed its write state, its remediation
+ * and its diagnosis under a bare `Failure record` label, with the sentence the
+ * run wrote about itself nowhere on the surface. Nothing failed, because a card
+ * without a head is perfectly grammatical (the 2026-08-26 duplicate lesson,
+ * `src/dashboard/CLAUDE.md`: two copies are two things that happen to agree
+ * today, and one of them stops).
+ *
+ * The `available`/unserved fork stays with the log panel: only the live stream
+ * can hold a record the projection refused, and "this run failed" is the whole
+ * of what is known there.
+ */
+export function FailureRecordHead({ detail }: { detail: FailureDetailWire }) {
+  const permanence = failurePermanence(detail.transient);
+  return (
+    <div className="flex flex-col gap-[var(--ds-space-tight)]">
+      <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+        {/*
+          The glyph and the sentence are ONE wrapping item, not two. Loose in
+          the row they wrap independently, and in a narrow column — the
+          archive's detail rail is ~400px — the triangle took a line of its own
+          above the summary, which reads as debris rather than as a mark on the
+          sentence. Nesting costs nothing at full width: the pair still shrinks
+          (`min-w-0`) so the chips keep their place beside it.
+        */}
+        <span className="flex min-w-0 items-baseline gap-[var(--ds-space-snug)]">
+          <TriangleAlert
+            aria-hidden
+            className={cn(dsIcon.md, "shrink-0 translate-y-px text-[color:var(--ds-danger)]")}
+          />
+          <span className={cn(dsText.ui, "min-w-0 break-words font-semibold text-[color:var(--ds-danger)]")}>
+            {detail.summary}
+          </span>
+        </span>
+        <Chip label="code" tone="danger">
+          {detail.code}
+        </Chip>
+        <Chip label="record" tone="danger">
+          {detail.failureId}
+        </Chip>
+      </div>
+      {/*
+        PERMANENCE IS A SENTENCE, so it is not a chip (unit F8c finding 5).
+        `Chip`'s own docstring rules it: "if a fact cannot survive truncation it
+        is not a chip — put it on the row's `MetaLine`, on its own line, where
+        it can wrap." Inside a `w-fit` clipped token this read
+        `permanent — the same inp…` and recovered the cut on `title` alone,
+        which is a fact reachable by pointer and by nobody else — the same
+        defect this directory has now fixed twice (D272 items 8–9, unit F5b).
+        It stays in the HEAD, one line below the chips: it is the reading that
+        tells the operator not to press retry, and a fact that decides that
+        cannot wait for a disclosure.
+      */}
+      <MetaLine
+        items={[
+          <span
+            key="permanence"
+            className={permanence.tone === "warning" ? "text-[color:var(--ds-status-waiting-fg)]" : undefined}
+          >
+            {permanence.text}
+          </span>,
+        ]}
+      />
+    </div>
+  );
+}
 
 export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
   const subject = detail.subject;
@@ -198,15 +316,22 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
         of body copy because a run that wrote half a termination reads exactly
         like one that wrote none until this is read, and one weight for all six
         arms made the six read the same at a glance.
+
+        It is a NAMED `<section>`, exactly like `What is safe to retry` below
+        (unit F8c finding 4). It was a bare `<div>` with a caps label inside it,
+        which gives a screen reader no landmark and no name for the block this
+        surface calls its most important — weaker semantics than its own
+        sibling, on the louder of the two facts.
       */}
-      <div
+      <section
+        aria-label={WRITE_STATE_LABEL}
         className={cn(
           "border p-[var(--ds-space-base)]",
           dsRadius.md,
           "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
         )}
       >
-        <SectionLabel>What this run left behind</SectionLabel>
+        <SectionLabel>{WRITE_STATE_LABEL}</SectionLabel>
         <p
           className={cn(
             "mt-[var(--ds-space-hair)] leading-relaxed",
@@ -216,7 +341,7 @@ export function FailureDetailBody({ detail }: { detail: FailureDetailWire }) {
         >
           {writeState.sentence}
         </p>
-      </div>
+      </section>
 
       {/*
         WHAT IS SAFE TO RETRY (E11/E14) — the question the operator arrives

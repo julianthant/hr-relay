@@ -120,8 +120,7 @@ import { useContextRail, type ContextSections } from "./context-rail-model.js";
 import { elapsedSecondsBetween, fmtClock, fmtElapsed, plural } from "./format.js";
 import { ReceiptView, type ReceiptSectionPayload } from "./receipt.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "./run-identity.js";
-import { FailureDetailBody } from "./trust.js";
-import { failurePermanence } from "./trust-model.js";
+import { FailureDetailBody, FailureRecordHead } from "./trust.js";
 import { FailureAdvisoryPanel } from "./advisory.js";
 import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
 import { dsStatusOf, outcomeDsStatusOf } from "./status-model.js";
@@ -960,6 +959,16 @@ export function InlineFailureRecord({
       tabIndex={-1}
       data-panel-failure-record=""
       /*
+        `role="group"` is what makes the name below EXIST (unit F8c finding 3).
+        HTML-AAM computes no accessible name for a generic element, so an
+        `aria-label` on a bare `<div>` names nothing — this bundle's own dated
+        lesson (`src/dashboard/CLAUDE.md`, 2026-08-26, the timeline segment),
+        one surface later. This container is focusable on purpose: the outcome
+        bar's `Open failure` lands on it, and a landing that announces nothing
+        is the fact the record exists to carry, lost at the moment of arrival.
+      */
+      role="group"
+      /*
         The record's own sentence names it (E2/E4). When the record is not
         served there is no sentence to name it with, and the bare label is the
         honest one — the arms below say what happened to the record itself.
@@ -990,26 +999,24 @@ export function InlineFailureRecord({
         `code` and permanence ride the head for the same reason: permanence is
         the reading that tells the operator not to press retry, and it was
         drawing as a bare `transient` word with no opposite arm at all.
+
+        The SERVED head moved to `trust.tsx` (unit F8c finding 1) because the
+        archive's failure card is its second consumer and was drawing the body
+        with no head above it at all. Only this arm forks — a record the
+        projection refused exists nowhere else, and it must NOT borrow the
+        served head's chips: an unserved record dressed as a served one is the
+        fail-loud rule inverted into display.
       */}
-      <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
-        <TriangleAlert aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-danger)]")} />
-        <span className={cn(dsText.ui, "min-w-0 break-words font-semibold text-[color:var(--ds-danger)]")}>
-          {failure.state === "available" ? failure.value.summary : "This run failed"}
-        </span>
-        {failure.state === "available" && (
-          <>
-            <Chip label="code" tone="danger">
-              {failure.value.code}
-            </Chip>
-            <Chip tone={failurePermanence(failure.value.transient).tone}>
-              {failurePermanence(failure.value.transient).text}
-            </Chip>
-            <Chip label="record" tone="danger">
-              {failure.value.failureId}
-            </Chip>
-          </>
-        )}
-      </div>
+      {failure.state === "available" ? (
+        <FailureRecordHead detail={failure.value} />
+      ) : (
+        <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+          <TriangleAlert aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-danger)]")} />
+          <span className={cn(dsText.ui, "min-w-0 break-words font-semibold text-[color:var(--ds-danger)]")}>
+            This run failed
+          </span>
+        </div>
+      )}
 
       <div className="mt-[var(--ds-space-base)] flex flex-col gap-[var(--ds-space-base)] pl-5">
         {failure.state === "available" ? (

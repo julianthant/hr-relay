@@ -23,6 +23,8 @@
  * sentence or with a category the surface authored.
  */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -34,6 +36,7 @@ import {
 import { wireResourceSchema } from "../../../src/domain/dashboard/primitives.js";
 import { FailureDetailBody } from "../../../src/dashboard/surfaces/trust.js";
 import { InlineFailureRecord } from "../../../src/dashboard/surfaces/log-panel.js";
+import { ArchivedFailureCard } from "../../../src/dashboard/surfaces/archive.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 
@@ -114,6 +117,81 @@ function renderBody(detail: FailureDetailWire): string {
   );
 }
 
+/* ── the palette, read from the file that owns it ────────────────────────── */
+
+/*
+  Resolved from the vitest root rather than from `import.meta.url`: this file
+  declares the `jsdom` environment, where `import.meta.url` is an http URL and
+  `fileURLToPath` refuses it. `readFileSync` fails loud if the root ever moves.
+*/
+const TOKENS_CSS = readFileSync(resolve(process.cwd(), "src/dashboard/ds/tokens.css"), "utf8");
+
+/**
+ * The two themes that carry real colour values.
+ *
+ * The base `:root` block is structural — it aliases `--warning` / `--success`,
+ * which only the theme blocks declare — so a "value" read there is the alias
+ * text, not a colour.
+ */
+const THEMES = ["dark", "light"] as const;
+type Theme = (typeof THEMES)[number] | "root";
+
+const THEME_SELECTOR: Record<Theme, string> = {
+  root: ":root {",
+  dark: '[data-demo-theme="dark"],',
+  light: '[data-demo-theme="light"],',
+};
+
+function themeBlock(theme: Theme): string {
+  const start = TOKENS_CSS.indexOf(`\n${THEME_SELECTOR[theme]}`);
+  if (start < 0) throw new Error(`ds/tokens.css declares no ${theme} block`);
+  const end = TOKENS_CSS.indexOf("\n}", start);
+  if (end < 0) throw new Error(`ds/tokens.css never closes its ${theme} block`);
+  return TOKENS_CSS.slice(start, end);
+}
+
+function declaration(block: string, name: string): string | undefined {
+  const match = new RegExp(`--${name}:\\s*([^;]+);`, "u").exec(block);
+  return match === null ? undefined : match[1].trim();
+}
+
+/** The colour `--{name}` paints in `theme`, following one `var()` alias at a time. */
+function tokenValue(theme: Theme, name: string): string {
+  const block = themeBlock(theme);
+  const first = declaration(block, name) ?? declaration(themeBlock("root"), name);
+  if (first === undefined) throw new Error(`ds/tokens.css declares no --${name} in the ${theme} theme`);
+  let value: string = first;
+  for (let hop = 0; hop < 4 && value.startsWith("var(--"); hop += 1) {
+    const alias = value.slice("var(--".length, value.indexOf(")"));
+    const resolved: string | undefined = declaration(block, alias) ?? declaration(themeBlock("root"), alias);
+    if (resolved === undefined) {
+      throw new Error(`ds/tokens.css leaves --${name} pointing at an undeclared --${alias} in ${theme}`);
+    }
+    value = resolved;
+  }
+  if (value.startsWith("var(")) throw new Error(`--${name} never resolves to a colour in ${theme}`);
+  return value;
+}
+
+/** The `--ds-*` token the write-state sentence is painted with. */
+function writeStateToneToken(html: string): string {
+  const paragraph = /What this run left behind<\/div><p class="([^"]*)"/u.exec(html);
+  assert.ok(paragraph !== null, "the write-state sentence did not render under its own label");
+  // The COLOUR token specifically — the paragraph's class list also names
+  // spacing tokens, and reading the first `--ds-*` it finds would compare every
+  // arm's `--ds-space-hair` and call three tones distinct.
+  const token = /text-\[color:var\(--(ds-[a-z0-9-]+)\)\]/u.exec(paragraph[1]);
+  assert.ok(token !== null, `the write-state sentence carries no ds token: ${paragraph[1]}`);
+  return token[1];
+}
+
+/** The sentence itself — the channel that survives two arms sharing one colour. */
+function writeStateSentence(html: string): string {
+  const paragraph = /What this run left behind<\/div><p class="[^"]*">([^<]*)</u.exec(html);
+  assert.ok(paragraph !== null, "the write-state sentence did not render under its own label");
+  return paragraph[1];
+}
+
 let mountedRoot: Root | undefined;
 
 afterEach(async () => {
@@ -146,6 +224,16 @@ async function mountOpenRecord(detail: FailureDetailWire): Promise<HTMLElement> 
   });
   assert.equal(toggle.getAttribute("aria-expanded"), "true");
   return host;
+}
+
+/** The archive's own failure card — the record's SECOND consumer. */
+function renderArchivedCard(detail: FailureDetailWire): string {
+  return renderToStaticMarkup(
+    createElement(DashboardClientProvider, {
+      client: refusingClient(),
+      children: createElement(ArchivedFailureCard, { failure: detail }),
+    }),
+  );
 }
 
 function renderRecord(failure: Record<string, unknown>): string {
@@ -198,6 +286,124 @@ describe("the failure record's head (E2/E4/E5/E6)", () => {
     assert.ok(!html.includes("permanent"), "an unserved record grew a permanence claim");
     assert.ok(!html.includes("transient"), "an unserved record grew a permanence claim");
     assert.ok(!html.includes("What this run left behind"), "an unserved record grew a write state");
+  });
+});
+
+/* ── the record's SECOND consumer: the archive's own card (finding 1) ────── */
+
+describe("the archived failure card (unit F8c finding 1)", () => {
+  /*
+    The head facts moved into `InlineFailureRecord`'s JSX at F8b and the
+    archive's card — which renders `FailureDetailBody` and nothing above it —
+    silently lost all three. An archived failed run then printed its write
+    state, its remediation and its diagnosis under a bare `Failure record`
+    label, with the run's OWN sentence, its code and its permanence nowhere on
+    the surface. Nothing failed: the card is grammatical without them.
+  */
+  it("says the run's own summary, its code and its permanence — the same head the live record leads with", () => {
+    const html = renderArchivedCard(failureDetail());
+
+    assert.ok(html.includes(SUMMARY), "the archived card does not say the run's own summary");
+    assert.match(html, /code<\/span><span[^>]*>SUBJECT_MISMATCH/u);
+    assert.ok(
+      html.includes("permanent — the same input will fail again"),
+      "the archived card does not say whether a retry can differ",
+    );
+    // The body it has always drawn is untouched — this is a head, not a rewrite.
+    assert.ok(html.includes("What this run left behind"));
+    assert.ok(html.includes("What is safe to retry"));
+  });
+
+  it("states the OPPOSITE permanence when the wire says transient", () => {
+    // The negative control: a head hard-coded to one arm would pass the case
+    // above and be wrong on every transient failure in the archive.
+    const html = renderArchivedCard(failureDetail({ transient: true }));
+    assert.ok(html.includes("transient — a later attempt may differ"));
+    assert.ok(!html.includes("permanent — the same input will fail again"));
+  });
+});
+
+/* ── the record's semantics (findings 3 and 4) ───────────────────────────── */
+
+describe("the record's accessible structure (unit F8c findings 3/4)", () => {
+  /*
+    HTML-AAM computes NO accessible name for a generic element, so an
+    `aria-label` on a role-less `<div>` names nothing — this bundle's own dated
+    lesson (`src/dashboard/CLAUDE.md`, 2026-08-26, the timeline segment), one
+    surface later. The record is a focusable container (`tabIndex={-1}`, the
+    outcome bar's `Open failure` lands on it), so the name has to survive the
+    landing.
+  */
+  it("gives the record's frame a role, so its aria-label names something", () => {
+    const html = renderRecord({ state: "available", value: failureDetail() });
+    assert.match(
+      html,
+      /<div [^>]*role="group"[^>]*aria-label="Failure record — /u,
+      "the record's aria-label still sits on a role-less div",
+    );
+  });
+
+  it("gives the write-state block the same semantics as the sibling it sits beside", () => {
+    // `What is safe to retry` is a named `<section>`; `What this run left
+    // behind` — the sentence both files call the most important one on a
+    // failed run — was an unnamed `<div>` with a caps label inside it.
+    const html = renderBody(failureDetail());
+    assert.match(
+      html,
+      /<section aria-label="What this run left behind"/u,
+      "the write-state block is weaker than its sibling",
+    );
+    assert.match(html, /<section aria-label="What is safe to retry"/u);
+  });
+});
+
+/* ── the head's permanence is a SENTENCE, not a token (finding 5) ────────── */
+
+describe("the permanence reading (unit F8c finding 5)", () => {
+  /*
+    `Chip`'s own docstring: "if a fact cannot survive truncation it is not a
+    chip — put it on the row's `MetaLine`, on its own line, where it can wrap."
+    `permanent — the same input will fail again` is a sentence with an em dash;
+    inside a `w-fit` clipped token it read `permanent — the same inp…` and
+    recovered the cut on `title` alone, which is a fact reachable by pointer
+    and by nobody else (the F5b lesson, twice already in this directory).
+  */
+  it("never clips the permanence sentence, and never hides it on a title", () => {
+    for (const html of [
+      renderRecord({ state: "available", value: failureDetail() }),
+      renderArchivedCard(failureDetail({ transient: true })),
+    ]) {
+      const root = document.createElement("div");
+      root.innerHTML = html;
+      const leaves = [...root.querySelectorAll("*")].filter(
+        (element) => element.children.length === 0 && /^(permanent|transient) — /u.test(element.textContent),
+      );
+      assert.equal(leaves.length, 1, `the permanence reading rendered ${String(leaves.length)} times`);
+
+      // Walk the whole chain: a clip on ANY ancestor cuts the sentence, which
+      // is how the 44px touch target became 44x24 two units ago.
+      const chain: Element[] = [];
+      let walk: Element | null = leaves[0] ?? null;
+      while (walk !== null && walk !== root) {
+        chain.push(walk);
+        walk = walk.parentElement;
+      }
+
+      for (const node of chain) {
+        // `getAttribute`, not `className`: on an SVG element the property is an
+        // `SVGAnimatedString` and `.includes` on it is silently always false.
+        const classes: string = node.getAttribute("class") ?? "";
+        assert.ok(
+          !classes.includes("whitespace-nowrap") && !classes.includes("truncate"),
+          `the permanence sentence is clipped by \`${classes}\``,
+        );
+        assert.equal(
+          node.getAttribute("title"),
+          null,
+          "the permanence sentence is recovered on a title, which is a pointer-only fact",
+        );
+      }
+    }
   });
 });
 
@@ -306,13 +512,62 @@ describe("the write-state block (E8/E9)", () => {
     const left = renderBody(failureDetail({ writeState: "committed" }));
 
     assert.ok(settled.includes("--ds-success-fg"), "a run that wrote nothing did not read as settled");
-    assert.ok(parked.includes("--ds-status-parked-fg"), "an unknown write outcome did not read as parked");
-    assert.ok(left.includes("--ds-status-waiting-fg"), "a committed-unverified write did not read as a wait");
     // The negative control: if the tone stopped arriving, all three would still
     // be grammatical and only their equality would say so.
-    assert.ok(!settled.includes("--ds-status-parked-fg"));
     assert.ok(!parked.includes("--ds-success-fg"));
     assert.ok(!left.includes("--ds-success-fg"));
+  });
+
+  /*
+    A TONE IS A COLOUR, and two tokens that resolve to the same colour are one
+    tone wearing two names (unit F8c finding 2).
+
+    `WRITE_STATE_TONE` claimed three: `--ds-success-fg`, `--ds-status-parked-fg`
+    and `--ds-status-waiting-fg`. The first is green; the other two are the
+    SAME amber in the dark theme and in the light theme — so the vocabulary
+    said three and the screen said two, and a reader auditing the map could not
+    tell that `unknown` and `left-behind` are indistinguishable to the
+    operator. This reads `ds/tokens.css` for the same reason
+    `archive-window.test.ts` does: a restated constant is a claim about a file
+    somebody else owns, and only that file can settle it.
+  */
+  it("paints no distinction the palette cannot draw", () => {
+    const arms = {
+      "not-attempted": renderBody(failureDetail({ writeState: "not-attempted" })),
+      unknown: renderBody(failureDetail({ writeState: "unknown" })),
+      committed: renderBody(failureDetail({ writeState: "committed" })),
+    } as const;
+
+    const byToken = new Map<string, string[]>();
+    for (const [state, html] of Object.entries(arms)) {
+      const token = writeStateToneToken(html);
+      byToken.set(token, [...(byToken.get(token) ?? []), state]);
+    }
+
+    // Every DECLARED tone must be a colour of its own, in every theme.
+    const tokens = [...byToken.keys()];
+    for (const theme of THEMES) {
+      const painted = new Map<string, string>();
+      for (const token of tokens) {
+        const value = tokenValue(theme, token);
+        const twin = painted.get(value);
+        assert.equal(
+          twin,
+          undefined,
+          `the ${theme} theme paints --${token} and --${String(twin)} the same (${value}), `
+            + "so the write-state block claims a tone it cannot draw",
+        );
+        painted.set(value, token);
+      }
+    }
+
+    // …and the arms that SHARE a colour are told apart by the sentence, which
+    // is the channel that survives the palette budget (D232: one accent and
+    // five semantic hues, and every amber one means "a human is involved").
+    for (const states of byToken.values()) {
+      const sentences = new Set(states.map((state) => writeStateSentence(arms[state as keyof typeof arms])));
+      assert.equal(sentences.size, states.length, `${states.join(" and ")} read alike in colour AND in words`);
+    }
   });
 });
 
