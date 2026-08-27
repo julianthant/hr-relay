@@ -724,6 +724,7 @@ refers to remains a dotted `ObservationId` in the UI/task vocabulary.
 
 ```ts
 export interface RunEvidenceReceipt {
+  composition?: 2;                         // absent = composition 1 (see the composition rule below)
   receiptId: EvidenceReceiptId;
   runId: RunId; traceId: TraceId; workflowId: WorkflowId; attempt: PositiveInt;
   generatedAt: IsoInstant;
@@ -763,6 +764,30 @@ express in SQL, `CHECK (result <> 'verified-done' OR confidence = 'verified')`
 is `unknown` when a mandatory fact or obligation is unresolved or absent, `partial` when any warning
 stands, else `verified`; `result` then reads off the terminal outcome and that confidence
 (`evidence-receipt.ts:840-861`).
+
+**The composition rule (2026-08-26, Track F ledger 2 D16–D22).** The receipt is
+composition-versioned: `composition: 2` added `actions[].proved` and the stamp itself, and an ABSENT
+stamp IS composition 1 — the exact shape every receipt stored before it. Because a stored receipt is
+immutable and must re-derive byte-identically (D141/D199), `ensureRunEvidenceReceipt` re-derives a
+stored receipt AT THE COMPOSITION IT WAS STORED UNDER and never upgrades it in place; only a run
+with no stored receipt derives at the latest composition (`src/core/evidence-receipt.ts`,
+`LATEST_RECEIPT_COMPOSITION`). Growing the composition again means minting the next number and
+keeping every prior one derivable — a schema growth that would re-strand settled receipts is
+refused structurally, not remembered.
+
+**The commit action's `proved` block (same rows).** A commit action at composition 2 carries what
+proved the write, beside the write it proves, from durable authority alone: the fenced intent's
+`system` and `idempotencyKeyDigest` (the digest — the natural key embeds the person's EID and the
+raw half stays in authority), the commit contract's declared `completion` arm, the durable
+`TransactionOutcome`'s own `proofSource`, the completion proof's leaves redacted through the
+declared `write-proof` classification scope (§2.3.1's table; an undeclared proof leaf fails the
+derivation by name), and the outcome's recorded instant. `proved` is refused on any non-commit
+action, and its absence on a composition-2 commit means "no settled write intent reached authority"
+— the UI names that, and names a composition-1 receipt's absence differently. The D20/D21 reading
+(confirmation verdict, read-back verdict) is DERIVED from the served `(completion, proofSource)`
+pair by total folds in `src/dashboard/surfaces/trust-model.ts`, never stored twice. The staged form
+values remain unrecorded (a prepare is `checkpoint: "in-memory-only"`) — the value table is the
+completion proof, the values the system showed back for the write.
 
 #### 2.3.1 Evidence classification and cross-source obligations are DECLARED (D140)
 
