@@ -255,3 +255,18 @@ look.
 
 **None.** Every one of the 168 references above names either a ratified decision, a merged reviewed
 unit, or this unit's own work, and every attribution names the commit that carries it.
+
+
+## Addendum — the V1 vocabulary-sweep re-freeze (2026-08-27)
+
+Unit V1 (`feature/vocab-sweep`, commits `987677e9..10b70b00`) landed the D272–D276 ruled
+vocabulary AFTER the P1 freeze, so one further deliberate `PARITY_UPDATE=1` pass re-photographed
+exactly the six scenes V1's own report named — nothing else moved:
+
+| scene | refs | what changed | attributed to |
+| --- | --- | --- | --- |
+| `intake-upload` / `intake-mapping` / `intake-review` / `intake-manifest` / `intake-rerun` | 12 each (2 themes × 3 viewports × png+a11y+meta, per scene) | header title+subtitle, `Source file` label, `sha`/`rows read`, mapping heads, the `REJECT_KIND_LABEL` badges (IN101's defect fix — raw wire discriminants no longer reach the operator) | **D276** / unit **V1** (`01ad578a`) |
+| `archive-version-bump` | 4 | the `State` → `Status` column head (VB17) | **D276** / unit **V1** (`01ad578a`) |
+
+Assert-mode after the pass: `218 passed`. The changed-file census (`git status` over
+`tests/parity/references`) matches this table 1:1 — 64 files, six scenes, zero unattributed.

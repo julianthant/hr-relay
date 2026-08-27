@@ -22,11 +22,11 @@
   - button "Switch to Graphite Warm"
   - button "Settings"
 - main:
-  - text: Import a spreadsheet Person Lookup — one run per row
+  - text: Spreadsheet intake A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
   - button "Another file"
   - button "Close"
   - region "Source file":
-    - text: cohort-7-onboarding.csv sha256 3c9a71e0f2b8…7 data rows4 columnsuploaded 10:01 AM mapping Header row
+    - text: Source file cohort-7-onboarding.csv sha 3c9a71e07 rows read4 columnsuploaded 10:01 AM mapping Header row
     - combobox "Header row":
       - option "row 3 · confidence 1.00 — UCPath ID · Employee Name · Department · Start Date" [selected]
       - option "row 6 · confidence 0.74 — 10-4567 · Okafor, Chidi · Campus Recreation · 07/21/2026"
@@ -43,29 +43,29 @@
     - tab "Manifest"
     - tab "Rerun diff"
   - tabpanel "Mapping 1":
-    - table "Map person-lookup fields to columns of cohort-7-onboarding.csv":
+    - table "Column mapping for cohort-7-onboarding.csv":
       - rowgroup:
-        - row "Workflow field Bound column Suggested":
-          - columnheader "Workflow field"
+        - row "Target field Bound column Suggestion":
+          - columnheader "Target field"
           - columnheader "Bound column"
-          - columnheader "Suggested"
+          - columnheader "Suggestion"
       - rowgroup:
         - row "Employee ID (EID) emplIdcanonical eid UCPath ID 10873698 · 10001573 · 10-4567 no proposal":
           - cell "Employee ID (EID) emplIdcanonical eid"
           - cell "UCPath ID 10873698 · 10001573 · 10-4567":
-            - combobox "Column bound to Employee ID (EID)":
-              - option "— not bound —"
+            - combobox "Source column for Employee ID (EID)":
+              - option "— unbound —"
               - option "UCPath ID" [selected]
               - option "Employee Name"
               - option "Department"
               - option "Start Date"
             - text: 10873698 · 10001573 · 10-4567
           - cell "no proposal"
-        - row "Full Name namecanonical fullName — not bound — Employee Name Bind Employee Name known header, its values parse (1.00)":
+        - row "Full Name namecanonical fullName — unbound — Employee Name Bind Employee Name known header, its values parse (1.00)":
           - cell "Full Name namecanonical fullName"
-          - cell "— not bound —":
-            - combobox "Column bound to Full Name":
-              - option "— not bound —" [selected]
+          - cell "— unbound —":
+            - combobox "Source column for Full Name":
+              - option "— unbound —" [selected]
               - option "UCPath ID"
               - option "Employee Name"
               - option "Department"

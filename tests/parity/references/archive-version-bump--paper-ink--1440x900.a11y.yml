@@ -22,9 +22,9 @@
   - text: Must be terminalized or resolved first
   - table "Prior-version runs that are not terminal":
     - rowgroup:
-      - row "Run State What has to happen":
+      - row "Run Status What has to happen":
         - columnheader "Run"
-        - columnheader "State"
+        - columnheader "Status"
         - columnheader "What has to happen"
     - rowgroup:
       - row "EID 10456712 pl-091200-aa22 · enqueued Mon, Aug 3 Write parked Resolve the parked write present or absent — an unresolved possible-submit is never archived.":

@@ -22,11 +22,11 @@
   - button "Switch to Graphite Warm"
   - button "Settings"
 - main:
-  - text: Import a spreadsheet Person Lookup — one run per row
+  - text: Spreadsheet intake A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
   - button "Another file"
   - button "Close"
   - region "Source file":
-    - text: cohort-7-onboarding.csv sha256 3c9a71e0f2b8…7 data rows4 columnsuploaded 10:01 AM enqueued Header row
+    - text: Source file cohort-7-onboarding.csv sha 3c9a71e07 rows read4 columnsuploaded 10:01 AM enqueued Header row
     - combobox "Header row" [disabled]:
       - option "row 3 · confidence 1.00 — UCPath ID · Employee Name · Department · Start Date" [selected]
       - option "row 6 · confidence 0.74 — 10-4567 · Okafor, Chidi · Campus Recreation · 07/21/2026"
@@ -53,31 +53,31 @@
           - columnheader "Why"
           - columnheader "Resolve"
       - rowgroup:
-        - row "1 duplicate-identity — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
+        - row "1 duplicate person — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
           - cell "1"
-          - cell "duplicate-identity"
+          - cell "duplicate person"
           - cell "—"
           - cell "source rows 1, 5 describe the same item code duplicate-identity"
           - cell "Exclude…":
             - button "Exclude…" [disabled]
-        - 'row "3 cell-coercion emplId “UCPath ID” raw: 4567 (last4) is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion Fix cell Exclude…"':
+        - 'row "3 cell could not be read emplId “UCPath ID” raw: 4567 (last4) is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion Fix cell Exclude…"':
           - cell "3"
-          - cell "cell-coercion"
+          - cell "cell could not be read"
           - 'cell "emplId “UCPath ID” raw: 4567 (last4)"'
           - cell "is not a UCPath EID (must be 10xxxxxx, 8 digits) (Employee ID (EID)) code cell-coercion"
           - cell "Fix cell Exclude…":
             - button "Fix cell" [disabled]
             - button "Exclude…" [disabled]
-        - row "5 duplicate-identity — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
+        - row "5 duplicate person — source rows 1, 5 describe the same item code duplicate-identity Exclude…":
           - cell "5"
-          - cell "duplicate-identity"
+          - cell "duplicate person"
           - cell "—"
           - cell "source rows 1, 5 describe the same item code duplicate-identity"
           - cell "Exclude…":
             - button "Exclude…" [disabled]
-        - row "6 cross-field — Invalid input code cross-field Exclude…":
+        - row "6 fields disagree — Invalid input code cross-field Exclude…":
           - cell "6"
-          - cell "cross-field"
+          - cell "fields disagree"
           - cell "—"
           - cell "Invalid input code cross-field"
           - cell "Exclude…":

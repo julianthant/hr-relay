@@ -22,7 +22,7 @@
   - button "Switch to Paper Ink"
   - button "Settings"
 - main:
-  - text: Import a spreadsheet Person Lookup — one run per row
+  - text: Spreadsheet intake A sheet becomes N runs only after a header row, an operator-built column mapping, and a per-cell accept-or-reject on every row.
   - button "Close"
   - button "Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects."
   - text: Drop a spreadsheet of people for Person Lookup A .csv or .xlsx, up to 25 MB. Nothing runs until you map its columns and review what it rejects. Or photograph it
