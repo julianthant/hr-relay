@@ -128,7 +128,12 @@ import {
   type EvidenceObligation,
   type EvidenceObligationSource,
 } from "../domain/trust/evidence-obligations.js";
-import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../domain/trust/evidence.js";
+import {
+  ActionWriteProofSchema,
+  RunEvidenceReceiptSchema,
+  type ActionWriteProof,
+  type RunEvidenceReceipt,
+} from "../domain/trust/evidence.js";
 import {
   evaluateReceiptDerivationBinding,
   evaluateReceiptRederivation,
@@ -142,12 +147,13 @@ import {
   type RunCheckpointRecord,
 } from "../domain/workflow/checkpoint.js";
 import {
+  TransactionOutcomeSchema,
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
   type WriteAttemptRecord,
   type WriteIntentRecord,
 } from "../domain/write-safety.js";
-import type { AnyTaskContract } from "../domain/contracts/base.js";
+import type { AnyCommitTaskContract, AnyTaskContract } from "../domain/contracts/base.js";
 
 /* ── inputs ──────────────────────────────────────────────────────────────── */
 
@@ -317,8 +323,84 @@ function pickCheckpoint(
       || (right.claimGeneration ?? 0) - (left.claimGeneration ?? 0))[0];
 }
 
-export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceReceipt {
-  return deriveRunEvidenceReceipt(input).receipt;
+/**
+ * The receipt COMPOSITION — which shape this builder derives (Track F,
+ * ledger 2 D16–D22). Composition 2 added `actions[].proved` and the
+ * `composition` stamp; composition 1 is the exact shape every receipt stored
+ * before that. The number exists for one reason: a stored receipt is
+ * immutable and must RE-DERIVE byte-identically under the composition it was
+ * stored at, so `ensureRunEvidenceReceipt` derives a stored composition-1
+ * receipt at 1 and never upgrades it in place — the D199 stranding, refused
+ * structurally rather than remembered.
+ */
+export type ReceiptComposition = 1 | 2;
+export const LATEST_RECEIPT_COMPOSITION = 2 satisfies ReceiptComposition;
+
+export function buildRunEvidenceReceipt(
+  input: ReceiptBuildInput,
+  composition: ReceiptComposition = LATEST_RECEIPT_COMPOSITION,
+): RunEvidenceReceipt {
+  return deriveRunEvidenceReceipt(input, composition).receipt;
+}
+
+/**
+ * What PROVED a commit, from durable authority alone (ledger 2 D16–D22):
+ * the fence identity off the write intent, and the proof value, proof source
+ * and instant off the transaction checkpoint's stored `TransactionOutcome`.
+ * Every proof leaf is redacted through the declared `write-proof` scope — an
+ * undeclared leaf fails loud here, exactly like a receipt fact.
+ *
+ * A checkpoint holding a SETTLED outcome with no durable write intent to pair
+ * it with is a recorder/store failure, and this THROWS rather than deriving a
+ * proof-less commit: the fence identity (system + key digest) is half of what
+ * the block asserts, inventing it from the contract would be a claim rather
+ * than a record, and rendering the absence as "no settled write intent
+ * reached authority" would print two false halves over real corruption. The
+ * outcome's proof schema hash must be the commit contract's own — a proof
+ * bound to a schema this build no longer declares cannot be classified by
+ * this build's table, and saying so beats redacting under the wrong rows.
+ */
+export function deriveActionWriteProof(input: Readonly<{
+  commitContract: AnyCommitTaskContract;
+  /** The transaction node's checkpoint row (raw or parsed). */
+  record: unknown;
+  intent: WriteIntentRecord | undefined;
+}>): ActionWriteProof {
+  const { commitContract, intent } = input;
+  const record = RunCheckpointRecordSchema.parse(input.record);
+  const parsed = TransactionOutcomeSchema.safeParse(record.output.value);
+  if (!parsed.success) {
+    throw new Error(
+      `transaction checkpoint ${record.nodeId} does not store a recorded transaction outcome, so `
+      + "nothing durable proves this write: " + parsed.error.message,
+    );
+  }
+  const outcome = parsed.data;
+  if (intent === undefined) {
+    throw new Error(
+      `transaction checkpoint ${record.nodeId} stores a settled "${outcome.disposition}" outcome for `
+      + `${commitContract.id} (proof source ${outcome.proofSource}), but no durable write intent row `
+      + "pairs with it. The sequencer records the intent before any outcome settles, so this is a "
+      + "recorder/store failure — refusing to describe the write as if the absence were a fact",
+    );
+  }
+  const declaredProofHash = deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output");
+  if (outcome.proof.schemaHash !== declaredProofHash) {
+    throw new Error(
+      `transaction checkpoint ${record.nodeId} stores a completion proof bound to schema `
+      + `${outcome.proof.schemaHash}, and ${commitContract.id} now declares ${declaredProofHash}; `
+      + "refusing to redact a proof under a declaration authored for a different shape",
+    );
+  }
+  const scope: EvidenceValueScope = { kind: "write-proof", taskId: commitContract.id };
+  return ActionWriteProofSchema.parse({
+    system: intent.system,
+    idempotencyKeyDigest: intent.idempotencyKeyDigest,
+    completion: commitContract.writeSafety.completion.kind,
+    proofSource: outcome.proofSource,
+    values: evidenceLeaves(outcome.proof.value).map((leaf) => redactEvidenceLeaf(scope, leaf)),
+    recordedAt: outcome.disposition === "committed" ? outcome.confirmedAt : outcome.observedAt,
+  });
 }
 
 /**
@@ -327,7 +409,10 @@ export function buildRunEvidenceReceipt(input: ReceiptBuildInput): RunEvidenceRe
  * when the stored receipt no longer re-derives, and evaluating the table twice
  * would let the two answers drift.
  */
-export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
+export function deriveRunEvidenceReceipt(
+  input: ReceiptBuildInput,
+  composition: ReceiptComposition = LATEST_RECEIPT_COMPOSITION,
+): Readonly<{
   receipt: RunEvidenceReceipt;
   checks: readonly ReceiptBindingCheckResult[];
 }> {
@@ -606,7 +691,25 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
     const occurredAt = record.writtenAt;
     if (node.kind === "transaction") {
       const outcome = transactionOutcomeOf(record);
-      const write = writes.find((entry) => entry.intent.taskId === contract.id);
+      /*
+       * The intent join is by taskId because the checkpoint row carries no
+       * write-intent id — and a first-match join over a duplicated task would
+       * silently attribute ONE intent's fence identity (system + key digest,
+       * binding proof, subject) to the node's proof values. Authority keys an
+       * intent by (workflow, item, task, system, key), so a second row for one
+       * commit contract is a recorder/supply defect: refuse to guess which
+       * fence proved this write.
+       */
+      const matchingWrites = writes.filter((entry) => entry.intent.taskId === contract.id);
+      if (matchingWrites.length > 1) {
+        throw new Error(
+          `run ${envelope.runId} supplies ${matchingWrites.length} write intents for commit contract `
+          + `${contract.id} (${matchingWrites.map((entry) => entry.intent.writeIntentId).join(", ")}); `
+          + `the checkpoint for node "${id}" names no intent id, so the fence identity cannot be `
+          + "attributed to one of them — refusing to guess which intent proved this write",
+        );
+      }
+      const write = matchingWrites[0];
       actions.push({
         id: entryId("action", `${id}.prepare`),
         taskId: node.prepare.uses.id,
@@ -620,6 +723,18 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
         occurredAt,
         write,
       });
+      /*
+       * Composition 2 (ledger 2 D16–D22): what proved this write, beside the
+       * write it proves. Composition 1 is the stored shape and emits nothing —
+       * that is the whole re-derivation contract, not an omission.
+       */
+      if (composition === 2) {
+        commitAction.proved = deriveActionWriteProof({
+          commitContract: node.commit.uses,
+          record,
+          intent: write?.intent,
+        });
+      }
       actions.push(commitAction);
       const dedupeId = entryId("decision", `dedupe.${id}`);
       decisions.push({
@@ -861,6 +976,7 @@ export function deriveRunEvidenceReceipt(input: ReceiptBuildInput): Readonly<{
           : "done-with-warnings";
 
   const receipt = RunEvidenceReceiptSchema.parse({
+    ...(composition === 2 ? { composition: 2 } : {}),
     receiptId,
     runId: envelope.runId,
     traceId: envelope.traceId,
@@ -989,6 +1105,20 @@ export function ensureRunEvidenceReceipt(
   if (lifecycle.state !== "terminal") {
     throw new Error(`run ${runId} is ${lifecycle.state}; only a terminal run has a receipt`);
   }
+  const existingRaw: unknown = store.findReceiptByRun(runId);
+  const existing = existingRaw === undefined || existingRaw === null
+    ? undefined
+    : RunEvidenceReceiptSchema.parse(existingRaw);
+  /*
+   * A stored receipt is immutable and re-derives under ITS OWN composition —
+   * an absent stamp IS composition 1, the closed shape every receipt stored
+   * before the stamp existed (never a guessed default). Only a run with no
+   * stored receipt gets the latest composition; upgrading a stored one in
+   * place would be exactly the "newer story about a settled run" D199 forbids.
+   */
+  const composition: ReceiptComposition = existing === undefined
+    ? LATEST_RECEIPT_COMPOSITION
+    : existing.composition === undefined ? 1 : existing.composition;
   const { receipt: derived, checks } = deriveRunEvidenceReceipt({
     descriptor,
     run,
@@ -997,13 +1127,12 @@ export function ensureRunEvidenceReceipt(
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
     gateResults: store.listGateResultsByRun(runId),
-  });
-  const existing: unknown = store.findReceiptByRun(runId);
-  if (existing !== undefined && existing !== null) {
+  }, composition);
+  if (existing !== undefined) {
     const rederivation = evaluateReceiptRederivation({
       run,
       descriptor,
-      stored: RunEvidenceReceiptSchema.parse(existing),
+      stored: existing,
       derived,
       checks,
     });

@@ -63,8 +63,12 @@ import {
   uncertaintySentence,
   verificationMark,
   writeActionBadgeTone,
+  writeProofAbsence,
+  writeProofConfirmation,
+  writeProofReadBack,
   type FailureWriteStateTone,
 } from "./trust-model.js";
+import { SystemTag } from "./system-chip.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
 import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
@@ -816,14 +820,27 @@ export function ReceiptEvidenceBody({
           {receipt.actions.map((action) => (
             /* D17 — the write kind is a BADGE, not a word folded into the
                sentence. `commit` is the arm that changed a record of a real
-               system and is the only one that reads as news. */
-            <FactRow
-              key={action.id}
-              label={action.taskId}
-              badge={<Badge tone={writeActionBadgeTone(action.kind)}>{action.kind}</Badge>}
-              value={FAILURE_WRITE_STATE[action.writeState].sentence}
-              meta={fmtClock(action.occurredAt)}
-            />
+               system and is the only one that reads as news.
+
+               D16/D18–D21 — a commit row carries what PROVED the write
+               beside it (`WriteProofBlock`), and a commit with no proof
+               NAMES the absence: a composition-1 receipt predates the
+               capture, a composition-2 one holds no settled proof. Silence
+               and "not recorded" may never draw the same. */
+            <div key={action.id} className="flex flex-col gap-[var(--ds-space-tight)]">
+              <FactRow
+                label={action.taskId}
+                badge={<Badge tone={writeActionBadgeTone(action.kind)}>{action.kind}</Badge>}
+                value={FAILURE_WRITE_STATE[action.writeState].sentence}
+                meta={fmtClock(action.occurredAt)}
+                note={action.kind === "commit" && action.proved === undefined
+                  ? writeProofAbsence(receipt.composition)
+                  : undefined}
+              />
+              {action.kind === "commit" && action.proved !== undefined && (
+                <WriteProofBlock proved={action.proved} />
+              )}
+            </div>
           ))}
         </TrustSection>
       )}
@@ -906,6 +923,76 @@ export function ReceiptEvidenceBody({
 
       <ReceiptFingerprints receipt={receipt} />
     </div>
+  );
+}
+
+type ActionWriteProofWire = NonNullable<RunEvidenceReceiptWire["actions"][number]["proved"]>;
+
+/**
+ * What proved the write, beside the write it proves (ledger 2 D16–D22; the
+ * demo's `WriteAction` Well, `DemoReceipt.tsx:104-180`, drawn over the facts
+ * this wire actually serves):
+ *
+ * - the FENCE line — the system written and the digest of the exact fenced
+ *   business key. The digest, because the raw key embeds the person's EID and
+ *   stays in authority; it takes the D31 treatment (shortHash, whole value on
+ *   the chip's title) so the product shows one id at one length everywhere.
+ * - the proof's redacted values — D19's field/value table. The staged form
+ *   values themselves are NOT durably recorded (a prepare is
+ *   `checkpoint: "in-memory-only"`, D252/ledger 2 D3), so what draws here is
+ *   the completion proof: the values the system showed back for this write.
+ * - the D20 confirmation verdict and the D21 read-back verdict, as full
+ *   sentences from `trust-model.ts`'s total folds — never a bare word, and
+ *   never silence.
+ */
+function WriteProofBlock({ proved }: { proved: ActionWriteProofWire }) {
+  const confirmation = writeProofConfirmation(proved.completion, proved.system, proved.proofSource);
+  const readBack = writeProofReadBack(proved.completion, proved.proofSource);
+  return (
+    <div className="flex flex-col gap-[var(--ds-space-tight)] pl-[var(--ds-space-loose)]">
+      <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
+        <SystemTag system={proved.system} />
+        <Chip label="key" title={proved.idempotencyKeyDigest}>
+          {shortHash(proved.idempotencyKeyDigest)}
+        </Chip>
+      </div>
+      {proved.values.map((value) => (
+        <FactRow key={value.key} label={value.key} value={redactedText(value)} />
+      ))}
+      <FactRow
+        label="confirmation"
+        mark={<WriteProofMark met={confirmation.state === "confirmed"} />}
+        value={confirmation.sentence}
+        meta={confirmation.state === "confirmed" ? fmtClock(proved.recordedAt) : undefined}
+      />
+      <FactRow
+        label="read-back"
+        mark={<WriteProofMark met={readBack.state === "read-back"} />}
+        value={readBack.sentence}
+        meta={readBack.state === "read-back" ? fmtClock(proved.recordedAt) : undefined}
+      />
+    </div>
+  );
+}
+
+/**
+ * The write-proof verdicts' glyph — ✓ for "this half holds" (a recorded
+ * confirmation, a performed read-back), ⓘ for the stated other arm. Neither
+ * is a failure tone: every arm here is an honest recorded state, and the
+ * SENTENCE is the carrier. Alignment follows `VerificationMarkGlyph`'s F8d
+ * lesson — `self-start` + `mt-px`, pinned to the first line the mark is about.
+ */
+function WriteProofMark({ met }: { met: boolean }) {
+  const Glyph = met ? Check : CircleAlert;
+  return (
+    <Glyph
+      aria-hidden
+      className={cn(
+        dsIcon.md,
+        "mt-px shrink-0 self-start",
+        met ? "text-[color:var(--ds-success-fg)]" : "text-[color:var(--ds-fg-muted)]",
+      )}
+    />
   );
 }
 

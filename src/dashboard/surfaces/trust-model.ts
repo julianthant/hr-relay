@@ -12,6 +12,7 @@ import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bun
 import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
 import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
 import { fmtClock, plural, shortHash } from "./format.js";
+import { SYSTEM_LABEL } from "./system-chip-model.js";
 
 type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
 type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;
@@ -265,4 +266,138 @@ export function uncertaintySentence(loadBearing: boolean): string {
   return loadBearing
     ? "load-bearing — this is why the run cannot read as done"
     : "declared non-load-bearing — it cannot change the transaction or the core result";
+}
+
+/* ── the action write proof's vocabulary (ledger 2 D16–D22) ───────────────── */
+
+type ActionWriteProofWire = NonNullable<RunEvidenceReceiptWire["actions"][number]["proved"]>;
+type WriteProofCompletion = ActionWriteProofWire["completion"];
+type WriteProofSource = ActionWriteProofWire["proofSource"];
+type WriteProofSystem = ActionWriteProofWire["system"];
+
+export type WriteProofConfirmationVerdict =
+  | Readonly<{ state: "confirmed"; sentence: string }>
+  | Readonly<{ state: "none-issued"; sentence: string }>
+  | Readonly<{ state: "attested"; sentence: string }>
+  | Readonly<{ state: "prior-record"; sentence: string }>;
+
+/**
+ * D20 — the CONFIRMATION arm, decided by (completion, proofSource), both
+ * served. The completion says whether the system issues its own confirmation
+ * record for the operation; the proofSource says where THESE proof values
+ * actually came from, and the second question outranks the first. A `receipt`
+ * completion whose values reached authority through the commit's own path or
+ * a probe of the target system IS the system's own record; a verify-backed
+ * completion means the system issues no confirmation number, and the demo's
+ * own fallback sentence says where the proof lives instead
+ * (`DemoReceipt.tsx:125-141`). An operator attestation is a HUMAN's typed
+ * statement and may never wear the "system's own receipt" check — calling it
+ * one is the exact lie this fold exists to refuse — and a durable-intent
+ * proof is a prior settled write's record, not a fresh confirmation for this
+ * commit. Total over both enums, no default: a sixth proof source or a fourth
+ * completion is a typecheck failure here, never a silent green check.
+ */
+export function writeProofConfirmation(
+  completion: WriteProofCompletion,
+  system: WriteProofSystem,
+  proofSource: WriteProofSource,
+): WriteProofConfirmationVerdict {
+  switch (proofSource) {
+    case "operator-attestation":
+      return Object.freeze({
+        state: "attested",
+        sentence: "no system confirmation stands here — a human attested this outcome through the typed "
+          + "resolution, and the values below are the operator's attestation, not the system's own receipt",
+      });
+    case "durable-intent":
+      return Object.freeze({
+        state: "prior-record",
+        sentence: "no fresh confirmation was issued to this run — the values below are a prior settled "
+          + "write's own durable record, which is what proves the key was already satisfied",
+      });
+    case "normal-output":
+    case "live-probe":
+    case "recovery-probe":
+      if (completion === "receipt") {
+        return Object.freeze({
+          state: "confirmed",
+          sentence: "confirmation recorded — the values below are the system's own receipt for this commit",
+        });
+      }
+      return Object.freeze({
+        state: "none-issued",
+        sentence: `${SYSTEM_LABEL[system]} issues no confirmation number for this operation — the read-back below is the proof`,
+      });
+  }
+}
+
+export type WriteProofReadBackVerdict =
+  | Readonly<{ state: "read-back"; via: "verify-read" | "live-probe" | "recovery-probe"; sentence: string }>
+  | Readonly<{ state: "not-read-back"; reason: "own-receipt" | "operator-attested" | "prior-proof"; sentence: string }>;
+
+/**
+ * D21 — the READ-BACK arm, decided by (completion, proofSource), both served.
+ *
+ * The durable `proofSource` says where the proof VALUE came from, which is the
+ * whole question "was this write read back?": a probe source is a read of the
+ * target system whatever the completion declares; `normal-output` splits on
+ * the completion (a verify-backed proof came from the independent post-commit
+ * read, a `receipt` proof came from the commit's own page and no independent
+ * check was made); an operator attestation and a prior settled write's durable
+ * record are each NOT a read-back, for reasons an operator needs to see
+ * distinctly. Total — a sixth proof source is a typecheck failure here.
+ */
+export function writeProofReadBack(
+  completion: WriteProofCompletion,
+  proofSource: WriteProofSource,
+): WriteProofReadBackVerdict {
+  switch (proofSource) {
+    case "normal-output":
+      return completion === "receipt"
+        ? Object.freeze({
+          state: "not-read-back",
+          reason: "own-receipt",
+          sentence: "NOT read back — no independent check was made; the system's own receipt above is the proof",
+        })
+        : Object.freeze({
+          state: "read-back",
+          via: "verify-read",
+          sentence: "read back — the independent post-commit read observed the values above",
+        });
+    case "live-probe":
+      return Object.freeze({
+        state: "read-back",
+        via: "live-probe",
+        sentence: "read back — a live probe of the target system observed the values above",
+      });
+    case "recovery-probe":
+      return Object.freeze({
+        state: "read-back",
+        via: "recovery-probe",
+        sentence: "read back — a recovery probe of the target system observed the values above",
+      });
+    case "operator-attestation":
+      return Object.freeze({
+        state: "not-read-back",
+        reason: "operator-attested",
+        sentence: "NOT read back — the page cannot show this outcome; a human attested it through the typed resolution",
+      });
+    case "durable-intent":
+      return Object.freeze({
+        state: "not-read-back",
+        reason: "prior-proof",
+        sentence: "NOT read back in this run — the proof is a prior settled write's own durable record",
+      });
+  }
+}
+
+/**
+ * The explicit-absent arm the UI must NAME (the dispatch brief's own rule):
+ * a commit action with no `proved` block means two different things on the
+ * two compositions, and only the receipt's own stamp can say which.
+ */
+export function writeProofAbsence(composition: 2 | undefined): string {
+  return composition === undefined
+    ? "derived before receipts carried write proof (composition 1) — what proved this write was not recorded on it"
+    : "no completion proof is in authority for this write — no settled write intent reached it";
 }

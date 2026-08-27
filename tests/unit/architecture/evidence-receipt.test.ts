@@ -64,7 +64,11 @@ import {
   findGateDecision,
   gateDecisionFor,
 } from "../../../src/domain/trust/gate-decisions.js";
-import { WRITE_FIXTURE_TASK_IDS } from "../fixtures/write-sequencer-fixtures.js";
+import {
+  WRITE_FIXTURE_TASK_IDS,
+  WriteFixtureCommit,
+  WriteFixtureSaveCommit,
+} from "../fixtures/write-sequencer-fixtures.js";
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
@@ -613,9 +617,27 @@ describe("evidence receipt — declared classification coverage", () => {
       ...BUILD_MANIFEST.tasks.map(({ id }) => String(id)),
       ...WRITE_FIXTURE_TASK_IDS.map(String),
     ]);
+    /*
+     * A write-proof scope is an orphan unless its task is a COMMIT contract —
+     * the completion proof is the commit contract's own declaration, so a
+     * write-proof declaration for a read task is a table row no derivation
+     * can ever reach (ledger 2 D16–D22).
+     */
+    const commitTaskIds = new Set([
+      ...WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
+        descriptor.nodes.flatMap((node) =>
+          node.kind === "transaction" ? [String(node.commit.uses.id)] : [])),
+      String(WriteFixtureCommit.id),
+      String(WriteFixtureSaveCommit.id),
+    ]);
     for (const entry of EVIDENCE_FIELD_CLASSIFICATIONS) {
       if (entry.scope.kind === "task-output") {
         assert.ok(taskIds.has(String(entry.scope.taskId)), `orphan classification scope ${evidenceScopeKey(entry.scope)}`);
+      } else if (entry.scope.kind === "write-proof") {
+        assert.ok(
+          commitTaskIds.has(String(entry.scope.taskId)),
+          `orphan classification scope ${evidenceScopeKey(entry.scope)} — not a registered commit contract`,
+        );
       } else if (entry.scope.kind === "gate-result") {
         assert.ok(
           gateNodeKeys.has(`${String(entry.scope.workflowId)} ${String(entry.scope.gateId)}`),
