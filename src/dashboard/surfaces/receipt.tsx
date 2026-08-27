@@ -2,32 +2,50 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx
  *
- * The demo receipt's frame, verdict band and absence treatments, fed by what the wire serves — the
- * terminal outcome and the receipt section resource (a pointer, or an explicit
- * missing / purged / error state). 2g landed the full `RunEvidenceReceipt` body: it renders in
- * `trust.tsx`'s `ReceiptEvidenceBody` (input / observations / decisions / actions / verification /
- * output / reuse / warnings), which this surface mounts once the resource resolves to a real
- * receipt. This file owns the frame around it, not the body — the same false-deferral shape D251
- * found on the picker (ledger 2 D39).
+ * The receipt's FRAME — the verdict band, the banners, the absence treatments — fed by what the
+ * wire serves: the terminal outcome and the receipt section resource (a receipt, or an explicit
+ * missing / purged / error state). The BODY is `trust.tsx`'s `ReceiptEvidenceBody` (input /
+ * observations / decisions / actions / verification / output / reuse / warnings / fingerprints),
+ * which this surface mounts once the resource resolves to a real receipt and which the archive
+ * surface mounts too, so a live receipt and an archived one cannot describe one run two ways.
+ *
+ * This file's header used to call itself "the 1i Receipt PLACEHOLDER" and defer the body to 2g.
+ * 2g landed; the sentence did not (ledger 2 row D39 — the same false-deferral shape D251 found on
+ * the picker). Corrected 2026-08-26.
  *
  * The verdict word is read from `DS_STATUS`, never restated — a chip saying
  * `Done` beside a receipt saying `Verified done` was two names for one
  * verdict. `partial` keeps its own word: it is the one verdict with no status
- * of its own.
+ * of its own. What DOES sit beside the word is the confidence that qualifies
+ * it (ledger 2 row D8) and the one identity line (row D9); both are folded in
+ * `receipt-model.ts`.
  */
 import { ShieldCheck } from "lucide-react";
-import type { ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
-import { Banner, DS_STATUS, EmptyState, MetaLine, SectionLabel, dsIcon, dsText } from "../ds/ui.js";
+import { Banner, DS_STATUS, EmptyState, MetaLine, dsIcon, dsRadius, dsText } from "../ds/ui.js";
 import { ReceiptEvidenceBody } from "./trust.js";
 import type { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
-import { fmtClock } from "./format.js";
+import { receiptConfidenceChip, receiptIdentityItems } from "./receipt-model.js";
 import { testInstanceSystems } from "./test-instance-hazard.js";
 import type { OutcomeWire, TerminalOutcomeResult } from "./status-model.js";
 
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
 export type ReceiptSectionPayload = Extract<RunDetailSectionResponse, { section: "receipt" }>["payload"];
+
+/**
+ * Row D9's identity line breaks between FACTS, never mid-fact (F8d finding 3).
+ * `MetaLine` renders each item as plain text inside its own span, and a fact
+ * like `receipt aaaaaaaa-…` has a space in it the browser is free to wrap on,
+ * orphaning the uuid onto its own line. Each segment is `whitespace-nowrap`
+ * so the browser's only legal break point is the `·` separator MetaLine
+ * already draws between facts. Both of the line's homes (the band, and the
+ * absence it renders under when there is no band) share this fold so they
+ * cannot drift into two different wrap behaviors for one identity line.
+ */
+function identityLineItems(items: readonly string[]) {
+  return items.map((item, index) => <span key={index} className="whitespace-nowrap">{item}</span>);
+}
 
 const RESULT_COPY: Record<TerminalOutcomeResult, { word: string; tone: "success" | "warning" | "danger" | "neutral" }> = {
   "verified-done": { word: DS_STATUS.verifiedDone.label, tone: "success" },
@@ -37,14 +55,25 @@ const RESULT_COPY: Record<TerminalOutcomeResult, { word: string; tone: "success"
   cancelled: { word: DS_STATUS.cancelled.label, tone: "neutral" },
 };
 
-function ReceiptSection({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col gap-[var(--ds-space-snug)]">
-      <SectionLabel>{label}</SectionLabel>
-      {children}
-    </section>
-  );
-}
+/**
+ * The confidence sentence's tint — the same two tones `receiptConfidenceChip`
+ * returns, reproduced locally rather than reused from `Chip`'s own
+ * `CHIP_TONE` (private to `ds/primitives-core.tsx`).
+ *
+ * This is NOT a `Chip`. `Chip`'s own docstring is the rule (F5b): "if a fact
+ * cannot survive truncation it is not a chip — put it on the row's `MetaLine`,
+ * where it can wrap." The confidence sentence is a full clause ("verified —
+ * read back from the system of record"), and `Chip` clips its paint to one
+ * line inside its own border — exactly the load-bearing sentence D8 exists to
+ * surface would be cut. A tinted, wrapping span keeps the same visual cue
+ * (the eye must still catch a non-`verified` confidence) without clipping the
+ * sentence that says what it means (F8d finding 2).
+ */
+const CONFIDENCE_TONE_CLASS: Record<"neutral" | "warning", string> = {
+  neutral: "border-[color:var(--ds-recess-border)] bg-[var(--ds-recess-bg)] text-[color:var(--ds-recess-fg)]",
+  warning:
+    "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)] text-[color:var(--ds-status-waiting-fg)]",
+};
 
 /**
  * The Receipt tab's whole 1i surface. `resolvedInstances` is the row's served
@@ -61,17 +90,50 @@ export function ReceiptView({
   resolvedInstances?: readonly { system: string; instance: "prod" | "test" }[];
 }) {
   const testSystems = testInstanceSystems(resolvedInstances);
+  const value = receipt.state === "available" ? receipt.value : undefined;
+  // The receipt's ONE identity line (row D9). It rides the band when there is
+  // a band; when the run has not terminalized there is no band to ride, so it
+  // is drawn under the absence instead — the facts are never dropped, they
+  // only ever have one home at a time.
+  const identityItems = receiptIdentityItems({
+    receipt: value,
+    completedAt: outcome.state === "terminal" ? outcome.completedAt : undefined,
+  });
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-loose)] p-[var(--ds-space-cozy)]">
       {outcome.state === "terminal" ? (
-        <VerdictBand result={outcome.result} completedAt={outcome.completedAt} />
+        <VerdictBand result={outcome.result} confidence={value?.confidence} identityItems={identityItems} />
       ) : (
-        <EmptyState
-          title="No receipt yet"
-          description={`${outcome.reason}. A receipt is written at the run's terminal outcome.`}
-        />
+        <>
+          <EmptyState
+            title="No receipt yet"
+            description={`${outcome.reason}. A receipt is written at the run's terminal outcome.`}
+          />
+          <MetaLine items={identityLineItems(identityItems)} />
+        </>
       )}
+
+      {/*
+        Ledger 2 row D11 — the demo's `receiptInvariant` Banner ("This receipt
+        fails its own invariant — the verdict is not printed as fact") is
+        DELIBERATELY not ported. D273 item 7 rules it out and names the reason
+        the other two options are worse: drawing it (B) fabricates a state, and
+        the audit's complaint was never that the check is missing — it was that
+        nothing in the tree WROTE DOWN why it cannot fire. Written down here.
+
+        The demo checks at RENDER what this tree makes unrepresentable at the
+        WIRE. `ReceiptSectionSchema` IS `RunEvidenceReceiptSchema`
+        (`domain/dashboard/run-detail.ts:654`), whose refinement refuses a
+        `verified-done` receipt that carries anything but verified confidence,
+        an unresolved mandatory fact or obligation, a warning, or a failure id —
+        every clause the demo's banner exists to catch. A receipt that fails the
+        invariant therefore never reaches this component at all: it throws at
+        parse, loudly, with the offending path named, which is strictly better
+        than a red box the operator has to notice. `receipt-invariant-unrepresentable.test.ts`
+        pins each clause, so the day one is relaxed a test fails rather than
+        this comment quietly becoming false.
+      */}
 
       {testSystems.length > 0 && (
         <Banner tone="warning" title={`Written to the TEST instance of ${testSystems.join(", ")} — this is not a filing`}>
@@ -80,22 +142,17 @@ export function ReceiptView({
         </Banner>
       )}
 
-      {receipt.state === "available" && (
-        <ReceiptSection label="Receipt">
-          {/* The receipt's own `failure` id: a failed run's receipt names the
-              failure record beside it rather than leaving the operator to
-              find it. It is served (`RunEvidenceReceiptSchema.failure`) and
-              was drawn nowhere; the demo has no counterpart because the
-              demo's receipts never fail. */}
-          <MetaLine
-            items={[
-              `receipt ${receipt.value.receiptId}`,
-              `run ${receipt.value.runId}`,
-              receipt.value.failure.state === "present" && `failure ${receipt.value.failure.value}`,
-            ]}
-          />
-          <ReceiptEvidenceBody receipt={receipt.value} />
-        </ReceiptSection>
+      {/* `bandCarriesIdentity` — WHEN a band renders (a terminal outcome), it
+          already prints this receipt's id, instant, attempt, retry-of and
+          confidence, so the body must not print them a second time. When the
+          run has not terminalized there IS no band (see the branch above), so
+          `bandCarriesIdentity` must be false there or confidence and the rest
+          render nowhere at all — the exact defect the surface's own "facts are
+          never dropped" comment forbids (F8d finding 1). The archive mounts
+          the same body with no band and keeps its full trailing line, which is
+          this same `false` case, just for a different reason. */}
+      {value !== undefined && (
+        <ReceiptEvidenceBody receipt={value} bandCarriesIdentity={outcome.state === "terminal"} />
       )}
       {receipt.state === "missing" && <EmptyState title="No receipt" description={receipt.reason} />}
       {receipt.state === "purged" && <EmptyState title="Receipt purged" description={receipt.reason} />}
@@ -108,9 +165,18 @@ export function ReceiptView({
   );
 }
 
-/** the verdict, and the instant that qualifies it */
-function VerdictBand({ result, completedAt }: { result: TerminalOutcomeResult; completedAt: string }) {
+/** the verdict, the confidence that qualifies it, and the receipt's identity line */
+function VerdictBand({
+  result,
+  confidence,
+  identityItems,
+}: {
+  result: TerminalOutcomeResult;
+  confidence?: "verified" | "partial" | "unknown";
+  identityItems: readonly string[];
+}) {
   const verdict = RESULT_COPY[result];
+  const confidenceChip = confidence === undefined ? undefined : receiptConfidenceChip(confidence);
   return (
     <div
       className={cn(
@@ -138,8 +204,27 @@ function VerdictBand({ result, completedAt }: { result: TerminalOutcomeResult; c
           )}
         />
         <span className={cn(dsText.section, "font-semibold text-[color:var(--ds-fg)]")}>{verdict.word}</span>
+        {/* Row D8: a verdict is qualified WHERE it is said — the served word
+            AND the sentence that says what the word means, "verified" alone
+            never told the operator that "read back from the system of
+            record" is what earned it. It is absent, not guessed, when no
+            receipt was served. A tinted SPAN, not a `Chip` (F8d finding 2) —
+            see `CONFIDENCE_TONE_CLASS`'s comment for why. */}
+        {confidenceChip !== undefined && (
+          <span
+            className={cn(
+              "inline-flex min-w-0 max-w-full flex-wrap items-baseline gap-x-[var(--ds-space-tight)] border px-[var(--ds-space-snug)] py-[var(--ds-space-hair)]",
+              dsRadius.sm,
+              dsText.meta,
+              CONFIDENCE_TONE_CLASS[confidenceChip.tone],
+            )}
+          >
+            <span className="shrink-0 text-[color:var(--ds-fg-muted)]">confidence</span>
+            <span className={cn(dsText.nums, "min-w-0 whitespace-normal break-words")}>{confidenceChip.text}</span>
+          </span>
+        )}
       </div>
-      <MetaLine items={[`completed ${fmtClock(completedAt)}`]} />
+      <MetaLine items={identityLineItems(identityItems)} />
     </div>
   );
 }
