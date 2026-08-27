@@ -125,6 +125,16 @@ binding would contradict them.
   arm requires a `CommandRejectionCode` — recorded in the row so the next reader meets a decision
   instead of a gap.
 
+  **And the same defect, one file over, found by the row that pointed at it.** AR133's disposition
+  runs through `FailureRecordHead`, and the head's `record <uuid>` was a `Chip` — `w-fit`, clipping,
+  with no `title` at all. That is worse than the pointer-only fact this directory has now fixed three
+  times: `record aa11bb22-0…` in the archive's ~400px rail left the id an operator must quote in a
+  bug report reachable by NOBODY. It rides the head's `MetaLine` beside the permanence sentence,
+  which is there for exactly this reason; the `code` chip stays, because a rejection code survives
+  truncation and a uuid does not. **When a fix moves one fact out of a clipping token, check what
+  else is still in there** — the sentence and the id were side by side and only one of them was
+  looked at.
+
 - **2026-08-26: a wire that splits one flag into two arms has done half the work — the SURFACE is
   where the split survives or dies, and a geometry the parser refused has no shape to draw
   (D274 item 7, unit F13, ledger 3 §7 CP2–CP21).** `capture-start.tsx` had handed the operator a QR
