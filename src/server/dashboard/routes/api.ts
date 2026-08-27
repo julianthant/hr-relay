@@ -312,8 +312,12 @@ export function createDashboardApp(deps: DashboardAppDeps): Hono {
     return c.json(result, result.state === "refused" ? 409 : 201);
   });
 
-  app.get("/api/v1/capture/sessions/:sessionId", (c) =>
-    c.json(deps.capture.readSession(c.req.param("sessionId"))));
+  // The operator's poll (D274 item 7): phase, expiry, pages and each page's
+  // image fact — never bytes (the byte path is doc 04's deferral, D189).
+  app.get("/api/v1/capture/sessions", (c) => c.json(deps.capture.listOperatorSessions()));
+
+  app.get("/api/v1/capture/sessions/:sessionId", async (c) =>
+    c.json(await deps.capture.readOperatorSession(c.req.param("sessionId"))));
 
   /* ── capture: the closed phone union (ref operator-trust §7) ────────────────────────── */
 

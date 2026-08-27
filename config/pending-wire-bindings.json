@@ -35,8 +35,8 @@
     {
       "binding": "route:GET /api/v1/capture/sessions/:sessionId",
       "direction": "served-unconsumed",
-      "decision": "D175",
-      "note": "The operator's capture-session poll. Ref operator-trust §7's QR flow hands the phone the session; the operator surface today creates a session and renders the QR without re-reading it, so the route is served for the operator poll the capture modal will do (`legacy-dashboard-capture`, phase-3-workflow-migration)."
+      "decision": "D274",
+      "note": "The operator's capture-session poll, now serving the D274 item 7 operator projection (CaptureOperatorSessionWireSchema: phase, expiry, pages and each page's image fact — no bytes). Served for the desktop capture surface (ledger 3 §7 CP6–CP16, CP21), which is the next unit; closes when that surface polls it."
     }
   ]
 }

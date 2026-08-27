@@ -44,6 +44,12 @@ import {
   deriveCaptureTokenDigest,
   type CaptureSessionWire,
 } from "../../../src/domain/capture-surface.js";
+import {
+  CaptureOperatorSessionListWireSchema,
+  CaptureOperatorSessionWireSchema,
+  type CaptureOperatorSessionListWire,
+  type CaptureOperatorSessionWire,
+} from "../../../src/domain/capture-operator.js";
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, type Config } from "../../../src/domain/config/schema.js";
 import { resolveConfig } from "../../../src/domain/config/resolve.js";
@@ -1224,5 +1230,162 @@ describe("capture intake registry — a binding is a declaration, not a shape", 
       "no registered workflow can turn a photograph into its input yet; the day one can, "
       + "read src/core/capture-intake-handoff.ts before changing this line",
     );
+  });
+});
+
+/* ── 6. the operator projection — the desktop half (D274 item 7) ─────────── */
+
+async function operatorSession(app: Hono, sessionId: string): Promise<CaptureOperatorSessionWire> {
+  const response = await app.request(`/api/v1/capture/sessions/${sessionId}`);
+  const text = await response.text();
+  assert.equal(response.status, 200, `expected the operator wire, got ${String(response.status)}: ${text}`);
+  return CaptureOperatorSessionWireSchema.parse(JSON.parse(text));
+}
+
+async function operatorList(app: Hono): Promise<CaptureOperatorSessionListWire> {
+  const response = await app.request("/api/v1/capture/sessions");
+  const text = await response.text();
+  assert.equal(response.status, 200, `expected the operator list, got ${String(response.status)}: ${text}`);
+  return CaptureOperatorSessionListWireSchema.parse(JSON.parse(text));
+}
+
+describe("capture operator projection — phase, expiry, pages", () => {
+  it("walks awaiting-phone → awaiting-pages → receiving over recorded facts, and reads write nothing", async () => {
+    const h = surface();
+    const { token, session } = await openSession(h.app);
+
+    const opened = await operatorSession(h.app, session.sessionId);
+    assert.equal(opened.phase, "awaiting-phone");
+    assert.equal(opened.state, "open");
+    assert.deepEqual(opened.pages, []);
+    assert.equal(opened.expiresAt, new Date(Date.parse(NOW) + PRE_CONNECT_TTL_MS).toISOString());
+
+    const listed = await operatorList(h.app);
+    assert.equal(listed.sessions.length, 1);
+    assert.equal(listed.sessions[0]?.phase, "awaiting-phone");
+    assert.equal(listed.sessions[0]?.pageCount, 0);
+
+    const connected = await wire(await readPhoneSession(h.app, token));
+    const paired = await operatorSession(h.app, session.sessionId);
+    assert.equal(paired.phase, "awaiting-pages");
+    assert.notEqual(paired.connectedAt, undefined);
+
+    await withTwoPhotos(h.app, token, session);
+    const receiving = await operatorSession(h.app, session.sessionId);
+    assert.equal(receiving.phase, "receiving");
+    assert.equal(receiving.pages.length, 2);
+    assert.deepEqual(
+      receiving.pages.map((page) => [page.ordinal, page.mediaType, page.image]),
+      [
+        [1, "image/jpeg", { state: "readable", pixelWidth: 16, pixelHeight: 12 }],
+        [2, "image/png", { state: "readable", pixelWidth: 10, pixelHeight: 14 }],
+      ],
+      "the contact sheet is the recorded order, each page at its OWN geometry",
+    );
+    assert.equal(receiving.pages[0]?.bytes, JPEG.byteLength);
+    assert.equal(receiving.pages[1]?.bytes, PNG.byteLength);
+
+    // The projection is a READ: three operator GETs wrote no version.
+    const stored = h.database.authority.captureSessions.get(session.sessionId);
+    assert.equal(stored?.version, connected.version + 2, "connect + two uploads, and nothing else");
+  });
+
+  it("serves the unreadable-page fact as the bundler's own refusal, before finalize agrees", async () => {
+    const h = surface({ bindings: CAPTURE_INTAKE_BINDINGS });
+    const { token, session } = await openSession(h.app, { contextHint: CONTEXT_EID });
+    const connected = await wire(await readPhoneSession(h.app, token));
+    const garbage = new TextEncoder().encode("bytes that are not a photograph at all");
+    const held = await wire(await uploadPhoto(h.app, token, {
+      photoId: PHOTO_A,
+      expectedVersion: connected.version,
+      bytes: garbage,
+      mediaType: "image/jpeg",
+    }));
+
+    const before = await operatorSession(h.app, session.sessionId);
+    assert.equal(before.phase, "receiving");
+    const image = before.pages[0]?.image;
+    assert.equal(image?.state, "unreadable");
+    if (image?.state !== "unreadable") return;
+    assert.ok(image.reason.includes(PHOTO_A), "the refusal names the page it refuses");
+
+    // Finalize now fails on the SAME bytes — the desktop warned first.
+    const finalized = await wire(await phoneVerb(h.app, token, "finalize", held.version));
+    assert.equal(finalized.state, "failed");
+    const after = await operatorSession(h.app, session.sessionId);
+    assert.equal(after.phase, "blocked");
+    assert.equal(after.handoff.state, "failed");
+    if (after.handoff.state !== "failed") return;
+    assert.ok(after.handoff.message.length > 0, "the operator reads the projector's own reason");
+  });
+
+  it("writes expiry durably on the operator read and drops the session from the active list", async () => {
+    const h = surface();
+    const { session } = await openSession(h.app);
+    h.clock.advanceWall(PRE_CONNECT_TTL_MS + 1);
+
+    const expired = await operatorSession(h.app, session.sessionId);
+    assert.equal(expired.phase, "expired");
+    assert.equal(expired.state, "expired");
+    assert.equal(
+      h.database.authority.captureSessions.get(session.sessionId)?.state,
+      "expired",
+      "the row is right, not merely the answer",
+    );
+    assert.deepEqual((await operatorList(h.app)).sessions, [], "an expired session is not active");
+  });
+
+  it("lists the active set oldest first, keeps a blocked session visible, excludes a discarded one", async () => {
+    const h = surface({ bindings: CAPTURE_INTAKE_BINDINGS });
+    const first = await openSession(h.app, { contextHint: CONTEXT_EID });
+    const second = await openSession(h.app);
+
+    // First session: photos then a binding-less finalize → durable failed.
+    const held = await withTwoPhotos(h.app, first.token, first.session);
+    const failed = await wire(await phoneVerb(h.app, first.token, "finalize", held.version));
+    assert.equal(failed.state, "failed");
+
+    // Second session: discarded by the phone.
+    const connected = await wire(await readPhoneSession(h.app, second.token));
+    await wire(await phoneVerb(h.app, second.token, "discard", connected.version));
+
+    const listed = await operatorList(h.app);
+    assert.deepEqual(
+      listed.sessions.map((row) => [row.sessionId, row.phase, row.pageCount]),
+      [[first.session.sessionId, "blocked", 2]],
+      "failed stays on the desk; discarded leaves it",
+    );
+
+    // …while the discarded session remains readable BY ID for the desk that started it.
+    const discarded = await operatorSession(h.app, second.session.sessionId);
+    assert.equal(discarded.phase, "discarded");
+  });
+
+  it("answers ready after a bound finalize, with the bundle's recorded identity", async () => {
+    const h = surface({ bindings: { [CAPTURE_FIXTURE_WORKFLOW_ID]: captureFixtureBinding } });
+    const { token, session } = await openSession(h.app, {
+      formType: CAPTURE_FIXTURE_FORM_TYPE,
+      contextHint: CONTEXT_EID,
+    });
+    const held = await withTwoPhotos(h.app, token, session);
+    const finalized = await wire(await phoneVerb(h.app, token, "finalize", held.version));
+    assert.equal(finalized.state, "finalized");
+
+    const ready = await operatorSession(h.app, session.sessionId);
+    assert.equal(ready.phase, "ready");
+    assert.equal(ready.handoff.state, "enqueued");
+    assert.deepEqual(ready.finalArtifact, finalized.finalArtifact);
+    assert.equal(ready.formType, CAPTURE_FIXTURE_FORM_TYPE);
+  });
+
+  it("refuses an absent session as not-found and a malformed id as invalid — two arms, never conflated", async () => {
+    const h = surface();
+    const absent = await h.app.request("/api/v1/capture/sessions/99999999-8888-4777-8666-555555555555");
+    assert.equal(absent.status, 404);
+    assert.equal((await body(absent)).code, "TARGET_NOT_FOUND");
+
+    const malformed = await h.app.request("/api/v1/capture/sessions/not-a-session-id");
+    assert.equal(malformed.status, 400);
+    assert.equal((await body(malformed)).code, "SCHEMA_INVALID");
   });
 });

@@ -19,6 +19,7 @@ import type { AuthorityDatabase } from "../../infra/sqlite/authority-database.js
 import { inspectSecret } from "../../domain/secrets.js";
 import { createCaptureFinalizeProjector } from "../../infra/capture/finalize-projector.js";
 import { createCapturePdfBundler } from "../../infra/capture/pdf-bundler.js";
+import { createCapturePhotoImageFactReader } from "../../infra/capture/photo-image-facts.js";
 import { mintCaptureToken } from "../../infra/capture/capture-token.js";
 import { createCaptureIntakeHandoff } from "../../core/capture-intake-handoff.js";
 import type { DashboardCommandService } from "../dashboard/commands/command-service.js";
@@ -80,10 +81,12 @@ export function composeCaptureSurface(input: CaptureComposeInput): CaptureServic
       getCaptureSession: (sessionId) => database.authority.captureSessions.get(sessionId),
       findCaptureSessionByTokenDigest: (tokenDigest) =>
         database.authority.captureSessions.findByTokenDigest(tokenDigest),
+      listActiveCaptureSessions: () => database.authority.captureSessions.listActive(),
     },
     commands: input.commands,
     descriptors: input.descriptors,
     artifacts: input.artifacts,
+    photoImageFacts: createCapturePhotoImageFactReader({ artifacts: input.artifacts }),
     finalizations,
     config: input.config,
     ingress: createCaptureIngressResolver({

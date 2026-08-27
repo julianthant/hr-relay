@@ -34,7 +34,7 @@ import type { Config } from "../../../domain/config/schema.js";
 import type { IdFactory } from "../../../domain/identifiers.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
-import type { CaptureSession } from "../../../domain/capture.js";
+import type { CapturePhotoRef, CaptureSession } from "../../../domain/capture.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import type { DashboardCommandService } from "./command-service.js";
 import { CaptureSessionSchema } from "../../../domain/capture.js";
@@ -53,6 +53,15 @@ import {
   type CaptureSessionWire,
   type CaptureStartResult,
 } from "../../../domain/capture-surface.js";
+import {
+  CaptureOperatorSessionListWireSchema,
+  CaptureOperatorSessionWireSchema,
+  deriveCaptureOperatorPhase,
+  type CaptureOperatorPhase,
+  type CaptureOperatorSessionListWire,
+  type CaptureOperatorSessionWire,
+  type CapturePageImageFact,
+} from "../../../domain/capture-operator.js";
 import { CapturePhotoIdSchema, CaptureSessionIdSchema } from "../../../domain/ids.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../domain/ids.js";
 import { TargetNotFoundError } from "../../failures.js";
@@ -107,8 +116,15 @@ export interface CapturePhotoBytes {
 export interface CaptureService {
   /** Loopback-only: mints the session AND the one raw token that ever exists. */
   start(request: CaptureStartRequest): Promise<CaptureStartResult>;
-  /** Loopback-only: the operator's view of a session it already knows by id. */
-  readSession(sessionId: string): CaptureSessionWire;
+  /**
+   * Loopback-only: the operator's projection of a session it knows by id —
+   * phase, expiry, every page and its image fact (D274 item 7). Serves every
+   * durable state, including `expired` and `discarded`: the desktop asking
+   * about a session it started is not an enumeration surface.
+   */
+  readOperatorSession(sessionId: string): Promise<CaptureOperatorSessionWire>;
+  /** Loopback-only: the active sessions (`open`/`finalizing`/`failed`), as CP2's picker reads them. */
+  listOperatorSessions(): CaptureOperatorSessionListWire;
   /** Every phone route begins here. One refusal for every unresolvable token. */
   readByToken(token: string): CaptureSessionWire;
   uploadPhoto(token: string, upload: CapturePhotoUpload): Promise<CaptureSessionWire>;
@@ -127,6 +143,8 @@ export interface CaptureServiceDependencies {
   readonly authorityRead: Readonly<{
     getCaptureSession(sessionId: string): CaptureSession | undefined;
     findCaptureSessionByTokenDigest(tokenDigest: string): CaptureSession | undefined;
+    /** `open`/`finalizing`/`failed`, oldest first — the repository's own active set. */
+    listActiveCaptureSessions(): readonly CaptureSession[];
   }>;
   readonly authority: Readonly<{
     withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
@@ -134,6 +152,8 @@ export interface CaptureServiceDependencies {
   readonly commands: DashboardCommandService;
   readonly descriptors: Readonly<{ resolve(workflowId: string): AnyWorkflowDescriptor | undefined }>;
   readonly artifacts: ContentAddressedArtifactWriter;
+  /** The finalize bundler's own parse over each recorded photo — see `photo-image-facts.ts`. */
+  readonly photoImageFacts: Readonly<{ imageFactOf(photo: CapturePhotoRef): Promise<CapturePageImageFact> }>;
   readonly finalizations: Readonly<{ projectPending(): Promise<unknown> }>;
   readonly config: Config;
   /** Resolved once per process; a refusal is a NAMED configuration result. */
@@ -177,12 +197,10 @@ export function createCaptureService(dependencies: CaptureServiceDependencies): 
           bytes: session.finalArtifact.bytes,
         },
       }),
-      handoff: session.handoff.state === "failed"
-        // The phone's operator is the person who decides between Retry and
-        // Discard, and the failure id decides nothing for them — so the wire
-        // carries the projector's own recorded reason instead.
-        ? { state: "failed", message: failedHandoffMessage(session) }
-        : session.handoff,
+      // The phone's operator is the person who decides between Retry and
+      // Discard, and the failure id decides nothing for them — so the wire
+      // carries the projector's own recorded reason instead.
+      handoff: handoffWire(session),
       finalizationGeneration: session.finalizationGeneration,
       version: session.version,
       createdAt: session.createdAt,
@@ -212,6 +230,66 @@ export function createCaptureService(dependencies: CaptureServiceDependencies): 
       );
     }
     return message;
+  }
+
+  /** The wire's handoff arm — shared by the phone wire and the operator wire. */
+  function handoffWire(session: CaptureSession): CaptureSessionWire["handoff"] {
+    return session.handoff.state === "failed"
+      ? { state: "failed", message: failedHandoffMessage(session) }
+      : session.handoff;
+  }
+
+  function operatorPhase(session: CaptureSession): CaptureOperatorPhase {
+    return deriveCaptureOperatorPhase({
+      state: session.state,
+      connected: session.connectedAt !== undefined,
+      pageCount: session.photoRefs.length,
+    });
+  }
+
+  /**
+   * The desktop's projection (D274 item 7): the durable row plus one image
+   * fact per recorded page, read through the finalize bundler's own parse.
+   * Everything on it is a recorded fact or a schema-pinned derivation —
+   * no arrival instants, filenames, or focus scores, because the capture
+   * services record none (D276: an unserved fact is absent, never invented).
+   */
+  async function toOperatorWire(session: CaptureSession): Promise<CaptureOperatorSessionWire> {
+    const ordered = [...session.photoRefs].sort((left, right) => left.ordinal - right.ordinal);
+    const pages = [];
+    for (const photo of ordered) {
+      pages.push({
+        photoId: photo.photoId,
+        ordinal: photo.ordinal,
+        mediaType: photo.artifact.mediaType,
+        bytes: photo.artifact.bytes,
+        artifactId: photo.artifact.id,
+        image: await dependencies.photoImageFacts.imageFactOf(photo),
+      });
+    }
+    return CaptureOperatorSessionWireSchema.parse({
+      wireVersion: 1,
+      sessionId: session.sessionId,
+      workflow: session.workflow,
+      ...(session.formType === undefined ? {} : { formType: session.formType }),
+      ...(session.contextHint === undefined ? {} : { contextHint: session.contextHint }),
+      state: session.state,
+      phase: operatorPhase(session),
+      pages,
+      ...(session.finalArtifact === undefined ? {} : {
+        finalArtifact: {
+          artifactId: session.finalArtifact.id,
+          sha256: session.finalArtifact.sha256,
+          bytes: session.finalArtifact.bytes,
+        },
+      }),
+      handoff: handoffWire(session),
+      finalizationGeneration: session.finalizationGeneration,
+      version: session.version,
+      createdAt: session.createdAt,
+      ...(session.connectedAt === undefined ? {} : { connectedAt: session.connectedAt }),
+      expiresAt: session.expiresAt,
+    });
   }
 
   /**
@@ -372,12 +450,35 @@ export function createCaptureService(dependencies: CaptureServiceDependencies): 
       });
     },
 
-    readSession(sessionId: string): CaptureSessionWire {
+    async readOperatorSession(sessionId: string): Promise<CaptureOperatorSessionWire> {
       const session = dependencies.authorityRead.getCaptureSession(
         CaptureSessionIdSchema.parse(sessionId),
       );
       if (session === undefined) throw new TargetNotFoundError(`capture session ${sessionId} is not in authority`);
-      return toWire(expireIfOverdue(session));
+      return toOperatorWire(expireIfOverdue(session));
+    },
+
+    listOperatorSessions(): CaptureOperatorSessionListWire {
+      // The transition runs per row, so a session whose window closed while
+      // nobody was looking leaves the active set durably, not merely visually.
+      const current = dependencies.authorityRead.listActiveCaptureSessions()
+        .map((session) => expireIfOverdue(session))
+        .filter((session) => session.state !== "expired");
+      return CaptureOperatorSessionListWireSchema.parse({
+        wireVersion: 1,
+        sessions: current.map((session) => ({
+          sessionId: session.sessionId,
+          workflow: session.workflow,
+          ...(session.formType === undefined ? {} : { formType: session.formType }),
+          state: session.state,
+          phase: operatorPhase(session),
+          pageCount: session.photoRefs.length,
+          createdAt: session.createdAt,
+          ...(session.connectedAt === undefined ? {} : { connectedAt: session.connectedAt }),
+          expiresAt: session.expiresAt,
+          version: session.version,
+        })),
+      });
     },
 
     readByToken(token: string): CaptureSessionWire {
