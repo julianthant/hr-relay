@@ -45,3 +45,4 @@ _Ceiling ~400 lines. Every line carries a sha, a path, or a sheet item — a fac
 
 ## Questions for the operator (the coordinator turns these into a sheet)
 - Coordinator: open the R2 session after 00:00 PDT 2026-08-28 — launched on 08-27 twice (`b9126e6d`, this hold).
+- 2026-08-27 · run UI-1 (`feature/ui-fidelity` @ `6302e737`, worktree `../hr-automation-rebuild-ui`) is verified and merge-ready onto `integration/03b` — conflict-free trial merge, gate 318 / 3476 + parity 218 on the merged tree, zero file overlap, nothing under the R2/R2a freeze — but HELD while R2a is live on the root; the coordinator merges `--no-ff` the moment R2a hands off (sheet `docs/decisions/2026-08-27-ui-1-receive.md` item 8). R2a/R2 supervisors: leave the `-ui` worktree and branch alone.
