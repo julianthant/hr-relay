@@ -6616,3 +6616,90 @@ D280's "composed dry run clean first" stand;
 (b) does 4568 keep its canary role for the next attempt or does 4537 (08-28) go first;
 (c) the `separations-kuali-read` `dry-run-unsupported` refusal — is a registration read allowed
 `dryRun=false` on a workflow with no write path.
+
+---
+
+### 9.30 The WFD range-field probe and restored keyboard path — 2026-08-27 (R2b u29)
+
+**Boundary and prior red signal.** §9.29 attempts 2 and 3 supplied the red-capable live signal:
+`fill("")` never produced an empty sample and `timecard` refused after 8 000 ms with the start field
+still reading `08/27/2026`. This pass used one isolated named headless `playwright-cli` profile
+(`u29`) with Duo Autopilot, searched only the redacted doc-4568 canary, and entered its timecard.
+The first browser exited while the range panel was being reset; the same named profile was reopened
+to finish P4/P5. Neither browser clicked Apply, planned a run, opened a gate, or touched any write
+surface. The reopened session was closed; `playwright-cli list` then reported no browsers.
+
+#### P1 — the control and its model
+
+After `Select range`, `#startDateTimeInput` was one visible, enabled, writable top-level
+`<input type="text">`, initial value `08/27/2026`, `defaultValue ""`. Its live Angular attributes
+were:
+
+```text
+class="tfsDateInput krn-common-focus ng-pristine ng-untouched ng-valid ng-not-empty …"
+ng-model="rangeInput.useNativeDateInput ? rangeInput.isoStartDate : rangeInput.formattedStartDate"
+ng-focus="rangeInput.inFocus($event)"
+ng-blur="rangeInput.handleBlur($event)"
+ng-keydown="!rangeInput.useNativeDateInput && rangeInput.handleKeydown($event)"
+ng-click="!rangeInput.useNativeDateInput && rangeInput.handleClick($event)"
+aria-invalid="false"
+```
+
+The nearest three-input row contained only the visible `specificDateTimeInput`,
+`startDateTimeInput`, and `endDateTimeInput`, each with its own Angular model. There was **no hidden
+or second model input** behind the start field.
+
+#### P2 — selection is real, but widget-state/segment-sensitive
+
+The first exact `click` → `ControlOrMeta+a` measurement moved selection from `0..2` to **`0..10`**
+over the ten-character default: a real whole-value selection exists. A fresh reopened range then
+kept `0..2` after explicit `Meta+a`, `Control+a`, and `ControlOrMeta+a`; later the end field moved
+`0..2` → `0..10`, while the third start re-proof stayed `0..2`. Therefore select-all is an input
+gesture, **not proof** and not a stable precondition. This satisfies the ratified restore arm because
+P2 did expose a real selection, but success remains exclusively the final calendar-day equality.
+
+The ratified no-selection alternatives were also tested, not assumed: `Home` + `Delete` × 12 and
+`End` + `Backspace` × 12 each left `08/27/2026` and selection `0..2` unchanged on every key. The
+character-clear arm is live-disproved and is not retained as a fallback.
+
+#### P3 — `fill("")` never exposes an empty state
+
+| elapsed after `fill("")` | `inputValue()` |
+|---:|---|
+| 0 ms | `08/27/2026` |
+| 100 ms | `08/27/2026` |
+| 200 ms | `08/27/2026` |
+| 500 ms | `08/27/2026` |
+| 1 000 ms | `08/27/2026` |
+
+This is the same fact §9.29 saw over 8 000 ms: there is no observable clear to gate on, and waiting
+longer cannot turn it into an authority.
+
+#### P4 — real keystrokes advance the masked segments
+
+From the default `08/27/2026` with only the month segment selected (`0..2`), real
+`pressSequentially("05/08/2026")` emitted the changing input values **`05/27/2026` →
+`05/08/2026`** and finished exactly on `05/08/2026`. Slashes and unchanged year digits emitted no
+value change; the mask advanced the month and day segments itself. The earlier §9.28
+`11/20/2026` → `11/20/2626` failure remains a real different state — a mid-year caret — and is
+therefore retained as the final-refusal regression rather than generalized away.
+
+#### P5 — frame context and the third start re-proof
+
+Employee Search began in exactly one `portal-frame-*`. After Go To → Timecard, the application URL
+ended `/timekeeping#/timecard`, there were zero named portal frames, `#startDateTimeInput` counted
+**1 top-level / 0 portal-frame**. Using §9.29's composed range without applying it:
+
+| call | prior | selection after `ControlOrMeta+a` | final read-back |
+|---|---|---|---|
+| start | `08/27/2026` | segment `0..2` in the P4 pass | `05/08/2026` |
+| end | `08/27/2026` | whole value `0..10` | `07/08/2026` |
+| start re-proof (third call) | `05/08/2026` | segment `0..2` | `05/08/2026` |
+
+**Landed mechanism.** `setRangeField` is restored to click → capture `priorValue` →
+`ControlOrMeta+a` → real `pressSequentially` → bounded final read-back. The u21 clear gate and
+`RANGE_FIELD_CLEAR_TIMEOUT_MS` are deleted. There is no empty-state gate, retry, longer wait,
+fallback, or widened acceptance. The ONE refusal is still “final parsed calendar day does not equal
+the requested day”; it now includes the prior value and last observed value, so the known
+`11/20/2626` masked overtype is self-diagnosing. The §9.28 / `d45376d0` citation repair landed by
+`3b9588c5` is retained.
