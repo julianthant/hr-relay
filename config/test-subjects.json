@@ -271,6 +271,30 @@
           "reason": "None exists. The only mapped subject with a PENDING termination lost it when T002209631 was deleted (§9.16 §4)."
         }
       }
+    },
+    {
+      "label": "separations-controlled-commit-canary",
+      "workflow": "separations",
+      "kind": "controlled-commit-candidate",
+      "availability": {
+        "state": "available",
+        "lastObserved": "2026-08-27",
+        "reason": "Doc 4568 was read live on 2026-08-27 (§9.29): present in the Action List at step Task 1 - Jan, Last Day Worked and separation date both 06/08/2026 (past), transactionNumber empty, Type of Termination `No Reason Given` resolving to UC_VOL_TERM."
+      },
+      "provenance": {
+        "document": "docs/migrations/separations.md",
+        "section": "§9.29"
+      },
+      "usagePolicy": "read-only",
+      "cleanupObligation": "Read-only until the operator is at the keyboard for a controlled commit; a dry-run rehearsal must leave the Kuali document unsaved and file no UCPath transaction.",
+      "owner": "HR automation operator",
+      "purpose": "D280 canary: composed dry run first, then ②→①→③ on the operator's say-so",
+      "publicInput": {
+        "document": {
+          "state": "present",
+          "documentNumber": "4568"
+        }
+      }
     }
   ]
 }

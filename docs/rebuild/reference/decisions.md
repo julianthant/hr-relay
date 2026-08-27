@@ -1588,3 +1588,21 @@ _D277–D279 are minted by this round from `docs/decisions/2026-08-27-03a-close-
 | **D277** | **JSDOM IS THE WIRING-LEVEL REACT TEST ENVIRONMENT, PER FILE.** A dashboard test that pins a press-to-dispatch payload or focus restoration declares `@vitest-environment jsdom` in its own file inside the `unit` project; the parity lane stays the authority for anything visual. Rejected: moving those pins into the Playwright lane (slower, and payload/focus claims are not screenshot claims). | ref guards-and-tests §10.9 "Vitest projects" · §10.1 row "dashboard unit tests" |
 | **D278** | **A LIVE CAPTURE SESSION TAKES THE INTAKE COLUMN.** While a phone-capture session is live, the capture panel owns the column's height and the `Dropzone` yields its `flex-1` to a strip; with no live session the dropzone is primary as before. Rejected: keep the dropzone primary and scroll the panel (the session is the operator's task); a wide-viewport side-by-side split (two layouts to keep in parity). Implementation is carried to Phase 4 with the 03a residue (D279). | ref dashboard-surfaces §"D274 — standing product surfaces" item 7 · `docs/findings/capture.md` §"The intake column…" |
 | **D279** | **PHASE 3A CLOSES 10/10; ROW 10'S STRUCTURAL RESIDUE IS CARRIED TO PHASE 4 BY DISPOSITION.** The ledgers' remaining structural rows and the three recorded findings are fidelity polish, not separations blockers; they are listed by name in doc 04 §"Carried in from Phase 3a" and each closes there or is explicitly parked. Rejected: leaving row 10 open indefinitely (a phase with no closing condition); folding the residue into 03b (the wrong theme for a separations run). | doc 04 §"Carried in from Phase 3a (D279)" · doc 03a §Exit criteria row 10 |
+
+## Reconciliation round 97 (2026-08-27) — a second canary is named for the controlled commits
+
+_phase: 3b_
+_D280 is minted by this round from `docs/decisions/2026-08-27-canary-4568.md` and lands with its normative text in doc 03b §registry (the 4568 row, filled from the live read) and `config/test-subjects.json`._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D280** | **KUALI DOC 4568 IS NAMED (OPERATOR, 2026-08-27) AS A CANARY FOR THE CONTROLLED COMMITS ②→①→③, DRY RUN FIRST.** The composed chain runs `dryRun=true` on 4568 and passes a submit-free audit before any write; the writes happen only with the operator at the keyboard approving each ALWAYS-GATE; the four R2 conditions (no `reRead` after ②, tree frozen until ③, `separations-kuali-finalization` fallback for ③, UNKNOWN submit stops the run) apply unchanged. Doc 4537 (named 2026-08-19) keeps its 2026-08-28 admission; whether it is used as a second subject is the operator's call after 4568's evidence lands. Rejected: dry runs only (the operator wants the commit evidence today); 4568 as canary without the dry run first (the first composed run on the post-u21 driver must be submit-free). | doc 03b §registry (4568 row) · `config/test-subjects.json` · `docs/migrations/separations.md` §9.29 (the evidence, once written) |
+
+## Reconciliation round 98 (2026-08-27) — UI-1: the elements the demo does not cover
+
+_phase: 3b (side scope: the dashboard's demo fidelity, run UI-1)_
+_D281 is minted by this round from `docs/decisions/2026-08-27-ui-fidelity-new-elements.md` (items 1–7, all recommended; coordinator receive `docs/decisions/2026-08-27-ui-1-receive.md`) and lands with its normative text in ref dashboard-surfaces §10, the D281 block._
+
+| # | Decision | Owning doc |
+|---|---|---|
+| **D281** | **THE DEMO-UNCOVERED ELEMENTS RUN UI-1 FOUND ARE KEPT AS BUILT — EXCEPT THE STORAGE BAND, WHICH GOES FULL-BLEED.** Items 1–6 keep: the two catalog toolbar buttons are D275 item 1's restoration (the audit misclassified them); the hosts-banner refusal sentence, the `provisioned identical to production — refused` arm, the capabilities banner's derived-count clause and the three authored host notes each state a served fact the demo's runtime lacks. Item 7: the inset `Banner` card at the storage-band site is replaced by the demo's full-bleed band (queue view too) without reverting the `Banner` primitive (D276 item 4 stands) — the port is UI-2 U6. Rejected: trimming copy to the demo's exact framing (deletes served facts); dropping only the margin (U4a's rejected half-match). | ref dashboard-surfaces §10 (D281) |

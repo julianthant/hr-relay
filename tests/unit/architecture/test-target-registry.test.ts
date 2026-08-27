@@ -283,6 +283,13 @@ describe("test target registry architecture", () => {
       .sort((left, right) => left.label.localeCompare(right.label));
     assert.deepEqual(rows, [
       {
+        label: "separations-controlled-commit-canary",
+        kind: "controlled-commit-candidate",
+        state: "available",
+        lastObserved: "2026-08-27",
+        document: "4568",
+      },
+      {
         label: "separations-controlled-commit-candidate",
         kind: "controlled-commit-candidate",
         state: "gone",

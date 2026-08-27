@@ -10,7 +10,7 @@
   - heading "HR Automation" [level=1]
   - button "Back" [disabled]
   - button "Forward" [disabled]
-  - button "Dashboard" [pressed]
+  - button "Dashboard"
   - button "Archive"
   - button "Explorer"
   - button "Activity"

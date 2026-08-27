@@ -87,6 +87,7 @@ import {
   SHELL_VIEWS,
   SHELL_VIEW_LABEL,
   type ShellView,
+  type ShellViewSelection,
   WEEKDAY_HEADS,
   buildCalendarMonth,
   monthLabel,
@@ -906,7 +907,7 @@ function ShellViewSwitcher({
   view,
   onView,
 }: {
-  view: ShellView;
+  view: ShellViewSelection;
   onView: (view: ShellView) => void;
 }): ReactElement {
   return (
@@ -1020,8 +1021,12 @@ export const TopBar = memo(function TopBar({
   theme: DemoTheme;
   onToggleTheme: () => void;
   nav: NavControls;
-  /** which product view owns the main region — the switcher's pressed segment */
-  view: ShellView;
+  /**
+   * Which product view owns the main region — the switcher's pressed segment,
+   * or `"none"` when the takeover on screen is one the switcher does not name
+   * (Settings, intake, the catalog). See `app/url-state.ts`'s `shellViewOf`.
+   */
+  view: ShellViewSelection;
   onView: (view: ShellView) => void;
   /** the whole day's projection — what the search control finds over */
   daySurfaces: readonly QueueSurfaceWire[];

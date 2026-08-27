@@ -259,3 +259,20 @@ export const SHELL_VIEW_LABEL: Record<ShellView, string> = {
 };
 
 export const SHELL_VIEWS: readonly ShellView[] = ["queue", "archive", "explorer", "activity"];
+
+/**
+ * Which segment the switcher presses — or that it presses NOTHING.
+ *
+ * Ported from the demo (legacy `1ec1d870`
+ * `src/dashboard/components/dev/rebuild-demo/DemoShell.tsx:560-573`), where the
+ * switcher reads the app's FULL view union and draws `aria-pressed={view === v}`
+ * over the four names it knows. A view the switcher does not name — the demo's
+ * `settings`, ours also `intake` and `catalog` — therefore presses nothing, and
+ * the gear is left as the only "you are here" claim on the bar.
+ *
+ * The rebuild had narrowed the prop to `ShellView`, which has no such value, so
+ * the three unnamed takeovers had to be folded onto `queue` and the bar claimed
+ * the operator was on the dashboard while a takeover covered it (UF-SET-2).
+ * `"none"` is that missing value, stated rather than encoded as a lie.
+ */
+export type ShellViewSelection = ShellView | "none";
