@@ -17,6 +17,32 @@ import {
 const MOBILE_VIEWPORT = { width: 390, height: 844 } as const;
 let server: FixtureServer;
 
+/**
+ * Open the failure record's diagnostic disclosure.
+ *
+ * D273 item 8 put the whole diagnostic record — the bundle trigger, the
+ * classification block and the `absent` arm's explanation alike — behind a
+ * `Show the diagnostic record` button, so every test below was addressing a
+ * subtree that is not mounted until this is pressed. It is one control, so it
+ * is one helper, and it ASSERTS both halves: the trigger's `aria-expanded`
+ * flipping, and the trigger itself existing in the first place. Without that
+ * second assertion a future rename would turn every test here into a 120-second
+ * timeout on the NEXT locator, naming everything except the cause — which is
+ * exactly the failure mode the intake spec's own lesson names.
+ */
+async function openDiagnosticRecord(page: import("@playwright/test").Page): Promise<void> {
+  const toggle = page.getByRole("button", { name: "Show the diagnostic record" });
+  await expect(
+    toggle,
+    "the failure record's diagnostic disclosure is missing; everything this spec addresses lives behind it",
+  ).toHaveCount(1);
+  await toggle.click();
+  await expect(page.getByRole("button", { name: "Hide the diagnostic record" })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+}
+
 test.beforeAll(async () => {
   ensureParityBundle();
   server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
@@ -28,6 +54,7 @@ test.afterAll(async () => {
 
 test("opens the strict bundle dialog, restores focus on Escape, and downloads the served manifest", async ({ page }) => {
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
+  await openDiagnosticRecord(page);
   const trigger = page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
   await expect(trigger).toBeVisible();
   await trigger.click();
@@ -73,6 +100,7 @@ test("does not reopen when a delayed bundle verification settles after Escape", 
     responseDelivered = true;
   });
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
+  await openDiagnosticRecord(page);
   const trigger = page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
   await trigger.click();
   const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` });
@@ -93,6 +121,7 @@ test("keeps the requested dialog identity when a strict response carries a forei
     json: { ...FIXTURE_DIAGNOSTIC_BUNDLE, bundleId: foreignBundleId },
   }));
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
+  await openDiagnosticRecord(page);
   await page.getByRole("button", { name: `Diagnostic bundle ${requestedBundleId}` }).click();
 
   const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${requestedBundleId}` });
@@ -120,6 +149,7 @@ test("keeps the absent diagnostic-bundle arm explanatory and does not expose a d
   });
   await page.route(`**/api/v1/runs/${FIXTURE_IDS.failedRun}/failure*`, (route) => route.fulfill({ json: absent }));
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
+  await openDiagnosticRecord(page);
   await expect(page.getByText("no diagnostic bundle — capture was not requested for this failure")).toBeVisible();
   await expect(page.getByRole("button", { name: /^Diagnostic bundle / })).toHaveCount(0);
 });
@@ -128,9 +158,12 @@ test("keeps the lg dialog inside the mobile viewport with touch-sized actions", 
   await page.setViewportSize(MOBILE_VIEWPORT);
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: FIXTURE_IDS.failedRun });
   // The product's own Escape binding minimizes the floating workflow panel;
-  // otherwise that panel truthfully owns the tap at this narrow width.
+  // otherwise that panel truthfully owns the tap at this narrow width — the
+  // disclosure below included, which is why it is opened AFTER this and not
+  // straight after navigation the way the desktop cases do it.
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Workflow Panel" })).toHaveCount(0);
+  await openDiagnosticRecord(page);
   await page.getByRole("button", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}` }).click();
   const observed = await page.getByRole("dialog").evaluate((dialog) => {
     const actions = [...dialog.querySelectorAll("button, a")].map((action) => ({

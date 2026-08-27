@@ -728,7 +728,6 @@ function ValidationReview({
                 disabled={locked}
                 className="min-h-11 items-center [&>label]:min-h-11 [&>label]:justify-center"
                 onCheckedChange={(next) => onReviewed(next === true)}
-                aria-label={reviewLabel}
                 label={reviewLabel}
                 description={INTAKE_REVIEW_COPY.reviewDescription}
               />

@@ -1,0 +1,244 @@
+# ds-kit--graphite-warm--1440x900
+# adapter: none
+# fixture: ds-kit
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "Rebuild demo — design system" [level=1]
+  - text: dev only · specimen page
+  - navigation "Sections":
+    - link "Status":
+      - /url: "#status"
+    - link "Actions":
+      - /url: "#actions"
+    - link "Display":
+      - /url: "#display"
+    - link "Containers":
+      - /url: "#containers"
+    - link "Forms":
+      - /url: "#forms"
+    - link "Overlays":
+      - /url: "#overlays"
+    - link "Foundations":
+      - /url: "#foundations"
+- main:
+  - heading "The eight statuses" [level=2]
+  - paragraph: "Four separating channels per status: hue, emphasis tier, icon and label. Review and Failed are the loudest solids. Done is solid green — word only. Cancelled is the same solid pill in gray. Yellow Done carries a △ count chip beside it."
+  - text: Review Stopped at a gate for a decision. Nothing is written until you answer. Open Review to act. solid Failed Stopped on an error. Retry replays the same input. solid Write parked A write may or may not have landed. Never auto-retried — you resolve present or absent. dashed Done 2 Finished, but something needs your eyes — a fallback, a gap, a rejected page. The △ count beside the pill names how many. tinted Running A worker owns it right now. Only cancel is offered. tinted Queued Accepted, nothing has run. Can be bumped or cancelled. outline Cancelled You stopped it. Not an alert — a deliberate act. solid Done Finished AND read back from the system. The receipt carries the proof. solid In a dense queue the only view that proves the mapping works 8 rows
+  - img "Review"
+  - text: Alvarez, Marisol se-140211-9f3a Review
+  - img "Failed"
+  - text: oath-batch-07.pdf ou-134455-2c1d Failed · 3m
+  - img "Write parked"
+  - text: Nguyen, Trang ec-131002-77ab Write parked
+  - img "Done with warnings"
+  - text: Okonkwo, Ada ic-125518-4e90 Done
+  - img "Running"
+  - text: Bauer, Jonas se-125001-b120 Running
+  - img "Queued"
+  - text: Silva, Renata pl-124430-cc31 Queued
+  - img "Cancelled"
+  - text: Duval, Henri ws-120911-8fa2 Cancelled
+  - img "Done"
+  - text: "Petrov, Iryna on-115502-de44 Done Scan it with your eyes half-closed: two blocks of light, everything else recedes."
+  - heading "Actions" [level=2]
+  - paragraph: One primary per surface, one danger per surface. Variant is semantic, not decorative — outline for peers in a toolbar, ghost for anything that must not compete.
+  - text: Variants
+  - button "Start a run"
+  - button "Run"
+  - button "Cancel"
+  - button "Upload"
+  - button "Open receipt"
+  - button "Delete run"
+  - button "Remove"
+  - text: Sizes
+  - button "Small"
+  - button "Medium"
+  - button "Large"
+  - text: States
+  - button "Disabled" [disabled]
+  - button "Toggle loading"
+  - button "Danger disabled" [disabled]
+  - text: Icon buttons
+  - button "Retry"
+  - button "Bump to front"
+  - button "Delete"
+  - button "Peek"
+  - button "Working" [disabled]
+  - heading "Display" [level=2]
+  - paragraph: "Small parts that carry a value: counts, facts, progress and where a run is. Every number is tabular so a ticking value never reflows the row."
+  - text: Badges neutral delegated verified gate write parked 3 need you Counts 0 12 999+ 3 Chips EID 100844120 file oath-batch-07.pdf rate 18.50 → 21.00 page 4 rejected Separations
+  - button "Remove Separations"
+  - button "Needs you" [pressed]
+  - text: Keys j k ⌘K Esc Loading
+  - status "Loading"
+  - text: Progress
+  - progressbar "Records approved"
+  - text: 64%
+  - progressbar "Pages verified"
+  - text: 100%
+  - progressbar "Retries used"
+  - text: 80%
+  - progressbar "Failed writes"
+  - text: 22%
+  - progressbar "Waiting on UCPath"
+  - text: The last bar is indeterminate — never fake a denominator you do not have. Timeline
+  - 'img "Progress: 2 of 5 steps done, now UCPath transaction"'
+  - separator
+  - list "Progress":
+    - listitem: Kuali extraction 4.1s
+    - listitem: Identity check 2.8s
+    - listitem: UCPath transaction running 41s
+    - listitem: Kronos search
+    - listitem: Kuali finalization
+  - heading "Containers" [level=2]
+  - paragraph: Depth comes from surface plus a hairline, never from a shadow. A Panel sits on the page, a Card sits in a Panel, a Well sits in a Card. Anything with a shadow is floating.
+  - text: Queue Separations · Sat, Jul 25 18
+  - button "Refresh"
+  - group "Queue filters":
+    - button "All" [pressed]
+    - button "Needs you"
+    - button "Failed"
+    - searchbox "Search rows…"
+    - text: /
+  - table "Queued runs":
+    - rowgroup:
+      - row "Person Status Elapsed":
+        - columnheader "Person"
+        - columnheader "Status":
+          - button "Status"
+        - columnheader "Elapsed"
+    - rowgroup:
+      - row "Alvarez, Marisol Review 12m" [selected]:
+        - cell "Alvarez, Marisol"
+        - cell "Review"
+        - cell "12m"
+      - row "oath-batch-07.pdf Failed 3m":
+        - cell "oath-batch-07.pdf"
+        - cell "Failed"
+        - cell "3m"
+      - row "Nguyen, Trang Write parked 48m":
+        - cell "Nguyen, Trang"
+        - cell "Write parked"
+        - cell "48m"
+      - row "Okonkwo, Ada Done —":
+        - cell "Okonkwo, Ada"
+        - cell "Done"
+        - cell "—"
+      - row "Bauer, Jonas Running —":
+        - cell "Bauer, Jonas"
+        - cell "Running"
+        - cell "—"
+  - text: 5 of 18 shown
+  - button "Load more"
+  - text: Review Alvarez, Marisol
+  - term: EID
+  - definition: "100844120"
+  - term: Trace
+  - definition: se-140211-9f3a
+  - term: Pay rate
+  - definition: 18.50 → 21.00
+  - button "Approve"
+  - button "Open"
+  - button "Delete"
+  - alert:
+    - text: UCPath write parked The transaction was submitted but the read-back did not confirm it. Nothing will be retried automatically — check UCPath and mark it present or absent.
+    - button "Resolve"
+  - status: OCR fell back to tier 2 on 3 pages Handwritten SSNs on those pages were re-read by a weaker model. Verify them.
+  - status: Synthetic data Nothing on this page touches a real system.
+  - status: 12 records verified
+  - alert:
+    - text: Nothing was enqueued — this form was built on a stale contract Separations changed behaviour after this modal opened. Starting on the old contract would run retired code against a live person. code workflow-version-conflictform built at v5server serves v6nothing is enqueued
+    - button "Reload the form"
+  - text: MetaLine — the provenance line receipt rc-0884019generated 2:20 PMattempt 2filed by local-operator se-142012-b410header row 4fingerprint 503172dd BulletList
+  - list:
+    - listitem: Every run already on disk still opens, read-only.
+    - listitem: Nothing new can be enqueued until the volume is writable.
+  - text: ChipRow — a wrapping row of peer facts wage $18.50/hr effective 07/01 dept 000482 txn TXN-0891245 EID 10084412 wage $18.50/hr effective 07/01 dept 000482 txn TXN-0891245 EID 10084412 CardBase — a trailing control on the row's bottom edge, not on its own card's On the input record Marisol Alvarez Read off the separation document.
+  - button "See this candidate"
+  - text: Name match (proposed) Marisol Alvarez-Ruiz Resolved in UCPath on last name plus department, which is a different person than the document names.
+  - button "See this candidate"
+  - text: Manual entry Typed by you Not on any page.
+  - button "See this candidate"
+  - text: "CompareGrid — cards read ACROSS: name with name, reason with reason On the input record Marisol Alvarez Read off the separation document."
+  - button "See this candidate"
+  - text: Name match (proposed) Marisol Alvarez-Ruiz Resolved in UCPath on last name plus department, which is a different person than the document names.
+  - button "See this candidate"
+  - text: Manual entry Typed by you
+  - button "See this candidate"
+  - tablist "Run detail":
+    - tab "Log" [selected]
+    - tab "Data 12"
+    - tab "Evidence 4"
+    - tab "Receipt" [disabled]
+  - tabpanel "Log": 12:04:11 kuali → extracted 6 fields 12:04:18 ucpath → row found, EID 100844120 12:04:41 ucpath → submitting transaction…
+  - text: Empty states Nothing needs you right now Runs that stop at a gate land here. The rail badge turns amber when one arrives.
+  - button "View all runs"
+  - heading "Forms" [level=2]
+  - paragraph: Every control has a visible label; errors are announced, not just coloured. Field wires the ids — never hand-roll aria-describedby.
+  - text: Employee ID (required)
+  - textbox "Employee ID (required)":
+    - /placeholder: "100844120"
+    - text: "100844120"
+  - paragraph: 9 digits, no dashes
+  - text: Employee ID
+  - textbox "Employee ID" [invalid]: 10084412X
+  - alert: No UCPath record matches 10084412X.
+  - text: Workflow 8 available
+  - combobox "Workflow":
+    - option "Separations" [selected]
+    - option "Onboarding"
+    - option "Oath Signature"
+  - text: Disabled
+  - textbox "Disabled" [disabled]: se-140211-9f3a
+  - paragraph: Locked while a run is in flight
+  - text: Toolbar variant
+  - button "Filter"
+  - combobox "Sort":
+    - option "Attention first" [selected]
+    - option "Newest first"
+  - button "Select"
+  - text: Note for the receipt
+  - textbox "Note for the receipt":
+    - /placeholder: Why this run was started…
+  - searchbox "Search people, files, trace ids…"
+  - text: / Recorded value
+  - textbox "Separation date — correctable": 07/16/2026
+  - textbox "Separation date — corrected, not yet saved": 07/18/2026
+  - text: Voluntary termination never read back Checkbox
+  - checkbox "Select all rows" [checked=mixed]
+  - text: Select all rows Indeterminate when only some are checked
+  - checkbox "Capture a screenshot at each write" [checked]
+  - text: Capture a screenshot at each write
+  - checkbox "Auto-retry parked writes" [disabled]
+  - text: Auto-retry parked writes Never available — a parked write is resolved by a human
+  - group "Run mode":
+    - text: Run mode
+    - radio "Dry run No transaction is submitted" [checked]
+    - text: Dry run No transaction is submitted
+    - radio "Live Files a real HR transaction"
+    - text: Live Files a real HR transaction
+  - switch "Desktop notifications Applies immediately"
+  - text: Desktop notifications Applies immediately
+  - heading "Overlays" [level=2]
+  - paragraph: "Radix owns focus: focus moves in on open and returns to the trigger on close, Escape dismisses, the rest of the page is hidden from assistive tech. A danger toast never auto-dismisses."
+  - text: Dialog
+  - button "Open dialog"
+  - button "Open destructive dialog"
+  - button "Open drawer"
+  - text: ContextMenu Right-click me Toast
+  - button "Info"
+  - button "Success"
+  - button "Warning"
+  - button "Danger"
+  - text: Tooltip
+  - button "Hover me"
+  - text: Popover
+  - button "Why is this parked?"
+  - button "About this trace id"
+  - heading "Foundations" [level=2]
+  - paragraph: Seven type sizes, one 8px space rhythm, five surfaces, three elevations, one focus ring. If a value you need is missing, add a design token — do not write a literal.
+  - text: Type scale Separations · Alvarez, Marisol display · 20px Separations · Alvarez, Marisol section · 16px Separations · Alvarez, Marisol title · 14px Separations · Alvarez, Marisol ui · 13px Separations · Alvarez, Marisol body · 12px Separations · Alvarez, Marisol meta · 11px Separations · Alvarez, Marisol micro · 10px Surfaces --ds-surface-page page --ds-surface-1 panels, cards --ds-surface-2 wells, table head --ds-surface-3 hover, selected --ds-surface-overlay dialogs, menus Elevation 0 · flat 1 · raised 2 · menu 3 · modal

@@ -1,0 +1,11 @@
+{
+  "stateId": "settings",
+  "viewport": "1280x720",
+  "theme": "paper-ink",
+  "adapter": "fixture",
+  "fixtureId": "settings",
+  "descriptorHash": "09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

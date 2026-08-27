@@ -105,6 +105,16 @@ const STATES: readonly { id: string; route: AppRoute }[] = [
     id: "activity-report",
     route: { day: FIXTURE_DAY, activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}` },
   },
+  /*
+    THE SETTINGS TAKEOVER (D274 item 6). The gear has been in the top bar of
+    every reference in this corpus since it was written, and what it opens had
+    never been photographed once — while the fixture served a single invented
+    `general` section, so the only page reachable behind it was the "this build
+    has no renderer for it" gap. The bootstrap now lists the SERVER's own three
+    sections and the lane serves `settings/facts`, so this opens on the first
+    one exactly as the operator's gear does.
+  */
+  { id: "settings", route: { day: FIXTURE_DAY, settings: "" } },
 ];
 
 let server: FixtureServer;
@@ -283,6 +293,29 @@ function failOnPageErrors(page: import("@playwright/test").Page): string[] {
   return errors;
 }
 
+/**
+ * Per-scene anchors, asserted BEFORE capture. A reference minted from a page
+ * that silently fell back — a Timeline on its per-event arm because the wire
+ * dropped `timeline.steps`, a Settings pane on its "no renderer" gap arm —
+ * records the regression and then passes forever. Each anchor is a fact only
+ * the intended arm can render, so the NEXT `PARITY_UPDATE=1` mint fails loud
+ * instead of photographing the fallback.
+ */
+const SCENE_ANCHORS: Record<string, (page: import("@playwright/test").Page) => Promise<void>> = {
+  "run-group": async (page) => {
+    // D225's categorical strip: the segment disclosure button exists only on
+    // the categorical arm, and its name carries the replay count.
+    await expect(
+      page.getByRole("button", { name: "UCPath termination — done, took 2m 48s, a step in it ran 2 times" }),
+    ).toBeVisible();
+  },
+  "settings": async (page) => {
+    // The Storage pane's own control — the "no renderer for this section"
+    // gap arm renders errorlessly and would otherwise re-freeze green.
+    await expect(page.getByRole("button", { name: "Run the read-only storage doctor" })).toBeVisible();
+  },
+};
+
 for (const viewport of PARITY_VIEWPORTS) {
   for (const theme of PARITY_THEMES) {
     test.describe(`${theme.name} @ ${viewport.name}`, () => {
@@ -303,6 +336,7 @@ for (const viewport of PARITY_VIEWPORTS) {
             || state.route.catalog !== undefined
             || state.route.archive !== undefined
             || state.route.activity !== undefined
+            || state.route.settings !== undefined
           ) await dismissWorkflowWindow(page);
           await assertThemeApplied(page, theme satisfies ParityTheme);
           await page.waitForTimeout(120);
@@ -311,6 +345,8 @@ for (const viewport of PARITY_VIEWPORTS) {
           // reference minted from a region with a hole in it records the bug
           // and then passes forever.
           await assertShellGeometry(page, `${state.id} @ ${viewport.name} ${theme.name}`);
+
+          await SCENE_ANCHORS[state.id]?.(page);
 
           expect(errors, `page errors while rendering ${state.id}`).toEqual([]);
 
@@ -598,6 +634,120 @@ test.describe("identity gate ceremonies", () => {
       variant: "gate-refused",
     });
   });
+});
+
+/**
+ * THE OTHER TWO SETTINGS PANES (D274 item 6, ledger 3 SE40–SE42).
+ *
+ * `settings` above opens on Storage, which is served by the bootstrap and needs
+ * nothing else. These two are the `settings/facts` panes — the resolved config's
+ * System hosts table, and the descriptor registry's Workflow capabilities table
+ * — and each is a projection of an authority the process already composed, so
+ * what they print is what a run would actually do. They are photographed
+ * because they are exactly the pages that can go quietly wrong: a hosts table
+ * that omits a `not-distinct` verdict, or a capability row that claims a dry
+ * run a descriptor does not declare, is a screen that reads correct and is not.
+ *
+ * One viewport and one theme apiece: these are tables of served facts, the same
+ * pixels at every width, and the nav that reaches them is already in `settings`.
+ */
+test.describe("settings panes", () => {
+  const PANES: readonly { variant: string; section: string; table: string }[] = [
+    { variant: "system-hosts", section: "system-hosts", table: "System entry hosts" },
+    { variant: "capabilities", section: "workflow-capabilities", table: "Dry-run posture by workflow" },
+  ];
+  for (const pane of PANES) {
+    test(`settings ${pane.variant}`, async ({ page }) => {
+      const errors = failOnPageErrors(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await installTheme(page, PARITY_THEMES[0]);
+      await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: pane.section });
+      await dismissWorkflowWindow(page);
+      await assertThemeApplied(page, PARITY_THEMES[0]);
+
+      /*
+        `useSettingsFacts` draws THREE states and only one of them is this
+        reference. Waiting on the pane's own SERVED table — a table that exists
+        on the `loaded` arm and on neither of the others — is what keeps a
+        `loading` skeleton, or the `failed` arm the corpus would have
+        photographed before the route existed, from being frozen here as if it
+        were the loaded page. Named, not `.first()`: an unnamed wait would be
+        satisfied by any table the takeover happened to draw.
+
+        Deliberately NOT `getByRole("heading")`: `PanelHeader` renders its title
+        as a styled `<span>`, so no Settings pane has a heading at all. That is
+        a real finding and it belongs in a fidelity unit, not in a re-freeze —
+        this reference photographs the surface as it ships.
+      */
+      await expect(page.getByRole("table", { name: pane.table })).toBeVisible();
+      await page.waitForTimeout(120);
+      expect(errors, `page errors while rendering the ${pane.variant} pane`).toEqual([]);
+
+      await captureParityPair(page, REFERENCES, {
+        stateId: "settings",
+        viewport: "1440x900",
+        theme: PARITY_THEMES[0].name,
+        adapter: "fixture",
+        fixtureId: "settings",
+        descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+        appVersion: FIXTURE_APP_VERSION,
+        capturedAt: FIXTURE_DAY,
+        variant: pane.variant,
+      });
+    });
+  }
+});
+
+/**
+ * THE VERSION-BUMP AUTHORING DIALOG (D179, charter §25).
+ *
+ * `archive-ledger` photographs the RUNS view. The Archive's other half — the
+ * version registry, and the change record the operator authors before a bump —
+ * had never been photographed at all, and it is the surface where a wrong word
+ * is most expensive: a MAJOR bump is what moves finished runs into the archive,
+ * the record is the only place anyone says WHY, and the dialog's kind radio
+ * decides which of those two things happens. Copy that nobody photographs is
+ * copy reviewed once, by whoever wrote it.
+ *
+ * Both themes at one viewport: the dialog is a fixed-width box, and the tinted
+ * effect line beneath the kind radio is a colour claim in both palettes.
+ */
+test.describe("version bump", () => {
+  for (const theme of PARITY_THEMES) {
+    test(`archive-version-bump @ ${theme.name}`, async ({ page }) => {
+      const errors = failOnPageErrors(page);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await installTheme(page, theme satisfies ParityTheme);
+      await gotoAppState(page, server.baseUrl, {
+        day: FIXTURE_DAY,
+        archive: "",
+        archiveView: "versions",
+      });
+      await dismissWorkflowWindow(page);
+      await assertThemeApplied(page, theme satisfies ParityTheme);
+
+      // The registry must actually be on screen before the trigger is pressed:
+      // a `Bump…` click against a still-loading table would either miss or
+      // photograph a dialog over a skeleton.
+      await expect(page.getByRole("table", { name: "Workflow version registry" })).toBeVisible();
+      await page.getByRole("button", { name: "Bump…" }).first().click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await page.waitForTimeout(250);
+      expect(errors, "page errors while opening the version-bump dialog").toEqual([]);
+
+      await captureParityPair(page, REFERENCES, {
+        stateId: "archive-version-bump",
+        viewport: "1440x900",
+        theme: theme.name,
+        adapter: "fixture",
+        fixtureId: "archive-version-bump",
+        descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+        appVersion: FIXTURE_APP_VERSION,
+        capturedAt: FIXTURE_DAY,
+        variant: "default",
+      });
+    });
+  }
 });
 
 /**

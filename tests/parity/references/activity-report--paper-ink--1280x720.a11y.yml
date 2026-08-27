@@ -1,7 +1,7 @@
 # activity-report--paper-ink--1280x720
 # adapter: fixture
 # fixture: activity-report
-# descriptorHash: ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -23,10 +23,12 @@
   - button "Settings"
 - main:
   - region "Activity report":
-    - text: Activity report From
-    - textbox "From": 2026-07-01
-    - text: To
-    - textbox "To": 2026-08-03
+    - text: Activity report
+    - group "Report span":
+      - text: From
+      - textbox "From": 2026-07-01
+      - text: To
+      - textbox "To": 2026-08-03
     - text: Automation activity Wed, Jul 1 – Mon, Aug 3 12 runs
     - button "How it is counted"
     - button "Export"
@@ -191,6 +193,6 @@
           - cell "1"
     - text: generated 4:00 AMlocal-operatorapp 0.1.0Wed, Jul 1 – Mon, Aug 312 runs
 - region "Session Panel":
-  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 worker need attention"
-  - text: app 0.1.0
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - text: app 0.1
   - status: Live

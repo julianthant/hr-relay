@@ -148,9 +148,20 @@ export async function captureParityPair(
   page: Page,
   referencesDir: string,
   metadata: CaptureMetadata,
+  /**
+   * `fullPage` is for a page whose SUBJECT is taller than a viewport — the DS
+   * specimen page, which is one scrolling column of every primitive in every
+   * state and whose top 900px is a masthead. Every operator surface stays
+   * `false`: the dashboard is a fixed shell that must fit, and a full-page shot
+   * of one would photograph a scroll height instead of a layout.
+   */
+  options: Readonly<{ fullPage?: boolean }> = {},
 ): Promise<void> {
   const name = await captureA11yReference(page, referencesDir, metadata);
-  await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: false, animations: "disabled" });
+  await expect(page).toHaveScreenshot(`${name}.png`, {
+    fullPage: options.fullPage ?? false,
+    animations: "disabled",
+  });
 }
 
 /**

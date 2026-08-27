@@ -1,0 +1,49 @@
+# archive-version-bump--graphite-warm--1440x900
+# adapter: fixture
+# fixture: archive-version-bump
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- dialog "Bump Person Lookup":
+  - banner:
+    - heading "Bump Person Lookup" [level=2]
+    - paragraph: Single workflow · Only this workflow's version moves, and only its prior-version runs are in scope.
+    - button "Close"
+  - group "What kind of change is this?":
+    - text: What kind of change is this?
+    - radio "Major — the run's shape changed Steps added, removed or renamed, or the data contract moved. A run started under the old descriptor cannot be rendered by the new one, so every prior-version run is ARCHIVED — and a run that is not terminal blocks the bump until it is resolved." [checked]
+    - text: Major — the run's shape changed Steps added, removed or renamed, or the data contract moved. A run started under the old descriptor cannot be rendered by the new one, so every prior-version run is ARCHIVED — and a run that is not terminal blocks the bump until it is resolved.
+    - radio "Minor — behaviour inside the same shape Behaviour inside an unchanged shape. NOTHING is archived, runs in flight carry on, and every prior-version run still renders — so there is nothing a run could be doing that would block this."
+    - text: Minor — behaviour inside the same shape Behaviour inside an unchanged shape. NOTHING is archived, runs in flight carry on, and every prior-version run still renders — so there is nothing a run could be doing that would block this.
+  - text: pl Person Lookup v2 → next
+  - alert: 1 run must be resolved before this bump 1 of them is a parked write — a write whose outcome is unknown may never be buried in an archive. Resolve it present or absent first.
+  - text: Must be terminalized or resolved first
+  - table "Prior-version runs that are not terminal":
+    - rowgroup:
+      - row "Run State What has to happen":
+        - columnheader "Run"
+        - columnheader "State"
+        - columnheader "What has to happen"
+    - rowgroup:
+      - row "EID 10456712 pl-091200-aa22 · enqueued Mon, Aug 3 Write parked Resolve the parked write present or absent — an unresolved possible-submit is never archived.":
+        - cell "EID 10456712 pl-091200-aa22 · enqueued Mon, Aug 3"
+        - cell "Write parked"
+        - cell "Resolve the parked write present or absent — an unresolved possible-submit is never archived."
+  - text: Would be archived — nothing No terminal prior-version run is listed for this scope, so this bump would move the version and archive nothing. What changed (required) 0/200
+  - textbox "What changed (required)":
+    - /placeholder: the separation flow gained a Kuali read-back step
+  - paragraph: Recorded beside the version, in the same store as fix records.
+  - text: Why the shape had to move (required) 0/1000
+  - textbox "Why the shape had to move (required)":
+    - /placeholder: the old descriptor cannot express the read-back, so its runs cannot be rendered by the new one
+  - paragraph: The record says which kind it was, and the archive's sweep header shows it.
+  - text: Commit
+  - textbox "Commit":
+    - /placeholder: 9f2c41d
+  - paragraph: Optional. Left empty, the record says no commit was named rather than showing a blank.
+  - contentinfo:
+    - text: There is no force arm. The refusal is the feature.
+    - button "Cancel"
+    - button "Plan the bump…"

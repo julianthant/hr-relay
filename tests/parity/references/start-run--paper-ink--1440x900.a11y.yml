@@ -1,7 +1,7 @@
 # start-run--paper-ink--1440x900
 # adapter: fixture
 # fixture: start-run
-# descriptorHash: ff645d0261ab2cebd458ea10d9446484d8766e8d2214503a69de13b1498b6f5b
+# descriptorHash: 09a0111be4d55dd23ed1c7bfdc3473083c2be2fd7c59683a40abff4f09d2b151
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -35,22 +35,23 @@
   - textbox "employee IDs — separated by “;” or a new line":
     - /placeholder: Enter EIDs or names, semicolon-separated (e.g. 10873698; Battistessa, Johnnie)
   - paragraph: An employee ID is eight digits beginning 10; anything else is taken exactly as typed.
-  - text: How this run is shaped keepNonHdh no includeCrmDates no
+  - text: How this run is shaped keepNonHdh no
+  - paragraph: fixed by this workflow's input surface
+  - text: includeCrmDates no
+  - paragraph: fixed by this workflow's input surface
   - complementary "Run controls":
     - text: Shared settings
     - heading "Run controls" [level=3]
     - paragraph: These options work the same way for every workflow.
     - heading "Queue behavior" [level=4]
     - paragraph: Choose how this work enters the browser queue.
-    - text: Active-run policy Refuses the start while a run for the same subject is unfinished Priority
+    - text: Active-run policy Refuses the start while a run for the same subject is unfinished
+    - paragraph: declared by this workflow — the planner reads it, not the form
+    - text: Priority
     - combobox "Priority":
       - option "Interactive" [selected]
       - option "Bulk"
     - paragraph: Bulk work yields whenever interactive work needs the browser.
-    - heading "Safety & mode" [level=4]
-    - paragraph: Apply optional limits before the run starts.
-    - checkbox "Dry run not declared by this workflow" [disabled]
-    - text: Dry run not declared by this workflow
     - heading "Destination" [level=4]
     - paragraph: Confirm the systems this run is allowed to write to.
     - text: UCPATH
@@ -63,6 +64,6 @@
       - option "Test instance — not wired" [disabled]
     - paragraph: no CRM test instance is configured
   - contentinfo:
-    - text: Person LookupType at least one value.
+    - text: Person Lookup v7Type at least one value.
     - button "Cancel"
     - button "Plan the run" [disabled]
