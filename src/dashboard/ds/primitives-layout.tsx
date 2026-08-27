@@ -622,8 +622,8 @@ export function TakeoverFrame({
       aria-label={label}
       className={cn(
         // `flex min-h-0 flex-1` IS the demo root, byte for byte. `overflow-hidden`
-        // is the one addition, and it is a NET, not a mechanism —
-        // // verified 2026-08-27: the root must clip because it is the last box
+        // is the one addition, and it is a NET, not a mechanism.
+        // verified 2026-08-27: the root must clip because it is the last box
         // between a takeover's content and the sessions bar. Measured live at
         // 1440x900 on all four takeovers, with an over-wide (3000px) and an
         // over-tall (2000px) child forced in: the frame's own box is IDENTICAL
