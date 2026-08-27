@@ -48,6 +48,7 @@ import {
   deriveIdentityEvidenceDigest,
 } from "../../../../src/domain/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../../src/domain/separations/identity-evidence.js";
+import { UcpathPersonSelectionSchema } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
 import { SeparationWritePlanSchema } from "../../../../src/domain/separations/write-plan.js";
 import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
 import { parseInputRunText, toRawSubmission } from "../../../../src/domain/workflow/ingress.js";
@@ -387,9 +388,20 @@ export function parkAtIdentityGate(
   }
   const claimIdentity = { workerId: WORKER_ID, claimGeneration: claim.run.claimGeneration };
   const now = world.clock.now().toISOString();
-  const running = world.database.authority.runs.transition({
+  // claimed → validating → running is the executor's own order, and the
+  // authority refuses to skip the middle step; a park composed straight onto a
+  // claimed row would be a state no worker can produce.
+  const validating = world.database.authority.runs.transition({
     runId,
     expectedVersion: claim.run.version,
+    claim: claimIdentity,
+    lifecycle: { state: "validating", workerId: WORKER_ID, claimedAt: now, heartbeatAt: now },
+    now,
+  });
+  if (validating.state !== "applied") throw new Error(`could not validate ${runId}: ${validating.state}`);
+  const running = world.database.authority.runs.transition({
+    runId,
+    expectedVersion: validating.run.version,
     claim: claimIdentity,
     lifecycle: {
       state: "running",
@@ -451,10 +463,45 @@ export function seedJobSummaryCheckpoint(world: SeparationsDashboardWorld, runId
  * ceremony square is about — the SERVER decides the shape.
  */
 export function separationsIdentityPacket(
-  overrides: Readonly<{ documentName?: string; candidateEids?: readonly string[] }> = {},
+  overrides: Readonly<{
+    documentName?: string;
+    /**
+     * `ambiguous` is the SECOND ceremony's real cause: a UCPath name search
+     * that listed several people and picked none. It is stated as the search's
+     * own status rather than as an approval shape, because the shape is the
+     * SERVER's conclusion and a fixture that set it directly would be testing
+     * the ceremony against a packet the builder never produces.
+     */
+    nameSearch?: "resolved" | "ambiguous";
+    otherCandidateEid?: string;
+  }> = {},
 ): IdentityEvidencePacket {
   const eid = "10001754";
   const documentName = overrides.documentName ?? "Cramia, Dreitho";
+  const otherEid = overrides.otherCandidateEid ?? "10620118";
+  // Parsed through the search contract's OWN selection schema, so a fixture can
+  // never express a selection UCPath's reader could not have produced.
+  const nameSelection = UcpathPersonSelectionSchema.parse(
+    overrides.nameSearch === "ambiguous"
+      ? {
+        status: "ambiguous",
+        selected: null,
+        candidateEids: [eid, otherEid],
+        searchName: documentName,
+      }
+      : {
+        status: "resolved",
+        selected: {
+          emplId: eid,
+          name: "Cramia, Dreitho",
+          department: "Housing Dining Hospitality",
+          jobTitle: "STDT 3",
+          employeeStatus: "active",
+          hdh: true,
+        },
+        candidateEids: [eid],
+      },
+  );
   return buildIdentityEvidencePacket({
     documentNumber: DOCUMENT_NUMBER,
     documentName,
@@ -484,18 +531,7 @@ export function separationsIdentityPacket(
       renderContext: { entry: "auto-detail", searchResultRows: 0, employmentInstances: "already-complete" },
       observedAt: NOW as never,
     },
-    nameSelection: {
-      status: "resolved",
-      selected: {
-        emplId: eid as never,
-        name: "Cramia, Dreitho",
-        department: "Housing Dining Hospitality",
-        jobTitle: "STDT 3",
-        employeeStatus: "active",
-        hdh: true,
-      },
-      candidateEids: (overrides.candidateEids ?? [eid]) as never,
-    },
+    nameSelection,
     plan: SeparationWritePlanSchema.parse({
       state: "planned",
       termination: {
@@ -525,7 +561,7 @@ export function separationsIdentityPacket(
         kualiSeparationDate: "03/31/2026",
         separationDate: "03/31/2026",
         separationDateChanged: false,
-        separationDeterminingLeave: "none",
+        separationDeterminingLeave: null,
         unclassifiedPayCodes: ["Farmworkers Day"],
       },
     }),
